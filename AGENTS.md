@@ -2,10 +2,16 @@
 
 ## Project Overview
 
-**thoth-agents** is an OpenCode plugin for delegate-first agent
-orchestration. It provides a seven-agent roster, native OpenCode task
-delegation, thoth-mem integration, bundled SDD skills, and a
-requirements-interview skill for clarifying ambiguous work.
+**thoth-agents** is a multi-harness agent orchestration plugin for
+delegate-first workflows. It provides a seven-agent roster, OpenCode-native
+task delegation, Codex support, thoth-mem integration, bundled SDD skills, and
+a requirements-interview skill for clarifying ambiguous work.
+
+## Supported Harnesses
+
+- OpenCode: native plugin/runtime flow with `task`-based delegation.
+- Codex: supported agent-pack/plugin path for Codex harnesses, with
+  capability and enforcement caveats where the runtime differs from OpenCode.
 
 IMPORTANT: Always use `webstorm-index` and `mcp-steroid` MCP tools for project file navigation, including text search, file search, file reading, and refactoring.
 
@@ -27,6 +33,16 @@ Single test:
 ```bash
 bun test -t "pattern"
 ```
+
+## Setup
+
+- Install dependencies with `bun install`.
+- Use a recent Bun runtime that can run the repository scripts and build
+  tooling.
+- `bun run dev` expects `opencode` to be available on `PATH` after the build
+  step.
+- Keep `package.json`, `AGENTS.md`, and generated outputs in sync when versions
+  or scripts change.
 
 ## Code Style
 
@@ -64,8 +80,11 @@ bun test -t "pattern"
   orchestrator's reasoning responsibility.
 - The orchestrator NEVER uses browser tools, takes screenshots, or processes
   images. All visual verification and UX/UI QA is delegated to `@designer`.
-- Default delegation primitive is OpenCode's native **`task`** tool.
-- Default behavior is normal synchronous `task` execution.
+- OpenCode delegation uses the native **`task`** tool.
+- Codex uses the harness-appropriate Codex custom-agent or local thread
+  delegation flow where available, with instruction-level enforcement caveats.
+- Default behavior is synchronous delegation on OpenCode and the harness-native
+  synchronous equivalent on Codex where the runtime exposes it.
 - All prompts sent to sub-agents MUST be written in English, regardless of the
   user's language. The orchestrator may reply to the user in their language, but
   delegated task prompts, internal handoffs, SDD envelopes, and verification
@@ -163,8 +182,11 @@ Rule of thumb:
 
 ## Task Delegation
 
-- Delegation uses OpenCode's native `task` tool.
-- Default delegation is synchronous and awaited.
+- OpenCode delegation uses the native `task` tool.
+- Codex delegation uses the Codex custom-agent or local thread flow provided by
+  the active harness where available.
+- Default delegation is synchronous and awaited when the runtime exposes that
+  path.
 - Experimental `task(background=true)` is allowed only for `explorer` and
   `librarian` for asynchronous delegation.
 - When using experimental background tasks, the orchestrator must track them via
@@ -434,14 +456,33 @@ thoth-agents/
 
 ## Development Workflow
 
-This project uses `@opencode-ai/plugin` and `@opencode-ai/sdk` v1.4.0; keep
-workflow notes and examples aligned with that SDK version.
+This project uses `@opencode-ai/plugin` and `@opencode-ai/sdk` v1.4.7 for the
+OpenCode integration path; keep workflow notes and examples aligned with that
+SDK version, while recognizing the broader multi-harness scope of the plugin.
 
 1. Make changes
 2. Run `bun run check:ci`
 3. Run `bun run typecheck`
 4. Run `bun test`
 5. Commit
+
+## Contributing
+
+- Keep changes small and focused unless the task explicitly needs a broader
+  sweep.
+- Update docs and code together when behavior, scripts, or agent guidance
+  change.
+- Prefer concise commit messages that reflect the user-facing change.
+- Before opening a PR, run the smallest relevant checks from the workflow
+  above and include any known gaps in the PR description.
+
+## Debugging
+
+- Start with `bun run check:ci` for formatting and lint issues.
+- Use `bun run typecheck` to isolate TypeScript errors before broader testing.
+- Use `bun test` or `bun test -t "pattern"` for focused behavior checks.
+- If `bun run dev` fails, confirm dependencies are installed and `opencode`
+  is available locally.
 
 ## verification
 

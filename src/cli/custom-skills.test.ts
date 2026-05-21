@@ -125,6 +125,15 @@ describe('CUSTOM_SKILLS', () => {
     expect(skill).toContain('You do not own durable memory of your own.');
     expect(skill).toContain('Writable subagent calls `mem_context`');
     expect(skill).toContain('Never save a subagent prompt.');
+    expect(skill).toContain(
+      'root/main orchestrator-owned tools and responsibilities',
+    );
+    expect(skill).toContain('At the start of every new root session');
+    expect(skill).toContain('call `mem_session_start`');
+    expect(skill).toContain('save the real user prompt with `mem_save_prompt`');
+    expect(skill).toContain('Targeted 3-layer recall');
+    expect(skill).toContain('Before ending the root session');
+    expect(skill).toContain('After compaction');
   });
 
   test('findPackageRoot walks up from a bundled dist directory', () => {

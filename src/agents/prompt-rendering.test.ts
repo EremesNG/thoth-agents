@@ -166,6 +166,19 @@ describe('semantic prompt section rendering', () => {
     expect(prompt).toContain('Plan gate: after tasks, ask with `question`');
     expect(prompt).toContain('track progress in todowrite');
     expect(prompt).toContain('Root-session memory is yours');
+    expect(prompt).toContain(
+      'current main/root agent is the orchestrator/root coordinator',
+    );
+    expect(prompt).toContain(
+      'At the start of a new root session, when thoth-mem tools are available',
+    );
+    expect(prompt).toContain('call `mem_session_start`');
+    expect(prompt).toContain(
+      'save the real user prompt with `mem_save_prompt`',
+    );
+    expect(prompt).toContain('3-layer recall protocol: `mem_search`');
+    expect(prompt).toContain('Before ending the root session');
+    expect(prompt).toContain('After compaction');
     expect(prompt).toContain('@designer');
     expect(prompt).not.toContain('request_user_input');
   });
@@ -289,6 +302,11 @@ describe('semantic prompt section rendering', () => {
     expect(prompts.orchestrator).toContain('Codex custom-agent task');
     expect(prompts.orchestrator).toContain('deep role agent');
     expect(prompts.orchestrator).toContain('Codex progress tracking surface');
+    expect(prompts.orchestrator).toContain(
+      'current main/root agent is the orchestrator/root coordinator',
+    );
+    expect(prompts.orchestrator).toContain('mem_session_start');
+    expect(prompts.orchestrator).toContain('mem_save_prompt');
 
     for (const role of ['explorer', 'librarian', 'oracle'] as const) {
       expect(prompts[role]).toContain(`You are ${role}.`);

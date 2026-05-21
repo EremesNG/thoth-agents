@@ -64,6 +64,12 @@ describe('memory governance contract', () => {
         'mem_save_prompt',
       ]),
     );
+    expect(orchestrator.rules.join('\n')).toContain(
+      'root/main orchestrator-owned',
+    );
+    expect(orchestrator.rules.join('\n')).toContain(
+      'initial/root agent when the harness does not expose an orchestrator-named agent',
+    );
   });
 
   test('separates read-only recall from delegated write-capable memory saves', () => {

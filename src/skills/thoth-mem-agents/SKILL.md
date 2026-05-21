@@ -28,9 +28,35 @@ hold.
 
 ## Hard Ownership Split
 
+### Root/main orchestrator identity
+
+The current root/main agent owns root/main orchestrator-owned tools and responsibilities
+for the session. In harnesses where the initial agent is not named
+`orchestrator`, all "orchestrator-only", "root-only", and
+"orchestrator-owned" rules still apply to that initial/root agent.
+
+### New Root Session Bootstrap
+
+At the start of every new root session, when thoth-mem tools are available, the
+root/main orchestrator MUST:
+
+1. Load `thoth-mem-agents` and `requirements-interview`.
+2. Call `mem_session_start` with the active project and session identity.
+3. Save the real user prompt with `mem_save_prompt`.
+
+In prose: call `mem_session_start` before delegation, then save the real user prompt with `mem_save_prompt`.
+
+Only save real user prompts with `mem_save_prompt`. Never save generated
+subagent prompts, internal handoffs, tool scaffolding, summaries, or delegated
+task text as user intent.
+
+If thoth-mem tools or required project/session identity are unavailable, state
+that memory bootstrap could not run and continue without claiming memory was
+saved.
+
 ### Orchestrator-only tools
 
-ONLY the orchestrator owns these tools:
+ONLY the root/main orchestrator owns these tools:
 
 - `mem_session_start`
 - `mem_session_summary`
@@ -49,6 +75,77 @@ Why:
 - `mem_session_summary` closes or repairs that boundary.
 - `mem_save_prompt` is only valid for real user requests, and subagent prompts
   are orchestration artifacts, not user intent.
+
+## Root Memory Protocol
+
+### Durable Saves
+
+The root/main orchestrator should call `mem_save` after durable work or
+decisions, including:
+
+- architecture, design, or workflow decisions
+- accepted or rejected recommendations
+- bug fixes with root cause
+- non-obvious discoveries, gotchas, or edge cases
+- configuration changes or environment setup
+- reusable patterns or conventions
+- durable user preferences or constraints
+
+Use stable topic keys for evolving topics. If unsure, call
+`mem_suggest_topic_key` before saving. Keep the observation content structured:
+
+```text
+What: concise description
+Why: reason or problem solved
+Where: files, paths, systems, or artifacts
+Learned: edge cases, caveats, or follow-up notes
+```
+
+Do not claim memory was saved unless the tool call succeeded.
+
+### Recall
+
+Broad recovery at root session start or after compaction may use the root-owned
+recent-session overview tools when available. For precise retrieval, use
+Targeted 3-layer recall:
+
+1. `mem_search` with compact results to scan IDs and titles.
+2. `mem_timeline` around promising observation IDs.
+3. `mem_get_observation` only for records needed in full.
+
+Use preview search only when compact results are insufficient to disambiguate.
+
+### Session Close
+
+Before ending the root session, the root/main orchestrator MUST call
+`mem_session_summary` when the tool is available. Use a concise summary with:
+
+- Goal
+- Instructions
+- Discoveries
+- Accomplished
+- Next Steps
+- Relevant Files
+
+If the summary cannot be saved, disclose that limitation rather than implying
+the next session will recover it from memory.
+
+### After Compaction
+
+After compaction, first preserve the compacted summary with
+`mem_session_summary`, then recover recent context and use Targeted 3-layer
+recall before continuing. Do not invent missing memory.
+
+### SDD Topic Keys
+
+SDD artifacts saved to thoth-mem use deterministic topic keys:
+
+`sdd/{change}/{artifact}`
+
+Examples: `sdd/add-user-auth/spec`, `sdd/add-user-auth/design`,
+`sdd/add-user-auth/tasks`.
+
+Never reuse the `sdd/...` namespace for general durable observations.
 
 ## Project-Scoped Read Tools
 

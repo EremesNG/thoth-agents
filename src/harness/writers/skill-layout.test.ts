@@ -18,6 +18,9 @@ const sampleSkill: SkillRegistryEntry = {
 const SDD_SEMANTIC_ANCHORS: Record<string, string[]> = {
   'requirements-interview': [
     'mandatory step-0 entry point',
+    'new root session',
+    'mem_session_start',
+    'mem_save_prompt',
     'artifact store policy choice',
     'Full SDD',
   ],
@@ -56,18 +59,6 @@ function codexSkillContent(
   const artifact = artifacts.find(
     (candidate) =>
       candidate.path === `.codex-plugin/skills/${skillName}/SKILL.md`,
-  );
-
-  expect(artifact).toBeDefined();
-  return String(artifact?.content);
-}
-
-function artifactContent(
-  artifacts: ReturnType<typeof renderCodexSkillLayout>['artifacts'],
-  artifactPath: string,
-): string {
-  const artifact = artifacts.find(
-    (candidate) => candidate.path === artifactPath,
   );
 
   expect(artifact).toBeDefined();

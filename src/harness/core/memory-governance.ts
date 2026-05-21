@@ -93,7 +93,8 @@ function roleRules(role: AgentRoleContract): string[] {
 
   if (role.name === 'orchestrator') {
     return [
-      'Root/orchestrator owns mem_session_start, mem_session_summary, and mem_save_prompt.',
+      'mem_session_start, mem_session_summary, and mem_save_prompt are root/main orchestrator-owned tools and responsibilities.',
+      'In harnesses without an orchestrator-named agent, root/main orchestrator-owned means the initial/root agent when the harness does not expose an orchestrator-named agent.',
       'Dispatch parent session_id and project when authorizing subagent memory use.',
       'Protect the sdd/* topic namespace and write SDD memory artifacts only in thoth-mem or hybrid persistence modes.',
     ];

@@ -60,10 +60,7 @@ export interface CodexRenderContext extends HarnessRenderContext {
 }
 
 function readRootPackageVersion(startDir: string): string {
-  const packageJsonPath = findRootPackageJsonPath([
-    startDir,
-    process.cwd(),
-  ]);
+  const packageJsonPath = findRootPackageJsonPath([startDir, process.cwd()]);
   return readPackageJsonVersion(packageJsonPath);
 }
 
@@ -306,6 +303,9 @@ export function renderCodexRootInstructions(config?: PluginConfig): string {
     CODEX_ROOT_START,
     rootPrompt,
     '<codex-runtime>',
+    '- The ambient Codex root session is the root/main orchestrator; orchestrator-only and root-owned instructions apply to it because Codex does not generate a selectable orchestrator agent TOML.',
+    '- On each new root session, when thoth-mem tools are installed and session/project identity is known, call mem_session_start with the active project and session identity, then save the real user prompt with mem_save_prompt before later delegation.',
+    '- If thoth-mem tools or identity values are unavailable, disclose that memory bootstrap could not run and continue without claiming memory was saved.',
     '- Use the ambient Codex root session as the delegate-first root coordinator; do not generate or select an orchestrator TOML.',
     '- Delegate by invoking the installed Codex role agents: explorer, librarian, oracle, designer, quick, and deep.',
     '- Use packaged thoth-agents plugin capabilities through Codex plugin, skill, MCP, and hook review surfaces after enabling them with /plugins and /hooks.',

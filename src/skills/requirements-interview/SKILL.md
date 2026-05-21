@@ -25,6 +25,19 @@ handoff path before implementation begins.
 - Do not patch files.
 - Do not create formal SDD artifacts until the user approves the route.
 
+## Root Session Bootstrap
+
+This skill is normally loaded by the root/main orchestrator at the start of a
+new root session. When thoth-mem tools are available, the root/main
+orchestrator MUST also load `thoth-mem-agents`, call `mem_session_start` with
+the active project and session identity, and save the real user prompt with
+`mem_save_prompt` before later delegation.
+
+If thoth-mem tools or the required identity values are unavailable, disclose
+that memory bootstrap could not run and continue without claiming memory was
+saved. Do not save subagent prompts, generated handoffs, or interview
+scaffolding as user prompts.
+
 ## Blocking User Input Surface Requirement
 
 - The interview flow MUST use the active harness blocking user input surface

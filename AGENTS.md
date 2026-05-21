@@ -7,7 +7,7 @@ orchestration. It provides a seven-agent roster, native OpenCode task
 delegation, thoth-mem integration, bundled SDD skills, and a
 requirements-interview skill for clarifying ambiguous work.
 
-IMPORTANT: When applicable, prefer using webstorm-index MCP tools for code navigation and refactoring.
+IMPORTANT: Always use `webstorm-index` and `mcp-steroid` MCP tools for project file navigation, including text search, file search, file reading, and refactoring.
 
 ## Commands
 

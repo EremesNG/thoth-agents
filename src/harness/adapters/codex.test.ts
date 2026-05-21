@@ -398,6 +398,18 @@ describe('Codex adapter', () => {
       'features.default_mode_request_user_input',
     );
     expect(rootInstructions).toContain('installed Codex role agents');
+    expect(rootInstructions).toContain(
+      'The ambient Codex root session is the root/main orchestrator',
+    );
+    expect(rootInstructions).toContain(
+      'call mem_session_start with the active project and session identity',
+    );
+    expect(rootInstructions).toContain(
+      'save the real user prompt with mem_save_prompt',
+    );
+    expect(rootInstructions).toContain(
+      'disclose that memory bootstrap could not run',
+    );
   });
 
   test('renders subagent developer instructions as native multiline role instructions without adaptation wrapper', () => {

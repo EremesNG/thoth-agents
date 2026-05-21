@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import type { PluginConfig } from '../../config';
 import {
@@ -68,7 +70,55 @@ function expectNoLeakedCodexAdaptationMarkers(content: string): void {
   }
 }
 
+function writePackageJson(
+  directory: string,
+  packageJson: { name: string; version: string },
+): void {
+  fs.mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    path.join(directory, 'package.json'),
+    `${JSON.stringify(packageJson, null, 2)}\n`,
+  );
+}
+
 describe('Codex adapter', () => {
+  test('resolves the root package version by walking upward from the current working directory', () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), 'codex-version-'));
+    const repoRoot = path.join(workspace, 'repo');
+    const nestedCwd = path.join(repoRoot, 'dist', 'cli');
+
+    try {
+      writePackageJson(workspace, {
+        name: 'thoth-agents',
+        version: '1.2.3',
+      });
+      writePackageJson(repoRoot, {
+        name: 'not-thoth-agents',
+        version: '9.9.9',
+      });
+      fs.mkdirSync(nestedCwd, { recursive: true });
+
+      const previousCwd = process.cwd();
+      process.chdir(nestedCwd);
+      try {
+        const result = codexAdapter.render({ projectRoot: workspace });
+        const pluginManifest = JSON.parse(
+          String(
+            result.artifacts.find(
+              (artifact) => artifact.path === '.codex-plugin/plugin.json',
+            )?.content,
+          ),
+        ) as { version?: unknown };
+
+        expect(pluginManifest.version).toBe('1.2.3');
+      } finally {
+        process.chdir(previousCwd);
+      }
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   test('plans six role agent artifacts from validated Codex surfaces', () => {
     const result = codexAdapter.render({ projectRoot: process.cwd() });
 

@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { CODEX_PROMPT_DIALECT } from '../../agents/prompt-dialects';
 import {
   createModelFamilySection,
@@ -58,21 +59,69 @@ export interface CodexRenderContext extends HarnessRenderContext {
   config?: PluginConfig;
 }
 
-const CODEX_PLUGIN_PACKAGE_MANIFEST = {
-  name: 'thoth-agents',
-  version: readRootPackageVersion(),
-  description:
-    'Delegate-first OpenCode plugin with seven agents, thoth-mem persistence, and bundled SDD skills.',
-} as const;
+function readRootPackageVersion(startDir: string): string {
+  const packageJsonPath = findRootPackageJsonPath([
+    startDir,
+    process.cwd(),
+  ]);
+  return readPackageJsonVersion(packageJsonPath);
+}
 
-function readRootPackageVersion(): string {
-  const packageJsonPath = new URL('../../../package.json', import.meta.url);
+function createCodexPluginPackageManifest(projectRoot: string): {
+  name: string;
+  version: string;
+  description: string;
+} {
+  return {
+    name: 'thoth-agents',
+    version: readRootPackageVersion(projectRoot),
+    description:
+      'Delegate-first OpenCode plugin with seven agents, thoth-mem persistence, and bundled SDD skills.',
+  };
+}
+
+function findRootPackageJsonPath(startDirs: readonly string[]): string {
+  for (const startDir of startDirs) {
+    let currentDir = resolve(startDir);
+
+    while (true) {
+      const packageJsonPath = resolve(currentDir, 'package.json');
+
+      if (existsSync(packageJsonPath)) {
+        const packageJsonText = readFileSync(packageJsonPath, 'utf8');
+        const packageJson = JSON.parse(packageJsonText) as {
+          name?: unknown;
+        };
+
+        if (packageJson.name === 'thoth-agents') {
+          return packageJsonPath;
+        }
+      }
+
+      const parentDir = dirname(currentDir);
+      if (parentDir === currentDir) {
+        break;
+      }
+
+      currentDir = parentDir;
+    }
+  }
+
+  throw new Error(
+    'Unable to locate the thoth-agents root package.json from the render context or current working directory.',
+  );
+}
+
+function readPackageJsonVersion(packageJsonPath: string): string {
   const packageJsonText = readFileSync(packageJsonPath, 'utf8');
   const packageJson = JSON.parse(packageJsonText) as {
     version?: unknown;
   };
 
-  if (typeof packageJson.version !== 'string' || packageJson.version.length === 0) {
+  if (
+    typeof packageJson.version !== 'string' ||
+    packageJson.version.length === 0
+  ) {
     throw new Error('Root package.json version must be a non-empty string.');
   }
 
@@ -463,7 +512,7 @@ export const codexAdapter: HarnessAdapter = {
       outputModes: skillOutputModes,
     });
     const pluginPackage = renderCodexPluginPackage({
-      manifest: CODEX_PLUGIN_PACKAGE_MANIFEST,
+      manifest: createCodexPluginPackageManifest(context.projectRoot),
       assets: [
         {
           surfaceId: 'plugin-skills-directory',

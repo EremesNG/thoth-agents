@@ -32,6 +32,7 @@ export interface CodexResolvedTargets {
   configPath: string;
   rootInstructionsPath: string;
   roleAgentPaths: { role: CodexRoleName; path: string }[];
+  managedModelsPath: string;
   skillsDir: string;
   packageRoot: string;
   personalPluginRoot: string;
@@ -63,6 +64,11 @@ export function resolveCodexTargets(
       role,
       path: join(agentsDir, `thoth-agents-${role}.toml`),
     })),
+    managedModelsPath: join(
+      codexHome,
+      'agents',
+      '.thoth-agents-managed-models.json',
+    ),
     skillsDir:
       options.scope === 'project'
         ? join(options.projectRoot, '.agents', 'skills')

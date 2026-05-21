@@ -6,7 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import {
   codexAdapter,
   renderCodexRootInstructions,
@@ -22,6 +22,7 @@ export { CODEX_ROLE_NAMES } from './codex-paths';
 export type CodexSetupAction =
   | 'merge-managed-block'
   | 'write-role-toml'
+  | 'write-managed-model-state'
   | 'refresh-package'
   | 'merge-marketplace'
   | 'merge-toml'
@@ -30,6 +31,7 @@ export type CodexSetupAction =
 export type CodexTargetKind =
   | 'root-instructions'
   | 'role-subagent-toml'
+  | 'managed-model-state'
   | 'user-config'
   | 'plugin-package'
   | 'personal-plugin-source'
@@ -76,6 +78,12 @@ export interface CodexApplyResult {
 
 const ROOT_START = '<!-- thoth-agents:codex-root:start -->';
 const ROOT_END = '<!-- thoth-agents:codex-root:end -->';
+const MANAGED_MODEL_STATE_VERSION = 1;
+
+interface ManagedModelState {
+  version: typeof MANAGED_MODEL_STATE_VERSION;
+  models: Record<string, string>;
+}
 
 function mergeManagedBlock(existing: string, managedBlock: string): string {
   const start = existing.indexOf(ROOT_START);
@@ -139,6 +147,113 @@ function stableJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
+function emptyManagedModelState(): ManagedModelState {
+  return {
+    version: MANAGED_MODEL_STATE_VERSION,
+    models: {},
+  };
+}
+
+function readManagedModelState(path: string): ManagedModelState {
+  if (!existsSync(path)) return emptyManagedModelState();
+
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
+      version?: unknown;
+      models?: unknown;
+    };
+    if (
+      parsed.version !== MANAGED_MODEL_STATE_VERSION ||
+      !parsed.models ||
+      typeof parsed.models !== 'object' ||
+      Array.isArray(parsed.models)
+    ) {
+      return emptyManagedModelState();
+    }
+
+    return {
+      version: MANAGED_MODEL_STATE_VERSION,
+      models: Object.fromEntries(
+        Object.entries(parsed.models).filter(
+          (entry): entry is [string, string] =>
+            typeof entry[0] === 'string' && typeof entry[1] === 'string',
+        ),
+      ),
+    };
+  } catch {
+    return emptyManagedModelState();
+  }
+}
+
+function parseRoleTomlModel(content: string): string | undefined {
+  const match = /^model\s*=\s*"((?:\\.|[^"\\])*)"\s*$/m.exec(content);
+  if (!match) return undefined;
+  return match[1]
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+}
+
+function escapeTomlString(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\t/g, '\\t')
+    .replace(/\n/g, '\\n')
+    .replace(/\f/g, '\\f')
+    .replace(/\r/g, '\\r');
+}
+
+function replaceRoleTomlModel(content: string, model: string): string {
+  const rendered = `model = "${escapeTomlString(model)}"`;
+  if (/^model\s*=\s*"(?:\\.|[^"\\])*"\s*$/m.test(content)) {
+    return content.replace(/^model\s*=\s*"(?:\\.|[^"\\])*"\s*$/m, rendered);
+  }
+  return `${rendered}\n${content}`;
+}
+
+function roleManagedModelStateKey(path: string): string {
+  return basename(path);
+}
+
+function resolveRoleTomlContent(options: {
+  renderedContent: string;
+  targetPath: string;
+  state: ManagedModelState;
+  nextState: ManagedModelState;
+  reset: boolean;
+}): string {
+  const renderedModel = parseRoleTomlModel(options.renderedContent);
+  const key = roleManagedModelStateKey(options.targetPath);
+
+  if (!renderedModel) return options.renderedContent;
+
+  if (options.reset || !existsSync(options.targetPath)) {
+    options.nextState.models[key] = renderedModel;
+    return options.renderedContent;
+  }
+
+  const currentModel = parseRoleTomlModel(
+    readFileSync(options.targetPath, 'utf8'),
+  );
+  const trackedModel = options.state.models[key];
+  const isUserOwned =
+    currentModel !== undefined &&
+    (trackedModel === undefined
+      ? currentModel !== renderedModel
+      : currentModel !== trackedModel);
+
+  if (isUserOwned) {
+    if (trackedModel !== undefined)
+      options.nextState.models[key] = trackedModel;
+    return replaceRoleTomlModel(options.renderedContent, currentModel);
+  }
+
+  options.nextState.models[key] = renderedModel;
+  return options.renderedContent;
+}
+
 function mergePersonalMarketplace(
   existing: string,
   homeDir: string,
@@ -198,6 +313,8 @@ export function buildCodexSetupPlan(
     artifact.path.startsWith('.codex-plugin/'),
   );
   const rootBlock = renderCodexRootInstructions();
+  const managedModelState = readManagedModelState(targets.managedModelsPath);
+  const nextManagedModelState = emptyManagedModelState();
   const items: CodexSetupPlanItem[] = [
     {
       kind: 'root-instructions',
@@ -215,9 +332,24 @@ export function buildCodexSetupPlan(
         description: `Materialize Codex role subagent ${target.role}.`,
         requiresBackup: existsSync(target.path),
         role: target.role,
-        content: roleArtifactContent(target.role, render.artifacts),
+        content: resolveRoleTomlContent({
+          renderedContent: roleArtifactContent(target.role, render.artifacts),
+          targetPath: target.path,
+          state: managedModelState,
+          nextState: nextManagedModelState,
+          reset: config.reset,
+        }),
       }),
     ),
+    {
+      kind: 'managed-model-state',
+      action: 'write-managed-model-state',
+      targetPath: targets.managedModelsPath,
+      description:
+        'Record thoth-agents-managed Codex role model ownership state.',
+      requiresBackup: existsSync(targets.managedModelsPath),
+      content: stableJson(nextManagedModelState),
+    },
     ...packageArtifacts.map(
       (artifact): CodexSetupPlanItem => ({
         kind: 'personal-plugin-source',

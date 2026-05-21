@@ -1,0 +1,21 @@
+schema: spec-driven
+project: thoth-agents
+stack: TypeScript, Bun, Biome, OpenCode Plugin SDK
+
+context: |
+  thoth-agents is a lightweight agent orchestration plugin for OpenCode.
+  Built on a fork of oh-my-opencode-slim, it integrates SDD methodology,
+  persistent memory (thoth-mem), disk-persisted delegations, and 7 role-based agents.
+
+rules:
+  proposal:
+    max_words: 500
+  spec:
+    format: "RFC 2119 + Given/When/Then"
+    categories: ["ADDED", "MODIFIED", "REMOVED"]
+  design:
+    require_decisions: true
+    require_file_changes: true
+  tasks:
+    require_phases: true
+    checkbox_format: "- [ ] "

@@ -1,0 +1,197 @@
+import { z } from 'zod';
+
+const AGENT_NAMES = [
+  'orchestrator',
+  'oracle',
+  'designer',
+  'explorer',
+  'librarian',
+  'quick',
+  'deep',
+] as const;
+
+const FALLBACK_AGENT_NAMES = [...AGENT_NAMES] as const;
+
+const MANUAL_AGENT_NAMES = [...AGENT_NAMES] as const;
+
+const ProviderModelIdSchema = z
+  .string()
+  .regex(
+    /^[^/\s]+\/[^\s]+$/,
+    'Expected provider/model format (provider/.../model)',
+  );
+
+export const ManualAgentPlanSchema = z
+  .object({
+    primary: ProviderModelIdSchema,
+    fallback1: ProviderModelIdSchema,
+    fallback2: ProviderModelIdSchema,
+    fallback3: ProviderModelIdSchema,
+  })
+  .superRefine((value, ctx) => {
+    const unique = new Set([
+      value.primary,
+      value.fallback1,
+      value.fallback2,
+      value.fallback3,
+    ]);
+    if (unique.size !== 4) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'primary and fallbacks must be unique per agent',
+      });
+    }
+  });
+
+export const ManualPlanSchema = z
+  .object({
+    orchestrator: ManualAgentPlanSchema,
+    oracle: ManualAgentPlanSchema,
+    designer: ManualAgentPlanSchema,
+    explorer: ManualAgentPlanSchema,
+    librarian: ManualAgentPlanSchema,
+    quick: ManualAgentPlanSchema,
+    deep: ManualAgentPlanSchema,
+  })
+  .strict();
+
+export type ManualAgentName = (typeof MANUAL_AGENT_NAMES)[number];
+export type ManualAgentPlan = z.infer<typeof ManualAgentPlanSchema>;
+export type ManualPlan = z.infer<typeof ManualPlanSchema>;
+
+const AgentModelChainSchema = z.array(z.string()).min(1);
+
+const FallbackChainsSchema = z
+  .object({
+    orchestrator: AgentModelChainSchema.optional(),
+    oracle: AgentModelChainSchema.optional(),
+    designer: AgentModelChainSchema.optional(),
+    explorer: AgentModelChainSchema.optional(),
+    librarian: AgentModelChainSchema.optional(),
+    quick: AgentModelChainSchema.optional(),
+    deep: AgentModelChainSchema.optional(),
+  })
+  .catchall(AgentModelChainSchema);
+
+export type FallbackAgentName = (typeof FALLBACK_AGENT_NAMES)[number];
+
+// Agent override configuration (distinct from SDK's AgentConfig)
+export const AgentOverrideConfigSchema = z.object({
+  model: z
+    .union([
+      z.string(),
+      z.array(
+        z.union([
+          z.string(),
+          z.object({
+            id: z.string(),
+            variant: z.string().optional(),
+          }),
+        ]),
+      ),
+    ])
+    .optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  steps: z.number().int().min(1).optional(),
+  variant: z.string().optional().catch(undefined),
+});
+
+// Tmux layout options
+export const TmuxLayoutSchema = z.enum([
+  'main-horizontal', // Main pane on top, agents stacked below
+  'main-vertical', // Main pane on left, agents stacked on right
+  'tiled', // All panes equal size grid
+  'even-horizontal', // All panes side by side
+  'even-vertical', // All panes stacked vertically
+]);
+
+export type TmuxLayout = z.infer<typeof TmuxLayoutSchema>;
+
+// Tmux integration configuration
+export const TmuxConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  layout: TmuxLayoutSchema.default('main-vertical'),
+  main_pane_size: z.number().min(20).max(80).default(60), // percentage for main pane
+});
+
+export type TmuxConfig = z.infer<typeof TmuxConfigSchema>;
+
+export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
+
+/** Normalized model entry with optional per-model variant. */
+export type ModelEntry = { id: string; variant?: string };
+
+export const PresetSchema = z.record(z.string(), AgentOverrideConfigSchema);
+
+export type Preset = z.infer<typeof PresetSchema>;
+
+// MCP names
+export const AgentNameSchema = z.enum(AGENT_NAMES);
+export const McpNameSchema = z.enum([
+  'exa',
+  'context7',
+  'grep_app',
+  'thoth_mem',
+]);
+export type McpName = string;
+
+export const ThothConfigSchema = z.object({
+  command: z.array(z.string()).optional(),
+  data_dir: z.string().optional(),
+  environment: z.record(z.string(), z.string()).optional(),
+  timeout: z.number().optional(),
+  http_port: z.number().optional(),
+});
+
+export type ThothConfig = z.infer<typeof ThothConfigSchema>;
+
+export const ArtifactStoreModeSchema = z.enum([
+  'thoth-mem',
+  'openspec',
+  'hybrid',
+]);
+
+export const ArtifactStoreConfigSchema = z.object({
+  mode: ArtifactStoreModeSchema.default('hybrid'),
+});
+
+export type ArtifactStoreConfig = z.infer<typeof ArtifactStoreConfigSchema>;
+
+export const CodexGenerationConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  outputRoot: z.string().optional(),
+  dryRun: z.boolean().default(true),
+});
+
+export type CodexGenerationConfig = z.infer<typeof CodexGenerationConfigSchema>;
+
+export const FailoverConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  timeoutMs: z.number().min(0).default(15000),
+  retryDelayMs: z.number().min(0).default(500),
+  chains: FallbackChainsSchema.default({}),
+});
+
+export type FailoverConfig = z.infer<typeof FailoverConfigSchema>;
+
+// Main plugin config
+export const PluginConfigSchema = z.object({
+  preset: z.string().optional(),
+  setDefaultAgent: z.boolean().optional(),
+  scoringEngineVersion: z.enum(['v1', 'v2-shadow', 'v2']).optional(),
+  balanceProviderUsage: z.boolean().optional(),
+  manualPlan: ManualPlanSchema.optional(),
+  presets: z.record(z.string(), PresetSchema).optional(),
+  agents: z.record(z.string(), AgentOverrideConfigSchema).optional(),
+  disabled_mcps: z.array(z.string()).optional(),
+  tmux: TmuxConfigSchema.optional(),
+  fallback: FailoverConfigSchema.optional(),
+  thoth: ThothConfigSchema.optional(),
+  artifactStore: ArtifactStoreConfigSchema.optional(),
+  codex: CodexGenerationConfigSchema.optional(),
+});
+
+export type PluginConfig = z.infer<typeof PluginConfigSchema>;
+
+// Agent names - re-exported from constants for convenience
+export type { AgentName } from './constants';

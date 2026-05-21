@@ -1,0 +1,18 @@
+{
+  "generatedBy": "thoth-agents",
+  "assets": [
+    {
+      "field": "hooks",
+      "path": ".codex-plugin/hooks/hooks.json",
+      "reference": "./hooks/hooks.json",
+      "sha256": "sha256:d6de3c265e6d09e0ab7586a8d7370ea6c85d69697864131aa322612e23bb978b"
+    },
+    {
+      "field": "skills",
+      "path": ".codex-plugin/skills/",
+      "reference": "./skills/",
+      "name": "sdd-apply",
+      "sourcePath": "src/skills/sdd-apply"
+    }
+  ]
+}

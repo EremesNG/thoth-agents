@@ -1,0 +1,675 @@
+import { describe, expect, test } from 'bun:test';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import type { PluginConfig } from '../../config';
+import {
+  CODEX_CAPABILITIES,
+  codexAdapter,
+  renderCodexRootInstructions,
+} from './codex';
+
+const FORBIDDEN_CODEX_ADAPTATION_MARKERS = [
+  '<codex-adaptation>',
+  '</codex-adaptation>',
+  '<codex-root-adaptation>',
+  '</codex-root-adaptation>',
+  'codex-adaptation',
+  'codex-root-adaptation',
+  'Codex prompt notes',
+  'Codex root coordination notes',
+  'opencode-role-contract',
+  'OpenCode role contract',
+  'adapted from OpenCode',
+  'same behavior in Codex',
+  'Codex adaptation',
+  'OpenCode-equivalent',
+] as const;
+
+function codexFixture(name: string): string {
+  return fs.readFileSync(
+    path.join(process.cwd(), 'src/harness/__fixtures__/codex', name),
+    'utf8',
+  );
+}
+
+function agentContent(agentName: string): string {
+  const result = codexAdapter.render({ projectRoot: process.cwd() });
+  const artifact = result.artifacts.find(
+    (candidate) =>
+      candidate.path === `.codex/agents/thoth-agents-${agentName}.toml`,
+  );
+
+  expect(artifact).toBeDefined();
+  return String(artifact?.content);
+}
+
+function artifactContent(artifactPath: string, config?: PluginConfig): string {
+  const context = { projectRoot: process.cwd(), config };
+  const result = codexAdapter.render(context);
+  const artifact = result.artifacts.find(
+    (candidate) => candidate.path === artifactPath,
+  );
+
+  expect(artifact).toBeDefined();
+  return String(artifact?.content);
+}
+
+function expectTomlField(content: string, field: string, value: string): void {
+  expect(content).toContain(`${field} = "${value}"`);
+}
+
+function expectTomlFieldMissing(content: string, field: string): void {
+  expect(content).not.toContain(`${field} =`);
+}
+
+function expectNoLeakedCodexAdaptationMarkers(content: string): void {
+  for (const marker of FORBIDDEN_CODEX_ADAPTATION_MARKERS) {
+    expect(content).not.toContain(marker);
+  }
+}
+
+describe('Codex adapter', () => {
+  test('plans six role agent artifacts from validated Codex surfaces', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+
+    const agentArtifacts = result.artifacts.filter(
+      (artifact) => artifact.kind === 'agent-config',
+    );
+
+    expect(result.harness).toBe('codex');
+    expect(agentArtifacts.map((artifact) => artifact.path)).toEqual([
+      '.codex/agents/thoth-agents-explorer.toml',
+      '.codex/agents/thoth-agents-librarian.toml',
+      '.codex/agents/thoth-agents-oracle.toml',
+      '.codex/agents/thoth-agents-designer.toml',
+      '.codex/agents/thoth-agents-quick.toml',
+      '.codex/agents/thoth-agents-deep.toml',
+    ]);
+    expect(String(agentArtifacts[0].content)).toContain(
+      'developer_instructions',
+    );
+  });
+
+  test('plans config, MCP, skill manifest, and explicit capability diagnostics only', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+
+    expect(result.artifacts.map((artifact) => artifact.kind)).toEqual(
+      expect.arrayContaining(['harness-config', 'mcp-config', 'manifest']),
+    );
+    expect(
+      result.artifacts.some(
+        (artifact) => artifact.path === '.codex-plugin/hooks/hooks.json',
+      ),
+    ).toBe(false);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'codex.surface.hooks.unvalidated' }),
+        expect.objectContaining({
+          code: 'codex.delegation.runtime.unsupported',
+          fallback: 'instruction-only',
+        }),
+        expect.objectContaining({
+          code: 'codex.permission.memory.enforcement_gap',
+        }),
+        expect.objectContaining({
+          code: 'codex.context.parent_injection.unvalidated',
+        }),
+      ]),
+    );
+  });
+
+  test('packages all built-in MCP servers from source definitions for Codex plugin payload', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+    const mcpArtifact = result.artifacts.find(
+      (artifact) => artifact.path === '.codex-plugin/.mcp.json',
+    );
+
+    expect(mcpArtifact).toBeDefined();
+    const mcpConfig = JSON.parse(String(mcpArtifact?.content));
+
+    expect(mcpConfig).toEqual({
+      mcpServers: {
+        context7: { url: 'https://mcp.context7.com/mcp' },
+        grep_app: { url: 'https://mcp.grep.app' },
+        thoth_mem: {
+          command: 'npx',
+          args: ['-y', 'thoth-mem@latest'],
+        },
+        exa: {
+          command: 'npx',
+          args: ['-y', 'exa-mcp-server'],
+        },
+      },
+    });
+    expect(String(mcpArtifact?.content)).not.toContain('mcp_servers');
+    expect(String(mcpArtifact?.content)).not.toContain('curl');
+    expect(String(mcpArtifact?.content)).not.toContain('CONTEXT7_API_KEY');
+    expect(Object.keys(mcpConfig.mcpServers).sort()).toEqual([
+      'context7',
+      'exa',
+      'grep_app',
+      'thoth_mem',
+    ]);
+  });
+
+  test('does not package arbitrary no-op Codex hooks when no source hook is portable', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+    const manifest = JSON.parse(
+      String(
+        result.artifacts.find(
+          (artifact) => artifact.path === '.codex-plugin/plugin.json',
+        )?.content,
+      ),
+    );
+
+    expect(manifest.hooks).toBeUndefined();
+    expect(
+      result.artifacts.some(
+        (artifact) => artifact.path === '.codex-plugin/hooks/hooks.json',
+      ),
+    ).toBe(false);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'codex.plugin.hooks.none_packaged' }),
+      ]),
+    );
+  });
+
+  test('includes plugin package manifest and plugin-local skills by default', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+    const paths = result.artifacts.map((artifact) => artifact.path);
+
+    expect(paths).toContain('.codex-plugin/plugin.json');
+    expect(paths).toContain('.codex-plugin/skills/.thoth-agents-manifest.json');
+    expect(
+      paths.some((artifactPath) =>
+        artifactPath.startsWith('.codex-plugin/skills/sdd-apply/'),
+      ),
+    ).toBe(true);
+    expect(
+      paths.some((artifactPath) => artifactPath.startsWith('.agents/skills/')),
+    ).toBe(false);
+    expect(artifactContent('.codex-plugin/plugin.json')).toContain(
+      '"skills": "./skills/"',
+    );
+  });
+
+  test('emits .agents skills only for explicit repo-local fallback mode', () => {
+    const result = codexAdapter.render({
+      projectRoot: process.cwd(),
+      options: {
+        codexSkillOutputModes: ['plugin-package', 'repo-local-fallback'],
+      },
+    });
+    const paths = result.artifacts.map((artifact) => artifact.path);
+
+    expect(paths).toContain('.codex-plugin/plugin.json');
+    expect(
+      paths.some((artifactPath) =>
+        artifactPath.startsWith('.codex-plugin/skills/sdd-apply/'),
+      ),
+    ).toBe(true);
+    expect(
+      paths.some((artifactPath) =>
+        artifactPath.startsWith('.agents/skills/sdd-apply/'),
+      ),
+    ).toBe(true);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'codex.skill.duplicate_scope_precedence_unverified',
+        }),
+      ]),
+    );
+  });
+
+  test('renders memory governance instructions for orchestrator and subagents', () => {
+    const explorer = agentContent('explorer');
+    const quick = agentContent('quick');
+    const deep = agentContent('deep');
+
+    expect(explorer).toContain(
+      'Every subagent memory call requires the parent session_id and project from dispatch',
+    );
+    expect(explorer).toContain(
+      'Read-only agents may only perform bounded, project-scoped recall with mem_search -> mem_timeline -> mem_get_observation',
+    );
+    expect(explorer).toContain(
+      'Read-only agents must never write durable memory.',
+    );
+
+    for (const prompt of [quick, deep]) {
+      expect(prompt).toContain(
+        'Never call mem_session_start, mem_session_summary, or mem_save_prompt',
+      );
+      expect(prompt).toContain(
+        'Write-capable agents may call mem_save only for delegated durable observations',
+      );
+      expect(prompt).toContain('Protect the sdd/* topic namespace');
+      expect(prompt).toContain('`request_user_input`');
+      expect(prompt).toContain('Codex progress tracking surface');
+      expect(prompt).not.toContain('`question`');
+      expect(prompt).not.toContain('todowrite');
+    }
+  });
+
+  test('renders Codex subagent prompts from semantic sections with Codex terminology', () => {
+    const explorer = agentContent('explorer');
+    const oracle = agentContent('oracle');
+    const designer = agentContent('designer');
+    const quick = agentContent('quick');
+    const deep = agentContent('deep');
+
+    for (const prompt of [explorer, oracle]) {
+      expect(prompt).toContain('Mode: read-only');
+      expect(prompt).toContain('Single-task leaf agent: do not delegate');
+      expect(prompt).toContain('Never write memory');
+      expect(prompt).toContain('request_user_input');
+      expect(prompt).not.toContain('Use `question` only');
+    }
+
+    expect(oracle).toContain('plan-reviewer for SDD plans');
+    expect(explorer).toContain('Return exactly these sections');
+    expect(designer).toContain('owns screenshots and visual QA');
+
+    for (const prompt of [designer, quick, deep]) {
+      expect(prompt).toContain('Mode: write-capable');
+      expect(prompt).toContain('custom-agent task only');
+      expect(prompt).toContain('Never discard working-tree changes');
+      expect(prompt).toContain('writes under the orchestrator');
+      expect(prompt).toContain('For SDD tasks: use the Task Result envelope');
+      expect(prompt).toContain('request_user_input');
+      expect(prompt).not.toContain('Use `question` only');
+    }
+
+    expect(quick).toContain("Treat the orchestrator's internal handoff");
+    expect(deep).toContain(
+      'Use test-driven-development and systematic-debugging',
+    );
+  });
+
+  test('Codex prompt generation uses semantic Codex contracts instead of exact OpenCode prose substitutions', () => {
+    const rootInstructions = renderCodexRootInstructions();
+    const explorer = agentContent('explorer');
+    const quick = agentContent('quick');
+
+    expect(rootInstructions).toContain('ambient Codex root session');
+    expect(rootInstructions).toContain('installed Codex role agents');
+
+    expect(explorer).toContain('Dispatch method: Codex custom-agent task');
+    expect(explorer).toContain('Mode: read-only');
+    expect(explorer).toContain('Return exactly these sections');
+    expect(quick).toContain(
+      'Dispatch method: synchronous Codex custom-agent task only',
+    );
+    expect(quick).toContain('Mode: write-capable');
+    expect(quick).toContain('fast bounded implementation');
+
+    for (const prompt of [rootInstructions, explorer, quick]) {
+      expect(prompt).toContain('request_user_input');
+      expect(prompt).not.toContain('`question`');
+      expect(prompt).not.toContain('`task_status`');
+      expect(prompt).not.toContain('`todowrite`');
+      expect(prompt).not.toContain('@explorer');
+      expect(prompt).not.toContain('@quick');
+    }
+  });
+
+  test('does not leak internal Codex adaptation markers into rendered prompts', () => {
+    const rootInstructions = renderCodexRootInstructions();
+
+    expectNoLeakedCodexAdaptationMarkers(rootInstructions);
+
+    for (const role of [
+      'explorer',
+      'librarian',
+      'oracle',
+      'designer',
+      'quick',
+      'deep',
+    ]) {
+      expectNoLeakedCodexAdaptationMarkers(agentContent(role));
+    }
+  });
+
+  test('renders root managed block as native root instructions immediately after delimiter', () => {
+    const rootInstructions = renderCodexRootInstructions();
+    const linesAfterStart = rootInstructions
+      .split('\n')
+      .slice(1)
+      .filter((line) => line.trim().length > 0);
+
+    expect(linesAfterStart[0]).toBe('<role>');
+    expect(rootInstructions).toContain(
+      'You are the delegate-first root coordinator',
+    );
+    expect(rootInstructions).toContain('request_user_input');
+    expect(rootInstructions).toContain(
+      'features.default_mode_request_user_input',
+    );
+    expect(rootInstructions).toContain('installed Codex role agents');
+  });
+
+  test('renders subagent developer instructions as native multiline role instructions without adaptation wrapper', () => {
+    const deep = agentContent('deep');
+    const developerInstructions = deep.match(
+      /developer_instructions = """\n(?<value>[\s\S]*?)\n"""/,
+    )?.groups?.value;
+
+    expect(developerInstructions).toBeDefined();
+    expect(developerInstructions?.startsWith('<role>')).toBe(true);
+    expect(developerInstructions).toContain('You are deep.');
+    expect(developerInstructions).toContain(
+      'Dispatch method: synchronous Codex custom-agent task only',
+    );
+    expect(developerInstructions).toContain('request_user_input');
+  });
+
+  test('renders canonical minimal Codex subagent TOML fields only', () => {
+    for (const role of [
+      'explorer',
+      'librarian',
+      'oracle',
+      'designer',
+      'quick',
+      'deep',
+    ]) {
+      const content = artifactContent(
+        `.codex/agents/thoth-agents-${role}.toml`,
+      );
+
+      expect(content).toContain('name = ');
+      expect(content).toContain('description = ');
+      expect(content).toContain('developer_instructions = """\n');
+      expect(content).toContain('model = ');
+      expect(content).toContain('model_reasoning_effort = ');
+      expect(content).toContain('sandbox_mode = ');
+      expect(content).not.toContain('mcp_servers');
+      expect(content).not.toContain('skills.config');
+      expect(content).not.toContain('[skills');
+      expect(content).not.toContain('hooks =');
+      expect(content).not.toContain('[hooks');
+      expect(content).not.toContain('approval_policy');
+      expect(content).not.toContain('agents = ');
+    }
+  });
+
+  test('does not render a selectable Codex orchestrator TOML', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+
+    expect(
+      result.artifacts.some(
+        (artifact) =>
+          artifact.path === '.codex/agents/thoth-agents-orchestrator.toml',
+      ),
+    ).toBe(false);
+  });
+
+  test('renders Codex-only default models for generated subagents', () => {
+    const expectedModels = {
+      oracle: 'gpt-5.5',
+      librarian: 'gpt-5.4-mini',
+      explorer: 'gpt-5.4-mini',
+      designer: 'gpt-5.4-mini',
+      quick: 'gpt-5.4-mini',
+      deep: 'gpt-5.5',
+    } as const;
+
+    for (const [role, model] of Object.entries(expectedModels)) {
+      expectTomlField(
+        artifactContent(`.codex/agents/thoth-agents-${role}.toml`),
+        'model',
+        model,
+      );
+    }
+
+    expectTomlFieldMissing(artifactContent('.codex/config.toml'), 'model');
+  });
+
+  test('renders approved reasoning effort per generated Codex subagent', () => {
+    const expectedEfforts = {
+      oracle: 'high',
+      explorer: 'low',
+      librarian: 'medium',
+      designer: 'medium',
+      quick: 'low',
+      deep: 'medium',
+    } as const;
+
+    for (const [role, effort] of Object.entries(expectedEfforts)) {
+      expectTomlField(
+        artifactContent(`.codex/agents/thoth-agents-${role}.toml`),
+        'model_reasoning_effort',
+        effort,
+      );
+    }
+  });
+
+  test('uses existing per-agent model overrides for Codex subagents only', () => {
+    const config: PluginConfig = {
+      agents: {
+        oracle: { model: 'gpt-5.5-codex-custom' },
+        explorer: { model: [{ id: 'gpt-5.4-mini-custom' }] },
+        orchestrator: { model: 'gpt-5.5-root-custom' },
+      },
+    };
+
+    expectTomlField(
+      artifactContent('.codex/agents/thoth-agents-oracle.toml', config),
+      'model',
+      'gpt-5.5-codex-custom',
+    );
+    expectTomlField(
+      artifactContent('.codex/agents/thoth-agents-explorer.toml', config),
+      'model',
+      'gpt-5.4-mini-custom',
+    );
+    expectTomlField(
+      artifactContent('.codex/agents/thoth-agents-deep.toml', config),
+      'model',
+      'gpt-5.5',
+    );
+
+    expectTomlFieldMissing(
+      artifactContent('.codex/config.toml', config),
+      'model',
+    );
+  });
+
+  test('memory governance remains instruction-level when Codex runtime enforcement is unsupported', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+
+    expect(codexAdapter.capabilities.memoryGovernanceEnforcement).toBe(
+      'instruction-only',
+    );
+    expect(codexAdapter.capabilities.rolePermissions).toBe('instruction-only');
+    expect(
+      result.artifacts.some((artifact) =>
+        String(artifact.content).toLowerCase().includes('permission control'),
+      ),
+    ).toBe(false);
+    expect(
+      result.artifacts.some((artifact) =>
+        artifact.description?.toLowerCase().includes('permission control'),
+      ),
+    ).toBe(false);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'codex.permission.memory.enforcement_gap',
+          fallback: 'instruction-only',
+          capability: 'rolePermissions',
+        }),
+        expect.objectContaining({
+          code: 'codex.context.parent_injection.unvalidated',
+          fallback: 'instruction-only',
+          capability: 'parentContextInjection',
+        }),
+        expect.objectContaining({
+          code: 'codex.permission.memory_write.enforcement_gap',
+          fallback: 'instruction-only',
+          capability: 'memoryGovernanceEnforcement',
+        }),
+      ]),
+    );
+  });
+
+  test('prompt text is not counted as runtime memory enforcement', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+    const promptText = result.artifacts
+      .filter((artifact) => artifact.kind === 'agent-config')
+      .map((artifact) => String(artifact.content))
+      .join('\n');
+
+    expect(promptText).toContain('thoth-mem governance');
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'codex.permission.memory.enforcement_gap',
+          fallback: 'instruction-only',
+        }),
+      ]),
+    );
+    expect(codexAdapter.capabilities.memoryGovernanceEnforcement).not.toBe(
+      'supported',
+    );
+  });
+
+  test('keeps generic runtime hook support unknown', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+
+    expect(CODEX_CAPABILITIES.runtimeHooks).toBe('unknown');
+    expect(codexAdapter.capabilities.runtimeHooks).toBe('unknown');
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'codex.surface.hooks.unvalidated',
+          surface: 'inline-hooks',
+          fallback: 'diagnostic-only',
+        }),
+      ]),
+    );
+  });
+
+  test('diagnoses Codex hook trust and feature gates explicitly', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: 'warning',
+          code: 'codex.hooks.project_trust.required',
+          surface: 'project-hooks-json',
+          fallback: 'diagnostic-only',
+        }),
+        expect.objectContaining({
+          severity: 'warning',
+          code: 'codex.hooks.features_hooks.required',
+          surface: 'features-hooks-toggle',
+          fallback: 'diagnostic-only',
+        }),
+        expect.objectContaining({
+          severity: 'warning',
+          code: 'codex.hooks.plugin_trust.required',
+          surface: 'plugin-hooks-bundle',
+          fallback: 'diagnostic-only',
+        }),
+      ]),
+    );
+    expect(
+      result.diagnostics
+        .filter((diagnostic) => diagnostic.code.startsWith('codex.hooks.'))
+        .map((diagnostic) => diagnostic.message)
+        .join('\n'),
+    ).toContain('features.hooks');
+    expect(
+      result.diagnostics
+        .filter((diagnostic) => diagnostic.code.startsWith('codex.hooks.'))
+        .map((diagnostic) => diagnostic.message)
+        .join('\n'),
+    ).toContain('features.plugin_hooks');
+    expect(
+      result.diagnostics
+        .filter((diagnostic) => diagnostic.code.startsWith('codex.hooks.'))
+        .map((diagnostic) => diagnostic.message)
+        .join('\n'),
+    ).toContain('plugin hook trust review');
+    expect(
+      result.diagnostics
+        .filter(
+          (diagnostic) =>
+            diagnostic.code === 'codex.hooks.plugin_trust.required',
+        )
+        .map((diagnostic) => diagnostic.message)
+        .join('\n'),
+    ).toContain('does not enable hooks automatically');
+    expect(
+      result.diagnostics
+        .filter(
+          (diagnostic) =>
+            diagnostic.code === 'codex.hooks.plugin_trust.required',
+        )
+        .map((diagnostic) => diagnostic.message)
+        .join('\n'),
+    ).toContain('hard permission enforcement');
+  });
+
+  test('omits plugin hooks without hard permission enforcement when no source hook is portable', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+
+    expect(
+      result.artifacts.filter((artifact) => artifact.kind === 'hook-config'),
+    ).toEqual([]);
+    expect(
+      result.artifacts.some((artifact) =>
+        artifact.path.startsWith('.codex/plugins/'),
+      ),
+    ).toBe(false);
+    expect(
+      result.artifacts.some(
+        (artifact) => artifact.path === '.codex/hooks.json',
+      ),
+    ).toBe(false);
+    expect(
+      result.artifacts.some((artifact) =>
+        String(artifact.content).toLowerCase().includes('hard permission'),
+      ),
+    ).toBe(false);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
+      'codex.plugin.hooks.none_packaged',
+    );
+    expect(
+      result.diagnostics
+        .map((diagnostic) => diagnostic.message.toLowerCase())
+        .join('\n'),
+    ).not.toContain('automatically active');
+  });
+
+  test('matches deterministic capability diagnostics and focused deep agent contract', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+    const deepAgent = result.artifacts.find(
+      (artifact) => artifact.path === '.codex/agents/thoth-agents-deep.toml',
+    );
+    const diagnostics = result.diagnostics.map((diagnostic) => ({
+      severity: diagnostic.severity,
+      code: diagnostic.code,
+      capability: diagnostic.capability,
+      surface: diagnostic.surface,
+      fallback: diagnostic.fallback,
+    }));
+
+    expect(String(deepAgent?.content)).toContain(
+      'name = "deep"\ndescription = "Handle correctness-critical, multi-file, or edge-case-heavy changes with full local context analysis."',
+    );
+    expect(String(deepAgent?.content)).toContain(
+      'Dispatch method: synchronous Codex custom-agent task only',
+    );
+    expect(String(deepAgent?.content)).toContain(
+      'Codex progress tracking surface',
+    );
+    expect(String(deepAgent?.content)).not.toContain('`todowrite`');
+    expect(`${JSON.stringify(diagnostics, null, 2)}\n`).toBe(
+      codexFixture('capability-diagnostics.json'),
+    );
+  });
+});

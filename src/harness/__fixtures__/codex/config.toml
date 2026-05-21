@@ -1,0 +1,7 @@
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+agents = ["orchestrator", "explorer", "librarian", "oracle", "designer", "quick", "deep"]
+
+[skills.config]
+enabled = true
+sources = ["repo"]

@@ -1,0 +1,7 @@
+{
+  "name": "thoth-agents",
+  "version": "1.0.0",
+  "description": "Codex plugin package fixture.",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}

@@ -1,0 +1,43 @@
+import { describe, expect, test } from 'bun:test';
+import { createDelegateTaskRetryHook } from './hook';
+
+describe('delegate-task-retry hook', () => {
+  test('appends guidance for task argument errors', async () => {
+    const hook = createDelegateTaskRetryHook({} as never);
+    const output = {
+      output:
+        '[ERROR] Invalid arguments: Must provide either category or subagent_type. Available categories: quick, unspecified-low',
+    };
+
+    await hook['tool.execute.after']({ tool: 'task' }, output);
+
+    expect(output.output).toContain('[delegate-task retry suggestion]');
+    expect(output.output).toContain('missing_category_or_agent');
+  });
+
+  test('appends background-policy guidance for native task allowlist errors', async () => {
+    const hook = createDelegateTaskRetryHook({} as never);
+    const output = {
+      output:
+        "Agent 'oracle' is not allowed. Allowed agents: explorer, librarian",
+    };
+
+    await hook['tool.execute.after']({ tool: 'task' }, output);
+
+    expect(output.output).toContain('[delegate-task retry suggestion]');
+    expect(output.output).toContain('background_agent_not_allowed');
+    expect(output.output).toContain(
+      'Use `background=true` only for `explorer` or `librarian`',
+    );
+    expect(output.output).toContain('Available: explorer, librarian');
+  });
+
+  test('does nothing for unrelated tool output', async () => {
+    const hook = createDelegateTaskRetryHook({} as never);
+    const output = { output: 'all good' };
+
+    await hook['tool.execute.after']({ tool: 'read' }, output);
+
+    expect(output.output).toBe('all good');
+  });
+});

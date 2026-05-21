@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "preset": {
+      "type": "string"
+    },
+    "setDefaultAgent": {
+      "type": "boolean"
+    },
+    "scoringEngineVersion": {
+      "type": "string",
+      "enum": ["v1", "v2-shadow", "v2"]
+    },
+    "balanceProviderUsage": {
+      "type": "boolean"
+    },
+    "manualPlan": {
+      "type": "object",
+      "properties": {
+        "orchestrator": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        },
+        "oracle": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        },
+        "designer": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        },
+        "explorer": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        },
+        "librarian": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        },
+        "quick": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        },
+        "deep": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        }
+      },
+      "required": [
+        "orchestrator",
+        "oracle",
+        "designer",
+        "explorer",
+        "librarian",
+        "quick",
+        "deep"
+      ],
+      "additionalProperties": false
+    },
+    "presets": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "variant": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["id"]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "steps": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "variant": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "variant": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["id"]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "variant": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "disabled_mcps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tmux": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "layout": {
+          "default": "main-vertical",
+          "type": "string",
+          "enum": [
+            "main-horizontal",
+            "main-vertical",
+            "tiled",
+            "even-horizontal",
+            "even-vertical"
+          ]
+        },
+        "main_pane_size": {
+          "default": 60,
+          "type": "number",
+          "minimum": 20,
+          "maximum": 80
+        }
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "timeoutMs": {
+          "default": 15000,
+          "type": "number",
+          "minimum": 0
+        },
+        "retryDelayMs": {
+          "default": 500,
+          "type": "number",
+          "minimum": 0
+        },
+        "chains": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "orchestrator": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "oracle": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "designer": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "explorer": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "librarian": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "quick": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "deep": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "thoth": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_dir": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "timeout": {
+          "type": "number"
+        },
+        "http_port": {
+          "type": "number"
+        }
+      }
+    },
+    "artifactStore": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "default": "hybrid",
+          "type": "string",
+          "enum": ["thoth-mem", "openspec", "hybrid"]
+        }
+      }
+    },
+    "codex": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "outputRoot": {
+          "type": "string"
+        },
+        "dryRun": {
+          "default": true,
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "title": "thoth-agents",
+  "description": "Configuration schema for thoth-agents plugin for OpenCode"
+}

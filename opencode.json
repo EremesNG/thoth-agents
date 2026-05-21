@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "webstorm-index": {
+      "type": "remote",
+      "url": "http://127.0.0.1:29173/index-mcp/streamable-http",
+      "enabled": true
+    },
+    "mcp-steroid": {
+      "type": "remote",
+      "url": "http://127.0.0.1:6315/mcp",
+      "enabled": true
+    }
+  }
+}

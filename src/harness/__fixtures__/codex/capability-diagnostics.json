@@ -1,0 +1,68 @@
+[
+  {
+    "severity": "warning",
+    "code": "codex.plugin.hooks.none_packaged",
+    "surface": "plugin-hooks-json",
+    "fallback": "diagnostic-only"
+  },
+  {
+    "severity": "warning",
+    "code": "codex.hooks.project_trust.required",
+    "surface": "project-hooks-json",
+    "fallback": "diagnostic-only"
+  },
+  {
+    "severity": "warning",
+    "code": "codex.hooks.features_hooks.required",
+    "surface": "features-hooks-toggle",
+    "fallback": "diagnostic-only"
+  },
+  {
+    "severity": "warning",
+    "code": "codex.hooks.plugin_trust.required",
+    "surface": "plugin-hooks-bundle",
+    "fallback": "diagnostic-only"
+  },
+  {
+    "severity": "error",
+    "code": "codex.surface.hooks.unvalidated",
+    "surface": "inline-hooks",
+    "fallback": "diagnostic-only"
+  },
+  {
+    "severity": "warning",
+    "code": "codex.permission.memory.enforcement_gap",
+    "surface": "per-agent-runtime-permissions",
+    "fallback": "instruction-only"
+  },
+  {
+    "severity": "warning",
+    "code": "codex.delegation.runtime.unsupported",
+    "surface": "programmatic-delegation-runtime",
+    "fallback": "instruction-only"
+  },
+  {
+    "severity": "error",
+    "code": "codex.context.parent_injection.unvalidated",
+    "surface": "parent-context-injection",
+    "fallback": "instruction-only"
+  },
+  {
+    "severity": "warning",
+    "code": "codex.permission.memory.enforcement_gap",
+    "capability": "rolePermissions",
+    "fallback": "instruction-only"
+  },
+  {
+    "severity": "warning",
+    "code": "codex.context.parent_injection.unvalidated",
+    "capability": "parentContextInjection",
+    "fallback": "instruction-only"
+  },
+  {
+    "severity": "warning",
+    "code": "codex.permission.memory_write.enforcement_gap",
+    "capability": "memoryGovernanceEnforcement",
+    "fallback": "instruction-only"
+  }
+]

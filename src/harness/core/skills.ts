@@ -47,14 +47,6 @@ export const BUNDLED_SKILL_REGISTRY = [
     purpose: 'requirements',
   },
   {
-    name: 'cartography',
-    description: 'Repository understanding and hierarchical codemap generation',
-    allowedRoles: ['orchestrator', 'explorer'],
-    sourcePath: 'src/skills/cartography',
-    kind: 'skill',
-    purpose: 'discovery',
-  },
-  {
     name: 'thoth-mem-agents',
     description:
       'Orchestrator/subagent thoth-mem workflow contract for parent session_id/project ownership, prompt-save prohibitions, and safe durable memory usage',

@@ -11,7 +11,6 @@ when skill installation is enabled.
 | Skill | Category | Description | Typical agent |
 | --- | --- | --- | --- |
 | `requirements-interview` | Clarification | Clarify ambiguous work, assess scope, and choose the right planning path before implementation | `orchestrator` |
-| `cartography` | Discovery | Repository understanding and hierarchical codemap generation | `orchestrator`, `explorer` |
 | `plan-reviewer` | Review | Review SDD task plans for execution blockers and valid references | `orchestrator`, `oracle` |
 | `sdd-init` | SDD initialization | Bootstrap OpenSpec structure and SDD context for a project | `orchestrator` |
 | `sdd-propose` | SDD planning | Create or update `proposal.md` for an OpenSpec change | `orchestrator` |
@@ -27,10 +26,9 @@ Agent assignments are descriptive, not enforced. Any agent can use any skill; th
 
 ## Bundled Skill Categories
 
-### Clarification and Discovery
+### Clarification
 
 - `requirements-interview`
-- `cartography`
 
 ### Review and Execution Control
 

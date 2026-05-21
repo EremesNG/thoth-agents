@@ -59,8 +59,8 @@ bunx thoth-agents@latest install --reset
 ```
 
 When skills are enabled, the installer adds the recommended external skills and
-copies the bundled requirements-interview, cartography, plan-reviewer,
-executing-plans, and SDD skills into your OpenCode skills directory.
+copies the bundled requirements-interview, plan-reviewer, executing-plans, and
+SDD skills into your OpenCode skills directory.
 
 ### For LLM agents
 
@@ -252,7 +252,6 @@ retried once before being reported back to the user.
 - Requirements-interview skill for clarifying ambiguous work before implementation
 - `plan-reviewer` for oracle review loops on task plans
 - `executing-plans` for task-state ownership and progress tracking
-- `cartography` for repository mapping and codemap generation
 - Tmux integration for real-time agent monitoring
 - Configurable presets, fallback chains, prompt overriding, and artifact-store
   modes
@@ -320,7 +319,6 @@ SDD, or full SDD based on complexity assessment.
 | Skill | Category | Purpose |
 | --- | --- | --- |
 | `requirements-interview` | Clarification | Clarify intent, assess scope, and choose direct work vs accelerated or full SDD |
-| `cartography` | Discovery | Generate and update hierarchical repository codemaps |
 | `plan-reviewer` | Review | Validate `tasks.md` for real execution blockers and return `[OKAY]` or `[REJECT]` |
 | `sdd-init` | SDD | Bootstrap OpenSpec structure and SDD context for a project |
 | `sdd-propose` | SDD | Create or update `proposal.md` |
@@ -377,7 +375,6 @@ permission matrices.
 - [docs/provider-configurations.md](docs/provider-configurations.md)
 - [docs/tmux-integration.md](docs/tmux-integration.md)
 - [docs/quick-reference.md](docs/quick-reference.md)
-- [docs/cartography.md](docs/cartography.md)
 - [docs/sdd-pipeline.md](docs/sdd-pipeline.md)
 - [docs/skills-and-mcps.md](docs/skills-and-mcps.md)
 - [AGENTS.md](AGENTS.md)

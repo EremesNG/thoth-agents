@@ -40,7 +40,6 @@ delegate-first seven-agent roster for OpenCode.
 When skills are enabled, it also installs or copies:
 
 - Bundled `requirements-interview`
-- Bundled `cartography`
 - Bundled `plan-reviewer`
 - Bundled `executing-plans`
 - Bundled SDD pipeline skills:
@@ -150,8 +149,8 @@ bunx thoth-agents@latest install --no-tui --tmux=no --skills=no
 bunx thoth-agents@latest install --reset
 ```
 
-With skills enabled, the install includes the requirements-interview skill, the bundled
-SDD pipeline, `plan-reviewer`, `executing-plans`, and cartography in addition to
+With skills enabled, the install includes the requirements-interview skill, the
+bundled SDD pipeline, `plan-reviewer`, and `executing-plans` in addition to
 recommended external skills.
 
 ### Step 3: Ask the User to Authenticate

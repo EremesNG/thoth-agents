@@ -332,7 +332,7 @@ export function createReadOnlySpecialistPromptSections(
         'Find workspace facts fast. Return decision-ready evidence for internal handoffs: paths, lines, symbols, constraints, edit targets, and conclusions.',
       rules: [
         '- Questions should be rare; exhaust local evidence first.',
-        '- Prefer paths, lines, symbols, and concise summaries over dumps. Use cartography when it reduces search cost.',
+        '- Prefer paths, lines, symbols, and concise summaries over dumps.',
         '- When full content is explicitly requested, reproduce it faithfully.',
       ],
       memoryAccess: 'readonly',

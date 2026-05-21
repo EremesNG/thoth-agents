@@ -412,7 +412,6 @@ thoth-agents/
 │   ├── skills/
 │   │   ├── _shared/
 │   │   ├── requirements-interview/
-│   │   ├── cartography/
 │   │   ├── executing-plans/
 │   │   ├── plan-reviewer/
 │   │   ├── sdd-init/

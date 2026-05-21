@@ -396,12 +396,6 @@ InstallConfig (preferences)
 | `simplify` | brianlovin/claude-config | orchestrator | YAGNI code simplification expert |
 | `playwright-cli` | microsoft/playwright-cli | designer | Browser automation for visual checks and testing |
 
-### Custom Bundled Skills (copied from src/skills/)
-
-| Name | Source | Agents | Description |
-|------|--------|--------|-------------|
-| `cartography` | src/skills/cartography | orchestrator, explorer | Repository understanding and hierarchical codemap generation |
-
 ### Permission-Only Skills (external, not installed)
 
 | Name | Agents | Description |

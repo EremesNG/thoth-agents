@@ -166,13 +166,6 @@ results back but do not edit checkboxes themselves.
 Automatic save nudges remind the orchestrator to persist observations after task
 completion.
 
-### Cartography
-
-`cartography` generates and updates hierarchical codemaps so agents can work
-from architectural summaries instead of re-reading everything.
-
-See [Cartography](cartography.md).
-
 ## Recommended External Skills
 
 These are not bundled in `src/skills/`, but they pair well with the workflow.

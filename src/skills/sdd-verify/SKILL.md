@@ -10,17 +10,14 @@ verification report.
 
 ## Shared Conventions
 
-- Shared references:
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## Persistence Mode
 
 The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
-`hybrid`). Follow
-`~/.config/opencode/skills/_shared/persistence-contract.md` for read/write
-rules per mode.
+`hybrid`). Follow the persistence contract for read/write rules per mode.
 
 - `thoth-mem`: persist to thoth-mem only — do NOT create or modify
   `openspec/` files.
@@ -46,7 +43,7 @@ rules per mode.
 
 1. Read the shared conventions.
 2. Recover artifacts with the retrieval protocol in
-   `~/.config/opencode/skills/_shared/persistence-contract.md`:
+   the persistence contract:
    - **Always**: recover `tasks`
    - **Full pipeline**: recover `spec` and `design`
    - **Accelerated pipeline**: recover `proposal` (used as the verification reference)
@@ -77,16 +74,9 @@ rules per mode.
    criterion to evidence.
 7. If the selected mode includes thoth-mem, persist the report with:
 
-   ```text
-   thoth_mem_mem_save(
-     title: "sdd/{change-name}/verify-report",
-     topic_key: "sdd/{change-name}/verify-report",
-     type: "architecture",
-     project: "{project}",
-     scope: "project",
-     content: "{full verify report markdown}"
-   )
-   ```
+   Use the memory tool binding for `mem_save` with the canonical SDD topic key
+   and required metadata fields: `title`, `topic_key`, `type`, `project`,
+   `scope`, and `content`.
 
 ## Output Format
 
@@ -106,5 +96,4 @@ Return:
   scenarios in full pipeline, proposal success criteria in accelerated pipeline.
 - Distinguish blockers from warnings clearly.
 - Do not fix issues inside this phase; report them.
-- Recover full artifacts with the protocol in
-  `~/.config/opencode/skills/_shared/persistence-contract.md`.
+- Recover full artifacts with the protocol in the persistence contract.

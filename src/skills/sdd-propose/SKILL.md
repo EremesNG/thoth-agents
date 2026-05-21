@@ -9,17 +9,14 @@ Create the proposal artifact for a change and persist it with thoth-mem.
 
 ## Shared Conventions
 
-- Shared references:
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## Persistence Mode
 
 The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
-`hybrid`). Follow
-`~/.config/opencode/skills/_shared/persistence-contract.md` for read/write
-rules per mode.
+`hybrid`). Follow the persistence contract for read/write rules per mode.
 
 - `thoth-mem`: persist to thoth-mem only — do NOT create or modify
   `openspec/` files.
@@ -41,10 +38,9 @@ rules per mode.
 
 1. Read the shared conventions before drafting.
 2. If the change already exists, recover the latest proposal using the
-   retrieval protocol in
-   `~/.config/opencode/skills/_shared/persistence-contract.md`.
-3. Review relevant main specs under `openspec/specs/` to avoid proposing
-   contradictions.
+   retrieval protocol from the persistence contract.
+3. Review relevant main specs under the active OpenSpec path to avoid
+   proposing contradictions.
 4. If the selected mode includes OpenSpec, write
    `openspec/changes/{change-name}/proposal.md` using this shape. In
    `thoth-mem` mode, produce the same content without creating the file:
@@ -65,16 +61,9 @@ rules per mode.
 
 5. If the selected mode includes thoth-mem, persist the full proposal with:
 
-   ```text
-   thoth_mem_mem_save(
-     title: "sdd/{change-name}/proposal",
-     topic_key: "sdd/{change-name}/proposal",
-     type: "architecture",
-     project: "{project}",
-     scope: "project",
-     content: "{full proposal markdown}"
-   )
-   ```
+   Use the memory tool binding for `mem_save` with the canonical SDD topic key
+   and required metadata fields: `title`, `topic_key`, `type`, `project`,
+   `scope`, and `content`.
 
 6. In `hybrid` mode, both the filesystem artifact and thoth-mem save must
    succeed.
@@ -95,6 +84,6 @@ Return a short report with:
 - Keep the proposal focused on why, scope, and success criteria.
 - Always include rollback guidance and explicit out-of-scope items.
 - Never reference engram.
-- Never rely on `thoth_mem_mem_search` output alone when the mode uses
-  thoth-mem. Follow the 3-layer recall protocol: `search(mode: "compact")` →
+- Never rely on compact search output alone when the mode uses thoth-mem.
+  Follow the 3-layer recall protocol: `search(mode: "compact")` →
   `timeline` → `get_observation` to retrieve the full artifact body.

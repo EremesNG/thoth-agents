@@ -9,17 +9,14 @@ Create the technical design that explains how the approved spec will be built.
 
 ## Shared Conventions
 
-- Shared references:
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## Persistence Mode
 
 The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
-`hybrid`). Follow
-`~/.config/opencode/skills/_shared/persistence-contract.md` for read/write
-rules per mode.
+`hybrid`). Follow the persistence contract for read/write rules per mode.
 
 - `thoth-mem`: persist to thoth-mem only — do NOT create or modify
   `openspec/` files.
@@ -43,7 +40,7 @@ rules per mode.
 1. Read the shared conventions.
 2. Recover `sdd/{change-name}/proposal` and `sdd/{change-name}/spec` using the
    retrieval protocol in
-   `~/.config/opencode/skills/_shared/persistence-contract.md`.
+   the persistence contract.
 3. If revising work, recover `sdd/{change-name}/design` with the same
    mode-aware retrieval rules.
 4. Read the actual code paths affected by the change before deciding on an
@@ -71,16 +68,9 @@ rules per mode.
 
 6. If the selected mode includes thoth-mem, persist the design with:
 
-   ```text
-   thoth_mem_mem_save(
-     title: "sdd/{change-name}/design",
-     topic_key: "sdd/{change-name}/design",
-     type: "architecture",
-     project: "{project}",
-     scope: "project",
-     content: "{full design markdown}"
-   )
-   ```
+   Use the memory tool binding for `mem_save` with the canonical SDD topic key
+   and required metadata fields: `title`, `topic_key`, `type`, `project`,
+   `scope`, and `content`.
 
 ## Output Format
 
@@ -99,5 +89,4 @@ Return:
 - Every architecture decision must include rationale.
 - Use concrete file paths and interfaces.
 - Keep implementation details aligned with the spec and repository patterns.
-- Retrieve full dependencies with the protocol in
-  `~/.config/opencode/skills/_shared/persistence-contract.md`.
+- Retrieve full dependencies with the protocol in the persistence contract.

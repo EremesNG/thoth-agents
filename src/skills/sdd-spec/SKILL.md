@@ -9,17 +9,14 @@ Write or update the change specifications for one or more affected domains.
 
 ## Shared Conventions
 
-- Shared references:
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## Persistence Mode
 
 The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
-`hybrid`). Follow
-`~/.config/opencode/skills/_shared/persistence-contract.md` for read/write
-rules per mode.
+`hybrid`). Follow the persistence contract for read/write rules per mode.
 
 - `thoth-mem`: persist to thoth-mem only — do NOT create or modify
   `openspec/` files.
@@ -41,7 +38,7 @@ rules per mode.
 
 1. Read the shared conventions.
 2. Recover the proposal using the retrieval protocol in
-   `~/.config/opencode/skills/_shared/persistence-contract.md`.
+   the persistence contract.
 3. If the change already has spec work, recover `sdd/{change-name}/spec` with
    the same mode-aware retrieval rules before editing.
 4. Read `openspec/specs/{domain}/spec.md` for each affected domain to determine
@@ -72,16 +69,9 @@ rules per mode.
 7. If the selected mode includes thoth-mem, persist the complete spec payload
    with:
 
-   ```text
-   thoth_mem_mem_save(
-     title: "sdd/{change-name}/spec",
-     topic_key: "sdd/{change-name}/spec",
-     type: "architecture",
-     project: "{project}",
-     scope: "project",
-     content: "{full spec markdown across all domains}"
-   )
-   ```
+   Use the memory tool binding for `mem_save` with the canonical SDD topic key
+   and required metadata fields: `title`, `topic_key`, `type`, `project`,
+   `scope`, and `content`.
 
 ## Output Format
 
@@ -99,6 +89,5 @@ Return:
 - Every requirement must have at least one Given/When/Then scenario.
 - Specs describe behavior, not implementation details.
 - Keep domain boundaries explicit.
-- Use the retrieval protocol from
-  `~/.config/opencode/skills/_shared/persistence-contract.md` for every SDD
+- Use the retrieval protocol from the persistence contract for every SDD
   dependency.

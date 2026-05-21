@@ -10,17 +10,14 @@ recording an audit trail.
 
 ## Shared Conventions
 
-- Shared references:
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## Persistence Mode
 
 The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
-`hybrid`). Follow
-`~/.config/opencode/skills/_shared/persistence-contract.md` for read/write
-rules per mode.
+`hybrid`). Follow the persistence contract for read/write rules per mode.
 
 - `thoth-mem`: persist to thoth-mem only — do NOT create or modify
   `openspec/` files.
@@ -46,7 +43,7 @@ rules per mode.
 
 1. Read the shared conventions.
 2. Recover artifacts through the retrieval protocol in
-   `~/.config/opencode/skills/_shared/persistence-contract.md`:
+   the persistence contract:
    - **Always**: recover `proposal`, `tasks`, and `verify-report`
    - **Full pipeline only**: recover `spec` and `design`
 3. Refuse to archive if the verification report still contains unresolved
@@ -64,16 +61,9 @@ rules per mode.
    archive result only in the audit trail.
 8. If the selected mode includes thoth-mem, persist the audit trail with:
 
-   ```text
-   thoth_mem_mem_save(
-     title: "sdd/{change-name}/archive-report",
-     topic_key: "sdd/{change-name}/archive-report",
-     type: "architecture",
-     project: "{project}",
-     scope: "project",
-     content: "{full archive report markdown}"
-   )
-   ```
+   Use the memory tool binding for `mem_save` with the canonical SDD topic key
+   and required metadata fields: `title`, `topic_key`, `type`, `project`,
+   `scope`, and `content`.
 
 ## Output Format
 
@@ -94,6 +84,4 @@ Return:
 - Preserve canonical spec structure and untouched requirements.
 - Persist the final audit trail through thoth-mem when the selected mode
   includes it.
-- Use the retrieval protocol in
-  `~/.config/opencode/skills/_shared/persistence-contract.md` for every
-  dependency.
+- Use the retrieval protocol in the persistence contract for every dependency.

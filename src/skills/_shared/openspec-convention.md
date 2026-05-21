@@ -1,5 +1,17 @@
 # OpenSpec Convention
 
+## Harness Scope
+
+OpenSpec artifacts are harness-independent filesystem artifacts. The canonical
+`openspec/` paths, filenames, and archive layout do not change across adapter
+bindings.
+
+This file defines harness-neutral artifact semantics. Any runtime-specific file
+read/write, delegation, or blocking user input surface is an adapter binding
+and must preserve the canonical behavior described here. If a runtime lacks a
+required primitive, treat it as an unsupported-capability and report the
+limitation instead of changing artifact semantics.
+
 ## Mode Scope
 
 This convention applies only when the artifact store mode includes OpenSpec:
@@ -58,6 +70,11 @@ openspec/
 primarily persisted through thoth-mem topic keys when the mode includes
 thoth-mem.
 
+The canonical OpenSpec copy is the filesystem representation of these artifacts
+for `openspec` and `hybrid` modes. thoth-mem topic keys are the memory
+representation when the mode includes thoth-mem; neither representation changes
+the harness-neutral artifact names or lifecycle.
+
 ## Writing Rules
 
 - Preserve canonical filenames and locations.
@@ -76,6 +93,10 @@ thoth-mem.
 - `tasks.md` is phase-based and uses Markdown checkboxes.
 - `verify-report.md` maps acceptance criteria to executed evidence: spec
   scenarios in full pipeline, proposal success criteria in accelerated pipeline.
+
+Progress tracking surfaces may mirror task status for user visibility, but
+`tasks.md` remains the canonical OpenSpec task artifact whenever the selected
+persistence mode includes OpenSpec.
 
 ## `config.yaml` Shape
 

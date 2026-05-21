@@ -13,9 +13,9 @@ task progress durable, ordered, and verifiable.
 
 ## Shared Conventions
 
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## Progress Tracking Invariants
 
@@ -45,6 +45,9 @@ The orchestrator owns task progress tracking.
 - `openspec/` files are coordination artifacts, not source code. The
   orchestrator may read and edit them directly for progress tracking and state
   management only when the active mode includes openspec artifacts.
+- Keep visible task state on the active progress tracking surface while
+  preserving the canonical task artifact. Use the visible progress surface
+  when available, plus the same canonical `tasks.md` and/or thoth-mem artifacts.
 - Task state updates are NOT optional and NOT deferred — they happen in
   real-time as execution proceeds.
 - Every state transition (pending→in-progress, in-progress→completed,
@@ -75,7 +78,7 @@ The orchestrator owns task progress tracking.
 4. Build a mental model of the plan: total tasks, remaining work,
    parallelizable work, and dependency order.
 5. Load remaining SDD context using mode-aware retrieval in
-   `~/.config/opencode/skills/_shared/persistence-contract.md`.
+   [../_shared/persistence-contract.md](../_shared/persistence-contract.md).
 
 ### Phase 2: Execute Ready Work
 
@@ -93,20 +96,21 @@ Before dispatching a task or same-agent batch:
 
 #### B. Dispatch
 
-Choose the execution agent based on task type:
+Choose the semantic execution role based on task type. Preserve the role
+boundary even when the active harness uses different invocation syntax:
 
-| Need | Agent |
+| Need | Semantic role |
 | --- | --- |
-| Broad codebase discovery | `@explorer` |
-| External docs or APIs | `@librarian` |
-| Architecture or debugging | `@oracle` |
-| UI or UX work | `@designer` |
-| Simple, precise changes | `@quick` |
-| Complex, multi-file changes | `@deep` |
+| Broad codebase discovery | explorer |
+| External docs or APIs | librarian |
+| Architecture or debugging | oracle |
+| UI or UX work | designer |
+| Simple, precise changes | quick |
+| Complex, multi-file changes | deep |
 
 Prefer one dispatch for consecutive ready tasks assigned to the same execution
-agent, especially repeated UI/UX work for `@designer`, repeated narrow edits for
-`@quick`, or related implementation tasks for `@deep`.
+role, especially repeated UI/UX work for designer, repeated narrow edits for
+quick, or related implementation tasks for deep.
 
 Every dispatch prompt MUST include these 6 parts:
 

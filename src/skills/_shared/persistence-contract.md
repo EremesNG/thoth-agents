@@ -47,7 +47,8 @@ When running in `hybrid` mode:
 
 ## Memory Ownership
 
-Memory responsibilities are split between orchestrator and sub-agents:
+Memory responsibilities are split by semantic role between orchestrator and
+sub-agents:
 
 **Orchestrator owns general memory:**
 - Decisions, discoveries, bug fixes, session summaries
@@ -62,7 +63,9 @@ Memory responsibilities are split between orchestrator and sub-agents:
 - Sub-agents do NOT write general memory observations
 
 This split preserves artifact nuance (sub-agents have full context when writing)
-while keeping general memory centralized under orchestrator control.
+while keeping general memory centralized under orchestrator control. In
+harnesses that cannot hard-enforce the split, treat it as instruction-level
+governance and disclose any unsupported-capability that prevents compliance.
 
 ## Retrieval Protocol
 
@@ -70,14 +73,15 @@ while keeping general memory centralized under orchestrator control.
 
 Always complete the full 3-layer recall before using content as source material:
 
-1. **Layer 1 (Compact Index):** `thoth_mem_mem_search(..., mode: "compact")` —
-   scan the compact index of observation IDs and titles. This is the most
+1. **Layer 1 (Compact Index):** call the memory tool binding for `mem_search`
+   with compact mode to scan observation IDs and titles. This is the most
    token-efficient entry point.
-2. **Layer 2 (Timeline Context):** `thoth_mem_mem_timeline(observation_id: {id})`
-   — retrieve chronological context (before/after observations) to disambiguate
-   or verify the correct artifact.
-3. **Layer 3 (Full Body):** `thoth_mem_mem_get_observation(id: {id})` — retrieve
-   the complete artifact body for use as source material.
+2. **Layer 2 (Timeline Context):** call the memory tool binding for
+   `mem_timeline` to retrieve chronological context (before/after
+   observations) to disambiguate or verify the correct artifact.
+3. **Layer 3 (Full Body):** call the memory tool binding for
+   `mem_get_observation` to retrieve the complete artifact body for use as
+   source material.
 
 **Mode guidance:**
 - Use `mode: "compact"` (default) for most queries; it returns only IDs and

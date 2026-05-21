@@ -17,11 +17,14 @@ artifacts that belong to the orchestrator.
 
 Read these first instead of re-inventing conventions:
 
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 This skill ADDS the orchestrator/subagent split that those files imply. Do not
 duplicate their SDD persistence details unless needed to make a decision.
+
+Adapter bindings may differ, but the same semantic ownership boundaries must
+hold.
 
 ## Hard Ownership Split
 
@@ -34,6 +37,11 @@ ONLY the orchestrator owns these tools:
 - `mem_save_prompt`
 
 Subagents MUST NOT call them.
+
+If the active harness cannot hard-enforce this ownership split, treat it as
+instruction-level governance and disclose that limitation when reporting
+memory-governance status. Lack of hard enforcement is not permission for a
+subagent to create sessions, close sessions, or save prompts.
 
 Why:
 
@@ -90,7 +98,7 @@ Reason: thoth-mem can create implicit fallback sessions such as
 
 ### Read-only subagents
 
-Agents: `explorer`, `librarian`, `oracle`
+Semantic roles: explorer, librarian, oracle.
 
 Allowed pattern only:
 
@@ -112,7 +120,7 @@ Rules:
 
 ### Write-capable subagents
 
-Agents: `deep`, `quick`, `designer`
+Semantic roles: deep, quick, designer.
 
 Allowed thoth-mem behavior:
 
@@ -175,6 +183,9 @@ Before dispatching subagents in a thoth-mem workflow, verify all of this:
 - The dispatch does NOT ask the subagent to write session summaries.
 - If the work is SDD-related, the dispatch preserves the shared topic-key rules
   and avoids collisions with `sdd/{change}/{artifact}`.
+- The dispatch identifies the active binding surface when it matters for tool
+  names or enforcement. Explicitly note when memory ownership and tool-boundary
+  controls are instruction-level rather than runtime-enforced.
 
 ## Anti-Patterns
 
@@ -190,6 +201,8 @@ Reject these patterns immediately:
 - General observation saved under `sdd/...`.
 - Orchestrator asks a subagent to “remember this user request” by saving the
   generated dispatch prompt.
+- A harness-specific tool alias is treated as permission to bypass the
+  orchestrator/subagent ownership split.
 
 ## Dispatch Examples
 
@@ -236,6 +249,10 @@ When you apply this skill, be explicit about:
 - whether parent `session_id` and `project` were provided
 - whether project-scoped read tools are allowed and which ones
 - whether a proposed topic key is safe or collides with `sdd/...`
+- which binding surface is active when the distinction affects tool names,
+  role invocation, or enforcement
+- whether any governance rule is instruction-level because the harness cannot
+  hard-enforce the boundary
 
 If any of those are missing, stop using thoth-mem and continue only with local
 context unless the orchestrator provides the missing ownership data.

@@ -13,9 +13,9 @@ to hand to implementation.
 
 ## Shared Conventions
 
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## Purpose
 
@@ -27,6 +27,7 @@ or read from inline context for none mode.
 The artifact governance validator is not part of this review. Plan-reviewer is
 only the pre-execution approval gate for the task plan; it does not run the
 validator, enforce its findings, or manage the future pre-`sdd-apply` handoff.
+Invoke the semantic oracle role through the available role dispatch surface.
 
 Focus on whether the plan can be executed as written, not whether you would have
 designed it differently.
@@ -73,6 +74,8 @@ Check only what affects executability:
 - Use `[REJECT]` only for true blockers.
 - A rejection may list at most 3 issues.
 - Do not reject for style preferences or optional improvements.
+- Preserve the exact `[OKAY]` and `[REJECT]` tokens across every runtime; they
+  are portable review semantics, not runtime-specific syntax.
 
 ## Output Format
 

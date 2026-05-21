@@ -9,17 +9,14 @@ Translate the approved spec and design into an implementation checklist.
 
 ## Shared Conventions
 
-- Shared references:
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## Persistence Mode
 
 The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
-`hybrid`). Follow
-`~/.config/opencode/skills/_shared/persistence-contract.md` for read/write
-rules per mode.
+`hybrid`). Follow the persistence contract for read/write rules per mode.
 
 - `thoth-mem`: persist to thoth-mem only — do NOT create or modify
   `openspec/` files.
@@ -44,7 +41,7 @@ rules per mode.
 
 1. Read the shared conventions.
 2. Recover artifacts via the retrieval protocol in
-   `~/.config/opencode/skills/_shared/persistence-contract.md`:
+   the persistence contract:
    - **Always**: recover `proposal`
    - **Full pipeline only**: recover `spec` and `design`
    - In accelerated pipeline, derive task structure directly from the proposal.
@@ -102,16 +99,9 @@ rules per mode.
 7. Reference concrete file paths and specific spec scenarios in the tasks.
 8. If the selected mode includes thoth-mem, persist the full checklist with:
 
-   ```text
-   thoth_mem_mem_save(
-     title: "sdd/{change-name}/tasks",
-     topic_key: "sdd/{change-name}/tasks",
-     type: "architecture",
-     project: "{project}",
-     scope: "project",
-     content: "{full tasks markdown}"
-   )
-   ```
+   Use the memory tool binding for `mem_save` with the canonical SDD topic key
+   and required metadata fields: `title`, `topic_key`, `type`, `project`,
+   `scope`, and `content`.
 
 9. After `tasks.md` is generated, the workflow proceeds to an optional oracle
    plan review via the `plan-reviewer` skill. This is managed outside the scope
@@ -148,5 +138,5 @@ Return:
   - `Expected:` — the specific observable outcome that confirms success
   - Tasks without a `Verification` block will be rejected by the plan-reviewer.
   - Do NOT group verification into a single "Phase 4: Verification" — each task gets its own.
-- Retrieve all dependencies through the mode-aware protocol in
-  `~/.config/opencode/skills/_shared/persistence-contract.md`.
+- Retrieve all dependencies through the mode-aware protocol in the persistence
+  contract.

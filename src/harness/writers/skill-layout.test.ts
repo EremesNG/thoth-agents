@@ -62,6 +62,18 @@ function codexSkillContent(
   return String(artifact?.content);
 }
 
+function artifactContent(
+  artifacts: ReturnType<typeof renderCodexSkillLayout>['artifacts'],
+  artifactPath: string,
+): string {
+  const artifact = artifacts.find(
+    (candidate) => candidate.path === artifactPath,
+  );
+
+  expect(artifact).toBeDefined();
+  return String(artifact?.content);
+}
+
 describe('Codex skill layout writer', () => {
   test('renders primary skills to the validated Codex plugin skill destination', () => {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-skills-'));
@@ -178,6 +190,21 @@ describe('Codex skill layout writer', () => {
         expect(content).toContain(anchor);
       }
     }
+  });
+
+  test('Codex package retains multi-harness shared instruction anchors', () => {
+    const sharedSupport = getSkillRegistry().filter(
+      (skill) => skill.kind === 'shared-support',
+    );
+
+    const result = renderCodexSkillLayout({
+      projectRoot: process.cwd(),
+      skills: sharedSupport,
+      surfaceId: 'plugin-skills-directory',
+      outputMode: 'plugin-package',
+    });
+
+    expect(result.diagnostics).toEqual([]);
   });
 
   test('SDD Codex skill manifest matches the deterministic fixture', () => {

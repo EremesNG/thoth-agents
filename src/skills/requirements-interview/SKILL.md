@@ -14,9 +14,9 @@ handoff path before implementation begins.
 
 ## Shared Conventions
 
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## HARD GATE
 
@@ -25,26 +25,28 @@ handoff path before implementation begins.
 - Do not patch files.
 - Do not create formal SDD artifacts until the user approves the route.
 
-## Question Tool Requirement
+## Blocking User Input Surface Requirement
 
-- The interview flow MUST use the built-in `question` tool for user-input
-  prompts.
-- Do not embed interview questions as plain prose in normal response text.
-- Prefer one focused question-tool call at a time for the core interview loop.
+- The interview flow MUST use the active harness blocking user input surface
+  for user-input prompts.
+- Do not embed interview questions as plain prose in normal response text when
+  a blocking user input surface exists.
+- Prefer one focused blocking input call at a time for the core interview loop.
 - Use short headers (<=30 chars), concise option labels, and concrete
   descriptions.
 - Put the recommended option first and include `(Recommended)` in that label.
-- Do not add an `Other` option manually; rely on `custom: true` unless custom
-  input must be disabled.
-- Use `multiple: true` only when multiple simultaneous selections are genuinely
-  valid.
+- Do not add an `Other` option manually when the active harness already adds or
+  supports custom input. Use the equivalent runtime option unless custom input
+  must be disabled.
+- Use multi-select only when multiple simultaneous selections are genuinely
+  valid. Use the equivalent runtime option if one exists.
 
 ## Workflow
 
 ### Phase 1: Discovery Context Gathering
 
-1. Always dispatch `@explorer` for codebase context. Dispatch `@librarian`
-   only when the request involves external APIs, dependency versions, library
+1. Always use the semantic explorer role for codebase context. Use the
+   semantic librarian role for external APIs, dependency versions, library
    migration, or public documentation.
 2. Collect only the minimum context needed to improve questions and reduce
    user repetition.
@@ -53,8 +55,8 @@ handoff path before implementation begins.
 
 ### Phase 2: Requirements Interview
 
-1. Ask each interview question through the `question` tool.
-2. Ask 1 question-tool call at a time.
+1. Ask each interview question through the blocking user input surface.
+2. Ask 1 blocking input call at a time.
 3. Ask at most 5 total questions.
 4. Prefer multiple-choice questions when practical.
 5. Stop early when clarity is already sufficient.
@@ -85,7 +87,8 @@ Evaluate these 6 dimensions. Rate each as **Low**, **Medium**, or **High**:
 1. Present 2-3 viable options as recommendations, not decisions.
 2. For each option, give the main trade-offs and when it is a good fit.
 3. Mark one option as the current recommendation and explain why.
-4. Use the `question` tool to confirm the preferred approach before moving on.
+4. Use the active harness blocking user input surface to confirm the preferred
+   approach before moving on.
 
 ### Phase 5: User Approval Gate
 
@@ -98,7 +101,7 @@ Present:
 
 Then wait for explicit user confirmation.
 
-Use the `question` tool for this approval gate.
+Use the active harness blocking user input surface for this approval gate.
 
 Nothing proceeds without explicit approval in this phase. The user is the sole
 approver during requirements discovery. Do not request oracle review here.
@@ -151,12 +154,12 @@ How would you like to persist planning artifacts?
 Default: hybrid
 ```
 
-Collect this choice with the `question` tool rather than plain prose.
+Collect this choice with the active blocking user input surface rather than
+plain prose.
 
 When the user selects a mode that includes OpenSpec (`openspec` or `hybrid`),
-verify that `openspec/` is initialized. If it is not, recommend running
-`sdd-init` before proceeding:
-`~/.config/opencode/skills/sdd-init/SKILL.md`
+verify that `openspec/` is initialized. If it is not, recommend running the
+`sdd-init` skill before proceeding.
 
 Once route, persistence mode, and initialization are confirmed, hand off to the
 corresponding SDD pipeline phase. The handoff MUST include:
@@ -166,10 +169,10 @@ corresponding SDD pipeline phase. The handoff MUST include:
 
 Hand off to:
 
-- **Propose**: `~/.config/opencode/skills/sdd-propose/SKILL.md`
-- **Spec** (full SDD only): `~/.config/opencode/skills/sdd-spec/SKILL.md`
-- **Design** (full SDD only): `~/.config/opencode/skills/sdd-design/SKILL.md`
-- **Tasks**: `~/.config/opencode/skills/sdd-tasks/SKILL.md`
+- **Propose**: [../sdd-propose/SKILL.md](../sdd-propose/SKILL.md)
+- **Spec** (full SDD only): [../sdd-spec/SKILL.md](../sdd-spec/SKILL.md)
+- **Design** (full SDD only): [../sdd-design/SKILL.md](../sdd-design/SKILL.md)
+- **Tasks**: [../sdd-tasks/SKILL.md](../sdd-tasks/SKILL.md)
 
 Do not silently choose the handoff route or artifact store mode. Recommend,
 ask, and wait.
@@ -177,13 +180,14 @@ ask, and wait.
 ## Guardrails
 
 - Maximum 5 interview questions.
-- Ask only one question-tool call at a time.
+- Ask only one blocking input call at a time.
 - Do not ask what codebase context can answer.
 - Do not skip explicit user approval.
 - Do not auto-select the handoff route.
 - Do not auto-select the persistence mode.
 - Never convert recommendations into unilateral decisions.
-- Do not replace question-tool prompts with plain-text interview questions.
+- Do not replace blocking input prompts with plain-text interview questions
+  when the harness exposes a blocking user input surface.
 
 ## Anti-Patterns
 

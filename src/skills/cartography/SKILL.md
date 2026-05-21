@@ -15,6 +15,19 @@ You help users understand and map repositories by creating hierarchical codemaps
 
 ## Workflow
 
+## Harness Bindings
+
+`thoth-agents` is the canonical skill identity. Adapter bindings only decide
+where the installed skill script lives and which instruction/context surface is
+automatically loaded.
+
+- Use the active skill resource path for `cartographer.py` rather than a fixed
+  install directory.
+- Register the root `codemap.md` in the active instruction/context surface. If
+  the runtime does not support an automatically loaded surface, surface an
+  unsupported-capability or manual-inclusion diagnostic instead of assuming a
+  specific repo-root autoload file.
+
 ### Step 1: Check for Existing State
 
 **First, check if `.lite/cartography.json` exists in the repo root.**
@@ -33,10 +46,10 @@ If it **doesn't exist**: Continue to Step 2 (Initialize).
      - Docs: `docs/**`, `*.md` (except root `README.md` if needed), `LICENSE`
      - Build/Deps: `node_modules/**`, `dist/**`, `build/**`, `*.min.js`
    - Respect `.gitignore` automatically
-3. **Run cartographer.py init**:
+3. **Run cartographer.py init** using the active skill resource path:
 
 ```bash
-python3 ~/.config/opencode/skills/cartography/scripts/cartographer.py init \
+python3 {active-skill-resource-path}/cartography/scripts/cartographer.py init \
   --root ./ \
   --include "src/**/*.ts" \
   --exclude "**/*.test.ts" --exclude "dist/**" --exclude "node_modules/**"
@@ -46,15 +59,17 @@ This creates:
 - `.lite/cartography.json` - File and folder hashes for change detection
 - Empty `codemap.md` files in all relevant subdirectories
 
-4. **Delegate discovery to explorer agents** — Spawn one explorer per folder to read code and gather findings. Then **delegate to quick** to write each folder's `codemap.md` based on explorer findings.
+4. **Delegate discovery to semantic explorer roles** — Spawn one explorer per
+   folder to read code and gather findings. Then delegate to a write-capable
+   role to write each folder's `codemap.md` based on explorer findings.
 
 ### Step 3: Detect Changes (If state already exists)
 
-1. **Run cartographer.py changes** to see what changed:
+1. **Run cartographer.py changes** to see what changed, using the active skill
+   resource path:
 
 ```bash
-python3 ~/.config/opencode/skills/cartography/scripts/cartographer.py changes \
-  --root ./
+python3 {active-skill-resource-path}/cartography/scripts/cartographer.py changes --root ./
 ```
 
 2. **Review the output** - It shows:
@@ -64,28 +79,33 @@ python3 ~/.config/opencode/skills/cartography/scripts/cartographer.py changes \
    - Affected folders
 
 3. **Only update affected codemaps** — Spawn one explorer per affected folder to gather updated findings, then dispatch quick to write the updated `codemap.md`.
-4. **Run update** to save new state:
+4. **Run update** to save new state, using the active skill resource path:
 
 ```bash
-python3 ~/.config/opencode/skills/cartography/scripts/cartographer.py update \
-  --root ./
+python3 {active-skill-resource-path}/cartography/scripts/cartographer.py update --root ./
 ```
 
 ### Step 4: Finalize Repository Atlas (Root Codemap)
 
-Once all specific directories are mapped, the Orchestrator must dispatch quick to create or update the root `codemap.md`. This file serves as the **Master Entry Point** for any agent or human entering the repository.
+Once all specific directories are mapped, the orchestrator must create or
+update the root `codemap.md`. This file serves as the **Master Entry Point**
+for any agent or human entering the repository.
 
 1.  **Map Root Assets**: Document the root-level files (e.g., `package.json`, `index.ts`, `plugin.json`) and the project's overall purpose.
 2.  **Aggregate Sub-Maps**: Create a "Repository Directory Map" section. For every folder that has a `codemap.md`, extract its **Responsibility** summary and include it in a table or list in the root map.
 3.  **Cross-Reference**: Ensure that the root map contains the absolute or relative paths to the sub-maps so agents can jump directly to the relevant details.
 
-### Step 5: Register Codemap in AGENTS.md
+### Step 5: Register Codemap in Active Harness Context
 
-**OpenCode auto-loads `AGENTS.md` into agent context on every session.** To ensure agents automatically discover and use the codemap, dispatch quick to update (or create) `AGENTS.md` at the repo root:
+Register the root `codemap.md` in the active harness's automatically loaded
+instruction/context surface so agents can discover and use the codemap.
 
-1. If `AGENTS.md` already exists and already contains a `## Repository Map` section, **skip this step** — the reference is already set up.
-2. If `AGENTS.md` exists but has no `## Repository Map` section, **append** the section below.
-3. If `AGENTS.md` doesn't exist, **create** it with the section below.
+For runtimes with a repo-root instruction surface, update or create that
+surface to point agents at the root `codemap.md`:
+
+1. If the surface already contains a `## Repository Map` section, skip this step.
+2. If it exists but has no `## Repository Map` section, append the section below.
+3. If it does not exist, create it with the section below.
 
 ```markdown
 ## Repository Map
@@ -101,6 +121,11 @@ For deep work on a specific folder, also read that folder's `codemap.md`.
 ```
 
 This is idempotent — repeated cartography runs will detect the existing section and skip. No duplication.
+
+For runtimes without an equivalent automatically loaded surface, report that
+automatic codemap registration is an unsupported capability and instruct the
+user to include `codemap.md` manually in the loaded instruction/context
+surface.
 
 
 ## Codemap Content
@@ -123,7 +148,7 @@ Defines agent personalities and manages their configuration lifecycle.
 ## Design
 Each agent is a prompt + permission set. Config system uses:
 - Default prompts (orchestrator.ts, explorer.ts, etc.)
-- User overrides from ~/.config/opencode/thoth-agents.json
+- User overrides from the runtime's user configuration store
 - Permission wildcards for skill/MCP access control
 
 ## Flow
@@ -131,7 +156,7 @@ Each agent is a prompt + permission set. Config system uses:
 2. Reads user config preset
 3. Merges defaults with overrides
 4. Applies permission rules (wildcard expansion)
-5. Returns agent configs to OpenCode
+5. Returns agent configs to the runtime
 
 ## Integration
 - Consumed by: Main plugin (src/index.ts)
@@ -144,10 +169,10 @@ Example **Root Codemap (Atlas)**:
 # Repository Atlas: thoth-agents
 
 ## Project Responsibility
-A high-performance, low-latency agent orchestration plugin for OpenCode, focusing on specialized sub-agent delegation and native task orchestration.
+A high-performance, low-latency agent orchestration plugin, focusing on specialized sub-agent delegation and native task orchestration.
 
 ## System Entry Points
-- `src/index.ts`: Plugin initialization and OpenCode integration.
+- `src/index.ts`: Plugin initialization and runtime integration.
 - `package.json`: Dependency manifest and build scripts.
 - `thoth-agents.json`: User configuration schema.
 

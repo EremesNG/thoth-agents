@@ -13,17 +13,14 @@ minimal OpenSpec structure when needed, and persisting startup context.
 
 ## Shared Conventions
 
-- Shared references:
-- `~/.config/opencode/skills/_shared/openspec-convention.md`
-- `~/.config/opencode/skills/_shared/persistence-contract.md`
-- `~/.config/opencode/skills/_shared/thoth-mem-convention.md`
+- [../_shared/openspec-convention.md](../_shared/openspec-convention.md)
+- [../_shared/persistence-contract.md](../_shared/persistence-contract.md)
+- [../_shared/thoth-mem-convention.md](../_shared/thoth-mem-convention.md)
 
 ## Persistence Mode
 
 The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
-`hybrid`). Follow
-`~/.config/opencode/skills/_shared/persistence-contract.md` for read/write
-rules per mode.
+`hybrid`). Follow the persistence contract for read/write rules per mode.
 
 - `thoth-mem`: persist initialization context to thoth-mem only — do NOT create
   or modify `openspec/` files.
@@ -123,15 +120,9 @@ rules per mode.
    the detected context and initialization status with:
 
    ```text
-   thoth_mem_mem_save(
-     title: "sdd-init/{project-name}",
-     topic_key: "sdd-init/{project-name}",
-     type: "config",
-     project: "{project-name}",
-     scope: "project",
-     content: "What: ...\nWhy: ...\nWhere: ...\nLearned: ..."
-   )
-   ```
+   Use the memory tool binding for `mem_save` with the canonical topic key and
+   required metadata fields: `title`, `topic_key`, `type`, `project`,
+   `scope`, and `content`.
 
 10. In `hybrid` mode, initialization is complete only when both OpenSpec setup
     and thoth-mem persistence succeed.

@@ -43,16 +43,16 @@ provide the same hard runtime controls.
 
 | Harness | Status | Setup path | Notes |
 | --- | --- | --- | --- |
-| OpenCode | Stable default | `bunx thoth-agents@latest install` or `install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
-| Codex | Supported explicit path | `bunx thoth-agents@latest install --agent=codex` | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires `/plugins` and `/hooks` trust review. Some governance remains instruction-level. |
+| OpenCode | Stable default | `pnpm dlx thoth-agents@latest install` or `install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
+| Codex | Supported explicit path | `pnpm dlx thoth-agents@latest install --agent=codex` | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires `/plugins` and `/hooks` trust review. Some governance remains instruction-level. |
 
 ## Quick Start
 
 ### OpenCode
 
 ```bash
-bunx thoth-agents@latest install
-bunx thoth-agents@latest install --agent=opencode
+pnpm dlx thoth-agents@latest install
+pnpm dlx thoth-agents@latest install --agent=opencode
 opencode auth login
 opencode
 ```
@@ -66,7 +66,7 @@ ping all agents
 For non-interactive setup:
 
 ```bash
-bunx thoth-agents@latest install --no-tui --tmux=no --skills=yes
+pnpm dlx thoth-agents@latest install --no-tui --tmux=no --skills=yes
 ```
 
 ### Codex
@@ -74,8 +74,8 @@ bunx thoth-agents@latest install --no-tui --tmux=no --skills=yes
 Review the plan first, then install explicitly:
 
 ```bash
-bunx thoth-agents@latest install --agent=codex --dry-run
-bunx thoth-agents@latest install --agent=codex
+pnpm dlx thoth-agents@latest install --agent=codex --dry-run
+pnpm dlx thoth-agents@latest install --agent=codex
 ```
 
 Restart Codex and review plugin/hook trust:
@@ -92,7 +92,7 @@ runtime guarantees unless Codex exposes those controls.
 ### Reset Generated Config
 
 ```bash
-bunx thoth-agents@latest install --reset
+pnpm dlx thoth-agents@latest install --reset
 ```
 
 ## Seven-Agent Roster
@@ -315,16 +315,24 @@ The OpenCode integration targets `@opencode-ai/plugin` and
 `@opencode-ai/sdk` v1.4.7. The repository also contains Codex adapter and
 packaging code for the multi-harness install path.
 
+Use Node.js `>=22.13` with Corepack-managed `pnpm@11.2.2`:
+
+```bash
+corepack enable
+corepack prepare pnpm@11.2.2 --activate
+pnpm install
+```
+
 | Command | Purpose |
 | --- | --- |
-| `bun run build` | Build TypeScript into `dist/` and generate declarations/schema |
-| `bun run typecheck` | Run TypeScript type checking without emit |
-| `bun test` | Run the Bun test suite |
-| `bun run lint` | Run Biome linter |
-| `bun run format` | Run Biome formatter |
-| `bun run check` | Run Biome check with auto-fix |
-| `bun run check:ci` | Run Biome check without writes |
-| `bun run dev` | Build and launch the OpenCode plugin in local dev mode |
+| `pnpm run build` | Build TypeScript into `dist/` and generate declarations/schema |
+| `pnpm run typecheck` | Run TypeScript type checking without emit |
+| `pnpm test` | Run the Vitest suite |
+| `pnpm run lint` | Run Biome linter |
+| `pnpm run format` | Run Biome formatter |
+| `pnpm run check` | Run Biome check with auto-fix |
+| `pnpm run check:ci` | Run Biome check without writes |
+| `pnpm run dev` | Build and launch the OpenCode plugin in local dev mode |
 
 ## License
 

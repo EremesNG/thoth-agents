@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { getAgentConfigs } from '../../agents';
 import { type PluginConfig, SUBAGENT_NAMES } from '../../config';
 import { getBundledSkillRegistry } from '../core/skills';
@@ -66,7 +66,7 @@ describe('OpenCode harness adapter', () => {
       GOVERNANCE_PROMPT_SECTIONS,
     )) {
       const prompt = configs[agentName]?.prompt;
-      expect(prompt).toBeString();
+      expect(typeof prompt).toBe('string');
 
       for (const section of promptSections) {
         expect(prompt).toContain(section);

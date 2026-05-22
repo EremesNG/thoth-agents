@@ -229,7 +229,7 @@ Built-in MCPs:
 | `exa` | Exa-backed web search | Optional `EXA_API_KEY` |
 | `context7` | Official library documentation lookup | Optional `CONTEXT7_API_KEY` |
 | `grep_app` | Public GitHub code search | No auth required |
-| `thoth_mem` | Local persistent memory and SDD artifact storage | Local `npx -y thoth-mem@latest` |
+| `thoth_mem` | Local persistent memory and SDD artifact storage | Local `pnpm dlx thoth-mem@latest` |
 
 Disable any built-in MCP globally with `disabled_mcps` where the generated
 harness config supports it:
@@ -322,7 +322,7 @@ TOML files and plugin-bundled guidance. See
 | `tmux.enabled` | boolean | `false` | OpenCode | Enables pane spawning |
 | `tmux.layout` | string | `main-vertical` | OpenCode | Tmux layout |
 | `fallback.enabled` | boolean | `true` | OpenCode | Runtime model failover |
-| `thoth.command` | string[] | `['npx', '-y', 'thoth-mem@latest']` | OpenCode config / shared concept | Local thoth MCP command |
+| `thoth.command` | string[] | `['pnpm', 'dlx', 'thoth-mem@latest']` | OpenCode config / shared concept | Local thoth MCP command |
 | `artifactStore.mode` | string | `hybrid` | Shared concept | SDD artifact persistence target |
 | `disabled_mcps` | string[] | `[]` | Generated harness config | Globally disable built-in MCPs where supported |
 

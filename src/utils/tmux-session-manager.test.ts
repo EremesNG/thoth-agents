@@ -1,16 +1,20 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { TmuxSessionManager } from './tmux-session-manager';
 
 // Define the mock outside so we can access it
-const mockSpawnTmuxPane = mock(async () => ({
-  success: true,
-  paneId: '%mock-pane',
-}));
-const mockCloseTmuxPane = mock(async () => true);
-const mockIsInsideTmux = mock(() => true);
+const { mockCloseTmuxPane, mockIsInsideTmux, mockSpawnTmuxPane } = vi.hoisted(
+  () => ({
+    mockSpawnTmuxPane: vi.fn(async () => ({
+      success: true,
+      paneId: '%mock-pane',
+    })),
+    mockCloseTmuxPane: vi.fn(async () => true),
+    mockIsInsideTmux: vi.fn(() => true),
+  }),
+);
 
 // Mock the tmux utils module
-mock.module('./tmux', () => ({
+vi.mock('./tmux', () => ({
   spawnTmuxPane: mockSpawnTmuxPane,
   closeTmuxPane: mockCloseTmuxPane,
   isInsideTmux: mockIsInsideTmux,
@@ -25,7 +29,7 @@ function createMockContext(overrides?: {
   return {
     client: {
       session: {
-        status: mock(
+        status: vi.fn(
           async () => overrides?.sessionStatusResult ?? { data: {} },
         ),
       },
@@ -35,10 +39,10 @@ function createMockContext(overrides?: {
     worktreeDirectory: '/test/worktree',
     project: { name: 'phase-2-project' },
     $: {
-      nothrow: mock(() => ({
-        cwd: mock(() =>
-          mock(() => ({
-            quiet: mock(async () => ({ exitCode: 0, text: () => '' })),
+      nothrow: vi.fn(() => ({
+        cwd: vi.fn(() =>
+          vi.fn(() => ({
+            quiet: vi.fn(async () => ({ exitCode: 0, text: () => '' })),
           })),
         ),
       })),

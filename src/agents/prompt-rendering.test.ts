@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createAgents } from './index';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
 import {

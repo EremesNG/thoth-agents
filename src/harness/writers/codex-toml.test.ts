@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { renderCodexToml } from './codex-toml';
 
 function codexFixture(name: string): string {
@@ -121,8 +121,8 @@ describe('Codex TOML writer', () => {
       values: {
         mcp_servers: {
           thoth_mem: {
-            command: 'bun',
-            args: ['x', 'thoth-mem'],
+            command: 'pnpm',
+            args: ['dlx', 'thoth-mem@latest'],
           },
         },
       },
@@ -141,7 +141,7 @@ describe('Codex TOML writer', () => {
         model_reasoning_effort: 'high',
         mcp_servers: {
           thoth_mem: {
-            command: 'bun',
+            command: 'pnpm',
           },
         },
       },

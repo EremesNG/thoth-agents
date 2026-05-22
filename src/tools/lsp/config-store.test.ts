@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 describe('LSP Config Store', () => {
   let setUserLspConfig: (config: Record<string, unknown> | undefined) => void;

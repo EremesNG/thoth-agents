@@ -1,5 +1,5 @@
 [mcp_servers]
 
 [mcp_servers.thoth_mem]
-args = ["x", "thoth-mem"]
-command = "bun"
+args = ["dlx", "thoth-mem@latest"]
+command = "pnpm"

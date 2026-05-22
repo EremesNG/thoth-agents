@@ -1,6 +1,4 @@
-/// <reference types="bun-types" />
-
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type {
   CustomSkill,
@@ -21,15 +19,15 @@ function createReport(
   };
 }
 
-const installCustomSkillsMock = mock(() =>
+const installCustomSkillsMock = vi.fn(() =>
   createReport({
     skippedSkills: [] as CustomSkill[],
   }),
 );
 
-const logMock = mock(() => {});
-const consoleErrorMock = mock(() => {});
-const consoleWarnMock = mock(() => {});
+const logMock = vi.fn(() => {});
+const consoleErrorMock = vi.fn(() => {});
+const consoleWarnMock = vi.fn(() => {});
 
 describe('syncSkillsOnStartup', () => {
   beforeEach(() => {

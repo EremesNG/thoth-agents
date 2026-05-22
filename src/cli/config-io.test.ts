@@ -1,6 +1,3 @@
-/// <reference types="bun-types" />
-
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import {
   existsSync,
   mkdtempSync,
@@ -10,6 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   addPluginToOpenCodeConfig,
   detectCurrentConfig,
@@ -37,7 +35,7 @@ describe('config-io', () => {
     if (tmpDir && existsSync(tmpDir)) {
       rmSync(tmpDir, { recursive: true, force: true });
     }
-    mock.restore();
+    vi.restoreAllMocks();
   });
 
   test('stripJsonComments strips comments and trailing commas', () => {

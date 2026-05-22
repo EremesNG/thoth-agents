@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
+import { describe, expect, test } from 'vitest';
 import type { PluginConfig } from '../../config';
 import {
   CODEX_CAPABILITIES,
@@ -182,8 +182,8 @@ describe('Codex adapter', () => {
         context7: { url: 'https://mcp.context7.com/mcp' },
         grep_app: { url: 'https://mcp.grep.app' },
         thoth_mem: {
-          command: 'npx',
-          args: ['-y', 'thoth-mem@latest'],
+          command: 'pnpm',
+          args: ['dlx', 'thoth-mem@latest'],
         },
         exa: {
           command: 'npx',

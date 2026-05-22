@@ -45,12 +45,12 @@ export const DEFAULT_MAX_REFERENCES = 200;
 export const DEFAULT_MAX_DIAGNOSTICS = 200;
 
 // Common root patterns shared by multiple servers
-const LOCK_FILE_PATTERNS = [
+export const LOCK_FILE_PATTERNS = [
+  'pnpm-lock.yaml',
   'package-lock.json',
+  'yarn.lock',
   'bun.lockb',
   'bun.lock',
-  'pnpm-lock.yaml',
-  'yarn.lock',
 ];
 
 /**

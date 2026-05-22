@@ -161,7 +161,7 @@ export async function runSg(options: RunOptions): Promise<SgResult> {
           error:
             `ast-grep CLI binary not found.\n\n` +
             `Auto-download failed. Manual install options:\n` +
-            `  bun add -D @ast-grep/cli\n` +
+            `  pnpm add -D @ast-grep/cli\n` +
             `  cargo install ast-grep --locked\n` +
             `  brew install ast-grep`,
         };

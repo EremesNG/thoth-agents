@@ -1,6 +1,4 @@
-/// <reference types="bun-types" />
-
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { buildModelKeyAliases } from './model-key-normalization';
 
 describe('model key normalization', () => {

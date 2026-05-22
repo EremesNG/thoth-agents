@@ -193,7 +193,7 @@ TmuxSessionManager
 - **@opencode-ai/plugin**: Tool definition schema (`tool`, `ToolDefinition`)
 - **vscode-jsonrpc**: LSP JSON-RPC protocol implementation
 - **vscode-languageserver-protocol**: LSP type definitions
-- **bun**: Subprocess spawning (`spawn`), file operations (`Bun.write`)
+- **Node.js**: Subprocess spawning and file operations
 - **which**: PATH resolution for CLI binaries
 
 #### Internal Dependencies

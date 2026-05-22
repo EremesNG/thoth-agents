@@ -1,6 +1,3 @@
-/// <reference types="bun-types" />
-
-import { describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -11,6 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import {
   applyCodexSetup,
   buildCodexSetupPlan,
@@ -290,8 +288,8 @@ describe('Codex install setup plan', () => {
       ).toEqual({
         mcpServers: {
           thoth_mem: {
-            command: 'npx',
-            args: ['-y', 'thoth-mem@latest'],
+            command: 'pnpm',
+            args: ['dlx', 'thoth-mem@latest'],
           },
           exa: {
             command: 'npx',

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { CUSTOM_SKILLS } from '../../cli/custom-skills';
 import { renderCodexSkillLayout } from '../writers/skill-layout';
 import {

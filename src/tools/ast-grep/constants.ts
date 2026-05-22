@@ -204,7 +204,7 @@ export function formatEnvironmentCheck(result: EnvironmentCheckResult): string {
     if (result.cli.error) {
       lines.push(`  Error: ${result.cli.error}`);
     }
-    lines.push(`  Install: bun add -D @ast-grep/cli`);
+    lines.push(`  Install: pnpm add -D @ast-grep/cli`);
   }
 
   lines.push('');

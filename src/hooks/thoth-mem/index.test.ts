@@ -1,21 +1,35 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   buildCompactionReminder,
   buildMemoryInstructions,
   buildSaveNudge,
 } from './protocol';
 
-const memContextMock = mock(async () => null as string | null);
-const memSessionStartMock = mock(async () => true);
-const memSavePromptMock = mock(async () => true);
-const createThothClientMock = mock(() => ({
-  enabled: true,
-  memContext: memContextMock,
-  memSessionStart: memSessionStartMock,
-  memSavePrompt: memSavePromptMock,
-}));
+const {
+  createThothClientMock,
+  memContextMock,
+  memSavePromptMock,
+  memSessionStartMock,
+} = vi.hoisted(() => {
+  const memContextMock = vi.fn(async () => null as string | null);
+  const memSessionStartMock = vi.fn(async () => true);
+  const memSavePromptMock = vi.fn(async () => true);
+  const createThothClientMock = vi.fn(() => ({
+    enabled: true,
+    memContext: memContextMock,
+    memSessionStart: memSessionStartMock,
+    memSavePrompt: memSavePromptMock,
+  }));
 
-mock.module('../../thoth', () => ({
+  return {
+    createThothClientMock,
+    memContextMock,
+    memSavePromptMock,
+    memSessionStartMock,
+  };
+});
+
+vi.mock('../../thoth', () => ({
   createThothClient: createThothClientMock,
 }));
 

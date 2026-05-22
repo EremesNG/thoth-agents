@@ -9,6 +9,10 @@
   },
   "type": "module",
   "license": "MIT",
+  "packageManager": "pnpm@11.2.2",
+  "engines": {
+    "node": ">=22.13"
+  },
   "keywords": [
     "opencode",
     "opencode-plugin",
@@ -37,16 +41,16 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target node --format esm && bun build src/cli/index.ts --outdir dist/cli --target bun --format esm && tsc --emitDeclarationOnly && bun run generate-schema",
-    "generate-schema": "bun run scripts/generate-schema.ts",
+    "build": "tsup && tsc --emitDeclarationOnly && pnpm run generate-schema",
+    "generate-schema": "tsx scripts/generate-schema.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "vitest run",
     "lint": "biome lint .",
     "format": "biome format . --write",
     "check": "biome check --write .",
     "check:ci": "biome check .",
-    "dev": "bun run build && opencode",
-    "prepublishOnly": "bun run build",
+    "dev": "pnpm run build && opencode",
+    "prepublishOnly": "pnpm run build",
     "release:patch": "npm version patch && git push --follow-tags && npm publish",
     "release:minor": "npm version minor && git push --follow-tags && npm publish",
     "release:major": "npm version major && git push --follow-tags && npm publish"
@@ -64,11 +68,16 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
+    "@types/node": "^22.19.19",
     "@types/which": "^3.0.4",
-    "bun-types": "1.3.9",
-    "typescript": "^5.9.3"
+    "tsup": "^8.5.1",
+    "tsx": "4.22.2",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.6"
   },
-  "trustedDependencies": [
-    "@ast-grep/cli"
-  ]
+  "overrides": {
+    "hono": "4.12.19",
+    "postcss": "8.5.14",
+    "tsx": "4.22.2"
+  }
 }

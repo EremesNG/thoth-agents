@@ -16,7 +16,7 @@ import type { AutoUpdateCheckerOptions } from './types';
  * Creates an OpenCode hook that checks for plugin updates when a new session is created.
  * @param ctx The plugin input context.
  * @param options Configuration options for the update checker.
- * @param shell The BunShell instance for running commands.
+ * @param shell The shell instance for running commands.
  * @returns A hook object for the session.created event.
  */
 export function createAutoUpdateCheckerHook(
@@ -78,7 +78,7 @@ export function createAutoUpdateCheckerHook(
 /**
  * Orchestrates the version comparison and update process in the background.
  * @param ctx The plugin input context.
- * @param shell The BunShell instance for running commands.
+ * @param shell The shell instance for running commands.
  * @param autoUpdate Whether to automatically install updates.
  */
 async function runBackgroundUpdateCheck(
@@ -157,7 +157,7 @@ async function runBackgroundUpdateCheck(
 
   invalidatePackage(PACKAGE_NAME);
 
-  const installSuccess = await runBunInstallSafe(ctx, shell);
+  const installSuccess = await runPnpmInstallSafe(ctx, shell);
 
   if (installSuccess) {
     showToast(
@@ -178,18 +178,18 @@ async function runBackgroundUpdateCheck(
       'info',
       8000,
     );
-    log('[auto-update-checker] bun install failed; update not installed');
+    log('[auto-update-checker] pnpm install failed; update not installed');
   }
 }
 
 /**
- * Runs 'bun install' using BunShell with a 60-second timeout.
+ * Runs 'pnpm install' using the OpenCode shell with a 60-second timeout.
  * Includes a timeout to prevent stalling OpenCode.
  * @param ctx The plugin input context.
- * @param shell The BunShell instance for running commands.
+ * @param shell The shell instance for running commands.
  * @returns True if the installation succeeded within the timeout.
  */
-async function runBunInstallSafe(
+async function runPnpmInstallSafe(
   ctx: PluginInput,
   shell: PluginInput['$'],
 ): Promise<boolean> {
@@ -200,7 +200,7 @@ async function runBunInstallSafe(
 
     const installPromise = (async () => {
       try {
-        await shell`cd ${ctx.directory} && bun install`;
+        await shell`cd ${ctx.directory} && pnpm install`;
         return 'completed' as const;
       } catch {
         return 'failed' as const;
@@ -210,13 +210,13 @@ async function runBunInstallSafe(
     const result = await Promise.race([installPromise, timeoutPromise]);
 
     if (result === 'timeout') {
-      log('[auto-update-checker] bun install timed out after 60 seconds');
+      log('[auto-update-checker] pnpm install timed out after 60 seconds');
       return false;
     }
 
     return result === 'completed';
   } catch (err) {
-    log('[auto-update-checker] bun install error:', err);
+    log('[auto-update-checker] pnpm install error:', err);
     return false;
   }
 }

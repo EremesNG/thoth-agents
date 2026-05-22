@@ -8,7 +8,7 @@
 ## Design
 
 - `LSPServerManager` in `src/tools/lsp/client.ts` is a singleton connection pool that keys clients by `<workspace-root>::<server-id>`, tracks reference counts, and evicts idle or dead processes.
-- `LSPClient` wears responsibility for spawning the underlying language server (`bun.spawn`), wiring vscode-jsonrpc streams, maintaining opened documents, collecting diagnostics notifications, and gracefully shutting down/ restarting when needed.
+- `LSPClient` wears responsibility for spawning the underlying language server, wiring vscode-jsonrpc streams, maintaining opened documents, collecting diagnostics notifications, and gracefully shutting down/restarting when needed.
 - Utility helpers in `src/tools/lsp/utils.ts` keep formatting, severity mapping, diagnostic filtering, workspace root discovery, URI translation, and workspace-edit application consolidated; they also host `withLspClient`, which orchestrates server lookup, client acquisition/release, and retry messaging when initialization is still in progress.
 - Constants/configuration (`src/tools/lsp/constants.ts`, `src/tools/lsp/config.ts`) define the supported servers, extension-to-language mappings, install hints, and runtime checks for whether the configured binaries exist, so the tools never start a missing server.
 - Shared types from `src/tools/lsp/types.ts` mirror the vscode-languageserver-protocol definitions that both the client and tools consume.

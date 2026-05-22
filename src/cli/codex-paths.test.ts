@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { resolveCodexTargets } from './codex-paths';
 
 describe('Codex path resolution', () => {

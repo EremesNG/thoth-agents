@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createDelegateTaskRetryHook } from './hook';
 
 describe('delegate-task-retry hook', () => {

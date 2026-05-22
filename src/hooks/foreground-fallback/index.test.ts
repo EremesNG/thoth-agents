@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ForegroundFallbackManager, isRateLimitError } from './index';
 
 // ---------------------------------------------------------------------------
@@ -9,12 +9,12 @@ function createMockClient(overrides?: {
   promptAsyncImpl?: (args: unknown) => Promise<unknown>;
   messagesData?: Array<{ info: { role: string }; parts: unknown[] }>;
 }) {
-  const promptAsync = mock(async (args: unknown) => {
+  const promptAsync = vi.fn(async (args: unknown) => {
     if (overrides?.promptAsyncImpl) return overrides.promptAsyncImpl(args);
     return {};
   });
-  const abort = mock(async () => ({}));
-  const messages = mock(async () => ({
+  const abort = vi.fn(async () => ({}));
+  const messages = vi.fn(async () => ({
     data: overrides?.messagesData ?? [
       { info: { role: 'user' }, parts: [{ type: 'text', text: 'hello' }] },
     ],

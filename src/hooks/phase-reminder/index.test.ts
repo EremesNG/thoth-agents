@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { LITE_INTERNAL_INITIATOR_MARKER } from '../../utils';
 import { createPhaseReminderHook, PHASE_REMINDER } from './index';
 

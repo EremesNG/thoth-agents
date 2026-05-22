@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   canEnterSddPhase,
   FULL_SDD_PHASE_ORDER,

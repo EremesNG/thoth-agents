@@ -1,6 +1,3 @@
-/// <reference types="bun-types" />
-
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -10,7 +7,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   CUSTOM_SKILLS,
   findPackageRoot,
@@ -112,7 +111,7 @@ describe('CUSTOM_SKILLS', () => {
 
   test('bundled thoth-mem-agents skill encodes critical ownership rules', () => {
     const skillPath = join(
-      import.meta.dir,
+      dirname(fileURLToPath(import.meta.url)),
       '..',
       'skills',
       'thoth-mem-agents',

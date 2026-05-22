@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { pathToFileURL } from 'node:url';
 import { codexAdapter } from '../harness/adapters/codex';
 import { install } from './install';
 import type {
@@ -108,8 +109,8 @@ function printHelp(): void {
   console.log(`
 thoth-agents installer (thoth-agents)
 
-Usage: bunx thoth-agents install [OPTIONS]
-       bunx thoth-agents generate --harness=codex --dry-run
+Usage: pnpm dlx thoth-agents install [OPTIONS]
+       pnpm dlx thoth-agents generate --harness=codex --dry-run
 
 Options:
   --tmux=yes|no          Enable tmux integration (yes/no)
@@ -134,14 +135,14 @@ The generated config uses OpenAI by default.
 For alternative providers, see docs/provider-configurations.md.
 
 Examples:
-  bunx thoth-agents@latest install
-  bunx thoth-agents@latest install --agent=opencode
-  bunx thoth-agents@latest install --agent=codex
-  bunx thoth-agents@latest install --agent=codex --dry-run
-  bunx thoth-agents install --no-tui --tmux=no --skills=yes
-  bunx thoth-agents install --dry-run
-  bunx thoth-agents install --reset
-  bunx thoth-agents generate --harness=codex --dry-run
+  pnpm dlx thoth-agents@latest install
+  pnpm dlx thoth-agents@latest install --agent=opencode
+  pnpm dlx thoth-agents@latest install --agent=codex
+  pnpm dlx thoth-agents@latest install --agent=codex --dry-run
+  pnpm dlx thoth-agents install --no-tui --tmux=no --skills=yes
+  pnpm dlx thoth-agents install --dry-run
+  pnpm dlx thoth-agents install --reset
+  pnpm dlx thoth-agents generate --harness=codex --dry-run
 `);
 }
 
@@ -184,7 +185,11 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) {
+const entrypointUrl = process.argv[1]
+  ? pathToFileURL(process.argv[1]).href
+  : undefined;
+
+if (import.meta.url === entrypointUrl) {
   main().catch((err) => {
     console.error('Fatal error:', err);
     process.exit(1);

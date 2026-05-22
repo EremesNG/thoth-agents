@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createThothClient } from './client';
 
 type FetchMock = ReturnType<typeof mock<typeof fetch>>;
@@ -8,7 +8,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function installFetchMock(impl?: typeof fetch): FetchMock {
-  const fetchMock = mock(impl ?? (async () => jsonResponse({ ok: true })));
+  const fetchMock = vi.fn(impl ?? (async () => jsonResponse({ ok: true })));
   globalThis.fetch = fetchMock as typeof fetch;
   return fetchMock;
 }
@@ -28,7 +28,7 @@ describe('createThothClient', () => {
 
   beforeEach(() => {
     globalThis.fetch = originalFetch;
-    AbortSignal.timeout = mock(() => new AbortController().signal);
+    AbortSignal.timeout = vi.fn(() => new AbortController().signal);
   });
 
   afterEach(() => {

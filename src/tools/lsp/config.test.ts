@@ -1,18 +1,18 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { join } from 'node:path';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Mock fs and os BEFORE importing the modules that use them
-mock.module('fs', () => ({
-  existsSync: mock(() => false),
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn(() => false),
 }));
 
-mock.module('os', () => ({
+vi.mock('node:os', () => ({
   homedir: () => '/home/user',
 }));
 
 // Create a mock for which.sync
-const whichSyncMock = mock(() => null);
-mock.module('which', () => ({
+const whichSyncMock = vi.hoisted(() => vi.fn(() => null));
+vi.mock('which', () => ({
   sync: whichSyncMock,
   default: { sync: whichSyncMock },
 }));

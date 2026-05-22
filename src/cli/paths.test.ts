@@ -1,9 +1,7 @@
-/// <reference types="bun-types" />
-
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   ensureConfigDir,
   getConfigDir,

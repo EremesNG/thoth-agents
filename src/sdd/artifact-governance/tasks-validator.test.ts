@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { validateTasksArtifact } from './index';
 
 function createPlan(body: string): string {
@@ -13,13 +13,13 @@ describe('validateTasksArtifact', () => {
       content: createPlan(`## Phase 1: Foundation
 - [ ] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Validator assertions pass
 
 ## Phase 2: Follow-up
 - [x] 2.1 Wire report output
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Follow-up assertions pass`),
       path: 'openspec/changes/example/tasks.md',
     });
@@ -37,7 +37,7 @@ describe('validateTasksArtifact', () => {
       content: createPlan(`## Phase 1: Foundation
 - [] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Validator assertions pass`),
     });
 
@@ -57,7 +57,7 @@ describe('validateTasksArtifact', () => {
       content: createPlan(`## Phase 1: Foundation
 - [ ] one Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Validator assertions pass`),
     });
 
@@ -77,7 +77,7 @@ describe('validateTasksArtifact', () => {
       content: createPlan(`## Phase 1: Foundation
 - [~] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\``),
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\``),
     });
 
     expect(result.valid).toBe(false);
@@ -98,7 +98,7 @@ describe('validateTasksArtifact', () => {
       content: createPlan(`## Phase 1: Foundation
 - [ ] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Validator assertions pass`),
       persistence: {
         comparison: {
@@ -134,7 +134,7 @@ describe('validateTasksArtifact', () => {
       content: createPlan(`## Phase 1: Foundation
 - [ ] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Validator assertions pass`),
       persistence: {
         comparison: {
@@ -171,7 +171,7 @@ describe('validateTasksArtifact', () => {
       content: createPlan(`## Phase 1: Foundation
 - [ ] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Validator assertions pass`),
       persistence: {
         comparison: {
@@ -205,12 +205,12 @@ describe('validateTasksArtifact', () => {
     const promptPlan = createPlan(`## Phase 1: Prompt Copy
 - [ ] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Prompt assertions pass`);
     const authoritativePlan = createPlan(`## Phase 1: Stored Copy
 - [ ] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Stored assertions pass`);
 
     const result = validateTasksArtifact({
@@ -248,12 +248,12 @@ describe('validateTasksArtifact', () => {
     const promptPlan = createPlan(`## Phase 1: Prompt Copy
 - [ ] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Prompt assertions pass`);
     const authoritativePlan = createPlan(`## Phase 1: Stored Copy
 - [ ] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Stored assertions pass`);
 
     const result = validateTasksArtifact({
@@ -294,7 +294,7 @@ describe('validateTasksArtifact', () => {
       content: createPlan(`## Phase 1: Foundation
 - [pending] 1.1 Add validator contract
   **Verification**:
-  - Run: \`bun test src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
   - Expected: Validator assertions pass`),
     });
 

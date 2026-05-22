@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { PluginInput } from '@opencode-ai/plugin';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createInternalAgentTextPart } from '../utils';
 import {
   __resetInternalMarkerCacheForTesting,
@@ -10,7 +10,7 @@ function createMockContext(parts: unknown[] = []) {
   return {
     client: {
       session: {
-        message: mock(async () => ({
+        message: vi.fn(async () => ({
           data: {
             info: { role: 'user' },
             parts,

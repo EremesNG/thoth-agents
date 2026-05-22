@@ -19,7 +19,7 @@ The CLI module follows a **layered architecture** with clear separation of conce
 ```
 ┌─────────────────────────────────────────┐
 │         index.ts (Entry Point)          │
-│    - Shebang (#!/usr/bin/env bun)       │
+│    - Shebang (#!/usr/bin/env node)      │
 │    - Argument parsing                   │
 │    - Command routing                    │
 └─────────────────┬───────────────────────┘
@@ -172,7 +172,7 @@ Standardized result type for configuration operations.
 ### Installation Flow
 
 ```
-User runs: bunx thoth-agents install [--no-tui] [--tmux=yes|no] [--skills=yes|no] [--dry-run] [--reset]
+User runs: pnpm dlx thoth-agents install [--no-tui] [--tmux=yes|no] [--skills=yes|no] [--dry-run] [--reset]
           │
           ▼
 ┌─────────────────────────────────────────┐
@@ -348,7 +348,7 @@ skills.ts
 
 ### Consumers
 
-1. **End Users**: Via `bunx thoth-agents install`
+1. **End Users**: Via `pnpm dlx thoth-agents install`
 2. **OpenCode**: Reads generated configs to load plugin and agents
 3. **CI/CD**: Via `--no-tui` flag for automated installations
 

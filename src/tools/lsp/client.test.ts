@@ -1,19 +1,11 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  spyOn,
-  test,
-} from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Mock spawn from bun
-mock.module('bun', () => ({
-  spawn: mock().mockReturnValue({
+// Mock process spawning before importing the LSP client module.
+vi.mock('../../utils/subprocess', () => ({
+  spawn: vi.fn().mockReturnValue({
     stdin: {
-      write: mock(),
-      end: mock(),
+      write: vi.fn(),
+      end: vi.fn(),
     },
     stdout: {
       getReader: () => ({
@@ -25,8 +17,9 @@ mock.module('bun', () => ({
         read: () => Promise.resolve({ done: true, value: undefined }),
       }),
     },
-    kill: mock(),
+    kill: vi.fn(),
     exitCode: null,
+    exited: Promise.resolve(0),
   }),
 }));
 
@@ -40,12 +33,16 @@ describe('LSPServerManager', () => {
 
   beforeEach(async () => {
     await lspManager.stopAll();
-    startSpy = spyOn(LSPClient.prototype, 'start').mockResolvedValue(undefined);
-    initSpy = spyOn(LSPClient.prototype, 'initialize').mockResolvedValue(
-      undefined,
-    );
-    aliveSpy = spyOn(LSPClient.prototype, 'isAlive').mockReturnValue(true);
-    stopSpy = spyOn(LSPClient.prototype, 'stop').mockResolvedValue(undefined);
+    startSpy = vi
+      .spyOn(LSPClient.prototype, 'start')
+      .mockResolvedValue(undefined);
+    initSpy = vi
+      .spyOn(LSPClient.prototype, 'initialize')
+      .mockResolvedValue(undefined);
+    aliveSpy = vi.spyOn(LSPClient.prototype, 'isAlive').mockReturnValue(true);
+    stopSpy = vi
+      .spyOn(LSPClient.prototype, 'stop')
+      .mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -132,7 +129,7 @@ describe('LSPServerManager', () => {
   });
 
   test('should register process cleanup handlers', () => {
-    const onSpy = spyOn(process, 'on');
+    const onSpy = vi.spyOn(process, 'on');
     // We need to create a new instance or trigger the registration
     // Since it's a singleton, we can just check if it was called during init
     // But it already happened. Let's check if the handlers are there.

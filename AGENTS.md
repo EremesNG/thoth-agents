@@ -19,27 +19,28 @@ IMPORTANT: Always use `webstorm-index` and `mcp-steroid` MCP tools for project f
 
 | Command | Purpose |
 | --- | --- |
-| `bun run build` | Build TypeScript into `dist/` |
-| `bun run typecheck` | Run TypeScript type checking without emit |
-| `bun test` | Run the Bun test suite |
-| `bun run lint` | Run Biome linter |
-| `bun run format` | Run Biome formatter |
-| `bun run check` | Run Biome check with auto-fix |
-| `bun run check:ci` | Run Biome check without writes |
-| `bun run dev` | Run the plugin in local dev mode |
+| `pnpm run build` | Build TypeScript into `dist/` |
+| `pnpm run typecheck` | Run TypeScript type checking without emit |
+| `pnpm test` | Run the Vitest suite |
+| `pnpm run lint` | Run Biome linter |
+| `pnpm run format` | Run Biome formatter |
+| `pnpm run check` | Run Biome check with auto-fix |
+| `pnpm run check:ci` | Run Biome check without writes |
+| `pnpm run dev` | Run the plugin in local dev mode |
 
 Single test:
 
 ```bash
-bun test -t "pattern"
+pnpm test -- -t "pattern"
 ```
 
 ## Setup
 
-- Install dependencies with `bun install`.
-- Use a recent Bun runtime that can run the repository scripts and build
-  tooling.
-- `bun run dev` expects `opencode` to be available on `PATH` after the build
+- Use Node.js `>=22.13`.
+- Enable Corepack and activate the pinned package manager with
+  `corepack enable` and `corepack prepare pnpm@11.2.2 --activate`.
+- Install dependencies with `pnpm install`.
+- `pnpm run dev` expects `opencode` to be available on `PATH` after the build
   step.
 - Keep `package.json`, `AGENTS.md`, and generated outputs in sync when versions
   or scripts change.
@@ -461,9 +462,9 @@ OpenCode integration path; keep workflow notes and examples aligned with that
 SDK version, while recognizing the broader multi-harness scope of the plugin.
 
 1. Make changes
-2. Run `bun run check:ci`
-3. Run `bun run typecheck`
-4. Run `bun test`
+2. Run `pnpm run check:ci`
+3. Run `pnpm run typecheck`
+4. Run `pnpm test`
 5. Commit
 
 ## Contributing
@@ -478,10 +479,10 @@ SDK version, while recognizing the broader multi-harness scope of the plugin.
 
 ## Debugging
 
-- Start with `bun run check:ci` for formatting and lint issues.
-- Use `bun run typecheck` to isolate TypeScript errors before broader testing.
-- Use `bun test` or `bun test -t "pattern"` for focused behavior checks.
-- If `bun run dev` fails, confirm dependencies are installed and `opencode`
+- Start with `pnpm run check:ci` for formatting and lint issues.
+- Use `pnpm run typecheck` to isolate TypeScript errors before broader testing.
+- Use `pnpm test` or `pnpm test -- -t "pattern"` for focused behavior checks.
+- If `pnpm run dev` fails, confirm dependencies are installed and `opencode`
   is available locally.
 
 ## verification

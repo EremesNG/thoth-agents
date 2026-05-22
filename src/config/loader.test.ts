@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { loadAgentPrompt, loadPluginConfig } from './loader';
 import type { PluginConfig } from './schema';
 
@@ -772,7 +772,7 @@ describe('preset resolution', () => {
       }),
     );
 
-    const consoleWarnSpy = spyOn(console, 'warn');
+    const consoleWarnSpy = vi.spyOn(console, 'warn');
     const config = loadPluginConfig(projectDir);
     expect(config.agents?.oracle?.model).toBe('root');
     expect(consoleWarnSpy).toHaveBeenCalled();
@@ -795,7 +795,7 @@ describe('preset resolution', () => {
       }),
     );
 
-    const consoleWarnSpy = spyOn(console, 'warn');
+    const consoleWarnSpy = vi.spyOn(console, 'warn');
     const config = loadPluginConfig(projectDir);
     expect(config.agents).toBeUndefined();
     expect(consoleWarnSpy).toHaveBeenCalled();
@@ -916,7 +916,7 @@ describe('environment variable preset override', () => {
     );
 
     process.env.THOTH_AGENTS_PRESET = 'typo-preset';
-    const consoleWarnSpy = spyOn(console, 'warn');
+    const consoleWarnSpy = vi.spyOn(console, 'warn');
     const config = loadPluginConfig(projectDir);
     expect(config.preset).toBe('typo-preset');
     expect(config.agents?.oracle?.model).toBe('fallback');
@@ -1179,21 +1179,9 @@ describe('loadAgentPrompt', () => {
     const promptsDir = path.join(tempDir, 'opencode', 'thoth-agents');
     fs.mkdirSync(promptsDir, { recursive: true });
     const promptPath = path.join(promptsDir, 'error-agent.md');
-    fs.writeFileSync(promptPath, 'content');
+    fs.mkdirSync(promptPath);
 
-    const consoleWarnSpy = spyOn(console, 'warn');
-
-    // Use a unique agent name and check for it specifically
-    const originalReadFileSync = fs.readFileSync;
-    const readFileSyncMock = ((p, o) => {
-      if (typeof p === 'string' && p.includes('error-agent.md')) {
-        throw new Error('Read error');
-      }
-      return originalReadFileSync(p, o as BufferEncoding | undefined);
-    }) as typeof fs.readFileSync;
-    const readSpy = spyOn(fs, 'readFileSync').mockImplementation(
-      readFileSyncMock,
-    );
+    const consoleWarnSpy = vi.spyOn(console, 'warn');
 
     try {
       const result = loadAgentPrompt('error-agent');
@@ -1204,7 +1192,7 @@ describe('loadAgentPrompt', () => {
       );
       expect(warningFound).toBe(true);
     } finally {
-      readSpy.mockRestore();
+      consoleWarnSpy.mockRestore();
     }
   });
 
@@ -1276,27 +1264,17 @@ describe('loadAgentPrompt', () => {
     const presetDir = path.join(promptsDir, 'test');
     fs.mkdirSync(presetDir, { recursive: true });
     const presetPromptPath = path.join(presetDir, 'oracle.md');
-    fs.writeFileSync(presetPromptPath, 'preset replacement');
+    fs.mkdirSync(presetPromptPath);
     fs.writeFileSync(path.join(promptsDir, 'oracle.md'), 'root replacement');
 
-    const consoleWarnSpy = spyOn(console, 'warn');
-    const originalReadFileSync = fs.readFileSync;
-    const readFileSyncMock = ((p, o) => {
-      if (typeof p === 'string' && p === presetPromptPath) {
-        throw new Error('Preset read error');
-      }
-      return originalReadFileSync(p, o as BufferEncoding | undefined);
-    }) as typeof fs.readFileSync;
-    const readSpy = spyOn(fs, 'readFileSync').mockImplementation(
-      readFileSyncMock,
-    );
+    const consoleWarnSpy = vi.spyOn(console, 'warn');
 
     try {
       const result = loadAgentPrompt('oracle', 'test');
       expect(result.prompt).toBe('root replacement');
       expect(consoleWarnSpy).toHaveBeenCalled();
     } finally {
-      readSpy.mockRestore();
+      consoleWarnSpy.mockRestore();
     }
   });
 

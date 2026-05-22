@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { renderCodexPluginPackage } from './codex-plugin-package';
 
 const fixtureRoot = path.join(process.cwd(), 'src/harness/__fixtures__/codex');
@@ -36,7 +36,7 @@ describe('Codex plugin package writer', () => {
           manifestField: 'mcpServers',
           path: '.codex-plugin/.mcp.json',
           content:
-            '{\n  "mcp_servers": {\n    "thoth_mem": {\n      "command": "bun",\n      "args": [\n        "x",\n        "thoth-mem"\n      ]\n    }\n  }\n}\n',
+            '{\n  "mcp_servers": {\n    "thoth_mem": {\n      "command": "pnpm",\n      "args": [\n        "dlx",\n        "thoth-mem@latest"\n      ]\n    }\n  }\n}\n',
         },
       ],
     });
@@ -236,7 +236,7 @@ describe('Codex plugin package writer', () => {
           manifestField: 'hooks',
           path: '.codex-plugin/hooks/hooks.json',
           content:
-            '{\n  "SessionStart": [\n    {\n      "command": "bun run codex:session-start"\n    }\n  ]\n}\n',
+            '{\n  "SessionStart": [\n    {\n      "command": "pnpm run codex:session-start"\n    }\n  ]\n}\n',
         },
       ],
     });
@@ -260,5 +260,50 @@ describe('Codex plugin package writer', () => {
     expect(byPath.get('.codex-plugin/hooks/hooks.json')).toBe(
       fs.readFileSync(path.join(fixtureRoot, 'plugin-hooks.json'), 'utf8'),
     );
+  });
+
+  test('preserves plugin identity separately from bundled asset provenance', () => {
+    const result = renderCodexPluginPackage({
+      manifest: {
+        name: 'thoth-agents',
+        version: '2.0.0',
+        description: 'Codex plugin package identity.',
+      },
+      assets: [
+        {
+          surfaceId: 'plugin-skills-directory',
+          manifestField: 'skills',
+          path: '.codex-plugin/skills/',
+          provenanceName: 'requirements-interview',
+          sourcePath: 'src/skills/requirements-interview',
+        },
+      ],
+    });
+
+    const pluginManifest = JSON.parse(
+      String(
+        result.artifacts.find(
+          (artifact) => artifact.path === '.codex-plugin/plugin.json',
+        )?.content,
+      ),
+    );
+    const provenance = JSON.parse(
+      String(
+        result.artifacts.find((artifact) =>
+          artifact.path.endsWith('.thoth-agents-plugin-assets.json'),
+        )?.content,
+      ),
+    );
+
+    expect(pluginManifest).toMatchObject({
+      name: 'thoth-agents',
+      version: '2.0.0',
+      skills: './skills/',
+    });
+    expect(provenance.assets[0]).toMatchObject({
+      name: 'requirements-interview',
+      sourcePath: 'src/skills/requirements-interview',
+      reference: './skills/',
+    });
   });
 });

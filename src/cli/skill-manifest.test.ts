@@ -1,6 +1,3 @@
-/// <reference types="bun-types" />
-
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   copyFileSync,
   existsSync,
@@ -13,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { CUSTOM_SKILLS } from './custom-skills';
 import {
   checkSkillsNeedUpdate,

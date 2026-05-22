@@ -1,7 +1,12 @@
-import { describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_MAX_DIAGNOSTICS,
   DEFAULT_MAX_REFERENCES,
+  LOCK_FILE_PATTERNS,
+  NearestRoot,
   SEVERITY_MAP,
   SYMBOL_KIND_MAP,
 } from './constants';
@@ -85,19 +90,49 @@ describe('constants', () => {
 // The constants themselves (maps and default values) are tested above.
 describe('NearestRoot', () => {
   test('should be exported as a function', () => {
-    const { NearestRoot } = require('./constants');
     expect(typeof NearestRoot).toBe('function');
   });
 
   test('should return a function when called', () => {
-    const { NearestRoot } = require('./constants');
     const rootFn = NearestRoot(['package.json']);
     expect(typeof rootFn).toBe('function');
   });
 
   test('should accept optional exclude patterns', () => {
-    const { NearestRoot } = require('./constants');
     const rootFn = NearestRoot(['package.json'], ['deno.json']);
     expect(typeof rootFn).toBe('function');
+  });
+
+  test('should treat pnpm-lock.yaml as a TypeScript project root marker', () => {
+    const rootDir = mkdtempSync(join(tmpdir(), 'thoth-lsp-root-'));
+    const srcDir = join(rootDir, 'src');
+    const filePath = join(srcDir, 'index.ts');
+
+    try {
+      mkdirSync(srcDir, { recursive: true });
+      writeFileSync(join(rootDir, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
+      writeFileSync(filePath, 'export const value = 1;\n');
+
+      expect(NearestRoot(LOCK_FILE_PATTERNS)(filePath)).toBe(rootDir);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('LOCK_FILE_PATTERNS', () => {
+  test('should explicitly support pnpm lockfiles', () => {
+    expect(LOCK_FILE_PATTERNS).toContain('pnpm-lock.yaml');
+  });
+
+  test('should keep generic package manager lockfile markers', () => {
+    expect(LOCK_FILE_PATTERNS).toEqual(
+      expect.arrayContaining([
+        'package-lock.json',
+        'yarn.lock',
+        'bun.lockb',
+        'bun.lock',
+      ]),
+    );
   });
 });

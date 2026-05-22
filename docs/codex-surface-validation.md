@@ -100,7 +100,7 @@ Codex hooks are designed for **diagnostic, informational, and guidance** purpose
 - **Context & Guidance**: Providing session-start or prompt-entry guidance (e.g., reminding users of project conventions during `SessionStart` or `UserPromptSubmit`).
 - **Guardrail Diagnostics**: Emitting warnings or suggestions based on tool inputs/outputs (e.g., checking for potential issues during `PreToolUse` or `PostToolUse`).
 - **Memory Governance**: Reminding agents to save durable observations or check parent session context (e.g., during `Stop` or tool boundaries).
-- **SDD Completion & Verification**: Reminding users to run verification checks (e.g., `bun run check:ci`) or update task lists upon SDD completion.
+- **SDD Completion & Verification**: Reminding users to run verification checks (e.g., `pnpm run check:ci`) or update task lists upon SDD completion.
 
 ### Explicitly Rejected Hook Mappings
 The following use cases are unsafe, unsupported, and explicitly rejected:

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   assertCodexSurfaceCanGenerate,
   CODEX_SURFACES,
@@ -76,6 +76,44 @@ describe('Codex surface validation', () => {
         status: 'validated',
         path: '.codex-plugin/.mcp.json',
         fields: ['mcpServers', './.mcp.json'],
+      },
+    ]);
+  });
+
+  test('preserves stable Codex plugin surface identity for generated packages', () => {
+    expect(
+      getValidatedCodexArtifactTargets()
+        .filter((surface) => surface.path?.startsWith('.codex-plugin'))
+        .map((surface) => ({
+          id: surface.id,
+          target: surface.target,
+          artifactKind: surface.artifactKind,
+          path: surface.path,
+        })),
+    ).toEqual([
+      {
+        id: 'plugin-manifest-json',
+        target: 'plugin-manifest',
+        artifactKind: 'manifest',
+        path: '.codex-plugin/plugin.json',
+      },
+      {
+        id: 'plugin-skills-directory',
+        target: 'skill-directory',
+        artifactKind: 'skill',
+        path: '.codex-plugin/skills/{skill}/SKILL.md',
+      },
+      {
+        id: 'plugin-hooks-json',
+        target: 'hook-config',
+        artifactKind: 'hook-config',
+        path: '.codex-plugin/hooks/hooks.json',
+      },
+      {
+        id: 'plugin-mcp-json',
+        target: 'mcp-config',
+        artifactKind: 'mcp-config',
+        path: '.codex-plugin/.mcp.json',
       },
     ]);
   });

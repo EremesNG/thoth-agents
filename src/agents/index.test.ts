@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { AgentConfig } from '@opencode-ai/sdk/v2';
+import { describe, expect, test } from 'vitest';
 import type { PluginConfig } from '../config';
 import { SUBAGENT_NAMES } from '../config';
 import { createAgents, getAgentConfigs, isSubagent } from './index';

@@ -1,0 +1,12 @@
+allowBuilds:
+  '@ast-grep/cli': true
+  esbuild: true
+  msgpackr-extract: true
+
+overrides:
+  hono: 4.12.19
+  postcss: 8.5.14
+  tsx: 4.22.2
+
+# 4320 = 3 days in minutes
+minimumReleaseAge: 4320

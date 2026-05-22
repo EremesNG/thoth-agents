@@ -73,7 +73,7 @@ thoth-agents defines four built-in MCP servers.
 | `exa` | remote | Exa-backed web search | Optional `EXA_API_KEY` env var |
 | `context7` | remote | Official library and framework documentation lookup | Optional `CONTEXT7_API_KEY` env var |
 | `grep_app` | remote | Public GitHub code search through grep.app | No auth required |
-| `thoth_mem` | local | Persistent memory, artifact storage, and session summaries | Local command, default `npx -y thoth-mem@latest` |
+| `thoth_mem` | local | Persistent memory, artifact storage, and session summaries | Local command, default `pnpm dlx thoth-mem@latest` |
 
 ## MCP Notes
 
@@ -98,7 +98,7 @@ thoth-agents defines four built-in MCP servers.
 ### `thoth_mem`
 
 - Local MCP, not a remote URL
-- Default command: `npx -y thoth-mem@latest`
+- Default command: `pnpm dlx thoth-mem@latest`
 - Supports custom `command`, `data_dir`, `environment`, and `timeout`
 - Used for root-session memory, SDD artifacts, and durable summaries
 

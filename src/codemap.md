@@ -20,5 +20,5 @@
 ## Integration
 - Connects directly to the OpenCode plugin API (`@opencode-ai/plugin`): registers agents/tools/mcps, responds to `session.created` and `tool.execute.after` events, and injects `experimental.chat.messages.transform`.
 - Integrates with the host environment: `utils/tmux.ts` checks for tmux availability, `startTmuxCheck` pre-seeds the binary path, and `TmuxSessionManager` keeps CLI panes synchronized with native child task sessions.
-- Hooks and helpers tie into external behavior: `hooks/auto-update-checker` reads `package.json` metadata, runs safe `bun install`, and posts toasts; `hooks/phase-reminder/post-read-nudge` enforce workflow reminders; `utils/logger.ts` centralizes structured logging used across modules.
+- Hooks and helpers tie into external behavior: `hooks/auto-update-checker` reads `package.json` metadata, runs safe `pnpm install`, and posts toasts; `hooks/phase-reminder/post-read-nudge` enforce workflow reminders; `utils/logger.ts` centralizes structured logging used across modules.
 - CLI utilities modify OpenCode CLI/user config files (`cli/config-manager.ts`) and install additional skills/ providers, ensuring the plugin lands with the expected agents, provider auth helpers, and custom skill definitions.

@@ -5,7 +5,7 @@
       "field": "hooks",
       "path": ".codex-plugin/hooks/hooks.json",
       "reference": "./hooks/hooks.json",
-      "sha256": "sha256:d6de3c265e6d09e0ab7586a8d7370ea6c85d69697864131aa322612e23bb978b"
+      "sha256": "sha256:efa73b0b9c90a93540dd6ac71816ac7c55bc162fd93ce3e40519e97cae5ffb14"
     },
     {
       "field": "skills",

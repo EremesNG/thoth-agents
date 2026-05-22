@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 /**
  * Generates a JSON Schema from the Zod PluginConfigSchema.
@@ -32,13 +32,26 @@ const jsonSchema = {
 const json = JSON.stringify(jsonSchema, null, 2);
 writeFileSync(outputPath, `${json}\n`);
 
+const biomeBin = join(
+  rootDir,
+  'node_modules',
+  '@biomejs',
+  'biome',
+  'bin',
+  'biome',
+);
 const formatResult = spawnSync(
   process.execPath,
-  ['x', 'biome', 'format', outputPath, '--write'],
+  [biomeBin, 'format', outputPath, '--write'],
   {
     stdio: 'inherit',
   },
 );
+
+if (formatResult.error) {
+  console.error(formatResult.error.message);
+  process.exit(1);
+}
 
 if (formatResult.status !== 0) {
   process.exit(formatResult.status ?? 1);

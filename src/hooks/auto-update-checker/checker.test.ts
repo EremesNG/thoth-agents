@@ -1,23 +1,41 @@
-import { describe, expect, mock, test } from 'bun:test';
 import * as fs from 'node:fs';
-import { extractChannel, findPluginEntry, getLocalDevVersion } from './checker';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  extractChannel,
+  findPluginEntry,
+  getLocalDevVersion,
+  updatePinnedVersion,
+} from './checker';
 
 // Mock the dependencies
-mock.module('./constants', () => ({
+vi.mock('./constants', () => ({
   PACKAGE_NAME: 'thoth-agents',
   USER_OPENCODE_CONFIG: '/mock/config/opencode.json',
   USER_OPENCODE_CONFIG_JSONC: '/mock/config/opencode.jsonc',
   INSTALLED_PACKAGE_JSON: '/mock/cache/node_modules/thoth-agents/package.json',
 }));
 
-mock.module('node:fs', () => ({
-  existsSync: mock((_p: string) => false),
-  readFileSync: mock((_p: string) => ''),
-  statSync: mock((_p: string) => ({ isDirectory: () => true })),
-  writeFileSync: mock(() => {}),
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn((_p: string) => false),
+  readFileSync: vi.fn((_p: string) => ''),
+  statSync: vi.fn((_p: string) => ({ isDirectory: () => true })),
+  writeFileSync: vi.fn(() => {}),
 }));
 
 describe('auto-update-checker/checker', () => {
+  beforeEach(() => {
+    (fs.existsSync as any).mockReset();
+    (fs.existsSync as any).mockImplementation((_p: string) => false);
+    (fs.readFileSync as any).mockReset();
+    (fs.readFileSync as any).mockImplementation((_p: string) => '');
+    (fs.statSync as any).mockReset();
+    (fs.statSync as any).mockImplementation((_p: string) => ({
+      isDirectory: () => true,
+    }));
+    (fs.writeFileSync as any).mockReset();
+    (fs.writeFileSync as any).mockImplementation(() => {});
+  });
+
   describe('extractChannel', () => {
     test('returns latest for null or empty', () => {
       expect(extractChannel(null)).toBe('latest');
@@ -110,6 +128,29 @@ describe('auto-update-checker/checker', () => {
       expect(entry).not.toBeNull();
       expect(entry?.isPinned).toBe(true);
       expect(entry?.pinnedVersion).toBe('1.0.0');
+    });
+  });
+
+  describe('updatePinnedVersion', () => {
+    test('updates pinned package-manager entry without rewriting config shape', () => {
+      const existsMock = fs.existsSync as any;
+      const readMock = fs.readFileSync as any;
+      const writeMock = fs.writeFileSync as any;
+      const configPath = '/mock/config/opencode.json';
+      const originalConfig =
+        '{\n  "plugin": [\n    "thoth-agents@1.0.0"\n  ]\n}\n';
+
+      existsMock.mockImplementation((p: string) => p === configPath);
+      readMock.mockReturnValue(originalConfig);
+
+      expect(
+        updatePinnedVersion(configPath, 'thoth-agents@1.0.0', '1.2.3'),
+      ).toBe(true);
+      expect(writeMock).toHaveBeenCalledWith(
+        configPath,
+        originalConfig.replace('thoth-agents@1.0.0', 'thoth-agents@1.2.3'),
+        'utf-8',
+      );
     });
   });
 });

@@ -67,25 +67,25 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
     ## Phase 1: Foundation
     - [ ] 1.1 Set up project structure — `src/config/`
       **Verification**:
-      - Run: `bun run typecheck`
+      - Run: `pnpm run typecheck`
       - Expected: No TypeScript errors in config files
 
     ## Phase 2: Core Implementation
     - [ ] 2.1 Implement core logic — `src/core/handler.ts`
       **Verification**:
-      - Run: `bun test -t "core handler"`
+      - Run: `pnpm test -- -t "core handler"`
       - Expected: All handler tests pass
 
     ## Phase 3: Integration
     - [ ] 3.1 Integrate with API — `src/api/client.ts`
       **Verification**:
-      - Run: `bun run lint src/api/`
+      - Run: `pnpm run lint src/api/`
       - Expected: No linting errors in API module
 
      ## Phase 4: Integration & Release
      - [ ] 4.1 Run full integration test suite and validate release artifacts — all modules
        **Verification**:
-       - Run: `bun test`
+       - Run: `pnpm test`
        - Expected: All tests pass with 100% coverage
     ```
 
@@ -134,7 +134,7 @@ Return:
   handoff placement and report findings, but it does not block task generation
   or replace execution planning.
 - **Every task MUST include a `Verification` sub-block** with:
-  - `Run:` — the exact command(s) to verify this task (e.g., `bun test`, `bun run typecheck`, `bun run lint`)
+  - `Run:` — the exact command(s) to verify this task (e.g., `pnpm test`, `pnpm run typecheck`, `pnpm run lint`)
   - `Expected:` — the specific observable outcome that confirms success
   - Tasks without a `Verification` block will be rejected by the plan-reviewer.
   - Do NOT group verification into a single "Phase 4: Verification" — each task gets its own.

@@ -1,6 +1,4 @@
-/// <reference types="bun-types" />
-
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { generateLiteConfig, MODEL_MAPPINGS } from './providers';
 
 describe('providers', () => {

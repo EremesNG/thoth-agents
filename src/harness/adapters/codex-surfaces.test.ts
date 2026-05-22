@@ -181,6 +181,30 @@ describe('Codex surface validation', () => {
     }
   });
 
+  test('records subagent session close as instruction-only delegation lifecycle behavior', () => {
+    const result = assertCodexSurfaceCanGenerate(
+      'programmatic-delegation-runtime',
+    );
+    const surface = CODEX_SURFACES.find(
+      (candidate) => candidate.id === 'programmatic-delegation-runtime',
+    );
+
+    expect(surface).toMatchObject({
+      status: 'unsupported',
+      fallback: 'instruction-only',
+    });
+    expect(surface?.fields).toContain('automatic subagent session close');
+    expect(surface?.summary).toContain('automatic subagent session close');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.diagnostic).toMatchObject({
+        severity: 'warning',
+        code: 'codex.delegation.runtime.unsupported',
+        fallback: 'instruction-only',
+      });
+    }
+  });
+
   test('blocks unknown or missing surfaces as diagnostic-only', () => {
     for (const id of ['inline-hooks', 'not-registered']) {
       const result = assertCodexSurfaceCanGenerate(id);

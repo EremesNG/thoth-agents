@@ -365,6 +365,25 @@ describe('Codex adapter', () => {
     }
   });
 
+  test('renders Codex-only delegation session teardown guidance in root instructions', () => {
+    const rootInstructions = renderCodexRootInstructions();
+    const explorer = agentContent('explorer');
+    const quick = agentContent('quick');
+
+    expect(rootInstructions).toContain(
+      'After receiving a delegated subagent response, close that subagent session unless you will retry or intentionally keep using that exact same session',
+    );
+    expect(rootInstructions).toContain(
+      'explorer and librarian sessions must always be closed immediately after their response',
+    );
+    expect(rootInstructions).toContain(
+      'retry sessions must be closed after the retry result',
+    );
+    expect(rootInstructions).toContain('ambient Codex root session');
+    expect(explorer).not.toContain('close that subagent session');
+    expect(quick).not.toContain('close that subagent session');
+  });
+
   test('does not leak internal Codex adaptation markers into rendered prompts', () => {
     const rootInstructions = renderCodexRootInstructions();
 

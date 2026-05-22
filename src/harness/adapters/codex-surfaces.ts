@@ -288,12 +288,17 @@ export const CODEX_SURFACES = [
     id: 'programmatic-delegation-runtime',
     target: 'delegation-runtime',
     status: 'unsupported',
-    fields: ['task API', 'background task sessions', 'tmux lifecycle hooks'],
+    fields: [
+      'task API',
+      'background task sessions',
+      'tmux lifecycle hooks',
+      'automatic subagent session close',
+    ],
     diagnosticCode: 'codex.delegation.runtime.unsupported',
     summary:
-      'Codex subagents are user/instruction-triggered; no OpenCode plugin task API parity is validated.',
+      'Codex subagents are user/instruction-triggered; no OpenCode plugin task API or automatic subagent session close parity is validated.',
     evidence:
-      'Codex subagents docs describe manual spawning and agent threads, not this plugin runtime task API.',
+      'Codex subagents docs describe manual spawning and agent threads, not this plugin runtime task API or a validated runtime close hook.',
     fallback: 'instruction-only',
   },
   {

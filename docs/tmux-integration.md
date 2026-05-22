@@ -1,6 +1,8 @@
 # Tmux Integration Guide
 
-Complete guide for using tmux integration with thoth-agents to watch agents work in real-time through automatic pane spawning.
+Complete guide for using OpenCode tmux integration with thoth-agents to watch
+delegated child `task` sessions through automatic pane spawning. This feature is
+OpenCode-scoped and does not imply Codex tmux support.
 
 ## Table of Contents
 
@@ -16,7 +18,12 @@ Complete guide for using tmux integration with thoth-agents to watch agents work
 
 ## Overview
 
-**Watch your agents work in real-time.** When the Orchestrator launches sub-agents with the native `task` tool, new tmux panes automatically spawn showing each agent's live progress. No more waiting in the dark.
+**Watch your OpenCode agents work in real time.** When the orchestrator launches
+sub-agents with the native OpenCode `task` tool, new tmux panes automatically
+spawn showing each agent's live progress.
+
+Codex setup uses custom agents, Personal plugin packaging, and trust review. It
+does not currently use this tmux pane/session integration.
 
 ### Key Benefits
 
@@ -26,7 +33,10 @@ Complete guide for using tmux integration with thoth-agents to watch agents work
 - **Background task monitoring** - see long-running work as it happens
 - **Multi-session support** - different projects can have separate tmux environments
 
-> ⚠️ **Temporary workaround:** Start OpenCode with `--port` to enable tmux integration. The port must match the `OPENCODE_PORT` environment variable (default: 4096). This is required until the upstream issue is resolved. [opencode#9099](https://github.com/anomalyco/opencode/issues/9099).
+> **Temporary workaround:** Start OpenCode with `--port` to enable tmux
+> integration. The port must match the `OPENCODE_PORT` environment variable
+> (default: 4096). This is required until the upstream issue is resolved.
+> [opencode#9099](https://github.com/anomalyco/opencode/issues/9099).
 
 ---
 
@@ -56,7 +66,7 @@ tmux
 opencode --port 4096
 ```
 
-That's it! Your agents will now spawn panes automatically.
+That's it. OpenCode child `task` sessions will now spawn panes automatically.
 
 ---
 
@@ -64,7 +74,8 @@ That's it! Your agents will now spawn panes automatically.
 
 ### Tmux Settings
 
-Configure tmux behavior in `~/.config/opencode/thoth-agents.json` (or `.jsonc`):
+Configure OpenCode tmux behavior in `~/.config/opencode/thoth-agents.json` (or
+`.jsonc`):
 
 ```json
 {
@@ -128,7 +139,7 @@ Choose how panes are arranged:
    opencode --port 4096
    ```
 
-2. **Ask the Orchestrator to delegate work:**
+2. **Ask the orchestrator to delegate work:**
    ```
    Please analyze this codebase and create a documentation structure.
    ```
@@ -234,7 +245,8 @@ Ctrl+B d      # detach from current session
 
 **Problem:** Tmux panes remain open after tasks complete, or `opencode attach` processes accumulate
 
-**This issue is fixed in the latest version.** The session lifecycle now properly closes panes and terminates processes.
+**This issue is fixed in the latest version.** The OpenCode session lifecycle
+now properly closes panes and terminates processes.
 
 **To verify the fix is working:**
 ```bash
@@ -261,8 +273,8 @@ tmux list-panes
 
 3. **Restart OpenCode** with the updated plugin
 
-**Technical Details:**
-The fix implements proper session lifecycle management:
+**Technical details:**
+The OpenCode fix implements proper session lifecycle management:
 - `session.abort()` is called after task completion
 - Graceful shutdown with Ctrl+C before killing panes
 - Event handlers for `session.deleted` events
@@ -418,7 +430,7 @@ tmux list-panes -a | grep opencode
 tmux list-panes -a | grep opencode
 ```
 
-### Integration with Task Delegation
+### Integration with OpenCode Task Delegation
 
 The plugin watches OpenCode child `task` sessions and opens tmux panes for live
 monitoring when tmux integration is enabled:
@@ -426,6 +438,9 @@ monitoring when tmux integration is enabled:
 | Tool | Description | Tmux Integration |
 |------|-------------|------------------|
 | `task` | Launch a specialist agent | Spawns panes for child sessions |
+
+Codex does not use OpenCode child `task` sessions, so this integration is not a
+Codex feature.
 
 ### Scripting and Automation
 
@@ -503,6 +518,7 @@ tmux load-buffer ~/my-layout.txt
 ## Additional Resources
 
 - **Official Tmux Documentation:** https://github.com/tmux/tmux/wiki
+- **Multi-harness orientation:** [README](../README.md)
 - **Quick Reference:** [docs/quick-reference.md#tmux-integration](quick-reference.md#tmux-integration)
 - **Task Delegation:** [docs/quick-reference.md#task-delegation](quick-reference.md#task-delegation)
 - **OpenCode Documentation:** https://opencode.ai/docs

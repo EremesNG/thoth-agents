@@ -1,7 +1,10 @@
 # Provider Configurations
 
-thoth-agents generates an **OpenAI** preset by default. This document
-shows how to define alternative presets by editing your plugin config file.
+OpenCode provider presets map models and variants to the seven thoth-agents
+roles. This page is OpenCode-scoped because it edits OpenCode plugin config
+files. Codex users should use
+[Codex Model Customization](codex-model-customization.md) for Codex role model
+defaults and customization boundaries.
 
 ## Config File Location
 
@@ -10,19 +13,22 @@ Edit one of:
 - `~/.config/opencode/thoth-agents.json`
 - `~/.config/opencode/thoth-agents.jsonc`
 
-Project-local overrides can also live at:
+Project-local OpenCode overrides can also live at:
 
 - `.opencode/thoth-agents.json`
 - `.opencode/thoth-agents.jsonc`
 
 ## Important Note
 
-This config maps **models and variants** to agents. Skill and MCP usage in this
-project is prompt-driven rather than configured through per-agent allowlists.
+This config maps models and variants to agents for the OpenCode plugin path.
+Skill and MCP usage is prompt-driven rather than configured through per-agent
+allowlists. Codex provider configuration is handled through Codex config and the
+validated surfaces described in
+[Codex Model Customization](codex-model-customization.md).
 
 ## Default: OpenAI
 
-The installer generates this preset automatically:
+The OpenCode installer generates this preset automatically:
 
 ```json
 {
@@ -60,7 +66,7 @@ The installer generates this preset automatically:
 }
 ```
 
-Authenticate with:
+Authenticate with OpenCode:
 
 ```bash
 opencode auth login
@@ -109,7 +115,7 @@ opencode auth login
 
 ## Mixing Providers
 
-You can mix providers across agents:
+OpenCode can mix providers across agents:
 
 ```json
 {
@@ -149,8 +155,19 @@ export THOTH_AGENTS_PRESET=my-mix
 opencode
 ```
 
+## Codex Model Configuration
+
+Codex generated subagents use Codex custom-agent TOML fields, not OpenCode
+provider presets. The current validated Codex surface supports per-agent
+`model` and `model_reasoning_effort` output, while provider-per-agent TOML
+fields remain validation-required before they can be generated.
+
+See [Codex Model Customization](codex-model-customization.md) for the supported
+Codex path.
+
 ## Related Docs
 
 - [Installation Guide](installation.md)
 - [Quick Reference](quick-reference.md)
 - [Skills and MCPs](skills-and-mcps.md)
+- [Codex Model Customization](codex-model-customization.md)

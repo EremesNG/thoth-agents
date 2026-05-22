@@ -1,10 +1,11 @@
 # Quick Reference Guide
 
-Fast reference for thoth-agents configuration, workflow, skills, and MCP
-integration.
+Fast reference for thoth-agents concepts, harness bindings, configuration,
+skills, and MCP integration.
 
 ## Table of Contents
 
+- [Harness Support](#harness-support)
 - [Agent Roster](#agent-roster)
 - [Presets](#presets)
 - [Bundled Skills](#bundled-skills)
@@ -19,27 +20,37 @@ integration.
 
 ---
 
+## Harness Support
+
+| Harness | Binding | Caveat |
+| --- | --- | --- |
+| OpenCode | Native plugin config, native `task`, optional tmux panes, OpenCode skills directory | Stable default baseline. |
+| Codex | Ambient root guidance, six role TOMLs, Personal plugin source, plugin-bundled skills | Some governance and delegation behavior is instruction-level unless Codex exposes hard runtime controls. |
+
+Shared concepts come first: the seven roles, requirements interview, SDD,
+thoth-mem, and specialist workflow. Harness details describe how those concepts
+are delivered in OpenCode or Codex.
+
 ## Agent Roster
 
-| Agent | Role | Mode | Dispatch |
+| Agent | Role | Mode | Shared behavior |
 | --- | --- | --- | --- |
-| `orchestrator` | Root coordinator and memory owner | primary, non-mutating | sync coordinator |
-| `explorer` | Local repository discovery | read-only | `task`; experimental `background=true` allowed |
-| `librarian` | External docs and example lookup | read-only | `task`; experimental `background=true` allowed |
-| `oracle` | Diagnosis, review, architecture, plan review | read-only | sync via `task` |
-| `designer` | UX/UI implementation and browser verification | write-capable | sync via `task` |
-| `quick` | Narrow implementation work | write-capable | sync via `task` |
-| `deep` | Thorough multi-file implementation and verification | write-capable | sync via `task` |
+| `orchestrator` | Root coordinator and memory owner | primary, non-mutating | Owns decisions, sequencing, requirements routing, memory, and progress. |
+| `explorer` | Local repository discovery | read-only | Finds files, symbols, references, constraints, and verification targets. |
+| `librarian` | External docs and example lookup | read-only | Verifies version-sensitive APIs and public examples. |
+| `oracle` | Diagnosis, review, architecture, plan review | read-only | Reviews risk, plans, bugs, and correctness-sensitive decisions. |
+| `designer` | UX/UI implementation and visual verification | write-capable | Owns user-facing UI and visual QA. |
+| `quick` | Narrow implementation work | write-capable | Handles clear, bounded, low-risk edits. |
+| `deep` | Thorough implementation and verification | write-capable | Handles correctness-critical, multi-file, or edge-case-heavy work. |
 
-The project is delegate-first, but the `orchestrator` is still the decision
-engine. `explorer` and `librarian` gather facts; the orchestrator turns those
-facts into a concrete internal handoff before handing implementation to
-`designer`, `quick`, or `deep`.
+The project is delegate-first, but the `orchestrator` remains the decision
+engine. Read-only specialists gather facts; the orchestrator turns those facts
+into a concrete internal handoff before assigning implementation.
 
 ## Presets
 
-The installer generates an OpenAI preset by default. Presets map models and
-variants to agents.
+OpenCode presets map models and variants to agents. The installer generates an
+OpenAI preset by default:
 
 ```json
 {
@@ -58,17 +69,18 @@ variants to agents.
 }
 ```
 
-Switch presets with either:
+Switch OpenCode presets with either:
 
 - the `preset` field in config
 - `THOTH_AGENTS_PRESET` in the environment
 
-For provider-specific examples, see
-[Provider Configurations](provider-configurations.md).
+For OpenCode provider examples, see
+[Provider Configurations](provider-configurations.md). For Codex role model
+customization, see [Codex Model Customization](codex-model-customization.md).
 
 ### Fallback / Failover
 
-Runtime failover is configured separately from presets:
+Runtime failover is configured separately from presets in OpenCode config:
 
 ```jsonc
 {
@@ -91,27 +103,19 @@ Runtime failover is configured separately from presets:
 }
 ```
 
-Available chain keys are:
-
-- `orchestrator`
-- `oracle`
-- `designer`
-- `explorer`
-- `librarian`
-- `quick`
-- `deep`
+Available chain keys are `orchestrator`, `oracle`, `designer`, `explorer`,
+`librarian`, `quick`, and `deep`.
 
 ## Bundled Skills
 
-Bundled skills are copied from `src/skills/` into the OpenCode skills directory
-when skills are installed.
+Bundled skills are shared thoth-agents content. OpenCode copies them into the
+OpenCode skills directory when `--skills=yes`. Codex packages them as
+plugin-bundled skills for the Personal plugin source.
 
 ### Requirements Interview
 
-`requirements-interview` is step-0 in the orchestrator prompt. It clarifies ambiguous
-work before implementation through a six-phase discovery interview.
-
-Core phases:
+`requirements-interview` is step 0 in the orchestrator prompt. It clarifies
+ambiguous work before implementation through a six-phase discovery interview:
 
 1. Context gathering
 2. Interview
@@ -148,10 +152,9 @@ actually executable.
 
 ### Executing-Plans
 
-`executing-plans` owns progress tracking during task execution.
-
-Two layers are mandatory: `todowrite` for user-visible progress and the
-persistent SDD artifact (`tasks.md` and/or thoth-mem) as the canonical record.
+`executing-plans` owns progress tracking during task execution. The coordinator
+updates task state; execution sub-agents report structured results but do not
+edit checkboxes themselves.
 
 Recognized task states:
 
@@ -160,22 +163,16 @@ Recognized task states:
 - `- [x]` completed
 - `- [-]` skipped with reason
 
-The `orchestrator` updates task state; execution sub-agents report structured
-results back but do not edit checkboxes themselves.
-
-Automatic save nudges remind the orchestrator to persist observations after task
-completion.
-
 ## Recommended External Skills
 
 These are not bundled in `src/skills/`, but they pair well with the workflow.
 
 | Skill | Status | Typical use |
 | --- | --- | --- |
-| `simplify` | Installed by `--skills=yes` | Keep implementations lean |
-| `playwright-cli` | Installed by `--skills=yes` | Browser automation for `designer` |
-| `test-driven-development` | Optional | Useful before `deep` implements fixes or features |
-| `systematic-debugging` | Optional | Useful for `oracle` and `deep` bug diagnosis |
+| `simplify` | Installed by `--skills=yes` in OpenCode setup | Keep implementations lean |
+| `playwright-cli` | Installed by `--skills=yes` in OpenCode setup | Browser automation for `designer` |
+| `test-driven-development` | Optional companion | Useful before `deep` implements fixes or features |
+| `systematic-debugging` | Optional companion | Useful for `oracle` and `deep` bug diagnosis |
 
 ## SDD Pipeline
 
@@ -185,12 +182,10 @@ Primary flow:
 sdd-init (if needed) -> propose -> [spec || design] -> tasks -> apply -> verify -> archive
 ```
 
-Routing is based on 6 complexity dimensions (logic depth, contract
-sensitivity, context span, discovery need, failure cost, concern
-coupling), not file count:
+Routing is based on complexity dimensions, not file count:
 
 - low complexity: direct implementation
-- moderate complexity: accelerated SDD, typically `propose -> tasks`
+- moderate complexity: accelerated SDD, usually `propose -> tasks`
 - high complexity: full SDD pipeline
 
 Plan review happens after `sdd-tasks` and before execution. Progress tracking is
@@ -221,7 +216,7 @@ Default mode is `hybrid`.
 
 3-layer recall for thoth-mem:
 
-1. `mem_search` (compact) - scan IDs + titles
+1. `mem_search` (compact) - scan IDs and titles
 2. `mem_timeline` - context around candidates
 3. `mem_get_observation` - full content
 
@@ -236,7 +231,8 @@ Built-in MCPs:
 | `grep_app` | Public GitHub code search | No auth required |
 | `thoth_mem` | Local persistent memory and SDD artifact storage | Local `npx -y thoth-mem@latest` |
 
-Disable any built-in MCP globally with `disabled_mcps`:
+Disable any built-in MCP globally with `disabled_mcps` where the generated
+harness config supports it:
 
 ```json
 {
@@ -246,43 +242,28 @@ Disable any built-in MCP globally with `disabled_mcps`:
 
 ## Task Delegation
 
-thoth-agents uses OpenCode's native `task` tool for specialist
-dispatch. The native tool creates a child session and returns that subagent's
-result to the caller.
+The workflow is shared; the runtime binding differs.
+
+| Concept | OpenCode | Codex |
+| --- | --- | --- |
+| Specialist dispatch | Native `task` tool creates child sessions. | Installed role subagents plus prompt/plugin guidance. |
+| Parallel discovery | Multiple independent `task` calls can be launched together and awaited. | Depends on the active Codex workflow; no OpenCode `task` parity is claimed. |
+| Background work | Experimental `task(background=true)` only for `explorer` and `librarian` when enabled. | Not claimed. |
+| Blocking choices | OpenCode `question` tool. | `request_user_input` when enabled and available in Default mode. |
 
 Delegation should reduce repeated investigation:
 
-- write every sub-agent prompt in English, even when replying to the user in
-  another language
-- send `explorer`/`librarian` narrow fact-finding prompts that ask for files,
-  symbols, constraints, examples, and verification targets
-- prefer 2-3 independent surgical probes over one broad exploration when the
-  questions can be answered separately
-- synthesize the returned evidence into an internal handoff with goal, decision,
-  scope, ordered steps, non-goals, verification, and uncertainty
-- keep that handoff transparent to the user; user-facing replies should describe
-  actual work and decisions, not the handoff mechanism
-- pass that handoff to write-capable agents so they can implement instead
-  of rediscovering the plan
-
-Default behavior is synchronous: multiple independent `task` calls can be
-launched in the same model response for parallelism, but they are still awaited
-before coordination continues.
-
-Experimental background execution is narrower:
-
-- `task(background=true)` is allowed only for `explorer` and `librarian`
-- it requires the OpenCode host to enable
-  `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`
-- when unavailable, the orchestrator falls back to normal synchronous `task`
-- background results must be collected through native `task_status`
-
-The plugin no longer registers custom `background_task`, `background_output`,
-or `background_cancel` tools.
+- Write every sub-agent prompt in English, even when replying to the user in
+  another language.
+- Send `explorer` and `librarian` narrow fact-finding prompts.
+- Prefer 2-3 independent probes when questions can be answered separately.
+- Pass a synthesized handoff to write-capable agents.
+- Retry failed or incomplete delegations once with a sharper prompt.
 
 ## Tmux Integration
 
-Enable live pane spawning for delegated work:
+Tmux integration is OpenCode-scoped. It watches OpenCode child `task` sessions
+and opens panes for live monitoring when enabled:
 
 ```json
 {
@@ -302,11 +283,12 @@ export OPENCODE_PORT=4096
 opencode --port 4096
 ```
 
-See [Tmux Integration](tmux-integration.md).
+This does not imply Codex tmux support. See
+[Tmux Integration](tmux-integration.md).
 
 ## Prompt Overriding
 
-Override or extend agent prompts from:
+OpenCode prompt overrides live in:
 
 ```text
 ~/.config/opencode/thoth-agents/
@@ -325,24 +307,24 @@ If `preset` is set, the loader checks the preset subdirectory first:
 ~/.config/opencode/thoth-agents/{preset}/
 ```
 
+Codex prompt and role customization is handled through generated Codex agent
+TOML files and plugin-bundled guidance. See
+[Codex Install](codex-install.md).
+
 ## Key Configuration Fields
 
-| Field | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `preset` | string | unset | Selects a preset under `presets` |
-| `presets` | object | unset | Named agent model maps |
-| `presets.<name>.<agent>.model` | string or array | unset | Model ID or priority model array |
-| `presets.<name>.<agent>.variant` | string | unset | Reasoning effort hint |
-| `tmux.enabled` | boolean | `false` | Enables pane spawning |
-| `tmux.layout` | string | `main-vertical` | `main-horizontal`, `main-vertical`, `tiled`, `even-horizontal`, `even-vertical` |
-| `tmux.main_pane_size` | number | `60` | Main pane size percent |
-| `fallback.enabled` | boolean | `true` | Runtime model failover |
-| `fallback.timeoutMs` | number | `15000` | Timeout before trying next fallback |
-| `fallback.retryDelayMs` | number | `500` | Delay between failover attempts |
-| `thoth.command` | string[] | `['npx', '-y', 'thoth-mem@latest']` | Local thoth MCP command |
-| `thoth.data_dir` | string | unset | Custom thoth data directory |
-| `artifactStore.mode` | string | `hybrid` | SDD artifact persistence target |
-| `disabled_mcps` | string[] | `[]` | Globally disable built-in MCPs |
+| Field | Type | Default | Harness | Notes |
+| --- | --- | --- | --- | --- |
+| `preset` | string | unset | OpenCode | Selects a preset under `presets` |
+| `presets` | object | unset | OpenCode | Named agent model maps |
+| `presets.<name>.<agent>.model` | string or array | unset | OpenCode | Model ID or priority model array |
+| `presets.<name>.<agent>.variant` | string | unset | OpenCode | Reasoning effort hint |
+| `tmux.enabled` | boolean | `false` | OpenCode | Enables pane spawning |
+| `tmux.layout` | string | `main-vertical` | OpenCode | Tmux layout |
+| `fallback.enabled` | boolean | `true` | OpenCode | Runtime model failover |
+| `thoth.command` | string[] | `['npx', '-y', 'thoth-mem@latest']` | OpenCode config / shared concept | Local thoth MCP command |
+| `artifactStore.mode` | string | `hybrid` | Shared concept | SDD artifact persistence target |
+| `disabled_mcps` | string[] | `[]` | Generated harness config | Globally disable built-in MCPs where supported |
 
 ## Related Docs
 
@@ -350,3 +332,4 @@ If `preset` is set, the loader checks the preset subdirectory first:
 - [Provider Configurations](provider-configurations.md)
 - [SDD Pipeline](sdd-pipeline.md)
 - [Skills and MCPs](skills-and-mcps.md)
+- [Codex Install](codex-install.md)

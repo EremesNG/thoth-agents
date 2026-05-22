@@ -1,22 +1,54 @@
 <div align="center">
   <img src="img/team.png" alt="thoth-agents agents" width="420">
-  <p><i>Seven specialized agents, one orchestrator — delegate any task to the right specialist and ship faster.</i></p>
-  <p><b>thoth-agents</b> · Delegate-first orchestration · Thoth-mem persistence · Bundled SDD pipeline</p>
+  <p><i>Seven specialized agents, one delegate-first workflow across supported harnesses.</i></p>
+  <p><b>thoth-agents</b> - Multi-harness orchestration - Thoth-mem persistence - Bundled SDD pipeline</p>
 </div>
 
 ---
 
-Delegate-first OpenCode plugin with a seven-agent roster, root-session
-`thoth_mem` persistence, native task delegation, bundled
-requirements-interview, and a full SDD workflow.
+thoth-agents is a delegate-first agent system for coding harnesses. It started
+as an OpenCode plugin and now provides a shared seven-agent workflow for
+OpenCode and Codex, with each harness getting the integration surface that fits
+it best.
 
-thoth-agents keeps the `orchestrator` lean, pushes discovery into
-specialists, persists important context, and ships the planning skills needed
-to move from ambiguous requests to verified implementation.
+OpenCode remains the stable default path: native plugin install, native `task`
+delegation, optional tmux monitoring, and generated config. Codex is supported
+through an explicit agent-pack and Personal plugin setup path, with documented
+trust review and instruction-level governance caveats where Codex does not
+provide the same hard runtime controls.
 
-## 📦 Installation
+## What It Is
 
-### Quick start
+- A canonical seven-agent roster: `orchestrator`, `explorer`, `librarian`,
+  `oracle`, `designer`, `quick`, and `deep`.
+- A delegate-first operating model that keeps the root coordinator focused on
+  decisions while specialists gather evidence, implement, review, and verify.
+- A bundled requirements interview and SDD pipeline for moving from ambiguous
+  requests to planned, verified implementation.
+- A thoth-mem integration for durable project memory, SDD artifacts, and
+  cross-session recovery.
+- A multi-harness package that preserves OpenCode defaults while adding a
+  Codex setup path.
+
+## What It Is Not
+
+- It is not a claim that every harness has identical runtime behavior.
+- It is not a replacement for each harness's security, trust, sandbox, or
+  approval model.
+- It does not rename the seven roles or require new visual assets.
+- It does not make Codex tmux-aware; tmux integration is scoped to OpenCode
+  child `task` sessions.
+
+## Harness Support
+
+| Harness | Status | Setup path | Notes |
+| --- | --- | --- | --- |
+| OpenCode | Stable default | `bunx thoth-agents@latest install` or `install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
+| Codex | Supported explicit path | `bunx thoth-agents@latest install --agent=codex` | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires `/plugins` and `/hooks` trust review. Some governance remains instruction-level. |
+
+## Quick Start
+
+### OpenCode
 
 ```bash
 bunx thoth-agents@latest install
@@ -31,82 +63,48 @@ Then ask OpenCode to verify the roster:
 ping all agents
 ```
 
-### Non-interactive install
+For non-interactive setup:
 
 ```bash
 bunx thoth-agents@latest install --no-tui --tmux=no --skills=yes
 ```
 
-### Codex agent-pack setup
+### Codex
 
-Codex support is explicit and separate from the native OpenCode plugin install:
+Review the plan first, then install explicitly:
 
 ```bash
 bunx thoth-agents@latest install --agent=codex --dry-run
 bunx thoth-agents@latest install --agent=codex
 ```
 
-The Codex installer composes ambient/root guidance into `~/.codex/AGENTS.md`,
-materializes six role subagents, refreshes the Personal plugin source under
-`~/.codex/plugins/thoth-agents/`, and asks you to review plugin and hook
-trust with `/plugins` and `/hooks`. It does not install a
-selectable Codex orchestrator agent or bypass Codex trust review.
+Restart Codex and review plugin/hook trust:
 
-### Reset an existing generated config
+```text
+/plugins
+/hooks
+```
+
+Codex install does not create a selectable orchestrator TOML, does not bypass
+trust review, and does not make role permissions or memory governance hard
+runtime guarantees unless Codex exposes those controls.
+
+### Reset Generated Config
 
 ```bash
 bunx thoth-agents@latest install --reset
 ```
 
-When skills are enabled, the installer adds the recommended external skills and
-copies the bundled requirements-interview, plan-reviewer, executing-plans, and
-SDD skills into your OpenCode skills directory.
-
-### For LLM agents
-
-Use the installer directly:
-
-```bash
-bunx thoth-agents@latest install --no-tui --tmux=no --skills=yes
-```
-
-Or hand another coding agent this README:
-
-```text
-Install and configure thoth-agents by following:
-https://raw.githubusercontent.com/EremesNG/thoth-agents/refs/heads/master/README.md
-```
-
-### JSON Schema
-
-The package ships `thoth-agents.schema.json` for editor autocomplete and
-validation:
-
-```jsonc
-{
-  "$schema": "https://unpkg.com/thoth-agents@latest/thoth-agents.schema.json"
-}
-```
-
-See [docs/installation.md](docs/installation.md) and
-[docs/provider-configurations.md](docs/provider-configurations.md) for the full
-OpenCode setup flow. See [docs/codex-install.md](docs/codex-install.md) for
-Codex install targets, backups, dry-run behavior, and limitations.
-
-## 🏛️ Seven-Agent Roster
+## Seven-Agent Roster
 
 The delegate-first philosophy is simple: the `orchestrator` coordinates while
-specialists execute. Independent specialists can be launched in parallel, but
-native OpenCode `task` calls are awaited before orchestration continues.
-Advisory and write-capable work stays bounded so review, undo safety, and
-verification remain straightforward.
+specialists execute. Shared concepts are the same across harnesses, but the
+dispatch mechanism is harness-bound. In OpenCode, specialists are launched with
+the native `task` tool. In Codex, the installed role agents and plugin-bundled
+skills provide the closest supported workflow, with some behavior enforced by
+instructions rather than hard runtime APIs.
 
-For blocking user decisions, the `orchestrator` uses a `question` tool —
-agents do not ask those questions in plain text. Independent work can be
-launched together when parallel dispatch is safe, and failed delegations are
-retried once before being reported back to the user.
-
-### 🔑 Primary Agent
+### Primary Agent
 
 <table width="100%">
   <tr>
@@ -117,7 +115,7 @@ retried once before being reported back to the user.
       <br>
       <i>Root coordinator and sole primary agent.</i>
       <br><br>
-      <b>Role:</b> The root coordinator. Handles delegation, sequencing, memory ownership, and SDD progress tracking. Does not read or modify source files directly.
+      <b>Role:</b> The root coordinator. Handles delegation, sequencing, memory ownership, requirements routing, and SDD progress tracking. Does not read or modify source files directly when running as the root coordinator.
       <br>
       <b>Mode:</b> primary, non-mutating
       <br>
@@ -125,14 +123,14 @@ retried once before being reported back to the user.
       <br>
       <b>Recommended:</b>
       <br>
-      <code>anthropic/claude-opus-4-6</code> · <code>openai/gpt-5.4</code> · <code>kimi-for-coding/k2p5</code>
+      <code>anthropic/claude-opus-4-6</code> - <code>openai/gpt-5.4</code> - <code>kimi-for-coding/k2p5</code>
       <br>
-      <b>Personality:</b> Autonomous deep coordinator — multi-agent reasoning, works through delegation
+      <b>Personality:</b> Autonomous deep coordinator; owns decisions and works through specialists.
     </td>
   </tr>
 </table>
 
-### 🛠️ Specialist Subagents
+### Specialist Subagents
 
 <table width="100%">
   <tr>
@@ -141,51 +139,51 @@ retried once before being reported back to the user.
       <br>
       <b>Explorer</b>
       <br>
-      <i>Speed runner — fast parallel grep, codebase search.</i>
+      <i>Fast local discovery.</i>
       <br><br>
-      <b>Role:</b> Local codebase discovery and navigation. Fast parallel search, file reading, symbol lookup.
+      <b>Role:</b> Local codebase discovery and navigation. Finds files, symbols, references, constraints, and verification targets.
       <br>
       <b>Mode:</b> read-only
       <br>
-      <b>Dispatch:</b> <code>task</code>
+      <b>Dispatch:</b> harness-bound specialist dispatch
       <br>
       <b>Recommended:</b>
       <br>
-      <code>Grok Code Fast</code> · <code>openai/gpt-5.4-nano</code> · <code>anthropic/claude-haiku-4-5</code>
+      <code>Grok Code Fast</code> - <code>openai/gpt-5.4-nano</code> - <code>anthropic/claude-haiku-4-5</code>
     </td>
     <td width="33%" valign="top">
       <img src="img/librarian.png" width="100%" alt="Librarian">
       <br>
       <b>Librarian</b>
       <br>
-      <i>All-rounder — large context + decent speed for research.</i>
+      <i>External docs and examples.</i>
       <br><br>
-      <b>Role:</b> External docs and API research. Fetches documentation, finds public examples, validates version-specific behavior.
+      <b>Role:</b> External docs and API research. Validates version-specific behavior with official docs or public examples.
       <br>
       <b>Mode:</b> read-only
       <br>
-      <b>Dispatch:</b> <code>task</code>
+      <b>Dispatch:</b> harness-bound specialist dispatch
       <br>
       <b>Recommended:</b>
       <br>
-      <code>openai/gpt-5.4</code> · <code>anthropic/claude-sonnet-4-6</code> · <code>google/gemini-3.1-pro-preview</code>
+      <code>openai/gpt-5.4</code> - <code>anthropic/claude-sonnet-4-6</code> - <code>google/gemini-3.1-pro-preview</code>
     </td>
     <td width="33%" valign="top">
       <img src="img/oracle.png" width="100%" alt="Oracle">
       <br>
       <b>Oracle</b>
       <br>
-      <i>Deep reasoner — maximum strategic thinking capability.</i>
+      <i>Deep review and diagnosis.</i>
       <br><br>
-      <b>Role:</b> Strategic advisor for debugging, architecture review, code review, and SDD plan review.
+      <b>Role:</b> Strategic advisor for debugging, architecture review, code review, security/correctness risk, and SDD plan review.
       <br>
       <b>Mode:</b> read-only
       <br>
-      <b>Dispatch:</b> sync via <code>task</code>
+      <b>Dispatch:</b> synchronous advisory specialist
       <br>
       <b>Recommended:</b>
       <br>
-      <code>openai/gpt-5.4</code> · <code>anthropic/claude-opus-4-6</code> · <code>opencode-go/glm-5</code>
+      <code>openai/gpt-5.4</code> - <code>anthropic/claude-opus-4-6</code> - <code>opencode-go/glm-5</code>
     </td>
   </tr>
   <tr>
@@ -194,78 +192,68 @@ retried once before being reported back to the user.
       <br>
       <b>Designer</b>
       <br>
-      <i>Visual/multimodal — UI/UX reasoning, frontend engineering.</i>
+      <i>UI, UX, frontend, and visual QA.</i>
       <br><br>
-      <b>Role:</b> UI/UX implementation with visual verification. Owns approach, execution, and browser-based quality checks.
+      <b>Role:</b> User-facing design and implementation. Owns visual decisions, browser checks, screenshots, and UX quality.
       <br>
       <b>Mode:</b> write-capable
       <br>
-      <b>Dispatch:</b> sync via <code>task</code>
+      <b>Dispatch:</b> synchronous implementation specialist
       <br>
       <b>Recommended:</b>
       <br>
-      <code>google/gemini-3.1-pro-preview</code> · <code>opencode-go/glm-5</code> · <code>kimi-for-coding/k2p5</code>
+      <code>google/gemini-3.1-pro-preview</code> - <code>opencode-go/glm-5</code> - <code>kimi-for-coding/k2p5</code>
     </td>
     <td width="33%" valign="top">
       <img src="img/quick.png" width="100%" alt="Quick">
       <br>
       <b>Quick</b>
       <br>
-      <i>Speed runner — well-defined tasks, fast turnaround.</i>
+      <i>Fast bounded implementation.</i>
       <br><br>
-      <b>Role:</b> Fast implementation for well-defined, bounded tasks. Optimized for speed over thoroughness.
+      <b>Role:</b> Narrow, mechanical, low-risk edits where the approach is already clear.
       <br>
       <b>Mode:</b> write-capable
       <br>
-      <b>Dispatch:</b> sync via <code>task</code>
+      <b>Dispatch:</b> synchronous implementation specialist
       <br>
       <b>Recommended:</b>
       <br>
-      <code>openai/gpt-5.4-mini</code> · <code>anthropic/claude-haiku-4-5</code> · <code>google/gemini-3-flash-preview</code>
+      <code>openai/gpt-5.4-mini</code> - <code>anthropic/claude-haiku-4-5</code> - <code>google/gemini-3-flash-preview</code>
     </td>
     <td width="33%" valign="top">
       <img src="img/deep.png" width="100%" alt="Deep">
       <br>
       <b>Deep</b>
       <br>
-      <i>Deep specialist — maximum coding capability for complex tasks.</i>
+      <i>Thorough implementation and verification.</i>
       <br><br>
-      <b>Role:</b> Thorough implementation and verification. Handles correctness-critical, multi-file, edge-case-heavy work.
+      <b>Role:</b> Correctness-critical, multi-file, edge-case-heavy implementation and verification.
       <br>
       <b>Mode:</b> write-capable
       <br>
-      <b>Dispatch:</b> sync via <code>task</code>
+      <b>Dispatch:</b> synchronous implementation specialist
       <br>
       <b>Recommended:</b>
       <br>
-      <code>openai/gpt-5.4</code> · <code>anthropic/claude-opus-4-6</code> · <code>google/gemini-3.1-pro-preview</code>
+      <code>openai/gpt-5.4</code> - <code>anthropic/claude-opus-4-6</code> - <code>google/gemini-3.1-pro-preview</code>
     </td>
   </tr>
 </table>
 
-## 🧩 What thoth-agents Adds
+## SDD And Memory
 
-- Delegate-first orchestration with context isolation across specialists
-- `thoth_mem` persistence for root-session memory workflows
-- Bundled SDD pipeline: `sdd-propose`, `sdd-spec`, `sdd-design`, `sdd-tasks`,
-  `sdd-apply`, `sdd-verify`, `sdd-archive`
-- Requirements-interview skill for clarifying ambiguous work before implementation
-- `plan-reviewer` for oracle review loops on task plans
-- `executing-plans` for task-state ownership and progress tracking
-- Tmux integration for real-time agent monitoring
-- Configurable presets, fallback chains, prompt overriding, and artifact-store
-  modes
-
-## SDD Pipeline
-
-The bundled SDD workflow follows this path:
+The bundled requirements interview is the front door for open-ended work. It
+clarifies intent, assesses scope, asks for user approval when needed, and routes
+work into direct implementation, accelerated SDD, or full SDD.
 
 ```text
 propose -> [spec || design] -> tasks -> apply -> verify -> archive
 ```
 
-For medium work, the requirements interview can route into an accelerated path that starts at
-`propose -> tasks`. For complex work, the full path is used.
+For moderate work, the accelerated path usually runs `propose -> tasks`. For
+high-risk or high-complexity work, the full path adds specification and design
+artifacts before task execution.
 
 Artifacts can be persisted in four modes:
 
@@ -276,124 +264,68 @@ Artifacts can be persisted in four modes:
 | `hybrid` | Both | High | Maximum durability; default |
 | `none` | Neither | Lowest | Ephemeral iterations, no persistence |
 
-After `sdd-tasks`, the orchestrator can run an oracle review loop with
-`plan-reviewer`:
+Thoth-mem is the local memory MCP used for durable observations, architectural
+decisions, SDD artifacts, and session summaries. The core retrieval pattern is:
 
-1. Generate `tasks.md`
-2. Dispatch oracle with `plan-reviewer`
-3. If result is `[REJECT]`, fix only the blocking issues
-4. Repeat until `[OKAY]`
-5. Continue into execution
+1. `mem_search` for compact candidate records
+2. `mem_timeline` for chronological context
+3. `mem_get_observation` for the full selected record
 
-During execution, `executing-plans` owns task-state tracking. Progress has two
-mandatory layers: `todowrite` for the visual task list, plus a persistent SDD
-artifact via `tasks.md` checkboxes and/or `thoth_mem`.
+## Skills And MCPs
 
-- `- [ ]` pending
-- `- [~]` in progress
-- `- [x]` completed
-- `- [-]` skipped with reason
+thoth-agents ships bundled skills for requirements discovery, plan review, SDD
+planning/execution, verification, and archiving. It also registers MCP servers
+for docs research, public code search, and local memory where the harness
+supports that delivery surface.
 
-## Requirements Interview
+| Surface | Shared concept | OpenCode binding | Codex binding |
+| --- | --- | --- | --- |
+| Skills | Requirements, SDD, review, execution workflows | Copied into the OpenCode skills directory when `--skills=yes` | Packaged as plugin-bundled skills for the Personal plugin source |
+| MCPs | `exa`, `context7`, `grep_app`, `thoth_mem` | Registered by generated OpenCode plugin config | Packaged/configured only on validated Codex surfaces |
+| Delegation | Seven-role specialist workflow | Native `task` tool | Custom agents plus prompt/plugin guidance |
+| Blocking choices | Use a structured question surface | OpenCode `question` tool | `request_user_input` when enabled and available |
 
-The bundled `requirements-interview` skill is the front door for ambiguous or substantial
-work. It is step-0 in the orchestrator prompt and runs before implementation when the
-request is open-ended, spans multiple parts of the system, or needs scope calibration.
+See [docs/skills-and-mcps.md](docs/skills-and-mcps.md) for the detailed matrix.
 
-Its workflow is six phases:
+## Documentation
 
-1. Context gathering
-2. Interview
-3. Scope assessment
-4. Approach proposal
-5. User approval
-6. Handoff
-
-After clarification, the skill routes the work into direct implementation, accelerated
-SDD, or full SDD based on complexity assessment.
-
-## 🧩 Skills & MCP Servers
-
-### Bundled skills
-
-| Skill | Category | Purpose |
-| --- | --- | --- |
-| `requirements-interview` | Clarification | Clarify intent, assess scope, and choose direct work vs accelerated or full SDD |
-| `plan-reviewer` | Review | Validate `tasks.md` for real execution blockers and return `[OKAY]` or `[REJECT]` |
-| `sdd-init` | SDD | Bootstrap OpenSpec structure and SDD context for a project |
-| `sdd-propose` | SDD | Create or update `proposal.md` |
-| `sdd-spec` | SDD | Write OpenSpec delta specs with RFC 2119 requirements and scenarios |
-| `sdd-design` | SDD | Produce `design.md` with technical decisions and file changes |
-| `sdd-tasks` | SDD | Generate phased `tasks.md` checklists |
-| `sdd-apply` | SDD | Execute assigned SDD tasks and report structured results |
-| `executing-plans` | Execution | Run task lists with durable progress tracking and verification checkpoints |
-| `sdd-verify` | Verification | Create compliance-oriented verification reports |
-| `sdd-archive` | Archive | Merge verified deltas into main specs and archive the change |
-
-### Recommended external skills
-
-| Skill | Status | Typical use |
-| --- | --- | --- |
-| `simplify` | Installed by `--skills=yes` | Keep solutions lean and reduce unnecessary complexity |
-| `playwright-cli` | Installed by `--skills=yes` | Browser automation for `designer` visual checks |
-| `test-driven-development` | Optional companion | Useful before implementing bug fixes or features with `deep` |
-| `systematic-debugging` | Optional companion | Useful for `oracle` and `deep` when failures need disciplined diagnosis |
-
-### Built-in MCP servers
-
-| MCP | Purpose | Auth / runtime |
-| --- | --- | --- |
-| `exa` | Exa-backed web search | Optional `EXA_API_KEY` via env |
-| `context7` | Official library and framework docs | Optional `CONTEXT7_API_KEY` via env |
-| `grep_app` | Public GitHub code search | No auth required |
-| `thoth_mem` | Local persistent memory and artifact storage | Local command, default `npx -y thoth-mem@latest` |
-
-> **🧠 [Thoth-Mem](https://github.com/EremesNG/thoth-mem)** is a persistent
-> memory MCP server purpose-built for cross-session context. The orchestrator
-> uses it to save architectural decisions, bug-fix learnings, SDD artifacts,
-> and session summaries so the next session picks up where the last one left
-> off — even after context-window compaction. It is included by default and
-> runs locally via `npx`.
-
-For targeted retrieval, Thoth-Mem uses a 3-layer recall protocol:
-
-1. `mem_search` — scan the compact index of IDs and titles
-2. `mem_timeline` — inspect chronological context around candidates
-3. `mem_get_observation` — read full content for selected records
-
-After task completion, an automatic save nudge reminds the orchestrator to
-persist important observations. Session start also degrades gracefully if
-`thoth_mem` is unavailable, so memory errors do not block the main plugin flow.
-
-Skill and MCP access in this project is prompt-driven. The generated plugin
-config focuses on model presets and runtime options rather than per-agent
-permission matrices.
-
-## 📚 Documentation
-
-- [docs/installation.md](docs/installation.md)
-- [docs/provider-configurations.md](docs/provider-configurations.md)
-- [docs/tmux-integration.md](docs/tmux-integration.md)
-- [docs/quick-reference.md](docs/quick-reference.md)
-- [docs/sdd-pipeline.md](docs/sdd-pipeline.md)
-- [docs/skills-and-mcps.md](docs/skills-and-mcps.md)
-- [AGENTS.md](AGENTS.md)
+- [Installation](docs/installation.md): OpenCode default setup, explicit Codex
+  setup, non-interactive installs, reset behavior, and troubleshooting.
+- [Codex Install](docs/codex-install.md): Codex targets, backups, dry-run
+  behavior, trust review, and limitations.
+- [Quick Reference](docs/quick-reference.md): Agent roster, SDD flow, memory,
+  delegation, tmux, and key config fields.
+- [Skills and MCPs](docs/skills-and-mcps.md): Bundled skills, MCP servers, and
+  harness delivery surfaces.
+- [Provider Configurations](docs/provider-configurations.md): OpenCode provider
+  presets, fallback chains, and Codex customization cross-links.
+- [Tmux Integration](docs/tmux-integration.md): OpenCode-scoped live pane
+  monitoring for delegated `task` sessions.
+- [SDD Pipeline](docs/sdd-pipeline.md): Planning and execution workflow details.
+- [Codex Plugin Packaging](docs/codex-plugin-packaging.md): Codex plugin package
+  layout and packaging boundaries.
+- [Codex Surface Validation](docs/codex-surface-validation.md): Validated,
+  unknown, and unsupported Codex generation surfaces.
+- [Codex Model Customization](docs/codex-model-customization.md): Codex role
+  model defaults and customization limits.
 
 ## Development
 
-The project targets `@opencode-ai/plugin` and `@opencode-ai/sdk` v1.3.3.
+The OpenCode integration targets `@opencode-ai/plugin` and
+`@opencode-ai/sdk` v1.4.7. The repository also contains Codex adapter and
+packaging code for the multi-harness install path.
 
 | Command | Purpose |
 | --- | --- |
-| `bun run build` | Build TypeScript into `dist/` |
+| `bun run build` | Build TypeScript into `dist/` and generate declarations/schema |
 | `bun run typecheck` | Run TypeScript type checking without emit |
 | `bun test` | Run the Bun test suite |
 | `bun run lint` | Run Biome linter |
 | `bun run format` | Run Biome formatter |
 | `bun run check` | Run Biome check with auto-fix |
 | `bun run check:ci` | Run Biome check without writes |
-| `bun run dev` | Build and launch the plugin in local dev mode |
+| `bun run dev` | Build and launch the OpenCode plugin in local dev mode |
 
-## 📄 License
+## License
 
 MIT

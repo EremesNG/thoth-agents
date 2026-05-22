@@ -4,18 +4,23 @@ This Phase 1 record gates later Codex artifact writers. A Codex adapter may
 generate only surfaces marked `validated` below. `unsupported` and `unknown`
 surfaces produce diagnostics only, with instruction-level fallback where noted.
 
+For the multi-harness overview and how Codex relates to the OpenCode default
+path, see the [README](../README.md) and
+[Installation](installation.md). This page stays focused on Codex generation
+surfaces and caveats.
+
 ## Sources checked
 
-- OpenAI Codex Configuration Reference — project/user `config.toml`, MCP,
+- OpenAI Codex Configuration Reference - project/user `config.toml`, MCP,
   skills config, features, approval policy, sandbox settings, and hooks mention.
-- OpenAI Codex Subagents — custom agent TOML under `~/.codex/agents/` or
+- OpenAI Codex Subagents - custom agent TOML under `~/.codex/agents/` or
   `.codex/agents/`, required fields, inherited config keys, and manual spawning.
-- OpenAI Codex Skills — `SKILL.md` skill folders and repo-local
+- OpenAI Codex Skills - `SKILL.md` skill folders and repo-local
   `.agents/skills` discovery plus plugin-bundled `skills/` package assets.
-- OpenAI Codex Plugins — plugin-root `plugin.json`, bundled `skills/`, bundled
+- OpenAI Codex Plugins - plugin-root `plugin.json`, bundled `skills/`, bundled
   hook assets, official manifest keys, plugin hook feature gates, and trust
   review.
-- OpenAI Codex Agent approvals & security — sandbox, approval policy, and
+- OpenAI Codex Agent approvals & security - sandbox, approval policy, and
   network/write constraints.
 
 ## Capability matrix
@@ -35,7 +40,7 @@ surfaces produce diagnostics only, with instruction-level fallback where noted.
 | Plugin-bundled hooks | validated | `.codex-plugin/hooks/hooks.json` referenced as `./hooks/hooks.json` | package content only; activation still requires `features.plugin_hooks` and trust review |
 | Lifecycle hooks | unknown | none | `codex.surface.hooks.unvalidated`; diagnostic-only until event schema and parity are validated |
 | Per-agent runtime permission maps | unsupported | none | `codex.permission.memory.enforcement_gap`; instruction-level governance only |
-| Programmatic delegation runtime | unsupported | none | `codex.delegation.runtime.unsupported`; instruction-level/manual subagent workflow only |
+| Programmatic delegation runtime | unsupported | none | `codex.delegation.runtime.unsupported`; instruction-level/manual subagent workflow only, including post-response subagent session close guidance |
 | Parent session/project injection | unknown | none | `codex.context.parent_injection.unvalidated`; prompts must require explicit parent `session_id`/`project` |
 
 ## Codex Hook Support Matrix
@@ -44,12 +49,12 @@ Codex lifecycle hooks are validated through hook-specific configuration surfaces
 
 ### Supported Hook Events
 The following events are fully validated and supported for **command handlers** only:
-- `SessionStart` — Triggered when a new Codex session begins.
-- `UserPromptSubmit` — Triggered when a user submits a prompt.
-- `PreToolUse` — Triggered before a tool is executed.
-- `PermissionRequest` — Triggered when a tool requires user permission.
-- `PostToolUse` — Triggered after a tool finishes execution.
-- `Stop` — Triggered when a session ends or is stopped.
+- `SessionStart` - Triggered when a new Codex session begins.
+- `UserPromptSubmit` - Triggered when a user submits a prompt.
+- `PreToolUse` - Triggered before a tool is executed.
+- `PermissionRequest` - Triggered when a tool requires user permission.
+- `PostToolUse` - Triggered after a tool finishes execution.
+- `Stop` - Triggered when a session ends or is stopped.
 
 ### Supported Handler Types
 - **Command Handlers** (`command`): Fully validated and supported.

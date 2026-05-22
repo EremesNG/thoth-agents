@@ -1,9 +1,14 @@
 # Codex Model Customization
 
 The Codex adapter generates one custom-agent TOML file per role under
-`.codex/agents/{role}.toml`. Generated subagents receive explicit model
-defaults so Codex users can start with role-appropriate GPT-family models while
-the root Codex thread remains user-controlled.
+`.codex/agents/thoth-agents-{role}.toml`. Generated non-orchestrator
+subagents receive explicit model defaults so Codex users can start with
+role-appropriate GPT-family models while the root Codex thread remains
+user-controlled.
+
+For the broader multi-harness orientation, see the
+[README](../README.md). For OpenCode provider presets, see
+[Provider Configurations](provider-configurations.md).
 
 ## Generated subagent defaults
 
@@ -18,9 +23,9 @@ The generated non-orchestrator agent files include `model`:
 | `quick` | `gpt-5.4-mini` |
 | `deep` | `gpt-5.5` |
 
-The generated `.codex/agents/orchestrator.toml` does not include `model`, and
-the generated `.codex/config.toml` snippet does not set a root `model`. Choose
-the root Codex model in your normal Codex user or project configuration.
+No selectable Codex `orchestrator` TOML is generated in v1, and the generated
+`.codex/config.toml` snippet does not set a root `model`. Choose the root Codex
+model in your normal Codex user or project configuration.
 
 ## Override a generated subagent model
 

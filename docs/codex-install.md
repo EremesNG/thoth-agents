@@ -14,23 +14,27 @@ behavior. They add or refresh the native OpenCode plugin entry and do not create
 or mutate Codex targets. `install --agent=codex` is an explicit Codex agent-pack
 setup and does not rewrite OpenCode config.
 
+For the broader multi-harness orientation, start with the
+[README](../README.md). For the full installation comparison, see
+[Installation](installation.md).
+
 ## What Codex install writes
 
 The Codex path builds a setup plan first, then applies it unless `--dry-run` is
 used. The managed targets are:
 
-- `~/.codex/AGENTS.md` — an thoth-agents managed block for the ambient
+- `~/.codex/AGENTS.md` - an thoth-agents managed block for the ambient
   Codex root session. Existing user instructions outside the block are preserved
   and backed up before rewrite.
-- `~/.codex/agents/thoth-agents-{role}.toml` — six role subagents:
+- `~/.codex/agents/thoth-agents-{role}.toml` - six role subagents:
   `explorer`, `librarian`, `oracle`, `designer`, `quick`, and `deep`. No
   selectable Codex `orchestrator` TOML is generated in v1.
-- `~/.codex/plugins/thoth-agents/` — Personal Codex plugin source
+- `~/.codex/plugins/thoth-agents/` - Personal Codex plugin source
   generated from the deterministic Codex plugin package layout.
-- `~/.agents/plugins/marketplace.json` — Personal marketplace entry pointing to
+- `~/.agents/plugins/marketplace.json` - Personal marketplace entry pointing to
   the local plugin source with a local `./`-prefixed relative path. Existing
   unrelated marketplace entries are preserved.
-- `~/.codex/config.toml` — conservative TOML merge of `[features].hooks = true`,
+- `~/.codex/config.toml` - conservative TOML merge of `[features].hooks = true`,
   `[features].plugin_hooks = true`, and
   `[features].default_mode_request_user_input = true` after explicit Codex
   install consent.
@@ -55,6 +59,10 @@ mode when `features.default_mode_request_user_input` is enabled; do not assume i
 is available in every collaboration mode. Role permissions, memory governance,
 provider-per-agent settings, and hook enforcement are instruction-level or
 user-managed unless Codex documents hard runtime controls for those surfaces.
+
+For shared concepts such as the seven-agent roster, SDD, thoth-mem, and
+delegation semantics, see [Quick Reference](quick-reference.md). For bundled
+skill and MCP delivery surfaces, see [Skills and MCPs](skills-and-mcps.md).
 
 ## Reset semantics
 

@@ -7,6 +7,10 @@ layout directly into the Personal plugin source directory
 `~/.agents/plugins/marketplace.json`. Registration does not bypass `/plugins`,
 bypass `/hooks`, or complete trust review.
 
+This page is the Codex technical packaging record. For the product-level
+multi-harness orientation, see the [README](../README.md). For install commands
+and trust-review steps, see [Codex Install](codex-install.md).
+
 ## Primary delivery strategy
 
 Plugin-bundled skills are the primary Codex delivery mode. A package manifest at

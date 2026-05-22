@@ -4,9 +4,9 @@
 OpenCode plugin installer:
 
 ```bash
-pnpm dlx thoth-agents@latest install --agent=codex
-pnpm dlx thoth-agents@latest install --agent=codex --dry-run
-pnpm dlx thoth-agents@latest install --agent=opencode
+npx thoth-agents@latest install --agent=codex
+npx thoth-agents@latest install --agent=codex --dry-run
+npx thoth-agents@latest install --agent=opencode
 ```
 
 Bare `install` and `install --agent=opencode` preserve the existing OpenCode

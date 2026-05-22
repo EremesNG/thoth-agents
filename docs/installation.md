@@ -19,9 +19,9 @@ own trust review and runtime caveats.
 
 | Harness | Command | Writes to | Best when |
 | --- | --- | --- | --- |
-| OpenCode default | `pnpm dlx thoth-agents@latest install` | OpenCode plugin config, optional skills, optional tmux config | You want the stable native plugin flow. |
-| OpenCode explicit | `pnpm dlx thoth-agents@latest install --agent=opencode` | Same as default OpenCode setup | You want to be explicit in automation. |
-| Codex explicit | `pnpm dlx thoth-agents@latest install --agent=codex` | Codex AGENTS block, six role TOMLs, Personal plugin source, marketplace entry, managed feature flags | You want Codex role agents and bundled skills. |
+| OpenCode default | `npx thoth-agents@latest install` | OpenCode plugin config, optional skills, optional tmux config | You want the stable native plugin flow. |
+| OpenCode explicit | `npx thoth-agents@latest install --agent=opencode` | Same as default OpenCode setup | You want to be explicit in automation. |
+| Codex explicit | `npx thoth-agents@latest install --agent=codex` | Codex AGENTS block, six role TOMLs, Personal plugin source, marketplace entry, managed feature flags | You want Codex role agents and bundled skills. |
 
 Use `--dry-run` before Codex install when you want to inspect the target plan
 and backups before writing files.
@@ -41,19 +41,19 @@ Run the interactive installer:
 ```bash
 corepack enable
 corepack prepare pnpm@11.2.2 --activate
-pnpm dlx thoth-agents@latest install
+npx thoth-agents@latest install
 ```
 
 Or make the OpenCode target explicit:
 
 ```bash
-pnpm dlx thoth-agents@latest install --agent=opencode
+npx thoth-agents@latest install --agent=opencode
 ```
 
 For non-interactive mode:
 
 ```bash
-pnpm dlx thoth-agents@latest install --no-tui --tmux=no --skills=yes
+npx thoth-agents@latest install --no-tui --tmux=no --skills=yes
 ```
 
 ### What OpenCode Install Sets Up
@@ -115,8 +115,8 @@ For alternative OpenCode providers and mixed-model presets, see
 Codex install is separate from the OpenCode plugin install:
 
 ```bash
-pnpm dlx thoth-agents@latest install --agent=codex --dry-run
-pnpm dlx thoth-agents@latest install --agent=codex
+npx thoth-agents@latest install --agent=codex --dry-run
+npx thoth-agents@latest install --agent=codex
 ```
 
 The Codex path writes only managed Codex targets:
@@ -154,7 +154,7 @@ supports them.
 Use `--reset` to repair or refresh managed generated targets:
 
 ```bash
-pnpm dlx thoth-agents@latest install --reset
+npx thoth-agents@latest install --reset
 ```
 
 For Codex, `--reset` refreshes managed blocks and generated targets; it does
@@ -169,7 +169,7 @@ harness.
 
 ```bash
 opencode --version
-pnpm dlx thoth-agents@latest install --agent=opencode --no-tui --tmux=no --skills=yes
+npx thoth-agents@latest install --agent=opencode --no-tui --tmux=no --skills=yes
 ```
 
 Ask the user to authenticate if interaction is required:
@@ -187,8 +187,8 @@ ping all agents
 ### Codex Path
 
 ```bash
-pnpm dlx thoth-agents@latest install --agent=codex --dry-run
-pnpm dlx thoth-agents@latest install --agent=codex
+npx thoth-agents@latest install --agent=codex --dry-run
+npx thoth-agents@latest install --agent=codex
 ```
 
 Ask the user to restart Codex and complete `/plugins` and `/hooks` trust review.
@@ -210,7 +210,7 @@ Ask the user to restart Codex and complete `/plugins` and `/hooks` trust review.
 Check available options:
 
 ```bash
-pnpm dlx thoth-agents@latest install --help
+npx thoth-agents@latest install --help
 ```
 
 ### Agents Not Responding In OpenCode

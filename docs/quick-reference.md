@@ -229,7 +229,7 @@ Built-in MCPs:
 | `exa` | Exa-backed web search | Optional `EXA_API_KEY` |
 | `context7` | Official library documentation lookup | Optional `CONTEXT7_API_KEY` |
 | `grep_app` | Public GitHub code search | No auth required |
-| `thoth_mem` | Local persistent memory and SDD artifact storage | Local `pnpm dlx thoth-mem@latest` |
+| `thoth_mem` | Local persistent memory and SDD artifact storage | Local `npx thoth-mem@latest` |
 
 Disable any built-in MCP globally with `disabled_mcps` where the generated
 harness config supports it:

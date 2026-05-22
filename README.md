@@ -43,16 +43,16 @@ provide the same hard runtime controls.
 
 | Harness | Status | Setup path | Notes |
 | --- | --- | --- | --- |
-| OpenCode | Stable default | `pnpm dlx thoth-agents@latest install` or `install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
-| Codex | Supported explicit path | `pnpm dlx thoth-agents@latest install --agent=codex` | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires `/plugins` and `/hooks` trust review. Some governance remains instruction-level. |
+| OpenCode | Stable default | `npx thoth-agents@latest install` or `install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
+| Codex | Supported explicit path | `npx thoth-agents@latest install --agent=codex` | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires `/plugins` and `/hooks` trust review. Some governance remains instruction-level. |
 
 ## Quick Start
 
 ### OpenCode
 
 ```bash
-pnpm dlx thoth-agents@latest install
-pnpm dlx thoth-agents@latest install --agent=opencode
+npx thoth-agents@latest install
+npx thoth-agents@latest install --agent=opencode
 opencode auth login
 opencode
 ```
@@ -66,7 +66,7 @@ ping all agents
 For non-interactive setup:
 
 ```bash
-pnpm dlx thoth-agents@latest install --no-tui --tmux=no --skills=yes
+npx thoth-agents@latest install --no-tui --tmux=no --skills=yes
 ```
 
 ### Codex
@@ -74,8 +74,8 @@ pnpm dlx thoth-agents@latest install --no-tui --tmux=no --skills=yes
 Review the plan first, then install explicitly:
 
 ```bash
-pnpm dlx thoth-agents@latest install --agent=codex --dry-run
-pnpm dlx thoth-agents@latest install --agent=codex
+npx thoth-agents@latest install --agent=codex --dry-run
+npx thoth-agents@latest install --agent=codex
 ```
 
 Restart Codex and review plugin/hook trust:
@@ -92,7 +92,7 @@ runtime guarantees unless Codex exposes those controls.
 ### Reset Generated Config
 
 ```bash
-pnpm dlx thoth-agents@latest install --reset
+npx thoth-agents@latest install --reset
 ```
 
 ## Seven-Agent Roster

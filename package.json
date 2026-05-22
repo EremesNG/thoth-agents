@@ -1,6 +1,6 @@
 {
   "name": "thoth-agents",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Delegate-first OpenCode plugin with seven agents, thoth-mem persistence, and bundled SDD skills.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

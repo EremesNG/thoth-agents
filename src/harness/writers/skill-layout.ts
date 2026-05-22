@@ -7,6 +7,7 @@ import type { HarnessArtifact, HarnessDiagnostic } from '../types';
 
 export interface CodexSkillLayoutInput {
   projectRoot: string;
+  packageRoot?: string;
   skills: SkillRegistryEntry[];
   surfaceId: string;
   outputMode?: CodexSkillOutputMode;
@@ -132,7 +133,8 @@ export function renderCodexSkillLayout(
   for (const skill of [...input.skills].sort((left, right) =>
     left.name.localeCompare(right.name),
   )) {
-    const sourceRoot = path.join(input.projectRoot, skill.sourcePath);
+    const sourceBaseRoot = input.packageRoot ?? input.projectRoot;
+    const sourceRoot = path.join(sourceBaseRoot, skill.sourcePath);
     const files = collectFiles(sourceRoot);
 
     if (files.length === 0) {
@@ -150,7 +152,7 @@ export function renderCodexSkillLayout(
     for (const file of files) {
       const relative = normalizePath(path.relative(sourceRoot, file));
       const content = fs.readFileSync(file, 'utf8');
-      const sourcePath = normalizePath(path.relative(input.projectRoot, file));
+      const sourcePath = normalizePath(path.relative(sourceBaseRoot, file));
 
       for (const mode of outputModes) {
         const config = OUTPUT_MODE_CONFIG[mode];

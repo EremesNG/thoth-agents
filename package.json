@@ -43,6 +43,7 @@
   "scripts": {
     "build": "tsup && tsc --emitDeclarationOnly && pnpm run generate-schema",
     "generate-schema": "tsx scripts/generate-schema.ts",
+    "release:notes": "tsx scripts/generate-release-notes.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "biome lint .",

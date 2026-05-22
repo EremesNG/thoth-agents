@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   codexAdapter,
   renderCodexRootInstructions,
@@ -16,6 +17,7 @@ import type { HarnessArtifact } from '../harness/types';
 import { writeCodexConfigMerge } from './codex-config-io';
 import type { CodexInstallScope, CodexRoleName } from './codex-paths';
 import { resolveCodexTargets } from './codex-paths';
+import { findPackageRoot } from './custom-skills';
 
 export { CODEX_ROLE_NAMES } from './codex-paths';
 
@@ -107,6 +109,15 @@ function packageArtifactTarget(
   artifact: HarnessArtifact,
 ): string {
   return join(packageRoot, codexPluginRootArtifactPath(artifact.path));
+}
+
+function resolvePackageRoot(
+  packageRoot: string | undefined,
+): string | undefined {
+  if (packageRoot) return packageRoot;
+  return (
+    findPackageRoot(fileURLToPath(new URL('.', import.meta.url))) ?? undefined
+  );
 }
 
 function normalizeRelativeMarketplacePath(path: string): string {
@@ -308,7 +319,11 @@ export function buildCodexSetupPlan(
     homeDir: config.homeDir,
     codexHome: config.codexHome,
   });
-  const render = codexAdapter.render({ projectRoot: config.projectRoot });
+  const packageRoot = resolvePackageRoot(config.packageRoot);
+  const render = codexAdapter.render({
+    projectRoot: config.projectRoot,
+    ...(packageRoot ? { packageRoot } : {}),
+  });
   const packageArtifacts = render.artifacts.filter((artifact) =>
     artifact.path.startsWith('.codex-plugin/'),
   );

@@ -33,6 +33,8 @@ const FORBIDDEN_CODEX_ADAPTATION_MARKERS = [
   'OpenCode-equivalent',
 ] as const;
 
+const PACKAGE_ROOT = process.cwd();
+
 function expectNoLeakedCodexAdaptationMarkers(content: string): void {
   for (const marker of FORBIDDEN_CODEX_ADAPTATION_MARKERS) {
     expect(content).not.toContain(marker);
@@ -67,7 +69,7 @@ function applyFreshCodexSetup(dir: string, home: string, reset = false): void {
       scope: 'user',
       projectRoot: dir,
       homeDir: home,
-      packageRoot: join(dir, '.codex-plugin'),
+      packageRoot: PACKAGE_ROOT,
     }),
   );
 
@@ -114,7 +116,7 @@ describe('Codex install setup plan', () => {
         scope: 'user',
         projectRoot: dir,
         homeDir: join(dir, 'home'),
-        packageRoot: join(dir, '.codex-plugin'),
+        packageRoot: PACKAGE_ROOT,
       });
 
       const itemKinds = plan.items.map((item) => item.kind);
@@ -172,7 +174,7 @@ describe('Codex install setup plan', () => {
         scope: 'user',
         projectRoot: dir,
         homeDir: join(dir, 'home'),
-        packageRoot: join(dir, '.codex-plugin'),
+        packageRoot: PACKAGE_ROOT,
       });
 
       const formatted = formatCodexSetupPlan(plan);
@@ -206,7 +208,7 @@ describe('Codex install setup plan', () => {
         scope: 'user',
         projectRoot: dir,
         homeDir: join(dir, 'home'),
-        packageRoot: join(dir, '.codex-plugin'),
+        packageRoot: PACKAGE_ROOT,
       });
 
       const formatted = formatCodexSetupPlan(plan);
@@ -234,7 +236,7 @@ describe('Codex install setup plan', () => {
         scope: 'user',
         projectRoot: dir,
         homeDir: home,
-        packageRoot: join(dir, '.codex-plugin'),
+        packageRoot: PACKAGE_ROOT,
       });
       const result = applyCodexSetup(plan);
 
@@ -292,6 +294,9 @@ describe('Codex install setup plan', () => {
       );
       expect(existsSync(join(personalPluginRoot, 'plugin.json'))).toBe(false);
       expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(true);
+      expect(
+        existsSync(join(personalPluginRoot, 'skills', 'sdd-apply', 'SKILL.md')),
+      ).toBe(true);
       const personalManifest = JSON.parse(
         readFileSync(
           join(personalPluginRoot, '.codex-plugin', 'plugin.json'),
@@ -375,7 +380,7 @@ describe('Codex install setup plan', () => {
           scope: 'user',
           projectRoot: dir,
           homeDir: home,
-          packageRoot: join(dir, '.codex-plugin'),
+          packageRoot: PACKAGE_ROOT,
         }),
       );
 
@@ -387,11 +392,77 @@ describe('Codex install setup plan', () => {
         existsSync(join(personalPluginRoot, '.codex-plugin', 'plugin.json')),
       ).toBe(true);
       expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(true);
+      expect(
+        existsSync(join(personalPluginRoot, 'skills', 'sdd-apply', 'SKILL.md')),
+      ).toBe(true);
       expect(existsSync(join(personalPluginRoot, '.mcp.json'))).toBe(true);
       expect(existsSync(join(personalPluginRoot, 'hooks', 'hooks.json'))).toBe(
         false,
       );
       expect(existsSync(join(personalPluginRoot, 'plugin.json'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('copies bundled skill files from package root when caller cwd is outside the package repo', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-dlx-install-'));
+    const callerProject = join(dir, 'caller-project');
+    const home = join(dir, 'home');
+    const packageRoot = process.cwd();
+
+    try {
+      mkdirSync(callerProject, { recursive: true });
+      const previousCwd = process.cwd();
+      process.chdir(callerProject);
+      try {
+        const result = applyCodexSetup(
+          buildCodexSetupPlan({
+            dryRun: false,
+            reset: true,
+            scope: 'user',
+            projectRoot: callerProject,
+            homeDir: home,
+            packageRoot,
+          }),
+        );
+
+        const personalPluginRoot = join(
+          home,
+          '.codex',
+          'plugins',
+          'thoth-agents',
+        );
+        const skillPath = join(
+          personalPluginRoot,
+          'skills',
+          'sdd-apply',
+          'SKILL.md',
+        );
+        const skillManifest = JSON.parse(
+          readFileSync(
+            join(personalPluginRoot, 'skills', '.thoth-agents-manifest.json'),
+            'utf8',
+          ),
+        ) as { skills?: Array<{ name?: string; outputPath?: string }> };
+
+        expect(result.success).toBe(true);
+        expect(result.diagnostics.join('\n')).not.toContain(
+          'codex.skill.source_missing',
+        );
+        expect(existsSync(skillPath)).toBe(true);
+        expect(readFileSync(skillPath, 'utf8')).toContain('sdd-apply');
+        expect(skillManifest.skills).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: 'sdd-apply',
+              outputPath: '.codex-plugin/skills/sdd-apply/SKILL.md',
+            }),
+          ]),
+        );
+      } finally {
+        process.chdir(previousCwd);
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -434,7 +505,7 @@ describe('Codex install setup plan', () => {
           scope: 'user',
           projectRoot: dir,
           homeDir: home,
-          packageRoot: join(dir, '.codex-plugin'),
+          packageRoot: PACKAGE_ROOT,
         }),
       );
 

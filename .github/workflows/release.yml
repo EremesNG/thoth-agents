@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -48,6 +50,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Generate release notes
+        run: pnpm tsx scripts/generate-release-notes.ts release-notes.md
+
       - name: Publish to npm
         run: npm publish
 
@@ -58,4 +63,4 @@ jobs:
           gh release create "${GITHUB_REF_NAME}"
           --verify-tag
           --title "${GITHUB_REF_NAME}"
-          --generate-notes
+          --notes-file release-notes.md

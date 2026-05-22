@@ -525,6 +525,9 @@ export const codexAdapter: HarnessAdapter = {
     const skillOutputModes = resolveSkillOutputModes(context);
     const skillLayout = renderCodexSkillLayout({
       projectRoot: context.projectRoot,
+      ...(hasCodexPackageRoot(context)
+        ? { packageRoot: context.packageRoot }
+        : {}),
       skills: getSkillRegistry(),
       surfaceId: 'plugin-skills-directory',
       outputModes: skillOutputModes,

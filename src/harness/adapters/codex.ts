@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CODEX_PROMPT_DIALECT } from '../../agents/prompt-dialects';
 import {
   createModelFamilySection,
@@ -57,21 +58,27 @@ import {
 
 export interface CodexRenderContext extends HarnessRenderContext {
   config?: PluginConfig;
+  packageRoot?: string;
 }
 
-function readRootPackageVersion(startDir: string): string {
-  const packageJsonPath = findRootPackageJsonPath([startDir, process.cwd()]);
+function readRootPackageVersion(context: HarnessRenderContext): string {
+  const packageJsonPath = findRootPackageJsonPath([
+    ...(hasCodexPackageRoot(context) ? [context.packageRoot] : []),
+    context.projectRoot,
+    process.cwd(),
+    fileURLToPath(new URL('.', import.meta.url)),
+  ]);
   return readPackageJsonVersion(packageJsonPath);
 }
 
-function createCodexPluginPackageManifest(projectRoot: string): {
+function createCodexPluginPackageManifest(context: HarnessRenderContext): {
   name: string;
   version: string;
   description: string;
 } {
   return {
     name: 'thoth-agents',
-    version: readRootPackageVersion(projectRoot),
+    version: readRootPackageVersion(context),
     description:
       'Delegate-first OpenCode plugin with seven agents, thoth-mem persistence, and bundled SDD skills.',
   };
@@ -361,6 +368,16 @@ function hasCodexConfig(
   return 'config' in context;
 }
 
+function hasCodexPackageRoot(
+  context: HarnessRenderContext,
+): context is CodexRenderContext & { packageRoot: string } {
+  return (
+    'packageRoot' in context &&
+    typeof context.packageRoot === 'string' &&
+    context.packageRoot.length > 0
+  );
+}
+
 function renderAgentArtifacts({ config }: { config?: PluginConfig }): {
   artifacts: HarnessArtifact[];
   diagnostics: HarnessDiagnostic[];
@@ -513,7 +530,7 @@ export const codexAdapter: HarnessAdapter = {
       outputModes: skillOutputModes,
     });
     const pluginPackage = renderCodexPluginPackage({
-      manifest: createCodexPluginPackageManifest(context.projectRoot),
+      manifest: createCodexPluginPackageManifest(context),
       assets: [
         {
           surfaceId: 'plugin-skills-directory',

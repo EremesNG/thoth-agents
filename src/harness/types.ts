@@ -78,6 +78,7 @@ export interface CapabilityGapDiagnostic extends HarnessDiagnostic {
 
 export interface HarnessRenderContext {
   projectRoot: string;
+  packageRoot?: string;
   options?: HarnessRenderOptions;
 }
 

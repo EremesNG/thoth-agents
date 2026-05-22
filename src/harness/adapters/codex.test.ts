@@ -119,6 +119,47 @@ describe('Codex adapter', () => {
     }
   });
 
+  test('resolves the plugin version from an installed package root when caller cwd is outside the repo', () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), 'codex-dlx-'));
+    const callerProject = path.join(workspace, 'caller-project');
+    const installedPackageRoot = path.join(
+      workspace,
+      'store',
+      'node_modules',
+      'thoth-agents',
+    );
+
+    try {
+      fs.mkdirSync(callerProject, { recursive: true });
+      writePackageJson(installedPackageRoot, {
+        name: 'thoth-agents',
+        version: '7.8.9',
+      });
+
+      const previousCwd = process.cwd();
+      process.chdir(callerProject);
+      try {
+        const result = codexAdapter.render({
+          projectRoot: callerProject,
+          packageRoot: installedPackageRoot,
+        });
+        const pluginManifest = JSON.parse(
+          String(
+            result.artifacts.find(
+              (artifact) => artifact.path === '.codex-plugin/plugin.json',
+            )?.content,
+          ),
+        ) as { version?: unknown };
+
+        expect(pluginManifest.version).toBe('7.8.9');
+      } finally {
+        process.chdir(previousCwd);
+      }
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   test('plans six role agent artifacts from validated Codex surfaces', () => {
     const result = codexAdapter.render({ projectRoot: process.cwd() });
 
@@ -182,8 +223,8 @@ describe('Codex adapter', () => {
         context7: { url: 'https://mcp.context7.com/mcp' },
         grep_app: { url: 'https://mcp.grep.app' },
         thoth_mem: {
-          command: 'pnpm',
-          args: ['dlx', 'thoth-mem@latest'],
+          command: 'npx',
+          args: ['-y', 'thoth-mem'],
         },
         exa: {
           command: 'npx',

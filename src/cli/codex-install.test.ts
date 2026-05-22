@@ -75,6 +75,36 @@ function applyFreshCodexSetup(dir: string, home: string, reset = false): void {
 }
 
 describe('Codex install setup plan', () => {
+  test('builds dry-run plan when caller cwd is outside the package repo', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-dlx-install-'));
+    const callerProject = join(dir, 'caller-project');
+    const home = join(dir, 'home');
+
+    try {
+      mkdirSync(callerProject, { recursive: true });
+      const previousCwd = process.cwd();
+      process.chdir(callerProject);
+      try {
+        const plan = buildCodexSetupPlan({
+          dryRun: true,
+          reset: false,
+          scope: 'user',
+          projectRoot: callerProject,
+          homeDir: home,
+        });
+
+        expect(plan.dryRun).toBe(true);
+        expect(
+          plan.items.some((item) => item.kind === 'personal-plugin-source'),
+        ).toBe(true);
+      } finally {
+        process.chdir(previousCwd);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('dry-run reports complete managed plan and writes nothing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
@@ -288,8 +318,8 @@ describe('Codex install setup plan', () => {
       ).toEqual({
         mcpServers: {
           thoth_mem: {
-            command: 'pnpm',
-            args: ['dlx', 'thoth-mem@latest'],
+            command: 'npx',
+            args: ['-y', 'thoth-mem'],
           },
           exa: {
             command: 'npx',

@@ -143,7 +143,7 @@ trust_level = "trusted"
     });
   });
 
-  test('accepts array-of-tables skills config headers during merge', () => {
+  test('preserves array-of-tables skills config headers during merge', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-config-'));
     try {
       const configPath = join(dir, 'config.toml');
@@ -157,16 +157,126 @@ trust_level = "trusted"
           'sources = ["repo"]\n',
       );
 
-      const result = writeCodexConfigMerge({ configPath, dryRun: true });
+      const result = writeCodexConfigMerge({ configPath, dryRun: false });
+      const updated = readFileSync(configPath, 'utf8');
+
       expect(result.success).toBe(true);
       expect(result.changed).toBe(true);
       expect(result.error).toBeUndefined();
+      expect(updated).toContain('[[skills.config]]');
+      expect(updated).not.toContain('[skills.config]\n');
       expect(result.diffSummary).toContain(
         'ensure features.default_mode_request_user_input = true',
       );
-      expect(result.warnings).toContain(
-        'Codex TOML comments and formatting may be rewritten; a backup is created before apply.',
-      );
+      expect(result.warnings).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('leaves existing enabled feature flag byte-for-byte unchanged', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-config-'));
+    try {
+      const configPath = join(dir, 'config.toml');
+      const source =
+        '# keep this comment\n' +
+        'model = "gpt-5"\n\n' +
+        '[features]\n' +
+        'default_mode_request_user_input = true\n\n' +
+        '[[skills.config]]\n' +
+        'enabled = true\n';
+      writeFileSync(configPath, source);
+
+      const result = writeCodexConfigMerge({ configPath, dryRun: false });
+
+      expect(result.success).toBe(true);
+      expect(result.changed).toBe(false);
+      expect(readFileSync(configPath, 'utf8')).toBe(source);
+      expect(existsSync(`${configPath}.bak`)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('adds missing feature flag without rewriting unrelated TOML', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-config-'));
+    try {
+      const configPath = join(dir, 'config.toml');
+      const before =
+        'approval_policy = "on-request"\n' +
+        'sandbox_mode = "workspace-write"\n\n' +
+        '[features]\n' +
+        'experimental_client = true\n\n' +
+        '[[skills.config]]\n' +
+        'enabled = true\n' +
+        'sources = ["repo"]\n';
+      const after =
+        'approval_policy = "on-request"\n' +
+        'sandbox_mode = "workspace-write"\n\n' +
+        '[features]\n' +
+        'experimental_client = true\n' +
+        'default_mode_request_user_input = true\n\n' +
+        '[[skills.config]]\n' +
+        'enabled = true\n' +
+        'sources = ["repo"]\n';
+      writeFileSync(configPath, before);
+
+      const result = writeCodexConfigMerge({ configPath, dryRun: false });
+
+      expect(result.success).toBe(true);
+      expect(result.changed).toBe(true);
+      expect(readFileSync(configPath, 'utf8')).toBe(after);
+      expect(readFileSync(`${configPath}.bak`, 'utf8')).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('enables an existing false feature flag by changing only that line', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-config-'));
+    try {
+      const configPath = join(dir, 'config.toml');
+      const before =
+        '[features]\n' +
+        'default_mode_request_user_input = false # user disabled earlier\n\n' +
+        '[[skills.config]]\n' +
+        'enabled = true\n';
+      const after =
+        '[features]\n' +
+        'default_mode_request_user_input = true # user disabled earlier\n\n' +
+        '[[skills.config]]\n' +
+        'enabled = true\n';
+      writeFileSync(configPath, before);
+
+      const result = writeCodexConfigMerge({ configPath, dryRun: false });
+
+      expect(result.success).toBe(true);
+      expect(result.changed).toBe(true);
+      expect(readFileSync(configPath, 'utf8')).toBe(after);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('appends a features section when it is missing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-config-'));
+    try {
+      const configPath = join(dir, 'config.toml');
+      const before =
+        'model = "gpt-5"\n\n' + '[[skills.config]]\n' + 'enabled = true\n';
+      const after =
+        'model = "gpt-5"\n\n' +
+        '[[skills.config]]\n' +
+        'enabled = true\n\n' +
+        '[features]\n' +
+        'default_mode_request_user_input = true\n';
+      writeFileSync(configPath, before);
+
+      const result = writeCodexConfigMerge({ configPath, dryRun: false });
+
+      expect(result.success).toBe(true);
+      expect(result.changed).toBe(true);
+      expect(readFileSync(configPath, 'utf8')).toBe(after);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

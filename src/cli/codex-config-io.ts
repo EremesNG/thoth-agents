@@ -14,7 +14,10 @@ interface TomlTable {
   [key: string]: TomlValue;
 }
 type TomlValue = TomlScalar | TomlArray | TomlTable;
-export type CodexTomlDocument = TomlTable;
+const arrayTablePathsSymbol = Symbol('codexArrayTablePaths');
+export type CodexTomlDocument = TomlTable & {
+  [arrayTablePathsSymbol]?: Set<string>;
+};
 
 export interface CodexConfigMergeResult {
   success: boolean;
@@ -135,6 +138,10 @@ function parseTomlKeyPath(raw: string): string[] {
   return segments;
 }
 
+function tomlPathKey(path: string[]): string {
+  return JSON.stringify(path);
+}
+
 function ensureTable(
   root: CodexTomlDocument,
   path: string[],
@@ -150,6 +157,8 @@ function ensureTable(
 
 export function parseCodexToml(content: string): CodexTomlDocument {
   const root: CodexTomlDocument = {};
+  const arrayTablePaths = new Set<string>();
+  root[arrayTablePathsSymbol] = arrayTablePaths;
   let table: string[] = [];
 
   for (const rawLine of content.split(/\r?\n/)) {
@@ -160,6 +169,7 @@ export function parseCodexToml(content: string): CodexTomlDocument {
     const tablePath = arrayTableMatch?.[1] ?? tableMatch?.[1];
     if (tablePath) {
       table = parseTomlKeyPath(tablePath);
+      if (arrayTableMatch) arrayTablePaths.add(tomlPathKey(table));
       ensureTable(root, table);
       continue;
     }
@@ -203,10 +213,15 @@ function renderTomlKeySegment(segment: string): string {
 function renderTomlSection(
   lines: string[],
   value: Record<string, TomlValue>,
+  arrayTablePaths: Set<string>,
   path: string[] = [],
 ): void {
-  if (path.length > 0)
-    lines.push(`[${path.map(renderTomlKeySegment).join('.')}]`);
+  if (path.length > 0) {
+    const header = path.map(renderTomlKeySegment).join('.');
+    lines.push(
+      arrayTablePaths.has(tomlPathKey(path)) ? `[[${header}]]` : `[${header}]`,
+    );
+  }
   const nested: [string, Record<string, TomlValue>][] = [];
   for (const key of Object.keys(value).sort()) {
     const entry = value[key];
@@ -215,12 +230,16 @@ function renderTomlSection(
   }
   if (path.length > 0) lines.push('');
   for (const [key, entry] of nested)
-    renderTomlSection(lines, entry, [...path, key]);
+    renderTomlSection(lines, entry, arrayTablePaths, [...path, key]);
 }
 
 export function renderCodexTomlDocument(document: CodexTomlDocument): string {
   const lines: string[] = [];
-  renderTomlSection(lines, document);
+  renderTomlSection(
+    lines,
+    document,
+    document[arrayTablePathsSymbol] ?? new Set(),
+  );
   while (lines.at(-1) === '') lines.pop();
   return `${lines.join('\n')}\n`;
 }
@@ -231,7 +250,9 @@ export function mergeCodexManagedConfig(
 ): { content: string; diffSummary: string[]; warnings: string[] } {
   const features = ensureTable(document, ['features']);
   features.default_mode_request_user_input = true;
-  const diffSummary = ['ensure features.default_mode_request_user_input = true'];
+  const diffSummary = [
+    'ensure features.default_mode_request_user_input = true',
+  ];
 
   if (options.pluginId) {
     const plugin = ensureTable(document, ['plugins', options.pluginId]);
@@ -252,6 +273,127 @@ export function mergeCodexManagedConfig(
   };
 }
 
+interface TomlLine {
+  text: string;
+  eol: string;
+}
+
+function splitTomlLines(content: string): TomlLine[] {
+  return (content.match(/[^\r\n]*(?:\r\n|\n|\r)|[^\r\n]+$/g) ?? []).map(
+    (rawLine) => {
+      const eol = /(\r\n|\n|\r)$/.exec(rawLine)?.[1] ?? '';
+      return {
+        text: eol ? rawLine.slice(0, -eol.length) : rawLine,
+        eol,
+      };
+    },
+  );
+}
+
+function tomlLineBreak(content: string): string {
+  return /(\r\n|\n|\r)/.exec(content)?.[1] ?? '\n';
+}
+
+function uncommentedTomlLine(line: string): string {
+  return line.split('#', 1)[0].trim();
+}
+
+function isTomlTableHeader(line: string): boolean {
+  const trimmed = uncommentedTomlLine(line);
+  return (
+    (trimmed.startsWith('[[') && trimmed.endsWith(']]')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  );
+}
+
+function isFeaturesHeader(line: string): boolean {
+  return uncommentedTomlLine(line) === '[features]';
+}
+
+function renderTomlLines(lines: TomlLine[]): string {
+  return lines.map((line) => `${line.text}${line.eol}`).join('');
+}
+
+function ensureLineHasEol(lines: TomlLine[], index: number, eol: string): void {
+  if (index >= 0 && lines[index]?.eol === '') lines[index].eol = eol;
+}
+
+function appendFeaturesSection(content: string): string {
+  const eol = tomlLineBreak(content);
+  if (!content) {
+    return `[features]${eol}default_mode_request_user_input = true${eol}`;
+  }
+
+  const separator =
+    content.endsWith('\n') || content.endsWith('\r')
+      ? content.endsWith(`${eol}${eol}`)
+        ? ''
+        : eol
+      : `${eol}${eol}`;
+  return `${content}${separator}[features]${eol}default_mode_request_user_input = true${eol}`;
+}
+
+export function patchCodexDefaultModeUserInputFeature(content: string): string {
+  const lines = splitTomlLines(content);
+  const eol = tomlLineBreak(content);
+  const featuresStart = lines.findIndex((line) => isFeaturesHeader(line.text));
+
+  if (featuresStart === -1) return appendFeaturesSection(content);
+
+  let featuresEnd = lines.length;
+  for (let index = featuresStart + 1; index < lines.length; index++) {
+    if (isTomlTableHeader(lines[index].text)) {
+      featuresEnd = index;
+      break;
+    }
+  }
+
+  const flagPattern =
+    /^(\s*default_mode_request_user_input\s*=\s*)(true|false)(\b.*)$/;
+  for (let index = featuresStart + 1; index < featuresEnd; index++) {
+    const match = flagPattern.exec(lines[index].text);
+    if (!match) continue;
+    if (match[2] === 'true') return content;
+    lines[index].text = `${match[1]}true${match[3]}`;
+    return renderTomlLines(lines);
+  }
+
+  let insertAt = featuresEnd;
+  while (insertAt > featuresStart + 1 && lines[insertAt - 1].text.trim() === '')
+    insertAt--;
+
+  ensureLineHasEol(lines, insertAt - 1, eol);
+  lines.splice(insertAt, 0, {
+    text: 'default_mode_request_user_input = true',
+    eol,
+  });
+  return renderTomlLines(lines);
+}
+
+function buildCodexManagedConfigPatch(
+  content: string,
+  options: { pluginId?: string },
+): { content: string; diffSummary: string[]; warnings: string[] } {
+  const diffSummary = [
+    'ensure features.default_mode_request_user_input = true',
+  ];
+  if (options.pluginId) {
+    diffSummary.push(
+      `plugin enablement for "${options.pluginId}" is not textually merged; use /plugins to enable it`,
+    );
+  } else {
+    diffSummary.push(
+      'plugin enablement left to /plugins; no guessed plugin id written',
+    );
+  }
+
+  return {
+    content: patchCodexDefaultModeUserInputFeature(content),
+    diffSummary,
+    warnings: [],
+  };
+}
+
 export function writeCodexConfigMerge(options: {
   configPath: string;
   dryRun?: boolean;
@@ -261,8 +403,7 @@ export function writeCodexConfigMerge(options: {
     const before = existsSync(options.configPath)
       ? readFileSync(options.configPath, 'utf8')
       : '';
-    const parsed = parseCodexToml(before);
-    const merged = mergeCodexManagedConfig(parsed, {
+    const merged = buildCodexManagedConfigPatch(before, {
       pluginId: options.pluginId,
     });
     const changed = before !== merged.content;

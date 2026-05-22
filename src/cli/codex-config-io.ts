@@ -155,9 +155,11 @@ export function parseCodexToml(content: string): CodexTomlDocument {
   for (const rawLine of content.split(/\r?\n/)) {
     const trimmed = rawLine.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
+    const arrayTableMatch = /^\[\[([^\]]+)\]\]$/.exec(trimmed);
     const tableMatch = /^\[([^\]]+)\]$/.exec(trimmed);
-    if (tableMatch) {
-      table = parseTomlKeyPath(tableMatch[1]);
+    const tablePath = arrayTableMatch?.[1] ?? tableMatch?.[1];
+    if (tablePath) {
+      table = parseTomlKeyPath(tablePath);
       ensureTable(root, table);
       continue;
     }
@@ -229,13 +231,7 @@ export function mergeCodexManagedConfig(
 ): { content: string; diffSummary: string[]; warnings: string[] } {
   const features = ensureTable(document, ['features']);
   features.default_mode_request_user_input = true;
-  features.hooks = true;
-  features.plugin_hooks = true;
-  const diffSummary = [
-    'ensure features.default_mode_request_user_input = true',
-    'ensure features.hooks = true',
-    'ensure features.plugin_hooks = true',
-  ];
+  const diffSummary = ['ensure features.default_mode_request_user_input = true'];
 
   if (options.pluginId) {
     const plugin = ensureTable(document, ['plugins', options.pluginId]);

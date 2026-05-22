@@ -317,9 +317,6 @@ describe('Codex install setup plan', () => {
       );
       expect(
         readFileSync(join(home, '.codex', 'config.toml'), 'utf8'),
-      ).toContain('plugin_hooks = true');
-      expect(
-        readFileSync(join(home, '.codex', 'config.toml'), 'utf8'),
       ).toContain('default_mode_request_user_input = true');
     } finally {
       rmSync(dir, { recursive: true, force: true });

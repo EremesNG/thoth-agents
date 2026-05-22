@@ -23,8 +23,12 @@ describe('prompt dialects', () => {
     expect(CODEX_PROMPT_DIALECT.tools.userQuestionTool).toBe(
       'request_user_input',
     );
-    expect(CODEX_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
-      'deep role agent',
+    expect(CODEX_PROMPT_DIALECT.tools.roleReference('deep')).toBe('deep role agent');
+    expect(CODEX_PROMPT_DIALECT.renderRoleInvocation('orchestrator')).toBe(
+      'orchestrator role agent',
+    );
+    expect(CODEX_PROMPT_DIALECT.renderRoleInvocation('deep')).toBe(
+      'deep subagent',
     );
     expect(CODEX_PROMPT_DIALECT.dispatchLabel('synchronous-task-only')).toBe(
       'synchronous Codex custom-agent task only',

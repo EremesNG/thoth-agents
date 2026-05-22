@@ -163,11 +163,14 @@ describe('semantic prompt section rendering', () => {
       'You are the delegate-first root coordinator and decision engine',
     );
     expect(prompt).toContain('Default to normal synchronous `task` execution');
+    expect(prompt).toContain(
+      'If a named subagent hits capacity, retry that same role up to 3 attempts.',
+    );
     expect(prompt).toContain('Plan gate: after tasks, ask with `question`');
     expect(prompt).toContain('track progress in todowrite');
     expect(prompt).toContain('Root-session memory is yours');
     expect(prompt).toContain(
-      'current main/root agent is the orchestrator/root coordinator',
+      'The root agent is the orchestrator/root coordinator for the session.',
     );
     expect(prompt).toContain(
       'At the start of a new root session, when thoth-mem tools are available',
@@ -300,10 +303,10 @@ describe('semantic prompt section rendering', () => {
       'delegate-first root coordinator and decision engine',
     );
     expect(prompts.orchestrator).toContain('Codex custom-agent task');
-    expect(prompts.orchestrator).toContain('deep role agent');
+    expect(prompts.orchestrator).toContain('deep subagent');
     expect(prompts.orchestrator).toContain('Codex progress tracking surface');
     expect(prompts.orchestrator).toContain(
-      'current main/root agent is the orchestrator/root coordinator',
+      'The root agent is the orchestrator/root coordinator for the session.',
     );
     expect(prompts.orchestrator).toContain('mem_session_start');
     expect(prompts.orchestrator).toContain('mem_save_prompt');

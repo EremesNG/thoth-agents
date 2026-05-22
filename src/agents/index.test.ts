@@ -284,7 +284,7 @@ describe('orchestrator agent', () => {
     );
     expect(prompt).toContain('Own the thinking');
     expect(prompt).toContain(
-      'Use sub-agents for evidence and action, not for outsourcing your architecture',
+      'Use sub-agents for evidence and action, not to outsource architecture or planning.',
     );
     expect(prompt).toContain('Verify through delegation, not inline.');
     expect(prompt).toContain('<internal-handoff>');

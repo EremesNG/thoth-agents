@@ -133,7 +133,7 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
     }
   },
   renderRoleInvocation(role) {
-    return `${role} role agent`;
+    return role === 'orchestrator' ? 'orchestrator role agent' : `${role} subagent`;
   },
 };
 

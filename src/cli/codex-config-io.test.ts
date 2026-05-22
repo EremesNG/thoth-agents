@@ -25,8 +25,9 @@ describe('Codex config IO', () => {
     );
 
     expect(merged.content).toContain(
-      '[features]\ndefault_mode_request_user_input = true\nhooks = true\nplugin_hooks = true',
+      '[features]\ndefault_mode_request_user_input = true',
     );
+    expect(merged.content).not.toContain('hooks = true');
     expect(merged.content).toContain(
       '[profiles.work]\napproval_policy = "on-request"',
     );
@@ -142,6 +143,35 @@ trust_level = "trusted"
     });
   });
 
+  test('accepts array-of-tables skills config headers during merge', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-config-'));
+    try {
+      const configPath = join(dir, 'config.toml');
+      writeFileSync(
+        configPath,
+        'approval_policy = "on-request"\n' +
+          'sandbox_mode = "workspace-write"\n' +
+          'agents = ["orchestrator", "explorer", "librarian", "oracle", "designer", "quick", "deep"]\n\n' +
+          '[[skills.config]]\n' +
+          'enabled = true\n' +
+          'sources = ["repo"]\n',
+      );
+
+      const result = writeCodexConfigMerge({ configPath, dryRun: true });
+      expect(result.success).toBe(true);
+      expect(result.changed).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(result.diffSummary).toContain(
+        'ensure features.default_mode_request_user_input = true',
+      );
+      expect(result.warnings).toContain(
+        'Codex TOML comments and formatting may be rewritten; a backup is created before apply.',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('dry-run writes no files and apply creates backup plus atomic result', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-config-'));
     try {
@@ -157,7 +187,6 @@ trust_level = "trusted"
       expect(readFileSync(`${configPath}.bak`, 'utf8')).toBe(
         'model = "gpt-5"\n',
       );
-      expect(readFileSync(configPath, 'utf8')).toContain('plugin_hooks = true');
       expect(readFileSync(configPath, 'utf8')).toContain(
         'default_mode_request_user_input = true',
       );

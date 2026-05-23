@@ -122,9 +122,10 @@ pnpm test -- -t "pattern"
   ranges, diff summaries, or verification outcomes — never raw file dumps.
   Sub-agents handle large content; you handle decisions.
 
-Blocking user decisions MUST go through the `question` tool. Agents must never
-ask those questions in plain prose, because that breaks the handoff and pause
-contract for interactive decisions.
+Blocking user decisions MUST go through the harness-bound structured question
+surface: OpenCode uses `question`; Codex uses `request_user_input` where
+available. Agents must never ask those questions in plain prose, because that
+breaks the handoff and pause contract for interactive decisions.
 
 ### Delegation Decision Table
 
@@ -272,7 +273,7 @@ After each SDD phase dispatch returns, verify the artifact exists:
 - If mode includes openspec: confirm the sub-agent reported the file path.
 - If mode includes thoth-mem: confirm the sub-agent reported the topic_key.
 - If verification fails, retry the phase once. If it fails again, report to
-  user via `question`.
+  user via the harness-bound structured question surface.
 
 ### State Management
 
@@ -310,7 +311,8 @@ Before starting SDD, the user chooses a persistence mode:
 
 ### Oracle Plan Review Gate
 
-After SDD tasks are generated, the orchestrator uses `question` to ask the user:
+After SDD tasks are generated, the orchestrator uses the harness-bound
+structured question surface to ask the user:
 - "Review plan with @oracle before executing (Recommended)" — thorough review
   for correctness
 - "Proceed to execution" — skip review and start implementing
@@ -318,8 +320,8 @@ After SDD tasks are generated, the orchestrator uses `question` to ask the user:
 If the user chooses review:
 1. Dispatch `@oracle` (the ONLY SDD phase that uses oracle) with `plan-reviewer`
    skill.
-2. If `[OKAY]`: ask the user with `question` whether to proceed to
-   implementation or stop with the approved plan.
+2. If `[OKAY]`: ask the user with the harness-bound structured question surface
+   whether to proceed to implementation or stop with the approved plan.
 3. Do NOT dispatch `sdd-apply` after oracle approval until the user confirms
    implementation.
 4. If `[REJECT]`: dispatch `@deep` to fix the blocking issues listed by oracle,
@@ -338,8 +340,8 @@ During execution, the orchestrator owns progress tracking via the
 - `- [-]` Skipped (with reason)
 
 Progress tracking has two mandatory layers:
-- `todowrite`: macro-level visual task list for the user; always active for
-  multi-step work
+- harness progress surface: OpenCode uses `todowrite`; Codex uses its progress
+  tracking surface where available
 - persistent SDD artifact: canonical task checkboxes in `tasks.md` and/or
   `thoth-mem`
 

@@ -1,11 +1,13 @@
 ---
 name: sdd-design
-description: Create `design.md` with architecture decisions and file changes.
+description: Create `design.md` as a technical solution design with architecture decisions and file changes.
 ---
 
 # SDD Design Skill
 
-Create the technical design that explains how the approved spec will be built.
+Create the technical solution design that explains how the approved spec will
+be built. OpenSpec `design.md` is a technical approach artifact covering
+implementation architecture, tradeoffs, and repository patterns.
 
 ## Shared Conventions
 
@@ -27,6 +29,10 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 
 - Proposal and specs exist and implementation planning needs technical depth
 - A prior design needs to be revised after spec changes
+
+This phase is not a UI/UX design task. Do not route this phase to the designer
+agent because it is named `design`; the default implementation owner is a
+technical write-capable role such as `deep`.
 
 ## Prerequisites
 
@@ -86,6 +92,10 @@ Return:
 ## Rules
 
 - Base the design on the actual codebase, not generic assumptions.
+- Do not route this phase to the designer agent. `sdd-design` itself always
+  stays with the technical write-capable agent.
+- Later `sdd-apply` tasks may route to the designer agent when the work is
+  specifically user-facing UI, visual work, screenshots, or visual QA.
 - Every architecture decision must include rationale.
 - Use concrete file paths and interfaces.
 - Keep implementation details aligned with the spec and repository patterns.

@@ -57,12 +57,20 @@ describe('skill registry contract', () => {
     const sddApply = getBundledSkillRegistry().find(
       (skill) => skill.name === 'sdd-apply',
     );
+    const sddDesign = getBundledSkillRegistry().find(
+      (skill) => skill.name === 'sdd-design',
+    );
     const planReviewer = getBundledSkillRegistry().find(
       (skill) => skill.name === 'plan-reviewer',
     );
 
     expect(sddApply).toMatchObject({
       sourcePath: 'src/skills/sdd-apply',
+      allowedRoles: ['orchestrator'],
+      purpose: 'sdd',
+    });
+    expect(sddDesign).toMatchObject({
+      description: expect.stringContaining('technical solution design'),
       allowedRoles: ['orchestrator'],
       purpose: 'sdd',
     });

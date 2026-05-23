@@ -263,7 +263,7 @@ Dispatch target by phase:
 | `sdd-design` | `@deep` | Write-capable, needs codebase analysis + file creation |
 | `sdd-tasks` | `@deep` | Write-capable, creates tasks artifact |
 | `plan-reviewer` | `@oracle` | Read-only — the ONLY phase that uses oracle |
-| `sdd-apply` | `@deep` or `@quick` | Write-capable, implements code changes |
+| `sdd-apply` | `@deep`, `@quick`, or `@designer` | Write-capable, implements code changes; `@designer` is for user-facing UI, visual work, screenshots, or visual QA |
 | `sdd-verify` | `@deep` | Write-capable, runs verification |
 | `sdd-archive` | `@deep` | Write-capable, archives change |
 

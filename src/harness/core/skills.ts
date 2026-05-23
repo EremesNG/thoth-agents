@@ -98,7 +98,7 @@ export const BUNDLED_SKILL_REGISTRY = [
   },
   {
     name: 'sdd-design',
-    description: 'Create technical design artifacts for changes',
+    description: 'Create technical solution design artifacts for changes',
     allowedRoles: ORCHESTRATOR_ONLY,
     sourcePath: 'src/skills/sdd-design',
     kind: 'skill',

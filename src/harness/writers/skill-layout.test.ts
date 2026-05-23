@@ -27,7 +27,12 @@ const SDD_SEMANTIC_ANCHORS: Record<string, string[]> = {
   'sdd-init': ['Bootstrap OpenSpec structure', 'Persistence Mode'],
   'sdd-propose': ['Create the proposal artifact', 'Persistence Mode'],
   'sdd-spec': ['Write OpenSpec delta specs', 'Persistence Mode'],
-  'sdd-design': ['Create `design.md`', 'Persistence Mode'],
+  'sdd-design': [
+    'Create `design.md`',
+    'technical solution design',
+    'Do not route this phase to the designer agent',
+    'Persistence Mode',
+  ],
   'sdd-tasks': [
     'proposal, spec, and design',
     'plan review',

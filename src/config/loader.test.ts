@@ -1175,6 +1175,26 @@ describe('loadAgentPrompt', () => {
     expect(result.appendPrompt).toBe('append prompt');
   });
 
+  test('preserves replacement and append prompt templates separately for composition ordering', () => {
+    const promptsDir = path.join(tempDir, 'opencode', 'thoth-agents');
+    fs.mkdirSync(promptsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(promptsDir, 'deep.md'),
+      'replacement {{role}} {{model}}',
+    );
+    fs.writeFileSync(
+      path.join(promptsDir, 'deep_append.md'),
+      'append {{role}} {{model}}',
+    );
+
+    const result = loadAgentPrompt('deep');
+
+    expect(result).toEqual({
+      prompt: 'replacement {{role}} {{model}}',
+      appendPrompt: 'append {{role}} {{model}}',
+    });
+  });
+
   test('handles file read errors gracefully', () => {
     const promptsDir = path.join(tempDir, 'opencode', 'thoth-agents');
     fs.mkdirSync(promptsDir, { recursive: true });

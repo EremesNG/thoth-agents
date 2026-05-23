@@ -15,6 +15,7 @@ import {
   renderRolePrompt,
 } from './prompt-sections';
 import {
+  appendPromptSections,
   composeAgentPrompt,
   QUESTION_PROTOCOL,
   SUBAGENT_RULES,
@@ -31,6 +32,58 @@ const AGENT_ROLES = [
   'quick',
   'deep',
 ] as const satisfies readonly AgentPromptRole[];
+
+const READ_ONLY_ROLES = [
+  'explorer',
+  'librarian',
+  'oracle',
+] as const satisfies readonly AgentPromptRole[];
+
+const WRITE_CAPABLE_ROLES = [
+  'designer',
+  'quick',
+  'deep',
+] as const satisfies readonly AgentPromptRole[];
+
+const CANONICAL_ROLE_TERMS = [
+  'orchestrator',
+  'explorer',
+  'librarian',
+  'oracle',
+  'designer',
+  'quick',
+  'deep',
+] as const;
+
+const REFERENCE_ROLE_LEAKS = [
+  'architect',
+  'builder',
+  'critic',
+  'fixer',
+  'researcher',
+  'planner',
+  'tester',
+] as const;
+
+const REFERENCE_REPO_LEAKS = [
+  'Gentle-AI',
+  'oh-my-opencode-slim',
+  'slash command',
+  'command model',
+  'commands.md',
+] as const;
+
+const SHARED_ROLE_POLICY_CONCRETE_TOOL_LEAKS = [
+  'playwright',
+  'playwright-cli',
+  'playwright test',
+  'show-report',
+  '--headed',
+  '--debug',
+  'browser-use',
+  'in-app browser',
+  'Chrome',
+] as const;
 
 function roleSections(role: AgentPromptRole) {
   switch (role) {
@@ -62,6 +115,32 @@ function expectNoCodexOnlyOpenCodeLeaks(prompt: string): void {
   expect(prompt).not.toContain('@explorer');
   expect(prompt).not.toContain('@designer');
   expect(prompt).not.toContain('@deep');
+}
+
+function expectAllTerms(prompt: string, terms: readonly string[]): void {
+  for (const term of terms) {
+    expect(prompt).toContain(term);
+  }
+}
+
+function expectNoReferenceRoleLeaks(prompt: string): void {
+  for (const role of REFERENCE_ROLE_LEAKS) {
+    expect(prompt.toLowerCase()).not.toMatch(new RegExp(`\\b${role}\\b`));
+  }
+}
+
+function expectNoReferenceRepoLeaks(prompt: string): void {
+  for (const marker of REFERENCE_REPO_LEAKS) {
+    expect(prompt.toLowerCase()).not.toContain(marker.toLowerCase());
+  }
+}
+
+function expectNoSharedRolePolicyConcreteToolLeaks(prompt: string): void {
+  const lowerPrompt = prompt.toLowerCase();
+
+  for (const term of SHARED_ROLE_POLICY_CONCRETE_TOOL_LEAKS) {
+    expect(lowerPrompt).not.toContain(term.toLowerCase());
+  }
 }
 
 describe('semantic prompt section rendering', () => {
@@ -186,6 +265,44 @@ describe('semantic prompt section rendering', () => {
     expect(prompt).not.toContain('request_user_input');
   });
 
+  test('OpenCode and Codex root prompts preserve root-owned coordination, memory, input, progress, and reporting', () => {
+    const openCode = rolePrompt('orchestrator', OPENCODE_PROMPT_DIALECT);
+    const codex = rolePrompt('orchestrator', CODEX_PROMPT_DIALECT);
+
+    for (const prompt of [openCode, codex]) {
+      expectAllTerms(prompt, [
+        'root coordinator',
+        'decision engine',
+        'delegate-first',
+        'sequencing',
+        'blocking user',
+        'progress',
+        'Root-session memory is yours',
+        'mem_session_start',
+        'mem_save_prompt',
+        'mem_session_summary',
+        'final',
+        'Never request raw file dumps',
+        'explorer',
+        'librarian',
+        'oracle',
+        'designer',
+        'quick',
+        'deep',
+      ]);
+      expect(prompt).not.toMatch(/optional specialist/i);
+      expectNoReferenceRoleLeaks(prompt);
+    }
+
+    expectAllTerms(openCode, ['`task`', '`question`', 'todowrite']);
+    expectAllTerms(codex, [
+      'Codex custom-agent task',
+      '`request_user_input`',
+      'Codex progress tracking surface',
+      'instruction-only',
+    ]);
+  });
+
   test('read-only specialist prompts preserve evidence-focused role boundaries', () => {
     const explorer = renderRolePrompt(
       createReadOnlySpecialistPromptSections('explorer'),
@@ -213,6 +330,43 @@ describe('semantic prompt section rendering', () => {
     );
   });
 
+  test('read-only specialists prohibit mutation, implementation ownership, and root memory while returning evidence', () => {
+    const prompts = Object.fromEntries(
+      READ_ONLY_ROLES.map((role) => [
+        role,
+        rolePrompt(role, OPENCODE_PROMPT_DIALECT),
+      ]),
+    ) as Record<(typeof READ_ONLY_ROLES)[number], string>;
+
+    for (const [role, prompt] of Object.entries(prompts)) {
+      expect(prompt).toContain(`You are ${role}.`);
+      expect(prompt).toContain('Mode: read-only');
+      expect(prompt).toMatch(/evidence|findings|anchors|source URL/i);
+      expect(prompt).toMatch(/do not|never/i);
+      expect(prompt).toMatch(/mutat|write|edit/i);
+      expect(prompt).toContain('Never write memory');
+      expect(prompt).toContain('Never discard working-tree changes');
+      expect(prompt).not.toContain('workspace-write');
+      expectNoReferenceRoleLeaks(prompt);
+    }
+
+    expectAllTerms(prompts.explorer, [
+      'local repository discovery',
+      'candidate files',
+      'verification targets',
+    ]);
+    expectAllTerms(prompts.librarian, [
+      'external docs',
+      'source URL',
+      'version',
+    ]);
+    expectAllTerms(prompts.oracle, [
+      'read-only review',
+      'findings',
+      'plan-reviewer',
+    ]);
+  });
+
   test('write-capable specialist prompts preserve implementation and verification boundaries', () => {
     const designer = renderRolePrompt(
       createWriteCapableSpecialistPromptSections('designer'),
@@ -229,7 +383,8 @@ describe('semantic prompt section rendering', () => {
 
     expect(designer).toContain('- Mode: write-capable');
     expect(designer).toContain('verify it visually');
-    expect(designer).toContain('screenshot');
+    expect(designer).toContain('visual verification surface');
+    expect(designer).toContain('non-blocking');
     expect(quick).toContain('Implement well-defined changes quickly');
     expect(quick).toContain('NEVER run git commands that discard changes');
     expect(deep).toContain(
@@ -237,6 +392,44 @@ describe('semantic prompt section rendering', () => {
     );
     expect(deep).toContain('Do not skip verification');
     expect([designer, quick, deep].join('\n')).toContain('mem_save');
+  });
+
+  test('write-capable specialists stay bounded and require verification evidence without taking root ownership', () => {
+    const prompts = Object.fromEntries(
+      WRITE_CAPABLE_ROLES.map((role) => [
+        role,
+        rolePrompt(role, OPENCODE_PROMPT_DIALECT),
+      ]),
+    ) as Record<(typeof WRITE_CAPABLE_ROLES)[number], string>;
+
+    for (const [role, prompt] of Object.entries(prompts)) {
+      expect(prompt).toContain(`You are ${role}.`);
+      expect(prompt).toContain('Mode: write-capable');
+      expect(prompt).toContain('synchronous task only');
+      expect(prompt).toContain('Never discard working-tree changes');
+      expect(prompt).toContain('Verification');
+      expect(prompt).toContain('Task Result envelope');
+      expectNoSharedRolePolicyConcreteToolLeaks(prompt);
+      expect(prompt).toContain('mem_save');
+      expect(prompt).toContain(
+        'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
+      );
+      expectNoReferenceRoleLeaks(prompt);
+    }
+
+    expectAllTerms(prompts.designer, [
+      'UI/UX',
+      'visual verification surface',
+      'visual QA',
+      'responsive',
+    ]);
+    expectAllTerms(prompts.quick, ['narrow', 'low-risk', 'mechanical']);
+    expectAllTerms(prompts.deep, [
+      'correctness-critical',
+      'test-driven-development',
+      'systematic-debugging',
+      'edge-case',
+    ]);
   });
 
   test('all seven OpenCode role prompts preserve role identity, scope, safety, and output contracts', () => {
@@ -289,6 +482,40 @@ describe('semantic prompt section rendering', () => {
     expect(prompts.deep).toContain('Do not skip verification');
   });
 
+  test('the canonical roster remains exactly seven roles across rendered prompt coverage', () => {
+    expect([...AGENT_ROLES]).toEqual([...CANONICAL_ROLE_TERMS]);
+
+    const renderedByHarness = [
+      OPENCODE_PROMPT_DIALECT,
+      CODEX_PROMPT_DIALECT,
+    ].map((dialect) =>
+      AGENT_ROLES.map((role) => rolePrompt(role, dialect)).join('\n'),
+    );
+
+    for (const rendered of renderedByHarness) {
+      for (const role of CANONICAL_ROLE_TERMS) {
+        expect(rendered).toContain(role);
+      }
+      expectNoReferenceRoleLeaks(rendered);
+    }
+  });
+
+  test('rendered prompts do not import reference repos or command models', () => {
+    const renderedPrompts = [
+      createAgents()
+        .map((agent) => agent.config.prompt ?? '')
+        .join('\n'),
+      ...[OPENCODE_PROMPT_DIALECT, CODEX_PROMPT_DIALECT].map((dialect) =>
+        AGENT_ROLES.map((role) => rolePrompt(role, dialect)).join('\n'),
+      ),
+    ];
+
+    for (const rendered of renderedPrompts) {
+      expectNoReferenceRoleLeaks(rendered);
+      expectNoReferenceRepoLeaks(rendered);
+    }
+  });
+
   test('all seven Codex role prompts use Codex terminology without weakening role identity', () => {
     const prompts = Object.fromEntries(
       AGENT_ROLES.map((role) => [role, rolePrompt(role, CODEX_PROMPT_DIALECT)]),
@@ -329,5 +556,36 @@ describe('semantic prompt section rendering', () => {
     expect(prompts.designer).toContain('visual verification');
     expect(prompts.quick).toContain('fast bounded implementation');
     expect(prompts.deep).toContain('Do not skip verification');
+  });
+
+  test('composeAgentPrompt keeps generated model-family guidance before user append text and replacement isolated', () => {
+    const basePrompt = appendPromptSections(
+      'Generated base for {{role}}',
+      'Model guidance for {{model}}',
+    );
+
+    const appended = composeAgentPrompt({
+      basePrompt,
+      customAppendPrompt: 'User append for {{role}}',
+      placeholders: { model: 'gpt-5.5', role: 'deep' },
+    });
+
+    expect(appended).toBe(
+      'Generated base for deep\n\nModel guidance for gpt-5.5\n\nUser append for deep',
+    );
+    expect(appended.indexOf('Model guidance')).toBeLessThan(
+      appended.indexOf('User append'),
+    );
+
+    const replaced = composeAgentPrompt({
+      basePrompt,
+      customPrompt: 'Replacement only for {{role}} on {{model}}',
+      customAppendPrompt: 'User append for {{role}}',
+      placeholders: { model: 'gpt-5.5', role: 'deep' },
+    });
+
+    expect(replaced).toBe('Replacement only for deep on gpt-5.5');
+    expect(replaced).not.toContain('Generated base');
+    expect(replaced).not.toContain('User append');
   });
 });

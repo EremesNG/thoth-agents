@@ -636,6 +636,62 @@ describe('Codex adapter', () => {
     );
   });
 
+  test('diagnoses Codex memory-governance enforcement gaps without granting root-only memory tools to subagents', () => {
+    const result = codexAdapter.render({ projectRoot: process.cwd() });
+    const diagnostics = result.diagnostics.filter(
+      (diagnostic) =>
+        diagnostic.code.includes('memory') ||
+        diagnostic.code.includes('parent_injection'),
+    );
+    const explorer = agentContent('explorer');
+    const deep = agentContent('deep');
+
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'codex.permission.memory.enforcement_gap',
+          capability: 'rolePermissions',
+          fallback: 'instruction-only',
+        }),
+        expect.objectContaining({
+          code: 'codex.context.parent_injection.unvalidated',
+          capability: 'parentContextInjection',
+          fallback: 'instruction-only',
+        }),
+        expect.objectContaining({
+          code: 'codex.permission.memory_write.enforcement_gap',
+          capability: 'memoryGovernanceEnforcement',
+          fallback: 'instruction-only',
+        }),
+      ]),
+    );
+    expect(
+      diagnostics.map((diagnostic) => diagnostic.message).join('\n'),
+    ).toContain('instruction-level guidance');
+    expect(
+      diagnostics.map((diagnostic) => diagnostic.message).join('\n'),
+    ).toContain('Parent session_id/project injection is not runtime-enforced');
+
+    for (const prompt of [explorer, deep]) {
+      expect(prompt).toContain(
+        'Every subagent memory call requires the parent session_id and project from dispatch',
+      );
+      expect(prompt).toContain(
+        'Never call mem_session_start, mem_session_summary, or mem_save_prompt',
+      );
+      expect(prompt).toContain(
+        'Runtime enforcement: instruction-level unless the target harness validates per-agent memory controls.',
+      );
+    }
+
+    expect(explorer).toContain(
+      'Read-only agents must never write durable memory.',
+    );
+    expect(deep).toContain(
+      'Write-capable agents may call mem_save only for delegated durable observations under the parent session/project.',
+    );
+  });
+
   test('prompt text is not counted as runtime memory enforcement', () => {
     const result = codexAdapter.render({ projectRoot: process.cwd() });
     const promptText = result.artifacts

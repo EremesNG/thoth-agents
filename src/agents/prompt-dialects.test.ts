@@ -16,6 +16,13 @@ describe('prompt dialects', () => {
     expect(OPENCODE_PROMPT_DIALECT.tools.progressTool).toBe('todowrite');
     expect(OPENCODE_PROMPT_DIALECT.tools.roleReference('deep')).toBe('@deep');
     expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('task')).toBe('task');
+    expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
+      'root coordinator',
+    );
+    expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('synchronous-task-only')).toBe(
+      'synchronous task only',
+    );
+    expect(OPENCODE_PROMPT_DIALECT.tools.hostStatusSurface).toBe('task_status');
   });
 
   test('renders Codex-native role-agent and status-surface wording explicitly', () => {
@@ -37,6 +44,18 @@ describe('prompt dialects', () => {
     );
     expect(CODEX_PROMPT_DIALECT.tools.backgroundStatusTool).toBe(
       'Codex host status surface',
+    );
+    expect(CODEX_PROMPT_DIALECT.tools.delegationTool).toBe(
+      'Codex custom-agent task',
+    );
+    expect(CODEX_PROMPT_DIALECT.tools.backgroundDelegationTool).toBe(
+      'Codex background role-agent run',
+    );
+    expect(CODEX_PROMPT_DIALECT.tools.progressTool).toBe(
+      'Codex progress tracking surface',
+    );
+    expect(CODEX_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
+      'ambient Codex root session coordinator',
     );
   });
 
@@ -84,9 +103,21 @@ describe('prompt dialects', () => {
     ).toContain('diagnostic-only');
   });
 
-  test('rejects unsupported prompt dialect ids', () => {
-    expect(() => getPromptDialect('unknown')).toThrow(
-      'Unsupported prompt dialect: unknown',
-    );
+  test('supports only OpenCode and Codex prompt dialect ids', () => {
+    expect(getPromptDialect('opencode')).toBe(OPENCODE_PROMPT_DIALECT);
+    expect(getPromptDialect('codex')).toBe(CODEX_PROMPT_DIALECT);
+
+    for (const dialectId of [
+      'unknown',
+      'claude-code',
+      'cursor',
+      'gemini-cli',
+      'aider',
+      'zed',
+    ]) {
+      expect(() => getPromptDialect(dialectId)).toThrow(
+        `Unsupported prompt dialect: ${dialectId}`,
+      );
+    }
   });
 });

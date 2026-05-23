@@ -56,6 +56,37 @@ describe('SDD workflow contract', () => {
     ).toBe(false);
   });
 
+  test('routes SDD artifact phases explicitly to technical write-capable roles', () => {
+    for (const phase of [
+      'proposal',
+      'spec',
+      'design',
+      'tasks',
+      'verify',
+      'archive',
+    ] as const) {
+      expect(getSddPhase(phase)).toMatchObject({
+        owner: 'write-capable-agent',
+        defaultAgentRole: 'deep',
+      });
+    }
+
+    expect(getSddPhase('design')).toMatchObject({
+      artifactSkill: 'sdd-design',
+      artifactMeaning: 'technical-solution-design',
+      defaultAgentRole: 'deep',
+    });
+    expect(getSddPhase('design')).not.toMatchObject({
+      defaultAgentRole: 'designer',
+    });
+
+    expect(getSddPhase('apply')).toMatchObject({
+      owner: 'write-capable-agent',
+      defaultAgentRole: 'deep',
+      alternateAgentRoles: ['quick', 'designer'],
+    });
+  });
+
   test('allows apply only after review approval and implementation confirmation', () => {
     expect(
       canEnterSddPhase({
@@ -77,6 +108,12 @@ describe('SDD workflow contract', () => {
   test('captures artifact and verification rules', () => {
     const contract = getSddWorkflowContract();
 
+    expect(contract.artifactRules.join('\n')).toContain(
+      'sdd-design itself never routes to designer',
+    );
+    expect(contract.artifactRules.join('\n')).toContain(
+      'Designer participates during apply only for user-facing UI, visual work, screenshots, or visual QA.',
+    );
     expect(contract.artifactRules.join('\n')).toContain(
       'Full-pipeline tasks require proposal, spec, and design',
     );

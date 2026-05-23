@@ -1,3 +1,5 @@
+import type { AgentRoleName } from './agent-pack';
+
 export type SddPipelineType = 'direct' | 'accelerated' | 'full';
 
 export type SddPhaseId =
@@ -20,6 +22,10 @@ export interface SddPhaseContract {
   producesArtifact: boolean;
   gate?: 'oracle-review' | 'user-confirmation';
   owner: 'orchestrator' | 'write-capable-agent' | 'oracle' | 'user';
+  artifactSkill?: string;
+  artifactMeaning?: string;
+  defaultAgentRole?: AgentRoleName;
+  alternateAgentRoles?: AgentRoleName[];
 }
 
 export interface SddWorkflowContract {
@@ -58,6 +64,8 @@ export const SDD_PHASES = [
     prerequisites: ['requirements-interview'],
     producesArtifact: true,
     owner: 'write-capable-agent',
+    artifactSkill: 'sdd-propose',
+    defaultAgentRole: 'deep',
   },
   {
     id: 'spec',
@@ -66,6 +74,8 @@ export const SDD_PHASES = [
     prerequisites: ['proposal'],
     producesArtifact: true,
     owner: 'write-capable-agent',
+    artifactSkill: 'sdd-spec',
+    defaultAgentRole: 'deep',
   },
   {
     id: 'design',
@@ -74,6 +84,9 @@ export const SDD_PHASES = [
     prerequisites: ['proposal', 'spec'],
     producesArtifact: true,
     owner: 'write-capable-agent',
+    artifactSkill: 'sdd-design',
+    artifactMeaning: 'technical-solution-design',
+    defaultAgentRole: 'deep',
   },
   {
     id: 'tasks',
@@ -82,6 +95,8 @@ export const SDD_PHASES = [
     prerequisites: ['proposal', 'spec', 'design'],
     producesArtifact: true,
     owner: 'write-capable-agent',
+    artifactSkill: 'sdd-tasks',
+    defaultAgentRole: 'deep',
   },
   {
     id: 'plan-review',
@@ -108,6 +123,8 @@ export const SDD_PHASES = [
     prerequisites: ['implementation-confirmation'],
     producesArtifact: false,
     owner: 'write-capable-agent',
+    defaultAgentRole: 'deep',
+    alternateAgentRoles: ['quick', 'designer'],
   },
   {
     id: 'verify',
@@ -116,6 +133,8 @@ export const SDD_PHASES = [
     prerequisites: ['apply'],
     producesArtifact: true,
     owner: 'write-capable-agent',
+    artifactSkill: 'sdd-verify',
+    defaultAgentRole: 'deep',
   },
   {
     id: 'archive',
@@ -124,6 +143,8 @@ export const SDD_PHASES = [
     prerequisites: ['verify'],
     producesArtifact: true,
     owner: 'write-capable-agent',
+    artifactSkill: 'sdd-archive',
+    defaultAgentRole: 'deep',
   },
 ] as const satisfies readonly SddPhaseContract[];
 
@@ -136,7 +157,9 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
     'Full SDD follows proposal -> spec -> design -> tasks before execution.',
   ],
   artifactRules: [
-    'Artifact-producing phases are executed by write-capable agents.',
+    'Artifact-producing phases sdd-propose, sdd-spec, sdd-design, sdd-tasks, sdd-verify, and sdd-archive default to deep.',
+    'OpenSpec design.md is technical solution design, not UI/UX design; sdd-design itself never routes to designer.',
+    'Designer participates during apply only for user-facing UI, visual work, screenshots, or visual QA.',
     'Full-pipeline tasks require proposal, spec, and design artifacts.',
     'Oracle is read-only and only performs plan review.',
   ],
@@ -153,6 +176,9 @@ export function getSddWorkflowContract(): SddWorkflowContract {
       ...phase,
       requiredFor: [...phase.requiredFor],
       prerequisites: [...phase.prerequisites],
+      alternateAgentRoles: phase.alternateAgentRoles
+        ? [...phase.alternateAgentRoles]
+        : undefined,
     })),
     routingRules: [...SDD_WORKFLOW_CONTRACT.routingRules],
     artifactRules: [...SDD_WORKFLOW_CONTRACT.artifactRules],

@@ -10,8 +10,9 @@
     "skipLibCheck": true,
     "types": ["node"],
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }

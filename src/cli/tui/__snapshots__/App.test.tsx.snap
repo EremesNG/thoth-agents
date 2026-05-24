@@ -1,0 +1,12 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`interactive TUI > TUI root menu groups actions and exposes Exit 1`] = `
+"thoth-agents
+Interactive setup
+Use arrows and Enter. Escape goes back. q exits.
+
+> Status - Inspect a harness
+  Manage Harnesses - List managed surfaces and actions
+  Sync / Update - Preview managed setup changes
+  Exit - Close the interactive setup"
+`;

@@ -16,9 +16,34 @@ export interface GenerateArgs {
   outputRoot?: string;
 }
 
+export type OperationHarnessArg = 'opencode' | 'codex';
+
+export interface CliModelRoleArg {
+  role: string;
+  model: string;
+  provider?: string;
+}
+
+export interface OperationArgs {
+  harness?: OperationHarnessArg;
+  all?: boolean;
+  apply?: boolean;
+  dryRun?: boolean;
+  roles: CliModelRoleArg[];
+}
+
+export type CliOperationCommand =
+  | 'status'
+  | 'list'
+  | 'update'
+  | 'sync'
+  | 'model';
+
 export type CliParseResult =
   | { command: 'install'; installArgs: InstallArgs }
   | { command: 'generate'; generateArgs: GenerateArgs }
+  | { command: 'tui' }
+  | { command: CliOperationCommand; operationArgs: OperationArgs }
   | { command: 'help' }
   | { command: 'error'; message: string };
 

@@ -1,0 +1,250 @@
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
+import { applyCodexSetup, buildCodexSetupPlan } from '../codex-install';
+import {
+  applyCodexPlan,
+  buildCodexInstallPlan,
+  buildCodexModelPlan,
+  buildCodexSyncPlan,
+  buildCodexUpdatePlan,
+  getCodexStatus,
+} from './codex';
+
+const PACKAGE_ROOT = process.cwd();
+
+function context(dir: string, home: string) {
+  return {
+    cwd: dir,
+    homeDir: home,
+    packageRoot: PACKAGE_ROOT,
+  };
+}
+
+function setup(dir: string, home: string): void {
+  const result = applyCodexSetup(
+    buildCodexSetupPlan({
+      dryRun: false,
+      reset: false,
+      scope: 'user',
+      projectRoot: dir,
+      homeDir: home,
+      packageRoot: PACKAGE_ROOT,
+    }),
+  );
+  expect(result.success).toBe(true);
+}
+
+function rolePath(home: string, role: string): string {
+  return join(home, '.codex', 'agents', `thoth-agents-${role}.toml`);
+}
+
+function managedModelsPath(home: string): string {
+  return join(home, '.codex', 'agents', '.thoth-agents-managed-models.json');
+}
+
+function roleModel(content: string): string | undefined {
+  return /^model\s*=\s*"([^"]+)"\s*$/m.exec(content)?.[1];
+}
+
+describe('Codex operations adapter', () => {
+  test('Codex status classifies missing, installed, drift, outdated, and unknown states', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-ops-'));
+    try {
+      const home = join(dir, 'home');
+      expect(getCodexStatus(context(dir, home)).state).toBe('missing');
+
+      setup(dir, home);
+      expect(getCodexStatus(context(dir, home)).state).toBe('installed');
+
+      writeFileSync(
+        rolePath(home, 'deep'),
+        readFileSync(rolePath(home, 'deep'), 'utf8').replace(
+          'name = "deep"',
+          'name = "deep-drift"',
+        ),
+      );
+      expect(getCodexStatus(context(dir, home)).state).toBe('drift');
+
+      setup(dir, home);
+      const manifestPath = join(
+        home,
+        '.codex',
+        'plugins',
+        'thoth-agents',
+        '.codex-plugin',
+        'plugin.json',
+      );
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+        version: string;
+      };
+      writeFileSync(
+        manifestPath,
+        `${JSON.stringify({ ...manifest, version: '0.0.0' }, null, 2)}\n`,
+      );
+      expect(getCodexStatus(context(dir, home)).state).toBe('outdated');
+
+      setup(dir, home);
+      writeFileSync(managedModelsPath(home), '{ invalid json');
+      const unknown = getCodexStatus(context(dir, home));
+      expect(unknown.state).toBe('unknown');
+      expect(
+        unknown.targets.some((target) =>
+          target.observed?.includes('unparseable managed model state'),
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('Codex update and sync plans wrap setup dry-runs without writing files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-ops-'));
+    try {
+      const home = join(dir, 'home');
+      const update = buildCodexUpdatePlan(context(dir, home));
+      const sync = buildCodexSyncPlan(context(dir, home));
+
+      expect(update.harness).toBe('codex');
+      expect(update.action).toBe('update');
+      expect(update.dryRun).toBe(true);
+      expect(update.canApply).toBe(true);
+      expect(update.warnings.map((item) => item.message).join('\n')).toContain(
+        '/plugins',
+      );
+      expect(
+        update.disclaimers.map((item) => item.message).join('\n'),
+      ).toContain('Role permissions');
+      expect(sync.action).toBe('sync');
+      expect(
+        sync.items.some((item) =>
+          item.title.includes('Materialize Codex role'),
+        ),
+      ).toBe(true);
+      expect(existsSync(join(home, '.codex'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('Codex install plan wraps setup dry-run and can be applied', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-ops-'));
+    try {
+      const home = join(dir, 'home');
+      const plan = buildCodexInstallPlan(context(dir, home));
+
+      expect(plan.harness).toBe('codex');
+      expect(plan.action).toBe('install');
+      expect(plan.dryRun).toBe(true);
+      expect(plan.canApply).toBe(true);
+      expect(plan.title).toContain('Install');
+      expect(existsSync(join(home, '.codex'))).toBe(false);
+
+      const applied = applyCodexPlan(plan);
+      expect(applied.applied).toBe(true);
+      expect(existsSync(rolePath(home, 'deep'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('Codex model plan targets only generated subagent model lines and managed state', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-ops-'));
+    try {
+      const home = join(dir, 'home');
+      const plan = buildCodexModelPlan(
+        {
+          harness: 'codex',
+          dryRun: true,
+          roles: [
+            { role: 'deep', model: 'gpt-5.5' },
+            { role: 'quick', provider: 'openai', model: 'gpt-5.4-mini' },
+            { role: 'orchestrator', model: 'gpt-5.5' },
+          ],
+        },
+        context(dir, home),
+      );
+
+      expect(plan.action).toBe('model-config');
+      expect(plan.canApply).toBe(true);
+      expect(plan.items).toHaveLength(2);
+      expect(plan.items[0]?.preview).toContain('"deep"');
+      expect(plan.items[1]?.preview).toContain('openai/gpt-5.4-mini');
+      expect(plan.warnings.map((item) => item.message).join('\n')).toContain(
+        'orchestrator',
+      );
+      expect(plan.disclaimers.map((item) => item.message).join('\n')).toContain(
+        'generated subagent TOML model lines',
+      );
+      expect(existsSync(join(home, '.codex'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('Codex apply requires explicit applyable plans and preserves user-owned TOML fields', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-ops-'));
+    try {
+      const home = join(dir, 'home');
+      const unsafe = {
+        ...buildCodexUpdatePlan(context(dir, home)),
+        canApply: false,
+      };
+      expect(applyCodexPlan(unsafe).applied).toBe(false);
+      expect(existsSync(join(home, '.codex'))).toBe(false);
+
+      const update = buildCodexUpdatePlan(context(dir, home));
+      const applied = applyCodexPlan(update);
+      expect(applied.applied).toBe(true);
+      expect(existsSync(rolePath(home, 'deep'))).toBe(true);
+      expect(
+        applyCodexPlan({ ...buildCodexUpdatePlan(context(dir, home)) }).applied,
+      ).toBe(false);
+      expect(
+        applyCodexPlan({
+          ...buildCodexInstallPlan(context(dir, home)),
+          canApply: false,
+        }).applied,
+      ).toBe(false);
+
+      const quickPath = rolePath(home, 'quick');
+      const quickBefore = readFileSync(quickPath, 'utf8').replace(
+        'sandbox_mode = "workspace-write"',
+        'sandbox_mode = "read-only"',
+      );
+      writeFileSync(quickPath, quickBefore);
+      const modelPlan = buildCodexModelPlan(
+        {
+          harness: 'codex',
+          dryRun: true,
+          roles: [{ role: 'quick', model: 'openai/gpt-5.4-mini' }],
+        },
+        context(dir, home),
+      );
+      const modelApplied = applyCodexPlan(modelPlan);
+      expect(modelApplied.applied).toBe(true);
+      const quickAfter = readFileSync(quickPath, 'utf8');
+      expect(roleModel(quickAfter)).toBe('openai/gpt-5.4-mini');
+      expect(quickAfter).toContain('sandbox_mode = "read-only"');
+      expect(readFileSync(managedModelsPath(home), 'utf8')).toContain(
+        'openai/gpt-5.4-mini',
+      );
+      expect(getCodexStatus(context(dir, home)).state).toBe('drift');
+
+      setup(dir, home);
+      expect(roleModel(readFileSync(quickPath, 'utf8'))).toBe(
+        'openai/gpt-5.4-mini',
+      );
+      expect(getCodexStatus(context(dir, home)).state).toBe('installed');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

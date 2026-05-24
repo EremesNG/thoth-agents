@@ -5,20 +5,23 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { log } from './logger';
 
 describe('logger', () => {
-  const testLogFile = path.join(os.tmpdir(), 'thoth-agents.log');
+  const originalLogFile = process.env.THOTH_AGENTS_LOG_FILE;
+  let testLogDir: string;
+  let testLogFile: string;
 
   beforeEach(() => {
-    // Clean up log file before each test
-    if (fs.existsSync(testLogFile)) {
-      fs.unlinkSync(testLogFile);
-    }
+    testLogDir = fs.mkdtempSync(path.join(os.tmpdir(), 'thoth-agents-log-'));
+    testLogFile = path.join(testLogDir, 'thoth-agents.log');
+    process.env.THOTH_AGENTS_LOG_FILE = testLogFile;
   });
 
   afterEach(() => {
-    // Clean up log file after each test
-    if (fs.existsSync(testLogFile)) {
-      fs.unlinkSync(testLogFile);
+    if (originalLogFile === undefined) {
+      delete process.env.THOTH_AGENTS_LOG_FILE;
+    } else {
+      process.env.THOTH_AGENTS_LOG_FILE = originalLogFile;
     }
+    fs.rmSync(testLogDir, { recursive: true, force: true });
   });
 
   test('writes log message to file', () => {

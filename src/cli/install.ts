@@ -22,7 +22,7 @@ import {
   installCustomSkills,
 } from './custom-skills';
 import { getExistingLiteConfigPath } from './paths';
-import { installSkill, RECOMMENDED_SKILLS } from './skills';
+import { installRecommendedSkill, RECOMMENDED_SKILLS } from './skills';
 import type { ConfigMergeResult, InstallArgs, InstallConfig } from './types';
 
 // Colors
@@ -209,17 +209,23 @@ async function runInstall(config: InstallConfig): Promise<number> {
       }
     } else {
       let skillsInstalled = 0;
+      let skillsAlreadyInstalled = 0;
       for (const skill of RECOMMENDED_SKILLS) {
         printInfo(`Installing ${skill.name}...`);
-        if (installSkill(skill)) {
+        const result = installRecommendedSkill(skill);
+        if (result.status === 'installed') {
           printSuccess(`Installed: ${skill.name}`);
           skillsInstalled++;
-        } else {
+        } else if (result.status === 'already-installed') {
           printInfo(`Skipped: ${skill.name} (already installed)`);
+          skillsAlreadyInstalled++;
+        } else {
+          printError(`Failed to install recommended skill: ${skill.name}`);
+          return 1;
         }
       }
       printSuccess(
-        `${skillsInstalled}/${RECOMMENDED_SKILLS.length} skills processed`,
+        `${skillsInstalled} installed, ${skillsAlreadyInstalled} already installed`,
       );
     }
   }

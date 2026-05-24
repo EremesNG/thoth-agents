@@ -61,6 +61,8 @@
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@opencode-ai/plugin": "1.4.7",
     "@opencode-ai/sdk": "1.4.7",
+    "ink": "^7.0.3",
+    "react": "^19.2.6",
     "unique-names-generator": "^4.7.1",
     "vscode-jsonrpc": "^8.2.0",
     "vscode-languageserver-protocol": "^3.17.5",
@@ -70,7 +72,9 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
     "@types/node": "^22.19.19",
+    "@types/react": "^19.2.15",
     "@types/which": "^3.0.4",
+    "ink-testing-library": "^4.0.0",
     "tsup": "^8.5.1",
     "tsx": "4.22.2",
     "typescript": "^5.9.3",

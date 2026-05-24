@@ -80,11 +80,12 @@ export interface CodexApplyResult {
 
 const ROOT_START = '<!-- thoth-agents:codex-root:start -->';
 const ROOT_END = '<!-- thoth-agents:codex-root:end -->';
-const MANAGED_MODEL_STATE_VERSION = 1;
+export const MANAGED_MODEL_STATE_VERSION = 1;
 
 interface ManagedModelState {
   version: typeof MANAGED_MODEL_STATE_VERSION;
   models: Record<string, string>;
+  configuredModels?: Record<string, string>;
 }
 
 function mergeManagedBlock(existing: string, managedBlock: string): string {
@@ -165,13 +166,24 @@ function emptyManagedModelState(): ManagedModelState {
   };
 }
 
-function readManagedModelState(path: string): ManagedModelState {
+function stringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[0] === 'string' && typeof entry[1] === 'string',
+    ),
+  );
+}
+
+export function readManagedModelState(path: string): ManagedModelState {
   if (!existsSync(path)) return emptyManagedModelState();
 
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
       version?: unknown;
       models?: unknown;
+      configuredModels?: unknown;
     };
     if (
       parsed.version !== MANAGED_MODEL_STATE_VERSION ||
@@ -184,19 +196,17 @@ function readManagedModelState(path: string): ManagedModelState {
 
     return {
       version: MANAGED_MODEL_STATE_VERSION,
-      models: Object.fromEntries(
-        Object.entries(parsed.models).filter(
-          (entry): entry is [string, string] =>
-            typeof entry[0] === 'string' && typeof entry[1] === 'string',
-        ),
-      ),
+      models: stringRecord(parsed.models),
+      ...(Object.keys(stringRecord(parsed.configuredModels)).length > 0
+        ? { configuredModels: stringRecord(parsed.configuredModels) }
+        : {}),
     };
   } catch {
     return emptyManagedModelState();
   }
 }
 
-function parseRoleTomlModel(content: string): string | undefined {
+export function parseRoleTomlModel(content: string): string | undefined {
   const match = /^model\s*=\s*"((?:\\.|[^"\\])*)"\s*$/m.exec(content);
   if (!match) return undefined;
   return match[1]
@@ -216,7 +226,7 @@ function escapeTomlString(value: string): string {
     .replace(/\r/g, '\\r');
 }
 
-function replaceRoleTomlModel(content: string, model: string): string {
+export function replaceRoleTomlModel(content: string, model: string): string {
   const rendered = `model = "${escapeTomlString(model)}"`;
   if (/^model\s*=\s*"(?:\\.|[^"\\])*"\s*$/m.test(content)) {
     return content.replace(/^model\s*=\s*"(?:\\.|[^"\\])*"\s*$/m, rendered);
@@ -224,8 +234,100 @@ function replaceRoleTomlModel(content: string, model: string): string {
   return `${rendered}\n${content}`;
 }
 
-function roleManagedModelStateKey(path: string): string {
+export function roleManagedModelStateKey(path: string): string {
   return basename(path);
+}
+
+export interface CodexManagedModelOverride {
+  role: CodexRoleName;
+  model: string;
+}
+
+export function applyCodexManagedModelOverrides(
+  config: CodexInstallConfig,
+  overrides: CodexManagedModelOverride[],
+): CodexApplyResult {
+  if (config.dryRun) {
+    return {
+      success: true,
+      changed: [],
+      diagnostics: [
+        'Dry-run Codex model override apply requested; no files were written.',
+      ],
+    };
+  }
+
+  const plan = buildCodexSetupPlan({ ...config, dryRun: true, reset: false });
+  const stateItem = plan.items.find(
+    (item) => item.action === 'write-managed-model-state',
+  );
+  const statePath = stateItem?.targetPath;
+  if (!statePath) {
+    return {
+      success: false,
+      changed: [],
+      diagnostics: plan.diagnostics,
+      error: 'Codex managed model state target was not found.',
+    };
+  }
+
+  const changed: string[] = [];
+  const diagnostics = uniqueMessages([
+    ...plan.diagnostics,
+    ...plan.disclaimers,
+  ]);
+  const state = readManagedModelState(statePath);
+  const nextState: ManagedModelState = {
+    version: MANAGED_MODEL_STATE_VERSION,
+    models: { ...state.models },
+    ...(state.configuredModels
+      ? { configuredModels: { ...state.configuredModels } }
+      : {}),
+  };
+
+  try {
+    for (const override of overrides) {
+      const roleItem = plan.items.find(
+        (item) =>
+          item.action === 'write-role-toml' && item.role === override.role,
+      );
+      if (!roleItem?.content) {
+        throw new Error(
+          `Missing Codex role TOML content for ${override.role}.`,
+        );
+      }
+
+      const before = existsSync(roleItem.targetPath)
+        ? readFileSync(roleItem.targetPath, 'utf8')
+        : roleItem.content;
+      const updated = replaceRoleTomlModel(before, override.model);
+      if (writeTextWithBackup(roleItem.targetPath, updated)) {
+        changed.push(roleItem.targetPath);
+      }
+      const key = roleManagedModelStateKey(roleItem.targetPath);
+      nextState.models[key] =
+        parseRoleTomlModel(roleItem.content) ?? override.model;
+      nextState.configuredModels ??= {};
+      nextState.configuredModels[key] = override.model;
+    }
+
+    if (writeTextWithBackup(statePath, stableJson(nextState))) {
+      changed.push(statePath);
+    }
+
+    return {
+      success: true,
+      changed,
+      diagnostics: uniqueMessages(diagnostics),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      changed,
+      diagnostics: uniqueMessages(diagnostics),
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function resolveRoleTomlContent(options: {
@@ -239,15 +341,35 @@ function resolveRoleTomlContent(options: {
   const key = roleManagedModelStateKey(options.targetPath);
 
   if (!renderedModel) return options.renderedContent;
+  const configuredModel = options.reset
+    ? undefined
+    : options.state.configuredModels?.[key];
 
   if (options.reset || !existsSync(options.targetPath)) {
     options.nextState.models[key] = renderedModel;
+    if (configuredModel !== undefined) {
+      options.nextState.configuredModels ??= {};
+      options.nextState.configuredModels[key] = configuredModel;
+      return replaceRoleTomlModel(options.renderedContent, configuredModel);
+    }
     return options.renderedContent;
   }
 
   const currentModel = parseRoleTomlModel(
     readFileSync(options.targetPath, 'utf8'),
   );
+  if (configuredModel !== undefined) {
+    options.nextState.models[key] = renderedModel;
+    options.nextState.configuredModels ??= {};
+    options.nextState.configuredModels[key] = configuredModel;
+    return replaceRoleTomlModel(
+      options.renderedContent,
+      currentModel && currentModel !== configuredModel
+        ? currentModel
+        : configuredModel,
+    );
+  }
+
   const trackedModel = options.state.models[key];
   const isUserOwned =
     currentModel !== undefined &&

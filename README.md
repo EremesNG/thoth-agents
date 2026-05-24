@@ -46,7 +46,30 @@ provide the same hard runtime controls.
 | OpenCode | Stable default | `npx thoth-agents@latest install` or `install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
 | Codex | Supported explicit path | `npx thoth-agents@latest install --agent=codex` | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires `/plugins` and `/hooks` trust review. Some governance remains instruction-level. |
 
+OpenCode can load the plugin with:
+
+```jsonc
+{
+  "plugin": ["thoth-agents@latest"]
+}
+```
+
+That plugin entry is not a shell command. To run the installer or TUI, use the
+npm binary through a global install, `npx thoth-agents@latest`, or
+`pnpm dlx thoth-agents@latest`.
+
 ## Quick Start
+
+Run the binary with no arguments in an interactive terminal to open the
+multi-harness TUI:
+
+```bash
+npx thoth-agents@latest
+```
+
+The same no-argument binary invocation falls back to the OpenCode install path
+in CI, redirected, or `TERM=dumb` terminals. Use explicit commands when you
+need deterministic automation.
 
 ### OpenCode
 
@@ -68,6 +91,10 @@ For non-interactive setup:
 ```bash
 npx thoth-agents@latest install --no-tui --tmux=no --skills=yes
 ```
+
+Interactive status, list, update, sync, and model previews are available from
+the no-argument TUI. Command help also documents the explicit command names for
+terminal workflows.
 
 ### Codex
 

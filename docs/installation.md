@@ -4,6 +4,12 @@ Complete installation instructions for thoth-agents across supported harnesses.
 OpenCode is the stable default path. Codex is an explicit setup path with its
 own trust review and runtime caveats.
 
+The OpenCode plugin entry and the npm binary are different surfaces. OpenCode
+loads the plugin from config such as `plugin: ["thoth-agents@latest"]`; that
+does not install a global `thoth-agents` command. Run the installer or
+interactive TUI through a globally installed binary, `npx thoth-agents@latest`,
+or `pnpm dlx thoth-agents@latest`.
+
 ## Table of Contents
 
 - [Choose a Harness](#choose-a-harness)
@@ -19,6 +25,7 @@ own trust review and runtime caveats.
 
 | Harness | Command | Writes to | Best when |
 | --- | --- | --- | --- |
+| Interactive TUI | `npx thoth-agents@latest` in a TTY | Only when you choose an apply action | You want status/list/update/sync/model previews across supported harnesses. |
 | OpenCode default | `npx thoth-agents@latest install` | OpenCode plugin config, optional skills, optional tmux config | You want the stable native plugin flow. |
 | OpenCode explicit | `npx thoth-agents@latest install --agent=opencode` | Same as default OpenCode setup | You want to be explicit in automation. |
 | Codex explicit | `npx thoth-agents@latest install --agent=codex` | Codex AGENTS block, six role TOMLs, Personal plugin source, marketplace entry, managed feature flags | You want Codex role agents and bundled skills. |
@@ -36,7 +43,15 @@ and backups before writing files.
 
 ### Quick Install
 
-Run the interactive installer:
+Run the no-argument TUI in an interactive terminal:
+
+```bash
+corepack enable
+corepack prepare pnpm@11.2.2 --activate
+npx thoth-agents@latest
+```
+
+Or run the OpenCode installer directly:
 
 ```bash
 corepack enable
@@ -55,6 +70,10 @@ For non-interactive mode:
 ```bash
 npx thoth-agents@latest install --no-tui --tmux=no --skills=yes
 ```
+
+In CI, redirected streams, and `TERM=dumb` terminals, the no-argument binary
+keeps the legacy automation-safe fallback and routes to OpenCode install with
+the TUI disabled.
 
 ### What OpenCode Install Sets Up
 
@@ -81,6 +100,30 @@ When skills are enabled, it also installs or copies:
 | `--no-tui` | Run without the interactive installer UI |
 | `--dry-run` | Simulate install without writing files |
 | `--reset` | Refresh managed generated files and config blocks |
+
+## Interactive and Explicit Commands
+
+Use the no-argument TUI for interactive status, list, update, sync, and model
+preview flows:
+
+```bash
+npx thoth-agents@latest
+```
+
+The CLI help also exposes explicit command names:
+
+```bash
+npx thoth-agents@latest status
+npx thoth-agents@latest list
+npx thoth-agents@latest update
+npx thoth-agents@latest sync
+npx thoth-agents@latest model
+```
+
+Preview flows describe managed targets and backup expectations before any apply
+step. OpenCode update/sync messaging refers to the plugin config entry
+`plugin: ["thoth-agents@latest"]`; it should not be read as evidence that a
+global npm binary exists.
 
 ### After OpenCode Installation
 
@@ -267,12 +310,9 @@ See the [Tmux Integration Guide](tmux-integration.md) for more detail.
 1. Remove `"thoth-agents"` from the `plugin` array in
    `~/.config/opencode/opencode.json` or `opencode.jsonc`.
 2. Optionally remove generated config files:
-
-   ```bash
-   rm -f ~/.config/opencode/thoth-agents.json
-   rm -f ~/.config/opencode/thoth-agents.jsonc
-   rm -f ~/.config/opencode/thoth-agents.json.bak
-   ```
+   `~/.config/opencode/thoth-agents.json`,
+   `~/.config/opencode/thoth-agents.jsonc`, and any managed backup next to
+   those files.
 
 3. Optionally remove recommended external skills:
 

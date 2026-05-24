@@ -4,15 +4,25 @@
 OpenCode plugin installer:
 
 ```bash
+npx thoth-agents@latest
 npx thoth-agents@latest install --agent=codex
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=opencode
 ```
 
+The no-argument binary opens the interactive multi-harness TUI when stdin and
+stdout are real TTY streams. In CI, redirected, or `TERM=dumb` terminals, it
+falls back to the automation-safe OpenCode install path with the TUI disabled.
+
 Bare `install` and `install --agent=opencode` preserve the existing OpenCode
 behavior. They add or refresh the native OpenCode plugin entry and do not create
 or mutate Codex targets. `install --agent=codex` is an explicit Codex agent-pack
 setup and does not rewrite OpenCode config.
+
+OpenCode plugin config such as `plugin: ["thoth-agents@latest"]` is only an
+OpenCode loading surface. It does not create a global `thoth-agents` binary; run
+the Codex installer through a global install, `npx thoth-agents@latest`, or
+`pnpm dlx thoth-agents@latest`.
 
 For the broader multi-harness orientation, start with the
 [README](../README.md). For the full installation comparison, see

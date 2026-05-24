@@ -407,14 +407,15 @@ export function createWriteCapableSpecialistPromptSections(
       dispatch: 'synchronous task only',
       scope: 'UI/UX decisions, implementation, and visual verification',
       responsibility:
-        'Own the user-facing solution: choose the UX approach, implement it, and verify it visually across responsive states when screens change. Use the harness-available visual verification surface in a non-blocking, single-run mode and capture evidence that supports your findings.\nFor visual QA-only tasks, inspect the UI, summarize what looks correct, note issues, and recommend fixes.',
+        'Own the user-facing solution: choose the UX approach, implement it, and verify it visually through the visual verification surface across responsive states. Capture evidence once in non-blocking single-run mode.\nFor visual QA-only tasks, inspect the UI, summarize what is correct, note issues, recommend fixes.',
       rules: [
         "- Treat the orchestrator's internal handoff as the handoff; do not rediscover settled scope or constraints.",
-        '- Own UX decisions instead of bouncing them back unless a real user preference is required.',
+        '- Own UX decisions unless a real user preference is required.',
         '- Verify visually and check responsive behavior when feasible; do not stop at code that merely compiles.',
+        '- Delete temporary evidence you generated, such as screenshots, once it is no longer needed; if it is for root/orchestrator review, list it in your final output as garbage to delete after review.',
         '- Keep changes focused on the user-facing outcome.',
         '- Preserve unrelated working-tree changes.',
-        '- Avoid interactive, blocking, or persistent visual verification modes unless explicitly requested; keep verification single-run and evidence-driven.',
+        '- Avoid interactive or persistent visual verification unless explicitly requested; keep it single-run, evidence-driven.',
       ],
       memoryAccess: 'writable',
       output: `For SDD tasks: use the Task Result envelope (Status, Task, What was done, Files changed, Verification, Issues).

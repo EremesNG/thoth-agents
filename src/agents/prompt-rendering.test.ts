@@ -384,6 +384,8 @@ describe('semantic prompt section rendering', () => {
     expect(designer).toContain('- Mode: write-capable');
     expect(designer).toContain('verify it visually');
     expect(designer).toContain('visual verification surface');
+    expect(designer).toContain('temporary evidence');
+    expect(designer).toContain('garbage to delete after review');
     expect(designer).toContain('non-blocking');
     expect(quick).toContain('Implement well-defined changes quickly');
     expect(quick).toContain('NEVER run git commands that discard changes');

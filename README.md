@@ -43,7 +43,7 @@ provide the same hard runtime controls.
 
 | Harness | Status | Setup path | Notes |
 | --- | --- | --- | --- |
-| OpenCode | Stable default | `npx thoth-agents@latest install` or `install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
+| OpenCode | Stable default | `npx thoth-agents@latest install` or `npx thoth-agents@latest install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
 | Codex | Supported explicit path | `npx thoth-agents@latest install --agent=codex` | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires `/plugins` and `/hooks` trust review. Some governance remains instruction-level. |
 
 OpenCode can load the plugin with:

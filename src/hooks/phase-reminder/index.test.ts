@@ -25,7 +25,7 @@ describe('createPhaseReminderHook', () => {
     expect(PHASE_REMINDER).toContain('write sub-agent prompts in English');
     expect(PHASE_REMINDER).toContain('split discovery into surgical probes');
     expect(PHASE_REMINDER).toContain(
-      'after oracle returns [OKAY], ask the user before implementation',
+      'after oracle returns [OKAY], give a deep approved-plan overview',
     );
   });
 

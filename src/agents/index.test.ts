@@ -331,7 +331,10 @@ describe('orchestrator agent', () => {
       '@oracle, @designer, @quick, and @deep always use normal synchronous `task` execution',
     );
     expect(prompt).toContain(
-      'If @oracle returns [OKAY], ask the user with `question` whether to proceed to implementation',
+      'If @oracle returns [OKAY], give a deep approved-plan overview',
+    );
+    expect(prompt).toContain(
+      'goals, scope, sequence, key decisions, verification, risks/trade-offs',
     );
     expect(prompt).toContain(
       'Do not dispatch `sdd-apply` after oracle approval until the user confirms implementation',

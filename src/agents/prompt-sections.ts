@@ -291,7 +291,7 @@ Artifact governance handoff:
 
 Plan gate: after tasks, ask with \`{{userQuestionTool}}\`: "Review plan with {{role.oracle}} before executing (Recommended)" or "Proceed to execution".
 If reviewed, the review loop is complete only after [OKAY].
-If {{role.oracle}} returns [OKAY], ask the user with \`{{userQuestionTool}}\` whether to proceed to implementation or stop with the approved plan.
+If {{role.oracle}} returns [OKAY], give a deep approved-plan overview, then ask with \`{{userQuestionTool}}\` whether to implement or stop. Cover goals, scope, sequence, key decisions, verification, risks/trade-offs, and uncertainty so the user has full context.
 Do not dispatch \`sdd-apply\` after oracle approval until the user confirms implementation.
 Post-execution: delegate sdd-verify, then sdd-archive when verification passes.
 </sdd>

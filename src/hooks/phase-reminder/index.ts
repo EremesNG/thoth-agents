@@ -14,7 +14,7 @@ export const PHASE_REMINDER = `<reminder>Recall Workflow Rules:
 Understand → split discovery into surgical probes with explorer/librarian → synthesize the decision and internal handoff → execute → verify.
 If delegating, write sub-agent prompts in English and launch the specialist in the same turn you mention it. If multiple delegations are independent, emit all tool calls in a single response.
 Before write-capable dispatch, give concrete scope, anchors, steps, non-goals, and verification.
-In SDD, after oracle returns [OKAY], ask the user before implementation.</reminder>`;
+In SDD, after oracle returns [OKAY], give a deep approved-plan overview, then ask the user before implementation.</reminder>`;
 
 interface MessageInfo {
   role: string;

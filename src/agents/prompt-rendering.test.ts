@@ -5,6 +5,7 @@ import {
   CODEX_PROMPT_DIALECT,
   OPENCODE_PROMPT_DIALECT,
 } from './prompt-dialects';
+import { renderCodexRootInstructions } from '../harness/adapters/codex';
 import {
   createOrchestratorPromptSections,
   createQuestionProtocolSection,
@@ -267,7 +268,7 @@ describe('semantic prompt section rendering', () => {
 
   test('OpenCode and Codex root prompts preserve root-owned coordination, memory, input, progress, and reporting', () => {
     const openCode = rolePrompt('orchestrator', OPENCODE_PROMPT_DIALECT);
-    const codex = rolePrompt('orchestrator', CODEX_PROMPT_DIALECT);
+    const codex = renderCodexRootInstructions();
 
     for (const prompt of [openCode, codex]) {
       expectAllTerms(prompt, [
@@ -300,7 +301,11 @@ describe('semantic prompt section rendering', () => {
       '`request_user_input`',
       'Codex progress tracking surface',
       'instruction-only',
+      'self-contained prompt plus the internal handoff',
+      'Do not ask for or attempt a full parent-context fork',
     ]);
+    expect(openCode).not.toContain('self-contained prompt plus the internal handoff');
+    expect(openCode).not.toContain('full parent-context fork');
   });
 
   test('read-only specialist prompts preserve evidence-focused role boundaries', () => {

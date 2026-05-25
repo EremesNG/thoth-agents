@@ -269,6 +269,15 @@ function renderCodexRolePrompt(
   );
 }
 
+function codexInternalHandoffGuidance(): string {
+  return [
+    '<codex-delegation-guidance>',
+    '- For Codex typed/custom-agent delegation, prefer a self-contained prompt plus the internal handoff before dispatching write-capable agents.',
+    '- Do not ask for or attempt a full parent-context fork unless the active Codex host explicitly supports that workflow and the task truly requires it.',
+    '</codex-delegation-guidance>',
+  ].join('\n');
+}
+
 function codexRoleInstructions(role: AgentRoleContract): string {
   return [
     '<role-operational-contract>',
@@ -309,6 +318,7 @@ export function renderCodexRootInstructions(config?: PluginConfig): string {
   return [
     CODEX_ROOT_START,
     rootPrompt,
+    codexInternalHandoffGuidance(),
     '<codex-runtime>',
     '- The ambient Codex root session is the root/main orchestrator; orchestrator-only and root-owned instructions apply to it because Codex does not generate a selectable orchestrator agent TOML.',
     '- On each new root session, when thoth-mem tools are installed and session/project identity is known, call mem_session_start with the active project and session identity, then save the real user prompt with mem_save_prompt before later delegation.',

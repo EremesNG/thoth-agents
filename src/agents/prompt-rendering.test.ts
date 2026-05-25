@@ -243,6 +243,20 @@ describe('semantic prompt section rendering', () => {
       'You are the delegate-first root coordinator and decision engine',
     );
     expect(prompt).toContain('Default to normal synchronous `task` execution');
+    expect(prompt).toContain('Mutation: coordination artifacts only');
+    expect(prompt).toContain(
+      'You may perform small bounded local inspection when cheaper, faster, or clearer than delegation',
+    );
+    expect(prompt).toContain('Keep any direct check narrow and evidence-led');
+    expect(prompt).toContain(
+      'do not become the default discovery, implementation, or verification worker',
+    );
+    expect(prompt).toContain(
+      'Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review, correctness-heavy debugging, and implementation-heavy work.',
+    );
+    expect(prompt).toContain(
+      'Choose direct action, delegation, parallelization, or review by net quality, speed, cost, and reliability.',
+    );
     expect(prompt).toContain(
       'If a named subagent hits capacity, retry that same role up to 3 attempts.',
     );
@@ -264,6 +278,67 @@ describe('semantic prompt section rendering', () => {
     expect(prompt).toContain('After compaction');
     expect(prompt).toContain('@designer');
     expect(prompt).not.toContain('request_user_input');
+    expect(prompt).not.toContain('MUST NOT read or write any file');
+  });
+
+  test('orchestrator prompt permits bounded direct checks without making root a worker', () => {
+    const openCode = rolePrompt('orchestrator', OPENCODE_PROMPT_DIALECT);
+    const codex = renderCodexRootInstructions();
+
+    for (const prompt of [openCode, codex]) {
+      expectAllTerms(prompt, [
+        'small bounded local inspection',
+        'read a known file',
+        'confirm a script name',
+        'inspect a narrow artifact',
+        'verify one concrete claim',
+        'Keep any direct check narrow and evidence-led',
+        'do not become the default discovery',
+        'Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review, correctness-heavy debugging, and implementation-heavy work.',
+      ]);
+      expect(prompt).not.toContain('Delegate all inspection');
+      expect(prompt).not.toContain('Verify through delegation, not inline.');
+    }
+  });
+
+  test('orchestrator prompt enforces claim verification and evidence-led correction', () => {
+    const prompts = [
+      rolePrompt('orchestrator', OPENCODE_PROMPT_DIALECT),
+      renderCodexRootInstructions(),
+    ];
+
+    for (const prompt of prompts) {
+      expectAllTerms(prompt, [
+        'Verify material user or agent claims before relying on them',
+        'implementation, architecture, verification, safety, or guidance',
+        'bounded direct check, delegated local discovery, or authoritative external documentation',
+        'correct it plainly with the evidence',
+        'explain relevant tradeoffs',
+        'offer viable alternatives',
+        'Allow low-risk assumptions only when brief',
+        'Stay warm, direct, concise, and evidence-led',
+      ]);
+    }
+  });
+
+  test('orchestrator prompt bounds delegation by net gain and preserves root validation', () => {
+    const prompts = [
+      rolePrompt('orchestrator', OPENCODE_PROMPT_DIALECT),
+      renderCodexRootInstructions(),
+    ];
+
+    for (const prompt of prompts) {
+      expectAllTerms(prompt, [
+        'net quality, speed, cost, and reliability',
+        'Do not delegate when overhead exceeds a bounded direct check',
+        'delegate when breadth, risk, specialization, or independent review materially improves the result',
+        'Parallelize only independent delegations',
+        'reconcile dependent steps after evidence returns',
+        'Keep validation and final synthesis accountable to the root',
+      ]);
+      expectNoReferenceRepoLeaks(prompt);
+      expectNoReferenceRoleLeaks(prompt);
+    }
   });
 
   test('OpenCode and Codex root prompts preserve root-owned coordination, memory, input, progress, and reporting', () => {
@@ -275,6 +350,8 @@ describe('semantic prompt section rendering', () => {
         'root coordinator',
         'decision engine',
         'delegate-first',
+        'bounded direct',
+        'evidence-led',
         'sequencing',
         'blocking user',
         'progress',
@@ -284,6 +361,9 @@ describe('semantic prompt section rendering', () => {
         'mem_session_summary',
         'final',
         'Never request raw file dumps',
+        'net quality, speed, cost, and reliability',
+        'correct it plainly with the evidence',
+        'offer viable alternatives',
         'explorer',
         'librarian',
         'oracle',

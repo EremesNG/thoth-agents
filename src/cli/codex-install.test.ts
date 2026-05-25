@@ -246,6 +246,18 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('thoth-agents:codex-root:start');
       expect(root).toContain('thoth-agents:codex-root:start -->\n<role>');
       expect(root).toContain('delegate-first root coordinator');
+      expect(root).toContain(
+        'small bounded local inspection when cheaper, faster, or clearer than delegation',
+      );
+      expect(root).toContain(
+        'Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review',
+      );
+      expect(root).toContain(
+        'Verify material user or agent claims before relying on them',
+      );
+      expect(root).toContain('correct it plainly with the evidence');
+      expect(root).toContain('offer viable alternatives');
+      expect(root).toContain('net quality, speed, cost, and reliability');
       expect(root).toContain('Internal handoff fields');
       expect(root).toContain('Hard gates');
       expect(root).toContain('Plan gate: after tasks');

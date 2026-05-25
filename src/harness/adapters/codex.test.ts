@@ -453,6 +453,20 @@ describe('Codex adapter', () => {
     expect(rootInstructions).toContain(
       'You are the delegate-first root coordinator',
     );
+    expect(rootInstructions).toContain(
+      'small bounded local inspection when cheaper, faster, or clearer than delegation',
+    );
+    expect(rootInstructions).toContain(
+      'Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review',
+    );
+    expect(rootInstructions).toContain(
+      'Verify material user or agent claims before relying on them',
+    );
+    expect(rootInstructions).toContain('correct it plainly with the evidence');
+    expect(rootInstructions).toContain('offer viable alternatives');
+    expect(rootInstructions).toContain(
+      'net quality, speed, cost, and reliability',
+    );
     expect(rootInstructions).toContain('request_user_input');
     expect(rootInstructions).toContain(
       'features.default_mode_request_user_input',

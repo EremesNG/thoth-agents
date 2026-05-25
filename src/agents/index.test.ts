@@ -275,18 +275,30 @@ describe('orchestrator agent', () => {
     expect(orchestrator?.config.model).toBeUndefined();
   });
 
-  test('orchestrator prompt is delegate-first and forbids inline repo work', () => {
+  test('orchestrator prompt is delegate-first with bounded direct checks', () => {
     const prompt = getAgentByName('orchestrator')?.config.prompt;
     expect(prompt).toContain('delegate-first');
 
     expect(prompt).toContain(
-      'Delegate all inspection, writing, searching, debugging, and verification.',
+      'You may perform small bounded local inspection when cheaper, faster, or clearer than delegation',
+    );
+    expect(prompt).toContain('Keep any direct check narrow and evidence-led');
+    expect(prompt).toContain(
+      'do not become the default discovery, implementation, or verification worker',
+    );
+    expect(prompt).toContain(
+      'Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review, correctness-heavy debugging, and implementation-heavy work.',
     );
     expect(prompt).toContain('Own the thinking');
     expect(prompt).toContain(
       'Use sub-agents for evidence and action, not to outsource architecture or planning.',
     );
-    expect(prompt).toContain('Verify through delegation, not inline.');
+    expect(prompt).toContain(
+      'Verify material user or agent claims before relying on them',
+    );
+    expect(prompt).toContain(
+      'Choose direct action, delegation, parallelization, or review by net quality, speed, cost, and reliability.',
+    );
     expect(prompt).toContain('<internal-handoff>');
     expect(prompt).toContain('Internal handoff fields');
     expect(prompt).toContain(
@@ -352,10 +364,10 @@ describe('orchestrator agent', () => {
     );
     expect(prompt).toContain('before execution preparation starts');
     expect(prompt).toContain(
-      'Do not treat governance findings as an execution gate',
+      'do not treat findings as an execution gate',
     );
     expect(prompt).toContain(
-      'Do not let governance validation replace `plan-reviewer`',
+      'replacement for `plan-reviewer`/`executing-plans`',
     );
   });
 
@@ -363,11 +375,11 @@ describe('orchestrator agent', () => {
     const prompt = getAgentByName('orchestrator')?.config.prompt ?? '';
 
     expect(prompt).toContain(
-      'Delegate governance inspection; do not inspect repository artifacts inline.',
+      'Delegate governance inspection; do not treat findings as an execution gate',
     );
     expect(prompt).toContain('Root thoth-mem ownership stays with you');
     expect(prompt).toContain(
-      'sub-agents may surface findings but must not own session memory, prompts, or progress checkpoints',
+      'sub-agents must not own session memory, prompts, or progress checkpoints',
     );
   });
 });
@@ -509,7 +521,7 @@ describe('granular permission defaults', () => {
 describe('prompt role markers', () => {
   test('built-in prompts stay compact enough for delegation efficiency', () => {
     const maxPromptChars: Record<string, number> = {
-      orchestrator: 11_000,
+      orchestrator: 12_000,
       explorer: 3_000,
       librarian: 3_000,
       oracle: 3_000,

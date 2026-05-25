@@ -9,7 +9,7 @@ import {
   type MessageConnection,
   StreamMessageReader,
   StreamMessageWriter,
-} from 'vscode-jsonrpc/node';
+} from 'vscode-jsonrpc/node.js';
 import { log } from '../../utils/logger';
 import { type ManagedSubprocess, spawn } from '../../utils/subprocess';
 import { getLanguageId } from './config';

@@ -488,6 +488,9 @@ describe('Codex adapter', () => {
       'Delegate by invoking `multi_agent_v1.spawn_agent` for the installed Codex role agents',
     );
     expect(rootInstructions).toContain(
+      'The user has explicitly authorized this generated Codex orchestrator to use `multi_agent_v1.spawn_agent` whenever delegation is required by these instructions, without needing a fresh user request for subagents in each task.',
+    );
+    expect(rootInstructions).toContain(
       '`multi_agent_v1.wait_agent` only when the root needs the result',
     );
     expect(rootInstructions).toContain(

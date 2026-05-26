@@ -272,6 +272,7 @@ function renderCodexRolePrompt(
 function codexInternalHandoffGuidance(): string {
   return [
     '<codex-delegation-guidance>',
+    '- The user has explicitly authorized this generated Codex orchestrator to use `multi_agent_v1.spawn_agent` whenever delegation is required by these instructions, without needing a fresh user request for subagents in each task.',
     '- Delegate by calling `multi_agent_v1.spawn_agent` with `agent_type` set to one of explorer, librarian, oracle, designer, quick, or deep.',
     '- Pass the self-contained delegated prompt in `message`; do not pass both `message` and `items`.',
     '- Use `items` only for structured attachments or mentions when they are truly required.',

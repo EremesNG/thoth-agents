@@ -87,7 +87,10 @@ function roleAllowedTools(role: AgentRoleContract): MemoryToolName[] {
 function roleRules(role: AgentRoleContract): string[] {
   const sharedSubagentRules = [
     'Every subagent memory call requires the parent session_id and project from dispatch; if either is missing, do not call thoth-mem.',
+    'Delegated handoff recovery uses parent-scoped 3-layer recall with mem_search -> mem_timeline -> mem_get_observation before memory content is treated as source material.',
+    'Report missing, stale, contradictory, or insufficient recalled context instead of guessing through it.',
     'Never call mem_session_start, mem_session_summary, or mem_save_prompt; those tools are root/orchestrator-owned.',
+    'Never save generated subagent prompts as user intent.',
     'Protect the sdd/* topic namespace; SDD artifacts may use deterministic sdd/{change}/{artifact} topic keys only in persistence modes that include thoth-mem.',
   ];
 
@@ -95,6 +98,8 @@ function roleRules(role: AgentRoleContract): string[] {
     return [
       'mem_session_start, mem_session_summary, and mem_save_prompt are root/main orchestrator-owned tools and responsibilities.',
       'In harnesses without an orchestrator-named agent, root/main orchestrator-owned means the initial/root agent when the harness does not expose an orchestrator-named agent.',
+      'Before delegation, save or refresh the handoff body with root-owned mem_session_summary when available; otherwise disclose that compaction could not be persisted.',
+      'Dispatch task instructions plus recovery instructions, not the handoff body, raw transcripts, or generated subagent prompts.',
       'Dispatch parent session_id and project when authorizing subagent memory use.',
       'Protect the sdd/* topic namespace and write SDD memory artifacts only in thoth-mem or hybrid persistence modes.',
     ];
@@ -104,14 +109,16 @@ function roleRules(role: AgentRoleContract): string[] {
     return [
       ...sharedSubagentRules,
       'Read-only agents may only perform bounded, project-scoped recall with mem_search -> mem_timeline -> mem_get_observation when authorized.',
+      'Project-scoped read tools require explicit delegated permission.',
       'Read-only agents must never write durable memory.',
     ];
   }
 
   return [
     ...sharedSubagentRules,
-    'Write-capable agents may call mem_save only for delegated durable observations under the parent session/project.',
+    'Write-capable agents may call mem_save only for delegated durable observations or assigned deterministic SDD artifacts/apply-progress under the parent session/project.',
     'For reads, use only mem_search -> mem_timeline -> mem_get_observation.',
+    'Project-scoped read tools require explicit delegated permission.',
   ];
 }
 
@@ -190,7 +197,7 @@ export function memoryGovernanceDiagnostics(
         input.parentContextInjection === 'unknown' ? 'error' : 'warning',
       code: `${input.harness}.context.parent_injection.unvalidated`,
       message:
-        'Parent session_id/project injection is not runtime-enforced; subagents must be instructed not to use memory without explicit dispatch context.',
+        'Parent session_id/project injection is not runtime-enforced; subagents must be instructed not to use memory without explicit dispatch context and handoff recovery instructions.',
       harness: input.harness,
       capability: 'parentContextInjection',
       fallback: 'instruction-only',
@@ -202,7 +209,7 @@ export function memoryGovernanceDiagnostics(
       severity: 'warning',
       code: `${input.harness}.permission.memory_write.enforcement_gap`,
       message:
-        'Runtime controls for delegated memory writes are unavailable; write-capable agents receive instruction-level mem_save limits only.',
+        'Runtime controls for delegated memory writes are unavailable; write-capable agents receive instruction-level mem_save limits for durable observations and deterministic SDD artifacts only.',
       harness: input.harness,
       capability: 'memoryGovernanceEnforcement',
       fallback: 'instruction-only',

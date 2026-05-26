@@ -136,6 +136,26 @@ After compaction, first preserve the compacted summary with
 `mem_session_summary`, then recover recent context and use Targeted 3-layer
 recall before continuing. Do not invent missing memory.
 
+### Delegation Handoff as Compaction
+
+Before delegating after meaningful context changes, the root/main orchestrator
+should treat the handoff as a context-compaction boundary. When
+`mem_session_summary` and the parent `session_id`/project are available, the
+root MUST save or refresh the handoff body as root-owned session summary
+context before dispatch.
+
+The initial subagent prompt carries task instructions plus recovery
+instructions, not the handoff body. Include the parent `session_id`, project,
+persistence mode, memory permissions, and bounded 3-layer recall instructions
+when memory recall or SDD persistence is delegated. Do not embed the handoff
+summary body, raw transcripts, secrets, unrelated context, file dumps, or
+generated subagent prompts in the prompt or structured attachments.
+
+If root-owned compaction cannot be persisted because tooling or parent identity
+is unavailable, disclose that limitation and continue with explicit task
+instructions and local context. Do not ask a subagent to create a fallback
+session, call `mem_session_summary`, or save the generated dispatch prompt.
+
 ### SDD Topic Keys
 
 SDD artifacts saved to thoth-mem use deterministic topic keys:
@@ -184,6 +204,8 @@ When a subagent is allowed to touch thoth-mem, the orchestrator MUST pass:
 - parent `session_id`
 - `project`
 - any thoth-mem limits or ownership constraints relevant to the task
+- handoff recovery instructions when the task depends on root-owned session
+  summary context
 
 If a subagent does NOT receive both `session_id` and `project`, it MUST NOT call
 any thoth-mem tool.
@@ -209,6 +231,9 @@ Allowed pattern only:
 Rules:
 
 - Use the parent `session_id` and `project` from dispatch.
+- Use bounded 3-layer recall to recover the parent-session handoff summary
+  before treating memory as source material.
+- Report missing, stale, contradictory, or insufficient recalled context.
 - Do not call `mem_save`, `mem_update`, `mem_session_start`,
   `mem_session_summary`, or `mem_save_prompt`.
 - Do not treat `mem_search` output as the artifact body.
@@ -231,6 +256,9 @@ Rules:
 
 - Use the parent `session_id` and `project` from dispatch on every thoth-mem
   call.
+- Use bounded 3-layer recall to recover the parent-session handoff summary
+  before treating memory as source material.
+- Report missing, stale, contradictory, or insufficient recalled context.
 - Do not call `mem_context`; writable subagents stay on the same bounded
   3-layer recall path, using project-scoped read tools only when explicitly
   granted in dispatch.
@@ -241,6 +269,9 @@ Rules:
   session.
 - Save only durable information: decisions, bugfixes, patterns,
   configuration changes, discoveries, and explicitly assigned SDD artifacts.
+- For SDD apply work, save `apply-progress` or assigned deterministic SDD
+  artifacts only when explicitly delegated and only under the parent
+  session/project.
 
 ## Memory Types and Topic Keys
 
@@ -276,6 +307,8 @@ Before dispatching subagents in a thoth-mem workflow, verify all of this:
   `mem_save` delegated observations under the parent session/project, and
   whether project-scoped read tools (`mem_project_summary`, `mem_project_graph`,
   `mem_topic_keys`) are allowed.
+- If a root-owned handoff summary exists, the dispatch includes recovery
+  instructions but not the summary body.
 - The dispatch does NOT ask the subagent to save prompts.
 - The dispatch does NOT ask the subagent to write session summaries.
 - If the work is SDD-related, the dispatch preserves the shared topic-key rules

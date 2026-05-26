@@ -60,12 +60,35 @@ sub-agents:
 - Includes: proposal, spec, design, tasks, apply-progress, verify-report,
   archive-report, state
 - Sub-agents persist these directly when the active mode includes thoth-mem
-- Sub-agents do NOT write general memory observations
+- Sub-agents persist apply-progress or other deterministic SDD artifacts only
+  when that phase explicitly delegates the write under the parent
+  session/project
+- Sub-agents do NOT write general memory observations unless the dispatch
+  explicitly authorizes a delegated durable implementation observation outside
+  the `sdd/*` namespace
 
 This split preserves artifact nuance (sub-agents have full context when writing)
 while keeping general memory centralized under orchestrator control. In
 harnesses that cannot hard-enforce the split, treat it as instruction-level
 governance and disclose any unsupported-capability that prevents compliance.
+
+## Delegated Handoffs
+
+Root/orchestrator handoffs are treated as compaction boundaries. When
+root-owned `mem_session_summary` and parent identity are available, the root
+saves or refreshes the handoff body as session summary context before
+delegation.
+
+The initial subagent prompt includes task instructions, parent `session_id`,
+project, persistence mode, memory permissions, and recovery instructions. It
+does not include the handoff body, raw transcripts, secrets, generated
+subagent prompts, or file dumps. Subagents recover that context through the
+3-layer recall protocol before treating memory content as source material.
+
+If parent identity or summary tooling is unavailable, the root reports that
+compaction could not be persisted and the subagent relies on explicit task
+instructions and local evidence only. Subagents must not create fallback
+memory sessions.
 
 ## Retrieval Protocol
 

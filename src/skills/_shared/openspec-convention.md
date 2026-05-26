@@ -75,6 +75,11 @@ for `openspec` and `hybrid` modes. thoth-mem topic keys are the memory
 representation when the mode includes thoth-mem; neither representation changes
 the harness-neutral artifact names or lifecycle.
 
+Delegated handoff summaries are not OpenSpec artifacts. They are root-owned
+session summary context when thoth-mem is available, while subagent prompts
+carry recovery instructions and continue to use the canonical OpenSpec paths
+above for filesystem artifact recovery.
+
 ## Writing Rules
 
 - Preserve canonical filenames and locations.

@@ -274,11 +274,12 @@ function codexInternalHandoffGuidance(): string {
     '<codex-delegation-guidance>',
     '- The user has explicitly authorized this generated Codex orchestrator to use `multi_agent_v1.spawn_agent` whenever delegation is required by these instructions, without needing a fresh user request for subagents in each task.',
     '- Delegate by calling `multi_agent_v1.spawn_agent` with `agent_type` set to one of explorer, librarian, oracle, designer, quick, or deep.',
-    '- Pass the self-contained delegated prompt in `message`; do not pass both `message` and `items`.',
-    '- Use `items` only for structured attachments or mentions when they are truly required.',
-    '- Include the internal handoff in `message` for write-capable agents so they can act without rediscovering context.',
+    '- Pass the self-contained delegated task instructions plus handoff retrieval instructions in `message`; do not embed the root-owned handoff summary body in `message`.',
+    '- Do not include the handoff body in `message` or `items`, and do not pass both `message` and `items` for the same handoff.',
+    '- Use `items` only for structured attachments or mentions when they are truly required; do not use `items` as a handoff-summary payload.',
     '- Leave `fork_context` omitted or false by default; set `fork_context: true` only when the exact current thread history is required.',
     '- Use `multi_agent_v1.wait_agent` only when the root needs the result, `multi_agent_v1.send_input` for follow-up or redirect, `multi_agent_v1.resume_agent` only for a closed agent that must continue, and `multi_agent_v1.close_agent` after completion.',
+    '- Memory ownership, handoff recovery, permissions, and prompt-body exclusion are instruction-level unless the active Codex runtime documents stronger enforcement.',
     '</codex-delegation-guidance>',
   ].join('\n');
 }
@@ -328,6 +329,7 @@ export function renderCodexRootInstructions(config?: PluginConfig): string {
     '- The ambient Codex root session is the root/main orchestrator; orchestrator-only and root-owned instructions apply to it because Codex does not generate a selectable orchestrator agent TOML.',
     '- On each new root session, when thoth-mem tools are installed and session/project identity is known, call mem_session_start with the active project and session identity, then save the real user prompt with mem_save_prompt before later delegation.',
     '- If thoth-mem tools or identity values are unavailable, disclose that memory bootstrap could not run and continue without claiming memory was saved.',
+    '- Before delegating after meaningful context changes, save or refresh the handoff body with root-owned mem_session_summary when available; if unavailable, disclose that root-owned compaction could not be persisted.',
     '- Use the ambient Codex root session as the delegate-first root coordinator; do not generate or select an orchestrator TOML.',
     '- Delegate by invoking `multi_agent_v1.spawn_agent` for the installed Codex role agents: explorer, librarian, oracle, designer, quick, and deep.',
     '- After receiving a delegated subagent response, close that subagent session unless you will retry or intentionally keep using that exact same session; explorer and librarian sessions must always be closed immediately after their response, and retry sessions must be closed after the retry result unless explicit same-session reuse is still required.',

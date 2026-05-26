@@ -381,13 +381,69 @@ describe('semantic prompt section rendering', () => {
       '`request_user_input`',
       'functions.update_plan',
       'instruction-only',
-      'Pass the self-contained delegated prompt in `message`',
-      'Include the internal handoff in `message` for write-capable agents',
+      'delegated task instructions plus handoff retrieval instructions in `message`',
+      'Do not include the handoff body in `message` or `items`',
     ]);
     expect(openCode).not.toContain(
-      'Pass the self-contained delegated prompt in `message`',
+      'delegated task instructions plus handoff retrieval instructions in `message`',
     );
     expect(openCode).not.toContain('full parent-context fork');
+  });
+
+  test('root prompts treat delegation handoff as root-owned compaction', () => {
+    const openCode = rolePrompt('orchestrator', OPENCODE_PROMPT_DIALECT);
+    const codex = renderCodexRootInstructions();
+
+    for (const prompt of [openCode, codex]) {
+      expectAllTerms(prompt, [
+        'root-owned session context',
+        'must not be embedded in the initial sub-agent prompt',
+        'save or refresh that handoff body with root-owned',
+        'mem_session_summary',
+        'root-owned compaction could not be persisted',
+        'task instructions plus handoff recovery instructions only',
+        'parent `session_id`, project, persistence mode, memory permissions',
+        'bounded 3-layer recall steps',
+        'It must not include the handoff body',
+        'raw transcripts, file dumps, secrets, credentials',
+        'generated sub-agent prompts as memory source material',
+        'handoff retrieval instructions when a root-owned handoff summary exists',
+      ]);
+    }
+
+    expect(openCode).not.toContain('multi_agent_v1.spawn_agent');
+    expect(openCode).not.toContain('`message`');
+    expect(openCode).not.toContain('`items`');
+    expect(codex).toContain(
+      'delegated task instructions plus handoff retrieval instructions in `message`',
+    );
+  });
+
+  test('subagent prompts require parent-scoped handoff recall and forbid prompt saves', () => {
+    const explorer = rolePrompt('explorer', OPENCODE_PROMPT_DIALECT);
+    const deep = rolePrompt('deep', OPENCODE_PROMPT_DIALECT);
+
+    for (const prompt of [explorer, deep]) {
+      expectAllTerms(prompt, [
+        'parent session_id',
+        'project',
+        'handoff recovery instructions',
+        '`mem_search` -> `mem_timeline` -> `mem_get_observation`',
+        'parent-session handoff summary',
+        'missing, stale, contradictory, or insufficient',
+        'Use project-scoped read tools only when explicitly allowed',
+        'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
+        'Never save generated subagent prompts as user intent',
+      ]);
+    }
+
+    expect(explorer).toContain('Never write memory');
+    expect(deep).toContain(
+      '`mem_save` is allowed only for delegated durable implementation observations or assigned SDD artifacts/apply-progress',
+    );
+    expect(deep).toContain(
+      'deterministic SDD artifacts use `sdd/{change}/{artifact}`',
+    );
   });
 
   test('read-only specialist prompts preserve evidence-focused role boundaries', () => {

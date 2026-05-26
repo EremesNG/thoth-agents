@@ -491,6 +491,12 @@ describe('Codex adapter', () => {
       'The user has explicitly authorized this generated Codex orchestrator to use `multi_agent_v1.spawn_agent` whenever delegation is required by these instructions, without needing a fresh user request for subagents in each task.',
     );
     expect(rootInstructions).toContain(
+      'delegated task instructions plus handoff retrieval instructions in `message`',
+    );
+    expect(rootInstructions).toContain(
+      'Do not include the handoff body in `message` or `items`',
+    );
+    expect(rootInstructions).toContain(
       '`multi_agent_v1.wait_agent` only when the root needs the result',
     );
     expect(rootInstructions).toContain(
@@ -501,6 +507,41 @@ describe('Codex adapter', () => {
     );
     expect(rootInstructions).toContain(
       '`multi_agent_v1.close_agent` after completion',
+    );
+  });
+
+  test('renders Codex handoff delivery guidance without embedding the handoff body', () => {
+    const rootInstructions = renderCodexRootInstructions();
+
+    expect(rootInstructions).toContain(
+      'Pass the self-contained delegated task instructions plus handoff retrieval instructions in `message`',
+    );
+    expect(rootInstructions).toContain(
+      'do not embed the root-owned handoff summary body in `message`',
+    );
+    expect(rootInstructions).toContain(
+      'Do not include the handoff body in `message` or `items`',
+    );
+    expect(rootInstructions).toContain(
+      'do not pass both `message` and `items` for the same handoff',
+    );
+    expect(rootInstructions).toContain(
+      'Use `items` only for structured attachments or mentions when they are truly required',
+    );
+    expect(rootInstructions).toContain(
+      'do not use `items` as a handoff-summary payload',
+    );
+    expect(rootInstructions).toContain(
+      'Leave `fork_context` omitted or false by default',
+    );
+    expect(rootInstructions).toContain(
+      'Memory ownership, handoff recovery, permissions, and prompt-body exclusion are instruction-level',
+    );
+    expect(rootInstructions).toContain(
+      'save or refresh the handoff body with root-owned mem_session_summary',
+    );
+    expect(rootInstructions).not.toContain(
+      'Include the internal handoff in `message`',
     );
   });
 
@@ -720,7 +761,7 @@ describe('Codex adapter', () => {
       'Read-only agents must never write durable memory.',
     );
     expect(deep).toContain(
-      'Write-capable agents may call mem_save only for delegated durable observations under the parent session/project.',
+      'Write-capable agents may call mem_save only for delegated durable observations or assigned deterministic SDD artifacts/apply-progress under the parent session/project.',
     );
   });
 

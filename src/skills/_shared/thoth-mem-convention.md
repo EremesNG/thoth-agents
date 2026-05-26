@@ -16,6 +16,12 @@ Governance that a harness cannot hard-enforce remains instruction-level:
 semantic role ownership, parent session/project scoping, prompt-save
 prohibitions, and SDD topic-key namespace protection still apply.
 
+Root-owned delegation handoffs use the same convention: the handoff body lives
+in a root-owned `mem_session_summary` when available, while subagent prompts
+carry task instructions plus parent-scoped recovery instructions. Do not place
+the handoff body in the initial subagent prompt or structured attachment
+payload.
+
 ## Mode Scope
 
 This convention applies only when the artifact store mode includes thoth-mem:
@@ -84,6 +90,12 @@ surface → `mem_timeline(id)` when needed for chronology →
 
 ## Three-Layer Recall Protocol
 
+For delegated handoffs, subagents may use this protocol only when the dispatch
+includes both parent `session_id` and `project`. The first recalled source
+should be the parent-session handoff summary or exact SDD topic assigned by the
+orchestrator; if recall is missing, stale, contradictory, or insufficient,
+report that limitation instead of inventing context.
+
 1. **Scan compact index** by exact topic key:
 
 Use the memory tool binding for `mem_search` with
@@ -122,3 +134,9 @@ and the full artifact markdown in `content`.
 
 For `sdd-apply`, save the progress report under `apply-progress` and re-save the
 updated task list under `tasks` after checkboxes change.
+
+Write-capable subagents may call `mem_save` only when the task explicitly
+delegates a durable implementation observation or deterministic SDD artifact
+write under the parent session/project. General observations must use topic
+keys outside `sdd/*`; deterministic SDD artifacts keep the canonical
+`sdd/{change-name}/{artifact}` format.

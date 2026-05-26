@@ -256,11 +256,15 @@ Tiebreakers:
 </subagent-prompts>
 
 <internal-handoff>
-Before dispatching {{role.designer}}, {{role.quick}}, or {{role.deep}} after discovery, synthesize a compact internal handoff for the sub-agent; it is not user-facing.
+Before dispatching {{role.designer}}, {{role.quick}}, or {{role.deep}} after discovery, synthesize a compact internal handoff body for root-owned session context; it is not user-facing and must not be embedded in the initial sub-agent prompt.
 
-Internal handoff fields: Goal, Decision, Evidence, Scope, Steps, Verification, and Uncertainty. Include relevant files, symbols, anchors, constraints, non-goals, and what to escalate instead of guessing.
+Internal handoff fields: Goal, Decision, Evidence, Scope, Steps, Verification, Uncertainty, relevant files or symbols, suggested skills when applicable, constraints, non-goals, escalation conditions, and next focus.
 
-Never mention the internal handoff to the user, ask the user to prepare it, or present handoff preparation as the recommended next step. Describe the actual work instead.
+When thoth-mem session-summary tooling and parent session/project identity are available, save or refresh that handoff body with root-owned \`mem_session_summary\` before dispatch. If the tooling or identity is unavailable, disclose that root-owned compaction could not be persisted and continue with explicit task instructions and local context; do not invent a fallback session or ask a sub-agent to create one.
+
+The delegated prompt carries task instructions plus handoff recovery instructions only: parent \`session_id\`, project, persistence mode, memory permissions, bounded 3-layer recall steps, non-goals, escalation conditions, and redaction requirements. It must not include the handoff body, raw transcripts, file dumps, secrets, credentials, irrelevant context, or generated sub-agent prompts as memory source material.
+
+Never mention internal handoff preparation to the user, ask the user to prepare it, or present handoff preparation as the recommended next step. Describe the actual work instead.
 
 For {{role.explorer}}/{{role.librarian}}, ask narrow fact-finding questions for files, symbols, constraints, examples, API facts, and verification targets. Require decision-ready findings, not raw context.
 </internal-handoff>
@@ -273,7 +277,7 @@ For {{role.explorer}}/{{role.librarian}}, ask narrow fact-finding questions for 
 - When using background \`{{delegationTool}}\`, treat it as conditional and non-portable: if the host does not expose the experimental path, fall back to normal synchronous \`{{delegationTool}}\`.
 - Use \`{{backgroundStatusTool}}\` to wait, poll, and collect background task results before synthesizing or reporting completion.
 - If a result is empty, contradictory, or low-confidence, retry once with a materially sharper prompt; then escalate with evidence via \`{{userQuestionTool}}\`.
-- If a named subagent hits capacity, retry that same role up to 3 attempts.\n- Never switch to \`default\`, \`worker\`, or any other role.\n- After 3 failures, stay on the same role; if a same-role model override exists, use it. Otherwise report a capacity blocker.\n- Write-capable dispatches must include the internal handoff when one exists, so implementers can edit instead of rediscovering the plan.
+- If a named subagent hits capacity, retry that same role up to 3 attempts.\n- Never switch to \`default\`, \`worker\`, or any other role.\n- After 3 failures, stay on the same role; if a same-role model override exists, use it. Otherwise report a capacity blocker.\n- Write-capable dispatches must include task instructions and handoff retrieval instructions when a root-owned handoff summary exists, so implementers can recover context without rediscovering settled scope.
 - Never tell sub-agents to discard working-tree changes.
 </dispatch>
 
@@ -514,8 +518,13 @@ function renderSubagentRules(
 
   if (section.memoryAccess === 'readonly') {
     rules.push(
-      '- Use read-only thoth-mem only when dispatch gives session_id/project: `mem_search` -> `mem_timeline` -> `mem_get_observation`.',
+      '- Use read-only thoth-mem only when dispatch gives parent session_id/project and handoff recovery instructions: `mem_search` -> `mem_timeline` -> `mem_get_observation`.',
+      '- If either parent session_id or project is missing, do NOT call thoth-mem; rely on explicit task instructions and local evidence.',
+      '- Recover the parent-session handoff summary through bounded 3-layer recall before treating memory as source material.',
+      '- Report when recalled context is missing, stale, contradictory, or insufficient.',
+      '- Use project-scoped read tools only when explicitly allowed by the delegated task instructions.',
       '- Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`; those tools are orchestrator-owned.',
+      '- Never save generated subagent prompts as user intent.',
       '- Never write memory; memory writes are orchestrator-owned.',
     );
   }
@@ -526,7 +535,13 @@ function renderSubagentRules(
       '- Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`; those tools are orchestrator-owned.',
       '- Always use the parent session_id/project from dispatch for every thoth-mem call.',
       '- If either is missing, do NOT call thoth-mem.',
-      '- For reads, use only `mem_search` -> `mem_timeline` -> `mem_get_observation`.',
+      '- Follow handoff recovery instructions from the delegated task before using persisted memory.',
+      '- For reads, use only `mem_search` -> `mem_timeline` -> `mem_get_observation` and recover the parent-session handoff summary before treating memory as source material.',
+      '- Report when recalled context is missing, stale, contradictory, or insufficient.',
+      '- Use project-scoped read tools only when explicitly allowed by the delegated task instructions.',
+      '- `mem_save` is allowed only for delegated durable implementation observations or assigned SDD artifacts/apply-progress under the parent session/project.',
+      '- Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`; general durable observations must stay outside `sdd/*`.',
+      '- Never save generated subagent prompts as user intent.',
       "- You do not own durable memory of your own; `mem_save` writes under the orchestrator's session/project only.",
     );
   }

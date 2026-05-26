@@ -8,16 +8,20 @@ const GOVERNANCE_PROMPT_SECTIONS = {
   orchestrator: [
     'delegate-first',
     'Internal handoff fields',
+    'root-owned session context',
+    'task instructions plus handoff recovery instructions only',
     'propose -> spec -> design -> tasks',
   ],
   explorer: [
     'Mode: read-only',
     'Return decision-ready evidence',
+    'handoff recovery instructions',
     'Never write memory',
   ],
   deep: [
     'Mode: write-capable',
     'Do not skip verification',
+    'parent-session handoff summary',
     'Never discard working-tree changes',
   ],
 } as const;
@@ -102,5 +106,26 @@ describe('OpenCode harness adapter', () => {
       'sdd-apply',
     );
     expect(result.artifacts[0]?.content.toString()).not.toContain('codex');
+  });
+
+  test('inherits shared handoff semantics without Codex-only dispatch wording', () => {
+    const content = String(
+      opencodeAdapter.render({ projectRoot: process.cwd() }).artifacts[0]
+        ?.content,
+    );
+
+    expect(content).toContain('root-owned session context');
+    expect(content).toContain(
+      'must not be embedded in the initial sub-agent prompt',
+    );
+    expect(content).toContain(
+      'task instructions plus handoff recovery instructions only',
+    );
+    expect(content).toContain('parent-session handoff summary');
+    expect(content).toContain('sdd/{change}/{artifact}');
+    expect(content).not.toContain('multi_agent_v1.spawn_agent');
+    expect(content).not.toContain('`message`');
+    expect(content).not.toContain('`items`');
+    expect(content).not.toContain('fork_context');
   });
 });

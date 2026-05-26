@@ -70,6 +70,12 @@ describe('memory governance contract', () => {
     expect(orchestrator.rules.join('\n')).toContain(
       'initial/root agent when the harness does not expose an orchestrator-named agent',
     );
+    expect(orchestrator.rules.join('\n')).toContain(
+      'save or refresh the handoff body with root-owned mem_session_summary',
+    );
+    expect(orchestrator.rules.join('\n')).toContain(
+      'not the handoff body, raw transcripts, or generated subagent prompts',
+    );
   });
 
   test('separates read-only recall from delegated write-capable memory saves', () => {
@@ -95,11 +101,15 @@ describe('memory governance contract', () => {
     const prompt = renderMemoryGovernanceInstructions(getAgentRole('deep'));
 
     expect(prompt).toContain('parent session_id and project');
+    expect(prompt).toContain('Delegated handoff recovery uses parent-scoped');
+    expect(prompt).toContain('missing, stale, contradictory, or insufficient');
     expect(prompt).toContain('Never call mem_session_start');
+    expect(prompt).toContain('Never save generated subagent prompts');
     expect(prompt).toContain('Protect the sdd/* topic namespace');
     expect(prompt).toContain(
-      'mem_save only for delegated durable observations',
+      'mem_save only for delegated durable observations or assigned deterministic SDD artifacts/apply-progress',
     );
+    expect(prompt).toContain('Project-scoped read tools require explicit');
   });
 
   test('renders neutral governance through harness-specific wording without weakening root ownership', () => {
@@ -118,7 +128,7 @@ describe('memory governance contract', () => {
         'Never call mem_session_start, mem_session_summary, or mem_save_prompt',
       );
       expect(prompt).toContain(
-        'Write-capable agents may call mem_save only for delegated durable observations',
+        'Write-capable agents may call mem_save only for delegated durable observations or assigned deterministic SDD artifacts/apply-progress',
       );
       expect(prompt).toContain('Protect the sdd/* topic namespace');
     }
@@ -158,5 +168,11 @@ describe('memory governance contract', () => {
       ]),
     );
     expect(diagnostics.every((diagnostic) => diagnostic.message)).toBe(true);
+    expect(
+      diagnostics.map((diagnostic) => diagnostic.message).join('\n'),
+    ).toContain('handoff recovery instructions');
+    expect(
+      diagnostics.map((diagnostic) => diagnostic.message).join('\n'),
+    ).toContain('deterministic SDD artifacts only');
   });
 });

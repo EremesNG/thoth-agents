@@ -57,6 +57,33 @@ const SDD_SEMANTIC_ANCHORS: Record<string, string[]> = {
   ],
 };
 
+const HANDOFF_SKILL_ANCHORS: Record<string, string[]> = {
+  'thoth-mem-agents': [
+    'Delegation Handoff as Compaction',
+    'root-owned session summary',
+    'task instructions plus recovery',
+    'not the handoff body',
+    'parent-session handoff summary',
+    'instruction-level governance',
+  ],
+  '.codex-plugin/skills/_shared/persistence-contract.md': [
+    'Delegated Handoffs',
+    'root-owned `mem_session_summary`',
+    'does not include the handoff body',
+    'Subagents recover that context through the',
+  ],
+  '.codex-plugin/skills/_shared/thoth-mem-convention.md': [
+    'Root-owned delegation handoffs',
+    'parent-scoped recovery instructions',
+    'parent-session handoff summary',
+    'deterministic SDD artifact',
+  ],
+  '.codex-plugin/skills/_shared/openspec-convention.md': [
+    'Delegated handoff summaries are not OpenSpec artifacts',
+    'canonical OpenSpec paths',
+  ],
+};
+
 function codexSkillContent(
   artifacts: ReturnType<typeof renderCodexSkillLayout>['artifacts'],
   skillName: string,
@@ -64,6 +91,18 @@ function codexSkillContent(
   const artifact = artifacts.find(
     (candidate) =>
       candidate.path === `.codex-plugin/skills/${skillName}/SKILL.md`,
+  );
+
+  expect(artifact).toBeDefined();
+  return String(artifact?.content);
+}
+
+function codexSkillArtifactContent(
+  artifacts: ReturnType<typeof renderCodexSkillLayout>['artifacts'],
+  artifactPath: string,
+): string {
+  const artifact = artifacts.find(
+    (candidate) => candidate.path === artifactPath,
   );
 
   expect(artifact).toBeDefined();
@@ -201,6 +240,32 @@ describe('Codex skill layout writer', () => {
     });
 
     expect(result.diagnostics).toEqual([]);
+  });
+
+  test('Codex package retains delegated handoff memory-governance anchors', () => {
+    const skills = getSkillRegistry().filter(
+      (skill) =>
+        skill.name === 'thoth-mem-agents' || skill.kind === 'shared-support',
+    );
+
+    const result = renderCodexSkillLayout({
+      projectRoot: process.cwd(),
+      skills,
+      surfaceId: 'plugin-skills-directory',
+      outputMode: 'plugin-package',
+    });
+
+    expect(result.diagnostics).toEqual([]);
+
+    for (const [target, anchors] of Object.entries(HANDOFF_SKILL_ANCHORS)) {
+      const content = target.startsWith('.codex-plugin/')
+        ? codexSkillArtifactContent(result.artifacts, target)
+        : codexSkillContent(result.artifacts, target);
+
+      for (const anchor of anchors) {
+        expect(content).toContain(anchor);
+      }
+    }
   });
 
   test('SDD Codex skill manifest matches the deterministic fixture', () => {

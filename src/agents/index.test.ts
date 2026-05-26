@@ -301,10 +301,20 @@ describe('orchestrator agent', () => {
     );
     expect(prompt).toContain('<internal-handoff>');
     expect(prompt).toContain('Internal handoff fields');
+    expect(prompt).toContain('root-owned session context');
     expect(prompt).toContain(
-      'Write-capable dispatches must include the internal handoff',
+      'must not be embedded in the initial sub-agent prompt',
     );
-    expect(prompt).toContain('Never mention the internal handoff to the user');
+    expect(prompt).toContain(
+      'task instructions plus handoff recovery instructions only',
+    );
+    expect(prompt).toContain('root-owned compaction could not be persisted');
+    expect(prompt).toContain(
+      'Write-capable dispatches must include task instructions and handoff retrieval instructions',
+    );
+    expect(prompt).toContain(
+      'Never mention internal handoff preparation to the user',
+    );
     expect(prompt).toContain(
       'Before any tool call or delegation, emit a short user-visible status/preamble',
     );
@@ -519,13 +529,13 @@ describe('granular permission defaults', () => {
 describe('prompt role markers', () => {
   test('built-in prompts stay compact enough for delegation efficiency', () => {
     const maxPromptChars: Record<string, number> = {
-      orchestrator: 12_000,
-      explorer: 3_000,
+      orchestrator: 13_000,
+      explorer: 3_600,
       librarian: 3_000,
       oracle: 3_000,
-      designer: 3_100,
-      quick: 3_000,
-      deep: 3_000,
+      designer: 3_900,
+      quick: 3_700,
+      deep: 3_600,
     };
 
     for (const agent of createAgents()) {
@@ -600,8 +610,18 @@ describe('prompt role markers', () => {
     expect(explorerPrompt).toContain(
       'mem_search` -> `mem_timeline` -> `mem_get_observation`',
     );
+    expect(explorerPrompt).toContain('handoff recovery instructions');
+    expect(explorerPrompt).toContain(
+      'Recover the parent-session handoff summary through bounded 3-layer recall',
+    );
+    expect(explorerPrompt).toContain(
+      'missing, stale, contradictory, or insufficient',
+    );
     expect(explorerPrompt).toContain(
       'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
+    );
+    expect(explorerPrompt).toContain(
+      'Never save generated subagent prompts as user intent',
     );
   });
 
@@ -617,6 +637,15 @@ describe('prompt role markers', () => {
     );
     expect(deepPrompt).toContain(
       '`mem_search` -> `mem_timeline` -> `mem_get_observation`',
+    );
+    expect(deepPrompt).toContain(
+      'recover the parent-session handoff summary before treating memory as source material',
+    );
+    expect(deepPrompt).toContain(
+      '`mem_save` is allowed only for delegated durable implementation observations or assigned SDD artifacts/apply-progress',
+    );
+    expect(deepPrompt).toContain(
+      'deterministic SDD artifacts use `sdd/{change}/{artifact}`',
     );
     expect(deepPrompt).not.toContain('mem_context');
     expect(deepPrompt).toContain('You do not own durable memory of your own');
@@ -710,6 +739,27 @@ describe('prompt role markers', () => {
     );
     expect(getAgentByName('deep')?.config.prompt).toContain(
       'If either is missing, do NOT call thoth-mem.',
+    );
+  });
+
+  test('generated OpenCode subagent prompts preserve delegated SDD memory limits', () => {
+    const explorer = getAgentByName('explorer')?.config.prompt ?? '';
+    const quick = getAgentByName('quick')?.config.prompt ?? '';
+
+    expect(explorer).toContain(
+      'Use read-only thoth-mem only when dispatch gives parent session_id/project',
+    );
+    expect(explorer).toContain(
+      'Use project-scoped read tools only when explicitly allowed by the delegated task instructions',
+    );
+    expect(quick).toContain(
+      'Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`',
+    );
+    expect(quick).toContain(
+      'general durable observations must stay outside `sdd/*`',
+    );
+    expect(quick).toContain(
+      'Never save generated subagent prompts as user intent',
     );
   });
 

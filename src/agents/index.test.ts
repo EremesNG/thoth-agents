@@ -363,9 +363,7 @@ describe('orchestrator agent', () => {
       'After `sdd-tasks`, you may surface report-only artifact governance findings',
     );
     expect(prompt).toContain('before execution preparation starts');
-    expect(prompt).toContain(
-      'do not treat findings as an execution gate',
-    );
+    expect(prompt).toContain('do not treat findings as an execution gate');
     expect(prompt).toContain(
       'replacement for `plan-reviewer`/`executing-plans`',
     );

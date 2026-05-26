@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest';
+import { renderCodexRootInstructions } from '../harness/adapters/codex';
 import { createAgents } from './index';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
 import {
   CODEX_PROMPT_DIALECT,
   OPENCODE_PROMPT_DIALECT,
 } from './prompt-dialects';
-import { renderCodexRootInstructions } from '../harness/adapters/codex';
 import {
   createOrchestratorPromptSections,
   createQuestionProtocolSection,
@@ -384,7 +384,9 @@ describe('semantic prompt section rendering', () => {
       'self-contained prompt plus the internal handoff',
       'Do not ask for or attempt a full parent-context fork',
     ]);
-    expect(openCode).not.toContain('self-contained prompt plus the internal handoff');
+    expect(openCode).not.toContain(
+      'self-contained prompt plus the internal handoff',
+    );
     expect(openCode).not.toContain('full parent-context fork');
   });
 

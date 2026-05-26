@@ -125,7 +125,9 @@ describe('CUSTOM_SKILLS', () => {
     expect(skill).toContain('`mem_project_graph`');
     expect(skill).toContain('`mem_topic_keys`');
     expect(skill).toContain('You do not own durable memory of your own.');
-    expect(skill).toContain('dispatch explicitly allows project-scoped/context reads');
+    expect(skill).toContain(
+      'dispatch explicitly allows project-scoped/context reads',
+    );
     expect(skill).toContain('Never save a subagent prompt.');
     expect(skill).toContain(
       'root/main orchestrator-owned tools and responsibilities',

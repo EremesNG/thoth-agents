@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main, master]
+    tags:
+      - 'v*.*.*'
   pull_request:
     branches: [main, master]
 
@@ -33,14 +35,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run lint
-        run: pnpm run lint
+      - name: Check
+        run: pnpm run check:ci
 
       - name: Run typecheck
         run: pnpm run typecheck
 
       - name: Build
         run: pnpm run build
+
+      - name: Upload package build
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-build
+          path: |
+            dist
+            thoth-agents.schema.json
+          if-no-files-found: error
 
       - name: Run tests
         run: pnpm test

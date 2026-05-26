@@ -40,19 +40,22 @@ describe('prompt dialects', () => {
       'deep subagent',
     );
     expect(CODEX_PROMPT_DIALECT.dispatchLabel('synchronous-task-only')).toBe(
-      'synchronous Codex custom-agent task only',
+      'synchronous multi_agent_v1.spawn_agent only',
     );
     expect(CODEX_PROMPT_DIALECT.tools.backgroundStatusTool).toBe(
-      'Codex host status surface',
+      'multi_agent_v1.wait_agent',
     );
     expect(CODEX_PROMPT_DIALECT.tools.delegationTool).toBe(
-      'Codex custom-agent task',
+      'multi_agent_v1.spawn_agent',
     );
     expect(CODEX_PROMPT_DIALECT.tools.backgroundDelegationTool).toBe(
-      'Codex background role-agent run',
+      'multi_agent_v1.spawn_agent',
     );
     expect(CODEX_PROMPT_DIALECT.tools.progressTool).toBe(
-      'Codex progress tracking surface',
+      'functions.update_plan',
+    );
+    expect(CODEX_PROMPT_DIALECT.tools.hostStatusSurface).toBe(
+      'multi_agent_v1.wait_agent',
     );
     expect(CODEX_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
       'ambient Codex root session coordinator',

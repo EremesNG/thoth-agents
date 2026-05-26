@@ -174,7 +174,7 @@ describe('semantic prompt section rendering', () => {
     expect(openCode).toContain(
       'Use `question` only for local blocking decisions',
     );
-    expect(codex).toContain('call `Codex progress tracking surface`');
+    expect(codex).toContain('call `functions.update_plan`');
     expect(codex).toContain(
       'Use `request_user_input` only for local blocking decisions',
     );
@@ -377,15 +377,15 @@ describe('semantic prompt section rendering', () => {
 
     expectAllTerms(openCode, ['`task`', '`question`', 'todowrite']);
     expectAllTerms(codex, [
-      'Codex custom-agent task',
+      'multi_agent_v1.spawn_agent',
       '`request_user_input`',
-      'Codex progress tracking surface',
+      'functions.update_plan',
       'instruction-only',
-      'self-contained prompt plus the internal handoff',
-      'Do not ask for or attempt a full parent-context fork',
+      'Pass the self-contained delegated prompt in `message`',
+      'Include the internal handoff in `message` for write-capable agents',
     ]);
     expect(openCode).not.toContain(
-      'self-contained prompt plus the internal handoff',
+      'Pass the self-contained delegated prompt in `message`',
     );
     expect(openCode).not.toContain('full parent-context fork');
   });
@@ -618,9 +618,9 @@ describe('semantic prompt section rendering', () => {
     expect(prompts.orchestrator).toContain(
       'delegate-first root coordinator and decision engine',
     );
-    expect(prompts.orchestrator).toContain('Codex custom-agent task');
+    expect(prompts.orchestrator).toContain('multi_agent_v1.spawn_agent');
     expect(prompts.orchestrator).toContain('deep subagent');
-    expect(prompts.orchestrator).toContain('Codex progress tracking surface');
+    expect(prompts.orchestrator).toContain('functions.update_plan');
     expect(prompts.orchestrator).toContain(
       'The root agent is the orchestrator/root coordinator for the session.',
     );
@@ -637,7 +637,7 @@ describe('semantic prompt section rendering', () => {
       expect(prompts[role]).toContain(`You are ${role}.`);
       expect(prompts[role]).toContain('- Mode: write-capable');
       expect(prompts[role]).toContain(
-        'Dispatch method: synchronous Codex custom-agent task only',
+        'Dispatch method: synchronous multi_agent_v1.spawn_agent only',
       );
       expect(prompts[role]).toContain('mem_save');
     }

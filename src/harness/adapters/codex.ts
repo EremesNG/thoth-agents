@@ -272,8 +272,12 @@ function renderCodexRolePrompt(
 function codexInternalHandoffGuidance(): string {
   return [
     '<codex-delegation-guidance>',
-    '- For Codex typed/custom-agent delegation, prefer a self-contained prompt plus the internal handoff before dispatching write-capable agents.',
-    '- Do not ask for or attempt a full parent-context fork unless the active Codex host explicitly supports that workflow and the task truly requires it.',
+    '- Delegate by calling `multi_agent_v1.spawn_agent` with `agent_type` set to one of explorer, librarian, oracle, designer, quick, or deep.',
+    '- Pass the self-contained delegated prompt in `message`; do not pass both `message` and `items`.',
+    '- Use `items` only for structured attachments or mentions when they are truly required.',
+    '- Include the internal handoff in `message` for write-capable agents so they can act without rediscovering context.',
+    '- Leave `fork_context` omitted or false by default; set `fork_context: true` only when the exact current thread history is required.',
+    '- Use `multi_agent_v1.wait_agent` only when the root needs the result, `multi_agent_v1.send_input` for follow-up or redirect, `multi_agent_v1.resume_agent` only for a closed agent that must continue, and `multi_agent_v1.close_agent` after completion.',
     '</codex-delegation-guidance>',
   ].join('\n');
 }
@@ -324,7 +328,7 @@ export function renderCodexRootInstructions(config?: PluginConfig): string {
     '- On each new root session, when thoth-mem tools are installed and session/project identity is known, call mem_session_start with the active project and session identity, then save the real user prompt with mem_save_prompt before later delegation.',
     '- If thoth-mem tools or identity values are unavailable, disclose that memory bootstrap could not run and continue without claiming memory was saved.',
     '- Use the ambient Codex root session as the delegate-first root coordinator; do not generate or select an orchestrator TOML.',
-    '- Delegate by invoking the installed Codex role agents: explorer, librarian, oracle, designer, quick, and deep.',
+    '- Delegate by invoking `multi_agent_v1.spawn_agent` for the installed Codex role agents: explorer, librarian, oracle, designer, quick, and deep.',
     '- After receiving a delegated subagent response, close that subagent session unless you will retry or intentionally keep using that exact same session; explorer and librarian sessions must always be closed immediately after their response, and retry sessions must be closed after the retry result unless explicit same-session reuse is still required.',
     '- Use packaged thoth-agents plugin capabilities through Codex plugin, skill, MCP, and hook review surfaces after enabling them with /plugins and /hooks.',
     '- For blocking user decisions in Codex Default mode, use request_user_input after features.default_mode_request_user_input is enabled; do not ask those questions in plain prose.',

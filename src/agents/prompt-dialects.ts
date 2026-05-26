@@ -110,12 +110,12 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
 export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'codex',
   tools: {
-    delegationTool: 'Codex custom-agent task',
-    backgroundDelegationTool: 'Codex background role-agent run',
-    backgroundStatusTool: 'Codex host status surface',
+    delegationTool: 'multi_agent_v1.spawn_agent',
+    backgroundDelegationTool: 'multi_agent_v1.spawn_agent',
+    backgroundStatusTool: 'multi_agent_v1.wait_agent',
     userQuestionTool: 'request_user_input',
-    progressTool: 'Codex progress tracking surface',
-    hostStatusSurface: 'Codex host status surface',
+    progressTool: 'functions.update_plan',
+    hostStatusSurface: 'multi_agent_v1.wait_agent',
     roleReference: (role) => `${role} role agent`,
   },
   capabilities: {
@@ -127,9 +127,9 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
       case 'root-coordinator':
         return 'ambient Codex root session coordinator';
       case 'task':
-        return 'Codex custom-agent task';
+        return 'multi_agent_v1.spawn_agent';
       case 'synchronous-task-only':
-        return 'synchronous Codex custom-agent task only';
+        return 'synchronous multi_agent_v1.spawn_agent only';
     }
   },
   renderRoleInvocation(role) {

@@ -127,7 +127,7 @@ describe('memory governance contract', () => {
     expect(openCode).toContain('todowrite');
     expect(openCode).toContain('@orchestrator');
     expect(codex).toContain('`request_user_input`');
-    expect(codex).toContain('Codex progress tracking surface');
+    expect(codex).toContain('functions.update_plan');
     expect(codex).toContain('orchestrator role agent');
     expect(codex).not.toContain('`question`');
     expect(codex).not.toContain('todowrite');

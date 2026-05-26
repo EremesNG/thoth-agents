@@ -338,7 +338,7 @@ describe('Codex adapter', () => {
       );
       expect(prompt).toContain('Protect the sdd/* topic namespace');
       expect(prompt).toContain('`request_user_input`');
-      expect(prompt).toContain('Codex progress tracking surface');
+      expect(prompt).toContain('functions.update_plan');
       expect(prompt).not.toContain('`question`');
       expect(prompt).not.toContain('todowrite');
     }
@@ -365,7 +365,7 @@ describe('Codex adapter', () => {
 
     for (const prompt of [designer, quick, deep]) {
       expect(prompt).toContain('Mode: write-capable');
-      expect(prompt).toContain('custom-agent task only');
+      expect(prompt).toContain('multi_agent_v1.spawn_agent only');
       expect(prompt).toContain('Never discard working-tree changes');
       expect(prompt).toContain('writes under the orchestrator');
       expect(prompt).toContain('For SDD tasks: use the Task Result envelope');
@@ -387,11 +387,11 @@ describe('Codex adapter', () => {
     expect(rootInstructions).toContain('ambient Codex root session');
     expect(rootInstructions).toContain('installed Codex role agents');
 
-    expect(explorer).toContain('Dispatch method: Codex custom-agent task');
+    expect(explorer).toContain('Dispatch method: multi_agent_v1.spawn_agent');
     expect(explorer).toContain('Mode: read-only');
     expect(explorer).toContain('Return exactly these sections');
     expect(quick).toContain(
-      'Dispatch method: synchronous Codex custom-agent task only',
+      'Dispatch method: synchronous multi_agent_v1.spawn_agent only',
     );
     expect(quick).toContain('Mode: write-capable');
     expect(quick).toContain('fast bounded implementation');
@@ -484,6 +484,21 @@ describe('Codex adapter', () => {
     expect(rootInstructions).toContain(
       'disclose that memory bootstrap could not run',
     );
+    expect(rootInstructions).toContain(
+      'Delegate by invoking `multi_agent_v1.spawn_agent` for the installed Codex role agents',
+    );
+    expect(rootInstructions).toContain(
+      '`multi_agent_v1.wait_agent` only when the root needs the result',
+    );
+    expect(rootInstructions).toContain(
+      '`multi_agent_v1.send_input` for follow-up or redirect',
+    );
+    expect(rootInstructions).toContain(
+      '`multi_agent_v1.resume_agent` only for a closed agent that must continue',
+    );
+    expect(rootInstructions).toContain(
+      '`multi_agent_v1.close_agent` after completion',
+    );
   });
 
   test('renders subagent developer instructions as native multiline role instructions without adaptation wrapper', () => {
@@ -496,7 +511,7 @@ describe('Codex adapter', () => {
     expect(developerInstructions?.startsWith('<role>')).toBe(true);
     expect(developerInstructions).toContain('You are deep.');
     expect(developerInstructions).toContain(
-      'Dispatch method: synchronous Codex custom-agent task only',
+      'Dispatch method: synchronous multi_agent_v1.spawn_agent only',
     );
     expect(developerInstructions).toContain('request_user_input');
   });
@@ -854,11 +869,9 @@ describe('Codex adapter', () => {
       'name = "deep"\ndescription = "Handle correctness-critical, multi-file, or edge-case-heavy changes with full local context analysis."',
     );
     expect(String(deepAgent?.content)).toContain(
-      'Dispatch method: synchronous Codex custom-agent task only',
+      'Dispatch method: synchronous multi_agent_v1.spawn_agent only',
     );
-    expect(String(deepAgent?.content)).toContain(
-      'Codex progress tracking surface',
-    );
+    expect(String(deepAgent?.content)).toContain('functions.update_plan');
     expect(String(deepAgent?.content)).not.toContain('`todowrite`');
     expect(`${JSON.stringify(diagnostics, null, 2)}\n`).toBe(
       codexFixture('capability-diagnostics.json'),

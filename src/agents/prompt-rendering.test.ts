@@ -162,12 +162,17 @@ describe('semantic prompt section rendering', () => {
 
   test('renders shared subagent rules with OpenCode and Codex nomenclature', () => {
     const baseRules = createSubagentRulesSection('base');
+    const readOnlyRules = createSubagentRulesSection('readonly');
     const writableRules = createSubagentRulesSection('writable');
 
     expect(JSON.stringify(baseRules)).not.toContain('todowrite');
     expect(JSON.stringify(baseRules)).not.toContain('question');
 
     const openCode = renderPromptSection(baseRules, OPENCODE_PROMPT_DIALECT);
+    const openCodeReadOnly = renderPromptSection(
+      readOnlyRules,
+      OPENCODE_PROMPT_DIALECT,
+    );
     const codex = renderPromptSection(writableRules, CODEX_PROMPT_DIALECT);
 
     expect(openCode).toContain('call `todowrite`');
@@ -179,6 +184,15 @@ describe('semantic prompt section rendering', () => {
       'Use `request_user_input` only for local blocking decisions',
     );
     expect(codex).toContain('mem_save');
+    expect(openCodeReadOnly).toContain('mem_context');
+    expect(openCodeReadOnly).toContain('mem_project_summary');
+    expect(openCodeReadOnly).toContain('mem_project_graph');
+    expect(openCodeReadOnly).toContain('mem_topic_keys');
+    expect(openCodeReadOnly).toContain('3-layer recall');
+    expect(codex).toContain('mem_context');
+    expect(codex).toContain('mem_project_summary');
+    expect(codex).toContain('mem_project_graph');
+    expect(codex).toContain('mem_topic_keys');
   });
 
   test('compatibility exports preserve default OpenCode shared prompt text', () => {
@@ -431,7 +445,7 @@ describe('semantic prompt section rendering', () => {
         '`mem_search` -> `mem_timeline` -> `mem_get_observation`',
         'parent-session handoff summary',
         'missing, stale, contradictory, or insufficient',
-        'Use project-scoped read tools only when explicitly allowed',
+        'Use project-scoped read tools',
         'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
         'Never save generated subagent prompts as user intent',
       ]);

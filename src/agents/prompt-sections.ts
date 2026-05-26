@@ -519,10 +519,11 @@ function renderSubagentRules(
   if (section.memoryAccess === 'readonly') {
     rules.push(
       '- Use read-only thoth-mem only when dispatch gives parent session_id/project and handoff recovery instructions: `mem_search` -> `mem_timeline` -> `mem_get_observation`.',
+      '- The canonical recall path remains `mem_search` -> `mem_timeline` -> `mem_get_observation`; use bounded context tools only as supplemental context when explicitly allowed.',
       '- If either parent session_id or project is missing, do NOT call thoth-mem; rely on explicit task instructions and local evidence.',
       '- Recover the parent-session handoff summary through bounded 3-layer recall before treating memory as source material.',
       '- Report when recalled context is missing, stale, contradictory, or insufficient.',
-      '- Use project-scoped read tools only when explicitly allowed by the delegated task instructions.',
+      '- Use project-scoped read tools (`mem_context`, `mem_project_summary`, `mem_project_graph`, `mem_topic_keys`) only when explicitly allowed by the delegated task instructions and bounded to the parent session/project scope.',
       '- Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`; those tools are orchestrator-owned.',
       '- Never save generated subagent prompts as user intent.',
       '- Never write memory; memory writes are orchestrator-owned.',
@@ -531,14 +532,15 @@ function renderSubagentRules(
 
   if (section.memoryAccess === 'writable') {
     rules.push(
-      '- Use delegated thoth-mem tools only (mem_save, mem_search, mem_get_observation, mem_timeline, mem_suggest_topic_key).',
+      '- Use delegated thoth-mem tools only (mem_save, mem_search, mem_get_observation, mem_timeline, mem_context, mem_project_summary, mem_project_graph, mem_topic_keys, mem_suggest_topic_key).',
       '- Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`; those tools are orchestrator-owned.',
       '- Always use the parent session_id/project from dispatch for every thoth-mem call.',
       '- If either is missing, do NOT call thoth-mem.',
       '- Follow handoff recovery instructions from the delegated task before using persisted memory.',
       '- For reads, use only `mem_search` -> `mem_timeline` -> `mem_get_observation` and recover the parent-session handoff summary before treating memory as source material.',
+      '- Keep 3-layer recall canonical; use `mem_context`, `mem_project_summary`, `mem_project_graph`, and `mem_topic_keys` only as bounded supplemental context when the dispatch explicitly permits project-scoped reads.',
       '- Report when recalled context is missing, stale, contradictory, or insufficient.',
-      '- Use project-scoped read tools only when explicitly allowed by the delegated task instructions.',
+      '- Use project-scoped read tools only when explicitly allowed by the delegated task instructions and bounded to the parent session/project scope.',
       '- `mem_save` is allowed only for delegated durable implementation observations or assigned SDD artifacts/apply-progress under the parent session/project.',
       '- Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`; general durable observations must stay outside `sdd/*`.',
       '- Never save generated subagent prompts as user intent.',

@@ -65,6 +65,10 @@ const HANDOFF_SKILL_ANCHORS: Record<string, string[]> = {
     'not the handoff body',
     'parent-session handoff summary',
     'instruction-level governance',
+    'mem_context',
+    'mem_project_summary',
+    'mem_project_graph',
+    'mem_topic_keys',
   ],
   '.codex-plugin/skills/_shared/persistence-contract.md': [
     'Delegated Handoffs',

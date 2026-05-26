@@ -9,6 +9,10 @@ export type MemoryToolName =
   | 'mem_search'
   | 'mem_timeline'
   | 'mem_get_observation'
+  | 'mem_context'
+  | 'mem_project_summary'
+  | 'mem_project_graph'
+  | 'mem_topic_keys'
   | 'mem_suggest_topic_key'
   | 'mem_save';
 
@@ -53,17 +57,26 @@ const READ_RECALL_CHAIN: MemoryToolName[] = [
   'mem_get_observation',
 ];
 
+const BOUNDED_CONTEXT_TOOLS: MemoryToolName[] = [
+  'mem_context',
+  'mem_project_summary',
+  'mem_project_graph',
+  'mem_topic_keys',
+];
+
 const WRITE_CAPABLE_DELEGATED_TOOLS: MemoryToolName[] = [
   'mem_save',
   'mem_search',
   'mem_get_observation',
   'mem_timeline',
+  ...BOUNDED_CONTEXT_TOOLS,
   'mem_suggest_topic_key',
 ];
 
 const ALL_MEMORY_TOOLS: MemoryToolName[] = [
   ...ROOT_OWNED_TOOLS,
   ...READ_RECALL_CHAIN,
+  ...BOUNDED_CONTEXT_TOOLS,
   'mem_suggest_topic_key',
   'mem_save',
 ];
@@ -78,7 +91,7 @@ function roleAllowedTools(role: AgentRoleContract): MemoryToolName[] {
   }
 
   if (role.mode === 'read-only') {
-    return [...READ_RECALL_CHAIN];
+    return [...READ_RECALL_CHAIN, ...BOUNDED_CONTEXT_TOOLS];
   }
 
   return [...WRITE_CAPABLE_DELEGATED_TOOLS];
@@ -109,6 +122,7 @@ function roleRules(role: AgentRoleContract): string[] {
     return [
       ...sharedSubagentRules,
       'Read-only agents may only perform bounded, project-scoped recall with mem_search -> mem_timeline -> mem_get_observation when authorized.',
+      'Bounded context tools mem_context, mem_project_summary, mem_project_graph, and mem_topic_keys are allowed only with explicit delegated permission and parent session/project scope.',
       'Project-scoped read tools require explicit delegated permission.',
       'Read-only agents must never write durable memory.',
     ];
@@ -118,6 +132,7 @@ function roleRules(role: AgentRoleContract): string[] {
     ...sharedSubagentRules,
     'Write-capable agents may call mem_save only for delegated durable observations or assigned deterministic SDD artifacts/apply-progress under the parent session/project.',
     'For reads, use only mem_search -> mem_timeline -> mem_get_observation.',
+    'Bounded context tools mem_context, mem_project_summary, mem_project_graph, and mem_topic_keys are allowed only with explicit delegated permission and parent session/project scope.',
     'Project-scoped read tools require explicit delegated permission.',
   ];
 }

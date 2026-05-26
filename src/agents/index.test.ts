@@ -530,12 +530,12 @@ describe('prompt role markers', () => {
   test('built-in prompts stay compact enough for delegation efficiency', () => {
     const maxPromptChars: Record<string, number> = {
       orchestrator: 13_000,
-      explorer: 3_600,
-      librarian: 3_000,
-      oracle: 3_000,
-      designer: 3_900,
-      quick: 3_700,
-      deep: 3_600,
+      explorer: 3_900,
+      librarian: 3_250,
+      oracle: 3_250,
+      designer: 4_300,
+      quick: 4_050,
+      deep: 4_000,
     };
 
     for (const agent of createAgents()) {
@@ -647,7 +647,10 @@ describe('prompt role markers', () => {
     expect(deepPrompt).toContain(
       'deterministic SDD artifacts use `sdd/{change}/{artifact}`',
     );
-    expect(deepPrompt).not.toContain('mem_context');
+    expect(deepPrompt).toContain('mem_context');
+    expect(deepPrompt).toContain('mem_project_summary');
+    expect(deepPrompt).toContain('mem_project_graph');
+    expect(deepPrompt).toContain('mem_topic_keys');
     expect(deepPrompt).toContain('You do not own durable memory of your own');
     expect(quickPrompt).toContain(
       'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
@@ -719,6 +722,10 @@ describe('prompt role markers', () => {
       expect(prompt).toContain('mem_search');
       expect(prompt).toContain('mem_timeline');
       expect(prompt).toContain('mem_get_observation');
+      expect(prompt).toContain('mem_context');
+      expect(prompt).toContain('mem_project_summary');
+      expect(prompt).toContain('mem_project_graph');
+      expect(prompt).toContain('mem_topic_keys');
 
       // Should ban write tools
       expect(prompt).toContain('Never write memory');
@@ -750,8 +757,12 @@ describe('prompt role markers', () => {
       'Use read-only thoth-mem only when dispatch gives parent session_id/project',
     );
     expect(explorer).toContain(
-      'Use project-scoped read tools only when explicitly allowed by the delegated task instructions',
+      'Use project-scoped read tools (`mem_context`, `mem_project_summary`, `mem_project_graph`, `mem_topic_keys`) only when explicitly allowed by the delegated task instructions',
     );
+    expect(explorer).toContain('`mem_context`');
+    expect(explorer).toContain('`mem_project_summary`');
+    expect(explorer).toContain('`mem_project_graph`');
+    expect(explorer).toContain('`mem_topic_keys`');
     expect(quick).toContain(
       'Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`',
     );

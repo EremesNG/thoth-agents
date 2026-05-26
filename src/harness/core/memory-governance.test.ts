@@ -87,12 +87,23 @@ describe('memory governance contract', () => {
       'mem_search',
       'mem_timeline',
       'mem_get_observation',
+      'mem_context',
+      'mem_project_summary',
+      'mem_project_graph',
+      'mem_topic_keys',
     ]);
     expect(explorer.mayWriteDurableObservations).toBe(false);
 
     expect(deep.requiresParentContext).toBe(true);
     expect(deep.allowedTools).toEqual(
-      expect.arrayContaining(['mem_save', 'mem_suggest_topic_key']),
+      expect.arrayContaining([
+        'mem_save',
+        'mem_suggest_topic_key',
+        'mem_context',
+        'mem_project_summary',
+        'mem_project_graph',
+        'mem_topic_keys',
+      ]),
     );
     expect(deep.mayWriteDurableObservations).toBe(true);
   });
@@ -110,6 +121,10 @@ describe('memory governance contract', () => {
       'mem_save only for delegated durable observations or assigned deterministic SDD artifacts/apply-progress',
     );
     expect(prompt).toContain('Project-scoped read tools require explicit');
+    expect(prompt).toContain('mem_context');
+    expect(prompt).toContain('mem_project_summary');
+    expect(prompt).toContain('mem_project_graph');
+    expect(prompt).toContain('mem_topic_keys');
   });
 
   test('renders neutral governance through harness-specific wording without weakening root ownership', () => {

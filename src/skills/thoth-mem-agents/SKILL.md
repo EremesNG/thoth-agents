@@ -171,6 +171,7 @@ Never reuse the `sdd/...` namespace for general durable observations.
 
 These tools are read/context only, not session-owned artifacts:
 
+- `mem_context`
 - `mem_project_summary`
 - `mem_project_graph`
 - `mem_topic_keys`
@@ -224,15 +225,19 @@ Allowed pattern only:
 1. `mem_search`
 2. `mem_timeline`
 3. `mem_get_observation`
-4. `mem_project_summary` when project overview is needed
-5. `mem_project_graph` when relationship/lineage investigation is needed
-6. `mem_topic_keys` when topic-key discovery or inspection is needed
+4. `mem_context` when parent-session context overview is needed
+5. `mem_project_summary` when project overview is needed
+6. `mem_project_graph` when relationship/lineage investigation is needed
+7. `mem_topic_keys` when topic-key discovery or inspection is needed
 
 Rules:
 
 - Use the parent `session_id` and `project` from dispatch.
 - Use bounded 3-layer recall to recover the parent-session handoff summary
   before treating memory as source material.
+- Keep 3-layer recall canonical; use `mem_context`, `mem_project_summary`,
+  `mem_project_graph`, and `mem_topic_keys` only as bounded supplements when
+  dispatch explicitly allows project-scoped/context reads.
 - Report missing, stale, contradictory, or insufficient recalled context.
 - Do not call `mem_save`, `mem_update`, `mem_session_start`,
   `mem_session_summary`, or `mem_save_prompt`.
@@ -247,8 +252,9 @@ Semantic roles: deep, quick, designer.
 Allowed thoth-mem behavior:
 
 - same 3-layer recall as read-only agents when reading
-- project-scoped read tools when a broader project/topic context is explicitly
-  needed
+- bounded context tools (`mem_context`, `mem_project_summary`,
+  `mem_project_graph`, `mem_topic_keys`) when broader parent/project context is
+  explicitly needed
 - `mem_save` for delegated durable observations that arise from their
   implementation work
 
@@ -258,10 +264,10 @@ Rules:
   call.
 - Use bounded 3-layer recall to recover the parent-session handoff summary
   before treating memory as source material.
+- Keep 3-layer recall canonical; use `mem_context`, `mem_project_summary`,
+  `mem_project_graph`, and `mem_topic_keys` only as bounded supplements when
+  dispatch explicitly allows project-scoped/context reads.
 - Report missing, stale, contradictory, or insufficient recalled context.
-- Do not call `mem_context`; writable subagents stay on the same bounded
-  3-layer recall path, using project-scoped read tools only when explicitly
-  granted in dispatch.
 - Never create or close sessions.
 - Never save prompts.
 - You do not own durable memory of your own. Any `mem_save` is a delegated
@@ -324,7 +330,8 @@ Reject these patterns immediately:
 - Subagent calls `mem_save_prompt`.
 - Subagent calls `mem_session_start` or `mem_session_summary`.
 - Subagent uses thoth-mem without parent `session_id` and `project`.
-- Writable subagent calls `mem_context` instead of the bounded 3-layer recall.
+- Subagent uses `mem_context` as a replacement for the bounded 3-layer recall
+  path.
 - Subagent uses project-scoped read tools without explicit permission in the
   dispatch.
 - Read-only subagent writes memory.

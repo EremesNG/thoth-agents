@@ -41,10 +41,15 @@ jobs:
       - name: Run typecheck
         run: pnpm run typecheck
 
+      - name: Run tests
+        run: pnpm test
+
       - name: Build
+        if: startsWith(github.ref, 'refs/tags/v')
         run: pnpm run build
 
       - name: Upload package build
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: package-build
@@ -52,6 +57,3 @@ jobs:
             dist
             thoth-agents.schema.json
           if-no-files-found: error
-
-      - name: Run tests
-        run: pnpm test

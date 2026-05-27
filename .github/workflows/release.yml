@@ -60,14 +60,23 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: |
           for attempt in {1..30}; do
-            run=$(
+            runs=$(
               gh api \
-                "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=push&per_page=10" \
-                --jq '.workflow_runs[0] // empty'
+                "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=push&per_page=20"
+            )
+            run=$(
+              jq \
+                --arg tag "${GITHUB_REF_NAME}" \
+                --arg sha "${HEAD_SHA}" \
+                '.workflow_runs
+                  | map(select(.head_branch == $tag and .head_sha == $sha))
+                  | sort_by(.created_at)
+                  | last // empty' \
+                <<< "$runs"
             )
 
             if [ -z "$run" ]; then
-              echo "CI run for ${HEAD_SHA} not found yet. Waiting..."
+              echo "CI run for tag ${GITHUB_REF_NAME} at ${HEAD_SHA} not found yet. Waiting..."
               sleep 10
               continue
             fi

@@ -1,12 +1,15 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 
 describe('plugin runtime compatibility', () => {
-  test('built plugin does not require a host global Bun object', () => {
-    const source = readFileSync('dist/index.js', 'utf8');
+  test.skipIf(!existsSync('dist/index.js'))(
+    'built plugin does not require a host global Bun object',
+    () => {
+      const source = readFileSync('dist/index.js', 'utf8');
 
-    expect(source).not.toContain('globalThis.Bun');
-    expect(source).not.toMatch(/{[^}]*spawn[^}]*}\s*=\s*globalThis\.Bun/);
-    expect(source).not.toContain('import.meta.require');
-  });
+      expect(source).not.toContain('globalThis.Bun');
+      expect(source).not.toMatch(/{[^}]*spawn[^}]*}\s*=\s*globalThis\.Bun/);
+      expect(source).not.toContain('import.meta.require');
+    },
+  );
 });

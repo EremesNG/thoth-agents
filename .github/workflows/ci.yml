@@ -48,6 +48,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: pnpm run build
 
+      - name: Check built plugin runtime
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: pnpm exec vitest run src/plugin-node-runtime.test.ts
+
       - name: Upload package build
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4

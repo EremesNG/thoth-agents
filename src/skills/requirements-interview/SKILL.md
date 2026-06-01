@@ -137,12 +137,12 @@ user to confirm it:
 - Contract sensitivity is Low
 - Failure cost is Low
 
-**Accelerated SDD** (`propose -> tasks`) — when:
+**Accelerated SDD** (`sdd-explore -> propose -> tasks`) — when:
 - 2-3 dimensions are Medium, or
 - 1 dimension is High in logic depth, context span, or discovery need
 - But contract sensitivity and failure cost are not High
 
-**Full SDD** (`propose -> spec -> design -> tasks`) — when any of:
+**Full SDD** (`sdd-explore -> propose -> spec -> design -> tasks`) — when any of:
 - Contract sensitivity is High
 - Failure cost is High
 - 2 or more dimensions are High
@@ -191,6 +191,7 @@ corresponding SDD pipeline phase. The handoff MUST include:
 
 Hand off to:
 
+- **Explore**: delegate read-only repository discovery to explorer before artifact-producing phases.
 - **Propose**: [../sdd-propose/SKILL.md](../sdd-propose/SKILL.md)
 - **Spec** (full SDD only): [../sdd-spec/SKILL.md](../sdd-spec/SKILL.md)
 - **Design** (full SDD only): [../sdd-design/SKILL.md](../sdd-design/SKILL.md)

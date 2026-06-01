@@ -386,6 +386,8 @@ describe('Codex adapter', () => {
 
     expect(rootInstructions).toContain('ambient Codex root session');
     expect(rootInstructions).toContain('installed Codex role agents');
+    expect(rootInstructions).toContain('sdd-tasks -> quick subagent');
+    expect(rootInstructions).toContain('sdd-verify -> oracle subagent');
 
     expect(explorer).toContain('Dispatch method: multi_agent_v1.spawn_agent');
     expect(explorer).toContain('Mode: read-only');

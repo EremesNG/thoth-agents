@@ -8,7 +8,7 @@ thoth-agents.
 The full pipeline is:
 
 ```text
-sdd-init (if openspec/ missing) -> propose -> [spec || design] -> tasks -> apply -> verify -> archive
+sdd-init (if openspec/ missing) -> sdd-explore -> propose -> spec -> design -> tasks -> apply -> verify -> archive
 ```
 
 The requirements interview runs before this when the request is ambiguous, open-ended, or too
@@ -25,7 +25,7 @@ depth, contract sensitivity, context span, discovery need, failure
 cost, and concern coupling).
 
 - low complexity: direct implementation
-- moderate complexity: accelerated SDD, usually `propose -> tasks`
+- moderate complexity: accelerated SDD, usually `sdd-explore -> propose -> tasks`
 - high complexity: full SDD pipeline
 
 Routing is based on the nature and risk of the change, not file count.
@@ -68,7 +68,33 @@ Dispatch notes:
 - After that retry, report the limitation or failure clearly to the user.
 - Maximum retries per delegated task: one.
 
-### 1. `sdd-propose`
+## Delegation Matrix
+
+| Phase | Primary delegate | Support / fallback | Why |
+| --- | --- | --- | --- |
+| `sdd-init` | `quick` | `explorer` support | Fast mechanical bootstrap; explorer supplies repository facts when needed. |
+| `sdd-explore` | `explorer` | `librarian` for external APIs/docs | Read-only repository discovery before artifact-producing phases. |
+| `sdd-propose` | `deep` | `oracle` review when risk is high | Structured reasoning, alternatives, and trade-off synthesis. |
+| `sdd-spec` | `deep` | `oracle` review when ambiguity is high | Quality-sensitive requirement contract and scenarios. |
+| `sdd-design` | `deep` | `designer` only for UI/UX concerns | Technical architecture, file changes, interfaces, and data flow. |
+| `sdd-tasks` | `quick` | `deep` fallback for complex plans | Mechanical conversion of settled design into ordered tasks. |
+| `plan-reviewer` | `oracle` | None | Independent read-only executability review. |
+| `sdd-apply` | `deep` | `quick` for mechanical batches, `designer` for UI/visual work | Correctness-heavy implementation by default. |
+| `sdd-verify` | `oracle` | `quick` persists the report when writes are required | Independent verification review against specs and evidence. |
+| `sdd-archive` | `quick` | None | Mechanical closeout after verification passes. |
+
+### 0. `sdd-init`
+
+Bootstraps OpenSpec structure when OpenSpec-backed persistence is selected and
+`openspec/` is missing.
+
+### 1. `sdd-explore`
+
+Maps the repository context needed for SDD: existing implementations,
+dependencies, tests, conventions, and verification targets. This is read-only
+and feeds the proposal phase.
+
+### 2. `sdd-propose`
 
 Creates or updates `proposal.md` for a named change.
 
@@ -87,7 +113,7 @@ Canonical file path when OpenSpec files are enabled:
 openspec/changes/{change-name}/proposal.md
 ```
 
-### 2. `sdd-spec`
+### 3. `sdd-spec`
 
 Turns the proposal into requirements and Given/When/Then scenarios.
 
@@ -105,7 +131,7 @@ Canonical file path:
 openspec/changes/{change-name}/specs/{domain}/spec.md
 ```
 
-### 3. `sdd-design`
+### 4. `sdd-design`
 
 Explains how the approved spec will be built.
 
@@ -124,7 +150,7 @@ Canonical file path:
 openspec/changes/{change-name}/design.md
 ```
 
-### 4. `sdd-tasks`
+### 5. `sdd-tasks`
 
 Generates an executable checklist from the proposal, spec, and design.
 
@@ -141,7 +167,7 @@ Canonical file path:
 openspec/changes/{change-name}/tasks.md
 ```
 
-### 5. `sdd-apply`
+### 6. `sdd-apply`
 
 Implements assigned tasks and reports structured results back to the
 `orchestrator`.
@@ -156,7 +182,7 @@ Typical output:
 
 `sdd-apply` executes assigned work. It does not own task checkbox updates.
 
-### 6. `sdd-verify`
+### 7. `sdd-verify`
 
 Builds a verification report against specs and execution evidence.
 
@@ -174,7 +200,7 @@ Canonical file path:
 openspec/changes/{change-name}/verify-report.md
 ```
 
-### 7. `sdd-archive`
+### 8. `sdd-archive`
 
 Closes the loop by merging verified deltas into main specs and archiving the
 change.

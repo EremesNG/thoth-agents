@@ -103,7 +103,7 @@ export const AGENT_ROLES = [
       'Provide strategic technical guidance anchored to evidence and review SDD plans.',
     toolGovernance: [
       'read-only analysis and review',
-      'no implementation or artifact-producing SDD phases',
+      'no implementation; may perform read-only SDD plan review and verification review, but does not persist artifacts',
       'no task delegation',
     ],
     verification: ['separates observations, risks, and recommendations'],

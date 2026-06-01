@@ -10,7 +10,7 @@ const GOVERNANCE_PROMPT_SECTIONS = {
     'Internal handoff fields',
     'root-owned session context',
     'task instructions plus handoff recovery instructions only',
-    'propose -> spec -> design -> tasks',
+    'explore -> propose -> spec -> design -> tasks',
   ],
   explorer: [
     'Mode: read-only',

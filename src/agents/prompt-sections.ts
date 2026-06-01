@@ -1,3 +1,7 @@
+import {
+  getSddWorkflowContract,
+  type SddPhaseContract,
+} from '../harness/core/sdd';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
 import type { ModelEntry } from './prompt-utils';
 
@@ -130,6 +134,60 @@ export function createModelFamilySection(
 
 function roleText(template: string): RoleTextSection {
   return { kind: 'role-text', template };
+}
+
+function roleTemplate(role: AgentPromptRole): string {
+  return `{{role.${role}}}`;
+}
+
+function renderRoleList(roles: readonly AgentPromptRole[]): string {
+  return roles.map(roleTemplate).join(', ');
+}
+
+type DelegatedSddPhase = SddPhaseContract & {
+  defaultAgentRole: AgentPromptRole;
+};
+
+function getDelegatedSddPhase(id: SddPhaseContract['id']): DelegatedSddPhase {
+  const phase = getSddWorkflowContract().phases.find(
+    (candidate) => candidate.id === id,
+  );
+
+  if (!phase?.defaultAgentRole) {
+    throw new Error(`Missing SDD delegation role for ${id}`);
+  }
+
+  return phase as DelegatedSddPhase;
+}
+
+function primarySddRole(id: SddPhaseContract['id']): string {
+  return roleTemplate(getDelegatedSddPhase(id).defaultAgentRole);
+}
+
+function alternateSddRoles(id: SddPhaseContract['id']): string {
+  const phase = getDelegatedSddPhase(id);
+
+  return phase.alternateAgentRoles?.length
+    ? renderRoleList(phase.alternateAgentRoles)
+    : '';
+}
+
+function supportSddRoles(id: SddPhaseContract['id']): string {
+  const phase = getDelegatedSddPhase(id);
+
+  return phase.supportingAgentRoles?.length
+    ? renderRoleList(phase.supportingAgentRoles)
+    : '';
+}
+
+function persistenceSddRole(id: SddPhaseContract['id']): string {
+  const phase = getDelegatedSddPhase(id);
+
+  return phase.persistenceAgentRole ? roleTemplate(phase.persistenceAgentRole) : '';
+}
+
+function renderSddDelegationMatrix(): string {
+  return `<sdd-delegation-matrix>\n- sdd-init -> ${primarySddRole('init')} (+${supportSddRoles('init')}, if openspec/ missing); sdd-explore -> ${primarySddRole('explore')} (+${supportSddRoles('explore')})\n- sdd-propose/sdd-spec/sdd-design -> ${primarySddRole('proposal')}; sdd-tasks -> ${primarySddRole('tasks')} (fallback: ${alternateSddRoles('tasks')})\n- plan-reviewer -> ${primarySddRole('plan-review')}; sdd-apply -> ${primarySddRole('apply')} (fallback: ${alternateSddRoles('apply')}); sdd-verify -> ${primarySddRole('verify')} (persistence: ${persistenceSddRole('verify')}); sdd-archive -> ${primarySddRole('archive')}\n</sdd-delegation-matrix>`;
 }
 
 function specialistSections({
@@ -287,12 +345,15 @@ Scope-faithful invariant: accepted user intent and scope must not be silently na
 
 Routes:
 - Direct implementation for low-complexity work.
-- Accelerated SDD: propose -> tasks.
-- Full SDD: propose -> spec -> design -> tasks.
+- Accelerated SDD: explore -> propose -> tasks.
+- Full SDD: explore -> propose -> spec -> design -> tasks.
+
+${renderSddDelegationMatrix()}
 
 Hard gates:
-- Artifact-producing SDD phases are dispatched to {{role.deep}} or {{role.quick}} with the matching skill loaded.
-- {{role.oracle}} is read-only and only handles plan-reviewer.
+- Use the SDD delegation matrix as canonical phase routing.
+- Load the matching skill when a phase has one.
+- {{role.oracle}} is read-only for plan-reviewer and sdd-verify review; {{role.quick}} persists verify reports when writes are required.
 - Never skip artifacts or jump from requirements-interview to implementation when SDD is selected.
 - Before SDD execution, load \`executing-plans\`; then track progress in {{progressTool}} plus the persistent artifact.
 - If openspec persistence is selected and openspec/ is missing, dispatch sdd-init first.

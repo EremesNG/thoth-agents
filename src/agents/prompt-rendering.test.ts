@@ -275,6 +275,10 @@ describe('semantic prompt section rendering', () => {
       'If a named subagent hits capacity, retry that same role up to 3 attempts.',
     );
     expect(prompt).toContain('Plan gate: after tasks, ask with `question`');
+    expect(prompt).toContain('<sdd-delegation-matrix>');
+    expect(prompt).toContain('sdd-tasks -> @quick');
+    expect(prompt).toContain('sdd-verify -> @oracle');
+    expect(prompt).toContain('persistence: @quick');
     expect(prompt).toContain('track progress in todowrite');
     expect(prompt).toContain('Root-session memory is yours');
     expect(prompt).toContain(

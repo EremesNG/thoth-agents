@@ -530,7 +530,7 @@ describe('granular permission defaults', () => {
 describe('prompt role markers', () => {
   test('built-in prompts stay compact enough for delegation efficiency', () => {
     const maxPromptChars: Record<string, number> = {
-      orchestrator: 13_200,
+      orchestrator: 13_600,
       explorer: 3_900,
       librarian: 3_250,
       oracle: 3_250,

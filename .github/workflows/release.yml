@@ -83,10 +83,15 @@ jobs:
 
             status=$(jq -r '.status' <<< "$run")
             conclusion=$(jq -r '.conclusion // empty' <<< "$run")
-            run_id=$(jq -r '.database_id' <<< "$run")
+            run_id=$(jq -r '.id // empty' <<< "$run")
             url=$(jq -r '.html_url' <<< "$run")
 
             echo "CI status: ${status:-unknown} ${conclusion:-pending} (${url})"
+
+            if [ -z "$run_id" ]; then
+              echo "CI run id was missing from GitHub API response."
+              exit 1
+            fi
 
             if [ "$status" != "completed" ]; then
               sleep 10

@@ -2,6 +2,13 @@
   <img src="img/team.png" alt="thoth-agents agents" width="420">
   <p><i>Seven specialized agents, one delegate-first workflow across supported harnesses.</i></p>
   <p><b>thoth-agents</b> - Multi-harness orchestration - Thoth-mem persistence - Bundled SDD pipeline</p>
+  <p>
+    <a href="https://github.com/EremesNG/thoth-agents/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/EremesNG/thoth-agents/ci.yml?branch=main&label=CI" alt="CI status"></a>
+    <a href="https://www.npmjs.com/package/thoth-agents"><img src="https://img.shields.io/npm/v/thoth-agents?label=npm" alt="npm version"></a>
+    <a href="https://github.com/EremesNG/thoth-agents/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/thoth-agents" alt="MIT license"></a>
+    <img src="https://img.shields.io/node/v/thoth-agents" alt="Node.js version">
+    <img src="https://img.shields.io/badge/pnpm-11.2.2-F69220?logo=pnpm&logoColor=white" alt="pnpm 11.2.2">
+  </p>
 </div>
 
 ---

@@ -1,5 +1,8 @@
 import type { InstallConfig } from './types';
 
+export const THOTH_AGENTS_CONFIG_SCHEMA_URL =
+  'https://unpkg.com/thoth-agents@latest/thoth-agents.schema.json';
+
 // Model mappings by provider - only 4 supported providers
 export const MODEL_MAPPINGS = {
   openai: {
@@ -47,6 +50,7 @@ export function generateLiteConfig(
   installConfig: InstallConfig,
 ): Record<string, unknown> {
   const config: Record<string, unknown> = {
+    $schema: THOTH_AGENTS_CONFIG_SCHEMA_URL,
     preset: 'openai',
     presets: {},
   };

@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { generateLiteConfig, MODEL_MAPPINGS } from './providers';
+import {
+  generateLiteConfig,
+  MODEL_MAPPINGS,
+  THOTH_AGENTS_CONFIG_SCHEMA_URL,
+} from './providers';
 
 describe('providers', () => {
   test('MODEL_MAPPINGS has exactly 4 providers', () => {
@@ -15,6 +19,7 @@ describe('providers', () => {
       reset: false,
     });
 
+    expect(config.$schema).toBe(THOTH_AGENTS_CONFIG_SCHEMA_URL);
     expect(config.preset).toBe('openai');
     const agents = (config.presets as any).openai;
     expect(agents).toBeDefined();

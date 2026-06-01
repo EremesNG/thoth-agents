@@ -116,7 +116,15 @@ jobs:
       - name: Download package build
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "${{ steps.wait-ci.outputs.run_id }}" --name package-build --dir .
+        run: |
+          package_build_dir="$(mktemp -d)"
+          trap 'rm -rf "$package_build_dir"' EXIT
+
+          gh run download "${{ steps.wait-ci.outputs.run_id }}" --name package-build --dir "$package_build_dir"
+
+          rm -rf dist
+          cp -R "$package_build_dir/dist" ./dist
+          cp "$package_build_dir/thoth-agents.schema.json" ./thoth-agents.schema.json
 
       - name: Generate release notes
         env:

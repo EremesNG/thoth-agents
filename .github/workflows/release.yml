@@ -21,6 +21,7 @@ jobs:
           fetch-depth: 0
 
       - name: Verify release branch
+        id: release-branch
         run: |
           for branch in main master; do
             git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || true
@@ -29,7 +30,9 @@ jobs:
           for branch in origin/main origin/master; do
             if git show-ref --verify --quiet "refs/remotes/${branch}" &&
               git merge-base --is-ancestor "$GITHUB_SHA" "${branch}"; then
+              release_branch="${branch#origin/}"
               echo "Release tag commit is contained in ${branch}."
+              echo "name=${release_branch}" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done
@@ -58,6 +61,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.sha }}
+          RELEASE_BRANCH: ${{ steps.release-branch.outputs.name }}
         run: |
           for attempt in {1..30}; do
             runs=$(
@@ -66,17 +70,17 @@ jobs:
             )
             run=$(
               jq \
-                --arg tag "${GITHUB_REF_NAME}" \
+                --arg branch "${RELEASE_BRANCH}" \
                 --arg sha "${HEAD_SHA}" \
                 '.workflow_runs
-                  | map(select(.head_branch == $tag and .head_sha == $sha))
+                  | map(select(.head_branch == $branch and .head_sha == $sha))
                   | sort_by(.created_at)
                   | last // empty' \
                 <<< "$runs"
             )
 
             if [ -z "$run" ]; then
-              echo "CI run for tag ${GITHUB_REF_NAME} at ${HEAD_SHA} not found yet. Waiting..."
+              echo "CI run for ${RELEASE_BRANCH} at ${HEAD_SHA} not found yet. Waiting..."
               sleep 10
               continue
             fi
@@ -113,18 +117,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Download package build
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          package_build_dir="$(mktemp -d)"
-          trap 'rm -rf "$package_build_dir"' EXIT
+      - name: Build package
+        run: pnpm run build
 
-          gh run download "${{ steps.wait-ci.outputs.run_id }}" --name package-build --dir "$package_build_dir"
-
-          rm -rf dist
-          cp -R "$package_build_dir/dist" ./dist
-          cp "$package_build_dir/thoth-agents.schema.json" ./thoth-agents.schema.json
+      - name: Check built plugin runtime
+        run: pnpm exec vitest run src/plugin-node-runtime.test.ts
 
       - name: Generate release notes
         env:

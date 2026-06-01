@@ -2,6 +2,7 @@ import type { Event, Model, Part, Session } from '@opencode-ai/sdk';
 import type { ThothConfig } from '../../config';
 import { createThothClient } from '../../thoth';
 import { log } from '../../utils';
+import { stripPhaseReminder } from '../phase-reminder';
 import {
   buildCompactionReminder,
   buildCompactorInstruction,
@@ -69,7 +70,7 @@ function truncate(str: string, max: number): string {
 }
 
 function sanitizePromptText(text: string): string {
-  return truncate(stripPrivateTags(text), 2000);
+  return truncate(stripPrivateTags(stripPhaseReminder(text)), 2000);
 }
 
 function isSessionSummaryTool(toolName: string): boolean {

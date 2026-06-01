@@ -2,6 +2,7 @@ import type { AgentConfig } from '@opencode-ai/sdk/v2';
 import { describe, expect, test } from 'vitest';
 import type { PluginConfig } from '../config';
 import { SUBAGENT_NAMES } from '../config';
+import { renderCodexRootInstructions } from '../harness/adapters/codex';
 import { createAgents, getAgentConfigs, isSubagent } from './index';
 import { createOrchestratorAgent } from './orchestrator';
 import { composeAgentPrompt } from './prompt-utils';
@@ -367,6 +368,33 @@ describe('orchestrator agent', () => {
     );
   });
 
+  test('orchestrator prompt includes OpenCode-only runtime prompt-save guidance', () => {
+    const prompt = getAgentByName('orchestrator')?.config.prompt ?? '';
+
+    expect(prompt).toContain('<opencode-runtime>');
+    expect(prompt).toContain(
+      'automatic `<reminder>...</reminder>` workflow block',
+    );
+    expect(prompt).toContain('not user input');
+    expect(prompt).toContain('mem_save_prompt');
+    expect(prompt).toContain('mem_save(kind="prompt")');
+    expect(prompt).toContain(
+      'persist only the real user request text that follows',
+    );
+  });
+
+  test('Codex root prompt does not include OpenCode runtime prompt-save guidance', () => {
+    const prompt = renderCodexRootInstructions();
+
+    expect(prompt).not.toContain('<opencode-runtime>');
+    expect(prompt).not.toContain(
+      'automatic `<reminder>...</reminder>` workflow block',
+    );
+    expect(prompt).not.toContain(
+      'persist only the real user request text that follows',
+    );
+  });
+
   test('orchestrator prompt places artifact governance after sdd-tasks in report-only mode', () => {
     const prompt = getAgentByName('orchestrator')?.config.prompt ?? '';
 
@@ -530,7 +558,7 @@ describe('granular permission defaults', () => {
 describe('prompt role markers', () => {
   test('built-in prompts stay compact enough for delegation efficiency', () => {
     const maxPromptChars: Record<string, number> = {
-      orchestrator: 13_600,
+      orchestrator: 14_100,
       explorer: 3_900,
       librarian: 3_250,
       oracle: 3_250,

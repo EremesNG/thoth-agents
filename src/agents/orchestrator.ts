@@ -18,9 +18,14 @@ export interface AgentDefinition {
   _modelArray?: Array<{ id: string; variant?: string }>;
 }
 
-const ORCHESTRATOR_PROMPT = renderRolePrompt(
-  createOrchestratorPromptSections(),
-  OPENCODE_PROMPT_DIALECT,
+const OPENCODE_RUNTIME_SECTION = `<opencode-runtime>
+In the OpenCode harness, an automatic \`<reminder>...</reminder>\` workflow block followed by a \`\\n\\n---\\n\\n\` separator is prepended to your user messages as harness scaffolding, not user input.
+When saving the user prompt via mem_save(kind="prompt"), you MUST exclude that injected \`<reminder>\` block and the \`---\` separator, and persist only the real user request text that follows.
+</opencode-runtime>`;
+
+const ORCHESTRATOR_PROMPT = appendPromptSections(
+  renderRolePrompt(createOrchestratorPromptSections(), OPENCODE_PROMPT_DIALECT),
+  OPENCODE_RUNTIME_SECTION,
 );
 
 export function createOrchestratorAgent(

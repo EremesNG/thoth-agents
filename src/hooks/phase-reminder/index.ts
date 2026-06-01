@@ -16,6 +16,18 @@ If delegating, write sub-agent prompts in English and launch the specialist in t
 Before write-capable dispatch, give concrete scope, anchors, steps, non-goals, and verification.
 In SDD, after oracle returns [OKAY], give a deep approved-plan overview, then ask the user before implementation.</reminder>`;
 
+export const PHASE_REMINDER_SEPARATOR = '\n\n---\n\n';
+
+export function stripPhaseReminder(text: string): string {
+  if (!text) {
+    return '';
+  }
+
+  const prefix = `${PHASE_REMINDER}${PHASE_REMINDER_SEPARATOR}`;
+
+  return text.startsWith(prefix) ? text.slice(prefix.length) : text;
+}
+
 interface MessageInfo {
   role: string;
   agent?: string;
@@ -87,7 +99,7 @@ export function createPhaseReminderHook() {
 
       // Prepend the reminder to the existing text
       lastUserMessage.parts[textPartIndex].text =
-        `${PHASE_REMINDER}\n\n---\n\n${originalText}`;
+        `${PHASE_REMINDER}${PHASE_REMINDER_SEPARATOR}${originalText}`;
     },
   };
 }

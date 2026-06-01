@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { PHASE_REMINDER, PHASE_REMINDER_SEPARATOR } from '../phase-reminder';
 import {
   buildCompactionReminder,
   buildMemoryInstructions,
@@ -285,6 +286,59 @@ describe('createThothMemHook', () => {
 
     expect(memSessionStartMock).not.toHaveBeenCalled();
     expect(memSavePromptMock).not.toHaveBeenCalled();
+  });
+
+  test('strips injected phase reminder before saving prompts', async () => {
+    const hook = createThothMemHook({
+      project: 'thoth-agents',
+      enabled: true,
+    });
+
+    await createRootSession(hook);
+
+    await hook['chat.message']?.(
+      { sessionID: 'root-session' },
+      {
+        parts: [
+          {
+            type: 'text',
+            text: `${PHASE_REMINDER}${PHASE_REMINDER_SEPARATOR}Real user request`,
+          } as never,
+        ],
+        message: {},
+      },
+    );
+
+    expect(memSavePromptMock).toHaveBeenCalledWith(
+      'root-session',
+      'Real user request',
+    );
+  });
+
+  test('strips injected phase reminder before private tags and truncation', async () => {
+    const hook = createThothMemHook({
+      project: 'thoth-agents',
+      enabled: true,
+    });
+
+    await createRootSession(hook);
+
+    await hook['chat.message']?.(
+      { sessionID: 'root-session' },
+      {
+        parts: [
+          {
+            type: 'text',
+            text: `${PHASE_REMINDER}${PHASE_REMINDER_SEPARATOR}${'a'.repeat(1990)}<private>secret</private>`,
+          } as never,
+        ],
+        message: {},
+      },
+    );
+
+    expect(memSavePromptMock.mock.calls[0]?.[1]).toBe(
+      `${'a'.repeat(1990)}[REDACTED]`,
+    );
   });
 
   test('strips private tags before saving prompts', async () => {

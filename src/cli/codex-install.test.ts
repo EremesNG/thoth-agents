@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { DEFAULT_THOTH_COMMAND } from '../config';
 import {
   applyCodexSetup,
   buildCodexSetupPlan,
@@ -335,8 +336,8 @@ describe('Codex install setup plan', () => {
       ).toEqual({
         mcpServers: {
           thoth_mem: {
-            command: 'npx',
-            args: ['-y', 'thoth-mem'],
+            command: DEFAULT_THOTH_COMMAND[0],
+            args: DEFAULT_THOTH_COMMAND.slice(1),
           },
           exa: {
             command: 'npx',

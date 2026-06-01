@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import type { PluginConfig } from '../../config';
+import { DEFAULT_THOTH_COMMAND, type PluginConfig } from '../../config';
 import {
   CODEX_CAPABILITIES,
   codexAdapter,
@@ -223,8 +223,8 @@ describe('Codex adapter', () => {
         context7: { url: 'https://mcp.context7.com/mcp' },
         grep_app: { url: 'https://mcp.grep.app' },
         thoth_mem: {
-          command: 'npx',
-          args: ['-y', 'thoth-mem'],
+          command: DEFAULT_THOTH_COMMAND[0],
+          args: DEFAULT_THOTH_COMMAND.slice(1),
         },
         exa: {
           command: 'npx',

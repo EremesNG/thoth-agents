@@ -9,8 +9,7 @@
 | `hybrid` | thoth-mem, then filesystem fallback | thoth-mem and OpenSpec files | The change should survive compaction and exist in the repo |
 | `none` | orchestrator prompt context only | nowhere (inline response only) | Ephemeral exploration, privacy-sensitive work, or no persistence backend available |
 
-SDD skills MUST obey the selected artifact store mode. Do not reference or rely
-on engram.
+SDD skills must obey the selected artifact store mode.
 
 ## Mode Rules
 
@@ -40,95 +39,75 @@ on engram.
 When running in `hybrid` mode:
 
 1. Write the canonical OpenSpec artifact to the filesystem.
-2. Persist the same full artifact to thoth-mem with a deterministic `topic_key`.
+2. Persist the same full artifact to thoth-mem with deterministic `topic_key`.
 3. Treat the operation as complete only when both writes succeed.
-4. If filesystem and memory diverge, repair them immediately by rewriting the
-   stale copy from the freshest full artifact.
+4. If filesystem and memory diverge, repair immediately from the freshest full
+   artifact.
 
 ## Memory Ownership
 
-Memory responsibilities are split by semantic role between orchestrator and
-sub-agents:
+Memory responsibilities are split by semantic role:
 
-**Orchestrator owns general memory:**
-- Decisions, discoveries, bug fixes, session summaries
-- Progress checkpoints (SDD task state updates)
-- User preferences and configuration notes
+**Orchestrator owns general/root continuity memory:**
+- decisions, discoveries, bug fixes, and user constraints
+- root progress checkpoints and summaries (`mem_session(action="checkpoint"|"summary")`)
+- prompt persistence (`mem_save(kind="prompt")`)
 
-**Sub-agents write deterministic SDD artifacts:**
-- Canonical SDD artifacts with topic_key matching `sdd/{change}/{artifact}`
-- Includes: proposal, spec, design, tasks, apply-progress, verify-report,
-  archive-report, state
-- Sub-agents persist these directly when the active mode includes thoth-mem
-- Sub-agents persist apply-progress or other deterministic SDD artifacts only
-  when that phase explicitly delegates the write under the parent
-  session/project
-- Sub-agents do NOT write general memory observations unless the dispatch
-  explicitly authorizes a delegated durable implementation observation outside
-  the `sdd/*` namespace
+**Sub-agents write deterministic SDD artifacts when delegated:**
+- canonical SDD artifacts using `sdd/{change}/{artifact}`
+- includes proposal, spec, design, tasks, apply-progress, verify-report,
+  archive-report, and state
+- sub-agents may also write delegated durable implementation observations only
+  when explicitly authorized under parent session/project
+- sub-agents do not own session lifecycle operations and do not save prompts
 
-This split preserves artifact nuance (sub-agents have full context when writing)
-while keeping general memory centralized under orchestrator control. In
-harnesses that cannot hard-enforce the split, treat it as instruction-level
-governance and disclose any unsupported-capability that prevents compliance.
+In harnesses without hard enforcement, keep this as instruction-level
+governance and disclose unsupported-capability limitations.
 
 ## Delegated Handoffs
 
-Root/orchestrator handoffs are treated as compaction boundaries. When
-root-owned `mem_session_summary` and parent identity are available, the root
-saves or refreshes the handoff body as session summary context before
-delegation.
+Root/orchestrator handoffs are compaction boundaries. When root-owned summary or
+checkpoint tools are available, root refreshes handoff continuity with
+`mem_session(action="checkpoint"|"summary")` or root-owned
+`mem_save(kind="session_summary")`.
 
-The initial subagent prompt includes task instructions, parent `session_id`,
-project, persistence mode, memory permissions, and recovery instructions. It
-does not include the handoff body, raw transcripts, secrets, generated
-subagent prompts, or file dumps. Subagents recover that context through the
-3-layer recall protocol before treating memory content as source material.
+Initial subagent prompts include task instructions, parent `session_id`,
+project, persistence mode, memory permissions, and recovery instructions. They
+must not include raw handoff bodies, transcripts, secrets, or generated prompts.
+Subagents recover context through bounded recall before using memory as source
+material.
 
-If parent identity or summary tooling is unavailable, the root reports that
-compaction could not be persisted and the subagent relies on explicit task
-instructions and local evidence only. Subagents must not create fallback
-memory sessions.
+If parent identity or root summary/checkpoint tooling is unavailable, report
+that compaction could not be persisted and continue with explicit local context.
+Subagents must not create fallback sessions.
 
 ## Retrieval Protocol
 
 ### 3-Layer Recall for thoth-mem and hybrid modes
 
-Always complete the full 3-layer recall before using content as source material:
+Always complete the full three layers before using memory content as source
+material:
 
-1. **Layer 1 (Compact Index):** call the memory tool binding for `mem_search`
-   with compact mode to scan observation IDs and titles. This is the most
-   token-efficient entry point.
-2. **Layer 2 (Timeline Context):** call the memory tool binding for
-   `mem_timeline` to retrieve chronological context (before/after
-   observations) to disambiguate or verify the correct artifact.
-3. **Layer 3 (Full Body):** call the memory tool binding for
-   `mem_get_observation` to retrieve the complete artifact body for use as
-   source material.
+1. **Layer 1 (Compact):** `mem_recall(mode="compact")` to scan IDs/titles with
+   exact topic-key or focused query terms.
+2. **Layer 2 (Context):** `mem_recall(mode="context")` to expand the strongest
+   hits into retrieved text.
+3. **Layer 3 (Full):** `mem_get(id=...)` to fetch full content. Use
+   `include_timeline=true` when chronology matters.
 
-**Mode guidance:**
-- Use `mode: "compact"` (default) for most queries; it returns only IDs and
-  titles.
-- Use `mode: "preview"` only when compact results are insufficient to
-  disambiguate between multiple candidates.
-
-**Never treat `mem_search` output—compact or preview—as the artifact body.**
-Always complete the 3-layer recall before using content as source material.
+Optional fused context: `mem_context(..., recall_query="...")` when one recent
+context view is useful; it does not replace the three-layer recall.
 
 ### Mode-specific retrieval
 
-1. If the mode is `thoth-mem`, apply the 3-layer recall with the exact SDD
-   topic key.
-2. If the mode is `openspec`, read the canonical OpenSpec path from the
-   filesystem only.
-3. If the mode is `hybrid`, apply the 3-layer recall with the exact SDD topic
-   key.
-4. In `hybrid`, if nothing is found in thoth-mem, read the canonical OpenSpec
-   path from the filesystem.
-5. In `hybrid`, if filesystem recovery succeeds, re-save the artifact to
-   thoth-mem so the two stores converge again.
-6. If the mode is `none`, read artifacts from the orchestrator prompt context
-   only. Do not attempt to retrieve from thoth-mem or filesystem.
+1. If mode is `thoth-mem`, use three-layer recall with exact SDD topic key.
+2. If mode is `openspec`, read canonical OpenSpec files only.
+3. If mode is `hybrid`, use three-layer recall first.
+4. In `hybrid`, if nothing is found in thoth-mem, read canonical OpenSpec
+   files as fallback.
+5. In `hybrid`, if filesystem fallback succeeds, re-save the artifact to
+   thoth-mem to converge both stores.
+6. If mode is `none`, use orchestrator prompt context only.
 
 ## Artifact Ownership
 
@@ -144,42 +123,35 @@ Always complete the 3-layer recall before using content as source material.
 
 ## Governance Placement
 
-- The artifact governance validator is **report-only**.
-- It runs after `sdd-tasks` produces the canonical checklist and before any
-  future `sdd-apply` entrypoint consumes the report.
-- It does **not** replace `plan-reviewer` or `executing-plans`.
-- It does **not** mark task state, enforce execution, or alter review gating.
-- Root-session memory and progress checkpoints remain orchestrator-owned;
-  sub-agents may surface governance findings, but they must stay within the
-  active artifact store mode and delegate-first boundaries.
+- Artifact governance validator is report-only.
+- It runs after `sdd-tasks` and before any `sdd-apply` entrypoint consumes the
+  report.
+- It does not replace `plan-reviewer` or `executing-plans`.
+- Root-session memory/progress ownership remains orchestrator-owned.
 
 ## Pipeline Type Impact on Prerequisites
 
-The orchestrator passes `pipeline-type` (`accelerated` or `full`) alongside the
-persistence mode. This affects which artifacts each skill requires:
+The orchestrator passes `pipeline-type` (`accelerated` or `full`) alongside
+persistence mode, affecting required artifacts:
 
 | Artifact | Full pipeline | Accelerated pipeline |
 | --- | --- | --- |
-| Proposal | Required by all phases | Required by all phases (serves as acceptance reference) |
+| Proposal | Required by all phases | Required by all phases (acceptance reference) |
 | Spec | Required by design, tasks, apply, verify, archive | Not produced; not required |
 | Design | Required by tasks, apply, verify, archive | Not produced; not required |
 | Tasks | Required by apply, verify, archive | Required by apply, verify, archive |
 | Verify report | Required by archive | Required by archive |
 
-In accelerated pipeline, the proposal serves as the acceptance reference where
-specs would normally be used. Skills must adapt their retrieval, compliance
-checks, and archive behavior accordingly.
+In accelerated mode, proposal is the acceptance reference and must preserve
+original intent, accepted scope, deferred areas, and justified exclusions.
 
 ## Recovery Notes
 
-- Prefer exact topic-key queries over fuzzy natural-language search.
-- Always use the 3-layer recall (`mem_search` → `mem_timeline` →
-  `mem_get_observation`) before treating an artifact as source material.
-- If multiple observations match in `mem_search`, use `mem_timeline` to inspect
-  chronological context and disambiguate.
-- In `openspec` mode, repair missing or stale artifacts by rewriting the
-  canonical OpenSpec file only.
-- In `thoth-mem` mode, repair missing or stale artifacts by re-saving the full
-  artifact to thoth-mem only.
-- In `hybrid` mode, use the filesystem copy only as fallback or repair input,
-  then converge both stores.
+- Prefer exact topic-key queries over broad natural-language recall.
+- Always apply the three-layer recall (`mem_recall compact` ->
+  `mem_recall context` -> `mem_get`) before treating memory as source material.
+- In `openspec`, repair missing/stale artifacts by rewriting canonical OpenSpec
+  files.
+- In `thoth-mem`, repair missing/stale artifacts by re-saving full artifacts via
+  `mem_save`.
+- In `hybrid`, use filesystem fallback only for recovery, then converge stores.

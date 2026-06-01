@@ -119,25 +119,19 @@ describe('CUSTOM_SKILLS', () => {
     );
     const skill = readFileSync(skillPath, 'utf-8');
 
-    expect(skill).toContain('Subagents MUST NOT call them.');
+    expect(skill).toContain(
+      'Subagents must never start/checkpoint/summarize sessions or save prompts.',
+    );
     expect(skill).toContain('`mem_context`');
-    expect(skill).toContain('`mem_project_summary`');
-    expect(skill).toContain('`mem_project_graph`');
-    expect(skill).toContain('`mem_topic_keys`');
-    expect(skill).toContain('You do not own durable memory of your own.');
-    expect(skill).toContain(
-      'dispatch explicitly allows project-scoped/context reads',
-    );
-    expect(skill).toContain('Never save a subagent prompt.');
-    expect(skill).toContain(
-      'root/main orchestrator-owned tools and responsibilities',
-    );
-    expect(skill).toContain('At the start of every new root session');
-    expect(skill).toContain('call `mem_session_start`');
-    expect(skill).toContain('save the real user prompt with `mem_save_prompt`');
-    expect(skill).toContain('Targeted 3-layer recall');
-    expect(skill).toContain('Before ending the root session');
-    expect(skill).toContain('After compaction');
+    expect(skill).toContain('`mem_project`');
+    expect(skill).toContain('Use thoth-mem through these MCP tools');
+    expect(skill).toContain('`mem_session(action="start")`');
+    expect(skill).toContain('`mem_save(kind="prompt")`');
+    expect(skill).toContain('Recall funnel (canonical)');
+    expect(skill).toContain('`mem_recall(mode="compact")`');
+    expect(skill).toContain('`mem_recall(mode="context")`');
+    expect(skill).toContain('`mem_get(id=..., include_timeline=true)`');
+    expect(skill).toContain('root-owned `mem_save(kind="session_summary")`');
   });
 
   test('findPackageRoot walks up from a bundled dist directory', () => {

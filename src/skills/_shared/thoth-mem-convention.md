@@ -3,24 +3,20 @@
 ## Harness Scope
 
 This convention defines harness-neutral thoth-mem semantics for SDD artifacts.
-Tool names are adapter bindings, not universal semantics. Use the thoth-mem
-operation names (`mem_search`, `mem_timeline`, `mem_get_observation`,
-`mem_save`, `mem_update`) as the portable vocabulary and map them to the
-callable tool names exposed by the active binding surface.
+Use the thoth-mem MCP surface as the portable vocabulary:
+`mem_recall`, `mem_save`, `mem_context`, `mem_get`, `mem_project`, and
+`mem_session`.
 
-If a needed thoth-mem operation is not available, treat it as an
-unsupported-capability, disclose the limitation, and do not pretend
-persistence or recovery succeeded.
+If a needed operation is unavailable in the active runtime, report the
+unsupported capability and do not pretend persistence/recovery succeeded.
 
 Governance that a harness cannot hard-enforce remains instruction-level:
-semantic role ownership, parent session/project scoping, prompt-save
-prohibitions, and SDD topic-key namespace protection still apply.
+role ownership, parent session/project scoping, prompt-save prohibitions, and
+SDD namespace protection.
 
-Root-owned delegation handoffs use the same convention: the handoff body lives
-in a root-owned `mem_session_summary` when available, while subagent prompts
-carry task instructions plus parent-scoped recovery instructions. Do not place
-the handoff body in the initial subagent prompt or structured attachment
-payload.
+Root-owned delegation handoffs follow the same rule: handoff bodies stay in
+root-owned summary/checkpoint memory when available; subagent prompts carry only
+task instructions plus parent-scoped recovery instructions.
 
 ## Mode Scope
 
@@ -28,13 +24,12 @@ This convention applies only when the artifact store mode includes thoth-mem:
 `thoth-mem` and `hybrid`.
 
 - In `openspec` mode, skip thoth-mem saves.
-- In `openspec` mode, skip thoth-mem recovery and use filesystem artifacts
-  instead.
+- In `openspec` mode, skip thoth-mem recovery and use filesystem artifacts.
 
 ## Tool Names
 
-Use the thoth-mem operation names through the active binding surface. Prefer
-the callable names actually exposed by the runtime.
+Use callable names exposed by the active runtime, mapped to the six-tool MCP
+surface above.
 
 ## Topic Key Format
 
@@ -80,63 +75,47 @@ artifacts:
 last_updated: {ISO 8601 timestamp}
 ```
 
-Save with the memory tool binding for `mem_save`, using the canonical SDD
-topic key and the required metadata fields:
+Persist with `mem_save` using canonical SDD topic keys and required metadata:
 `title`, `topic_key`, `type`, `project`, `scope`, and `content`.
 
-Recovery: `mem_search("sdd/{change-name}/state")` using the active binding
-surface → `mem_timeline(id)` when needed for chronology →
-`mem_get_observation(id)` → parse YAML → restore phase state.
+Recovery path for state artifacts:
+`mem_recall(mode="compact", query="topic_key:sdd/{change-name}/state")` ->
+`mem_recall(mode="context", query="topic_key:sdd/{change-name}/state")` when needed ->
+`mem_get(id=...)` (or `include_timeline=true` when chronology matters) ->
+parse YAML -> restore phase state.
 
 ## Three-Layer Recall Protocol
 
-For delegated handoffs, subagents may use this protocol only when the dispatch
-includes both parent `session_id` and `project`. The first recalled source
-should be the parent-session handoff summary or exact SDD topic assigned by the
-orchestrator; if recall is missing, stale, contradictory, or insufficient,
-report that limitation instead of inventing context.
+For delegated handoffs, subagents may use recall only when dispatch includes
+both parent `session_id` and `project`.
 
-1. **Scan compact index** by exact topic key:
+1. **Compact scan**
 
-Use the memory tool binding for `mem_search` with
-`query: "topic_key:sdd/{change-name}/{artifact}"`, `project`, and
-`mode: "compact"`.
+`mem_recall(mode="compact")` with exact topic-key query for token-efficient IDs
+and ranking.
 
-Use `mode: "compact"` (the default) for token efficiency. Switch to `mode: "preview"`
-only when compact results are insufficient to disambiguate between multiple results.
+2. **Context expansion**
 
-2. **Get chronological context** around the found observation:
+`mem_recall(mode="context")` to expand strongest hits into retrieved text.
 
-Use the memory tool binding for `mem_timeline` with `observation_id`,
-`before`, and `after`.
+3. **Full body fetch**
 
-This shows related observations in the same session, helping you understand the
-artifact's evolution and dependencies.
+`mem_get(id=...)` to retrieve full artifact content. Use
+`include_timeline=true` when chronology matters.
 
-3. **Retrieve full artifact content**:
-
-Use the memory tool binding for `mem_get_observation` with the observation ID.
-
-Search returns compact results (IDs + titles) by default. Neither compact nor
-preview mode returns the full artifact body. Always complete the 3-layer recall
-to get the actual content.
+Optional: `mem_context(..., recall_query="...")` can provide fused recent
+context, but it does not replace the three-layer recall.
 
 ## Save Contract
 
-**CRITICAL:** The orchestrator MUST persist the state artifact after each SDD
-phase transition. This is the canonical checkpoint for resume/recovery.
+**CRITICAL:** The orchestrator must persist the `state` artifact after each SDD
+phase transition for recovery.
 
-Persist SDD artifacts with a stable topic key so repeated saves upsert instead
-of creating duplicates:
+Persist SDD artifacts with stable deterministic topic keys so repeated saves
+upsert instead of duplicating. For `sdd-apply`, save `apply-progress` and
+re-save updated `tasks` after checkbox changes.
 
-Use the memory tool binding for `mem_save` with the canonical SDD topic key
-and the full artifact markdown in `content`.
-
-For `sdd-apply`, save the progress report under `apply-progress` and re-save the
-updated task list under `tasks` after checkboxes change.
-
-Write-capable subagents may call `mem_save` only when the task explicitly
-delegates a durable implementation observation or deterministic SDD artifact
-write under the parent session/project. General observations must use topic
-keys outside `sdd/*`; deterministic SDD artifacts keep the canonical
-`sdd/{change-name}/{artifact}` format.
+Write-capable subagents may call `mem_save` only when dispatch explicitly
+permits delegated durable implementation observations or deterministic SDD
+artifact writes under parent session/project. General observations stay outside
+`sdd/*`; deterministic SDD artifacts keep `sdd/{change-name}/{artifact}`.

@@ -105,13 +105,14 @@ async function runToolExecuteAfter(
   hook: ReturnType<typeof createThothMemHook>,
   tool: string,
   sessionID = 'root-session',
+  args: unknown = {},
 ) {
   await hook['tool.execute.after']?.(
     {
       tool,
       sessionID,
       callID: 'call-1',
-      args: {},
+      args,
     },
     {
       title: 'Tool finished',
@@ -467,7 +468,7 @@ describe('createThothMemHook', () => {
     expect(memSavePromptMock).not.toHaveBeenCalled();
   });
 
-  test('clears compaction follow-up flag when mem_session_summary tool is called', async () => {
+  test('clears compaction follow-up flag when mem_session action="summary" is called', async () => {
     const hook = createThothMemHook({
       project: 'thoth-agents',
       enabled: true,
@@ -490,8 +491,9 @@ describe('createThothMemHook', () => {
 
     await runToolExecuteAfter(
       hook,
-      'mcp_thoth_mem_mem_session_summary',
+      'mcp_thoth_mem_mem_session',
       'root-session',
+      { action: 'summary' },
     );
 
     const withoutReminder = await transformSystem(hook);
@@ -500,6 +502,24 @@ describe('createThothMemHook', () => {
     expect(withoutReminder.system[0]).not.toContain(
       buildCompactionReminder('root-session'),
     );
+  });
+
+  test('keeps compaction follow-up flag when mem_session action is not summary', async () => {
+    const hook = createThothMemHook({
+      project: 'thoth-agents',
+      enabled: true,
+    });
+
+    await createRootSession(hook);
+    await compactSession(hook);
+
+    await runToolExecuteAfter(hook, 'mem_session', 'root-session', {
+      action: 'checkpoint',
+    });
+
+    const output = await transformSystem(hook);
+
+    expect(output.system[0]).toContain(buildCompactionReminder('root-session'));
   });
 
   test('does not inject a save nudge for young sessions', async () => {
@@ -678,11 +698,33 @@ describe('createThothMemHook', () => {
     );
 
     expect(instructions).toContain('### CORE TOOLS');
+    expect(instructions).toContain(
+      'mem_save, mem_recall, mem_context, mem_get, mem_project, mem_session',
+    );
     expect(instructions).toContain('**Self-check after EVERY task**');
-    expect(instructions).toContain('mem_save_prompt');
+    expect(instructions).toContain('mem_save(kind="prompt")');
+    expect(instructions).toContain('mem_save(kind="session_summary")');
+    expect(instructions).toContain('mem_session(action="summary")');
+    expect(instructions).toContain('mem_recall(mode="compact")');
+    expect(instructions).toContain('mem_recall(mode="context")');
+    expect(instructions).toContain('mem_get(...)');
+    expect(instructions).toContain('topic_key');
+    expect(instructions).toContain('mem_get(include_timeline=true)');
+    expect(instructions).toContain('mem_context(recall_query=...)');
+    expect(instructions).toContain('mem_project(action="graph"|"topics"|"topic")');
+    expect(instructions).toContain('`mem_recall` `limit` from 1 to 20');
+    expect(instructions).toContain('kind="observation"|"prompt"');
+    expect(instructions).toContain('before`/`after`');
+    expect(instructions).toContain('offset`/`max_length`');
+    expect(instructions).toContain('HAS_TYPE');
+    expect(instructions).toContain('IN_PROJECT');
+    expect(instructions).toContain('HAS_TOPIC_KEY');
+    expect(instructions).toContain('HAS_WHAT');
+    expect(instructions).toContain('HAS_WHY');
+    expect(instructions).toContain('HAS_WHERE');
+    expect(instructions).toContain('HAS_LEARNED');
     expect(instructions).toContain('dale');
     expect(instructions).toContain('sounds good');
-    expect(instructions).toContain('thoth-mem-agents');
   });
 
   test('does not inject memory instructions for child or unknown sessions', async () => {

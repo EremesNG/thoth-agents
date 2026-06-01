@@ -16,7 +16,7 @@ const GOVERNANCE_PROMPT_SECTIONS = {
     'Mode: read-only',
     'Return decision-ready evidence',
     'handoff recovery instructions',
-    'Never write memory',
+    'do not call `mem_save`',
   ],
   deep: [
     'Mode: write-capable',

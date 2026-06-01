@@ -21,8 +21,10 @@ to hand to implementation.
 
 Review the tasks artifact for true execution blockers. Retrieve it according to
 the persistence mode: read `openspec/changes/{change-name}/tasks.md` for
-openspec/hybrid modes, use thoth-mem 3-layer recall for thoth-mem/hybrid modes,
-or read from inline context for none mode.
+openspec/hybrid modes, use the thoth-mem recall funnel
+(`mem_recall(mode="compact")` -> `mem_recall(mode="context")` ->
+`mem_get(...)`) for thoth-mem/hybrid modes, or read from inline context for none
+mode.
 
 The artifact governance validator is not part of this review. Plan-reviewer is
 only the pre-execution approval gate for the task plan; it does not run the

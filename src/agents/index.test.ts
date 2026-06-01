@@ -376,7 +376,6 @@ describe('orchestrator agent', () => {
       'automatic `<reminder>...</reminder>` workflow block',
     );
     expect(prompt).toContain('not user input');
-    expect(prompt).toContain('mem_save_prompt');
     expect(prompt).toContain('mem_save(kind="prompt")');
     expect(prompt).toContain(
       'persist only the real user request text that follows',
@@ -558,7 +557,7 @@ describe('granular permission defaults', () => {
 describe('prompt role markers', () => {
   test('built-in prompts stay compact enough for delegation efficiency', () => {
     const maxPromptChars: Record<string, number> = {
-      orchestrator: 14_100,
+      orchestrator: 14_700,
       explorer: 3_900,
       librarian: 3_250,
       oracle: 3_250,
@@ -637,20 +636,20 @@ describe('prompt role markers', () => {
     const explorerPrompt = getAgentByName('explorer')?.config.prompt ?? '';
 
     expect(explorerPrompt).toContain(
-      'mem_search` -> `mem_timeline` -> `mem_get_observation`',
+      '`mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`',
     );
     expect(explorerPrompt).toContain('handoff recovery instructions');
     expect(explorerPrompt).toContain(
-      'Recover the parent-session handoff summary through bounded 3-layer recall',
+      'Recover the parent-session handoff summary through the recall funnel',
     );
     expect(explorerPrompt).toContain(
       'missing, stale, contradictory, or insufficient',
     );
     expect(explorerPrompt).toContain(
-      'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
+      'do not call `mem_save` or own any `mem_session(...)` lifecycle action',
     );
     expect(explorerPrompt).toContain(
-      'Never save generated subagent prompts as user intent',
+      'Never save prompts, generated subagent prompts, session summaries, or durable memory.',
     );
   });
 
@@ -658,32 +657,27 @@ describe('prompt role markers', () => {
     const deepPrompt = getAgentByName('deep')?.config.prompt ?? '';
     const quickPrompt = getAgentByName('quick')?.config.prompt ?? '';
 
-    expect(deepPrompt).toContain(
-      'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
-    );
+    expect(deepPrompt).toContain('Never own `mem_session(action="start"');
+    expect(deepPrompt).toContain('save prompts');
     expect(deepPrompt).toContain(
       'Always use the parent session_id/project from dispatch',
     );
     expect(deepPrompt).toContain(
-      '`mem_search` -> `mem_timeline` -> `mem_get_observation`',
+      '`mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`',
     );
     expect(deepPrompt).toContain(
       'recover the parent-session handoff summary before treating memory as source material',
     );
     expect(deepPrompt).toContain(
-      '`mem_save` is allowed only for delegated durable implementation observations or assigned SDD artifacts/apply-progress',
+      '`mem_save(kind="observation")` is allowed only for delegated durable implementation observations or assigned deterministic SDD artifacts/apply-progress',
     );
     expect(deepPrompt).toContain(
       'deterministic SDD artifacts use `sdd/{change}/{artifact}`',
     );
     expect(deepPrompt).toContain('mem_context');
-    expect(deepPrompt).toContain('mem_project_summary');
-    expect(deepPrompt).toContain('mem_project_graph');
-    expect(deepPrompt).toContain('mem_topic_keys');
+    expect(deepPrompt).toContain('mem_project(action="graph"|"topics"|"topic")');
     expect(deepPrompt).toContain('You do not own durable memory of your own');
-    expect(quickPrompt).toContain(
-      'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
-    );
+    expect(quickPrompt).toContain('Never own `mem_session(action="start"');
   });
 
   test('quick agent can load bundled workflow skills', () => {
@@ -747,17 +741,15 @@ describe('prompt role markers', () => {
       // Should include read-only access instructions
       expect(prompt).toContain('read-only thoth-mem');
 
-      // Should include the 3-layer recall protocol
-      expect(prompt).toContain('mem_search');
-      expect(prompt).toContain('mem_timeline');
-      expect(prompt).toContain('mem_get_observation');
+      // Should include the canonical recall funnel.
+      expect(prompt).toContain('mem_recall(mode="compact")');
+      expect(prompt).toContain('mem_recall(mode="context")');
+      expect(prompt).toContain('mem_get(...)');
       expect(prompt).toContain('mem_context');
-      expect(prompt).toContain('mem_project_summary');
-      expect(prompt).toContain('mem_project_graph');
-      expect(prompt).toContain('mem_topic_keys');
+      expect(prompt).toContain('mem_project');
 
       // Should ban write tools
-      expect(prompt).toContain('Never write memory');
+      expect(prompt).toContain('do not call `mem_save`');
 
       // Should NOT contain the old blanket ban
       expect(prompt).not.toContain(
@@ -786,12 +778,10 @@ describe('prompt role markers', () => {
       'Use read-only thoth-mem only when dispatch gives parent session_id/project',
     );
     expect(explorer).toContain(
-      'Use project-scoped read tools (`mem_context`, `mem_project_summary`, `mem_project_graph`, `mem_topic_keys`) only when explicitly allowed by the delegated task instructions',
+      'Supplemental `mem_context(recall_query=...)` and bounded `mem_project(action="graph"|"topics"|"topic")` do not replace the recall funnel and require explicit delegated permission.',
     );
     expect(explorer).toContain('`mem_context`');
-    expect(explorer).toContain('`mem_project_summary`');
-    expect(explorer).toContain('`mem_project_graph`');
-    expect(explorer).toContain('`mem_topic_keys`');
+    expect(explorer).toContain('bounded `mem_project`');
     expect(quick).toContain(
       'Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`',
     );
@@ -799,7 +789,7 @@ describe('prompt role markers', () => {
       'general durable observations must stay outside `sdd/*`',
     );
     expect(quick).toContain(
-      'Never save generated subagent prompts as user intent',
+      'save generated subagent prompts as user intent',
     );
   });
 

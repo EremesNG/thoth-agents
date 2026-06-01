@@ -323,18 +323,18 @@ describe('Codex adapter', () => {
       'Every subagent memory call requires the parent session_id and project from dispatch',
     );
     expect(explorer).toContain(
-      'Read-only agents may only perform bounded, project-scoped recall with mem_search -> mem_timeline -> mem_get_observation',
+      'Read-only agents may use only parent-scoped mem_recall, mem_context, mem_get, and bounded mem_project reads when authorized.',
     );
     expect(explorer).toContain(
-      'Read-only agents must never write durable memory.',
+      'Read-only agents must never write durable memory or save prompts.',
     );
 
     for (const prompt of [quick, deep]) {
       expect(prompt).toContain(
-        'Never call mem_session_start, mem_session_summary, or mem_save_prompt',
+        'Never own mem_session(action="start"|"checkpoint"|"summary") or mem_save(kind="prompt"|"session_summary")',
       );
       expect(prompt).toContain(
-        'Write-capable agents may call mem_save only for delegated durable observations',
+        'mem_save(kind="observation") is allowed only for delegated durable observations',
       );
       expect(prompt).toContain('Protect the sdd/* topic namespace');
       expect(prompt).toContain('`request_user_input`');
@@ -354,7 +354,7 @@ describe('Codex adapter', () => {
     for (const prompt of [explorer, oracle]) {
       expect(prompt).toContain('Mode: read-only');
       expect(prompt).toContain('Single-task leaf agent: do not delegate');
-      expect(prompt).toContain('Never write memory');
+      expect(prompt).toContain('do not call `mem_save`');
       expect(prompt).toContain('request_user_input');
       expect(prompt).not.toContain('Use `question` only');
     }
@@ -478,10 +478,10 @@ describe('Codex adapter', () => {
       'The ambient Codex root session is the root/main orchestrator',
     );
     expect(rootInstructions).toContain(
-      'call mem_session_start with the active project and session identity',
+      'call mem_session(action="start") as step 0 before any other thoth-mem call',
     );
     expect(rootInstructions).toContain(
-      'save the real user prompt with mem_save_prompt',
+      'save the real user prompt with mem_save(kind="prompt")',
     );
     expect(rootInstructions).toContain(
       'disclose that memory bootstrap could not run',
@@ -540,8 +540,18 @@ describe('Codex adapter', () => {
       'Memory ownership, handoff recovery, permissions, and prompt-body exclusion are instruction-level',
     );
     expect(rootInstructions).toContain(
-      'save or refresh the handoff body with root-owned mem_session_summary',
+      'save or refresh the handoff body with root-owned mem_session(action="summary") or mem_save(kind="session_summary")',
     );
+    expect(rootInstructions).toContain('`mem_recall` `limit` from 1 to 20');
+    expect(rootInstructions).toContain('kind="observation"|"prompt"');
+    expect(rootInstructions).toContain('offset`/`max_length`');
+    expect(rootInstructions).toContain('HAS_TYPE');
+    expect(rootInstructions).toContain('IN_PROJECT');
+    expect(rootInstructions).toContain('HAS_TOPIC_KEY');
+    expect(rootInstructions).toContain('HAS_WHAT');
+    expect(rootInstructions).toContain('HAS_WHY');
+    expect(rootInstructions).toContain('HAS_WHERE');
+    expect(rootInstructions).toContain('HAS_LEARNED');
     expect(rootInstructions).not.toContain(
       'Include the internal handoff in `message`',
     );
@@ -752,7 +762,7 @@ describe('Codex adapter', () => {
         'Every subagent memory call requires the parent session_id and project from dispatch',
       );
       expect(prompt).toContain(
-        'Never call mem_session_start, mem_session_summary, or mem_save_prompt',
+        'Never own mem_session(action="start"|"checkpoint"|"summary") or mem_save(kind="prompt"|"session_summary")',
       );
       expect(prompt).toContain(
         'Runtime enforcement: instruction-level unless the target harness validates per-agent memory controls.',
@@ -760,10 +770,10 @@ describe('Codex adapter', () => {
     }
 
     expect(explorer).toContain(
-      'Read-only agents must never write durable memory.',
+      'Read-only agents must never write durable memory or save prompts.',
     );
     expect(deep).toContain(
-      'Write-capable agents may call mem_save only for delegated durable observations or assigned deterministic SDD artifacts/apply-progress under the parent session/project.',
+      'mem_save(kind="observation") is allowed only for delegated durable observations or assigned deterministic SDD artifacts/apply-progress under the parent session/project.',
     );
   });
 

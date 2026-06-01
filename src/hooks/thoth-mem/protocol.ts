@@ -1,9 +1,9 @@
 export const SDD_TOPIC_KEY_FORMAT = 'sdd/{change}/{artifact}';
 
 export const FIRST_ACTION_INSTRUCTION =
-  'FIRST ACTION REQUIRED: Call mem_session_summary with the content of the compacted summary. This preserves what was accomplished before compaction. Do this BEFORE any other work. Then call mem_context for a recent-session overview, and use the 3-layer recall protocol (mem_search with mode "compact" -> mem_timeline -> mem_get_observation) for precise retrieval.';
+  'FIRST ACTION REQUIRED: Call mem_session(action="summary") with the content of the compacted summary. This preserves what was accomplished before compaction. Do this BEFORE any other work. Then call mem_context(recall_query=...) for fused recent context, and use the recall funnel (mem_recall(mode="compact") -> mem_recall(mode="context") -> mem_get(...)) for precise retrieval.';
 
-export const SESSION_SUMMARY_TEMPLATE = `Use this exact structure for \`mem_session_summary\` content:
+export const SESSION_SUMMARY_TEMPLATE = `Use this exact structure for \`mem_session(action="summary")\` content:
 
 ## Goal
 [What we were working on this session]
@@ -24,11 +24,11 @@ export const SESSION_SUMMARY_TEMPLATE = `Use this exact structure for \`mem_sess
 - path/to/file.ts - [what it does or what changed]`;
 
 export function buildCompactionReminder(sessionID: string): string {
-  return `FIRST ACTION REQUIRED: this session was compacted. Call \`mem_session_summary\` with the content of the compacted summary and \`session_id\` \`${sessionID}\`. This preserves what was accomplished before compaction. Do this BEFORE any other work. After that, call \`mem_capture_passive\` if the summary includes \`## Key Learnings:\`, call \`mem_context\` for a recent-session overview, and use the 3-layer recall protocol (\`mem_search\` with \`mode: "compact"\` -> \`mem_timeline\` -> \`mem_get_observation\`) for precise retrieval.`;
+  return `FIRST ACTION REQUIRED: this session was compacted. Call \`mem_session(action="summary")\` with the content of the compacted summary and \`session_id\` \`${sessionID}\`. This preserves what was accomplished before compaction. Do this BEFORE any other work. After that, call \`mem_context(recall_query=...)\` for fused recent context, and use the recall funnel (\`mem_recall(mode="compact")\` -> \`mem_recall(mode="context")\` -> \`mem_get(...)\`) for precise retrieval.`;
 }
 
 export function buildCompactorInstruction(project: string): string {
-  return `CRITICAL INSTRUCTION: place this at the TOP of the compacted summary exactly as an action item for the resumed agent: "FIRST ACTION REQUIRED: Call mem_session_summary with the content of this compacted summary. Use project: '${project}'. This preserves what was accomplished before compaction. Do this BEFORE any other work."`;
+  return `CRITICAL INSTRUCTION: place this at the TOP of the compacted summary exactly as an action item for the resumed agent: "FIRST ACTION REQUIRED: Call mem_session(action="summary") with the content of this compacted summary. Use project: '${project}'. This preserves what was accomplished before compaction. Do this BEFORE any other work."`;
 }
 
 export function buildMemoryInstructions(
@@ -40,18 +40,20 @@ export function buildMemoryInstructions(
 Persistent memory is available through thoth-mem. Follow this protocol.
 
 IMPORTANT: Your current session_id is \`${sessionID}\` and project is \`${project}\`.
-Always pass these values when calling memory tools that accept them (mem_session_summary, mem_save, mem_capture_passive, etc.).
+Always pass these values when calling memory tools that accept them.
 
 ### CORE TOOLS
-mem_save, mem_search, mem_context, mem_session_summary, mem_get_observation, mem_save_prompt, mem_update, mem_suggest_topic_key, mem_timeline, mem_capture_passive
+mem_save, mem_recall, mem_context, mem_get, mem_project, mem_session
 
-### SUBAGENT HANDOFF
-- When dispatching subagents for thoth-mem work, load the bundled \`thoth-mem-agents\` skill.
-- Orchestrator owns \`mem_session_start\`, \`mem_session_summary\`, and \`mem_save_prompt\`.
-- Do not ask subagents to save prompts or session summaries; pass parent \`session_id\` and \`project\` instead.
+### OWNERSHIP AND SUBAGENT HANDOFF
+- Root owns \`mem_session(action="start"|"checkpoint"|"summary")\` and \`mem_save(kind="prompt"|"session_summary")\`.
+- Start root memory-backed workflows with \`mem_session(action="start")\` before any other thoth-mem operation when tools and identity are available.
+- Save the real user prompt with \`mem_save(kind="prompt")\`; never save generated subagent prompts as user intent.
+- Before memory-dependent delegation, save the handoff body with \`mem_session(action="summary")\` or \`mem_save(kind="session_summary")\`.
+- Subagent handoff prompts carry parent \`session_id\`, \`project\`, permissions, and recovery instructions only; do not ask subagents to own session lifecycle actions or save prompts.
 
 ### WHEN TO SAVE
-Call \`mem_save\` IMMEDIATELY after ANY of these:
+Call \`mem_save(kind="observation")\` IMMEDIATELY after ANY of these:
 - Architecture, design, or workflow decision made
 - Bug fixed (include root cause)
 - Non-obvious discovery, gotcha, or edge case found
@@ -64,44 +66,45 @@ Call \`mem_save\` IMMEDIATELY after ANY of these:
 - Discussion concludes with a clear direction chosen
 
 Use \`title\` as Verb + what changed or was learned.
+Use \`kind\` intentionally: \`observation\`, \`prompt\`, \`session_summary\`, or \`passive_learnings\`.
 Use \`type\` from: bugfix | decision | architecture | discovery | pattern | config | learning | manual.
 Set \`scope\` intentionally.
-Reuse \`topic_key\` for the same evolving topic. Do not overwrite unrelated topics.
-If unsure about a stable \`topic_key\`, call \`mem_suggest_topic_key\` first.
-If you need to modify a known observation by exact ID, call \`mem_update\` instead of creating a new record.
-Put the durable details in \`content\` with this structure:
+Reuse a stable \`topic_key\` for the same evolving topic. Do not overwrite unrelated topics.
+Put durable observation details in \`content\` with this structure:
   - What: concise description of what changed or was learned
   - Why: why it mattered or what problem it solved
   - Where: files, paths, or systems involved
   - Learned: edge cases, caveats, or follow-up notes
 
-**Self-check after EVERY task**: "Did I or the user just make a decision, confirm a recommendation, express a preference, fix a bug, learn something, or establish a convention? If yes → mem_save NOW."
+**Self-check after EVERY task**: "Did I or the user just make a decision, confirm a recommendation, express a preference, fix a bug, learn something, or establish a convention? If yes → mem_save(kind="observation") NOW."
 
-You can also call \`mem_save_prompt\` to manually save a user prompt that you consider particularly important for future context.
-
-### WHEN TO SEARCH MEMORY
-- Broad recovery (session start, after compaction): call \`mem_context\` for a recent-session overview.
-- Targeted 3-layer recall (specific memory retrieval):
-  1. Call \`mem_search\` with \`mode: "compact"\` (default) to scan the compact index of IDs + titles.
-  2. Call \`mem_timeline\` around promising observation IDs for chronological context within the same session.
-  3. Call \`mem_get_observation\` only for observations you need in full.
-- Use \`mode: "preview"\` with \`mem_search\` only when compact results are insufficient to disambiguate.
+### RECALL FUNNEL
+- Broad recovery (session start, after compaction): call \`mem_context(recall_query=...)\` for fused recent context when useful.
+- Targeted retrieval:
+  1. Call \`mem_recall(mode="compact")\` to scan candidate IDs and titles.
+  2. Call \`mem_recall(mode="context")\` to expand the strongest hits into retrieved context.
+  3. Call \`mem_get(...)\` only for records you need in full.
+- Use HyDE/fused recall for semantic or ambiguous searches.
+- Set \`mem_recall\` \`limit\` from 1 to 20 for candidate/result count.
+- Narrow with \`topic_key\`, \`type\`, \`time_from\`, \`time_to\`, \`scope\`, \`project\`, and \`session_id\` filters.
+- Use \`mem_get\` with \`kind="observation"|"prompt"\`; use \`mem_get(include_timeline=true)\` with \`before\`/\`after\`, and \`offset\`/\`max_length\` for large content.
+- Use bounded \`mem_project(action="graph"|"topics"|"topic")\` for relationship and topic navigation; \`mem_project(action="graph")\` relations are \`HAS_TYPE\`, \`IN_PROJECT\`, \`HAS_TOPIC_KEY\`, \`HAS_WHAT\`, \`HAS_WHY\`, \`HAS_WHERE\`, and \`HAS_LEARNED\`; these calls supplement, not replace, the recall funnel.
 - Search proactively on the first message about a project, feature, or problem when prior context may matter.
 - Search before starting work that may have been done before.
 - Search when the user mentions a topic that lacks enough local context.
 
 ### SESSION CLOSE PROTOCOL
-- Before ending the session, call \`mem_session_summary\` with this exact template.
+- Before ending the session, call \`mem_session(action="summary")\` with this exact template.
 - This is NOT optional. If you skip this, the next session starts blind.
 - Do not claim memory was saved unless the tool call succeeded.
-- If your response includes \`## Key Learnings:\`, also call \`mem_capture_passive\`.
+- If your response includes \`## Key Learnings:\`, preserve them with \`mem_save(kind="passive_learnings")\`.
 
 ${SESSION_SUMMARY_TEMPLATE}
 
 ### AFTER COMPACTION
-- IMMEDIATELY call \`mem_session_summary\` with the compacted summary content.
-- Then call \`mem_context\` for a recent-session overview.
-- Use the 3-layer recall protocol (\`mem_search\` with \`mode: "compact"\` -> \`mem_timeline\` -> \`mem_get_observation\`) for precise artifact/prior-observation retrieval.
+- IMMEDIATELY call \`mem_session(action="summary")\` with the compacted summary content.
+- Then call \`mem_context(recall_query=...)\` for fused recent context.
+- Use the recall funnel (\`mem_recall(mode="compact")\` -> \`mem_recall(mode="context")\` -> \`mem_get(...)\`) for precise artifact/prior-observation retrieval.
 - Only then continue working.
 
 ### SDD TOPIC KEY CONVENTION

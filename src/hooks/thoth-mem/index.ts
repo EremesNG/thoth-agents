@@ -73,14 +73,18 @@ function sanitizePromptText(text: string): string {
   return truncate(stripPrivateTags(stripPhaseReminder(text)), 2000);
 }
 
-function isSessionSummaryTool(toolName: string): boolean {
-  const normalized = toolName.toLowerCase();
+function isSessionSummaryTool(toolName: string, args: unknown): boolean {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return false;
+  }
 
-  return (
-    normalized === 'mem_session_summary' ||
-    normalized.endsWith('.mem_session_summary') ||
-    normalized.endsWith('_mem_session_summary')
-  );
+  const normalized = toolName.toLowerCase();
+  const isMemSessionTool =
+    normalized === 'mem_session' ||
+    normalized.endsWith('.mem_session') ||
+    normalized.endsWith('_mem_session');
+
+  return isMemSessionTool && (args as { action?: unknown }).action === 'summary';
 }
 
 function isMemSaveTool(toolName: string): boolean {
@@ -323,7 +327,6 @@ export function createThothMemHook(options: CreateThothMemHookOptions) {
       },
     ): Promise<void> => {
       void input.callID;
-      void input.args;
       void output.title;
       void output.output;
       void output.metadata;
@@ -337,7 +340,7 @@ export function createThothMemHook(options: CreateThothMemHookOptions) {
         nudgePending.delete(input.sessionID);
       }
 
-      if (isSessionSummaryTool(input.tool)) {
+      if (isSessionSummaryTool(input.tool, input.args)) {
         needsCompactionFollowUp.delete(input.sessionID);
       }
     },

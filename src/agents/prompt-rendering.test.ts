@@ -185,20 +185,17 @@ describe('semantic prompt section rendering', () => {
     );
     expect(codex).toContain('mem_save');
     expect(openCodeReadOnly).toContain('mem_context');
-    expect(openCodeReadOnly).toContain('mem_project_summary');
-    expect(openCodeReadOnly).toContain('mem_project_graph');
-    expect(openCodeReadOnly).toContain('mem_topic_keys');
-    expect(openCodeReadOnly).toContain('3-layer recall');
+    expect(openCodeReadOnly).toContain('bounded `mem_project`');
+    expect(openCodeReadOnly).toContain('mem_recall(mode="compact")');
+    expect(openCodeReadOnly).toContain('mem_recall(mode="context")');
     expect(codex).toContain('mem_context');
-    expect(codex).toContain('mem_project_summary');
-    expect(codex).toContain('mem_project_graph');
-    expect(codex).toContain('mem_topic_keys');
+    expect(codex).toContain('mem_project(action="graph"|"topics"|"topic")');
   });
 
   test('compatibility exports preserve default OpenCode shared prompt text', () => {
     expect(QUESTION_PROTOCOL).toContain('Use `question` only');
     expect(SUBAGENT_RULES).toContain('call `todowrite`');
-    expect(SUBAGENT_RULES_READONLY).toContain('Never write memory');
+    expect(SUBAGENT_RULES_READONLY).toContain('do not call `mem_save`');
     expect(SUBAGENT_RULES_WRITABLE).toContain(
       'Always use the parent session_id/project',
     );
@@ -285,13 +282,25 @@ describe('semantic prompt section rendering', () => {
       'The root agent is the orchestrator/root coordinator for the session.',
     );
     expect(prompt).toContain(
-      'At the start of a new root session, when thoth-mem tools are available',
+      'At the start of a new root session, when thoth-mem tools and session/project identity are available',
     );
-    expect(prompt).toContain('call `mem_session_start`');
+    expect(prompt).toContain('call `mem_session(action="start")`');
     expect(prompt).toContain(
-      'save the real user prompt with `mem_save_prompt`',
+      'Save only the real user request with `mem_save(kind="prompt")`',
     );
-    expect(prompt).toContain('3-layer recall protocol: `mem_search`');
+    expect(prompt).toContain(
+      'Targeted recall funnel: `mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`',
+    );
+    expect(prompt).toContain('`mem_recall` `limit` from 1 to 20');
+    expect(prompt).toContain('kind="observation"|"prompt"');
+    expect(prompt).toContain('offset`/`max_length`');
+    expect(prompt).toContain('HAS_TYPE');
+    expect(prompt).toContain('IN_PROJECT');
+    expect(prompt).toContain('HAS_TOPIC_KEY');
+    expect(prompt).toContain('HAS_WHAT');
+    expect(prompt).toContain('HAS_WHY');
+    expect(prompt).toContain('HAS_WHERE');
+    expect(prompt).toContain('HAS_LEARNED');
     expect(prompt).toContain('Before ending the root session');
     expect(prompt).toContain('After compaction');
     expect(prompt).toContain('@designer');
@@ -374,9 +383,9 @@ describe('semantic prompt section rendering', () => {
         'blocking user',
         'progress',
         'Root-session memory is yours',
-        'mem_session_start',
-        'mem_save_prompt',
-        'mem_session_summary',
+        'mem_session(action="start")',
+        'mem_save(kind="prompt")',
+        'mem_session(action="summary")',
         'final',
         'Never request raw file dumps',
         'net quality, speed, cost, and reliability',
@@ -417,11 +426,12 @@ describe('semantic prompt section rendering', () => {
         'root-owned session context',
         'must not be embedded in the initial sub-agent prompt',
         'save or refresh that handoff body with root-owned',
-        'mem_session_summary',
+        'mem_session(action="summary")',
+        'mem_save(kind="session_summary")',
         'root-owned compaction could not be persisted',
         'task instructions plus handoff recovery instructions only',
         'parent `session_id`, project, persistence mode, memory permissions',
-        'bounded 3-layer recall steps',
+        'mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)',
         'It must not include the handoff body',
         'raw transcripts, file dumps, secrets, credentials',
         'generated sub-agent prompts as memory source material',
@@ -446,18 +456,28 @@ describe('semantic prompt section rendering', () => {
         'parent session_id',
         'project',
         'handoff recovery instructions',
-        '`mem_search` -> `mem_timeline` -> `mem_get_observation`',
+        '`mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`',
         'parent-session handoff summary',
         'missing, stale, contradictory, or insufficient',
-        'Use project-scoped read tools',
-        'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
-        'Never save generated subagent prompts as user intent',
+        'bounded `mem_project(action="graph"|"topics"|"topic")`',
+        '`mem_recall` `limit` from 1 to 20',
+        'kind="observation"|"prompt"',
+        'offset`/`max_length`',
+        'HAS_TYPE',
+        'IN_PROJECT',
+        'HAS_TOPIC_KEY',
+        'HAS_WHAT',
+        'HAS_WHY',
+        'HAS_WHERE',
+        'HAS_LEARNED',
+        'generated subagent prompts',
       ]);
     }
 
-    expect(explorer).toContain('Never write memory');
+    expect(explorer).toContain('do not call `mem_save`');
+    expect(explorer).toContain('own any `mem_session(...)` lifecycle action');
     expect(deep).toContain(
-      '`mem_save` is allowed only for delegated durable implementation observations or assigned SDD artifacts/apply-progress',
+      '`mem_save(kind="observation")` is allowed only for delegated durable implementation observations or assigned deterministic SDD artifacts/apply-progress',
     );
     expect(deep).toContain(
       'deterministic SDD artifacts use `sdd/{change}/{artifact}`',
@@ -480,7 +500,7 @@ describe('semantic prompt section rendering', () => {
 
     expect(explorer).toContain('- Mode: read-only');
     expect(explorer).toContain('Return decision-ready evidence');
-    expect(explorer).toContain('Never write memory');
+    expect(explorer).toContain('do not call `mem_save`');
     expect(librarian).toContain(
       'Every substantive claim must carry a source URL',
     );
@@ -505,7 +525,7 @@ describe('semantic prompt section rendering', () => {
       expect(prompt).toMatch(/evidence|findings|anchors|source URL/i);
       expect(prompt).toMatch(/do not|never/i);
       expect(prompt).toMatch(/mutat|write|edit/i);
-      expect(prompt).toContain('Never write memory');
+      expect(prompt).toContain('do not call `mem_save`');
       expect(prompt).toContain('Never discard working-tree changes');
       expect(prompt).not.toContain('workspace-write');
       expectNoReferenceRoleLeaks(prompt);
@@ -574,9 +594,7 @@ describe('semantic prompt section rendering', () => {
       expect(prompt).toContain('Task Result envelope');
       expectNoSharedRolePolicyConcreteToolLeaks(prompt);
       expect(prompt).toContain('mem_save');
-      expect(prompt).toContain(
-        'Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`',
-      );
+      expect(prompt).toContain('Never own `mem_session(action="start"');
       expectNoReferenceRoleLeaks(prompt);
     }
 
@@ -614,7 +632,7 @@ describe('semantic prompt section rendering', () => {
     for (const role of ['explorer', 'librarian', 'oracle'] as const) {
       expect(prompts[role]).toContain(`You are ${role}.`);
       expect(prompts[role]).toContain('- Mode: read-only');
-      expect(prompts[role]).toContain('Never write memory');
+      expect(prompts[role]).toContain('do not call `mem_save`');
       expect(prompts[role]).toContain('Use `question` only');
       expect(prompts[role]).toContain('Never discard working-tree changes');
     }
@@ -698,13 +716,13 @@ describe('semantic prompt section rendering', () => {
     expect(prompts.orchestrator).toContain(
       'The root agent is the orchestrator/root coordinator for the session.',
     );
-    expect(prompts.orchestrator).toContain('mem_session_start');
-    expect(prompts.orchestrator).toContain('mem_save_prompt');
+    expect(prompts.orchestrator).toContain('mem_session(action="start")');
+    expect(prompts.orchestrator).toContain('mem_save(kind="prompt")');
 
     for (const role of ['explorer', 'librarian', 'oracle'] as const) {
       expect(prompts[role]).toContain(`You are ${role}.`);
       expect(prompts[role]).toContain('- Mode: read-only');
-      expect(prompts[role]).toContain('Never write memory');
+      expect(prompts[role]).toContain('do not call `mem_save`');
     }
 
     for (const role of ['designer', 'quick', 'deep'] as const) {

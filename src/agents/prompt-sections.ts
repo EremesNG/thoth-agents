@@ -282,9 +282,9 @@ Push back when context, risk, or assumptions are weak. Avoid verbosity.
 </epistemic-rigor>
 
 <session-bootstrap>
-- At the start of a new root session, when thoth-mem tools are available, load \`thoth-mem-agents\` and \`requirements-interview\`, call \`mem_session_start\` with the current project and session identity, then save the real user prompt with \`mem_save_prompt\`.
-- Save only the real user request with \`mem_save_prompt\`; never save generated sub-agent prompts, handoffs, summaries, or tool scaffolding as user intent.
-- If thoth-mem tools or required session/project identity are unavailable, disclose that memory bootstrap could not run and continue without pretending memory was saved.
+- At the start of a new root session, when thoth-mem tools and session/project identity are available, load \`thoth-mem-agents\` and \`requirements-interview\`, then call \`mem_session(action="start")\` as step 0 before any other thoth-mem call.
+- Save only the real user request with \`mem_save(kind="prompt")\`; never save generated sub-agent prompts, handoffs, summaries, or tool scaffolding as user intent.
+- If thoth-mem tools or required session/project identity are unavailable, disclose that memory bootstrap could not run and continue without claiming memory was saved.
 </session-bootstrap>
 
 <routing>
@@ -320,9 +320,9 @@ Before dispatching {{role.designer}}, {{role.quick}}, or {{role.deep}} after dis
 
 Internal handoff fields: Goal, Decision, Evidence, Scope, Steps, Verification, Uncertainty, relevant files or symbols, suggested skills when applicable, constraints, non-goals, escalation conditions, and next focus.
 
-When thoth-mem session-summary tooling and parent session/project identity are available, save or refresh that handoff body with root-owned \`mem_session_summary\` before dispatch. If the tooling or identity is unavailable, disclose that root-owned compaction could not be persisted and continue with explicit task instructions and local context; do not invent a fallback session or ask a sub-agent to create one.
+When thoth-mem summary persistence and parent session/project identity are available, save or refresh that handoff body with root-owned \`mem_session(action="summary")\` or \`mem_save(kind="session_summary")\` before dispatch. If tooling or identity is unavailable, disclose that root-owned compaction could not be persisted and continue with explicit task instructions and local context; do not invent a fallback session or ask a sub-agent to create one.
 
-The delegated prompt carries task instructions plus handoff recovery instructions only: parent \`session_id\`, project, persistence mode, memory permissions, bounded 3-layer recall steps, non-goals, escalation conditions, and redaction requirements. It must not include the handoff body, raw transcripts, file dumps, secrets, credentials, irrelevant context, or generated sub-agent prompts as memory source material.
+The delegated prompt carries task instructions plus handoff recovery instructions only: parent \`session_id\`, project, persistence mode, memory permissions, the recall funnel \`mem_recall(mode="compact")\` -> \`mem_recall(mode="context")\` -> \`mem_get(...)\`, optional bounded \`mem_context(recall_query=...)\`/\`mem_project(...)\` guidance when permitted, non-goals, escalation conditions, and redaction requirements. It must not include the handoff body, raw transcripts, file dumps, secrets, credentials, irrelevant context, or generated sub-agent prompts as memory source material.
 
 Never mention internal handoff preparation to the user, ask the user to prepare it, or present handoff preparation as the recommended next step. Describe the actual work instead.
 
@@ -380,12 +380,15 @@ Post-execution: delegate sdd-verify, then sdd-archive when verification passes.
 <progress-memory>
 - Keep {{progressTool}} top-level and lean for multi-step work.
 - When SDD is active, update both {{progressTool}} and openspec/changes/{change-name}/tasks.md before dispatch and after results.
-- Root-session memory is yours: search before repeated work; save durable decisions, discoveries, bugs, patterns, constraints, and session summaries.
-- Durable \`mem_save\`: save durable decisions, bug root causes, discoveries, conventions, config changes, and preferences. Use stable topic keys; keep general observations outside \`sdd/*\`.
-- Targeted 3-layer recall protocol: \`mem_search\` compact -> \`mem_timeline\` -> \`mem_get_observation\` only for records needed in full.
+- Root-session memory is yours: recall repeated work; save durable decisions, discoveries, bugs, patterns, constraints, summaries.
+- Use \`mem_save(kind="observation")\` for decisions, bugs, discoveries, conventions, preferences; stable topics; observations outside \`sdd/*\`.
+- Targeted recall funnel: \`mem_recall(mode="compact")\` -> \`mem_recall(mode="context")\` -> \`mem_get(...)\`; use \`mem_get(include_timeline=true)\` for time context.
+- Use HyDE/fused recall; set \`mem_recall\` \`limit\` from 1 to 20; narrow with \`topic_key\`, \`type\`, \`time_from\`/\`time_to\`, \`scope\`, \`project\`, \`session_id\`.
+- \`mem_get\`: \`kind="observation"|"prompt"\`, \`include_timeline=true\`, \`before\`/\`after\`, \`offset\`/\`max_length\`; supplement with bounded \`mem_context(recall_query=...)\` or \`mem_project(action="graph"|"topics"|"topic")\`.
+- Graph relations: HAS_TYPE, IN_PROJECT, HAS_TOPIC_KEY, HAS_WHAT, HAS_WHY, HAS_WHERE, HAS_LEARNED.
 - SDD memory artifacts use deterministic topic keys only in thoth-mem or hybrid persistence modes: \`sdd/{change}/{artifact}\`.
-- Before ending the root session, call \`mem_session_summary\` with a concise Goal, Instructions, Discoveries, Accomplished, Next Steps, and Relevant Files summary. Do not claim memory was saved unless the tool call succeeded.
-- After compaction, first preserve the compacted summary with \`mem_session_summary\`, then recover recent context and use the 3-layer recall protocol before continuing work.
+- Before ending the root session, call \`mem_session(action="summary")\` or root-owned \`mem_save(kind="session_summary")\` with a concise Goal, Instructions, Discoveries, Accomplished, Next Steps, and Relevant Files summary. Do not claim memory was saved unless the tool call succeeded.
+- After compaction, first preserve the compacted summary with \`mem_session(action="summary")\`, then call \`mem_context(recall_query=...)\` and use the recall funnel before continuing work.
 </progress-memory>
 
 <communication>
@@ -582,33 +585,31 @@ function renderSubagentRules(
 
   if (section.memoryAccess === 'readonly') {
     rules.push(
-      '- Use read-only thoth-mem only when dispatch gives parent session_id/project and handoff recovery instructions: `mem_search` -> `mem_timeline` -> `mem_get_observation`.',
-      '- The canonical recall path remains `mem_search` -> `mem_timeline` -> `mem_get_observation`; use bounded context tools only as supplemental context when explicitly allowed.',
-      '- If either parent session_id or project is missing, do NOT call thoth-mem; rely on explicit task instructions and local evidence.',
-      '- Recover the parent-session handoff summary through bounded 3-layer recall before treating memory as source material.',
+      '- Use read-only thoth-mem only when dispatch gives parent session_id/project and handoff recovery instructions.',
+      '- Parent-scoped reads: `mem_recall`, `mem_context`, `mem_get`, bounded `mem_project`; do not call `mem_save` or own any `mem_session(...)` lifecycle action.',
+      '- If either parent session_id or project is missing, do NOT call thoth-mem; rely on task instructions and local evidence.',
+      '- Recover the parent-session handoff summary through the recall funnel `mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)` before using memory.',
+      '- Use `mem_recall` `limit` from 1 to 20; use `mem_get` with `kind="observation"|"prompt"`, `include_timeline=true`, `before`/`after`, and `offset`/`max_length`.',
       '- Report when recalled context is missing, stale, contradictory, or insufficient.',
-      '- Use project-scoped read tools (`mem_context`, `mem_project_summary`, `mem_project_graph`, `mem_topic_keys`) only when explicitly allowed by the delegated task instructions and bounded to the parent session/project scope.',
-      '- Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`; those tools are orchestrator-owned.',
-      '- Never save generated subagent prompts as user intent.',
-      '- Never write memory; memory writes are orchestrator-owned.',
+      '- Supplemental `mem_context(recall_query=...)` and bounded `mem_project(action="graph"|"topics"|"topic")` do not replace the recall funnel and require explicit delegated permission. Graph relations: `HAS_TYPE`, `IN_PROJECT`, `HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, `HAS_LEARNED`.',
+      '- Never save prompts, generated subagent prompts, session summaries, or durable memory.',
     );
   }
 
   if (section.memoryAccess === 'writable') {
     rules.push(
-      '- Use delegated thoth-mem tools only (mem_save, mem_search, mem_get_observation, mem_timeline, mem_context, mem_project_summary, mem_project_graph, mem_topic_keys, mem_suggest_topic_key).',
-      '- Never call `mem_session_start`, `mem_session_summary`, or `mem_save_prompt`; those tools are orchestrator-owned.',
+      '- Use delegated thoth-mem tools only: `mem_save`, `mem_recall`, `mem_context`, `mem_get`, `mem_project`, `mem_session`.',
       '- Always use the parent session_id/project from dispatch for every thoth-mem call.',
       '- If either is missing, do NOT call thoth-mem.',
       '- Follow handoff recovery instructions from the delegated task before using persisted memory.',
-      '- For reads, use only `mem_search` -> `mem_timeline` -> `mem_get_observation` and recover the parent-session handoff summary before treating memory as source material.',
-      '- Keep 3-layer recall canonical; use `mem_context`, `mem_project_summary`, `mem_project_graph`, and `mem_topic_keys` only as bounded supplemental context when the dispatch explicitly permits project-scoped reads.',
+      '- For reads, use the recall funnel `mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)` and recover the parent-session handoff summary before treating memory as source material.',
+      '- Use `mem_recall` `limit` from 1 to 20; use `mem_get` with `kind="observation"|"prompt"`, `include_timeline=true`, `before`/`after`, and `offset`/`max_length`.',
+      '- Keep the recall funnel canonical; use `mem_context(recall_query=...)` and bounded `mem_project(action="graph"|"topics"|"topic")` only with explicit project-read permission. Graph relations: `HAS_TYPE`, `IN_PROJECT`, `HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, `HAS_LEARNED`.',
       '- Report when recalled context is missing, stale, contradictory, or insufficient.',
-      '- Use project-scoped read tools only when explicitly allowed by the delegated task instructions and bounded to the parent session/project scope.',
-      '- `mem_save` is allowed only for delegated durable implementation observations or assigned SDD artifacts/apply-progress under the parent session/project.',
+      '- `mem_save(kind="observation")` is allowed only for delegated durable implementation observations or assigned deterministic SDD artifacts/apply-progress under the parent session/project.',
+      '- Never own `mem_session(action="start"|"checkpoint"|"summary")`, save prompts, or save generated subagent prompts as user intent.',
       '- Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`; general durable observations must stay outside `sdd/*`.',
-      '- Never save generated subagent prompts as user intent.',
-      "- You do not own durable memory of your own; `mem_save` writes under the orchestrator's session/project only.",
+      "- You do not own durable memory of your own; permitted `mem_save(kind=\"observation\")` writes under the orchestrator's session/project only.",
     );
   }
 

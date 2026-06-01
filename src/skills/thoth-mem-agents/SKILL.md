@@ -88,6 +88,7 @@ Learned: caveats or edge cases
 3. `mem_get(id=...)`
 
 Use `mem_get(id=..., include_timeline=true)` when chronology matters.
+Set `mem_recall` `limit` from 1 to 20. Use `mem_get` with `kind="observation"|"prompt"`, `include_timeline=true` plus `before`/`after`, and `offset`/`max_length` for large content.
 Use `mem_context(..., recall_query="...")` only as optional fused context, not
 as a replacement for the recall funnel.
 
@@ -100,6 +101,8 @@ Use `mem_project` for project-level navigation:
 - `action="graph"`
 - `action="topics"`
 - `action="topic"`
+
+`mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`, `HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.
 
 ### Session close and compaction
 

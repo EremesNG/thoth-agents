@@ -81,30 +81,30 @@ Persist with `mem_save` using canonical SDD topic keys and required metadata:
 Recovery path for state artifacts:
 `mem_recall(mode="compact", query="topic_key:sdd/{change-name}/state")` ->
 `mem_recall(mode="context", query="topic_key:sdd/{change-name}/state")` when needed ->
-`mem_get(id=...)` (or `include_timeline=true` when chronology matters) ->
+`mem_get(id=...)` (or `mem_get(include_timeline=true)` when chronology matters) ->
 parse YAML -> restore phase state.
 
-## Three-Layer Recall Protocol
+## Recall Funnel Protocol
 
 For delegated handoffs, subagents may use recall only when dispatch includes
 both parent `session_id` and `project`.
 
-1. **Compact scan**
+1. `mem_recall(mode="compact")` with exact topic-key query for token-efficient
+   IDs and ranking.
+2. `mem_recall(mode="context")` to expand strongest hits into retrieved text.
+3. `mem_get(id=...)` to retrieve full artifact content; use
+   `mem_get(include_timeline=true)` when chronology matters.
 
-`mem_recall(mode="compact")` with exact topic-key query for token-efficient IDs
-and ranking.
-
-2. **Context expansion**
-
-`mem_recall(mode="context")` to expand strongest hits into retrieved text.
-
-3. **Full body fetch**
-
-`mem_get(id=...)` to retrieve full artifact content. Use
-`include_timeline=true` when chronology matters.
-
-Optional: `mem_context(..., recall_query="...")` can provide fused recent
-context, but it does not replace the three-layer recall.
+Use HyDE/fused hybrid recall (sentence + chunk vectors, FTS, KG enrichment) for
+semantic or ambiguous searches; set `mem_recall` `limit` from 1 to 20; narrow
+with `topic_key`, `type`, `time_from`, `time_to`, `scope`, `project`, and
+`session_id` filters. Use `mem_get` with `kind="observation"|"prompt"`,
+`include_timeline=true` plus `before`/`after`, and `offset`/`max_length` for
+large content. Use `mem_context(recall_query=...)` or bounded
+`mem_project(action="graph"|"topics"|"topic")` for supplemental project
+context; `mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`,
+`HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.
+Supplemental context does not replace the recall funnel.
 
 ## Save Contract
 

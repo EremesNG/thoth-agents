@@ -301,9 +301,20 @@ Artifacts can be persisted in four modes:
 Thoth-mem is the local memory MCP used for durable observations, architectural
 decisions, SDD artifacts, and session summaries. The core retrieval pattern is:
 
-1. `mem_search` for compact candidate records
-2. `mem_timeline` for chronological context
-3. `mem_get_observation` for the full selected record
+1. `mem_recall(mode="compact")` for compact candidate records
+2. `mem_recall(mode="context")` for expanded retrieved context
+3. `mem_get(...)` for the full selected record; use
+   `mem_get(include_timeline=true)` when chronology matters
+
+Use HyDE/fused hybrid recall (sentence + chunk vectors, FTS, KG enrichment) for
+semantic or ambiguous searches; set `mem_recall` `limit` from 1 to 20; narrow
+with `topic_key`, `type`, `time_from`, `time_to`, `scope`, `project`, and
+`session_id` filters. Use `mem_get` with `kind="observation"|"prompt"`,
+`include_timeline=true` plus `before`/`after`, and `offset`/`max_length` for
+large content. Use bounded `mem_context(recall_query=...)` or
+`mem_project(action="graph"|"topics"|"topic")` for supplemental project
+context; `mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`,
+`HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.
 
 ## Skills And MCPs
 

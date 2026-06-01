@@ -83,26 +83,29 @@ Subagents must not create fallback sessions.
 
 ## Retrieval Protocol
 
-### 3-Layer Recall for thoth-mem and hybrid modes
+### Recall funnel for thoth-mem and hybrid modes
 
-Always complete the full three layers before using memory content as source
+Always complete the recall funnel before using memory content as source
 material:
 
-1. **Layer 1 (Compact):** `mem_recall(mode="compact")` to scan IDs/titles with
-   exact topic-key or focused query terms.
-2. **Layer 2 (Context):** `mem_recall(mode="context")` to expand the strongest
-   hits into retrieved text.
-3. **Layer 3 (Full):** `mem_get(id=...)` to fetch full content. Use
-   `include_timeline=true` when chronology matters.
+1. `mem_recall(mode="compact")` — scan candidate IDs/titles with exact topic-key
+   or focused query terms.
+2. `mem_recall(mode="context")` — expand the strongest hits into retrieved text.
+3. `mem_get(id=...)` — fetch full content; use
+   `mem_get(include_timeline=true)` when chronology matters.
 
-Optional fused context: `mem_context(..., recall_query="...")` when one recent
-context view is useful; it does not replace the three-layer recall.
+Use HyDE/fused hybrid recall (sentence + chunk vectors, FTS, KG enrichment) for
+semantic or ambiguous searches; narrow with `topic_key`, `type`, `time_from`,
+`time_to`, `scope`, `project`, and `session_id` filters; use
+`mem_context(recall_query=...)` or bounded
+`mem_project(action="graph"|"topics"|"topic")` for supplemental project
+context. Supplemental context does not replace the recall funnel.
 
 ### Mode-specific retrieval
 
-1. If mode is `thoth-mem`, use three-layer recall with exact SDD topic key.
+1. If mode is `thoth-mem`, use the recall funnel with exact SDD topic key.
 2. If mode is `openspec`, read canonical OpenSpec files only.
-3. If mode is `hybrid`, use three-layer recall first.
+3. If mode is `hybrid`, use the recall funnel first.
 4. In `hybrid`, if nothing is found in thoth-mem, read canonical OpenSpec
    files as fallback.
 5. In `hybrid`, if filesystem fallback succeeds, re-save the artifact to
@@ -148,8 +151,9 @@ original intent, accepted scope, deferred areas, and justified exclusions.
 ## Recovery Notes
 
 - Prefer exact topic-key queries over broad natural-language recall.
-- Always apply the three-layer recall (`mem_recall compact` ->
-  `mem_recall context` -> `mem_get`) before treating memory as source material.
+- Always apply the recall funnel (`mem_recall(mode="compact")` ->
+  `mem_recall(mode="context")` -> `mem_get(...)`) before treating memory as
+  source material.
 - In `openspec`, repair missing/stale artifacts by rewriting canonical OpenSpec
   files.
 - In `thoth-mem`, repair missing/stale artifacts by re-saving full artifacts via

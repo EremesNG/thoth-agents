@@ -84,7 +84,9 @@ function isSessionSummaryTool(toolName: string, args: unknown): boolean {
     normalized.endsWith('.mem_session') ||
     normalized.endsWith('_mem_session');
 
-  return isMemSessionTool && (args as { action?: unknown }).action === 'summary';
+  return (
+    isMemSessionTool && (args as { action?: unknown }).action === 'summary'
+  );
 }
 
 function isMemSaveTool(toolName: string): boolean {

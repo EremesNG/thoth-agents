@@ -675,7 +675,9 @@ describe('prompt role markers', () => {
       'deterministic SDD artifacts use `sdd/{change}/{artifact}`',
     );
     expect(deepPrompt).toContain('mem_context');
-    expect(deepPrompt).toContain('mem_project(action="graph"|"topics"|"topic")');
+    expect(deepPrompt).toContain(
+      'mem_project(action="graph"|"topics"|"topic")',
+    );
     expect(deepPrompt).toContain('You do not own durable memory of your own');
     expect(quickPrompt).toContain('Never own `mem_session(action="start"');
   });
@@ -788,9 +790,7 @@ describe('prompt role markers', () => {
     expect(quick).toContain(
       'general durable observations must stay outside `sdd/*`',
     );
-    expect(quick).toContain(
-      'save generated subagent prompts as user intent',
-    );
+    expect(quick).toContain('save generated subagent prompts as user intent');
   });
 
   test('write-capable subagents consume orchestrator handoffs instead of redoing broad discovery', () => {

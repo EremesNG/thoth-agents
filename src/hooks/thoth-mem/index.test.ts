@@ -711,7 +711,9 @@ describe('createThothMemHook', () => {
     expect(instructions).toContain('topic_key');
     expect(instructions).toContain('mem_get(include_timeline=true)');
     expect(instructions).toContain('mem_context(recall_query=...)');
-    expect(instructions).toContain('mem_project(action="graph"|"topics"|"topic")');
+    expect(instructions).toContain(
+      'mem_project(action="graph"|"topics"|"topic")',
+    );
     expect(instructions).toContain('`mem_recall` `limit` from 1 to 20');
     expect(instructions).toContain('kind="observation"|"prompt"');
     expect(instructions).toContain('before`/`after`');

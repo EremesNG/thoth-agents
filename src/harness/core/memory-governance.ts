@@ -17,7 +17,12 @@ export type MemSaveKind =
   | 'passive_learnings';
 export type MemSessionAction = 'start' | 'checkpoint' | 'summary';
 export type MemRecallMode = 'compact' | 'context';
-export type MemProjectAction = 'list' | 'summary' | 'graph' | 'topics' | 'topic';
+export type MemProjectAction =
+  | 'list'
+  | 'summary'
+  | 'graph'
+  | 'topics'
+  | 'topic';
 
 export type MemoryOperation =
   | { tool: 'mem_session'; action: MemSessionAction }

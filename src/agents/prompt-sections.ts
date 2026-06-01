@@ -609,7 +609,7 @@ function renderSubagentRules(
       '- `mem_save(kind="observation")` is allowed only for delegated durable implementation observations or assigned deterministic SDD artifacts/apply-progress under the parent session/project.',
       '- Never own `mem_session(action="start"|"checkpoint"|"summary")`, save prompts, or save generated subagent prompts as user intent.',
       '- Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`; general durable observations must stay outside `sdd/*`.',
-      "- You do not own durable memory of your own; permitted `mem_save(kind=\"observation\")` writes under the orchestrator's session/project only.",
+      '- You do not own durable memory of your own; permitted `mem_save(kind="observation")` writes under the orchestrator\'s session/project only.',
     );
   }
 

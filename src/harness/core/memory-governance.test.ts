@@ -11,8 +11,8 @@ import {
   memoryGovernanceDiagnostics,
   PARENT_SCOPED_READ_TOOLS,
   READ_RECALL_CHAIN,
-  renderMemoryGovernanceInstructions,
   ROOT_OWNED_OPERATIONS,
+  renderMemoryGovernanceInstructions,
   WRITE_CAPABLE_DELEGATED_TOOLS,
 } from './memory-governance';
 

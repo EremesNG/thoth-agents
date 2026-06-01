@@ -183,7 +183,9 @@ function supportSddRoles(id: SddPhaseContract['id']): string {
 function persistenceSddRole(id: SddPhaseContract['id']): string {
   const phase = getDelegatedSddPhase(id);
 
-  return phase.persistenceAgentRole ? roleTemplate(phase.persistenceAgentRole) : '';
+  return phase.persistenceAgentRole
+    ? roleTemplate(phase.persistenceAgentRole)
+    : '';
 }
 
 function renderSddDelegationMatrix(): string {

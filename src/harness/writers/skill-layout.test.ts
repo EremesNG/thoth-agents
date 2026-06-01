@@ -18,14 +18,20 @@ const sampleSkill: SkillRegistryEntry = {
 const SDD_SEMANTIC_ANCHORS: Record<string, string[]> = {
   'requirements-interview': [
     'mandatory step-0 entry point',
+    'scope faithfulness',
     'new root session',
-    'mem_session_start',
-    'mem_save_prompt',
+    'mem_session(action="start")',
+    'mem_save(kind="prompt")',
     'artifact store policy choice',
     'Full SDD',
   ],
   'sdd-init': ['Bootstrap OpenSpec structure', 'Persistence Mode'],
-  'sdd-propose': ['Create the proposal artifact', 'Persistence Mode'],
+  'sdd-propose': [
+    'Create the proposal artifact',
+    'Deferred / Needs Discovery',
+    'Preserve the original user intent',
+    'Persistence Mode',
+  ],
   'sdd-spec': ['Write OpenSpec delta specs', 'Persistence Mode'],
   'sdd-design': [
     'Create `design.md`',
@@ -35,11 +41,13 @@ const SDD_SEMANTIC_ANCHORS: Record<string, string[]> = {
   ],
   'sdd-tasks': [
     'proposal, spec, and design',
+    'Preserve accepted proposal or spec scope and success criteria',
     'plan review',
     'Persistence Mode',
   ],
   'executing-plans': [
     'orchestrator owns task progress tracking',
+    'must not contradict accepted proposal or spec scope',
     'Persistence mode determines target stores',
   ],
   'sdd-apply': [
@@ -51,6 +59,7 @@ const SDD_SEMANTIC_ANCHORS: Record<string, string[]> = {
   'sdd-archive': ['Close the SDD loop', 'Persistence Mode'],
   'plan-reviewer': [
     'pre-execution approval gate',
+    'Focus on whether the plan can be executed as written',
     'persistence-mode',
     '[OKAY]',
     '[REJECT]',
@@ -59,28 +68,27 @@ const SDD_SEMANTIC_ANCHORS: Record<string, string[]> = {
 
 const HANDOFF_SKILL_ANCHORS: Record<string, string[]> = {
   'thoth-mem-agents': [
-    'Delegation Handoff as Compaction',
-    'root-owned session summary',
-    'task instructions plus recovery',
-    'not the handoff body',
-    'parent-session handoff summary',
-    'instruction-level governance',
+    'Session close and compaction',
+    'root-owned `mem_save(kind="session_summary")`',
+    'carry recovery instructions, never the raw handoff body',
+    'instruction-level due to runtime enforcement limits',
     'mem_context',
-    'mem_project_summary',
-    'mem_project_graph',
-    'mem_topic_keys',
+    'mem_project',
+    'mem_recall(mode="compact")',
+    'mem_recall(mode="context")',
+    'mem_get(id=...)',
   ],
   '.codex-plugin/skills/_shared/persistence-contract.md': [
     'Delegated Handoffs',
-    'root-owned `mem_session_summary`',
-    'does not include the handoff body',
-    'Subagents recover that context through the',
+    '`mem_session(action="checkpoint"|"summary")`',
+    '`mem_save(kind="session_summary")`',
+    'Subagents recover context through bounded recall',
   ],
   '.codex-plugin/skills/_shared/thoth-mem-convention.md': [
     'Root-owned delegation handoffs',
     'parent-scoped recovery instructions',
-    'parent-session handoff summary',
     'deterministic SDD artifact',
+    'mem_recall(mode="compact", query="topic_key:sdd/{change-name}/state")',
   ],
   '.codex-plugin/skills/_shared/openspec-convention.md': [
     'Delegated handoff summaries are not OpenSpec artifacts',

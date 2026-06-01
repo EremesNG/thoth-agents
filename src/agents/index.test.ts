@@ -334,6 +334,7 @@ describe('orchestrator agent', () => {
 
     // SDD awareness / phase order must remain in the orchestrator prompt.
     expect(prompt).toContain('requirements-interview');
+    expect(prompt).toContain('Scope-faithful invariant');
     expect(prompt).toMatch(/propose\s*->\s*spec\s*->\s*design\s*->\s*tasks/i);
     expect(prompt).toContain('dispatch sdd-init first');
     const forbiddenBuildPolicy = [
@@ -529,7 +530,7 @@ describe('granular permission defaults', () => {
 describe('prompt role markers', () => {
   test('built-in prompts stay compact enough for delegation efficiency', () => {
     const maxPromptChars: Record<string, number> = {
-      orchestrator: 13_000,
+      orchestrator: 13_200,
       explorer: 3_900,
       librarian: 3_250,
       oracle: 3_250,

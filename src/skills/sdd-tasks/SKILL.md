@@ -129,6 +129,12 @@ Return:
 - Tasks must be small, actionable, and verifiable.
 - Order tasks by dependency.
 - Include testing and verification work explicitly.
+- Preserve accepted proposal or spec scope and success criteria in tasks.
+- Use boundaries and non-goals to express phase, file, or ownership limits,
+  not to shrink the accepted goal.
+- Convert deferred or unresolved affected areas into discovery,
+  coordination, or follow-up tasks, or emit an explicit warning when follow-up
+  cannot be planned yet.
 - Do not create vague tasks such as "implement feature".
 - The governance validator is advisory only at this stage; it documents
   handoff placement and report findings, but it does not block task generation

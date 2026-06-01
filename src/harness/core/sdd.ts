@@ -152,6 +152,7 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
   phases: [...SDD_PHASES],
   routingRules: [
     'Requirements interview is step zero for all non-trivial work.',
+    'Scope-faithful invariant: accepted user intent/scope is preserved; unresolved affected areas remain explicit as deferred/discovery follow-up.',
     'Direct implementation is reserved for low-complexity work.',
     'Accelerated SDD follows proposal -> tasks before execution.',
     'Full SDD follows proposal -> spec -> design -> tasks before execution.',

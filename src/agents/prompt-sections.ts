@@ -283,6 +283,7 @@ For {{role.explorer}}/{{role.librarian}}, ask narrow fact-finding questions for 
 
 <sdd>
 All work always starts with requirements-interview skill.
+Scope-faithful invariant: accepted user intent and scope must not be silently narrowed; unresolved affected areas stay visible as deferred/discovery follow-up, not hidden as out-of-scope.
 
 Routes:
 - Direct implementation for low-complexity work.

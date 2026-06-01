@@ -72,8 +72,8 @@ The orchestrator owns task progress tracking.
    - `openspec`/`hybrid`: scan `openspec/changes/` for active changes and read
      `tasks.md`.
    - `thoth-mem`: recover tasks via 3-layer recall
-     (`search` → `timeline` → `get_observation`) using topic key
-     `sdd/{change-name}/tasks`.
+     (`mem_recall(mode="compact")` -> `mem_recall(mode="context")` ->
+     `mem_get(id=...)`) using topic key `sdd/{change-name}/tasks`.
 3. Find the first unchecked task in state `- [ ]` or `- [~]`.
 4. Build a mental model of the plan: total tasks, remaining work,
    parallelizable work, and dependency order.
@@ -120,6 +120,9 @@ Every dispatch prompt MUST include these 6 parts:
 4. `BOUNDARIES` — files, scope limits, and non-goals
 5. `VERIFICATION` — checks the sub-agent must run or report
 6. `RETURN ENVELOPE` — the exact structured response contract in this skill
+
+`BOUNDARIES` must not contradict accepted proposal or spec scope. Use it to
+limit the current assigned task, not to redefine the approved change scope.
 
 #### C. Receive and Verify
 
@@ -171,6 +174,8 @@ Between every task or same-agent batch:
   missing evidence called out.
 - Attempt 2: switch to a different agent or fix directly when appropriate.
 - Attempt 3: make one final targeted attempt with narrowed scope.
+- "Narrowed scope" means a narrower recovery attempt for the assigned task
+  only. It must not redefine accepted proposal or spec scope for the change.
 - After 3 consecutive failures, mark the task `- [-]` with a clear reason and
   escalate to the user.
 
@@ -229,7 +234,8 @@ To resume safely:
    - `openspec`: read `openspec/changes/{change-name}/tasks.md`.
    - `thoth-mem`: recover `sdd/{change-name}/tasks` and
      `sdd/{change-name}/apply-progress` via 3-layer recall
-     (`search` → `timeline` → `get_observation`).
+     (`mem_recall(mode="compact")` -> `mem_recall(mode="context")` ->
+     `mem_get(id=...)`).
    - `hybrid`: do both recovery paths and prefer thoth-mem as the source of
      truth if state diverges.
 3. Resume from the first task marked `- [ ]` or `- [~]`.

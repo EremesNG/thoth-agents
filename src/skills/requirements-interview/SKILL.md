@@ -29,9 +29,10 @@ handoff path before implementation begins.
 
 This skill is normally loaded by the root/main orchestrator at the start of a
 new root session. When thoth-mem tools are available, the root/main
-orchestrator MUST also load `thoth-mem-agents`, call `mem_session_start` with
-the active project and session identity, and save the real user prompt with
-`mem_save_prompt` before later delegation.
+orchestrator MUST also load `thoth-mem-agents`, call
+`mem_session(action="start")` with the active project and session identity,
+and save the real user prompt with `mem_save(kind="prompt")` before later
+delegation.
 
 If thoth-mem tools or the required identity values are unavailable, disclose
 that memory bootstrap could not run and continue without claiming memory was
@@ -81,6 +82,8 @@ scaffolding as user prompts.
 9. Always ask and confirm; never choose on the user's behalf.
 10. Do not ask for details that the codebase, task artifacts, or gathered
    context already answer.
+11. Enforce scope faithfulness: scope calibration must not silently shrink the
+    user's stated intent.
 
 ### Phase 3: Complexity Assessment
 
@@ -108,6 +111,10 @@ Evaluate these 6 dimensions. Rate each as **Low**, **Medium**, or **High**:
 Present:
 
 - Summary of understanding
+- Broad user intent and product goal
+- Accepted scope boundaries
+- Deferred or unresolved affected areas that still belong to the accepted goal
+- Explicit exclusions and why they are excluded
 - Scope classification and why
 - Recommended approach options
 - Proposed handoff path
@@ -148,11 +155,13 @@ Quick decision heuristics:
 1. Cosmetic work routes direct regardless of file count.
 2. Dense logic rewrites route to at least accelerated SDD regardless
    of file count.
-3. External contracts (API, schema, migration, auth, privacy) usually
+3. End-to-end UX redesign across screens/workflows is usually full SDD when
+   user-flow contracts, behavior contracts, or multiple concerns are involved.
+4. External contracts (API, schema, migration, auth, privacy) usually
    need full SDD.
-4. If the model must remember decisions across many steps, write them
+5. If the model must remember decisions across many steps, write them
    down — that means SDD.
-5. Tie-breaker: unsure between direct and accelerated, choose
+6. Tie-breaker: unsure between direct and accelerated, choose
    accelerated. Unsure between accelerated and full, ask: 'Do we
    need a durable behavior contract?' If yes, full SDD.
 
@@ -201,6 +210,9 @@ ask, and wait.
 - Never convert recommendations into unilateral decisions.
 - Do not replace blocking input prompts with plain-text interview questions
   when the harness exposes a blocking user input surface.
+- Do not narrow accepted scope by omission; surface broad intent, accepted
+  scope, deferred or unresolved affected areas, and explicit exclusions before
+  SDD handoff.
 
 ## Anti-Patterns
 

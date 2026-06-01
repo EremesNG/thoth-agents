@@ -107,6 +107,9 @@ describe('SDD workflow contract', () => {
 
   test('captures artifact and verification rules', () => {
     const contract = getSddWorkflowContract();
+    expect(contract.routingRules.join('\n')).toContain(
+      'Scope-faithful invariant: accepted user intent/scope is preserved',
+    );
 
     expect(contract.artifactRules.join('\n')).toContain(
       'sdd-design itself never routes to designer',

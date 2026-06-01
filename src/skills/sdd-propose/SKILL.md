@@ -51,6 +51,7 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
    ## Intent
    ## Scope
    ### In Scope
+   ### Deferred / Needs Discovery
    ### Out of Scope
    ## Approach
    ## Affected Areas
@@ -82,8 +83,19 @@ Return a short report with:
 
 - Use canonical OpenSpec filenames only.
 - Keep the proposal focused on why, scope, and success criteria.
-- Always include rollback guidance and explicit out-of-scope items.
+- Preserve the original user intent and product goal in proposal scope. Do not
+  silently shrink broad goals such as full UX redesigns.
+- Describe material behavior changes with `From`, `To`, `Reason`, and `Impact`
+  when applicable.
+- Use `Deferred / Needs Discovery` for unresolved affected areas that are still
+  part of the accepted goal.
+- Keep `Out of Scope` disciplined: include only explicit exclusions, rejected
+  options, ownership-separated future work, or deliberately deferred phases.
+- Do not move parts of the stated user goal to `Out of Scope` only because the
+  implementation path is unknown.
+- Always include rollback guidance and explicit out-of-scope items when they
+  exist.
 - Never reference engram.
-- Never rely on compact search output alone when the mode uses thoth-mem.
-  Follow the 3-layer recall protocol: `search(mode: "compact")` →
-  `timeline` → `get_observation` to retrieve the full artifact body.
+- Never rely on compact recall output alone when the mode uses thoth-mem.
+  Use `mem_recall(mode="compact")` -> `mem_recall(mode="context")` ->
+  `mem_get(id=...)` to retrieve the full artifact body.

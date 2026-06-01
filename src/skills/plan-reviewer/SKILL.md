@@ -67,6 +67,13 @@ Check only what affects executability:
    - `Expected:`
 6. Dependency order is valid.
 7. The sequence is workable without hidden prerequisite steps.
+8. In-scope success criteria from the accepted proposal/spec are represented by
+   executable tasks.
+9. Deferred or unresolved affected areas from the accepted proposal/spec have
+   required discovery, coordination, follow-up tasks, or an explicit execution
+   warning.
+10. Task boundaries or non-goals do not contradict accepted proposal/spec
+    scope.
 
 ## Decision Rules
 
@@ -106,6 +113,7 @@ For each rejected issue, include:
 - No nitpicking.
 - No style opinions.
 - No design questioning.
+- No architecture redesign.
 - No expanding the scope of review beyond blockers.
 - Do not return more than 3 rejection issues.
 

@@ -29,9 +29,10 @@ or `pnpm dlx thoth-agents@latest`.
 | OpenCode default | `npx thoth-agents@latest install` | OpenCode plugin config, optional skills, optional tmux config | You want the stable native plugin flow. |
 | OpenCode explicit | `npx thoth-agents@latest install --agent=opencode` | Same as default OpenCode setup | You want to be explicit in automation. |
 | Codex explicit | `npx thoth-agents@latest install --agent=codex` | Codex AGENTS block, six role TOMLs, Personal plugin source, marketplace entry, managed feature flags | You want Codex role agents and bundled skills. |
+| Claude Code explicit | `npx thoth-agents@latest install --agent=claude` | One `.claude-plugin/` package: six subagents, `.mcp.json`, bundled skills, SessionStart root-injection hook | You want a native Claude Code plugin with auto-discovered subagents. |
 
-Use `--dry-run` before Codex install when you want to inspect the target plan
-and backups before writing files.
+Use `--dry-run` before Codex or Claude Code install when you want to inspect the
+target plan and backups before writing files.
 
 ## OpenCode Setup
 
@@ -187,6 +188,31 @@ See [Codex Install](codex-install.md),
 [Codex Plugin Packaging](codex-plugin-packaging.md), and
 [Codex Model Customization](codex-model-customization.md) for the focused Codex
 details.
+
+## Claude Code Setup
+
+Claude Code install writes one auto-discovered plugin package:
+
+```bash
+npx thoth-agents@latest install --agent=claude --dry-run
+npx thoth-agents@latest install --agent=claude
+```
+
+The plugin is installed as a **skills-directory plugin** under
+`~/.claude/skills/thoth-agents` with `.claude-plugin/plugin.json`, six subagents
+in `agents/`, an `.mcp.json` server map, bundled `skills/`, and a
+`hooks/hooks.json` whose `SessionStart` hook injects the root coordinator
+instructions into the main session. It auto-loads as `thoth-agents@skills-dir`
+on the next session (no marketplace, no install step) — restart Claude Code or
+run `/reload-plugins` to activate it, and confirm in `/plugin` → Installed.
+
+Claude Code is a first-class harness: role permissions are enforced by each
+subagent frontmatter `tools` allowlist, hooks are harness-run, and delegation
+uses the native `Task(subagent_type: ...)` flow. Subagent models accept only
+`sonnet`, `opus`, `haiku`, or `inherit`.
+
+See [Claude Code Plugin Packaging](claude-code-plugin-packaging.md) for the
+focused details.
 
 ## Non-Destructive Behavior
 

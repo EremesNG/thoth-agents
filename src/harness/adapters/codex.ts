@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CODEX_PROMPT_DIALECT } from '../../agents/prompt-dialects';
 import {
@@ -21,6 +19,7 @@ import {
   DEFAULT_MODELS,
   DEFAULT_THOTH_COMMAND,
   getAgentOverride,
+  getPrimaryModelId,
   loadAgentPrompt,
   type PluginConfig,
 } from '../../config';
@@ -37,6 +36,10 @@ import {
   memoryGovernanceDiagnostics,
   renderMemoryGovernanceInstructions,
 } from '../core/memory-governance';
+import {
+  findRootPackageJsonPath,
+  readPackageJsonVersion,
+} from '../core/package-version';
 import { getSkillRegistry } from '../core/skills';
 import type {
   HarnessAdapter,
@@ -82,54 +85,6 @@ function createCodexPluginPackageManifest(context: HarnessRenderContext): {
     description:
       'Delegate-first OpenCode plugin with seven agents, thoth-mem persistence, and bundled SDD skills.',
   };
-}
-
-function findRootPackageJsonPath(startDirs: readonly string[]): string {
-  for (const startDir of startDirs) {
-    let currentDir = resolve(startDir);
-
-    while (true) {
-      const packageJsonPath = resolve(currentDir, 'package.json');
-
-      if (existsSync(packageJsonPath)) {
-        const packageJsonText = readFileSync(packageJsonPath, 'utf8');
-        const packageJson = JSON.parse(packageJsonText) as {
-          name?: unknown;
-        };
-
-        if (packageJson.name === 'thoth-agents') {
-          return packageJsonPath;
-        }
-      }
-
-      const parentDir = dirname(currentDir);
-      if (parentDir === currentDir) {
-        break;
-      }
-
-      currentDir = parentDir;
-    }
-  }
-
-  throw new Error(
-    'Unable to locate the thoth-agents root package.json from the render context or current working directory.',
-  );
-}
-
-function readPackageJsonVersion(packageJsonPath: string): string {
-  const packageJsonText = readFileSync(packageJsonPath, 'utf8');
-  const packageJson = JSON.parse(packageJsonText) as {
-    version?: unknown;
-  };
-
-  if (
-    typeof packageJson.version !== 'string' ||
-    packageJson.version.length === 0
-  ) {
-    throw new Error('Root package.json version must be a non-empty string.');
-  }
-
-  return packageJson.version;
 }
 
 function stableJson(value: unknown): string {
@@ -352,17 +307,6 @@ function agentModelReasoningEffort(role: AgentRoleContract): string {
 
 function isCodexSubagentName(name: string): name is CodexSubagentName {
   return name in CODEX_SUBAGENT_DEFAULT_MODELS;
-}
-
-function getPrimaryModelId(
-  model: AgentOverrideConfig['model'],
-): string | undefined {
-  if (Array.isArray(model)) {
-    const first = model[0];
-    return typeof first === 'string' ? first : first?.id;
-  }
-
-  return model;
 }
 
 function getCodexAgentModel(

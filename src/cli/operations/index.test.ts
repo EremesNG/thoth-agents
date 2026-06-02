@@ -7,11 +7,16 @@ import {
 } from './index';
 
 describe('operation registry', () => {
-  test('lists only OpenCode and Codex as supported harnesses', () => {
-    expect(SUPPORTED_OPERATION_HARNESSES).toEqual(['opencode', 'codex']);
+  test('lists OpenCode, Codex, and Claude Code as supported harnesses', () => {
+    expect(SUPPORTED_OPERATION_HARNESSES).toEqual([
+      'opencode',
+      'codex',
+      'claude',
+    ]);
     expect(listOperationHarnesses().map((harness) => harness.id)).toEqual([
       'opencode',
       'codex',
+      'claude',
     ]);
     expect(listOperationHarnesses().every((harness) => harness.available)).toBe(
       true,
@@ -29,14 +34,21 @@ describe('operation registry', () => {
       displayName: 'Codex',
       available: true,
     });
+    expect(getOperationHarness('claude')).toMatchObject({
+      id: 'claude',
+      displayName: 'Claude Code',
+      available: true,
+    });
   });
 
   test('returns unavailable metadata for unsupported harness lookup', () => {
-    const result = resolveOperationHarness('claude');
+    const result = resolveOperationHarness('antigravity');
 
     expect(result.available).toBe(false);
-    expect(result.id).toBe('claude');
-    expect(result.displayName).toBe('claude');
-    expect(result.reason).toContain('Supported harnesses: opencode, codex');
+    expect(result.id).toBe('antigravity');
+    expect(result.displayName).toBe('antigravity');
+    expect(result.reason).toContain(
+      'Supported harnesses: opencode, codex, claude',
+    );
   });
 });

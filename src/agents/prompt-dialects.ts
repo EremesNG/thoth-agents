@@ -55,6 +55,18 @@ export const CODEX_PROMPT_CAPABILITIES: HarnessCapabilities = {
   memoryGovernanceEnforcement: 'instruction-only',
 };
 
+export const CLAUDE_CODE_PROMPT_CAPABILITIES: HarnessCapabilities = {
+  agentDefinitions: 'supported',
+  delegatedExecution: 'supported',
+  parallelDelegation: 'supported',
+  runtimeHooks: 'supported',
+  mcpConfiguration: 'supported',
+  skillPackaging: 'supported',
+  rolePermissions: 'supported',
+  parentContextInjection: 'supported',
+  memoryGovernanceEnforcement: 'supported',
+};
+
 function supportedCapabilityProfile(
   capabilities: HarnessCapabilities,
 ): CapabilityProfile {
@@ -139,6 +151,35 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
   },
 };
 
+export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
+  harness: 'claude',
+  tools: {
+    delegationTool: 'Task',
+    backgroundDelegationTool: 'Task(run_in_background=true)',
+    backgroundStatusTool: 'TaskOutput',
+    userQuestionTool: 'AskUserQuestion',
+    progressTool: 'TodoWrite',
+    hostStatusSurface: 'TodoWrite',
+    roleReference: (role) => `Task(subagent_type: ${role})`,
+  },
+  capabilities: supportedCapabilityProfile(CLAUDE_CODE_PROMPT_CAPABILITIES),
+  dispatchLabel(method) {
+    switch (method) {
+      case 'root-coordinator':
+        return 'main-session coordinator';
+      case 'task':
+        return 'Task tool';
+      case 'synchronous-task-only':
+        return 'synchronous Task only';
+    }
+  },
+  renderRoleInvocation(role) {
+    return role === 'orchestrator'
+      ? 'main-session orchestrator'
+      : `${role} subagent`;
+  },
+};
+
 export function getPromptDialect(harness: HarnessId): HarnessPromptDialect;
 export function getPromptDialect(harness: string): HarnessPromptDialect;
 export function getPromptDialect(harness: string): HarnessPromptDialect {
@@ -148,6 +189,10 @@ export function getPromptDialect(harness: string): HarnessPromptDialect {
 
   if (harness === 'codex') {
     return CODEX_PROMPT_DIALECT;
+  }
+
+  if (harness === 'claude') {
+    return CLAUDE_CODE_PROMPT_DIALECT;
   }
 
   throw new Error(`Unsupported prompt dialect: ${harness}`);

@@ -31,9 +31,9 @@ function parseBooleanArg(name: string, value: string): BooleanArg {
 }
 
 function parseOperationHarness(value: string): OperationHarnessArg {
-  if (value !== 'opencode' && value !== 'codex') {
+  if (value !== 'opencode' && value !== 'codex' && value !== 'claude') {
     throw new Error(
-      `Unsupported operation harness: ${value}. Supported harnesses: opencode, codex.`,
+      `Unsupported operation harness: ${value}. Supported harnesses: opencode, codex, claude.`,
     );
   }
   return value;
@@ -134,9 +134,9 @@ export function parseInstallArgs(args: string[]): InstallArgs {
       result.reset = true;
     } else if (arg.startsWith('--agent=')) {
       const agent = arg.split('=')[1];
-      if (agent !== 'opencode' && agent !== 'codex') {
+      if (agent !== 'opencode' && agent !== 'codex' && agent !== 'claude') {
         throw new Error(
-          `Unsupported install agent: ${agent}. Supported agents: opencode, codex.`,
+          `Unsupported install agent: ${agent}. Supported agents: opencode, codex, claude.`,
         );
       }
       result.agent = agent;
@@ -154,10 +154,10 @@ export function parseGenerateArgs(args: string[]): CliParseResult {
   for (const arg of args) {
     if (arg.startsWith('--harness=')) {
       const harness = arg.split('=')[1];
-      if (harness !== 'codex') {
+      if (harness !== 'codex' && harness !== 'claude') {
         return {
           command: 'error',
-          message: `Unsupported generate harness: ${harness}.`,
+          message: `Unsupported generate harness: ${harness}. Supported harnesses: codex, claude.`,
         };
       }
       result.harness = harness;
@@ -168,10 +168,10 @@ export function parseGenerateArgs(args: string[]): CliParseResult {
     }
   }
 
-  if (result.harness !== 'codex') {
+  if (result.harness !== 'codex' && result.harness !== 'claude') {
     return {
       command: 'error',
-      message: 'Codex generation requires --harness=codex.',
+      message: 'Generation requires --harness=codex or --harness=claude.',
     };
   }
 

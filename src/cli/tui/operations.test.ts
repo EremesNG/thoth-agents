@@ -36,4 +36,32 @@ describe('TUI operations', () => {
       model: 'openai/current-deep',
     });
   });
+
+  test('routes the Claude Code harness to its own adapter, not Codex', async () => {
+    const { defaultTuiOperations, getClaudeCodeModelRoles } = await import(
+      './operations'
+    );
+
+    // Status and model roles for claude must come from the Claude Code
+    // adapter (harness id 'claude'), never fall through to Codex.
+    expect(defaultTuiOperations.status('claude').harness).toBe('claude');
+
+    const roles = getClaudeCodeModelRoles();
+    expect(roles.map((role) => role.role)).toEqual([
+      'explorer',
+      'librarian',
+      'oracle',
+      'designer',
+      'quick',
+      'deep',
+    ]);
+    for (const role of roles) {
+      expect(['sonnet', 'opus', 'haiku', 'inherit']).toContain(role.model);
+    }
+
+    // Model options are the Claude Code aliases, not the OpenCode/Codex catalog.
+    expect(
+      defaultTuiOperations.modelOptions('claude').map((o) => o.id),
+    ).toEqual(['sonnet', 'opus', 'haiku', 'inherit']);
+  });
 });

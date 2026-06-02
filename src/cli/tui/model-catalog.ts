@@ -118,8 +118,20 @@ function getModelsDevCatalog(): ModelOption[] {
   }
 }
 
+const CLAUDE_CODE_MODEL_OPTIONS: ModelOption[] = [
+  { id: 'sonnet', label: 'sonnet', provider: 'anthropic' },
+  { id: 'opus', label: 'opus', provider: 'anthropic' },
+  { id: 'haiku', label: 'haiku', provider: 'anthropic' },
+  {
+    id: 'inherit',
+    label: 'inherit (main session model)',
+    provider: 'anthropic',
+  },
+];
+
 export function getModelOptions(harness: HarnessId): ModelOption[] {
   if (harness === 'codex') return getModelsDevCatalog();
+  if (harness === 'claude') return CLAUDE_CODE_MODEL_OPTIONS;
 
   try {
     const invocation = getOpenCodeModelsInvocation();

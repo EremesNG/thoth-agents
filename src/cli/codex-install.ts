@@ -1,11 +1,4 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -18,6 +11,14 @@ import { writeCodexConfigMerge } from './codex-config-io';
 import type { CodexInstallScope, CodexRoleName } from './codex-paths';
 import { resolveCodexTargets } from './codex-paths';
 import { findPackageRoot } from './custom-skills';
+import {
+  type ManagedModelState,
+  emptyManagedModelState as sharedEmptyManagedModelState,
+  readManagedModelState as sharedReadManagedModelState,
+  stableJson,
+  uniqueMessages,
+  writeTextWithBackup,
+} from './managed-state-io';
 
 export { CODEX_ROLE_NAMES } from './codex-paths';
 
@@ -82,12 +83,6 @@ const ROOT_START = '<!-- thoth-agents:codex-root:start -->';
 const ROOT_END = '<!-- thoth-agents:codex-root:end -->';
 export const MANAGED_MODEL_STATE_VERSION = 1;
 
-interface ManagedModelState {
-  version: typeof MANAGED_MODEL_STATE_VERSION;
-  models: Record<string, string>;
-  configuredModels?: Record<string, string>;
-}
-
 function mergeManagedBlock(existing: string, managedBlock: string): string {
   const start = existing.indexOf(ROOT_START);
   const end = existing.indexOf(ROOT_END);
@@ -95,14 +90,6 @@ function mergeManagedBlock(existing: string, managedBlock: string): string {
     return `${existing.slice(0, start)}${managedBlock}${existing.slice(end + ROOT_END.length).replace(/^\s*\n/, '')}`;
   }
   return `${existing}${existing.endsWith('\n') || existing.length === 0 ? '' : '\n'}\n${managedBlock}`;
-}
-
-function writeTextWithBackup(path: string, content: string): boolean {
-  mkdirSync(dirname(path), { recursive: true });
-  if (existsSync(path) && readFileSync(path, 'utf8') === content) return false;
-  if (existsSync(path)) copyFileSync(path, `${path}.bak`);
-  writeFileSync(path, content);
-  return true;
 }
 
 function packageArtifactTarget(
@@ -155,55 +142,12 @@ function managedMarketplaceEntry(
   };
 }
 
-function stableJson(value: unknown): string {
-  return `${JSON.stringify(value, null, 2)}\n`;
-}
-
 function emptyManagedModelState(): ManagedModelState {
-  return {
-    version: MANAGED_MODEL_STATE_VERSION,
-    models: {},
-  };
-}
-
-function stringRecord(value: unknown): Record<string, string> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, string] =>
-        typeof entry[0] === 'string' && typeof entry[1] === 'string',
-    ),
-  );
+  return sharedEmptyManagedModelState(MANAGED_MODEL_STATE_VERSION);
 }
 
 export function readManagedModelState(path: string): ManagedModelState {
-  if (!existsSync(path)) return emptyManagedModelState();
-
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
-      version?: unknown;
-      models?: unknown;
-      configuredModels?: unknown;
-    };
-    if (
-      parsed.version !== MANAGED_MODEL_STATE_VERSION ||
-      !parsed.models ||
-      typeof parsed.models !== 'object' ||
-      Array.isArray(parsed.models)
-    ) {
-      return emptyManagedModelState();
-    }
-
-    return {
-      version: MANAGED_MODEL_STATE_VERSION,
-      models: stringRecord(parsed.models),
-      ...(Object.keys(stringRecord(parsed.configuredModels)).length > 0
-        ? { configuredModels: stringRecord(parsed.configuredModels) }
-        : {}),
-    };
-  } catch {
-    return emptyManagedModelState();
-  }
+  return sharedReadManagedModelState(path, MANAGED_MODEL_STATE_VERSION);
 }
 
 export function parseRoleTomlModel(content: string): string | undefined {
@@ -598,10 +542,6 @@ function isSameOrChildPath(path: string, parent: string): boolean {
     path.startsWith(`${parent}\\`) ||
     path.startsWith(`${parent}/`)
   );
-}
-
-function uniqueMessages(messages: string[]): string[] {
-  return [...new Set(messages)];
 }
 
 export function applyCodexSetup(plan: CodexSetupPlan): CodexApplyResult {

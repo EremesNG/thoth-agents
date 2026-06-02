@@ -607,7 +607,7 @@ export function App({
     return (
       <Box flexDirection="column">
         <Header
-          title={`${modelHarness === 'codex' ? 'Codex' : 'OpenCode'} Models`}
+          title={`${modelHarness === 'codex' ? 'Codex' : modelHarness === 'claude' ? 'Claude Code' : 'OpenCode'} Models`}
           subtitle="Enter edits a role. Dirty rows are marked with *."
         />
         <ModelScreen

@@ -1,5 +1,5 @@
 import { ALL_AGENT_NAMES, DEFAULT_MODELS } from '../config';
-import { codexAdapter } from '../harness/adapters/codex';
+import { getHarnessAdapter } from '../harness/registry';
 import { CODEX_ROLE_NAMES } from './codex-install';
 import { install } from './install';
 import {
@@ -7,6 +7,14 @@ import {
   listOperationHarnesses,
   SUPPORTED_OPERATION_HARNESSES,
 } from './operations';
+import {
+  applyClaudeCodePlan,
+  buildClaudeCodeModelPlan,
+  buildClaudeCodeSyncPlan,
+  buildClaudeCodeUpdatePlan,
+  defaultClaudeCodeModelRoles,
+  getClaudeCodeStatus,
+} from './operations/claude-code';
 import {
   applyCodexPlan,
   buildCodexModelPlan,
@@ -225,7 +233,7 @@ Usage: thoth-agents [COMMAND] [OPTIONS]
 
 Commands:
   (no command)          Open the interactive TUI in a TTY; fall back to OpenCode install in CI/non-TTY
-  install               Install OpenCode or Codex agent assets
+  install               Install OpenCode, Codex, or Claude Code agent assets
   generate              Generate harness-specific artifacts
   status                Show managed install status
   list                  List managed surfaces and actions
@@ -239,11 +247,13 @@ Options:
   --no-tui               Non-interactive mode
   --dry-run              Simulate install without writing files
   --reset                Repair managed installer-owned targets
-  --agent=opencode|codex Select OpenCode plugin install (default) or Codex agent-pack setup
+  --agent=opencode|codex|claude
+                         Select OpenCode plugin install (default), Codex agent-pack, or Claude Code plugin setup
+  --harness=...          Select harness for status/update/sync/model (opencode|codex|claude)
   -h, --help             Show this help message
 
 Generate options:
-  --harness=codex        Explicitly select Codex artifact generation
+  --harness=codex|claude  Select Codex or Claude Code artifact generation
   --output-root=PATH     Override generation root metadata
 
 OpenCode plugin config and the npm binary are separate surfaces.
@@ -269,10 +279,13 @@ Examples:
   pnpm dlx thoth-agents@latest install --agent=opencode
   pnpm dlx thoth-agents@latest install --agent=codex
   pnpm dlx thoth-agents@latest install --agent=codex --dry-run
+  pnpm dlx thoth-agents@latest install --agent=claude
+  pnpm dlx thoth-agents@latest install --agent=claude --dry-run
   pnpm dlx thoth-agents install --no-tui --tmux=no --skills=yes
   pnpm dlx thoth-agents install --dry-run
   pnpm dlx thoth-agents install --reset
   pnpm dlx thoth-agents generate --harness=codex --dry-run
+  pnpm dlx thoth-agents generate --harness=claude --dry-run
 `);
 }
 
@@ -291,11 +304,11 @@ function statusReports(args: OperationArgs): HarnessStatusReport[] {
   const harnesses =
     args.all || !args.harness ? SUPPORTED_OPERATION_HARNESSES : [args.harness];
   const context = operationContext();
-  return harnesses.map((harness) =>
-    harness === 'opencode'
-      ? getOpenCodeStatus(context)
-      : getCodexStatus(context),
-  );
+  return harnesses.map((harness) => {
+    if (harness === 'opencode') return getOpenCodeStatus(context);
+    if (harness === 'claude') return getClaudeCodeStatus(context);
+    return getCodexStatus(context);
+  });
 }
 
 function buildOperationPlan(
@@ -309,6 +322,11 @@ function buildOperationPlan(
       ? buildOpenCodeUpdatePlan(context)
       : buildOpenCodeSyncPlan(context);
   }
+  if (harness === 'claude') {
+    return command === 'update'
+      ? buildClaudeCodeUpdatePlan(context)
+      : buildClaudeCodeSyncPlan(context);
+  }
   return command === 'update'
     ? buildCodexUpdatePlan(context)
     : buildCodexSyncPlan(context);
@@ -320,6 +338,10 @@ function defaultModelRoles(harness: OperationHarnessArg): ModelRoleInput[] {
       role,
       model: 'openai/gpt-5.4-mini',
     }));
+  }
+
+  if (harness === 'claude') {
+    return defaultClaudeCodeModelRoles();
   }
 
   return ALL_AGENT_NAMES.map((role) => ({
@@ -357,15 +379,15 @@ function buildModelPlan(args: OperationArgs): OperationPlan | undefined {
     dryRun: true,
     roles: modelRoles(harness, args.roles),
   };
-  return harness === 'opencode'
-    ? buildOpenCodeModelPlan(input, context)
-    : buildCodexModelPlan(input, context);
+  if (harness === 'opencode') return buildOpenCodeModelPlan(input, context);
+  if (harness === 'claude') return buildClaudeCodeModelPlan(input, context);
+  return buildCodexModelPlan(input, context);
 }
 
 function applyOperationPlan(plan: OperationPlan): OperationApplyResult {
-  return plan.harness === 'opencode'
-    ? applyOpenCodePlan(plan)
-    : applyCodexPlan(plan);
+  if (plan.harness === 'opencode') return applyOpenCodePlan(plan);
+  if (plan.harness === 'claude') return applyClaudeCodePlan(plan);
+  return applyCodexPlan(plan);
 }
 
 function printPlanOrApply(plan: OperationPlan, args: OperationArgs): number {
@@ -406,20 +428,19 @@ function runOperationCommand(
   return printPlanOrApply(plan, args);
 }
 
-export function printCodexGeneration(args: GenerateArgs): number {
+export function printHarnessGeneration(args: GenerateArgs): number {
   if (!args.dryRun) {
-    console.error(
-      'Codex generation is dry-run only in this MVP. Pass --dry-run.',
-    );
+    console.error('Generation is dry-run only in this MVP. Pass --dry-run.');
     return 1;
   }
 
-  const result = codexAdapter.render({
+  const adapter = getHarnessAdapter(args.harness);
+  const result = adapter.render({
     projectRoot: process.cwd(),
     options: {
       dryRun: true,
       outputRoot: args.outputRoot,
-      targetHarness: 'codex',
+      targetHarness: args.harness,
     },
   });
 
@@ -433,7 +454,7 @@ export async function runCliCommand(parsed: CliParseResult): Promise<number> {
   }
 
   if (parsed.command === 'generate') {
-    return printCodexGeneration(parsed.generateArgs);
+    return printHarnessGeneration(parsed.generateArgs);
   }
 
   if (parsed.command === 'help') {

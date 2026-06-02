@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  CLAUDE_CODE_PROMPT_DIALECT,
   CODEX_PROMPT_DIALECT,
   getPromptDialect,
   OPENCODE_PROMPT_DIALECT,
@@ -106,13 +107,53 @@ describe('prompt dialects', () => {
     ).toContain('diagnostic-only');
   });
 
-  test('supports only OpenCode and Codex prompt dialect ids', () => {
+  test('renders Claude Code-native tool and role wording as a first-class harness', () => {
+    expect(CLAUDE_CODE_PROMPT_DIALECT.harness).toBe('claude');
+    expect(CLAUDE_CODE_PROMPT_DIALECT.tools.delegationTool).toBe('Task');
+    expect(CLAUDE_CODE_PROMPT_DIALECT.tools.userQuestionTool).toBe(
+      'AskUserQuestion',
+    );
+    expect(CLAUDE_CODE_PROMPT_DIALECT.tools.progressTool).toBe('TodoWrite');
+    expect(CLAUDE_CODE_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
+      'Task(subagent_type: deep)',
+    );
+    expect(
+      CLAUDE_CODE_PROMPT_DIALECT.renderRoleInvocation('orchestrator'),
+    ).toBe('main-session orchestrator');
+    expect(CLAUDE_CODE_PROMPT_DIALECT.renderRoleInvocation('deep')).toBe(
+      'deep subagent',
+    );
+    expect(CLAUDE_CODE_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
+      'main-session coordinator',
+    );
+  });
+
+  test('Claude Code is first-class with no capability disclosures', () => {
+    for (const capability of [
+      'delegatedExecution',
+      'runtimeHooks',
+      'rolePermissions',
+      'parentContextInjection',
+      'memoryGovernanceEnforcement',
+    ] as const) {
+      expect(
+        CLAUDE_CODE_PROMPT_DIALECT.capabilities.renderCapabilityDisclosure(
+          capability,
+        ),
+      ).toBeUndefined();
+      expect(
+        CLAUDE_CODE_PROMPT_DIALECT.capabilities.capabilities[capability],
+      ).toBe('supported');
+    }
+  });
+
+  test('supports OpenCode, Codex, and Claude Code prompt dialect ids', () => {
     expect(getPromptDialect('opencode')).toBe(OPENCODE_PROMPT_DIALECT);
     expect(getPromptDialect('codex')).toBe(CODEX_PROMPT_DIALECT);
+    expect(getPromptDialect('claude')).toBe(CLAUDE_CODE_PROMPT_DIALECT);
 
     for (const dialectId of [
       'unknown',
-      'claude-code',
       'cursor',
       'gemini-cli',
       'aider',

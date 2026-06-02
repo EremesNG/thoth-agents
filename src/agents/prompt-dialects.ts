@@ -55,6 +55,18 @@ export const CODEX_PROMPT_CAPABILITIES: HarnessCapabilities = {
   memoryGovernanceEnforcement: 'instruction-only',
 };
 
+export const CLAUDE_CODE_PROMPT_CAPABILITIES: HarnessCapabilities = {
+  agentDefinitions: 'supported',
+  delegatedExecution: 'supported',
+  parallelDelegation: 'supported',
+  runtimeHooks: 'supported',
+  mcpConfiguration: 'supported',
+  skillPackaging: 'supported',
+  rolePermissions: 'supported',
+  parentContextInjection: 'supported',
+  memoryGovernanceEnforcement: 'supported',
+};
+
 function supportedCapabilityProfile(
   capabilities: HarnessCapabilities,
 ): CapabilityProfile {
@@ -139,6 +151,51 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
   },
 };
 
+/**
+ * Claude Code registers plugin subagents under the plugin name as a namespace,
+ * so the `subagent_type` for delegation is `thoth-agents:<role>`, not the bare
+ * role name. This must match the plugin manifest `name`.
+ */
+export const CLAUDE_CODE_SUBAGENT_NAMESPACE = 'thoth-agents';
+
+export function claudeCodeSubagentType(role: AgentPromptRole): string {
+  return `${CLAUDE_CODE_SUBAGENT_NAMESPACE}:${role}`;
+}
+
+export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
+  harness: 'claude',
+  tools: {
+    delegationTool: 'Task',
+    backgroundDelegationTool: 'Task(run_in_background=true)',
+    backgroundStatusTool: 'TaskOutput',
+    userQuestionTool: 'AskUserQuestion',
+    progressTool: 'TodoWrite',
+    hostStatusSurface: 'TodoWrite',
+    roleReference: (role) =>
+      role === 'orchestrator'
+        ? 'the main-thread orchestrator'
+        : `Task(subagent_type: ${claudeCodeSubagentType(role)})`,
+  },
+  capabilities: supportedCapabilityProfile(CLAUDE_CODE_PROMPT_CAPABILITIES),
+  dispatchLabel(method) {
+    switch (method) {
+      case 'root-coordinator':
+        return 'main-session coordinator';
+      case 'task':
+        return 'Task tool';
+      case 'synchronous-task-only':
+        return 'synchronous Task only';
+    }
+  },
+  renderRoleInvocation(role) {
+    // Plugin subagents are namespaced: delegate with subagent_type
+    // `thoth-agents:<role>`. The orchestrator is the main thread, not a delegate.
+    return role === 'orchestrator'
+      ? 'main-thread orchestrator'
+      : claudeCodeSubagentType(role);
+  },
+};
+
 export function getPromptDialect(harness: HarnessId): HarnessPromptDialect;
 export function getPromptDialect(harness: string): HarnessPromptDialect;
 export function getPromptDialect(harness: string): HarnessPromptDialect {
@@ -148,6 +205,10 @@ export function getPromptDialect(harness: string): HarnessPromptDialect {
 
   if (harness === 'codex') {
     return CODEX_PROMPT_DIALECT;
+  }
+
+  if (harness === 'claude') {
+    return CLAUDE_CODE_PROMPT_DIALECT;
   }
 
   throw new Error(`Unsupported prompt dialect: ${harness}`);

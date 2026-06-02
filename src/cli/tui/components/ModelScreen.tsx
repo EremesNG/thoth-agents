@@ -31,7 +31,9 @@ export function ModelScreen({
       <Text color={theme.dim}>
         {harness === 'codex'
           ? 'Codex writes generated subagent model lines only.'
-          : 'OpenCode writes role model overrides in thoth-agents config.'}
+          : harness === 'claude'
+            ? 'Claude Code writes subagent frontmatter model lines (sonnet, opus, haiku, inherit).'
+            : 'OpenCode writes role model overrides in thoth-agents config.'}
       </Text>
       {harness === 'codex'
         ? CODEX_MODEL_CATALOG_NOTE.map((note) => (

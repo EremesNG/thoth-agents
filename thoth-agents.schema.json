@@ -466,6 +466,22 @@
           "type": "boolean"
         }
       }
+    },
+    "claudeCode": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "outputRoot": {
+          "type": "string"
+        },
+        "dryRun": {
+          "default": true,
+          "type": "boolean"
+        }
+      }
     }
   },
   "title": "thoth-agents",

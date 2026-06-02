@@ -1,5 +1,5 @@
 export type BooleanArg = 'yes' | 'no';
-export type InstallAgent = 'opencode' | 'codex';
+export type InstallAgent = 'opencode' | 'codex' | 'claude';
 
 export interface InstallArgs {
   tui: boolean;
@@ -11,12 +11,12 @@ export interface InstallArgs {
 }
 
 export interface GenerateArgs {
-  harness: 'codex';
+  harness: 'codex' | 'claude';
   dryRun?: boolean;
   outputRoot?: string;
 }
 
-export type OperationHarnessArg = 'opencode' | 'codex';
+export type OperationHarnessArg = 'opencode' | 'codex' | 'claude';
 
 export interface CliModelRoleArg {
   role: string;

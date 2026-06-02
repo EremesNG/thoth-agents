@@ -2,6 +2,11 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { cwd } from 'node:process';
 import {
+  applyClaudeCodeSetup,
+  buildClaudeCodeSetupPlan,
+  formatClaudeCodeSetupPlan,
+} from './claude-code-install';
+import {
   applyCodexSetup,
   buildCodexSetupPlan,
   formatCodexSetupPlan,
@@ -340,6 +345,28 @@ export async function install(args: InstallArgs): Promise<number> {
       config.dryRun
         ? 'Codex dry-run complete; no files written'
         : 'Codex agent-pack setup complete',
+    );
+    return 0;
+  }
+  if (config.agent === 'claude') {
+    const plan = buildClaudeCodeSetupPlan({
+      dryRun: config.dryRun,
+      reset: config.reset,
+      scope: 'user',
+      projectRoot: cwd(),
+      homeDir: homedir(),
+    });
+    console.log(formatClaudeCodeSetupPlan(plan));
+    const result = applyClaudeCodeSetup(plan);
+    for (const diagnostic of result.diagnostics) printInfo(diagnostic);
+    if (!result.success) {
+      printError(`Claude Code install failed: ${result.error}`);
+      return 1;
+    }
+    printSuccess(
+      config.dryRun
+        ? 'Claude Code dry-run complete; no files written'
+        : 'Claude Code plugin installed as thoth-agents@skills-dir (restart Claude Code or run /reload-plugins to activate)',
     );
     return 0;
   }

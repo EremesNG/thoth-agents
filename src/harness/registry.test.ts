@@ -26,8 +26,20 @@ describe('harness registry', () => {
     }
   });
 
-  test('rejects Claude, Antigravity, and unknown harnesses without artifacts', () => {
-    for (const harness of ['claude', 'antigravity', 'unknown']) {
+  test('allows explicit Claude Code selection as a first-class harness', () => {
+    const result = resolveHarness('claude');
+
+    expect(result).toMatchObject({ ok: true, harness: 'claude' });
+    if (result.ok) {
+      expect(result.adapter.displayName).toBe('Claude Code');
+      for (const status of Object.values(result.adapter.capabilities)) {
+        expect(status).toBe('supported');
+      }
+    }
+  });
+
+  test('rejects claude-code, Antigravity, and unknown harnesses without artifacts', () => {
+    for (const harness of ['claude-code', 'antigravity', 'unknown']) {
       const result = resolveHarness(harness);
 
       expect(result.ok).toBe(false);

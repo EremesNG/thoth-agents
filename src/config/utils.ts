@@ -21,3 +21,18 @@ export function getAgentOverride(
     ]
   );
 }
+
+/**
+ * Resolve the primary model id from an agent override `model` value, which may
+ * be a single id, an object with an `id`, or a failover array of either.
+ */
+export function getPrimaryModelId(
+  model: AgentOverrideConfig['model'],
+): string | undefined {
+  if (Array.isArray(model)) {
+    const first = model[0];
+    return typeof first === 'string' ? first : first?.id;
+  }
+
+  return model;
+}

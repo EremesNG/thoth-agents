@@ -1,4 +1,4 @@
-export type HarnessId = 'opencode' | 'codex';
+export type HarnessId = 'opencode' | 'codex' | 'claude';
 
 export type HarnessArtifactKind =
   | 'agent-config'

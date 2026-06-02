@@ -26,12 +26,13 @@ skills, and MCP integration.
 | --- | --- | --- |
 | OpenCode | Native plugin config, native `task`, optional tmux panes, OpenCode skills directory | Stable default baseline. |
 | Codex | Ambient root guidance, six role TOMLs, Personal plugin source, plugin-bundled skills | Some governance and delegation behavior is instruction-level unless Codex exposes hard runtime controls. |
+| Claude Code | One `.claude-plugin/` package: six auto-discovered subagents, `.mcp.json`, bundled skills, SessionStart root-injection hook | First-class: role permissions enforced by subagent `tools`, hooks harness-run, native `Task(subagent_type: ...)` delegation. |
 
 Entry point: `npx thoth-agents@latest` opens the interactive multi-harness TUI in an interactive terminal and falls back to the OpenCode install path in CI, redirected shells, or `TERM=dumb`.
 
 Shared concepts come first: the seven roles, requirements interview, SDD,
 thoth-mem, and specialist workflow. Harness details describe how those concepts
-are delivered in OpenCode or Codex.
+are delivered in OpenCode, Codex, or Claude Code.
 
 ## Agent Roster
 

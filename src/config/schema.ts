@@ -165,6 +165,16 @@ export const CodexGenerationConfigSchema = z.object({
 
 export type CodexGenerationConfig = z.infer<typeof CodexGenerationConfigSchema>;
 
+export const ClaudeCodeGenerationConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  outputRoot: z.string().optional(),
+  dryRun: z.boolean().default(true),
+});
+
+export type ClaudeCodeGenerationConfig = z.infer<
+  typeof ClaudeCodeGenerationConfigSchema
+>;
+
 export const FailoverConfigSchema = z.object({
   enabled: z.boolean().default(true),
   timeoutMs: z.number().min(0).default(15000),
@@ -190,6 +200,7 @@ export const PluginConfigSchema = z.object({
   thoth: ThothConfigSchema.optional(),
   artifactStore: ArtifactStoreConfigSchema.optional(),
   codex: CodexGenerationConfigSchema.optional(),
+  claudeCode: ClaudeCodeGenerationConfigSchema.optional(),
 });
 
 export type PluginConfig = z.infer<typeof PluginConfigSchema>;

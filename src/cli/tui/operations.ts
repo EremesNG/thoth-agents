@@ -1,11 +1,26 @@
 import { ALL_AGENT_NAMES, DEFAULT_MODELS } from '../../config';
 import type { HarnessId } from '../../harness/types';
 import {
+  buildClaudeCodeSetupPlan,
+  CLAUDE_CODE_ROLE_NAMES,
+  parseSubagentModel,
+} from '../claude-code-install';
+import {
   buildCodexSetupPlan,
   CODEX_ROLE_NAMES,
   parseRoleTomlModel,
 } from '../codex-install';
 import { parseConfig } from '../config-io';
+import {
+  applyClaudeCodePlan,
+  buildClaudeCodeInstallPlan,
+  buildClaudeCodeModelPlan,
+  buildClaudeCodeSyncPlan,
+  buildClaudeCodeUpdatePlan,
+  type ClaudeCodeOperationContext,
+  defaultClaudeCodeModelRoles,
+  getClaudeCodeStatus,
+} from '../operations/claude-code';
 import {
   applyCodexPlan,
   buildCodexInstallPlan,
@@ -55,6 +70,10 @@ export interface TuiOperations {
 
 const context: OperationContext = { cwd: process.cwd() };
 const codexContext: CodexOperationContext = { cwd: process.cwd() };
+const claudeCodeContext: ClaudeCodeOperationContext = {
+  cwd: process.cwd(),
+  scope: 'user',
+};
 
 export const opencodeModelRoles: ModelRoleInput[] = ALL_AGENT_NAMES.map(
   (role) => ({
@@ -110,6 +129,32 @@ export function getCodexModelRoles(
   }
 }
 
+export function getClaudeCodeModelRoles(
+  source: ClaudeCodeOperationContext = claudeCodeContext,
+): ModelRoleInput[] {
+  try {
+    const plan = buildClaudeCodeSetupPlan({
+      dryRun: true,
+      reset: false,
+      scope: source.scope ?? 'user',
+      projectRoot: source.cwd,
+      homeDir: source.homeDir,
+      packageRoot: source.packageRoot,
+    });
+    return CLAUDE_CODE_ROLE_NAMES.map((role) => {
+      const item = plan.items.find(
+        (candidate) => candidate.kind === 'subagent' && candidate.role === role,
+      );
+      const model = item?.content
+        ? parseSubagentModel(item.content)
+        : undefined;
+      return { role, model: model ?? 'inherit' };
+    });
+  } catch {
+    return defaultClaudeCodeModelRoles();
+  }
+}
+
 function readRoleModel(config: unknown, role: string): string | undefined {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     return undefined;
@@ -152,21 +197,32 @@ function buildTuiModelPlan(
   harness: HarnessId,
   roles: ModelRoleInput[],
 ): OperationPlan {
-  return harness === 'opencode'
-    ? buildOpenCodeModelPlan({ harness, dryRun: true, roles }, context)
-    : buildCodexModelPlan({ harness, dryRun: true, roles }, codexContext);
+  if (harness === 'opencode') {
+    return buildOpenCodeModelPlan({ harness, dryRun: true, roles }, context);
+  }
+  if (harness === 'claude') {
+    return buildClaudeCodeModelPlan(
+      { harness, dryRun: true, roles },
+      claudeCodeContext,
+    );
+  }
+  return buildCodexModelPlan({ harness, dryRun: true, roles }, codexContext);
 }
 
 export const defaultTuiOperations: TuiOperations = {
   status(harness) {
-    return harness === 'opencode'
-      ? getOpenCodeStatus(context)
-      : getCodexStatus(codexContext);
+    if (harness === 'opencode') return getOpenCodeStatus(context);
+    if (harness === 'claude') {
+      return getClaudeCodeStatus(claudeCodeContext);
+    }
+    return getCodexStatus(codexContext);
   },
   modelRoles(harness) {
-    return harness === 'opencode'
-      ? getOpenCodeModelRoles()
-      : getCodexModelRoles(codexContext);
+    if (harness === 'opencode') return getOpenCodeModelRoles();
+    if (harness === 'claude') {
+      return getClaudeCodeModelRoles(claudeCodeContext);
+    }
+    return getCodexModelRoles(codexContext);
   },
   modelOptions(harness) {
     return getModelOptions(harness);
@@ -179,6 +235,20 @@ export const defaultTuiOperations: TuiOperations = {
       return buildTuiModelPlan(harness, getOpenCodeModelRoles());
     }
 
+    if (harness === 'claude') {
+      if (action === 'install') {
+        return buildClaudeCodeInstallPlan(claudeCodeContext);
+      }
+      if (action === 'update') {
+        return buildClaudeCodeUpdatePlan(claudeCodeContext);
+      }
+      if (action === 'sync') return buildClaudeCodeSyncPlan(claudeCodeContext);
+      return buildTuiModelPlan(
+        harness,
+        getClaudeCodeModelRoles(claudeCodeContext),
+      );
+    }
+
     if (action === 'install') return buildCodexInstallPlan(codexContext);
     if (action === 'update') return buildCodexUpdatePlan(codexContext);
     if (action === 'sync') return buildCodexSyncPlan(codexContext);
@@ -188,8 +258,8 @@ export const defaultTuiOperations: TuiOperations = {
     return buildTuiModelPlan(harness, roles);
   },
   apply(plan) {
-    return plan.harness === 'opencode'
-      ? applyOpenCodePlan(plan)
-      : applyCodexPlan(plan);
+    if (plan.harness === 'opencode') return applyOpenCodePlan(plan);
+    if (plan.harness === 'claude') return applyClaudeCodePlan(plan);
+    return applyCodexPlan(plan);
   },
 };

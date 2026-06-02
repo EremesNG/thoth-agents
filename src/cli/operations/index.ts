@@ -1,4 +1,5 @@
 import type { HarnessId } from '../../harness/types';
+import { claudeCodeOperationAdapter } from './claude-code';
 import { codexOperationAdapter } from './codex';
 import { opencodeOperationAdapter } from './opencode';
 import type {
@@ -9,6 +10,7 @@ import type {
 const OPERATION_HARNESSES = {
   opencode: opencodeOperationAdapter,
   codex: codexOperationAdapter,
+  claude: claudeCodeOperationAdapter,
 } as const satisfies Record<HarnessId, HarnessOperationAdapter>;
 
 export const SUPPORTED_OPERATION_HARNESSES = Object.keys(

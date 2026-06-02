@@ -40,9 +40,13 @@ describe('CLI harness surface', () => {
       installArgs: { tui: true, agent: 'codex', dryRun: true },
     });
     expect(parseCliArgs(['install', '--agent=claude'])).toEqual({
+      command: 'install',
+      installArgs: { tui: true, agent: 'claude' },
+    });
+    expect(parseCliArgs(['install', '--agent=claude-code'])).toEqual({
       command: 'error',
       message:
-        'Unsupported install agent: claude. Supported agents: opencode, codex.',
+        'Unsupported install agent: claude-code. Supported agents: opencode, codex, claude.',
     });
   });
 
@@ -80,14 +84,27 @@ describe('CLI harness surface', () => {
     });
   });
 
+  test('accepts explicit Claude Code selection for generation', () => {
+    expect(parseCliArgs(['generate', '--harness=claude', '--dry-run'])).toEqual(
+      {
+        command: 'generate',
+        generateArgs: {
+          harness: 'claude',
+          dryRun: true,
+        },
+      },
+    );
+  });
+
   test('rejects implicit or unsupported generate harnesses', () => {
     expect(parseCliArgs(['generate'])).toEqual({
       command: 'error',
-      message: 'Codex generation requires --harness=codex.',
+      message: 'Generation requires --harness=codex or --harness=claude.',
     });
-    expect(parseCliArgs(['generate', '--harness=claude'])).toEqual({
+    expect(parseCliArgs(['generate', '--harness=claude-code'])).toEqual({
       command: 'error',
-      message: 'Unsupported generate harness: claude.',
+      message:
+        'Unsupported generate harness: claude-code. Supported harnesses: codex, claude.',
     });
   });
 

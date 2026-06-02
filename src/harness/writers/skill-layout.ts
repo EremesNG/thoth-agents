@@ -1,9 +1,13 @@
-import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { assertCodexSurfaceCanGenerate } from '../adapters/codex-surfaces';
 import type { SkillRegistryEntry } from '../core/skills';
 import type { HarnessArtifact, HarnessDiagnostic } from '../types';
+import {
+  collectSkillFiles,
+  normalizeSkillPath,
+  sha256Hash,
+} from './fs-skill-collect';
 
 export interface CodexSkillLayoutInput {
   projectRoot: string;
@@ -45,31 +49,6 @@ const OUTPUT_MODE_CONFIG: Record<
     label: 'fallback .agents/skills',
   },
 };
-
-function normalizePath(value: string): string {
-  return value.split(path.sep).join('/');
-}
-
-function collectFiles(directory: string): string[] {
-  if (!fs.existsSync(directory)) return [];
-  const entries = fs.readdirSync(directory, { withFileTypes: true });
-  const files: string[] = [];
-
-  for (const entry of entries) {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...collectFiles(entryPath));
-    } else if (entry.isFile()) {
-      files.push(entryPath);
-    }
-  }
-
-  return files.sort((left, right) => left.localeCompare(right));
-}
-
-function sha256(content: string | Uint8Array): string {
-  return `sha256:${createHash('sha256').update(content).digest('hex')}`;
-}
 
 function resolveOutputModes(
   input: CodexSkillLayoutInput,
@@ -135,7 +114,7 @@ export function renderCodexSkillLayout(
   )) {
     const sourceBaseRoot = input.packageRoot ?? input.projectRoot;
     const sourceRoot = path.join(sourceBaseRoot, skill.sourcePath);
-    const files = collectFiles(sourceRoot);
+    const files = collectSkillFiles(sourceRoot);
 
     if (files.length === 0) {
       diagnostics.push({
@@ -150,9 +129,11 @@ export function renderCodexSkillLayout(
     }
 
     for (const file of files) {
-      const relative = normalizePath(path.relative(sourceRoot, file));
+      const relative = normalizeSkillPath(path.relative(sourceRoot, file));
       const content = fs.readFileSync(file, 'utf8');
-      const sourcePath = normalizePath(path.relative(sourceBaseRoot, file));
+      const sourcePath = normalizeSkillPath(
+        path.relative(sourceBaseRoot, file),
+      );
 
       for (const mode of outputModes) {
         const config = OUTPUT_MODE_CONFIG[mode];
@@ -169,7 +150,7 @@ export function renderCodexSkillLayout(
           name: skill.name,
           sourcePath,
           outputPath,
-          sha256: sha256(content),
+          sha256: sha256Hash(content),
         });
       }
     }

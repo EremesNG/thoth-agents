@@ -44,22 +44,28 @@ artifacts, mirroring Codex.
 Claude Code plugins auto-discover subagents in `agents/`, so a single package is
 sufficient and is the native distribution unit.
 
-### Decision: Inject the root coordinator via a SessionStart hook
+### Decision: Activate the orchestrator as the main thread via plugin settings.json
 
-**Choice**: The orchestrator/root-coordinator is the Claude Code **main session**,
-not a generated subagent. Deliver its instructions through a `SessionStart` hook
-that emits `additionalContext`. The rendered instruction text comes from
-`renderClaudeCodeRootInstructions(config)` and is delivered by a bundled standalone
-script referenced with `${CLAUDE_PLUGIN_ROOT}`.
+**Choice**: Generate an `agents/orchestrator.md` agent (body =
+`renderClaudeCodeRootInstructions(config)`, frontmatter omits `tools` to inherit
+all tools, `model: inherit`) and a plugin-root `settings.json` with
+`{ "agent": "orchestrator" }`, which the Claude Code docs define as activating a
+plugin agent as the **main thread** — applying its system prompt, tool
+restrictions, and model, i.e. replacing the default system prompt entirely.
 
-**Alternatives considered**: A plugin-level `CLAUDE.md` (not loaded as context); a
-generated "orchestrator" subagent (would replace user intent); static
-`additionalContext` baked into `hooks.json` (acceptable but large/opaque).
+**Alternatives considered**: A `SessionStart` hook emitting `additionalContext`
+(shipped first, but observed not to work — see below); a plugin-level `CLAUDE.md`
+(not loaded as context).
 
-**Rationale**: A plugin cannot edit the user's `CLAUDE.md`. SessionStart
-`additionalContext` is the documented mechanism to add instructions to the main
-session without overriding the user's own context. An optional
-`commands/thoth-orchestrate.md` re-entry command guards against context compaction.
+**Rationale**: A `SessionStart` `additionalContext` injection is low-priority
+context the model can ignore; in practice the main agent did not adopt the
+orchestrator persona, bootstrap thoth-mem, or delegate. The plugin `settings.json`
+`agent` key is the documented, first-class mechanism that makes the orchestrator
+the real system prompt, which reliably drives delegate-first behavior and the
+`mem_session(action="start")` bootstrap on the first turn. Trade-off: while the
+plugin is enabled the orchestrator is the default agent for every session in
+scope (user scope = every project); users disable the plugin where they want
+plain Claude Code.
 
 ### Decision: Enforce role permissions through subagent frontmatter `tools`
 
@@ -108,8 +114,8 @@ Harness selection (generate/install --harness=claude)
   -> claudeCodeAdapter.render(context)
      -> per role: renderRolePrompt + memory governance -> renderClaudeCodeSubagent
         (frontmatter name/description/model/tools + body) -> agents/<role>.md
-     -> .mcp.json (http for url servers), hooks/hooks.json (SessionStart root
-        injection), skills layout, plugin.json manifest
+     -> orchestrator agent + settings.json (main-thread activation),
+        .mcp.json (http for url servers), skills layout, plugin.json manifest
   -> install layer plans + applies the .claude-plugin/ package idempotently
 ```
 
@@ -172,7 +178,7 @@ session model (frontmatter `model` does not apply to it).
   disclosure text leaking.
 - Adapter tests: six subagents emitted; read-only roles lack write tools; opus on
   oracle/deep; `.mcp.json` uses `type: "http"` for url servers; `hooks.json`
-  contains a SessionStart entry with the root marker; manifest version matches
+  contains the orchestrator agent + settings.json; manifest version matches
   root `package.json`; diagnostics empty.
 - Install tests: dry-run plan, apply with backups, skip-if-identical, frontmatter
   `model:` override restricted to `{sonnet,opus,haiku,inherit}`.
@@ -189,7 +195,7 @@ session model (frontmatter `model` does not apply to it).
 4. Update registry/operations tests.
 5. Refactor `commands.ts` dispatch and wire generate/install/help.
 6. Implement the install/paths/config-io layer + operation adapter.
-7. Add the SessionStart injector (+ optional re-entry command).
+7. Add the orchestrator agent + settings.json main-thread activation.
 8. Model defaults, optional surface descriptor, schema config + regenerate schema.
 9. Docs.
 

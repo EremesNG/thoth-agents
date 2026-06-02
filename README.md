@@ -54,7 +54,7 @@ hooks, MCP, skills, and per-agent tool permissions.
 | --- | --- | --- | --- |
 | OpenCode | Stable default | `npx thoth-agents@latest install` or `npx thoth-agents@latest install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
 | Codex | Supported explicit path | `npx thoth-agents@latest install --agent=codex` | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires `/plugins` and `/hooks` trust review. Some governance remains instruction-level. |
-| Claude Code | Supported first-class path | `npx thoth-agents@latest install --agent=claude` | Installs one `.claude-plugin/` package: six auto-discovered subagents (`Task(subagent_type: ...)`), `.mcp.json`, bundled skills, and a `SessionStart` hook that injects the root coordinator into the main session. Role permissions are enforced by subagent `tools`; runtime hooks are harness-enforced. |
+| Claude Code | Supported first-class path | `npx thoth-agents@latest install --agent=claude` | Installs one Claude Code plugin: six specialist subagents (`Task(subagent_type: ...)`), an `orchestrator` agent activated as the main thread via `settings.json`, `.mcp.json`, and bundled skills. Role permissions are enforced by subagent `tools`. |
 
 OpenCode can load the plugin with:
 
@@ -136,17 +136,18 @@ npx thoth-agents@latest install --agent=claude
 ```
 
 This writes a single Claude Code **skills-directory plugin** under
-`~/.claude/skills/thoth-agents`: `.claude-plugin/plugin.json`, six
-auto-discovered subagents in `agents/`, an `.mcp.json` server map, bundled
-`skills/`, and a `hooks/hooks.json` whose `SessionStart` hook injects the root
-coordinator instructions into the main session (a plugin cannot edit your
-`CLAUDE.md`). It auto-loads as `thoth-agents@skills-dir` on the next session —
-no marketplace or install step. Restart Claude Code or run `/reload-plugins` to
-activate it (confirm in `/plugin` → Installed). The orchestrator is the main session — it delegates to
-specialists with `Task(subagent_type: explorer|librarian|oracle|designer|quick|deep)`.
-Unlike Codex, Claude Code enforces role permissions through each subagent's
-frontmatter `tools` allowlist and runs hooks natively. You can also emit the
-package without installing it:
+`~/.claude/skills/thoth-agents`: `.claude-plugin/plugin.json`, seven
+auto-discovered agents in `agents/` (six specialists + an `orchestrator`), an
+`.mcp.json` server map, bundled `skills/`, and a plugin-root `settings.json`
+with `{ "agent": "orchestrator" }`. That `agent` key activates the orchestrator
+as the **main thread** — replacing the default system prompt — so the session
+starts in delegate-first mode and bootstraps thoth-mem on its first turn. It
+auto-loads as `thoth-agents@skills-dir` on the next session (no marketplace or
+install step); restart Claude Code or run `/reload-plugins` to activate it
+(confirm in `/plugin` → Installed). The orchestrator delegates to specialists
+with `Task(subagent_type: explorer|librarian|oracle|designer|quick|deep)`. Role
+permissions are enforced through each specialist's frontmatter `tools` allowlist.
+You can also emit the package without installing it:
 
 ```bash
 npx thoth-agents@latest generate --harness=claude --dry-run

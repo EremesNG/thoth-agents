@@ -13,7 +13,10 @@ import type {
   ClaudeCodeResolvedTargets,
   ClaudeCodeRoleName,
 } from './claude-code-paths';
-import { resolveClaudeCodeTargets } from './claude-code-paths';
+import {
+  CLAUDE_CODE_ROLE_NAMES,
+  resolveClaudeCodeTargets,
+} from './claude-code-paths';
 import { findPackageRoot } from './custom-skills';
 import {
   type ManagedModelState,
@@ -146,7 +149,12 @@ function roleForArtifact(
   const match = /^agents\/([^/]+)\.md$/.exec(
     artifact.path.replaceAll('\\', '/'),
   );
-  return (match?.[1] as ClaudeCodeRoleName | undefined) ?? undefined;
+  const name = match?.[1];
+  // Only the six specialists are model-managed; the orchestrator agent uses
+  // `inherit` and is activated as the main thread, so it is not a managed role.
+  return name && (CLAUDE_CODE_ROLE_NAMES as readonly string[]).includes(name)
+    ? (name as ClaudeCodeRoleName)
+    : undefined;
 }
 
 function applyConfiguredModel(
@@ -223,9 +231,11 @@ export function buildClaudeCodeSetupPlan(
     diagnostics: [
       `Installed as a skills-directory plugin at ${targets.pluginRoot}; it auto-loads as thoth-agents@skills-dir on the next Claude Code session.`,
       'Restart Claude Code or run /reload-plugins to activate it; run /plugin (Installed tab) to confirm thoth-agents@skills-dir is loaded.',
+      'The plugin settings.json activates the orchestrator agent as the main thread, so the session starts in delegate-first mode and bootstraps thoth-mem on its first turn.',
     ],
     disclaimers: [
-      'Role permissions are enforced by each subagent frontmatter `tools` allowlist; the orchestrator is the main session, injected via the SessionStart hook.',
+      'The orchestrator agent is the Claude Code main thread (plugin settings.json `agent` key); while enabled it replaces the default system prompt for every session in scope.',
+      'Role permissions are enforced by each specialist subagent frontmatter `tools` allowlist; the orchestrator inherits all tools.',
       'Subagent models accept only sonnet, opus, haiku, or inherit.',
       'User-scope skills-directory plugins load hooks and MCP servers without extra approval; project-scope requires accepting the workspace trust dialog.',
     ],

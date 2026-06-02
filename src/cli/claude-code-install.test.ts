@@ -66,8 +66,11 @@ describe('claude-code-install', () => {
       existsSync(join(pluginRoot(), '.claude-plugin', 'plugin.json')),
     ).toBe(true);
     expect(existsSync(join(pluginRoot(), 'agents', 'deep.md'))).toBe(true);
+    expect(existsSync(join(pluginRoot(), 'agents', 'orchestrator.md'))).toBe(
+      true,
+    );
     expect(existsSync(join(pluginRoot(), '.mcp.json'))).toBe(true);
-    expect(existsSync(join(pluginRoot(), 'hooks', 'hooks.json'))).toBe(true);
+    expect(existsSync(join(pluginRoot(), 'settings.json'))).toBe(true);
 
     // Re-apply: identical content is skipped (no changes, no backups).
     const second = applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));

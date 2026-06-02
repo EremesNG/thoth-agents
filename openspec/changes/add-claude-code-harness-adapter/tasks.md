@@ -106,11 +106,12 @@
 
 ## Phase B6: Orchestrator Injection
 
-- [ ] B6.1 SessionStart injector — generated `hooks/hooks.json` +
-  `hooks/inject-root-instructions.mjs`
-  - SessionStart hook emits `renderClaudeCodeRootInstructions` as
-    `additionalContext`; optional `commands/thoth-orchestrate.md` re-entry.
-  - **Verification**: adapter test asserts SessionStart entry + root marker.
+- [ ] B6.1 Orchestrator main-thread agent — `agents/orchestrator.md` +
+  plugin-root `settings.json`
+  - Generate the orchestrator agent (body = `renderClaudeCodeRootInstructions`,
+    no `tools`, `model: inherit`) and `settings.json` `{ "agent": "orchestrator" }`.
+  - **Verification**: adapter test asserts orchestrator agent + settings.json and
+    that no SessionStart hook is generated.
 
 ## Phase B7-B9: Models, Surfaces, Schema
 

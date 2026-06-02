@@ -63,9 +63,6 @@ export interface ClaudeCodeRenderContext extends HarnessRenderContext {
 export const CLAUDE_CODE_CAPABILITIES: HarnessCapabilities =
   CLAUDE_CODE_PROMPT_DIALECT.capabilities.capabilities;
 
-const CLAUDE_CODE_ROOT_START = '<!-- thoth-agents:claude-code-root:start -->';
-const CLAUDE_CODE_ROOT_END = '<!-- thoth-agents:claude-code-root:end -->';
-
 export const CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS = {
   explorer: 'haiku',
   librarian: 'sonnet',
@@ -202,6 +199,13 @@ function roleInstructions(
   ].join('\n\n');
 }
 
+/**
+ * The orchestrator system prompt body. This is the system prompt of the
+ * `orchestrator` plugin agent, which the plugin `settings.json` activates as the
+ * Claude Code main thread (`{"agent":"orchestrator"}`) — replacing the default
+ * system prompt entirely, which is far stronger than a SessionStart
+ * additionalContext injection.
+ */
 export function renderClaudeCodeRootInstructions(
   config?: PluginConfig,
 ): string {
@@ -213,21 +217,18 @@ export function renderClaudeCodeRootInstructions(
   );
 
   return [
-    CLAUDE_CODE_ROOT_START,
     rootPrompt,
     '<claude-code-runtime>',
-    '- The main Claude Code session is the delegate-first root coordinator; orchestrator-only and root-owned instructions apply to it because Claude Code does not generate a selectable orchestrator subagent.',
+    '- You ARE the Claude Code main-thread agent: the delegate-first root coordinator. This is your system prompt (activated via the plugin settings.json `agent` key), so orchestrator-only and root-owned rules apply to you directly.',
+    '- As your FIRST action on a new session, when thoth-mem tools are installed and session/project identity is known, call mem_session(action="start") as step 0 before any other thoth-mem call, then save the real user prompt with mem_save(kind="prompt") before later delegation.',
+    '- If thoth-mem tools or identity values are unavailable, disclose that memory bootstrap could not run and continue without claiming memory was saved.',
     '- Delegate by calling the Task tool with `subagent_type` set to one of explorer, librarian, oracle, designer, quick, or deep; these are auto-discovered plugin subagents.',
     '- Parallel delegation is supported: issue multiple Task calls in one turn for independent work.',
-    '- On each new session, when thoth-mem tools are installed and session/project identity is known, call mem_session(action="start") as step 0 before any other thoth-mem call, then save the real user prompt with mem_save(kind="prompt") before later delegation.',
-    '- If thoth-mem tools or identity values are unavailable, disclose that memory bootstrap could not run and continue without claiming memory was saved.',
     '- Before delegating after meaningful context changes, refresh the handoff body with root-owned mem_session(action="summary") or mem_save(kind="session_summary") when available.',
     '- Use AskUserQuestion for blocking user decisions; do not ask those questions in plain prose.',
     '- Track progress with TodoWrite; subagents do not own progress checkboxes or root-only memory.',
     "- Role permissions are enforced at runtime by each subagent's frontmatter `tools` allowlist.",
     '</claude-code-runtime>',
-    CLAUDE_CODE_ROOT_END,
-    '',
   ].join('\n');
 }
 
@@ -254,47 +255,6 @@ function claudeCodeMcpServers(): Record<string, unknown> {
 
 function stableJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
-}
-
-const ROOT_INSTRUCTIONS_FILE = 'hooks/root-instructions.md';
-const ROOT_INJECTOR_FILE = 'hooks/inject-root-instructions.mjs';
-
-const ROOT_INJECTOR_SCRIPT = `import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-// Claude Code SessionStart hook: inject the thoth-agents root coordinator
-// instructions into the main session as additionalContext. A plugin cannot edit
-// the user's CLAUDE.md, so this is the supported delivery mechanism.
-const here = dirname(fileURLToPath(import.meta.url));
-const text = readFileSync(join(here, 'root-instructions.md'), 'utf8');
-
-process.stdout.write(
-  JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'SessionStart',
-      additionalContext: text,
-    },
-  }),
-);
-`;
-
-function claudeCodeHooksConfig(): Record<string, unknown> {
-  return {
-    hooks: {
-      SessionStart: [
-        {
-          matcher: 'startup|resume|clear|compact',
-          hooks: [
-            {
-              type: 'command',
-              command: `node "\${CLAUDE_PLUGIN_ROOT}/${ROOT_INJECTOR_FILE}"`,
-            },
-          ],
-        },
-      ],
-    },
-  };
 }
 
 function readRootPackageVersion(context: HarnessRenderContext): string {
@@ -361,6 +321,34 @@ function renderSubagentArtifacts(config?: PluginConfig): HarnessArtifact[] {
   return artifacts;
 }
 
+function renderOrchestratorArtifact(config?: PluginConfig): HarnessArtifact {
+  const orchestrator = getAgentPackContract().roles.find(
+    (role) => role.name === 'orchestrator',
+  );
+
+  // The orchestrator agent is activated as the Claude Code main thread via the
+  // plugin settings.json `agent` key, so its frontmatter MUST omit `tools` to
+  // inherit every tool (Task, AskUserQuestion, TodoWrite, MCP, edit tools) and
+  // uses `inherit` so it keeps the user's chosen session model.
+  const content = renderClaudeCodeSubagent({
+    name: 'orchestrator',
+    description:
+      orchestrator?.responsibility ??
+      'Delegate-first root coordinator for SDD workflow and specialist dispatch.',
+    model: 'inherit',
+    instructions: renderClaudeCodeRootInstructions(config),
+  });
+
+  return {
+    harness: 'claude',
+    kind: 'agent-config',
+    path: 'agents/orchestrator.md',
+    description:
+      'Claude Code orchestrator agent, activated as the main thread via settings.json.',
+    content,
+  };
+}
+
 export const claudeCodeAdapter: HarnessAdapter = {
   id: 'claude',
   displayName: 'Claude Code',
@@ -370,6 +358,7 @@ export const claudeCodeAdapter: HarnessAdapter = {
 
     const componentArtifacts: HarnessArtifact[] = [
       ...renderSubagentArtifacts(config),
+      renderOrchestratorArtifact(config),
       {
         harness: 'claude',
         kind: 'mcp-config',
@@ -379,26 +368,11 @@ export const claudeCodeAdapter: HarnessAdapter = {
       },
       {
         harness: 'claude',
-        kind: 'hook-config',
-        path: 'hooks/hooks.json',
+        kind: 'harness-config',
+        path: 'settings.json',
         description:
-          'Claude Code plugin hooks: SessionStart root coordinator injection.',
-        content: stableJson(claudeCodeHooksConfig()),
-      },
-      {
-        harness: 'claude',
-        kind: 'hook-config',
-        path: ROOT_INJECTOR_FILE,
-        description:
-          'SessionStart hook script that emits the root coordinator instructions as additionalContext.',
-        content: ROOT_INJECTOR_SCRIPT,
-      },
-      {
-        harness: 'claude',
-        kind: 'documentation',
-        path: ROOT_INSTRUCTIONS_FILE,
-        description: 'Rendered thoth-agents root coordinator instructions.',
-        content: renderClaudeCodeRootInstructions(config),
+          'Activates the orchestrator agent as the Claude Code main thread.',
+        content: stableJson({ agent: 'orchestrator' }),
       },
     ];
 

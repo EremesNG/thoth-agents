@@ -19,9 +19,11 @@ export interface ClaudeCodeSubagentInput {
   description: string;
   /**
    * Comma-separated tool allowlist. This is the Claude Code mechanism that
-   * enforces role permissions (read-only vs write-capable).
+   * enforces role permissions (read-only vs write-capable). Omit to inherit all
+   * tools — used by the orchestrator main-thread agent, which must keep Task,
+   * AskUserQuestion, TodoWrite, MCP, and edit tools.
    */
-  tools: string;
+  tools?: string;
   /** Per-role model alias for the subagent frontmatter. */
   model: ClaudeCodeModel;
   /** Rendered system prompt body (role prompt + governance). */
@@ -52,7 +54,7 @@ export function renderClaudeCodeSubagent(
     `name: ${yamlScalar(input.name)}`,
     `description: ${yamlScalar(input.description)}`,
     `model: ${input.model}`,
-    `tools: ${yamlScalar(input.tools)}`,
+    ...(input.tools !== undefined ? [`tools: ${yamlScalar(input.tools)}`] : []),
     '---',
   ].join('\n');
 

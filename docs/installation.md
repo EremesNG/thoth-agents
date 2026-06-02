@@ -199,12 +199,16 @@ npx thoth-agents@latest install --agent=claude
 ```
 
 The plugin is installed as a **skills-directory plugin** under
-`~/.claude/skills/thoth-agents` with `.claude-plugin/plugin.json`, six subagents
-in `agents/`, an `.mcp.json` server map, bundled `skills/`, and a
-`hooks/hooks.json` whose `SessionStart` hook injects the root coordinator
-instructions into the main session. It auto-loads as `thoth-agents@skills-dir`
-on the next session (no marketplace, no install step) — restart Claude Code or
-run `/reload-plugins` to activate it, and confirm in `/plugin` → Installed.
+`~/.claude/skills/thoth-agents` with `.claude-plugin/plugin.json`, seven agents
+in `agents/` (six specialists + an `orchestrator`), an `.mcp.json` server map,
+bundled `skills/`, and a plugin-root `settings.json` with
+`{ "agent": "orchestrator" }`. That `agent` key activates the orchestrator as
+the Claude Code **main thread** (replacing the default system prompt), so the
+session starts in delegate-first mode and bootstraps thoth-mem on its first
+turn. It auto-loads as `thoth-agents@skills-dir` on the next session (no
+marketplace, no install step) — restart Claude Code or run `/reload-plugins` to
+activate it, and confirm in `/plugin` → Installed. To use plain Claude Code in a
+project, disable the plugin there (`/plugin disable thoth-agents@skills-dir`).
 
 Claude Code is a first-class harness: role permissions are enforced by each
 subagent frontmatter `tools` allowlist, hooks are harness-run, and delegation

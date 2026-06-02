@@ -39,14 +39,12 @@ thoth-agents/
 ├── .claude-plugin/
 │   ├── plugin.json                      # manifest: name, version, description, author
 │   └── .thoth-agents-plugin-assets.json # provenance (paths + sha256)
-├── agents/                              # six auto-discovered subagents
+├── agents/                              # seven auto-discovered agents
 │   ├── explorer.md  librarian.md  oracle.md
-│   └── designer.md  quick.md  deep.md
+│   ├── designer.md  quick.md  deep.md
+│   └── orchestrator.md                  # main-thread agent (no tools restriction)
 ├── .mcp.json                            # exa, context7, grep_app, thoth_mem
-├── hooks/
-│   ├── hooks.json                       # SessionStart root-coordinator injection
-│   ├── inject-root-instructions.mjs     # emits additionalContext on SessionStart
-│   └── root-instructions.md             # rendered root coordinator instructions
+├── settings.json                        # { "agent": "orchestrator" } → main thread
 ├── skills/                              # bundled requirements + SDD skills
 └── .thoth-agents-managed-models.json    # managed model ownership state
 ```
@@ -82,18 +80,31 @@ Per-role model defaults: `oracle` uses `opus`; `librarian`, `designer`, and
 npx thoth-agents@latest model --harness=claude --role=deep --model=sonnet
 ```
 
-## The orchestrator and the SessionStart hook
+## The orchestrator (main-thread agent)
 
-In Claude Code the orchestrator is the **main session**, not a generated
-subagent. A plugin cannot edit your `CLAUDE.md`, so the root coordinator
-instructions are injected through a `SessionStart` hook that emits them as
-`additionalContext`. The hook runs `node "${CLAUDE_PLUGIN_ROOT}/hooks/inject-root-instructions.mjs"`,
-which reads the rendered `hooks/root-instructions.md` and prints the
-`additionalContext` envelope.
+In Claude Code the orchestrator is the **main thread**. The package ships an
+`agents/orchestrator.md` agent whose body is the root coordinator system prompt,
+and a plugin-root `settings.json` containing `{ "agent": "orchestrator" }`. Per
+the Claude Code docs, this `agent` key "activates one of the plugin's custom
+agents as the main thread, applying its system prompt, tool restrictions, and
+model" — it **replaces the default system prompt entirely**.
 
-The main session delegates with
-`Task(subagent_type: explorer|librarian|oracle|designer|quick|deep)` and asks
-blocking questions with `AskUserQuestion`.
+This is deliberately much stronger than a `SessionStart` hook that emits
+`additionalContext`: that injection is low-priority context the model can ignore,
+so it does not reliably drive delegate-first behavior or the thoth-mem bootstrap.
+The orchestrator agent therefore omits `tools` (so it inherits every tool — Task,
+AskUserQuestion, TodoWrite, MCP, edit tools) and uses `model: inherit` to keep
+your chosen session model.
+
+The orchestrator delegates with
+`Task(subagent_type: explorer|librarian|oracle|designer|quick|deep)`, asks
+blocking questions with `AskUserQuestion`, and calls thoth-mem
+`mem_session(action="start")` as its first action on a new session.
+
+> Caveat: while the plugin is enabled, the orchestrator is the default agent for
+> every session in scope. At user scope (`~/.claude/skills/`) that is every
+> project; disable the plugin (`/plugin disable thoth-agents@skills-dir`) for
+> sessions where you want plain Claude Code.
 
 ## MCP servers
 

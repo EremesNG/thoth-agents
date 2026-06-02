@@ -26,7 +26,7 @@ describe('claudeCodeAdapter', () => {
     }
   });
 
-  test('renders six specialist subagents and no orchestrator subagent', () => {
+  test('renders six specialist subagents plus an orchestrator agent', () => {
     const { artifacts } = render();
     const agents = artifacts
       .filter((entry) => entry.kind === 'agent-config')
@@ -38,11 +38,33 @@ describe('claudeCodeAdapter', () => {
       'agents/explorer.md',
       'agents/librarian.md',
       'agents/oracle.md',
+      'agents/orchestrator.md',
       'agents/quick.md',
     ]);
-    expect(
-      artifacts.some((entry) => entry.path.endsWith('orchestrator.md')),
-    ).toBe(false);
+  });
+
+  test('orchestrator agent inherits all tools and is activated as the main thread', () => {
+    const { artifacts } = render();
+    const orchestrator = String(
+      artifact(artifacts, 'agents/orchestrator.md')?.content,
+    );
+
+    // No `tools:` frontmatter line → inherits every tool (Task, AskUserQuestion,
+    // TodoWrite, MCP, edit tools).
+    expect(orchestrator).not.toMatch(/^tools:/m);
+    expect(orchestrator).toContain('model: inherit');
+
+    const settings = JSON.parse(
+      String(artifact(artifacts, 'settings.json')?.content),
+    ) as { agent?: string };
+    expect(settings.agent).toBe('orchestrator');
+  });
+
+  test('does not generate a SessionStart hook (main-thread agent replaces it)', () => {
+    const { artifacts } = render();
+    expect(artifacts.some((entry) => entry.path.includes('hooks/'))).toBe(
+      false,
+    );
   });
 
   test('restricts read-only roles and grants write tools to write-capable roles', () => {
@@ -86,31 +108,6 @@ describe('claudeCodeAdapter', () => {
     expect(mcp.mcpServers.grep_app.type).toBe('http');
     expect(mcp.mcpServers.exa).toMatchObject({ command: 'npx' });
     expect(mcp.mcpServers.thoth_mem).toMatchObject({ command: 'npx' });
-  });
-
-  test('injects the root coordinator via a SessionStart hook', () => {
-    const { artifacts } = render();
-    const hooks = JSON.parse(
-      String(artifact(artifacts, 'hooks/hooks.json')?.content),
-    ) as {
-      hooks: { SessionStart: { hooks: { command: string }[] }[] };
-    };
-    const command = hooks.hooks.SessionStart[0].hooks[0].command;
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting the literal Claude Code hook placeholder
-    expect(command).toContain('${CLAUDE_PLUGIN_ROOT}');
-    expect(command).toContain('inject-root-instructions.mjs');
-
-    const rootDoc = String(
-      artifact(artifacts, 'hooks/root-instructions.md')?.content,
-    );
-    expect(rootDoc).toContain('thoth-agents:claude-code-root:start');
-    expect(rootDoc).toContain('<claude-code-runtime>');
-
-    expect(
-      artifacts.some((entry) =>
-        entry.path.endsWith('hooks/inject-root-instructions.mjs'),
-      ),
-    ).toBe(true);
   });
 
   test('stamps the manifest version from the root package.json and emits no diagnostics', () => {

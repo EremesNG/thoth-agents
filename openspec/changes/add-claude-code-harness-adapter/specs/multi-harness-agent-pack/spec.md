@@ -37,8 +37,9 @@ subagents and therefore do not require a separate project-level agent layout.
 - GIVEN the Claude Code adapter renders the agent pack
 - WHEN the plugin package is produced
 - THEN the system MUST emit a `.claude-plugin/plugin.json` manifest, one
-  `agents/<role>.md` subagent file for each of the six specialist roles, a bundled
-  `skills/` directory, a `.mcp.json` server map, and a `hooks/hooks.json`
+  `agents/<role>.md` subagent file for each of the six specialist roles, an
+  `agents/orchestrator.md` agent, a bundled `skills/` directory, a `.mcp.json`
+  server map, and a plugin-root `settings.json`
 - AND URL-based MCP servers MUST be declared with `type: "http"`
 - AND generated skill and subagent artifacts MUST record source provenance
 
@@ -51,27 +52,32 @@ subagents and therefore do not require a separate project-level agent layout.
 - AND write-capable specialist frontmatter MUST include the mutation tool set
   required for their role
 
-### Requirement: Inject the Claude Code Root Coordinator via SessionStart
-The system MUST deliver the root coordinator instructions to the Claude Code main
-session through a generated `SessionStart` hook, because a plugin cannot edit the
-user's `CLAUDE.md` and the orchestrator is the main session rather than a
-generated subagent.
+### Requirement: Activate the Orchestrator as the Claude Code Main Thread
+The system MUST deliver the root coordinator by generating an `orchestrator`
+plugin agent and activating it as the Claude Code main thread through the plugin
+`settings.json` `agent` key, because that replaces the default system prompt
+entirely (system prompt, tools, model) — far stronger steering than a
+`SessionStart` `additionalContext` injection, which is low-priority context that
+does not reliably drive delegate-first behavior or the thoth-mem bootstrap.
 
-#### Scenario: SessionStart hook injects root instructions
+#### Scenario: Orchestrator agent is the main thread
 - GIVEN the Claude Code plugin package is generated
-- WHEN the `hooks/hooks.json` is produced
-- THEN it MUST register a `SessionStart` hook that emits the rendered root
-  coordinator instructions as `additionalContext`
-- AND the system MUST NOT generate a selectable "orchestrator" subagent for
-  Claude Code
+- WHEN the orchestrator delivery is produced
+- THEN the system MUST emit an `agents/orchestrator.md` agent whose body is the
+  root coordinator system prompt and whose frontmatter omits `tools` so it
+  inherits all tools and uses `model: inherit`
+- AND the system MUST emit a plugin-root `settings.json` containing
+  `{ "agent": "orchestrator" }`
+- AND the system MUST NOT rely on a `SessionStart` `additionalContext` hook for
+  root coordinator delivery
 
 #### Scenario: OpenCode runtime hooks are not ported
 - GIVEN the existing OpenCode runtime hook callbacks live in `src/hooks/*`
-- WHEN Claude Code hooks are generated
+- WHEN the Claude Code package is generated
 - THEN the system MUST treat the OpenCode runtime callbacks as out of scope for
-  Claude Code command hooks
-- AND the only generated Claude Code hook MUST be the standalone SessionStart
-  root-injection hook
+  Claude Code
+- AND the orchestrator system prompt MUST instruct calling thoth-mem
+  `mem_session(action="start")` as the first action of a new session
 
 ### Requirement: Plan and Apply Claude Code Setup Idempotently
 The system MUST provide a Claude Code install/operation surface that plans and

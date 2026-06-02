@@ -1,5 +1,9 @@
 import { fileURLToPath } from 'node:url';
-import { CLAUDE_CODE_PROMPT_DIALECT } from '../../agents/prompt-dialects';
+import {
+  CLAUDE_CODE_PROMPT_DIALECT,
+  CLAUDE_CODE_SUBAGENT_NAMESPACE,
+  claudeCodeSubagentType,
+} from '../../agents/prompt-dialects';
 import {
   createModelFamilySection,
   createOrchestratorPromptSections,
@@ -178,7 +182,7 @@ function claudeCodeRoleInstructions(role: AgentRoleContract): string {
     `- Scope: ${role.scope}`,
     `- Responsibility: ${role.responsibility}`,
     '- Use AskUserQuestion for local blocking decisions.',
-    `- ${role.name} runs as an auto-discovered Claude Code subagent invoked via Task(subagent_type: ${role.name}); the orchestrator is the main Claude Code session, not a generated subagent.`,
+    `- ${role.name} runs as an auto-discovered Claude Code plugin subagent invoked via Task(subagent_type: ${claudeCodeSubagentType(role.name)}); plugin subagents are namespaced with the plugin name. The orchestrator is the main Claude Code session.`,
     "- Role permissions are enforced by this subagent's frontmatter `tools` allowlist; read-only roles cannot mutate the workspace.",
     ...role.toolGovernance.map((rule) => `- ${rule}`),
     ...role.verification.map((rule) => `- ${rule}`),
@@ -215,14 +219,19 @@ export function renderClaudeCodeRootInstructions(
     config,
     rootOverride?.model ?? DEFAULT_MODELS.orchestrator,
   );
+  const specialists = getAgentPackContract()
+    .roles.filter((role) => role.name !== 'orchestrator')
+    .map((role) => claudeCodeSubagentType(role.name))
+    .join(', ');
 
   return [
     rootPrompt,
     '<claude-code-runtime>',
     '- You ARE the Claude Code main-thread agent: the delegate-first root coordinator. This is your system prompt (activated via the plugin settings.json `agent` key), so orchestrator-only and root-owned rules apply to you directly.',
     '- As your FIRST action on a new session, when thoth-mem tools are installed and session/project identity is known, call mem_session(action="start") as step 0 before any other thoth-mem call, then save the real user prompt with mem_save(kind="prompt") before later delegation.',
+    "- thoth-mem tools are provided by this plugin's bundled MCP server and are exposed under a plugin namespace; call the available namespaced tool whose name ends in mem_session, mem_recall, mem_context, mem_save, mem_get, or mem_project (do not assume a bare, unnamespaced tool name).",
     '- If thoth-mem tools or identity values are unavailable, disclose that memory bootstrap could not run and continue without claiming memory was saved.',
-    '- Delegate by calling the Task tool with `subagent_type` set to one of explorer, librarian, oracle, designer, quick, or deep; these are auto-discovered plugin subagents.',
+    `- Delegate via the Task tool with \`subagent_type\` set to a plugin-namespaced specialist: ${specialists}. Bare role names (e.g. "explorer") are NOT valid in this harness — always use the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
     '- Parallel delegation is supported: issue multiple Task calls in one turn for independent work.',
     '- Before delegating after meaningful context changes, refresh the handoff body with root-owned mem_session(action="summary") or mem_save(kind="session_summary") when available.',
     '- Use AskUserQuestion for blocking user decisions; do not ask those questions in plain prose.',

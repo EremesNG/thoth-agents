@@ -128,4 +128,17 @@ describe('claudeCodeAdapter', () => {
     expect(instructions).toContain('AskUserQuestion');
     expect(instructions).toContain('TodoWrite');
   });
+
+  test('delegation references use the plugin-namespaced subagent_type', () => {
+    const instructions = renderClaudeCodeRootInstructions();
+    // The routing menu and dispatch rules must use thoth-agents:<role>, not bare
+    // role names, because plugin subagents are registered under the plugin name.
+    expect(instructions).toContain('thoth-agents:explorer');
+    expect(instructions).toContain('thoth-agents:deep');
+    expect(instructions).not.toMatch(/subagent_type:\s*explorer\b/);
+
+    const { artifacts } = render();
+    const explorer = String(artifact(artifacts, 'agents/explorer.md')?.content);
+    expect(explorer).toContain('Task(subagent_type: thoth-agents:explorer)');
+  });
 });

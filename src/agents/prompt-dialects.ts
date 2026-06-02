@@ -151,6 +151,17 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
   },
 };
 
+/**
+ * Claude Code registers plugin subagents under the plugin name as a namespace,
+ * so the `subagent_type` for delegation is `thoth-agents:<role>`, not the bare
+ * role name. This must match the plugin manifest `name`.
+ */
+export const CLAUDE_CODE_SUBAGENT_NAMESPACE = 'thoth-agents';
+
+export function claudeCodeSubagentType(role: AgentPromptRole): string {
+  return `${CLAUDE_CODE_SUBAGENT_NAMESPACE}:${role}`;
+}
+
 export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'claude',
   tools: {
@@ -160,7 +171,10 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
     userQuestionTool: 'AskUserQuestion',
     progressTool: 'TodoWrite',
     hostStatusSurface: 'TodoWrite',
-    roleReference: (role) => `Task(subagent_type: ${role})`,
+    roleReference: (role) =>
+      role === 'orchestrator'
+        ? 'the main-thread orchestrator'
+        : `Task(subagent_type: ${claudeCodeSubagentType(role)})`,
   },
   capabilities: supportedCapabilityProfile(CLAUDE_CODE_PROMPT_CAPABILITIES),
   dispatchLabel(method) {
@@ -174,9 +188,11 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
     }
   },
   renderRoleInvocation(role) {
+    // Plugin subagents are namespaced: delegate with subagent_type
+    // `thoth-agents:<role>`. The orchestrator is the main thread, not a delegate.
     return role === 'orchestrator'
-      ? 'main-session orchestrator'
-      : `${role} subagent`;
+      ? 'main-thread orchestrator'
+      : claudeCodeSubagentType(role);
   },
 };
 

@@ -114,14 +114,15 @@ describe('prompt dialects', () => {
       'AskUserQuestion',
     );
     expect(CLAUDE_CODE_PROMPT_DIALECT.tools.progressTool).toBe('TodoWrite');
+    // Plugin subagents are namespaced: subagent_type is `thoth-agents:<role>`.
     expect(CLAUDE_CODE_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
-      'Task(subagent_type: deep)',
+      'Task(subagent_type: thoth-agents:deep)',
     );
     expect(
       CLAUDE_CODE_PROMPT_DIALECT.renderRoleInvocation('orchestrator'),
-    ).toBe('main-session orchestrator');
+    ).toBe('main-thread orchestrator');
     expect(CLAUDE_CODE_PROMPT_DIALECT.renderRoleInvocation('deep')).toBe(
-      'deep subagent',
+      'thoth-agents:deep',
     );
     expect(CLAUDE_CODE_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
       'main-session coordinator',

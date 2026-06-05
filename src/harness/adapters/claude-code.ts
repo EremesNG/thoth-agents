@@ -81,14 +81,6 @@ export const CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS = {
 
 type ClaudeCodeSubagentName = keyof typeof CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS;
 
-const READ_ONLY_ROLE_TOOLS: Record<string, string> = {
-  explorer: 'Read, Grep, Glob',
-  librarian: 'Read, Grep, Glob, WebSearch, WebFetch',
-  oracle: 'Read, Grep, Glob',
-};
-
-const WRITE_CAPABLE_ROLE_TOOLS = 'Read, Edit, Write, Bash, Grep, Glob';
-
 function isClaudeCodeSubagentName(
   name: string,
 ): name is ClaudeCodeSubagentName {
@@ -105,11 +97,6 @@ function getClaudeCodeAgentModel(
   if (override && isClaudeCodeModel(override)) return override;
 
   return CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS[role.name];
-}
-
-function toolsForRole(role: AgentRoleContract): string {
-  if (role.canMutateWorkspace) return WRITE_CAPABLE_ROLE_TOOLS;
-  return READ_ONLY_ROLE_TOOLS[role.name] ?? 'Read, Grep, Glob';
 }
 
 function claudeCodePromptSections(
@@ -183,7 +170,7 @@ function claudeCodeRoleInstructions(role: AgentRoleContract): string {
     `- Responsibility: ${role.responsibility}`,
     '- Use AskUserQuestion for local blocking decisions.',
     `- ${role.name} runs as an auto-discovered Claude Code plugin subagent invoked via Task(subagent_type: ${claudeCodeSubagentType(role.name)}); plugin subagents are namespaced with the plugin name. The orchestrator is the main Claude Code session.`,
-    "- Role permissions are enforced by this subagent's frontmatter `tools` allowlist; read-only roles cannot mutate the workspace.",
+    '- This subagent inherits ALL of the main thread\'s tools, including MCP servers (thoth-mem, context7, exa, grep_app); read-only roles (explorer, librarian, oracle) MUST NOT mutate the workspace per this operational contract (instruction-level, not tooling-enforced).',
     ...role.toolGovernance.map((rule) => `- ${rule}`),
     ...role.verification.map((rule) => `- ${rule}`),
     '</role-operational-contract>',
@@ -236,7 +223,7 @@ export function renderClaudeCodeRootInstructions(
     '- Before delegating after meaningful context changes, refresh the handoff body with root-owned mem_session(action="summary") or mem_save(kind="session_summary") when available.',
     '- Use AskUserQuestion for blocking user decisions; do not ask those questions in plain prose.',
     '- Track progress with TodoWrite; subagents do not own progress checkboxes or root-only memory.',
-    "- Role permissions are enforced at runtime by each subagent's frontmatter `tools` allowlist.",
+    '- Subagents inherit all of your tools (including MCP servers); role permissions are instruction-level, so read-only roles (explorer, librarian, oracle) must not mutate the workspace per their operational contract.',
     '</claude-code-runtime>',
   ].join('\n');
 }
@@ -310,10 +297,14 @@ function renderSubagentArtifacts(config?: PluginConfig): HarnessArtifact[] {
   for (const role of getAgentPackContract().roles.filter(
     (candidate) => candidate.name !== 'orchestrator',
   )) {
+    // Omit `tools` for every subagent so each inherits ALL of the main thread's
+    // tools, including MCP servers (thoth-mem, context7, exa, grep_app). A
+    // `tools` allowlist in Claude Code would restrict the subagent to exactly
+    // that list and exclude MCP tools, so read-only enforcement is now
+    // instruction-level via each role's operational contract.
     const content = renderClaudeCodeSubagent({
       name: role.name,
       description: role.responsibility,
-      tools: toolsForRole(role),
       model: getClaudeCodeAgentModel(role, config),
       instructions: roleInstructions(role, config),
     });

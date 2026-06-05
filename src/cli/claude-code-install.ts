@@ -235,7 +235,7 @@ export function buildClaudeCodeSetupPlan(
     ],
     disclaimers: [
       'The orchestrator agent is the Claude Code main thread (plugin settings.json `agent` key); while enabled it replaces the default system prompt for every session in scope.',
-      'Role permissions are enforced by each specialist subagent frontmatter `tools` allowlist; the orchestrator inherits all tools.',
+      'Every subagent inherits all main-thread tools, including MCP servers; read-only roles must not mutate the workspace per their operational contract (instruction-level, not tooling-enforced).',
       'Subagent models accept only sonnet, opus, haiku, or inherit.',
       'User-scope skills-directory plugins load hooks and MCP servers without extra approval; project-scope requires accepting the workspace trust dialog.',
     ],

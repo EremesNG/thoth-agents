@@ -67,16 +67,28 @@ describe('claudeCodeAdapter', () => {
     );
   });
 
-  test('restricts read-only roles and grants write tools to write-capable roles', () => {
+  test('omits the tools frontmatter for every specialist so they inherit all tools', () => {
     const { artifacts } = render();
+    const specialists = [
+      'agents/explorer.md',
+      'agents/librarian.md',
+      'agents/oracle.md',
+      'agents/designer.md',
+      'agents/quick.md',
+      'agents/deep.md',
+    ];
+
+    for (const suffix of specialists) {
+      const content = String(artifact(artifacts, suffix)?.content);
+      // No `tools:` frontmatter line → inherits every tool, including MCP
+      // servers (thoth-mem, context7, exa, grep_app). Read-only enforcement is
+      // instruction-level via each role's operational contract.
+      expect(content).not.toMatch(/^tools:/m);
+    }
+
     const explorer = String(artifact(artifacts, 'agents/explorer.md')?.content);
     const deep = String(artifact(artifacts, 'agents/deep.md')?.content);
-
-    expect(explorer).toContain('tools: "Read, Grep, Glob"');
-    expect(explorer).not.toMatch(/tools:.*\b(Write|Edit)\b/);
     expect(explorer).toContain('model: haiku');
-
-    expect(deep).toContain('tools: "Read, Edit, Write, Bash, Grep, Glob"');
     expect(deep).toContain('model: sonnet');
   });
 

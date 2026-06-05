@@ -133,7 +133,7 @@ function claudeCodeDisclaimers() {
   return [
     {
       message:
-        'Role permissions are enforced by subagent frontmatter tools; the orchestrator is the main session, injected via the SessionStart hook.',
+        'Subagents inherit all main-thread tools (including MCP servers); read-only roles must not mutate the workspace per their operational contract (instruction-level, not tooling-enforced). The orchestrator is the main session.',
       code: 'claude-code-first-class',
     },
     {

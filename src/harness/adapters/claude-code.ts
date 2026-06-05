@@ -170,7 +170,7 @@ function claudeCodeRoleInstructions(role: AgentRoleContract): string {
     `- Responsibility: ${role.responsibility}`,
     '- Use AskUserQuestion for local blocking decisions.',
     `- ${role.name} runs as an auto-discovered Claude Code plugin subagent invoked via Task(subagent_type: ${claudeCodeSubagentType(role.name)}); plugin subagents are namespaced with the plugin name. The orchestrator is the main Claude Code session.`,
-    '- This subagent inherits ALL of the main thread\'s tools, including MCP servers (thoth-mem, context7, exa, grep_app); read-only roles (explorer, librarian, oracle) MUST NOT mutate the workspace per this operational contract (instruction-level, not tooling-enforced).',
+    "- This subagent inherits ALL of the main thread's tools, including MCP servers (thoth-mem, context7, exa, grep_app); read-only roles (explorer, librarian, oracle) MUST NOT mutate the workspace per this operational contract (instruction-level, not tooling-enforced).",
     ...role.toolGovernance.map((rule) => `- ${rule}`),
     ...role.verification.map((rule) => `- ${rule}`),
     '</role-operational-contract>',

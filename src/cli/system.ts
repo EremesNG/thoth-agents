@@ -3,6 +3,41 @@ import { spawn } from '../utils/subprocess';
 
 let cachedOpenCodePath: string | null = null;
 
+type OpenCodeVersionInvocation = {
+  command: string[];
+  options: {
+    stdout: 'pipe';
+    stderr: 'pipe';
+    shell?: boolean;
+  };
+};
+
+function quoteWindowsShellCommand(command: string): string {
+  if (!/[\s&()^<>"|]/.test(command)) {
+    return command;
+  }
+  return `"${command.replace(/"/g, '\\"')}"`;
+}
+
+export function getOpenCodeVersionInvocation(
+  opencodePath: string,
+  platform: typeof process.platform = process.platform,
+): OpenCodeVersionInvocation {
+  const options: OpenCodeVersionInvocation['options'] = {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  };
+
+  if (platform === 'win32') {
+    return {
+      command: [`${quoteWindowsShellCommand(opencodePath)} --version`],
+      options: { ...options, shell: true },
+    };
+  }
+
+  return { command: [opencodePath, '--version'], options };
+}
+
 function getOpenCodePaths(): string[] {
   const home = process.env.HOME || process.env.USERPROFILE || '';
 
@@ -78,10 +113,8 @@ export async function isOpenCodeInstalled(): Promise<boolean> {
 
   for (const opencodePath of paths) {
     try {
-      const proc = spawn([opencodePath, '--version'], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
+      const invocation = getOpenCodeVersionInvocation(opencodePath);
+      const proc = spawn(invocation.command, invocation.options);
       await proc.exited;
       if (proc.exitCode === 0) {
         cachedOpenCodePath = opencodePath;
@@ -110,10 +143,8 @@ export async function isTmuxInstalled(): Promise<boolean> {
 export async function getOpenCodeVersion(): Promise<string | null> {
   const opencodePath = resolveOpenCodePath();
   try {
-    const proc = spawn([opencodePath, '--version'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    const invocation = getOpenCodeVersionInvocation(opencodePath);
+    const proc = spawn(invocation.command, invocation.options);
     const output = await new Response(proc.stdout).text();
     await proc.exited;
     if (proc.exitCode === 0) {

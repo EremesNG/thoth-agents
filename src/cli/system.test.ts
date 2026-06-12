@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   fetchLatestVersion,
   getOpenCodeVersion,
+  getOpenCodeVersionInvocation,
   isOpenCodeInstalled,
   isTmuxInstalled,
 } from './system';
@@ -60,5 +61,16 @@ describe('system', () => {
     } else {
       expect(version).toBeNull();
     }
+  });
+
+  test('OpenCode version invocation uses shell on Windows so command shims resolve', () => {
+    expect(getOpenCodeVersionInvocation('opencode', 'win32')).toEqual({
+      command: ['opencode --version'],
+      options: {
+        shell: true,
+        stderr: 'pipe',
+        stdout: 'pipe',
+      },
+    });
   });
 });

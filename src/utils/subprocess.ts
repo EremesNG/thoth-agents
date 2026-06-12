@@ -10,6 +10,7 @@ type SpawnOptions = {
   stdin?: 'pipe' | 'ignore';
   stdout?: 'pipe' | 'ignore';
   stderr?: 'pipe' | 'ignore';
+  shell?: boolean | string;
 };
 
 export type ManagedSubprocess = {
@@ -64,6 +65,7 @@ export function spawn(
       options.stdout ?? 'pipe',
       options.stderr ?? 'pipe',
     ],
+    shell: options.shell,
   });
 
   const managed: ManagedSubprocess = {
@@ -101,6 +103,7 @@ export function spawnSync(
       options.stdout ?? 'pipe',
       options.stderr ?? 'pipe',
     ],
+    shell: options.shell,
   });
 
   return { exitCode: result.status };

@@ -22,7 +22,8 @@ export interface SddPhaseContract {
   requiredFor: SddPipelineType[];
   prerequisites: SddPhaseId[];
   producesArtifact: boolean;
-  gate?: 'oracle-review' | 'user-confirmation';
+  gate?: 'oracle-review' | 'user-confirmation' | 'iterative-verify';
+  maxRounds?: number;
   owner:
     | 'orchestrator'
     | 'read-only-agent'
@@ -37,6 +38,7 @@ export interface SddPhaseContract {
   supportingAgentRoles?: AgentRoleName[];
   persistenceAgentRole?: AgentRoleName;
   delegationReason?: string;
+  handoffHints?: string[];
 }
 
 export interface SddWorkflowContract {
@@ -59,6 +61,8 @@ export const FULL_SDD_PHASE_ORDER = [
   'verify',
   'archive',
 ] as const satisfies readonly SddPhaseId[];
+
+export const SDD_VERIFY_MAX_ROUNDS = 3;
 
 export const SDD_PHASES = [
   {
@@ -110,6 +114,10 @@ export const SDD_PHASES = [
     supportingAgentRoles: ['oracle'],
     delegationReason:
       'Structured technical reasoning and trade-off synthesis before implementation.',
+    handoffHints: [
+      'Preserve accepted scope and explicit non-goals downstream.',
+      'Carry deferred or discovery affected areas forward as follow-up.',
+    ],
   },
   {
     id: 'spec',
@@ -123,6 +131,10 @@ export const SDD_PHASES = [
     supportingAgentRoles: ['oracle'],
     delegationReason:
       'High-quality requirement contract work where ambiguity propagates downstream.',
+    handoffHints: [
+      'Preserve recorded Assumptions and any [NEEDS CLARIFICATION] resolutions.',
+      'Keep the requirements-quality checklist resolved before tasks.',
+    ],
   },
   {
     id: 'design',
@@ -137,6 +149,10 @@ export const SDD_PHASES = [
     supportingAgentRoles: ['designer'],
     delegationReason:
       'Technical architecture and file-change design; designer only supports UI/UX concerns.',
+    handoffHints: [
+      'Preserve coverage decisions and architecture constraints in tasks.',
+      'Honor the Constitution Check outcome recorded during design.',
+    ],
   },
   {
     id: 'tasks',
@@ -192,6 +208,8 @@ export const SDD_PHASES = [
     requiredFor: ['accelerated', 'full'],
     prerequisites: ['apply'],
     producesArtifact: true,
+    gate: 'iterative-verify',
+    maxRounds: SDD_VERIFY_MAX_ROUNDS,
     owner: 'oracle',
     artifactSkill: 'sdd-verify',
     defaultAgentRole: 'oracle',
@@ -236,6 +254,7 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
     'Plan review must complete before implementation confirmation.',
     'User confirmation is required after plan-review approval and before apply.',
     'Apply is followed by verify and archive for SDD pipelines.',
+    'Verify runs as a bounded iterative gate of at most SDD_VERIFY_MAX_ROUNDS rounds; on exhausted failure escalate to the user.',
   ],
 };
 
@@ -251,6 +270,7 @@ export function getSddWorkflowContract(): SddWorkflowContract {
       supportingAgentRoles: phase.supportingAgentRoles
         ? [...phase.supportingAgentRoles]
         : undefined,
+      handoffHints: phase.handoffHints ? [...phase.handoffHints] : undefined,
     })),
     routingRules: [...SDD_WORKFLOW_CONTRACT.routingRules],
     artifactRules: [...SDD_WORKFLOW_CONTRACT.artifactRules],

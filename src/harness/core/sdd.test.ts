@@ -5,6 +5,7 @@ import {
   getRequiredSddPhaseOrder,
   getSddPhase,
   getSddWorkflowContract,
+  SDD_VERIFY_MAX_ROUNDS,
 } from './sdd';
 
 describe('SDD workflow contract', () => {
@@ -54,6 +55,10 @@ describe('SDD workflow contract', () => {
       gate: 'user-confirmation',
       owner: 'user',
     });
+    expect(getSddPhase('verify')).toMatchObject({
+      gate: 'iterative-verify',
+      maxRounds: 3,
+    });
 
     expect(
       canEnterSddPhase({
@@ -69,6 +74,11 @@ describe('SDD workflow contract', () => {
         ],
       }),
     ).toBe(false);
+  });
+
+  test('pins the verify-loop round bound to a single canonical source', () => {
+    expect(SDD_VERIFY_MAX_ROUNDS).toBe(3);
+    expect(getSddPhase('verify').maxRounds).toBe(SDD_VERIFY_MAX_ROUNDS);
   });
 
   test('routes SDD phases through the role-specialized delegation matrix', () => {
@@ -167,5 +177,46 @@ describe('SDD workflow contract', () => {
     expect(contract.verificationRules.join('\n')).toContain(
       'Apply is followed by verify and archive',
     );
+  });
+
+  test('treats handoffHints as optional on phase contracts', () => {
+    // A phase that declares no hint is still returned without error.
+    const archive = getSddPhase('archive');
+    expect(archive.handoffHints).toBeUndefined();
+    expect(archive.id).toBe('archive');
+
+    // The optional field does not disturb existing gate/role assertions.
+    expect(getSddPhase('plan-review').gate).toBe('oracle-review');
+  });
+
+  test('exposes handoffHints on the proposal, spec, and design phases', () => {
+    for (const id of ['proposal', 'spec', 'design'] as const) {
+      const hints = getSddPhase(id).handoffHints;
+      expect(Array.isArray(hints)).toBe(true);
+      expect((hints as string[]).length).toBeGreaterThan(0);
+      for (const hint of hints as string[]) {
+        expect(typeof hint).toBe('string');
+      }
+    }
+  });
+
+  test('deep-clones handoffHints so mutating the clone does not mutate the source', () => {
+    const clone = getSddWorkflowContract();
+    const specClone = clone.phases.find((phase) => phase.id === 'spec');
+    expect(specClone?.handoffHints).toBeDefined();
+
+    const originalLength = (getSddPhase('spec').handoffHints as string[])
+      .length;
+    (specClone?.handoffHints as string[]).push('mutated clone entry');
+
+    // Source is unaffected by mutating the clone's array.
+    expect((getSddPhase('spec').handoffHints as string[]).length).toBe(
+      originalLength,
+    );
+
+    // A second clone is also pristine.
+    const fresh = getSddWorkflowContract();
+    const specFresh = fresh.phases.find((phase) => phase.id === 'spec');
+    expect((specFresh?.handoffHints as string[]).length).toBe(originalLength);
   });
 });

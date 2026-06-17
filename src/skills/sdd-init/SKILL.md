@@ -31,6 +31,10 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 ## When to Use
 
 - SDD is needed but `openspec/` is not initialized
+- `openspec/` exists but is stale: missing `config.yaml` mechanism sections
+  (`constitution` / `consistency` / `requirements_quality` / `clarification` /
+  `handoffs`), missing `tasks.traceability` / `verify` toggles, or a missing
+  `openspec/memory/constitution.md`
 - A new project needs initial OpenSpec conventions
 - The team wants detected stack/context captured before `sdd-propose`
 
@@ -63,9 +67,36 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
    - `openspec/config.yaml`
    - `openspec/specs/`
    - `openspec/changes/`
-5. If all required OpenSpec paths already exist, report what exists and ask the
-   orchestrator whether `config.yaml` should be updated. Do not overwrite by
-   default.
+5. If the required OpenSpec paths already exist, do not dead-end. Compute
+   whether the project is fully aligned or stale, then realign additively:
+   - **Fully aligned** (all paths present AND `config.yaml` already carries
+     every mechanism section / toggle AND `openspec/memory/constitution.md`
+     exists) -> report a no-op and return. Never overwrite by default.
+   - **Stale / partial** (any piece below is absent) -> proceed to the
+     additive backfill in steps 5a-5c. Never overwrite a value that is
+     already present.
+
+    5a. Compute the per-piece *absent set* (detect each independently; treat a
+        partially-present `openspec/` per-piece, not all-or-nothing):
+        - missing `openspec/specs/`
+        - missing `openspec/changes/` (and `changes/archive/`)
+        - missing `config.yaml` mechanism sections: `constitution`,
+          `consistency`, `requirements_quality`, `clarification`, `handoffs`
+        - missing `config.yaml` toggles: `rules.tasks.traceability`,
+          `rules.verify` (`test_command` / `build_command` /
+          `coverage_threshold`)
+        - missing `openspec/memory/constitution.md`
+
+    5b. For each absent piece, additively create or merge ONLY that piece using
+        the canonical shapes defined in step 7 (`config.yaml`) and step 7a
+        (`constitution.md`). Merge missing `config.yaml` sections into the
+        existing file, preserving every present key and value verbatim. Never
+        rewrite a value that is already present. Never renumber or recreate an
+        existing `constitution.md` (see step 7a idempotency).
+
+    5c. Report exactly what was added (list each created path and each merged
+        `config.yaml` section / toggle). If the absent set was empty, report a
+        no-op instead.
 6. If any required OpenSpec path is missing and mode includes OpenSpec, create
    only the minimum structure:
 
@@ -181,9 +212,11 @@ Return:
 
 ## Rules
 
-- Be idempotent: if OpenSpec already exists, report and ask before updates.
-- Be idempotent for the constitution too: create `constitution.md` only when
-  absent; when present, preserve its content and version unchanged.
+- Realignment is strictly additive: when `openspec/` already exists, backfill
+  only the absent pieces and NEVER overwrite a value that is already present.
+- An existing `constitution.md` is never renumbered or recreated; create it
+  only when absent and otherwise preserve its content and version unchanged.
+- A re-run on a fully-aligned project is a reported no-op (no writes).
 - In `thoth-mem` mode, never create `openspec/` directories or files.
 - Keep `config.yaml` context concise (max 10 lines).
 - Detect and include CI, test, and style conventions in the context summary.

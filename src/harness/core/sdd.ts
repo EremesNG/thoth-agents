@@ -84,7 +84,7 @@ export const SDD_PHASES = [
     owner: 'write-capable-agent',
     artifactSkill: 'sdd-init',
     condition:
-      'Only when OpenSpec persistence is selected and openspec/ is missing.',
+      'Only when OpenSpec persistence is selected and openspec/ is missing or stale (partial structure or missing mechanism sections).',
     defaultAgentRole: 'quick',
     supportingAgentRoles: ['explorer'],
     delegationReason:

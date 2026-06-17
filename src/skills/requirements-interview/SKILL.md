@@ -185,8 +185,10 @@ Collect this choice with the active blocking user input surface rather than
 plain prose.
 
 When the user selects a mode that includes OpenSpec (`openspec` or `hybrid`),
-verify that `openspec/` is initialized. If it is not, recommend running the
-`sdd-init` skill before proceeding.
+verify that `openspec/` is initialized AND not stale. If it is not initialized,
+or it exists but is stale (`config.yaml` missing one or more mechanism sections
+/ toggles, or `openspec/memory/constitution.md` absent), recommend running the
+`sdd-init` skill before proceeding so it can additively realign the project.
 
 Once route, persistence mode, and initialization are confirmed, hand off to the
 corresponding SDD pipeline phase. The handoff MUST include:

@@ -358,7 +358,7 @@ Hard gates:
 - {{role.oracle}} is read-only for plan-reviewer and sdd-verify review; {{role.quick}} persists verify reports when writes are required.
 - Never skip artifacts or jump from requirements-interview to implementation when SDD is selected.
 - Before SDD execution, load \`executing-plans\`; then track progress in {{progressTool}} plus the persistent artifact.
-- If openspec persistence is selected and openspec/ is missing, dispatch sdd-init first.
+- If openspec persistence is selected and openspec/ is missing or stale (partial structure or missing mechanism sections), dispatch sdd-init first.
 - During SDD execution, batch compatible implementation work.
 - Group consecutive ready SDD tasks for the same execution agent into one dispatch when dependencies, scope, and verification can be handled together. Keep per-task tracking and evidence; do not split a compatible {{role.designer}}/{{role.quick}}/{{role.deep}} run into one delegation per checkbox.
 

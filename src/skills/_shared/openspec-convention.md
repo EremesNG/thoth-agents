@@ -35,7 +35,15 @@ If any required item is missing:
 - Recommend running the `sdd-init` skill first.
 - Do NOT attempt to create the structure in that skill.
 
-If all required items exist, continue normally.
+If the required items exist but the project is stale (`config.yaml` is missing
+one or more mechanism sections / toggles, or `openspec/memory/constitution.md`
+is absent):
+
+- Recommend running the `sdd-init` skill to additively realign the project.
+- Do NOT attempt to backfill the missing pieces in that skill.
+
+If all required items exist and no mechanism pieces are missing, continue
+normally.
 
 ## Directory Structure
 
@@ -194,6 +202,21 @@ governance are adopted.
   blocking-input surface (AskUserQuestion-equivalent), and the override MUST be
   logged with the violated principle. Gated by `rules.constitution`; when
   `enforce_check: false`, the check does not block and the skip is noted.
+
+### config.yaml mechanism-section backfill
+
+`sdd-init` realignment backfills the `config.yaml` mechanism sections
+(`constitution`, `consistency`, `requirements_quality`, `clarification`,
+`handoffs`) and the `rules.tasks.traceability` / `rules.verify` toggles
+additively, mirroring the constitution idempotency above.
+
+- It MUST detect per-section absence independently and merge ONLY the absent
+  sections / toggles into the existing `config.yaml`.
+- It MUST NOT overwrite any value that is already present; every existing key
+  and value is preserved verbatim.
+- It MUST report which sections / toggles were added.
+- It is idempotent: re-running on a project whose `config.yaml` already carries
+  every mechanism section / toggle is a reported no-op.
 
 ## Consistency Severity and Coverage Model
 

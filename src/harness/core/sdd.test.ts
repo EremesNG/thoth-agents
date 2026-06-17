@@ -87,7 +87,15 @@ describe('SDD workflow contract', () => {
       artifactSkill: 'sdd-init',
       defaultAgentRole: 'quick',
       supportingAgentRoles: ['explorer'],
+      condition:
+        'Only when OpenSpec persistence is selected and openspec/ is missing or stale (partial structure or missing mechanism sections).',
     });
+
+    // Init-phase condition must trigger on BOTH missing and stale/partial openspec.
+    const initCondition = getSddPhase('init').condition ?? '';
+    expect(initCondition).toContain('openspec/ is missing');
+    expect(initCondition).toContain('stale');
+    expect(initCondition).toContain('mechanism sections');
 
     expect(getSddPhase('explore')).toMatchObject({
       owner: 'read-only-agent',

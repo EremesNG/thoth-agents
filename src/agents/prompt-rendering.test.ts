@@ -3,6 +3,7 @@ import { renderCodexRootInstructions } from '../harness/adapters/codex';
 import { createAgents } from './index';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
 import {
+  CLAUDE_CODE_PROMPT_DIALECT,
   CODEX_PROMPT_DIALECT,
   OPENCODE_PROMPT_DIALECT,
 } from './prompt-dialects';
@@ -306,6 +307,70 @@ describe('semantic prompt section rendering', () => {
     expect(prompt).toContain('@designer');
     expect(prompt).not.toContain('request_user_input');
     expect(prompt).not.toContain('MUST NOT read or write any file');
+  });
+
+  test('orchestrator prompt renders the bounded verify-loop with three verdict branches and the round bound', () => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      OPENCODE_PROMPT_DIALECT,
+    );
+
+    // 4.4 — three verdict branches
+    expect(prompt).toContain('On clean `pass`:');
+    expect(prompt).toContain('On `fail` with rounds remaining (round < 3):');
+    expect(prompt).toContain('On `fail` at the bound (round 3 still failing):');
+    expect(prompt).toContain('On `pass with warnings`:');
+    // 4.4 — 3-round bound reference
+    expect(prompt).toContain('bounded to 3 rounds');
+    expect(prompt).toContain('subject to the 3-round bound');
+    // 4.4 — escalation language via the dialect-substituted question tool
+    expect(prompt).toContain(
+      'escalate the unresolved failure to the user with `question`',
+    );
+    expect(prompt).toContain(
+      'report this as an unsupported-capability limitation',
+    );
+    // targeted-fix scope by remediation anchors
+    expect(prompt).toContain(
+      'Critical Issue remediation anchors (file and/or scenario)',
+    );
+
+    // 4.5 — the removed linear line must not reappear
+    expect(prompt).not.toContain('then sdd-archive when verification passes');
+  });
+
+  test('verify-loop escalation substitutes {{userQuestionTool}} per harness dialect', () => {
+    const byDialect = {
+      opencode: {
+        dialect: OPENCODE_PROMPT_DIALECT,
+        tool: 'question',
+        others: ['AskUserQuestion', 'request_user_input'],
+      },
+      claude: {
+        dialect: CLAUDE_CODE_PROMPT_DIALECT,
+        tool: 'AskUserQuestion',
+        others: ['request_user_input'],
+      },
+      codex: {
+        dialect: CODEX_PROMPT_DIALECT,
+        tool: 'request_user_input',
+        others: ['AskUserQuestion'],
+      },
+    } as const;
+
+    for (const { dialect, tool, others } of Object.values(byDialect)) {
+      const prompt = renderRolePrompt(
+        createOrchestratorPromptSections(),
+        dialect,
+      );
+      expect(prompt).toContain(
+        `escalate the unresolved failure to the user with \`${tool}\``,
+      );
+      expect(prompt).not.toContain('{{userQuestionTool}}');
+      for (const other of others) {
+        expect(prompt).not.toContain(other);
+      }
+    }
   });
 
   test('orchestrator prompt permits bounded direct checks without making root a worker', () => {

@@ -374,7 +374,12 @@ Plan gate: after tasks, ask with \`{{userQuestionTool}}\`: "Review plan with {{r
 If reviewed, the review loop is complete only after [OKAY].
 If {{role.oracle}} returns [OKAY], give a deep approved-plan overview, then ask with \`{{userQuestionTool}}\` whether to implement or stop. Cover goals, scope, sequence, key decisions, verification, risks/trade-offs, and uncertainty so the user has full context.
 Do not dispatch \`sdd-apply\` after oracle approval until the user confirms implementation.
-Post-execution: delegate sdd-verify, then sdd-archive when verification passes.
+Post-execution verify-loop (mirrors the plan-review loop's discipline; bounded to 3 rounds = initial apply->verify plus up to 2 fix->re-verify):
+- Dispatch \`sdd-verify\` as an iterative gate, not a single shot; round 1 is the first verify after apply. Treat the \`round N\` marker in the verify report as the source of truth for the round counter and surface it in {{progressTool}}.
+- On clean \`pass\`: proceed through the existing pre-archive user gate above, then delegate \`sdd-archive\`. Do not auto-advance to archive merely because a verify report exists.
+- On \`fail\` with rounds remaining (round < 3): dispatch a TARGETED \`sdd-apply\` re-run scoped by the verify report's Critical Issue remediation anchors (file and/or scenario), then re-dispatch \`sdd-verify\` as round N+1. Do not expand a scoped fix into a full unscoped re-apply when anchors are present, and do not advance to archive while the verdict is \`fail\`.
+- On \`fail\` at the bound (round 3 still failing): escalate the unresolved failure to the user with \`{{userQuestionTool}}\`. Do not run another apply/verify round and do not silently abandon or auto-archive. If the harness lacks a blocking user-input primitive, report this as an unsupported-capability limitation instead of auto-advancing or looping.
+- On \`pass with warnings\`: escalate with \`{{userQuestionTool}}\` an advance-vs-iterate choice (advance to \`sdd-archive\` vs re-iterate to clear warnings). Never auto-advance and never auto-loop. If the user chooses re-iterate, dispatch a targeted \`sdd-apply\` scoped by the warning remediation anchors and re-verify, subject to the 3-round bound.
 </sdd>
 
 <progress-memory>

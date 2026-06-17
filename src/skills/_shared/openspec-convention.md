@@ -65,6 +65,8 @@ openspec/
 | Design | `openspec/changes/{change-name}/design.md` | Architecture and file plan |
 | Tasks | `openspec/changes/{change-name}/tasks.md` | Checkbox checklist updated by apply |
 | Verify report | `openspec/changes/{change-name}/verify-report.md` | Compliance matrix and evidence |
+| Requirements checklist | `openspec/changes/{change-name}/checklists/requirements.md` | Domain-typed requirement-quality gate, consumed before tasks |
+| Constitution | `openspec/memory/constitution.md` | Semver-versioned native principles + Sync-Impact Report |
 
 `apply-progress` and `archive-report` are durable SDD artifacts, but they are
 primarily persisted through thoth-mem topic keys when the mode includes
@@ -105,6 +107,12 @@ persistence mode includes OpenSpec.
 
 ## `config.yaml` Shape
 
+`rules:` carries one section per phase or mechanism. A section is EITHER a
+bare list of guidance strings OR a mapping. When a phase needs both human
+guidance and machine-relevant scalar toggles, the guidance list lives under a
+`guidance:` subkey alongside the scalars (mixing bare `- item` sequence entries
+with `key: value` scalars under the same key is invalid YAML).
+
 ```yaml
 schema: spec-driven
 
@@ -113,17 +121,23 @@ context: |
 
 rules:
   proposal:
-    - Proposal-specific guidance
-  specs:
-    - Require RFC 2119 keywords
-    - Require Given/When/Then scenarios
+    - Include rollback plan for risky changes
+    - Identify affected modules/packages
+  spec:
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Use Given/When/Then scenarios
   design:
     - Document architecture decisions with rationale
+    - Require a File Changes section
   tasks:
-    - Use phased checklists with hierarchical numbering
+    guidance:
+      - Group tasks by phase with hierarchical numbering
+      - Require a per-task Verification block
+    tdd: false                  # TDD ordering flag (sdd-tasks-format)
+    traceability: true          # require [USN] + Spec: tag + Independent Test per task
   apply:
-    - Match repository conventions
-    tdd: false
+    guidance:
+      - Follow existing code patterns and conventions
     test_command: ''
   verify:
     test_command: ''
@@ -131,6 +145,100 @@ rules:
     coverage_threshold: 0
   archive:
     - Warn before destructive merges
+
+  # --- mechanism sections (spec-kit-rigor) ---
+  constitution:
+    path: openspec/memory/constitution.md
+    enforce_check: true         # Constitution Check gate blocks on violation
+    version_policy: semver      # MAJOR=remove/redefine, MINOR=add, PATCH=clarify
+  consistency:
+    enforce_block: true         # CRITICAL findings block plan-review
+    require_coverage_percentage: true
+  requirements_quality:
+    enforce_block: true         # incomplete checklist blocks tasks phase
+    dimensions: [completeness, clarity, measurability, testability]
+  clarification:
+    max_markers_per_spec: 3     # [NEEDS CLARIFICATION] cap enforced by plan-reviewer
+  handoffs:
+    surface_hints: true         # surface SddPhaseContract.handoffHints at transitions
 ```
 
 Treat `rules` entries as mandatory phase-specific constraints whenever present.
+Missing `enforce_*` keys default to enforcing; a section that sets its
+`enforce_*` key to `false` downgrades the corresponding block to a report.
+
+## Constitution Governance
+
+The project constitution lives at `openspec/memory/constitution.md` and holds
+NATIVE thoth-agents principles (delegate-first coordination, read-only role
+boundaries, governed persistence, multi-harness parity, evidence-led
+verification). It is NOT spec-kit's articles; only the mechanics of versioned
+governance are adopted.
+
+- **Version**: a semantic version `MAJOR.MINOR.PATCH` in the header, with
+  `Ratified` and `Last-Amended` dates. `sdd-init` bootstraps it at `1.0.0`
+  when absent and preserves the existing content and version when present
+  (idempotent).
+- **Semver bump policy** (manual, performed by the editor): MAJOR = a principle
+  is removed or redefined; MINOR = a principle is added or guidance materially
+  expanded; PATCH = clarification or wording. There is no runtime parser, so
+  the policy is enforced by prose, not tooling.
+- **Sync-Impact Report**: an in-file `## Sync-Impact Report` section (newest
+  entry on top) listing version, change type, principles touched, and the
+  downstream gates/artifacts affected.
+- **Constitution Check gate**: a procedural gate owned jointly by `sdd-design`
+  (self-review while authoring) and `plan-reviewer` (independent enforcement).
+  It reuses the existing `oracle-review` gate plumbing — no new `gate` enum
+  value. On a detected violation it BLOCKS advancement; the block is
+  overridable only through an explicit user decision delivered via the harness
+  blocking-input surface (AskUserQuestion-equivalent), and the override MUST be
+  logged with the violated principle. Gated by `rules.constitution`; when
+  `enforce_check: false`, the check does not block and the skip is noted.
+
+## Consistency Severity and Coverage Model
+
+`plan-reviewer` performs cross-artifact consistency analysis across
+proposal<->spec<->design<->tasks IN ADDITION to its executability review (it is
+NOT a new phase). Each finding carries a severity of `CRITICAL`, `HIGH`,
+`MEDIUM`, or `LOW`.
+
+- **Blocking gate**: any `CRITICAL` finding BLOCKS advancement past plan
+  review; non-CRITICAL findings are reported but do not block. The block is
+  overridable only through an explicit, logged user decision via the harness
+  blocking-input surface. Gated by `rules.consistency.enforce_block`.
+- **Requirement-coverage percentage**: `(distinct spec requirements named by
+  >=1 task Spec: tag) / (total ### Requirement: headings across all delta
+  specs)`, e.g. 8 of 10 covered -> 80%. The percentage MUST appear in the
+  review output (gated by `rules.consistency.require_coverage_percentage`).
+
+## Requirements-Quality Checklist
+
+`sdd-spec` generates a domain-typed requirements-quality checklist at
+`openspec/changes/{change-name}/checklists/requirements.md` ("unit tests for
+English"). It has one `## Domain: {domain}` section per authored delta domain,
+each with checkbox items across four dimensions: completeness, clarity,
+measurability, testability. Items use the task checkbox states (`- [ ]` /
+`- [x]` / `- [-] waived: reason`). The spec->tasks transition is GATED on every
+item being `- [x]` or explicitly waived; an incomplete checklist blocks
+(overridable + logged) unless `rules.requirements_quality.enforce_block: false`.
+
+## Clarification Discipline
+
+Spec authoring may use `[NEEDS CLARIFICATION: <question>]` markers for genuine
+unresolved decision forks, capped at `rules.clarification.max_markers_per_spec`
+(default 3) per spec file. Follow an informed-guess-first policy: when an
+ambiguity has a defensible default, apply it and record it in the spec's
+`## Assumptions` section rather than emitting a marker; reserve markers for
+forks with no defensible default. `plan-reviewer` flags any spec file exceeding
+the cap.
+
+## Handoff Hints
+
+`SddPhaseContract` (in `src/harness/core/sdd.ts`) carries an optional
+`handoffHints?: string[]`; a phase declares what the next phase must preserve
+(accepted scope, recorded assumptions, coverage/architecture decisions). The
+field is OPTIONAL — phases without hints stay valid and existing consumers run
+unchanged. SDD skills SURFACE the upstream phase's `handoffHints` in their prose
+at the transition; when absent, no handoff text is surfaced. Gated by
+`rules.handoffs.surface_hints` (when `false`, hints are not surfaced while the
+contract field stays valid).

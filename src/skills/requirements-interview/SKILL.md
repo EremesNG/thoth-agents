@@ -84,6 +84,11 @@ scaffolding as user prompts.
    context already answer.
 11. Enforce scope faithfulness: scope calibration must not silently shrink the
     user's stated intent.
+12. Alignment note: a genuine decision fork left unresolved at interview is not
+    settled here — downstream it becomes either a `[NEEDS CLARIFICATION]`
+    marker or a recorded entry in the spec's `## Assumptions` section
+    (informed-guess-first). This note is alignment only; the interview does not
+    own the clarification cap or the Assumptions gate.
 
 ### Phase 3: Complexity Assessment
 

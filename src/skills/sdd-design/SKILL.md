@@ -78,7 +78,34 @@ technical write-capable role such as `deep`.
    and required metadata fields: `title`, `topic_key`, `type`, `project`,
    `scope`, and `content`.
 
-## Output Format
+## Constitution Check and Handoff Hints
+
+    ### Consume upstream handoffHints
+
+    At design start, surface the spec phase's `handoffHints` (recorded
+    `## Assumptions` and `[NEEDS CLARIFICATION]` resolutions) and treat them as
+    constraints the design must preserve. When the spec declared no hints, surface
+    nothing. Surfacing is gated by `rules.handoffs.surface_hints`.
+
+    ### Constitution Check self-review
+
+    Before finalizing the design, run a Constitution Check self-review: evaluate the
+    emerging design against EACH principle in `openspec/memory/constitution.md` —
+    delegate-first coordination, read-only role boundaries, governed persistence,
+    multi-harness parity, and evidence-led verification. Report any principle the
+    design would violate.
+
+    - On a detected violation, BLOCK finalization and surface the violated
+      principle through the harness blocking-input surface (the
+      AskUserQuestion-equivalent primitive). An explicit user override MUST be
+      logged with the violated principle before proceeding. Gated by
+      `rules.constitution.enforce_check`; when disabled, note the skip and do not
+      block.
+    - This self-review does not replace `plan-reviewer`'s independent Constitution
+      Check; both run. See `_shared/openspec-convention.md` (Constitution
+      Governance, Handoff Hints) for the canonical, harness-agnostic semantics.
+
+    ## Output Format
 
 Return:
 

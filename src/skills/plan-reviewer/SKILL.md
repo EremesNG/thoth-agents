@@ -77,7 +77,87 @@ Check only what affects executability:
 10. Task boundaries or non-goals do not contradict accepted proposal/spec
     scope.
 
-## Decision Rules
+## Cross-Artifact Consistency Analysis
+
+    In addition to the executability review above, perform cross-artifact
+    consistency analysis across proposal <-> spec <-> design <-> tasks. This is NOT
+    a new pipeline phase; it rides inside this plan-review gate. All checks below
+    are gated by the corresponding `openspec/config.yaml rules:` sections; a section
+    that disables enforcement downgrades its block to a report.
+
+    ### Severity model
+
+    Every consistency finding carries one severity:
+
+    - `CRITICAL` — a spec requirement with no mapping in tasks, an orphan task with
+      no spec/proposal basis, scope drift contradicting the accepted proposal, or a
+      direct contradiction between artifacts.
+    - `HIGH` / `MEDIUM` / `LOW` — weaker inconsistencies, ambiguity, or
+      presentation issues that are worth reporting but are not on their own
+      blocking.
+
+    Detect and report at least: requirements present in the spec but absent from
+    design or tasks; tasks with no spec basis; scope drift from the proposal; and
+    contradictory statements between artifacts.
+
+    ### Requirement-coverage percentage
+
+    Compute and REPORT a requirement-coverage percentage in the review output
+    (gated by `rules.consistency.require_coverage_percentage`):
+
+    ```
+    coverage % = (distinct spec requirements named by >=1 task `Spec:` tag)
+                 / (total `### Requirement:` headings across all delta specs)
+    ```
+
+    Parse `Spec:` trace tags from `tasks.md` and `### Requirement:` headings from
+    `openspec/changes/{change}/specs/*/spec.md`. Example: 8 of 10 requirements
+    covered -> report `80%`. When no `Spec:` tags are present (legacy tasks), report
+    coverage against what is present rather than failing.
+
+    ### [NEEDS CLARIFICATION] cap enforcement
+
+    Flag any spec file containing more than `rules.clarification.max_markers_per_spec`
+    (default 3) `[NEEDS CLARIFICATION: ...]` markers. Exactly 3 is within the cap
+    and is NOT flagged; 4 or more is flagged as carrying too much unresolved
+    ambiguity to proceed cleanly.
+
+    ### Constitution Check
+
+    Evaluate the design and plan against EACH principle in
+    `openspec/memory/constitution.md` (delegate-first coordination, read-only role
+    boundaries, governed persistence, multi-harness parity, evidence-led
+    verification). Report the specific violated principle(s). Gated by
+    `rules.constitution.enforce_check`; when disabled, note the skip in the output
+    and do not block.
+
+    ### TDD ordering check
+
+    When `rules.tasks.tdd` is enabled, verify that within each phase every
+    implementation task that has a corresponding test task is PRECEDED by that test
+    task. Report a TDD-ordering finding for any implementation task that precedes
+    its test task. When `tasks.tdd` is disabled, impose no ordering constraint.
+
+    ## Blocking Consistency and Constitution Gate
+
+    - Any `CRITICAL` consistency finding OR any Constitution violation BLOCKS
+      advancement past plan review (gated by `rules.consistency.enforce_block` and
+      `rules.constitution.enforce_check` respectively).
+    - Non-CRITICAL findings are reported but do not block on their own.
+    - The block is overridable ONLY through an explicit user decision delivered via
+      the harness blocking-input surface (the AskUserQuestion-equivalent primitive).
+      The override MUST be logged with the finding identity / violated principle and
+      the user's choice before advancement proceeds. If the harness lacks a
+      blocking-input primitive, report an unsupported-capability limitation rather
+      than silently downgrading the block.
+    - Express a blocking outcome through the existing `[REJECT]` token (or a listed
+      CRITICAL finding); a clean analysis adds no friction and proceeds via `[OKAY]`.
+
+    See `_shared/openspec-convention.md` (Consistency Severity and Coverage Model,
+    Constitution Governance, Clarification Discipline) for the canonical, harness-
+    agnostic definitions these checks implement.
+
+    ## Decision Rules
 
 - Default to `[OKAY]`.
 - Use `[REJECT]` only for true blockers.

@@ -79,40 +79,80 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 
 7. Generate `openspec/config.yaml` dynamically with this shape:
 
-   ```yaml
-   schema: spec-driven
+       ```yaml
+       schema: spec-driven
 
-   context: |
-     Tech stack: {detected}
-     Architecture: {detected}
-     Testing: {detected}
-     Style: {detected}
+       context: |
+         Tech stack: {detected}
+         Architecture: {detected}
+         Testing: {detected}
+         Style: {detected}
 
-   rules:
-     proposal:
-       - Include rollback plan for risky changes
-       - Identify affected modules/packages
-     specs:
-       - Use Given/When/Then format for scenarios
-       - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
-     design:
-       - Include sequence diagrams for complex flows
-       - Document architecture decisions with rationale
-     tasks:
-       - Group tasks by phase (infrastructure, implementation, testing)
-       - Use hierarchical numbering (1.1, 1.2, etc.)
-       - Keep tasks small enough to complete in one session
-     apply:
-       - Follow existing code patterns and conventions
-       tdd: false
-       test_command: ''
-     verify:
-       test_command: ''
-       build_command: ''
-       coverage_threshold: 0
-     archive:
-       - Warn before merging destructive deltas
-   ```
+       rules:
+         proposal:
+           - Include rollback plan for risky changes
+           - Identify affected modules/packages
+         spec:
+           - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+           - Use Given/When/Then scenarios
+         design:
+           - Document architecture decisions with rationale
+           - Require a File Changes section
+         tasks:
+           guidance:
+             - Group tasks by phase with hierarchical numbering
+             - Keep tasks small enough to complete in one session
+           tdd: false                  # TDD ordering flag (sdd-tasks-format)
+           traceability: true          # require [USN] + Spec: tag + Independent Test per task
+         apply:
+           guidance:
+             - Follow existing code patterns and conventions
+           test_command: ''
+         verify:
+           test_command: ''
+           build_command: ''
+           coverage_threshold: 0
+         archive:
+           - Warn before merging destructive deltas
+
+         # --- mechanism sections (spec-kit-rigor) ---
+         constitution:
+           path: openspec/memory/constitution.md
+           enforce_check: true         # Constitution Check gate blocks on violation
+           version_policy: semver      # MAJOR=remove/redefine, MINOR=add, PATCH=clarify
+         consistency:
+           enforce_block: true         # CRITICAL findings block plan-review
+           require_coverage_percentage: true
+         requirements_quality:
+           enforce_block: true         # incomplete checklist blocks tasks phase
+           dimensions: [completeness, clarity, measurability, testability]
+         clarification:
+           max_markers_per_spec: 3     # [NEEDS CLARIFICATION] cap enforced by plan-reviewer
+         handoffs:
+           surface_hints: true         # surface SddPhaseContract.handoffHints at transitions
+       ```
+
+       Mixing bare `- item` list entries with `key: value` scalars under one key is
+       invalid YAML; when a phase carries scalar toggles (`tasks`, `apply`,
+       `verify`), put its guidance strings under a `guidance:` subkey.
+
+    7a. Bootstrap the project constitution at `openspec/memory/constitution.md`
+        (mode includes OpenSpec):
+        - **Absent** -> create it at `Version: 1.0.0` with `Ratified`/`Last-Amended`
+          dates, the five native principles (delegate-first coordination, read-only
+          role boundaries, governed persistence, multi-harness parity, evidence-led
+          verification) each with Statement/Rationale/Gate Implications, and an empty
+          `## Sync-Impact Report` section.
+        - **Present** -> preserve the existing content AND its existing version
+          unchanged; do NOT recreate or renumber it. This step is idempotent: a
+          second `sdd-init` run on a repo whose `constitution.md` is at `2.1.0`
+          leaves it at `2.1.0`.
+        - **Semver bump policy** (manual, by whoever edits the constitution): MAJOR
+          = a principle removed or redefined; MINOR = a principle added or guidance
+          materially expanded; PATCH = clarification/wording. Each edit also appends
+          a `## Sync-Impact Report` entry. No tooled auto-bump exists.
+        - See `_shared/openspec-convention.md` (Constitution Governance) for the
+          canonical artifact and gate semantics.
 
 8. Never create placeholder SDD artifacts (`proposal.md`, `design.md`,
    `tasks.md`, or spec files) during initialization.
@@ -142,6 +182,8 @@ Return:
 ## Rules
 
 - Be idempotent: if OpenSpec already exists, report and ask before updates.
+- Be idempotent for the constitution too: create `constitution.md` only when
+  absent; when present, preserve its content and version unchanged.
 - In `thoth-mem` mode, never create `openspec/` directories or files.
 - Keep `config.yaml` context concise (max 10 lines).
 - Detect and include CI, test, and style conventions in the context summary.

@@ -125,7 +125,25 @@ Every dispatch prompt MUST include these 6 parts:
 `BOUNDARIES` must not contradict accepted proposal or spec scope. Use it to
 limit the current assigned task, not to redefine the approved change scope.
 
-#### C. Receive and Verify
+
+    #### B.1 Traceability Fields (optional, back-compatible)
+    
+    When a task carries the optional `sdd-tasks` traceability fields, SURFACE them
+    during dispatch:
+    
+    - `[USN-<n>]` story id and `Priority:` (P1/P2/P3) — include in the dispatch
+      `CONTEXT`/`TASKS` so the executing agent knows the story grouping and priority.
+    - `Independent Test:` — pass into the dispatch `VERIFICATION` as the in-isolation
+      acceptance check for that task.
+    - `Spec:` trace tag — include as the requirement the task implements.
+    
+    These fields are OPTIONAL. A legacy `tasks.md` whose tasks lack `[USN]`,
+    priority, `Independent Test`, or `Spec:` MUST still execute without error: treat
+    the absent fields as optional and proceed using the task title and
+    `Verification` block alone. Never fail or block a task solely because a
+    traceability field is missing.
+    
+    #### C. Receive and Verify
 
 Read the sub-agent return envelope and respond by status:
 
@@ -188,7 +206,13 @@ After the task list is complete:
    smallest sufficient checks: typecheck, tests, lint, and build when
    appropriate.
 2. Report a completion summary with evidence.
-3. If the work is SDD-backed, suggest `sdd-verify` as the next step.
+3. If the work is SDD-backed, hand off to the bounded verify-loop rather
+   than a single verify shot: dispatch `sdd-verify` as an iterative gate and
+   branch on its verdict — `fail` triggers a targeted fix scoped by the
+   report's remediation anchors and a re-verify; `pass with warnings` and a
+   bound-exhausting `fail` escalate to the user; a clean `pass` proceeds to
+   archive. The loop is capped by the 3-round bound defined in the
+   orchestrator SDD wording (the canonical source of the round number).
 
 ## Return Envelope Contract
 

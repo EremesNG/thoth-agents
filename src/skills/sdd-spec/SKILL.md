@@ -73,12 +73,51 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
    and required metadata fields: `title`, `topic_key`, `type`, `project`,
    `scope`, and `content`.
 
-## Output Format
+## Clarification Discipline and Requirements-Quality Checklist
+
+    Follow these mechanisms (canonical definitions in
+    `_shared/openspec-convention.md` — Clarification Discipline and
+    Requirements-Quality Checklist). All are gated by their `config.yaml rules:`
+    sections.
+
+    ### `[NEEDS CLARIFICATION]` markers and Assumptions
+
+    - Use `[NEEDS CLARIFICATION: <concrete question>]` ONLY for a genuine decision
+      fork where no single default is defensible. The marker text MUST name the
+      specific unresolved decision, not a vague placeholder.
+    - Cap markers at `rules.clarification.max_markers_per_spec` (default 3) per spec
+      file.
+    - Informed-guess-first: when an ambiguity has a defensible default, APPLY the
+      default and record it in an `## Assumptions` section of the spec rather than
+      emitting a marker. Do not silently default a genuine fork.
+
+    ### Generate `checklists/requirements.md`
+
+    At or after authoring the delta specs, generate
+    `openspec/changes/{change-name}/checklists/requirements.md` ("unit tests for
+    English"):
+
+    - One `## Domain: {domain}` section per authored delta domain.
+    - Each domain section carries checkbox items across the four dimensions:
+      completeness, clarity, measurability, testability.
+    - Items use the task checkbox states (`- [ ]` / `- [x]` / `- [-] waived:
+      reason`).
+    - The spec->tasks transition is gated on every item being `- [x]` or explicitly
+      waived (gated by `rules.requirements_quality.enforce_block`).
+
+    ### Declare handoffHints
+
+    Declare `handoffHints` for the design phase: the recorded `## Assumptions` and
+    any unresolved `[NEEDS CLARIFICATION]` resolutions the design phase must
+    preserve. Surfacing is gated by `rules.handoffs.surface_hints`.
+
+    ## Output Format
 
 Return:
 
 - `Change`
 - `Artifacts`: list of domain spec paths written
+- `Checklist`: `openspec/changes/{change-name}/checklists/requirements.md`
 - `Topic Key`: `sdd/{change-name}/spec`
 - `Coverage Summary`: requirements and scenarios added or modified
 - `Next Step`: usually `sdd-design`

@@ -66,12 +66,25 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 
     ## Phase 1: Foundation
     - [ ] 1.1 Set up project structure — `src/config/`
+      **[USN-1]** | Priority: P1
+      **Spec:** `config-domain/Project Structure`
+      **Independent Test:** Inspect `src/config/` exists and typechecks in isolation.
       **Verification**:
       - Run: `pnpm run typecheck`
       - Expected: No TypeScript errors in config files
 
     ## Phase 2: Core Implementation
-    - [ ] 2.1 Implement core logic — `src/core/handler.ts`
+    - [ ] 2.1 Author core-logic tests — `src/core/handler.test.ts`
+      **[USN-2]** | Priority: P1
+      **Spec:** `core-domain/Core Logic`
+      **Independent Test:** Run the new handler test file; it is red before 2.2.
+      **Verification**:
+      - Run: `pnpm test -- -t "core handler"`
+      - Expected: New tests run (red before 2.2)
+    - [ ] 2.2 Implement core logic — `src/core/handler.ts`
+      **[USN-2]** | Priority: P1
+      **Spec:** `core-domain/Core Logic`
+      **Independent Test:** Run the handler tests; they pass against the impl.
       **Verification**:
       - Run: `pnpm test -- -t "core handler"`
       - Expected: All handler tests pass
@@ -113,7 +126,38 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 11. The orchestrator handles the `[OKAY]` / `[REJECT]` review loop and any
      necessary fixes before proceeding to execution.
 
-## Output Format
+## Traceability, TDD Ordering, and Handoff Hints
+    
+    Canonical definitions live in `_shared/openspec-convention.md`. These fields are
+    ADDITIVE to the existing `Verification` block, not a replacement, and they are
+    optional for back-compat (legacy `tasks.md` without them still executes).
+    
+    - **`[USN-<n>]`** — a user-story-number grouping label (a coarse story/epic
+      bucket). It is NOT the requirement linkage.
+    - **Priority** — one of `P1`, `P2`, `P3`.
+    - **`Spec:` trace tag** — names the exact requirement the task implements, in
+      `{domain}/{Requirement Name}` format (optionally `#{Scenario Name}`). This is
+      the requirement linkage `plan-reviewer` counts for coverage %; keep it
+      greppable and one requirement per tag.
+    - **`Independent Test`** — how the task's outcome is verified in isolation,
+      without depending on other tasks being complete.
+    
+    ### `tasks.tdd` ordering
+    
+    When `rules.tasks.tdd` is enabled in `config.yaml`, sequence test-authoring
+    tasks BEFORE their corresponding implementation tasks within the same phase (see
+    the Phase 2 example: 2.1 authors tests, 2.2 implements). When `tasks.tdd` is
+    disabled, impose no test-first ordering constraint. `plan-reviewer` enforces
+    this ordering when the flag is enabled.
+    
+    ### Consume upstream handoffHints
+    
+    At task-generation start, surface the spec/design phases' `handoffHints` and
+    treat them as preservation constraints (coverage decisions, architecture
+    constraints, recorded Assumptions). When no hints were declared, surface
+    nothing. Surfacing is gated by `rules.handoffs.surface_hints`.
+    
+    ## Output Format
 
 Return:
 

@@ -9,13 +9,43 @@ context: |
 
 rules:
   proposal:
-    max_words: 500
+    - Include rollback plan for risky changes
+    - Identify affected modules/packages
   spec:
-    format: "RFC 2119 + Given/When/Then"
-    categories: ["ADDED", "MODIFIED", "REMOVED"]
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Use Given/When/Then scenarios
   design:
-    require_decisions: true
-    require_file_changes: true
+    - Document architecture decisions with rationale
+    - Require a File Changes section
   tasks:
-    require_phases: true
-    checkbox_format: "- [ ] "
+    guidance:
+      - Group tasks by phase with hierarchical numbering
+      - Require a per-task Verification block
+    tdd: false                      # TDD ordering flag (sdd-tasks-format)
+    traceability: true              # require [USN] + Spec: tag + Independent Test per task
+  apply:
+    guidance:
+      - Follow existing code patterns and conventions
+    test_command: ''
+  verify:
+    test_command: ''
+    build_command: ''
+    coverage_threshold: 0
+  archive:
+    - Warn before destructive merges
+
+  # --- new mechanism sections ---
+  constitution:
+    path: openspec/memory/constitution.md
+    enforce_check: true             # Constitution Check gate blocks on violation
+    version_policy: semver          # MAJOR=remove/redefine, MINOR=add, PATCH=clarify
+  consistency:
+    enforce_block: true             # CRITICAL findings block plan-review
+    require_coverage_percentage: true
+  requirements_quality:
+    enforce_block: true             # incomplete checklist blocks tasks phase
+    dimensions: [completeness, clarity, measurability, testability]
+  clarification:
+    max_markers_per_spec: 3         # [NEEDS CLARIFICATION] cap enforced by plan-reviewer
+  handoffs:
+    surface_hints: true             # surface SddPhaseContract.handoffHints at transitions

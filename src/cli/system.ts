@@ -127,7 +127,10 @@ export async function isOpenCodeInstalled(): Promise<boolean> {
         const outcome = await Promise.race([
           proc.exited.then(() => proc.exitCode),
           new Promise<typeof timedOut>((resolve) => {
-            timer = setTimeout(() => resolve(timedOut), OPENCODE_PROBE_TIMEOUT_MS);
+            timer = setTimeout(
+              () => resolve(timedOut),
+              OPENCODE_PROBE_TIMEOUT_MS,
+            );
           }),
         ]);
         if (outcome === timedOut) {

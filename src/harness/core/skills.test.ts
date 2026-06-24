@@ -1,3 +1,6 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { CUSTOM_SKILLS } from '../../cli/custom-skills';
 import { renderCodexSkillLayout } from '../writers/skill-layout';
@@ -188,5 +191,38 @@ describe('skill registry contract', () => {
         `.codex-plugin/skills/${skillName}/SKILL.md`,
       );
     }
+  });
+
+  test('registry matches on-disk bundled skill directories exactly', () => {
+    const skillsRoot = join(
+      dirname(fileURLToPath(import.meta.url)),
+      '..',
+      '..',
+      'skills',
+    );
+
+    const onDiskSkillNames = readdirSync(skillsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) => existsSync(join(skillsRoot, name, 'SKILL.md')))
+      .filter((name) => name !== SHARED_SKILL_SUPPORT.name)
+      .sort();
+
+    const registeredSkillNames = getBundledSkillRegistry()
+      .map((skill) => skill.name)
+      .sort();
+
+    expect(registeredSkillNames).toEqual(onDiskSkillNames);
+  });
+
+  test('registers the sdd-clarify skill for orchestrator use', () => {
+    expect(getBundledSkillRegistry()).toContainEqual(
+      expect.objectContaining({
+        name: 'sdd-clarify',
+        sourcePath: 'src/skills/sdd-clarify',
+        allowedRoles: ['orchestrator'],
+        purpose: 'sdd',
+      }),
+    );
   });
 });

@@ -101,6 +101,16 @@ describe('CUSTOM_SKILLS', () => {
     });
   });
 
+  test('registers the sdd-clarify skill for orchestrator use', () => {
+    expect(CUSTOM_SKILLS).toContainEqual({
+      name: 'sdd-clarify',
+      description:
+        'Resolve residual spec ambiguity in place before design, with a bounded taxonomy-driven clarification pass.',
+      allowedAgents: ['orchestrator'],
+      sourcePath: 'src/skills/sdd-clarify',
+    });
+  });
+
   test('registers the thoth-mem-agents skill for orchestrator and subagents', () => {
     expect(CUSTOM_SKILLS).toContainEqual({
       name: 'thoth-mem-agents',

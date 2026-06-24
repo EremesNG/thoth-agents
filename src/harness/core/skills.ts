@@ -97,6 +97,15 @@ export const BUNDLED_SKILL_REGISTRY = [
     purpose: 'sdd',
   },
   {
+    name: 'sdd-clarify',
+    description:
+      'Resolve residual spec ambiguity in place before design, with a bounded taxonomy-driven clarification pass.',
+    allowedRoles: ORCHESTRATOR_ONLY,
+    sourcePath: 'src/skills/sdd-clarify',
+    kind: 'skill',
+    purpose: 'sdd',
+  },
+  {
     name: 'sdd-design',
     description: 'Create technical solution design artifacts for changes',
     allowedRoles: ORCHESTRATOR_ONLY,

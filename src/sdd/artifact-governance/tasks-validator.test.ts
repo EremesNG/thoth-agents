@@ -50,6 +50,135 @@ describe('validateTasksArtifact', () => {
     ).toBe(false);
   });
 
+  test('accepts canonical annotation markers without findings', () => {
+    const result = validateTasksArtifact({
+      mode: 'hybrid',
+      content: createPlan(`## Phase 2: Core Implementation
+- [ ] 2.1 [P] Implement core logic — \`src/core/handler.ts\`
+  **[USN-2]** | Priority: P1
+  **Spec:** \`core-domain/Core Logic\`
+  **Independent Test:** Run the handler tests; they pass against the impl.
+  **Verification**:
+  - Run: \`pnpm test -- -t "core handler"\`
+  - Expected: All handler tests pass`),
+      path: 'openspec/changes/example/tasks.md',
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.findings).toHaveLength(0);
+  });
+
+  test('accepts the canonical sdd-tasks SKILL.md example annotations', () => {
+    const result = validateTasksArtifact({
+      mode: 'hybrid',
+      content: createPlan(`## Phase 1: Foundation
+- [ ] 1.1 Set up project structure — \`src/config/\`
+  **[USN-1]** | Priority: P1
+  **Spec:** \`config-domain/Project Structure\`
+  **Independent Test:** Inspect \`src/config/\` exists and typechecks in isolation.
+  **Verification**:
+  - Run: \`pnpm run typecheck\`
+  - Expected: No TypeScript errors in config files
+
+## Phase 3: Integration
+- [ ] 3.1 [P] Integrate with API — \`src/api/client.ts\`
+  **[USN-3]** | Priority: P2
+  **Spec:** \`api-domain/Client Integration\`
+  **Independent Test:** Run the API client lint in isolation.
+  **Verification**:
+  - Run: \`pnpm run lint src/api/\`
+  - Expected: No linting errors in API module`),
+      path: 'openspec/changes/example/tasks.md',
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.findings).toHaveLength(0);
+  });
+
+  test('warns on a lowercase parallel marker in the canonical slot', () => {
+    const result = validateTasksArtifact({
+      mode: 'hybrid',
+      content: createPlan(`## Phase 2: Parallel Work
+- [ ] 2.1 [p] Integrate with API
+  **Verification**:
+  - Run: \`pnpm run lint\`
+  - Expected: No linting errors`),
+      path: 'openspec/changes/example/tasks.md',
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        code: 'tasks.malformed-parallel-marker',
+        severity: 'warning',
+        line: 3,
+      }),
+    );
+  });
+
+  test('does not flag a bracketed token inside the task title', () => {
+    const result = validateTasksArtifact({
+      mode: 'hybrid',
+      content: createPlan(`## Phase 2: Parallel Work
+- [ ] 2.1 Document the [p] placeholder syntax
+  **Verification**:
+  - Run: \`pnpm run lint\`
+  - Expected: No linting errors`),
+      path: 'openspec/changes/example/tasks.md',
+    });
+
+    expect(result.valid).toBe(true);
+    expect(
+      result.findings.some(
+        (finding) => finding.code === 'tasks.malformed-parallel-marker',
+      ),
+    ).toBe(false);
+  });
+
+  test('warns on a malformed USN marker', () => {
+    const result = validateTasksArtifact({
+      mode: 'hybrid',
+      content: createPlan(`## Phase 1: Foundation
+- [ ] 1.1 Add validator contract
+  **[USN-two]** | Priority: P1
+  **Verification**:
+  - Run: \`pnpm test\`
+  - Expected: Validator assertions pass`),
+      path: 'openspec/changes/example/tasks.md',
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        code: 'tasks.malformed-usn-marker',
+        severity: 'warning',
+        line: 3,
+      }),
+    );
+  });
+
+  test('warns on a malformed Priority marker', () => {
+    const result = validateTasksArtifact({
+      mode: 'hybrid',
+      content: createPlan(`## Phase 1: Foundation
+- [ ] 1.1 Add validator contract
+  **[USN-1]** | Priority: high
+  **Verification**:
+  - Run: \`pnpm test\`
+  - Expected: Validator assertions pass`),
+      path: 'openspec/changes/example/tasks.md',
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        code: 'tasks.malformed-priority-marker',
+        severity: 'warning',
+        line: 3,
+      }),
+    );
+  });
+
   test('reports missing task states', () => {
     const result = validateTasksArtifact({
       mode: 'openspec',

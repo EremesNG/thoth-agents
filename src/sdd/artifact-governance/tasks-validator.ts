@@ -18,6 +18,19 @@ const VERIFICATION_RUN = /^- Run:\s+.+$/;
 const VERIFICATION_EXPECTED = /^- Expected:\s+.+$/;
 const ALLOWED_TASK_STATES = new Set([' ', 'x', '~', '-']);
 
+// Optional, config-gated annotation markers (see src/skills/sdd-tasks/SKILL.md).
+// Validated for well-formedness/placement ONLY when present; never mandated.
+const CANONICAL_PARALLEL_MARKER = '[P]';
+// A bracketed single-letter token in the canonical `[P]` slot (immediately
+// after the `N.M` number). Used to detect malformed variants such as `[p]`.
+const PARALLEL_MARKER_SLOT = /^\[[A-Za-z]\]/;
+// Any USN-like token; canonical form is exactly `[USN-<digits>]`.
+const USN_TOKEN = /\[USN-[^\]]*\]/g;
+const CANONICAL_USN_TOKEN = /^\[USN-\d+\]$/;
+// Priority label; canonical value is `P` followed by a positive integer.
+const PRIORITY_LABEL = /(?:^|\s|\|)Priority:\s*(\S+)/;
+const CANONICAL_PRIORITY_VALUE = /^P[1-9]\d*$/;
+
 export interface ValidateTasksArtifactRequest {
   mode: ArtifactGovernanceMode;
   content: string;
@@ -113,9 +126,24 @@ export function validateTasksArtifact(
         path: request.path,
         line: lineNumber,
       });
+    } else {
+      inspectParallelMarker(
+        numberingMatch[1],
+        taskBody,
+        lineNumber,
+        request,
+        findings,
+      );
     }
 
     const verificationLines = collectVerificationLines(lines, index + 1);
+    inspectAnnotationMarkers(
+      taskBody,
+      verificationLines,
+      lineNumber,
+      request,
+      findings,
+    );
     const verificationState = inspectVerificationBlock(verificationLines);
 
     if (!verificationState.hasHeader) {
@@ -300,6 +328,85 @@ function getSnapshotBySource(
       return sources.openspec;
     case null:
       return null;
+  }
+}
+
+function inspectParallelMarker(
+  numbering: string,
+  taskBody: string,
+  lineNumber: number,
+  request: ValidateTasksArtifactRequest,
+  findings: ArtifactGovernanceFinding[],
+): void {
+  // Anchor strictly to the canonical slot: the segment immediately after the
+  // `N.M` number and its following whitespace. This prevents `[P]`-like tokens
+  // elsewhere in the title from producing false positives.
+  const afterNumbering = taskBody.slice(numbering.length).replace(/^\s+/, '');
+  const slotMatch = PARALLEL_MARKER_SLOT.exec(afterNumbering);
+
+  if (slotMatch === null) {
+    return;
+  }
+
+  const token = slotMatch[0];
+
+  if (
+    token !== CANONICAL_PARALLEL_MARKER &&
+    token.toUpperCase() === CANONICAL_PARALLEL_MARKER
+  ) {
+    findings.push({
+      code: 'tasks.malformed-parallel-marker',
+      severity: 'warning',
+      message:
+        'Parallel marker must be the canonical uppercase `[P]` placed after the task number.',
+      path: request.path,
+      line: lineNumber,
+    });
+  }
+}
+
+function inspectAnnotationMarkers(
+  taskBody: string,
+  subLines: readonly string[],
+  lineNumber: number,
+  request: ValidateTasksArtifactRequest,
+  findings: ArtifactGovernanceFinding[],
+): void {
+  const segments = [taskBody, ...subLines];
+
+  for (const segment of segments) {
+    const usnMatches = segment.match(USN_TOKEN);
+
+    if (usnMatches !== null) {
+      for (const token of usnMatches) {
+        if (!CANONICAL_USN_TOKEN.test(token)) {
+          findings.push({
+            code: 'tasks.malformed-usn-marker',
+            severity: 'warning',
+            message:
+              'User-story marker must match the canonical `[USN-<n>]` form.',
+            path: request.path,
+            line: lineNumber,
+          });
+        }
+      }
+    }
+
+    const priorityMatch = PRIORITY_LABEL.exec(segment);
+
+    if (
+      priorityMatch !== null &&
+      !CANONICAL_PRIORITY_VALUE.test(priorityMatch[1])
+    ) {
+      findings.push({
+        code: 'tasks.malformed-priority-marker',
+        severity: 'warning',
+        message:
+          'Priority marker must use the canonical `Priority: P<n>` form (e.g. `P1`).',
+        path: request.path,
+        line: lineNumber,
+      });
+    }
   }
 }
 

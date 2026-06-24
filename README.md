@@ -314,7 +314,7 @@ clarifies intent, assesses scope, asks for user approval when needed, and routes
 work into direct implementation, accelerated SDD, or full SDD.
 
 ```text
-propose -> [spec || design] -> tasks -> apply -> verify -> archive
+propose -> spec -> clarify -> design -> tasks -> apply -> verify -> archive
 ```
 
 For moderate work, the accelerated path usually runs `propose -> tasks`. For

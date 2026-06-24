@@ -87,8 +87,8 @@ When skills are enabled, it also installs or copies:
 - Bundled `plan-reviewer`
 - Bundled `executing-plans`
 - Bundled SDD pipeline skills:
-  `sdd-init`, `sdd-propose`, `sdd-spec`, `sdd-design`, `sdd-tasks`,
-  `sdd-apply`, `sdd-verify`, `sdd-archive`
+  `sdd-init`, `sdd-propose`, `sdd-spec`, `sdd-clarify`, `sdd-design`,
+  `sdd-tasks`, `sdd-apply`, `sdd-verify`, `sdd-archive`, `sdd-constitution`
 - Recommended external skills such as `simplify` and `playwright-cli`
 
 ### Configuration Options

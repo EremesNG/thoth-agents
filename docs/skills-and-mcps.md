@@ -21,12 +21,14 @@ servers it registers, and the harness-specific delivery surfaces.
 | `sdd-init` | SDD initialization | Bootstrap OpenSpec structure and SDD context for a project | `deep` or `quick` |
 | `sdd-propose` | SDD planning | Create or update `proposal.md` for an OpenSpec change | `deep` |
 | `sdd-spec` | SDD specification | Write OpenSpec delta specifications | `deep` |
+| `sdd-clarify` | SDD specification | Resolve residual spec ambiguity in place before design (full pipeline only) | `deep` |
 | `sdd-design` | SDD design | Create `design.md` with architecture decisions and file changes | `deep` |
 | `sdd-tasks` | SDD planning | Generate phased `tasks.md` checklists from specs and design | `deep` |
 | `sdd-apply` | SDD execution | Execute assigned SDD tasks and return structured implementation results | `deep`, `quick`, or `designer` |
 | `executing-plans` | Execution orchestration | Track task execution with progress and verification checkpoints | `orchestrator` |
 | `sdd-verify` | Verification | Verify implementation against specs and persist a compliance report | `deep` |
 | `sdd-archive` | Archive | Merge completed deltas into main specs and archive the change | `deep` |
+| `sdd-constitution` | Governance | Guide a semver constitution amendment and Sync-Impact Report entry | `deep` |
 
 Agent assignments are descriptive. The coordinator decides which agent handles
 which work, and the harness controls how that skill is surfaced.
@@ -47,11 +49,16 @@ which work, and the harness controls how that skill is surfaced.
 - `sdd-init`
 - `sdd-propose`
 - `sdd-spec`
+- `sdd-clarify`
 - `sdd-design`
 - `sdd-tasks`
 - `sdd-apply`
 - `sdd-verify`
 - `sdd-archive`
+
+### Governance
+
+- `sdd-constitution`
 
 ## Recommended External Skills
 

@@ -137,11 +137,13 @@ scope calibration before coding.
 | `sdd-init` | Bootstrap OpenSpec structure and SDD context |
 | `sdd-propose` | Create or update `proposal.md` |
 | `sdd-spec` | Write OpenSpec delta specs with RFC 2119 requirements |
+| `sdd-clarify` | Resolve residual spec ambiguity in place before design (full pipeline only) |
 | `sdd-design` | Produce `design.md` with technical decisions |
 | `sdd-tasks` | Generate phased `tasks.md` checklists |
 | `sdd-apply` | Execute assigned checklist items and report progress |
 | `sdd-verify` | Build verification and compliance reports |
 | `sdd-archive` | Merge verified deltas into main specs and archive the change |
+| `sdd-constitution` | Amend `openspec/memory/constitution.md` (semver bump + Sync-Impact Report); invoked explicitly or via auto-suggest |
 
 ### Plan Reviewer
 

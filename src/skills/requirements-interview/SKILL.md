@@ -201,6 +201,7 @@ Hand off to:
 - **Explore**: delegate read-only repository discovery to explorer before artifact-producing phases.
 - **Propose**: [../sdd-propose/SKILL.md](../sdd-propose/SKILL.md)
 - **Spec** (full SDD only): [../sdd-spec/SKILL.md](../sdd-spec/SKILL.md)
+- **Clarify** (full SDD only): [../sdd-clarify/SKILL.md](../sdd-clarify/SKILL.md)
 - **Design** (full SDD only): [../sdd-design/SKILL.md](../sdd-design/SKILL.md)
 - **Tasks**: [../sdd-tasks/SKILL.md](../sdd-tasks/SKILL.md)
 

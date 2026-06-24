@@ -15,14 +15,21 @@ rules:
     - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
     - Use Given/When/Then scenarios
   design:
-    - Document architecture decisions with rationale
-    - Require a File Changes section
+    guidance:
+      - Document architecture decisions with rationale
+      - Require a File Changes section
+    sub_artifacts: false            # optional plan sub-artifacts (default off)
+    complexity_threshold:
+      affected_domains: 3           # >= N delta-spec domains
+      affected_files: 12            # >= N files in the File Changes section
+      external_research: true       # unresolved tech/library choice present
   tasks:
     guidance:
       - Group tasks by phase with hierarchical numbering
       - Require a per-task Verification block
     tdd: false                      # TDD ordering flag (sdd-tasks-format)
     traceability: true              # require [USN] + Spec: tag + Independent Test per task
+    parallel_markers: false         # [P] emission + executing-plans consumption (default off)
   apply:
     guidance:
       - Follow existing code patterns and conventions

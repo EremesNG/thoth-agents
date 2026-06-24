@@ -3,6 +3,12 @@ import { spawn } from '../utils/subprocess';
 
 let cachedOpenCodePath: string | null = null;
 
+// Per-probe timeout for isOpenCodeInstalled(). The detection loop tries ~24
+// candidate paths sequentially; without a bound a single hung/slow probe (shell
+// overhead on hosts without OpenCode, e.g. CI/Windows) can exceed the test
+// timeout. Kept small relative to project timeouts (project-id.ts uses 5_000ms).
+const OPENCODE_PROBE_TIMEOUT_MS = 1_500;
+
 type OpenCodeVersionInvocation = {
   command: string[];
   options: {
@@ -115,10 +121,28 @@ export async function isOpenCodeInstalled(): Promise<boolean> {
     try {
       const invocation = getOpenCodeVersionInvocation(opencodePath);
       const proc = spawn(invocation.command, invocation.options);
-      await proc.exited;
-      if (proc.exitCode === 0) {
-        cachedOpenCodePath = opencodePath;
-        return true;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = Symbol('timeout');
+      try {
+        const outcome = await Promise.race([
+          proc.exited.then(() => proc.exitCode),
+          new Promise<typeof timedOut>((resolve) => {
+            timer = setTimeout(() => resolve(timedOut), OPENCODE_PROBE_TIMEOUT_MS);
+          }),
+        ]);
+        if (outcome === timedOut) {
+          // A slow/hung probe must not block detection; terminate and move on.
+          proc.kill();
+          continue;
+        }
+        if (outcome === 0) {
+          cachedOpenCodePath = opencodePath;
+          return true;
+        }
+      } finally {
+        if (timer) {
+          clearTimeout(timer);
+        }
       }
     } catch {
       // Try next path

@@ -1,4 +1,28 @@
 import { describe, expect, test, vi } from 'vitest';
+
+// Mock process spawning before importing the module under test so the
+// host-independent assertions (isOpenCodeInstalled / isTmuxInstalled /
+// getOpenCodeVersion) never spawn real processes. The fake reports a clean
+// exit (exitCode 0) and an empty stdout stream that `new Response(...)` can read.
+vi.mock('../utils/subprocess', () => ({
+  spawn: vi.fn(() => ({
+    stdin: { write: vi.fn(), end: vi.fn() },
+    stdout: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    }),
+    stderr: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    }),
+    exited: Promise.resolve(0),
+    exitCode: 0,
+    kill: vi.fn(),
+  })),
+}));
+
 import {
   fetchLatestVersion,
   getOpenCodeVersion,

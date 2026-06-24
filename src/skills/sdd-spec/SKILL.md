@@ -28,6 +28,10 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 - A proposal is approved and must be converted into testable requirements
 - Existing change specs need to be expanded or corrected
 
+> Boundary: residual ambiguity that surfaces after spec authoring is resolved by
+> the `sdd-clarify` phase (between `spec` and `design`), not here — spec
+> authoring behavior itself is unchanged.
+
 ## Prerequisites
 
 - `change-name`

@@ -57,9 +57,13 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
    to `openspec/changes/archive/YYYY-MM-DD-{change-name}/`.
 6. Create an audit trail report summarizing merged domains, archive location,
    verification lineage, and any mode-based skips.
-7. In `thoth-mem` mode, do not create or move `openspec/` artifacts; record the
+7. Apply the governance-touched heuristic from
+   `_shared/openspec-convention.md` > Constitution Governance > Amendment
+   Auto-Suggest. When it matches, surface the shared report-only
+   `sdd-constitution` suggestion. This is advisory and MUST NOT block archival.
+8. In `thoth-mem` mode, do not create or move `openspec/` artifacts; record the
    archive result only in the audit trail.
-8. If the selected mode includes thoth-mem, persist the audit trail with:
+9. If the selected mode includes thoth-mem, persist the audit trail with:
 
    Use the memory tool binding for `mem_save` with the canonical SDD topic key
    and required metadata fields: `title`, `topic_key`, `type`, `project`,
@@ -74,6 +78,7 @@ Return:
 - `Topic Key`: `sdd/{change-name}/archive-report`
 - `Merged Specs`: list of domains updated in `openspec/specs/`
 - `Audit Summary`: concise bullets
+- `Constitution Suggestion`: surfaced or none
 - `Status`: archived or blocked
 
 ## Rules

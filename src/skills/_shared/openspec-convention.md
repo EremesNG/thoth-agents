@@ -57,8 +57,12 @@ openspec/
     └── {change-name}/
         ├── proposal.md
         ├── specs/
-        │   └── {domain}/spec.md
+        │   └── {domain}/spec.md          # clarified in place by the clarify phase
         ├── design.md
+        ├── research.md                   # optional sub-artifact (gated)
+        ├── data-model.md                 # optional sub-artifact (gated)
+        ├── contracts/                    # optional sub-artifact subdir (gated)
+        ├── quickstart.md                 # optional sub-artifact (gated)
         ├── tasks.md
         └── verify-report.md
 ```
@@ -70,7 +74,8 @@ openspec/
 | Proposal | `openspec/changes/{change-name}/proposal.md` | Intent, scope, approach |
 | Delta specs | `openspec/changes/{change-name}/specs/{domain}/spec.md` | Use one file per domain |
 | Main specs | `openspec/specs/{domain}/spec.md` | Source of truth after archive |
-| Design | `openspec/changes/{change-name}/design.md` | Architecture and file plan |
+| Design | `openspec/changes/{change-name}/design.md` | Architecture and file plan; always produced |
+| Sub-artifacts (optional, gated) | `openspec/changes/{change-name}/{research.md,data-model.md,contracts/,quickstart.md}` | Optional design sub-artifacts; gated by `rules.design.sub_artifacts` + `complexity_threshold` |
 | Tasks | `openspec/changes/{change-name}/tasks.md` | Checkbox checklist updated by apply |
 | Verify report | `openspec/changes/{change-name}/verify-report.md` | Compliance matrix and evidence |
 | Requirements checklist | `openspec/changes/{change-name}/checklists/requirements.md` | Domain-typed requirement-quality gate, consumed before tasks |
@@ -104,7 +109,13 @@ above for filesystem artifact recovery.
 
 - `proposal.md` explains why the change exists.
 - `spec.md` uses RFC 2119 keywords and Given/When/Then scenarios (full pipeline only).
+- The `clarify` phase (full pipeline only) resolves residual spec ambiguity in
+  place between `spec` and `design`, editing the delta `spec.md` files under the
+  same path and re-saving the `sdd/{change-name}/spec` key; it produces no new
+  artifact.
 - `design.md` explains how the change will be implemented (full pipeline only).
+  It MAY be accompanied by optional, gated sub-artifacts (`research.md`,
+  `data-model.md`, `contracts/`, `quickstart.md`).
 - `tasks.md` is phase-based and uses Markdown checkboxes.
 - `verify-report.md` maps acceptance criteria to executed evidence: spec
   scenarios in full pipeline, proposal success criteria in accelerated pipeline.
@@ -135,14 +146,21 @@ rules:
     - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
     - Use Given/When/Then scenarios
   design:
-    - Document architecture decisions with rationale
-    - Require a File Changes section
+    guidance:
+      - Document architecture decisions with rationale
+      - Require a File Changes section
+    sub_artifacts: false        # optional design sub-artifacts (default off)
+    complexity_threshold:       # author-evaluated eligibility triggers (OR)
+      affected_domains: 3
+      affected_files: 12
+      external_research: true
   tasks:
     guidance:
       - Group tasks by phase with hierarchical numbering
       - Require a per-task Verification block
     tdd: false                  # TDD ordering flag (sdd-tasks-format)
     traceability: true          # require [USN] + Spec: tag + Independent Test per task
+    parallel_markers: false     # [P] emission + executing-plans consumption (default off)
   apply:
     guidance:
       - Follow existing code patterns and conventions
@@ -175,6 +193,18 @@ Treat `rules` entries as mandatory phase-specific constraints whenever present.
 Missing `enforce_*` keys default to enforcing; a section that sets its
 `enforce_*` key to `false` downgrades the corresponding block to a report.
 
+## Parallel Task Markers
+
+`sdd-tasks` MAY annotate a task with an optional `[P]` marker placed AFTER the
+`N.M` number (`- [ ] 2.1 [P] Title`), never before it. Placement after the
+number keeps the `tasks-validator` `TASK_NUMBERING` regex green with no
+validator change. `[P]` declares the task is dependency-free of the other
+`[P]`-marked tasks in the SAME phase and targets the same execution agent;
+`executing-plans` consumes a contiguous `[P]` run as one explicit parallel batch
+(recommending worktree isolation for overlapping writers). Both emission and
+consumption are gated by `rules.tasks.parallel_markers` (default off);
+back-compat: an absent marker or disabled toggle executes exactly as today.
+
 ## Constitution Governance
 
 The project constitution lives at `openspec/memory/constitution.md` and holds
@@ -203,7 +233,56 @@ governance are adopted.
   logged with the violated principle. Gated by `rules.constitution`; when
   `enforce_check: false`, the check does not block and the skip is noted.
 
-### config.yaml mechanism-section backfill
+    ### Constitution Amendment
+
+    The AMENDMENT side of the lifecycle is performed by the `sdd-constitution`
+    skill. It executes a guided, human-confirmed semver bump (reusing the Semver
+    bump policy above), updates the `Last-Amended` date, and PREPENDS one
+    `## Sync-Impact Report` entry in the format
+    `- X.Y.Z | change type | principles touched | downstream gates/artifacts affected`
+    (newest entry on top).
+
+    - The ONLY writable target of the amendment is
+      `openspec/memory/constitution.md`.
+    - The bump is human-confirmed via the harness blocking-input surface
+      (AskUserQuestion-equivalent) BEFORE any version is written. There is no
+      runtime parser and no auto-bump; the level is never selected automatically.
+    - When no principle change is warranted the skill performs a reported no-op and
+      writes nothing.
+    - It preserves all existing content and ALL prior Sync-Impact Report entries;
+      it only prepends the new entry and updates the version/date fields.
+
+    ### Read-Only Assets and Report-Only Propagation
+
+    When the plugin is INSTALLED in a harness (OpenCode / Codex), bundled skills are
+    READ-ONLY assets. The `sdd-constitution` skill MUST NOT edit, create, or delete
+    any other `SKILL.md`, any file under `src/`, or any template — its single
+    writable target is the end-user `openspec/memory/constitution.md`.
+
+    Because the enforcement gates (`sdd-design`, `plan-reviewer`) read the
+    constitution LIVE, there are NO static principle copies to realign. Propagation
+    is therefore report-only: the Sync-Impact Report entry DOCUMENTS which
+    downstream gates consume the changed principles, and the skill FLAGS any
+    in-flight change `design.md` / `tasks.md` that reference now-changed principles
+    for HUMAN re-review instead of editing them.
+
+    ### Amendment Auto-Suggest (shared snippet)
+
+    `sdd-verify` and `sdd-archive` REFERENCE this single canonical snippet (they do
+    NOT inline it) to surface a report-only amendment suggestion.
+
+    > **Constitution amendment auto-suggest (report-only).** A completed change is
+    > "governance-touching" when ANY holds: its `proposal.md` Impact/Affected
+    > Areas, `design.md`, `tasks.md`, or delta `spec.md` reference
+    > `openspec/memory/constitution.md`, "the constitution," or a named principle;
+    > OR it modifies `src/skills/_shared/openspec-convention.md` (Constitution
+    > Governance) or `openspec/memory/constitution.md`; OR any artifact names a
+    > constitution principle by title. When governance-touching, surface a
+    > NON-BLOCKING suggestion: "This change touched governance/principles —
+    > consider running `sdd-constitution` to record a constitution amendment." This
+    > suggestion is advisory only; it MUST NOT block verification or archival.
+
+    ### config.yaml mechanism-section backfill
 
 `sdd-init` realignment backfills the `config.yaml` mechanism sections
 (`constitution`, `consistency`, `requirements_quality`, `clarification`,

@@ -89,6 +89,17 @@ Before dispatching a task or same-agent batch:
 
 1. Select the next ready task, or the next consecutive ready tasks that target
    the same execution agent and can safely be handled in one dispatch.
+   - **`[P]` parallel batch (toggle-gated)**: when `rules.tasks.parallel_markers`
+     is enabled, consume contiguous `[P]`-marked tasks WITHIN the same phase that
+     target the same execution role as one explicit parallel batch (an upgrade of
+     the implicit same-agent grouping, not a cross-role scheduler). For
+     `[P]` tasks that touch overlapping files, recommend worktree isolation per
+     concurrent writer (or serialize them) to avoid write conflicts; a harness
+     without concurrent dispatch treats the `[P]` batch as an annotated
+     sequential batch and reports the capability gap.
+   - **Back-compat fallback**: when `parallel_markers` is off OR no `[P]` markers
+     are present, fall back to today's implicit consecutive + same-agent grouping
+     unchanged.
 2. Edit the canonical tasks artifact and change each selected task from
    `- [ ]` to `- [~]`.
 3. If the mode is `thoth-mem` or `hybrid`, re-persist the updated tasks

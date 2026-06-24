@@ -33,8 +33,9 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 - SDD is needed but `openspec/` is not initialized
 - `openspec/` exists but is stale: missing `config.yaml` mechanism sections
   (`constitution` / `consistency` / `requirements_quality` / `clarification` /
-  `handoffs`), missing `tasks.traceability` / `verify` toggles, or a missing
-  `openspec/memory/constitution.md`
+  `handoffs`), missing `tasks.traceability` / `tasks.parallel_markers` /
+  `design.sub_artifacts` / `design.complexity_threshold` / `verify` toggles, or a
+  missing `openspec/memory/constitution.md`
 - A new project needs initial OpenSpec conventions
 - The team wants detected stack/context captured before `sdd-propose`
 
@@ -83,6 +84,8 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
         - missing `config.yaml` mechanism sections: `constitution`,
           `consistency`, `requirements_quality`, `clarification`, `handoffs`
         - missing `config.yaml` toggles: `rules.tasks.traceability`,
+          `rules.tasks.parallel_markers`, `rules.design.sub_artifacts`,
+          `rules.design.complexity_threshold`,
           `rules.verify` (`test_command` / `build_command` /
           `coverage_threshold`)
         - missing `openspec/memory/constitution.md`
@@ -127,14 +130,21 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
            - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
            - Use Given/When/Then scenarios
          design:
-           - Document architecture decisions with rationale
-           - Require a File Changes section
+           guidance:
+             - Document architecture decisions with rationale
+             - Require a File Changes section
+           sub_artifacts: false        # optional design sub-artifacts (default off)
+           complexity_threshold:       # author-evaluated eligibility triggers (OR)
+             affected_domains: 3
+             affected_files: 12
+             external_research: true
          tasks:
            guidance:
              - Group tasks by phase with hierarchical numbering
              - Keep tasks small enough to complete in one session
            tdd: false                  # TDD ordering flag (sdd-tasks-format)
            traceability: true          # require [USN] + Spec: tag + Independent Test per task
+           parallel_markers: false     # [P] emission + executing-plans consumption (default off)
          apply:
            guidance:
              - Follow existing code patterns and conventions

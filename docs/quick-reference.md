@@ -182,7 +182,7 @@ These are not bundled in `src/skills/`, but they pair well with the workflow.
 Primary flow:
 
 ```text
-sdd-init (if needed) -> propose -> [spec || design] -> tasks -> apply -> verify -> archive
+sdd-init (if needed) -> sdd-explore -> propose -> spec -> clarify -> design -> tasks -> apply -> verify -> archive
 ```
 
 Routing is based on complexity dimensions, not file count:

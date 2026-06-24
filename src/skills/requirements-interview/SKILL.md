@@ -147,7 +147,7 @@ user to confirm it:
 - 1 dimension is High in logic depth, context span, or discovery need
 - But contract sensitivity and failure cost are not High
 
-**Full SDD** (`sdd-explore -> propose -> spec -> design -> tasks`) — when any of:
+**Full SDD** (`sdd-explore -> propose -> spec -> clarify -> design -> tasks`) — when any of:
 - Contract sensitivity is High
 - Failure cost is High
 - 2 or more dimensions are High

@@ -8,7 +8,7 @@ thoth-agents.
 The full pipeline is:
 
 ```text
-sdd-init (if openspec/ missing) -> sdd-explore -> propose -> spec -> design -> tasks -> apply -> verify -> archive
+sdd-init (if openspec/ missing) -> sdd-explore -> propose -> spec -> clarify -> design -> tasks -> apply -> verify -> archive
 ```
 
 The requirements interview runs before this when the request is ambiguous, open-ended, or too

@@ -78,6 +78,32 @@ technical write-capable role such as `deep`.
    and required metadata fields: `title`, `topic_key`, `type`, `project`,
    `scope`, and `content`.
 
+## Optional Sub-Artifacts
+
+Beyond the always-present `design.md`, `sdd-design` MAY produce optional plan
+sub-artifacts. They are gated by BOTH conditions, config as the hard floor and
+author judgment within the gate:
+
+- **Hard gate (config)**: `rules.design.sub_artifacts` MUST be `true`. When
+  `false` or absent, NO sub-artifacts are ever produced (back-compat default).
+- **Complexity gate (config threshold, author-evaluated)**: when enabled, the
+  change MUST meet `rules.design.complexity_threshold` (e.g. `affected_domains`,
+  `affected_files`, `external_research` — eligible when ANY trigger is met). The
+  threshold is the reviewable hard floor; the author still selects which (if any)
+  sub-artifacts add value within the gate. An eligible change MAY still produce
+  zero sub-artifacts.
+
+`design.md` is ALWAYS produced regardless of the gate. The optional types are:
+
+- `research.md` — only when there is genuine unknown investigation.
+- `data-model.md` — only when there is a non-trivial data shape.
+- `contracts/` (subdir) — only when there are interfaces to pin; follow the
+  `checklists/` subdir as the precedent for change-dir subdirectory layout.
+- `quickstart.md` — only when a runnable smoke path helps.
+
+Note: the `clarify` phase now precedes design (`spec -> clarify -> design`), so
+design consumes the already-clarified spec.
+
 ## Constitution Check and Handoff Hints
 
     ### Consume upstream handoffHints

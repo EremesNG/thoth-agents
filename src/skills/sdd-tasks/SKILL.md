@@ -90,7 +90,10 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
       - Expected: All handler tests pass
 
     ## Phase 3: Integration
-    - [ ] 3.1 Integrate with API — `src/api/client.ts`
+    - [ ] 3.1 [P] Integrate with API — `src/api/client.ts`
+      **[USN-3]** | Priority: P2
+      **Spec:** `api-domain/Client Integration`
+      **Independent Test:** Run the API client lint in isolation.
       **Verification**:
       - Run: `pnpm run lint src/api/`
       - Expected: No linting errors in API module
@@ -150,6 +153,19 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
     disabled, impose no test-first ordering constraint. `plan-reviewer` enforces
     this ordering when the flag is enabled.
     
+    ### `[P]` parallel markers
+
+    When `rules.tasks.parallel_markers` is enabled in `config.yaml`, an optional
+    `[P]` marker MAY be placed AFTER the `N.M` number (`- [ ] 2.1 [P] Title`),
+    never before it (`[P] 2.1` would break the task-numbering validator). Emit
+    `[P]` ONLY on tasks that are intra-phase, dependency-free of every other task
+    in the same phase, and assigned to the SAME execution agent — never across
+    phases and never on tasks with intra-phase dependencies. `[P]` is
+    back-compatible: when `parallel_markers` is disabled or the marker is absent,
+    the plan executes exactly as it does today (absence = today's behavior). It
+    annotates an explicit parallel batch; it does not change `N.M`, `[USN]`, the
+    `Spec:` tag, or introduce flat `T001` ids.
+
     ### Consume upstream handoffHints
     
     At task-generation start, surface the spec/design phases' `handoffHints` and

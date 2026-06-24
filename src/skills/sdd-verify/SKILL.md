@@ -100,6 +100,11 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
    `## Round` field and the `Round` return field. The orchestrator treats this
    `round N` marker as the source of truth for the verify-loop round counter
    when enforcing the round bound across iterations.
+9. Apply the governance-touched heuristic from
+   `_shared/openspec-convention.md` > Constitution Governance > Amendment
+   Auto-Suggest. When it matches, surface the shared report-only
+   `sdd-constitution` suggestion. This is advisory and MUST NOT change the
+   verdict or block verification.
 
 ## Output Format
 
@@ -112,6 +117,7 @@ Return:
 - `Verdict`: pass, pass with warnings, or fail
 - `Compliance Summary`: compliant vs total scenarios
 - `Critical Issues`: anchored compact lines (`id — file:line — scenario/criterion — fix`), one per issue, or `None`
+- `Constitution Suggestion`: surfaced or none
 
 ## Rules
 

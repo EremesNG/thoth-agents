@@ -274,6 +274,7 @@ describe('semantic prompt section rendering', () => {
     );
     expect(prompt).toContain('Plan gate: after tasks, ask with `question`');
     expect(prompt).toContain('<sdd-delegation-matrix>');
+    expect(prompt).toContain('sdd-clarify -> @deep');
     expect(prompt).toContain('sdd-tasks -> @quick');
     expect(prompt).toContain('sdd-verify -> @oracle');
     expect(prompt).toContain('persistence: @quick');

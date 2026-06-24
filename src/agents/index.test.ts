@@ -336,7 +336,7 @@ describe('orchestrator agent', () => {
     // SDD awareness / phase order must remain in the orchestrator prompt.
     expect(prompt).toContain('requirements-interview');
     expect(prompt).toContain('Scope-faithful invariant');
-    expect(prompt).toMatch(/propose\s*->\s*spec\s*->\s*design\s*->\s*tasks/i);
+    expect(prompt).toMatch(/spec\s*->\s*clarify\s*->\s*design\s*->\s*tasks/i);
     expect(prompt).toContain('dispatch sdd-init first');
     const forbiddenBuildPolicy = [
       'Never require',

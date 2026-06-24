@@ -8,6 +8,7 @@ export type SddPhaseId =
   | 'explore'
   | 'proposal'
   | 'spec'
+  | 'clarify'
   | 'design'
   | 'tasks'
   | 'plan-review'
@@ -53,6 +54,7 @@ export const FULL_SDD_PHASE_ORDER = [
   'explore',
   'proposal',
   'spec',
+  'clarify',
   'design',
   'tasks',
   'plan-review',
@@ -137,10 +139,27 @@ export const SDD_PHASES = [
     ],
   },
   {
-    id: 'design',
+    id: 'clarify',
     order: 5,
     requiredFor: ['full'],
-    prerequisites: ['proposal', 'spec'],
+    prerequisites: ['spec'],
+    producesArtifact: false,
+    owner: 'write-capable-agent',
+    artifactSkill: 'sdd-clarify',
+    defaultAgentRole: 'deep',
+    supportingAgentRoles: ['oracle'],
+    delegationReason:
+      'Resolve residual spec ambiguity in place before design consumes it.',
+    handoffHints: [
+      'Preserve clarified resolutions written back into the spec.',
+      'Keep the requirements-quality checklist re-validated before design.',
+    ],
+  },
+  {
+    id: 'design',
+    order: 6,
+    requiredFor: ['full'],
+    prerequisites: ['proposal', 'clarify'],
     producesArtifact: true,
     owner: 'write-capable-agent',
     artifactSkill: 'sdd-design',
@@ -156,7 +175,7 @@ export const SDD_PHASES = [
   },
   {
     id: 'tasks',
-    order: 6,
+    order: 7,
     requiredFor: ['accelerated', 'full'],
     prerequisites: ['proposal', 'spec', 'design'],
     producesArtifact: true,
@@ -169,7 +188,7 @@ export const SDD_PHASES = [
   },
   {
     id: 'plan-review',
-    order: 7,
+    order: 8,
     requiredFor: ['accelerated', 'full'],
     prerequisites: ['tasks'],
     producesArtifact: false,
@@ -181,7 +200,7 @@ export const SDD_PHASES = [
   },
   {
     id: 'implementation-confirmation',
-    order: 8,
+    order: 9,
     requiredFor: ['accelerated', 'full'],
     prerequisites: ['plan-review'],
     producesArtifact: false,
@@ -192,7 +211,7 @@ export const SDD_PHASES = [
   },
   {
     id: 'apply',
-    order: 9,
+    order: 10,
     requiredFor: ['direct', 'accelerated', 'full'],
     prerequisites: ['implementation-confirmation'],
     producesArtifact: false,
@@ -204,7 +223,7 @@ export const SDD_PHASES = [
   },
   {
     id: 'verify',
-    order: 10,
+    order: 11,
     requiredFor: ['accelerated', 'full'],
     prerequisites: ['apply'],
     producesArtifact: true,
@@ -219,7 +238,7 @@ export const SDD_PHASES = [
   },
   {
     id: 'archive',
-    order: 11,
+    order: 12,
     requiredFor: ['accelerated', 'full'],
     prerequisites: ['verify'],
     producesArtifact: true,
@@ -238,7 +257,7 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
     'Scope-faithful invariant: accepted user intent/scope is preserved; unresolved affected areas remain explicit as deferred/discovery follow-up.',
     'Direct implementation is reserved for low-complexity work.',
     'Accelerated SDD follows explore -> proposal -> tasks before execution.',
-    'Full SDD follows explore -> proposal -> spec -> design -> tasks before execution.',
+    'Full SDD follows explore -> proposal -> spec -> clarify -> design -> tasks before execution.',
   ],
   artifactRules: [
     'SDD delegation defaults are phase-specific: sdd-propose, sdd-spec, and sdd-design default to deep.',

@@ -12,6 +12,63 @@ describe('SDD workflow contract', () => {
   test('models the full SDD phase order through archive', () => {
     expect(getRequiredSddPhaseOrder('full')).toEqual([...FULL_SDD_PHASE_ORDER]);
     expect(getRequiredSddPhaseOrder('full')).toContain('explore');
+
+    for (const order of [
+      [...FULL_SDD_PHASE_ORDER],
+      getRequiredSddPhaseOrder('full'),
+    ]) {
+      expect(order).toContain('clarify');
+      expect(order.indexOf('clarify')).toBe(order.indexOf('spec') + 1);
+      expect(order.indexOf('clarify')).toBe(order.indexOf('design') - 1);
+    }
+  });
+
+  test('models the clarify phase contract between spec and design', () => {
+    expect(getSddPhase('clarify')).toMatchObject({
+      requiredFor: ['full'],
+      prerequisites: ['spec'],
+      producesArtifact: false,
+      owner: 'write-capable-agent',
+      artifactSkill: 'sdd-clarify',
+      defaultAgentRole: 'deep',
+    });
+
+    const hints = getSddPhase('clarify').handoffHints;
+    expect(Array.isArray(hints)).toBe(true);
+    expect((hints as string[]).length).toBeGreaterThan(0);
+  });
+
+  test('requires clarify before design and renumbers design prerequisites', () => {
+    expect(getSddPhase('design').prerequisites).toEqual([
+      'proposal',
+      'clarify',
+    ]);
+
+    expect(
+      canEnterSddPhase({
+        pipeline: 'full',
+        target: 'design',
+        completed: ['requirements-interview', 'explore', 'proposal', 'spec'],
+      }),
+    ).toBe(false);
+
+    expect(
+      canEnterSddPhase({
+        pipeline: 'full',
+        target: 'design',
+        completed: [
+          'requirements-interview',
+          'explore',
+          'proposal',
+          'spec',
+          'clarify',
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  test('omits clarify from the accelerated pipeline order', () => {
+    expect(getRequiredSddPhaseOrder('accelerated')).not.toContain('clarify');
   });
 
   test('requires explore, spec, and design before full-pipeline tasks', () => {

@@ -91,6 +91,16 @@ describe('CUSTOM_SKILLS', () => {
     });
   });
 
+  test('registers the sdd-constitution skill for orchestrator use', () => {
+    expect(CUSTOM_SKILLS).toContainEqual({
+      name: 'sdd-constitution',
+      description:
+        'Guide a semver constitution amendment and Sync-Impact Report entry.',
+      allowedAgents: ['orchestrator'],
+      sourcePath: 'src/skills/sdd-constitution',
+    });
+  });
+
   test('registers the thoth-mem-agents skill for orchestrator and subagents', () => {
     expect(CUSTOM_SKILLS).toContainEqual({
       name: 'thoth-mem-agents',

@@ -31,6 +31,25 @@ describe('validateTasksArtifact', () => {
     expect(result.findings).toHaveLength(0);
   });
 
+  test('accepts a [P] parallel marker placed after the task number', () => {
+    const result = validateTasksArtifact({
+      mode: 'hybrid',
+      content: createPlan(`## Phase 2: Parallel Work
+- [ ] 2.1 [P] Integrate with API
+  **Verification**:
+  - Run: \`pnpm run lint\`
+  - Expected: No linting errors`),
+      path: 'openspec/changes/example/tasks.md',
+    });
+
+    expect(result.valid).toBe(true);
+    expect(
+      result.findings.some(
+        (finding) => finding.code === 'tasks.malformed-numbering',
+      ),
+    ).toBe(false);
+  });
+
   test('reports missing task states', () => {
     const result = validateTasksArtifact({
       mode: 'openspec',

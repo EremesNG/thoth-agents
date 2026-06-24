@@ -145,6 +145,15 @@ export const BUNDLED_SKILL_REGISTRY = [
     kind: 'skill',
     purpose: 'sdd',
   },
+  {
+    name: 'sdd-constitution',
+    description:
+      'Guide a semver constitution amendment and Sync-Impact Report entry.',
+    allowedRoles: ORCHESTRATOR_ONLY,
+    sourcePath: 'src/skills/sdd-constitution',
+    kind: 'skill',
+    purpose: 'sdd',
+  },
 ] as const satisfies readonly SkillRegistryEntry[];
 
 export const SKILL_REGISTRY = [

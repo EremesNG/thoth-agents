@@ -189,7 +189,7 @@ function persistenceSddRole(id: SddPhaseContract['id']): string {
 }
 
 function renderSddDelegationMatrix(): string {
-  return `<sdd-delegation-matrix>\n- sdd-init -> ${primarySddRole('init')} (+${supportSddRoles('init')}, if openspec/ missing); sdd-explore -> ${primarySddRole('explore')} (+${supportSddRoles('explore')})\n- sdd-propose/sdd-spec/sdd-design -> ${primarySddRole('proposal')}; sdd-tasks -> ${primarySddRole('tasks')} (fallback: ${alternateSddRoles('tasks')})\n- plan-reviewer -> ${primarySddRole('plan-review')}; sdd-apply -> ${primarySddRole('apply')} (fallback: ${alternateSddRoles('apply')}); sdd-verify -> ${primarySddRole('verify')} (persistence: ${persistenceSddRole('verify')}); sdd-archive -> ${primarySddRole('archive')}\n</sdd-delegation-matrix>`;
+  return `<sdd-delegation-matrix>\n- sdd-init -> ${primarySddRole('init')} (+${supportSddRoles('init')}, if openspec/ missing); sdd-explore -> ${primarySddRole('explore')} (+${supportSddRoles('explore')})\n- sdd-propose/sdd-spec/sdd-design -> ${primarySddRole('proposal')}; sdd-clarify -> ${primarySddRole('clarify')}; sdd-tasks -> ${primarySddRole('tasks')} (fallback: ${alternateSddRoles('tasks')})\n- plan-reviewer -> ${primarySddRole('plan-review')}; sdd-apply -> ${primarySddRole('apply')} (fallback: ${alternateSddRoles('apply')}); sdd-verify -> ${primarySddRole('verify')} (persistence: ${persistenceSddRole('verify')}); sdd-archive -> ${primarySddRole('archive')}\n</sdd-delegation-matrix>`;
 }
 
 function specialistSections({
@@ -348,7 +348,7 @@ Scope-faithful invariant: accepted user intent and scope must not be silently na
 Routes:
 - Direct implementation for low-complexity work.
 - Accelerated SDD: explore -> propose -> tasks.
-- Full SDD: explore -> propose -> spec -> design -> tasks.
+- Full SDD: explore -> propose -> spec -> clarify -> design -> tasks.
 
 ${renderSddDelegationMatrix()}
 

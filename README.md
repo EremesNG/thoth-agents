@@ -1,6 +1,7 @@
 <div align="center">
-  <img src="img/team.png" alt="thoth-agents agents" width="420">
-  <p><i>Seven specialized agents, one delegate-first workflow across supported harnesses.</i></p>
+<img src="img/team.png" alt="thoth-agents agents" width="420">
+
+<p><i>Seven specialized agents, one delegate-first workflow across supported harnesses.</i></p>
   <p><b>thoth-agents</b> - Multi-harness orchestration - Thoth-mem persistence - Bundled SDD pipeline</p>
   <p>
     <a href="https://github.com/EremesNG/thoth-agents/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/EremesNG/thoth-agents/ci.yml?branch=master&label=CI" alt="CI status"></a>
@@ -50,11 +51,12 @@ hooks, MCP, skills, and per-agent tool permissions.
 
 ## Harness Support
 
-| Harness | Status | Setup path | Notes |
-| --- | --- | --- | --- |
-| OpenCode | Stable default | `npx thoth-agents@latest install` or `npx thoth-agents@latest install --agent=opencode` | Native plugin config, native `task` delegation, optional tmux panes, OpenCode provider auth. |
-| Codex | Supported explicit path | `npx thoth-agents@latest install --agent=codex` | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires `/plugins` and `/hooks` trust review. Some governance remains instruction-level. |
-| Claude Code | Supported first-class path | `npx thoth-agents@latest install --agent=claude` | Installs one Claude Code plugin: six specialist subagents (`Task(subagent_type: ...)`), an `orchestrator` agent activated as the main thread via `settings.json`, `.mcp.json`, and bundled skills. Role permissions are enforced by subagent `tools`. |
+
+| Harness     | Status                     | Setup path                                                                              | Notes                                                                                                                                                                                                                                                 |
+| ----------- | -------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenCode    | Stable default             | `npx thoth-agents@latest install` or `npx thoth-agents@latest install --agent=opencode` | Native plugin config, native`task` delegation, optional tmux panes, OpenCode provider auth.                                                                                                                                                           |
+| Codex       | Supported explicit path    | `npx thoth-agents@latest install --agent=codex`                                         | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires`/plugins` and `/hooks` trust review. Some governance remains instruction-level.                                                                            |
+| Claude Code | Supported first-class path | `npx thoth-agents@latest install --agent=claude`                                        | Installs one Claude Code plugin: six specialist subagents (`Task(subagent_type: ...)`), an `orchestrator` agent activated as the main thread via `settings.json`, `.mcp.json`, and bundled skills. Role permissions are enforced by subagent `tools`. |
 
 OpenCode can load the plugin with:
 
@@ -323,14 +325,15 @@ artifacts before task execution.
 
 Artifacts can be persisted in four modes:
 
-| Mode | Writes to | Cost | Use when |
-| --- | --- | --- | --- |
-| `thoth-mem` | Memory only | Low | Fast iteration without repo planning files |
-| `openspec` | `openspec/` files only | Medium | Reviewable planning artifacts in the repo |
-| `hybrid` | Both | High | Maximum durability; default |
-| `none` | Neither | Lowest | Ephemeral iterations, no persistence |
 
-Thoth-mem is the local memory MCP used for durable observations, architectural
+| Mode        | Writes to              | Cost   | Use when                                   |
+| ----------- | ---------------------- | ------ | ------------------------------------------ |
+| `thoth-mem` | Memory only            | Low    | Fast iteration without repo planning files |
+| `openspec`  | `openspec/` files only | Medium | Reviewable planning artifacts in the repo  |
+| `hybrid`    | Both                   | High   | Maximum durability; default                |
+| `none`      | Neither                | Lowest | Ephemeral iterations, no persistence       |
+
+[Thoth-mem](https://github.com/EremesNG/thoth-mem) is the local memory MCP used for durable observations, architectural
 decisions, SDD artifacts, and session summaries. The core retrieval pattern is:
 
 1. `mem_recall(mode="compact")` for compact candidate records
@@ -355,12 +358,13 @@ planning/execution, verification, and archiving. It also registers MCP servers
 for docs research, public code search, and local memory where the harness
 supports that delivery surface.
 
-| Surface | Shared concept | OpenCode binding | Codex binding | Claude Code binding |
-| --- | --- | --- | --- | --- |
-| Skills | Requirements, SDD, review, execution workflows | Copied into the OpenCode skills directory when `--skills=yes` | Packaged as plugin-bundled skills for the Personal plugin source | Bundled in the plugin `skills/` directory |
-| MCPs | `exa`, `context7`, `grep_app`, `thoth_mem` | Registered by generated OpenCode plugin config | Packaged/configured only on validated Codex surfaces | Bundled in the plugin `.mcp.json` (`type: "http"` for URL servers) |
-| Delegation | Seven-role specialist workflow | Native `task` tool | Custom agents plus prompt/plugin guidance | Native `Task(subagent_type: ...)` over auto-discovered subagents |
-| Blocking choices | Use a structured question surface | OpenCode `question` tool | `request_user_input` when enabled and available | `AskUserQuestion` tool |
+
+| Surface          | Shared concept                                 | OpenCode binding                                             | Codex binding                                                    | Claude Code binding                                               |
+| ---------------- | ---------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Skills           | Requirements, SDD, review, execution workflows | Copied into the OpenCode skills directory when`--skills=yes` | Packaged as plugin-bundled skills for the Personal plugin source | Bundled in the plugin`skills/` directory                          |
+| MCPs             | `exa`, `context7`, `grep_app`, `thoth_mem`     | Registered by generated OpenCode plugin config               | Packaged/configured only on validated Codex surfaces             | Bundled in the plugin`.mcp.json` (`type: "http"` for URL servers) |
+| Delegation       | Seven-role specialist workflow                 | Native`task` tool                                            | Custom agents plus prompt/plugin guidance                        | Native`Task(subagent_type: ...)` over auto-discovered subagents   |
+| Blocking choices | Use a structured question surface              | OpenCode`question` tool                                      | `request_user_input` when enabled and available                  | `AskUserQuestion` tool                                            |
 
 See [docs/skills-and-mcps.md](docs/skills-and-mcps.md) for the detailed matrix.
 
@@ -400,16 +404,17 @@ corepack prepare pnpm@11.2.2 --activate
 pnpm install
 ```
 
-| Command | Purpose |
-| --- | --- |
-| `pnpm run build` | Build TypeScript into `dist/` and generate declarations/schema |
-| `pnpm run typecheck` | Run TypeScript type checking without emit |
-| `pnpm test` | Run the Vitest suite |
-| `pnpm run lint` | Run Biome linter |
-| `pnpm run format` | Run Biome formatter |
-| `pnpm run check` | Run Biome check with auto-fix |
-| `pnpm run check:ci` | Run Biome check without writes |
-| `pnpm run dev` | Build and launch the OpenCode plugin in local dev mode |
+
+| Command              | Purpose                                                       |
+| -------------------- | ------------------------------------------------------------- |
+| `pnpm run build`     | Build TypeScript into`dist/` and generate declarations/schema |
+| `pnpm run typecheck` | Run TypeScript type checking without emit                     |
+| `pnpm test`          | Run the Vitest suite                                          |
+| `pnpm run lint`      | Run Biome linter                                              |
+| `pnpm run format`    | Run Biome formatter                                           |
+| `pnpm run check`     | Run Biome check with auto-fix                                 |
+| `pnpm run check:ci`  | Run Biome check without writes                                |
+| `pnpm run dev`       | Build and launch the OpenCode plugin in local dev mode        |
 
 ## License
 

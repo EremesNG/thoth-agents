@@ -489,16 +489,14 @@ describe('Codex adapter', () => {
     expect(rootInstructions).toContain(
       'resolve the stable root session identity from Codex request metadata',
     );
-    expect(rootInstructions).toContain(
-      'x-codex-turn-metadata',
-    );
+    expect(rootInstructions).toContain('x-codex-turn-metadata');
     expect(rootInstructions).toContain(
       'If `nodeRepl.requestMeta` is not yet visible and `tool_search` is available',
     );
-    expect(rootInstructions).toContain('load/discover the `node_repl` MCP tool');
     expect(rootInstructions).toContain(
-      'threadId',
+      'load/discover the `node_repl` MCP tool',
     );
+    expect(rootInstructions).toContain('threadId');
     expect(rootInstructions).toContain(
       '`nodeRepl.requestMeta["x-codex-turn-metadata"].turn_id`',
     );

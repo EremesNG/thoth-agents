@@ -487,6 +487,24 @@ describe('Codex adapter', () => {
       'disclose that memory bootstrap could not run',
     );
     expect(rootInstructions).toContain(
+      'resolve the stable root session identity from Codex request metadata',
+    );
+    expect(rootInstructions).toContain(
+      'x-codex-turn-metadata',
+    );
+    expect(rootInstructions).toContain(
+      'If `nodeRepl.requestMeta` is not yet visible and `tool_search` is available',
+    );
+    expect(rootInstructions).toContain('load/discover the `node_repl` MCP tool');
+    expect(rootInstructions).toContain(
+      'threadId',
+    );
+    expect(rootInstructions).toContain(
+      '`nodeRepl.requestMeta["x-codex-turn-metadata"].turn_id`',
+    );
+    expect(rootInstructions).toContain('per-turn');
+    expect(rootInstructions).toContain('not the stable root session id');
+    expect(rootInstructions).toContain(
       'Delegate by invoking `multi_agent_v1.spawn_agent` for the installed Codex role agents',
     );
     expect(rootInstructions).toContain(

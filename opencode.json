@@ -7,8 +7,13 @@
       "enabled": true
     },
     "mcp-steroid": {
-      "type": "remote",
-      "url": "http://127.0.0.1:6315/mcp",
+      "type": "local",
+      "command": [
+        "cmd",
+        "/d",
+        "/c",
+        "C:\\Users\\EremesNG\\.mcp-steroid\\bin\\devrig.cmd mcp"
+      ],
       "enabled": true
     }
   }

@@ -107,6 +107,10 @@ describe('SDD workflow contract', () => {
     expect(getSddPhase('plan-review')).toMatchObject({
       gate: 'oracle-review',
       owner: 'oracle',
+      producesArtifact: true,
+      artifactSkill: 'plan-reviewer',
+      artifactMeaning: 'durable-plan-review-result',
+      persistenceAgentRole: 'quick',
     });
     expect(getSddPhase('implementation-confirmation')).toMatchObject({
       gate: 'user-confirmation',

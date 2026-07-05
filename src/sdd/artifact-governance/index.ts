@@ -7,11 +7,24 @@ export type {
   ArtifactSnapshot,
   ArtifactSnapshotInput,
   ArtifactSnapshotSource,
+  CreatePlanReviewArtifactInput,
+  EvaluatePlanReviewRecoveryInput,
+  MaterializedPlanReviewArtifact,
+  ParsePlanReviewArtifactResult,
+  PlanReviewArtifact,
+  PlanReviewRecoveryDecision,
+  PlanReviewRecoveryResult,
+  PlanReviewReviewedArtifactDigest,
+  PlanReviewReviewedArtifactInput,
+  PlanReviewOverride,
 } from './artifact-loader';
 export {
+  createPlanReviewArtifact,
+  evaluatePlanReviewRecovery,
   getArtifactOpenSpecPath,
   getArtifactTopicKey,
   loadArtifactSnapshot,
+  parsePlanReviewArtifact,
 } from './artifact-loader';
 export type {
   ValidateTasksArtifactPersistence,

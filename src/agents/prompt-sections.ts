@@ -355,7 +355,7 @@ ${renderSddDelegationMatrix()}
 Hard gates:
 - Use the SDD delegation matrix as canonical phase routing.
 - Load the matching skill when a phase has one.
-- {{role.oracle}} is read-only for plan-reviewer and sdd-verify review; {{role.quick}} persists verify reports when writes are required.
+- {{role.oracle}} is read-only for plan-reviewer and sdd-verify review; {{role.quick}} persists plan-review and verify artifacts when writes are required.
 - Never skip artifacts or jump from requirements-interview to implementation when SDD is selected.
 - Before SDD execution, load \`executing-plans\`; then track progress in {{progressTool}} plus the persistent artifact.
 - If openspec persistence is selected and openspec/ is missing or stale (partial structure or missing mechanism sections), dispatch sdd-init first.
@@ -371,9 +371,9 @@ Artifact governance handoff:
 - Root thoth-mem ownership stays with you; sub-agents must not own session memory, prompts, or progress checkpoints.
 
 Plan gate: after tasks, ask with \`{{userQuestionTool}}\`: "Review plan with {{role.oracle}} before executing (Recommended)" or "Proceed to execution".
-If reviewed, the review loop is complete only after [OKAY].
-If {{role.oracle}} returns [OKAY], give a deep approved-plan overview, then ask with \`{{userQuestionTool}}\` whether to implement or stop. Cover goals, scope, sequence, key decisions, verification, risks/trade-offs, and uncertainty so the user has full context.
-Do not dispatch \`sdd-apply\` after oracle approval until the user confirms implementation.
+Plan review is complete only after fresh [OKAY] evidence in \`plan-review.md\` or \`sdd/{change-name}/plan-review\`; missing, stale, rejected, or unparsable evidence reruns oracle unless a user override is logged.
+Fresh [OKAY] satisfies only plan-review. If {{role.oracle}} returns [OKAY], or recovery accepts it, give an approved-plan overview, then ask with \`{{userQuestionTool}}\` whether to implement or stop. Cover scope, sequence, decisions, verification, risks, and uncertainty.
+Do not dispatch \`sdd-apply\` until user confirmation; never treat plan-review recovery as implementation confirmation.
 Post-execution verify-loop (mirrors the plan-review loop's discipline; bounded to 3 rounds = initial apply->verify plus up to 2 fix->re-verify):
 - Dispatch \`sdd-verify\` as an iterative gate, not a single shot; round 1 is the first verify after apply. Treat the \`round N\` marker in the verify report as the source of truth for the round counter and surface it in {{progressTool}}.
 - On clean \`pass\`: proceed through the existing pre-archive user gate above, then delegate \`sdd-archive\`. Do not auto-advance to archive merely because a verify report exists.

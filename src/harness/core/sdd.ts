@@ -191,12 +191,15 @@ export const SDD_PHASES = [
     order: 8,
     requiredFor: ['accelerated', 'full'],
     prerequisites: ['tasks'],
-    producesArtifact: false,
+    producesArtifact: true,
     gate: 'oracle-review',
     owner: 'oracle',
+    artifactSkill: 'plan-reviewer',
+    artifactMeaning: 'durable-plan-review-result',
     defaultAgentRole: 'oracle',
+    persistenceAgentRole: 'quick',
     delegationReason:
-      'Independent read-only executability review of tasks before implementation.',
+      'Independent read-only executability review of tasks before implementation; quick persists the durable review artifact when writes are required.',
   },
   {
     id: 'implementation-confirmation',
@@ -262,12 +265,14 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
   artifactRules: [
     'SDD delegation defaults are phase-specific: sdd-propose, sdd-spec, and sdd-design default to deep.',
     'sdd-tasks defaults to quick with deep as fallback when the task plan is complex.',
+    'plan-reviewer defaults to oracle for independent read-only review; quick persists the plan-review artifact when repository or memory writes are required.',
     'sdd-verify defaults to oracle for independent review; quick persists the report when repository or memory writes are required.',
     'sdd-archive defaults to quick for mechanical closeout.',
     'OpenSpec design.md is technical solution design, not UI/UX design; sdd-design itself never routes to designer.',
     'Designer participates during apply only for user-facing UI, visual work, screenshots, or visual QA.',
     'Full-pipeline tasks require proposal, spec, and design artifacts.',
     'Oracle is read-only and performs plan review plus independent verification review; it does not persist artifacts.',
+    'A fresh persisted plan-review approval satisfies only the plan-review gate; user implementation confirmation remains separate.',
   ],
   verificationRules: [
     'Plan review must complete before implementation confirmation.',

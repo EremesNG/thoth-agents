@@ -12,11 +12,11 @@ export type {
   MaterializedPlanReviewArtifact,
   ParsePlanReviewArtifactResult,
   PlanReviewArtifact,
+  PlanReviewOverride,
   PlanReviewRecoveryDecision,
   PlanReviewRecoveryResult,
   PlanReviewReviewedArtifactDigest,
   PlanReviewReviewedArtifactInput,
-  PlanReviewOverride,
 } from './artifact-loader';
 export {
   createPlanReviewArtifact,

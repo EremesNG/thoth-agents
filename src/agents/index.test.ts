@@ -354,12 +354,8 @@ describe('orchestrator agent', () => {
     expect(prompt).toContain(
       '@oracle, @designer, @quick, and @deep always use normal synchronous `task` execution',
     );
-    expect(prompt).toContain(
-      'Fresh [OKAY] satisfies only plan-review',
-    );
-    expect(prompt).toContain(
-      'scope, sequence, decisions, verification, risks',
-    );
+    expect(prompt).toContain('Fresh [OKAY] satisfies only plan-review');
+    expect(prompt).toContain('scope, sequence, decisions, verification, risks');
     expect(prompt).toContain(
       'Do not dispatch `sdd-apply` until user confirmation',
     );

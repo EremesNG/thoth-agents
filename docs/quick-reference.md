@@ -153,7 +153,8 @@ actually executable.
 - Returns `[OKAY]` when the plan is executable
 - Returns `[REJECT]` only for real blockers
 - Limits rejections to at most 3 blocking issues
-- After `[OKAY]`, the orchestrator asks the user before starting `sdd-apply`
+- Persists durable review evidence at `openspec/changes/{change-name}/plan-review.md` and topic key `sdd/{change-name}/plan-review` when the selected store includes those targets
+- After a fresh `[OKAY]`, the orchestrator asks the user before starting `sdd-apply`
 
 ### Executing-Plans
 
@@ -193,8 +194,7 @@ Routing is based on complexity dimensions, not file count:
 - moderate complexity: accelerated SDD, usually `propose -> tasks`
 - high complexity: full SDD pipeline
 
-Plan review happens after `sdd-tasks` and before execution. Progress tracking is
-handled through `executing-plans`.
+Plan review happens after `sdd-tasks` and before execution. Recovery accepts saved approval only when `plan-review.md` or `sdd/{change-name}/plan-review` contains a fresh `[OKAY]` whose reviewed-artifact SHA-256 digests still match. Progress tracking is handled through `executing-plans`.
 
 See [SDD Pipeline](sdd-pipeline.md) for the full workflow.
 

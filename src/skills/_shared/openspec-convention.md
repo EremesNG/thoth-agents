@@ -64,6 +64,7 @@ openspec/
         ├── contracts/                    # optional sub-artifact subdir (gated)
         ├── quickstart.md                 # optional sub-artifact (gated)
         ├── tasks.md
+        ├── plan-review.md
         └── verify-report.md
 ```
 
@@ -77,6 +78,7 @@ openspec/
 | Design | `openspec/changes/{change-name}/design.md` | Architecture and file plan; always produced |
 | Sub-artifacts (optional, gated) | `openspec/changes/{change-name}/{research.md,data-model.md,contracts/,quickstart.md}` | Optional design sub-artifacts; gated by `rules.design.sub_artifacts` + `complexity_threshold` |
 | Tasks | `openspec/changes/{change-name}/tasks.md` | Checkbox checklist updated by apply |
+| Plan review | `openspec/changes/{change-name}/plan-review.md` | Oracle plan-review result with status, notes, blockers, override context, and SHA-256 reviewed-artifact freshness data |
 | Verify report | `openspec/changes/{change-name}/verify-report.md` | Compliance matrix and evidence |
 | Requirements checklist | `openspec/changes/{change-name}/checklists/requirements.md` | Domain-typed requirement-quality gate, consumed before tasks |
 | Constitution | `openspec/memory/constitution.md` | Semver-versioned native principles + Sync-Impact Report |
@@ -84,6 +86,8 @@ openspec/
 `apply-progress` and `archive-report` are durable SDD artifacts, but they are
 primarily persisted through thoth-mem topic keys when the mode includes
 thoth-mem.
+
+A saved `plan-review.md` approval is reusable only when it contains `[OKAY]` and every recorded reviewed-artifact SHA-256 digest still matches the current planning artifacts. Missing, stale, rejected, or unparsable plan-review evidence fails closed and requires a fresh Oracle review unless a separate explicit user override is captured through the normal blocking-input surface. A fresh plan-review approval satisfies only the plan-review gate; implementation confirmation remains separate.
 
 The canonical OpenSpec copy is the filesystem representation of these artifacts
 for `openspec` and `hybrid` modes. thoth-mem topic keys are the memory

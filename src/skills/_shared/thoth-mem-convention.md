@@ -46,6 +46,7 @@ Supported artifact names:
 - `design`
 - `design-brief`
 - `tasks`
+- `plan-review`
 - `apply-progress`
 - `verify-report`
 - `archive-report`
@@ -69,6 +70,7 @@ artifacts:
   spec: false       # always false in accelerated pipeline
   design: false     # always false in accelerated pipeline
   tasks: false
+  plan-review: false
   apply-progress: false
   verify-report: false
   archive-report: false

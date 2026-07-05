@@ -29,6 +29,9 @@ mode.
 The artifact governance validator is not part of this review. Plan-reviewer is
 only the pre-execution approval gate for the task plan; it does not run the
 validator, enforce its findings, or manage the future pre-`sdd-apply` handoff.
+Plan-reviewer remains read-only: it returns the durable review payload, while the
+orchestrator or `quick` persistence helper writes `plan-review.md` and/or
+`sdd/{change-name}/plan-review` when the selected persistence mode requires it.
 Invoke the semantic oracle role through the available role dispatch surface.
 
 Focus on whether the plan can be executed as written, not whether you would have
@@ -167,6 +170,17 @@ Check only what affects executability:
   are portable review semantics, not runtime-specific syntax.
 
 ## Output Format
+
+Return the status token plus enough structured payload for durable persistence at
+`openspec/changes/{change-name}/plan-review.md` and topic key
+`sdd/{change-name}/plan-review` when the selected store includes those targets.
+The persisted payload must preserve status, reviewer role, timestamp, pipeline,
+persistence mode, comments, non-blocking notes, blockers, user override context
+when applicable, and reviewed artifact freshness data. Use SHA-256 freshness
+digests over reviewed artifact content when the coordinator asks for a concrete
+manifest. Missing, stale, rejected, or unparsable saved evidence fails closed on
+recovery. A fresh `[OKAY]` satisfies only plan-review; it is not implementation
+confirmation.
 
 If the plan is executable:
 

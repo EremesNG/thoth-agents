@@ -79,7 +79,7 @@ Dispatch notes:
 | `sdd-clarify` | `deep` | `oracle` fallback | Bounded resolution of residual spec ambiguity before design (full pipeline only). |
 | `sdd-design` | `deep` | `designer` only for UI/UX concerns | Technical architecture, file changes, interfaces, and data flow. |
 | `sdd-tasks` | `quick` | `deep` fallback for complex plans | Mechanical conversion of settled design into ordered tasks. |
-| `plan-reviewer` | `oracle` | None | Independent read-only executability review. |
+| `plan-reviewer` | `oracle` | `quick` persists the artifact when writes are required | Independent read-only executability review; result is durable at `plan-review.md`. |
 | `sdd-apply` | `deep` | `quick` for mechanical batches, `designer` for UI/visual work | Correctness-heavy implementation by default. |
 | `sdd-verify` | `oracle` | `quick` persists the report when writes are required | Independent verification review against specs and evidence. |
 | `sdd-archive` | `quick` | None | Mechanical closeout after verification passes. |
@@ -314,12 +314,25 @@ Flow:
 
 1. Generate `tasks.md`
 2. Dispatch oracle with `plan-reviewer`
-3. If result is `[OKAY]`, ask the user whether to proceed to implementation
-4. Do not run `sdd-apply` until the user confirms implementation
-5. If result is `[REJECT]`, fix only the blocking issues
-6. Re-run review until `[OKAY]`, then ask for implementation confirmation
+3. Persist the returned review payload at `openspec/changes/{change-name}/plan-review.md` and/or `sdd/{change-name}/plan-review`, according to the selected persistence mode
+4. If result is `[OKAY]`, ask the user whether to proceed to implementation
+5. Do not run `sdd-apply` until the user confirms implementation
+6. If result is `[REJECT]`, fix only the blocking issues
+7. Re-run review until `[OKAY]`, then ask for implementation confirmation
 
-`plan-reviewer` is intentionally narrow. It checks executability, not style.
+`plan-reviewer` is intentionally narrow. It checks executability, not style. On recovery, a saved `[OKAY]` is accepted only when every recorded reviewed-artifact SHA-256 digest still matches the current planning artifacts. Missing, stale, rejected, or unparsable evidence fails closed and reruns Oracle. A fresh approval satisfies plan-review only; it never confirms implementation.
+
+Canonical plan-review artifact:
+
+```text
+openspec/changes/{change-name}/plan-review.md
+```
+
+Canonical memory topic:
+
+```text
+sdd/{change-name}/plan-review
+```
 
 ## Task Progress Tracking
 
@@ -372,6 +385,7 @@ sdd/{change-name}/spec
 sdd/{change-name}/design
 sdd/{change-name}/design-brief
 sdd/{change-name}/tasks
+sdd/{change-name}/plan-review
 sdd/{change-name}/apply-progress
 sdd/{change-name}/verify-report
 sdd/{change-name}/archive-report

@@ -118,6 +118,7 @@ context. Supplemental context does not replace the recall funnel.
 - `sdd-spec` persists `sdd/{change-name}/spec`
 - `sdd-design` persists `sdd/{change-name}/design`
 - `sdd-tasks` persists `sdd/{change-name}/tasks`
+- `plan-reviewer` returns a read-only result; the orchestrator or `quick` persistence helper persists `sdd/{change-name}/plan-review` and/or `openspec/changes/{change-name}/plan-review.md` according to the selected mode
 - `sdd-apply` persists `sdd/{change-name}/apply-progress` and re-persists
   updated `sdd/{change-name}/tasks`
 - `sdd-verify` persists `sdd/{change-name}/verify-report`
@@ -150,6 +151,7 @@ original intent, accepted scope, deferred areas, and justified exclusions.
 
 ## Recovery Notes
 
+- For plan-review recovery, accept saved approval only when canonical evidence contains `[OKAY]` and reviewed-artifact SHA-256 digests still match. Missing, stale, rejected, or unparsable evidence fails closed; user implementation confirmation remains a distinct later gate.
 - Prefer exact topic-key queries over broad natural-language recall.
 - Always apply the recall funnel (`mem_recall(mode="compact")` ->
   `mem_recall(mode="context")` -> `mem_get(...)`) before treating memory as

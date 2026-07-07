@@ -462,10 +462,11 @@ describe('Codex adapter', () => {
       'Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review',
     );
     expect(rootInstructions).toContain(
-      'Verify material user or agent claims before relying on them',
+      'Verify material user/agent claims before relying on them',
     );
-    expect(rootInstructions).toContain('correct it plainly with the evidence');
-    expect(rootInstructions).toContain('offer viable alternatives');
+    expect(rootInstructions).toContain(
+      'correct it plainly, explain tradeoffs, and offer alternatives',
+    );
     expect(rootInstructions).toContain(
       'net quality, speed, cost, and reliability',
     );

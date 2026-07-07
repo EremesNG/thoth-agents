@@ -21,6 +21,10 @@ export interface SubagentRulesSection {
   userQuestionConcept: 'userQuestion';
 }
 
+export interface ReasoningDisciplineSection {
+  kind: 'reasoning-discipline';
+}
+
 export interface ResponseBudgetSection {
   kind: 'response-budget';
 }
@@ -44,6 +48,7 @@ export interface RoleTextSection {
 export type PromptSection =
   | QuestionProtocolSection
   | SubagentRulesSection
+  | ReasoningDisciplineSection
   | ResponseBudgetSection
   | StepBudgetSection
   | ModelFamilySection
@@ -71,6 +76,10 @@ export function createSubagentRulesSection(
     progressConcept: 'progress',
     userQuestionConcept: 'userQuestion',
   };
+}
+
+export function createReasoningDisciplineSection(): ReasoningDisciplineSection {
+  return { kind: 'reasoning-discipline' };
 }
 
 export function createResponseBudgetSection(): ResponseBudgetSection {
@@ -231,6 +240,9 @@ You are ${role}.
 ${responsibility}
 </responsibility>
 
+`),
+    createReasoningDisciplineSection(),
+    roleText(`
 <rules>`),
     createSubagentRulesSection(memoryAccess),
     roleText(`${rules.join('\n')}
@@ -255,7 +267,8 @@ the harness does not name this agent "orchestrator".
 <style>
 Respond in the user's language. Be warm, direct, evidence-led, and concise.
 Push back when context, risk, or assumptions are weak. Avoid verbosity.
-</style>
+</style>`),
+    roleText(`
 
 <core-rules>
 - Mode: primary coordinator. Mutation: coordination artifacts only.
@@ -275,10 +288,11 @@ Push back when context, risk, or assumptions are weak. Avoid verbosity.
 </core-rules>
 
 <epistemic-rigor>
-- Verify material user or agent claims before relying on them when they affect implementation, architecture, verification, safety, or guidance.
-- Use the cheapest reliable evidence: bounded direct check, delegated local discovery, or authoritative external documentation.
-- If evidence disproves a user or agent assumption, correct it plainly with the evidence, explain relevant tradeoffs, and offer viable alternatives.
-- Allow low-risk assumptions only when brief and not correctness-critical. Stay warm, direct, concise, and evidence-led.
+- Verify material user/agent claims before relying on them in implementation, architecture, verification, safety, or guidance.
+- Before solving/editing, post one short commentary update naming reasoning/root-cause check.
+- Do thought experiments: test competing explanations, edge cases, failure modes, root-cause fit.
+- Do not stop at first plausible explanation/superficial answer; validate with evidence, edge cases, tests, or fitting check.
+- If evidence disproves an assumption, correct it plainly, explain tradeoffs, and offer alternatives.
 </epistemic-rigor>
 
 <session-bootstrap>
@@ -621,6 +635,14 @@ function renderSubagentRules(
   return rules.join('\n');
 }
 
+function renderReasoningDiscipline(): string {
+  return `<reasoning-discipline>
+- Before solving/editing, post one short commentary update naming reasoning/root-cause check.
+- Do thought experiments: test competing explanations, edge cases, failure modes, root-cause fit.
+- Do not stop at first plausible explanation/superficial answer; validate with evidence, edge cases, tests, or fitting check.
+</reasoning-discipline>`;
+}
+
 function renderResponseBudget(): string {
   return 'Return concise structured results: status, summary, files, verification/issues. Never return raw file dumps.';
 }
@@ -707,6 +729,8 @@ export function renderPromptSection(
       return renderQuestionProtocol(section, dialect);
     case 'subagent-rules':
       return renderSubagentRules(section, dialect);
+    case 'reasoning-discipline':
+      return renderReasoningDiscipline();
     case 'response-budget':
       return renderResponseBudget();
     case 'step-budget':

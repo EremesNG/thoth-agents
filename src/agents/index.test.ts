@@ -295,7 +295,7 @@ describe('orchestrator agent', () => {
       'Use sub-agents for evidence and action, not to outsource architecture or planning.',
     );
     expect(prompt).toContain(
-      'Verify material user or agent claims before relying on them',
+      'Verify material user/agent claims before relying on them',
     );
     expect(prompt).toContain(
       'Choose direct action, delegation, parallelization, or review by net quality, speed, cost, and reliability.',
@@ -554,12 +554,12 @@ describe('prompt role markers', () => {
   test('built-in prompts stay compact enough for delegation efficiency', () => {
     const maxPromptChars: Record<string, number> = {
       orchestrator: 16_500,
-      explorer: 3_900,
-      librarian: 3_250,
-      oracle: 3_250,
-      designer: 4_300,
-      quick: 4_050,
-      deep: 4_000,
+      explorer: 4_250,
+      librarian: 3_600,
+      oracle: 3_600,
+      designer: 4_650,
+      quick: 4_450,
+      deep: 4_350,
     };
 
     for (const agent of createAgents()) {

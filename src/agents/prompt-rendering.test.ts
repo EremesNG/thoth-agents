@@ -87,6 +87,15 @@ const SHARED_ROLE_POLICY_CONCRETE_TOOL_LEAKS = [
   'Chrome',
 ] as const;
 
+const REASONING_DISCIPLINE_TERMS = [
+  'Before solving/editing, post one short commentary update naming reasoning/root-cause check',
+  'Do thought experiments',
+  'test competing explanations, edge cases, failure modes',
+  'root-cause fit',
+  'Do not stop at first plausible explanation/superficial answer',
+  'validate with evidence, edge cases, tests',
+] as const;
+
 function roleSections(role: AgentPromptRole) {
   switch (role) {
     case 'orchestrator':
@@ -402,14 +411,13 @@ describe('semantic prompt section rendering', () => {
 
     for (const prompt of prompts) {
       expectAllTerms(prompt, [
-        'Verify material user or agent claims before relying on them',
+        'Verify material user/agent claims before relying on them',
         'implementation, architecture, verification, safety, or guidance',
-        'bounded direct check, delegated local discovery, or authoritative external documentation',
-        'correct it plainly with the evidence',
-        'explain relevant tradeoffs',
-        'offer viable alternatives',
-        'Allow low-risk assumptions only when brief',
-        'Stay warm, direct, concise, and evidence-led',
+        'Before solving/editing, post one short commentary update',
+        'Do thought experiments',
+        'Do not stop at first plausible explanation/superficial answer',
+        'validate with evidence, edge cases, tests',
+        'correct it plainly, explain tradeoffs, and offer alternatives',
       ]);
     }
   });
@@ -455,8 +463,7 @@ describe('semantic prompt section rendering', () => {
         'final',
         'Never request raw file dumps',
         'net quality, speed, cost, and reliability',
-        'correct it plainly with the evidence',
-        'offer viable alternatives',
+        'correct it plainly, explain tradeoffs, and offer alternatives',
         'explorer',
         'librarian',
         'oracle',
@@ -727,6 +734,18 @@ describe('semantic prompt section rendering', () => {
       'Scope: thorough implementation and verification',
     );
     expect(prompts.deep).toContain('Do not skip verification');
+  });
+
+  test('all seven role prompts include reasoning discipline across harness dialects', () => {
+    for (const dialect of [OPENCODE_PROMPT_DIALECT, CODEX_PROMPT_DIALECT]) {
+      const prompts = Object.fromEntries(
+        AGENT_ROLES.map((role) => [role, rolePrompt(role, dialect)]),
+      ) as Record<AgentPromptRole, string>;
+
+      for (const role of AGENT_ROLES) {
+        expectAllTerms(prompts[role], REASONING_DISCIPLINE_TERMS);
+      }
+    }
   });
 
   test('the canonical roster remains exactly seven roles across rendered prompt coverage', () => {

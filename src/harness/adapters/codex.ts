@@ -295,6 +295,7 @@ export function renderCodexRootInstructions(config?: PluginConfig): string {
     '- After receiving a delegated subagent response, close that subagent session unless you will retry or intentionally keep using that exact same session; explorer and librarian sessions must always be closed immediately after their response, and retry sessions must be closed after the retry result unless explicit same-session reuse is still required.',
     '- Use packaged thoth-agents plugin capabilities through Codex plugin, skill, MCP, and hook review surfaces after enabling them with /plugins and /hooks.',
     '- For blocking user decisions in Codex Default mode, use request_user_input after features.default_mode_request_user_input is enabled; do not ask those questions in plain prose.',
+    '- Whenever the root orchestrator calls `request_user_input`, it MUST NEVER set or pass `autoResolutionMs`; omit the field entirely.',
     '- Memory governance, role permissions, provider-per-agent controls, and hooks are instruction-level unless the active Codex runtime documents stronger enforcement.',
     '</codex-runtime>',
     CODEX_ROOT_END,

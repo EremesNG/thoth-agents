@@ -270,6 +270,9 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('Root-session memory is yours');
       expect(root).toContain('request_user_input');
       expect(root).toContain('Default mode');
+      expect(root).toContain(
+        'Whenever the root orchestrator calls `request_user_input`, it MUST NEVER set or pass `autoResolutionMs`; omit the field entirely.',
+      );
       expect(root).not.toContain('Use `question` only');
       expect(root).not.toContain('@designer');
       expectNoLeakedCodexAdaptationMarkers(root);

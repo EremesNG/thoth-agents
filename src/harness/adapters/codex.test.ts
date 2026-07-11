@@ -474,6 +474,9 @@ describe('Codex adapter', () => {
     expect(rootInstructions).toContain(
       'features.default_mode_request_user_input',
     );
+    expect(rootInstructions).toContain(
+      'Whenever the root orchestrator calls `request_user_input`, it MUST NEVER set or pass `autoResolutionMs`; omit the field entirely.',
+    );
     expect(rootInstructions).toContain('installed Codex role agents');
     expect(rootInstructions).toContain(
       'The ambient Codex root session is the root/main orchestrator',

@@ -11,10 +11,13 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { DEFAULT_THOTH_COMMAND } from '../config';
 import {
+  applyCodexManagedModelOverrides,
   applyCodexSetup,
   buildCodexSetupPlan,
   CODEX_ROLE_NAMES,
   formatCodexSetupPlan,
+  parseRoleTomlEffort,
+  replaceRoleTomlEffort,
 } from './codex-install';
 
 const FORBIDDEN_CODEX_ADAPTATION_MARKERS = [
@@ -78,6 +81,52 @@ function applyFreshCodexSetup(dir: string, home: string, reset = false): void {
 }
 
 describe('Codex install setup plan', () => {
+  test('effort TOML helpers add, replace, and remove only the owned field', () => {
+    const content = 'model = "gpt-5.6-sol"\nsandbox_mode = "read-only"\n';
+    const added = replaceRoleTomlEffort(content, 'max');
+    expect(parseRoleTomlEffort(added)).toBe('max');
+    expect(added).toContain('sandbox_mode = "read-only"');
+    const replaced = replaceRoleTomlEffort(added, 'ultra');
+    expect(parseRoleTomlEffort(replaced)).toBe('ultra');
+    const removed = replaceRoleTomlEffort(replaced, undefined);
+    expect(parseRoleTomlEffort(removed)).toBeUndefined();
+    expect(removed).toBe(content);
+  });
+  test('fresh plan emits the confirmed model and effort defaults', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-defaults-'));
+    try {
+      const plan = buildCodexSetupPlan({
+        dryRun: true,
+        reset: false,
+        scope: 'user',
+        projectRoot: dir,
+        homeDir: join(dir, 'home'),
+        packageRoot: PACKAGE_ROOT,
+      });
+      const expected = {
+        oracle: { model: 'gpt-5.6-sol', effort: 'high' },
+        librarian: { model: 'gpt-5.6-luna', effort: 'low' },
+        explorer: { model: 'gpt-5.6-luna', effort: 'low' },
+        designer: { model: 'gpt-5.6-terra', effort: 'high' },
+        quick: { model: 'gpt-5.6-luna', effort: 'medium' },
+        deep: { model: 'gpt-5.6-terra', effort: 'xhigh' },
+      } as const;
+
+      for (const [role, defaults] of Object.entries(expected)) {
+        const item = plan.items.find(
+          (candidate) =>
+            candidate.action === 'write-role-toml' && candidate.role === role,
+        );
+        expect(roleModel(String(item?.content))).toBe(defaults.model);
+        expect(parseRoleTomlEffort(String(item?.content))).toBe(
+          defaults.effort,
+        );
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('builds dry-run plan when caller cwd is outside the package repo', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-dlx-install-'));
     const callerProject = join(dir, 'caller-project');
@@ -548,6 +597,79 @@ describe('Codex install setup plan', () => {
     }
   });
 
+  test('setup preserves installed effort and treats an absent field as inherit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-effort-current-'));
+    try {
+      const home = join(dir, 'home');
+      applyFreshCodexSetup(dir, home);
+      const deep = rolePath(home, 'deep');
+      const explorer = rolePath(home, 'explorer');
+      writeFileSync(
+        deep,
+        replaceRoleTomlEffort(readFileSync(deep, 'utf8'), 'high'),
+      );
+      writeFileSync(
+        explorer,
+        replaceRoleTomlEffort(readFileSync(explorer, 'utf8'), undefined),
+      );
+      const state = JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
+      state.configuredEfforts = {
+        'thoth-agents-explorer.toml': 'high',
+      };
+      writeFileSync(managedModelsPath(home), JSON.stringify(state, null, 2));
+
+      applyFreshCodexSetup(dir, home);
+
+      expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBe('high');
+      expect(
+        parseRoleTomlEffort(readFileSync(explorer, 'utf8')),
+      ).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('model-only Codex override preserves installed effort until explicitly cleared', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-effort-model-only-'));
+    try {
+      const home = join(dir, 'home');
+      applyFreshCodexSetup(dir, home);
+      const deep = rolePath(home, 'deep');
+      writeFileSync(
+        deep,
+        replaceRoleTomlEffort(readFileSync(deep, 'utf8'), 'high'),
+      );
+
+      const installConfig = {
+        dryRun: false,
+        reset: false,
+        scope: 'user' as const,
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+      };
+      expect(
+        applyCodexManagedModelOverrides(installConfig, [
+          { role: 'deep', model: 'gpt-5.6-terra' },
+        ]).success,
+      ).toBe(true);
+      expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBe('high');
+
+      expect(
+        applyCodexManagedModelOverrides(installConfig, [
+          {
+            role: 'deep',
+            model: 'gpt-5.6-terra',
+            clearEffort: true,
+          },
+        ]).success,
+      ).toBe(true);
+      expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('preserves user-customized Codex role model', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
@@ -567,6 +689,9 @@ describe('Codex install setup plan', () => {
 
       const updated = readFileSync(target, 'utf8');
       expect(roleModel(updated)).toBe('user-custom-model');
+      expect(parseRoleTomlEffort(updated)).toBe('xhigh');
+      expect(updated).not.toContain('toggle');
+      expect(updated).not.toContain('budget_tokens');
       expect(updated).toContain('sandbox_mode = "workspace-write"');
       expect(readManagedModels(home)['thoth-agents-deep.toml']).toBe(
         roleModel(installed),
@@ -671,7 +796,7 @@ describe('Codex install setup plan', () => {
       expect(updated).toContain(
         'description = "Own user-facing implementation choices and visual QA for UI work."',
       );
-      expect(updated).toContain('model_reasoning_effort = "medium"');
+      expect(parseRoleTomlEffort(updated)).toBe('high');
       expect(updated).not.toContain('USER EDIT');
     } finally {
       rmSync(dir, { recursive: true, force: true });

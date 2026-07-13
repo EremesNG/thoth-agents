@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { getOpenCodeManagedModelStatePath } from '../paths';
 
 const installRecommendedSkillMock = vi.hoisted(() =>
   vi.fn(() => ({ status: 'installed' as const })),
@@ -299,6 +300,138 @@ describe('OpenCode operations adapter', () => {
     expect(plan.items[0]?.preview).toContain('"orchestrator"');
     expect(plan.items[0]?.preview).toContain('"openai/gpt-5.4"');
     expect(existsSync(liteConfigPath())).toBe(false);
+  });
+
+  test('OpenCode effort sidecar clears only matching managed variants', () => {
+    const explicit = buildOpenCodeModelPlan(
+      {
+        harness: 'opencode',
+        dryRun: true,
+        roles: [
+          {
+            role: 'deep',
+            model: 'openai/gpt-5.6-sol',
+            catalogId: 'openai/gpt-5.6-sol',
+            availableEfforts: ['high', 'max'],
+            effort: { kind: 'effort', value: 'high' },
+          },
+        ],
+      },
+      { cwd: configRoot },
+    );
+    expect(applyOpenCodePlan(explicit).applied).toBe(true);
+    const statePath = getOpenCodeManagedModelStatePath();
+    expect(
+      JSON.parse(readFileSync(statePath, 'utf8')).configuredEfforts.deep,
+    ).toBe('high');
+    const config = JSON.parse(readFileSync(liteConfigPath(), 'utf8'));
+    expect(config.agents.deep.variant).toBe('high');
+
+    config.agents.deep.variant = 'low';
+    writeJson(liteConfigPath(), config);
+    const inherit = buildOpenCodeModelPlan(
+      {
+        harness: 'opencode',
+        dryRun: true,
+        roles: [
+          {
+            role: 'deep',
+            model: 'openai/gpt-5.6-sol',
+            effort: { kind: 'inherit' },
+          },
+        ],
+      },
+      { cwd: configRoot },
+    );
+    const preserved = applyOpenCodePlan(inherit);
+    expect(preserved.applied).toBe(true);
+    expect(
+      JSON.parse(readFileSync(liteConfigPath(), 'utf8')).agents.deep.variant,
+    ).toBe('low');
+    expect(
+      preserved.warnings.some(
+        (warning) => warning.code === 'opencode-effort-user-owned',
+      ),
+    ).toBe(true);
+  });
+
+  test('OpenCode preserves an untracked user variant unless explicitly replaced', () => {
+    const modelOnly = buildOpenCodeModelPlan(
+      {
+        harness: 'opencode',
+        dryRun: true,
+        roles: [
+          {
+            role: 'deep',
+            model: 'openai/gpt-5.6-sol',
+            effort: { kind: 'inherit' },
+          },
+        ],
+      },
+      { cwd: configRoot },
+    );
+    expect(applyOpenCodePlan(modelOnly).applied).toBe(true);
+    const config = JSON.parse(readFileSync(liteConfigPath(), 'utf8'));
+    config.agents.deep.variant = 'low';
+    writeJson(liteConfigPath(), config);
+
+    const preserved = applyOpenCodePlan(modelOnly);
+    expect(preserved.applied).toBe(true);
+    expect(
+      JSON.parse(readFileSync(liteConfigPath(), 'utf8')).agents.deep.variant,
+    ).toBe('low');
+    expect(
+      preserved.warnings.some(
+        (warning) => warning.code === 'opencode-effort-user-owned',
+      ),
+    ).toBe(true);
+
+    const explicit = buildOpenCodeModelPlan(
+      {
+        harness: 'opencode',
+        dryRun: true,
+        roles: [
+          {
+            role: 'deep',
+            model: 'openai/gpt-5.6-sol',
+            catalogId: 'openai/gpt-5.6-sol',
+            availableEfforts: ['high'],
+            effort: { kind: 'effort', value: 'high' },
+          },
+        ],
+      },
+      { cwd: configRoot },
+    );
+    expect(applyOpenCodePlan(explicit).applied).toBe(true);
+    expect(
+      JSON.parse(readFileSync(liteConfigPath(), 'utf8')).agents.deep.variant,
+    ).toBe('high');
+  });
+
+  test('OpenCode manual model-only configuration round-trips without excluded controls', () => {
+    const plan = buildOpenCodeModelPlan(
+      {
+        harness: 'opencode',
+        dryRun: true,
+        roles: [
+          {
+            role: 'deep',
+            model: 'manual-provider/manual-model',
+            effort: { kind: 'inherit' },
+          },
+        ],
+      },
+      { cwd: configRoot },
+    );
+
+    expect(applyOpenCodePlan(plan).applied).toBe(true);
+    expect(applyOpenCodePlan(plan).applied).toBe(true);
+    const output = readFileSync(liteConfigPath(), 'utf8');
+    const config = JSON.parse(output);
+    expect(config.agents.deep.model).toBe('manual-provider/manual-model');
+    expect(config.agents.deep.variant).toBeUndefined();
+    expect(output).not.toContain('toggle');
+    expect(output).not.toContain('budget_tokens');
   });
 
   test('OpenCode apply writes only explicit applyable OpenCode plans and rejects unsafe plans', () => {

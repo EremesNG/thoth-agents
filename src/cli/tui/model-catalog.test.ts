@@ -1,99 +1,169 @@
 import { execFileSync } from 'node:child_process';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { getModelOptions, getOpenCodeModelsInvocation } from './model-catalog';
+import { loadModelsDevCatalog } from '../model-catalog';
+import {
+  effortChoicesForModel,
+  getModelOptions,
+  getOpenCodeModelsInvocation,
+} from './model-catalog';
 
 vi.mock('node:child_process', () => ({
   execFileSync: vi.fn(),
 }));
 
+vi.mock('../model-catalog', () => ({
+  loadModelsDevCatalog: vi.fn(),
+}));
+
+const checkedAt = '2026-07-11T00:00:00.000Z';
+
+function loaded(
+  models: Awaited<ReturnType<typeof loadModelsDevCatalog>>['models'],
+) {
+  vi.mocked(loadModelsDevCatalog).mockResolvedValue({
+    models: [...models],
+    source: 'remote',
+    stale: false,
+    checkedAt,
+    warnings: [],
+  });
+}
+
 describe('TUI model catalog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    loaded([]);
   });
 
-  test('Codex options use fetched GPT models.dev OpenAI models without default buffer limits', () => {
-    vi.mocked(execFileSync).mockImplementation((_file, _args, options) => {
-      const maxBuffer =
-        typeof options === 'object' &&
-        options !== null &&
-        'maxBuffer' in options
-          ? options.maxBuffer
-          : undefined;
-      if (typeof maxBuffer !== 'number' || maxBuffer <= 2_100_000) {
-        throw Object.assign(new Error('spawnSync ENOBUFS'), {
-          code: 'ENOBUFS',
-        });
-      }
-      return JSON.stringify({
-        openai: {
-          models: {
-            'gpt-5': { name: 'GPT-5' },
-            'gpt-5.1': { name: 'GPT-5.1' },
-            'gpt-5.2': { name: 'GPT-5.2' },
-            'gpt-5-chat-latest': { name: 'GPT-5 Chat Latest' },
-            'gpt-6-preview': { name: 'GPT-6 preview' },
-            'gpt-live': { name: 'GPT Live' },
-            'gpt-4.1-mini': { name: 'GPT-4.1 mini' },
-            'gpt-3.5-turbo': { name: 'GPT-3.5 turbo' },
-            'o-live': {},
-            'o3-pro': { name: 'o3-pro' },
-          },
-        },
-      });
-    });
-
-    const options = getModelOptions('codex');
-
-    expect(options.every((option) => option.provider === 'openai')).toBe(true);
-    expect(options.map((option) => option.id)).toEqual([
-      'gpt-5',
-      'gpt-5.1',
-      'gpt-5.2',
-      'gpt-5-chat-latest',
-      'gpt-6-preview',
+  test('Codex options use exact model effort metadata and exclude undocumented controls', async () => {
+    loaded([
+      {
+        id: 'gpt-5.6-sol',
+        catalogId: 'openai/gpt-5.6-sol',
+        label: 'GPT 5.6 Sol',
+        provider: 'openai',
+        efforts: ['none', 'low', 'max', 'ultra', 'future', 'budget_tokens'],
+        source: 'remote',
+      },
+      {
+        id: 'gpt-4.1-mini',
+        catalogId: 'openai/gpt-4.1-mini',
+        label: 'GPT-4.1 mini',
+        provider: 'openai',
+        efforts: ['high'],
+        source: 'remote',
+      },
     ]);
-    expect(execFileSync).toHaveBeenCalledWith(
-      process.execPath,
-      ['-e', expect.stringContaining('fetch')],
-      expect.objectContaining({ maxBuffer: expect.any(Number) }),
-    );
+
+    const options = await getModelOptions('codex');
+
+    expect(options).toEqual([
+      expect.objectContaining({
+        id: 'gpt-5.6-sol',
+        catalogId: 'openai/gpt-5.6-sol',
+        efforts: ['none', 'low', 'max', 'ultra'],
+      }),
+    ]);
+    expect(options[0]?.efforts).not.toContain('budget_tokens');
+    expect(options[0]?.efforts).not.toContain('toggle');
   });
 
-  test('Codex options are manual-only when models.dev fetch fails', () => {
-    vi.mocked(execFileSync).mockImplementation(() => {
-      throw new Error('models.dev unavailable');
-    });
-
-    expect(getModelOptions('codex')).toEqual([]);
+  test('Codex options are manual-only when models.dev has no usable records', async () => {
+    expect(await getModelOptions('codex')).toEqual([]);
   });
 
-  test('OpenCode options use opencode models output', () => {
+  test('OpenCode options compose native availability with catalog and runtime effort support', async () => {
     vi.mocked(execFileSync).mockReturnValue(
-      'openai/gpt-5.2\nanthropic/claude-sonnet-4-5\nopenai/gpt-5.2\n',
+      'openai/gpt-5.6-sol\nanthropic/claude-sonnet-4-5\nopenai/gpt-5.6-sol\n',
     );
+    loaded([
+      {
+        id: 'gpt-5.6-sol',
+        catalogId: 'openai/gpt-5.6-sol',
+        label: 'GPT 5.6 Sol',
+        provider: 'openai',
+        efforts: ['none', 'high', 'xhigh', 'max'],
+        source: 'remote',
+      },
+    ]);
 
-    const options = getModelOptions('opencode');
+    const options = await getModelOptions('opencode');
 
-    expect(options.map((option) => option.id)).toEqual([
-      'openai/gpt-5.2',
-      'anthropic/claude-sonnet-4-5',
+    expect(options).toEqual([
+      expect.objectContaining({
+        id: 'openai/gpt-5.6-sol',
+        catalogId: 'openai/gpt-5.6-sol',
+        efforts: ['none', 'high', 'xhigh'],
+      }),
+      expect.objectContaining({
+        id: 'anthropic/claude-sonnet-4-5',
+        efforts: [],
+      }),
     ]);
     const expectedInvocation = getOpenCodeModelsInvocation();
     expect(execFileSync).toHaveBeenCalledWith(
       expectedInvocation.command,
       expectedInvocation.args,
-      expect.objectContaining({ timeout: expect.any(Number) }),
+      expect.objectContaining({ timeout: 5_000 }),
     );
-    const call = vi.mocked(execFileSync).mock.calls[0];
-    expect(call?.[2]).toEqual(expect.objectContaining({ timeout: 5_000 }));
   });
 
-  test('OpenCode options are manual-only when opencode models is unavailable', () => {
+  test('OpenCode options are manual-only when opencode models is unavailable', async () => {
     vi.mocked(execFileSync).mockImplementation(() => {
       throw new Error('opencode unavailable');
     });
 
-    expect(getModelOptions('opencode')).toEqual([]);
+    expect(await getModelOptions('opencode')).toEqual([]);
+  });
+
+  test('Claude aliases and concrete catalog models expose official intersections', async () => {
+    loaded([
+      {
+        id: 'claude-opus-4.6',
+        catalogId: 'anthropic/claude-opus-4.6',
+        label: 'Claude Opus 4.6',
+        provider: 'anthropic',
+        efforts: ['none', 'low', 'high', 'max'],
+        source: 'remote',
+      },
+    ]);
+    const options = await getModelOptions('claude');
+
+    expect(options.map((option) => option.id)).toEqual([
+      'sonnet',
+      'opus',
+      'haiku',
+      'inherit',
+      'anthropic/claude-opus-4.6',
+    ]);
+    expect(options[0]?.efforts).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+    expect(options.at(-1)).toEqual(
+      expect.objectContaining({
+        catalogId: 'anthropic/claude-opus-4.6',
+        efforts: ['low', 'high', 'max'],
+      }),
+    );
+    expect(loadModelsDevCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  test('effort choices always include inherit without mutating catalog values', () => {
+    const option = {
+      id: 'gpt-5.6-sol',
+      label: 'GPT 5.6 Sol',
+      provider: 'openai',
+      efforts: ['low', 'high'] as const,
+      source: 'remote' as const,
+    };
+
+    expect(effortChoicesForModel(option)).toEqual(['inherit', 'low', 'high']);
+    expect(effortChoicesForModel(undefined)).toEqual(['inherit']);
+    expect(option.efforts).toEqual(['low', 'high']);
   });
 
   test('OpenCode uses shell invocation on Windows so command shims resolve', () => {

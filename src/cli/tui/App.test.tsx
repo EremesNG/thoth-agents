@@ -161,8 +161,11 @@ function plan(
 }
 
 function operations(
-  modelOptionsOverride?: Partial<Record<'codex' | 'opencode', ModelOption[]>>,
+  modelOptionsOverride?: Partial<
+    Record<'codex' | 'opencode', ModelOption[] | Promise<ModelOption[]>>
+  >,
   statusOverride?: Partial<Record<'codex' | 'opencode', HarnessStatusReport>>,
+  modelRolesOverride?: Partial<Record<'codex' | 'opencode', ModelRoleInput[]>>,
 ): TuiOperations & {
   applied: OperationPlan[];
   modelPlanRoles: ModelRoleInput[][];
@@ -194,24 +197,20 @@ function operations(
           }
         : status(`OpenCode refresh ${refreshes++}`);
     },
-    modelOptions(harness) {
+    async modelOptions(harness) {
       const override = modelOptionsOverride?.[harness];
-      if (override) return override;
+      if (override) return await override;
       return harness === 'codex'
         ? [
-            { id: 'gpt-5.2', label: 'GPT-5.2', provider: 'openai' },
-            { id: 'gpt-4o', label: 'GPT-4o', provider: 'openai' },
-            { id: 'o3-pro', label: 'o3-pro', provider: 'openai' },
+            modelOption('gpt-5.2', ['low', 'high']),
+            modelOption('gpt-4o'),
+            modelOption('o3-pro'),
           ]
-        : [
-            {
-              id: 'openai/gpt-5.2',
-              label: 'GPT-5.2',
-              provider: 'openai',
-            },
-          ];
+        : [modelOption('openai/gpt-5.2', ['low', 'high'])];
     },
     modelRoles(harness) {
+      const override = modelRolesOverride?.[harness];
+      if (override) return override;
       if (harness === 'codex') {
         return [
           { role: 'explorer', model: 'gpt-5.3-codex-spark' },
@@ -275,11 +274,30 @@ function missingStatus(harness: 'codex' | 'opencode'): HarnessStatusReport {
 }
 
 function longOpenCodeModelOptions(): ModelOption[] {
-  return Array.from({ length: 12 }, (_, index) => ({
-    id: `openai/gpt-page-${index + 1}`,
-    label: `GPT page ${index + 1}`,
+  return Array.from({ length: 12 }, (_, index) =>
+    modelOption(`openai/gpt-page-${index + 1}`),
+  );
+}
+
+function modelOption(id: string, efforts: readonly string[] = []): ModelOption {
+  return {
+    id,
+    catalogId: id.includes('/') ? id : `openai/${id}`,
+    label: id,
     provider: 'openai',
-  }));
+    efforts,
+    source: 'remote',
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 async function flushInk(): Promise<void> {
@@ -325,8 +343,22 @@ async function openOpenCodeModels(stdin: { write(input: string): void }) {
   await press(stdin, '\r');
 }
 
+async function openClaudeModels(stdin: { write(input: string): void }) {
+  await press(stdin, 'j');
+  await press(stdin, '\r');
+  await press(stdin, 'j');
+  await press(stdin, 'j');
+  await press(stdin, '\r');
+  await press(stdin, 'j');
+  await press(stdin, 'j');
+  await press(stdin, 'j');
+  await press(stdin, '\r');
+}
+
 async function dirtyExplorer(stdin: { write(input: string): void }) {
   await openCodexModels(stdin);
+  await press(stdin, '\r');
+  await press(stdin, 'j');
   await press(stdin, '\r');
   await press(stdin, '\r');
 }
@@ -337,8 +369,10 @@ async function manualExplorer(stdin: { write(input: string): void }) {
   await press(stdin, 'j');
   await press(stdin, 'j');
   await press(stdin, 'j');
+  await press(stdin, 'j');
   await press(stdin, '\r');
   await press(stdin, 'manual-model');
+  await press(stdin, '\r');
   await press(stdin, '\r');
 }
 
@@ -568,6 +602,344 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain('deep: gpt-5.5');
   });
 
+  test('model catalog loading and failure stay visible without blocking manual entry', async () => {
+    const pending = deferred<ModelOption[]>();
+    const ops = operations({ codex: pending.promise });
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    expect(lastFrame()).toContain('Loading model catalog');
+
+    pending.reject(new Error('catalog offline'));
+    await flushInk();
+    expect(lastFrame()).toContain(
+      'Could not load model catalog: catalog offline',
+    );
+
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('Manual entry');
+  });
+
+  test('current model is initially selected when its exact catalog option is later', async () => {
+    const current = modelOption('gpt-5.6-luna', ['xhigh', 'max']);
+    const ops = operations(
+      { codex: [modelOption('gpt-5.6'), current] },
+      undefined,
+      { codex: [{ role: 'explorer', model: current.id }] },
+    );
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await flushInk();
+    await press(stdin, '\r');
+
+    expect(lastFrame()).toContain('> gpt-5.6-luna - openai');
+    expect(lastFrame()).toContain('Enter to continue to effort');
+
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('Choose explorer effort');
+    expect(lastFrame()).toContain('Model: gpt-5.6-luna');
+    expect(lastFrame()).toContain('xhigh');
+    expect(lastFrame()).toContain('max');
+  });
+
+  test('Claude keeps haiku as the initial model choice', async () => {
+    const base = operations();
+    const ops: TuiOperations = {
+      ...base,
+      status(harness) {
+        if (harness !== 'claude') return base.status(harness);
+        return {
+          ...status('Claude Code ready'),
+          harness: 'claude',
+          displayName: 'Claude Code',
+        };
+      },
+      modelOptions(harness) {
+        if (harness !== 'claude') return base.modelOptions(harness);
+        return Promise.resolve([
+          modelOption('sonnet', ['high']),
+          modelOption('opus', ['high']),
+          modelOption('haiku', ['low', 'medium']),
+        ]);
+      },
+      modelRoles(harness) {
+        if (harness !== 'claude') return base.modelRoles(harness);
+        return [{ role: 'explorer', model: 'haiku' }];
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openClaudeModels(stdin);
+    await flushInk();
+    await press(stdin, '\r');
+
+    expect(lastFrame()).toContain('> haiku - openai');
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('Model: haiku');
+    expect(lastFrame()).toContain('medium');
+  });
+
+  test('current model absent from the catalog is preserved with inherit only', async () => {
+    const ops = operations(
+      { codex: [modelOption('gpt-5.6', ['high'])] },
+      undefined,
+      { codex: [{ role: 'explorer', model: 'gpt-private' }] },
+    );
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await flushInk();
+    await press(stdin, '\r');
+
+    expect(lastFrame()).toContain('> gpt-private');
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('Model: gpt-private');
+    expect(lastFrame()).toContain('No explicit effort options');
+    expect(lastFrame()).toContain('inherit');
+  });
+
+  test('async catalog arrival keeps the current model selected', async () => {
+    const pending = deferred<ModelOption[]>();
+    const current = modelOption('gpt-5.6-luna', ['high']);
+    const ops = operations({ codex: pending.promise }, undefined, {
+      codex: [{ role: 'explorer', model: current.id }],
+    });
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('> gpt-5.6-luna');
+
+    pending.resolve([modelOption('gpt-5.6'), current]);
+    await flushInk();
+    expect(lastFrame()).toContain('> gpt-5.6-luna - openai');
+
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('Model: gpt-5.6-luna');
+    expect(lastFrame()).toContain('high');
+  });
+
+  test('manual model clears exact catalog metadata before and after apply', async () => {
+    const current = modelOption('gpt-5.6-luna', ['high']);
+    const manualModel = `${current.id}-manual`;
+    const ops = operations({ codex: [current] }, undefined, {
+      codex: [
+        {
+          role: 'explorer',
+          model: current.id,
+          provider: current.provider,
+          catalogId: current.catalogId,
+          availableEfforts: current.efforts,
+          effort: { kind: 'effort', value: 'high' },
+        },
+      ],
+    });
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await flushInk();
+    await press(stdin, '\r');
+    await press(stdin, 'j');
+    await press(stdin, '\r');
+    await press(stdin, '-manual');
+    await press(stdin, '\r');
+
+    expect(lastFrame()).toContain(`Model: ${manualModel}`);
+    expect(lastFrame()).toContain('No explicit effort options');
+    await press(stdin, '\r');
+
+    await press(stdin, '\r');
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain(`Model: ${manualModel}`);
+    expect(lastFrame()).toContain('No explicit effort options');
+    expect(lastFrame()).not.toContain('\n  high');
+    await press(stdin, '\r');
+
+    await press(stdin, 'j');
+    await press(stdin, 'j');
+    await press(stdin, '\r');
+
+    expect(ops.modelPlanRoles.at(-1)).toEqual([
+      {
+        role: 'explorer',
+        model: manualModel,
+        effort: { kind: 'inherit' },
+      },
+    ]);
+
+    await press(stdin, 'k');
+    await press(stdin, 'k');
+    await press(stdin, '\r');
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain(`Model: ${manualModel}`);
+    expect(lastFrame()).toContain('No explicit effort options');
+    expect(lastFrame()).not.toContain('\n  high');
+  });
+
+  test('Escape from manual effort returns to the manual draft without catalog efforts', async () => {
+    const current = modelOption('gpt-5.6-luna', ['high']);
+    const manualModel = 'gpt-5.6-luna-manual';
+    const ops = operations({ codex: [current] }, undefined, {
+      codex: [{ role: 'explorer', model: current.id }],
+    });
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await flushInk();
+    await press(stdin, '\r');
+    await press(stdin, 'j');
+    await press(stdin, '\r');
+    await press(stdin, '-manual');
+    await press(stdin, '\r');
+
+    expect(lastFrame()).toContain(`Model: ${manualModel}`);
+    expect(lastFrame()).toContain('No explicit effort options');
+
+    await press(stdin, '\u001B');
+    expect(lastFrame()).toContain('Choose explorer model');
+    expect(lastFrame()).toContain(`> ${manualModel}`);
+    expect(lastFrame()).not.toContain('> Manual entry');
+
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('Choose explorer effort');
+    expect(lastFrame()).toContain(`Model: ${manualModel}`);
+    expect(lastFrame()).toContain('No explicit effort options');
+    expect(lastFrame()).not.toContain('\n  high');
+  });
+
+  test('Manual entry remains selected when async catalog options arrive', async () => {
+    const pending = deferred<ModelOption[]>();
+    const ops = operations({ codex: pending.promise }, undefined, {
+      codex: [{ role: 'explorer', model: 'gpt-current' }],
+    });
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await press(stdin, '\r');
+    await press(stdin, 'j');
+    expect(lastFrame()).toContain('> Manual entry');
+
+    pending.resolve([modelOption('gpt-other-1'), modelOption('gpt-other-2')]);
+    await flushInk();
+
+    expect(lastFrame()).toContain('> Manual entry');
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('Edit explorer');
+    expect(lastFrame()).toContain('New: gpt-current');
+  });
+
+  test('model selection is followed by effort selection with inherit and supported values only', async () => {
+    const { lastFrame, stdin } = render(
+      <App operations={operations()} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await flushInk();
+    await press(stdin, '\r');
+    await press(stdin, 'j');
+    await press(stdin, '\r');
+
+    expect(lastFrame()).toContain('Choose explorer effort');
+    expect(lastFrame()).toContain('inherit');
+    expect(lastFrame()).toContain('low');
+    expect(lastFrame()).toContain('high');
+    expect(lastFrame()).not.toContain('toggle');
+    expect(lastFrame()).not.toContain('budget_tokens');
+  });
+
+  test('effort-only edits are dirty and included in model plans', async () => {
+    const current = modelOption('gpt-5.3-codex-spark', ['high']);
+    const ops = operations({ codex: [current] }, undefined, {
+      codex: [{ role: 'explorer', model: current.id }],
+    });
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await flushInk();
+    await press(stdin, '\r');
+    await press(stdin, '\r');
+    await press(stdin, 'j');
+    await press(stdin, '\r');
+
+    expect(lastFrame()).toContain('*explorer: gpt-5.3-codex-spark');
+    expect(lastFrame()).toContain('effort high');
+
+    await press(stdin, 'j');
+    await press(stdin, 'j');
+    await press(stdin, '\r');
+    expect(ops.modelPlanRoles.at(-1)).toEqual([
+      expect.objectContaining({
+        role: 'explorer',
+        model: 'gpt-5.3-codex-spark',
+        effort: { kind: 'effort', value: 'high' },
+        availableEfforts: ['high'],
+      }),
+    ]);
+  });
+
+  test('changing model resets an incompatible pending effort to inherit', async () => {
+    const ops = operations(
+      { codex: [modelOption('gpt-5.2', ['low'])] },
+      undefined,
+      {
+        codex: [
+          {
+            role: 'explorer',
+            model: 'gpt-5.5',
+            effort: { kind: 'effort', value: 'high' },
+          },
+        ],
+      },
+    );
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await flushInk();
+    await press(stdin, '\r');
+    await press(stdin, 'j');
+    await press(stdin, '\r');
+
+    expect(lastFrame()).toContain('New effort: inherit');
+    expect(lastFrame()).not.toContain('\n  high');
+  });
+
+  test('models without effort capability still offer inherit only', async () => {
+    const ops = operations({ codex: [modelOption('gpt-5.2')] });
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    await flushInk();
+    await press(stdin, '\r');
+    await press(stdin, 'j');
+    await press(stdin, '\r');
+
+    expect(lastFrame()).toContain('No explicit effort options');
+    expect(lastFrame()).toContain('inherit');
+  });
+
   test('Configure Models -> OpenCode does not show the Codex model note', async () => {
     const { lastFrame, stdin } = render(
       <App operations={operations()} exitOnQuit={false} />,
@@ -589,7 +961,7 @@ describe('interactive TUI', () => {
     await dirtyExplorer(stdin);
 
     expect(lastFrame()).toContain('*explorer: gpt-5.2');
-    expect(lastFrame()).toContain('(was gpt-5.3-codex-spark)');
+    expect(lastFrame()).toContain('(was gpt-5.3-codex-spark · effort inherit)');
   });
 
   test('OpenCode model picker can select beyond the first visible page', async () => {
@@ -600,8 +972,9 @@ describe('interactive TUI', () => {
 
     await openOpenCodeModels(stdin);
     await press(stdin, '\r');
-    for (let index = 0; index < 10; index += 1) await press(stdin, 'j');
+    for (let index = 0; index < 11; index += 1) await press(stdin, 'j');
     expect(lastFrame()).toContain('openai/gpt-page-11');
+    await press(stdin, '\r');
     await press(stdin, '\r');
 
     expect(lastFrame()).toContain('*orchestrator: openai/gpt-page-11');
@@ -615,10 +988,11 @@ describe('interactive TUI', () => {
 
     await openOpenCodeModels(stdin);
     await press(stdin, '\r');
-    for (let index = 0; index < 12; index += 1) await press(stdin, 'j');
+    for (let index = 0; index < 13; index += 1) await press(stdin, 'j');
     expect(lastFrame()).toContain('> Manual entry');
     await press(stdin, '\r');
     await press(stdin, 'manual-opencode-model');
+    await press(stdin, '\r');
     await press(stdin, '\r');
 
     expect(lastFrame()).toContain(
@@ -627,13 +1001,25 @@ describe('interactive TUI', () => {
   });
 
   test('manual model entry marks a role dirty', async () => {
+    const ops = operations();
     const { lastFrame, stdin } = render(
-      <App operations={operations()} exitOnQuit={false} />,
+      <App operations={ops} exitOnQuit={false} />,
     );
 
     await manualExplorer(stdin);
 
     expect(lastFrame()).toContain('*explorer: gpt-5.3-codex-sparkmanual-model');
+    for (let index = 0; index < 6; index += 1) await press(stdin, 'j');
+    await press(stdin, '\r');
+    const planned = ops.modelPlanRoles.at(-1);
+    expect(planned).toEqual([
+      {
+        role: 'explorer',
+        model: 'gpt-5.3-codex-sparkmanual-model',
+      },
+    ]);
+    expect(JSON.stringify(planned)).not.toContain('toggle');
+    expect(JSON.stringify(planned)).not.toContain('budget_tokens');
   });
 
   test('model preview only includes changed roles', async () => {

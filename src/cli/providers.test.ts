@@ -25,13 +25,17 @@ describe('providers', () => {
     expect(agents).toBeDefined();
     expect(agents.orchestrator.model).toBe('openai/gpt-5.4');
     expect(agents.orchestrator.variant).toBeUndefined();
-    expect(agents.quick.model).toBe('openai/gpt-5.4-mini');
-    expect(agents.quick.variant).toBe('low');
-    expect(agents.deep.model).toBe('openai/gpt-5.4');
-    expect(agents.deep.variant).toBe('high');
+    expect(agents.quick).toEqual({
+      model: 'openai/gpt-5.6-luna',
+      variant: 'medium',
+    });
+    expect(agents.deep).toEqual({
+      model: 'openai/gpt-5.6-terra',
+      variant: 'xhigh',
+    });
   });
 
-  test('generateLiteConfig uses correct OpenAI models', () => {
+  test('generateLiteConfig uses the confirmed OpenAI subagent preset', () => {
     const config = generateLiteConfig({
       hasTmux: false,
       installSkills: false,
@@ -43,18 +47,30 @@ describe('providers', () => {
     expect(agents.orchestrator.model).toBe(
       MODEL_MAPPINGS.openai.orchestrator.model,
     );
-    expect(agents.oracle.model).toBe('openai/gpt-5.4');
-    expect(agents.oracle.variant).toBe('high');
-    expect(agents.librarian.model).toBe('openai/gpt-5.4-mini');
-    expect(agents.librarian.variant).toBe('low');
-    expect(agents.explorer.model).toBe('openai/gpt-5.4-mini');
-    expect(agents.explorer.variant).toBe('low');
-    expect(agents.designer.model).toBe('openai/gpt-5.4-mini');
-    expect(agents.designer.variant).toBe('medium');
-    expect(agents.quick.model).toBe('openai/gpt-5.4-mini');
-    expect(agents.quick.variant).toBe('low');
-    expect(agents.deep.model).toBe('openai/gpt-5.4');
-    expect(agents.deep.variant).toBe('high');
+    expect(agents.oracle).toEqual({
+      model: 'openai/gpt-5.6-sol',
+      variant: 'high',
+    });
+    expect(agents.librarian).toEqual({
+      model: 'openai/gpt-5.6-luna',
+      variant: 'low',
+    });
+    expect(agents.explorer).toEqual({
+      model: 'openai/gpt-5.6-luna',
+      variant: 'low',
+    });
+    expect(agents.designer).toEqual({
+      model: 'openai/gpt-5.6-terra',
+      variant: 'high',
+    });
+    expect(agents.quick).toEqual({
+      model: 'openai/gpt-5.6-luna',
+      variant: 'medium',
+    });
+    expect(agents.deep).toEqual({
+      model: 'openai/gpt-5.6-terra',
+      variant: 'xhigh',
+    });
   });
 
   test('generateLiteConfig enables tmux when requested', () => {

@@ -105,6 +105,9 @@ describe('claudeCodeAdapter', () => {
     expect(modelOf('agents/designer.md')).toBe('sonnet');
     expect(modelOf('agents/quick.md')).toBe('haiku');
     expect(modelOf('agents/deep.md')).toBe('sonnet');
+    expect(String(artifact(artifacts, 'agents/deep.md')?.content)).not.toMatch(
+      /^effort:/m,
+    );
   });
 
   test('renders .mcp.json with http type for url-based servers', () => {

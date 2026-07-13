@@ -82,6 +82,23 @@ function writePackageJson(
 }
 
 describe('Codex adapter', () => {
+  test('renders the confirmed model and effort defaults for every subagent', () => {
+    const expected = {
+      oracle: { model: 'gpt-5.6-sol', effort: 'high' },
+      librarian: { model: 'gpt-5.6-luna', effort: 'low' },
+      explorer: { model: 'gpt-5.6-luna', effort: 'low' },
+      designer: { model: 'gpt-5.6-terra', effort: 'high' },
+      quick: { model: 'gpt-5.6-luna', effort: 'medium' },
+      deep: { model: 'gpt-5.6-terra', effort: 'xhigh' },
+    } as const;
+
+    for (const [role, defaults] of Object.entries(expected)) {
+      const content = agentContent(role);
+      expectTomlField(content, 'model', defaults.model);
+      expectTomlField(content, 'model_reasoning_effort', defaults.effort);
+    }
+  });
+
   test('resolves the root package version by walking upward from the current working directory', () => {
     const workspace = mkdtempSync(path.join(tmpdir(), 'codex-version-'));
     const repoRoot = path.join(workspace, 'repo');
@@ -634,12 +651,12 @@ describe('Codex adapter', () => {
 
   test('renders Codex-only default models for generated subagents', () => {
     const expectedModels = {
-      oracle: 'gpt-5.5',
-      librarian: 'gpt-5.4-mini',
-      explorer: 'gpt-5.4-mini',
-      designer: 'gpt-5.4-mini',
-      quick: 'gpt-5.4-mini',
-      deep: 'gpt-5.5',
+      oracle: 'gpt-5.6-sol',
+      librarian: 'gpt-5.6-luna',
+      explorer: 'gpt-5.6-luna',
+      designer: 'gpt-5.6-terra',
+      quick: 'gpt-5.6-luna',
+      deep: 'gpt-5.6-terra',
     } as const;
 
     for (const [role, model] of Object.entries(expectedModels)) {
@@ -653,23 +670,25 @@ describe('Codex adapter', () => {
     expectTomlFieldMissing(artifactContent('.codex/config.toml'), 'model');
   });
 
-  test('renders approved reasoning effort per generated Codex subagent', () => {
-    const expectedEfforts = {
-      oracle: 'high',
-      explorer: 'low',
-      librarian: 'medium',
-      designer: 'medium',
-      quick: 'low',
-      deep: 'medium',
-    } as const;
+  test('omits default effort when a custom model is configured', () => {
+    const config: PluginConfig = {
+      agents: {
+        oracle: { model: 'gpt-5.5-codex-custom' },
+        explorer: { model: [{ id: 'gpt-5.4-mini-custom' }] },
+      },
+    };
 
-    for (const [role, effort] of Object.entries(expectedEfforts)) {
-      expectTomlField(
-        artifactContent(`.codex/agents/thoth-agents-${role}.toml`),
+    for (const role of ['oracle', 'explorer']) {
+      expectTomlFieldMissing(
+        artifactContent(`.codex/agents/thoth-agents-${role}.toml`, config),
         'model_reasoning_effort',
-        effort,
       );
     }
+    expectTomlField(
+      artifactContent('.codex/agents/thoth-agents-deep.toml', config),
+      'model_reasoning_effort',
+      'xhigh',
+    );
   });
 
   test('uses existing per-agent model overrides for Codex subagents only', () => {
@@ -694,7 +713,7 @@ describe('Codex adapter', () => {
     expectTomlField(
       artifactContent('.codex/agents/thoth-agents-deep.toml', config),
       'model',
-      'gpt-5.5',
+      'gpt-5.6-terra',
     );
 
     expectTomlFieldMissing(

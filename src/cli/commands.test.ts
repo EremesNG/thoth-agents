@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   formatHarnessList,
@@ -5,17 +8,36 @@ import {
   formatOperationApplyResult,
   formatOperationPlan,
   printHelp,
+  resolveCliModelRoles,
   runCliCommand,
 } from './commands';
+import type { ModelOption } from './model-catalog';
+import {
+  applyClaudeCodePlan,
+  buildClaudeCodeModelPlan,
+} from './operations/claude-code';
 import type {
   HarnessStatusReport,
   ManagedState,
+  ModelRoleInput,
   OperationApplyResult,
+  OperationContext,
   OperationPlan,
 } from './operations/types';
 import { parseCliArgs } from './parser';
 
-async function captureCommand(args: string[]): Promise<{
+interface TestModelServices {
+  operationContext(): OperationContext;
+  modelRoles(harness: 'codex' | 'opencode' | 'claude'): ModelRoleInput[];
+  modelOptions(
+    harness: 'codex' | 'opencode' | 'claude',
+  ): Promise<ModelOption[]>;
+}
+
+async function captureCommand(
+  args: string[],
+  services?: TestModelServices,
+): Promise<{
   code: number;
   output: string;
   errors: string;
@@ -32,7 +54,7 @@ async function captureCommand(args: string[]): Promise<{
   };
 
   try {
-    const code = await runCliCommand(parseCliArgs(args));
+    const code = await runCliCommand(parseCliArgs(args), services as never);
     return {
       code,
       output: output.join('\n'),
@@ -255,6 +277,105 @@ describe('commands plain operation formatters', () => {
 });
 
 describe('explicit operation commands', () => {
+  test.each([
+    ['codex', 'gpt-5.6-sol', 'openai/gpt-5.6-sol'],
+    ['opencode', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-sol'],
+    ['claude', 'anthropic/claude-opus-4.6', 'anthropic/claude-opus-4.6'],
+  ] as const)('effort-only %s command preserves current model and attaches exact catalog metadata', async (harness, model, catalogId) => {
+    const services: TestModelServices = {
+      operationContext: () => ({ cwd: process.cwd() }),
+      modelRoles: () => [{ role: 'deep', model }],
+      modelOptions: async () => [
+        {
+          id: model,
+          catalogId,
+          label: model,
+          provider: catalogId.split('/')[0] ?? '',
+          efforts: ['high'],
+          source: 'remote',
+        },
+      ],
+    };
+
+    expect(
+      resolveCliModelRoles(
+        harness,
+        [{ role: 'deep', effort: { kind: 'effort', value: 'high' } }],
+        {
+          currentRoles: services.modelRoles(harness),
+          modelOptions: await services.modelOptions(harness),
+        } as never,
+      ),
+    ).toEqual([
+      {
+        role: 'deep',
+        model,
+        provider: catalogId.split('/')[0],
+        catalogId,
+        availableEfforts: ['high'],
+        effort: { kind: 'effort', value: 'high' },
+      },
+    ]);
+
+    const result = await captureCommand(
+      ['model', `--harness=${harness}`, '--role-effort=deep=high'],
+      services,
+    );
+    expect(result.code).toBe(0);
+    expect(result.output).toContain(model);
+    expect(result.output).toContain('high');
+    expect(result.output).toContain('Can apply: yes');
+  });
+
+  test('concrete Claude CLI resolution generates exact effort frontmatter', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'claude-cli-effort-'));
+    const model = 'anthropic/claude-opus-4.6';
+    try {
+      const roles = resolveCliModelRoles(
+        'claude',
+        [{ role: 'deep', effort: { kind: 'effort', value: 'high' } }],
+        {
+          currentRoles: [{ role: 'deep', model }],
+          modelOptions: [
+            {
+              id: model,
+              catalogId: model,
+              label: model,
+              provider: 'anthropic',
+              efforts: ['low', 'high'],
+              source: 'remote',
+            },
+          ],
+        } as never,
+      );
+      const plan = buildClaudeCodeModelPlan(
+        { harness: 'claude', dryRun: true, roles },
+        { cwd: process.cwd(), scope: 'user', homeDir: home },
+      );
+      expect(applyClaudeCodePlan(plan).applied).toBe(true);
+      const output = readFileSync(
+        join(home, '.claude', 'skills', 'thoth-agents', 'agents', 'deep.md'),
+        'utf8',
+      );
+      expect(output).toContain(`model: ${model}`);
+      expect(output).toContain('effort: high');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('help documents repeatable role effort input', () => {
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (message?: unknown) => lines.push(String(message));
+    try {
+      printHelp();
+    } finally {
+      console.log = originalLog;
+    }
+    expect(lines.join('\n')).toContain('--role-effort=role=effort');
+  });
+
   test('status dispatches to operation status services for all harnesses', async () => {
     const result = await captureCommand(['status']);
 

@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -7,7 +13,9 @@ import {
   applyClaudeCodeSetup,
   buildClaudeCodeSetupPlan,
   isClaudeCodeModelAlias,
+  parseSubagentEffort,
   parseSubagentModel,
+  replaceSubagentEffort,
   replaceSubagentModel,
 } from './claude-code-install';
 
@@ -44,6 +52,17 @@ describe('claude-code-install', () => {
     );
   });
 
+  test('frontmatter effort helpers add, replace, and remove without changing body', () => {
+    const content = '---\nname: deep\nmodel: opus\ntools: Read\n---\nbody';
+    const added = replaceSubagentEffort(content, 'high');
+    expect(parseSubagentEffort(added)).toBe('high');
+    expect(added).toContain('tools: Read\n---\nbody');
+
+    const replaced = replaceSubagentEffort(added, 'max');
+    expect(parseSubagentEffort(replaced)).toBe('max');
+    expect(replaceSubagentEffort(replaced, undefined)).toBe(content);
+  });
+
   test('model alias guard rejects arbitrary models', () => {
     expect(isClaudeCodeModelAlias('opus')).toBe(true);
     expect(isClaudeCodeModelAlias('inherit')).toBe(true);
@@ -78,6 +97,54 @@ describe('claude-code-install', () => {
     expect(existsSync(join(pluginRoot(), 'agents', 'deep.md.bak'))).toBe(false);
   });
 
+  test('setup preserves installed effort and treats an absent field as inherit', () => {
+    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
+    const deepPath = join(pluginRoot(), 'agents', 'deep.md');
+    const explorerPath = join(pluginRoot(), 'agents', 'explorer.md');
+    writeFileSync(
+      deepPath,
+      replaceSubagentEffort(readFileSync(deepPath, 'utf8'), 'high'),
+    );
+    writeFileSync(
+      explorerPath,
+      replaceSubagentEffort(readFileSync(explorerPath, 'utf8'), undefined),
+    );
+    const statePath = join(pluginRoot(), '.thoth-agents-managed-models.json');
+    const state = JSON.parse(readFileSync(statePath, 'utf8'));
+    state.configuredEfforts = { explorer: 'max' };
+    writeFileSync(statePath, JSON.stringify(state, null, 2));
+
+    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
+
+    expect(parseSubagentEffort(readFileSync(deepPath, 'utf8'))).toBe('high');
+    expect(
+      parseSubagentEffort(readFileSync(explorerPath, 'utf8')),
+    ).toBeUndefined();
+  });
+
+  test('model-only Claude override preserves installed effort until explicitly cleared', () => {
+    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
+    const deepPath = join(pluginRoot(), 'agents', 'deep.md');
+    writeFileSync(
+      deepPath,
+      replaceSubagentEffort(readFileSync(deepPath, 'utf8'), 'high'),
+    );
+
+    expect(
+      applyClaudeCodeManagedModelOverrides(config(), [
+        { role: 'deep', model: 'opus' },
+      ]).success,
+    ).toBe(true);
+    expect(parseSubagentEffort(readFileSync(deepPath, 'utf8'))).toBe('high');
+
+    expect(
+      applyClaudeCodeManagedModelOverrides(config(), [
+        { role: 'deep', model: 'opus', clearEffort: true },
+      ]).success,
+    ).toBe(true);
+    expect(parseSubagentEffort(readFileSync(deepPath, 'utf8'))).toBeUndefined();
+  });
+
   test('managed model override updates frontmatter and persists state', () => {
     applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
 
@@ -104,6 +171,45 @@ describe('claude-code-install', () => {
     const replan = buildClaudeCodeSetupPlan(config());
     const explorerItem = replan.items.find((item) => item.role === 'explorer');
     expect(parseSubagentModel(String(explorerItem?.content))).toBe('haiku');
+  });
+
+  test('manual concrete model-only override survives regeneration without excluded controls', () => {
+    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
+    const model = 'anthropic/claude-opus-4.6';
+
+    const result = applyClaudeCodeManagedModelOverrides(config(), [
+      { role: 'deep', model, catalogId: model },
+    ]);
+    expect(result.success).toBe(true);
+    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
+
+    const output = readFileSync(
+      join(pluginRoot(), 'agents', 'deep.md'),
+      'utf8',
+    );
+    expect(parseSubagentModel(output)).toBe(model);
+    expect(parseSubagentEffort(output)).toBeUndefined();
+    expect(output).not.toContain('toggle');
+    expect(output).not.toContain('budget_tokens');
+  });
+
+  test('managed effort override updates frontmatter and persists state', () => {
+    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
+
+    const result = applyClaudeCodeManagedModelOverrides(config(), [
+      { role: 'deep', model: 'opus', effort: 'max' },
+    ]);
+    expect(result.success).toBe(true);
+
+    const deep = readFileSync(join(pluginRoot(), 'agents', 'deep.md'), 'utf8');
+    expect(parseSubagentEffort(deep)).toBe('max');
+    const state = JSON.parse(
+      readFileSync(
+        join(pluginRoot(), '.thoth-agents-managed-models.json'),
+        'utf8',
+      ),
+    ) as { configuredEfforts?: Record<string, string> };
+    expect(state.configuredEfforts?.deep).toBe('max');
   });
 
   test('rejects unsupported model aliases on override', () => {

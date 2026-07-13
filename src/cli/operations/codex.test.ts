@@ -16,6 +16,7 @@ import {
   buildCodexSyncPlan,
   buildCodexUpdatePlan,
   getCodexStatus,
+  resolveCodexEffort,
 } from './codex';
 
 const PACKAGE_ROOT = process.cwd();
@@ -55,6 +56,36 @@ function roleModel(content: string): string | undefined {
 }
 
 describe('Codex operations adapter', () => {
+  test('resolves only exact catalog efforts in the documented Codex surface', () => {
+    const base = {
+      role: 'deep',
+      model: 'gpt-5.6-sol',
+      catalogId: 'openai/gpt-5.6-sol',
+      availableEfforts: ['none', 'max', 'ultra', 'future-level'],
+    };
+    expect(
+      resolveCodexEffort({
+        ...base,
+        effort: { kind: 'effort', value: 'ultra' },
+      }),
+    ).toEqual({ ok: true, value: 'ultra' });
+    expect(
+      resolveCodexEffort({
+        ...base,
+        effort: { kind: 'effort', value: 'future-level' },
+      }),
+    ).toMatchObject({ ok: false, code: 'codex-effort-undocumented' });
+    expect(
+      resolveCodexEffort({
+        ...base,
+        availableEfforts: ['none', 'max'],
+        effort: { kind: 'effort', value: 'ultra' },
+      }),
+    ).toMatchObject({ ok: false, code: 'codex-effort-model-unsupported' });
+    expect(
+      resolveCodexEffort({ ...base, effort: { kind: 'inherit' } }),
+    ).toEqual({ ok: true, value: undefined });
+  });
   test('Codex status classifies missing, installed, drift, outdated, and unknown states', () => {
     const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-ops-'));
     try {
@@ -233,6 +264,28 @@ describe('Codex operations adapter', () => {
       const quickAfter = readFileSync(quickPath, 'utf8');
       expect(roleModel(quickAfter)).toBe('openai/gpt-5.4-mini');
       expect(quickAfter).toContain('sandbox_mode = "read-only"');
+      expect(quickAfter).toContain('model_reasoning_effort = "medium"');
+      expect(quickAfter).not.toContain('toggle');
+      expect(quickAfter).not.toContain('budget_tokens');
+
+      const clearPlan = buildCodexModelPlan(
+        {
+          harness: 'codex',
+          dryRun: true,
+          roles: [
+            {
+              role: 'quick',
+              model: 'openai/gpt-5.4-mini',
+              effort: { kind: 'inherit' },
+            },
+          ],
+        },
+        context(dir, home),
+      );
+      expect(applyCodexPlan(clearPlan).applied).toBe(true);
+      expect(readFileSync(quickPath, 'utf8')).not.toContain(
+        'model_reasoning_effort',
+      );
       expect(readFileSync(managedModelsPath(home), 'utf8')).toContain(
         'openai/gpt-5.4-mini',
       );
@@ -241,6 +294,9 @@ describe('Codex operations adapter', () => {
       setup(dir, home);
       expect(roleModel(readFileSync(quickPath, 'utf8'))).toBe(
         'openai/gpt-5.4-mini',
+      );
+      expect(readFileSync(quickPath, 'utf8')).not.toContain(
+        'model_reasoning_effort',
       );
       expect(getCodexStatus(context(dir, home)).state).toBe('installed');
     } finally {

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -9,6 +9,7 @@ import {
   claudeCodeOperationAdapter,
   defaultClaudeCodeModelRoles,
   getClaudeCodeStatus,
+  resolveClaudeCodeEffort,
 } from './claude-code';
 
 let home: string;
@@ -80,6 +81,125 @@ describe('claudeCodeOperationAdapter', () => {
         (w) => w.code === 'claude-code-unsupported-model-role',
       ),
     ).toBe(true);
+  });
+
+  test('resolves official alias efforts and intersects concrete model catalog values', () => {
+    expect(
+      resolveClaudeCodeEffort({
+        model: 'opus',
+        effort: { kind: 'effort', value: 'max' },
+      }),
+    ).toEqual({ ok: true, effort: 'max' });
+    expect(
+      resolveClaudeCodeEffort({
+        model: 'anthropic/claude-opus-4.6',
+        catalogId: 'anthropic/claude-opus-4.6',
+        availableEfforts: ['low', 'high'],
+        effort: { kind: 'effort', value: 'high' },
+      }),
+    ).toEqual({ ok: true, effort: 'high' });
+    expect(
+      resolveClaudeCodeEffort({
+        model: 'anthropic/claude-opus-4.6',
+        catalogId: 'anthropic/claude-opus-4.6',
+        availableEfforts: ['low', 'high'],
+        effort: { kind: 'effort', value: 'max' },
+      }),
+    ).toMatchObject({
+      ok: false,
+      code: 'claude-code-effort-catalog-unsupported',
+    });
+    expect(
+      resolveClaudeCodeEffort({
+        model: 'opus',
+        effort: { kind: 'inherit' },
+      }),
+    ).toEqual({ ok: true, effort: undefined });
+  });
+
+  test('manual concrete model-only plans round-trip without excluded controls', () => {
+    const model = 'anthropic/claude-opus-4.6';
+    const plan = buildClaudeCodeModelPlan(
+      {
+        harness: 'claude',
+        dryRun: true,
+        roles: [
+          {
+            role: 'deep',
+            model,
+            catalogId: model,
+            effort: { kind: 'inherit' },
+          },
+        ],
+      },
+      context(),
+    );
+
+    expect(applyClaudeCodePlan(plan).applied).toBe(true);
+    expect(applyClaudeCodePlan(plan).applied).toBe(true);
+    const output = readFileSync(
+      join(home, '.claude', 'skills', 'thoth-agents', 'agents', 'deep.md'),
+      'utf8',
+    );
+    expect(output).toContain(`model: ${model}`);
+    expect(output).not.toMatch(/^effort:/m);
+    expect(output).not.toContain('toggle');
+    expect(output).not.toContain('budget_tokens');
+  });
+
+  test('explicit inherit clears Claude effort while model-only changes preserve it', () => {
+    const target = join(
+      home,
+      '.claude',
+      'skills',
+      'thoth-agents',
+      'agents',
+      'deep.md',
+    );
+    const withEffort = buildClaudeCodeModelPlan(
+      {
+        harness: 'claude',
+        dryRun: true,
+        roles: [
+          {
+            role: 'deep',
+            model: 'opus',
+            effort: { kind: 'effort', value: 'high' },
+          },
+        ],
+      },
+      context(),
+    );
+    expect(applyClaudeCodePlan(withEffort).applied).toBe(true);
+    expect(readFileSync(target, 'utf8')).toMatch(/^effort: high$/m);
+
+    const modelOnly = buildClaudeCodeModelPlan(
+      {
+        harness: 'claude',
+        dryRun: true,
+        roles: [{ role: 'deep', model: 'sonnet' }],
+      },
+      context(),
+    );
+    expect(applyClaudeCodePlan(modelOnly).applied).toBe(true);
+    expect(readFileSync(target, 'utf8')).toMatch(/^effort: high$/m);
+
+    const clearEffort = buildClaudeCodeModelPlan(
+      {
+        harness: 'claude',
+        dryRun: true,
+        roles: [
+          {
+            role: 'deep',
+            model: 'sonnet',
+            effort: { kind: 'inherit' },
+          },
+        ],
+      },
+      context(),
+    );
+    expect(applyClaudeCodePlan(clearEffort).applied).toBe(true);
+    expect(readFileSync(target, 'utf8')).not.toMatch(/^effort:/m);
   });
 
   test('rejects applying a non-claude plan', () => {

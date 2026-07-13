@@ -69,4 +69,23 @@ describe('renderClaudeCodeSubagent', () => {
     expect(output).toContain('name: quick');
     expect(output).toContain('model: inherit');
   });
+
+  test('renders effort only when explicitly configured', () => {
+    const explicit = renderClaudeCodeSubagent({
+      name: 'deep',
+      description: 'desc',
+      model: 'opus',
+      effort: 'max',
+      instructions: 'body',
+    });
+    const inherited = renderClaudeCodeSubagent({
+      name: 'deep',
+      description: 'desc',
+      model: 'opus',
+      instructions: 'body',
+    });
+
+    expect(explicit).toContain('effort: max');
+    expect(inherited).not.toMatch(/^effort:/m);
+  });
 });

@@ -6,6 +6,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname } from 'node:path';
+import { z } from 'zod';
+import { isExplicitEffort, normalizeEffortSelection } from './model-effort';
 
 /**
  * Harness-agnostic helpers shared by the Codex and Claude Code installers for
@@ -42,6 +44,24 @@ export interface ManagedModelState {
   version: number;
   models: Record<string, string>;
   configuredModels?: Record<string, string>;
+  configuredEfforts?: Record<string, string>;
+}
+
+const managedModelStateSchema = z
+  .object({
+    version: z.number(),
+    models: z.record(z.string(), z.unknown()),
+    configuredModels: z.unknown().optional(),
+    configuredEfforts: z.unknown().optional(),
+  })
+  .passthrough();
+
+function effortRecord(value: unknown): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(stringRecord(value)).filter(([, effort]) =>
+      isExplicitEffort(normalizeEffortSelection(effort)),
+    ),
+  );
 }
 
 export function emptyManagedModelState(version: number): ManagedModelState {
@@ -54,24 +74,20 @@ export function parseManagedModelStateJson(
 ): ManagedModelState {
   if (!text) return emptyManagedModelState(version);
   try {
-    const parsed = JSON.parse(text) as {
-      version?: unknown;
-      models?: unknown;
-      configuredModels?: unknown;
-    };
-    if (
-      parsed.version !== version ||
-      !parsed.models ||
-      typeof parsed.models !== 'object' ||
-      Array.isArray(parsed.models)
-    ) {
+    const input: unknown = JSON.parse(text);
+    const result = managedModelStateSchema.safeParse(input);
+    if (!result.success || result.data.version !== version) {
       return emptyManagedModelState(version);
     }
-    const configuredModels = stringRecord(parsed.configuredModels);
+    const configuredModels = stringRecord(result.data.configuredModels);
+    const configuredEfforts = effortRecord(result.data.configuredEfforts);
     return {
       version,
-      models: stringRecord(parsed.models),
+      models: stringRecord(result.data.models),
       ...(Object.keys(configuredModels).length > 0 ? { configuredModels } : {}),
+      ...(Object.keys(configuredEfforts).length > 0
+        ? { configuredEfforts }
+        : {}),
     };
   } catch {
     return emptyManagedModelState(version);

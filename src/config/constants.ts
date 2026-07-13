@@ -63,6 +63,18 @@ export const DEFAULT_MODELS: Record<AgentName, string | undefined> = {
   deep: 'openai/gpt-5.4',
 };
 
+export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
+  oracle: { model: 'gpt-5.6-sol', effort: 'high' },
+  librarian: { model: 'gpt-5.6-luna', effort: 'low' },
+  explorer: { model: 'gpt-5.6-luna', effort: 'low' },
+  designer: { model: 'gpt-5.6-terra', effort: 'high' },
+  quick: { model: 'gpt-5.6-luna', effort: 'medium' },
+  deep: { model: 'gpt-5.6-terra', effort: 'xhigh' },
+} as const satisfies Record<
+  Exclude<BuiltinAgentName, 'orchestrator'>,
+  { model: string; effort: string }
+>;
+
 // Polling configuration
 export const POLL_INTERVAL_MS = 500;
 export const POLL_INTERVAL_SLOW_MS = 1000;

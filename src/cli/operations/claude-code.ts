@@ -44,9 +44,54 @@ const claudeCodeModelSources = new WeakMap<
   OperationPlan,
   {
     config: ClaudeCodeInstallConfig;
-    roles: { role: ClaudeCodeRoleName; model: string }[];
+    roles: {
+      role: ClaudeCodeRoleName;
+      model: string;
+      catalogId?: string;
+      effort?: string;
+      clearEffort?: boolean;
+    }[];
   }
 >();
+
+const CLAUDE_CODE_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+
+export type ClaudeCodeEffortResolution =
+  | { ok: true; effort: string | undefined }
+  | { ok: false; code: string; message: string };
+
+export function resolveClaudeCodeEffort(
+  input: Pick<
+    ModelRoleInput,
+    'availableEfforts' | 'catalogId' | 'effort' | 'model'
+  >,
+): ClaudeCodeEffortResolution {
+  if (!input.effort || input.effort.kind === 'inherit') {
+    return { ok: true, effort: undefined };
+  }
+  const effort = input.effort.value;
+  if (!CLAUDE_CODE_EFFORTS.has(effort)) {
+    return {
+      ok: false,
+      code: 'claude-code-effort-runtime-unsupported',
+      message: `Claude Code does not support effort ${effort}.`,
+    };
+  }
+  if (isClaudeCodeModelAlias(input.model) && input.model !== 'inherit') {
+    return { ok: true, effort };
+  }
+  if (
+    input.catalogId === input.model &&
+    input.availableEfforts?.includes(effort)
+  ) {
+    return { ok: true, effort };
+  }
+  return {
+    ok: false,
+    code: 'claude-code-effort-catalog-unsupported',
+    message: `Effort ${effort} is not supported by ${input.catalogId ?? input.model} in the models.dev catalog.`,
+  };
+}
 
 const claudeCodeActions: HarnessAction[] = [
   {
@@ -413,24 +458,43 @@ export function buildClaudeCodeModelPlan(
   context: ClaudeCodeOperationContext = { cwd: process.cwd() },
 ): OperationPlan {
   const status = getClaudeCodeStatus(context);
-  const supportedRoles = input.roles
-    .filter((role) => isClaudeCodeRole(role.role))
-    .filter((role) => isClaudeCodeModelAlias(role.model))
-    .map((role) => ({
+  const resolvedRoles = input.roles.map((role) => ({
+    role,
+    effort: resolveClaudeCodeEffort(role),
+    validRole: isClaudeCodeRole(role.role),
+    validModel:
+      isClaudeCodeModelAlias(role.model) || role.catalogId === role.model,
+  }));
+  const supportedRoles = resolvedRoles
+    .filter((entry) => entry.validRole && entry.validModel && entry.effort.ok)
+    .map(({ role, effort }) => ({
       role: role.role as ClaudeCodeRoleName,
       model: role.model,
+      ...(role.catalogId ? { catalogId: role.catalogId } : {}),
+      ...(effort.ok && effort.effort !== undefined
+        ? { effort: effort.effort }
+        : {}),
+      ...(role.effort?.kind === 'inherit' ? { clearEffort: true } : {}),
     }));
-  const rejectedRoles = input.roles.filter(
-    (role) =>
-      !isClaudeCodeRole(role.role) || !isClaudeCodeModelAlias(role.model),
+  const rejectedRoles = resolvedRoles.filter(
+    (entry) => !entry.validRole || !entry.validModel,
+  );
+  const effortErrors = resolvedRoles.filter(
+    (entry) => entry.validRole && entry.validModel && !entry.effort.ok,
   );
   const warnings: OperationWarning[] = [
     ...status.diagnostics,
     ...(input.warnings ?? []),
-    ...rejectedRoles.map((role) =>
+    ...rejectedRoles.map(({ role }) =>
       warning(
         `Claude Code does not accept role "${role.role}" with model "${role.model}"; roles must be one of ${CLAUDE_CODE_ROLE_NAMES.join(', ')} and models must be sonnet, opus, haiku, or inherit.`,
         'claude-code-unsupported-model-role',
+      ),
+    ),
+    ...effortErrors.map(({ effort }) =>
+      warning(
+        effort.ok ? 'Unknown Claude Code effort error.' : effort.message,
+        effort.ok ? 'claude-code-effort-unknown' : effort.code,
       ),
     ),
   ];
@@ -470,6 +534,7 @@ export function buildClaudeCodeModelPlan(
     canApply:
       input.harness === 'claude' &&
       supportedRoles.length > 0 &&
+      effortErrors.length === 0 &&
       status.state !== 'unknown',
     targets: [...targets, ...(stateTarget ? [stateTarget] : [])],
     surfaces: targets.map((target) => ({
@@ -484,7 +549,7 @@ export function buildClaudeCodeModelPlan(
       description:
         'Existing subagent files and managed model state are backed up by the managed write helper.',
     },
-    items: supportedRoles.map(({ role, model }) => ({
+    items: supportedRoles.map(({ role, model, effort }) => ({
       title: `Set ${role} Claude Code subagent model line`,
       target: targets.find((target) =>
         target.path?.endsWith(`agents${pathSep()}${role}.md`),
@@ -492,7 +557,7 @@ export function buildClaudeCodeModelPlan(
         kind: 'generated-artifact',
         label: `Claude Code ${role} subagent`,
       },
-      preview: JSON.stringify({ role, model }),
+      preview: JSON.stringify({ role, model, effort: effort ?? null }),
       backup: { required: true, strategy: 'managed-backup-file' },
     })),
     warnings,
@@ -574,7 +639,10 @@ export function applyClaudeCodePlan(plan: OperationPlan): OperationApplyResult {
       source.config,
       source.roles.map((role) => ({
         role: role.role,
-        model: role.model as never,
+        model: role.model,
+        ...(role.catalogId ? { catalogId: role.catalogId } : {}),
+        ...(role.effort ? { effort: role.effort } : {}),
+        ...(role.clearEffort ? { clearEffort: true } : {}),
       })),
     );
     return {

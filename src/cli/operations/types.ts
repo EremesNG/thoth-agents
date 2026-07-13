@@ -1,4 +1,5 @@
 import type { HarnessId } from '../../harness/types';
+import type { EffortSelection } from '../model-effort';
 
 export type ManagedState =
   | 'installed'
@@ -131,6 +132,9 @@ export interface ModelRoleInput {
   role: string;
   model: string;
   provider?: string;
+  effort?: EffortSelection;
+  catalogId?: string;
+  availableEfforts?: readonly string[];
 }
 
 export interface ModelConfigInput {

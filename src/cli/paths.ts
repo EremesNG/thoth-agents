@@ -53,6 +53,10 @@ export function getLiteConfigJsonc(): string {
   return join(getConfigDir(), 'thoth-agents.jsonc');
 }
 
+export function getOpenCodeManagedModelStatePath(): string {
+  return join(getConfigDir(), '.thoth-agents-managed-models.json');
+}
+
 export function getExistingLiteConfigPath(): string {
   const jsonPath = getLiteConfig();
   if (existsSync(jsonPath)) return jsonPath;

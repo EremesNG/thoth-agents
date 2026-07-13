@@ -73,3 +73,46 @@ export function ModelChoiceScreen({
     </Box>
   );
 }
+
+interface EffortChoiceScreenProps {
+  model: string;
+  currentEffort: string;
+  draftEffort: string;
+  choices: readonly string[];
+  selected: number;
+}
+
+export function EffortChoiceScreen({
+  model,
+  currentEffort,
+  draftEffort,
+  choices,
+  selected,
+}: EffortChoiceScreenProps) {
+  return (
+    <Box flexDirection="column">
+      <Text>
+        Model: <Text color={theme.accent}>{model}</Text>
+      </Text>
+      <Text>
+        Current effort: <Text color={theme.accent}>{currentEffort}</Text>
+      </Text>
+      <Text>
+        New effort: <Text color={theme.warning}>{draftEffort}</Text>
+      </Text>
+      {choices.length === 1 ? (
+        <Text color={theme.dim}>
+          No explicit effort options are available for this model.
+        </Text>
+      ) : null}
+      {choices.map((effort, index) => (
+        <Text
+          key={effort}
+          color={index === selected ? theme.accent : undefined}
+        >
+          {index === selected ? '>' : ' '} {effort}
+        </Text>
+      ))}
+    </Box>
+  );
+}

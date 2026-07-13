@@ -1,5 +1,5 @@
 import { Box, Text, useApp, useInput } from 'ink';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { HarnessId } from '../../harness/types';
 import type {
   ModelRoleInput,
@@ -9,11 +9,14 @@ import type {
 import { listOperationHarnesses } from '../operations';
 import { Header } from './components/Header';
 import { Menu, type MenuItem } from './components/Menu';
-import { ModelChoiceScreen } from './components/ModelChoiceScreen';
+import {
+  EffortChoiceScreen,
+  ModelChoiceScreen,
+} from './components/ModelChoiceScreen';
 import { type ModelRoleView, ModelScreen } from './components/ModelScreen';
 import { PlanPreview } from './components/PlanPreview';
 import { StatusView } from './components/StatusView';
-import type { ModelOption } from './model-catalog';
+import { effortChoicesForModel, type ModelOption } from './model-catalog';
 import {
   defaultTuiOperations,
   type TuiAction,
@@ -30,10 +33,12 @@ type View =
   | 'preview'
   | 'modelRoles'
   | 'modelChoice'
+  | 'effortChoice'
   | 'modelEdit';
 type RootAction = 'status' | 'manage' | 'sync' | 'exit';
 type HarnessPurpose = 'status' | 'list' | 'action';
 type PreviewBackView = 'harness' | 'manageHarness' | 'modelRoles';
+type ModelChoiceSelection = { kind: 'model'; id: string } | { kind: 'manual' };
 
 interface AppProps {
   operations?: TuiOperations;
@@ -175,7 +180,68 @@ function normalizeSelection(
 function changedRoles(rows: readonly ModelRoleView[]): ModelRoleInput[] {
   return rows
     .filter((role) => role.dirty)
-    .map((role) => ({ role: role.role, model: role.model }));
+    .map((role) => {
+      const effortChanged =
+        role.effort?.kind !== role.currentEffort.kind ||
+        (role.effort?.kind === 'effort' &&
+          role.currentEffort.kind === 'effort' &&
+          role.effort.value !== role.currentEffort.value);
+      const includeEffort = effortChanged || role.effort?.kind === 'effort';
+      return {
+        role: role.role,
+        model: role.model,
+        ...(includeEffort ? { effort: role.effort } : {}),
+        ...(includeEffort && role.provider ? { provider: role.provider } : {}),
+        ...(includeEffort && role.catalogId
+          ? { catalogId: role.catalogId }
+          : {}),
+        ...(includeEffort && role.availableEfforts
+          ? { availableEfforts: role.availableEfforts }
+          : {}),
+      };
+    });
+}
+
+function metadataForModel(
+  role: ModelRoleInput,
+  model: string,
+  option: ModelOption | undefined,
+): Partial<
+  Pick<ModelRoleInput, 'provider' | 'catalogId' | 'availableEfforts'>
+> {
+  if (option) {
+    return {
+      provider: option.provider,
+      ...(option.catalogId ? { catalogId: option.catalogId } : {}),
+      availableEfforts: option.efforts,
+    };
+  }
+  if (model !== role.model) return {};
+  return {
+    ...(role.provider ? { provider: role.provider } : {}),
+    ...(role.catalogId ? { catalogId: role.catalogId } : {}),
+    ...(role.availableEfforts
+      ? { availableEfforts: role.availableEfforts }
+      : {}),
+  };
+}
+
+function choicesForRole(
+  role: ModelRoleView,
+  options: readonly ModelOption[],
+  draftModel: string,
+): ModelOption[] {
+  const exact = options.find((option) => option.id === draftModel);
+  const sameModel = draftModel === role.model;
+  const current: ModelOption = exact ?? {
+    id: draftModel,
+    ...(sameModel && role.catalogId ? { catalogId: role.catalogId } : {}),
+    label: draftModel,
+    provider: sameModel ? (role.provider ?? 'current') : 'manual',
+    efforts: sameModel ? (role.availableEfforts ?? []) : [],
+    source: 'manual',
+  };
+  return [current, ...options.filter((option) => option.id !== draftModel)];
 }
 
 export function App({
@@ -205,8 +271,17 @@ export function App({
   const [modelHarness, setModelHarness] = useState<HarnessId>('codex');
   const [modelRoles, setModelRoles] = useState<ModelRoleInput[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
-  const [choiceSelected, setChoiceSelected] = useState(0);
+  const [modelCatalogLoading, setModelCatalogLoading] = useState(false);
+  const [modelCatalogError, setModelCatalogError] = useState<string>();
+  const modelCatalogRequest = useRef(0);
+  const [modelChoiceSelection, setModelChoiceSelection] =
+    useState<ModelChoiceSelection>({ kind: 'manual' });
   const [editedModels, setEditedModels] = useState<Record<string, string>>({});
+  const [editedEfforts, setEditedEfforts] = useState<
+    Record<string, ModelRoleInput['effort']>
+  >({});
+  const [draftModelOption, setDraftModelOption] = useState<ModelOption>();
+  const [effortSelected, setEffortSelected] = useState(0);
   const [modelSelected, setModelSelected] = useState(0);
   const [editingRole, setEditingRole] = useState<ModelRoleView | undefined>();
   const [editDraft, setEditDraft] = useState('');
@@ -222,13 +297,40 @@ export function App({
     report?.state === 'missing' ? installManageItems : manageItems;
   const modelRows: ModelRoleView[] = modelRoles.map((role) => {
     const model = editedModels[role.role] ?? role.model;
+    const option = modelOptions.find((candidate) => candidate.id === model);
+    const metadata = metadataForModel(role, model, option);
+    const effort = editedEfforts[role.role] ??
+      role.effort ?? { kind: 'inherit' as const };
+    const currentEffort = role.effort ?? { kind: 'inherit' as const };
+    const effortDirty =
+      effort.kind !== currentEffort.kind ||
+      (effort.kind === 'effort' &&
+        currentEffort.kind === 'effort' &&
+        effort.value !== currentEffort.value);
     return {
-      ...role,
+      role: role.role,
       model,
+      effort,
+      ...metadata,
       currentModel: role.model,
-      dirty: model !== role.model,
+      currentEffort,
+      dirty: model !== role.model || effortDirty,
     };
   });
+  const modelChoiceOptions = editingRole
+    ? choicesForRole(
+        editingRole,
+        modelOptions,
+        editedModels[editingRole.role] ?? editingRole.model,
+      )
+    : modelOptions;
+  const selectedModelIndex =
+    modelChoiceSelection.kind === 'manual'
+      ? modelChoiceOptions.length
+      : modelChoiceOptions.findIndex(
+          (option) => option.id === modelChoiceSelection.id,
+        );
+  const choiceSelected = selectedModelIndex < 0 ? 0 : selectedModelIndex;
   const dirtyRoles = changedRoles(modelRows);
   const modelActions =
     dirtyRoles.length > 0
@@ -238,7 +340,7 @@ export function App({
     ...modelRows.map((role) => ({
       id: role.role,
       label: `${role.dirty ? '* ' : ''}${role.role}`,
-      detail: role.model,
+      detail: `${role.model} · ${role.effort?.kind === 'effort' ? role.effort.value : 'inherit'}`,
     })),
     ...modelActions.map((action) => ({
       id: action,
@@ -266,6 +368,8 @@ export function App({
       setView('manageHarness');
     } else if (view === 'modelChoice') {
       setView('modelRoles');
+    } else if (view === 'effortChoice') {
+      setView('modelChoice');
     } else if (view === 'modelEdit') {
       setView('modelChoice');
     }
@@ -291,13 +395,57 @@ export function App({
   }
 
   function openModelRoles(harness: HarnessId): void {
+    const request = modelCatalogRequest.current + 1;
+    modelCatalogRequest.current = request;
     setModelHarness(harness);
     setModelRoles(operations.modelRoles(harness));
-    setModelOptions(operations.modelOptions(harness));
+    setModelOptions([]);
+    setModelCatalogLoading(true);
+    setModelCatalogError(undefined);
     setEditedModels({});
+    setEditedEfforts({});
     setModelResult(undefined);
     setModelSelected(0);
     setView('modelRoles');
+    void operations
+      .modelOptions(harness)
+      .then((options) => {
+        if (modelCatalogRequest.current !== request) return;
+        setModelOptions(options);
+        setModelCatalogLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (modelCatalogRequest.current !== request) return;
+        setModelCatalogError(
+          error instanceof Error ? error.message : String(error),
+        );
+        setModelCatalogLoading(false);
+      });
+  }
+
+  function beginEffortSelection(
+    role: ModelRoleView,
+    model: string,
+    option: ModelOption | undefined,
+  ): void {
+    const choices = effortChoicesForModel(option);
+    const pending = editedEfforts[role.role] ??
+      role.effort ?? { kind: 'inherit' as const };
+    const nextEffort =
+      pending.kind === 'effort' && !option?.efforts.includes(pending.value)
+        ? { kind: 'inherit' as const }
+        : pending;
+    setEditedModels((models) => ({ ...models, [role.role]: model }));
+    setModelChoiceSelection({ kind: 'model', id: model });
+    setEditedEfforts((efforts) => ({
+      ...efforts,
+      [role.role]: nextEffort,
+    }));
+    setDraftModelOption(option);
+    const nextIndex =
+      nextEffort.kind === 'effort' ? choices.indexOf(nextEffort.value) : 0;
+    setEffortSelected(nextIndex < 0 ? 0 : nextIndex);
+    setView('effortChoice');
   }
 
   function previewModelChanges(applyImmediately: boolean): void {
@@ -310,12 +458,24 @@ export function App({
       setModelResult(applyResult);
       if (applyResult.applied) {
         setModelRoles((roles) =>
-          roles.map((role) => ({
-            ...role,
-            model: editedModels[role.role] ?? role.model,
-          })),
+          roles.map((role) => {
+            const model = editedModels[role.role] ?? role.model;
+            const option = modelOptions.find(
+              (candidate) => candidate.id === model,
+            );
+            return {
+              role: role.role,
+              model,
+              effort:
+                editedEfforts[role.role] ??
+                role.effort ??
+                ({ kind: 'inherit' } as const),
+              ...metadataForModel(role, model, option),
+            };
+          }),
         );
         setEditedModels({});
+        setEditedEfforts({});
       }
       return;
     }
@@ -330,11 +490,7 @@ export function App({
         return;
       }
       if (key.return && editingRole) {
-        setEditedModels((models) => ({
-          ...models,
-          [editingRole.role]: editDraft,
-        }));
-        setView('modelRoles');
+        beginEffortSelection(editingRole, editDraft, undefined);
         return;
       }
       if (key.tab) {
@@ -352,34 +508,74 @@ export function App({
       return;
     }
 
+    if (view === 'effortChoice') {
+      if (key.escape) {
+        goBack();
+        return;
+      }
+      const choices = effortChoicesForModel(draftModelOption);
+      const choiceItems = choices.map((effort) => ({
+        id: effort,
+        label: effort,
+        detail:
+          effort === 'inherit'
+            ? 'Use the harness default'
+            : 'Set an explicit reasoning effort',
+      }));
+      if (key.upArrow || input === 'k') {
+        setEffortSelected((current) => moveSelection(current, -1, choiceItems));
+      }
+      if (key.downArrow || input === 'j') {
+        setEffortSelected((current) => moveSelection(current, 1, choiceItems));
+      }
+      if (key.return && editingRole) {
+        const selectedEffort = choices[effortSelected] ?? 'inherit';
+        setEditedEfforts((efforts) => ({
+          ...efforts,
+          [editingRole.role]:
+            selectedEffort === 'inherit'
+              ? { kind: 'inherit' }
+              : { kind: 'effort', value: selectedEffort },
+        }));
+        setView('modelRoles');
+      }
+      return;
+    }
+
     if (view === 'modelChoice') {
       if (key.escape) {
         goBack();
         return;
       }
       const choiceItems: MenuItem[] = [
-        ...modelOptions.map((option) => ({
+        ...modelChoiceOptions.map((option) => ({
           id: option.id,
           label: option.id,
           detail: option.provider,
         })),
         { id: 'manual', label: 'Manual entry', detail: 'Type a model ID' },
       ];
+      const selectChoiceAt = (index: number): void => {
+        const option = modelChoiceOptions[index];
+        setModelChoiceSelection(
+          option ? { kind: 'model', id: option.id } : { kind: 'manual' },
+        );
+      };
       if (key.upArrow || input === 'k') {
-        setChoiceSelected((current) => moveSelection(current, -1, choiceItems));
+        selectChoiceAt(moveSelection(choiceSelected, -1, choiceItems));
       }
       if (key.downArrow || input === 'j') {
-        setChoiceSelected((current) => moveSelection(current, 1, choiceItems));
+        selectChoiceAt(moveSelection(choiceSelected, 1, choiceItems));
       }
       if (key.return && editingRole) {
-        const option = modelOptions[choiceSelected];
-        if (option) {
-          setEditedModels((models) => ({
-            ...models,
-            [editingRole.role]: option.id,
-          }));
-          setView('modelRoles');
-          return;
+        if (modelChoiceSelection.kind === 'model') {
+          const option = modelChoiceOptions.find(
+            (candidate) => candidate.id === modelChoiceSelection.id,
+          );
+          if (option) {
+            beginEffortSelection(editingRole, option.id, option);
+            return;
+          }
         }
         setEditDraft(editingRole.model);
         setView('modelEdit');
@@ -508,7 +704,11 @@ export function App({
           const role = modelRows[modelSelected];
           setEditingRole(role);
           setEditDraft(role?.model ?? '');
-          setChoiceSelected(0);
+          setDraftModelOption(undefined);
+          setModelChoiceSelection({
+            kind: 'model',
+            id: role?.model ?? '',
+          });
           setView('modelChoice');
           return;
         }
@@ -616,6 +816,15 @@ export function App({
           selected={normalizeSelection(modelSelected, modelMenuItems)}
           actions={modelActions}
         />
+        {modelCatalogLoading ? (
+          <Text color={theme.dim}>Loading model catalog…</Text>
+        ) : null}
+        {modelCatalogError ? (
+          <Text color={theme.warning}>
+            Could not load model catalog: {modelCatalogError}. Manual entry is
+            still available.
+          </Text>
+        ) : null}
         {modelResult ? (
           <Text color={modelResult.applied ? theme.ok : theme.warning}>
             {modelResult.summary}
@@ -647,13 +856,47 @@ export function App({
       <Box flexDirection="column">
         <Header
           title={`Choose ${editingRole.role} model`}
-          subtitle="Select a catalog option or Manual entry."
+          subtitle="Current model is selected first. Press Enter to continue to effort, or choose Manual entry."
         />
         <ModelChoiceScreen
           currentModel={editingRole.currentModel}
           draftModel={editedModels[editingRole.role] ?? editingRole.model}
-          options={modelOptions}
+          options={modelChoiceOptions}
           selected={choiceSelected}
+        />
+        {modelCatalogLoading ? (
+          <Text color={theme.dim}>Loading model catalog…</Text>
+        ) : null}
+        {modelCatalogError ? (
+          <Text color={theme.warning}>
+            Could not load model catalog: {modelCatalogError}
+          </Text>
+        ) : null}
+      </Box>
+    );
+  }
+
+  if (view === 'effortChoice' && editingRole) {
+    const draftModel = editedModels[editingRole.role] ?? editingRole.model;
+    const effort = editedEfforts[editingRole.role] ?? {
+      kind: 'inherit' as const,
+    };
+    return (
+      <Box flexDirection="column">
+        <Header
+          title={`Choose ${editingRole.role} effort`}
+          subtitle="Select inherit or an effort supported by this model."
+        />
+        <EffortChoiceScreen
+          model={draftModel}
+          currentEffort={
+            editingRole.currentEffort.kind === 'effort'
+              ? editingRole.currentEffort.value
+              : 'inherit'
+          }
+          draftEffort={effort.kind === 'effort' ? effort.value : 'inherit'}
+          choices={effortChoicesForModel(draftModelOption)}
+          selected={effortSelected}
         />
       </Box>
     );

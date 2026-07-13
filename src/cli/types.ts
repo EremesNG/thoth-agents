@@ -20,8 +20,9 @@ export type OperationHarnessArg = 'opencode' | 'codex' | 'claude';
 
 export interface CliModelRoleArg {
   role: string;
-  model: string;
+  model?: string;
   provider?: string;
+  effort?: EffortSelection;
 }
 
 export interface OperationArgs {
@@ -81,3 +82,5 @@ export interface DetectedConfig {
   hasOpencodeZen: boolean;
   hasTmux: boolean;
 }
+
+import type { EffortSelection } from './model-effort';

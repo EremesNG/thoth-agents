@@ -26,6 +26,8 @@ export interface ClaudeCodeSubagentInput {
   tools?: string;
   /** Per-role model alias for the subagent frontmatter. */
   model: ClaudeCodeModel;
+  /** Optional Claude Code reasoning effort for the selected model. */
+  effort?: string;
   /** Rendered system prompt body (role prompt + governance). */
   instructions: string;
 }
@@ -54,6 +56,7 @@ export function renderClaudeCodeSubagent(
     `name: ${yamlScalar(input.name)}`,
     `description: ${yamlScalar(input.description)}`,
     `model: ${input.model}`,
+    ...(input.effort !== undefined ? [`effort: ${input.effort}`] : []),
     ...(input.tools !== undefined ? [`tools: ${yamlScalar(input.tools)}`] : []),
     '---',
   ].join('\n');

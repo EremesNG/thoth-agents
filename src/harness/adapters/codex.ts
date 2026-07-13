@@ -16,6 +16,7 @@ import {
 } from '../../agents/prompt-utils';
 import {
   type AgentOverrideConfig,
+  CONFIRMED_OPENAI_SUBAGENT_PRESET,
   DEFAULT_MODELS,
   DEFAULT_THOTH_COMMAND,
   getAgentOverride,
@@ -55,7 +56,6 @@ import type { CodexSkillOutputMode } from '../writers/skill-layout';
 import { renderCodexSkillLayout } from '../writers/skill-layout';
 import {
   codexSurfaceDiagnostic,
-  getCodexSurface,
   getCodexSurfaceRecords,
 } from './codex-surfaces';
 
@@ -138,25 +138,11 @@ function createCodexBuiltinMcpTomlConfig(): Record<string, unknown> {
   };
 }
 
-const CODEX_SUBAGENT_DEFAULT_MODELS = {
-  oracle: 'gpt-5.5',
-  librarian: 'gpt-5.4-mini',
-  explorer: 'gpt-5.4-mini',
-  designer: 'gpt-5.4-mini',
-  quick: 'gpt-5.4-mini',
-  deep: 'gpt-5.5',
-} as const;
+type CodexSubagentName = keyof typeof CONFIRMED_OPENAI_SUBAGENT_PRESET;
 
-type CodexSubagentName = keyof typeof CODEX_SUBAGENT_DEFAULT_MODELS;
-
-const CODEX_SUBAGENT_REASONING_EFFORTS = {
-  oracle: 'high',
-  explorer: 'low',
-  librarian: 'medium',
-  designer: 'medium',
-  quick: 'low',
-  deep: 'medium',
-} as const satisfies Record<CodexSubagentName, string>;
+function isCodexSubagentName(name: string): name is CodexSubagentName {
+  return name in CONFIRMED_OPENAI_SUBAGENT_PRESET;
+}
 
 const CODEX_ROOT_START = '<!-- thoth-agents:codex-root:start -->';
 const CODEX_ROOT_END = '<!-- thoth-agents:codex-root:end -->';
@@ -303,16 +289,6 @@ export function renderCodexRootInstructions(config?: PluginConfig): string {
   ].join('\n');
 }
 
-function agentModelReasoningEffort(role: AgentRoleContract): string {
-  return isCodexSubagentName(role.name)
-    ? CODEX_SUBAGENT_REASONING_EFFORTS[role.name]
-    : 'medium';
-}
-
-function isCodexSubagentName(name: string): name is CodexSubagentName {
-  return name in CODEX_SUBAGENT_DEFAULT_MODELS;
-}
-
 function getCodexAgentModel(
   role: AgentRoleContract,
   config?: PluginConfig,
@@ -321,12 +297,17 @@ function getCodexAgentModel(
 
   return (
     getPrimaryModelId(config?.agents?.[role.name]?.model) ??
-    CODEX_SUBAGENT_DEFAULT_MODELS[role.name]
+    CONFIRMED_OPENAI_SUBAGENT_PRESET[role.name].model
   );
 }
 
-function codexSurfaceHasField(surfaceId: string, field: string): boolean {
-  return getCodexSurface(surfaceId)?.fields.includes(field) ?? false;
+function getCodexAgentEffort(
+  role: AgentRoleContract,
+  config?: PluginConfig,
+): string | undefined {
+  if (!isCodexSubagentName(role.name)) return undefined;
+  if (getPrimaryModelId(config?.agents?.[role.name]?.model)) return undefined;
+  return CONFIRMED_OPENAI_SUBAGENT_PRESET[role.name].effort;
 }
 
 function hasCodexConfig(
@@ -351,15 +332,11 @@ function renderAgentArtifacts({ config }: { config?: PluginConfig }): {
 } {
   const artifacts: HarnessArtifact[] = [];
   const diagnostics: HarnessDiagnostic[] = [];
-  const supportsReasoningEffort = codexSurfaceHasField(
-    'project-agent-toml',
-    'model_reasoning_effort',
-  );
-
   for (const role of getAgentPackContract().roles.filter(
     (candidate) => candidate.name !== 'orchestrator',
   )) {
     const model = getCodexAgentModel(role, config);
+    const effort = getCodexAgentEffort(role, config);
     const toml = renderCodexToml({
       surfaceId: 'project-agent-toml',
       values: {
@@ -367,9 +344,7 @@ function renderAgentArtifacts({ config }: { config?: PluginConfig }): {
         description: role.responsibility,
         developer_instructions: roleInstructions(role, config),
         ...(model ? { model } : {}),
-        ...(supportsReasoningEffort
-          ? { model_reasoning_effort: agentModelReasoningEffort(role) }
-          : {}),
+        ...(effort ? { model_reasoning_effort: effort } : {}),
         sandbox_mode: role.canMutateWorkspace ? 'workspace-write' : 'read-only',
       },
     });

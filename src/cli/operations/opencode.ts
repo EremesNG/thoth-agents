@@ -13,10 +13,17 @@ import {
   installCustomSkills,
 } from '../custom-skills';
 import {
+  readManagedModelState,
+  stableJson,
+  writeTextWithBackup,
+} from '../managed-state-io';
+import { resolveOpenCodeEffort } from '../opencode-effort';
+import {
   ensureConfigDir,
   ensureOpenCodeConfigDir,
   getExistingConfigPath,
   getExistingLiteConfigPath,
+  getOpenCodeManagedModelStatePath,
 } from '../paths';
 import { generateLiteConfig } from '../providers';
 import {
@@ -642,11 +649,28 @@ export function buildOpenCodeModelPlan(
 ): OperationPlan {
   const items = input.roles.map((role) => {
     const model = normalizeRoleModel(role);
+    const effort = resolveOpenCodeEffort(role);
     return {
       title: `Set ${role.role} OpenCode model override`,
       target: targetForLiteConfig(),
-      preview: JSON.stringify({ [role.role]: { model } }),
+      preview: JSON.stringify({
+        [role.role]: {
+          model,
+          variant: effort.ok ? (effort.variant ?? null) : null,
+        },
+      }),
       backup: defaultBackup(getExistingLiteConfigPath()),
+      ...(!effort.ok
+        ? {
+            warnings: [
+              {
+                severity: 'critical' as const,
+                code: effort.code,
+                message: effort.message,
+              },
+            ],
+          }
+        : {}),
     };
   });
   const plan = planFromItems(
@@ -656,6 +680,11 @@ export function buildOpenCodeModelPlan(
     'Preview thoth-agents role model overrides in the plugin config agents map.',
     items,
   );
+  const effortWarnings = items.flatMap((item) => item.warnings ?? []);
+  if (effortWarnings.length > 0) {
+    plan.canApply = false;
+    plan.warnings.push(...effortWarnings);
+  }
 
   if (input.harness !== 'opencode') {
     return {
@@ -788,7 +817,10 @@ function validateApplyPlan(plan: OperationPlan): OperationApplyResult | null {
 }
 
 function applyModelPlan(plan: OperationPlan): OperationApplyResult {
-  const roleModels = new Map<string, string>();
+  const roleModels = new Map<
+    string,
+    { model: string; variant: string | null }
+  >();
   for (const item of plan.items) {
     const match = /^Set (.+) OpenCode model override$/.exec(item.title);
     if (!match) {
@@ -797,7 +829,7 @@ function applyModelPlan(plan: OperationPlan): OperationApplyResult {
         'OpenCode model plan contains an unrecognized item.',
       );
     }
-    let parsed: Record<string, { model?: string }>;
+    let parsed: Record<string, { model?: string; variant?: unknown }>;
     try {
       parsed = item.preview
         ? (JSON.parse(item.preview) as Record<string, { model?: string }>)
@@ -810,16 +842,18 @@ function applyModelPlan(plan: OperationPlan): OperationApplyResult {
     }
     const role = match[1] ?? '';
     const model = parsed[role]?.model;
+    const variant = parsed[role]?.variant;
     if (
       !ROLE_NAMES.includes(role as (typeof ROLE_NAMES)[number]) ||
-      typeof model !== 'string'
+      typeof model !== 'string' ||
+      (variant !== null && typeof variant !== 'string')
     ) {
       return rejectPlan(
         plan,
         'OpenCode model plan contains an invalid role or model.',
       );
     }
-    roleModels.set(role, model);
+    roleModels.set(role, { model, variant });
   }
 
   if (roleModels.size === 0) {
@@ -847,14 +881,52 @@ function applyModelPlan(plan: OperationPlan): OperationApplyResult {
       ? { ...(base.agents as Record<string, unknown>) }
       : {};
 
-  for (const role of roleModels.keys()) {
-    agents[role] = {
+  const statePath = getOpenCodeManagedModelStatePath();
+  const state = readManagedModelState(statePath, 1);
+  const configuredEfforts = { ...(state.configuredEfforts ?? {}) };
+  const warnings: OperationWarning[] = [];
+
+  for (const [role, override] of roleModels) {
+    const current = {
       ...((agents[role] as Record<string, unknown> | undefined) ?? {}),
-      model: roleModels.get(role),
     };
+    const currentVariant =
+      typeof current.variant === 'string' ? current.variant : undefined;
+    const trackedVariant = configuredEfforts[role];
+    const userOwnsVariant =
+      override.variant === null &&
+      currentVariant !== undefined &&
+      (trackedVariant === undefined || currentVariant !== trackedVariant);
+
+    current.model = override.model;
+    if (userOwnsVariant) {
+      delete configuredEfforts[role];
+      warnings.push({
+        severity: 'important',
+        code: 'opencode-effort-user-owned',
+        message: `Preserved user-owned OpenCode variant ${currentVariant} for ${role}.`,
+      });
+    } else if (override.variant === null) {
+      delete current.variant;
+      delete configuredEfforts[role];
+    } else {
+      current.variant = override.variant;
+      configuredEfforts[role] = override.variant;
+    }
+    agents[role] = current;
   }
   base.agents = agents;
   writeConfig(targetPath, base);
+  writeTextWithBackup(
+    statePath,
+    stableJson({
+      version: 1,
+      models: state.models,
+      ...(Object.keys(configuredEfforts).length > 0
+        ? { configuredEfforts }
+        : {}),
+    }),
+  );
 
   return {
     harness: 'opencode',
@@ -870,7 +942,7 @@ function applyModelPlan(plan: OperationPlan): OperationApplyResult {
     backups: existsSync(`${targetPath}.bak`)
       ? [{ path: `${targetPath}.bak`, label: 'managed backup' }]
       : [],
-    warnings: [],
+    warnings,
     disclaimers: defaultDisclaimers(),
   };
 }

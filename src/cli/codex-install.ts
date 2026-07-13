@@ -178,6 +178,28 @@ export function replaceRoleTomlModel(content: string, model: string): string {
   return `${rendered}\n${content}`;
 }
 
+export function parseRoleTomlEffort(content: string): string | undefined {
+  return /^model_reasoning_effort\s*=\s*"([^"\\]+)"\s*$/m.exec(content)?.[1];
+}
+
+export function replaceRoleTomlEffort(
+  content: string,
+  effort: string | undefined,
+): string {
+  const pattern = /^model_reasoning_effort\s*=\s*"[^"\\]+"\s*\r?\n?/m;
+  if (effort === undefined) return content.replace(pattern, '');
+  const rendered = `model_reasoning_effort = "${escapeTomlString(effort)}"`;
+  if (pattern.test(content)) return content.replace(pattern, `${rendered}\n`);
+  const modelPattern = /^model\s*=\s*"(?:\\.|[^"\\])*"\s*\r?\n?/m;
+  if (modelPattern.test(content)) {
+    return content.replace(
+      modelPattern,
+      (modelLine) => `${modelLine}${rendered}\n`,
+    );
+  }
+  return `${rendered}\n${content}`;
+}
+
 export function roleManagedModelStateKey(path: string): string {
   return basename(path);
 }
@@ -185,6 +207,8 @@ export function roleManagedModelStateKey(path: string): string {
 export interface CodexManagedModelOverride {
   role: CodexRoleName;
   model: string;
+  effort?: string;
+  clearEffort?: boolean;
 }
 
 export function applyCodexManagedModelOverrides(
@@ -227,6 +251,9 @@ export function applyCodexManagedModelOverrides(
     ...(state.configuredModels
       ? { configuredModels: { ...state.configuredModels } }
       : {}),
+    ...(state.configuredEfforts
+      ? { configuredEfforts: { ...state.configuredEfforts } }
+      : {}),
   };
 
   try {
@@ -244,7 +271,12 @@ export function applyCodexManagedModelOverrides(
       const before = existsSync(roleItem.targetPath)
         ? readFileSync(roleItem.targetPath, 'utf8')
         : roleItem.content;
-      const updated = replaceRoleTomlModel(before, override.model);
+      let updated = replaceRoleTomlModel(before, override.model);
+      if (override.clearEffort) {
+        updated = replaceRoleTomlEffort(updated, undefined);
+      } else if (override.effort !== undefined) {
+        updated = replaceRoleTomlEffort(updated, override.effort);
+      }
       if (writeTextWithBackup(roleItem.targetPath, updated)) {
         changed.push(roleItem.targetPath);
       }
@@ -253,6 +285,14 @@ export function applyCodexManagedModelOverrides(
         parseRoleTomlModel(roleItem.content) ?? override.model;
       nextState.configuredModels ??= {};
       nextState.configuredModels[key] = override.model;
+      if (override.clearEffort) {
+        if (nextState.configuredEfforts) {
+          delete nextState.configuredEfforts[key];
+        }
+      } else if (override.effort !== undefined) {
+        nextState.configuredEfforts ??= {};
+        nextState.configuredEfforts[key] = override.effort;
+      }
     }
 
     if (writeTextWithBackup(statePath, stableJson(nextState))) {
@@ -288,6 +328,14 @@ function resolveRoleTomlContent(options: {
   const configuredModel = options.reset
     ? undefined
     : options.state.configuredModels?.[key];
+  const configuredEffort = options.reset
+    ? undefined
+    : options.state.configuredEfforts?.[key];
+
+  if (configuredEffort !== undefined) {
+    options.nextState.configuredEfforts ??= {};
+    options.nextState.configuredEfforts[key] = configuredEffort;
+  }
 
   if (options.reset || !existsSync(options.targetPath)) {
     options.nextState.models[key] = renderedModel;
@@ -299,18 +347,21 @@ function resolveRoleTomlContent(options: {
     return options.renderedContent;
   }
 
-  const currentModel = parseRoleTomlModel(
-    readFileSync(options.targetPath, 'utf8'),
-  );
+  const installedContent = readFileSync(options.targetPath, 'utf8');
+  const currentModel = parseRoleTomlModel(installedContent);
+  const currentEffort = parseRoleTomlEffort(installedContent);
   if (configuredModel !== undefined) {
     options.nextState.models[key] = renderedModel;
     options.nextState.configuredModels ??= {};
     options.nextState.configuredModels[key] = configuredModel;
-    return replaceRoleTomlModel(
-      options.renderedContent,
-      currentModel && currentModel !== configuredModel
-        ? currentModel
-        : configuredModel,
+    return replaceRoleTomlEffort(
+      replaceRoleTomlModel(
+        options.renderedContent,
+        currentModel && currentModel !== configuredModel
+          ? currentModel
+          : configuredModel,
+      ),
+      currentEffort,
     );
   }
 
@@ -324,11 +375,14 @@ function resolveRoleTomlContent(options: {
   if (isUserOwned) {
     if (trackedModel !== undefined)
       options.nextState.models[key] = trackedModel;
-    return replaceRoleTomlModel(options.renderedContent, currentModel);
+    return replaceRoleTomlEffort(
+      replaceRoleTomlModel(options.renderedContent, currentModel),
+      currentEffort,
+    );
   }
 
   options.nextState.models[key] = renderedModel;
-  return options.renderedContent;
+  return replaceRoleTomlEffort(options.renderedContent, currentEffort);
 }
 
 function mergePersonalMarketplace(

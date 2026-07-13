@@ -1,21 +1,28 @@
 import { execFileSync } from 'node:child_process';
 import type { HarnessId } from '../../harness/types';
+import { loadModelsDevCatalog, type ModelOption } from '../model-catalog';
+import { resolveOpenCodeEffort } from '../opencode-effort';
 
 const MODEL_CATALOG_TIMEOUT_MS = 5_000;
-const MODELS_DEV_MAX_BUFFER = 8 * 1024 * 1024;
+const CODEX_DOCUMENTED_EFFORTS = new Set([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+]);
+const CLAUDE_CODE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
-export interface ModelOption {
-  id: string;
-  label: string;
-  provider: string;
-}
+export type { ModelOption } from '../model-catalog';
 
 interface ModelCommandInvocation {
   command: string;
   args: string[];
   options: {
     encoding: 'utf8';
-    maxBuffer?: number;
     shell?: boolean;
     stdio: ['ignore', 'pipe', 'ignore'];
     timeout: number;
@@ -31,27 +38,52 @@ function parseOpenCodeModels(output: string): ModelOption[] {
     const id = `${match[1]}/${match[2]}`;
     if (seen.has(id)) continue;
     seen.add(id);
-    options.push({ id, label: id, provider: match[1] ?? 'unknown' });
+    options.push({
+      id,
+      catalogId: id,
+      label: id,
+      provider: match[1] ?? 'unknown',
+      efforts: [],
+      source: 'manual',
+    });
   }
   return options;
-}
-
-function parseModelsDevOpenAi(output: string): ModelOption[] {
-  const catalog = JSON.parse(output) as {
-    openai?: { models?: Record<string, { name?: string }> };
-  };
-  return Object.entries(catalog.openai?.models ?? {})
-    .filter(([id]) => isCodexOpenAiModelId(id))
-    .map(([id, model]) => ({
-      id,
-      label: model.name ?? id,
-      provider: 'openai',
-    }));
 }
 
 function isCodexOpenAiModelId(id: string): boolean {
   const match = id.match(/^gpt-(\d+)(?:[.-]|$)/);
   return match?.[1] !== undefined && Number(match[1]) >= 5;
+}
+
+function writableEfforts(
+  harness: HarnessId,
+  option: ModelOption,
+): readonly string[] {
+  if (harness === 'codex') {
+    return option.efforts.filter((effort) =>
+      CODEX_DOCUMENTED_EFFORTS.has(effort),
+    );
+  }
+  if (harness === 'claude') {
+    return option.efforts.filter((effort) =>
+      (CLAUDE_CODE_EFFORTS as readonly string[]).includes(effort),
+    );
+  }
+  return option.efforts.filter(
+    (effort) =>
+      resolveOpenCodeEffort({
+        model: option.id,
+        catalogId: option.catalogId,
+        availableEfforts: option.efforts,
+        effort: { kind: 'effort', value: effort },
+      }).ok,
+  );
+}
+
+export function effortChoicesForModel(
+  option: ModelOption | undefined,
+): readonly string[] {
+  return ['inherit', ...(option?.efforts ?? [])];
 }
 
 export function getOpenCodeModelsInvocation(
@@ -71,48 +103,15 @@ export function getOpenCodeModelsInvocation(
     };
   }
 
-  return {
-    command: 'opencode',
-    args: ['models'],
-    options,
-  };
+  return { command: 'opencode', args: ['models'], options };
 }
 
-function getModelsDevCatalog(): ModelOption[] {
+function getNativeOpenCodeOptions(): ModelOption[] {
   try {
-    const output = execFileSync(
-      process.execPath,
-      [
-        '-e',
-        [
-          'const controller = new AbortController();',
-          `const timeout = setTimeout(() => controller.abort(), ${MODEL_CATALOG_TIMEOUT_MS});`,
-          "if (typeof fetch !== 'function') {",
-          "  console.error('fetch unavailable');",
-          '  process.exit(1);',
-          '}',
-          "fetch('https://models.dev/api.json', { signal: controller.signal })",
-          '  .then(async (response) => {',
-          '    if (!response.ok) throw new Error(String(response.status));',
-          '    const catalog = await response.json();',
-          '    const models = catalog?.openai?.models ?? {};',
-          '    return JSON.stringify({ openai: { models } });',
-          '  })',
-          '  .then((body) => {',
-          '    clearTimeout(timeout);',
-          '    process.stdout.write(body);',
-          '  })',
-          '  .catch((error) => { clearTimeout(timeout); console.error(error.message); process.exit(1); });',
-        ].join('\n'),
-      ],
-      {
-        encoding: 'utf8',
-        maxBuffer: MODELS_DEV_MAX_BUFFER,
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: MODEL_CATALOG_TIMEOUT_MS,
-      },
+    const invocation = getOpenCodeModelsInvocation();
+    return parseOpenCodeModels(
+      execFileSync(invocation.command, invocation.args, invocation.options),
     );
-    return parseModelsDevOpenAi(output);
   } catch {
     return [];
   }
@@ -127,21 +126,53 @@ const CLAUDE_CODE_MODEL_OPTIONS: ModelOption[] = [
     label: 'inherit (main session model)',
     provider: 'anthropic',
   },
-];
+].map((option) => ({
+  ...option,
+  efforts: option.id === 'inherit' ? [] : [...CLAUDE_CODE_EFFORTS],
+  source: 'manual' as const,
+}));
 
-export function getModelOptions(harness: HarnessId): ModelOption[] {
-  if (harness === 'codex') return getModelsDevCatalog();
-  if (harness === 'claude') return CLAUDE_CODE_MODEL_OPTIONS;
+export async function getModelOptions(
+  harness: HarnessId,
+): Promise<ModelOption[]> {
+  const native = harness === 'opencode' ? getNativeOpenCodeOptions() : [];
+  const loaded = await loadModelsDevCatalog({ manual: native });
 
-  try {
-    const invocation = getOpenCodeModelsInvocation();
-    const output = execFileSync(
-      invocation.command,
-      invocation.args,
-      invocation.options,
-    );
-    return parseOpenCodeModels(output);
-  } catch {
-    return [];
+  if (harness === 'claude') {
+    const aliases = CLAUDE_CODE_MODEL_OPTIONS.map((option) => ({
+      ...option,
+      efforts: [...option.efforts],
+    }));
+    const concrete = loaded.models
+      .filter((option) => option.provider === 'anthropic')
+      .map((option) => ({
+        ...option,
+        id: option.catalogId ?? option.id,
+        efforts: writableEfforts(harness, option),
+      }));
+    return [...aliases, ...concrete];
   }
+
+  if (harness === 'codex') {
+    return loaded.models
+      .filter(
+        (option) =>
+          option.provider === 'openai' && isCodexOpenAiModelId(option.id),
+      )
+      .map((option) => ({
+        ...option,
+        efforts: writableEfforts(harness, option),
+      }));
+  }
+
+  const catalogById = new Map(
+    loaded.models.map((option) => [option.catalogId ?? option.id, option]),
+  );
+  return native.map((option) => {
+    const catalog = catalogById.get(option.catalogId ?? option.id);
+    const enriched = catalog
+      ? { ...catalog, id: option.id, catalogId: option.catalogId }
+      : option;
+    return { ...enriched, efforts: writableEfforts(harness, enriched) };
+  });
 }

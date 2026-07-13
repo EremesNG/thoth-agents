@@ -1,6 +1,8 @@
+import { normalizeEffortSelection } from './model-effort';
 import { isInteractiveRuntime, type RuntimeContext } from './runtime';
 import type {
   BooleanArg,
+  CliModelRoleArg,
   CliOperationCommand,
   CliParseResult,
   GenerateArgs,
@@ -51,10 +53,41 @@ function parseRoleModel(value: string): { role: string; model: string } {
   return { role, model };
 }
 
+function parseRoleEffort(value: string): {
+  role: string;
+  effort: ReturnType<typeof normalizeEffortSelection>;
+} {
+  const separator = value.includes('=') ? '=' : ':';
+  const [role, ...effortParts] = value.split(separator);
+  const effort = effortParts.join(separator);
+  if (!role || !effort) {
+    throw new Error(
+      '--role-effort must use role=effort or role:effort, for example --role-effort=deep=high.',
+    );
+  }
+  return { role, effort: normalizeEffortSelection(effort) };
+}
+
 export function parseOperationArgs(args: string[]): OperationArgs {
   const result: OperationArgs = { roles: [] };
   let pendingRole: string | undefined;
   let pendingProvider: string | undefined;
+
+  function upsertRole(input: CliModelRoleArg): void {
+    const existing = result.roles.find((role) => role.role === input.role);
+    if (!existing) {
+      result.roles.push(input);
+      return;
+    }
+    if (
+      existing.effort &&
+      input.effort &&
+      JSON.stringify(existing.effort) !== JSON.stringify(input.effort)
+    ) {
+      throw new Error(`Conflicting --role-effort values for ${input.role}.`);
+    }
+    Object.assign(existing, input);
+  }
 
   function pushPendingRole(model: string): void {
     if (!pendingRole) {
@@ -62,7 +95,7 @@ export function parseOperationArgs(args: string[]): OperationArgs {
         '--model requires --role, or pass --role-model=role=model.',
       );
     }
-    result.roles.push({
+    upsertRole({
       role: pendingRole,
       model,
       provider: pendingProvider,
@@ -92,11 +125,13 @@ export function parseOperationArgs(args: string[]): OperationArgs {
       pushPendingRole(arg.split('=')[1] ?? '');
     } else if (arg.startsWith('--role-model=')) {
       const parsed = parseRoleModel(arg.slice('--role-model='.length));
-      result.roles.push({
+      upsertRole({
         ...parsed,
         provider: pendingProvider,
       });
       pendingProvider = undefined;
+    } else if (arg.startsWith('--role-effort=')) {
+      upsertRole(parseRoleEffort(arg.slice('--role-effort='.length)));
     } else if (arg === '-h' || arg === '--help') {
       throw new Error('help');
     } else {

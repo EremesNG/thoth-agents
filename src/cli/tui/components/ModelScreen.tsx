@@ -10,6 +10,7 @@ const CODEX_MODEL_CATALOG_NOTE = [
 
 export interface ModelRoleView extends ModelRoleInput {
   currentModel: string;
+  currentEffort: NonNullable<ModelRoleInput['effort']>;
   dirty: boolean;
 }
 
@@ -50,7 +51,14 @@ export function ModelScreen({
           {index === selected ? '>' : ' '} {role.dirty ? '*' : ' '}
           {role.role}: {role.model}
           <Text color={theme.dim}>
-            {role.dirty ? ` (was ${role.currentModel})` : ''}
+            {' '}
+            · effort{' '}
+            {role.effort?.kind === 'effort' ? role.effort.value : 'inherit'}
+          </Text>
+          <Text color={theme.dim}>
+            {role.dirty
+              ? ` (was ${role.currentModel} · effort ${role.currentEffort.kind === 'effort' ? role.currentEffort.value : 'inherit'})`
+              : ''}
           </Text>
         </Text>
       ))}

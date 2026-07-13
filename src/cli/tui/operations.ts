@@ -1,13 +1,16 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { ALL_AGENT_NAMES, DEFAULT_MODELS } from '../../config';
 import type { HarnessId } from '../../harness/types';
 import {
   buildClaudeCodeSetupPlan,
   CLAUDE_CODE_ROLE_NAMES,
+  parseSubagentEffort,
   parseSubagentModel,
 } from '../claude-code-install';
 import {
   buildCodexSetupPlan,
   CODEX_ROLE_NAMES,
+  parseRoleTomlEffort,
   parseRoleTomlModel,
 } from '../codex-install';
 import { parseConfig } from '../config-io';
@@ -59,7 +62,7 @@ export type TuiAction =
 export interface TuiOperations {
   status(harness: HarnessId): HarnessStatusReport;
   modelRoles(harness: HarnessId): ModelRoleInput[];
-  modelOptions(harness: HarnessId): ModelOption[];
+  modelOptions(harness: HarnessId): Promise<ModelOption[]>;
   plan(
     harness: HarnessId,
     action: Exclude<TuiAction, 'status' | 'list'>,
@@ -116,12 +119,20 @@ export function getCodexModelRoles(
         (candidate) =>
           candidate.action === 'write-role-toml' && candidate.role === role,
       );
+      const content =
+        item && existsSync(item.targetPath)
+          ? readFileSync(item.targetPath, 'utf8')
+          : item?.content;
+      const effort = content ? parseRoleTomlEffort(content) : undefined;
       return {
         role,
         model:
-          (item?.content ? parseRoleTomlModel(item.content) : undefined) ??
+          (content ? parseRoleTomlModel(content) : undefined) ??
           codexDefaultModels.get(role) ??
           'gpt-5.4-mini',
+        effort: effort
+          ? { kind: 'effort' as const, value: effort }
+          : { kind: 'inherit' as const },
       };
     });
   } catch {
@@ -145,17 +156,30 @@ export function getClaudeCodeModelRoles(
       const item = plan.items.find(
         (candidate) => candidate.kind === 'subagent' && candidate.role === role,
       );
-      const model = item?.content
-        ? parseSubagentModel(item.content)
-        : undefined;
-      return { role, model: model ?? 'inherit' };
+      const content =
+        item && existsSync(item.targetPath)
+          ? readFileSync(item.targetPath, 'utf8')
+          : item?.content;
+      const model = content ? parseSubagentModel(content) : undefined;
+      const effort = content ? parseSubagentEffort(content) : undefined;
+      return {
+        role,
+        model: model ?? 'inherit',
+        effort: effort
+          ? { kind: 'effort' as const, value: effort }
+          : { kind: 'inherit' as const },
+      };
     });
   } catch {
     return defaultClaudeCodeModelRoles();
   }
 }
 
-function readRoleModel(config: unknown, role: string): string | undefined {
+function readRoleField(
+  config: unknown,
+  role: string,
+  field: 'model' | 'variant',
+): string | undefined {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     return undefined;
   }
@@ -164,8 +188,10 @@ function readRoleModel(config: unknown, role: string): string | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
   }
-  const model = (value as { model?: unknown }).model;
-  return typeof model === 'string' && model.length > 0 ? model : undefined;
+  const fieldValue = (value as Record<string, unknown>)[field];
+  return typeof fieldValue === 'string' && fieldValue.length > 0
+    ? fieldValue
+    : undefined;
 }
 
 export function getOpenCodeModelRoles(): ModelRoleInput[] {
@@ -183,14 +209,22 @@ export function getOpenCodeModelRoles(): ModelRoleInput[] {
       ? presets.openai
       : undefined;
 
-  return ALL_AGENT_NAMES.map((role) => ({
-    role,
-    model:
-      readRoleModel(agents, role) ??
-      readRoleModel(openaiPreset, role) ??
-      DEFAULT_MODELS[role] ??
-      'openai/gpt-5.4',
-  }));
+  return ALL_AGENT_NAMES.map((role) => {
+    const variant =
+      readRoleField(agents, role, 'variant') ??
+      readRoleField(openaiPreset, role, 'variant');
+    return {
+      role,
+      model:
+        readRoleField(agents, role, 'model') ??
+        readRoleField(openaiPreset, role, 'model') ??
+        DEFAULT_MODELS[role] ??
+        'openai/gpt-5.4',
+      effort: variant
+        ? { kind: 'effort' as const, value: variant }
+        : { kind: 'inherit' as const },
+    };
+  });
 }
 
 function buildTuiModelPlan(

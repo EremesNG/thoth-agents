@@ -5,7 +5,6 @@ import { claudeCodeAdapter } from '../harness/adapters/claude-code';
 import type { HarnessArtifact } from '../harness/types';
 import {
   CLAUDE_CODE_MODELS,
-  type ClaudeCodeModel,
   isClaudeCodeModel,
 } from '../harness/writers/claude-code-subagent';
 import type {
@@ -86,7 +85,10 @@ export interface ClaudeCodeApplyResult {
 
 export interface ClaudeCodeManagedModelOverride {
   role: ClaudeCodeRoleName;
-  model: ClaudeCodeModel;
+  model: string;
+  catalogId?: string;
+  effort?: string;
+  clearEffort?: boolean;
 }
 
 export const isClaudeCodeModelAlias = isClaudeCodeModel;
@@ -100,6 +102,23 @@ export function replaceSubagentModel(content: string, model: string): string {
     return content.replace(/^model:\s*\S+\s*$/m, `model: ${model}`);
   }
   return content;
+}
+
+export function parseSubagentEffort(content: string): string | undefined {
+  return /^effort:\s*(\S+)\s*$/m.exec(content)?.[1];
+}
+
+export function replaceSubagentEffort(
+  content: string,
+  effort: string | undefined,
+): string {
+  if (effort === undefined) {
+    return content.replace(/^effort:\s*\S+\s*\n/m, '');
+  }
+  if (/^effort:\s*\S+\s*$/m.test(content)) {
+    return content.replace(/^effort:\s*\S+\s*$/m, `effort: ${effort}`);
+  }
+  return content.replace(/^(model:\s*\S+\s*)$/m, `$1\neffort: ${effort}`);
 }
 
 function emptyManagedModelState(): ManagedModelState {
@@ -159,6 +178,7 @@ function roleForArtifact(
 
 function applyConfiguredModel(
   content: string,
+  targetPath: string,
   role: ClaudeCodeRoleName | undefined,
   state: ManagedModelState,
   nextState: ManagedModelState,
@@ -169,11 +189,26 @@ function applyConfiguredModel(
 
   nextState.models[role] = renderedModel;
   const configured = reset ? undefined : state.configuredModels?.[role];
-  if (configured === undefined) return content;
+  let updated = content;
+  if (configured !== undefined) {
+    nextState.configuredModels ??= {};
+    nextState.configuredModels[role] = configured;
+    updated = replaceSubagentModel(updated, configured);
+  }
 
-  nextState.configuredModels ??= {};
-  nextState.configuredModels[role] = configured;
-  return replaceSubagentModel(content, configured);
+  const configuredEffort = reset ? undefined : state.configuredEfforts?.[role];
+  if (configuredEffort !== undefined) {
+    nextState.configuredEfforts ??= {};
+    nextState.configuredEfforts[role] = configuredEffort;
+  }
+
+  if (!reset && existsSync(targetPath)) {
+    const installedEffort = parseSubagentEffort(
+      readFileSync(targetPath, 'utf8'),
+    );
+    updated = replaceSubagentEffort(updated, installedEffort);
+  }
+  return updated;
 }
 
 export function buildClaudeCodeSetupPlan(
@@ -196,11 +231,18 @@ export function buildClaudeCodeSetupPlan(
   const items: ClaudeCodeSetupPlanItem[] = render.artifacts.map((artifact) => {
     const role = roleForArtifact(artifact);
     const rendered = String(artifact.content ?? '');
+    const targetPath = join(targets.pluginRoot, artifact.path);
     const content =
       role !== undefined
-        ? applyConfiguredModel(rendered, role, state, nextState, config.reset)
+        ? applyConfiguredModel(
+            rendered,
+            targetPath,
+            role,
+            state,
+            nextState,
+            config.reset,
+          )
         : rendered;
-    const targetPath = join(targets.pluginRoot, artifact.path);
 
     return {
       kind: targetKindForArtifact(artifact),
@@ -317,11 +359,17 @@ export function applyClaudeCodeManagedModelOverrides(
     ...(state.configuredModels
       ? { configuredModels: { ...state.configuredModels } }
       : {}),
+    ...(state.configuredEfforts
+      ? { configuredEfforts: { ...state.configuredEfforts } }
+      : {}),
   };
 
   try {
     for (const override of overrides) {
-      if (!isClaudeCodeModelAlias(override.model)) {
+      if (
+        !isClaudeCodeModelAlias(override.model) &&
+        override.catalogId !== override.model
+      ) {
         throw new Error(
           `Unsupported Claude Code model "${override.model}" for ${override.role}; use sonnet, opus, haiku, or inherit.`,
         );
@@ -336,7 +384,12 @@ export function applyClaudeCodeManagedModelOverrides(
       const before = existsSync(roleItem.targetPath)
         ? readFileSync(roleItem.targetPath, 'utf8')
         : roleItem.content;
-      const updated = replaceSubagentModel(before, override.model);
+      let updated = replaceSubagentModel(before, override.model);
+      if (override.clearEffort) {
+        updated = replaceSubagentEffort(updated, undefined);
+      } else if (override.effort !== undefined) {
+        updated = replaceSubagentEffort(updated, override.effort);
+      }
       if (writeTextWithBackup(roleItem.targetPath, updated)) {
         changed.push(roleItem.targetPath);
       }
@@ -344,6 +397,14 @@ export function applyClaudeCodeManagedModelOverrides(
       // user-configured override is recorded.
       nextState.configuredModels ??= {};
       nextState.configuredModels[override.role] = override.model;
+      if (override.clearEffort) {
+        if (nextState.configuredEfforts) {
+          delete nextState.configuredEfforts[override.role];
+        }
+      } else if (override.effort !== undefined) {
+        nextState.configuredEfforts ??= {};
+        nextState.configuredEfforts[override.role] = override.effort;
+      }
     }
 
     if (writeTextWithBackup(statePath, stableJson(nextState))) {

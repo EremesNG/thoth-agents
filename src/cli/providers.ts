@@ -1,3 +1,4 @@
+import { CONFIRMED_OPENAI_SUBAGENT_PRESET } from '../config';
 import type { InstallConfig } from './types';
 
 export const THOTH_AGENTS_CONFIG_SCHEMA_URL =
@@ -7,12 +8,30 @@ export const THOTH_AGENTS_CONFIG_SCHEMA_URL =
 export const MODEL_MAPPINGS = {
   openai: {
     orchestrator: { model: 'openai/gpt-5.4' },
-    oracle: { model: 'openai/gpt-5.4', variant: 'high' },
-    librarian: { model: 'openai/gpt-5.4-mini', variant: 'low' },
-    explorer: { model: 'openai/gpt-5.4-mini', variant: 'low' },
-    designer: { model: 'openai/gpt-5.4-mini', variant: 'medium' },
-    quick: { model: 'openai/gpt-5.4-mini', variant: 'low' },
-    deep: { model: 'openai/gpt-5.4', variant: 'high' },
+    oracle: {
+      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.oracle.model}`,
+      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.oracle.effort,
+    },
+    librarian: {
+      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.librarian.model}`,
+      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.librarian.effort,
+    },
+    explorer: {
+      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.explorer.model}`,
+      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.explorer.effort,
+    },
+    designer: {
+      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.designer.model}`,
+      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.designer.effort,
+    },
+    quick: {
+      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.quick.model}`,
+      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.quick.effort,
+    },
+    deep: {
+      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.deep.model}`,
+      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.deep.effort,
+    },
   },
   kimi: {
     orchestrator: { model: 'kimi-for-coding/k2p5' },

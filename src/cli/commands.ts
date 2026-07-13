@@ -42,6 +42,12 @@ import type {
   OperationPlan,
   OperationWarning,
 } from './operations/types';
+import { getModelOptions, type ModelOption } from './tui/model-catalog';
+import {
+  getClaudeCodeModelRoles,
+  getCodexModelRoles,
+  getOpenCodeModelRoles,
+} from './tui/operations';
 import type {
   CliModelRoleArg,
   CliOperationCommand,
@@ -250,6 +256,8 @@ Options:
   --agent=opencode|codex|claude
                          Select OpenCode plugin install (default), Codex agent-pack, or Claude Code plugin setup
   --harness=...          Select harness for status/update/sync/model (opencode|codex|claude)
+  --role-effort=role=effort
+                         Set a repeatable role effort; use inherit or default for no override
   -h, --help             Show this help message
 
 Generate options:
@@ -350,12 +358,63 @@ function defaultModelRoles(harness: OperationHarnessArg): ModelRoleInput[] {
   }));
 }
 
-function modelRoles(
+export function resolveCliModelRoles(
   harness: OperationHarnessArg,
   roles: readonly CliModelRoleArg[],
+  resolution?: {
+    currentRoles: readonly ModelRoleInput[];
+    modelOptions: readonly ModelOption[];
+  },
 ): ModelRoleInput[] {
-  return roles.length > 0 ? [...roles] : defaultModelRoles(harness);
+  const defaults = resolution?.currentRoles ?? defaultModelRoles(harness);
+  if (roles.length === 0) return defaults.map((role) => ({ ...role }));
+  const defaultsByRole = new Map(defaults.map((role) => [role.role, role]));
+  return roles.map((role) => {
+    const fallback = defaultsByRole.get(role.role);
+    const model = role.model ?? fallback?.model ?? '';
+    const catalogId =
+      harness === 'codex' && !model.includes('/') ? `openai/${model}` : model;
+    const option = resolution?.modelOptions.find(
+      (candidate) =>
+        candidate.id === model ||
+        candidate.catalogId === model ||
+        candidate.catalogId === catalogId,
+    );
+    const provider = role.provider ?? option?.provider ?? fallback?.provider;
+    return {
+      role: role.role,
+      model,
+      ...(provider !== undefined ? { provider } : {}),
+      ...(option?.catalogId !== undefined
+        ? { catalogId: option.catalogId }
+        : fallback?.catalogId
+          ? { catalogId: fallback.catalogId }
+          : {}),
+      ...(option?.efforts !== undefined
+        ? { availableEfforts: option.efforts }
+        : fallback?.availableEfforts
+          ? { availableEfforts: fallback.availableEfforts }
+          : {}),
+      ...(role.effort !== undefined ? { effort: role.effort } : {}),
+    };
+  });
 }
+
+export interface CliModelCommandServices {
+  operationContext(): OperationContext;
+  modelRoles(harness: OperationHarnessArg): ModelRoleInput[];
+  modelOptions(harness: OperationHarnessArg): Promise<ModelOption[]>;
+}
+
+const defaultModelCommandServices: CliModelCommandServices = {
+  operationContext,
+  modelRoles(harness) {
+    if (harness === 'opencode') return getOpenCodeModelRoles();
+    if (harness === 'claude') return getClaudeCodeModelRoles();
+    return getCodexModelRoles();
+  },
+  modelOptions: getModelOptions,
+};
 
 function printModelGuidance(): number {
   console.log(
@@ -370,14 +429,22 @@ function printModelGuidance(): number {
   return 1;
 }
 
-function buildModelPlan(args: OperationArgs): OperationPlan | undefined {
+async function buildModelPlan(
+  args: OperationArgs,
+  services: CliModelCommandServices,
+): Promise<OperationPlan | undefined> {
   if (args.roles.length === 0) return undefined;
   const harness = selectedHarness(args);
-  const context = operationContext();
+  const context = services.operationContext();
+  const currentRoles = services.modelRoles(harness);
+  const modelOptions = await services.modelOptions(harness);
   const input = {
     harness,
     dryRun: true,
-    roles: modelRoles(harness, args.roles),
+    roles: resolveCliModelRoles(harness, args.roles, {
+      currentRoles,
+      modelOptions,
+    }),
   };
   if (harness === 'opencode') return buildOpenCodeModelPlan(input, context);
   if (harness === 'claude') return buildClaudeCodeModelPlan(input, context);
@@ -405,10 +472,11 @@ function printPlanOrApply(plan: OperationPlan, args: OperationArgs): number {
   return 0;
 }
 
-function runOperationCommand(
+async function runOperationCommand(
   command: CliOperationCommand,
   args: OperationArgs,
-): number {
+  services: CliModelCommandServices,
+): Promise<number> {
   if (command === 'status') {
     console.log(formatHarnessStatusReport(statusReports(args)));
     return 0;
@@ -423,7 +491,7 @@ function runOperationCommand(
     return printPlanOrApply(buildOperationPlan(command, args), args);
   }
 
-  const plan = buildModelPlan(args);
+  const plan = await buildModelPlan(args, services);
   if (!plan) return printModelGuidance();
   return printPlanOrApply(plan, args);
 }
@@ -448,7 +516,10 @@ export function printHarnessGeneration(args: GenerateArgs): number {
   return 0;
 }
 
-export async function runCliCommand(parsed: CliParseResult): Promise<number> {
+export async function runCliCommand(
+  parsed: CliParseResult,
+  modelServices: CliModelCommandServices = defaultModelCommandServices,
+): Promise<number> {
   if (parsed.command === 'install') {
     return install(parsed.installArgs);
   }
@@ -473,5 +544,9 @@ export async function runCliCommand(parsed: CliParseResult): Promise<number> {
     return 1;
   }
 
-  return runOperationCommand(parsed.command, parsed.operationArgs);
+  return runOperationCommand(
+    parsed.command,
+    parsed.operationArgs,
+    modelServices,
+  );
 }

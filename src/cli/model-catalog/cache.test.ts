@@ -6,7 +6,7 @@ import {
   rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   readModelsDevCache,
@@ -59,7 +59,7 @@ describe('models.dev cache', () => {
         env: { LOCALAPPDATA: 'C:\\Cache' },
         homeDir: 'C:\\Users\\Ada',
       }),
-    ).toBe(join('C:\\Cache', 'thoth-agents', 'models-dev-v1.json'));
+    ).toBe(win32.join('C:\\Cache', 'thoth-agents', 'models-dev-v1.json'));
     expect(
       resolveModelsDevCachePath({
         platform: 'linux',

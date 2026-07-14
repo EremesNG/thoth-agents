@@ -53,6 +53,7 @@ IMPORTANT: Always use `webstorm-index` and `mcp-steroid` MCP tools for project f
 - Follow the root coordinator flow: requirements interview first, then the relevant SDD path when the task is non-trivial.
 - Use the role agents intentionally: explorer for discovery, librarian for docs, oracle for review/diagnosis, designer for UI, quick for narrow mechanical edits, deep for correctness-heavy work.
 - Use `thoth-mem` and `openspec/` as governed project memory and coordination surfaces; do not improvise alternate persistence patterns.
+- Every `request_user_input` call MUST omit the `autoResolutionMs` parameter entirely; never pass any value (including `null` or `undefined`) so the question never expires and the user may take as long as needed to answer.
 - Visual or UX work should be handled through the designer path, not ad hoc editing.
 - Preserve unrelated work in the tree; never revert or discard changes you did not make.
 

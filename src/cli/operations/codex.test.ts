@@ -83,7 +83,7 @@ describe('Codex operations adapter', () => {
       }),
     ).toMatchObject({ ok: false, code: 'codex-effort-model-unsupported' });
     expect(
-      resolveCodexEffort({...base, effort: { kind: 'inherit' }}),
+      resolveCodexEffort({ ...base, effort: { kind: 'inherit' } }),
     ).toEqual({ ok: true, value: undefined });
   });
   test('Codex status classifies missing, installed, drift, outdated, and unknown states', () => {
@@ -118,7 +118,7 @@ describe('Codex operations adapter', () => {
       };
       writeFileSync(
         manifestPath,
-        `${JSON.stringify({...manifest, version: '0.0.0'}, null, 2)}\n`,
+        `${JSON.stringify({ ...manifest, version: '0.0.0' }, null, 2)}\n`,
       );
       expect(getCodexStatus(context(dir, home)).state).toBe('outdated');
 
@@ -244,7 +244,7 @@ describe('Codex operations adapter', () => {
       expect(applied.applied).toBe(true);
       expect(existsSync(rolePath(home, 'deep'))).toBe(true);
       expect(
-        applyCodexPlan({...buildCodexUpdatePlan(context(dir, home))}).applied,
+        applyCodexPlan({ ...buildCodexUpdatePlan(context(dir, home)) }).applied,
       ).toBe(false);
       expect(
         applyCodexPlan({
@@ -303,9 +303,7 @@ describe('Codex operations adapter', () => {
       expect(getCodexStatus(context(dir, home)).state).toBe('drift');
 
       setup(dir, home);
-      expect(roleModel(readFileSync(quickPath, 'utf8'))).toBe(
-        'gpt-5.4-mini',
-      );
+      expect(roleModel(readFileSync(quickPath, 'utf8'))).toBe('gpt-5.4-mini');
       expect(readFileSync(quickPath, 'utf8')).not.toContain(
         'model_reasoning_effort',
       );

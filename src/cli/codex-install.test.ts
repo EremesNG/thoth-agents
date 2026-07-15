@@ -660,15 +660,15 @@ describe('Codex install setup plan', () => {
           { role: 'deep', model: 'openai/gpt-5.3-codex-spark' },
         ]).success,
       ).toBe(true);
-      expect.soft(roleModel(readFileSync(deep, 'utf8'))).toBe(
-        'gpt-5.3-codex-spark',
-      );
+      expect
+        .soft(roleModel(readFileSync(deep, 'utf8')))
+        .toBe('gpt-5.3-codex-spark');
       expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBe('high');
       const state = readManagedModelState(home);
       expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
-      expect.soft(state.configuredModels?.['thoth-agents-deep.toml']).toBe(
-        'gpt-5.3-codex-spark',
-      );
+      expect
+        .soft(state.configuredModels?.['thoth-agents-deep.toml'])
+        .toBe('gpt-5.3-codex-spark');
       expect(state.models['thoth-agents-deep.toml']).not.toBe(
         state.configuredModels?.['thoth-agents-deep.toml'],
       );
@@ -729,9 +729,9 @@ describe('Codex install setup plan', () => {
         'gpt-5.3-codex-spark',
       );
       expect(state.models['thoth-agents-deep.toml']).not.toContain('openai/');
-      expect(
-        state.configuredModels?.['thoth-agents-deep.toml'],
-      ).not.toContain('openai/');
+      expect(state.configuredModels?.['thoth-agents-deep.toml']).not.toContain(
+        'openai/',
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

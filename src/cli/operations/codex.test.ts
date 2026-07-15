@@ -83,7 +83,7 @@ describe('Codex operations adapter', () => {
       }),
     ).toMatchObject({ ok: false, code: 'codex-effort-model-unsupported' });
     expect(
-      resolveCodexEffort({ ...base, effort: { kind: 'inherit' } }),
+      resolveCodexEffort({...base, effort: { kind: 'inherit' }}),
     ).toEqual({ ok: true, value: undefined });
   });
   test('Codex status classifies missing, installed, drift, outdated, and unknown states', () => {
@@ -118,7 +118,7 @@ describe('Codex operations adapter', () => {
       };
       writeFileSync(
         manifestPath,
-        `${JSON.stringify({ ...manifest, version: '0.0.0' }, null, 2)}\n`,
+        `${JSON.stringify({...manifest, version: '0.0.0'}, null, 2)}\n`,
       );
       expect(getCodexStatus(context(dir, home)).state).toBe('outdated');
 
@@ -195,8 +195,15 @@ describe('Codex operations adapter', () => {
           harness: 'codex',
           dryRun: true,
           roles: [
-            { role: 'deep', model: 'gpt-5.5' },
-            { role: 'quick', provider: 'openai', model: 'gpt-5.4-mini' },
+            { role: 'deep', model: 'openai/gpt-5.5' },
+            {
+              role: 'quick',
+              provider: 'openai',
+              model: 'gpt-5.4-mini',
+              catalogId: 'openai/gpt-5.4-mini',
+              availableEfforts: ['medium'],
+              effort: { kind: 'effort', value: 'medium' },
+            },
             { role: 'orchestrator', model: 'gpt-5.5' },
           ],
         },
@@ -206,8 +213,9 @@ describe('Codex operations adapter', () => {
       expect(plan.action).toBe('model-config');
       expect(plan.canApply).toBe(true);
       expect(plan.items).toHaveLength(2);
-      expect(plan.items[0]?.preview).toContain('"deep"');
-      expect(plan.items[1]?.preview).toContain('openai/gpt-5.4-mini');
+      expect.soft(plan.items[0]?.preview).toContain('"model":"gpt-5.5"');
+      expect.soft(plan.items[1]?.preview).toContain('"model":"gpt-5.4-mini"');
+      expect(plan.items[1]?.preview).toContain('"effort":"medium"');
       expect(plan.warnings.map((item) => item.message).join('\n')).toContain(
         'orchestrator',
       );
@@ -236,7 +244,7 @@ describe('Codex operations adapter', () => {
       expect(applied.applied).toBe(true);
       expect(existsSync(rolePath(home, 'deep'))).toBe(true);
       expect(
-        applyCodexPlan({ ...buildCodexUpdatePlan(context(dir, home)) }).applied,
+        applyCodexPlan({...buildCodexUpdatePlan(context(dir, home))}).applied,
       ).toBe(false);
       expect(
         applyCodexPlan({
@@ -262,7 +270,7 @@ describe('Codex operations adapter', () => {
       const modelApplied = applyCodexPlan(modelPlan);
       expect(modelApplied.applied).toBe(true);
       const quickAfter = readFileSync(quickPath, 'utf8');
-      expect(roleModel(quickAfter)).toBe('openai/gpt-5.4-mini');
+      expect(roleModel(quickAfter)).toBe('gpt-5.4-mini');
       expect(quickAfter).toContain('sandbox_mode = "read-only"');
       expect(quickAfter).toContain('model_reasoning_effort = "medium"');
       expect(quickAfter).not.toContain('toggle');
@@ -287,13 +295,16 @@ describe('Codex operations adapter', () => {
         'model_reasoning_effort',
       );
       expect(readFileSync(managedModelsPath(home), 'utf8')).toContain(
+        'gpt-5.4-mini',
+      );
+      expect(readFileSync(managedModelsPath(home), 'utf8')).not.toContain(
         'openai/gpt-5.4-mini',
       );
       expect(getCodexStatus(context(dir, home)).state).toBe('drift');
 
       setup(dir, home);
       expect(roleModel(readFileSync(quickPath, 'utf8'))).toBe(
-        'openai/gpt-5.4-mini',
+        'gpt-5.4-mini',
       );
       expect(readFileSync(quickPath, 'utf8')).not.toContain(
         'model_reasoning_effort',

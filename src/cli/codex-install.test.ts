@@ -62,7 +62,14 @@ function replaceRoleModel(content: string, model: string): string {
 }
 
 function readManagedModels(home: string): Record<string, string> {
-  return JSON.parse(readFileSync(managedModelsPath(home), 'utf8')).models;
+  return readManagedModelState(home).models;
+}
+
+function readManagedModelState(home: string): {
+  models: Record<string, string>;
+  configuredModels?: Record<string, string>;
+} {
+  return JSON.parse(readFileSync(managedModelsPath(home), 'utf8'));
 }
 
 function applyFreshCodexSetup(dir: string, home: string, reset = false): void {
@@ -650,16 +657,29 @@ describe('Codex install setup plan', () => {
       };
       expect(
         applyCodexManagedModelOverrides(installConfig, [
-          { role: 'deep', model: 'gpt-5.6-terra' },
+          { role: 'deep', model: 'openai/gpt-5.3-codex-spark' },
         ]).success,
       ).toBe(true);
+      expect.soft(roleModel(readFileSync(deep, 'utf8'))).toBe(
+        'gpt-5.3-codex-spark',
+      );
       expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBe('high');
+      const state = readManagedModelState(home);
+      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
+      expect.soft(state.configuredModels?.['thoth-agents-deep.toml']).toBe(
+        'gpt-5.3-codex-spark',
+      );
+      expect(state.models['thoth-agents-deep.toml']).not.toBe(
+        state.configuredModels?.['thoth-agents-deep.toml'],
+      );
+      expect(existsSync(`${deep}.bak`)).toBe(true);
+      expect(existsSync(`${managedModelsPath(home)}.bak`)).toBe(true);
 
       expect(
         applyCodexManagedModelOverrides(installConfig, [
           {
             role: 'deep',
-            model: 'gpt-5.6-terra',
+            model: 'openai/gpt-5.3-codex-spark',
             clearEffort: true,
           },
         ]).success,
@@ -670,6 +690,52 @@ describe('Codex install setup plan', () => {
     }
   });
 
+  test('explicit Codex apply restores a providerless baseline after a prefixed user-owned model', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-user-owned-prefixed-'));
+    try {
+      const home = join(dir, 'home');
+      applyFreshCodexSetup(dir, home);
+      const target = rolePath(home, 'deep');
+      writeFileSync(
+        target,
+        replaceRoleModel(
+          readFileSync(target, 'utf8'),
+          'openai/user-custom-model',
+        ),
+      );
+
+      const before = readManagedModelState(home);
+      expect(before.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
+      expect(
+        applyCodexManagedModelOverrides(
+          {
+            dryRun: false,
+            reset: false,
+            scope: 'user',
+            projectRoot: dir,
+            homeDir: home,
+            packageRoot: PACKAGE_ROOT,
+          },
+          [{ role: 'deep', model: 'gpt-5.3-codex-spark' }],
+        ).success,
+      ).toBe(true);
+
+      const state = readManagedModelState(home);
+      expect(roleModel(readFileSync(target, 'utf8'))).toBe(
+        'gpt-5.3-codex-spark',
+      );
+      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
+      expect(state.configuredModels?.['thoth-agents-deep.toml']).toBe(
+        'gpt-5.3-codex-spark',
+      );
+      expect(state.models['thoth-agents-deep.toml']).not.toContain('openai/');
+      expect(
+        state.configuredModels?.['thoth-agents-deep.toml'],
+      ).not.toContain('openai/');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('preserves user-customized Codex role model', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {

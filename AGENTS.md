@@ -13,7 +13,7 @@ a requirements-interview skill for clarifying ambiguous work.
 - Codex: supported agent-pack/plugin path for Codex harnesses, with
   capability and enforcement caveats where the runtime differs from OpenCode.
 
-IMPORTANT: Always use `webstorm-index` and `mcp-steroid` MCP tools for project file navigation, including text search, file search, file reading, and refactoring. This rule applies to the root agent **and to every delegated sub-agent**.
+IMPORTANT: Prefer `webstorm-index` MCP tools for all project file navigation tasks, including text search, file search, file reading, and refactoring. This rule applies to the root agent and every delegated sub-agent. If `webstorm-index` is unavailable, returns errors, lacks the required capability, produces incomplete results, or otherwise blocks progress, the agent may use other available tools as a fallback. When doing so, it should use the least invasive suitable tool and resume using `webstorm-index` once it becomes practical.
 
 ## Environment and Setup
 

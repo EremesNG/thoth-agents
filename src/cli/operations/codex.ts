@@ -9,6 +9,7 @@ import {
   type CodexSetupPlan,
   type CodexSetupPlanItem,
   MANAGED_MODEL_STATE_VERSION,
+  normalizeCodexRuntimeModel,
   parseRoleTomlModel,
 } from '../codex-install';
 import type { CodexInstallScope, CodexRoleName } from '../codex-paths';
@@ -532,10 +533,7 @@ export function buildCodexInstallPlan(
 }
 
 function normalizeCodexModel(input: ModelRoleInput): string {
-  if (input.provider && !input.model.includes('/')) {
-    return `${input.provider}/${input.model}`;
-  }
-  return input.model;
+  return normalizeCodexRuntimeModel(input.model);
 }
 
 const CODEX_DOCUMENTED_EFFORTS = new Set([

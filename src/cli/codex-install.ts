@@ -60,6 +60,7 @@ export interface CodexSetupPlanItem {
   requiresBackup: boolean;
   content?: string;
   role?: CodexRoleName;
+  renderedModel?: string;
 }
 
 export interface CodexSetupPlan {
@@ -204,6 +205,11 @@ export function roleManagedModelStateKey(path: string): string {
   return basename(path);
 }
 
+export function normalizeCodexRuntimeModel(model: string): string {
+  const separator = model.indexOf('/');
+  return separator === -1 ? model : model.slice(separator + 1);
+}
+
 export interface CodexManagedModelOverride {
   role: CodexRoleName;
   model: string;
@@ -271,7 +277,8 @@ export function applyCodexManagedModelOverrides(
       const before = existsSync(roleItem.targetPath)
         ? readFileSync(roleItem.targetPath, 'utf8')
         : roleItem.content;
-      let updated = replaceRoleTomlModel(before, override.model);
+      const model = normalizeCodexRuntimeModel(override.model);
+      let updated = replaceRoleTomlModel(before, model);
       if (override.clearEffort) {
         updated = replaceRoleTomlEffort(updated, undefined);
       } else if (override.effort !== undefined) {
@@ -281,10 +288,11 @@ export function applyCodexManagedModelOverrides(
         changed.push(roleItem.targetPath);
       }
       const key = roleManagedModelStateKey(roleItem.targetPath);
-      nextState.models[key] =
-        parseRoleTomlModel(roleItem.content) ?? override.model;
+      nextState.models[key] = normalizeCodexRuntimeModel(
+        roleItem.renderedModel ?? model,
+      );
       nextState.configuredModels ??= {};
-      nextState.configuredModels[key] = override.model;
+      nextState.configuredModels[key] = model;
       if (override.clearEffort) {
         if (nextState.configuredEfforts) {
           delete nextState.configuredEfforts[key];
@@ -467,6 +475,9 @@ export function buildCodexSetupPlan(
         description: `Materialize Codex role subagent ${target.role}.`,
         requiresBackup: existsSync(target.path),
         role: target.role,
+        renderedModel: parseRoleTomlModel(
+          roleArtifactContent(target.role, render.artifacts),
+        ),
         content: resolveRoleTomlContent({
           renderedContent: roleArtifactContent(target.role, render.artifacts),
           targetPath: target.path,

@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { loadModelsDevCatalog } from '../model-catalog';
 import {
@@ -108,6 +111,27 @@ describe('TUI model catalog', () => {
     );
   });
 
+  test('OpenCode pure discovery avoids mocked plugin startup side effects without changing parsing', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'thoth-opencode-models-'));
+    const marker = join(root, 'plugin-started');
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      const invocation = [String(command), ...(args ?? [])].join(' ');
+      if (!invocation.split(/\s+/).includes('--pure')) {
+        writeFileSync(marker, 'external plugin startup side effect');
+      }
+      return 'openai/gpt-5.6-sol\n';
+    });
+
+    try {
+      const options = await getModelOptions('opencode');
+
+      expect(options.map(({ id }) => id)).toEqual(['openai/gpt-5.6-sol']);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('OpenCode options are manual-only when opencode models is unavailable', async () => {
     vi.mocked(execFileSync).mockImplementation(() => {
       throw new Error('opencode unavailable');
@@ -166,9 +190,19 @@ describe('TUI model catalog', () => {
     expect(option.efforts).toEqual(['low', 'high']);
   });
 
-  test('OpenCode uses shell invocation on Windows so command shims resolve', () => {
+  test('OpenCode uses pure mode in POSIX execFile arguments', () => {
+    expect(getOpenCodeModelsInvocation('linux')).toEqual({
+      command: 'opencode',
+      args: ['models', '--pure'],
+      options: expect.objectContaining({
+        timeout: 5_000,
+      }),
+    });
+  });
+
+  test('OpenCode uses pure mode in the Windows shell command so shims resolve', () => {
     expect(getOpenCodeModelsInvocation('win32')).toEqual({
-      command: 'opencode models',
+      command: 'opencode models --pure',
       args: [],
       options: expect.objectContaining({
         shell: true,

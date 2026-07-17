@@ -97,13 +97,13 @@ export function getOpenCodeModelsInvocation(
 
   if (platform === 'win32') {
     return {
-      command: 'opencode models',
+      command: 'opencode models --pure',
       args: [],
       options: { ...options, shell: true },
     };
   }
 
-  return { command: 'opencode', args: ['models'], options };
+  return { command: 'opencode', args: ['models', '--pure'], options };
 }
 
 function getNativeOpenCodeOptions(): ModelOption[] {

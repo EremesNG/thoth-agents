@@ -80,7 +80,8 @@ function formatPaths(paths: OperationPath[]): string[] {
 
 function formatWarnings(warnings: OperationWarning[]): string[] {
   return warnings.map(
-    (warning) => `- [${warning.severity}] ${warning.message}`,
+    (warning) =>
+      `- [${warning.severity}]${warning.code ? ` [${warning.code}]` : ''} ${warning.message}`,
   );
 }
 
@@ -170,6 +171,9 @@ export function formatOperationPlan(plan: OperationPlan): string {
     plan.targets.length > 0
       ? ['Targets:', ...plan.targets.map(formatTarget)]
       : [],
+    plan.blockerTargets?.length
+      ? ['Blocking targets:', ...plan.blockerTargets.map(formatTarget)]
+      : [],
     plan.surfaces.length > 0
       ? [
           'Managed surfaces:',
@@ -214,6 +218,9 @@ export function formatOperationApplyResult(
     ],
     result.changedTargets.length > 0
       ? ['Changed targets:', ...result.changedTargets.map(formatTarget)]
+      : [],
+    result.diagnosticTargets?.length
+      ? ['Diagnostic targets:', ...result.diagnosticTargets.map(formatTarget)]
       : [],
     result.backups.length > 0
       ? ['Backups:', ...formatPaths(result.backups)]

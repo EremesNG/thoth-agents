@@ -11,11 +11,13 @@ import {
   resolveCliModelRoles,
   runCliCommand,
 } from './commands';
+import { CUSTOM_SKILLS } from './custom-skills';
 import type { ModelOption } from './model-catalog';
 import {
   applyClaudeCodePlan,
   buildClaudeCodeModelPlan,
 } from './operations/claude-code';
+import { buildOpenCodeSyncPlan } from './operations/opencode';
 import type {
   HarnessStatusReport,
   ManagedState,
@@ -233,6 +235,52 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain('The npm binary still requires');
   });
 
+  test('OpenCode sync output renders unique main and lite backups plus bundled skills', () => {
+    const xdgRoot = mkdtempSync(join(tmpdir(), 'thoth-opencode-format-'));
+    const root = join(xdgRoot, 'opencode');
+    const originalConfigDir = process.env.OPENCODE_CONFIG_DIR;
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    process.env.OPENCODE_CONFIG_DIR = root;
+    process.env.XDG_CONFIG_HOME = xdgRoot;
+
+    try {
+      const output = formatOperationPlan(
+        buildOpenCodeSyncPlan({
+          cwd: root,
+          env: { HOME: join(root, 'home') },
+        }),
+      );
+      const backupPaths = [
+        join(root, 'opencode.json.bak'),
+        join(root, 'thoth-agents.json.bak'),
+      ];
+
+      for (const backupPath of backupPaths) {
+        expect(output).toContain(backupPath);
+        expect(output.split(backupPath)).toHaveLength(2);
+      }
+      expect(output).toContain(
+        '- Refresh bundled thoth-agents OpenCode skills',
+      );
+      expect(output).toContain(`"count": ${CUSTOM_SKILLS.length}`);
+      for (const { name } of CUSTOM_SKILLS) {
+        expect(output).toContain(`"${name}"`);
+      }
+    } finally {
+      if (originalConfigDir === undefined) {
+        delete process.env.OPENCODE_CONFIG_DIR;
+      } else {
+        process.env.OPENCODE_CONFIG_DIR = originalConfigDir;
+      }
+      if (originalXdgConfigHome === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+      }
+      rmSync(xdgRoot, { recursive: true, force: true });
+    }
+  });
+
   test('apply result output renders paths, backups, warnings, and disclaimers', () => {
     const result: OperationApplyResult = {
       harness: 'codex',
@@ -273,6 +321,81 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain('quick.toml.bak');
     expect(output).toContain('Provider-per-role enforcement');
     expect(output).toContain('Root Codex settings were not modified.');
+  });
+
+  test('blocked plan and apply output render diagnostic codes and target observations', () => {
+    const targets = [
+      {
+        kind: 'config' as const,
+        label: 'thoth-agents config',
+        state: 'drift' as const,
+        observed: 'preset: agents; roles: 7/7',
+      },
+      {
+        kind: 'skill' as const,
+        label: 'Bundled skill: sdd-apply',
+        state: 'missing' as const,
+        observed: 'managed bundled skill missing',
+      },
+    ];
+    const warnings = [
+      {
+        severity: 'important' as const,
+        code: 'opencode-roster-drift',
+        message: 'Managed OpenCode roster uses the legacy agents preset.',
+      },
+      {
+        severity: 'important' as const,
+        code: 'opencode-bundled-skills-missing',
+        message: 'Bundled thoth-agents OpenCode skills are missing.',
+      },
+    ];
+    const blockedPlan: OperationPlan = {
+      id: 'opencode-model-config-preview',
+      harness: 'opencode',
+      action: 'model-config',
+      title: 'Configure OpenCode role model overrides',
+      summary: 'Model changes are blocked by managed health.',
+      dryRun: true,
+      canApply: false,
+      targets,
+      blockerTargets: targets,
+      surfaces: [],
+      backup: { required: false, strategy: 'none' },
+      items: [],
+      warnings,
+      disclaimers: [],
+    };
+    const blockedResult: OperationApplyResult = {
+      harness: 'opencode' as const,
+      action: 'model-config' as const,
+      applied: false,
+      summary: 'OpenCode model changes remain blocked.',
+      changedTargets: [],
+      diagnosticTargets: targets,
+      backups: [],
+      warnings,
+      disclaimers: [],
+    };
+
+    for (const output of [
+      formatOperationPlan(blockedPlan),
+      formatOperationApplyResult(blockedResult),
+    ]) {
+      expect(output).toContain(
+        '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
+      );
+      expect(output).toContain(
+        '[important] [opencode-bundled-skills-missing] Bundled thoth-agents OpenCode skills are missing.',
+      );
+      expect(output).toContain(
+        'thoth-agents config: config [drift] observed preset: agents; roles: 7/7',
+      );
+      expect(output).toContain(
+        'Bundled skill: sdd-apply: skill [missing] observed managed bundled skill missing',
+      );
+    }
+    expect(formatOperationPlan(blockedPlan)).toContain('Blocking targets:');
   });
 });
 
@@ -317,14 +440,41 @@ describe('explicit operation commands', () => {
       },
     ]);
 
-    const result = await captureCommand(
-      ['model', `--harness=${harness}`, '--role-effort=deep=high'],
-      services,
-    );
-    expect(result.code).toBe(0);
-    expect(result.output).toContain(model);
-    expect(result.output).toContain('high');
-    expect(result.output).toContain('Can apply: yes');
+    const originalConfigDir = process.env.OPENCODE_CONFIG_DIR;
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    const isolatedRoot =
+      harness === 'opencode'
+        ? mkdtempSync(join(tmpdir(), 'opencode-cli-effort-'))
+        : undefined;
+    try {
+      if (isolatedRoot) {
+        process.env.XDG_CONFIG_HOME = isolatedRoot;
+        process.env.OPENCODE_CONFIG_DIR = join(isolatedRoot, 'opencode');
+      }
+
+      const result = await captureCommand(
+        ['model', `--harness=${harness}`, '--role-effort=deep=high'],
+        services,
+      );
+      expect(result.code).toBe(0);
+      expect(result.output).toContain(model);
+      expect(result.output).toContain('high');
+      expect(result.output).toContain('Can apply: yes');
+    } finally {
+      if (isolatedRoot) {
+        if (originalConfigDir === undefined) {
+          delete process.env.OPENCODE_CONFIG_DIR;
+        } else {
+          process.env.OPENCODE_CONFIG_DIR = originalConfigDir;
+        }
+        if (originalXdgConfigHome === undefined) {
+          delete process.env.XDG_CONFIG_HOME;
+        } else {
+          process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+        }
+        rmSync(isolatedRoot, { recursive: true, force: true });
+      }
+    }
   });
 
   test('concrete Claude CLI resolution generates exact effort frontmatter', async () => {

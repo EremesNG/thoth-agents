@@ -14,6 +14,7 @@ import {
   checkSkillsNeedUpdate,
   computeSkillHash,
   type SkillManifest,
+  type SkillUpdateCheck,
   type SkillUpdateEntry,
   type SkillUpdateReason,
   writeManifest,
@@ -150,6 +151,12 @@ function resolvePackageRoot(packageRoot?: string): string {
     findPackageRoot(moduleDir) ??
     fileURLToPath(new URL('../..', import.meta.url))
   );
+}
+
+export function checkCustomSkillsNeedUpdate(
+  packageRoot?: string,
+): SkillUpdateCheck {
+  return checkSkillsNeedUpdate(resolvePackageRoot(packageRoot));
 }
 
 function installCustomSkillFiles(

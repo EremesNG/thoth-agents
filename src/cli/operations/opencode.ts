@@ -1,14 +1,16 @@
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ALL_AGENT_NAMES } from '../../config';
 import {
-  disableDefaultAgents,
   parseConfig,
+  updateOpenCodeMainConfig,
   writeConfig,
   writeLiteConfig,
 } from '../config-io';
 import {
   CUSTOM_SKILLS,
+  checkCustomSkillsNeedUpdate,
   getCustomSkillsDir,
   installCustomSkills,
 } from '../custom-skills';
@@ -20,7 +22,6 @@ import {
 import { resolveOpenCodeEffort } from '../opencode-effort';
 import {
   ensureConfigDir,
-  ensureOpenCodeConfigDir,
   getExistingConfigPath,
   getExistingLiteConfigPath,
   getOpenCodeManagedModelStatePath,
@@ -51,6 +52,205 @@ const PACKAGE_NAME = 'thoth-agents';
 const EXPECTED_PLUGIN = `${PACKAGE_NAME}@latest`;
 const OPENAI_PRESET = 'openai';
 const ROLE_NAMES = [...ALL_AGENT_NAMES];
+
+interface NormalizedOpenCodeRoleOverride {
+  readonly role: string;
+  readonly model: string;
+  readonly variant: string | null;
+}
+
+type IssuedOpenCodePayload =
+  | { readonly kind: 'fixed'; readonly action: 'install' | 'update' | 'sync' }
+  | {
+      readonly kind: 'model';
+      readonly roles: readonly NormalizedOpenCodeRoleOverride[];
+    };
+
+interface IssuedOpenCodePlan {
+  readonly planDigest: string;
+  readonly liveStatusDigest: string;
+  readonly harness: 'opencode';
+  readonly action: 'install' | 'update' | 'sync' | 'model-config';
+  readonly context: OperationContext;
+  readonly payload: IssuedOpenCodePayload;
+}
+
+const issuedOpenCodePlans = new WeakMap<OperationPlan, IssuedOpenCodePlan>();
+
+interface CanonicalDigestResult {
+  ok: boolean;
+  digest?: string;
+}
+
+class NonCanonicalDataError extends Error {}
+
+function rejectSerializationHook(
+  value: object,
+  prototype: object | null,
+): void {
+  if (Object.getOwnPropertyDescriptor(value, 'toJSON')) {
+    throw new NonCanonicalDataError('Own toJSON hooks are not canonical data.');
+  }
+  let current = prototype;
+  while (current) {
+    if (Object.getOwnPropertyDescriptor(current, 'toJSON')) {
+      throw new NonCanonicalDataError(
+        'Inherited toJSON hooks are not canonical data.',
+      );
+    }
+    current = Object.getPrototypeOf(current);
+  }
+}
+
+function canonicalData(value: unknown, active: Set<object>): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new NonCanonicalDataError('Non-finite numbers are not canonical.');
+    }
+    return JSON.stringify(value);
+  }
+  if (typeof value !== 'object') {
+    throw new NonCanonicalDataError('Only JSON-like data is canonical.');
+  }
+  if (active.has(value)) {
+    throw new NonCanonicalDataError('Cycles are not canonical.');
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  const array = Array.isArray(value);
+  if (
+    (array && prototype !== Array.prototype) ||
+    (!array && prototype !== Object.prototype && prototype !== null)
+  ) {
+    throw new NonCanonicalDataError('Non-plain prototypes are not canonical.');
+  }
+  rejectSerializationHook(value, prototype);
+
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.some((key) => typeof key === 'symbol')) {
+    throw new NonCanonicalDataError('Symbol keys are not canonical.');
+  }
+  const keys = ownKeys as string[];
+  active.add(value);
+  try {
+    if (array) {
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+      if (!lengthDescriptor || !('value' in lengthDescriptor)) {
+        throw new NonCanonicalDataError('Array length must be data.');
+      }
+      const length = lengthDescriptor.value;
+      if (!Number.isSafeInteger(length) || length < 0) {
+        throw new NonCanonicalDataError('Array length is invalid.');
+      }
+      const indexKeys = keys.filter((key) => key !== 'length');
+      if (
+        indexKeys.length !== length ||
+        indexKeys.some(
+          (key) =>
+            !/^(0|[1-9]\d*)$/.test(key) ||
+            Number(key) >= length ||
+            String(Number(key)) !== key,
+        )
+      ) {
+        throw new NonCanonicalDataError(
+          'Sparse arrays and extra array properties are not canonical.',
+        );
+      }
+      const parts: string[] = [];
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(
+          value,
+          String(index),
+        );
+        if (!descriptor || !('value' in descriptor)) {
+          throw new NonCanonicalDataError('Array accessors are not canonical.');
+        }
+        parts.push(canonicalData(descriptor.value, active));
+      }
+      return `[${parts.join(',')}]`;
+    }
+
+    const parts: string[] = [];
+    for (const key of keys.sort()) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !('value' in descriptor)) {
+        throw new NonCanonicalDataError('Accessors are not canonical.');
+      }
+      parts.push(
+        `${JSON.stringify(key)}:${canonicalData(descriptor.value, active)}`,
+      );
+    }
+    return `{${parts.join(',')}}`;
+  } finally {
+    active.delete(value);
+  }
+}
+
+function canonicalDigest(value: unknown): CanonicalDigestResult {
+  try {
+    const serialized = canonicalData(value, new Set());
+    return {
+      ok: true,
+      digest: createHash('sha256').update(serialized).digest('hex'),
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function liveStatusDigest(status: HarnessStatusReport): CanonicalDigestResult {
+  return canonicalDigest({
+    state: status.state,
+    diagnostics: status.diagnostics,
+    targets: status.targets,
+  });
+}
+
+function immutableContext(context: OperationContext): OperationContext {
+  return Object.freeze({
+    cwd: context.cwd,
+    ...(context.env ? { env: Object.freeze({ ...context.env }) } : {}),
+  });
+}
+
+function issueOpenCodePlan(
+  plan: OperationPlan,
+  status: HarnessStatusReport,
+  context: OperationContext,
+  payload: IssuedOpenCodePayload,
+): OperationPlan {
+  const planDigest = canonicalDigest(plan);
+  const statusDigest = liveStatusDigest(status);
+  if (
+    !planDigest.ok ||
+    !planDigest.digest ||
+    !statusDigest.ok ||
+    !statusDigest.digest
+  ) {
+    return plan;
+  }
+  const immutablePayload: IssuedOpenCodePayload =
+    payload.kind === 'fixed'
+      ? Object.freeze({ kind: 'fixed', action: payload.action })
+      : Object.freeze({
+          kind: 'model',
+          roles: Object.freeze(
+            payload.roles.map((role) => Object.freeze({ ...role })),
+          ),
+        });
+  issuedOpenCodePlans.set(plan, {
+    planDigest: planDigest.digest,
+    liveStatusDigest: statusDigest.digest,
+    harness: 'opencode',
+    action: payload.kind === 'model' ? 'model-config' : payload.action,
+    context: immutableContext(context),
+    payload: immutablePayload,
+  });
+  return plan;
+}
 
 const openCodeActions: HarnessAction[] = [
   {
@@ -123,7 +323,7 @@ function targetForMainConfig(state?: ManagedState): ManagedTarget {
     kind: 'config',
     path: getExistingConfigPath(),
     label: 'OpenCode config',
-    state,
+    ...(state ? { state } : {}),
     expected: `plugin includes ${EXPECTED_PLUGIN}`,
   };
 }
@@ -133,7 +333,7 @@ function targetForLiteConfig(state?: ManagedState): ManagedTarget {
     kind: 'config',
     path: getExistingLiteConfigPath(),
     label: 'thoth-agents config',
-    state,
+    ...(state ? { state } : {}),
     expected: `seven-agent ${OPENAI_PRESET} roster`,
   };
 }
@@ -154,7 +354,11 @@ function titleCaseSkillName(value: string): string {
 }
 
 function homeDirFromContext(context: OperationContext): string | undefined {
-  return context.env?.HOME ?? context.env?.USERPROFILE;
+  return (
+    context.env?.HOME ??
+    context.env?.USERPROFILE ??
+    (context.cwd !== process.cwd() ? join(context.cwd, 'home') : undefined)
+  );
 }
 
 function openCodeSkillTargets(context: OperationContext): {
@@ -178,18 +382,38 @@ function openCodeSkillTargets(context: OperationContext): {
       };
     },
   );
+  let staleSkillNames = new Set<string>();
+  let removedSkillNames: string[] = [];
+  let skillHealthError: string | undefined;
+  try {
+    const updateCheck = checkCustomSkillsNeedUpdate();
+    staleSkillNames = new Set(
+      updateCheck.skillsNeedingUpdate.map(({ skill }) => skill.name),
+    );
+    removedSkillNames = updateCheck.removedSkills;
+  } catch (error) {
+    skillHealthError = String(error);
+  }
   const bundledTargets: ManagedTarget[] = CUSTOM_SKILLS.map((skill) => {
     const path = join(getCustomSkillsDir(), skill.name, 'SKILL.md');
     const installed = existsSync(path);
+    const stale = installed && staleSkillNames.has(skill.name);
+    let state: ManagedState = 'installed';
+    let observed = 'bundled OpenCode skill installed and current';
+    if (!installed) {
+      state = 'missing';
+      observed = 'bundled OpenCode skill missing';
+    } else if (stale) {
+      state = 'drift';
+      observed = 'bundled OpenCode skill is outdated';
+    }
     return {
       kind: 'skill',
       path,
       label: titleCaseSkillName(skill.name),
-      state: installed ? 'installed' : 'missing',
+      state,
       expected: 'bundled thoth-agents OpenCode skill',
-      observed: installed
-        ? 'bundled OpenCode skill installed'
-        : 'bundled OpenCode skill missing',
+      observed,
     };
   });
   const diagnostics: OperationWarning[] = [];
@@ -207,6 +431,24 @@ function openCodeSkillTargets(context: OperationContext): {
       message:
         'Bundled thoth-agents OpenCode skills are missing; run OpenCode install or sync to refresh managed skills.',
       code: 'opencode-bundled-skills-missing',
+    });
+  }
+  if (
+    bundledTargets.some((target) => target.state === 'drift') ||
+    removedSkillNames.length > 0
+  ) {
+    diagnostics.push({
+      severity: 'important',
+      message:
+        'Bundled thoth-agents OpenCode skills are outdated; run OpenCode install or sync to refresh managed skills.',
+      code: 'opencode-bundled-skills-outdated',
+    });
+  }
+  if (skillHealthError) {
+    diagnostics.push({
+      severity: 'critical',
+      message: `Bundled skill health could not be classified: ${skillHealthError}`,
+      code: 'opencode-bundled-skills-health-unknown',
     });
   }
   return {
@@ -249,8 +491,14 @@ function liteConfigMarker(config: OpenCodeConfig | null): string {
     presets[OPENAI_PRESET] && typeof presets[OPENAI_PRESET] === 'object'
       ? (presets[OPENAI_PRESET] as Record<string, unknown>)
       : {};
-  const roles = ROLE_NAMES.filter((role) => role in openaiPreset);
-  return `preset: ${preset ?? 'none'}; ${OPENAI_PRESET} roles: ${roles.join(', ')}`;
+  const legacyAgents =
+    config?.agents && typeof config.agents === 'object'
+      ? (config.agents as Record<string, unknown>)
+      : {};
+  const roles = ROLE_NAMES.filter(
+    (role) => role in openaiPreset || role in legacyAgents,
+  );
+  return `preset: ${preset ?? 'none'}; observed roles: ${roles.join(', ')}`;
 }
 
 function hasSevenAgentPreset(config: OpenCodeConfig | null): boolean {
@@ -270,8 +518,202 @@ function hasSevenAgentPreset(config: OpenCodeConfig | null): boolean {
   });
 }
 
-function classifyApplySafety(state: ManagedState): boolean {
-  return state === 'missing' || state === 'installed';
+function hasSelectedNamedPreset(config: OpenCodeConfig | null): boolean {
+  if (
+    !config ||
+    typeof config.preset !== 'string' ||
+    config.preset.length === 0 ||
+    config.preset === OPENAI_PRESET ||
+    config.preset === 'agents'
+  ) {
+    return false;
+  }
+  if (
+    !config.presets ||
+    typeof config.presets !== 'object' ||
+    Array.isArray(config.presets)
+  ) {
+    return false;
+  }
+  const presets = config.presets as Record<string, unknown>;
+  if (!Object.hasOwn(presets, config.preset)) return false;
+  const selectedPreset = presets[config.preset];
+  return (
+    selectedPreset !== null &&
+    typeof selectedPreset === 'object' &&
+    !Array.isArray(selectedPreset)
+  );
+}
+
+function hasLegacySevenAgentRoster(config: OpenCodeConfig | null): boolean {
+  if (!config || config.preset !== 'agents') return false;
+  if (!config.agents || typeof config.agents !== 'object') return false;
+  const agents = config.agents as Record<string, unknown>;
+  return ROLE_NAMES.every((role) => {
+    const value = agents[role];
+    return (
+      value !== null &&
+      typeof value === 'object' &&
+      typeof (value as { model?: unknown }).model === 'string'
+    );
+  });
+}
+
+const ACTIVE_PRESET_SELECTED_CODE = 'opencode-active-preset-selected';
+
+function activePresetSelectedDiagnostic(): OperationWarning {
+  return {
+    severity: 'important',
+    message:
+      'A valid named preset is active; model configuration preserves it while sync or install may repair the managed roster.',
+    code: ACTIVE_PRESET_SELECTED_CODE,
+  };
+}
+
+const REPAIRABLE_DIAGNOSTIC_CODES = new Set([
+  'opencode-plugin-drift',
+  'opencode-main-config-missing',
+  'opencode-lite-config-missing',
+  'opencode-roster-drift',
+  ACTIVE_PRESET_SELECTED_CODE,
+  'opencode-bundled-skills-missing',
+  'opencode-bundled-skills-outdated',
+]);
+
+const MODEL_PRECONFIG_SKILL_CODES = new Set([
+  'opencode-bundled-skills-missing',
+  'opencode-bundled-skills-outdated',
+]);
+
+interface BlockingDetails {
+  diagnostics: OperationWarning[];
+  targets: ManagedTarget[];
+}
+
+function uniqueTargets(targets: ManagedTarget[]): ManagedTarget[] {
+  const seen = new Set<string>();
+  return targets.filter((target) => {
+    const key = JSON.stringify([
+      target.kind,
+      target.path,
+      target.label,
+      target.state,
+      target.expected,
+      target.observed,
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function targetsForBlockingDiagnostic(
+  diagnostic: OperationWarning,
+  status: HarnessStatusReport,
+): ManagedTarget[] {
+  const main = status.targets.find(
+    (target) => target.label === 'OpenCode config',
+  );
+  const lite = status.targets.find(
+    (target) => target.label === 'thoth-agents config',
+  );
+  const code = diagnostic.code;
+  if (
+    code === 'opencode-plugin-drift' ||
+    code === 'opencode-main-config-missing' ||
+    code === 'opencode-config-parse-error' ||
+    code === 'opencode-unmanaged-config'
+  ) {
+    return main ? [main] : [];
+  }
+  if (
+    code === 'opencode-roster-drift' ||
+    code === ACTIVE_PRESET_SELECTED_CODE ||
+    code === 'opencode-lite-config-missing' ||
+    code === 'thoth-config-parse-error' ||
+    code === 'opencode-roster-unrecognized'
+  ) {
+    return lite ? [lite] : [];
+  }
+  if (
+    code === 'opencode-bundled-skills-missing' ||
+    code === 'opencode-bundled-skills-outdated' ||
+    code === 'opencode-bundled-skills-health-unknown'
+  ) {
+    return status.targets.filter(
+      (target) =>
+        target.expected === 'bundled thoth-agents OpenCode skill' &&
+        (code === 'opencode-bundled-skills-health-unknown' ||
+          target.state !== 'installed'),
+    );
+  }
+  return [
+    {
+      kind: 'unknown',
+      label: 'Unknown OpenCode blocker',
+      state: 'unknown',
+      observed: code ? `${code}: ${diagnostic.message}` : diagnostic.message,
+    },
+  ];
+}
+
+function blockingDetails(
+  action: OperationPlan['action'],
+  status: HarnessStatusReport,
+  includeRepairable = false,
+): BlockingDetails {
+  const main = status.targets.find(
+    (target) => target.label === 'OpenCode config',
+  );
+  const lite = status.targets.find(
+    (target) => target.label === 'thoth-agents config',
+  );
+  const allowModelPreconfiguration =
+    action === 'model-config' &&
+    main?.state === 'missing' &&
+    lite?.state === 'missing';
+  const diagnostics = status.diagnostics.filter((diagnostic) => {
+    if (diagnostic.severity === 'critical') return true;
+    if (diagnostic.severity === 'minor') return false;
+    if (
+      !includeRepairable &&
+      action === 'model-config' &&
+      diagnostic.code === ACTIVE_PRESET_SELECTED_CODE
+    ) {
+      return false;
+    }
+    if (
+      !includeRepairable &&
+      allowModelPreconfiguration &&
+      diagnostic.code !== undefined &&
+      MODEL_PRECONFIG_SKILL_CODES.has(diagnostic.code)
+    ) {
+      return false;
+    }
+    return (
+      includeRepairable ||
+      !(
+        (action === 'sync' || action === 'install') &&
+        diagnostic.code !== undefined &&
+        REPAIRABLE_DIAGNOSTIC_CODES.has(diagnostic.code)
+      )
+    );
+  });
+  return {
+    diagnostics,
+    targets: uniqueTargets(
+      diagnostics.flatMap((diagnostic) =>
+        targetsForBlockingDiagnostic(diagnostic, status),
+      ),
+    ),
+  };
+}
+
+function canApplyToManagedHealth(
+  action: OperationPlan['action'],
+  status: HarnessStatusReport,
+): boolean {
+  return blockingDetails(action, status).diagnostics.length === 0;
 }
 
 export function getOpenCodeStatus(
@@ -334,6 +776,19 @@ export function getOpenCodeStatus(
 
   if (!mainExists || !hasExpectedPlugin(main.config)) {
     if (hasManagedPluginDrift(main.config)) {
+      const currentRoster = hasSevenAgentPreset(lite.config);
+      const legacyRoster = hasLegacySevenAgentRoster(lite.config);
+      const selectedNamedPreset = hasSelectedNamedPreset(lite.config);
+      const recognizedRoster =
+        currentRoster || legacyRoster || selectedNamedPreset;
+      let liteState: ManagedState = 'unknown';
+      if (!liteExists) {
+        liteState = 'missing';
+      } else if (currentRoster) {
+        liteState = 'installed';
+      } else if (legacyRoster || selectedNamedPreset) {
+        liteState = 'drift';
+      }
       return {
         harness: 'opencode',
         displayName: 'OpenCode',
@@ -342,7 +797,10 @@ export function getOpenCodeStatus(
           'OpenCode config has a managed thoth-agents plugin entry that is not latest.',
         targets: [
           { ...mainTarget, state: 'drift' },
-          { ...liteTarget, state: liteExists ? 'installed' : 'missing' },
+          {
+            ...liteTarget,
+            state: liteState,
+          },
           ...skillStatus.targets,
         ],
         diagnostics: [
@@ -351,6 +809,156 @@ export function getOpenCodeStatus(
             message:
               'Managed plugin drift requires an explicit repair before applying sync plans.',
             code: 'opencode-plugin-drift',
+          },
+          ...(legacyRoster
+            ? [
+                {
+                  severity: 'important' as const,
+                  message:
+                    'Roster drift requires repair before applying generated plans.',
+                  code: 'opencode-roster-drift',
+                },
+              ]
+            : []),
+          ...(selectedNamedPreset && !currentRoster
+            ? [activePresetSelectedDiagnostic()]
+            : []),
+          ...(!liteExists
+            ? [
+                {
+                  severity: 'important' as const,
+                  message:
+                    'The managed thoth-agents config is missing and must be restored by install or sync.',
+                  code: 'opencode-lite-config-missing',
+                },
+              ]
+            : []),
+          ...(!liteExists
+            ? [
+                {
+                  severity: 'important' as const,
+                  message:
+                    'The managed thoth-agents config is missing and must be restored by install or sync.',
+                  code: 'opencode-lite-config-missing',
+                },
+              ]
+            : []),
+          ...(liteExists && !recognizedRoster
+            ? [
+                {
+                  severity: 'critical' as const,
+                  message:
+                    'Existing thoth-agents config has an unrecognized roster shape.',
+                  code: 'opencode-roster-unrecognized',
+                },
+              ]
+            : []),
+          ...skillStatus.diagnostics,
+        ],
+        actions: openCodeActions,
+      };
+    }
+
+    if (!mainExists && liteExists) {
+      const currentRoster = hasSevenAgentPreset(lite.config);
+      const legacyRoster = hasLegacySevenAgentRoster(lite.config);
+      const selectedNamedPreset = hasSelectedNamedPreset(lite.config);
+      if (!currentRoster && !legacyRoster && !selectedNamedPreset) {
+        return {
+          harness: 'opencode',
+          displayName: 'OpenCode',
+          state: 'unknown',
+          summary:
+            'Existing thoth-agents config has an unrecognized roster shape.',
+          targets: [
+            { ...mainTarget, state: 'missing' },
+            { ...liteTarget, state: 'unknown' },
+            ...skillStatus.targets,
+          ],
+          diagnostics: [
+            {
+              severity: 'critical',
+              message:
+                'Existing thoth-agents config is not a recognized current or legacy managed roster.',
+              code: 'opencode-roster-unrecognized',
+            },
+            ...skillStatus.diagnostics,
+          ],
+          actions: openCodeActions,
+        };
+      }
+      if (selectedNamedPreset && !currentRoster) {
+        return {
+          harness: 'opencode',
+          displayName: 'OpenCode',
+          state: 'drift',
+          summary:
+            'OpenCode plugin is missing and a valid named preset is active.',
+          targets: [
+            { ...mainTarget, state: 'missing' },
+            { ...liteTarget, state: 'drift' },
+            ...skillStatus.targets,
+          ],
+          diagnostics: [
+            {
+              severity: 'important',
+              message:
+                'The managed OpenCode main config is missing and must be restored by install or sync.',
+              code: 'opencode-main-config-missing',
+            },
+            activePresetSelectedDiagnostic(),
+            ...skillStatus.diagnostics,
+          ],
+          actions: openCodeActions,
+        };
+      }
+      if (legacyRoster) {
+        return {
+          harness: 'opencode',
+          displayName: 'OpenCode',
+          state: 'drift',
+          summary:
+            'OpenCode plugin is missing and the managed roster uses the recognized legacy layout.',
+          targets: [
+            { ...mainTarget, state: 'missing' },
+            { ...liteTarget, state: 'drift' },
+            ...skillStatus.targets,
+          ],
+          diagnostics: [
+            {
+              severity: 'important',
+              message:
+                'The managed OpenCode main config is missing and must be restored by install or sync.',
+              code: 'opencode-main-config-missing',
+            },
+            {
+              severity: 'important',
+              message:
+                'Roster drift requires repair before applying generated plans.',
+              code: 'opencode-roster-drift',
+            },
+            ...skillStatus.diagnostics,
+          ],
+          actions: openCodeActions,
+        };
+      }
+      return {
+        harness: 'opencode',
+        displayName: 'OpenCode',
+        state: 'missing',
+        summary:
+          'The managed roster is present, but the OpenCode main config is missing.',
+        targets: [
+          { ...mainTarget, state: 'missing' },
+          { ...liteTarget, state: 'installed' },
+          ...skillStatus.targets,
+        ],
+        diagnostics: [
+          {
+            severity: 'important',
+            message:
+              'The managed OpenCode main config is missing and must be restored by install or sync.',
+            code: 'opencode-main-config-missing',
           },
           ...skillStatus.diagnostics,
         ],
@@ -369,7 +977,20 @@ export function getOpenCodeStatus(
         { ...liteTarget, state: liteExists ? 'installed' : 'missing' },
         ...skillStatus.targets,
       ],
-      diagnostics: [...diagnostics, ...skillStatus.diagnostics],
+      diagnostics: [
+        ...diagnostics,
+        ...(mainExists
+          ? [
+              {
+                severity: 'critical' as const,
+                message:
+                  'Existing OpenCode config is not positively attributed to thoth-agents management.',
+                code: 'opencode-unmanaged-config',
+              },
+            ]
+          : []),
+        ...skillStatus.diagnostics,
+      ],
       actions: openCodeActions,
     };
   }
@@ -386,30 +1007,43 @@ export function getOpenCodeStatus(
         { ...liteTarget, state: 'missing' },
         ...skillStatus.targets,
       ],
-      diagnostics: [...diagnostics, ...skillStatus.diagnostics],
+      diagnostics: [
+        ...diagnostics,
+        {
+          severity: 'important',
+          message:
+            'The managed thoth-agents config is missing and must be restored by install or sync.',
+          code: 'opencode-lite-config-missing',
+        },
+        ...skillStatus.diagnostics,
+      ],
       actions: openCodeActions,
     };
   }
 
   if (!hasSevenAgentPreset(lite.config)) {
+    const selectedNamedPreset = hasSelectedNamedPreset(lite.config);
     return {
       harness: 'opencode',
       displayName: 'OpenCode',
       state: 'drift',
-      summary:
-        'thoth-agents config does not match the expected seven-agent roster.',
+      summary: selectedNamedPreset
+        ? 'A valid named OpenCode preset is active outside the managed seven-agent roster.'
+        : 'thoth-agents config does not match the expected seven-agent roster.',
       targets: [
         { ...mainTarget, state: 'installed' },
         { ...liteTarget, state: 'drift' },
         ...skillStatus.targets,
       ],
       diagnostics: [
-        {
-          severity: 'important',
-          message:
-            'Roster drift requires repair before applying generated plans.',
-          code: 'opencode-roster-drift',
-        },
+        selectedNamedPreset
+          ? activePresetSelectedDiagnostic()
+          : {
+              severity: 'important',
+              message:
+                'Roster drift requires repair before applying generated plans.',
+              code: 'opencode-roster-drift',
+            },
         ...skillStatus.diagnostics,
       ],
       actions: openCodeActions,
@@ -439,6 +1073,42 @@ function defaultBackup(path: string) {
   };
 }
 
+function backupFromItems(
+  items: readonly OperationPlanItem[],
+): OperationPlan['backup'] {
+  const backups = items.flatMap((item) => (item.backup ? [item.backup] : []));
+  const primary = backups.find((backup) => backup.required) ?? backups[0];
+  const destinations: NonNullable<OperationPlan['backup']['destinations']> = [];
+  const seenPaths = new Set<string>();
+  for (const backup of backups) {
+    for (const destination of backup.destinations ?? []) {
+      if (seenPaths.has(destination.path)) continue;
+      seenPaths.add(destination.path);
+      destinations.push(destination);
+    }
+  }
+
+  return {
+    required: backups.some((backup) => backup.required),
+    strategy: primary?.strategy ?? 'none',
+    ...(destinations.length > 0 ? { destinations } : {}),
+    ...(primary?.description ? { description: primary.description } : {}),
+  };
+}
+
+function bundledSkillsRefreshItem(): OperationPlanItem {
+  const names = CUSTOM_SKILLS.map(({ name }) => name);
+  return {
+    title: 'Refresh bundled thoth-agents OpenCode skills',
+    target: {
+      kind: 'skill',
+      label: 'Bundled thoth-agents OpenCode skills',
+      expected: `${names.length} managed bundled skills`,
+    },
+    preview: JSON.stringify({ count: names.length, names }, null, 2),
+  };
+}
+
 function defaultDisclaimers() {
   return [
     {
@@ -455,9 +1125,11 @@ function planFromItems(
   title: string,
   summary: string,
   items: OperationPlanItem[],
-): OperationPlan {
-  const status = getOpenCodeStatus();
-  const safe = classifyApplySafety(status.state);
+  context: OperationContext,
+): { plan: OperationPlan; status: HarnessStatusReport } {
+  const status = getOpenCodeStatus(context);
+  const blockers = blockingDetails(action, status);
+  const safe = blockers.diagnostics.length === 0;
   const warnings = safe
     ? status.diagnostics
     : [
@@ -470,32 +1142,36 @@ function planFromItems(
       ];
 
   return {
-    id,
-    harness: 'opencode',
-    action,
-    title,
-    summary,
-    dryRun: true,
-    canApply: safe,
-    targets: status.targets,
-    surfaces: [
-      {
-        id: 'opencode-config',
-        label: 'OpenCode user config',
-        path: getExistingConfigPath(),
-        state: status.targets[0]?.state,
-      },
-      {
-        id: 'thoth-agents-config',
-        label: 'thoth-agents plugin config',
-        path: getExistingLiteConfigPath(),
-        state: status.targets[1]?.state,
-      },
-    ],
-    backup: defaultBackup(getExistingConfigPath()),
-    items,
-    warnings,
-    disclaimers: defaultDisclaimers(),
+    status,
+    plan: {
+      id,
+      harness: 'opencode',
+      action,
+      title,
+      summary,
+      dryRun: true,
+      canApply: safe,
+      targets: status.targets,
+      blockerTargets: blockers.targets,
+      surfaces: [
+        {
+          id: 'opencode-config',
+          label: 'OpenCode user config',
+          path: getExistingConfigPath(),
+          state: status.targets[0]?.state,
+        },
+        {
+          id: 'thoth-agents-config',
+          label: 'thoth-agents plugin config',
+          path: getExistingLiteConfigPath(),
+          state: status.targets[1]?.state,
+        },
+      ],
+      backup: backupFromItems(items),
+      items,
+      warnings,
+      disclaimers: defaultDisclaimers(),
+    },
   };
 }
 
@@ -503,7 +1179,7 @@ export function buildOpenCodeUpdatePlan(
   _context: OperationContext = { cwd: process.cwd() },
 ): OperationPlan {
   const path = getExistingConfigPath();
-  return planFromItems(
+  const { plan, status } = planFromItems(
     'opencode-update-preview',
     'update',
     'Update OpenCode managed plugin entry',
@@ -512,12 +1188,17 @@ export function buildOpenCodeUpdatePlan(
       {
         title: 'Ensure OpenCode plugin points at thoth-agents@latest',
         target: targetForMainConfig(),
-        state: getOpenCodeStatus().state,
+        state: getOpenCodeStatus(_context).state,
         preview: `plugin: ["${EXPECTED_PLUGIN}"]`,
         backup: defaultBackup(path),
       },
     ],
+    _context,
   );
+  return issueOpenCodePlan(plan, status, _context, {
+    kind: 'fixed',
+    action: 'update',
+  });
 }
 
 export function buildOpenCodeSyncPlan(
@@ -533,7 +1214,7 @@ export function buildOpenCodeSyncPlan(
   });
   const litePath = getExistingLiteConfigPath();
 
-  return planFromItems(
+  const { plan, status } = planFromItems(
     'opencode-sync-preview',
     'sync',
     'Sync OpenCode managed configuration',
@@ -542,7 +1223,7 @@ export function buildOpenCodeSyncPlan(
       {
         title: 'Ensure OpenCode plugin points at thoth-agents@latest',
         target: targetForMainConfig(),
-        state: getOpenCodeStatus().state,
+        state: getOpenCodeStatus(_context).state,
         preview: `plugin: ["${EXPECTED_PLUGIN}"]`,
         backup: defaultBackup(getExistingConfigPath()),
       },
@@ -558,8 +1239,14 @@ export function buildOpenCodeSyncPlan(
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(litePath),
       },
+      bundledSkillsRefreshItem(),
     ],
+    _context,
   );
+  return issueOpenCodePlan(plan, status, _context, {
+    kind: 'fixed',
+    action: 'sync',
+  });
 }
 
 function tuiInstallConfig() {
@@ -587,7 +1274,7 @@ export function buildOpenCodeInstallPlan(
   };
   const litePath = getExistingLiteConfigPath();
 
-  return planFromItems(
+  const { plan, status } = planFromItems(
     'opencode-install-preview',
     'install',
     'Preview install',
@@ -599,7 +1286,7 @@ export function buildOpenCodeInstallPlan(
           kind: 'config',
           path: getExistingConfigPath(),
           label: 'OpenCode install options',
-          state: getOpenCodeStatus().state,
+          state: getOpenCodeStatus(_context).state,
           expected: '--no-tui --tmux=no --skills=yes',
         },
         preview: JSON.stringify(installPreview, null, 2),
@@ -607,7 +1294,7 @@ export function buildOpenCodeInstallPlan(
       {
         title: 'Ensure OpenCode plugin points at thoth-agents@latest',
         target: targetForMainConfig(),
-        state: getOpenCodeStatus().state,
+        state: getOpenCodeStatus(_context).state,
         preview: `plugin: ["${EXPECTED_PLUGIN}"]`,
         backup: defaultBackup(getExistingConfigPath()),
       },
@@ -623,6 +1310,7 @@ export function buildOpenCodeInstallPlan(
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(litePath),
       },
+      bundledSkillsRefreshItem(),
       {
         title: 'Install recommended external skills',
         target: {
@@ -633,7 +1321,12 @@ export function buildOpenCodeInstallPlan(
         preview: JSON.stringify({ installSkills: true }, null, 2),
       },
     ],
+    _context,
   );
+  return issueOpenCodePlan(plan, status, _context, {
+    kind: 'fixed',
+    action: 'install',
+  });
 }
 
 function normalizeRoleModel(input: ModelRoleInput): string {
@@ -647,16 +1340,24 @@ export function buildOpenCodeModelPlan(
   input: ModelConfigInput,
   _context: OperationContext = { cwd: process.cwd() },
 ): OperationPlan {
-  const items = input.roles.map((role) => {
+  const normalizedRoles = input.roles.map((role) => {
     const model = normalizeRoleModel(role);
     const effort = resolveOpenCodeEffort(role);
+    return Object.freeze({
+      role: role.role,
+      model,
+      variant: effort.ok ? (effort.variant ?? null) : null,
+      effort,
+    });
+  });
+  const items = normalizedRoles.map(({ role, model, variant, effort }) => {
     return {
-      title: `Set ${role.role} OpenCode model override`,
+      title: `Set ${role} OpenCode model override`,
       target: targetForLiteConfig(),
       preview: JSON.stringify({
-        [role.role]: {
+        [role]: {
           model,
-          variant: effort.ok ? (effort.variant ?? null) : null,
+          variant,
         },
       }),
       backup: defaultBackup(getExistingLiteConfigPath()),
@@ -673,12 +1374,13 @@ export function buildOpenCodeModelPlan(
         : {}),
     };
   });
-  const plan = planFromItems(
+  const { plan, status } = planFromItems(
     'opencode-model-config-preview',
     'model-config',
     'Configure OpenCode role model overrides',
     'Preview thoth-agents role model overrides in the plugin config agents map.',
     items,
+    _context,
   );
   const effortWarnings = items.flatMap((item) => item.warnings ?? []);
   if (effortWarnings.length > 0) {
@@ -687,31 +1389,32 @@ export function buildOpenCodeModelPlan(
   }
 
   if (input.harness !== 'opencode') {
-    return {
+    const rejectedPlan = {
       ...plan,
       canApply: false,
       warnings: [
         ...plan.warnings,
         {
-          severity: 'critical',
+          severity: 'critical' as const,
           message: 'Model plan target harness must be opencode.',
           code: 'opencode-model-harness-mismatch',
         },
       ],
     };
+    return rejectedPlan;
   }
 
   const unsupportedRoles = input.roles.filter(
     (role) => !ROLE_NAMES.includes(role.role as (typeof ROLE_NAMES)[number]),
   );
   if (input.roles.length === 0 || unsupportedRoles.length > 0) {
-    return {
+    const rejectedPlan = {
       ...plan,
       canApply: false,
       warnings: [
         ...plan.warnings,
         {
-          severity: 'critical',
+          severity: 'critical' as const,
           message:
             input.roles.length === 0
               ? 'Model plan must include at least one role override.'
@@ -722,147 +1425,192 @@ export function buildOpenCodeModelPlan(
         },
       ],
     };
+    return rejectedPlan;
   }
 
-  return plan;
+  if (effortWarnings.length > 0) {
+    return plan;
+  }
+
+  const payloadRoles = Object.freeze(
+    normalizedRoles.map(({ role, model, variant }) =>
+      Object.freeze({ role, model, variant }),
+    ),
+  );
+  if (!plan.canApply || invalidModelPayloadReason(payloadRoles)) {
+    return plan;
+  }
+
+  return issueOpenCodePlan(plan, status, _context, {
+    kind: 'model',
+    roles: payloadRoles,
+  });
 }
 
 function rejectPlan(
   plan: OperationPlan,
   message: string,
   severity: OperationWarning['severity'] = 'critical',
+  code = 'opencode-plan-rejected',
+  context: OperationContext = { cwd: process.cwd() },
 ): OperationApplyResult {
+  const issued = issuedOpenCodePlans.get(plan);
+  const actionDescriptor = Object.getOwnPropertyDescriptor(plan, 'action');
+  const describedAction =
+    actionDescriptor &&
+    'value' in actionDescriptor &&
+    typeof actionDescriptor.value === 'string'
+      ? actionDescriptor.value
+      : undefined;
+  const action =
+    issued?.action ??
+    (describedAction === 'install' ||
+    describedAction === 'update' ||
+    describedAction === 'sync' ||
+    describedAction === 'model-config'
+      ? describedAction
+      : 'repair');
+  const liveStatus = getOpenCodeStatus(context);
+  const blockers = blockingDetails(
+    action,
+    liveStatus,
+    code === 'opencode-plan-live-state-changed',
+  );
   return {
-    harness: plan.harness,
-    action: plan.action,
+    harness: issued?.harness ?? 'opencode',
+    action,
     applied: false,
     summary: message,
     changedTargets: [],
+    diagnosticTargets: blockers.targets,
     backups: [],
-    warnings: [{ severity, message }],
+    warnings: [...liveStatus.diagnostics, { severity, code, message }],
     disclaimers: defaultDisclaimers(),
   };
 }
 
-function ensureLatestPluginEntry(): {
-  success: boolean;
-  configPath: string;
-  error?: string;
-} {
-  const configPath = getExistingConfigPath();
-  try {
-    ensureOpenCodeConfigDir();
-    const { config: parsedConfig, error } = parseConfig(configPath);
-    if (error) {
-      return {
-        success: false,
-        configPath,
-        error: `Failed to parse config: ${error}`,
-      };
-    }
-    const config = parsedConfig ?? {};
-    const plugins = Array.isArray(config.plugin) ? config.plugin : [];
-    config.plugin = [
-      ...plugins.filter(
-        (plugin) =>
-          plugin !== PACKAGE_NAME && !plugin.startsWith(`${PACKAGE_NAME}@`),
-      ),
-      EXPECTED_PLUGIN,
-    ];
-    writeConfig(configPath, config);
-    return { success: true, configPath };
-  } catch (err) {
-    return {
-      success: false,
-      configPath,
-      error: `Failed to update OpenCode plugin config: ${err}`,
-    };
-  }
-}
-
 function validateApplyPlan(plan: OperationPlan): OperationApplyResult | null {
+  const issued = issuedOpenCodePlans.get(plan);
+  if (!issued) {
+    return rejectPlan(
+      plan,
+      'OpenCode plan was not issued by this process.',
+      'critical',
+      'opencode-plan-unissued',
+    );
+  }
+  const planDigest = canonicalDigest(plan);
+  if (!planDigest.ok || !planDigest.digest) {
+    return rejectPlan(
+      plan,
+      'OpenCode plan contains noncanonical data and cannot be applied.',
+      'critical',
+      'opencode-plan-noncanonical',
+      issued.context,
+    );
+  }
+  if (planDigest.digest !== issued.planDigest) {
+    return rejectPlan(
+      plan,
+      'OpenCode plan changed after it was issued.',
+      'critical',
+      'opencode-plan-mutated',
+      issued.context,
+    );
+  }
+  const liveStatus = getOpenCodeStatus(issued.context);
+  const statusDigest = liveStatusDigest(liveStatus);
+  if (
+    !statusDigest.ok ||
+    !statusDigest.digest ||
+    statusDigest.digest !== issued.liveStatusDigest
+  ) {
+    return rejectPlan(
+      plan,
+      'OpenCode managed state changed after plan preview.',
+      'critical',
+      'opencode-plan-live-state-changed',
+      issued.context,
+    );
+  }
   if (plan.harness !== 'opencode') {
-    return rejectPlan(plan, 'Only OpenCode operation plans can be applied.');
+    return rejectPlan(
+      plan,
+      'Only OpenCode operation plans can be applied.',
+      'critical',
+      'opencode-plan-harness-mismatch',
+      issued.context,
+    );
   }
   if (!plan.canApply) {
     return rejectPlan(
       plan,
       'OpenCode plan cannot be applied because canApply is false.',
+      'critical',
+      'opencode-plan-blocked',
+      issued.context,
     );
   }
   if (!['install', 'update', 'sync', 'model-config'].includes(plan.action)) {
     return rejectPlan(
       plan,
       `Unsupported OpenCode apply action: ${plan.action}.`,
+      'critical',
+      'opencode-plan-action-unsupported',
+      issued.context,
     );
   }
   if (plan.items.length === 0) {
-    return rejectPlan(plan, 'OpenCode plan has no items to apply.');
-  }
-  if (
-    plan.items.some(
-      (item) =>
-        !item.title ||
-        (!item.target.path && item.target.kind !== 'skill') ||
-        item.state === 'drift' ||
-        item.state === 'unknown',
-    )
-  ) {
     return rejectPlan(
       plan,
-      'OpenCode plan contains malformed or unsafe items.',
+      'OpenCode plan has no items to apply.',
+      'critical',
+      'opencode-plan-empty',
+      issued.context,
     );
   }
   return null;
 }
 
-function applyModelPlan(plan: OperationPlan): OperationApplyResult {
-  const roleModels = new Map<
-    string,
-    { model: string; variant: string | null }
-  >();
-  for (const item of plan.items) {
-    const match = /^Set (.+) OpenCode model override$/.exec(item.title);
-    if (!match) {
-      return rejectPlan(
-        plan,
-        'OpenCode model plan contains an unrecognized item.',
-      );
-    }
-    let parsed: Record<string, { model?: string; variant?: unknown }>;
-    try {
-      parsed = item.preview
-        ? (JSON.parse(item.preview) as Record<string, { model?: string }>)
-        : {};
-    } catch {
-      return rejectPlan(
-        plan,
-        'OpenCode model plan contains malformed preview JSON.',
-      );
-    }
-    const role = match[1] ?? '';
-    const model = parsed[role]?.model;
-    const variant = parsed[role]?.variant;
+function invalidModelPayloadReason(
+  roles: readonly NormalizedOpenCodeRoleOverride[],
+): string | undefined {
+  if (!Array.isArray(roles) || roles.length === 0) {
+    return 'Model payload must contain at least one role override.';
+  }
+  const seen = new Set<string>();
+  for (const role of roles) {
     if (
-      !ROLE_NAMES.includes(role as (typeof ROLE_NAMES)[number]) ||
-      typeof model !== 'string' ||
-      (variant !== null && typeof variant !== 'string')
+      !role ||
+      typeof role !== 'object' ||
+      typeof role.role !== 'string' ||
+      !ROLE_NAMES.includes(role.role as (typeof ROLE_NAMES)[number])
     ) {
-      return rejectPlan(
-        plan,
-        'OpenCode model plan contains an invalid role or model.',
-      );
+      return 'Model payload contains an unsupported role.';
     }
-    roleModels.set(role, { model, variant });
+    if (seen.has(role.role)) {
+      return `Model payload contains duplicate role ${role.role}.`;
+    }
+    seen.add(role.role);
+    if (typeof role.model !== 'string' || role.model.trim().length === 0) {
+      return `Model payload for ${role.role} has an empty model.`;
+    }
+    if (role.variant !== null && typeof role.variant !== 'string') {
+      return `Model payload for ${role.role} has an invalid variant.`;
+    }
   }
+  return undefined;
+}
 
-  if (roleModels.size === 0) {
-    return rejectPlan(
-      plan,
-      'OpenCode model plan does not contain any role overrides.',
-    );
-  }
-
+function applyModelPlan(
+  roles: readonly NormalizedOpenCodeRoleOverride[],
+): OperationApplyResult {
+  const roleModels = new Map(
+    roles.map((role) => [
+      role.role,
+      { model: role.model, variant: role.variant },
+    ]),
+  );
   ensureConfigDir();
   const targetPath = getExistingLiteConfigPath();
   const parsed = parseConfig(targetPath);
@@ -947,77 +1695,172 @@ function applyModelPlan(plan: OperationPlan): OperationApplyResult {
   };
 }
 
-function applyInstallSkills(plan: OperationPlan): OperationApplyResult | null {
+function applyRecommendedSkills(): OperationWarning[] {
+  const warnings: OperationWarning[] = [];
   for (const skill of RECOMMENDED_SKILLS) {
-    const result = installRecommendedSkill(skill);
-    if (result.status === 'failed') {
-      return rejectPlan(
-        plan,
-        `Failed to install recommended OpenCode skill: ${skill.name}.`,
-      );
+    try {
+      const result = installRecommendedSkill(skill);
+      if (result.status !== 'failed') continue;
+      warnings.push({
+        severity: 'important',
+        code: 'opencode-recommended-skill-failed',
+        message: `Failed to install optional recommended OpenCode skill: ${skill.name}.`,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      warnings.push({
+        severity: 'important',
+        code: 'opencode-recommended-skill-failed',
+        message: `Failed to install optional recommended OpenCode skill ${skill.name}: ${reason}.`,
+      });
     }
   }
+  return warnings;
+}
 
-  const bundled = installCustomSkills();
-  if (!bundled.success) {
-    return rejectPlan(
+function bundledSkillsFailure(
+  plan: OperationPlan,
+  changedTargets: ManagedTarget[],
+  backups: { path: string; label?: string }[],
+  warnings: OperationWarning[],
+  detail: string,
+): OperationApplyResult {
+  const message = `Failed to install bundled thoth-agents OpenCode skills: ${detail}.`;
+  return {
+    harness: plan.harness,
+    action: plan.action,
+    applied: false,
+    summary: message,
+    changedTargets,
+    backups,
+    warnings: [
+      ...warnings,
+      {
+        severity: 'critical',
+        code: 'opencode-bundled-skills-failed',
+        message,
+      },
+    ],
+    disclaimers: defaultDisclaimers(),
+  };
+}
+
+function applyBundledSkills(
+  plan: OperationPlan,
+  changedTargets: ManagedTarget[],
+  backups: { path: string; label?: string }[],
+  warnings: OperationWarning[],
+): OperationApplyResult | null {
+  let bundled: ReturnType<typeof installCustomSkills>;
+  try {
+    bundled = installCustomSkills();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return bundledSkillsFailure(
       plan,
-      'Failed to install bundled thoth-agents OpenCode skills.',
+      changedTargets,
+      backups,
+      warnings,
+      detail,
+    );
+  }
+  if (!bundled.success) {
+    const failedNames = bundled.failedSkills.map(({ skill }) => skill.name);
+    const detail =
+      failedNames.length > 0
+        ? failedNames.join(', ')
+        : 'unknown bundled skills';
+    return bundledSkillsFailure(
+      plan,
+      changedTargets,
+      backups,
+      warnings,
+      detail,
     );
   }
 
+  changedTargets.push({
+    kind: 'skill',
+    label: 'Bundled thoth-agents OpenCode skills',
+    state: 'installed',
+    observed: 'managed bundled skills refreshed',
+  });
   return null;
 }
 
 export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
   const rejection = validateApplyPlan(plan);
   if (rejection) return rejection;
-
-  const status = getOpenCodeStatus();
-  if (!classifyApplySafety(status.state)) {
+  const issued = issuedOpenCodePlans.get(plan);
+  if (!issued) {
     return rejectPlan(
       plan,
-      `OpenCode state is ${status.state}; refusing to apply plan without a safe status.`,
+      'OpenCode plan provenance was lost before apply.',
+      'critical',
+      'opencode-plan-unissued',
     );
   }
 
-  if (plan.action === 'model-config') return applyModelPlan(plan);
+  const status = getOpenCodeStatus(issued.context);
+  if (!canApplyToManagedHealth(plan.action, status)) {
+    return rejectPlan(
+      plan,
+      `OpenCode state is ${status.state}; refusing to apply plan without a safe status.`,
+      'critical',
+      'opencode-plan-live-state-blocked',
+      issued.context,
+    );
+  }
+
+  if (issued.payload.kind === 'model') {
+    const invalidPayload = invalidModelPayloadReason(issued.payload.roles);
+    if (invalidPayload) {
+      return rejectPlan(
+        plan,
+        invalidPayload,
+        'critical',
+        'opencode-model-payload-invalid',
+        issued.context,
+      );
+    }
+    return applyModelPlan(issued.payload.roles);
+  }
 
   const changedTargets: ManagedTarget[] = [];
   const backups = [];
+  const warnings: OperationWarning[] = [];
 
-  const pluginResult = ensureLatestPluginEntry();
-  if (!pluginResult.success) {
+  const mainConfigResult = updateOpenCodeMainConfig({
+    ensurePlugin: true,
+    disableDefaults:
+      issued.payload.action === 'sync' || issued.payload.action === 'install',
+  });
+  if (!mainConfigResult.success) {
     return rejectPlan(
       plan,
-      pluginResult.error ?? 'Failed to update OpenCode plugin config.',
+      mainConfigResult.error ?? 'Failed to update OpenCode main config.',
+      'critical',
+      'opencode-main-config-update-failed',
+      issued.context,
     );
   }
   changedTargets.push({
     ...targetForMainConfig('installed'),
     observed: `plugin includes ${EXPECTED_PLUGIN}`,
   });
-  if (existsSync(`${pluginResult.configPath}.bak`)) {
+  if (existsSync(`${mainConfigResult.configPath}.bak`)) {
     backups.push({
-      path: `${pluginResult.configPath}.bak`,
+      path: `${mainConfigResult.configPath}.bak`,
       label: 'OpenCode config backup',
     });
   }
 
-  if (plan.action === 'sync' || plan.action === 'install') {
-    const defaultAgentResult = disableDefaultAgents();
-    if (!defaultAgentResult.success) {
-      return rejectPlan(
-        plan,
-        defaultAgentResult.error ??
-          'Failed to disable OpenCode default agents.',
-      );
-    }
+  if (issued.payload.action === 'sync' || issued.payload.action === 'install') {
     const liteResult = writeLiteConfig(
       {
         agent: 'opencode',
         hasTmux: false,
-        installSkills: plan.action === 'install',
+        installSkills: issued.payload.action === 'install',
         installCustomSkills: true,
         dryRun: false,
         reset: false,
@@ -1040,16 +1883,26 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
         label: 'thoth-agents config backup',
       });
     }
+    const skillsRejection = applyBundledSkills(
+      plan,
+      changedTargets,
+      backups,
+      warnings,
+    );
+    if (skillsRejection) return skillsRejection;
   }
 
-  if (plan.action === 'install') {
-    const skillsRejection = applyInstallSkills(plan);
-    if (skillsRejection) return skillsRejection;
+  if (issued.payload.action === 'install') {
+    warnings.push(...applyRecommendedSkills());
     changedTargets.push({
       kind: 'skill',
-      label: 'Recommended and bundled OpenCode skills',
-      state: 'installed',
-      observed: 'skills=yes processed',
+      label: 'Recommended OpenCode skills',
+      state: warnings.some(
+        (warning) => warning.code === 'opencode-recommended-skill-failed',
+      )
+        ? 'drift'
+        : 'installed',
+      observed: 'optional skills=yes processed',
     });
   }
 
@@ -1065,7 +1918,7 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
           : 'Applied OpenCode plugin update.',
     changedTargets,
     backups,
-    warnings: [],
+    warnings,
     disclaimers: defaultDisclaimers(),
   };
 }

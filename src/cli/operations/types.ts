@@ -121,6 +121,7 @@ export interface OperationPlan {
   dryRun: boolean;
   canApply: boolean;
   targets: ManagedTarget[];
+  blockerTargets?: ManagedTarget[];
   surfaces: ManagedSurface[];
   backup: BackupExpectation;
   items: OperationPlanItem[];
@@ -152,6 +153,7 @@ export interface OperationApplyResult {
   applied: boolean;
   summary: string;
   changedTargets: ManagedTarget[];
+  diagnosticTargets?: ManagedTarget[];
   backups: OperationPath[];
   warnings: OperationWarning[];
   disclaimers: OperationDisclaimer[];

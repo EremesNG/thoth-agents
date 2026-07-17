@@ -276,10 +276,14 @@ export const CODEX_SURFACES = [
     id: 'per-agent-runtime-permissions',
     target: 'permission-control',
     status: 'unsupported',
-    fields: ['per-agent tool allow/deny equivalent to OpenCode permissions'],
+    fields: [
+      'named installed-role selection',
+      'per-role permission enforcement',
+      'per-agent tool allow/deny equivalent to OpenCode permissions',
+    ],
     diagnosticCode: 'codex.permission.memory.enforcement_gap',
     summary:
-      'Codex sandbox and approval policy can constrain sessions, but OpenCode-style per-agent MCP/tool deny maps are not validated.',
+      'Named installed-role selection and per-role permission enforcement are instruction-only because collaboration.spawn_agent has no role selector; OpenCode-style per-agent MCP/tool deny maps are not validated.',
     evidence:
       'Codex approvals/security docs cover sandbox and approval policies, not exact OpenCode per-agent permission maps.',
     fallback: 'instruction-only',
@@ -287,22 +291,20 @@ export const CODEX_SURFACES = [
   {
     id: 'programmatic-delegation-runtime',
     target: 'delegation-runtime',
-    status: 'unsupported',
+    status: 'validated',
     fields: [
-      'task API',
-      'background task sessions',
-      'tmux lifecycle hooks',
-      'terminal-state detection',
-      'same-session status probing',
-      'result-quality retry accounting',
-      'automatic subagent session close',
+      'collaboration.spawn_agent',
+      'collaboration.wait_agent',
+      'collaboration.list_agents',
+      'collaboration.send_message',
+      'collaboration.followup_task',
+      'collaboration.interrupt_agent',
     ],
-    diagnosticCode: 'codex.delegation.runtime.unsupported',
+    diagnosticCode: 'codex.delegation.runtime.validated',
     summary:
-      'Codex subagents are user/instruction-triggered; terminal-state detection, same-session status probing, retry accounting, and automatic subagent session close remain instruction-only because no OpenCode plugin task API parity is validated.',
+      'The current Codex collaboration surface supports generic programmatic delegation, mailbox waits, live task-tree inspection, messages, follow-up turns, and explicit interruption.',
     evidence:
-      'Codex subagent guidance describes manual spawning and agent threads, not a validated runtime binding for terminal status, retry accounting, status payloads, or automatic close.',
-    fallback: 'instruction-only',
+      'The callable runtime exposes collaboration.spawn_agent with task_name, message, and optional fork_turns plus wait_agent, list_agents, send_message, followup_task, and interrupt_agent.',
   },
   {
     id: 'parent-context-injection',

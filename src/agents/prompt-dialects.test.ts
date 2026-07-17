@@ -41,22 +41,22 @@ describe('prompt dialects', () => {
       'deep subagent',
     );
     expect(CODEX_PROMPT_DIALECT.dispatchLabel('synchronous-task-only')).toBe(
-      'synchronous multi_agent_v1.spawn_agent only',
+      'synchronous collaboration.spawn_agent only',
     );
     expect(CODEX_PROMPT_DIALECT.tools.backgroundStatusTool).toBe(
-      'multi_agent_v1.wait_agent',
+      'collaboration.wait_agent',
     );
     expect(CODEX_PROMPT_DIALECT.tools.delegationTool).toBe(
-      'multi_agent_v1.spawn_agent',
+      'collaboration.spawn_agent',
     );
     expect(CODEX_PROMPT_DIALECT.tools.backgroundDelegationTool).toBe(
-      'multi_agent_v1.spawn_agent',
+      'collaboration.spawn_agent',
     );
     expect(CODEX_PROMPT_DIALECT.tools.progressTool).toBe(
       'functions.update_plan',
     );
     expect(CODEX_PROMPT_DIALECT.tools.hostStatusSurface).toBe(
-      'multi_agent_v1.wait_agent',
+      'collaboration.list_agents',
     );
     expect(CODEX_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
       'ambient Codex root session coordinator',
@@ -68,7 +68,7 @@ describe('prompt dialects', () => {
       CODEX_PROMPT_DIALECT.capabilities.renderCapabilityDisclosure(
         'delegatedExecution',
       ),
-    ).toContain('instruction-only');
+    ).toBeUndefined();
     expect(
       CODEX_PROMPT_DIALECT.capabilities.renderCapabilityDisclosure(
         'runtimeHooks',
@@ -83,8 +83,6 @@ describe('prompt dialects', () => {
 
   test('Codex capability disclosures preserve instruction-only responsibility contracts', () => {
     for (const capability of [
-      'delegatedExecution',
-      'parallelDelegation',
       'rolePermissions',
       'parentContextInjection',
       'memoryGovernanceEnforcement',
@@ -105,17 +103,23 @@ describe('prompt dialects', () => {
         'runtimeHooks',
       ),
     ).toContain('diagnostic-only');
+    expect(CODEX_PROMPT_DIALECT.capabilities.capabilities).toMatchObject({
+      delegatedExecution: 'supported',
+      parallelDelegation: 'supported',
+      rolePermissions: 'instruction-only',
+    });
   });
 
   test('models portable lifecycle status and same-session probe terminology', () => {
     expect(CODEX_PROMPT_DIALECT.tools.lifecycle).toEqual({
-      terminalState: 'terminal completion or failure',
-      nonterminalState: 'quiet or nonterminal wait/status result',
-      sameSessionProbe:
-        'multi_agent_v1.wait_agent on the same subagent session',
-      enforcement: 'instruction-only',
+      statusAction: 'wait and inspect status',
+      terminalState: 'terminal mailbox completion or failure update',
+      nonterminalState: 'collaboration.wait_agent timeout or silence',
+      sameSessionProbe: 'collaboration.list_agents on the same task path',
+      enforcement: 'runtime-supported',
     });
     expect(OPENCODE_PROMPT_DIALECT.tools.lifecycle).toEqual({
+      statusAction: 'wait, poll, and collect',
       terminalState: 'terminal task_status result',
       nonterminalState: 'nonterminal task_status result',
       sameSessionProbe: 'task_status on the same task session',

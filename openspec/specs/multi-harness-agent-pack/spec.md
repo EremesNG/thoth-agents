@@ -1310,7 +1310,7 @@ instructions.
 - WHEN it prepares the initial subagent delegation prompt
 - THEN it MUST include the delegated task instructions and handoff recovery
   instructions
-- AND it MUST NOT include the handoff summary body in `message` or `items`
+- AND it MUST NOT include the handoff summary body in the delegation prompt
 - AND it MUST NOT include raw file dumps, entire conversation transcripts,
   secrets, credentials, irrelevant details, or generated subagent prompts as
   memory source material
@@ -1358,15 +1358,31 @@ while describing each harness delivery surface accurately.
 #### Scenario: Codex handoff uses spawn message recovery semantics
 - GIVEN Codex root instructions are rendered
 - WHEN they explain how to delegate to a role subagent
-- THEN they MUST say that `multi_agent_v1.spawn_agent` `message` carries the
+- THEN they MUST say that `collaboration.spawn_agent` `message` carries the
   delegated task instructions plus handoff retrieval instructions
-- AND they MUST say the handoff body MUST NOT be included in `message` or
-  `items`
-- AND they MUST say not to pass both `message` and `items` for the same handoff
-- AND they MUST reserve `items` for structured attachments or mentions that are
-  truly required
+- AND they MUST describe the `task_name`, `message`, and optional `fork_turns`
+  contract, where `fork_turns` is `none`, `all`, or a positive integer string
+- AND they MUST say the handoff body MUST NOT be included in `message`
+- AND they MUST say role behavior is carried by `task_name` and `message`
+  because the current surface has no named installed-role selector
 - AND they MUST disclose instruction-level memory and permission enforcement
   gaps when Codex cannot hard-enforce a boundary
+
+#### Scenario: Codex collaboration lifecycle uses current direct tools
+- GIVEN Codex root instructions are rendered
+- WHEN they describe delegation lifecycle and follow-up behavior
+- THEN they MUST use `collaboration.wait_agent` for mailbox updates
+- AND they MUST treat wait timeout or silence as nonterminal work in progress
+- AND they MUST use `collaboration.list_agents` on the same task path for live
+  status inspection
+- AND they MUST distinguish non-triggering `collaboration.send_message` from
+  turn-triggering `collaboration.followup_task`
+- AND they MUST reserve `collaboration.interrupt_agent` for explicit
+  cancellation, deadline, or supersession
+- AND they MUST state that collaboration tools are direct tools that cannot be
+  called from inside `functions.exec`
+- AND they MUST NOT require unavailable session cleanup or claim obsolete
+  delegation names, fields, or lifecycle operations
 
 ### Requirement: Preserve Memory Governance Boundaries During Handoff
 The system MUST keep root-session ownership, subagent memory permissions, SDD

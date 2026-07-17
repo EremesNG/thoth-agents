@@ -213,14 +213,17 @@ describe('Codex adapter', () => {
       expect.arrayContaining([
         expect.objectContaining({ code: 'codex.surface.hooks.unvalidated' }),
         expect.objectContaining({
-          code: 'codex.delegation.runtime.unsupported',
-          fallback: 'instruction-only',
-        }),
-        expect.objectContaining({
           code: 'codex.permission.memory.enforcement_gap',
         }),
         expect.objectContaining({
           code: 'codex.context.parent_injection.unvalidated',
+        }),
+      ]),
+    );
+    expect(result.diagnostics).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          surface: 'programmatic-delegation-runtime',
         }),
       ]),
     );
@@ -382,7 +385,7 @@ describe('Codex adapter', () => {
 
     for (const prompt of [designer, quick, deep]) {
       expect(prompt).toContain('Mode: write-capable');
-      expect(prompt).toContain('multi_agent_v1.spawn_agent only');
+      expect(prompt).toContain('collaboration.spawn_agent only');
       expect(prompt).toContain('Never discard working-tree changes');
       expect(prompt).toContain('writes under the orchestrator');
       expect(prompt).toContain('For SDD tasks: use the Task Result envelope');
@@ -406,11 +409,11 @@ describe('Codex adapter', () => {
     expect(rootInstructions).toContain('sdd-tasks -> quick subagent');
     expect(rootInstructions).toContain('sdd-verify -> oracle subagent');
 
-    expect(explorer).toContain('Dispatch method: multi_agent_v1.spawn_agent');
+    expect(explorer).toContain('Dispatch method: collaboration.spawn_agent');
     expect(explorer).toContain('Mode: read-only');
     expect(explorer).toContain('Return exactly these sections');
     expect(quick).toContain(
-      'Dispatch method: synchronous multi_agent_v1.spawn_agent only',
+      'Dispatch method: synchronous collaboration.spawn_agent only',
     );
     expect(quick).toContain('Mode: write-capable');
     expect(quick).toContain('fast bounded implementation');
@@ -425,17 +428,17 @@ describe('Codex adapter', () => {
     }
   });
 
-  test('renders Codex-only delegation session teardown guidance in root instructions', () => {
+  test('does not invent unavailable Codex delegation session cleanup', () => {
     const rootInstructions = renderCodexRootInstructions();
     const explorer = agentContent('explorer');
     const quick = agentContent('quick');
 
-    expect(rootInstructions).toContain(
-      'After consuming a terminal subagent result, close its session unless retry or same-session reuse is needed; close explorer, librarian, and retry sessions then.',
-    );
     expect(rootInstructions).toContain('ambient Codex root session');
-    expect(explorer).not.toContain('close that subagent session');
-    expect(quick).not.toContain('close that subagent session');
+    for (const prompt of [rootInstructions, explorer, quick]) {
+      expect(prompt).not.toContain('close_agent');
+      expect(prompt).not.toContain('close its session');
+      expect(prompt).not.toContain('close that subagent session');
+    }
   });
 
   test('does not leak internal Codex adaptation markers into rendered prompts', () => {
@@ -518,29 +521,55 @@ describe('Codex adapter', () => {
     expect(rootInstructions).toContain('per-turn');
     expect(rootInstructions).toContain('not the stable root session id');
     expect(rootInstructions).toContain(
-      'Delegate by invoking `multi_agent_v1.spawn_agent` for the installed Codex role agents',
+      'Delegate by invoking `collaboration.spawn_agent`',
     );
     expect(rootInstructions).toContain(
-      'The user has explicitly authorized this generated Codex orchestrator to use `multi_agent_v1.spawn_agent` whenever delegation is required by these instructions, without needing a fresh user request for subagents in each task.',
+      'The user has explicitly authorized this generated Codex orchestrator to use `collaboration.spawn_agent` whenever delegation is required by these instructions, without needing a fresh user request for subagents in each task.',
     );
     expect(rootInstructions).toContain(
       'delegated task instructions plus handoff retrieval instructions in `message`',
     );
     expect(rootInstructions).toContain(
-      'Do not include the handoff body in `message` or `items`',
+      'Do not include the handoff body in `message`',
     );
     expect(rootInstructions).toContain(
-      '`multi_agent_v1.wait_agent` only when the root needs the result',
+      '`collaboration.wait_agent` waits for mailbox updates',
     );
     expect(rootInstructions).toContain(
-      '`multi_agent_v1.send_input` for follow-up or redirect',
+      '`collaboration.send_message` delivers a message without triggering a turn',
     );
     expect(rootInstructions).toContain(
-      '`multi_agent_v1.resume_agent` only for a closed agent that must continue',
+      '`collaboration.followup_task` triggers a turn when an idle task must continue',
     );
     expect(rootInstructions).toContain(
-      '`multi_agent_v1.close_agent` after completion',
+      '`collaboration.list_agents` with the same task path',
     );
+    expect(rootInstructions).toContain(
+      '`collaboration.interrupt_agent` only for explicit cancellation, a deadline, or supersession',
+    );
+    expect(rootInstructions).toContain(
+      '`task_name`, `message`, and optional `fork_turns`',
+    );
+    expect(rootInstructions).toContain(
+      '`fork_turns` must be `none`, `all`, or a positive integer string',
+    );
+    expect(rootInstructions).toContain(
+      'Role behavior is carried by `task_name` and `message`',
+    );
+    expect(rootInstructions).toContain(
+      'Collaboration tools are direct tools and must not be called from inside `functions.exec`',
+    );
+    for (const obsolete of [
+      'multi_agent_v1',
+      'agent_type',
+      '`items`',
+      'fork_context',
+      'send_input',
+      'resume_agent',
+      'close_agent',
+    ]) {
+      expect(rootInstructions).not.toContain(obsolete);
+    }
   });
 
   test('renders same-session lifecycle guards without claiming runtime enforcement', () => {
@@ -550,23 +579,23 @@ describe('Codex adapter', () => {
       'as in progress and probe the same session via',
     );
     expect(rootInstructions).toContain(
-      '`multi_agent_v1.wait_agent on the same subagent session`',
+      '`collaboration.list_agents on the same task path`',
     );
     expect(rootInstructions).toContain(
-      'no cancel/close/retry/reroute before `terminal completion or failure`',
+      'no retry/reroute/interruption before `terminal mailbox completion or failure update`',
     );
     expect(rootInstructions).toContain(
       'Terminal result-quality and required-artifact checks share one sharpened retry; nonterminal probes use none.',
     );
     expect(rootInstructions).toContain(
-      'Codex lifecycle enforcement is instruction-only when terminal status is unavailable; do not invent payload fields or numeric wait, poll, or timeout rules.',
+      'A `collaboration.wait_agent` timeout or silence is nonterminal and remains in progress',
     );
     expect(rootInstructions).not.toMatch(
       /wait_agent[^.\n]*\d+\s*(?:ms|seconds?|minutes?)/i,
     );
   });
 
-  test('renders Codex handoff delivery guidance without embedding the handoff body', () => {
+  test('renders Codex handoff delivery guidance using the current spawn contract', () => {
     const rootInstructions = renderCodexRootInstructions();
 
     expect(rootInstructions).toContain(
@@ -576,20 +605,9 @@ describe('Codex adapter', () => {
       'do not embed the root-owned handoff summary body in `message`',
     );
     expect(rootInstructions).toContain(
-      'Do not include the handoff body in `message` or `items`',
+      'Do not include the handoff body in `message`',
     );
-    expect(rootInstructions).toContain(
-      'do not pass both `message` and `items` for the same handoff',
-    );
-    expect(rootInstructions).toContain(
-      'Use `items` only for structured attachments or mentions when they are truly required',
-    );
-    expect(rootInstructions).toContain(
-      'do not use `items` as a handoff-summary payload',
-    );
-    expect(rootInstructions).toContain(
-      'Leave `fork_context` omitted or false by default',
-    );
+    expect(rootInstructions).toContain('optional `fork_turns`');
     expect(rootInstructions).toContain(
       'Memory ownership, handoff recovery, permissions, and prompt-body exclusion are instruction-level',
     );
@@ -621,7 +639,7 @@ describe('Codex adapter', () => {
     expect(developerInstructions?.startsWith('<role>')).toBe(true);
     expect(developerInstructions).toContain('You are deep.');
     expect(developerInstructions).toContain(
-      'Dispatch method: synchronous multi_agent_v1.spawn_agent only',
+      'Dispatch method: synchronous collaboration.spawn_agent only',
     );
     expect(developerInstructions).toContain('request_user_input');
   });
@@ -981,7 +999,7 @@ describe('Codex adapter', () => {
       'name = "deep"\ndescription = "Handle correctness-critical, multi-file, or edge-case-heavy changes with full local context analysis."',
     );
     expect(String(deepAgent?.content)).toContain(
-      'Dispatch method: synchronous multi_agent_v1.spawn_agent only',
+      'Dispatch method: synchronous collaboration.spawn_agent only',
     );
     expect(String(deepAgent?.content)).toContain('functions.update_plan');
     expect(String(deepAgent?.content)).not.toContain('`todowrite`');

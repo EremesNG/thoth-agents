@@ -477,12 +477,12 @@ describe('semantic prompt section rendering', () => {
 
     expectAllTerms(openCode, ['`task`', '`question`', 'todowrite']);
     expectAllTerms(codex, [
-      'multi_agent_v1.spawn_agent',
+      'collaboration.spawn_agent',
       '`request_user_input`',
       'functions.update_plan',
       'instruction-only',
       'delegated task instructions plus handoff retrieval instructions in `message`',
-      'Do not include the handoff body in `message` or `items`',
+      'Do not include the handoff body in `message`',
     ]);
     expect(openCode).not.toContain(
       'delegated task instructions plus handoff retrieval instructions in `message`',
@@ -512,9 +512,8 @@ describe('semantic prompt section rendering', () => {
       ]);
     }
 
-    expect(openCode).not.toContain('multi_agent_v1.spawn_agent');
+    expect(openCode).not.toContain('collaboration.spawn_agent');
     expect(openCode).not.toContain('`message`');
-    expect(openCode).not.toContain('`items`');
     expect(codex).toContain(
       'delegated task instructions plus handoff retrieval instructions in `message`',
     );
@@ -795,7 +794,7 @@ describe('semantic prompt section rendering', () => {
     expect(prompts.orchestrator).toContain(
       'delegate-first root coordinator and decision engine',
     );
-    expect(prompts.orchestrator).toContain('multi_agent_v1.spawn_agent');
+    expect(prompts.orchestrator).toContain('collaboration.spawn_agent');
     expect(prompts.orchestrator).toContain('deep subagent');
     expect(prompts.orchestrator).toContain('functions.update_plan');
     expect(prompts.orchestrator).toContain(
@@ -814,7 +813,7 @@ describe('semantic prompt section rendering', () => {
       expect(prompts[role]).toContain(`You are ${role}.`);
       expect(prompts[role]).toContain('- Mode: write-capable');
       expect(prompts[role]).toContain(
-        'Dispatch method: synchronous multi_agent_v1.spawn_agent only',
+        'Dispatch method: synchronous collaboration.spawn_agent only',
       );
       expect(prompts[role]).toContain('mem_save');
     }
@@ -830,7 +829,7 @@ describe('semantic prompt section rendering', () => {
 
     for (const prompt of [openCode, codex]) {
       expect(prompt).toContain('as in progress and probe the same session via');
-      expect(prompt).toContain('no cancel/close/retry/reroute before');
+      expect(prompt).toContain('no retry/reroute/interruption before');
       expect(prompt).toContain(
         'an explicit user deadline, user cancellation, or a superseding request',
       );
@@ -851,12 +850,21 @@ describe('semantic prompt section rendering', () => {
       );
     }
 
+    expect(codex).toContain('collaboration.list_agents on the same task path');
+    expect(codex).toContain('collaboration.wait_agent timeout or silence');
     expect(codex).toContain(
-      'multi_agent_v1.wait_agent on the same subagent session',
+      'Use `collaboration.wait_agent` to wait and inspect status',
+    );
+    expect(codex).not.toContain(
+      'Use `collaboration.wait_agent` to wait, poll, and collect',
     );
     expect(openCode).toContain('task_status on the same task session');
-    expect(openCode).not.toContain('multi_agent_v1.wait_agent');
+    expect(openCode).toContain('Use `task_status` to wait, poll, and collect');
+    expect(openCode).not.toContain('collaboration.wait_agent');
     expect(openCode).not.toContain('same subagent session');
+
+    const claude = rolePrompt('orchestrator', CLAUDE_CODE_PROMPT_DIALECT);
+    expect(claude).toContain('Use `TaskOutput` to wait, poll, and collect');
   });
 
   test('composeAgentPrompt keeps generated model-family guidance before user append text and replacement isolated', () => {

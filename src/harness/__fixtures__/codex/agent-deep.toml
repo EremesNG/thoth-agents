@@ -7,7 +7,7 @@ You are deep.
 
 <mode>
 - Mode: write-capable
-- Dispatch method: synchronous multi_agent_v1.spawn_agent only
+- Dispatch method: synchronous collaboration.spawn_agent only
 - Scope: thorough implementation and verification
 </mode>
 

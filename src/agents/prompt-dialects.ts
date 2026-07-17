@@ -7,6 +7,7 @@ import type { HarnessCapabilities, HarnessId } from '../harness/types';
 export type AgentPromptRole = AgentRoleName;
 
 export interface LifecycleNomenclature {
+  statusAction: string;
   terminalState: string;
   nonterminalState: string;
   sameSessionProbe: string;
@@ -53,8 +54,8 @@ const OPENCODE_CAPABILITIES: HarnessCapabilities = {
 
 export const CODEX_PROMPT_CAPABILITIES: HarnessCapabilities = {
   agentDefinitions: 'supported',
-  delegatedExecution: 'instruction-only',
-  parallelDelegation: 'instruction-only',
+  delegatedExecution: 'supported',
+  parallelDelegation: 'supported',
   runtimeHooks: 'unknown',
   mcpConfiguration: 'supported',
   skillPackaging: 'supported',
@@ -110,6 +111,7 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
     progressTool: 'todowrite',
     hostStatusSurface: 'task_status',
     lifecycle: {
+      statusAction: 'wait, poll, and collect',
       terminalState: 'terminal task_status result',
       nonterminalState: 'nonterminal task_status result',
       sameSessionProbe: 'task_status on the same task session',
@@ -136,18 +138,18 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
 export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'codex',
   tools: {
-    delegationTool: 'multi_agent_v1.spawn_agent',
-    backgroundDelegationTool: 'multi_agent_v1.spawn_agent',
-    backgroundStatusTool: 'multi_agent_v1.wait_agent',
+    delegationTool: 'collaboration.spawn_agent',
+    backgroundDelegationTool: 'collaboration.spawn_agent',
+    backgroundStatusTool: 'collaboration.wait_agent',
     userQuestionTool: 'request_user_input',
     progressTool: 'functions.update_plan',
-    hostStatusSurface: 'multi_agent_v1.wait_agent',
+    hostStatusSurface: 'collaboration.list_agents',
     lifecycle: {
-      terminalState: 'terminal completion or failure',
-      nonterminalState: 'quiet or nonterminal wait/status result',
-      sameSessionProbe:
-        'multi_agent_v1.wait_agent on the same subagent session',
-      enforcement: 'instruction-only',
+      statusAction: 'wait and inspect status',
+      terminalState: 'terminal mailbox completion or failure update',
+      nonterminalState: 'collaboration.wait_agent timeout or silence',
+      sameSessionProbe: 'collaboration.list_agents on the same task path',
+      enforcement: 'runtime-supported',
     },
     roleReference: (role) => `${role} role agent`,
   },
@@ -160,9 +162,9 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
       case 'root-coordinator':
         return 'ambient Codex root session coordinator';
       case 'task':
-        return 'multi_agent_v1.spawn_agent';
+        return 'collaboration.spawn_agent';
       case 'synchronous-task-only':
-        return 'synchronous multi_agent_v1.spawn_agent only';
+        return 'synchronous collaboration.spawn_agent only';
     }
   },
   renderRoleInvocation(role) {
@@ -193,6 +195,7 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
     progressTool: 'TodoWrite',
     hostStatusSurface: 'TodoWrite',
     lifecycle: {
+      statusAction: 'wait, poll, and collect',
       terminalState: 'terminal TaskOutput result',
       nonterminalState: 'nonterminal TaskOutput result',
       sameSessionProbe: 'TaskOutput on the same task session',

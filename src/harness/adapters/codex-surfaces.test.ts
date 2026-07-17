@@ -219,50 +219,48 @@ describe('Codex surface validation', () => {
     }
   });
 
-  test('records subagent session close as instruction-only delegation lifecycle behavior', () => {
-    const result = assertCodexSurfaceCanGenerate(
-      'programmatic-delegation-runtime',
-    );
+  test('records the current collaboration surface as supported generic delegation', () => {
     const surface = CODEX_SURFACES.find(
       (candidate) => candidate.id === 'programmatic-delegation-runtime',
     );
 
     expect(surface).toMatchObject({
-      status: 'unsupported',
-      fallback: 'instruction-only',
+      status: 'validated',
+      fields: expect.arrayContaining([
+        'collaboration.spawn_agent',
+        'collaboration.wait_agent',
+        'collaboration.list_agents',
+        'collaboration.send_message',
+        'collaboration.followup_task',
+        'collaboration.interrupt_agent',
+      ]),
     });
-    expect(surface?.fields).toContain('automatic subagent session close');
-    expect(surface?.summary).toContain('automatic subagent session close');
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.diagnostic).toMatchObject({
-        severity: 'warning',
-        code: 'codex.delegation.runtime.unsupported',
-        fallback: 'instruction-only',
-      });
-    }
-  });
-
-  test('records Codex lifecycle enforcement limits as instruction-only', () => {
-    const surface = CODEX_SURFACES.find(
-      (candidate) => candidate.id === 'programmatic-delegation-runtime',
-    );
-
-    expect(surface).toMatchObject({
-      status: 'unsupported',
-      fallback: 'instruction-only',
-    });
-    expect(surface?.fields).toEqual(
+    expect(surface?.summary).toContain('generic programmatic delegation');
+    expect(surface?.evidence).toContain('task_name');
+    expect(surface?.fields).not.toEqual(
       expect.arrayContaining([
-        'terminal-state detection',
-        'same-session status probing',
-        'result-quality retry accounting',
+        'named installed-role selection',
+        'per-role permission enforcement',
         'automatic subagent session close',
       ]),
     );
-    expect(surface?.summary).toContain('terminal-state detection');
-    expect(surface?.summary).toContain('retry accounting');
-    expect(surface?.summary).toContain('instruction-only');
+  });
+
+  test('keeps named role selection and per-role enforcement instruction-only', () => {
+    const surface = CODEX_SURFACES.find(
+      (candidate) => candidate.id === 'per-agent-runtime-permissions',
+    );
+
+    expect(surface).toMatchObject({
+      status: 'unsupported',
+      fallback: 'instruction-only',
+    });
+    expect(surface?.summary.toLowerCase()).toContain(
+      'named installed-role selection',
+    );
+    expect(surface?.summary.toLowerCase()).toContain(
+      'per-role permission enforcement',
+    );
   });
 
   test('blocks unknown or missing surfaces as diagnostic-only', () => {

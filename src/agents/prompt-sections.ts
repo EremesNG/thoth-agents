@@ -355,7 +355,7 @@ For {{role.explorer}}/{{role.librarian}}, ask narrow fact-finding questions for 
 - Experimental background \`{{backgroundDelegationTool}}\` is allowed only for {{role.explorer}} and {{role.librarian}} for asynchronous delegation.
 - {{role.oracle}}, {{role.designer}}, {{role.quick}}, and {{role.deep}} always use normal synchronous \`{{delegationTool}}\` execution.
 - When using background \`{{delegationTool}}\`, treat it as conditional and non-portable: if the host does not expose the experimental path, fall back to normal synchronous \`{{delegationTool}}\`.
-- Use \`{{backgroundStatusTool}}\` to wait, poll, and collect: treat \`{{lifecycleNonterminalState}}\` as in progress and probe the same session via \`{{lifecycleSameSessionProbe}}\`; no cancel/close/retry/reroute before \`{{lifecycleTerminalState}}\`, an explicit user deadline, user cancellation, or a superseding request.
+- Use \`{{backgroundStatusTool}}\` to {{lifecycleStatusAction}}: treat \`{{lifecycleNonterminalState}}\` as in progress and probe the same session via \`{{lifecycleSameSessionProbe}}\`; no retry/reroute/interruption before \`{{lifecycleTerminalState}}\`, an explicit user deadline, user cancellation, or a superseding request.
 - Terminal result-quality and required-artifact checks share one sharpened retry; nonterminal probes use none.
 - Capacity is separate: retry the named role up to 3 times; never switch to \`default\`, \`worker\`, or another role; then use a same-role model override or report a blocker.
 - Write-capable dispatches must include task instructions and handoff retrieval instructions when a root-owned handoff summary exists, so implementers can recover context without rediscovering settled scope.
@@ -716,6 +716,10 @@ function renderRoleText(
     )
     .replaceAll('{{userQuestionTool}}', dialect.tools.userQuestionTool)
     .replaceAll('{{progressTool}}', dialect.tools.progressTool)
+    .replaceAll(
+      '{{lifecycleStatusAction}}',
+      dialect.tools.lifecycle.statusAction,
+    )
     .replaceAll(
       '{{lifecycleTerminalState}}',
       dialect.tools.lifecycle.terminalState,

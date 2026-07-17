@@ -36,12 +36,6 @@
     "fallback": "instruction-only"
   },
   {
-    "severity": "warning",
-    "code": "codex.delegation.runtime.unsupported",
-    "surface": "programmatic-delegation-runtime",
-    "fallback": "instruction-only"
-  },
-  {
     "severity": "error",
     "code": "codex.context.parent_injection.unvalidated",
     "surface": "parent-context-injection",

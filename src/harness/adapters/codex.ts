@@ -222,6 +222,7 @@ function codexInternalHandoffGuidance(): string {
     '- Use `items` only for structured attachments or mentions when they are truly required; do not use `items` as a handoff-summary payload.',
     '- Leave `fork_context` omitted or false by default; set `fork_context: true` only when the exact current thread history is required.',
     '- Use `multi_agent_v1.wait_agent` only when the root needs the result, `multi_agent_v1.send_input` for follow-up or redirect, `multi_agent_v1.resume_agent` only for a closed agent that must continue, and `multi_agent_v1.close_agent` after completion.',
+    '- Codex lifecycle enforcement is instruction-only when terminal status is unavailable; do not invent payload fields or numeric wait, poll, or timeout rules.',
     '- Memory ownership, handoff recovery, permissions, and prompt-body exclusion are instruction-level unless the active Codex runtime documents stronger enforcement.',
     '</codex-delegation-guidance>',
   ].join('\n');
@@ -278,7 +279,7 @@ export function renderCodexRootInstructions(config?: PluginConfig): string {
     '- Before delegating after meaningful context changes, save or refresh the handoff body with root-owned mem_session(action="summary") or mem_save(kind="session_summary") when available; if unavailable, disclose that root-owned compaction could not be persisted.',
     '- Use the ambient Codex root session as the delegate-first root coordinator; do not generate or select an orchestrator TOML.',
     '- Delegate by invoking `multi_agent_v1.spawn_agent` for the installed Codex role agents: explorer, librarian, oracle, designer, quick, and deep.',
-    '- After receiving a delegated subagent response, close that subagent session unless you will retry or intentionally keep using that exact same session; explorer and librarian sessions must always be closed immediately after their response, and retry sessions must be closed after the retry result unless explicit same-session reuse is still required.',
+    '- After consuming a terminal subagent result, close its session unless retry or same-session reuse is needed; close explorer, librarian, and retry sessions then.',
     '- Use packaged thoth-agents plugin capabilities through Codex plugin, skill, MCP, and hook review surfaces after enabling them with /plugins and /hooks.',
     '- For blocking user decisions in Codex Default mode, use request_user_input after features.default_mode_request_user_input is enabled; do not ask those questions in plain prose.',
     '- Whenever the root orchestrator calls `request_user_input`, it MUST NEVER set or pass `autoResolutionMs`; omit the field entirely.',

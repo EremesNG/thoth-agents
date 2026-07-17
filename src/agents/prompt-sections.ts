@@ -181,6 +181,12 @@ function alternateSddRoles(id: SddPhaseContract['id']): string {
     : '';
 }
 
+function alternateSddCondition(id: SddPhaseContract['id']): string {
+  const condition = getDelegatedSddPhase(id).alternateAgentCondition;
+
+  return condition ? condition.replace(/^Only/, 'only').replace(/\.$/, '') : '';
+}
+
 function supportSddRoles(id: SddPhaseContract['id']): string {
   const phase = getDelegatedSddPhase(id);
 
@@ -198,7 +204,7 @@ function persistenceSddRole(id: SddPhaseContract['id']): string {
 }
 
 function renderSddDelegationMatrix(): string {
-  return `<sdd-delegation-matrix>\n- sdd-init -> ${primarySddRole('init')} (+${supportSddRoles('init')}, if openspec/ missing); sdd-explore -> ${primarySddRole('explore')} (+${supportSddRoles('explore')})\n- sdd-propose/sdd-spec/sdd-design -> ${primarySddRole('proposal')}; sdd-clarify -> ${primarySddRole('clarify')}; sdd-tasks -> ${primarySddRole('tasks')} (fallback: ${alternateSddRoles('tasks')})\n- plan-reviewer -> ${primarySddRole('plan-review')}; sdd-apply -> ${primarySddRole('apply')} (fallback: ${alternateSddRoles('apply')}); sdd-verify -> ${primarySddRole('verify')} (persistence: ${persistenceSddRole('verify')}); sdd-archive -> ${primarySddRole('archive')}\n</sdd-delegation-matrix>`;
+  return `<sdd-delegation-matrix>\n- sdd-init -> ${primarySddRole('init')} (+${supportSddRoles('init')}, if openspec/ missing); sdd-explore -> ${primarySddRole('explore')} (+${supportSddRoles('explore')})\n- sdd-propose/sdd-spec/sdd-design -> ${primarySddRole('proposal')}; sdd-clarify -> ${primarySddRole('clarify')}; sdd-tasks -> ${primarySddRole('tasks')} (fallback: ${alternateSddRoles('tasks')} ${alternateSddCondition('tasks')})\n- plan-reviewer -> ${primarySddRole('plan-review')}; sdd-apply -> ${primarySddRole('apply')} (fallback: ${alternateSddRoles('apply')}); sdd-verify -> ${primarySddRole('verify')} (persistence: ${persistenceSddRole('verify')}); sdd-archive -> ${primarySddRole('archive')}\n</sdd-delegation-matrix>`;
 }
 
 function specialistSections({
@@ -349,9 +355,10 @@ For {{role.explorer}}/{{role.librarian}}, ask narrow fact-finding questions for 
 - Experimental background \`{{backgroundDelegationTool}}\` is allowed only for {{role.explorer}} and {{role.librarian}} for asynchronous delegation.
 - {{role.oracle}}, {{role.designer}}, {{role.quick}}, and {{role.deep}} always use normal synchronous \`{{delegationTool}}\` execution.
 - When using background \`{{delegationTool}}\`, treat it as conditional and non-portable: if the host does not expose the experimental path, fall back to normal synchronous \`{{delegationTool}}\`.
-- Use \`{{backgroundStatusTool}}\` to wait, poll, and collect background task results before synthesizing or reporting completion.
-- If a result is empty, contradictory, or low-confidence, retry once with a materially sharper prompt; then escalate with evidence via \`{{userQuestionTool}}\`.
-- If a named subagent hits capacity, retry that same role up to 3 attempts.\n- Never switch to \`default\`, \`worker\`, or any other role.\n- After 3 failures, stay on the same role; if a same-role model override exists, use it. Otherwise report a capacity blocker.\n- Write-capable dispatches must include task instructions and handoff retrieval instructions when a root-owned handoff summary exists, so implementers can recover context without rediscovering settled scope.
+- Use \`{{backgroundStatusTool}}\` to wait, poll, and collect: treat \`{{lifecycleNonterminalState}}\` as in progress and probe the same session via \`{{lifecycleSameSessionProbe}}\`; no cancel/close/retry/reroute before \`{{lifecycleTerminalState}}\`, an explicit user deadline, user cancellation, or a superseding request.
+- Terminal result-quality and required-artifact checks share one sharpened retry; nonterminal probes use none.
+- Capacity is separate: retry the named role up to 3 times; never switch to \`default\`, \`worker\`, or another role; then use a same-role model override or report a blocker.
+- Write-capable dispatches must include task instructions and handoff retrieval instructions when a root-owned handoff summary exists, so implementers can recover context without rediscovering settled scope.
 - Never tell sub-agents to discard working-tree changes.
 </dispatch>
 
@@ -377,7 +384,6 @@ Hard gates:
 - Group consecutive ready SDD tasks for the same execution agent into one dispatch when dependencies, scope, and verification can be handled together. Keep per-task tracking and evidence; do not split a compatible {{role.designer}}/{{role.quick}}/{{role.deep}} run into one delegation per checkbox.
 
 SDD dispatch envelope must include: skill name, persistence mode, pipeline type, change name, project name, needed prior artifact context, verification expectation, and return envelope.
-After each phase, verify the sub-agent reported the openspec path and/or thoth-mem topic_key. Retry once if missing.
 
 Artifact governance handoff:
 - After \`sdd-tasks\`, you may surface report-only artifact governance findings before execution preparation starts.
@@ -710,6 +716,18 @@ function renderRoleText(
     )
     .replaceAll('{{userQuestionTool}}', dialect.tools.userQuestionTool)
     .replaceAll('{{progressTool}}', dialect.tools.progressTool)
+    .replaceAll(
+      '{{lifecycleTerminalState}}',
+      dialect.tools.lifecycle.terminalState,
+    )
+    .replaceAll(
+      '{{lifecycleNonterminalState}}',
+      dialect.tools.lifecycle.nonterminalState,
+    )
+    .replaceAll(
+      '{{lifecycleSameSessionProbe}}',
+      dialect.tools.lifecycle.sameSessionProbe,
+    )
     .replaceAll('{{dispatch.task}}', dialect.dispatchLabel('task'))
     .replaceAll(
       '{{dispatch.synchronous-task-only}}',

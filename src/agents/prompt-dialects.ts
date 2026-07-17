@@ -6,6 +6,13 @@ import type { HarnessCapabilities, HarnessId } from '../harness/types';
 
 export type AgentPromptRole = AgentRoleName;
 
+export interface LifecycleNomenclature {
+  terminalState: string;
+  nonterminalState: string;
+  sameSessionProbe: string;
+  enforcement: 'runtime-supported' | 'instruction-only' | 'unknown';
+}
+
 export interface ToolNomenclature {
   delegationTool: string;
   backgroundDelegationTool?: string;
@@ -13,6 +20,7 @@ export interface ToolNomenclature {
   userQuestionTool: string;
   progressTool: string;
   hostStatusSurface?: string;
+  lifecycle: LifecycleNomenclature;
   roleReference(role: AgentPromptRole): string;
 }
 
@@ -101,6 +109,12 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
     userQuestionTool: 'question',
     progressTool: 'todowrite',
     hostStatusSurface: 'task_status',
+    lifecycle: {
+      terminalState: 'terminal task_status result',
+      nonterminalState: 'nonterminal task_status result',
+      sameSessionProbe: 'task_status on the same task session',
+      enforcement: 'runtime-supported',
+    },
     roleReference: (role) => `@${role}`,
   },
   capabilities: supportedCapabilityProfile(OPENCODE_CAPABILITIES),
@@ -128,6 +142,13 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
     userQuestionTool: 'request_user_input',
     progressTool: 'functions.update_plan',
     hostStatusSurface: 'multi_agent_v1.wait_agent',
+    lifecycle: {
+      terminalState: 'terminal completion or failure',
+      nonterminalState: 'quiet or nonterminal wait/status result',
+      sameSessionProbe:
+        'multi_agent_v1.wait_agent on the same subagent session',
+      enforcement: 'instruction-only',
+    },
     roleReference: (role) => `${role} role agent`,
   },
   capabilities: {
@@ -171,6 +192,12 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
     userQuestionTool: 'AskUserQuestion',
     progressTool: 'TodoWrite',
     hostStatusSurface: 'TodoWrite',
+    lifecycle: {
+      terminalState: 'terminal TaskOutput result',
+      nonterminalState: 'nonterminal TaskOutput result',
+      sameSessionProbe: 'TaskOutput on the same task session',
+      enforcement: 'runtime-supported',
+    },
     roleReference: (role) =>
       role === 'orchestrator'
         ? 'the main-thread orchestrator'

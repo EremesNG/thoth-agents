@@ -107,6 +107,25 @@ describe('prompt dialects', () => {
     ).toContain('diagnostic-only');
   });
 
+  test('models portable lifecycle status and same-session probe terminology', () => {
+    expect(CODEX_PROMPT_DIALECT.tools.lifecycle).toEqual({
+      terminalState: 'terminal completion or failure',
+      nonterminalState: 'quiet or nonterminal wait/status result',
+      sameSessionProbe:
+        'multi_agent_v1.wait_agent on the same subagent session',
+      enforcement: 'instruction-only',
+    });
+    expect(OPENCODE_PROMPT_DIALECT.tools.lifecycle).toEqual({
+      terminalState: 'terminal task_status result',
+      nonterminalState: 'nonterminal task_status result',
+      sameSessionProbe: 'task_status on the same task session',
+      enforcement: 'runtime-supported',
+    });
+    expect(
+      JSON.stringify(OPENCODE_PROMPT_DIALECT.tools.lifecycle),
+    ).not.toContain('multi_agent_v1');
+  });
+
   test('renders Claude Code-native tool and role wording as a first-class harness', () => {
     expect(CLAUDE_CODE_PROMPT_DIALECT.harness).toBe('claude');
     expect(CLAUDE_CODE_PROMPT_DIALECT.tools.delegationTool).toBe('Task');

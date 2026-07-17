@@ -36,6 +36,7 @@ export interface SddPhaseContract {
   condition?: string;
   defaultAgentRole?: AgentRoleName;
   alternateAgentRoles?: AgentRoleName[];
+  alternateAgentCondition?: string;
   supportingAgentRoles?: AgentRoleName[];
   persistenceAgentRole?: AgentRoleName;
   delegationReason?: string;
@@ -183,6 +184,7 @@ export const SDD_PHASES = [
     artifactSkill: 'sdd-tasks',
     defaultAgentRole: 'quick',
     alternateAgentRoles: ['deep'],
+    alternateAgentCondition: 'Only when the task plan is complex.',
     delegationReason:
       'Mechanical conversion of settled design into dependency-ordered execution tasks.',
   },

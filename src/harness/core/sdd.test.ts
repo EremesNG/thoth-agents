@@ -204,6 +204,14 @@ describe('SDD workflow contract', () => {
     });
   });
 
+  test('routes sdd-tasks to deep only when the task plan is complex', () => {
+    expect(getSddPhase('tasks')).toMatchObject({
+      defaultAgentRole: 'quick',
+      alternateAgentRoles: ['deep'],
+      alternateAgentCondition: 'Only when the task plan is complex.',
+    });
+  });
+
   test('allows apply only after review approval and implementation confirmation', () => {
     expect(
       canEnterSddPhase({

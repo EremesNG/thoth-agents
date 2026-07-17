@@ -431,13 +431,7 @@ describe('Codex adapter', () => {
     const quick = agentContent('quick');
 
     expect(rootInstructions).toContain(
-      'After receiving a delegated subagent response, close that subagent session unless you will retry or intentionally keep using that exact same session',
-    );
-    expect(rootInstructions).toContain(
-      'explorer and librarian sessions must always be closed immediately after their response',
-    );
-    expect(rootInstructions).toContain(
-      'retry sessions must be closed after the retry result',
+      'After consuming a terminal subagent result, close its session unless retry or same-session reuse is needed; close explorer, librarian, and retry sessions then.',
     );
     expect(rootInstructions).toContain('ambient Codex root session');
     expect(explorer).not.toContain('close that subagent session');
@@ -546,6 +540,29 @@ describe('Codex adapter', () => {
     );
     expect(rootInstructions).toContain(
       '`multi_agent_v1.close_agent` after completion',
+    );
+  });
+
+  test('renders same-session lifecycle guards without claiming runtime enforcement', () => {
+    const rootInstructions = renderCodexRootInstructions();
+
+    expect(rootInstructions).toContain(
+      'as in progress and probe the same session via',
+    );
+    expect(rootInstructions).toContain(
+      '`multi_agent_v1.wait_agent on the same subagent session`',
+    );
+    expect(rootInstructions).toContain(
+      'no cancel/close/retry/reroute before `terminal completion or failure`',
+    );
+    expect(rootInstructions).toContain(
+      'Terminal result-quality and required-artifact checks share one sharpened retry; nonterminal probes use none.',
+    );
+    expect(rootInstructions).toContain(
+      'Codex lifecycle enforcement is instruction-only when terminal status is unavailable; do not invent payload fields or numeric wait, poll, or timeout rules.',
+    );
+    expect(rootInstructions).not.toMatch(
+      /wait_agent[^.\n]*\d+\s*(?:ms|seconds?|minutes?)/i,
     );
   });
 

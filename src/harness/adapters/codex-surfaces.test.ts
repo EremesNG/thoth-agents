@@ -243,6 +243,28 @@ describe('Codex surface validation', () => {
     }
   });
 
+  test('records Codex lifecycle enforcement limits as instruction-only', () => {
+    const surface = CODEX_SURFACES.find(
+      (candidate) => candidate.id === 'programmatic-delegation-runtime',
+    );
+
+    expect(surface).toMatchObject({
+      status: 'unsupported',
+      fallback: 'instruction-only',
+    });
+    expect(surface?.fields).toEqual(
+      expect.arrayContaining([
+        'terminal-state detection',
+        'same-session status probing',
+        'result-quality retry accounting',
+        'automatic subagent session close',
+      ]),
+    );
+    expect(surface?.summary).toContain('terminal-state detection');
+    expect(surface?.summary).toContain('retry accounting');
+    expect(surface?.summary).toContain('instruction-only');
+  });
+
   test('blocks unknown or missing surfaces as diagnostic-only', () => {
     for (const id of ['inline-hooks', 'not-registered']) {
       const result = assertCodexSurfaceCanGenerate(id);

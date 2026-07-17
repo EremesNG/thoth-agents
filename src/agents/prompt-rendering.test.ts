@@ -279,7 +279,7 @@ describe('semantic prompt section rendering', () => {
       'Choose direct action, delegation, parallelization, or review by net quality, speed, cost, and reliability.',
     );
     expect(prompt).toContain(
-      'If a named subagent hits capacity, retry that same role up to 3 attempts.',
+      'Capacity is separate: retry the named role up to 3 times',
     );
     expect(prompt).toContain('Plan gate: after tasks, ask with `question`');
     expect(prompt).toContain('<sdd-delegation-matrix>');
@@ -822,6 +822,41 @@ describe('semantic prompt section rendering', () => {
     expect(prompts.designer).toContain('visual verification');
     expect(prompts.quick).toContain('fast bounded implementation');
     expect(prompts.deep).toContain('Do not skip verification');
+  });
+
+  test('renders terminal-aware lifecycle and retry policy without Codex wording leaking into OpenCode', () => {
+    const openCode = rolePrompt('orchestrator', OPENCODE_PROMPT_DIALECT);
+    const codex = renderCodexRootInstructions();
+
+    for (const prompt of [openCode, codex]) {
+      expect(prompt).toContain('as in progress and probe the same session via');
+      expect(prompt).toContain('no cancel/close/retry/reroute before');
+      expect(prompt).toContain(
+        'an explicit user deadline, user cancellation, or a superseding request',
+      );
+      expect(prompt).toContain(
+        'Terminal result-quality and required-artifact checks share one sharpened retry; nonterminal probes use none.',
+      );
+      expect(prompt).toContain(
+        'Capacity is separate: retry the named role up to 3 times',
+      );
+      expect(prompt).toContain(
+        'never switch to `default`, `worker`, or another role',
+      );
+      expect(prompt).toMatch(
+        /deep(?: subagent)? only when the task plan is complex/,
+      );
+      expect(prompt).not.toContain(
+        'deep as recovery for silence, capacity, missing artifacts, or invalid results',
+      );
+    }
+
+    expect(codex).toContain(
+      'multi_agent_v1.wait_agent on the same subagent session',
+    );
+    expect(openCode).toContain('task_status on the same task session');
+    expect(openCode).not.toContain('multi_agent_v1.wait_agent');
+    expect(openCode).not.toContain('same subagent session');
   });
 
   test('composeAgentPrompt keeps generated model-family guidance before user append text and replacement isolated', () => {

@@ -292,13 +292,16 @@ export const CODEX_SURFACES = [
       'task API',
       'background task sessions',
       'tmux lifecycle hooks',
+      'terminal-state detection',
+      'same-session status probing',
+      'result-quality retry accounting',
       'automatic subagent session close',
     ],
     diagnosticCode: 'codex.delegation.runtime.unsupported',
     summary:
-      'Codex subagents are user/instruction-triggered; no OpenCode plugin task API or automatic subagent session close parity is validated.',
+      'Codex subagents are user/instruction-triggered; terminal-state detection, same-session status probing, retry accounting, and automatic subagent session close remain instruction-only because no OpenCode plugin task API parity is validated.',
     evidence:
-      'Codex subagents docs describe manual spawning and agent threads, not this plugin runtime task API or a validated runtime close hook.',
+      'Codex subagent guidance describes manual spawning and agent threads, not a validated runtime binding for terminal status, retry accounting, status payloads, or automatic close.',
     fallback: 'instruction-only',
   },
   {

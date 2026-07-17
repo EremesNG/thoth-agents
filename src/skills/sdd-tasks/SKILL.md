@@ -47,19 +47,43 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
    - In accelerated pipeline, derive task structure directly from the proposal.
 3. If a task plan already exists, recover `sdd/{change-name}/tasks` with the
    same mode-aware retrieval rules before rewriting it.
-4. **Validate existing-file references**: For every task that modifies an existing file (not creates a new one), verify the file actually exists on disk before including it in the task list. If a referenced "existing" file is not found, flag it as a design defect in an `> ⚠️ Warning` block at the top of the tasks artifact, and omit the task or add a note.
-5. **Codebase discovery (required when design artifact is absent or lacks file paths)**:
-   Before generating tasks, actively explore the repository to gather the concrete data needed for accurate Verification blocks:
-    1. Read the project's build manifest or task runner config (e.g., `package.json`, `Makefile`, `Cargo.toml`, `.csproj`, `pyproject.toml`) to discover available commands for testing, building, linting, and type-checking. Use the exact commands the project defines in `Run:` fields — never invent commands that don't exist in the project.
-   2. Explore the directory structure of affected areas to confirm actual file paths and module layout.
-   3. Check for existing test files (e.g., `*.test.ts`, `*.spec.ts`) to reference in Verification commands.
-   4. Use the proposal's "Affected Areas" and "Approach" as navigation hints, not as authoritative file paths.
+4. **Reuse settled evidence before validating**: Reuse settled proposal, design, exploration, and handoff evidence first. Treat accepted scope, success
+   criteria, recorded assumptions, and surfaced `handoffHints` as preservation
+   constraints. Do not repeat broad discovery merely because the accelerated
+   pipeline has no design artifact or because an available artifact omits a
+   path.
+5. **Run bounded validation**: Validate only the accepted affected areas, the
+   authoritative command source, task-referenced existing files, and neighboring relevant tests needed to make the plan executable.
+   - Identify the authoritative command source from project instructions and
+     existing conventions (for example `package.json`, `Makefile`, `Cargo.toml`,
+     `.csproj`, or `pyproject.toml`). Use only commands confirmed there in
+     `Run:` fields; never invent commands or imply that an unchecked command
+     exists.
+   - For every task that modifies an existing file, verify that path within the
+     accepted affected areas. Check neighboring relevant tests only where they
+     support a planned task or its Verification block. Never present an unverified path, command, or test reference as confirmed.
+   - Do not expand this pass into repository-wide discovery. If a required
+     reference remains unresolved, defer or omit the dependent task, add a
+     bounded discovery or coordination task when appropriate, and record the
+     unresolved reference once under `## Validation Gaps`.
+   - Emit one entry per unresolved reference using this exact structure:
 
-   This exploration is mandatory in accelerated pipeline. In full pipeline, prefer paths from the design artifact's `File Changes` section but still validate commands from `package.json`.
+     ```md
+     ## Validation Gaps
+
+     | Target | Checks performed | Impact / task disposition | Next action |
+     | --- | --- | --- | --- |
+     | {unverified path, command, or test} | {bounded checks completed} | {blocked, deferred, omitted, or follow-up task} | {specific discovery, owner, or decision needed} |
+     ```
+
+   - Escalate a gap that prevents an executable plan. If the accumulated gaps or
+     cross-area validation exceed bounded mechanical planning, recommend
+     escalation or complexity-based routing; do not use role changes as generic
+     failure recovery.
 6. Build a phased checklist for `openspec/changes/{change-name}/tasks.md`. In
    `thoth-mem` mode, produce the same canonical checklist content without
    creating the file.
-5. Use hierarchical numbering and Markdown checkboxes with per-task verification:
+7. Use hierarchical numbering and Markdown checkboxes with per-task verification:
 
     ```md
     # Tasks: {Change Title}
@@ -112,21 +136,21 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
      - `- [x]` completed
      - `- [-]` skipped — always append a reason: `- [-] 1.2 Task name — skipped: reason here`
 
-7. Reference concrete file paths and specific spec scenarios in the tasks.
-8. If the selected mode includes thoth-mem, persist the full checklist with:
+8. Reference concrete file paths and specific spec scenarios in the tasks.
+9. If the selected mode includes thoth-mem, persist the full checklist with:
 
    Use the memory tool binding for `mem_save` with the canonical SDD topic key
    and required metadata fields: `title`, `topic_key`, `type`, `project`,
    `scope`, and `content`.
 
-9. After `tasks.md` is generated, the workflow proceeds to an optional oracle
+10. After `tasks.md` is generated, the workflow proceeds to an optional oracle
    plan review via the `plan-reviewer` skill. This is managed outside the scope
    of this skill.
-10. The artifact governance validator may run **after** `sdd-tasks` as a
+11. The artifact governance validator may run **after** `sdd-tasks` as a
     report-only handoff. It captures placement guidance for the future
     pre-`sdd-apply` entrypoint, but it does not enforce execution or overlap
     with plan review.
-11. The orchestrator handles the `[OKAY]` / `[REJECT]` review loop and any
+12. The orchestrator handles the `[OKAY]` / `[REJECT]` review loop and any
      necessary fixes before proceeding to execution.
 
 ## Traceability, TDD Ordering, and Handoff Hints

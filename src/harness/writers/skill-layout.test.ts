@@ -247,6 +247,39 @@ describe('Codex skill layout writer', () => {
     }
   });
 
+  test('packaged sdd-tasks uses bounded validation and structured gaps', () => {
+    const skills = getSkillRegistry().filter(
+      (skill) => skill.name === 'sdd-tasks' || skill.kind === 'shared-support',
+    );
+
+    const result = renderCodexSkillLayout({
+      projectRoot: process.cwd(),
+      skills,
+      surfaceId: 'plugin-skills-directory',
+      outputMode: 'plugin-package',
+    });
+
+    expect(result.diagnostics).toEqual([]);
+
+    const content = codexSkillContent(result.artifacts, 'sdd-tasks');
+    const anchors = [
+      'Reuse settled proposal, design, exploration, and handoff evidence first',
+      'accepted affected areas',
+      'authoritative command source',
+      'task-referenced existing files',
+      'neighboring relevant tests',
+      'Never present an unverified path, command, or test reference as confirmed',
+      '## Validation Gaps',
+      '| Target | Checks performed | Impact / task disposition | Next action |',
+      'one entry per unresolved reference',
+      'escalation or complexity-based routing',
+    ];
+
+    for (const anchor of anchors) {
+      expect(content).toContain(anchor);
+    }
+  });
+
   test('Codex package retains multi-harness shared instruction anchors', () => {
     const sharedSupport = getSkillRegistry().filter(
       (skill) => skill.kind === 'shared-support',

@@ -39,8 +39,8 @@ surfaces and caveats.
 | Plugin-bundled skills | validated | `.codex-plugin/skills/{skill}/SKILL.md` referenced as `./skills/` | primary Codex delivery strategy; `.agents/skills` remains fallback/dev/repo-local mode |
 | Plugin-bundled hooks | validated | `.codex-plugin/hooks/hooks.json` referenced as `./hooks/hooks.json` | package content only; activation still requires `features.plugin_hooks` and trust review |
 | Lifecycle hooks | unknown | none | `codex.surface.hooks.unvalidated`; diagnostic-only until event schema and parity are validated |
-| Per-agent runtime permission maps | unsupported | none | `codex.permission.memory.enforcement_gap`; instruction-level governance only |
-| Programmatic delegation runtime | unsupported | none | `codex.delegation.runtime.unsupported`; instruction-level/manual subagent workflow only, including post-response subagent session close guidance |
+| Per-agent runtime permission maps | unsupported | none | `codex.permission.memory.enforcement_gap`; named installed-role selection and per-role enforcement are instruction-level because `collaboration.spawn_agent` has no role selector |
+| Programmatic delegation runtime | validated | `collaboration.spawn_agent`, `wait_agent`, `list_agents`, `send_message`, `followup_task`, and `interrupt_agent` | Generic task delegation is supported. `spawn_agent` accepts `task_name`, `message`, and optional `fork_turns`; wait timeout/silence is nonterminal and status inspection stays on the same task path. |
 | Parent session/project injection | unknown | none | `codex.context.parent_injection.unvalidated`; prompts must require explicit parent `session_id`/`project` |
 
 ## Codex Hook Support Matrix

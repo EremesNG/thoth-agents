@@ -53,6 +53,22 @@ Dry-run prints the same target/action plan, diagnostics, backup requirements,
 and TOML diff summary without writing config, Personal plugin source, backup, or
 temp files.
 
+## Delegation binding
+
+Generated root guidance uses the current direct Codex collaboration tools, not
+a compatibility namespace. `collaboration.spawn_agent` accepts `task_name`,
+`message`, and optional `fork_turns` (`none`, `all`, or a positive integer
+string). Role behavior is encoded in the task name and message because the
+surface has no named installed-role selector.
+
+`collaboration.wait_agent` waits for mailbox updates; timeout or silence is
+nonterminal. Inspect the same task path with `collaboration.list_agents` before
+retrying or rerouting. Use `collaboration.send_message` for delivery without a
+new turn, `collaboration.followup_task` to trigger an idle task, and
+`collaboration.interrupt_agent` only for explicit cancellation, deadline, or
+supersession. These direct tools must not be invoked from inside
+`functions.exec`.
+
 ## Trust review and limitations
 
 After install, restart Codex, then review Codex plugin and hook state:
@@ -66,7 +82,8 @@ Enabling `features.plugin_hooks` does not bypass hook trust review. Higher
 precedence Codex config (project, profile, CLI, system, or admin) can override
 user-level feature flags. Codex exposes the `request_user_input` tool in Default
 mode when `features.default_mode_request_user_input` is enabled; do not assume it
-is available in every collaboration mode. Role permissions, memory governance,
+is available in every collaboration mode. Named installed-role selection, role
+permissions, memory governance,
 provider-per-agent settings, and hook enforcement are instruction-level or
 user-managed unless Codex documents hard runtime controls for those surfaces.
 

@@ -22,8 +22,9 @@ surface that fits it best.
 OpenCode remains the stable default path: native plugin install, native `task`
 delegation, optional tmux monitoring, and generated config. Codex is supported
 through an explicit agent-pack and Personal plugin setup path, with documented
-trust review and instruction-level governance caveats where Codex does not
-provide the same hard runtime controls. Claude Code is a first-class path: a
+trust review and the current `collaboration.*` delegation surface. Codex can
+spawn and coordinate generic tasks programmatically, while named installed-role
+selection and per-role enforcement remain instruction-level. Claude Code is a first-class path: a
 single auto-discovered plugin package with native subagents, harness-enforced
 hooks, MCP, skills, and per-agent tool permissions.
 
@@ -55,7 +56,7 @@ hooks, MCP, skills, and per-agent tool permissions.
 | Harness     | Status                     | Setup path                                                                              | Notes                                                                                                                                                                                                                                                 |
 | ----------- | -------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | OpenCode    | Stable default             | `npx thoth-agents@latest install` or `npx thoth-agents@latest install --agent=opencode` | Native plugin config, native`task` delegation, optional tmux panes, OpenCode provider auth.                                                                                                                                                           |
-| Codex       | Supported explicit path    | `npx thoth-agents@latest install --agent=codex`                                         | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Requires`/plugins` and `/hooks` trust review. Some governance remains instruction-level.                                                                            |
+| Codex       | Supported explicit path    | `npx thoth-agents@latest install --agent=codex`                                         | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Uses the current `collaboration.*` tools for generic delegation; named-role selection and per-role enforcement remain instruction-level. Requires `/plugins` and `/hooks` trust review. |
 | Claude Code | Supported first-class path | `npx thoth-agents@latest install --agent=claude`                                        | Installs one Claude Code plugin: six specialist subagents (`Task(subagent_type: ...)`), an `orchestrator` agent activated as the main thread via `settings.json`, `.mcp.json`, and bundled skills. Role permissions are enforced by subagent `tools`. |
 
 OpenCode can load the plugin with:
@@ -127,6 +128,12 @@ Restart Codex and review plugin/hook trust:
 Codex install does not create a selectable orchestrator TOML, does not bypass
 trust review, and does not make role permissions or memory governance hard
 runtime guarantees unless Codex exposes those controls.
+
+Generated root guidance binds delegation to direct `collaboration.*` tools:
+`spawn_agent({ task_name, message, fork_turns? })`, mailbox-oriented
+`wait_agent`, live status through `list_agents`, non-triggering `send_message`,
+turn-triggering `followup_task`, and explicit `interrupt_agent`. A wait timeout
+or silence remains in progress; it is not a collected result body.
 
 ### Claude Code
 
@@ -363,7 +370,7 @@ supports that delivery surface.
 | ---------------- | ---------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Skills           | Requirements, SDD, review, execution workflows | Copied into the OpenCode skills directory when`--skills=yes` | Packaged as plugin-bundled skills for the Personal plugin source | Bundled in the plugin`skills/` directory                          |
 | MCPs             | `exa`, `context7`, `grep_app`, `thoth_mem`     | Registered by generated OpenCode plugin config               | Packaged/configured only on validated Codex surfaces             | Bundled in the plugin`.mcp.json` (`type: "http"` for URL servers) |
-| Delegation       | Seven-role specialist workflow                 | Native`task` tool                                            | Custom agents plus prompt/plugin guidance                        | Native`Task(subagent_type: ...)` over auto-discovered subagents   |
+| Delegation       | Seven-role specialist workflow                 | Native`task` tool                                            | Direct `collaboration.*` generic task delegation; role behavior carried by task name/message | Native`Task(subagent_type: ...)` over auto-discovered subagents   |
 | Blocking choices | Use a structured question surface              | OpenCode`question` tool                                      | `request_user_input` when enabled and available                  | `AskUserQuestion` tool                                            |
 
 See [docs/skills-and-mcps.md](docs/skills-and-mcps.md) for the detailed matrix.

@@ -25,7 +25,7 @@ skills, and MCP integration.
 | Harness | Binding | Caveat |
 | --- | --- | --- |
 | OpenCode | Native plugin config, native `task`, optional tmux panes, OpenCode skills directory | Stable default baseline. |
-| Codex | Ambient root guidance, six role TOMLs, Personal plugin source, plugin-bundled skills | Some governance and delegation behavior is instruction-level unless Codex exposes hard runtime controls. |
+| Codex | Ambient root guidance, six role TOMLs, Personal plugin source, plugin-bundled skills, direct `collaboration.*` delegation | Generic programmatic delegation is supported; named installed-role selection and per-role enforcement remain instruction-level. |
 | Claude Code | One `.claude-plugin/` package: six auto-discovered subagents, `.mcp.json`, bundled skills, SessionStart root-injection hook | First-class: role permissions enforced by subagent `tools`, hooks harness-run, native `Task(subagent_type: ...)` delegation. |
 
 Entry point: `npx thoth-agents@latest` opens the interactive multi-harness TUI in an interactive terminal and falls back to the OpenCode install path in CI, redirected shells, or `TERM=dumb`.
@@ -263,10 +263,14 @@ The workflow is shared; the runtime binding differs.
 
 | Concept | OpenCode | Codex |
 | --- | --- | --- |
-| Specialist dispatch | Native `task` tool creates child sessions. | Installed role subagents plus prompt/plugin guidance. |
-| Parallel discovery | Multiple independent `task` calls can be launched together and awaited. | Depends on the active Codex workflow; no OpenCode `task` parity is claimed. |
-| Background work | Experimental `task(background=true)` only for `explorer` and `librarian` when enabled. | Not claimed. |
+| Specialist dispatch | Native `task` tool creates child sessions. | Direct `collaboration.spawn_agent({ task_name, message, fork_turns? })`; role behavior is carried by task name/message because no named role selector exists. |
+| Parallel discovery | Multiple independent `task` calls can be launched together and awaited. | Multiple independent `collaboration.spawn_agent` calls; `fork_turns` is `none`, `all`, or a positive integer string. |
+| Waiting/status | `task_status` returns task state/results. | `collaboration.wait_agent` waits for mailbox updates; timeout/silence is nonterminal. Use `collaboration.list_agents` on the same task path for live status. |
+| Follow-up/control | Continue through the OpenCode task surface. | `send_message` does not trigger a turn; `followup_task` triggers an idle turn; `interrupt_agent` is reserved for explicit cancellation, deadline, or supersession. |
 | Blocking choices | OpenCode `question` tool. | `request_user_input` when enabled and available in Default mode. |
+
+Codex collaboration tools are direct tools and must not be called from inside
+`functions.exec`. No unavailable session-cleanup operation is assumed.
 
 Delegation should reduce repeated investigation:
 

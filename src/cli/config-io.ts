@@ -93,6 +93,53 @@ export function writeConfig(configPath: string, config: OpenCodeConfig): void {
 }
 
 export async function addPluginToOpenCodeConfig(): Promise<ConfigMergeResult> {
+  return updateOpenCodeMainConfig({ ensurePlugin: true });
+}
+
+export interface OpenCodeMainConfigUpdate {
+  ensurePlugin?: boolean;
+  disableDefaults?: boolean;
+}
+
+function mergeOpenCodeMainConfig(
+  config: OpenCodeConfig,
+  update: OpenCodeMainConfigUpdate,
+): OpenCodeConfig {
+  if (update.ensurePlugin) {
+    const plugins = Array.isArray(config.plugin) ? config.plugin : [];
+    config.plugin = [
+      ...plugins.filter(
+        (plugin) =>
+          plugin !== PACKAGE_NAME && !plugin.startsWith(`${PACKAGE_NAME}@`),
+      ),
+      `${PACKAGE_NAME}@latest`,
+    ];
+  }
+
+  if (update.disableDefaults) {
+    const agent =
+      config.agent && typeof config.agent === 'object'
+        ? { ...(config.agent as Record<string, unknown>) }
+        : {};
+    const explore =
+      agent.explore && typeof agent.explore === 'object'
+        ? { ...(agent.explore as Record<string, unknown>) }
+        : {};
+    const general =
+      agent.general && typeof agent.general === 'object'
+        ? { ...(agent.general as Record<string, unknown>) }
+        : {};
+    agent.explore = { ...explore, disable: true };
+    agent.general = { ...general, disable: true };
+    config.agent = agent;
+  }
+
+  return config;
+}
+
+export function updateOpenCodeMainConfig(
+  update: OpenCodeMainConfigUpdate,
+): ConfigMergeResult {
   const configPath = getExistingConfigPath();
 
   try {
@@ -114,19 +161,10 @@ export async function addPluginToOpenCodeConfig(): Promise<ConfigMergeResult> {
         error: `Failed to parse config: ${error}`,
       };
     }
-    const config = parsedConfig ?? {};
-    const plugins = config.plugin ?? [];
-
-    // Remove existing thoth-agents entries
-    const filteredPlugins = plugins.filter(
-      (p) => p !== PACKAGE_NAME && !p.startsWith(`${PACKAGE_NAME}@`),
+    writeConfig(
+      configPath,
+      mergeOpenCodeMainConfig(parsedConfig ?? {}, update),
     );
-
-    // Add fresh entry
-    filteredPlugins.push(`${PACKAGE_NAME}@latest`);
-    config.plugin = filteredPlugins;
-
-    writeConfig(configPath, config);
     return { success: true, configPath };
   } catch (err) {
     return {
@@ -174,34 +212,7 @@ export function writeLiteConfig(
 }
 
 export function disableDefaultAgents(): ConfigMergeResult {
-  const configPath = getExistingConfigPath();
-
-  try {
-    ensureOpenCodeConfigDir();
-    const { config: parsedConfig, error } = parseConfig(configPath);
-    if (error) {
-      return {
-        success: false,
-        configPath,
-        error: `Failed to parse config: ${error}`,
-      };
-    }
-    const config = parsedConfig ?? {};
-
-    const agent = (config.agent ?? {}) as Record<string, unknown>;
-    agent.explore = { disable: true };
-    agent.general = { disable: true };
-    config.agent = agent;
-
-    writeConfig(configPath, config);
-    return { success: true, configPath };
-  } catch (err) {
-    return {
-      success: false,
-      configPath,
-      error: `Failed to disable default agents: ${err}`,
-    };
-  }
+  return updateOpenCodeMainConfig({ disableDefaults: true });
 }
 
 export function canModifyOpenCodeConfig(): boolean {

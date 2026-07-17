@@ -15,6 +15,7 @@ import {
   parseConfig,
   parseConfigFile,
   stripJsonComments,
+  updateOpenCodeMainConfig,
   writeConfig,
   writeLiteConfig,
 } from './config-io';
@@ -150,6 +151,66 @@ describe('config-io', () => {
     const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
     expect(saved.agent.explore.disable).toBe(true);
     expect(saved.agent.general.disable).toBe(true);
+  });
+
+  test('updateOpenCodeMainConfig merges plugin and default-agent changes in one backup-preserving write', () => {
+    const configPath = join(tmpDir, 'opencode', 'opencode.json');
+    paths.ensureConfigDir();
+    const original = `${JSON.stringify(
+      {
+        plugin: ['user-plugin', 'thoth-agents@0.1.0'],
+        theme: 'user-owned',
+        agent: {
+          explore: { model: 'user/explorer', temperature: 0.2 },
+          general: { model: 'user/general', prompt: 'keep me' },
+          custom: { model: 'user/custom' },
+        },
+      },
+      null,
+      2,
+    )}\n`;
+    writeFileSync(configPath, original);
+
+    const result = updateOpenCodeMainConfig({
+      ensurePlugin: true,
+      disableDefaults: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(readFileSync(`${configPath}.bak`, 'utf8')).toBe(original);
+    expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual({
+      plugin: ['user-plugin', 'thoth-agents@latest'],
+      theme: 'user-owned',
+      agent: {
+        explore: {
+          model: 'user/explorer',
+          temperature: 0.2,
+          disable: true,
+        },
+        general: {
+          model: 'user/general',
+          prompt: 'keep me',
+          disable: true,
+        },
+        custom: { model: 'user/custom' },
+      },
+    });
+  });
+
+  test('updateOpenCodeMainConfig makes no write or backup when parsing fails', () => {
+    const configPath = join(tmpDir, 'opencode', 'opencode.json');
+    paths.ensureConfigDir();
+    writeFileSync(configPath, '{ malformed');
+
+    const result = updateOpenCodeMainConfig({
+      ensurePlugin: true,
+      disableDefaults: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(readFileSync(configPath, 'utf8')).toBe('{ malformed');
+    expect(existsSync(`${configPath}.bak`)).toBe(false);
+    expect(existsSync(`${configPath}.tmp`)).toBe(false);
   });
 
   test('detectCurrentConfig detects installed status', () => {

@@ -458,6 +458,60 @@ describe('interactive TUI', () => {
     );
   });
 
+  test('TUI blocked status renders diagnostic codes and target observations', async () => {
+    const blockedStatus: HarnessStatusReport = {
+      ...status('OpenCode managed health is blocked.'),
+      state: 'drift',
+      targets: [
+        {
+          kind: 'config',
+          label: 'thoth-agents config',
+          state: 'drift',
+          observed: 'preset: agents; roles: 7/7',
+        },
+        {
+          kind: 'skill',
+          label: 'Bundled skill: sdd-apply',
+          state: 'missing',
+          observed: 'managed bundled skill missing',
+        },
+      ],
+      diagnostics: [
+        {
+          severity: 'important',
+          code: 'opencode-roster-drift',
+          message: 'Managed OpenCode roster uses the legacy agents preset.',
+        },
+        {
+          severity: 'important',
+          code: 'opencode-bundled-skills-missing',
+          message: 'Bundled thoth-agents OpenCode skills are missing.',
+        },
+      ],
+    };
+    const { lastFrame, stdin } = render(
+      <App
+        operations={operations(undefined, { opencode: blockedStatus })}
+        exitOnQuit={false}
+      />,
+    );
+
+    await openStatus(stdin);
+
+    expect(lastFrame()).toContain(
+      'Thoth Agents Config: [drift] - preset: agents; roles: 7/7',
+    );
+    expect(lastFrame()).toContain(
+      'Bundled skill: sdd-apply: [missing] - managed bundled skill missing',
+    );
+    expect(lastFrame()).toContain(
+      '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
+    );
+    expect(lastFrame()).toContain(
+      '[important] [opencode-bundled-skills-missing] Bundled thoth-agents OpenCode skills are missing.',
+    );
+  });
+
   test('Manage Codex exposes actionable entries and navigates', async () => {
     const { lastFrame, stdin } = render(
       <App operations={operations()} exitOnQuit={false} />,
@@ -548,6 +602,145 @@ describe('interactive TUI', () => {
 
     expect(lastFrame()).toContain('Preview update');
     expect(lastFrame()).toContain('No writes until explicit apply.');
+  });
+
+  test('TUI blocked plan renders diagnostic codes and target observations', async () => {
+    const blockerTargets: OperationPlan['targets'] = [
+      {
+        kind: 'config',
+        label: 'thoth-agents config',
+        state: 'drift',
+        observed: 'preset: agents; roles: 7/7',
+      },
+      {
+        kind: 'skill',
+        label: 'Bundled skill: sdd-apply',
+        state: 'missing',
+        observed: 'managed bundled skill missing',
+      },
+    ];
+    const blockedPlan: OperationPlan = {
+      ...plan('update'),
+      canApply: false,
+      targets: blockerTargets,
+      blockerTargets,
+      warnings: [
+        {
+          severity: 'important',
+          code: 'opencode-roster-drift',
+          message: 'Managed OpenCode roster uses the legacy agents preset.',
+        },
+        {
+          severity: 'important',
+          code: 'opencode-bundled-skills-missing',
+          message: 'Bundled thoth-agents OpenCode skills are missing.',
+        },
+      ],
+    };
+    const ops = {
+      ...operations(),
+      plan: () => blockedPlan,
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openUpdatePreview(stdin);
+
+    expect(lastFrame()).toContain(
+      'thoth-agents config: [drift] - preset: agents; roles: 7/7',
+    );
+    expect(lastFrame()).toContain(
+      'Bundled skill: sdd-apply: [missing] - managed bundled skill missing',
+    );
+    expect(lastFrame()).toContain(
+      '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
+    );
+    expect(lastFrame()).toContain(
+      '[important] [opencode-bundled-skills-missing] Bundled thoth-agents OpenCode skills are missing.',
+    );
+  });
+
+  test('TUI blocker targets exclude missing optional recommended skills', async () => {
+    const managedBlocker: OperationPlan['targets'][number] = {
+      kind: 'config',
+      label: 'thoth-agents config',
+      state: 'drift',
+      observed: 'preset: agents; roles: 7/7',
+    };
+    const optionalRecommendation: OperationPlan['targets'][number] = {
+      kind: 'skill',
+      label: 'Playwright-CLI',
+      state: 'missing',
+      observed: 'recommended global skill missing',
+    };
+    const blockedPlan: OperationPlan = {
+      ...plan('update'),
+      canApply: false,
+      targets: [managedBlocker, optionalRecommendation],
+      blockerTargets: [managedBlocker],
+    };
+    const ops = {
+      ...operations(),
+      plan: () => blockedPlan,
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openUpdatePreview(stdin);
+
+    expect(lastFrame()).toContain('Blocker targets');
+    expect(lastFrame()).toContain(
+      'thoth-agents config: [drift] - preset: agents; roles: 7/7',
+    );
+    expect(lastFrame()).not.toContain('Playwright-CLI');
+    expect(lastFrame()).not.toContain('recommended global skill missing');
+  });
+
+  test('TUI failed apply renders result diagnostic codes and target observations', async () => {
+    const blockedResult: OperationApplyResult = {
+      harness: 'opencode',
+      action: 'update',
+      applied: false,
+      summary: 'OpenCode apply is blocked by managed health.',
+      changedTargets: [],
+      diagnosticTargets: [
+        {
+          kind: 'config',
+          label: 'thoth-agents config',
+          state: 'drift',
+          observed: 'preset: agents; roles: 7/7',
+        },
+      ],
+      backups: [],
+      warnings: [
+        {
+          severity: 'important',
+          code: 'opencode-roster-drift',
+          message: 'Managed OpenCode roster uses the legacy agents preset.',
+        },
+      ],
+      disclaimers: [],
+    };
+    const ops = {
+      ...operations(),
+      apply: () => blockedResult,
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openUpdatePreview(stdin);
+    await press(stdin, 'a');
+
+    expect(lastFrame()).toContain('Apply diagnostics');
+    expect(lastFrame()).toContain(
+      'thoth-agents config: [drift] - preset: agents; roles: 7/7',
+    );
+    expect(lastFrame()).toContain(
+      '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
+    );
   });
 
   test('TUI status refresh reads operation data again', async () => {

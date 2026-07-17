@@ -1,5 +1,10 @@
 import { Box, Text } from 'ink';
-import type { OperationApplyResult, OperationPlan } from '../../operations';
+import type {
+  ManagedTarget,
+  OperationApplyResult,
+  OperationPlan,
+  OperationWarning,
+} from '../../operations';
 import { theme } from '../theme';
 import { PathLine } from './PathLine';
 
@@ -9,11 +14,23 @@ interface PlanPreviewProps {
   result?: OperationApplyResult;
 }
 
+function targetText(target: ManagedTarget): string {
+  const label = target.label ?? target.path ?? target.kind;
+  const state = target.state ? `: [${target.state}]` : '';
+  const observed = target.observed ? ` - ${target.observed}` : '';
+  return `${label}${state}${observed}`;
+}
+
+function warningText(warning: OperationWarning): string {
+  return `[${warning.severity}]${warning.code ? ` [${warning.code}]` : ''} ${warning.message}`;
+}
+
 export function PlanPreview({
   plan,
   selectedAction,
   result,
 }: PlanPreviewProps) {
+  const blockerTargets = plan.blockerTargets ?? [];
   return (
     <Box flexDirection="column">
       <Text bold>{plan.title}</Text>
@@ -23,6 +40,18 @@ export function PlanPreview({
       </Text>
       <Text>Action: {plan.action}</Text>
       <Text>Can apply: {plan.canApply ? 'yes' : 'no'}</Text>
+      {!plan.canApply && blockerTargets.length > 0 ? (
+        <Box flexDirection="column">
+          <Text color={theme.warning}>Blocker targets</Text>
+          {blockerTargets.map((target, index) => (
+            <Text
+              key={`${target.label ?? target.path ?? target.kind}-${index}`}
+            >
+              - {targetText(target)}
+            </Text>
+          ))}
+        </Box>
+      ) : null}
       {plan.surfaces.length > 0 ? (
         <Text color={theme.dim}>Managed surfaces</Text>
       ) : null}
@@ -58,7 +87,7 @@ export function PlanPreview({
       ) : null}
       {plan.warnings.map((warning) => (
         <Text key={warning.code ?? warning.message} color={theme.warning}>
-          - [{warning.severity}] {warning.message}
+          - {warningText(warning)}
         </Text>
       ))}
       {plan.disclaimers.map((disclaimer) => (
@@ -77,9 +106,33 @@ export function PlanPreview({
       </Box>
       <Text color={theme.dim}>Enter selects. a applies. c cancels.</Text>
       {result ? (
-        <Text color={result.applied ? theme.ok : theme.warning}>
-          {result.summary}
-        </Text>
+        <Box flexDirection="column">
+          <Text color={result.applied ? theme.ok : theme.warning}>
+            {result.summary}
+          </Text>
+          {!result.applied &&
+          ((result.diagnosticTargets?.length ?? 0) > 0 ||
+            result.warnings.length > 0) ? (
+            <Box flexDirection="column">
+              <Text color={theme.warning}>Apply diagnostics</Text>
+              {result.diagnosticTargets?.map((target, index) => (
+                <Text
+                  key={`${target.label ?? target.path ?? target.kind}-${index}`}
+                >
+                  - {targetText(target)}
+                </Text>
+              ))}
+              {result.warnings.map((warning) => (
+                <Text
+                  key={warning.code ?? warning.message}
+                  color={theme.warning}
+                >
+                  - {warningText(warning)}
+                </Text>
+              ))}
+            </Box>
+          ) : null}
+        </Box>
       ) : null}
     </Box>
   );

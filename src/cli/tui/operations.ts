@@ -201,23 +201,33 @@ export function getOpenCodeModelRoles(): ModelRoleInput[] {
       ? parsed.config.agents
       : undefined;
   const presets =
-    parsed.config?.presets && typeof parsed.config.presets === 'object'
+    parsed.config?.presets &&
+    typeof parsed.config.presets === 'object' &&
+    !Array.isArray(parsed.config.presets)
       ? (parsed.config.presets as Record<string, unknown>)
       : {};
-  const openaiPreset =
-    presets.openai && typeof presets.openai === 'object'
-      ? presets.openai
+  const presetName =
+    typeof parsed.config?.preset === 'string'
+      ? parsed.config.preset
+      : undefined;
+  const selectedPreset =
+    presetName !== undefined ? presets[presetName] : undefined;
+  const activePreset =
+    selectedPreset &&
+    typeof selectedPreset === 'object' &&
+    !Array.isArray(selectedPreset)
+      ? selectedPreset
       : undefined;
 
   return ALL_AGENT_NAMES.map((role) => {
     const variant =
       readRoleField(agents, role, 'variant') ??
-      readRoleField(openaiPreset, role, 'variant');
+      readRoleField(activePreset, role, 'variant');
     return {
       role,
       model:
         readRoleField(agents, role, 'model') ??
-        readRoleField(openaiPreset, role, 'model') ??
+        readRoleField(activePreset, role, 'model') ??
         DEFAULT_MODELS[role] ??
         'openai/gpt-5.4',
       effort: variant

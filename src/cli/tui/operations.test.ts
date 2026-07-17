@@ -2,7 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { DEFAULT_MODELS } from '../../config';
 import { loadModelsDevCatalog } from '../model-catalog';
+
+const parseConfigMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../paths', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../paths')>()),
@@ -11,18 +14,7 @@ vi.mock('../paths', async (importOriginal) => ({
 
 vi.mock('../config-io', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../config-io')>()),
-  parseConfig: vi.fn(() => ({
-    config: {
-      agents: {
-        explorer: { model: 'openai/current-explorer', variant: 'high' },
-      },
-      presets: {
-        openai: {
-          deep: { model: 'openai/current-deep' },
-        },
-      },
-    },
-  })),
+  parseConfig: parseConfigMock,
 }));
 
 vi.mock('../model-catalog', () => ({
@@ -30,6 +22,10 @@ vi.mock('../model-catalog', () => ({
 }));
 
 const checkedAt = '2026-07-11T00:00:00.000Z';
+
+function useOpenCodeConfig(config: unknown): void {
+  parseConfigMock.mockReturnValue({ config });
+}
 
 function loadDeterministicModelCatalog() {
   vi.mocked(loadModelsDevCatalog).mockResolvedValue({
@@ -54,6 +50,17 @@ describe('TUI operations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     loadDeterministicModelCatalog();
+    useOpenCodeConfig({
+      preset: 'openai',
+      agents: {
+        explorer: { model: 'openai/current-explorer', variant: 'high' },
+      },
+      presets: {
+        openai: {
+          deep: { model: 'openai/current-deep' },
+        },
+      },
+    });
   });
 
   test('OpenCode model roles read the installed plugin config when present', async () => {
@@ -69,6 +76,132 @@ describe('TUI operations', () => {
     expect(roles).toContainEqual({
       role: 'deep',
       model: 'openai/current-deep',
+      effort: { kind: 'inherit' },
+    });
+  });
+
+  test('OpenCode model roles inherit from the selected preset with field-level root overrides', async () => {
+    useOpenCodeConfig({
+      preset: 'custom',
+      agents: {
+        explorer: { model: 'root/explorer' },
+        deep: { variant: 'root-deep-variant' },
+      },
+      presets: {
+        custom: {
+          explorer: {
+            model: 'custom/explorer',
+            variant: 'custom-explorer-variant',
+          },
+          deep: { model: 'custom/deep', variant: 'custom-deep-variant' },
+          librarian: {
+            model: 'custom/librarian',
+            variant: 'custom-librarian-variant',
+          },
+        },
+        openai: {
+          explorer: { model: 'wrong/explorer', variant: 'wrong-explorer' },
+          deep: { model: 'wrong/deep', variant: 'wrong-deep' },
+          librarian: { model: 'wrong/librarian', variant: 'wrong-librarian' },
+        },
+      },
+    });
+    const { getOpenCodeModelRoles } = await import('./operations');
+
+    const roles = getOpenCodeModelRoles();
+
+    expect(roles.find(({ role }) => role === 'explorer')).toEqual({
+      role: 'explorer',
+      model: 'root/explorer',
+      effort: { kind: 'effort', value: 'custom-explorer-variant' },
+    });
+    expect(roles.find(({ role }) => role === 'deep')).toEqual({
+      role: 'deep',
+      model: 'custom/deep',
+      effort: { kind: 'effort', value: 'root-deep-variant' },
+    });
+    expect(roles.find(({ role }) => role === 'librarian')).toEqual({
+      role: 'librarian',
+      model: 'custom/librarian',
+      effort: { kind: 'effort', value: 'custom-librarian-variant' },
+    });
+  });
+
+  test('OpenCode model roles treat an empty string as a literal selected preset key', async () => {
+    useOpenCodeConfig({
+      preset: '',
+      agents: {
+        explorer: { model: 'root/explorer' },
+      },
+      presets: {
+        '': {
+          explorer: { model: 'empty/explorer', variant: 'empty-variant' },
+          deep: { model: 'empty/deep', variant: 'empty-deep-variant' },
+        },
+        openai: {
+          explorer: { model: 'wrong/explorer', variant: 'wrong-explorer' },
+          deep: { model: 'wrong/deep', variant: 'wrong-deep' },
+        },
+      },
+    });
+    const { getOpenCodeModelRoles } = await import('./operations');
+
+    const roles = getOpenCodeModelRoles();
+
+    expect(roles.find(({ role }) => role === 'explorer')).toEqual({
+      role: 'explorer',
+      model: 'root/explorer',
+      effort: { kind: 'effort', value: 'empty-variant' },
+    });
+    expect(roles.find(({ role }) => role === 'deep')).toEqual({
+      role: 'deep',
+      model: 'empty/deep',
+      effort: { kind: 'effort', value: 'empty-deep-variant' },
+    });
+  });
+
+  test.each([
+    [
+      'absent',
+      {
+        agents: {
+          explorer: { model: 'root/explorer', variant: 'root-variant' },
+        },
+        presets: {
+          openai: {
+            deep: { model: 'wrong/deep', variant: 'wrong-deep-variant' },
+          },
+        },
+      },
+    ],
+    [
+      'missing',
+      {
+        preset: 'missing',
+        agents: {
+          explorer: { model: 'root/explorer', variant: 'root-variant' },
+        },
+        presets: {
+          openai: {
+            deep: { model: 'wrong/deep', variant: 'wrong-deep-variant' },
+          },
+        },
+      },
+    ],
+  ] as const)('OpenCode model roles with active preset %s use root overrides and defaults without openai fallback', async (_state, config) => {
+    useOpenCodeConfig(config);
+    const { getOpenCodeModelRoles } = await import('./operations');
+
+    const roles = getOpenCodeModelRoles();
+
+    expect(roles.find(({ role }) => role === 'explorer')).toEqual({
+      role: 'explorer',
+      model: 'root/explorer',
+      effort: { kind: 'effort', value: 'root-variant' },
+    });
+    expect(roles.find(({ role }) => role === 'deep')).toEqual({
+      role: 'deep',
+      model: DEFAULT_MODELS.deep ?? 'openai/gpt-5.4',
       effort: { kind: 'inherit' },
     });
   });

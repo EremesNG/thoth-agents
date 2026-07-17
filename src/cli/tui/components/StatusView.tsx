@@ -43,21 +43,27 @@ const categoryOrder = [
   'Other',
 ];
 
+function titleCasePart(part: string): string {
+  const normalized = part.toLowerCase();
+  switch (normalized) {
+    case 'sdd':
+      return 'SDD';
+    case 'cli':
+      return 'CLI';
+    case 'mcp':
+      return 'MCP';
+    case 'opencode':
+      return 'OpenCode';
+    default:
+      return `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`;
+  }
+}
+
 function titleCase(value: string, separator = ' '): string {
   return value
     .split(/[-_\s]+/)
     .filter(Boolean)
-    .map((part) =>
-      part.toLowerCase() === 'sdd'
-        ? 'SDD'
-        : part.toLowerCase() === 'cli'
-          ? 'CLI'
-          : part.toLowerCase() === 'mcp'
-            ? 'MCP'
-            : part.toLowerCase() === 'opencode'
-              ? 'OpenCode'
-              : `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`,
-    )
+    .map(titleCasePart)
     .join(separator);
 }
 
@@ -68,6 +74,7 @@ function compactPath(path: string): string {
 function categorizeTarget(target: ManagedTarget): CategorizedTarget {
   const path = target.path ? compactPath(target.path) : '';
   const label = target.label ?? target.kind;
+  const detail = target.state !== 'installed' ? target.observed : undefined;
   const agent = path.match(/thoth-agents-([a-z0-9_-]+)\.toml$/i);
   const skill = path.match(/skills\/([^/]+)\/SKILL\.md$/i);
 
@@ -76,14 +83,16 @@ function categorizeTarget(target: ManagedTarget): CategorizedTarget {
       category: 'Agents',
       label: titleCase(agent[1]),
       state: target.state,
+      detail,
     };
   }
 
   if (skill?.[1] || target.kind === 'skill') {
     return {
       category: 'Skills',
-      label: titleCase(skill?.[1] ?? label, '-'),
+      label: skill?.[1] ? titleCase(skill[1], '-') : label,
       state: target.state,
+      detail,
     };
   }
 
@@ -92,6 +101,7 @@ function categorizeTarget(target: ManagedTarget): CategorizedTarget {
       category: 'Marketplace',
       label: 'Marketplace',
       state: target.state,
+      detail,
     };
   }
 
@@ -105,6 +115,7 @@ function categorizeTarget(target: ManagedTarget): CategorizedTarget {
       category: 'Plugin/MCP',
       label: titleCase(label.replace(/^codex\s+/i, '')),
       state: target.state,
+      detail,
     };
   }
 
@@ -113,11 +124,17 @@ function categorizeTarget(target: ManagedTarget): CategorizedTarget {
       category: 'Root instructions',
       label: 'AGENTS.md',
       state: target.state,
+      detail,
     };
   }
 
   if (/config\.toml$/i.test(path) || target.kind === 'config') {
-    return { category: 'Config', label: titleCase(label), state: target.state };
+    return {
+      category: 'Config',
+      label: titleCase(label),
+      state: target.state,
+      detail,
+    };
   }
 
   if (target.kind === 'memory-state' || /model/i.test(label)) {
@@ -214,7 +231,8 @@ export function StatusView({ report }: StatusViewProps) {
           <Text color={theme.warning}>Warnings</Text>
           {warnings.map((warning) => (
             <Text key={warning.code ?? warning.message} color={theme.warning}>
-              - [{warning.severity}] {warning.message}
+              - [{warning.severity}]{warning.code ? ` [${warning.code}]` : ''}{' '}
+              {warning.message}
             </Text>
           ))}
           {hiddenWarnings > 0 ? (

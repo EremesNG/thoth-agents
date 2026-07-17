@@ -12,13 +12,12 @@ import {
   formatCodexSetupPlan,
 } from './codex-install';
 import {
-  addPluginToOpenCodeConfig,
   detectCurrentConfig,
-  disableDefaultAgents,
   generateLiteConfig,
   getOpenCodePath,
   getOpenCodeVersion,
   isOpenCodeInstalled,
+  updateOpenCodeMainConfig,
   writeLiteConfig,
 } from './config-manager';
 import {
@@ -147,7 +146,7 @@ async function runInstall(config: InstallConfig): Promise<number> {
 
   printHeader(isUpdate);
 
-  let totalSteps = 4;
+  let totalSteps = 3;
   if (config.installSkills) totalSteps += 1;
   if (config.installCustomSkills) totalSteps += 1;
 
@@ -160,19 +159,19 @@ async function runInstall(config: InstallConfig): Promise<number> {
     const { ok } = await checkOpenCodeInstalled();
     if (!ok) return 1;
   }
-  printStep(step++, totalSteps, 'Adding thoth-agents plugin...');
+  printStep(
+    step++,
+    totalSteps,
+    'Configuring the thoth-agents plugin and OpenCode default agents...',
+  );
   if (config.dryRun) {
-    printInfo('Dry run mode - skipping plugin installation');
+    printInfo('Dry run mode - skipping main config update');
   } else {
-    const pluginResult = await addPluginToOpenCodeConfig();
-    if (!handleStepResult(pluginResult, 'Plugin added')) return 1;
-  }
-  printStep(step++, totalSteps, 'Disabling OpenCode default agents...');
-  if (config.dryRun) {
-    printInfo('Dry run mode - skipping agent disabling');
-  } else {
-    const agentResult = disableDefaultAgents();
-    if (!handleStepResult(agentResult, 'Default agents disabled')) return 1;
+    const mainConfigResult = updateOpenCodeMainConfig({
+      ensurePlugin: true,
+      disableDefaults: true,
+    });
+    if (!handleStepResult(mainConfigResult, 'Main config updated')) return 1;
   }
 
   printStep(step++, totalSteps, 'Writing thoth-agents configuration...');

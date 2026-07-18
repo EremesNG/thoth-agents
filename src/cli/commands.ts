@@ -1,4 +1,8 @@
-import { ALL_AGENT_NAMES, DEFAULT_MODELS } from '../config';
+import {
+  ALL_AGENT_NAMES,
+  getDefaultOpenCodeModel,
+  getDefaultOpenCodeVariant,
+} from '../config';
 import { getHarnessAdapter } from '../harness/registry';
 import { CODEX_ROLE_NAMES } from './codex-install';
 import { install } from './install';
@@ -370,7 +374,8 @@ function defaultModelRoles(harness: OperationHarnessArg): ModelRoleInput[] {
 
   return ALL_AGENT_NAMES.map((role) => ({
     role,
-    model: DEFAULT_MODELS[role] ?? 'openai/gpt-5.4',
+    model: getDefaultOpenCodeModel(role),
+    effort: { kind: 'effort', value: getDefaultOpenCodeVariant(role) },
   }));
 }
 

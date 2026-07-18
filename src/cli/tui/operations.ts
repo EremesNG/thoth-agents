@@ -1,5 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { ALL_AGENT_NAMES, DEFAULT_MODELS } from '../../config';
+import {
+  ALL_AGENT_NAMES,
+  getDefaultOpenCodeModel,
+  getDefaultOpenCodeVariant,
+} from '../../config';
 import type {
   HarnessId,
   ProviderCapabilityEvidence,
@@ -89,7 +93,8 @@ const claudeCodeContext: ClaudeCodeOperationContext = {
 export const opencodeModelRoles: ModelRoleInput[] = ALL_AGENT_NAMES.map(
   (role) => ({
     role,
-    model: DEFAULT_MODELS[role] ?? 'openai/gpt-5.4',
+    model: getDefaultOpenCodeModel(role),
+    effort: { kind: 'effort', value: getDefaultOpenCodeVariant(role) },
   }),
 );
 
@@ -228,16 +233,20 @@ export function getOpenCodeModelRoles(): ModelRoleInput[] {
       : undefined;
 
   return ALL_AGENT_NAMES.map((role) => {
-    const variant =
+    const defaultModel = getDefaultOpenCodeModel(role);
+    const model =
+      readRoleField(agents, role, 'model') ??
+      readRoleField(activePreset, role, 'model') ??
+      defaultModel;
+    const configuredVariant =
       readRoleField(agents, role, 'variant') ??
       readRoleField(activePreset, role, 'variant');
+    const variant =
+      configuredVariant ??
+      (model === defaultModel ? getDefaultOpenCodeVariant(role) : undefined);
     return {
       role,
-      model:
-        readRoleField(agents, role, 'model') ??
-        readRoleField(activePreset, role, 'model') ??
-        DEFAULT_MODELS[role] ??
-        'openai/gpt-5.4',
+      model,
       effort: variant
         ? { kind: 'effort' as const, value: variant }
         : { kind: 'inherit' as const },

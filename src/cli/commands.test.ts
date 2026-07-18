@@ -441,6 +441,23 @@ describe('commands plain operation formatters', () => {
 });
 
 describe('explicit operation commands', () => {
+  test('variant-only OpenCode orchestrator input preserves the canonical default model', () => {
+    expect(
+      resolveCliModelRoles('opencode', [
+        {
+          role: 'orchestrator',
+          effort: { kind: 'effort', value: 'custom-variant' },
+        },
+      ]),
+    ).toEqual([
+      {
+        role: 'orchestrator',
+        model: 'openai/gpt-5.6-sol',
+        effort: { kind: 'effort', value: 'custom-variant' },
+      },
+    ]);
+  });
+
   test.each([
     ['codex', 'gpt-5.6-sol', 'openai/gpt-5.6-sol'],
     ['opencode', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-sol'],

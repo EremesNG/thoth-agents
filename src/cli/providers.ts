@@ -1,38 +1,38 @@
-import { CONFIRMED_OPENAI_SUBAGENT_PRESET } from '../config';
+import {
+  CONFIRMED_OPENAI_SUBAGENT_PRESET,
+  getDefaultOpenCodeModel,
+  getDefaultOpenCodeVariant,
+} from '../config';
 import type { InstallConfig } from './types';
 
 export const THOTH_AGENTS_CONFIG_SCHEMA_URL =
   'https://unpkg.com/thoth-agents@latest/thoth-agents.schema.json';
 
+type ModelMapping = { model: string; variant?: string };
+
+function buildOpenAIModelMappings(): Record<string, ModelMapping> {
+  const mappings: Record<string, ModelMapping> = {
+    orchestrator: {
+      model: getDefaultOpenCodeModel('orchestrator'),
+      variant: getDefaultOpenCodeVariant('orchestrator'),
+    },
+  };
+
+  for (const [name, preset] of Object.entries(
+    CONFIRMED_OPENAI_SUBAGENT_PRESET,
+  )) {
+    mappings[name] = {
+      model: `openai/${preset.model}`,
+      variant: preset.effort,
+    };
+  }
+
+  return mappings;
+}
+
 // Model mappings by provider - only 4 supported providers
 export const MODEL_MAPPINGS = {
-  openai: {
-    orchestrator: { model: 'openai/gpt-5.4' },
-    oracle: {
-      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.oracle.model}`,
-      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.oracle.effort,
-    },
-    librarian: {
-      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.librarian.model}`,
-      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.librarian.effort,
-    },
-    explorer: {
-      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.explorer.model}`,
-      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.explorer.effort,
-    },
-    designer: {
-      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.designer.model}`,
-      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.designer.effort,
-    },
-    quick: {
-      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.quick.model}`,
-      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.quick.effort,
-    },
-    deep: {
-      model: `openai/${CONFIRMED_OPENAI_SUBAGENT_PRESET.deep.model}`,
-      variant: CONFIRMED_OPENAI_SUBAGENT_PRESET.deep.effort,
-    },
-  },
+  openai: buildOpenAIModelMappings(),
   kimi: {
     orchestrator: { model: 'kimi-for-coding/k2p5' },
     oracle: { model: 'kimi-for-coding/k2p5', variant: 'high' },

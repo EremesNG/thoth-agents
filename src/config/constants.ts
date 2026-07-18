@@ -51,29 +51,64 @@ export const SUBAGENT_DELEGATION_RULES: Record<AgentName, readonly string[]> = {
   deep: [],
 };
 
-// Default models for each agent
-// orchestrator is undefined so its model is fully resolved at runtime via priority fallback
-export const DEFAULT_MODELS: Record<AgentName, string | undefined> = {
-  orchestrator: undefined,
-  oracle: 'openai/gpt-5.4',
-  librarian: 'openai/gpt-5.4-mini',
-  explorer: 'openai/gpt-5.4-mini',
-  designer: 'openai/gpt-5.4-mini',
-  quick: 'openai/gpt-5.4-mini',
-  deep: 'openai/gpt-5.4',
-};
-
 export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
-  oracle: { model: 'gpt-5.6-sol', effort: 'high' },
-  librarian: { model: 'gpt-5.6-luna', effort: 'low' },
   explorer: { model: 'gpt-5.6-luna', effort: 'low' },
-  designer: { model: 'gpt-5.6-terra', effort: 'high' },
-  quick: { model: 'gpt-5.6-luna', effort: 'medium' },
-  deep: { model: 'gpt-5.6-terra', effort: 'xhigh' },
+  librarian: { model: 'gpt-5.6-luna', effort: 'xhigh' },
+  oracle: { model: 'gpt-5.6-sol', effort: 'xhigh' },
+  designer: { model: 'gpt-5.6-sol', effort: 'medium' },
+  quick: { model: 'gpt-5.6-luna', effort: 'xhigh' },
+  deep: { model: 'gpt-5.6-sol', effort: 'medium' },
 } as const satisfies Record<
   Exclude<BuiltinAgentName, 'orchestrator'>,
   { model: string; effort: string }
 >;
+
+export const OPENCODE_OPENAI_ORCHESTRATOR_PRESET = {
+  model: 'gpt-5.6-sol',
+  effort: 'xhigh',
+} as const;
+
+// Default models for each agent. OpenCode requires provider-qualified IDs,
+// while the confirmed preset remains providerless for Codex.
+// orchestrator is undefined so its model is fully resolved at runtime via priority fallback
+function buildDefaultModels(): Record<AgentName, string | undefined> {
+  const defaults: Record<AgentName, string | undefined> = {
+    orchestrator: undefined,
+    explorer: undefined,
+    librarian: undefined,
+    oracle: undefined,
+    designer: undefined,
+    quick: undefined,
+    deep: undefined,
+  };
+
+  for (const [name, { model }] of Object.entries(
+    CONFIRMED_OPENAI_SUBAGENT_PRESET,
+  )) {
+    defaults[name] = `openai/${model}`;
+  }
+
+  return defaults;
+}
+
+export const DEFAULT_MODELS = buildDefaultModels();
+
+export function getDefaultOpenCodeModel(name: BuiltinAgentName): string {
+  const subagentModel = DEFAULT_MODELS[name];
+  if (subagentModel !== undefined) {
+    return subagentModel;
+  }
+
+  return `openai/${OPENCODE_OPENAI_ORCHESTRATOR_PRESET.model}`;
+}
+
+export function getDefaultOpenCodeVariant(name: BuiltinAgentName): string {
+  if (name === ORCHESTRATOR_NAME) {
+    return OPENCODE_OPENAI_ORCHESTRATOR_PRESET.effort;
+  }
+
+  return CONFIRMED_OPENAI_SUBAGENT_PRESET[name].effort;
+}
 
 // Polling configuration
 export const POLL_INTERVAL_MS = 500;

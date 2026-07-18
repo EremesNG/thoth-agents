@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { DEFAULT_MODELS } from '../../config';
 import type {
   ProviderCapabilityEvidence,
   ProviderEvidenceInput,
@@ -82,6 +81,19 @@ describe('TUI operations', () => {
       role: 'deep',
       model: 'openai/current-deep',
       effort: { kind: 'inherit' },
+    });
+  });
+
+  test('OpenCode model roles use canonical orchestrator defaults without config', async () => {
+    useOpenCodeConfig(undefined);
+    const { getOpenCodeModelRoles } = await import('./operations');
+
+    expect(
+      getOpenCodeModelRoles().find(({ role }) => role === 'orchestrator'),
+    ).toEqual({
+      role: 'orchestrator',
+      model: 'openai/gpt-5.6-sol',
+      effort: { kind: 'effort', value: 'xhigh' },
     });
   });
 
@@ -206,8 +218,8 @@ describe('TUI operations', () => {
     });
     expect(roles.find(({ role }) => role === 'deep')).toEqual({
       role: 'deep',
-      model: DEFAULT_MODELS.deep ?? 'openai/gpt-5.4',
-      effort: { kind: 'inherit' },
+      model: 'openai/gpt-5.6-sol',
+      effort: { kind: 'effort', value: 'medium' },
     });
   });
 
@@ -322,8 +334,8 @@ describe('TUI operations', () => {
       });
 
       expect(codex.find((role) => role.role === 'deep')).toMatchObject({
-        model: 'gpt-5.6-terra',
-        effort: { kind: 'effort', value: 'xhigh' },
+        model: 'gpt-5.6-sol',
+        effort: { kind: 'effort', value: 'medium' },
       });
       expect(claude.find((role) => role.role === 'deep')).toMatchObject({
         model: 'sonnet',

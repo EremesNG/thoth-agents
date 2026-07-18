@@ -1,9 +1,11 @@
 import type { AgentConfig as SDKAgentConfig } from '@opencode-ai/sdk/v2';
 import {
   type AgentOverrideConfig,
+  CONFIRMED_OPENAI_SUBAGENT_PRESET,
   DEFAULT_MODELS,
   getAgentOverride,
   loadAgentPrompt,
+  OPENCODE_OPENAI_ORCHESTRATOR_PRESET,
   type PluginConfig,
   SUBAGENT_NAMES,
 } from '../config';
@@ -282,11 +284,14 @@ function getPrimaryModelForPrompt(
 
 export type SubagentName = (typeof SUBAGENT_NAMES)[number];
 
+type CanonicalOpenAISubagentName =
+  keyof typeof CONFIRMED_OPENAI_SUBAGENT_PRESET;
+
 export function isSubagent(name: string): name is SubagentName {
   return (SUBAGENT_NAMES as readonly string[]).includes(name);
 }
 
-const SUBAGENT_FACTORIES: Record<SubagentName, AgentFactory> = {
+const SUBAGENT_FACTORIES: Record<CanonicalOpenAISubagentName, AgentFactory> = {
   explorer: createExplorerAgent,
   librarian: createLibrarianAgent,
   oracle: createOracleAgent,
@@ -297,7 +302,10 @@ const SUBAGENT_FACTORIES: Record<SubagentName, AgentFactory> = {
 
 export function createAgents(config?: PluginConfig): AgentDefinition[] {
   const protoSubAgents = (
-    Object.entries(SUBAGENT_FACTORIES) as [SubagentName, AgentFactory][]
+    Object.entries(SUBAGENT_FACTORIES) as [
+      CanonicalOpenAISubagentName,
+      AgentFactory,
+    ][]
   ).map(([name, factory]) => {
     const override = getAgentOverride(config, name);
     const prompts = loadAgentPrompt(name, config?.preset);
@@ -305,7 +313,9 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
       getPrimaryModelForPrompt(override?.model) ??
       (DEFAULT_MODELS[name] as string);
 
-    return factory(model, prompts.prompt, prompts.appendPrompt);
+    const agent = factory(model, prompts.prompt, prompts.appendPrompt);
+    agent.config.variant = CONFIRMED_OPENAI_SUBAGENT_PRESET[name].effort;
+    return agent;
   });
 
   const allSubAgents = protoSubAgents.map((agent) => {
@@ -321,10 +331,12 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
   const orchestratorOverride = getAgentOverride(config, 'orchestrator');
   const orchestratorPrompts = loadAgentPrompt('orchestrator', config?.preset);
   const orchestrator = createOrchestratorAgent(
-    orchestratorOverride?.model ?? DEFAULT_MODELS.orchestrator,
+    orchestratorOverride?.model ??
+      `openai/${OPENCODE_OPENAI_ORCHESTRATOR_PRESET.model}`,
     orchestratorPrompts.prompt,
     orchestratorPrompts.appendPrompt,
   );
+  orchestrator.config.variant = OPENCODE_OPENAI_ORCHESTRATOR_PRESET.effort;
 
   if (orchestratorOverride) {
     applyOverrides(orchestrator, orchestratorOverride);

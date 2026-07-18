@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { CONFIRMED_OPENAI_SUBAGENT_PRESET } from '../config';
 import { SUPPORTED_HARNESSES } from './registry';
 
 const PROVIDER_BOUNDARY_TARGETS = {
@@ -120,6 +121,20 @@ const BUNDLED_PROVIDER_RULES: Array<{
 ];
 
 describe('provider boundary', () => {
+  test('keeps the Codex deep lifecycle fixture aligned with canonical defaults', async () => {
+    const targets = await readTargets();
+    const fixture = targets.find(
+      ({ path }) => path === 'src/harness/__fixtures__/codex/agent-deep.toml',
+    );
+
+    expect(fixture?.content).toContain(
+      `model = "${CONFIRMED_OPENAI_SUBAGENT_PRESET.deep.model}"`,
+    );
+    expect(fixture?.content).toContain(
+      `model_reasoning_effort = "${CONFIRMED_OPENAI_SUBAGENT_PRESET.deep.effort}"`,
+    );
+  });
+
   test('reads the complete closed manifest and rejects deleted paths, bundled assets, and consumer protocols', async () => {
     const targets = await readTargets();
     expect(targets).toHaveLength(32);

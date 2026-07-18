@@ -110,12 +110,12 @@ describe('Codex install setup plan', () => {
         packageRoot: PACKAGE_ROOT,
       });
       const expected = {
-        oracle: { model: 'gpt-5.6-sol', effort: 'high' },
-        librarian: { model: 'gpt-5.6-luna', effort: 'low' },
+        oracle: { model: 'gpt-5.6-sol', effort: 'xhigh' },
+        librarian: { model: 'gpt-5.6-luna', effort: 'xhigh' },
         explorer: { model: 'gpt-5.6-luna', effort: 'low' },
-        designer: { model: 'gpt-5.6-terra', effort: 'high' },
-        quick: { model: 'gpt-5.6-luna', effort: 'medium' },
-        deep: { model: 'gpt-5.6-terra', effort: 'xhigh' },
+        designer: { model: 'gpt-5.6-sol', effort: 'medium' },
+        quick: { model: 'gpt-5.6-luna', effort: 'xhigh' },
+        deep: { model: 'gpt-5.6-sol', effort: 'medium' },
       } as const;
 
       for (const [role, defaults] of Object.entries(expected)) {
@@ -693,7 +693,7 @@ describe('Codex install setup plan', () => {
         .toBe('gpt-5.3-codex-spark');
       expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBe('high');
       const state = readManagedModelState(home);
-      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
+      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-sol');
       expect
         .soft(state.configuredModels?.['thoth-agents-deep.toml'])
         .toBe('gpt-5.3-codex-spark');
@@ -733,7 +733,7 @@ describe('Codex install setup plan', () => {
       );
 
       const before = readManagedModelState(home);
-      expect(before.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
+      expect(before.models['thoth-agents-deep.toml']).toBe('gpt-5.6-sol');
       expect(
         applyCodexManagedModelOverrides(
           {
@@ -752,7 +752,7 @@ describe('Codex install setup plan', () => {
       expect(roleModel(readFileSync(target, 'utf8'))).toBe(
         'gpt-5.3-codex-spark',
       );
-      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
+      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-sol');
       expect(state.configuredModels?.['thoth-agents-deep.toml']).toBe(
         'gpt-5.3-codex-spark',
       );
@@ -783,7 +783,7 @@ describe('Codex install setup plan', () => {
 
       const updated = readFileSync(target, 'utf8');
       expect(roleModel(updated)).toBe('user-custom-model');
-      expect(parseRoleTomlEffort(updated)).toBe('xhigh');
+      expect(parseRoleTomlEffort(updated)).toBe('medium');
       expect(updated).not.toContain('toggle');
       expect(updated).not.toContain('budget_tokens');
       expect(updated).toContain('sandbox_mode = "workspace-write"');

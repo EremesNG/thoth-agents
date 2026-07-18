@@ -829,6 +829,56 @@ describe('agent classification', () => {
 });
 
 describe('createAgents', () => {
+  test('applies canonical OpenAI models and effort variants to subagents by default', () => {
+    const configs = getAgentConfigs();
+
+    expect(
+      Object.fromEntries(
+        SUBAGENT_NAMES.map((name) => [
+          name,
+          { model: configs[name]?.model, variant: configs[name]?.variant },
+        ]),
+      ),
+    ).toEqual({
+      explorer: { model: 'openai/gpt-5.6-luna', variant: 'low' },
+      librarian: { model: 'openai/gpt-5.6-luna', variant: 'xhigh' },
+      oracle: { model: 'openai/gpt-5.6-sol', variant: 'xhigh' },
+      designer: { model: 'openai/gpt-5.6-sol', variant: 'medium' },
+      quick: { model: 'openai/gpt-5.6-luna', variant: 'xhigh' },
+      deep: { model: 'openai/gpt-5.6-sol', variant: 'medium' },
+    });
+  });
+
+  test('applies the OpenCode-only orchestrator model and variant by default', () => {
+    expect(getAgentConfigs().orchestrator).toMatchObject({
+      model: 'openai/gpt-5.6-sol',
+      variant: 'xhigh',
+    });
+  });
+
+  test('keeps explicit OpenCode model and variant overrides independent', () => {
+    const configs = getAgentConfigs({
+      agents: {
+        explorer: { model: 'custom/provider-model' },
+        librarian: { variant: 'custom-variant' },
+        orchestrator: { model: 'custom/orchestrator-model' },
+      },
+    });
+
+    expect(configs.explorer).toMatchObject({
+      model: 'custom/provider-model',
+      variant: 'low',
+    });
+    expect(configs.librarian).toMatchObject({
+      model: 'openai/gpt-5.6-luna',
+      variant: 'custom-variant',
+    });
+    expect(configs.orchestrator).toMatchObject({
+      model: 'custom/orchestrator-model',
+      variant: 'xhigh',
+    });
+  });
+
   test('creates the seven-agent roster', () => {
     const names = createAgents().map((agent) => agent.name);
 

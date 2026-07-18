@@ -84,12 +84,12 @@ function writePackageJson(
 describe('Codex adapter', () => {
   test('renders the confirmed model and effort defaults for every subagent', () => {
     const expected = {
-      oracle: { model: 'gpt-5.6-sol', effort: 'high' },
-      librarian: { model: 'gpt-5.6-luna', effort: 'low' },
+      oracle: { model: 'gpt-5.6-sol', effort: 'xhigh' },
+      librarian: { model: 'gpt-5.6-luna', effort: 'xhigh' },
       explorer: { model: 'gpt-5.6-luna', effort: 'low' },
-      designer: { model: 'gpt-5.6-terra', effort: 'high' },
-      quick: { model: 'gpt-5.6-luna', effort: 'medium' },
-      deep: { model: 'gpt-5.6-terra', effort: 'xhigh' },
+      designer: { model: 'gpt-5.6-sol', effort: 'medium' },
+      quick: { model: 'gpt-5.6-luna', effort: 'xhigh' },
+      deep: { model: 'gpt-5.6-sol', effort: 'medium' },
     } as const;
 
     for (const [role, defaults] of Object.entries(expected)) {
@@ -681,9 +681,9 @@ describe('Codex adapter', () => {
       oracle: 'gpt-5.6-sol',
       librarian: 'gpt-5.6-luna',
       explorer: 'gpt-5.6-luna',
-      designer: 'gpt-5.6-terra',
+      designer: 'gpt-5.6-sol',
       quick: 'gpt-5.6-luna',
-      deep: 'gpt-5.6-terra',
+      deep: 'gpt-5.6-sol',
     } as const;
 
     for (const [role, model] of Object.entries(expectedModels)) {
@@ -714,7 +714,7 @@ describe('Codex adapter', () => {
     expectTomlField(
       artifactContent('.codex/agents/thoth-agents-deep.toml', config),
       'model_reasoning_effort',
-      'xhigh',
+      'medium',
     );
   });
 
@@ -740,7 +740,7 @@ describe('Codex adapter', () => {
     expectTomlField(
       artifactContent('.codex/agents/thoth-agents-deep.toml', config),
       'model',
-      'gpt-5.6-terra',
+      'gpt-5.6-sol',
     );
 
     expectTomlFieldMissing(

@@ -1,8 +1,8 @@
 # thoth-agents Project Constitution
 
-Version: 1.0.0
+Version: 1.1.0
 Ratified: 2026-06-16
-Last-Amended: 2026-06-16
+Last-Amended: 2026-07-18
 
 Native thoth-agents governing principles. This artifact adopts the
 MECHANICS of versioned governance, not spec-kit's articles. Bump the
@@ -89,5 +89,6 @@ skipping the verify gate, violates this principle.
 <!-- Newest entry on top. Each entry: version | change type | principles
 touched | downstream gates/artifacts affected. -->
 
+- 1.1.0 | minor: record externalized thoth-mem provider boundary and expand neutral capability/persistence governance | Governed persistence, Multi-harness parity, Evidence-led verification | sdd-design and plan-reviewer consume live; no in-flight design.md/tasks.md require re-review.
 - 1.0.0 | initial ratification | all five principles introduced | establishes
   the Constitution Check gate consumed by sdd-design and plan-reviewer.

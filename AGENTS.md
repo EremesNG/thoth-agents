@@ -23,11 +23,7 @@ Keep `docs/agent/` documents on demand at startup.
 
 ## Preferred navigation tool
 
-Prefer the `webstorm-index` MCP tools for text and file search, reading, symbol
-navigation, and refactoring. This rule applies to the root agent and every
-subagent. If `webstorm-index` is unavailable, fails, lacks the needed capability,
-or returns incomplete results, use the least-invasive suitable alternative and
-return to `webstorm-index` when practical.
+Prefer `webstorm-index` MCP tools for all project file navigation tasks, including text search, file search, file reading, and refactoring. This rule applies to the root agent and every delegated sub-agent. If `webstorm-index` is unavailable, returns errors, lacks the required capability, produces incomplete results, or otherwise blocks progress, the agent may use other available tools as a fallback. When doing so, it should use the least invasive suitable tool and resume using `webstorm-index` once it becomes practical.
 
 ## High-level map
 
@@ -75,6 +71,7 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   `null` or `undefined`, so the question does not expire.
 - Some governance rules are instruction-only when a harness lacks enforcement;
   that limitation does not authorize ignoring them.
+- Do not consider backward compatibility. Ignore legacy code/ libraries.
 
 ## Change and verification flow
 

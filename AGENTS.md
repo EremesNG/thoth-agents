@@ -4,7 +4,7 @@
 
 **thoth-agents** is a multi-harness orchestration plugin for delegate-first
 workflows. It provides seven roles, native OpenCode delegation, Codex and Claude
-Code surfaces, `thoth-mem` integration, SDD skills, and a requirements interview.
+Code surfaces, provider-neutral memory boundaries, SDD skills, and a requirements interview.
 OpenCode is the stable default path; each harness has different guarantees.
 
 For task-specific knowledge, start with [`docs/agent/index.md`](docs/agent/index.md).
@@ -35,7 +35,8 @@ return to `webstorm-index` when practical.
 - `src/agents/`: roles, prompts, permissions, and model resolution.
 - `src/harness/`: contracts, adapters, and writers for each harness.
 - `src/cli/`: parser, commands, installation, configuration, and TUI.
-- `src/hooks/`, `src/mcp/`, `src/thoth/`, `src/tools/`: runtime integrations.
+- `src/hooks/`, `src/mcp/`, `src/tools/`: runtime integrations. Provider-owned
+  memory setup and lifecycle are external and are not bundled here.
 - `src/skills/`, `src/sdd/`: skills and SDD artifact governance.
 - `docs/agent/`: router and on-demand operational context.
 
@@ -68,8 +69,8 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   `oracle` reviews or diagnoses, `designer` owns UI/UX, `quick` makes mechanical
   changes, and `deep` handles logic with correctness risk.
 - All visual or UX work goes through `designer`, not ad hoc editing.
-- `thoth-mem` and `openspec/` are the governed memory and coordination surfaces;
-  do not improvise another persistence layer.
+- `openspec/` is the governed coordination surface. thoth-mem is an independent
+  provider; follow its installed guidance for memory and persistence mechanics.
 - Every `request_user_input` call MUST omit `autoResolutionMs` entirely, including
   `null` or `undefined`, so the question does not expire.
 - Some governance rules are instruction-only when a harness lacks enforcement;

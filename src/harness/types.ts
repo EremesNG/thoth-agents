@@ -24,6 +24,24 @@ export type HarnessCapabilityStatus =
   | 'instruction-only'
   | 'unknown';
 
+export type ProviderCapabilityState = 'supported' | 'degraded' | 'unsupported';
+
+export type ProviderCapabilityEvidenceSource = 'provider' | 'harness' | 'none';
+
+/**
+ * Ephemeral evidence supplied by a caller after a documented provider or
+ * harness surface has evaluated a provider-dependent outcome.
+ */
+export interface ProviderCapabilityEvidence {
+  state: ProviderCapabilityState;
+  source: ProviderCapabilityEvidenceSource;
+  basis: string[];
+}
+
+export interface ProviderEvidenceInput {
+  providerEvidence?: ProviderCapabilityEvidence;
+}
+
 export interface HarnessCapabilities {
   agentDefinitions: HarnessCapabilityStatus;
   delegatedExecution: HarnessCapabilityStatus;

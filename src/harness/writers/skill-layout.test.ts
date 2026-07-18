@@ -20,8 +20,8 @@ const SDD_SEMANTIC_ANCHORS: Record<string, string[]> = {
     'mandatory step-0 entry point',
     'scope faithfulness',
     'new root session',
-    'mem_session(action="start")',
-    'mem_save(kind="prompt")',
+    'installed provider guidance',
+    'resumable summary or checkpoint outcome',
     'artifact store policy choice',
     'Full SDD',
   ],
@@ -66,44 +66,6 @@ const SDD_SEMANTIC_ANCHORS: Record<string, string[]> = {
   ],
 };
 
-const HANDOFF_SKILL_ANCHORS: Record<string, string[]> = {
-  'thoth-mem-agents': [
-    'Session close and compaction',
-    'root-owned `mem_save(kind="session_summary")`',
-    'carry recovery instructions, never the raw handoff body',
-    'instruction-level due to runtime enforcement limits',
-    'mem_context',
-    'mem_project',
-    'mem_recall(mode="compact")',
-    'mem_recall(mode="context")',
-    'mem_get(id=...)',
-  ],
-  '.codex-plugin/skills/_shared/persistence-contract.md': [
-    'Delegated Handoffs',
-    '`mem_session(action="checkpoint"|"summary")`',
-    '`mem_save(kind="session_summary")`',
-    'Subagents recover context through bounded recall',
-    'Use HyDE/fused hybrid recall',
-    '`topic_key`, `type`, `time_from`',
-    '`mem_context(recall_query=...)` or bounded',
-    '`mem_project(action="graph"|"topics"|"topic")`',
-  ],
-  '.codex-plugin/skills/_shared/thoth-mem-convention.md': [
-    'Root-owned delegation handoffs',
-    'parent-scoped recovery instructions',
-    'deterministic SDD artifact',
-    'mem_recall(mode="compact", query="topic_key:sdd/{change-name}/state")',
-    'Use HyDE/fused hybrid recall',
-    '`mem_get(include_timeline=true)` when chronology matters',
-    '`mem_context(recall_query=...)` or bounded',
-    '`mem_project(action="graph"|"topics"|"topic")`',
-  ],
-  '.codex-plugin/skills/_shared/openspec-convention.md': [
-    'Delegated handoff summaries are not OpenSpec artifacts',
-    'canonical OpenSpec paths',
-  ],
-};
-
 function codexSkillContent(
   artifacts: ReturnType<typeof renderCodexSkillLayout>['artifacts'],
   skillName: string,
@@ -111,18 +73,6 @@ function codexSkillContent(
   const artifact = artifacts.find(
     (candidate) =>
       candidate.path === `.codex-plugin/skills/${skillName}/SKILL.md`,
-  );
-
-  expect(artifact).toBeDefined();
-  return String(artifact?.content);
-}
-
-function codexSkillArtifactContent(
-  artifacts: ReturnType<typeof renderCodexSkillLayout>['artifacts'],
-  artifactPath: string,
-): string {
-  const artifact = artifacts.find(
-    (candidate) => candidate.path === artifactPath,
   );
 
   expect(artifact).toBeDefined();
@@ -295,11 +245,16 @@ describe('Codex skill layout writer', () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  test('Codex package retains delegated handoff memory-governance anchors', () => {
-    const skills = getSkillRegistry().filter(
-      (skill) =>
-        skill.name === 'thoth-mem-agents' || skill.kind === 'shared-support',
-    );
+  test('Codex package omits provider-owned memory skill and protocol copies', () => {
+    const legacyProviderSkill: SkillRegistryEntry = {
+      name: 'thoth-mem-agents',
+      description: 'Legacy consumer-owned provider protocol',
+      allowedRoles: ['orchestrator'],
+      sourcePath: 'src/skills/thoth-mem-agents',
+      kind: 'skill',
+      purpose: 'memory',
+    };
+    const skills = [legacyProviderSkill, ...getSkillRegistry()];
 
     const result = renderCodexSkillLayout({
       projectRoot: process.cwd(),
@@ -308,17 +263,15 @@ describe('Codex skill layout writer', () => {
       outputMode: 'plugin-package',
     });
 
-    expect(result.diagnostics).toEqual([]);
+    const serialized = result.artifacts
+      .map((artifact) => `${artifact.path}\n${String(artifact.content)}`)
+      .join('\n');
 
-    for (const [target, anchors] of Object.entries(HANDOFF_SKILL_ANCHORS)) {
-      const content = target.startsWith('.codex-plugin/')
-        ? codexSkillArtifactContent(result.artifacts, target)
-        : codexSkillContent(result.artifacts, target);
-
-      for (const anchor of anchors) {
-        expect(content).toContain(anchor);
-      }
-    }
+    expect(serialized).not.toContain('thoth-mem-agents');
+    expect(serialized).not.toContain('Use thoth-mem through these MCP tools');
+    expect(result.artifacts.map((artifact) => artifact.path)).toContain(
+      '.codex-plugin/skills/sdd-apply/SKILL.md',
+    );
   });
 
   test('SDD Codex skill manifest matches the deterministic fixture', () => {

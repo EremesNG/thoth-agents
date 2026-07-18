@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEFAULT_MODELS } from '../../config';
+import type {
+  ProviderCapabilityEvidence,
+  ProviderEvidenceInput,
+} from '../../harness/types';
 import { loadModelsDevCatalog } from '../model-catalog';
+import type { HarnessStatusReport } from '../operations';
 
 const parseConfigMock = vi.hoisted(() => vi.fn());
 
@@ -361,5 +366,54 @@ describe('TUI operations', () => {
       'inherit',
       'anthropic/claude-sonnet-4-5',
     ]);
+  });
+
+  test.each([
+    {
+      label: 'supported provider evidence',
+      evidence: {
+        state: 'supported',
+        source: 'provider',
+        basis: ['Provider reported persistence and recovery availability.'],
+      },
+    },
+    {
+      label: 'degraded harness evidence',
+      evidence: {
+        state: 'degraded',
+        source: 'harness',
+        basis: ['Harness reported persistence but not recovery availability.'],
+      },
+    },
+  ] satisfies ReadonlyArray<{
+    label: string;
+    evidence: ProviderCapabilityEvidence;
+  }>)('forwards $label without changing consumer-managed state', async ({
+    evidence,
+  }) => {
+    const { defaultTuiOperations } = await import('./operations');
+    const statusWithEvidence = defaultTuiOperations.status as unknown as (
+      harness: 'opencode',
+      input: ProviderEvidenceInput,
+    ) => HarnessStatusReport;
+
+    const report = statusWithEvidence('opencode', {
+      providerEvidence: evidence,
+    });
+
+    expect(report.providerCapability).toEqual(evidence);
+    expect(report.state).not.toBe(evidence.state);
+  });
+
+  test('defaults omitted provider evidence to unsupported without failing consumer status', async () => {
+    const { defaultTuiOperations } = await import('./operations');
+    const report = defaultTuiOperations.status('opencode');
+
+    expect(report.providerCapability).toEqual({
+      state: 'unsupported',
+      source: 'none',
+      basis: [],
+    });
+    expect(report.state).not.toBe('unknown');
   });
 });

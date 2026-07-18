@@ -18,7 +18,6 @@ import {
   type AgentOverrideConfig,
   CONFIRMED_OPENAI_SUBAGENT_PRESET,
   DEFAULT_MODELS,
-  DEFAULT_THOTH_COMMAND,
   getAgentOverride,
   getPrimaryModelId,
   loadAgentPrompt,
@@ -83,22 +82,12 @@ function createCodexPluginPackageManifest(context: HarnessRenderContext): {
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Delegate-first OpenCode plugin with seven agents, thoth-mem persistence, and bundled SDD skills.',
+      'Delegate-first OpenCode plugin with seven agents and bundled SDD skills.',
   };
 }
 
 function stableJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
-}
-
-function codexCommandConfig(
-  commandParts: readonly string[],
-): Record<string, unknown> {
-  const [command = '', ...args] = commandParts;
-  return {
-    command,
-    ...(args.length > 0 ? { args } : {}),
-  };
 }
 
 function codexMcpConfig(config: McpConfig): Record<string, unknown> {
@@ -122,7 +111,6 @@ function createCodexBuiltinMcpServers(): Record<string, unknown> {
     exa: codexMcpConfig(exa),
     context7: { url: CONTEXT7_MCP_URL },
     grep_app: { url: GREP_APP_MCP_URL },
-    thoth_mem: codexCommandConfig(DEFAULT_THOTH_COMMAND),
   };
 }
 
@@ -217,15 +205,16 @@ function codexInternalHandoffGuidance(): string {
     '- Collaboration tools are direct tools and must not be called from inside `functions.exec`.',
     '- Delegate with `collaboration.spawn_agent` using `task_name`, `message`, and optional `fork_turns`; `fork_turns` must be `none`, `all`, or a positive integer string.',
     '- Role behavior is carried by `task_name` and `message`; named installed-role selection and hard role/profile enforcement are instruction-level because this surface has no role selector.',
-    '- Pass the self-contained delegated task instructions plus handoff retrieval instructions in `message`; do not embed the root-owned handoff summary body in `message`.',
-    '- When memory recovery is delegated, include parent `session_id`, project, permissions, and the recovery funnel `mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`.',
-    '- For that funnel, use `mem_recall` `limit` from 1 to 20; use `mem_get` with `kind="observation"|"prompt"`, `include_timeline=true` plus `before`/`after`, and `offset`/`max_length`; `mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`, `HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.',
+    '- Pass the self-contained delegated task instructions plus authorized handoff context in `message`; do not embed the root-owned handoff summary body in `message`.',
+    '- The delegated task instructions plus handoff retrieval instructions in `message` remain outcome-level authorized context; installed provider guidance owns any provider mechanics.',
+    '- Parent-scoped authorization must preserve the project, permissions, accepted scope, decisions, artifacts, and evidence anchors needed by the delegate.',
+    '- Installed provider guidance owns provider mechanics. Existing evidence relation labels such as `HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED` may be preserved as opaque evidence, never as a consumer-defined retrieval protocol.',
     '- Do not include the handoff body in `message`.',
     '- `collaboration.wait_agent` waits for mailbox updates. A `collaboration.wait_agent` timeout or silence is nonterminal and remains in progress, so inspect `collaboration.list_agents` with the same task path before deciding what to do next.',
     '- `collaboration.send_message` delivers a message without triggering a turn; `collaboration.followup_task` triggers a turn when an idle task must continue.',
     '- Use `collaboration.interrupt_agent` only for explicit cancellation, a deadline, or supersession.',
     '- Do not invent result payloads or numeric wait, poll, or timeout rules.',
-    '- Memory ownership, handoff recovery, permissions, and prompt-body exclusion are instruction-level unless the active Codex runtime documents stronger enforcement.',
+    '- Memory ownership, authorized handoff context, permissions, and prompt-body exclusion are instruction-level unless the active Codex runtime documents stronger enforcement.',
     '</codex-delegation-guidance>',
   ].join('\n');
 }
@@ -276,9 +265,9 @@ export function renderCodexRootInstructions(config?: PluginConfig): string {
     '- On each new root session, first resolve the stable root session identity from Codex request metadata in this order: `nodeRepl.requestMeta["x-codex-turn-metadata"].session_id`, then `nodeRepl.requestMeta["x-codex-turn-metadata"].thread_id`, then `nodeRepl.requestMeta.threadId`. Do not use `nodeRepl.requestMeta["x-codex-turn-metadata"].turn_id` as the stable session id.',
     '- `nodeRepl.requestMeta["x-codex-turn-metadata"].turn_id` is per-turn metadata only, not the stable root session id.',
     '- If `nodeRepl.requestMeta` is not yet visible and `tool_search` is available, load/discover the `node_repl` MCP tool before concluding metadata is unavailable.',
-    '- When thoth-mem tools are installed and stable root session identity is resolved, call mem_session(action="start") as step 0 before any other thoth-mem call, then save the real user prompt with mem_save(kind="prompt") before later delegation.',
-    '- If metadata tooling is unavailable, or the required fields are missing, disclose that memory bootstrap could not run and continue without claiming memory was saved.',
-    '- Before delegating after meaningful context changes, save or refresh the handoff body with root-owned mem_session(action="summary") or mem_save(kind="session_summary") when available; if unavailable, disclose that root-owned compaction could not be persisted.',
+    '- Request metadata may supply parent-scoped authorization evidence, but installed provider guidance remains authoritative for provider-dependent continuity.',
+    '- If metadata tooling or required fields are unavailable, report the affected provider capability as degraded or unsupported without claiming saved context.',
+    '- Before delegation after meaningful context changes, preserve a resumable summary or checkpoint outcome when evidenced; otherwise disclose that continuity could not be persisted.',
     '- Use the ambient Codex root session as the delegate-first root coordinator; do not generate or select an orchestrator TOML.',
     '- Delegate by invoking `collaboration.spawn_agent`; use role-prefixed task names and explicit role instructions for the installed Codex role agents: explorer, librarian, oracle, designer, quick, and deep.',
     '- Use packaged thoth-agents plugin capabilities through Codex plugin, skill, MCP, and hook review surfaces after enabling them with /plugins and /hooks.',
@@ -397,7 +386,8 @@ function renderConfigArtifacts(): {
         harness: 'codex',
         kind: 'mcp-config',
         path: '.codex/config.toml',
-        description: 'Codex MCP configuration snippet for thoth-mem.',
+        description:
+          'Codex MCP configuration snippet for unrelated integrations.',
         content: mcp.content,
       },
     ],

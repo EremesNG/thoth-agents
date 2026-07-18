@@ -273,13 +273,14 @@ export function buildClaudeCodeSetupPlan(
     diagnostics: [
       `Installed as a skills-directory plugin at ${targets.pluginRoot}; it auto-loads as thoth-agents@skills-dir on the next Claude Code session.`,
       'Restart Claude Code or run /reload-plugins to activate it; run /plugin (Installed tab) to confirm thoth-agents@skills-dir is loaded.',
-      'The plugin settings.json activates the orchestrator agent as the main thread, so the session starts in delegate-first mode and bootstraps thoth-mem on its first turn.',
+      'The plugin settings.json activates the orchestrator agent as the main thread, so the session starts in delegate-first mode.',
+      'Provider capability is owned by the external provider and is not established by this thoth-agents setup plan.',
     ],
     disclaimers: [
       'The orchestrator agent is the Claude Code main thread (plugin settings.json `agent` key); while enabled it replaces the default system prompt for every session in scope.',
-      'Every subagent inherits all main-thread tools, including MCP servers; read-only roles must not mutate the workspace per their operational contract (instruction-level, not tooling-enforced).',
+      'Read-only subagents must not mutate the workspace per their operational contract (instruction-level, not tooling-enforced).',
       'Subagent models accept only sonnet, opus, haiku, or inherit.',
-      'User-scope skills-directory plugins load hooks and MCP servers without extra approval; project-scope requires accepting the workspace trust dialog.',
+      'Project-scope skills-directory plugins require accepting the workspace trust dialog.',
     ],
   };
 }

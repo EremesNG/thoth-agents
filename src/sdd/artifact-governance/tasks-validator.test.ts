@@ -6,6 +6,12 @@ function createPlan(body: string): string {
 ${body}`;
 }
 
+const validPlan = createPlan(`## Phase 1: Foundation
+- [ ] 1.1 Add validator contract
+  **Verification**:
+  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
+  - Expected: Validator assertions pass`);
+
 describe('validateTasksArtifact', () => {
   test('accepts a valid tasks plan with recognized phases and verification blocks', () => {
     const result = validateTasksArtifact({
@@ -240,200 +246,134 @@ describe('validateTasksArtifact', () => {
     );
   });
 
-  test('reports unrecoverable persistence source gaps as errors without enabling blocking', () => {
+  test.each([
+    {
+      name: 'OpenSpec-only',
+      comparison: {
+        outcome: 'partial',
+        inspectableSource: 'openspec',
+        providerState: 'unsupported',
+        missingSources: ['thoth-mem'],
+        metadata: { comparedSources: ['openspec'] },
+      },
+      sources: {
+        prompt: null,
+        thothMem: null,
+        openspec: { source: 'openspec', content: validPlan },
+      },
+      code: 'persistence.hybrid-partial',
+    },
+    {
+      name: 'provider-only',
+      comparison: {
+        outcome: 'partial',
+        inspectableSource: 'thoth-mem',
+        providerState: 'supported',
+        missingSources: ['openspec'],
+        metadata: { comparedSources: ['thoth-mem'] },
+      },
+      sources: {
+        prompt: null,
+        thothMem: { source: 'thoth-mem', content: validPlan },
+        openspec: null,
+      },
+      code: 'persistence.hybrid-partial',
+    },
+    {
+      name: 'unavailable',
+      comparison: {
+        outcome: 'unavailable',
+        inspectableSource: null,
+        providerState: 'unsupported',
+        missingSources: ['thoth-mem', 'openspec'],
+        metadata: { comparedSources: [] },
+      },
+      sources: { prompt: null, thothMem: null, openspec: null },
+      code: 'persistence.source-unavailable',
+    },
+    {
+      name: 'diverged',
+      comparison: {
+        outcome: 'diverged',
+        inspectableSource: null,
+        providerState: 'supported',
+        missingSources: [],
+        metadata: { comparedSources: ['thoth-mem', 'openspec'] },
+      },
+      sources: {
+        prompt: null,
+        thothMem: { source: 'thoth-mem', content: validPlan },
+        openspec: {
+          source: 'openspec',
+          content: `${validPlan}\n<!-- drift -->`,
+        },
+      },
+      code: 'persistence.hybrid-diverged',
+    },
+  ])('reports $name hybrid persistence with canonical metadata and no repair semantics', ({
+    comparison,
+    sources,
+    code,
+  }) => {
     const result = validateTasksArtifact({
       mode: 'hybrid',
-      content: createPlan(`## Phase 1: Foundation
-- [ ] 1.1 Add validator contract
-  **Verification**:
-  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
-  - Expected: Validator assertions pass`),
+      content: validPlan,
+      persistence: { comparison, sources },
+    } as Parameters<typeof validateTasksArtifact>[0]);
+
+    expect(result.mode).toBe('hybrid');
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        code,
+        metadata: expect.objectContaining({
+          outcome: comparison.outcome,
+          inspectableSource: comparison.inspectableSource,
+          providerState: comparison.providerState,
+          missingSources: comparison.missingSources.join(','),
+        }),
+      }),
+    );
+    expect(result.findings.map((finding) => finding.code)).not.toEqual(
+      expect.arrayContaining([
+        'tasks.persistence-repairable-source-gap',
+        'tasks.persistence-hybrid-divergence',
+      ]),
+    );
+    expect(JSON.stringify(result.findings)).not.toMatch(
+      /recoverable|fallback|repair/i,
+    );
+  });
+
+  test('treats a matching hybrid as complete without honoring deprecated authority metadata', () => {
+    const comparison = {
+      outcome: 'complete',
+      inspectableSource: 'openspec',
+      providerState: 'supported',
+      missingSources: [],
+      metadata: { comparedSources: ['thoth-mem', 'openspec'] },
+    } as const;
+    const result = validateTasksArtifact({
+      mode: 'hybrid',
+      content: validPlan,
       persistence: {
         comparison: {
-          status: 'single-source',
+          ...comparison,
+          // Adversarial legacy metadata must not replace the outcome contract.
           sourceOfTruth: null,
-          recoverable: false,
-          missingSources: ['thoth-mem', 'openspec'],
-          metadata: {
-            comparedSources: [],
-          },
         },
         sources: {
           prompt: null,
-          thothMem: null,
-          openspec: null,
+          thothMem: { source: 'thoth-mem', content: validPlan },
+          openspec: { source: 'openspec', content: validPlan },
         },
       },
     } as Parameters<typeof validateTasksArtifact>[0]);
 
-    expect(result.valid).toBe(false);
-    expect(result.shouldBlock).toBe(false);
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: 'tasks.persistence-source-gap',
-        severity: 'error',
-      }),
-    );
-  });
-
-  test('keeps repairable hybrid divergence warning-first', () => {
-    const result = validateTasksArtifact({
-      mode: 'hybrid',
-      content: createPlan(`## Phase 1: Foundation
-- [ ] 1.1 Add validator contract
-  **Verification**:
-  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
-  - Expected: Validator assertions pass`),
-      persistence: {
-        comparison: {
-          status: 'diverged',
-          sourceOfTruth: 'thoth-mem',
-          recoverable: true,
-          missingSources: [],
-          metadata: {
-            comparedSources: ['thoth-mem', 'openspec'],
-            matched: false,
-          },
-        },
-        sources: {
-          prompt: null,
-          thothMem: { source: 'thoth-mem', content: 'task copy a' },
-          openspec: { source: 'openspec', content: 'task copy b' },
-        },
-      },
-    } as Parameters<typeof validateTasksArtifact>[0]);
-
+    expect(result.mode).toBe('hybrid');
     expect(result.valid).toBe(true);
-    expect(result.summary.warningCount).toBe(1);
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: 'tasks.persistence-hybrid-divergence',
-        severity: 'warning',
-      }),
-    );
-  });
-
-  test('keeps repairable single-source persistence gaps warning-first', () => {
-    const result = validateTasksArtifact({
-      mode: 'hybrid',
-      content: createPlan(`## Phase 1: Foundation
-- [ ] 1.1 Add validator contract
-  **Verification**:
-  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
-  - Expected: Validator assertions pass`),
-      persistence: {
-        comparison: {
-          status: 'single-source',
-          sourceOfTruth: 'openspec',
-          recoverable: true,
-          missingSources: ['thoth-mem'],
-          metadata: {
-            comparedSources: ['openspec'],
-          },
-        },
-        sources: {
-          prompt: null,
-          thothMem: null,
-          openspec: { source: 'openspec', content: 'task copy b' },
-        },
-      },
-    } as Parameters<typeof validateTasksArtifact>[0]);
-
-    expect(result.valid).toBe(true);
-    expect(result.summary.warningCount).toBe(1);
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: 'tasks.persistence-repairable-source-gap',
-        severity: 'warning',
-      }),
-    );
-  });
-
-  test('warns when the validated content drifts from the authoritative persistence source', () => {
-    const promptPlan = createPlan(`## Phase 1: Prompt Copy
-- [ ] 1.1 Add validator contract
-  **Verification**:
-  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
-  - Expected: Prompt assertions pass`);
-    const authoritativePlan = createPlan(`## Phase 1: Stored Copy
-- [ ] 1.1 Add validator contract
-  **Verification**:
-  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
-  - Expected: Stored assertions pass`);
-
-    const result = validateTasksArtifact({
-      mode: 'hybrid',
-      content: promptPlan,
-      persistence: {
-        comparison: {
-          status: 'match',
-          sourceOfTruth: 'thoth-mem',
-          recoverable: false,
-          missingSources: [],
-          metadata: {
-            comparedSources: ['thoth-mem', 'openspec'],
-            matched: true,
-          },
-        },
-        sources: {
-          prompt: { source: 'prompt', content: promptPlan },
-          thothMem: { source: 'thoth-mem', content: authoritativePlan },
-          openspec: { source: 'openspec', content: authoritativePlan },
-        },
-      },
-    } as Parameters<typeof validateTasksArtifact>[0]);
-
-    expect(result.valid).toBe(true);
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: 'tasks.persistence-contract-drift',
-        severity: 'warning',
-      }),
-    );
-  });
-
-  test('reports authoritative-source drift as info when validating the canonical snapshot', () => {
-    const promptPlan = createPlan(`## Phase 1: Prompt Copy
-- [ ] 1.1 Add validator contract
-  **Verification**:
-  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
-  - Expected: Prompt assertions pass`);
-    const authoritativePlan = createPlan(`## Phase 1: Stored Copy
-- [ ] 1.1 Add validator contract
-  **Verification**:
-  - Run: \`pnpm test -- src/sdd/artifact-governance/tasks-validator.test.ts\`
-  - Expected: Stored assertions pass`);
-
-    const result = validateTasksArtifact({
-      mode: 'hybrid',
-      content: authoritativePlan,
-      persistence: {
-        comparison: {
-          status: 'match',
-          sourceOfTruth: 'thoth-mem',
-          recoverable: false,
-          missingSources: [],
-          metadata: {
-            comparedSources: ['thoth-mem', 'openspec'],
-            matched: true,
-          },
-        },
-        sources: {
-          prompt: { source: 'prompt', content: promptPlan },
-          thothMem: { source: 'thoth-mem', content: authoritativePlan },
-          openspec: { source: 'openspec', content: authoritativePlan },
-        },
-      },
-    } as Parameters<typeof validateTasksArtifact>[0]);
-
-    expect(result.valid).toBe(true);
-    expect(result.summary.infoCount).toBe(1);
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: 'tasks.persistence-contract-drift',
-        severity: 'info',
-      }),
-    );
+    expect(result.findings).toHaveLength(0);
+    expect(comparison).not.toHaveProperty('recoverable');
+    expect(comparison).not.toHaveProperty('sourceOfTruth');
   });
 
   test('reports invalid task states as execution contract errors', () => {

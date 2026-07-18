@@ -43,9 +43,9 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 ## Workflow
 
 1. Read the shared conventions.
-2. Recover `sdd/{change-name}/spec` using the recall funnel in the persistence
-   contract (`mem_recall(mode="compact")` -> `mem_recall(mode="context")` ->
-   `mem_get(...)`), and read the delta spec file(s) under
+2. Recover the complete `sdd/{change-name}/spec` artifact through the selected
+   mode and installed provider guidance where applicable, and read the delta
+   spec file(s) under
    `openspec/changes/{change-name}/specs/{domain}/spec.md`.
 3. **Taxonomy scan** — scan the recovered spec against the ambiguity taxonomy to
    produce resolution candidates:
@@ -102,4 +102,5 @@ Return:
 - Re-validate `checklists/requirements.md` before handing off to design.
 - Do not duplicate `requirements-interview`; resolve only residual post-spec
   ambiguity.
-- Use the recall funnel from the persistence contract for every SDD dependency.
+- Recover every SDD dependency through the selected mode and require sufficient
+  context evidence; provider mechanics remain external.

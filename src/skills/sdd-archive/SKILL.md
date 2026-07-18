@@ -42,8 +42,8 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 ## Workflow
 
 1. Read the shared conventions.
-2. Recover artifacts through the retrieval protocol in
-   the persistence contract:
+2. Recover complete artifacts through the selected persistence mode and
+   installed provider guidance where applicable:
    - **Always**: recover `proposal`, `tasks`, and `verify-report`
    - **Full pipeline only**: recover `spec` and `design`
 3. Refuse to archive if the verification report still contains unresolved
@@ -63,11 +63,9 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
    `sdd-constitution` suggestion. This is advisory and MUST NOT block archival.
 8. In `thoth-mem` mode, do not create or move `openspec/` artifacts; record the
    archive result only in the audit trail.
-9. If the selected mode includes thoth-mem, persist the audit trail with:
-
-   Use the memory tool binding for `mem_save` with the canonical SDD topic key
-   and required metadata fields: `title`, `topic_key`, `type`, `project`,
-   `scope`, and `content`.
+9. If the selected mode includes thoth-mem, request the audit-trail outcome
+   under `sdd/{change-name}/archive-report` through installed provider guidance
+   and require evidence before reporting success.
 
 ## Output Format
 
@@ -87,6 +85,7 @@ Return:
 - In full pipeline, merge delta specs before moving the change folder.
   In accelerated pipeline, skip the spec merge (no delta specs exist).
 - Preserve canonical spec structure and untouched requirements.
-- Persist the final audit trail through thoth-mem when the selected mode
-  includes it.
-- Use the retrieval protocol in the persistence contract for every dependency.
+- Preserve the final audit-trail outcome through the selected mode and require
+  evidence for every provider-backed leg.
+- Recover every dependency through the selected mode; provider mechanics remain
+  in installed provider guidance.

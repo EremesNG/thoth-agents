@@ -43,8 +43,8 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 ## Workflow
 
 1. Read the shared conventions.
-2. Recover artifacts with the retrieval protocol in
-   the persistence contract:
+2. Recover complete artifacts through the selected persistence mode and
+   installed provider guidance where applicable:
    - **Always**: recover `tasks`
    - **Full pipeline**: recover `spec` and `design`
    - **Accelerated pipeline**: recover `proposal` (used as the verification reference)
@@ -91,11 +91,9 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 6. Build a compliance matrix: in full pipeline, map each Given/When/Then
    scenario to evidence; in accelerated pipeline, map each proposal success
    criterion to evidence.
-7. If the selected mode includes thoth-mem, persist the report with:
-
-   Use the memory tool binding for `mem_save` with the canonical SDD topic key
-   and required metadata fields: `title`, `topic_key`, `type`, `project`,
-   `scope`, and `content`.
+7. If the selected mode includes thoth-mem, request the full report outcome
+   under `sdd/{change-name}/verify-report` through installed provider guidance
+   and require evidence before reporting success.
 8. Stamp the expected `round N` from the dispatch envelope into the report's
    `## Round` field and the `Round` return field. The orchestrator treats this
    `round N` marker as the source of truth for the verify-loop round counter

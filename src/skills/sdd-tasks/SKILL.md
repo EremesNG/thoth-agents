@@ -40,8 +40,8 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 ## Workflow
 
 1. Read the shared conventions.
-2. Recover artifacts via the retrieval protocol in
-   the persistence contract:
+2. Recover complete artifacts through the selected persistence mode and
+   installed provider guidance where applicable:
    - **Always**: recover `proposal`
    - **Full pipeline only**: recover `spec` and `design`
    - In accelerated pipeline, derive task structure directly from the proposal.
@@ -137,11 +137,9 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
      - `- [-]` skipped — always append a reason: `- [-] 1.2 Task name — skipped: reason here`
 
 8. Reference concrete file paths and specific spec scenarios in the tasks.
-9. If the selected mode includes thoth-mem, persist the full checklist with:
-
-   Use the memory tool binding for `mem_save` with the canonical SDD topic key
-   and required metadata fields: `title`, `topic_key`, `type`, `project`,
-   `scope`, and `content`.
+9. If the selected mode includes thoth-mem, request the full checklist outcome
+   under `sdd/{change-name}/tasks` through installed provider guidance and
+   require evidence before reporting success.
 
 10. After `tasks.md` is generated, the workflow proceeds to an optional oracle
    plan review via the `plan-reviewer` skill. This is managed outside the scope

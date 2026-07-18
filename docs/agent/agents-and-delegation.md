@@ -24,6 +24,9 @@ the installer's interactive flow.
 - `orchestrator` coordinates; UI/UX belongs to `designer`; mechanical changes to
   `quick`; logic with correctness risk to `deep`.
 - Plugin defaults must let user overrides win wherever the contract permits.
+- Provider-dependent continuity is an outcome-level handoff (resumable summary
+  or checkpoint), never permanent session closure or a consumer lifecycle
+  protocol.
 - A wording change requires reviewing prompt snapshots or rendering tests, not
   only the role source file.
 

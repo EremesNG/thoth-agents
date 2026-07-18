@@ -1,7 +1,6 @@
 import type {
   ArtifactComparisonMetadata,
   ArtifactSnapshot,
-  ArtifactSnapshotSource,
 } from './artifact-loader';
 import {
   type ArtifactGovernanceFinding,
@@ -212,122 +211,56 @@ function collectPersistenceFindings(
 
   const { comparison } = persistence;
 
-  if (isUnrecoverableSourceGap(persistence)) {
-    findings.push({
-      code: 'tasks.persistence-source-gap',
-      severity: 'error',
-      message:
-        'Persistence validation found an unrecoverable artifact source gap for tasks.md.',
-      path: request.path,
-      metadata: {
-        sourceOfTruth: comparison.sourceOfTruth,
-        missingSources: comparison.missingSources.join(','),
-        recoverable: comparison.recoverable,
-      },
-    });
+  const finding = createPersistenceFinding(comparison, request.path);
 
-    return;
-  }
-
-  if (comparison.status === 'diverged' && comparison.recoverable) {
-    findings.push({
-      code: 'tasks.persistence-hybrid-divergence',
-      severity: 'warning',
-      message:
-        'Hybrid persistence sources diverged, but recovery remains possible in report-only mode.',
-      path: request.path,
-      metadata: {
-        sourceOfTruth: comparison.sourceOfTruth,
-        recoverable: comparison.recoverable,
-      },
-    });
-  }
-
-  if (comparison.status === 'single-source' && comparison.recoverable) {
-    findings.push({
-      code: 'tasks.persistence-repairable-source-gap',
-      severity: 'warning',
-      message:
-        'Persistence validation recovered from a single artifact source; repair the missing store when convenient.',
-      path: request.path,
-      metadata: {
-        sourceOfTruth: comparison.sourceOfTruth,
-        missingSources: comparison.missingSources.join(','),
-      },
-    });
-  }
-
-  const contractDriftFinding = createContractDriftFinding(request, persistence);
-
-  if (contractDriftFinding) {
-    findings.push(contractDriftFinding);
+  if (finding) {
+    findings.push(finding);
   }
 }
 
-function isUnrecoverableSourceGap(
-  persistence: ValidateTasksArtifactPersistence,
-): boolean {
-  const authoritativeSource = getSnapshotBySource(
-    persistence.sources,
-    persistence.comparison.sourceOfTruth,
-  );
-
-  return (
-    !persistence.comparison.recoverable &&
-    (persistence.comparison.sourceOfTruth === null ||
-      authoritativeSource === null)
-  );
-}
-
-function createContractDriftFinding(
-  request: ValidateTasksArtifactRequest,
-  persistence: ValidateTasksArtifactPersistence,
+function createPersistenceFinding(
+  comparison: ArtifactComparisonMetadata,
+  path: string | undefined,
 ): ArtifactGovernanceFinding | null {
-  const promptSnapshot = persistence.sources.prompt;
-  const authoritativeSnapshot = getSnapshotBySource(
-    persistence.sources,
-    persistence.comparison.sourceOfTruth,
-  );
-
-  if (
-    promptSnapshot === null ||
-    authoritativeSnapshot === null ||
-    authoritativeSnapshot.source === 'prompt' ||
-    promptSnapshot.content === authoritativeSnapshot.content
-  ) {
+  if (comparison.outcome === 'complete') {
     return null;
   }
 
-  const validatingAuthoritativeContent =
-    request.content === authoritativeSnapshot.content;
-
-  return {
-    code: 'tasks.persistence-contract-drift',
-    severity: validatingAuthoritativeContent ? 'info' : 'warning',
-    message: validatingAuthoritativeContent
-      ? 'Prompt context drifted from the authoritative persistence snapshot, but the validator is using the canonical artifact content.'
-      : 'The validator is inspecting tasks content that drifts from the authoritative persistence snapshot.',
-    path: request.path,
-    metadata: {
-      sourceOfTruth: authoritativeSnapshot.source,
-      validatedAuthoritativeContent: validatingAuthoritativeContent,
-    },
+  const metadata = {
+    outcome: comparison.outcome,
+    inspectableSource: comparison.inspectableSource,
+    providerState: comparison.providerState,
+    missingSources: comparison.missingSources.join(','),
   };
-}
 
-function getSnapshotBySource(
-  sources: ValidateTasksArtifactPersistence['sources'],
-  source: ArtifactSnapshotSource | null,
-): ArtifactSnapshot | null {
-  switch (source) {
-    case 'prompt':
-      return sources.prompt;
-    case 'thoth-mem':
-      return sources.thothMem;
-    case 'openspec':
-      return sources.openspec;
-    case null:
-      return null;
+  switch (comparison.outcome) {
+    case 'partial':
+      return {
+        code: 'persistence.hybrid-partial',
+        severity: 'warning',
+        message:
+          'Hybrid persistence is incomplete because one required artifact source is unavailable.',
+        path,
+        metadata,
+      };
+    case 'unavailable':
+      return {
+        code: 'persistence.source-unavailable',
+        severity: 'error',
+        message:
+          'The artifact is unavailable from every source required by the declared persistence mode.',
+        path,
+        metadata,
+      };
+    case 'diverged':
+      return {
+        code: 'persistence.hybrid-diverged',
+        severity: 'warning',
+        message:
+          'Hybrid artifact snapshots diverged; neither source is selected for inspection.',
+        path,
+        metadata,
+      };
   }
 }
 

@@ -1,78 +1,33 @@
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_THOTH_COMMAND } from '../config';
 import { createBuiltinMcps } from './index';
 
+const providerLauncherPath = fileURLToPath(
+  new URL('./thoth.ts', import.meta.url),
+);
+
 describe('createBuiltinMcps', () => {
-  test('registers the default thoth-mem MCP by default', () => {
+  test('registers only the unrelated built-in MCPs', () => {
     const mcps = createBuiltinMcps();
-    const names = Object.keys(mcps).sort();
-
-    expect(names).toEqual(['context7', 'exa', 'grep_app', 'thoth_mem']);
-
-    const thoth = mcps.thoth_mem;
-    expect(thoth).toBeDefined();
-    expect('command' in thoth).toBe(true);
-    if (!('command' in thoth)) {
-      throw new Error('Expected local thoth MCP');
-    }
-    expect(thoth.command).toEqual(DEFAULT_THOTH_COMMAND);
-  });
-
-  test('omits thoth-mem MCP when disabled', () => {
-    const mcps = createBuiltinMcps(['thoth_mem']);
 
     expect(Object.keys(mcps).sort()).toEqual(['context7', 'exa', 'grep_app']);
-    expect(mcps.thoth_mem).toBeUndefined();
+    expect(mcps).not.toHaveProperty('thoth_mem');
   });
 
-  test('applies custom thoth invocation settings to MCP definition', () => {
-    const mcps = createBuiltinMcps([], {
-      command: ['bun', 'x', 'thoth-mem'],
-      data_dir: '/tmp/thoth-data',
-      http_port: 8123,
-      environment: {
-        THOTH_PROFILE: 'test',
-      },
-      timeout: 12345,
-    });
-
-    const thoth = mcps.thoth_mem;
-    expect('command' in thoth).toBe(true);
-    expect(thoth).toMatchObject({
-      type: 'local',
-      command: ['bun', 'x', 'thoth-mem'],
-      environment: {
-        THOTH_DATA_DIR: '/tmp/thoth-data',
-        THOTH_HTTP_PORT: '8123',
-        THOTH_PROFILE: 'test',
-      },
-      timeout: 12345,
-    });
+  test('does not bundle a provider MCP launcher', () => {
+    expect(existsSync(providerLauncherPath)).toBe(false);
   });
 
-  test('leaves unrelated MCPs enabled when thoth-mem is disabled', () => {
-    const mcps = createBuiltinMcps(['thoth_mem']);
-
-    expect(mcps.exa).toBeDefined();
-    expect(mcps.context7).toBeDefined();
-    expect(mcps.grep_app).toBeDefined();
+  test('preserves disablement and ignores unknown names for unrelated MCPs', () => {
+    expect(
+      Object.keys(createBuiltinMcps(['exa', 'unknown_mcp'])).sort(),
+    ).toEqual(['context7', 'grep_app']);
   });
 
-  test('ignores unknown MCP names in disabled list', () => {
-    const mcps = createBuiltinMcps(['unknown_mcp', 'nonexistent']);
-
-    expect(Object.keys(mcps)).toHaveLength(4);
-    expect(mcps.thoth_mem).toBeDefined();
-  });
-
-  test('MCP configs have required properties', () => {
-    const mcps = createBuiltinMcps();
-
-    for (const config of Object.values(mcps)) {
-      expect(config).toBeDefined();
-      const hasUrl = 'url' in config;
-      const hasCommand = 'command' in config;
-      expect(hasUrl || hasCommand).toBe(true);
+  test('keeps required URL or command properties on unrelated MCP configs', () => {
+    for (const config of Object.values(createBuiltinMcps())) {
+      expect('url' in config || 'command' in config).toBe(true);
     }
   });
 });

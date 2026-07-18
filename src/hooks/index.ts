@@ -10,4 +10,3 @@ export { createJsonErrorRecoveryHook } from './json-error-recovery';
 export { createPhaseReminderHook } from './phase-reminder';
 export { createPostReadNudgeHook } from './post-read-nudge';
 export { syncSkillsOnStartup } from './skill-sync';
-export { createThothMemHook } from './thoth-mem';

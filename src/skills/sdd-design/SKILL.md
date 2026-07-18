@@ -44,9 +44,9 @@ technical write-capable role such as `deep`.
 ## Workflow
 
 1. Read the shared conventions.
-2. Recover `sdd/{change-name}/proposal` and `sdd/{change-name}/spec` using the
-   retrieval protocol in
-   the persistence contract.
+2. Recover complete `sdd/{change-name}/proposal` and
+   `sdd/{change-name}/spec` artifacts through the selected mode and installed
+   provider guidance where applicable.
 3. If revising work, recover `sdd/{change-name}/design` with the same
    mode-aware retrieval rules.
 4. Read the actual code paths affected by the change before deciding on an
@@ -72,11 +72,9 @@ technical write-capable role such as `deep`.
    ## Open Questions
    ```
 
-6. If the selected mode includes thoth-mem, persist the design with:
-
-   Use the memory tool binding for `mem_save` with the canonical SDD topic key
-   and required metadata fields: `title`, `topic_key`, `type`, `project`,
-   `scope`, and `content`.
+6. If the selected mode includes thoth-mem, request the full design outcome
+   under `sdd/{change-name}/design` through installed provider guidance and
+   require evidence before reporting success.
 
 ## Optional Sub-Artifacts
 

@@ -56,6 +56,24 @@ describe('skill registry contract', () => {
     );
   });
 
+  test('does not register or package the provider-owned memory skill', () => {
+    const bundledNames = getBundledSkillRegistry().map((skill) => skill.name);
+    const allEntries = getSkillRegistry();
+
+    expect(bundledNames).not.toContain('thoth-mem-agents');
+    expect(allEntries).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          purpose: 'memory',
+          sourcePath: 'src/skills/thoth-mem-agents',
+        }),
+      ]),
+    );
+    expect(CUSTOM_SKILLS.map((skill) => skill.name)).not.toContain(
+      'thoth-mem-agents',
+    );
+  });
+
   test('records exact source paths and allowed role purpose metadata', () => {
     const sddApply = getBundledSkillRegistry().find(
       (skill) => skill.name === 'sdd-apply',

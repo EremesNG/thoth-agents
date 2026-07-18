@@ -130,9 +130,10 @@ function formatConfigSummary(): string {
   lines.push(`  ${BOLD}Preset:${RESET} ${BLUE}openai${RESET}`);
   lines.push(`  ${SYMBOLS.check} Seven-agent thoth-agents roster`);
   lines.push(`  ${SYMBOLS.check} OpenAI models by default`);
-  lines.push(`  ${SYMBOLS.check} thoth-mem enabled for orchestrator memory`);
-  lines.push(`  ${SYMBOLS.check} Delegation results persisted to disk`);
   lines.push(`  ${SYMBOLS.check} Bundled SDD skills ready for install`);
+  lines.push(
+    `  ${DIM}○ Provider capability is external and was not evidenced by this install.${RESET}`,
+  );
   const seeDocs = 'see docs/provider-configurations.md';
   lines.push(`  ${DIM}○ Kimi — ${seeDocs}${RESET}`);
   lines.push(`  ${DIM}○ GitHub Copilot — ${seeDocs}${RESET}`);
@@ -295,10 +296,7 @@ async function runInstall(config: InstallConfig): Promise<number> {
     'Default configuration uses OpenAI models (gpt-5.4 / gpt-5.4-mini).';
   console.log(`${BOLD}${modelsInfo}${RESET}`);
   console.log(
-    `  ${DIM}Includes the seven-agent roster, thoth-mem memory defaults,${RESET}`,
-  );
-  console.log(
-    `  ${DIM}native task delegation, and bundled SDD skills.${RESET}`,
+    `  ${DIM}Includes the seven-agent roster, native task delegation, and bundled SDD skills.${RESET}`,
   );
   const altProviders =
     'For alternative providers (Kimi, GitHub Copilot, ZAI Coding Plan)';

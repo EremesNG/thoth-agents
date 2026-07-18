@@ -36,7 +36,7 @@ describe('Codex plugin package writer', () => {
           manifestField: 'mcpServers',
           path: '.codex-plugin/.mcp.json',
           content:
-            '{\n  "mcp_servers": {\n    "thoth_mem": {\n      "command": "pnpm",\n      "args": [\n        "dlx",\n        "thoth-mem@latest"\n      ]\n    }\n  }\n}\n',
+            '{\n  "mcpServers": {\n    "context7": {\n      "url": "https://mcp.context7.com/mcp"\n    },\n    "thoth_mem": {\n      "command": "pnpm",\n      "args": ["dlx", "thoth-mem@latest"]\n    }\n  }\n}\n',
         },
       ],
     });
@@ -60,6 +60,8 @@ describe('Codex plugin package writer', () => {
         '  "hooks": "./hooks/hooks.json"\n' +
         '}\n',
     );
+    expect(String(result.artifacts[0].content)).toContain('context7');
+    expect(String(result.artifacts[0].content)).not.toContain('thoth_mem');
   });
 
   test('returns fail-closed diagnostics for unvalidated assets and outside paths', () => {

@@ -3,7 +3,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { loadAgentPrompt, loadPluginConfig } from './loader';
-import type { PluginConfig } from './schema';
 
 // Test deepMerge indirectly through loadPluginConfig behavior
 // since deepMerge is not exported
@@ -121,13 +120,19 @@ describe('loadPluginConfig', () => {
     });
   });
 
-  test('accepts valid thoth configuration', () => {
+  test('drops consumer-owned provider config while preserving persistence mode and unrelated config', () => {
     const projectDir = path.join(tempDir, 'project');
     const projectConfigDir = path.join(projectDir, '.opencode');
     fs.mkdirSync(projectConfigDir, { recursive: true });
     fs.writeFileSync(
       path.join(projectConfigDir, 'thoth-agents.json'),
       JSON.stringify({
+        artifactStore: {
+          mode: 'hybrid',
+        },
+        agents: {
+          oracle: { model: 'test/provider-neutral' },
+        },
         thoth: {
           command: ['bun', 'x', 'thoth-mem'],
           data_dir: '/tmp/thoth-data',
@@ -141,15 +146,9 @@ describe('loadPluginConfig', () => {
     );
 
     const config = loadPluginConfig(projectDir);
-    expect(config.thoth).toEqual({
-      command: ['bun', 'x', 'thoth-mem'],
-      data_dir: '/tmp/thoth-data',
-      environment: {
-        THOTH_PROFILE: 'test',
-      },
-      timeout: 25000,
-      http_port: 7439,
-    });
+    expect(config).not.toHaveProperty('thoth');
+    expect(config.artifactStore).toEqual({ mode: 'hybrid' });
+    expect(config.agents?.oracle?.model).toBe('test/provider-neutral');
   });
 
   test('loads manual plan structure when configured', () => {
@@ -284,22 +283,6 @@ describe('loadPluginConfig', () => {
       path.join(projectConfigDir, 'thoth-agents.json'),
       '{ invalid json }',
     );
-    expect(loadPluginConfig(projectDir)).toEqual({});
-  });
-
-  test('rejects invalid thoth configuration', () => {
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        thoth: {
-          command: 'npx -y thoth-mem@0.1.5',
-        },
-      }),
-    );
-
     expect(loadPluginConfig(projectDir)).toEqual({});
   });
 
@@ -574,53 +557,6 @@ describe('deepMerge behavior', () => {
 
     const config = loadPluginConfig(projectDir);
     expect(config.fallback?.chains.writing).toEqual(['openai/gpt-5.4']);
-  });
-
-  test('merges thoth config from user and project', () => {
-    const userOpencodeDir = path.join(userConfigDir, 'opencode');
-    fs.mkdirSync(userOpencodeDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(userOpencodeDir, 'thoth-agents.json'),
-      JSON.stringify({
-        thoth: {
-          command: ['npx', '-y', 'thoth-mem@0.1.5'],
-          environment: {
-            THOTH_PROFILE: 'user',
-          },
-          timeout: 15000,
-          http_port: 7438,
-        },
-      }),
-    );
-
-    const projectDir = path.join(tempDir, 'project');
-    const projectConfigDir = path.join(projectDir, '.opencode');
-    fs.mkdirSync(projectConfigDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectConfigDir, 'thoth-agents.json'),
-      JSON.stringify({
-        thoth: {
-          data_dir: '/project/thoth',
-          environment: {
-            THOTH_PROJECT: 'project',
-          },
-          http_port: 8123,
-        },
-      }),
-    );
-
-    const config = loadPluginConfig(projectDir);
-
-    expect((config as PluginConfig).thoth).toEqual({
-      command: ['npx', '-y', 'thoth-mem@0.1.5'],
-      data_dir: '/project/thoth',
-      environment: {
-        THOTH_PROFILE: 'user',
-        THOTH_PROJECT: 'project',
-      },
-      timeout: 15000,
-      http_port: 8123,
-    });
   });
 });
 

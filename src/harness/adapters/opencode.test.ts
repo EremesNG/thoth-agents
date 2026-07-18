@@ -8,20 +8,20 @@ const GOVERNANCE_PROMPT_SECTIONS = {
   orchestrator: [
     'delegate-first',
     'Internal handoff fields',
-    'root-owned session context',
-    'task instructions plus handoff recovery instructions only',
+    'accepted scope, decisions, permissions, and artifact context',
+    'task instructions plus authorized handoff context only',
     'explore -> propose -> spec -> clarify -> design -> tasks',
   ],
   explorer: [
     'Mode: read-only',
     'Return decision-ready evidence',
-    'handoff recovery instructions',
-    'do not call `mem_save`',
+    'authorized context',
+    'parent-scoped authorization',
   ],
   deep: [
     'Mode: write-capable',
     'Do not skip verification',
-    'parent-session handoff summary',
+    'resumable summary or checkpoint outcome',
     'Never discard working-tree changes',
   ],
 } as const;
@@ -108,24 +108,46 @@ describe('OpenCode harness adapter', () => {
     expect(result.artifacts[0]?.content.toString()).not.toContain('codex');
   });
 
-  test('inherits shared handoff semantics without Codex-only dispatch wording', () => {
+  test('inherits provider-neutral handoff semantics without Codex-only dispatch wording', () => {
     const content = String(
       opencodeAdapter.render({ projectRoot: process.cwd() }).artifacts[0]
         ?.content,
     );
 
-    expect(content).toContain('root-owned session context');
+    expect(content).toContain(
+      'accepted scope, decisions, permissions, and artifact context',
+    );
     expect(content).toContain(
       'must not be embedded in the initial sub-agent prompt',
     );
     expect(content).toContain(
-      'task instructions plus handoff recovery instructions only',
+      'task instructions plus authorized handoff context only',
     );
-    expect(content).toContain('parent-session handoff summary');
+    expect(content).toContain('resumable summary or checkpoint outcome');
+    expect(content).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
+    );
     expect(content).toContain('sdd/{change}/{artifact}');
     expect(content).not.toContain('multi_agent_v1.spawn_agent');
     expect(content).not.toContain('`message`');
     expect(content).not.toContain('`items`');
     expect(content).not.toContain('fork_context');
+  });
+
+  test('keeps OpenCode orchestration provider-neutral without bundled protocol guidance', () => {
+    const result = opencodeAdapter.render({ projectRoot: process.cwd() });
+    const content = result.artifacts
+      .map((entry) => String(entry.content))
+      .join('\n');
+
+    expect(getBundledSkillRegistry().map((skill) => skill.name)).not.toContain(
+      'thoth-mem-agents',
+    );
+    expect(content).toContain('installed provider guidance');
+    expect(content).toContain('sdd/{change}/{artifact}');
+    expect(content).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
+    );
+    expect(content).not.toContain('recall funnel');
   });
 });

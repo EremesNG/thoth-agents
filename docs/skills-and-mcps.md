@@ -1,7 +1,7 @@
 # Skills and MCPs
 
-Reference for the bundled skills shipped with thoth-agents, the built-in MCP
-servers it registers, and the harness-specific delivery surfaces.
+Reference for the bundled skills shipped with thoth-agents, the independent
+provider boundary, and the harness-specific delivery surfaces.
 
 ## Delivery Surfaces
 
@@ -73,14 +73,15 @@ These compatible external skills complement the workflow.
 
 ## MCP Servers
 
-thoth-agents defines four built-in MCP servers.
+thoth-agents defines the research MCPs below. Memory is supplied by the
+independently installed thoth-mem provider and is not bundled or configured by
+this package.
 
 | MCP | Type | Purpose | Auth / runtime |
 | --- | --- | --- | --- |
 | `exa` | remote | Exa-backed web search | Optional `EXA_API_KEY` env var |
 | `context7` | remote | Official library and framework documentation lookup | Optional `CONTEXT7_API_KEY` env var |
 | `grep_app` | remote | Public GitHub code search through grep.app | No auth required |
-| `thoth_mem` | local | Persistent memory, artifact storage, and session summaries | Local command, default `npx thoth-mem@latest` |
 
 ## MCP Notes
 
@@ -102,12 +103,17 @@ thoth-agents defines four built-in MCP servers.
 - No auth required
 - Good for public GitHub code pattern lookup
 
-### `thoth_mem`
+### External provider boundary
 
-- Local MCP, not a remote URL
-- Default command: `npx thoth-mem@latest`
-- Supports custom `command`, `data_dir`, `environment`, and `timeout`
-- Used for root-session memory, SDD artifacts, and durable summaries
+Install and configure thoth-mem independently when provider-backed persistence
+is selected. Its installation, hooks, session lifecycle, prompt capture,
+compaction/recovery, and persistence protocol are authoritative in that
+provider. thoth-agents reports evidence-only supported, degraded, or
+unsupported outcomes and does not duplicate provider setup, probing, health,
+acquisition, migration, fallback, or state ownership.
+
+Deterministic SDD artifacts retain the canonical `sdd/{change}/{artifact}`
+identity; provider storage and retrieval mechanics remain external.
 
 ## Configuration Notes
 

@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink';
+import type { ProviderCapabilityEvidence } from '../../../harness/types';
 import type {
   ManagedTarget,
   OperationApplyResult,
@@ -7,6 +8,7 @@ import type {
 } from '../../operations';
 import { theme } from '../theme';
 import { PathLine } from './PathLine';
+import { ProviderCapabilityView } from './StatusView';
 
 interface PlanPreviewProps {
   plan: OperationPlan;
@@ -25,21 +27,33 @@ function warningText(warning: OperationWarning): string {
   return `[${warning.severity}]${warning.code ? ` [${warning.code}]` : ''} ${warning.message}`;
 }
 
+function providerEvidenceFor(
+  value: OperationPlan | OperationApplyResult,
+): ProviderCapabilityEvidence | undefined {
+  return (value as { providerCapability?: ProviderCapabilityEvidence })
+    .providerCapability;
+}
+
 export function PlanPreview({
   plan,
   selectedAction,
   result,
 }: PlanPreviewProps) {
   const blockerTargets = plan.blockerTargets ?? [];
+  const providerEvidence = providerEvidenceFor(result ?? plan);
   return (
     <Box flexDirection="column">
       <Text bold>{plan.title}</Text>
       <Text>{plan.summary}</Text>
+      <Text color={theme.accent}>Consumer operation</Text>
       <Text>
         Target harness: <Text color={theme.accent}>{plan.harness}</Text>
       </Text>
-      <Text>Action: {plan.action}</Text>
+      <Text>Managed action: {plan.action}</Text>
       <Text>Can apply: {plan.canApply ? 'yes' : 'no'}</Text>
+      {providerEvidence ? (
+        <ProviderCapabilityView evidence={providerEvidence} />
+      ) : null}
       {!plan.canApply && blockerTargets.length > 0 ? (
         <Box flexDirection="column">
           <Text color={theme.warning}>Blocker targets</Text>
@@ -108,7 +122,7 @@ export function PlanPreview({
       {result ? (
         <Box flexDirection="column">
           <Text color={result.applied ? theme.ok : theme.warning}>
-            {result.summary}
+            Consumer result: {result.summary}
           </Text>
           {!result.applied &&
           ((result.diagnosticTargets?.length ?? 0) > 0 ||

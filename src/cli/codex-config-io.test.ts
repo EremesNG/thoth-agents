@@ -40,6 +40,30 @@ describe('Codex config IO', () => {
     );
   });
 
+  test('preserves independently installed provider configuration outside the managed feature edit', () => {
+    const source =
+      '[mcp_servers.thoth_mem]\n' +
+      'command = "provider-owned"\n' +
+      'args = ["serve", "--state-dir", "D:\\\\provider-state"]\n' +
+      '\n[mcp_servers.thoth_mem.env]\n' +
+      'THOTH_PROFILE = "work"\n\n' +
+      '[profiles.work]\n' +
+      'approval_policy = "on-request"\n';
+
+    const result = mergeCodexManagedConfig(parseCodexToml(source), {});
+    const before = parseCodexToml(source) as {
+      mcp_servers?: { thoth_mem?: unknown };
+    };
+    const after = parseCodexToml(result.content) as {
+      mcp_servers?: { thoth_mem?: unknown };
+    };
+
+    expect(after.mcp_servers?.thoth_mem).toEqual(before.mcp_servers?.thoth_mem);
+    expect(result.content).toContain(
+      '[features]\ndefault_mode_request_user_input = true',
+    );
+  });
+
   test('gates plugin enablement on an explicit safe identifier', () => {
     const withoutPlugin = mergeCodexManagedConfig(parseCodexToml(''), {});
     const withPlugin = mergeCodexManagedConfig(parseCodexToml(''), {

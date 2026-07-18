@@ -201,9 +201,9 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
    the detected context and initialization status with:
 
    ```text
-   Use the memory tool binding for `mem_save` with the canonical topic key and
-   required metadata fields: `title`, `topic_key`, `type`, `project`,
-   `scope`, and `content`.
+   Request the canonical provider-backed artifact outcome through installed
+   provider guidance. Treat it as successful only when evidence confirms the
+   complete artifact under its canonical `sdd/{change}/{artifact}` identity.
 
 10. In `hybrid` mode, initialization is complete only when both OpenSpec setup
     and thoth-mem persistence succeed.

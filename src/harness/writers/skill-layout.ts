@@ -112,6 +112,8 @@ export function renderCodexSkillLayout(
   for (const skill of [...input.skills].sort((left, right) =>
     left.name.localeCompare(right.name),
   )) {
+    if (skill.name === 'thoth-mem-agents') continue;
+
     const sourceBaseRoot = input.packageRoot ?? input.projectRoot;
     const sourceRoot = path.join(sourceBaseRoot, skill.sourcePath);
     const files = collectSkillFiles(sourceRoot);

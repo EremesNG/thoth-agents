@@ -37,8 +37,8 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 ## Workflow
 
 1. Read the shared conventions before drafting.
-2. If the change already exists, recover the latest proposal using the
-   retrieval protocol from the persistence contract.
+2. If the change already exists, recover the complete latest proposal using
+   the selected mode and installed provider guidance where applicable.
 3. Review relevant main specs under the active OpenSpec path to avoid
    proposing contradictions.
 4. If the selected mode includes OpenSpec, write
@@ -60,11 +60,9 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
    ## Success Criteria
    ```
 
-5. If the selected mode includes thoth-mem, persist the full proposal with:
-
-   Use the memory tool binding for `mem_save` with the canonical SDD topic key
-   and required metadata fields: `title`, `topic_key`, `type`, `project`,
-   `scope`, and `content`.
+5. If the selected mode includes thoth-mem, request persistence of the full
+   proposal under `sdd/{change-name}/proposal` through installed provider
+   guidance and require outcome evidence before reporting success.
 
 6. In `hybrid` mode, both the filesystem artifact and thoth-mem save must
    succeed.
@@ -96,6 +94,6 @@ Return a short report with:
 - Always include rollback guidance and explicit out-of-scope items when they
   exist.
 - Never reference engram.
-- Never rely on compact recall output alone when the mode uses thoth-mem.
-  Use `mem_recall(mode="compact")` -> `mem_recall(mode="context")` ->
-  `mem_get(id=...)` to retrieve the full artifact body.
+- Never treat partial provider context as the complete proposal. Require
+  evidence of the full artifact body or report recovery as degraded or
+  unsupported.

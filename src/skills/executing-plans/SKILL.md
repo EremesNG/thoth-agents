@@ -71,10 +71,9 @@ The orchestrator owns task progress tracking.
 2. Load task artifacts using mode-aware retrieval:
    - `openspec`/`hybrid`: scan `openspec/changes/` for active changes and read
      `tasks.md`.
-   - `thoth-mem`: recover tasks via the recall funnel
-     (`mem_recall(mode="compact")` -> `mem_recall(mode="context")` ->
-     `mem_get(...)`) using topic key `sdd/{change-name}/tasks`; use
-     `mem_get(include_timeline=true)` when task chronology matters.
+   - `thoth-mem`: recover the complete tasks artifact under
+     `sdd/{change-name}/tasks` through installed provider guidance and require
+     evidence that the recovered context is current and sufficient.
 3. Find the first unchecked task in state `- [ ]` or `- [~]`.
 4. Build a mental model of the plan: total tasks, remaining work,
    parallelizable work, and dependency order.
@@ -269,12 +268,10 @@ To resume safely:
 2. Recover task state using mode-aware retrieval:
    - `openspec`: read `openspec/changes/{change-name}/tasks.md`.
    - `thoth-mem`: recover `sdd/{change-name}/tasks` and
-     `sdd/{change-name}/apply-progress` via the recall funnel
-     (`mem_recall(mode="compact")` -> `mem_recall(mode="context")` ->
-     `mem_get(...)`); use `mem_get(include_timeline=true)` when task chronology
-     matters.
-   - `hybrid`: do both recovery paths and prefer thoth-mem as the source of
-     truth if state diverges.
+     `sdd/{change-name}/apply-progress` through installed provider guidance;
+     require evidence that chronology and context are sufficient.
+   - `hybrid`: recover both representations and report divergence rather than
+     inventing a consumer repair or silently selecting a source of truth.
 3. Resume from the first task marked `- [ ]` or `- [~]`.
 
 ## Guardrails

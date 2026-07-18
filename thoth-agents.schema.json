@@ -412,35 +412,6 @@
         }
       }
     },
-    "thoth": {
-      "type": "object",
-      "properties": {
-        "command": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "data_dir": {
-          "type": "string"
-        },
-        "environment": {
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "timeout": {
-          "type": "number"
-        },
-        "http_port": {
-          "type": "number"
-        }
-      }
-    },
     "artifactStore": {
       "type": "object",
       "properties": {

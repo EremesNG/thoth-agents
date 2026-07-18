@@ -1,6 +1,9 @@
 import { Box, Text, useApp, useInput } from 'ink';
-import { useMemo, useRef, useState } from 'react';
-import type { HarnessId } from '../../harness/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  HarnessId,
+  ProviderCapabilityEvidence,
+} from '../../harness/types';
 import type {
   ModelRoleInput,
   OperationApplyResult,
@@ -261,6 +264,11 @@ export function App({
   const [activeAction, setActiveAction] =
     useState<Exclude<TuiAction, 'status' | 'list' | 'model'>>('update');
   const [reportVersion, setReportVersion] = useState(0);
+  const [providerEvidence, setProviderEvidence] =
+    useState<ProviderCapabilityEvidence>();
+  const [providerEvidenceLoading, setProviderEvidenceLoading] = useState(false);
+  const [providerEvidenceError, setProviderEvidenceError] = useState<string>();
+  const providerEvidenceRequest = useRef(0);
   const [plan, setPlan] = useState<OperationPlan | undefined>();
   const [result, setResult] = useState<OperationApplyResult | undefined>();
   const [previewAction, setPreviewAction] = useState<'apply' | 'cancel'>(
@@ -293,6 +301,37 @@ export function App({
     view === 'status' || view === 'manageHarness'
       ? operations.status(activeHarness)
       : undefined;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reportVersion is the explicit keyboard retry trigger.
+  useEffect(() => {
+    if (view !== 'status' || !operations.providerCapability) return;
+
+    const request = providerEvidenceRequest.current + 1;
+    providerEvidenceRequest.current = request;
+    setProviderEvidence(undefined);
+    setProviderEvidenceLoading(true);
+    setProviderEvidenceError(undefined);
+    void operations
+      .providerCapability(activeHarness)
+      .then((evidence) => {
+        if (providerEvidenceRequest.current !== request) return;
+        setProviderEvidence(evidence);
+        setProviderEvidenceLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (providerEvidenceRequest.current !== request) return;
+        setProviderEvidenceError(
+          error instanceof Error ? error.message : String(error),
+        );
+        setProviderEvidenceLoading(false);
+      });
+
+    return () => {
+      if (providerEvidenceRequest.current === request) {
+        providerEvidenceRequest.current += 1;
+      }
+    };
+  }, [activeHarness, operations, reportVersion, view]);
   const currentManageItems =
     report?.state === 'missing' ? installManageItems : manageItems;
   const modelRows: ModelRoleView[] = modelRoles.map((role) => {
@@ -924,9 +963,18 @@ export function App({
     <Box flexDirection="column" key={reportVersion}>
       <Header
         title={`${report.displayName ?? activeHarness} Status`}
-        subtitle="Categorized summary. Escape returns. r refreshes."
+        subtitle="Consumer-managed state and external provider evidence. Escape returns. r refreshes."
       />
-      <StatusView report={report} />
+      <StatusView
+        report={report}
+        providerEvidence={
+          operations.providerCapability
+            ? providerEvidence
+            : report.providerCapability
+        }
+        providerEvidenceLoading={providerEvidenceLoading}
+        providerEvidenceError={providerEvidenceError}
+      />
     </Box>
   );
 }

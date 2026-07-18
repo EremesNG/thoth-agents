@@ -21,7 +21,7 @@ const ORCHESTRATOR_ONLY: AgentRoleName[] = ['orchestrator'];
 
 export const SHARED_SKILL_SUPPORT: SkillRegistryEntry = {
   name: '_shared',
-  description: 'Shared OpenSpec, persistence, and thoth-mem SDD conventions',
+  description: 'Shared OpenSpec and provider-neutral persistence conventions',
   allowedRoles: [
     'orchestrator',
     'explorer',
@@ -45,23 +45,6 @@ export const BUNDLED_SKILL_REGISTRY = [
     sourcePath: 'src/skills/requirements-interview',
     kind: 'skill',
     purpose: 'requirements',
-  },
-  {
-    name: 'thoth-mem-agents',
-    description:
-      'Orchestrator/subagent thoth-mem workflow contract for parent session_id/project ownership, prompt-save prohibitions, and safe durable memory usage',
-    allowedRoles: [
-      'orchestrator',
-      'explorer',
-      'librarian',
-      'oracle',
-      'designer',
-      'quick',
-      'deep',
-    ],
-    sourcePath: 'src/skills/thoth-mem-agents',
-    kind: 'skill',
-    purpose: 'memory',
   },
   {
     name: 'plan-reviewer',

@@ -19,12 +19,13 @@ to hand to implementation.
 
 ## Purpose
 
-Review the tasks artifact for true execution blockers. Retrieve it according to
-the persistence mode: read `openspec/changes/{change-name}/tasks.md` for
-openspec/hybrid modes, use the thoth-mem recall funnel
-(`mem_recall(mode="compact")` -> `mem_recall(mode="context")` ->
-`mem_get(...)`) for thoth-mem/hybrid modes, or read from inline context for none
-mode.
+Review the tasks artifact for true execution blockers. Recover it according to
+the selected persistence mode: read
+`openspec/changes/{change-name}/tasks.md` for OpenSpec-backed modes, use
+installed provider guidance with the canonical `sdd/{change-name}/tasks`
+identity for provider-backed modes, or read authorized inline context for
+`none`. Report unavailable or insufficient provider context as degraded or
+unsupported without changing modes.
 
 The artifact governance validator is not part of this review. Plan-reviewer is
 only the pre-execution approval gate for the task plan; it does not run the

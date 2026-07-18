@@ -5,8 +5,10 @@
 The package has two main executable surfaces: `src/index.ts` composes the
 OpenCode plugin, and `src/cli/index.ts` runs the installer/TUI. `src/harness/`
 maintains common contracts and adapters/writers for OpenCode, Codex, and Claude
-Code. Role, SDD, and memory contracts are shared, but each harness may apply
-them through runtime enforcement or instructions only.
+Code. Role and SDD contracts are shared, but each harness may apply them
+through runtime enforcement or instructions only. thoth-mem is an independently
+installed provider; its installation, hooks, lifecycle, protocol, runtime
+state, and persistence guidance is authoritative outside this package.
 
 ## Entry flows
 
@@ -46,6 +48,9 @@ them through runtime enforcement or instructions only.
   lists without checking adapters, operations, and tests.
 - Harness capabilities are not equivalent: an `instruction-only` fallback must
   remain visible as a limitation.
+- Provider-dependent outcomes remain evidence-only (`supported`, `degraded`, or
+  `unsupported`); consumer guidance never claims provider success or invents a
+  fallback.
 - The build combines `tsup`, TypeScript declarations, and schema generation;
   declarations have no independent pipeline.
 

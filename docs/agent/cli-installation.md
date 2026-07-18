@@ -27,6 +27,8 @@ contract of a harness artifact, although it consumes that contract.
   broad force outside that scope.
 - Codex requires trust review; do not omit `/plugins` or `/hooks` when the route
   needs them.
+- Install/update/reset mutate only consumer-managed thoth-agents assets and
+  preserve independently installed provider configuration.
 - A change to an argument or visible output may be a public contract and requires
   reviewing README/documentation in addition to tests.
 

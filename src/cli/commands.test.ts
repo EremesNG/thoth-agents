@@ -13,6 +13,7 @@ import {
 } from './commands';
 import { CUSTOM_SKILLS } from './custom-skills';
 import type { ModelOption } from './model-catalog';
+import { resolveOperationHarness } from './operations';
 import {
   applyClaudeCodePlan,
   buildClaudeCodeModelPlan,
@@ -99,6 +100,10 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain(
       'Run this CLI through a global install, npx, or pnpm dlx.',
     );
+    expect(output).not.toContain('thoth-mem defaults');
+    expect(output).toContain(
+      'Provider capability is external and reported only from caller-supplied evidence.',
+    );
     expect(output).not.toContain(
       'status                Show managed install status (future phase)',
     );
@@ -137,6 +142,33 @@ describe('commands plain operation formatters', () => {
     }
   });
 
+  test('status output renders provider capability as a separate evidence section', () => {
+    const output = formatHarnessStatusReport([
+      {
+        harness: 'codex',
+        displayName: 'Codex',
+        state: 'installed',
+        summary: 'Consumer-managed files are current.',
+        targets: [],
+        diagnostics: [],
+        actions: [],
+        providerCapability: {
+          state: 'degraded',
+          source: 'harness',
+          basis: ['persistence evidenced; continuity not evidenced'],
+        },
+      },
+    ]);
+
+    expect(output).toContain('State: installed');
+    expect(output).toContain('Provider capability: degraded');
+    expect(output).toContain('Evidence source: harness');
+    expect(output).toContain(
+      'Evidence basis: persistence evidenced; continuity not evidenced',
+    );
+    expect(output).not.toContain('State: degraded');
+  });
+
   test('list output shows supported harness metadata and unavailable entries', () => {
     const output = formatHarnessList([
       {
@@ -169,6 +201,15 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain('Claude [unavailable]');
     expect(output).toContain('Status - Inspect OpenCode config');
     expect(output).toContain('Not supported.');
+  });
+
+  test('unsupported harness metadata names the exact supported scope without fallback', () => {
+    const output = formatHarnessList([resolveOperationHarness('gemini')]);
+
+    expect(output).toContain('gemini [unavailable]');
+    expect(output).toContain('Unsupported harness "gemini".');
+    expect(output).toContain('opencode, codex, claude');
+    expect(output).not.toMatch(/fallback|best effort/i);
   });
 
   test('mutation plan output identifies target harness and safety metadata', () => {

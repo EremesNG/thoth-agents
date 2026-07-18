@@ -48,15 +48,12 @@ export interface ArtifactLoaderDependencies {
 }
 
 export interface ArtifactComparisonMetadata {
-  status: 'not-applicable' | 'single-source' | 'match' | 'diverged';
-  sourceOfTruth: ArtifactSnapshotSource | null;
-  recoverable: boolean;
+  outcome: 'complete' | 'partial' | 'unavailable' | 'diverged';
+  inspectableSource: ArtifactSnapshotSource | null;
+  providerState: 'supported' | 'degraded' | 'unsupported' | 'not-applicable';
   missingSources: readonly ArtifactSnapshotSource[];
   metadata: Readonly<{
     comparedSources: readonly ArtifactSnapshotSource[];
-    matched?: boolean;
-    thothLength?: number;
-    openspecLength?: number;
   }>;
 }
 
@@ -395,58 +392,47 @@ function resolveSnapshot(
 } {
   switch (mode) {
     case 'none':
-      return resolveSingleSource(
-        'prompt',
-        sources.prompt,
-        findings,
-        'Artifact prompt context is required in none mode.',
-      );
+      return resolveSingleSource('prompt', sources.prompt, findings);
     case 'thoth-mem':
-      return resolveSingleSource(
-        'thoth-mem',
-        sources.thothMem,
-        findings,
-        'Thoth-mem is the only source of truth in thoth-mem mode.',
-      );
+      return resolveSingleSource('thoth-mem', sources.thothMem, findings);
     case 'openspec':
-      return resolveSingleSource(
-        'openspec',
-        sources.openspec,
-        findings,
-        'OpenSpec is the only source of truth in openspec mode.',
-      );
+      return resolveSingleSource('openspec', sources.openspec, findings);
     case 'hybrid':
       return resolveHybridSources(sources, findings);
   }
 }
 
 function resolveSingleSource(
-  sourceOfTruth: ArtifactSnapshotSource,
+  source: ArtifactSnapshotSource,
   snapshot: ArtifactSnapshot | null,
   findings: ArtifactGovernanceFinding[],
-  missingMessage: string,
 ): {
   snapshot: ArtifactSnapshot | null;
   comparison: ArtifactComparisonMetadata;
 } {
   if (snapshot === null) {
     findings.push({
-      code: 'artifact-loader.source-missing',
+      code: 'persistence.source-unavailable',
       severity: 'error',
-      message: missingMessage,
-      source: sourceOfTruth,
+      message: `The artifact required by ${source} mode is unavailable.`,
+      source,
     });
   }
 
   return {
     snapshot,
     comparison: {
-      status: 'not-applicable',
-      sourceOfTruth: sourceOfTruth,
-      recoverable: false,
-      missingSources: snapshot === null ? [sourceOfTruth] : [],
+      outcome: snapshot === null ? 'unavailable' : 'complete',
+      inspectableSource: snapshot === null ? null : source,
+      providerState:
+        source === 'thoth-mem'
+          ? snapshot === null
+            ? 'unsupported'
+            : 'supported'
+          : 'not-applicable',
+      missingSources: snapshot === null ? [source] : [],
       metadata: {
-        comparedSources: [],
+        comparedSources: snapshot === null ? [] : [source],
       },
     },
   };
@@ -469,29 +455,22 @@ function resolveHybridSources(
 
     if (!matched) {
       findings.push({
-        code: 'artifact-loader.hybrid-divergence',
+        code: 'persistence.hybrid-diverged',
         severity: 'warning',
         message:
-          'Hybrid mode found divergent artifact snapshots; keeping thoth-mem as the primary source because recovery remains possible.',
-        metadata: {
-          openspecLength: openspec.content.length,
-          thothLength: thothMem.content.length,
-        },
+          'Hybrid artifact snapshots diverged; neither source is selected for inspection.',
       });
     }
 
     return {
-      snapshot: thothMem,
+      snapshot: matched ? openspec : null,
       comparison: {
-        status: matched ? 'match' : 'diverged',
-        sourceOfTruth: 'thoth-mem',
-        recoverable: !matched,
+        outcome: matched ? 'complete' : 'diverged',
+        inspectableSource: matched ? 'openspec' : null,
+        providerState: 'supported',
         missingSources: [],
         metadata: {
           comparedSources: ['thoth-mem', 'openspec'],
-          matched,
-          thothLength: thothMem.content.length,
-          openspecLength: openspec.content.length,
         },
       },
     };
@@ -510,21 +489,18 @@ function resolveHybridSources(
     }
 
     findings.push({
-      code: 'artifact-loader.hybrid-fallback',
+      code: 'persistence.hybrid-partial',
       severity: 'warning',
       message:
-        'Hybrid mode recovered from a single available artifact source; the missing store can be repaired later without blocking read-only governance.',
-      metadata: {
-        sourceOfTruth: snapshot?.source ?? null,
-      },
+        'Hybrid persistence is incomplete because one required artifact source is unavailable.',
     });
 
     return {
       snapshot,
       comparison: {
-        status: 'single-source',
-        sourceOfTruth: snapshot?.source ?? null,
-        recoverable: true,
+        outcome: 'partial',
+        inspectableSource: snapshot?.source ?? null,
+        providerState: thothMem ? 'supported' : 'unsupported',
         missingSources,
         metadata: {
           comparedSources: snapshot ? [snapshot.source] : [],
@@ -534,18 +510,18 @@ function resolveHybridSources(
   }
 
   findings.push({
-    code: 'artifact-loader.hybrid-unavailable',
+    code: 'persistence.source-unavailable',
     severity: 'error',
     message:
-      'Hybrid mode could not load the artifact from thoth-mem or OpenSpec.',
+      'Hybrid persistence is unavailable because neither required artifact source is available.',
   });
 
   return {
     snapshot: null,
     comparison: {
-      status: 'single-source',
-      sourceOfTruth: null,
-      recoverable: false,
+      outcome: 'unavailable',
+      inspectableSource: null,
+      providerState: 'unsupported',
       missingSources: ['thoth-mem', 'openspec'],
       metadata: {
         comparedSources: [],

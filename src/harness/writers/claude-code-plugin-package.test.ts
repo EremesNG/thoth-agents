@@ -21,6 +21,10 @@ describe('renderClaudeCodePluginPackage', () => {
         author: { name: 'thoth-agents' },
       },
       componentArtifacts: [
+        component(
+          '.claude-plugin/.mcp.json',
+          '{"mcpServers":{"context7":{"url":"https://mcp.context7.com/mcp"},"thoth_mem":{"command":"npx"}}}\n',
+        ),
         component('.claude-plugin/agents/quick.md', 'q'),
         component('.claude-plugin/agents/deep.md', 'd'),
       ],
@@ -47,6 +51,7 @@ describe('renderClaudeCodePluginPackage', () => {
       .filter((a) => a.kind === 'agent-config')
       .map((a) => a.path);
     expect(componentPaths).toEqual([
+      '.claude-plugin/.mcp.json',
       '.claude-plugin/agents/deep.md',
       '.claude-plugin/agents/quick.md',
     ]);
@@ -59,10 +64,16 @@ describe('renderClaudeCodePluginPackage', () => {
       assets: { path: string; sha256: string }[];
     };
     expect(parsed.assets.map((entry) => entry.path)).toEqual([
+      '.claude-plugin/.mcp.json',
       '.claude-plugin/agents/deep.md',
       '.claude-plugin/agents/quick.md',
     ]);
     expect(parsed.assets[0].sha256).toMatch(/^sha256:/);
+    const mcp = result.artifacts.find((entry) =>
+      entry.path.endsWith('.mcp.json'),
+    );
+    expect(String(mcp?.content)).toContain('context7');
+    expect(String(mcp?.content)).not.toContain('thoth_mem');
     expect(result.diagnostics).toEqual([]);
   });
 });

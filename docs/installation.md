@@ -95,7 +95,7 @@ When skills are enabled, it also installs or copies:
 
 | Option | Description |
 | --- | --- |
-| `--agent=opencode|codex` | Select the harness target explicitly |
+| `--agent=opencode|codex|claude` | Select the harness target explicitly |
 | `--tmux=yes|no` | Enable tmux integration for OpenCode |
 | `--skills=yes|no` | Install recommended external skills and bundled repo skills |
 | `--no-tui` | Run without the interactive installer UI |
@@ -204,8 +204,9 @@ in `agents/` (six specialists + an `orchestrator`), an `.mcp.json` server map,
 bundled `skills/`, and a plugin-root `settings.json` with
 `{ "agent": "orchestrator" }`. That `agent` key activates the orchestrator as
 the Claude Code **main thread** (replacing the default system prompt), so the
-session starts in delegate-first mode and bootstraps thoth-mem on its first
-turn. It auto-loads as `thoth-agents@skills-dir` on the next session (no
+session starts in delegate-first mode. Provider enrollment and lifecycle remain
+owned by the independently installed provider guidance. It auto-loads as
+`thoth-agents@skills-dir` on the next session (no
 marketplace, no install step) — restart Claude Code or run `/reload-plugins` to
 activate it, and confirm in `/plugin` → Installed. To use plain Claude Code in a
 project, disable the plugin there (`/plugin disable thoth-agents@skills-dir`).

@@ -76,8 +76,6 @@ describe('loadArtifactSnapshot', () => {
     expect(result.valid).toBe(true);
     expect(result.snapshot?.source).toBe('prompt');
     expect(result.snapshot?.content).toBe('# inline tasks');
-    expect(result.comparison.status).toBe('not-applicable');
-    expect(result.comparison.sourceOfTruth).toBe('prompt');
     expect(calls.thoth).toBe(0);
     expect(calls.openspec).toBe(0);
   });
@@ -93,8 +91,6 @@ describe('loadArtifactSnapshot', () => {
     expect(result.valid).toBe(true);
     expect(result.snapshot?.source).toBe('thoth-mem');
     expect(result.snapshot?.content).toBe('thoth snapshot');
-    expect(result.comparison.status).toBe('not-applicable');
-    expect(result.comparison.sourceOfTruth).toBe('thoth-mem');
     expect(calls.thoth).toBe(1);
     expect(calls.openspec).toBe(0);
   });
@@ -110,13 +106,11 @@ describe('loadArtifactSnapshot', () => {
     expect(result.valid).toBe(true);
     expect(result.snapshot?.source).toBe('openspec');
     expect(result.snapshot?.content).toBe('openspec snapshot');
-    expect(result.comparison.status).toBe('not-applicable');
-    expect(result.comparison.sourceOfTruth).toBe('openspec');
     expect(calls.thoth).toBe(0);
     expect(calls.openspec).toBe(1);
   });
 
-  test('compares hybrid sources and keeps thoth-mem as the primary source when both match', async () => {
+  test('reports a matching hybrid as complete without granting provider authority', async () => {
     const { dependencies } = createDependencies({
       readOpenspecArtifact: async () => ({ content: 'thoth snapshot' }),
     });
@@ -127,49 +121,24 @@ describe('loadArtifactSnapshot', () => {
     );
 
     expect(result.valid).toBe(true);
-    expect(result.snapshot?.source).toBe('thoth-mem');
-    expect(result.comparison.status).toBe('match');
-    expect(result.comparison.sourceOfTruth).toBe('thoth-mem');
-    expect(result.comparison.metadata).toEqual({
-      comparedSources: ['thoth-mem', 'openspec'],
-      matched: true,
-      openspecLength: 14,
-      thothLength: 14,
+    expect(result.mode).toBe('hybrid');
+    expect(result.snapshot?.source).toBe('openspec');
+    expect(result.comparison).toEqual({
+      outcome: 'complete',
+      inspectableSource: 'openspec',
+      providerState: 'supported',
+      missingSources: [],
+      metadata: {
+        comparedSources: ['thoth-mem', 'openspec'],
+      },
     });
     expect(result.findings).toHaveLength(0);
   });
 
-  test('reports recoverable divergence as a warning first in hybrid mode', async () => {
-    const { dependencies } = createDependencies();
-
-    const result = await loadArtifactSnapshot(
-      createRequest({ mode: 'hybrid', promptSnapshot: undefined }),
-      dependencies,
-    );
-
-    expect(result.valid).toBe(true);
-    expect(result.snapshot?.source).toBe('thoth-mem');
-    expect(result.summary.warningCount).toBe(1);
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: 'artifact-loader.hybrid-divergence',
-        severity: 'warning',
-      }),
-    );
-    expect(result.comparison.status).toBe('diverged');
-    expect(result.comparison.recoverable).toBe(true);
-    expect(result.comparison.metadata).toEqual({
-      comparedSources: ['thoth-mem', 'openspec'],
-      matched: false,
-      openspecLength: 17,
-      thothLength: 14,
-    });
-  });
-
-  test('falls back to openspec with a warning when hybrid mode cannot load thoth-mem', async () => {
+  test('reports an OpenSpec-only hybrid as partial without fallback or fabricated completeness', async () => {
     const { dependencies } = createDependencies({
       readThothArtifact: async () => null,
-      readOpenspecArtifact: async () => ({ content: 'openspec backup' }),
+      readOpenspecArtifact: async () => ({ content: 'openspec snapshot' }),
     });
 
     const result = await loadArtifactSnapshot(
@@ -177,23 +146,55 @@ describe('loadArtifactSnapshot', () => {
       dependencies,
     );
 
-    expect(result.valid).toBe(true);
+    expect(result.mode).toBe('hybrid');
     expect(result.snapshot?.source).toBe('openspec');
-    expect(result.snapshot?.content).toBe('openspec backup');
-    expect(result.summary.warningCount).toBe(1);
+    expect(result.comparison).toEqual({
+      outcome: 'partial',
+      inspectableSource: 'openspec',
+      providerState: 'unsupported',
+      missingSources: ['thoth-mem'],
+      metadata: { comparedSources: ['openspec'] },
+    });
     expect(result.findings).toContainEqual(
       expect.objectContaining({
-        code: 'artifact-loader.hybrid-fallback',
-        severity: 'warning',
+        code: 'persistence.hybrid-partial',
       }),
     );
-    expect(result.comparison.status).toBe('single-source');
-    expect(result.comparison.sourceOfTruth).toBe('openspec');
-    expect(result.comparison.recoverable).toBe(true);
-    expect(result.comparison.missingSources).toEqual(['thoth-mem']);
+    expect(result.comparison).not.toHaveProperty('recoverable');
+    expect(result.findings.map((finding) => finding.code)).not.toContain(
+      'artifact-loader.hybrid-fallback',
+    );
   });
 
-  test('reports an unrecoverable error when hybrid mode cannot load either persisted source', async () => {
+  test('reports a provider-only hybrid as partial without switching the declared mode', async () => {
+    const { dependencies } = createDependencies({
+      readThothArtifact: async () => ({ content: 'provider snapshot' }),
+      readOpenspecArtifact: async () => null,
+    });
+
+    const result = await loadArtifactSnapshot(
+      createRequest({ mode: 'hybrid', promptSnapshot: undefined }),
+      dependencies,
+    );
+
+    expect(result.mode).toBe('hybrid');
+    expect(result.snapshot?.source).toBe('thoth-mem');
+    expect(result.comparison).toEqual({
+      outcome: 'partial',
+      inspectableSource: 'thoth-mem',
+      providerState: 'supported',
+      missingSources: ['openspec'],
+      metadata: { comparedSources: ['thoth-mem'] },
+    });
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        code: 'persistence.hybrid-partial',
+      }),
+    );
+    expect(result.comparison).not.toHaveProperty('recoverable');
+  });
+
+  test('reports an unavailable hybrid without fabricating a source or recovery', async () => {
     const { dependencies } = createDependencies({
       readThothArtifact: async () => null,
       readOpenspecArtifact: async () => null,
@@ -205,17 +206,46 @@ describe('loadArtifactSnapshot', () => {
     );
 
     expect(result.valid).toBe(false);
+    expect(result.mode).toBe('hybrid');
     expect(result.snapshot).toBeNull();
-    expect(result.comparison.status).toBe('single-source');
-    expect(result.comparison.sourceOfTruth).toBeNull();
-    expect(result.comparison.recoverable).toBe(false);
-    expect(result.comparison.missingSources).toEqual(['thoth-mem', 'openspec']);
+    expect(result.comparison).toEqual({
+      outcome: 'unavailable',
+      inspectableSource: null,
+      providerState: 'unsupported',
+      missingSources: ['thoth-mem', 'openspec'],
+      metadata: { comparedSources: [] },
+    });
     expect(result.findings).toContainEqual(
       expect.objectContaining({
-        code: 'artifact-loader.hybrid-unavailable',
+        code: 'persistence.source-unavailable',
         severity: 'error',
       }),
     );
+    expect(result.comparison).not.toHaveProperty('recoverable');
+  });
+
+  test('reports divergent hybrid legs without choosing an authority or repair path', async () => {
+    const { dependencies } = createDependencies();
+
+    const result = await loadArtifactSnapshot(
+      createRequest({ mode: 'hybrid', promptSnapshot: undefined }),
+      dependencies,
+    );
+
+    expect(result.mode).toBe('hybrid');
+    expect(result.snapshot).toBeNull();
+    expect(result.comparison).toEqual({
+      outcome: 'diverged',
+      inspectableSource: null,
+      providerState: 'supported',
+      missingSources: [],
+      metadata: { comparedSources: ['thoth-mem', 'openspec'] },
+    });
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ code: 'persistence.hybrid-diverged' }),
+    );
+    expect(result.comparison).not.toHaveProperty('sourceOfTruth');
+    expect(result.comparison).not.toHaveProperty('recoverable');
   });
 });
 

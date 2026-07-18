@@ -83,21 +83,21 @@ openspec/
 | Requirements checklist | `openspec/changes/{change-name}/checklists/requirements.md` | Domain-typed requirement-quality gate, consumed before tasks |
 | Constitution | `openspec/memory/constitution.md` | Semver-versioned native principles + Sync-Impact Report |
 
-`apply-progress` and `archive-report` are durable SDD artifacts, but they are
-primarily persisted through thoth-mem topic keys when the mode includes
-thoth-mem.
+`apply-progress` and `archive-report` are durable SDD artifacts. In
+provider-backed modes they retain their canonical `sdd/{change}/{artifact}`
+identities while installed provider guidance owns persistence mechanics.
 
 A saved `plan-review.md` approval is reusable only when it contains `[OKAY]` and every recorded reviewed-artifact SHA-256 digest still matches the current planning artifacts. Missing, stale, rejected, or unparsable plan-review evidence fails closed and requires a fresh Oracle review unless a separate explicit user override is captured through the normal blocking-input surface. A fresh plan-review approval satisfies only the plan-review gate; implementation confirmation remains separate.
 
 The canonical OpenSpec copy is the filesystem representation of these artifacts
-for `openspec` and `hybrid` modes. thoth-mem topic keys are the memory
-representation when the mode includes thoth-mem; neither representation changes
-the harness-neutral artifact names or lifecycle.
+for `openspec` and `hybrid` modes. Provider-backed representations use the same
+canonical identities; neither representation changes the harness-neutral
+artifact names or lifecycle.
 
 Delegated handoff summaries are not OpenSpec artifacts. They are root-owned
-session summary context when thoth-mem is available, while subagent prompts
-carry recovery instructions and continue to use the canonical OpenSpec paths
-above for filesystem artifact recovery.
+continuity outcomes when provider support is evidenced, while subagent prompts
+carry authorized handoff context and continue to use the canonical OpenSpec
+paths above for filesystem artifact recovery.
 
 ## Writing Rules
 
@@ -115,7 +115,7 @@ above for filesystem artifact recovery.
 - `spec.md` uses RFC 2119 keywords and Given/When/Then scenarios (full pipeline only).
 - The `clarify` phase (full pipeline only) resolves residual spec ambiguity in
   place between `spec` and `design`, editing the delta `spec.md` files under the
-  same path and re-saving the `sdd/{change-name}/spec` key; it produces no new
+  same path and preserving the `sdd/{change}/spec` identity; it produces no new
   artifact.
 - `design.md` explains how the change will be implemented (full pipeline only).
   It MAY be accompanied by optional, gated sub-artifacts (`research.md`,

@@ -11,10 +11,11 @@ installation artifacts for other harnesses.
 - Signals: hook, event, tool, MCP, LSP, ast-grep, tmux, rate limit, retry,
   runtime fallback, plugin initialization.
 - `src/index.ts:ThothAgents` is the main entrypoint.
-- `src/hooks/index.ts` exports update, header, retry, fallback, recovery, reminder,
-  skill-sync, and `thoth-mem` hooks.
-- `src/mcp/index.ts:createBuiltinMcps` registers `exa`, `context7`, `grep_app`,
-  and `thoth_mem`, respecting disabled MCPs.
+- `src/hooks/index.ts` exports update, header, retry, fallback, recovery,
+  reminder, and skill-sync hooks. Provider-owned lifecycle hooks are external.
+- `src/mcp/index.ts:createBuiltinMcps` registers the bundled research MCPs and
+  respects disabled MCPs; independently installed provider MCPs remain outside
+  this package.
 - `src/tools/index.ts` exports LSP and ast-grep tools.
 
 ## Flow
@@ -33,11 +34,13 @@ installation artifacts for other harnesses.
 - Auxiliary hook errors must not invent recovery guarantees the host does not
   provide.
 - Tmux is limited to OpenCode; do not describe Codex as tmux-aware.
-- Memory-hook changes require the memory overlay and lifecycle tests.
+- Provider-dependent continuity changes require the memory-governance overlay;
+  this route must not copy provider lifecycle protocols.
 
 ## Dependencies and overlays
 
-- [`memory-governance.md`](memory-governance.md) for `thoth_mem` and its hook.
+- [`memory-governance.md`](memory-governance.md) for external provider ownership
+  and consumer continuity outcomes.
 - [`agents-and-delegation.md`](agents-and-delegation.md) for role prompts,
   permissions, or model fallback.
 - [`harness-packaging.md`](harness-packaging.md) only when a generated surface

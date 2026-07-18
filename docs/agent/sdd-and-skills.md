@@ -25,6 +25,9 @@ verification governance.
 - `oracle` reviews read-only; if an artifact must be persisted, a write owner may
   be another role.
 - `openspec/` is the governed persistence surface; do not invent parallel formats.
+- Keep SDD portable across `opencode`, `codex`, and `claude`; provider-dependent
+  persistence uses canonical `sdd/{change}/{artifact}` identity while storage
+  and recovery mechanics remain external.
 
 ## Dependencies and overlays
 

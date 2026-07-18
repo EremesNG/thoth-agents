@@ -161,6 +161,34 @@ function getPermissionRecord(
   return permission as PermissionRecord;
 }
 
+describe('external provider orchestration boundary', () => {
+  test('keeps all role and permission boundaries while externalizing provider operations', () => {
+    const agents = createAgents();
+    const prompts = agents.map((agent) => agent.config.prompt ?? '').join('\n');
+
+    expect(agents.map((agent) => agent.name)).toEqual([
+      'orchestrator',
+      'explorer',
+      'librarian',
+      'oracle',
+      'designer',
+      'quick',
+      'deep',
+    ]);
+    expect(getPermissionRecord('explorer').edit).toBe('deny');
+    expect(getPermissionRecord('oracle').edit).toBe('deny');
+    expect(getPermissionRecord('deep').edit).toBe('allow');
+    expect(prompts).toContain('installed provider guidance');
+    expect(prompts).toContain('parent-scoped authorization');
+    expect(prompts).toContain('resumable summary or checkpoint outcome');
+    expect(prompts).toContain('sdd/{change}/{artifact}');
+    expect(prompts).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
+    );
+    expect(prompts).not.toMatch(/recall funnel|permanent closure|end-session/i);
+  });
+});
+
 describe('agent alias backward compatibility', () => {
   test("applies 'explore' config to 'explorer' agent", () => {
     const config: PluginConfig = {
@@ -364,18 +392,12 @@ describe('orchestrator agent', () => {
     );
   });
 
-  test('orchestrator prompt includes OpenCode-only runtime prompt-save guidance', () => {
+  test('orchestrator prompt omits consumer-owned OpenCode prompt-capture guidance', () => {
     const prompt = getAgentByName('orchestrator')?.config.prompt ?? '';
 
-    expect(prompt).toContain('<opencode-runtime>');
-    expect(prompt).toContain(
-      'automatic `<reminder>...</reminder>` workflow block',
-    );
-    expect(prompt).toContain('not user input');
-    expect(prompt).toContain('mem_save(kind="prompt")');
-    expect(prompt).toContain(
-      'persist only the real user request text that follows',
-    );
+    expect(prompt).not.toContain('<opencode-runtime>');
+    expect(prompt).not.toContain('mem_save(kind="prompt")');
+    expect(prompt).toContain('installed provider guidance');
   });
 
   test('Codex root prompt does not include OpenCode runtime prompt-save guidance', () => {
@@ -403,16 +425,14 @@ describe('orchestrator agent', () => {
     );
   });
 
-  test('orchestrator prompt keeps governance findings inside delegate-first and root-memory ownership boundaries', () => {
+  test('orchestrator prompt keeps governance findings inside delegate-first provider-neutral boundaries', () => {
     const prompt = getAgentByName('orchestrator')?.config.prompt ?? '';
 
     expect(prompt).toContain(
       'Delegate governance inspection; do not treat findings as an execution gate',
     );
-    expect(prompt).toContain('Root thoth-mem ownership stays with you');
-    expect(prompt).toContain(
-      'sub-agents must not own session memory, prompts, or progress checkpoints',
-    );
+    expect(prompt).toContain('provider-neutral continuity');
+    expect(prompt).toContain('sub-agents receive only authorized context');
   });
 });
 
@@ -628,54 +648,28 @@ describe('prompt role markers', () => {
     }
   });
 
-  test('read-only subagent prompts forbid session and prompt thoth-mem writes', () => {
+  test('read-only subagent prompts require authorized context without provider calls', () => {
     const explorerPrompt = getAgentByName('explorer')?.config.prompt ?? '';
 
-    expect(explorerPrompt).toContain(
-      '`mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`',
-    );
-    expect(explorerPrompt).toContain('handoff recovery instructions');
-    expect(explorerPrompt).toContain(
-      'Recover the parent-session handoff summary through the recall funnel',
-    );
-    expect(explorerPrompt).toContain(
-      'missing, stale, contradictory, or insufficient',
-    );
-    expect(explorerPrompt).toContain(
-      'do not call `mem_save` or own any `mem_session(...)` lifecycle action',
-    );
-    expect(explorerPrompt).toContain(
-      'Never save prompts, generated subagent prompts, session summaries, or durable memory.',
+    expect(explorerPrompt).toContain('parent-scoped authorization');
+    expect(explorerPrompt).toContain('authorized context');
+    expect(explorerPrompt).toContain('degraded or unsupported');
+    expect(explorerPrompt).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
     );
   });
 
-  test('write-capable subagent prompts require parent thoth-mem ownership rules', () => {
+  test('write-capable subagent prompts preserve parent authorization and SDD identity', () => {
     const deepPrompt = getAgentByName('deep')?.config.prompt ?? '';
     const quickPrompt = getAgentByName('quick')?.config.prompt ?? '';
 
-    expect(deepPrompt).toContain('Never own `mem_session(action="start"');
-    expect(deepPrompt).toContain('save prompts');
-    expect(deepPrompt).toContain(
-      'Always use the parent session_id/project from dispatch',
+    expect(deepPrompt).toContain('parent-scoped authorization');
+    expect(deepPrompt).toContain('authorized context');
+    expect(deepPrompt).toContain('sdd/{change}/{artifact}');
+    expect(quickPrompt).toContain('resumable summary or checkpoint outcome');
+    expect([deepPrompt, quickPrompt].join('\n')).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
     );
-    expect(deepPrompt).toContain(
-      '`mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`',
-    );
-    expect(deepPrompt).toContain(
-      'recover the parent-session handoff summary before treating memory as source material',
-    );
-    expect(deepPrompt).toContain(
-      '`mem_save(kind="observation")` is allowed only for delegated durable implementation observations or assigned deterministic SDD artifacts/apply-progress',
-    );
-    expect(deepPrompt).toContain(
-      'deterministic SDD artifacts use `sdd/{change}/{artifact}`',
-    );
-    expect(deepPrompt).toContain('mem_context');
-    expect(deepPrompt).toContain(
-      'mem_project(action="graph"|"topics"|"topic")',
-    );
-    expect(deepPrompt).toContain('You do not own durable memory of your own');
-    expect(quickPrompt).toContain('Never own `mem_session(action="start"');
   });
 
   test('quick agent can load bundled workflow skills', () => {
@@ -730,63 +724,43 @@ describe('prompt role markers', () => {
     expect(getAgentByName('deep')?.config.prompt).toContain('write-capable');
   });
 
-  test('read-only subagents have read-only thoth-mem access', () => {
+  test('read-only subagents preserve read-only boundaries with authorized context', () => {
     const readOnlyAgents = ['explorer', 'librarian', 'oracle'];
 
     for (const agentName of readOnlyAgents) {
       const prompt = getAgentByName(agentName)?.config.prompt;
 
-      // Should include read-only access instructions
-      expect(prompt).toContain('read-only thoth-mem');
-
-      // Should include the canonical recall funnel.
-      expect(prompt).toContain('mem_recall(mode="compact")');
-      expect(prompt).toContain('mem_recall(mode="context")');
-      expect(prompt).toContain('mem_get(...)');
-      expect(prompt).toContain('mem_context');
-      expect(prompt).toContain('mem_project');
-
-      // Should ban write tools
-      expect(prompt).toContain('do not call `mem_save`');
-
-      // Should NOT contain the old blanket ban
-      expect(prompt).not.toContain(
-        'Do not call ANY thoth-mem tools — memory is exclusively orchestrator-owned.',
+      expect(prompt).toContain('read-only');
+      expect(prompt).toContain('parent-scoped authorization');
+      expect(prompt).toContain('authorized context');
+      expect(prompt).not.toMatch(
+        /mem_(?:save|recall|get|context|project|session)\s*\(/,
       );
     }
   });
 
-  test('write-capable subagents require root session/project for thoth-mem calls', () => {
+  test('write-capable subagents require parent authorization for provider outcomes', () => {
     expect(getAgentByName('designer')?.config.prompt).toContain(
-      'Use delegated thoth-mem tools only',
+      'parent-scoped authorization',
     );
     expect(getAgentByName('quick')?.config.prompt).toContain(
-      'Always use the parent session_id/project from dispatch for every thoth-mem call.',
+      'authorized context',
     );
     expect(getAgentByName('deep')?.config.prompt).toContain(
-      'If either is missing, do NOT call thoth-mem.',
+      'degraded or unsupported',
     );
   });
 
-  test('generated OpenCode subagent prompts preserve delegated SDD memory limits', () => {
+  test('generated OpenCode subagent prompts preserve canonical SDD identity without provider protocol', () => {
     const explorer = getAgentByName('explorer')?.config.prompt ?? '';
     const quick = getAgentByName('quick')?.config.prompt ?? '';
 
-    expect(explorer).toContain(
-      'Use read-only thoth-mem only when dispatch gives parent session_id/project',
+    expect(explorer).toContain('parent-scoped authorization');
+    expect(explorer).toContain('authorized context');
+    expect(quick).toContain('sdd/{change}/{artifact}');
+    expect([explorer, quick].join('\n')).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
     );
-    expect(explorer).toContain(
-      'Supplemental `mem_context(recall_query=...)` and bounded `mem_project(action="graph"|"topics"|"topic")` do not replace the recall funnel and require explicit delegated permission.',
-    );
-    expect(explorer).toContain('`mem_context`');
-    expect(explorer).toContain('bounded `mem_project`');
-    expect(quick).toContain(
-      'Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`',
-    );
-    expect(quick).toContain(
-      'general durable observations must stay outside `sdd/*`',
-    );
-    expect(quick).toContain('save generated subagent prompts as user intent');
   });
 
   test('write-capable subagents consume orchestrator handoffs instead of redoing broad discovery', () => {

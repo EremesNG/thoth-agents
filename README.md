@@ -2,7 +2,7 @@
 <img src="img/team.png" alt="thoth-agents agents" width="420">
 
 <p><i>Seven specialized agents, one delegate-first workflow across supported harnesses.</i></p>
-  <p><b>thoth-agents</b> - Multi-harness orchestration - Thoth-mem persistence - Bundled SDD pipeline</p>
+  <p><b>thoth-agents</b> - Multi-harness orchestration - External provider boundary - Bundled SDD pipeline</p>
   <p>
     <a href="https://github.com/EremesNG/thoth-agents/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/EremesNG/thoth-agents/ci.yml?branch=master&label=CI" alt="CI status"></a>
     <a href="https://www.npmjs.com/package/thoth-agents"><img src="https://img.shields.io/npm/v/thoth-agents?label=npm" alt="npm version"></a>
@@ -36,8 +36,8 @@ hooks, MCP, skills, and per-agent tool permissions.
   decisions while specialists gather evidence, implement, review, and verify.
 - A bundled requirements interview and SDD pipeline for moving from ambiguous
   requests to planned, verified implementation.
-- A thoth-mem integration for durable project memory, SDD artifacts, and
-  cross-session recovery.
+- A provider-neutral memory boundary: thoth-mem is an independently installed
+  provider whose guidance owns memory operations, persistence, and recovery.
 - A multi-harness package that preserves OpenCode defaults while adding a
   Codex setup path.
 
@@ -150,7 +150,8 @@ auto-discovered agents in `agents/` (six specialists + an `orchestrator`), an
 `.mcp.json` server map, bundled `skills/`, and a plugin-root `settings.json`
 with `{ "agent": "orchestrator" }`. That `agent` key activates the orchestrator
 as the **main thread** — replacing the default system prompt — so the session
-starts in delegate-first mode and bootstraps thoth-mem on its first turn. It
+starts in delegate-first mode. Provider enrollment and lifecycle behavior remain
+owned by the independently installed provider guidance. It
 auto-loads as `thoth-agents@skills-dir` on the next session (no marketplace or
 install step); restart Claude Code or run `/reload-plugins` to activate it
 (confirm in `/plugin` → Installed). The orchestrator delegates to specialists
@@ -340,36 +341,31 @@ Artifacts can be persisted in four modes:
 | `hybrid`    | Both                   | High   | Maximum durability; default                |
 | `none`      | Neither                | Lowest | Ephemeral iterations, no persistence       |
 
-[Thoth-mem](https://github.com/EremesNG/thoth-mem) is the local memory MCP used for durable observations, architectural
-decisions, SDD artifacts, and session summaries. The core retrieval pattern is:
-
-1. `mem_recall(mode="compact")` for compact candidate records
-2. `mem_recall(mode="context")` for expanded retrieved context
-3. `mem_get(...)` for the full selected record; use
-   `mem_get(include_timeline=true)` when chronology matters
-
-Use HyDE/fused hybrid recall (sentence + chunk vectors, FTS, KG enrichment) for
-semantic or ambiguous searches; set `mem_recall` `limit` from 1 to 20; narrow
-with `topic_key`, `type`, `time_from`, `time_to`, `scope`, `project`, and
-`session_id` filters. Use `mem_get` with `kind="observation"|"prompt"`,
-`include_timeline=true` plus `before`/`after`, and `offset`/`max_length` for
-large content. Use bounded `mem_context(recall_query=...)` or
-`mem_project(action="graph"|"topics"|"topic")` for supplemental project
-context; `mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`,
-`HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.
+[Thoth-mem](https://github.com/EremesNG/thoth-mem) is an independent external
+provider. Its installation, hooks, session lifecycle, prompt capture,
+compaction/recovery, and persistence protocol are authoritative there; this
+project reports only evidence-based supported, degraded, or unsupported
+outcomes. Deterministic SDD artifacts retain the canonical `sdd/{change}/{artifact}`
+identity without prescribing provider storage or retrieval mechanics. Completion
+continuity is a resumable summary or checkpoint, never permanent closure;
+rollback/removal touches consumer-managed assets only and preserves external
+provider configuration. Stage 2 capability hardening remains an accepted
+follow-up.
 
 ## Skills And MCPs
 
 thoth-agents ships bundled skills for requirements discovery, plan review, SDD
-planning/execution, verification, and archiving. It also registers MCP servers
-for docs research, public code search, and local memory where the harness
-supports that delivery surface.
+planning/execution, verification, and archiving. It registers only its `exa`,
+`context7`, and `grep_app` research MCPs where the harness supports that
+delivery surface. Memory is supplied and configured exclusively by the
+independently installed external provider, whose installed guidance is
+authoritative.
 
 
 | Surface          | Shared concept                                 | OpenCode binding                                             | Codex binding                                                    | Claude Code binding                                               |
 | ---------------- | ---------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Skills           | Requirements, SDD, review, execution workflows | Copied into the OpenCode skills directory when`--skills=yes` | Packaged as plugin-bundled skills for the Personal plugin source | Bundled in the plugin`skills/` directory                          |
-| MCPs             | `exa`, `context7`, `grep_app`, `thoth_mem`     | Registered by generated OpenCode plugin config               | Packaged/configured only on validated Codex surfaces             | Bundled in the plugin`.mcp.json` (`type: "http"` for URL servers) |
+| MCPs             | `exa`, `context7`, `grep_app`                  | Registered by generated OpenCode plugin config               | Packaged/configured only on validated Codex surfaces             | Bundled in the plugin`.mcp.json` (`type: "http"` for URL servers) |
 | Delegation       | Seven-role specialist workflow                 | Native`task` tool                                            | Direct `collaboration.*` generic task delegation; role behavior carried by task name/message | Native`Task(subagent_type: ...)` over auto-discovered subagents   |
 | Blocking choices | Use a structured question surface              | OpenCode`question` tool                                      | `request_user_input` when enabled and available                  | `AskUserQuestion` tool                                            |
 

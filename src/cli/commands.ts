@@ -117,6 +117,14 @@ export function formatHarnessStatusReport(
       `${report.displayName ?? getOperationHarness(report.harness).displayName} (${report.harness})`,
       `State: ${report.state}`,
       `Summary: ${report.summary}`,
+      ...(report.providerCapability
+        ? [
+            'Provider evidence:',
+            `Provider capability: ${report.providerCapability.state}`,
+            `Evidence source: ${report.providerCapability.source}`,
+            `Evidence basis: ${report.providerCapability.basis.length > 0 ? report.providerCapability.basis.join('; ') : 'none supplied'}`,
+          ]
+        : []),
       ...(report.targets.length > 0
         ? ['Targets:', ...report.targets.map(formatTarget)]
         : []),
@@ -278,8 +286,9 @@ OpenCode loads the plugin with config such as:
 That plugin entry does not create a global thoth-agents command.
 Run this CLI through a global install, npx, or pnpm dlx.
 
-OpenCode install configures the seven-agent roster, thoth-mem defaults,
-native task delegation, and bundled SDD skills for OpenCode.
+OpenCode install configures the seven-agent roster, native task delegation,
+and bundled SDD skills for OpenCode.
+Provider capability is external and reported only from caller-supplied evidence.
 
 Bundled thoth-agents skills are always installed.
 Use --skills=no to skip only recommended external skills.

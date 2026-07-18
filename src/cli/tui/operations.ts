@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { ALL_AGENT_NAMES, DEFAULT_MODELS } from '../../config';
-import type { HarnessId } from '../../harness/types';
+import type {
+  HarnessId,
+  ProviderCapabilityEvidence,
+  ProviderEvidenceInput,
+} from '../../harness/types';
 import {
   buildClaudeCodeSetupPlan,
   CLAUDE_CODE_ROLE_NAMES,
@@ -60,7 +64,11 @@ export type TuiAction =
   | 'model';
 
 export interface TuiOperations {
-  status(harness: HarnessId): HarnessStatusReport;
+  status(
+    harness: HarnessId,
+    evidence?: ProviderEvidenceInput,
+  ): HarnessStatusReport;
+  providerCapability?(harness: HarnessId): Promise<ProviderCapabilityEvidence>;
   modelRoles(harness: HarnessId): ModelRoleInput[];
   modelOptions(harness: HarnessId): Promise<ModelOption[]>;
   plan(
@@ -254,12 +262,12 @@ function buildTuiModelPlan(
 }
 
 export const defaultTuiOperations: TuiOperations = {
-  status(harness) {
-    if (harness === 'opencode') return getOpenCodeStatus(context);
+  status(harness, evidence) {
+    if (harness === 'opencode') return getOpenCodeStatus(context, evidence);
     if (harness === 'claude') {
-      return getClaudeCodeStatus(claudeCodeContext);
+      return getClaudeCodeStatus(claudeCodeContext, evidence);
     }
-    return getCodexStatus(codexContext);
+    return getCodexStatus(codexContext, evidence);
   },
   modelRoles(harness) {
     if (harness === 'opencode') return getOpenCodeModelRoles();

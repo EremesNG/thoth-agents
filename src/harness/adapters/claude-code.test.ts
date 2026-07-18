@@ -110,7 +110,7 @@ describe('claudeCodeAdapter', () => {
     );
   });
 
-  test('renders .mcp.json with http type for url-based servers', () => {
+  test('renders .mcp.json with unrelated servers and no bundled provider MCP', () => {
     const { artifacts } = render();
     const mcp = JSON.parse(
       String(artifact(artifacts, '.mcp.json')?.content),
@@ -122,7 +122,22 @@ describe('claudeCodeAdapter', () => {
     });
     expect(mcp.mcpServers.grep_app.type).toBe('http');
     expect(mcp.mcpServers.exa).toMatchObject({ command: 'npx' });
-    expect(mcp.mcpServers.thoth_mem).toMatchObject({ command: 'npx' });
+    expect(mcp.mcpServers.thoth_mem).toBeUndefined();
+  });
+
+  test('omits provider-owned skills and lifecycle protocol from Claude output', () => {
+    const { artifacts } = render();
+    const serialized = artifacts
+      .map((entry) => `${entry.path}\n${String(entry.content)}`)
+      .join('\n');
+
+    expect(serialized).not.toMatch(/skills[\\/]thoth-mem-agents/i);
+    expect(serialized).toContain('installed provider guidance');
+    expect(serialized).toContain('sdd/{change}/{artifact}');
+    expect(serialized).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
+    );
+    expect(serialized).not.toContain("this plugin's bundled MCP server");
   });
 
   test('stamps the manifest version from the root package.json and emits no diagnostics', () => {

@@ -219,23 +219,11 @@ Use `artifactStore.mode` to control where SDD artifacts persist.
 
 Default mode is `hybrid`.
 
-Recall funnel for thoth-mem:
-
-1. `mem_recall(mode="compact")` — scan candidate IDs/titles with topic-key or
-   query filters.
-2. `mem_recall(mode="context")` — expand strongest hits into retrieved context.
-3. `mem_get(id=..., include_timeline=true)` — fetch full content and timeline
-   context when chronology matters.
-
-Use HyDE/fused hybrid recall (sentence + chunk vectors, FTS, KG enrichment) for
-semantic or ambiguous searches; set `mem_recall` `limit` from 1 to 20; narrow
-with `topic_key`, `type`, `time_from`, `time_to`, `scope`, `project`, and
-`session_id` filters. Use `mem_get` with `kind="observation"|"prompt"`,
-`include_timeline=true` plus `before`/`after`, and `offset`/`max_length` for
-large content. Use bounded `mem_context(recall_query=...)` or
-`mem_project(action="graph"|"topics"|"topic")` for supplemental project
-context; `mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`,
-`HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.
+Provider installation, recall, compaction/recovery, and persistence mechanics
+are owned by the independently installed thoth-mem guidance. thoth-agents
+passes only authorized outcome-level context, preserves resumable summaries or
+checkpoints, and reports unsupported or degraded capability without claiming
+provider success. Deterministic SDD artifacts use `sdd/{change}/{artifact}`.
 
 ## MCP Servers
 
@@ -246,7 +234,6 @@ Built-in MCPs:
 | `exa` | Exa-backed web search | Optional `EXA_API_KEY` |
 | `context7` | Official library documentation lookup | Optional `CONTEXT7_API_KEY` |
 | `grep_app` | Public GitHub code search | No auth required |
-| `thoth_mem` | Local persistent memory and SDD artifact storage | Local `npx thoth-mem@latest` |
 
 Disable any built-in MCP globally with `disabled_mcps` where the generated
 harness config supports it:
@@ -343,7 +330,6 @@ TOML files and plugin-bundled guidance. See
 | `tmux.enabled` | boolean | `false` | OpenCode | Enables pane spawning |
 | `tmux.layout` | string | `main-vertical` | OpenCode | Tmux layout |
 | `fallback.enabled` | boolean | `true` | OpenCode | Runtime model failover |
-| `thoth.command` | string[] | `['pnpm', 'dlx', 'thoth-mem@latest']` | OpenCode config / shared concept | Local thoth MCP command |
 | `artifactStore.mode` | string | `hybrid` | Shared concept | SDD artifact persistence target |
 | `disabled_mcps` | string[] | `[]` | Generated harness config | Globally disable built-in MCPs where supported |
 

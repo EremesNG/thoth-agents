@@ -48,6 +48,7 @@ vi.mock('../custom-skills', async (importOriginal) => {
   };
 });
 
+import type { ProviderEvidenceInput } from '../../harness/types';
 import { CUSTOM_SKILLS } from '../custom-skills';
 import {
   applyOpenCodePlan,
@@ -57,7 +58,16 @@ import {
   buildOpenCodeUpdatePlan,
   getOpenCodeStatus,
 } from './opencode';
-import type { OperationPlan } from './types';
+import type {
+  HarnessStatusReport,
+  OperationContext,
+  OperationPlan,
+} from './types';
+
+const getOpenCodeStatusWithEvidence = getOpenCodeStatus as unknown as (
+  context?: OperationContext,
+  evidence?: ProviderEvidenceInput,
+) => HarnessStatusReport;
 
 describe('OpenCode operations adapter', () => {
   let configRoot: string;
@@ -209,6 +219,38 @@ describe('OpenCode operations adapter', () => {
     const unknown = getOpenCodeStatus({ cwd: configRoot });
     expect(unknown.state).toBe('unknown');
     expect(unknown.diagnostics[0]?.severity).toBe('critical');
+  });
+
+  test('keeps installed consumer state separate from exact supported provider evidence', () => {
+    writeManagedConfig();
+    writeBundledSkills();
+    const providerEvidence = {
+      state: 'supported' as const,
+      source: 'provider' as const,
+      basis: ['provider-observed persistence and continuity'],
+    };
+
+    const status = getOpenCodeStatusWithEvidence(
+      { cwd: configRoot },
+      { providerEvidence },
+    );
+
+    expect(status.state).toBe('installed');
+    expect(status.providerCapability).toEqual(providerEvidence);
+  });
+
+  test('defaults omitted provider evidence to unsupported without blocking provider-independent status', () => {
+    writeManagedConfig();
+    writeBundledSkills();
+
+    const status = getOpenCodeStatusWithEvidence({ cwd: configRoot });
+
+    expect(status.state).toBe('installed');
+    expect(status.providerCapability).toEqual({
+      state: 'unsupported',
+      source: 'none',
+      basis: [],
+    });
   });
 
   test('OpenCode status includes installed recommended skill targets when skill files exist', () => {

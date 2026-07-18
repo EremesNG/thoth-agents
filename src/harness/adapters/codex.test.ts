@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_THOTH_COMMAND, type PluginConfig } from '../../config';
+import type { PluginConfig } from '../../config';
 import {
   CODEX_CAPABILITIES,
   codexAdapter,
@@ -229,7 +229,7 @@ describe('Codex adapter', () => {
     );
   });
 
-  test('packages all built-in MCP servers from source definitions for Codex plugin payload', () => {
+  test('packages only unrelated MCP servers in the Codex plugin payload', () => {
     const result = codexAdapter.render({ projectRoot: process.cwd() });
     const mcpArtifact = result.artifacts.find(
       (artifact) => artifact.path === '.codex-plugin/.mcp.json',
@@ -242,10 +242,6 @@ describe('Codex adapter', () => {
       mcpServers: {
         context7: { url: 'https://mcp.context7.com/mcp' },
         grep_app: { url: 'https://mcp.grep.app' },
-        thoth_mem: {
-          command: DEFAULT_THOTH_COMMAND[0],
-          args: DEFAULT_THOTH_COMMAND.slice(1),
-        },
         exa: {
           command: 'npx',
           args: ['-y', 'exa-mcp-server'],
@@ -259,7 +255,6 @@ describe('Codex adapter', () => {
       'context7',
       'exa',
       'grep_app',
-      'thoth_mem',
     ]);
   });
 
@@ -303,6 +298,12 @@ describe('Codex adapter', () => {
     expect(artifactContent('.codex-plugin/plugin.json')).toContain(
       '"skills": "./skills/"',
     );
+    expect(paths).not.toContain(
+      '.codex-plugin/skills/thoth-mem-agents/SKILL.md',
+    );
+    expect(
+      artifactContent('.codex-plugin/skills/.thoth-agents-manifest.json'),
+    ).not.toContain('thoth-mem-agents');
   });
 
   test('emits .agents skills only for explicit repo-local fallback mode', () => {
@@ -334,29 +335,20 @@ describe('Codex adapter', () => {
     );
   });
 
-  test('renders memory governance instructions for orchestrator and subagents', () => {
+  test('renders provider-neutral authorization and continuity outcomes for subagents', () => {
     const explorer = agentContent('explorer');
     const quick = agentContent('quick');
     const deep = agentContent('deep');
 
-    expect(explorer).toContain(
-      'Every subagent memory call requires the parent session_id and project from dispatch',
-    );
-    expect(explorer).toContain(
-      'Read-only agents may use only parent-scoped mem_recall, mem_context, mem_get, and bounded mem_project reads when authorized.',
-    );
-    expect(explorer).toContain(
-      'Read-only agents must never write durable memory or save prompts.',
-    );
+    expect(explorer).toContain('parent-scoped authorization');
+    expect(explorer).toContain('authorized context');
 
     for (const prompt of [quick, deep]) {
-      expect(prompt).toContain(
-        'Never own mem_session(action="start"|"checkpoint"|"summary") or mem_save(kind="prompt"|"session_summary")',
+      expect(prompt).toContain('parent-scoped authorization');
+      expect(prompt).toContain('sdd/{change}/{artifact}');
+      expect(prompt).not.toMatch(
+        /mem_(?:save|recall|get|context|project|session)\s*\(/,
       );
-      expect(prompt).toContain(
-        'mem_save(kind="observation") is allowed only for delegated durable observations',
-      );
-      expect(prompt).toContain('Protect the sdd/* topic namespace');
       expect(prompt).toContain('`request_user_input`');
       expect(prompt).toContain('functions.update_plan');
       expect(prompt).not.toContain('`question`');
@@ -374,7 +366,10 @@ describe('Codex adapter', () => {
     for (const prompt of [explorer, oracle]) {
       expect(prompt).toContain('Mode: read-only');
       expect(prompt).toContain('Single-task leaf agent: do not delegate');
-      expect(prompt).toContain('do not call `mem_save`');
+      expect(prompt).toContain('authorized context');
+      expect(prompt).not.toMatch(
+        /mem_(?:save|recall|get|context|project|session)\s*\(/,
+      );
       expect(prompt).toContain('request_user_input');
       expect(prompt).not.toContain('Use `question` only');
     }
@@ -495,14 +490,12 @@ describe('Codex adapter', () => {
     expect(rootInstructions).toContain(
       'The ambient Codex root session is the root/main orchestrator',
     );
+    expect(rootInstructions).toContain('installed provider guidance');
     expect(rootInstructions).toContain(
-      'call mem_session(action="start") as step 0 before any other thoth-mem call',
+      'resumable summary or checkpoint outcome',
     );
-    expect(rootInstructions).toContain(
-      'save the real user prompt with mem_save(kind="prompt")',
-    );
-    expect(rootInstructions).toContain(
-      'disclose that memory bootstrap could not run',
+    expect(rootInstructions).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
     );
     expect(rootInstructions).toContain(
       'resolve the stable root session identity from Codex request metadata',
@@ -595,11 +588,11 @@ describe('Codex adapter', () => {
     );
   });
 
-  test('renders Codex handoff delivery guidance using the current spawn contract', () => {
+  test('renders provider-neutral Codex handoff guidance using the current spawn contract', () => {
     const rootInstructions = renderCodexRootInstructions();
 
     expect(rootInstructions).toContain(
-      'Pass the self-contained delegated task instructions plus handoff retrieval instructions in `message`',
+      'Pass the self-contained delegated task instructions plus authorized handoff context in `message`',
     );
     expect(rootInstructions).toContain(
       'do not embed the root-owned handoff summary body in `message`',
@@ -609,16 +602,15 @@ describe('Codex adapter', () => {
     );
     expect(rootInstructions).toContain('optional `fork_turns`');
     expect(rootInstructions).toContain(
-      'Memory ownership, handoff recovery, permissions, and prompt-body exclusion are instruction-level',
+      'Memory ownership, authorized handoff context, permissions, and prompt-body exclusion are instruction-level',
     );
     expect(rootInstructions).toContain(
-      'save or refresh the handoff body with root-owned mem_session(action="summary") or mem_save(kind="session_summary")',
+      'resumable summary or checkpoint outcome',
     );
-    expect(rootInstructions).toContain('`mem_recall` `limit` from 1 to 20');
-    expect(rootInstructions).toContain('kind="observation"|"prompt"');
-    expect(rootInstructions).toContain('offset`/`max_length`');
-    expect(rootInstructions).toContain('HAS_TYPE');
-    expect(rootInstructions).toContain('IN_PROJECT');
+    expect(rootInstructions).toContain('installed provider guidance');
+    expect(rootInstructions).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
+    );
     expect(rootInstructions).toContain('HAS_TOPIC_KEY');
     expect(rootInstructions).toContain('HAS_WHAT');
     expect(rootInstructions).toContain('HAS_WHY');
@@ -795,7 +787,7 @@ describe('Codex adapter', () => {
     );
   });
 
-  test('diagnoses Codex memory-governance enforcement gaps without granting root-only memory tools to subagents', () => {
+  test('diagnoses Codex provider-governance enforcement gaps without embedding provider calls', () => {
     const result = codexAdapter.render({ projectRoot: process.cwd() });
     const diagnostics = result.diagnostics.filter(
       (diagnostic) =>
@@ -829,26 +821,21 @@ describe('Codex adapter', () => {
     ).toContain('instruction-level guidance');
     expect(
       diagnostics.map((diagnostic) => diagnostic.message).join('\n'),
-    ).toContain('Parent session_id/project injection is not runtime-enforced');
+    ).toContain('instruction-level guidance');
 
     for (const prompt of [explorer, deep]) {
-      expect(prompt).toContain(
-        'Every subagent memory call requires the parent session_id and project from dispatch',
-      );
-      expect(prompt).toContain(
-        'Never own mem_session(action="start"|"checkpoint"|"summary") or mem_save(kind="prompt"|"session_summary")',
-      );
+      expect(prompt).toContain('parent-scoped authorization');
+      expect(prompt).toContain('authorized context');
       expect(prompt).toContain(
         'Runtime enforcement: instruction-level unless the target harness validates per-agent memory controls.',
       );
+      expect(prompt).not.toMatch(
+        /mem_(?:save|recall|get|context|project|session)\s*\(/,
+      );
     }
 
-    expect(explorer).toContain(
-      'Read-only agents must never write durable memory or save prompts.',
-    );
-    expect(deep).toContain(
-      'mem_save(kind="observation") is allowed only for delegated durable observations or assigned deterministic SDD artifacts/apply-progress under the parent session/project.',
-    );
+    expect(explorer).toContain('Read-only role permissions remain intact');
+    expect(deep).toContain('sdd/{change}/{artifact}');
   });
 
   test('prompt text is not counted as runtime memory enforcement', () => {
@@ -858,7 +845,10 @@ describe('Codex adapter', () => {
       .map((artifact) => String(artifact.content))
       .join('\n');
 
-    expect(promptText).toContain('thoth-mem governance');
+    expect(promptText).toContain('External provider memory governance');
+    expect(promptText).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
+    );
     expect(result.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

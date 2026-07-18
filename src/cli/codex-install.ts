@@ -527,7 +527,7 @@ export function buildCodexSetupPlan(
       action: 'diagnose-only',
       targetPath: targets.codexHome,
       description:
-        'Report /plugins, /hooks, precedence, and capability review steps.',
+        'Report /plugins, precedence, and consumer capability review steps.',
       requiresBackup: false,
     },
   ];
@@ -540,12 +540,13 @@ export function buildCodexSetupPlan(
     pluginId: config.pluginId,
     diagnostics: [
       'Restart Codex, then run /plugins to review and enable the Personal thoth-agents plugin registered through ~/.agents/plugins/marketplace.json.',
-      'Run /hooks to review and trust plugin hooks; features.plugin_hooks does not bypass hook trust review.',
+      'The /hooks surface may show hooks from independently installed plugins; this thoth-agents setup plan does not install provider hooks.',
       'Codex Default mode user-input requests require features.default_mode_request_user_input = true and use the request_user_input tool; other modes may not expose it.',
       'Higher-precedence Codex config (project, profile, CLI, system, or admin) may override user config feature flags.',
+      'Provider capability is owned by the external provider and is not established by this thoth-agents setup plan.',
     ],
     disclaimers: [
-      'Role permissions, provider-per-agent settings, memory governance, and hook enforcement are instruction-level or user-managed unless documented Codex runtime controls are available.',
+      'Role permissions and provider-per-agent settings are instruction-level or user-managed unless documented Codex runtime controls are available.',
       'Codex v1 reset is managed-only; no broad destructive --force behavior is implemented.',
     ],
   };

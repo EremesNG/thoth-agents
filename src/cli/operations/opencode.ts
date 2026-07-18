@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ALL_AGENT_NAMES } from '../../config';
+import type { ProviderEvidenceInput } from '../../harness/types';
 import {
   parseConfig,
   updateOpenCodeMainConfig,
@@ -47,6 +48,7 @@ import type {
   OperationPlanItem,
   OperationWarning,
 } from './types';
+import { classifyProviderCapabilityEvidence } from './types';
 
 const PACKAGE_NAME = 'thoth-agents';
 const EXPECTED_PLUGIN = `${PACKAGE_NAME}@latest`;
@@ -716,7 +718,7 @@ function canApplyToManagedHealth(
   return blockingDetails(action, status).diagnostics.length === 0;
 }
 
-export function getOpenCodeStatus(
+function getOpenCodeManagedStatus(
   context: OperationContext = { cwd: process.cwd() },
 ): HarnessStatusReport {
   const mainPath = getExistingConfigPath();
@@ -1062,6 +1064,16 @@ export function getOpenCodeStatus(
     ],
     diagnostics: [...diagnostics, ...skillStatus.diagnostics],
     actions: openCodeActions,
+  };
+}
+
+export function getOpenCodeStatus(
+  context: OperationContext = { cwd: process.cwd() },
+  evidence: ProviderEvidenceInput = {},
+): HarnessStatusReport {
+  return {
+    ...getOpenCodeManagedStatus(context),
+    providerCapability: classifyProviderCapabilityEvidence(evidence),
   };
 }
 

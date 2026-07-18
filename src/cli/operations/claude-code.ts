@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS } from '../../harness/adapters/claude-code';
+import type { ProviderEvidenceInput } from '../../harness/types';
 import {
   applyClaudeCodeManagedModelOverrides,
   applyClaudeCodeSetup,
@@ -31,6 +32,7 @@ import type {
   OperationPlanItem,
   OperationWarning,
 } from './types';
+import { classifyProviderCapabilityEvidence } from './types';
 
 export interface ClaudeCodeOperationContext extends OperationContext {
   scope?: ClaudeCodeInstallScope;
@@ -178,7 +180,7 @@ function claudeCodeDisclaimers() {
   return [
     {
       message:
-        'Subagents inherit all main-thread tools (including MCP servers); read-only roles must not mutate the workspace per their operational contract (instruction-level, not tooling-enforced). The orchestrator is the main session.',
+        'Read-only roles must not mutate the workspace per their operational contract (instruction-level, not tooling-enforced). The orchestrator is the main session.',
       code: 'claude-code-first-class',
     },
     {
@@ -334,7 +336,9 @@ function statusFromSetupPlan(plan: ClaudeCodeSetupPlan): HarnessStatusReport {
 
 export function getClaudeCodeStatus(
   context: ClaudeCodeOperationContext = { cwd: process.cwd() },
+  evidence: ProviderEvidenceInput = {},
 ): HarnessStatusReport {
+  const providerCapability = classifyProviderCapabilityEvidence(evidence);
   let plan: ClaudeCodeSetupPlan;
   try {
     plan = buildClaudeCodeSetupPlan(claudeCodeConfig(context, true));
@@ -354,11 +358,15 @@ export function getClaudeCodeStatus(
         },
       ],
       actions: claudeCodeActions,
+      providerCapability,
       disclaimers: claudeCodeDisclaimers(),
     };
   }
 
-  return statusFromSetupPlan(plan);
+  return {
+    ...statusFromSetupPlan(plan),
+    providerCapability,
+  };
 }
 
 function planItemFromSetup(item: ClaudeCodeSetupPlanItem): OperationPlanItem {
@@ -444,7 +452,7 @@ export function buildClaudeCodeSyncPlan(
     'claude-code-sync-preview',
     'sync',
     'Sync Claude Code plugin package',
-    'Preview Claude Code managed plugin subagents, MCP, hooks, and skills.',
+    'Preview Claude Code managed plugin subagents, settings, and skills.',
     buildClaudeCodeSetupPlan(claudeCodeConfig(context, true)),
   );
 }

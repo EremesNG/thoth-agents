@@ -391,24 +391,11 @@ sdd/{change-name}/verify-report
 sdd/{change-name}/archive-report
 ```
 
-For targeted memory retrieval, use the recall funnel:
-
-1. `mem_recall(mode="compact")` — scan candidate IDs and titles with focused
-   topic-key/query filters.
-2. `mem_recall(mode="context")` — expand the strongest hits into retrieved
-   context.
-3. `mem_get(id=..., include_timeline=true)` — fetch full content and timeline
-   context when chronology matters.
-
-Use HyDE/fused hybrid recall (sentence + chunk vectors, FTS, KG enrichment) for
-semantic or ambiguous searches; set `mem_recall` `limit` from 1 to 20; narrow
-with `topic_key`, `type`, `time_from`, `time_to`, `scope`, `project`, and
-`session_id` filters. Use `mem_get` with `kind="observation"|"prompt"`,
-`include_timeline=true` plus `before`/`after`, and `offset`/`max_length` for
-large content. Use bounded `mem_context(recall_query=...)` or
-`mem_project(action="graph"|"topics"|"topic")` for supplemental project
-context; `mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`,
-`HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.
+When the selected persistence mode includes thoth-mem, follow the installed
+provider guidance for retrieval, compaction, and recovery. This route keeps
+only SDD phase ordering, artifact identity (`sdd/{change}/{artifact}`),
+authorization, resumable checkpoint outcomes, and evidence-only capability
+reporting; it does not prescribe provider calls or lifecycle sequencing.
 
 An automatic save nudge also reminds the `orchestrator` to persist observations
 after each completed task.

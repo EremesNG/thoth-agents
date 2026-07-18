@@ -28,16 +28,16 @@ handoff path before implementation begins.
 ## Root Session Bootstrap
 
 This skill is normally loaded by the root/main orchestrator at the start of a
-new root session. When thoth-mem tools are available, the root/main
-orchestrator MUST also load `thoth-mem-agents`, call
-`mem_session(action="start")` with the active project and session identity,
-and save the real user prompt with `mem_save(kind="prompt")` before later
-delegation.
+new root session. When provider-backed continuity is requested, installed provider guidance is authoritative for its mechanics. Preserve the real user
+request, accepted interview decisions, scope, and constraints as authorized
+continuity outcomes without treating subagent prompts, generated handoffs, or
+interview scaffolding as user intent.
 
-If thoth-mem tools or the required identity values are unavailable, disclose
-that memory bootstrap could not run and continue without claiming memory was
-saved. Do not save subagent prompts, generated handoffs, or interview
-scaffolding as user prompts.
+At the interview handoff boundary, request a resumable summary or checkpoint outcome when provider-backed continuity is evidenced.
+
+If the required provider capability or authorization cannot be evidenced,
+report the affected continuity as degraded or unsupported and continue only
+with provider-independent work whose own prerequisites are satisfied.
 
 ## Blocking User Input Surface Requirement
 

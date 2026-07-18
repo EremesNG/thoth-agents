@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import type { ProviderEvidenceInput } from '../../harness/types';
 import {
   applyClaudeCodePlan,
   buildClaudeCodeInstallPlan,
@@ -11,12 +12,18 @@ import {
   getClaudeCodeStatus,
   resolveClaudeCodeEffort,
 } from './claude-code';
+import type { HarnessStatusReport } from './types';
 
 let home: string;
 
 function context() {
   return { cwd: process.cwd(), scope: 'user' as const, homeDir: home };
 }
+
+const getClaudeCodeStatusWithEvidence = getClaudeCodeStatus as unknown as (
+  operationContext: ReturnType<typeof context>,
+  evidence?: ProviderEvidenceInput,
+) => HarnessStatusReport;
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'cc-ops-'));
@@ -49,6 +56,21 @@ describe('claudeCodeOperationAdapter', () => {
     expect(result.applied).toBe(true);
 
     expect(getClaudeCodeStatus(context()).state).toBe('installed');
+  });
+
+  test('propagates explicit unsupported provider evidence without changing consumer install state', () => {
+    const providerEvidence = {
+      state: 'unsupported' as const,
+      source: 'harness' as const,
+      basis: ['provider capability unavailable for this Claude binding'],
+    };
+
+    const status = getClaudeCodeStatusWithEvidence(context(), {
+      providerEvidence,
+    });
+
+    expect(status.state).toBe('missing');
+    expect(status.providerCapability).toEqual(providerEvidence);
   });
 
   test('default model roles use the configured per-role defaults', () => {

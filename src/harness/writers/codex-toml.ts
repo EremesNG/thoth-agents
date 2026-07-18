@@ -55,6 +55,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function stripProviderMcpValues(
+  surfaceId: string,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  if (surfaceId !== 'mcp-server-config') return values;
+  const servers = values.mcp_servers;
+  if (!isRecord(servers)) return values;
+  const { thoth_mem: _provider, ...mcpServers } = servers;
+  return { ...values, mcp_servers: mcpServers };
+}
+
 function fieldOrder(fields: string[], keys: string[]): string[] {
   const orderedRoots = fields.map((field) => field.split('.')[0]);
   return [...keys].sort((left, right) => {
@@ -114,8 +125,10 @@ export function renderCodexToml(input: CodexTomlInput): CodexTomlResult {
   const lines: string[] = [];
   const tables: [string, Record<string, unknown>][] = [];
 
-  for (const key of fieldOrder(fields, Object.keys(input.values))) {
-    const value = input.values[key];
+  const values = stripProviderMcpValues(input.surfaceId, input.values);
+
+  for (const key of fieldOrder(fields, Object.keys(values))) {
+    const value = values[key];
     if (!isAllowedRoot(fields, key)) {
       diagnostics.push({
         severity: 'warning',

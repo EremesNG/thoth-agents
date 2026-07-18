@@ -62,7 +62,7 @@ describe('generateCodexPluginPackage', () => {
           'utf8',
         ),
       ).toBe(
-        `{\n  "name": "thoth-agents",\n  "version": "${packageVersion.version}",\n  "description": "Delegate-first OpenCode plugin with seven agents, thoth-mem persistence, and bundled SDD skills.",\n  "skills": "./skills/",\n  "mcpServers": "./.mcp.json"\n}\n`,
+        `{\n  "name": "thoth-agents",\n  "version": "${packageVersion.version}",\n  "description": "Delegate-first OpenCode plugin with seven agents and bundled SDD skills.",\n  "skills": "./skills/",\n  "mcpServers": "./.mcp.json"\n}\n`,
       );
       expect(
         existsSync(
@@ -116,6 +116,9 @@ describe('generateCodexPluginPackage', () => {
         existsSync(join(pluginRoot, 'skills', 'sdd-apply', 'SKILL.md')),
       ).toBe(true);
       expect(existsSync(join(pluginRoot, '.mcp.json'))).toBe(true);
+      expect(readFileSync(join(pluginRoot, '.mcp.json'), 'utf8')).not.toContain(
+        'thoth_mem',
+      );
       expect(existsSync(join(pluginRoot, 'hooks', 'hooks.json'))).toBe(false);
       expect(existsSync(join(pluginRoot, 'stale.txt'))).toBe(false);
       expect(existsSync(join(pluginRoot, 'plugin.json'))).toBe(false);

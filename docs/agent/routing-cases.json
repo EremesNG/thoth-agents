@@ -7,10 +7,7 @@
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": [],
-      "expected_code_roots": [
-        "src/agents/",
-        "src/config/"
-      ],
+      "expected_code_roots": ["src/agents/", "src/config/"],
       "notes": "Start with createAgents and its tests; load harness packaging only if generated output also changes."
     },
     {
@@ -19,20 +16,15 @@
       "expected_primary": "cli-installation",
       "expected_first_read": "docs/agent/cli-installation.md",
       "expected_overlays": [],
-      "expected_code_roots": [
-        "src/cli/"
-      ],
+      "expected_code_roots": ["src/cli/"],
       "notes": "The parser, help, and CLI tests are sufficient while the writer remains unchanged."
     },
     {
       "id": "cross-cutting-codex-memory",
-      "task": "Change the Codex package to declare a new mem_session enforcement limitation.",
+      "task": "Change the Codex package to declare a new provider-lifecycle enforcement limitation.",
       "expected_primary": "harness-packaging",
       "expected_first_read": "docs/agent/harness-packaging.md",
-      "expected_overlays": [
-        "memory-governance",
-        "public-compatibility"
-      ],
+      "expected_overlays": ["memory-governance", "public-compatibility"],
       "expected_code_roots": [
         "src/harness/",
         "src/harness/core/memory-governance.ts"
@@ -44,28 +36,21 @@
       "task": "Change the SDD verification topic key and its recovery by subagents.",
       "expected_primary": "sdd-and-skills",
       "expected_first_read": "docs/agent/sdd-and-skills.md",
-      "expected_overlays": [
-        "memory-governance"
-      ],
+      "expected_overlays": ["memory-governance"],
       "expected_code_roots": [
         "src/skills/",
         "src/sdd/",
         "src/harness/core/memory-governance.ts"
       ],
-      "notes": "SDD owns the artifact; memory owns lifecycle, scope, and namespace."
+      "notes": "SDD owns the artifact; the external provider owns lifecycle, scope, and namespace mechanics."
     },
     {
       "id": "explicit-path-ambiguous-vocabulary",
       "task": "In src/harness/adapters/codex.ts, adjust retry wording for a delegated task.",
       "expected_primary": "harness-packaging",
       "expected_first_read": "docs/agent/harness-packaging.md",
-      "expected_overlays": [
-        "agents-and-delegation",
-        "public-compatibility"
-      ],
-      "expected_code_roots": [
-        "src/harness/adapters/"
-      ],
+      "expected_overlays": ["agents-and-delegation", "public-compatibility"],
+      "expected_code_roots": ["src/harness/adapters/"],
       "notes": "The explicit path wins over retry/delegated vocabulary; review prompts only if the common contract changes."
     },
     {
@@ -73,12 +58,8 @@
       "task": "Change a Zod schema under .agents/skills/zod/.",
       "expected_primary": "fallback",
       "expected_first_read": "docs/agent/index.md",
-      "expected_overlays": [
-        "zod-local-instructions"
-      ],
-      "expected_code_roots": [
-        ".agents/skills/zod/"
-      ],
+      "expected_overlays": ["zod-local-instructions"],
+      "expected_code_roots": [".agents/skills/zod/"],
       "notes": "The explicit path activates .agents/skills/zod/AGENTS.md; do not create a global route for a local overlay."
     },
     {

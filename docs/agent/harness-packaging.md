@@ -23,6 +23,8 @@ shape of generated artifacts; command experience belongs to the CLI.
   hook, and trust mechanisms must not be described as identical to OpenCode.
 - Enforcement gaps must retain `instruction-only` diagnostics or wording; do not
   turn guidance into a runtime guarantee.
+- Provider-owned memory assets and lifecycle protocols are never bundled in a
+  harness package; installed provider guidance remains authoritative.
 - Changing a generated layout requires reviewing fixtures, writers, installation,
   public documentation, and packaging included by `package.json`.
 - Do not edit generated artifacts as the source of truth; change the owning writer.

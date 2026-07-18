@@ -7,8 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   CUSTOM_SKILLS,
@@ -111,47 +110,17 @@ describe('CUSTOM_SKILLS', () => {
     });
   });
 
-  test('registers the thoth-mem-agents skill for orchestrator and subagents', () => {
-    expect(CUSTOM_SKILLS).toContainEqual({
-      name: 'thoth-mem-agents',
-      description:
-        'Orchestrator/subagent thoth-mem workflow contract for parent session_id/project ownership, prompt-save prohibitions, and safe durable memory usage',
-      allowedAgents: [
-        'orchestrator',
-        'explorer',
-        'librarian',
-        'oracle',
-        'designer',
-        'quick',
-        'deep',
-      ],
-      sourcePath: 'src/skills/thoth-mem-agents',
-    });
-  });
-
-  test('bundled thoth-mem-agents skill encodes critical ownership rules', () => {
-    const skillPath = join(
-      dirname(fileURLToPath(import.meta.url)),
-      '..',
-      'skills',
+  test('does not register or install provider-owned memory guidance', () => {
+    expect(CUSTOM_SKILLS.map((skill) => skill.name)).not.toContain(
       'thoth-mem-agents',
-      'SKILL.md',
     );
-    const skill = readFileSync(skillPath, 'utf-8');
 
-    expect(skill).toContain(
-      'Subagents must never start/checkpoint/summarize sessions or save prompts.',
+    const report = installCustomSkills(packageRoot);
+    expect(report.success).toBe(true);
+    expect(existsSync(join(getCustomSkillsDir(), 'thoth-mem-agents'))).toBe(
+      false,
     );
-    expect(skill).toContain('`mem_context`');
-    expect(skill).toContain('`mem_project`');
-    expect(skill).toContain('Use thoth-mem through these MCP tools');
-    expect(skill).toContain('`mem_session(action="start")`');
-    expect(skill).toContain('`mem_save(kind="prompt")`');
-    expect(skill).toContain('Recall funnel (canonical)');
-    expect(skill).toContain('`mem_recall(mode="compact")`');
-    expect(skill).toContain('`mem_recall(mode="context")`');
-    expect(skill).toContain('`mem_get(id=..., include_timeline=true)`');
-    expect(skill).toContain('root-owned `mem_save(kind="session_summary")`');
+    expect(readManifest()?.skills['thoth-mem-agents']).toBeUndefined();
   });
 
   test('findPackageRoot walks up from a bundled dist directory', () => {

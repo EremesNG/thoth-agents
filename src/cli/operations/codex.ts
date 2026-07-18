@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename } from 'node:path';
+import type { ProviderEvidenceInput } from '../../harness/types';
 import {
   applyCodexManagedModelOverrides,
   applyCodexSetup,
@@ -29,6 +30,7 @@ import type {
   OperationPlanItem,
   OperationWarning,
 } from './types';
+import { classifyProviderCapabilityEvidence } from './types';
 
 export interface CodexOperationContext extends OperationContext {
   scope?: CodexInstallScope;
@@ -143,7 +145,7 @@ function codexDisclaimers() {
     },
     {
       message:
-        'Provider-per-role behavior, hook trust, permissions, and memory governance are instruction-level or user-managed unless Codex exposes runtime controls.',
+        'Provider-per-role behavior and permissions are instruction-level or user-managed unless Codex exposes runtime controls.',
       code: 'codex-runtime-limits',
     },
   ];
@@ -378,7 +380,9 @@ function statusSummary(state: ManagedState): string {
 
 export function getCodexStatus(
   context: CodexOperationContext = { cwd: process.cwd() },
+  evidence: ProviderEvidenceInput = {},
 ): HarnessStatusReport {
+  const providerCapability = classifyProviderCapabilityEvidence(evidence);
   let plan: CodexSetupPlan;
   try {
     plan = buildCodexSetupPlan(codexConfig(context, true));
@@ -398,6 +402,7 @@ export function getCodexStatus(
         },
       ],
       actions: codexActions,
+      providerCapability,
       disclaimers: codexDisclaimers(),
     };
   }
@@ -422,6 +427,7 @@ export function getCodexStatus(
     ),
     diagnostics,
     actions: codexActions,
+    providerCapability,
     disclaimers: [
       ...codexDisclaimers(),
       ...plan.disclaimers.map((message) => ({ message })),

@@ -21,7 +21,6 @@ import {
 import {
   type AgentOverrideConfig,
   DEFAULT_MODELS,
-  DEFAULT_THOTH_COMMAND,
   getAgentOverride,
   getPrimaryModelId,
   loadAgentPrompt,
@@ -170,7 +169,7 @@ function claudeCodeRoleInstructions(role: AgentRoleContract): string {
     `- Responsibility: ${role.responsibility}`,
     '- Use AskUserQuestion for local blocking decisions.',
     `- ${role.name} runs as an auto-discovered Claude Code plugin subagent invoked via Task(subagent_type: ${claudeCodeSubagentType(role.name)}); plugin subagents are namespaced with the plugin name. The orchestrator is the main Claude Code session.`,
-    "- This subagent inherits ALL of the main thread's tools, including MCP servers (thoth-mem, context7, exa, grep_app); read-only roles (explorer, librarian, oracle) MUST NOT mutate the workspace per this operational contract (instruction-level, not tooling-enforced).",
+    "- This subagent inherits the main thread's tools, including unrelated MCP servers; read-only roles (explorer, librarian, oracle) MUST NOT mutate the workspace per this operational contract (instruction-level, not tooling-enforced).",
     ...role.toolGovernance.map((rule) => `- ${rule}`),
     ...role.verification.map((rule) => `- ${rule}`),
     '</role-operational-contract>',
@@ -215,12 +214,11 @@ export function renderClaudeCodeRootInstructions(
     rootPrompt,
     '<claude-code-runtime>',
     '- You ARE the Claude Code main-thread agent: the delegate-first root coordinator. This is your system prompt (activated via the plugin settings.json `agent` key), so orchestrator-only and root-owned rules apply to you directly.',
-    '- As your FIRST action on a new session, when thoth-mem tools are installed and session/project identity is known, call mem_session(action="start") as step 0 before any other thoth-mem call, then save the real user prompt with mem_save(kind="prompt") before later delegation.',
-    "- thoth-mem tools are provided by this plugin's bundled MCP server and are exposed under a plugin namespace; call the available namespaced tool whose name ends in mem_session, mem_recall, mem_context, mem_save, mem_get, or mem_project (do not assume a bare, unnamespaced tool name).",
-    '- If thoth-mem tools or identity values are unavailable, disclose that memory bootstrap could not run and continue without claiming memory was saved.',
+    '- Provider-dependent continuity requires parent-scoped authorization and installed provider guidance; this plugin does not bundle or define provider operations.',
+    '- If the required provider guidance, authorization, or capability evidence is unavailable, report the affected outcome as degraded or unsupported without claiming saved context.',
     `- Delegate via the Task tool with \`subagent_type\` set to a plugin-namespaced specialist: ${specialists}. Bare role names (e.g. "explorer") are NOT valid in this harness — always use the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
     '- Parallel delegation is supported: issue multiple Task calls in one turn for independent work.',
-    '- Before delegating after meaningful context changes, refresh the handoff body with root-owned mem_session(action="summary") or mem_save(kind="session_summary") when available.',
+    '- Before delegating after meaningful context changes, preserve authorized handoff context and a resumable summary or checkpoint outcome when evidenced.',
     '- Use AskUserQuestion for blocking user decisions; do not ask those questions in plain prose.',
     '- Track progress with TodoWrite; subagents do not own progress checkboxes or root-only memory.',
     '- Subagents inherit all of your tools (including MCP servers); role permissions are instruction-level, so read-only roles (explorer, librarian, oracle) must not mutate the workspace per their operational contract.',
@@ -230,8 +228,6 @@ export function renderClaudeCodeRootInstructions(
 
 function claudeCodeMcpServers(): Record<string, unknown> {
   const [exaCommand = '', ...exaArgs] = exa.command;
-  const [thothCommand = '', ...thothArgs] = DEFAULT_THOTH_COMMAND;
-
   return {
     exa: {
       command: exaCommand,
@@ -242,10 +238,6 @@ function claudeCodeMcpServers(): Record<string, unknown> {
     },
     context7: { type: 'http', url: CONTEXT7_MCP_URL },
     grep_app: { type: 'http', url: GREP_APP_MCP_URL },
-    thoth_mem: {
-      command: thothCommand,
-      ...(thothArgs.length > 0 ? { args: thothArgs } : {}),
-    },
   };
 }
 
@@ -286,7 +278,7 @@ function createPluginManifest(
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Delegate-first agent pack with seven roles, thoth-mem persistence, and bundled SDD skills, packaged for Claude Code.',
+      'Delegate-first agent pack with seven roles and bundled SDD skills, packaged for Claude Code.',
     author: { name: 'thoth-agents' },
   };
 }
@@ -298,7 +290,7 @@ function renderSubagentArtifacts(config?: PluginConfig): HarnessArtifact[] {
     (candidate) => candidate.name !== 'orchestrator',
   )) {
     // Omit `tools` for every subagent so each inherits ALL of the main thread's
-    // tools, including MCP servers (thoth-mem, context7, exa, grep_app). A
+    // tools, including unrelated MCP servers (context7, exa, grep_app). A
     // `tools` allowlist in Claude Code would restrict the subagent to exactly
     // that list and exclude MCP tools, so read-only enforcement is now
     // instruction-level via each role's operational contract.

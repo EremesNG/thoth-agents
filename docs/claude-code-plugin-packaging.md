@@ -43,7 +43,7 @@ thoth-agents/
 │   ├── explorer.md  librarian.md  oracle.md
 │   ├── designer.md  quick.md  deep.md
 │   └── orchestrator.md                  # main-thread agent (no tools restriction)
-├── .mcp.json                            # exa, context7, grep_app, thoth_mem
+├── .mcp.json                            # bundled research MCPs
 ├── settings.json                        # { "agent": "orchestrator" } → main thread
 ├── skills/                              # bundled requirements + SDD skills
 └── .thoth-agents-managed-models.json    # managed model ownership state
@@ -63,7 +63,7 @@ description: Find workspace facts fast ...
 model: sonnet
 tools: "Read, Grep, Glob"
 ---
-<rendered role prompt + thoth-mem governance>
+<rendered role prompt + provider-neutral continuity governance>
 ```
 
 The `tools` allowlist is the enforcement mechanism for role permissions:
@@ -91,15 +91,15 @@ model" — it **replaces the default system prompt entirely**.
 
 This is deliberately much stronger than a `SessionStart` hook that emits
 `additionalContext`: that injection is low-priority context the model can ignore,
-so it does not reliably drive delegate-first behavior or the thoth-mem bootstrap.
+so it does not reliably drive delegate-first behavior or provider enrollment.
 The orchestrator agent therefore omits `tools` (so it inherits every tool — Task,
 AskUserQuestion, TodoWrite, MCP, edit tools) and uses `model: inherit` to keep
 your chosen session model.
 
 The orchestrator delegates with
 `Task(subagent_type: explorer|librarian|oracle|designer|quick|deep)`, asks
-blocking questions with `AskUserQuestion`, and calls thoth-mem
-`mem_session(action="start")` as its first action on a new session.
+blocking questions with `AskUserQuestion`; provider installation and lifecycle
+remain owned by the independently installed provider guidance.
 
 > Caveat: while the plugin is enabled, the orchestrator is the default agent for
 > every session in scope. At user scope (`~/.claude/skills/`) that is every
@@ -108,7 +108,7 @@ blocking questions with `AskUserQuestion`, and calls thoth-mem
 
 ## MCP servers
 
-`.mcp.json` declares the same four servers used across harnesses. URL-based
-servers (`context7`, `grep_app`) use `{ "type": "http", "url": ... }`, while
-`exa` and `thoth_mem` are stdio command servers. This differs from Codex, which
+`.mcp.json` declares the bundled research servers used on this surface.
+URL-based servers (`context7`, `grep_app`) use `{ "type": "http", "url": ... }`, while
+`exa` is a stdio command server. This differs from Codex, which
 declares URL servers with a bare `url` field.

@@ -91,6 +91,12 @@ For shared concepts such as the seven-agent roster, SDD, thoth-mem, and
 delegation semantics, see [Quick Reference](quick-reference.md). For bundled
 skill and MCP delivery surfaces, see [Skills and MCPs](skills-and-mcps.md).
 
+thoth-mem is an independently installed provider/plugin. Its installation,
+hooks, session lifecycle, root prompt capture, compaction/recovery,
+skill/protocol/MCP/runtime/state, and persistence guidance is authoritative in
+that provider; Codex packaging here reports only evidence-based capability
+outcomes.
+
 ## Reset semantics
 
 For Codex, `--reset` is managed-only repair. It refreshes thoth-agents

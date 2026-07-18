@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { createInstallConfig } from './install';
+import { createInstallConfig, install } from './install';
 
 describe('install', () => {
   test('createInstallConfig always enables bundled custom skills', () => {
@@ -39,5 +39,33 @@ describe('install', () => {
 
     expect(config).not.toHaveProperty('harness');
     expect(config.installCustomSkills).toBe(true);
+  });
+
+  test('OpenCode dry-run reports consumer install success without claiming provider setup or persistence', async () => {
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (message?: unknown) => lines.push(String(message));
+    try {
+      const code = await install({
+        agent: 'opencode',
+        tui: false,
+        skills: 'no',
+        tmux: 'no',
+        dryRun: true,
+        reset: false,
+      });
+      const output = lines.join('\n');
+
+      expect(code).toBe(0);
+      expect(output).toMatch(/thoth-agents (?:installation complete|updated)!/);
+      expect(output).not.toContain('thoth-mem enabled');
+      expect(output).not.toContain('Delegation results persisted to disk');
+      expect(output).not.toContain('thoth-mem memory defaults');
+      expect(output).toContain(
+        'Provider capability is external and was not evidenced by this install.',
+      );
+    } finally {
+      console.log = originalLog;
+    }
   });
 });

@@ -9,7 +9,6 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_THOTH_COMMAND } from '../config';
 import {
   applyCodexManagedModelOverrides,
   applyCodexSetup,
@@ -287,6 +286,10 @@ describe('Codex install setup plan', () => {
       const agentsFile = join(home, '.codex', 'AGENTS.md');
       mkdirSync(join(home, '.codex'), { recursive: true });
       writeFileSync(agentsFile, 'User guidance\n', { flush: true });
+      writeFileSync(
+        join(home, '.codex', 'config.toml'),
+        '[mcp_servers.thoth_mem]\ncommand = "provider-owned"\nargs = ["serve"]\n',
+      );
       const plan = buildCodexSetupPlan({
         dryRun: false,
         reset: true,
@@ -323,7 +326,9 @@ describe('Codex install setup plan', () => {
       expect(root).toContain(
         'Visual or UX work and screenshots always go to designer',
       );
-      expect(root).toContain('Root-session memory is yours');
+      expect(root).toContain(
+        'The root coordinator owns provider-neutral continuity outcomes',
+      );
       expect(root).toContain('request_user_input');
       expect(root).toContain('Default mode');
       expect(root).toContain(
@@ -395,10 +400,6 @@ describe('Codex install setup plan', () => {
         JSON.parse(readFileSync(join(personalPluginRoot, '.mcp.json'), 'utf8')),
       ).toEqual({
         mcpServers: {
-          thoth_mem: {
-            command: DEFAULT_THOTH_COMMAND[0],
-            args: DEFAULT_THOTH_COMMAND.slice(1),
-          },
           exa: {
             command: 'npx',
             args: ['-y', 'exa-mcp-server'],
@@ -423,9 +424,36 @@ describe('Codex install setup plan', () => {
           }),
         ]),
       );
-      expect(
-        readFileSync(join(home, '.codex', 'config.toml'), 'utf8'),
-      ).toContain('default_mode_request_user_input = true');
+      const userConfig = readFileSync(
+        join(home, '.codex', 'config.toml'),
+        'utf8',
+      );
+      expect(userConfig).toContain('default_mode_request_user_input = true');
+      expect(userConfig).toContain('[mcp_servers.thoth_mem]');
+      expect(userConfig).toContain('command = "provider-owned"');
+      expect(userConfig).toContain('args = ["serve"]');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('setup diagnostics do not claim bundled provider hooks or memory capability', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-provider-boundary-'));
+    try {
+      const plan = buildCodexSetupPlan({
+        dryRun: true,
+        reset: false,
+        scope: 'user',
+        projectRoot: dir,
+        homeDir: join(dir, 'home'),
+        packageRoot: PACKAGE_ROOT,
+      });
+      const diagnostics = [...plan.diagnostics, ...plan.disclaimers].join('\n');
+
+      expect(diagnostics).not.toContain('Run /hooks');
+      expect(diagnostics).not.toMatch(/bootstraps? thoth-mem/i);
+      expect(diagnostics).not.toMatch(/memory governance.*enforcement/i);
+      expect(diagnostics).toContain('external provider');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

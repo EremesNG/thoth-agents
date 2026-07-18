@@ -90,6 +90,13 @@ describe('claude-code-install', () => {
     );
     expect(existsSync(join(pluginRoot(), '.mcp.json'))).toBe(true);
     expect(existsSync(join(pluginRoot(), 'settings.json'))).toBe(true);
+    const mcp = JSON.parse(
+      readFileSync(join(pluginRoot(), '.mcp.json'), 'utf8'),
+    ) as { mcpServers?: Record<string, unknown> };
+    expect(mcp.mcpServers).not.toHaveProperty('thoth_mem');
+    expect(mcp.mcpServers).toEqual(
+      expect.objectContaining({ exa: expect.any(Object) }),
+    );
 
     // Re-apply: identical content is skipped (no changes, no backups).
     const second = applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
@@ -251,5 +258,14 @@ describe('claude-code-install', () => {
       config({ reset: true }),
     ).items.find((item) => item.role === 'explorer');
     expect(parseSubagentModel(String(resetItem?.content))).toBe('haiku');
+  });
+
+  test('setup diagnostics do not claim provider bootstrap or inherited provider tools', () => {
+    const plan = buildClaudeCodeSetupPlan(config({ dryRun: true }));
+    const diagnostics = [...plan.diagnostics, ...plan.disclaimers].join('\n');
+
+    expect(diagnostics).not.toMatch(/bootstraps? thoth-mem/i);
+    expect(diagnostics).not.toMatch(/including MCP servers/i);
+    expect(diagnostics).toContain('external provider');
   });
 });

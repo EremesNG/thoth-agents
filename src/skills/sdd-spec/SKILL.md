@@ -41,8 +41,8 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 ## Workflow
 
 1. Read the shared conventions.
-2. Recover the proposal using the retrieval protocol in
-   the persistence contract.
+2. Recover the complete proposal using the selected persistence mode and
+   installed provider guidance where applicable.
 3. If the change already has spec work, recover `sdd/{change-name}/spec` with
    the same mode-aware retrieval rules before editing.
 4. Read `openspec/specs/{domain}/spec.md` for each affected domain to determine
@@ -73,9 +73,8 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 7. If the selected mode includes thoth-mem, persist the complete spec payload
    with:
 
-   Use the memory tool binding for `mem_save` with the canonical SDD topic key
-   and required metadata fields: `title`, `topic_key`, `type`, `project`,
-   `scope`, and `content`.
+   Request the full spec outcome under `sdd/{change-name}/spec` through
+   installed provider guidance and require evidence before reporting success.
 
 ## Clarification Discipline and Requirements-Quality Checklist
 
@@ -132,5 +131,5 @@ Return:
 - Every requirement must have at least one Given/When/Then scenario.
 - Specs describe behavior, not implementation details.
 - Keep domain boundaries explicit.
-- Use the retrieval protocol from the persistence contract for every SDD
-  dependency.
+- Recover every SDD dependency through the selected mode; provider mechanics
+  remain in installed provider guidance.

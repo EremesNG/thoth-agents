@@ -42,19 +42,16 @@ The orchestrator passes the artifact store mode (`thoth-mem`, `openspec`, or
 ## Workflow
 
 1. Read the shared conventions.
-2. Recover artifacts with the retrieval protocol in
-   the persistence contract:
+2. Recover complete artifacts through the selected persistence mode and
+   installed provider guidance where applicable:
    - **Always**: recover `tasks`
    - **Full pipeline**: recover `spec` and `design`
    - **Accelerated pipeline**: recover `proposal` (used as the acceptance reference)
 3. Read the affected code before editing anything.
 4. Execute only the assigned checklist items.
-5. In modes that include thoth-mem, persist an implementation progress report
-   with:
-
-   Use the memory tool binding for `mem_save` with the canonical SDD topic key
-   and required metadata fields: `title`, `topic_key`, `type`, `project`,
-   `scope`, and `content`.
+5. In modes that include thoth-mem, request the implementation progress outcome
+   under `sdd/{change-name}/apply-progress` through installed provider guidance
+   and require evidence before reporting success.
 
 6. If the orchestrator requests it, include enough detail for it to update the
    canonical tasks artifact and memory checkpoints accurately.

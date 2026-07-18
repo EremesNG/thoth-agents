@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import type { ProviderEvidenceInput } from '../../harness/types';
 import { applyCodexSetup, buildCodexSetupPlan } from '../codex-install';
 import {
   applyCodexPlan,
@@ -18,6 +19,7 @@ import {
   getCodexStatus,
   resolveCodexEffort,
 } from './codex';
+import type { HarnessStatusReport } from './types';
 
 const PACKAGE_ROOT = process.cwd();
 
@@ -28,6 +30,11 @@ function context(dir: string, home: string) {
     packageRoot: PACKAGE_ROOT,
   };
 }
+
+const getCodexStatusWithEvidence = getCodexStatus as unknown as (
+  operationContext: ReturnType<typeof context>,
+  evidence?: ProviderEvidenceInput,
+) => HarnessStatusReport;
 
 function setup(dir: string, home: string): void {
   const result = applyCodexSetup(
@@ -131,6 +138,28 @@ describe('Codex operations adapter', () => {
           target.observed?.includes('unparseable managed model state'),
         ),
       ).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('reports degraded provider evidence without degrading installed consumer state', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-evidence-'));
+    try {
+      const home = join(dir, 'home');
+      setup(dir, home);
+      const providerEvidence = {
+        state: 'degraded' as const,
+        source: 'harness' as const,
+        basis: ['persistence evidenced; continuity not evidenced'],
+      };
+
+      const status = getCodexStatusWithEvidence(context(dir, home), {
+        providerEvidence,
+      });
+
+      expect(status.state).toBe('installed');
+      expect(status.providerCapability).toEqual(providerEvidence);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

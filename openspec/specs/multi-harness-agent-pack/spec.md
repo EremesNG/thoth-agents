@@ -545,185 +545,205 @@ controls that Codex does not document.
 - AND it MUST NOT represent hook presets as hard policy enforcement before Codex
   trust and activation are complete
 
-### Requirement: Render Canonical thoth-mem Tool Surface Across Harness Surfaces
-The system MUST render agent prompts, governance constants and types including
-`MemoryToolName`, hook protocol text, Codex adapter guidance, documentation, and
-tests with the supported thoth-mem MCP surface: `mem_save`, `mem_recall`,
-`mem_context`, `mem_get`, `mem_project`, and `mem_session`. The rendered surface
-MUST express `mem_save` kinds `observation`, `prompt`, `session_summary`, and
-`passive_learnings`; `mem_recall` modes `compact` and `context`, HyDE, filters
-`project`, `session_id`, `scope`, `topic_key`, `type`, `time_from`, and
-`time_to`, and limit values from 1 through 20; `mem_context(recall_query=...)`;
-`mem_get` kinds `observation` and `prompt`, timeline controls, and pagination;
-`mem_project` actions `list`, `summary`, `graph`, `topics`, and `topic` with
-relations `HAS_TYPE`, `IN_PROJECT`, `HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`,
-`HAS_WHERE`, and `HAS_LEARNED`; and `mem_session` actions `start`,
-`checkpoint`, and `summary`. The system MUST NOT instruct agents to call
-thoth-mem MCP tools outside that supported set.
+### Requirement: MH-1 Establish Exclusive Provider Ownership
+For exactly OpenCode, Codex, and Claude Code, thoth-mem MUST exclusively own
+provider hooks, harness enrollment and session start, root prompt capture,
+provider recovery and compaction behavior, installed memory protocol and skill,
+exact MCP vocabulary and surface, runtime, state, and persistence. thoth-agents
+MUST act only as a neutral orchestration consumer of those capabilities and MUST
+NOT bundle, reimplement, shadow, or mutate provider-owned integration.
 
-#### Scenario: Rendered and governed tool vocabulary is consistent
-- GIVEN OpenCode prompts, Codex prompts, hook protocol text, documentation,
-  governance constants, or generated tests are rendered or evaluated
-- WHEN a callable thoth-mem MCP operation is named
-- THEN the output MUST name only `mem_save`, `mem_recall`, `mem_context`,
-  `mem_get`, `mem_project`, or `mem_session`
-- AND `MemoryToolName` and related governance fixtures MUST be limited to the
-  same six supported tool names
+#### Scenario: All three supported harnesses use the same ownership boundary
+- GIVEN thoth-agents prepares or evaluates memory integration for OpenCode,
+  Codex, or Claude Code
+- WHEN the provider boundary is applied
+- THEN thoth-mem MUST remain the exclusive owner of the provider capabilities
+  named by this requirement
+- AND thoth-agents MUST NOT assume those capabilities are equal across the three
+  harnesses
 
-#### Scenario: Tests reject unsupported MCP vocabulary
-- GIVEN tests cover prompt rendering, governance constants, hook protocol text,
-  Codex adapter guidance, and docs alignment
-- WHEN those surfaces include thoth-mem MCP guidance
-- THEN tests MUST assert the supported six-tool vocabulary and key actions,
-  kinds, modes, filters, timeline controls, and graph relations
-- AND tests MUST fail if rendered MCP guidance names a tool outside the supported
-  surface
+#### Scenario: Generated and installed outputs omit provider-owned assets
+- GIVEN thoth-agents generates, packages, or installs output for a supported
+  harness
+- WHEN the output is inspected
+- THEN it MUST omit provider runtime, hooks, enrollment wiring, prompt capture,
+  recovery or compaction implementation, memory protocol or skill, exact MCP
+  vocabulary or surface definitions, state, persistence, and other
+  provider-owned assets
+- AND it MUST NOT register or launch a consumer-owned substitute
 
-### Requirement: Bootstrap Root thoth-mem Sessions Before Other Memory Operations
-The system MUST render root/orchestrator guidance for memory-backed workflows so
-`mem_session(action="start")` is step 0 before any other thoth-mem operation
-whenever thoth-mem identity and tools are available.
+#### Scenario: A harness outside the accepted scope is rejected
+- GIVEN a target other than OpenCode, Codex, or Claude Code
+- WHEN thoth-agents is asked to provide this integration
+- THEN it MUST report the harness as unsupported
+- AND it MUST NOT generate a best-effort provider integration under another
+  harness binding
 
-#### Scenario: Root starts memory session first
-- GIVEN a new root session has thoth-mem available and the active project can be
-  identified
-- WHEN the root begins memory-backed orchestration
-- THEN rendered guidance MUST require `mem_session(action="start")` before any
-  `mem_context`, `mem_save`, `mem_recall`, `mem_get`, `mem_project`, or later
-  `mem_session` operation
-- AND the guidance MUST preserve the root as the owner of session lifecycle
-  operations
+### Requirement: MH-2 Report Provider-Dependent Capability Truthfully
+thoth-agents MUST classify provider-dependent outcomes as supported, degraded, or
+unsupported from provider or harness evidence. It MUST NOT infer successful
+installation, setup, health, persistence, recovery, or capability from package
+presence, consumer state, or an undocumented assumption, and MUST NOT invent a
+fallback or recovery procedure when provider capabilities are missing.
 
-#### Scenario: Root reports unavailable bootstrap
-- GIVEN a new root session lacks required thoth-mem tools, project identity, or
-  session identity
-- WHEN memory-backed orchestration would otherwise begin
-- THEN rendered guidance MUST require the root to disclose that bootstrap could
-  not run
-- AND it MUST NOT claim prompts, observations, summaries, or handoffs were saved
-  to memory
+#### Scenario: Provider integration is absent
+- GIVEN no usable provider integration is evidenced for the active supported
+  harness
+- WHEN a provider-dependent operation or status is requested
+- THEN thoth-agents MUST report the relevant capability as unsupported or
+  requiring provider installation or enablement
+- AND it MUST NOT claim success or prescribe a consumer-owned substitute
+  lifecycle
 
-### Requirement: Provide thoth-mem Capability-Leverage Decision Guidance
-The system MUST render concise decision guidance that helps agents use thoth-mem
-retrieval and project-memory capabilities without expanding their memory
-permissions.
+#### Scenario: Provider integration is incomplete or degraded
+- GIVEN evidence shows that some but not all requested provider capabilities are
+  usable
+- WHEN thoth-agents reports status or attempts the requested workflow
+- THEN it MUST identify the evidenced capabilities and report the remainder as
+  degraded or unsupported
+- AND it MUST NOT convert incomplete evidence into a healthy or fully supported
+  result
 
-#### Scenario: Retrieval guidance selects the right memory feature
-- GIVEN rendered root or subagent guidance explains how to recover persisted
-  context
-- WHEN it describes semantic search, artifact lookup, chronology, or scoped
-  recovery
-- THEN it MUST explain when to use HyDE-assisted `mem_recall`, fused hybrid
-  recall, `topic_key`, `type`, `time_from`, `time_to`, `scope`, `project`, and
-  `session_id` filters
-- AND it MUST explain when to fetch timeline context through
-  `mem_get(include_timeline=true)`
+#### Scenario: Unrelated orchestration remains usable
+- GIVEN a provider-dependent capability is unavailable
+- WHEN a role, gate, delegation, OpenSpec workflow, or other
+  provider-independent orchestration behavior remains valid
+- THEN thoth-agents MUST keep that unrelated behavior usable
+- AND it MUST NOT silently change the selected persistence mode or fabricate
+  memory-backed success
 
-#### Scenario: Project-memory guidance stays bounded
-- GIVEN rendered guidance explains project-level memory navigation
-- WHEN an agent needs graph relationships, topic discovery, topic details, or a
-  recent-context view
-- THEN it MUST point to bounded `mem_project(action="graph")`,
-  `mem_project(action="topics")`, `mem_project(action="topic")`, and
-  `mem_context(recall_query=...)`
-- AND it MUST keep those tools within the root or delegated parent-scoped
-  permission model
+#### Scenario: Installed provider guidance is authoritative
+- GIVEN a compatible provider installation supplies its own operational guidance
+- WHEN setup, enablement, diagnostics, recovery, or callable behavior must be
+  explained
+- THEN thoth-agents MUST refer to that installed provider guidance as
+  authoritative
+- AND it MUST NOT reproduce an exhaustive provider protocol in consumer output
+
+### Requirement: MH-3 Preserve Neutral Orchestration and SDD Contracts
+thoth-agents MUST preserve provider-neutral role and permission boundaries,
+delegation and review gates, persistence-mode selection, canonical OpenSpec
+artifact identities, canonical `sdd/{change}/{artifact}` topic-key identities
+for provider-backed modes, and evidence-led verification. A missing provider
+capability MUST affect only behavior that depends on it and MUST NOT redefine
+these consumer-owned contracts.
+
+#### Scenario: Orchestration governance survives externalization
+- GIVEN agent-pack output is rendered for any supported harness
+- WHEN provider integration is externalized
+- THEN role responsibilities, read-only and write-capable permissions,
+  delegation gates, review gates, and verification obligations MUST remain
+  intact
+- AND any runtime enforcement gap MUST be reported rather than represented as
+  enforced
+
+#### Scenario: Persistence modes preserve their declared semantics
+- GIVEN an SDD workflow selects a persistence mode
+- WHEN provider capability is available, degraded, or unsupported
+- THEN the workflow MUST preserve the selected mode and its canonical artifact
+  identities
+- AND a provider-backed write or recovery MUST be reported unsuccessful when
+  the necessary provider evidence is absent
+- AND provider-independent modes MUST continue where their own prerequisites are
+  satisfied
+
+#### Scenario: Canonical SDD identities remain stable
+- GIVEN an SDD artifact is governed by thoth-agents
+- WHEN it is represented in OpenSpec or through a provider-backed mode
+- THEN its canonical OpenSpec name and applicable
+  `sdd/{change}/{artifact}` identity MUST remain stable
+- AND consumer guidance MUST NOT prescribe the provider's operational steps for
+  storing or recovering that identity
+
+### Requirement: MH-4 Preserve Handoff and Completion Continuity as Outcomes
+thoth-agents MUST require the context needed by an authorized delegate or later
+continuation to remain recoverable without prescribing provider calls. When
+provider-backed continuity is available, completion continuity MUST be delegated
+to the provider as a summary or checkpoint outcome and MUST NOT be described as
+permanent closure, termination, end-session behavior, or finalization.
+
+#### Scenario: Delegated handoff preserves required context
+- GIVEN a root coordinator delegates work whose correct execution depends on
+  prior decisions, scope, permissions, or artifacts
+- WHEN the handoff is prepared
+- THEN the delegate MUST receive or recover the context necessary for its
+  authorized task
+- AND thoth-agents MUST express this as a continuity outcome without dictating
+  the provider's callable sequence
+
+#### Scenario: Completion preserves future continuity
+- GIVEN provider-backed work reaches a completion boundary
+- WHEN continuity is recorded
+- THEN thoth-agents guidance MUST request a provider-delegated summary or
+  checkpoint outcome
+- AND it MUST NOT introduce permanent closure, terminal, end-session, or
+  finalization semantics
+
+#### Scenario: Continuity capability is unavailable
+- GIVEN the active harness lacks evidenced provider-backed continuity
+- WHEN a handoff or completion boundary requires that capability
+- THEN thoth-agents MUST report the continuity outcome as degraded or
+  unsupported
+- AND it MUST NOT fabricate a saved handoff or invent a consumer recovery path
+
+### Requirement: MH-5 Keep Stage and Rollback Boundaries Explicit
+thoth-agents MUST treat this change as stage 1 of the accepted externalization
+program and MUST keep stage 2 capability hardening and parity visible as
+downstream work. A thoth-agents rollback MUST NOT mutate provider runtime,
+state, persistence, enrollment, or provider-owned assets.
+
+#### Scenario: Stage 1 does not claim parity
+- GIVEN the exclusive provider boundary is implemented for all three supported
+  harnesses
+- WHEN the stage 1 result is reported
+- THEN stage 2 capability hardening and parity MUST remain documented as an
+  accepted downstream goal
+- AND stage 1 MUST NOT claim capability equality among harnesses
+
+#### Scenario: Consumer rollback leaves provider ownership intact
+- GIVEN the thoth-agents change or release is rolled back
+- WHEN rollback guidance is applied
+- THEN it MUST be limited to thoth-agents-owned artifacts and release behavior
+- AND it MUST NOT restore an internal provider, manipulate provider-owned state,
+  or prescribe provider cleanup outside provider guidance
 
 ### Requirement: Enforce thoth-mem Governance Across Harnesses
-The system MUST preserve thoth-mem as the memory integration and MUST distinguish
-runtime-enforced governance from instruction-level governance with visible
-enforcement-gap diagnostics when a harness cannot enforce tool restrictions.
-Root/orchestrator guidance MAY own `mem_session(action="start")`,
-`mem_session(action="checkpoint")`, `mem_session(action="summary")`,
-`mem_save(kind="prompt")`, and `mem_save(kind="session_summary")` according to
-workflow needs. Subagent guidance MUST require parent `session_id` and project
-before using thoth-mem, MUST keep reads parent-scoped, and MUST limit writes to
-explicitly delegated durable observations or deterministic SDD artifacts.
+The system MUST preserve thoth-agents-owned authorization, role, persistence
+mode, artifact identity, handoff outcome, and truthfulness rules across
+OpenCode, Codex, and Claude Code. It MUST leave provider lifecycle and protocol
+governance to the independently installed provider.
 
-#### Scenario: Root-only memory ownership remains restricted
-- GIVEN an agent or subagent prompt is rendered for any supported harness
-- WHEN memory tool guidance is included
-- THEN only the root orchestrator role MAY own thoth-mem session lifecycle
-  actions, prompt persistence, and session-summary persistence
-- AND subagents MUST be instructed not to own session start, checkpoint, or
-  summary actions and not to save prompts
-- AND subagents MUST be instructed not to call thoth-mem tools at all when the
-  dispatch lacks either parent `session_id` or project context
-
-#### Scenario: Runtime enforcement is used where available
-- GIVEN a supported harness exposes documented per-agent tool, permission, or MCP
-  allow/deny controls
-- WHEN harness-specific prompts or configs are generated
-- THEN the adapter MUST configure those controls to prevent subagents from using
-  root-only memory operations and disallowed memory writes
-- AND tests MUST verify the generated controls in addition to rendered prompt
-  text
-
-#### Scenario: Enforcement gaps are diagnosed where unavailable
-- GIVEN a supported harness does not expose documented runtime controls for a
-  memory-governance rule
-- WHEN the adapter renders artifacts for that harness
-- THEN it MUST preserve the governance rule as instruction-level guidance
-- AND it MUST emit a visible diagnostic identifying the unsupported enforcement
-  capability and the resulting instruction-only limitation
-
-#### Scenario: SDD artifact writes use deterministic ownership
-- GIVEN an SDD artifact-producing subagent is allowed to use thoth-mem by the
-  selected persistence mode and dispatch limits
-- WHEN it saves an SDD artifact
-- THEN it MUST save only the deterministic artifact topic key assigned to that
-  phase, such as `sdd/{change}/{artifact}`
-- AND it MUST NOT write root-session summaries, user prompts, unrelated durable
-  observations, or ad hoc SDD topic keys
+#### Scenario: Consumer and provider governance remain separated
+- GIVEN shared governance is rendered for a supported harness
+- WHEN memory-backed behavior is described
+- THEN thoth-agents MUST state only its neutral authorization, orchestration,
+  artifact, and reporting obligations
+- AND provider-owned lifecycle, protocol, runtime, and persistence rules MUST
+  come from installed provider guidance
 
 ### Requirement: Preserve SDD Skills Portability
-The system MUST keep requirements-interview and SDD skills reusable or
-distributable through both OpenCode and Codex adapters, and Codex distribution
-MUST prefer plugin-bundled skill assets over shared `.agents/skills` copies.
+The system MUST preserve full SDD semantics across OpenCode, Codex, and Claude
+Code without assuming provider capability parity or embedding provider
+operations in shared SDD guidance.
 
-#### Scenario: SDD skill content remains harness-neutral
-- GIVEN requirements-interview and SDD phase skills are packaged for Codex
-- WHEN the skill content is rendered into plugin-root `skills/`
-- THEN phase responsibilities, artifact contracts, persistence-mode rules, and
-  review gates MUST remain semantically equivalent to OpenCode delivery
-- AND harness-specific syntax MUST be confined to adapter packaging, manifest
-  references, or wrapper instructions
-
-#### Scenario: Full SDD pipeline remains portable
-- GIVEN a full SDD flow requires proposal, spec, design, tasks, implementation,
-  verification, and archive phases
-- WHEN the flow is invoked from plugin-bundled Codex skill assets
-- THEN the adapter MUST preserve phase ordering, artifact prerequisites,
-  plan-review gating, and implementation confirmation rules
-- AND it MUST NOT bypass specs or design for full-pipeline work
+#### Scenario: SDD remains portable with truthful provider dependencies
+- GIVEN an SDD phase is rendered for a supported harness
+- WHEN the selected persistence mode depends on the provider
+- THEN shared phase ordering, artifacts, gates, and verification MUST remain
+  portable
+- AND missing provider capability MUST be reported as degraded or unsupported
+  without changing the phase contract or claiming success
 
 ### Requirement: Limit Rollout Scope Safely
-The system MUST limit this change to OpenCode preservation, shared harness
-contracts, and the Codex adapter MVP; it MUST NOT add Claude, Antigravity, or
-other harness implementations.
+The system MUST limit stage 1 integration scope to OpenCode, Codex, and Claude
+Code and MUST report per-harness capability from evidence rather than assuming
+parity.
 
-#### Scenario: Non-Codex harness requests remain out of scope
-- GIVEN a caller requests Claude, Antigravity, or another non-OpenCode and
-  non-Codex target during this change
-- WHEN the system evaluates the request
-- THEN it MUST report that the harness is out of scope for this change
-- AND it MUST NOT create implementation files, generated artifacts, or tests that
-  imply support for that harness
-
-#### Scenario: thoth-mem is not replaced
-- GIVEN the agent pack is adapted for Codex
-- WHEN memory integration is described, configured, or validated
-- THEN thoth-mem MUST remain the memory backend and governance model
-- AND the system MUST NOT introduce a replacement memory layer as part of this
-  change
-
-#### Scenario: Rollback preserves OpenCode behavior
-- GIVEN Codex validation or adapter implementation fails after this spec phase
-- WHEN Codex support is disabled or removed
-- THEN the OpenCode plugin path MUST continue to operate without Codex artifacts
-  or Codex dependencies
-- AND rollback MUST NOT remove shared behavior required by the existing OpenCode
-  baseline
+#### Scenario: Supported harness scope and capability are distinct
+- GIVEN all three harnesses are within the accepted stage 1 scope
+- WHEN their provider integrations are evaluated
+- THEN each harness MUST use the same ownership boundary
+- AND each harness MUST retain its independently evidenced capability state
 
 ### Requirement: Render Agent Prompts from Harness-Neutral Semantic Policies
 The system MUST model shared agent prompt policy as harness-neutral semantic

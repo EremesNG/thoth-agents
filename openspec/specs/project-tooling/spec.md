@@ -158,7 +158,7 @@ role behavior, and OpenCode/Codex adapter contracts except where a surface
 explicitly invokes package-manager or runtime tooling.
 
 #### Scenario: Harness behavior is unchanged
-- GIVEN a supported OpenCode or Codex workflow does not depend on invoking the
+- GIVEN a supported OpenCode, Codex, or Claude Code workflow does not depend on invoking the
   package manager or runtime test command
 - WHEN the pnpm migration is applied
 - THEN the workflow MUST preserve its previous behavior and generated semantic
@@ -194,4 +194,3 @@ command-generation, auto-update or lockfile handling, and fixture outputs.
   `pnpm-lock.yaml` semantics
 - AND they MUST prove product and harness semantics remain unchanged except for
   package-manager or runtime invocation surfaces
-

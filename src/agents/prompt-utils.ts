@@ -8,7 +8,6 @@ import {
   createResponseBudgetSection,
   createStepBudgetSection,
   createSubagentRulesSection,
-  detectModelFamilyFromModel,
   renderPromptSection,
 } from './prompt-sections';
 
@@ -37,8 +36,6 @@ interface ComposeAgentPromptOptions {
   customAppendPrompt?: string;
   placeholders?: Record<string, string | number | undefined>;
 }
-
-type ModelFamily = 'openai' | 'claude' | 'gemini' | 'kimi' | 'glm';
 
 export type ModelEntry = string | { id: string; variant?: string };
 
@@ -76,12 +73,6 @@ export function appendPromptSections(
   ...sections: Array<string | undefined>
 ): string {
   return sections.map(trimPromptSection).filter(Boolean).join('\n\n');
-}
-
-export function detectModelFamily(
-  model?: string | ModelEntry[],
-): ModelFamily | undefined {
-  return detectModelFamilyFromModel(model);
 }
 
 export function getStepBudgetPromptSection(steps?: number): string | undefined {

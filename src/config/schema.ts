@@ -6,6 +6,9 @@ const AGENT_NAMES = [
   'designer',
   'explorer',
   'librarian',
+  'sdd-specify',
+  'sdd-plan',
+  'sdd-tasks',
   'quick',
   'deep',
 ] as const;
@@ -50,6 +53,9 @@ export const ManualPlanSchema = z
     designer: ManualAgentPlanSchema,
     explorer: ManualAgentPlanSchema,
     librarian: ManualAgentPlanSchema,
+    'sdd-specify': ManualAgentPlanSchema,
+    'sdd-plan': ManualAgentPlanSchema,
+    'sdd-tasks': ManualAgentPlanSchema,
     quick: ManualAgentPlanSchema,
     deep: ManualAgentPlanSchema,
   })
@@ -68,6 +74,9 @@ const FallbackChainsSchema = z
     designer: AgentModelChainSchema.optional(),
     explorer: AgentModelChainSchema.optional(),
     librarian: AgentModelChainSchema.optional(),
+    'sdd-specify': AgentModelChainSchema.optional(),
+    'sdd-plan': AgentModelChainSchema.optional(),
+    'sdd-tasks': AgentModelChainSchema.optional(),
     quick: AgentModelChainSchema.optional(),
     deep: AgentModelChainSchema.optional(),
   })
@@ -130,18 +139,6 @@ export const AgentNameSchema = z.enum(AGENT_NAMES);
 export const McpNameSchema = z.enum(['exa', 'context7', 'grep_app']);
 export type McpName = string;
 
-export const ArtifactStoreModeSchema = z.enum([
-  'thoth-mem',
-  'openspec',
-  'hybrid',
-]);
-
-export const ArtifactStoreConfigSchema = z.object({
-  mode: ArtifactStoreModeSchema.default('hybrid'),
-});
-
-export type ArtifactStoreConfig = z.infer<typeof ArtifactStoreConfigSchema>;
-
 export const CodexGenerationConfigSchema = z.object({
   enabled: z.boolean().default(false),
   outputRoot: z.string().optional(),
@@ -182,7 +179,6 @@ export const PluginConfigSchema = z.object({
   disabled_mcps: z.array(z.string()).optional(),
   tmux: TmuxConfigSchema.optional(),
   fallback: FailoverConfigSchema.optional(),
-  artifactStore: ArtifactStoreConfigSchema.optional(),
   codex: CodexGenerationConfigSchema.optional(),
   claudeCode: ClaudeCodeGenerationConfigSchema.optional(),
 });

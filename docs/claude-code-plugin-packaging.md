@@ -1,114 +1,97 @@
 # Claude Code Plugin Packaging
 
-thoth-agents ships Claude Code support as a single, distributable **plugin
-package**. Unlike Codex — whose plugins cannot carry subagents, so it needs both
-`.codex-plugin/` and `.codex/` artifacts — Claude Code plugins auto-discover
-subagents, so everything lives under one plugin root.
-
-## Generate the package
-
-```bash
-npx thoth-agents@latest generate --harness=claude --dry-run
-```
-
-This renders the package artifacts (dry-run prints them as JSON). To write them
-to disk as an installed plugin, use the install command:
+thoth-agents installs Claude Code support as one plugin package under the Claude
+skills-directory discovery surface.
 
 ```bash
 npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```
 
-The plugin is installed as a **skills-directory plugin** under
-`~/.claude/skills/thoth-agents` (user scope) or `<project>/.claude/skills/thoth-agents`
-(project scope). A folder under a Claude Code *skills directory* that contains
-`.claude-plugin/plugin.json` auto-loads as `thoth-agents@skills-dir` on the next
-session — there is **no marketplace and no install step**, and the plugin is
-discovered in place rather than copied to the `~/.claude/plugins/cache`. Restart
-Claude Code or run `/reload-plugins` to activate it; confirm in `/plugin` →
-Installed. User-scope plugins load hooks and MCP servers without extra approval;
-project-scope requires accepting the workspace trust dialog.
+User scope targets `~/.claude/skills/thoth-agents`; project scope targets
+`<project>/.claude/skills/thoth-agents`.
 
-> Note: `~/.claude/plugins/` is **not** a discovery path — it is the internal
-> cache for marketplace installs. Dropping a plugin folder there does nothing.
-
-## Package layout
+## Layout
 
 ```text
 thoth-agents/
 ├── .claude-plugin/
-│   ├── plugin.json                      # manifest: name, version, description, author
-│   └── .thoth-agents-plugin-assets.json # provenance (paths + sha256)
-├── agents/                              # seven auto-discovered agents
-│   ├── explorer.md  librarian.md  oracle.md
-│   ├── designer.md  quick.md  deep.md
-│   └── orchestrator.md                  # main-thread agent (no tools restriction)
-├── .mcp.json                            # bundled research MCPs
-├── settings.json                        # { "agent": "orchestrator" } → main thread
-├── skills/                              # bundled requirements + SDD skills
-└── .thoth-agents-managed-models.json    # managed model ownership state
+│   ├── plugin.json
+│   └── .thoth-agents-plugin-assets.json
+├── agents/
+│   ├── orchestrator.md
+│   ├── explorer.md
+│   ├── librarian.md
+│   ├── oracle.md
+│   ├── sdd-specify.md
+│   ├── sdd-plan.md
+│   ├── sdd-tasks.md
+│   ├── designer.md
+│   ├── quick.md
+│   └── deep.md
+├── .mcp.json
+├── settings.json
+└── .thoth-agents-managed-models.json
 ```
 
-Only `plugin.json` sits under `.claude-plugin/`; every other component is a
-plugin-root sibling, which is how Claude Code auto-discovers them.
+Only `plugin.json` and provenance live under `.claude-plugin/`. Claude plugin
+components remain at the plugin root.
 
-## Subagents and role permissions
+## Adaptive root
 
-Each specialist role is a subagent file with YAML frontmatter:
+`settings.json` activates `orchestrator` as the main thread. It is an adaptive
+root: it handles clear bounded work directly and invokes a plugin-namespaced
+specialist only when delegation provides a net gain.
 
-```markdown
----
-name: explorer
-description: Find workspace facts fast ...
-model: sonnet
-tools: "Read, Grep, Glob"
----
-<rendered role prompt + provider-neutral continuity governance>
+The orchestrator uses `model: inherit` and does not restrict its tool set.
+Specialists cannot delegate further, and the root keeps one writer per mutable
+surface.
+
+## Subagent permissions
+
+- `explorer`, `librarian`, and `oracle` deny `Write` and `Edit` in frontmatter.
+- `sdd-specify`, `sdd-plan`, and `sdd-tasks` may write, but their
+  `openspec/`-only scope remains instruction-level because Claude Code cannot
+  restrict those tools to a per-agent path pattern.
+- `designer`, `quick`, and `deep` are write-capable within the assigned surface.
+
+Default specialist models are:
+
+| Roles | Model |
+| --- | --- |
+| `explorer`, `sdd-tasks`, `quick` | `haiku` |
+| `librarian`, `sdd-specify`, `sdd-plan`, `designer`, `deep` | `sonnet` |
+| `oracle` | `opus` |
+
+## Required external skills
+
+`simplify`, `tdd`, `progressive-context-router`, and `architectural-grilling`
+are mandatory but are not plugin components. The installer places them in the
+global Claude skill root:
+
+```text
+~/.claude/skills/simplify/SKILL.md
+~/.claude/skills/tdd/SKILL.md
+~/.claude/skills/progressive-context-router/SKILL.md
+~/.claude/skills/architectural-grilling/SKILL.md
 ```
 
-The `tools` allowlist is the enforcement mechanism for role permissions:
+Claude plugin `dependencies` identifies other plugins, not arbitrary standalone
+skills. Claude also has no general plugin `postinstall`. A `Setup` hook requires
+an explicit initialization flow, so it cannot guarantee dependency installation
+on ordinary plugin startup. The thoth-agents CLI is therefore the mandatory
+install and repair surface.
 
-- Read-only roles (`explorer`, `librarian`, `oracle`) get read/search tools only
-  — no `Write`, `Edit`, or write `Bash`.
-- Write-capable roles (`designer`, `quick`, `deep`) get the full mutation set.
+## MCP and memory boundary
 
-Per-role model defaults: `oracle` uses `opus`; `librarian`, `designer`, and
-`deep` use `sonnet`; `explorer` and `quick` use `haiku`. Models accept only
-`sonnet`, `opus`, `haiku`, or `inherit`. Override them with:
+`.mcp.json` contains the thoth-agents research MCPs (`exa`, `context7`, and
+`grep_app`). It does not contain thoth-mem. The independently installed
+thoth-mem plugin owns its own MCP, hooks, lifecycle, persistence, and recovery.
 
-```bash
-npx thoth-agents@latest model --harness=claude --role=deep --model=sonnet
-```
+## Activation and trust
 
-## The orchestrator (main-thread agent)
+Restart Claude Code or run `/reload-plugins`, then confirm thoth-agents in
+`/plugin`. Project-scope installation requires accepting workspace trust.
 
-In Claude Code the orchestrator is the **main thread**. The package ships an
-`agents/orchestrator.md` agent whose body is the root coordinator system prompt,
-and a plugin-root `settings.json` containing `{ "agent": "orchestrator" }`. Per
-the Claude Code docs, this `agent` key "activates one of the plugin's custom
-agents as the main thread, applying its system prompt, tool restrictions, and
-model" — it **replaces the default system prompt entirely**.
-
-This is deliberately much stronger than a `SessionStart` hook that emits
-`additionalContext`: that injection is low-priority context the model can ignore,
-so it does not reliably drive delegate-first behavior or provider enrollment.
-The orchestrator agent therefore omits `tools` (so it inherits every tool — Task,
-AskUserQuestion, TodoWrite, MCP, edit tools) and uses `model: inherit` to keep
-your chosen session model.
-
-The orchestrator delegates with
-`Task(subagent_type: explorer|librarian|oracle|designer|quick|deep)`, asks
-blocking questions with `AskUserQuestion`; provider installation and lifecycle
-remain owned by the independently installed provider guidance.
-
-> Caveat: while the plugin is enabled, the orchestrator is the default agent for
-> every session in scope. At user scope (`~/.claude/skills/`) that is every
-> project; disable the plugin (`/plugin disable thoth-agents@skills-dir`) for
-> sessions where you want plain Claude Code.
-
-## MCP servers
-
-`.mcp.json` declares the bundled research servers used on this surface.
-URL-based servers (`context7`, `grep_app`) use `{ "type": "http", "url": ... }`, while
-`exa` is a stdio command server. This differs from Codex, which
-declares URL servers with a bare `url` field.
+While enabled, `settings.json` makes the thoth-agents orchestrator the main
+thread for that plugin scope.

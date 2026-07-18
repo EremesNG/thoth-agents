@@ -1,28 +1,29 @@
 // Agent names
-export const AGENT_ALIASES: Record<string, string> = {
-  explore: 'explorer',
-  'frontend-ui-ux-engineer': 'designer',
-};
-
 type BuiltinAgentName =
   | 'orchestrator'
   | 'explorer'
   | 'librarian'
   | 'oracle'
+  | 'sdd-specify'
+  | 'sdd-plan'
+  | 'sdd-tasks'
   | 'designer'
   | 'quick'
   | 'deep';
 
 export type AgentName = BuiltinAgentName | (string & {});
 
-export const SUBAGENT_NAMES: readonly string[] = [
+export const SUBAGENT_NAMES = [
   'explorer',
   'librarian',
   'oracle',
+  'sdd-specify',
+  'sdd-plan',
+  'sdd-tasks',
   'designer',
   'quick',
   'deep',
-];
+] as const satisfies readonly Exclude<BuiltinAgentName, 'orchestrator'>[];
 
 export const ORCHESTRATOR_NAME = 'orchestrator' as const;
 
@@ -31,6 +32,9 @@ export const ALL_AGENT_NAMES: readonly BuiltinAgentName[] = [
   'explorer',
   'librarian',
   'oracle',
+  'sdd-specify',
+  'sdd-plan',
+  'sdd-tasks',
   'designer',
   'quick',
   'deep',
@@ -47,6 +51,9 @@ export const SUBAGENT_DELEGATION_RULES: Record<AgentName, readonly string[]> = {
   explorer: [],
   librarian: [],
   oracle: [],
+  'sdd-specify': [],
+  'sdd-plan': [],
+  'sdd-tasks': [],
   quick: [],
   deep: [],
 };
@@ -55,6 +62,9 @@ export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
   explorer: { model: 'gpt-5.6-luna', effort: 'low' },
   librarian: { model: 'gpt-5.6-luna', effort: 'xhigh' },
   oracle: { model: 'gpt-5.6-sol', effort: 'xhigh' },
+  'sdd-specify': { model: 'gpt-5.6-sol', effort: 'high' },
+  'sdd-plan': { model: 'gpt-5.6-sol', effort: 'high' },
+  'sdd-tasks': { model: 'gpt-5.6-luna', effort: 'medium' },
   designer: { model: 'gpt-5.6-sol', effort: 'medium' },
   quick: { model: 'gpt-5.6-luna', effort: 'xhigh' },
   deep: { model: 'gpt-5.6-sol', effort: 'medium' },
@@ -77,6 +87,9 @@ function buildDefaultModels(): Record<AgentName, string | undefined> {
     explorer: undefined,
     librarian: undefined,
     oracle: undefined,
+    'sdd-specify': undefined,
+    'sdd-plan': undefined,
+    'sdd-tasks': undefined,
     designer: undefined,
     quick: undefined,
     deep: undefined,

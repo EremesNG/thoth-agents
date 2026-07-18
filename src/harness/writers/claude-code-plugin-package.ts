@@ -1,5 +1,5 @@
+import { createHash } from 'node:crypto';
 import type { HarnessArtifact, HarnessDiagnostic } from '../types';
-import { sha256Hash } from './fs-skill-collect';
 
 export const CLAUDE_PLUGIN_MANIFEST_FIELDS = [
   'name',
@@ -51,6 +51,10 @@ function normalizePath(value: string): string {
 
 function stableJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function sha256Hash(content: string | Uint8Array): string {
+  return `sha256:${createHash('sha256').update(content).digest('hex')}`;
 }
 
 function withoutProviderAsset(artifact: HarnessArtifact): HarnessArtifact {

@@ -268,7 +268,6 @@ Commands:
 
 Options:
   --tmux=yes|no          Enable tmux integration (yes/no)
-  --skills=yes|no        Install recommended external skills
   --no-tui               Non-interactive mode
   --dry-run              Simulate install without writing files
   --reset                Repair managed installer-owned targets
@@ -290,15 +289,14 @@ OpenCode loads the plugin with config such as:
 That plugin entry does not create a global thoth-agents command.
 Run this CLI through a global install, npx, or pnpm dlx.
 
-OpenCode install configures the seven-agent roster, native task delegation,
-and bundled SDD skills for OpenCode.
+OpenCode install configures the adaptive ten-role roster and native task delegation.
 Provider capability is external and reported only from caller-supplied evidence.
 
-Bundled thoth-agents skills are always installed.
-Use --skills=no to skip only recommended external skills.
+External required skills are installed for every harness:
+  simplify, tdd, progressive-context-router, and architectural-grilling.
+Their installation is mandatory and cannot be skipped.
 
-The generated config uses OpenAI by default.
-For alternative providers, see docs/provider-configurations.md.
+The generated OpenCode config supports the built-in OpenAI preset only.
 
 Examples:
   thoth-agents
@@ -309,7 +307,7 @@ Examples:
   pnpm dlx thoth-agents@latest install --agent=codex --dry-run
   pnpm dlx thoth-agents@latest install --agent=claude
   pnpm dlx thoth-agents@latest install --agent=claude --dry-run
-  pnpm dlx thoth-agents install --no-tui --tmux=no --skills=yes
+  pnpm dlx thoth-agents install --no-tui --tmux=no
   pnpm dlx thoth-agents install --dry-run
   pnpm dlx thoth-agents install --reset
   pnpm dlx thoth-agents generate --harness=codex --dry-run

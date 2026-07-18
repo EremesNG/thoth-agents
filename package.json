@@ -1,7 +1,7 @@
 {
   "name": "thoth-agents",
-  "version": "0.2.11",
-  "description": "Delegate-first multi-harness orchestration with seven agents, external provider integration, and bundled SDD skills.",
+  "version": "0.3.0",
+  "description": "Adaptive multi-harness orchestration with ten roles, Spec Kit-compatible SDD routes, and external provider boundaries.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -22,7 +22,7 @@
     "llm",
     "claude",
     "gpt",
-    "gemini"
+    "sdd"
   ],
   "repository": {
     "type": "git",
@@ -34,8 +34,6 @@
   "homepage": "https://github.com/EremesNG/thoth-agents#readme",
   "files": [
     "dist",
-    "src/skills",
-    "src/skills/_shared",
     "thoth-agents.schema.json",
     "README.md",
     "LICENSE"
@@ -59,8 +57,8 @@
   "dependencies": {
     "@ast-grep/cli": "^0.40.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "@opencode-ai/plugin": "1.4.7",
-    "@opencode-ai/sdk": "1.4.7",
+    "@opencode-ai/plugin": "1.18.2",
+    "@opencode-ai/sdk": "1.18.2",
     "ink": "^7.0.3",
     "react": "^19.2.6",
     "unique-names-generator": "^4.7.1",

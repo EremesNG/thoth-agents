@@ -53,9 +53,13 @@ describe('harness registry', () => {
     expect(result).toMatchObject({ ok: true, harness: 'claude' });
     if (result.ok) {
       expect(result.adapter.displayName).toBe('Claude Code');
-      for (const status of Object.values(result.adapter.capabilities)) {
-        expect(status).toBe('supported');
-      }
+      expect(result.adapter.capabilities).toMatchObject({
+        agentDefinitions: 'supported',
+        delegatedExecution: 'supported',
+        rolePermissions: 'supported',
+        parentContextInjection: 'supported',
+        memoryGovernanceEnforcement: 'instruction-only',
+      });
     }
   });
 

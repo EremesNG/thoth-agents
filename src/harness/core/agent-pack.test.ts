@@ -6,7 +6,7 @@ import {
 } from './agent-pack';
 
 describe('agent-pack contract', () => {
-  test('lists the stable seven-role roster', () => {
+  test('exposes the minimal hybrid roster', () => {
     const contract = getAgentPackContract();
 
     expect(contract.roles.map((role) => role.name)).toEqual([
@@ -14,27 +14,58 @@ describe('agent-pack contract', () => {
       'explorer',
       'librarian',
       'oracle',
+      'sdd-specify',
+      'sdd-plan',
+      'sdd-tasks',
       'designer',
       'quick',
       'deep',
     ]);
-    expect(AGENT_ROLE_NAMES).toHaveLength(7);
+    expect(AGENT_ROLE_NAMES).toHaveLength(10);
   });
 
-  test('preserves read-only and write-capable specialist split', () => {
+  test('makes the root adaptive instead of delegation-only', () => {
     expect(getAgentRole('orchestrator')).toMatchObject({
-      mode: 'primary-non-mutating',
+      mode: 'adaptive-root',
       dispatch: 'root-coordinator',
-      canMutateWorkspace: false,
+      canMutateWorkspace: true,
     });
 
+    const contract = getAgentPackContract();
+    expect(contract.orchestrationPolicy).toMatchObject({
+      maxDelegationDepth: 1,
+      singleWriter: true,
+    });
+    expect(contract.orchestrationPolicy.rules.join('\n')).toContain(
+      'bounded direct work',
+    );
+    expect(contract.orchestrationPolicy.rules.join('\n')).toContain('net gain');
+    expect(contract.orchestrationPolicy.rules.join('\n')).not.toContain(
+      'delegate-first',
+    );
+  });
+
+  test('keeps discovery and judgment read-only', () => {
     for (const name of ['explorer', 'librarian', 'oracle'] as const) {
       expect(getAgentRole(name)).toMatchObject({
         mode: 'read-only',
         canMutateWorkspace: false,
       });
     }
+  });
 
+  test('limits SDD phase agents to coordination artifacts', () => {
+    for (const name of ['sdd-specify', 'sdd-plan', 'sdd-tasks'] as const) {
+      expect(getAgentRole(name)).toMatchObject({
+        mode: 'coordination-write',
+        dispatch: 'synchronous-task-only',
+        canMutateWorkspace: true,
+        writeScope: ['openspec/'],
+      });
+    }
+  });
+
+  test('keeps implementation ownership with the three writer roles', () => {
     for (const name of ['designer', 'quick', 'deep'] as const) {
       expect(getAgentRole(name)).toMatchObject({
         mode: 'write-capable',
@@ -44,16 +75,14 @@ describe('agent-pack contract', () => {
     }
   });
 
-  test('carries delegate-first governance and verification metadata', () => {
-    const contract = getAgentPackContract();
-    const deep = getAgentRole('deep');
-
-    expect(contract.delegateFirstRules.join('\n')).toContain(
-      'orchestrator coordinates',
-    );
-    expect(deep.toolGovernance.join('\n')).toContain(
-      'validates shared behavior',
-    );
-    expect(contract.verificationProtocol.join('\n')).toContain('changed files');
+  test('defines one compact return contract for every child agent', () => {
+    expect(getAgentPackContract().returnContract).toEqual([
+      'conclusion',
+      'evidence',
+      'verification',
+      'risks',
+      'openQuestions',
+      'nextAction',
+    ]);
   });
 });

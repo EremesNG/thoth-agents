@@ -73,16 +73,16 @@ function opencodeStatusWithSkills(): HarnessStatusReport {
       {
         kind: 'skill',
         label: 'Simplify',
-        path: 'C:\\Users\\EremesNG\\.agents\\skills\\simplify\\SKILL.md',
+        path: 'C:\\Users\\EremesNG\\.config\\opencode\\skills\\simplify\\SKILL.md',
         state: 'installed',
-        observed: 'recommended global skill installed',
+        observed: 'required global skill installed',
       },
       {
         kind: 'skill',
-        label: 'Playwright-CLI',
-        path: 'C:\\Users\\EremesNG\\.agents\\skills\\playwright-cli\\SKILL.md',
+        label: 'Architectural-Grilling',
+        path: 'C:\\Users\\EremesNG\\.config\\opencode\\skills\\architectural-grilling\\SKILL.md',
         state: 'missing',
-        observed: 'recommended global skill missing',
+        observed: 'required global skill missing',
       },
     ],
   };
@@ -91,9 +91,9 @@ function opencodeStatusWithSkills(): HarnessStatusReport {
 function manyCodexTargets(): HarnessStatusReport['targets'] {
   return [
     {
-      kind: 'file' as const,
-      label: 'personal plugin source',
-      path: 'C:\\Users\\EremesNG\\.codex\\plugins\\thoth-agents\\skills\\sdd-archive\\SKILL.md',
+      kind: 'skill' as const,
+      label: 'TDD',
+      path: 'C:\\Users\\EremesNG\\.codex\\skills\\tdd\\SKILL.md',
       state: 'installed' as const,
       observed: 'current',
     },
@@ -453,14 +453,14 @@ describe('interactive TUI', () => {
 
     expect(lastFrame()).toContain('Codex Status');
     expect(lastFrame()).toContain('Skills');
-    expect(lastFrame()).toContain('SDD-Archive: [installed]');
+    expect(lastFrame()).toContain('Tdd: [installed]');
     expect(lastFrame()).toContain('Agents');
     expect(lastFrame()).toContain('Designer: [installed]');
     expect(lastFrame()).toContain('Plugin/MCP');
     expect(lastFrame()).toContain('Marketplace');
     expect(lastFrame()).toContain('Root instructions');
     expect(lastFrame()).not.toContain('C:\\Users\\EremesNG');
-    expect(lastFrame()).not.toContain('skills\\sdd-archive\\SKILL.md');
+    expect(lastFrame()).not.toContain('skills\\tdd\\SKILL.md');
   });
 
   test('TUI compact OpenCode status groups skills with concise labels', async () => {
@@ -478,10 +478,10 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain('OpenCode Status');
     expect(lastFrame()).toContain('Skills');
     expect(lastFrame()).toContain('Simplify: [installed]');
-    expect(lastFrame()).toContain('Playwright-CLI: [missing]');
+    expect(lastFrame()).toContain('Architectural-Grilling: [missing]');
     expect(lastFrame()).not.toContain('C:\\Users\\EremesNG');
     expect(lastFrame()).not.toContain(
-      '.agents\\skills\\playwright-cli\\SKILL.md',
+      '.config\\opencode\\skills\\architectural-grilling\\SKILL.md',
     );
   });
 
@@ -579,13 +579,7 @@ describe('interactive TUI', () => {
           kind: 'config',
           label: 'thoth-agents config',
           state: 'drift',
-          observed: 'preset: agents; roles: 7/7',
-        },
-        {
-          kind: 'skill',
-          label: 'Bundled skill: sdd-apply',
-          state: 'missing',
-          observed: 'managed bundled skill missing',
+          observed: 'preset: agents; roles: 7/10',
         },
       ],
       diagnostics: [
@@ -593,11 +587,6 @@ describe('interactive TUI', () => {
           severity: 'important',
           code: 'opencode-roster-drift',
           message: 'Managed OpenCode roster uses the legacy agents preset.',
-        },
-        {
-          severity: 'important',
-          code: 'opencode-bundled-skills-missing',
-          message: 'Bundled thoth-agents OpenCode skills are missing.',
         },
       ],
     };
@@ -611,16 +600,10 @@ describe('interactive TUI', () => {
     await openStatus(stdin);
 
     expect(lastFrame()).toContain(
-      'Thoth Agents Config: [drift] - preset: agents; roles: 7/7',
-    );
-    expect(lastFrame()).toContain(
-      'Bundled skill: sdd-apply: [missing] - managed bundled skill missing',
+      'Thoth Agents Config: [drift] - preset: agents; roles: 7/10',
     );
     expect(lastFrame()).toContain(
       '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
-    );
-    expect(lastFrame()).toContain(
-      '[important] [opencode-bundled-skills-missing] Bundled thoth-agents OpenCode skills are missing.',
     );
   });
 
@@ -875,13 +858,7 @@ describe('interactive TUI', () => {
         kind: 'config',
         label: 'thoth-agents config',
         state: 'drift',
-        observed: 'preset: agents; roles: 7/7',
-      },
-      {
-        kind: 'skill',
-        label: 'Bundled skill: sdd-apply',
-        state: 'missing',
-        observed: 'managed bundled skill missing',
+        observed: 'preset: agents; roles: 7/10',
       },
     ];
     const blockedPlan: OperationPlan = {
@@ -894,11 +871,6 @@ describe('interactive TUI', () => {
           severity: 'important',
           code: 'opencode-roster-drift',
           message: 'Managed OpenCode roster uses the legacy agents preset.',
-        },
-        {
-          severity: 'important',
-          code: 'opencode-bundled-skills-missing',
-          message: 'Bundled thoth-agents OpenCode skills are missing.',
         },
       ],
     };
@@ -913,36 +885,30 @@ describe('interactive TUI', () => {
     await openUpdatePreview(stdin);
 
     expect(lastFrame()).toContain(
-      'thoth-agents config: [drift] - preset: agents; roles: 7/7',
-    );
-    expect(lastFrame()).toContain(
-      'Bundled skill: sdd-apply: [missing] - managed bundled skill missing',
+      'thoth-agents config: [drift] - preset: agents; roles: 7/10',
     );
     expect(lastFrame()).toContain(
       '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
     );
-    expect(lastFrame()).toContain(
-      '[important] [opencode-bundled-skills-missing] Bundled thoth-agents OpenCode skills are missing.',
-    );
   });
 
-  test('TUI blocker targets exclude missing optional recommended skills', async () => {
+  test('TUI blocker targets render only targets explicitly marked as blockers', async () => {
     const managedBlocker: OperationPlan['targets'][number] = {
       kind: 'config',
       label: 'thoth-agents config',
       state: 'drift',
       observed: 'preset: agents; roles: 7/7',
     };
-    const optionalRecommendation: OperationPlan['targets'][number] = {
-      kind: 'skill',
-      label: 'Playwright-CLI',
-      state: 'missing',
-      observed: 'recommended global skill missing',
+    const nonBlockingTarget: OperationPlan['targets'][number] = {
+      kind: 'file',
+      label: 'Unmanaged user config',
+      state: 'installed',
+      observed: 'preserved',
     };
     const blockedPlan: OperationPlan = {
       ...plan('update'),
       canApply: false,
-      targets: [managedBlocker, optionalRecommendation],
+      targets: [managedBlocker, nonBlockingTarget],
       blockerTargets: [managedBlocker],
     };
     const ops = {
@@ -959,8 +925,8 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain(
       'thoth-agents config: [drift] - preset: agents; roles: 7/7',
     );
-    expect(lastFrame()).not.toContain('Playwright-CLI');
-    expect(lastFrame()).not.toContain('recommended global skill missing');
+    expect(lastFrame()).not.toContain('Unmanaged user config');
+    expect(lastFrame()).not.toContain('preserved');
   });
 
   test('TUI failed apply renders result diagnostic codes and target observations', async () => {

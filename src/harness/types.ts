@@ -59,7 +59,6 @@ export interface HarnessRenderOptions {
   overwrite?: boolean;
   targetHarness?: HarnessId;
   outputRoot?: string;
-  codexSkillOutputModes?: readonly ('plugin-package' | 'repo-local-fallback')[];
 }
 
 export interface HarnessArtifact {

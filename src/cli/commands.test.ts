@@ -11,7 +11,6 @@ import {
   resolveCliModelRoles,
   runCliCommand,
 } from './commands';
-import { CUSTOM_SKILLS } from './custom-skills';
 import type { ModelOption } from './model-catalog';
 import { resolveOperationHarness } from './operations';
 import {
@@ -100,6 +99,16 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain(
       'Run this CLI through a global install, npx, or pnpm dlx.',
     );
+    expect(output).toContain('ten-role roster');
+    expect(output).toContain(
+      'simplify, tdd, progressive-context-router, and architectural-grilling',
+    );
+    expect(output).not.toContain('playwright-cli');
+    expect(output).toContain(
+      'External required skills are installed for every harness',
+    );
+    expect(output).not.toContain('--skills');
+    expect(output).not.toContain('alternative providers');
     expect(output).not.toContain('thoth-mem defaults');
     expect(output).toContain(
       'Provider capability is external and reported only from caller-supplied evidence.',
@@ -276,7 +285,7 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain('The npm binary still requires');
   });
 
-  test('OpenCode sync output renders unique main and lite backups plus bundled skills', () => {
+  test('OpenCode sync output renders unique main and lite backups without bundled phase skills', () => {
     const xdgRoot = mkdtempSync(join(tmpdir(), 'thoth-opencode-format-'));
     const root = join(xdgRoot, 'opencode');
     const originalConfigDir = process.env.OPENCODE_CONFIG_DIR;
@@ -300,13 +309,10 @@ describe('commands plain operation formatters', () => {
         expect(output).toContain(backupPath);
         expect(output.split(backupPath)).toHaveLength(2);
       }
-      expect(output).toContain(
-        '- Refresh bundled thoth-agents OpenCode skills',
+      expect(output).toContain('Write thoth-agents ten-role config');
+      expect(output).not.toContain(
+        'Refresh bundled thoth-agents OpenCode skills',
       );
-      expect(output).toContain(`"count": ${CUSTOM_SKILLS.length}`);
-      for (const { name } of CUSTOM_SKILLS) {
-        expect(output).toContain(`"${name}"`);
-      }
     } finally {
       if (originalConfigDir === undefined) {
         delete process.env.OPENCODE_CONFIG_DIR;
@@ -370,13 +376,7 @@ describe('commands plain operation formatters', () => {
         kind: 'config' as const,
         label: 'thoth-agents config',
         state: 'drift' as const,
-        observed: 'preset: agents; roles: 7/7',
-      },
-      {
-        kind: 'skill' as const,
-        label: 'Bundled skill: sdd-apply',
-        state: 'missing' as const,
-        observed: 'managed bundled skill missing',
+        observed: 'preset: agents; roles: 7/10',
       },
     ];
     const warnings = [
@@ -384,11 +384,6 @@ describe('commands plain operation formatters', () => {
         severity: 'important' as const,
         code: 'opencode-roster-drift',
         message: 'Managed OpenCode roster uses the legacy agents preset.',
-      },
-      {
-        severity: 'important' as const,
-        code: 'opencode-bundled-skills-missing',
-        message: 'Bundled thoth-agents OpenCode skills are missing.',
       },
     ];
     const blockedPlan: OperationPlan = {
@@ -427,13 +422,7 @@ describe('commands plain operation formatters', () => {
         '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
       );
       expect(output).toContain(
-        '[important] [opencode-bundled-skills-missing] Bundled thoth-agents OpenCode skills are missing.',
-      );
-      expect(output).toContain(
-        'thoth-agents config: config [drift] observed preset: agents; roles: 7/7',
-      );
-      expect(output).toContain(
-        'Bundled skill: sdd-apply: skill [missing] observed managed bundled skill missing',
+        'thoth-agents config: config [drift] observed preset: agents; roles: 7/10',
       );
     }
     expect(formatOperationPlan(blockedPlan)).toContain('Blocking targets:');

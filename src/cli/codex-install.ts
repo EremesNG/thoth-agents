@@ -10,7 +10,6 @@ import type { HarnessArtifact } from '../harness/types';
 import { writeCodexConfigMerge } from './codex-config-io';
 import type { CodexInstallScope, CodexRoleName } from './codex-paths';
 import { resolveCodexTargets } from './codex-paths';
-import { findPackageRoot } from './custom-skills';
 import {
   type ManagedModelState,
   emptyManagedModelState as sharedEmptyManagedModelState,
@@ -19,6 +18,7 @@ import {
   uniqueMessages,
   writeTextWithBackup,
 } from './managed-state-io';
+import { findPackageRoot } from './package-root';
 
 export { CODEX_ROLE_NAMES } from './codex-paths';
 
@@ -547,7 +547,7 @@ export function buildCodexSetupPlan(
     ],
     disclaimers: [
       'Role permissions and provider-per-agent settings are instruction-level or user-managed unless documented Codex runtime controls are available.',
-      'Codex v1 reset is managed-only; no broad destructive --force behavior is implemented.',
+      'Codex reset is managed-only; no broad destructive --force behavior is implemented.',
     ],
   };
 }

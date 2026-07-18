@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -7,7 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ProviderEvidenceInput } from '../../harness/types';
 import { applyCodexSetup, buildCodexSetupPlan } from '../codex-install';
 import {
@@ -21,7 +22,41 @@ import {
 } from './codex';
 import type { HarnessStatusReport } from './types';
 
+const installRequiredSkillMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../skills', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../skills')>();
+  return { ...actual, installRequiredSkill: installRequiredSkillMock };
+});
+
 const PACKAGE_ROOT = process.cwd();
+
+function requiredSkillPath(home: string, name: string): string {
+  return join(home, '.codex', 'skills', name, 'SKILL.md');
+}
+
+function writeRequiredSkills(home: string): void {
+  for (const name of [
+    'simplify',
+    'tdd',
+    'progressive-context-router',
+    'architectural-grilling',
+  ]) {
+    const path = requiredSkillPath(home, name);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, `---\nname: ${name}\n---\n`);
+  }
+}
+
+beforeEach(() => {
+  installRequiredSkillMock.mockReset();
+  installRequiredSkillMock.mockImplementation((skill, harness, options) => {
+    const path = requiredSkillPath(options.homeDir, skill.skillName);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, `---\nname: ${skill.skillName}\n---\n`);
+    return { skill, harness, skillPath: path, status: 'installed' };
+  });
+});
 
 function context(dir: string, home: string) {
   return {
@@ -48,6 +83,7 @@ function setup(dir: string, home: string): void {
     }),
   );
   expect(result.success).toBe(true);
+  writeRequiredSkills(home);
 }
 
 function rolePath(home: string, role: string): string {
@@ -205,11 +241,41 @@ describe('Codex operations adapter', () => {
       expect(plan.dryRun).toBe(true);
       expect(plan.canApply).toBe(true);
       expect(plan.title).toContain('Install');
+      expect(plan.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: 'Install required external skills for Codex',
+          }),
+        ]),
+      );
       expect(existsSync(join(home, '.codex'))).toBe(false);
 
       const applied = applyCodexPlan(plan);
       expect(applied.applied).toBe(true);
       expect(existsSync(rolePath(home, 'deep'))).toBe(true);
+      expect(installRequiredSkillMock).toHaveBeenCalledTimes(4);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('Codex install is incomplete when a required skill fails', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-required-skill-'));
+    try {
+      const home = join(dir, 'home');
+      installRequiredSkillMock.mockReturnValue({ status: 'failed' });
+
+      const applied = applyCodexPlan(buildCodexInstallPlan(context(dir, home)));
+
+      expect(applied.applied).toBe(false);
+      expect(applied.warnings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            severity: 'critical',
+            code: 'codex-required-skill-failed',
+          }),
+        ]),
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -279,7 +279,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('apply preserves root instructions, backs up existing files, writes six roles and generates Personal plugin source only', () => {
+  test('apply preserves root instructions, writes nine specialists, and generates Personal plugin source only', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -305,35 +305,17 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('User guidance');
       expect(root).toContain('thoth-agents:codex-root:start');
       expect(root).toContain('thoth-agents:codex-root:start -->\n<role>');
-      expect(root).toContain('delegate-first root coordinator');
-      expect(root).toContain(
-        'small bounded local inspection when cheaper, faster, or clearer than delegation',
-      );
-      expect(root).toContain(
-        'Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review',
-      );
-      expect(root).toContain(
-        'Verify material user/agent claims before relying on them',
-      );
-      expect(root).toContain(
-        'correct it plainly, explain tradeoffs, and offer alternatives',
-      );
-      expect(root).toContain('net quality, speed, cost, and reliability');
-      expect(root).toContain('Internal handoff fields');
-      expect(root).toContain('Hard gates');
-      expect(root).toContain('Plan gate: after tasks');
-      expect(root).toContain('load `executing-plans`');
-      expect(root).toContain(
-        'Visual or UX work and screenshots always go to designer',
-      );
-      expect(root).toContain(
-        'The root coordinator owns provider-neutral continuity outcomes',
-      );
+      expect(root).toContain('adaptive root');
+      expect(root).toContain('bounded direct work');
+      expect(root).toContain('net gain');
+      expect(root).toContain('Accelerated SDD');
+      expect(root).toContain('maximum delegation depth is 1');
+      expect(root).toContain('sdd-specify subagent');
       expect(root).toContain('request_user_input');
-      expect(root).toContain('Default mode');
-      expect(root).toContain(
-        'Whenever the root orchestrator calls `request_user_input`, it MUST NEVER set or pass `autoResolutionMs`; omit the field entirely.',
-      );
+      expect(root).toContain('omit `autoResolutionMs` entirely');
+      expect(root).not.toContain('delegate-first');
+      expect(root).not.toContain('executing-plans');
+      expect(root).not.toContain('requirements-interview');
       expect(root).not.toContain('Use `question` only');
       expect(root).not.toContain('@designer');
       expectNoLeakedCodexAdaptationMarkers(root);
@@ -371,10 +353,7 @@ describe('Codex install setup plan', () => {
         'thoth-agents',
       );
       expect(existsSync(join(personalPluginRoot, 'plugin.json'))).toBe(false);
-      expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(true);
-      expect(
-        existsSync(join(personalPluginRoot, 'skills', 'sdd-apply', 'SKILL.md')),
-      ).toBe(true);
+      expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(false);
       const personalManifest = JSON.parse(
         readFileSync(
           join(personalPluginRoot, '.codex-plugin', 'plugin.json'),
@@ -388,6 +367,7 @@ describe('Codex install setup plan', () => {
         ),
       );
       expect(personalManifest.name).toBe('thoth-agents');
+      expect(personalManifest.skills).toBeUndefined();
       expect(personalManifest.mcpServers).toBe('./.mcp.json');
       expect(personalManifest.hooks).toBeUndefined();
       expect(personalManifest.customAgents).toBeUndefined();
@@ -492,10 +472,7 @@ describe('Codex install setup plan', () => {
       expect(
         existsSync(join(personalPluginRoot, '.codex-plugin', 'plugin.json')),
       ).toBe(true);
-      expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(true);
-      expect(
-        existsSync(join(personalPluginRoot, 'skills', 'sdd-apply', 'SKILL.md')),
-      ).toBe(true);
+      expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(false);
       expect(existsSync(join(personalPluginRoot, '.mcp.json'))).toBe(true);
       expect(existsSync(join(personalPluginRoot, 'hooks', 'hooks.json'))).toBe(
         false,
@@ -506,7 +483,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('copies bundled skill files from package root when caller cwd is outside the package repo', () => {
+  test('uses the package root when caller cwd is outside the package repo', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-dlx-install-'));
     const callerProject = join(dir, 'caller-project');
     const home = join(dir, 'home');
@@ -534,33 +511,22 @@ describe('Codex install setup plan', () => {
           'plugins',
           'thoth-agents',
         );
-        const skillPath = join(
-          personalPluginRoot,
-          'skills',
-          'sdd-apply',
-          'SKILL.md',
-        );
-        const skillManifest = JSON.parse(
+        expect(result.success).toBe(true);
+        expect(
+          existsSync(join(personalPluginRoot, '.codex-plugin', 'plugin.json')),
+        ).toBe(true);
+        expect(existsSync(join(personalPluginRoot, '.mcp.json'))).toBe(true);
+        expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(false);
+        const manifest = JSON.parse(
           readFileSync(
-            join(personalPluginRoot, 'skills', '.thoth-agents-manifest.json'),
+            join(personalPluginRoot, '.codex-plugin', 'plugin.json'),
             'utf8',
           ),
-        ) as { skills?: Array<{ name?: string; outputPath?: string }> };
-
-        expect(result.success).toBe(true);
-        expect(result.diagnostics.join('\n')).not.toContain(
-          'codex.skill.source_missing',
-        );
-        expect(existsSync(skillPath)).toBe(true);
-        expect(readFileSync(skillPath, 'utf8')).toContain('sdd-apply');
-        expect(skillManifest.skills).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              name: 'sdd-apply',
-              outputPath: '.codex-plugin/skills/sdd-apply/SKILL.md',
-            }),
-          ]),
-        );
+        ) as { version?: string };
+        const packageJson = JSON.parse(
+          readFileSync(join(packageRoot, 'package.json'), 'utf8'),
+        ) as { version?: string };
+        expect(manifest.version).toBe(packageJson.version);
       } finally {
         process.chdir(previousCwd);
       }
@@ -869,7 +835,7 @@ describe('Codex install setup plan', () => {
         replaceRoleModel(installed, 'designer-user-model')
           .replace('name = "designer"', 'name = "renamed"')
           .replace(
-            'description = "Own user-facing implementation choices and visual QA for UI work."',
+            'description = "Own user-facing implementation choices and visual quality for UI work."',
             'description = "user edited"',
           )
           .replace(
@@ -888,7 +854,7 @@ describe('Codex install setup plan', () => {
       expect(roleModel(updated)).toBe('designer-user-model');
       expect(updated).toContain('name = "designer"');
       expect(updated).toContain(
-        'description = "Own user-facing implementation choices and visual QA for UI work."',
+        'description = "Own user-facing implementation choices and visual quality for UI work."',
       );
       expect(parseRoleTomlEffort(updated)).toBe('high');
       expect(updated).not.toContain('USER EDIT');

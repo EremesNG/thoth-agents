@@ -11,71 +11,36 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { generateCodexPluginPackage } from './generate-codex-plugin';
 
-describe('generateCodexPluginPackage', () => {
+describe('generateCodexPluginPackage v0.3', () => {
   const packageVersion = JSON.parse(
     readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
-  ) as {
-    version?: unknown;
-  };
+  ) as { version: string };
 
-  if (typeof packageVersion.version !== 'string') {
-    throw new Error('Expected root package.json version to be a string.');
-  }
-
-  test('writes deterministic repo-local plugin bundle and marketplace metadata', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'codex-plugin-generate-'));
+  test('writes the adaptive agent plugin and marketplace metadata', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-plugin-v03-'));
     try {
       const result = generateCodexPluginPackage({ projectRoot: dir });
-
-      expect(result.written).toContain(
-        join(
-          dir,
-          'plugins',
-          'EremesNG',
-          'thoth-agents',
-          '.codex-plugin',
-          'plugin.json',
-        ),
-      );
-      expect(
-        existsSync(
-          join(
-            dir,
-            'plugins',
-            'EremesNG',
-            'thoth-agents',
-            '.codex-plugin',
-            '.thoth-agents-plugin-assets.json',
-          ),
-        ),
-      ).toBe(true);
-      expect(
-        readFileSync(
-          join(
-            dir,
-            'plugins',
-            'EremesNG',
-            'thoth-agents',
-            '.codex-plugin',
-            'plugin.json',
-          ),
-          'utf8',
-        ),
-      ).toBe(
-        `{\n  "name": "thoth-agents",\n  "version": "${packageVersion.version}",\n  "description": "Delegate-first OpenCode plugin with seven agents and bundled SDD skills.",\n  "skills": "./skills/",\n  "mcpServers": "./.mcp.json"\n}\n`,
-      );
-      expect(
-        existsSync(
-          join(dir, 'plugins', 'EremesNG', 'thoth-agents', 'plugin.json'),
-        ),
-      ).toBe(false);
-
+      const pluginRoot = join(dir, 'plugins', 'EremesNG', 'thoth-agents');
+      const manifest = JSON.parse(
+        readFileSync(join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'),
+      ) as Record<string, unknown>;
       const marketplace = JSON.parse(
         readFileSync(
           join(dir, '.agents', 'plugins', 'marketplace.json'),
           'utf8',
         ),
+      ) as { plugins: unknown[] };
+
+      expect(result.written).toContain(
+        join(pluginRoot, '.codex-plugin', 'plugin.json'),
       );
+      expect(manifest).toEqual({
+        name: 'thoth-agents',
+        version: packageVersion.version,
+        description:
+          'Adaptive multi-harness agent pack with ten roles and Spec Kit-compatible SDD coordination.',
+        mcpServers: './.mcp.json',
+      });
       expect(marketplace.plugins).toEqual([
         expect.objectContaining({
           name: 'thoth-agents',
@@ -86,42 +51,34 @@ describe('generateCodexPluginPackage', () => {
           },
         }),
       ]);
+      expect(existsSync(join(pluginRoot, 'skills'))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test('materializes manifest-relative payload directories at plugin root and removes stale generated files', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'codex-plugin-generate-'));
+  test('replaces stale output and omits legacy skills and empty hooks', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-plugin-v03-'));
     const pluginRoot = join(dir, 'plugins', 'EremesNG', 'thoth-agents');
     try {
-      const skillSource = join(dir, 'src', 'skills', 'sdd-apply');
-      mkdirSync(skillSource, { recursive: true });
-      writeFileSync(join(skillSource, 'SKILL.md'), '# Apply\n');
-
       mkdirSync(pluginRoot, { recursive: true });
       writeFileSync(join(pluginRoot, 'stale.txt'), 'stale');
-      writeFileSync(join(pluginRoot, 'plugin.json'), '{"stale":true}\n');
 
       generateCodexPluginPackage({ projectRoot: dir });
-
       const manifest = JSON.parse(
         readFileSync(join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'),
-      );
+      ) as Record<string, unknown>;
 
-      expect(manifest.skills).toBe('./skills/');
-      expect(manifest.mcpServers).toBe('./.mcp.json');
+      expect(manifest.skills).toBeUndefined();
       expect(manifest.hooks).toBeUndefined();
-      expect(
-        existsSync(join(pluginRoot, 'skills', 'sdd-apply', 'SKILL.md')),
-      ).toBe(true);
+      expect(manifest.mcpServers).toBe('./.mcp.json');
       expect(existsSync(join(pluginRoot, '.mcp.json'))).toBe(true);
       expect(readFileSync(join(pluginRoot, '.mcp.json'), 'utf8')).not.toContain(
         'thoth_mem',
       );
+      expect(existsSync(join(pluginRoot, 'skills'))).toBe(false);
       expect(existsSync(join(pluginRoot, 'hooks', 'hooks.json'))).toBe(false);
       expect(existsSync(join(pluginRoot, 'stale.txt'))).toBe(false);
-      expect(existsSync(join(pluginRoot, 'plugin.json'))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

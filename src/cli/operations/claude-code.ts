@@ -16,6 +16,12 @@ import type {
   ClaudeCodeInstallScope,
   ClaudeCodeRoleName,
 } from '../claude-code-paths';
+import {
+  getRequiredSkillInstallCommand,
+  getRequiredSkillPath,
+  installRequiredSkill,
+  REQUIRED_SKILLS,
+} from '../skills';
 import type {
   BackupExpectation,
   HarnessAction,
@@ -41,7 +47,10 @@ export interface ClaudeCodeOperationContext extends OperationContext {
 }
 
 const CLAUDE_CODE_DISPLAY_NAME = 'Claude Code';
-const claudeCodePlanSources = new WeakMap<OperationPlan, ClaudeCodeSetupPlan>();
+const claudeCodePlanSources = new WeakMap<
+  OperationPlan,
+  { setupPlan: ClaudeCodeSetupPlan; context: ClaudeCodeOperationContext }
+>();
 const claudeCodeModelSources = new WeakMap<
   OperationPlan,
   {
@@ -306,26 +315,89 @@ function statusSummary(state: ManagedState): string {
   }
 }
 
-function statusFromSetupPlan(plan: ClaudeCodeSetupPlan): HarnessStatusReport {
+function claudeCodeRequiredSkillStatus(context: ClaudeCodeOperationContext): {
+  targets: ManagedTarget[];
+  diagnostics: OperationWarning[];
+} {
+  const targets: ManagedTarget[] = REQUIRED_SKILLS.map((skill) => {
+    const path = getRequiredSkillPath(skill, 'claude', context.homeDir);
+    const installed = existsSync(path);
+    return {
+      kind: 'skill',
+      path,
+      label: `Claude Code required skill: ${skill.name}`,
+      state: installed ? 'installed' : 'missing',
+      expected: 'required global Claude Code skill',
+      observed: installed ? 'installed' : 'missing',
+    };
+  });
+  return {
+    targets,
+    diagnostics: targets.some((target) => target.state === 'missing')
+      ? [
+          {
+            severity: 'important',
+            code: 'claude-code-required-skills-missing',
+            message:
+              'Required Claude Code skills are missing; run install, update, or sync to restore them.',
+          },
+        ]
+      : [],
+  };
+}
+
+function claudeCodeRequiredSkillPlanItem(): OperationPlanItem {
+  return {
+    title: 'Install required external skills for Claude Code',
+    target: {
+      kind: 'skill',
+      label: 'Required Claude Code skills',
+      expected: REQUIRED_SKILLS.map(({ name }) => name).join(', '),
+    },
+    preview: JSON.stringify(
+      REQUIRED_SKILLS.map((skill) => ({
+        name: skill.name,
+        ...getRequiredSkillInstallCommand(skill, 'claude'),
+      })),
+      null,
+      2,
+    ),
+  };
+}
+
+function statusFromSetupPlan(
+  plan: ClaudeCodeSetupPlan,
+  context: ClaudeCodeOperationContext,
+): HarnessStatusReport {
   const classified = plan.items.map((item) => ({
     item,
     ...classifyItem(item),
   }));
-  const state = aggregateState(classified.map((entry) => entry.state));
+  const requiredSkills = claudeCodeRequiredSkillStatus(context);
+  const state = aggregateState([
+    ...classified.map((entry) => entry.state),
+    ...requiredSkills.targets.map((target) => target.state ?? 'unknown'),
+  ]);
 
   return {
     harness: 'claude',
     displayName: CLAUDE_CODE_DISPLAY_NAME,
     state,
     summary: statusSummary(state),
-    targets: classified.map(({ item, state, observed }) =>
-      targetForItem(item, state, observed),
-    ),
-    diagnostics: plan.diagnostics.map((message) => ({
-      severity: 'minor' as const,
-      message,
-      code: 'claude-code-diagnostic',
-    })),
+    targets: [
+      ...classified.map(({ item, state, observed }) =>
+        targetForItem(item, state, observed),
+      ),
+      ...requiredSkills.targets,
+    ],
+    diagnostics: [
+      ...plan.diagnostics.map((message) => ({
+        severity: 'minor' as const,
+        message,
+        code: 'claude-code-diagnostic',
+      })),
+      ...requiredSkills.diagnostics,
+    ],
     actions: claudeCodeActions,
     disclaimers: [
       ...claudeCodeDisclaimers(),
@@ -364,7 +436,7 @@ export function getClaudeCodeStatus(
   }
 
   return {
-    ...statusFromSetupPlan(plan),
+    ...statusFromSetupPlan(plan, context),
     providerCapability,
   };
 }
@@ -384,11 +456,12 @@ function planFromSetup(
   title: string,
   summary: string,
   setupPlan: ClaudeCodeSetupPlan,
+  context: ClaudeCodeOperationContext,
 ): OperationPlan {
   // Classify the already-built setup plan rather than rebuilding it via
   // getClaudeCodeStatus(), so a single install/update/sync preview renders the
   // adapter (and re-reads the skill tree from disk) only once.
-  const status = statusFromSetupPlan(setupPlan);
+  const status = statusFromSetupPlan(setupPlan, context);
   const canApply =
     status.state === 'installed' ||
     status.state === 'missing' ||
@@ -410,14 +483,17 @@ function planFromSetup(
       description:
         'Existing Claude Code plugin files are backed up before being overwritten.',
     },
-    items: setupPlan.items.map(planItemFromSetup),
+    items: [
+      ...setupPlan.items.map(planItemFromSetup),
+      claudeCodeRequiredSkillPlanItem(),
+    ],
     warnings: status.diagnostics,
     disclaimers: [
       ...claudeCodeDisclaimers(),
       ...setupPlan.disclaimers.map((message) => ({ message })),
     ],
   };
-  claudeCodePlanSources.set(plan, setupPlan);
+  claudeCodePlanSources.set(plan, { setupPlan, context });
   return plan;
 }
 
@@ -430,6 +506,7 @@ export function buildClaudeCodeInstallPlan(
     'Install Claude Code plugin package',
     'Preview Claude Code plugin package install using buildClaudeCodeSetupPlan().',
     buildClaudeCodeSetupPlan(claudeCodeConfig(context, true)),
+    context,
   );
 }
 
@@ -442,6 +519,7 @@ export function buildClaudeCodeUpdatePlan(
     'Update Claude Code plugin package',
     'Preview Claude Code managed plugin refresh using buildClaudeCodeSetupPlan().',
     buildClaudeCodeSetupPlan(claudeCodeConfig(context, true)),
+    context,
   );
 }
 
@@ -454,6 +532,7 @@ export function buildClaudeCodeSyncPlan(
     'Sync Claude Code plugin package',
     'Preview Claude Code managed plugin subagents, settings, and skills.',
     buildClaudeCodeSetupPlan(claudeCodeConfig(context, true)),
+    context,
   );
 }
 
@@ -677,33 +756,73 @@ export function applyClaudeCodePlan(plan: OperationPlan): OperationApplyResult {
     };
   }
 
-  const setupPlan = claudeCodePlanSources.get(plan);
-  if (!setupPlan) {
+  const source = claudeCodePlanSources.get(plan);
+  if (!source) {
     return rejectPlan(
       plan,
       'Claude Code setup plan was not produced by a Claude Code operation plan builder in this process.',
     );
   }
-  const result = applyClaudeCodeSetup({ ...setupPlan, dryRun: false });
+  const result = applyClaudeCodeSetup({ ...source.setupPlan, dryRun: false });
+  const requiredSkillWarnings: OperationWarning[] = [];
+  const requiredSkillTargets: ManagedTarget[] = [];
+  if (result.success) {
+    for (const skill of REQUIRED_SKILLS) {
+      const installed = installRequiredSkill(skill, 'claude', {
+        homeDir: source.context.homeDir,
+      });
+      const success = installed.status !== 'failed';
+      requiredSkillTargets.push({
+        kind: 'skill',
+        path: installed.skillPath,
+        label: `Claude Code required skill: ${skill.name}`,
+        state: success ? 'installed' : 'drift',
+        observed: success ? installed.status : 'installation failed',
+      });
+      if (!success) {
+        requiredSkillWarnings.push({
+          severity: 'critical',
+          code: 'claude-code-required-skill-failed',
+          message: `Failed to install required Claude Code skill: ${skill.name}.`,
+        });
+      }
+    }
+  }
+  const success = result.success && requiredSkillWarnings.length === 0;
   return {
     harness: 'claude',
     action: plan.action,
-    applied: result.success,
-    summary: result.success
+    applied: success,
+    summary: success
       ? `Applied Claude Code managed ${plan.action} plan.`
-      : (result.error ?? `Failed to apply Claude Code ${plan.action} plan.`),
-    changedTargets: result.changed.map((path) => ({
-      kind: path.endsWith('.json') ? 'memory-state' : 'generated-artifact',
-      path,
-      label: basename(path),
-      state: 'installed',
-    })),
+      : requiredSkillWarnings.length > 0
+        ? 'Claude Code setup was written, but required skills failed to install.'
+        : (result.error ?? `Failed to apply Claude Code ${plan.action} plan.`),
+    changedTargets: [
+      ...result.changed.map((path) => ({
+        kind: path.endsWith('.json')
+          ? ('memory-state' as const)
+          : ('generated-artifact' as const),
+        path,
+        label: basename(path),
+        state: 'installed' as const,
+      })),
+      ...requiredSkillTargets,
+    ],
     backups: result.changed
       .filter((path) => existsSync(`${path}.bak`))
       .map((path) => ({ path: `${path}.bak`, label: 'managed backup' })),
-    warnings: result.success
-      ? []
-      : [{ severity: 'critical', message: result.error ?? 'apply failed.' }],
+    warnings: [
+      ...requiredSkillWarnings,
+      ...(result.success
+        ? []
+        : [
+            {
+              severity: 'critical' as const,
+              message: result.error ?? 'apply failed.',
+            },
+          ]),
+    ],
     disclaimers: claudeCodeDisclaimers(),
   };
 }

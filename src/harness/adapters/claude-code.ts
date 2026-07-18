@@ -1,29 +1,14 @@
 import { fileURLToPath } from 'node:url';
+import { renderConfiguredRolePrompt } from '../../agents/configured-role-prompt';
 import {
   CLAUDE_CODE_PROMPT_DIALECT,
   CLAUDE_CODE_SUBAGENT_NAMESPACE,
   claudeCodeSubagentType,
 } from '../../agents/prompt-dialects';
 import {
-  createModelFamilySection,
-  createOrchestratorPromptSections,
-  createReadOnlySpecialistPromptSections,
-  createStepBudgetSection,
-  createWriteCapableSpecialistPromptSections,
-  type RolePromptSection,
-  renderPromptSection,
-  renderRolePrompt,
-} from '../../agents/prompt-sections';
-import {
-  appendPromptSections,
-  composeAgentPrompt,
-} from '../../agents/prompt-utils';
-import {
-  type AgentOverrideConfig,
   DEFAULT_MODELS,
   getAgentOverride,
   getPrimaryModelId,
-  loadAgentPrompt,
   type PluginConfig,
 } from '../../config';
 import { CONTEXT7_MCP_URL } from '../../mcp/context7';
@@ -39,7 +24,6 @@ import {
   findRootPackageJsonPath,
   readPackageJsonVersion,
 } from '../core/package-version';
-import { getSkillRegistry } from '../core/skills';
 import type {
   HarnessAdapter,
   HarnessArtifact,
@@ -51,7 +35,6 @@ import {
   type ClaudeCodePluginManifest,
   renderClaudeCodePluginPackage,
 } from '../writers/claude-code-plugin-package';
-import { renderClaudeCodeSkillLayout } from '../writers/claude-code-skill-layout';
 import {
   type ClaudeCodeModel,
   isClaudeCodeModel,
@@ -70,6 +53,9 @@ export const CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS = {
   explorer: 'haiku',
   librarian: 'sonnet',
   oracle: 'opus',
+  'sdd-specify': 'sonnet',
+  'sdd-plan': 'sonnet',
+  'sdd-tasks': 'haiku',
   designer: 'sonnet',
   quick: 'haiku',
   deep: 'sonnet',
@@ -98,68 +84,6 @@ function getClaudeCodeAgentModel(
   return CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS[role.name];
 }
 
-function claudeCodePromptSections(
-  roleName: AgentRoleName,
-): RolePromptSection[] {
-  switch (roleName) {
-    case 'orchestrator':
-      return createOrchestratorPromptSections();
-    case 'explorer':
-    case 'librarian':
-    case 'oracle':
-      return createReadOnlySpecialistPromptSections(roleName);
-    case 'designer':
-    case 'quick':
-    case 'deep':
-      return createWriteCapableSpecialistPromptSections(roleName);
-  }
-}
-
-function claudeCodeModelFamilyPromptSection(
-  roleName: AgentRoleName,
-  model?: AgentOverrideConfig['model'] | string,
-): string | undefined {
-  const section = createModelFamilySection(roleName, model);
-
-  return section
-    ? renderPromptSection(section, CLAUDE_CODE_PROMPT_DIALECT)
-    : undefined;
-}
-
-function claudeCodeStepBudgetPromptSection(steps?: number): string | undefined {
-  const section = createStepBudgetSection(steps);
-
-  return section
-    ? renderPromptSection(section, CLAUDE_CODE_PROMPT_DIALECT)
-    : undefined;
-}
-
-function renderClaudeCodeRolePrompt(
-  roleName: AgentRoleName,
-  config?: PluginConfig,
-  model?: AgentOverrideConfig['model'] | string,
-): string {
-  const promptOverrides = loadAgentPrompt(roleName, config?.preset);
-  const override = getAgentOverride(config, roleName);
-  const basePrompt = renderRolePrompt(
-    claudeCodePromptSections(roleName),
-    CLAUDE_CODE_PROMPT_DIALECT,
-  );
-  const prompt = composeAgentPrompt({
-    basePrompt,
-    customPrompt: promptOverrides.prompt,
-    customAppendPrompt: appendPromptSections(
-      claudeCodeModelFamilyPromptSection(roleName, model),
-      promptOverrides.appendPrompt,
-    ),
-  });
-
-  return appendPromptSections(
-    prompt,
-    claudeCodeStepBudgetPromptSection(override?.steps),
-  );
-}
-
 function claudeCodeRoleInstructions(role: AgentRoleContract): string {
   return [
     '<role-operational-contract>',
@@ -168,8 +92,16 @@ function claudeCodeRoleInstructions(role: AgentRoleContract): string {
     `- Scope: ${role.scope}`,
     `- Responsibility: ${role.responsibility}`,
     '- Use AskUserQuestion for local blocking decisions.',
-    `- ${role.name} runs as an auto-discovered Claude Code plugin subagent invoked via Task(subagent_type: ${claudeCodeSubagentType(role.name)}); plugin subagents are namespaced with the plugin name. The orchestrator is the main Claude Code session.`,
-    "- This subagent inherits the main thread's tools, including unrelated MCP servers; read-only roles (explorer, librarian, oracle) MUST NOT mutate the workspace per this operational contract (instruction-level, not tooling-enforced).",
+    `- ${role.name} runs as an auto-discovered Claude Code plugin subagent invoked via Agent(subagent_type: ${claudeCodeSubagentType(role.name)}); plugin subagents are namespaced with the plugin name. The orchestrator is the main Claude Code session.`,
+    ...(role.mode === 'read-only'
+      ? [
+          '- Write and Edit are denied in frontmatter while all other inherited tools, including MCP tools, remain available.',
+        ]
+      : role.mode === 'coordination-write'
+        ? [
+            '- The openspec/ write scope is instruction-level because Claude Code tool permissions cannot restrict Edit/Write to a path pattern per agent.',
+          ]
+        : []),
     ...role.toolGovernance.map((rule) => `- ${rule}`),
     ...role.verification.map((rule) => `- ${rule}`),
     '</role-operational-contract>',
@@ -183,7 +115,12 @@ function roleInstructions(
   const model = getClaudeCodeAgentModel(role, config);
 
   return [
-    renderClaudeCodeRolePrompt(role.name, config, model),
+    renderConfiguredRolePrompt({
+      role: role.name,
+      dialect: CLAUDE_CODE_PROMPT_DIALECT,
+      config,
+      model,
+    }),
     claudeCodeRoleInstructions(role),
     renderMemoryGovernanceInstructions(role, CLAUDE_CODE_PROMPT_DIALECT),
   ].join('\n\n');
@@ -200,11 +137,12 @@ export function renderClaudeCodeRootInstructions(
   config?: PluginConfig,
 ): string {
   const rootOverride = getAgentOverride(config, 'orchestrator');
-  const rootPrompt = renderClaudeCodeRolePrompt(
-    'orchestrator',
+  const rootPrompt = renderConfiguredRolePrompt({
+    role: 'orchestrator',
+    dialect: CLAUDE_CODE_PROMPT_DIALECT,
     config,
-    rootOverride?.model ?? DEFAULT_MODELS.orchestrator,
-  );
+    model: rootOverride?.model ?? DEFAULT_MODELS.orchestrator,
+  });
   const specialists = getAgentPackContract()
     .roles.filter((role) => role.name !== 'orchestrator')
     .map((role) => claudeCodeSubagentType(role.name))
@@ -213,15 +151,12 @@ export function renderClaudeCodeRootInstructions(
   return [
     rootPrompt,
     '<claude-code-runtime>',
-    '- You ARE the Claude Code main-thread agent: the delegate-first root coordinator. This is your system prompt (activated via the plugin settings.json `agent` key), so orchestrator-only and root-owned rules apply to you directly.',
-    '- Provider-dependent continuity requires parent-scoped authorization and installed provider guidance; this plugin does not bundle or define provider operations.',
-    '- If the required provider guidance, authorization, or capability evidence is unavailable, report the affected outcome as degraded or unsupported without claiming saved context.',
-    `- Delegate via the Task tool with \`subagent_type\` set to a plugin-namespaced specialist: ${specialists}. Bare role names (e.g. "explorer") are NOT valid in this harness — always use the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
-    '- Parallel delegation is supported: issue multiple Task calls in one turn for independent work.',
-    '- Before delegating after meaningful context changes, preserve authorized handoff context and a resumable summary or checkpoint outcome when evidenced.',
-    '- Use AskUserQuestion for blocking user decisions; do not ask those questions in plain prose.',
-    '- Track progress with TodoWrite; subagents do not own progress checkboxes or root-only memory.',
-    '- Subagents inherit all of your tools (including MCP servers); role permissions are instruction-level, so read-only roles (explorer, librarian, oracle) must not mutate the workspace per their operational contract.',
+    '- You are the Claude Code adaptive root activated by plugin settings.json.',
+    `- Delegate only for net gain through Agent with \`subagent_type\` set to one of these plugin-namespaced specialists: ${specialists}. Always keep the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
+    '- Subagents cannot delegate further. Parallelize only independent work and maintain one writer per mutable surface.',
+    '- Read-only roles deny Write and Edit while retaining other inherited tools, including MCP tools. Coordination-agent path scope remains instruction-level.',
+    '- Use AskUserQuestion only for blocking material choices and TodoWrite only for genuine multi-step progress.',
+    '- Installed provider guidance owns memory, persistence, hooks, MCP lifecycle, and recovery mechanics.',
     '</claude-code-runtime>',
   ].join('\n');
 }
@@ -278,7 +213,7 @@ function createPluginManifest(
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Delegate-first agent pack with seven roles and bundled SDD skills, packaged for Claude Code.',
+      'Adaptive multi-harness agent pack with ten roles and Spec Kit-compatible SDD coordination for Claude Code.',
     author: { name: 'thoth-agents' },
   };
 }
@@ -289,15 +224,14 @@ function renderSubagentArtifacts(config?: PluginConfig): HarnessArtifact[] {
   for (const role of getAgentPackContract().roles.filter(
     (candidate) => candidate.name !== 'orchestrator',
   )) {
-    // Omit `tools` for every subagent so each inherits ALL of the main thread's
-    // tools, including unrelated MCP servers (context7, exa, grep_app). A
-    // `tools` allowlist in Claude Code would restrict the subagent to exactly
-    // that list and exclude MCP tools, so read-only enforcement is now
-    // instruction-level via each role's operational contract.
+    // A denylist preserves inherited MCP tools while enforcing read-only roles.
+    // Coordination agents need Edit/Write, so their openspec/ path scope remains
+    // instruction-level.
     const content = renderClaudeCodeSubagent({
       name: role.name,
       description: role.responsibility,
       model: getClaudeCodeAgentModel(role, config),
+      ...(role.mode === 'read-only' ? { disallowedTools: 'Write, Edit' } : {}),
       instructions: roleInstructions(role, config),
     });
 
@@ -326,7 +260,7 @@ function renderOrchestratorArtifact(config?: PluginConfig): HarnessArtifact {
     name: 'orchestrator',
     description:
       orchestrator?.responsibility ??
-      'Delegate-first root coordinator for SDD workflow and specialist dispatch.',
+      'Adaptive root coordinator for direct work, SDD routing, and specialist dispatch.',
     model: 'inherit',
     instructions: renderClaudeCodeRootInstructions(config),
   });
@@ -368,13 +302,6 @@ export const claudeCodeAdapter: HarnessAdapter = {
       },
     ];
 
-    const skillLayout = renderClaudeCodeSkillLayout({
-      projectRoot: context.projectRoot,
-      ...(hasPackageRoot(context) ? { packageRoot: context.packageRoot } : {}),
-      skills: getSkillRegistry(),
-    });
-    componentArtifacts.push(...skillLayout.artifacts);
-
     const pluginPackage = renderClaudeCodePluginPackage({
       manifest: createPluginManifest(context),
       componentArtifacts,
@@ -383,7 +310,7 @@ export const claudeCodeAdapter: HarnessAdapter = {
     return {
       harness: 'claude',
       artifacts: pluginPackage.artifacts,
-      diagnostics: [...skillLayout.diagnostics, ...pluginPackage.diagnostics],
+      diagnostics: pluginPackage.diagnostics,
     };
   },
 };

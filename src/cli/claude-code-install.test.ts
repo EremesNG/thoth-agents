@@ -12,6 +12,7 @@ import {
   applyClaudeCodeManagedModelOverrides,
   applyClaudeCodeSetup,
   buildClaudeCodeSetupPlan,
+  CLAUDE_CODE_ROLE_NAMES,
   isClaudeCodeModelAlias,
   parseSubagentEffort,
   parseSubagentModel,
@@ -78,13 +79,26 @@ describe('claude-code-install', () => {
   });
 
   test('apply writes the plugin package and is idempotent with backups', () => {
+    expect(CLAUDE_CODE_ROLE_NAMES).toEqual([
+      'explorer',
+      'librarian',
+      'oracle',
+      'sdd-specify',
+      'sdd-plan',
+      'sdd-tasks',
+      'designer',
+      'quick',
+      'deep',
+    ]);
     const first = applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
     expect(first.success).toBe(true);
     expect(first.changed.length).toBeGreaterThan(0);
     expect(
       existsSync(join(pluginRoot(), '.claude-plugin', 'plugin.json')),
     ).toBe(true);
-    expect(existsSync(join(pluginRoot(), 'agents', 'deep.md'))).toBe(true);
+    for (const role of CLAUDE_CODE_ROLE_NAMES) {
+      expect(existsSync(join(pluginRoot(), 'agents', `${role}.md`))).toBe(true);
+    }
     expect(existsSync(join(pluginRoot(), 'agents', 'orchestrator.md'))).toBe(
       true,
     );

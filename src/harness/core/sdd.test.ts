@@ -1,299 +1,214 @@
 import { describe, expect, test } from 'vitest';
 import {
-  canEnterSddPhase,
-  FULL_SDD_PHASE_ORDER,
+  classifySddRoute,
   getRequiredSddPhaseOrder,
-  getSddPhase,
+  getSddArtifactGraph,
+  getSddPhaseOwner,
   getSddWorkflowContract,
-  SDD_VERIFY_MAX_ROUNDS,
 } from './sdd';
 
-describe('SDD workflow contract', () => {
-  test('models the full SDD phase order through archive', () => {
-    expect(getRequiredSddPhaseOrder('full')).toEqual([...FULL_SDD_PHASE_ORDER]);
-    expect(getRequiredSddPhaseOrder('full')).toContain('explore');
-
-    for (const order of [
-      [...FULL_SDD_PHASE_ORDER],
-      getRequiredSddPhaseOrder('full'),
-    ]) {
-      expect(order).toContain('clarify');
-      expect(order.indexOf('clarify')).toBe(order.indexOf('spec') + 1);
-      expect(order.indexOf('clarify')).toBe(order.indexOf('design') - 1);
-    }
-  });
-
-  test('models the clarify phase contract between spec and design', () => {
-    expect(getSddPhase('clarify')).toMatchObject({
-      requiredFor: ['full'],
-      prerequisites: ['spec'],
-      producesArtifact: false,
-      owner: 'write-capable-agent',
-      artifactSkill: 'sdd-clarify',
-      defaultAgentRole: 'deep',
+describe('adaptive SDD routing', () => {
+  test('routes a clear local README update directly', () => {
+    expect(
+      classifySddRoute({
+        intent: 'documentation',
+        scope: 'local',
+        clarity: 'clear',
+        contractRisk: 'low',
+        failureCost: 'low',
+      }),
+    ).toMatchObject({
+      route: 'direct',
+      requiresUserInput: false,
     });
-
-    const hints = getSddPhase('clarify').handoffHints;
-    expect(Array.isArray(hints)).toBe(true);
-    expect((hints as string[]).length).toBeGreaterThan(0);
   });
 
-  test('requires clarify before design and renumbers design prerequisites', () => {
-    expect(getSddPhase('design').prerequisites).toEqual([
-      'proposal',
-      'clarify',
+  test('routes moderate bounded work to accelerated SDD', () => {
+    expect(
+      classifySddRoute({
+        intent: 'behavior',
+        scope: 'multi-file',
+        clarity: 'clear',
+        contractRisk: 'medium',
+        failureCost: 'medium',
+      }),
+    ).toMatchObject({
+      route: 'accelerated',
+      requiresUserInput: false,
+    });
+  });
+
+  test.each([
+    ['explicit request', { explicitSdd: true }],
+    ['uncertain scope', { clarity: 'uncertain' as const }],
+    ['public contract risk', { contractRisk: 'high' as const }],
+    ['high failure cost', { failureCost: 'high' as const }],
+    ['cross-cutting scope', { scope: 'cross-cutting' as const }],
+  ])('routes %s to full SDD', (_label, override) => {
+    expect(
+      classifySddRoute({
+        intent: 'behavior',
+        scope: 'local',
+        clarity: 'clear',
+        contractRisk: 'low',
+        failureCost: 'low',
+        ...override,
+      }).route,
+    ).toBe('full');
+  });
+
+  test('asks only when a material decision remains unresolved', () => {
+    expect(
+      classifySddRoute({
+        intent: 'architecture',
+        scope: 'cross-cutting',
+        clarity: 'uncertain',
+        contractRisk: 'high',
+        failureCost: 'high',
+      }),
+    ).toMatchObject({
+      route: 'full',
+      requiresUserInput: true,
+    });
+  });
+});
+
+describe('Spec Kit workflow contract', () => {
+  test('keeps direct work ceremony-free', () => {
+    expect(getRequiredSddPhaseOrder('direct')).toEqual(['implement', 'verify']);
+  });
+
+  test('uses the minimal Spec Kit graph for accelerated SDD', () => {
+    expect(getRequiredSddPhaseOrder('accelerated')).toEqual([
+      'specify',
+      'plan',
+      'tasks',
+      'implement',
+      'verify',
     ]);
-
-    expect(
-      canEnterSddPhase({
-        pipeline: 'full',
-        target: 'design',
-        completed: ['requirements-interview', 'explore', 'proposal', 'spec'],
-      }),
-    ).toBe(false);
-
-    expect(
-      canEnterSddPhase({
-        pipeline: 'full',
-        target: 'design',
-        completed: [
-          'requirements-interview',
-          'explore',
-          'proposal',
-          'spec',
-          'clarify',
-        ],
-      }),
-    ).toBe(true);
   });
 
-  test('omits clarify from the accelerated pipeline order', () => {
-    expect(getRequiredSddPhaseOrder('accelerated')).not.toContain('clarify');
+  test('adds discovery and independent analysis only for full SDD', () => {
+    expect(getRequiredSddPhaseOrder('full')).toEqual([
+      'explore',
+      'specify',
+      'plan',
+      'tasks',
+      'analyze',
+      'implement',
+      'verify',
+    ]);
   });
 
-  test('requires explore, spec, and design before full-pipeline tasks', () => {
-    expect(
-      canEnterSddPhase({
-        pipeline: 'full',
-        target: 'proposal',
-        completed: ['requirements-interview'],
-      }),
-    ).toBe(false);
+  test('models clarify, checklist, and converge as conditional gates', () => {
+    const conditional = getSddWorkflowContract()
+      .phases.filter((phase) => phase.activation === 'conditional')
+      .map((phase) => phase.id);
 
-    expect(
-      canEnterSddPhase({
-        pipeline: 'full',
-        target: 'tasks',
-        completed: ['requirements-interview', 'explore', 'proposal'],
-      }),
-    ).toBe(false);
-
-    expect(
-      canEnterSddPhase({
-        pipeline: 'full',
-        target: 'tasks',
-        completed: [
-          'requirements-interview',
-          'explore',
-          'proposal',
-          'spec',
-          'design',
-        ],
-      }),
-    ).toBe(true);
+    expect(conditional).toEqual(['clarify', 'checklist', 'converge']);
   });
 
-  test('preserves plan-review and user-confirmation gates before apply', () => {
-    expect(getSddPhase('plan-review')).toMatchObject({
-      gate: 'oracle-review',
-      owner: 'oracle',
-      producesArtifact: true,
-      artifactSkill: 'plan-reviewer',
-      artifactMeaning: 'durable-plan-review-result',
-      persistenceAgentRole: 'quick',
-    });
-    expect(getSddPhase('implementation-confirmation')).toMatchObject({
-      gate: 'user-confirmation',
-      owner: 'user',
-    });
-    expect(getSddPhase('verify')).toMatchObject({
-      gate: 'iterative-verify',
-      maxRounds: 3,
-    });
+  test('keeps architectural grilling as a conditional pre-specification gate, not an SDD phase', () => {
+    const workflow = getSddWorkflowContract();
+    const routingRules = workflow.routingRules.join('\n');
 
-    expect(
-      canEnterSddPhase({
-        pipeline: 'full',
-        target: 'apply',
-        completed: [
-          'requirements-interview',
-          'proposal',
-          'spec',
-          'design',
-          'tasks',
-          'plan-review',
-        ],
-      }),
-    ).toBe(false);
-  });
-
-  test('pins the verify-loop round bound to a single canonical source', () => {
-    expect(SDD_VERIFY_MAX_ROUNDS).toBe(3);
-    expect(getSddPhase('verify').maxRounds).toBe(SDD_VERIFY_MAX_ROUNDS);
-  });
-
-  test('routes SDD phases through the role-specialized delegation matrix', () => {
-    expect(getSddPhase('init')).toMatchObject({
-      owner: 'write-capable-agent',
-      artifactSkill: 'sdd-init',
-      defaultAgentRole: 'quick',
-      supportingAgentRoles: ['explorer'],
-      condition:
-        'Only when OpenSpec persistence is selected and openspec/ is missing or stale (partial structure or missing mechanism sections).',
-    });
-
-    // Init-phase condition must trigger on BOTH missing and stale/partial openspec.
-    const initCondition = getSddPhase('init').condition ?? '';
-    expect(initCondition).toContain('openspec/ is missing');
-    expect(initCondition).toContain('stale');
-    expect(initCondition).toContain('mechanism sections');
-
-    expect(getSddPhase('explore')).toMatchObject({
-      owner: 'read-only-agent',
-      defaultAgentRole: 'explorer',
-      supportingAgentRoles: ['librarian'],
-    });
-
-    for (const phase of ['proposal', 'spec', 'design'] as const) {
-      expect(getSddPhase(phase)).toMatchObject({
-        owner: 'write-capable-agent',
-        defaultAgentRole: 'deep',
-      });
-    }
-
-    expect(getSddPhase('design')).toMatchObject({
-      artifactSkill: 'sdd-design',
-      artifactMeaning: 'technical-solution-design',
-      defaultAgentRole: 'deep',
-    });
-    expect(getSddPhase('design')).not.toMatchObject({
-      defaultAgentRole: 'designer',
-    });
-
-    expect(getSddPhase('tasks')).toMatchObject({
-      artifactSkill: 'sdd-tasks',
-      defaultAgentRole: 'quick',
-      alternateAgentRoles: ['deep'],
-    });
-
-    expect(getSddPhase('verify')).toMatchObject({
-      artifactSkill: 'sdd-verify',
-      defaultAgentRole: 'oracle',
-      persistenceAgentRole: 'quick',
-    });
-
-    expect(getSddPhase('archive')).toMatchObject({
-      artifactSkill: 'sdd-archive',
-      defaultAgentRole: 'quick',
-    });
-
-    expect(getSddPhase('apply')).toMatchObject({
-      owner: 'write-capable-agent',
-      defaultAgentRole: 'deep',
-      alternateAgentRoles: ['quick', 'designer'],
-    });
-  });
-
-  test('routes sdd-tasks to deep only when the task plan is complex', () => {
-    expect(getSddPhase('tasks')).toMatchObject({
-      defaultAgentRole: 'quick',
-      alternateAgentRoles: ['deep'],
-      alternateAgentCondition: 'Only when the task plan is complex.',
-    });
-  });
-
-  test('allows apply only after review approval and implementation confirmation', () => {
-    expect(
-      canEnterSddPhase({
-        pipeline: 'full',
-        target: 'apply',
-        completed: [
-          'requirements-interview',
-          'proposal',
-          'spec',
-          'design',
-          'tasks',
-          'plan-review',
-          'implementation-confirmation',
-        ],
-      }),
-    ).toBe(true);
-  });
-
-  test('captures artifact and verification rules', () => {
-    const contract = getSddWorkflowContract();
-    expect(contract.routingRules.join('\n')).toContain(
-      'Scope-faithful invariant: accepted user intent/scope is preserved',
+    expect(routingRules).toContain('architectural-grilling');
+    expect(routingRules).toContain('explicitly requests');
+    expect(routingRules).toContain(
+      'material product or architecture decisions',
     );
-
-    expect(contract.artifactRules.join('\n')).toContain(
-      'sdd-design itself never routes to designer',
-    );
-    expect(contract.artifactRules.join('\n')).toContain(
-      'sdd-tasks defaults to quick with deep as fallback',
-    );
-    expect(contract.artifactRules.join('\n')).toContain(
-      'sdd-verify defaults to oracle for independent review',
-    );
-    expect(contract.artifactRules.join('\n')).toContain(
-      'Designer participates during apply only for user-facing UI, visual work, screenshots, or visual QA.',
-    );
-    expect(contract.artifactRules.join('\n')).toContain(
-      'Full-pipeline tasks require proposal, spec, and design',
-    );
-    expect(contract.verificationRules.join('\n')).toContain(
-      'Apply is followed by verify and archive',
+    expect(routingRules).toContain('before specification');
+    expect(workflow.phases.map(({ id }) => id)).not.toContain(
+      'architectural-grilling',
     );
   });
 
-  test('treats handoffHints as optional on phase contracts', () => {
-    // A phase that declares no hint is still returned without error.
-    const archive = getSddPhase('archive');
-    expect(archive.handoffHints).toBeUndefined();
-    expect(archive.id).toBe('archive');
+  test('routes phases through the minimal hybrid agent roster', () => {
+    const phases = getSddWorkflowContract().phases;
+    const ownerOf = (id: string) =>
+      phases.find((phase) => phase.id === id)?.defaultAgentRole;
 
-    // The optional field does not disturb existing gate/role assertions.
-    expect(getSddPhase('plan-review').gate).toBe('oracle-review');
+    expect(ownerOf('explore')).toBe('explorer');
+    expect(ownerOf('specify')).toBe('sdd-specify');
+    expect(ownerOf('plan')).toBe('sdd-plan');
+    expect(ownerOf('tasks')).toBe('sdd-tasks');
+    expect(ownerOf('analyze')).toBe('oracle');
+    expect(ownerOf('verify')).toBe('oracle');
+    expect(ownerOf('implement')).toBe('orchestrator');
   });
 
-  test('exposes handoffHints on the proposal, spec, and design phases', () => {
-    for (const id of ['proposal', 'spec', 'design'] as const) {
-      const hints = getSddPhase(id).handoffHints;
-      expect(Array.isArray(hints)).toBe(true);
-      expect((hints as string[]).length).toBeGreaterThan(0);
-      for (const hint of hints as string[]) {
-        expect(typeof hint).toBe('string');
-      }
-    }
+  test('keeps bounded verification in the adaptive root and reserves independent review for full SDD', () => {
+    expect(getSddPhaseOwner('direct', 'verify')).toBe('orchestrator');
+    expect(getSddPhaseOwner('accelerated', 'verify')).toBe('orchestrator');
+    expect(getSddPhaseOwner('full', 'verify')).toBe('oracle');
   });
 
-  test('deep-clones handoffHints so mutating the clone does not mutate the source', () => {
-    const clone = getSddWorkflowContract();
-    const specClone = clone.phases.find((phase) => phase.id === 'spec');
-    expect(specClone?.handoffHints).toBeDefined();
+  test('does not reference phase skills or a mandatory interview', () => {
+    const serialized = JSON.stringify(getSddWorkflowContract());
 
-    const originalLength = (getSddPhase('spec').handoffHints as string[])
-      .length;
-    (specClone?.handoffHints as string[]).push('mutated clone entry');
+    expect(serialized).not.toContain('artifactSkill');
+    expect(serialized).not.toContain('requirements-interview');
+    expect(serialized).not.toContain('sdd-propose');
+  });
 
-    // Source is unaffected by mutating the clone's array.
-    expect((getSddPhase('spec').handoffHints as string[]).length).toBe(
-      originalLength,
-    );
-
-    // A second clone is also pristine.
-    const fresh = getSddWorkflowContract();
-    const specFresh = fresh.phases.find((phase) => phase.id === 'spec');
-    expect((specFresh?.handoffHints as string[]).length).toBe(originalLength);
+  test('uses Spec Kit artifacts inside the governed openspec store', () => {
+    expect(getSddArtifactGraph()).toEqual([
+      {
+        id: 'spec',
+        path: 'spec.md',
+        producedBy: 'specify',
+        consumes: [],
+        requiredFor: ['accelerated', 'full'],
+      },
+      {
+        id: 'plan',
+        path: 'plan.md',
+        producedBy: 'plan',
+        consumes: ['spec'],
+        requiredFor: ['accelerated', 'full'],
+      },
+      {
+        id: 'tasks',
+        path: 'tasks.md',
+        producedBy: 'tasks',
+        consumes: ['spec', 'plan'],
+        requiredFor: ['accelerated', 'full'],
+      },
+      {
+        id: 'requirements-checklist',
+        path: 'checklists/requirements.md',
+        producedBy: 'checklist',
+        consumes: ['spec'],
+        requiredFor: [],
+      },
+      {
+        id: 'research',
+        path: 'research.md',
+        producedBy: 'plan',
+        consumes: ['spec'],
+        requiredFor: [],
+      },
+      {
+        id: 'data-model',
+        path: 'data-model.md',
+        producedBy: 'plan',
+        consumes: ['spec'],
+        requiredFor: [],
+      },
+      {
+        id: 'contracts',
+        path: 'contracts/',
+        producedBy: 'plan',
+        consumes: ['spec'],
+        requiredFor: [],
+      },
+      {
+        id: 'quickstart',
+        path: 'quickstart.md',
+        producedBy: 'plan',
+        consumes: ['spec', 'plan'],
+        requiredFor: [],
+      },
+    ]);
   });
 });

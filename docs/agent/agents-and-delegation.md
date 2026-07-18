@@ -1,60 +1,42 @@
 # Agents and delegation
 
-## Responsibility
+## Canonical roster
 
-This route owns the seven roles, their prompts, permissions, models, variants,
-and dispatch/return contract. It does not own harness-specific serialization or
-the installer's interactive flow.
+The contract has ten roles:
 
-## Signals and entrypoints
+- adaptive root: `orchestrator`;
+- read-only evidence: `explorer`, `librarian`, `oracle`;
+- coordination writers: `sdd-specify`, `sdd-plan`, `sdd-tasks`; and
+- implementation writers: `designer`, `quick`, `deep`.
 
-- Signals: `orchestrator`, `explorer`, `librarian`, `oracle`, `designer`, `quick`,
-  `deep`, prompt, permission, model fallback, delegation.
-- `src/agents/index.ts:createAgents` builds definitions and applies overrides.
-- `src/agents/prompt-dialects.ts` models invocation differences by harness.
-- `src/config/loader.ts` and `src/config/schema.ts` own config loading and shape.
-- Search `src/delegation/` before citing symbols: the router does not assume one.
+`src/harness/core/agent-pack.ts` is the canonical role/policy contract.
+`src/agents/index.ts` builds OpenCode definitions and applies overrides.
+Harness adapters translate the same intent into native artifacts.
 
-## Invariants and risks
+## Invariants
 
-- The canonical roster has seven roles; renaming one affects prompts, config,
-  adapters, writers, docs, and tests.
-- Read-only/write-capable modes and permissions are part of the contract; do not
-  assume every harness enforces them at runtime.
-- `orchestrator` coordinates; UI/UX belongs to `designer`; mechanical changes to
-  `quick`; logic with correctness risk to `deep`.
-- Plugin defaults must let user overrides win wherever the contract permits.
-- Provider-dependent continuity is an outcome-level handoff (resumable summary
-  or checkpoint), never permanent session closure or a consumer lifecycle
-  protocol.
-- A wording change requires reviewing prompt snapshots or rendering tests, not
-  only the role source file.
+- The root handles clear bounded work directly.
+- Delegate only when specialization, context isolation, independent review, or
+  safe parallel work produces a net gain.
+- Maximum delegation depth is one.
+- Keep one writer per mutable surface.
+- Read-only roles do not mutate.
+- SDD phase roles write only under `openspec/` and do not implement product code.
+- The root uses `progressive-context-router` only for repository-instruction
+  work and gates `architectural-grilling` to unresolved material human-owned
+  decisions before specification.
+- UI/UX belongs to `designer`, narrow mechanical work to `quick`, and
+  correctness-risk work to `deep`.
+- Children return conclusion, evidence, verification, risks, open questions, and
+  recommended next action instead of raw dumps.
 
-## Dependencies and overlays
+## Entrypoints and tests
 
-- Load [`harness-packaging.md`](harness-packaging.md) if how the contract is
-  emitted for Codex, Claude Code, or OpenCode changes.
-- Load [`memory-governance.md`](memory-governance.md) if which memory operation a
-  role can execute changes.
-- Load [`sdd-and-skills.md`](sdd-and-skills.md) if the phase ownership matrix
-  changes.
+- `src/harness/core/agent-pack.ts` and `.test.ts`
+- `src/agents/index.ts` and `src/agents/index.test.ts`
+- `src/agents/prompt-sections.ts` and prompt-rendering tests
+- `src/config/constants.ts`, `schema.ts`, and config tests
+- adapter tests when serialized harness output changes
 
-## Tests and verification
-
-- Primary tests: `src/agents/index.test.ts`,
-  `src/agents/prompt-dialects.test.ts`, `src/agents/prompt-rendering.test.ts`,
-  and `src/config/**/*.test.ts`.
-- Add `src/harness/` tests when generated output changes.
-- Consult [`testing.md`](testing.md) for commands and proportional scope.
-
-## Common mistakes
-
-- Updating a role list without checking registries and writers causes drift.
-- Treating permission guidance as guaranteed enforcement hides limitations.
-- Duplicating prompts per harness breaks the canonical source; use dialects/adapters.
-
-## Evidence and uncertainty
-
-- Verified in `src/agents/index.ts`, `src/config/`, and the cited tests.
-- The concrete responsibility of any file in `src/delegation/` must be confirmed
-  by search before editing it.
+Do not claim that instruction wording is hard runtime enforcement when a harness
+does not expose an equivalent control.

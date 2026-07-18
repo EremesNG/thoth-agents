@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 3,
   "cases": [
     {
       "id": "single-domain-agent-permission",
@@ -32,17 +32,17 @@
       "notes": "The public behavior is the Codex artifact; memory provides the cross-cutting contract."
     },
     {
-      "id": "cross-cutting-sdd-topic-key",
-      "task": "Change the SDD verification topic key and its recovery by subagents.",
+      "id": "cross-cutting-sdd-required-skill",
+      "task": "Change the architectural-grilling activation gate and its required-skill health rule.",
       "expected_primary": "sdd-and-skills",
       "expected_first_read": "docs/agent/sdd-and-skills.md",
-      "expected_overlays": ["memory-governance"],
+      "expected_overlays": ["cli-installation"],
       "expected_code_roots": [
-        "src/skills/",
-        "src/sdd/",
-        "src/harness/core/memory-governance.ts"
+        "src/harness/core/sdd.ts",
+        "src/agents/",
+        "src/cli/skills.ts"
       ],
-      "notes": "SDD owns the artifact; the external provider owns lifecycle, scope, and namespace mechanics."
+      "notes": "SDD owns the conditional pre-specification gate; the CLI owns installation and health of mandatory external skills."
     },
     {
       "id": "explicit-path-ambiguous-vocabulary",

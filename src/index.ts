@@ -4,13 +4,9 @@ import { loadPluginConfig, type TmuxConfig } from './config';
 import { renderOpenCodeAgentConfigs } from './harness/adapters/opencode';
 import {
   createAutoUpdateCheckerHook,
-  createChatHeadersHook,
   createDelegateTaskRetryHook,
   createJsonErrorRecoveryHook,
-  createPhaseReminderHook,
-  createPostReadNudgeHook,
   ForegroundFallbackManager,
-  syncSkillsOnStartup,
 } from './hooks';
 import { createBuiltinMcps } from './mcp';
 import {
@@ -84,13 +80,6 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
     directory,
   });
 
-  try {
-    syncSkillsOnStartup();
-  } catch (error) {
-    console.error('[plugin] Failed to sync bundled skills on startup');
-    log('[plugin] Skill sync failed during initialization', error);
-  }
-
   // Start tmux availability check if enabled.
   if (tmuxConfig.enabled) {
     startTmuxCheck();
@@ -110,14 +99,6 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
     },
     shell,
   );
-
-  // Initialize phase reminder hook for workflow compliance
-  const phaseReminderHook = createPhaseReminderHook();
-
-  // Initialize post-read nudge hook
-  const postReadNudgeHook = createPostReadNudgeHook();
-
-  const chatHeadersHook = createChatHeadersHook(ctx);
 
   // Initialize delegate-task retry guidance hook
   const delegateTaskRetryHook = createDelegateTaskRetryHook(ctx);
@@ -242,13 +223,10 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
         for (const [agentName, modelArray] of Object.entries(effectiveArrays)) {
           if (modelArray.length === 0) continue;
 
-          // Use the first model in the effective array.
-          // Not all providers require entries in opencodeConfig.provider —
-          // some are loaded automatically by opencode (e.g. github-copilot,
-          // openrouter). We cannot distinguish these from truly unconfigured
-          // providers at config-hook time, so we cannot gate on the provider
-          // config keys. Runtime failover is handled separately by
-          // ForegroundFallbackManager.
+          // Use the first model in the effective array. Explicit user-managed
+          // model chains are not gated on OpenCode provider config because the
+          // host may resolve them outside this plugin. Runtime failover is
+          // handled separately by ForegroundFallbackManager.
           const chosen = modelArray[0];
           const entry = configAgent[agentName] as
             | Record<string, unknown>
@@ -312,25 +290,7 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
       );
     },
 
-    'chat.headers': chatHeadersHook['chat.headers'],
-
-    'experimental.chat.messages.transform': async (input, output) => {
-      await phaseReminderHook['experimental.chat.messages.transform'](
-        input as Record<string, never>,
-        output as {
-          messages: Array<{
-            info: { role: string; agent?: string; sessionID?: string };
-            parts: Array<{
-              type: string;
-              text?: string;
-              [key: string]: unknown;
-            }>;
-          }>;
-        },
-      );
-    },
-
-    // Post-tool hooks: retry guidance for delegation errors + post-read nudge
+    // Post-tool hooks: retry guidance for delegation and JSON errors.
     'tool.execute.after': async (input, output) => {
       await delegateTaskRetryHook['tool.execute.after'](
         input as { tool: string },
@@ -347,19 +307,6 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
           title: string;
           output: unknown;
           metadata: unknown;
-        },
-      );
-
-      await postReadNudgeHook['tool.execute.after'](
-        input as {
-          tool: string;
-          sessionID?: string;
-          callID?: string;
-        },
-        output as {
-          title: string;
-          output: string;
-          metadata: Record<string, unknown>;
         },
       );
     },

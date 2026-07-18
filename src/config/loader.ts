@@ -115,7 +115,7 @@ function deepMerge<T extends Record<string, unknown>>(
  *
  * JSONC format is preferred over JSON (allows comments and trailing commas).
  * Project config takes precedence over user config. Nested objects (agents,
- * tmux, fallback, artifactStore, codex) are
+ * tmux, fallback, and harness generation options) are
  * deep-merged, while top-level arrays are replaced entirely
  * by project config.
  *
@@ -149,11 +149,8 @@ export function loadPluginConfig(directory: string): PluginConfig {
       agents: deepMerge(config.agents, projectConfig.agents),
       tmux: deepMerge(config.tmux, projectConfig.tmux),
       fallback: deepMerge(config.fallback, projectConfig.fallback),
-      artifactStore: deepMerge(
-        config.artifactStore,
-        projectConfig.artifactStore,
-      ),
       codex: deepMerge(config.codex, projectConfig.codex),
+      claudeCode: deepMerge(config.claudeCode, projectConfig.claudeCode),
     };
   }
 

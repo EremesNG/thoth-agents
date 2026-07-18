@@ -73,7 +73,7 @@ export const CLAUDE_CODE_PROMPT_CAPABILITIES: HarnessCapabilities = {
   skillPackaging: 'supported',
   rolePermissions: 'supported',
   parentContextInjection: 'supported',
-  memoryGovernanceEnforcement: 'supported',
+  memoryGovernanceEnforcement: 'instruction-only',
 };
 
 function supportedCapabilityProfile(
@@ -99,6 +99,18 @@ function codexCapabilityDisclosure(
   }
 
   return `${capability}: ${status} in Codex; preserve the role responsibility as prompt guidance because equivalent runtime enforcement is not guaranteed.`;
+}
+
+function claudeCodeCapabilityDisclosure(
+  capability: keyof HarnessCapabilities,
+): string | undefined {
+  const status = CLAUDE_CODE_PROMPT_CAPABILITIES[capability];
+
+  if (status === 'supported') {
+    return undefined;
+  }
+
+  return `${capability}: ${status} in Claude Code; installed provider guidance owns provider-dependent enforcement and mechanics.`;
 }
 
 export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
@@ -188,14 +200,14 @@ export function claudeCodeSubagentType(role: AgentPromptRole): string {
 export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'claude',
   tools: {
-    delegationTool: 'Task',
-    backgroundDelegationTool: 'Task(run_in_background=true)',
+    delegationTool: 'Agent',
+    backgroundDelegationTool: 'Agent(run_in_background=true)',
     backgroundStatusTool: 'TaskOutput',
     userQuestionTool: 'AskUserQuestion',
     progressTool: 'TodoWrite',
     hostStatusSurface: 'TodoWrite',
     lifecycle: {
-      statusAction: 'wait, poll, and collect',
+      statusAction: 'wait, inspect, and collect',
       terminalState: 'terminal TaskOutput result',
       nonterminalState: 'nonterminal TaskOutput result',
       sameSessionProbe: 'TaskOutput on the same task session',
@@ -204,17 +216,20 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
     roleReference: (role) =>
       role === 'orchestrator'
         ? 'the main-thread orchestrator'
-        : `Task(subagent_type: ${claudeCodeSubagentType(role)})`,
+        : `Agent(subagent_type: ${claudeCodeSubagentType(role)})`,
   },
-  capabilities: supportedCapabilityProfile(CLAUDE_CODE_PROMPT_CAPABILITIES),
+  capabilities: {
+    capabilities: CLAUDE_CODE_PROMPT_CAPABILITIES,
+    renderCapabilityDisclosure: claudeCodeCapabilityDisclosure,
+  },
   dispatchLabel(method) {
     switch (method) {
       case 'root-coordinator':
         return 'main-session coordinator';
       case 'task':
-        return 'Task tool';
+        return 'Agent tool';
       case 'synchronous-task-only':
-        return 'synchronous Task only';
+        return 'synchronous Agent only';
     }
   },
   renderRoleInvocation(role) {

@@ -1,307 +1,357 @@
 import type { AgentRoleName } from './agent-pack';
 
-export type SddPipelineType = 'direct' | 'accelerated' | 'full';
+export type SddRoute = 'direct' | 'accelerated' | 'full';
+
+export type SddIntent =
+  | 'documentation'
+  | 'mechanical'
+  | 'behavior'
+  | 'architecture';
+
+export type SddScope = 'local' | 'multi-file' | 'cross-cutting';
+export type SddClarity = 'clear' | 'partial' | 'uncertain';
+export type SddRisk = 'low' | 'medium' | 'high';
+
+export interface SddRoutingInput {
+  intent: SddIntent;
+  scope: SddScope;
+  clarity: SddClarity;
+  contractRisk: SddRisk;
+  failureCost: SddRisk;
+  explicitSdd?: boolean;
+}
+
+export interface SddRoutingDecision {
+  route: SddRoute;
+  requiresUserInput: boolean;
+  reasons: string[];
+}
 
 export type SddPhaseId =
-  | 'requirements-interview'
-  | 'init'
   | 'explore'
-  | 'proposal'
-  | 'spec'
+  | 'specify'
   | 'clarify'
-  | 'design'
+  | 'plan'
+  | 'checklist'
   | 'tasks'
-  | 'plan-review'
-  | 'implementation-confirmation'
-  | 'apply'
+  | 'analyze'
+  | 'implement'
   | 'verify'
-  | 'archive';
+  | 'converge';
+
+export type SddPhaseActivation = 'required' | 'conditional';
 
 export interface SddPhaseContract {
   id: SddPhaseId;
   order: number;
-  requiredFor: SddPipelineType[];
+  requiredFor: SddRoute[];
+  activation: SddPhaseActivation;
   prerequisites: SddPhaseId[];
   producesArtifact: boolean;
-  gate?: 'oracle-review' | 'user-confirmation' | 'iterative-verify';
-  maxRounds?: number;
-  owner:
-    | 'orchestrator'
-    | 'read-only-agent'
-    | 'write-capable-agent'
-    | 'oracle'
-    | 'user';
-  artifactSkill?: string;
-  artifactMeaning?: string;
+  defaultAgentRole: AgentRoleName;
+  reason: string;
   condition?: string;
-  defaultAgentRole?: AgentRoleName;
-  alternateAgentRoles?: AgentRoleName[];
-  alternateAgentCondition?: string;
-  supportingAgentRoles?: AgentRoleName[];
-  persistenceAgentRole?: AgentRoleName;
-  delegationReason?: string;
-  handoffHints?: string[];
+}
+
+export type SddArtifactId =
+  | 'spec'
+  | 'plan'
+  | 'tasks'
+  | 'requirements-checklist'
+  | 'research'
+  | 'data-model'
+  | 'contracts'
+  | 'quickstart';
+
+export interface SddArtifactContract {
+  id: SddArtifactId;
+  path: string;
+  producedBy: SddPhaseId;
+  consumes: SddArtifactId[];
+  requiredFor: SddRoute[];
 }
 
 export interface SddWorkflowContract {
+  artifactRoot: string;
   phases: SddPhaseContract[];
   routingRules: string[];
   artifactRules: string[];
   verificationRules: string[];
 }
 
-export const FULL_SDD_PHASE_ORDER = [
-  'requirements-interview',
-  'explore',
-  'proposal',
-  'spec',
-  'clarify',
-  'design',
-  'tasks',
-  'plan-review',
-  'implementation-confirmation',
-  'apply',
-  'verify',
-  'archive',
-] as const satisfies readonly SddPhaseId[];
-
-export const SDD_VERIFY_MAX_ROUNDS = 3;
-
 export const SDD_PHASES = [
   {
-    id: 'requirements-interview',
+    id: 'explore',
     order: 0,
-    requiredFor: ['direct', 'accelerated', 'full'],
+    requiredFor: ['full'],
+    activation: 'required',
     prerequisites: [],
     producesArtifact: false,
-    owner: 'orchestrator',
-    delegationReason:
-      'Root-owned requirements discovery, scope calibration, and route approval.',
-  },
-  {
-    id: 'init',
-    order: 1,
-    requiredFor: [],
-    prerequisites: ['requirements-interview'],
-    producesArtifact: true,
-    owner: 'write-capable-agent',
-    artifactSkill: 'sdd-init',
-    condition:
-      'Only when OpenSpec persistence is selected and openspec/ is missing or stale (partial structure or missing mechanism sections).',
-    defaultAgentRole: 'quick',
-    supportingAgentRoles: ['explorer'],
-    delegationReason:
-      'Fast mechanical bootstrap, with explorer supplying repository facts when needed.',
-  },
-  {
-    id: 'explore',
-    order: 2,
-    requiredFor: ['accelerated', 'full'],
-    prerequisites: ['requirements-interview'],
-    producesArtifact: false,
-    owner: 'read-only-agent',
     defaultAgentRole: 'explorer',
-    supportingAgentRoles: ['librarian'],
-    delegationReason:
-      'Read-only repository discovery before artifact-producing SDD phases.',
+    reason:
+      'Resolve broad repository uncertainty before requirements are fixed.',
   },
   {
-    id: 'proposal',
-    order: 3,
+    id: 'specify',
+    order: 1,
     requiredFor: ['accelerated', 'full'],
-    prerequisites: ['requirements-interview', 'explore'],
+    activation: 'required',
+    prerequisites: [],
     producesArtifact: true,
-    owner: 'write-capable-agent',
-    artifactSkill: 'sdd-propose',
-    defaultAgentRole: 'deep',
-    supportingAgentRoles: ['oracle'],
-    delegationReason:
-      'Structured technical reasoning and trade-off synthesis before implementation.',
-    handoffHints: [
-      'Preserve accepted scope and explicit non-goals downstream.',
-      'Carry deferred or discovery affected areas forward as follow-up.',
-    ],
-  },
-  {
-    id: 'spec',
-    order: 4,
-    requiredFor: ['full'],
-    prerequisites: ['proposal'],
-    producesArtifact: true,
-    owner: 'write-capable-agent',
-    artifactSkill: 'sdd-spec',
-    defaultAgentRole: 'deep',
-    supportingAgentRoles: ['oracle'],
-    delegationReason:
-      'High-quality requirement contract work where ambiguity propagates downstream.',
-    handoffHints: [
-      'Preserve recorded Assumptions and any [NEEDS CLARIFICATION] resolutions.',
-      'Keep the requirements-quality checklist resolved before tasks.',
-    ],
+    defaultAgentRole: 'sdd-specify',
+    reason: 'Define the user-visible requirements and acceptance contract.',
   },
   {
     id: 'clarify',
-    order: 5,
-    requiredFor: ['full'],
-    prerequisites: ['spec'],
+    order: 2,
+    requiredFor: [],
+    activation: 'conditional',
+    prerequisites: ['specify'],
     producesArtifact: false,
-    owner: 'write-capable-agent',
-    artifactSkill: 'sdd-clarify',
-    defaultAgentRole: 'deep',
-    supportingAgentRoles: ['oracle'],
-    delegationReason:
-      'Resolve residual spec ambiguity in place before design consumes it.',
-    handoffHints: [
-      'Preserve clarified resolutions written back into the spec.',
-      'Keep the requirements-quality checklist re-validated before design.',
-    ],
+    defaultAgentRole: 'sdd-specify',
+    reason: 'Resolve only material ambiguity that would change the solution.',
+    condition:
+      'Activate when unresolved decisions cannot be handled by a safe local assumption.',
   },
   {
-    id: 'design',
-    order: 6,
-    requiredFor: ['full'],
-    prerequisites: ['proposal', 'clarify'],
+    id: 'plan',
+    order: 3,
+    requiredFor: ['accelerated', 'full'],
+    activation: 'required',
+    prerequisites: ['specify'],
     producesArtifact: true,
-    owner: 'write-capable-agent',
-    artifactSkill: 'sdd-design',
-    artifactMeaning: 'technical-solution-design',
-    defaultAgentRole: 'deep',
-    supportingAgentRoles: ['designer'],
-    delegationReason:
-      'Technical architecture and file-change design; designer only supports UI/UX concerns.',
-    handoffHints: [
-      'Preserve coverage decisions and architecture constraints in tasks.',
-      'Honor the Constitution Check outcome recorded during design.',
-    ],
+    defaultAgentRole: 'sdd-plan',
+    reason: 'Translate requirements into an executable technical approach.',
+  },
+  {
+    id: 'checklist',
+    order: 4,
+    requiredFor: [],
+    activation: 'conditional',
+    prerequisites: ['specify', 'plan'],
+    producesArtifact: true,
+    defaultAgentRole: 'sdd-specify',
+    reason:
+      'Audit requirement quality when risk justifies an explicit checklist.',
+    condition:
+      'Activate for high-risk, compliance-sensitive, or ambiguity-prone requirements.',
   },
   {
     id: 'tasks',
-    order: 7,
+    order: 5,
     requiredFor: ['accelerated', 'full'],
-    prerequisites: ['proposal', 'spec', 'design'],
+    activation: 'required',
+    prerequisites: ['specify', 'plan'],
     producesArtifact: true,
-    owner: 'write-capable-agent',
-    artifactSkill: 'sdd-tasks',
-    defaultAgentRole: 'quick',
-    alternateAgentRoles: ['deep'],
-    alternateAgentCondition: 'Only when the task plan is complex.',
-    delegationReason:
-      'Mechanical conversion of settled design into dependency-ordered execution tasks.',
+    defaultAgentRole: 'sdd-tasks',
+    reason:
+      'Produce dependency-ordered implementation slices with verification.',
   },
   {
-    id: 'plan-review',
-    order: 8,
-    requiredFor: ['accelerated', 'full'],
-    prerequisites: ['tasks'],
-    producesArtifact: true,
-    gate: 'oracle-review',
-    owner: 'oracle',
-    artifactSkill: 'plan-reviewer',
-    artifactMeaning: 'durable-plan-review-result',
+    id: 'analyze',
+    order: 6,
+    requiredFor: ['full'],
+    activation: 'required',
+    prerequisites: ['specify', 'plan', 'tasks'],
+    producesArtifact: false,
     defaultAgentRole: 'oracle',
-    persistenceAgentRole: 'quick',
-    delegationReason:
-      'Independent read-only executability review of tasks before implementation; quick persists the durable review artifact when writes are required.',
+    reason:
+      'Independently check cross-artifact consistency before high-risk implementation.',
   },
   {
-    id: 'implementation-confirmation',
-    order: 9,
-    requiredFor: ['accelerated', 'full'],
-    prerequisites: ['plan-review'],
-    producesArtifact: false,
-    gate: 'user-confirmation',
-    owner: 'user',
-    delegationReason:
-      'Human approval gate after reviewed tasks and before workspace implementation.',
-  },
-  {
-    id: 'apply',
-    order: 10,
+    id: 'implement',
+    order: 7,
     requiredFor: ['direct', 'accelerated', 'full'],
-    prerequisites: ['implementation-confirmation'],
+    activation: 'required',
+    prerequisites: [],
     producesArtifact: false,
-    owner: 'write-capable-agent',
-    defaultAgentRole: 'deep',
-    alternateAgentRoles: ['quick', 'designer'],
-    delegationReason:
-      'Correctness-heavy implementation by default; quick handles mechanical batches and designer owns UI/visual work.',
+    defaultAgentRole: 'orchestrator',
+    reason:
+      'Let the adaptive root act directly or route the settled work to one writer.',
   },
   {
     id: 'verify',
-    order: 11,
-    requiredFor: ['accelerated', 'full'],
-    prerequisites: ['apply'],
-    producesArtifact: true,
-    gate: 'iterative-verify',
-    maxRounds: SDD_VERIFY_MAX_ROUNDS,
-    owner: 'oracle',
-    artifactSkill: 'sdd-verify',
+    order: 8,
+    requiredFor: ['direct', 'accelerated', 'full'],
+    activation: 'required',
+    prerequisites: ['implement'],
+    producesArtifact: false,
     defaultAgentRole: 'oracle',
-    persistenceAgentRole: 'quick',
-    delegationReason:
-      'Independent verification review; quick persists the report when the selected store requires writes.',
+    reason:
+      'Judge the result against requirements, contracts, and focused checks.',
   },
   {
-    id: 'archive',
-    order: 12,
-    requiredFor: ['accelerated', 'full'],
+    id: 'converge',
+    order: 9,
+    requiredFor: [],
+    activation: 'conditional',
     prerequisites: ['verify'],
-    producesArtifact: true,
-    owner: 'write-capable-agent',
-    artifactSkill: 'sdd-archive',
-    defaultAgentRole: 'quick',
-    delegationReason:
-      'Mechanical closeout, summary, and archive movement after verification passes.',
+    producesArtifact: false,
+    defaultAgentRole: 'orchestrator',
+    reason:
+      'Resolve verification findings with a bounded additional implementation loop.',
+    condition: 'Activate only when verification finds actionable defects.',
   },
 ] as const satisfies readonly SddPhaseContract[];
 
+export const SDD_ARTIFACT_GRAPH = [
+  {
+    id: 'spec',
+    path: 'spec.md',
+    producedBy: 'specify',
+    consumes: [],
+    requiredFor: ['accelerated', 'full'],
+  },
+  {
+    id: 'plan',
+    path: 'plan.md',
+    producedBy: 'plan',
+    consumes: ['spec'],
+    requiredFor: ['accelerated', 'full'],
+  },
+  {
+    id: 'tasks',
+    path: 'tasks.md',
+    producedBy: 'tasks',
+    consumes: ['spec', 'plan'],
+    requiredFor: ['accelerated', 'full'],
+  },
+  {
+    id: 'requirements-checklist',
+    path: 'checklists/requirements.md',
+    producedBy: 'checklist',
+    consumes: ['spec'],
+    requiredFor: [],
+  },
+  {
+    id: 'research',
+    path: 'research.md',
+    producedBy: 'plan',
+    consumes: ['spec'],
+    requiredFor: [],
+  },
+  {
+    id: 'data-model',
+    path: 'data-model.md',
+    producedBy: 'plan',
+    consumes: ['spec'],
+    requiredFor: [],
+  },
+  {
+    id: 'contracts',
+    path: 'contracts/',
+    producedBy: 'plan',
+    consumes: ['spec'],
+    requiredFor: [],
+  },
+  {
+    id: 'quickstart',
+    path: 'quickstart.md',
+    producedBy: 'plan',
+    consumes: ['spec', 'plan'],
+    requiredFor: [],
+  },
+] as const satisfies readonly SddArtifactContract[];
+
 export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
+  artifactRoot: 'openspec/changes/<feature>/',
   phases: [...SDD_PHASES],
   routingRules: [
-    'Requirements interview is step zero for all non-trivial work.',
-    'Scope-faithful invariant: accepted user intent/scope is preserved; unresolved affected areas remain explicit as deferred/discovery follow-up.',
-    'Direct implementation is reserved for low-complexity work.',
-    'Accelerated SDD follows explore -> proposal -> tasks before execution.',
-    'Full SDD follows explore -> proposal -> spec -> clarify -> design -> tasks before execution.',
+    'Direct work is the default for clear, local, low-risk changes.',
+    'Accelerated SDD is used for bounded multi-file or moderate-risk work.',
+    'Full SDD is used for explicit SDD requests, unresolved scope, cross-cutting work, or high risk.',
+    'Use architectural-grilling before specification only when the user explicitly requests it or material product or architecture decisions remain human-owned and unresolved; never require it merely because the route is Full.',
+    'User input is requested only when a material unresolved decision would change the result.',
   ],
   artifactRules: [
-    'SDD delegation defaults are phase-specific: sdd-propose, sdd-spec, and sdd-design default to deep.',
-    'sdd-tasks defaults to quick with deep as fallback when the task plan is complex.',
-    'plan-reviewer defaults to oracle for independent read-only review; quick persists the plan-review artifact when repository or memory writes are required.',
-    'sdd-verify defaults to oracle for independent review; quick persists the report when repository or memory writes are required.',
-    'sdd-archive defaults to quick for mechanical closeout.',
-    'OpenSpec design.md is technical solution design, not UI/UX design; sdd-design itself never routes to designer.',
-    'Designer participates during apply only for user-facing UI, visual work, screenshots, or visual QA.',
-    'Full-pipeline tasks require proposal, spec, and design artifacts.',
-    'Oracle is read-only and performs plan review plus independent verification review; it does not persist artifacts.',
-    'A fresh persisted plan-review approval satisfies only the plan-review gate; user implementation confirmation remains separate.',
+    'Spec Kit artifact semantics are preserved inside the governed openspec store.',
+    'Accelerated and full routes require spec.md, plan.md, and tasks.md.',
+    'Research, data model, contracts, quickstart, and requirements checklist are created only when useful.',
+    'Phase agents write coordination artifacts; implementation ownership stays with the adaptive root or one writer role.',
   ],
   verificationRules: [
-    'Plan review must complete before implementation confirmation.',
-    'User confirmation is required after plan-review approval and before apply.',
-    'Apply is followed by verify and archive for SDD pipelines.',
-    'Verify runs as a bounded iterative gate of at most SDD_VERIFY_MAX_ROUNDS rounds; on exhausted failure escalate to the user.',
+    'Every route ends with focused verification proportional to behavior and risk.',
+    'Full SDD uses independent cross-artifact analysis before implementation.',
+    'Convergence is conditional and bounded by actionable verification findings.',
   ],
 };
 
+function clonePhase(phase: SddPhaseContract): SddPhaseContract {
+  return {
+    ...phase,
+    requiredFor: [...phase.requiredFor],
+    prerequisites: [...phase.prerequisites],
+  };
+}
+
+export function classifySddRoute(input: SddRoutingInput): SddRoutingDecision {
+  const reasons: string[] = [];
+
+  if (input.explicitSdd) {
+    reasons.push('The user explicitly requested SDD.');
+  }
+  if (input.clarity === 'uncertain') {
+    reasons.push(
+      'A material scope or requirements decision remains unresolved.',
+    );
+  }
+  if (input.scope === 'cross-cutting') {
+    reasons.push('The change crosses multiple architectural surfaces.');
+  }
+  if (input.contractRisk === 'high') {
+    reasons.push('The public or internal contract risk is high.');
+  }
+  if (input.failureCost === 'high') {
+    reasons.push('The cost of an incorrect change is high.');
+  }
+
+  if (reasons.length > 0) {
+    return {
+      route: 'full',
+      requiresUserInput: input.clarity === 'uncertain',
+      reasons,
+    };
+  }
+
+  const useLeanRoute =
+    input.scope === 'multi-file' ||
+    input.clarity === 'partial' ||
+    input.contractRisk === 'medium' ||
+    input.failureCost === 'medium';
+
+  if (useLeanRoute) {
+    return {
+      route: 'accelerated',
+      requiresUserInput: false,
+      reasons: [
+        'The work is bounded but benefits from explicit specification, planning, and tasks.',
+      ],
+    };
+  }
+
+  return {
+    route: 'direct',
+    requiresUserInput: false,
+    reasons: ['The work is clear, local, and low risk.'],
+  };
+}
+
 export function getSddWorkflowContract(): SddWorkflowContract {
   return {
-    phases: SDD_WORKFLOW_CONTRACT.phases.map((phase) => ({
-      ...phase,
-      requiredFor: [...phase.requiredFor],
-      prerequisites: [...phase.prerequisites],
-      alternateAgentRoles: phase.alternateAgentRoles
-        ? [...phase.alternateAgentRoles]
-        : undefined,
-      supportingAgentRoles: phase.supportingAgentRoles
-        ? [...phase.supportingAgentRoles]
-        : undefined,
-      handoffHints: phase.handoffHints ? [...phase.handoffHints] : undefined,
-    })),
+    artifactRoot: SDD_WORKFLOW_CONTRACT.artifactRoot,
+    phases: SDD_WORKFLOW_CONTRACT.phases.map(clonePhase),
     routingRules: [...SDD_WORKFLOW_CONTRACT.routingRules],
     artifactRules: [...SDD_WORKFLOW_CONTRACT.artifactRules],
     verificationRules: [...SDD_WORKFLOW_CONTRACT.verificationRules],
   };
+}
+
+export function getSddArtifactGraph(): SddArtifactContract[] {
+  return SDD_ARTIFACT_GRAPH.map((artifact) => ({
+    ...artifact,
+    consumes: [...artifact.consumes],
+    requiredFor: [...artifact.requiredFor],
+  }));
 }
 
 export function getSddPhase(id: SddPhaseId): SddPhaseContract {
@@ -311,50 +361,50 @@ export function getSddPhase(id: SddPhaseId): SddPhaseContract {
     throw new Error(`Unknown SDD phase: ${id}`);
   }
 
-  return phase;
+  return clonePhase(phase);
 }
 
-export function getRequiredSddPhaseOrder(
-  pipeline: SddPipelineType,
-): SddPhaseId[] {
-  if (pipeline === 'direct') {
-    return ['requirements-interview', 'apply'];
+export function getSddPhaseOwner(
+  route: SddRoute,
+  phaseId: SddPhaseId,
+): AgentRoleName {
+  if (phaseId === 'verify' && route !== 'full') {
+    return 'orchestrator';
   }
 
+  return getSddPhase(phaseId).defaultAgentRole;
+}
+
+export function getRequiredSddPhaseOrder(route: SddRoute): SddPhaseId[] {
   return SDD_PHASES.filter((phase) =>
-    (phase.requiredFor as readonly SddPipelineType[]).includes(pipeline),
+    (phase.requiredFor as readonly SddRoute[]).includes(route),
   ).map((phase) => phase.id);
 }
 
 export function canEnterSddPhase({
-  pipeline,
+  route,
   completed,
   target,
 }: {
-  pipeline: SddPipelineType;
+  route: SddRoute;
   completed: readonly SddPhaseId[];
   target: SddPhaseId;
 }): boolean {
-  const required = getRequiredSddPhaseOrder(pipeline);
+  const phase = getSddPhase(target);
+  const isRequired = phase.requiredFor.includes(route);
 
-  if (!required.includes(target)) {
+  if (!isRequired && phase.activation !== 'conditional') {
     return false;
   }
 
-  if (pipeline === 'accelerated' && target === 'tasks') {
-    return completed.includes('explore') && completed.includes('proposal');
-  }
+  const applicable = new Set<SddPhaseId>([
+    ...getRequiredSddPhaseOrder(route),
+    ...SDD_PHASES.filter(
+      (candidate) => candidate.activation === 'conditional',
+    ).map((candidate) => candidate.id),
+  ]);
 
-  if (pipeline === 'direct' && target === 'apply') {
-    return completed.includes('requirements-interview');
-  }
-
-  const phase = getSddPhase(target);
-  const applicablePrerequisites = phase.prerequisites.filter((prerequisite) =>
-    required.includes(prerequisite),
-  );
-
-  return applicablePrerequisites.every((prerequisite) =>
-    completed.includes(prerequisite),
-  );
+  return phase.prerequisites
+    .filter((prerequisite) => applicable.has(prerequisite))
+    .every((prerequisite) => completed.includes(prerequisite));
 }

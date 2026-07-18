@@ -6,6 +6,9 @@ export type CodexRoleName =
   | 'explorer'
   | 'librarian'
   | 'oracle'
+  | 'sdd-specify'
+  | 'sdd-plan'
+  | 'sdd-tasks'
   | 'designer'
   | 'quick'
   | 'deep';
@@ -14,6 +17,9 @@ export const CODEX_ROLE_NAMES = [
   'explorer',
   'librarian',
   'oracle',
+  'sdd-specify',
+  'sdd-plan',
+  'sdd-tasks',
   'designer',
   'quick',
   'deep',

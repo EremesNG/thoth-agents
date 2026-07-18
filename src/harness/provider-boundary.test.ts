@@ -29,11 +29,9 @@ const PROVIDER_BOUNDARY_TARGETS = {
   lifecycleFixtures: [
     'src/harness/__fixtures__/codex/agent-deep.toml',
     'src/harness/__fixtures__/codex/mcp.toml',
-    'src/harness/__fixtures__/codex/skill-manifest.json',
   ],
   consumerSurfaces: [
     'src/harness/registry.ts',
-    'src/harness/core/skills.ts',
     'src/harness/core/memory-governance.ts',
     'src/harness/adapters/opencode.ts',
     'src/harness/adapters/codex.ts',
@@ -137,16 +135,16 @@ describe('provider boundary', () => {
 
   test('reads the complete closed manifest and rejects deleted paths, bundled assets, and consumer protocols', async () => {
     const targets = await readTargets();
-    expect(targets).toHaveLength(32);
+    expect(targets).toHaveLength(30);
     expect(
       targets.filter(({ group }) => group === 'documentationAndMetadata'),
     ).toHaveLength(18);
     expect(
       targets.filter(({ group }) => group === 'lifecycleFixtures'),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
     expect(
       targets.filter(({ group }) => group === 'consumerSurfaces'),
-    ).toHaveLength(11);
+    ).toHaveLength(10);
 
     for (const target of targets) {
       for (const rule of DELETED_PATH_RULES) {
@@ -175,7 +173,7 @@ describe('provider boundary', () => {
     expect(docs.some(({ content }) => /thoth-mem/i.test(content))).toBe(true);
     expect(
       docs.some(({ content }) =>
-        /sdd\/\{(?:change|change-name)\}\//i.test(content),
+        /openspec\/changes\/(?:<feature>|\{feature\})\//i.test(content),
       ),
     ).toBe(true);
     expect(
@@ -200,21 +198,21 @@ describe('provider boundary', () => {
 
   test('separates bundled research MCPs from externally supplied memory', async () => {
     const targets = await readTargets();
-    const readme = targets.find(({ path }) => path === 'README.md');
-    expect(readme).toBeDefined();
+    const guide = targets.find(
+      ({ path }) => path === 'docs/skills-and-mcps.md',
+    );
+    expect(guide).toBeDefined();
 
-    const skillsAndMcps = readme?.content
-      .split('## Skills And MCPs', 2)[1]
+    const researchMcps = guide?.content
+      .split('## thoth-agents MCPs', 2)[1]
       ?.split('\n## ', 1)[0];
-    expect(skillsAndMcps).toBeDefined();
-    expect(skillsAndMcps).not.toMatch(
-      /(?:docs research|public code search|research MCPs?)[^\n]{0,120}\blocal memory\b/i,
-    );
-    expect(skillsAndMcps).toMatch(
-      /registers only its `exa`,\s*`context7`, and `grep_app` research MCPs/i,
-    );
-    expect(skillsAndMcps).toMatch(
-      /memory is supplied and configured exclusively by the\s+independently installed external provider/i,
+    const memoryBoundary = guide?.content.split('## thoth-mem boundary', 2)[1];
+
+    expect(researchMcps).toBeDefined();
+    expect(researchMcps).toMatch(/`exa`[\s\S]*`context7`[\s\S]*`grep_app`/i);
+    expect(researchMcps).not.toMatch(/memory|thoth-mem/i);
+    expect(memoryBoundary).toMatch(
+      /not a bundled skill or MCP[\s\S]*independently\s+installed plugin\/provider/i,
     );
   });
 
@@ -226,9 +224,9 @@ describe('provider boundary', () => {
     expect(installation).toBeDefined();
     expect(SUPPORTED_HARNESSES).toEqual(['opencode', 'codex', 'claude']);
 
-    const documentedSelector = installation?.content.match(
-      /`--agent=([^`]+)`\s*\|\s*Select the harness target explicitly/,
-    )?.[1];
+    const documentedSelector = installation?.content
+      .match(/`--agent=([^`]+)`\s*\|\s*Select the installation target\./)?.[1]
+      .replaceAll('\\|', '|');
     expect(documentedSelector).toBe(SUPPORTED_HARNESSES.join('|'));
   });
 

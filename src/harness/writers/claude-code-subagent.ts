@@ -13,7 +13,7 @@ export function isClaudeCodeModel(value: string): value is ClaudeCodeModel {
 }
 
 export interface ClaudeCodeSubagentInput {
-  /** Subagent name; also the `subagent_type` used by the Task tool. */
+  /** Subagent name; also the `subagent_type` used by the Agent tool. */
   name: string;
   /** When the orchestrator should delegate to this subagent. */
   description: string;
@@ -24,6 +24,8 @@ export interface ClaudeCodeSubagentInput {
    * AskUserQuestion, TodoWrite, MCP, and edit tools.
    */
   tools?: string;
+  /** Tool denylist; preserves inherited tools, including MCP tools. */
+  disallowedTools?: string;
   /** Per-role model alias for the subagent frontmatter. */
   model: ClaudeCodeModel;
   /** Optional Claude Code reasoning effort for the selected model. */
@@ -58,6 +60,9 @@ export function renderClaudeCodeSubagent(
     `model: ${input.model}`,
     ...(input.effort !== undefined ? [`effort: ${input.effort}`] : []),
     ...(input.tools !== undefined ? [`tools: ${yamlScalar(input.tools)}`] : []),
+    ...(input.disallowedTools !== undefined
+      ? [`disallowedTools: ${yamlScalar(input.disallowedTools)}`]
+      : []),
     '---',
   ].join('\n');
 

@@ -175,9 +175,6 @@ export function updateOpenCodeMainConfig(
   }
 }
 
-// Removed: addAuthPlugins - no longer needed with cliproxy
-// Removed: addProviderConfig - default opencode now has kimi provider config
-
 export function writeLiteConfig(
   installConfig: InstallConfig,
   targetPath?: string,
@@ -227,19 +224,10 @@ export function canModifyOpenCodeConfig(): boolean {
   }
 }
 
-// Antigravity, Google provider, and Chutes provider functions removed in simplification refactor.
-
 export function detectCurrentConfig(): DetectedConfig {
   const result: DetectedConfig = {
     isInstalled: false,
-    hasKimi: false,
     hasOpenAI: false,
-    hasAnthropic: false,
-    hasCopilot: false,
-    hasZaiPlan: false,
-    hasAntigravity: false,
-    hasChutes: false,
-    hasOpencodeZen: false,
     hasTmux: false,
   };
 
@@ -248,18 +236,6 @@ export function detectCurrentConfig(): DetectedConfig {
 
   const plugins = config.plugin ?? [];
   result.isInstalled = plugins.some((p) => p.startsWith(PACKAGE_NAME));
-  result.hasAntigravity = plugins.some((p) =>
-    p.startsWith('opencode-antigravity-auth'),
-  );
-
-  // Check for providers
-  const providers = config.provider as Record<string, unknown> | undefined;
-  result.hasKimi = !!providers?.kimi;
-  result.hasAnthropic = !!providers?.anthropic;
-  result.hasCopilot = !!providers?.['github-copilot'];
-  result.hasZaiPlan = !!providers?.['zai-coding-plan'];
-  result.hasChutes = !!providers?.chutes;
-  if (providers?.google) result.hasAntigravity = true;
 
   // Try to detect from lite config
   const { config: liteConfig } = parseConfig(getLiteConfig());
@@ -276,16 +252,6 @@ export function detectCurrentConfig(): DetectedConfig {
         .map((a) => a?.model)
         .filter(Boolean);
       result.hasOpenAI = models.some((m) => m?.startsWith('openai/'));
-      result.hasAnthropic = models.some((m) => m?.startsWith('anthropic/'));
-      result.hasCopilot = models.some((m) => m?.startsWith('github-copilot/'));
-      result.hasZaiPlan = models.some((m) => m?.startsWith('zai-coding-plan/'));
-      result.hasOpencodeZen = models.some((m) => m?.startsWith('opencode/'));
-      if (models.some((m) => m?.startsWith('google/'))) {
-        result.hasAntigravity = true;
-      }
-      if (models.some((m) => m?.startsWith('chutes/'))) {
-        result.hasChutes = true;
-      }
     }
 
     if (configObj.tmux && typeof configObj.tmux === 'object') {

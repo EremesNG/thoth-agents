@@ -131,6 +131,72 @@
           },
           "required": ["primary", "fallback1", "fallback2", "fallback3"]
         },
+        "sdd-specify": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        },
+        "sdd-plan": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        },
+        "sdd-tasks": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback1": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback2": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            },
+            "fallback3": {
+              "type": "string",
+              "pattern": "^[^/\\s]+\\/[^\\s]+$"
+            }
+          },
+          "required": ["primary", "fallback1", "fallback2", "fallback3"]
+        },
         "quick": {
           "type": "object",
           "properties": {
@@ -182,6 +248,9 @@
         "designer",
         "explorer",
         "librarian",
+        "sdd-specify",
+        "sdd-plan",
+        "sdd-tasks",
         "quick",
         "deep"
       ],
@@ -387,6 +456,27 @@
                 "type": "string"
               }
             },
+            "sdd-specify": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sdd-plan": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sdd-tasks": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "quick": {
               "minItems": 1,
               "type": "array",
@@ -409,16 +499,6 @@
               "type": "string"
             }
           }
-        }
-      }
-    },
-    "artifactStore": {
-      "type": "object",
-      "properties": {
-        "mode": {
-          "default": "hybrid",
-          "type": "string",
-          "enum": ["thoth-mem", "openspec", "hybrid"]
         }
       }
     },

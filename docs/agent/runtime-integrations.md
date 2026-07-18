@@ -1,60 +1,28 @@
-# Plugin runtime and integrations
+# OpenCode runtime and integrations
 
 ## Responsibility
 
-This route owns OpenCode plugin composition, hooks, MCPs, LSP and ast-grep
-tools, tmux, and fallbacks executed during a session. It does not own
-installation artifacts for other harnesses.
-
-## Signals and entrypoints
-
-- Signals: hook, event, tool, MCP, LSP, ast-grep, tmux, rate limit, retry,
-  runtime fallback, plugin initialization.
-- `src/index.ts:ThothAgents` is the main entrypoint.
-- `src/hooks/index.ts` exports update, header, retry, fallback, recovery,
-  reminder, and skill-sync hooks. Provider-owned lifecycle hooks are external.
-- `src/mcp/index.ts:createBuiltinMcps` registers the bundled research MCPs and
-  respects disabled MCPs; independently installed provider MCPs remain outside
-  this package.
-- `src/tools/index.ts` exports LSP and ast-grep tools.
+This route owns OpenCode plugin composition, thoth-agents hooks, research MCPs,
+LSP/ast-grep tools, tmux, and runtime model fallback. It does not own Codex or
+Claude installation and does not own provider memory lifecycle.
 
 ## Flow
 
-1. The plugin loads config and agent definitions.
-2. It composes fallbacks, skill synchronization, tmux, MCPs, and hooks.
-3. It returns agent configuration, tools, MCPs, and handlers to the OpenCode host.
-4. Colocated tests validate each integration; the built runtime has a dedicated
-   test in `src/plugin-node-runtime.test.ts`.
+1. `src/index.ts` loads config and renders the ten OpenCode agents.
+2. It composes thoth-agents MCPs and tools.
+3. It registers update checking, delegation retry guidance, JSON recovery,
+   foreground fallback, and optional tmux behavior.
+4. It leaves required-skill installation to the CLI and thoth-mem integration to
+   the independent provider.
 
-## Invariants and risks
+## Invariants
 
-- User overrides in agent configuration must be preserved when merging plugin
-  defaults.
-- An MCP in `disabled_mcps` must not be registered.
-- Auxiliary hook errors must not invent recovery guarantees the host does not
-  provide.
-- Tmux is limited to OpenCode; do not describe Codex as tmux-aware.
-- Provider-dependent continuity changes require the memory-governance overlay;
-  this route must not copy provider lifecycle protocols.
+- Preserve user agent overrides.
+- Respect `disabled_mcps`.
+- OpenCode generated defaults use only the built-in OpenAI preset.
+- No Copilot-specific header hook or alternate-provider preset is part of 0.3.0.
+- No phase-reminder, phase-skill sync, or provider lifecycle hook is bundled.
+- Tmux is OpenCode-only.
 
-## Dependencies and overlays
-
-- [`memory-governance.md`](memory-governance.md) for external provider ownership
-  and consumer continuity outcomes.
-- [`agents-and-delegation.md`](agents-and-delegation.md) for role prompts,
-  permissions, or model fallback.
-- [`harness-packaging.md`](harness-packaging.md) only when a generated surface
-  outside the OpenCode runtime changes.
-
-## Tests and verification
-
-- Colocated tests under `src/hooks/`, `src/mcp/`, `src/tools/`, and `src/utils/`.
-- `src/plugin-node-runtime.test.ts` for the built artifact.
-- [`../tmux-integration.md`](../tmux-integration.md) documents tmux operation.
-- Consult [`testing.md`](testing.md) before expanding to build/full suite.
-
-## Evidence and uncertainty
-
-- Verified in `src/index.ts` and hooks/MCP/tools barrels.
-- Actual availability of external MCP services depends on the environment;
-  local tests do not prove credentials or remote availability.
+Verify with colocated hook/MCP/tool tests and
+`src/plugin-node-runtime.test.ts` after build-affecting changes.

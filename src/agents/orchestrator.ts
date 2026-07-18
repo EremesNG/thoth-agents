@@ -40,7 +40,7 @@ export function createOrchestratorAgent(
   const definition: AgentDefinition = {
     name: 'orchestrator',
     description:
-      'Delegate-first coordinator for SDD workflow, specialist dispatch, and root-session memory ownership.',
+      'Adaptive root coordinator that handles bounded work directly and delegates only for net gain.',
     config: {
       temperature: 0.1,
       prompt,

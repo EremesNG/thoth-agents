@@ -30,39 +30,8 @@ function buildOpenAIModelMappings(): Record<string, ModelMapping> {
   return mappings;
 }
 
-// Model mappings by provider - only 4 supported providers
 export const MODEL_MAPPINGS = {
   openai: buildOpenAIModelMappings(),
-  kimi: {
-    orchestrator: { model: 'kimi-for-coding/k2p5' },
-    oracle: { model: 'kimi-for-coding/k2p5', variant: 'high' },
-    librarian: { model: 'kimi-for-coding/k2p5', variant: 'low' },
-    explorer: { model: 'kimi-for-coding/k2p5', variant: 'low' },
-    designer: { model: 'kimi-for-coding/k2p5', variant: 'medium' },
-    quick: { model: 'kimi-for-coding/k2p5', variant: 'low' },
-    deep: { model: 'kimi-for-coding/k2p5', variant: 'high' },
-  },
-  copilot: {
-    orchestrator: { model: 'github-copilot/claude-opus-4.6' },
-    oracle: { model: 'github-copilot/claude-opus-4.6', variant: 'high' },
-    librarian: { model: 'github-copilot/grok-code-fast-1', variant: 'low' },
-    explorer: { model: 'github-copilot/grok-code-fast-1', variant: 'low' },
-    designer: {
-      model: 'github-copilot/gemini-3.1-pro-preview',
-      variant: 'medium',
-    },
-    quick: { model: 'github-copilot/claude-sonnet-4.6', variant: 'low' },
-    deep: { model: 'github-copilot/claude-opus-4.6', variant: 'high' },
-  },
-  'zai-plan': {
-    orchestrator: { model: 'zai-coding-plan/glm-5' },
-    oracle: { model: 'zai-coding-plan/glm-5', variant: 'high' },
-    librarian: { model: 'zai-coding-plan/glm-5', variant: 'low' },
-    explorer: { model: 'zai-coding-plan/glm-5', variant: 'low' },
-    designer: { model: 'zai-coding-plan/glm-5', variant: 'medium' },
-    quick: { model: 'zai-coding-plan/glm-5', variant: 'low' },
-    deep: { model: 'zai-coding-plan/glm-5', variant: 'high' },
-  },
 } as const;
 
 export function generateLiteConfig(

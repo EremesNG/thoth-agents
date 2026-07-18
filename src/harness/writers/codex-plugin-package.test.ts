@@ -11,7 +11,7 @@ describe('Codex plugin package writer', () => {
       manifest: {
         version: '1.2.3',
         name: 'thoth-agents',
-        description: 'Delegate-first OpenCode agents for Codex.',
+        description: 'Adaptive multi-harness agents for Codex.',
         extra: 'must be skipped',
       },
       assets: [
@@ -54,7 +54,7 @@ describe('Codex plugin package writer', () => {
       '{\n' +
         '  "name": "thoth-agents",\n' +
         '  "version": "1.2.3",\n' +
-        '  "description": "Delegate-first OpenCode agents for Codex.",\n' +
+        '  "description": "Adaptive multi-harness agents for Codex.",\n' +
         '  "skills": "./skills/",\n' +
         '  "mcpServers": "./.mcp.json",\n' +
         '  "hooks": "./hooks/hooks.json"\n' +
@@ -218,11 +218,11 @@ describe('Codex plugin package writer', () => {
     );
   });
 
-  test('fixture output for plugin package, skill provenance, and hooks is stable', () => {
+  test('generic fixture output for plugin package asset provenance is stable', () => {
     const result = renderCodexPluginPackage({
       manifest: {
         name: 'thoth-agents',
-        version: '1.0.0',
+        version: '0.3.0',
         description: 'Codex plugin package fixture.',
       },
       assets: [
@@ -230,8 +230,8 @@ describe('Codex plugin package writer', () => {
           surfaceId: 'plugin-skills-directory',
           manifestField: 'skills',
           path: '.codex-plugin/skills/',
-          provenanceName: 'sdd-apply',
-          sourcePath: 'src/skills/sdd-apply',
+          provenanceName: 'example-skill',
+          sourcePath: 'fixtures/example-skill',
         },
         {
           surfaceId: 'plugin-hooks-json',
@@ -276,8 +276,8 @@ describe('Codex plugin package writer', () => {
           surfaceId: 'plugin-skills-directory',
           manifestField: 'skills',
           path: '.codex-plugin/skills/',
-          provenanceName: 'requirements-interview',
-          sourcePath: 'src/skills/requirements-interview',
+          provenanceName: 'example-skill',
+          sourcePath: 'fixtures/example-skill',
         },
       ],
     });
@@ -303,8 +303,8 @@ describe('Codex plugin package writer', () => {
       skills: './skills/',
     });
     expect(provenance.assets[0]).toMatchObject({
-      name: 'requirements-interview',
-      sourcePath: 'src/skills/requirements-interview',
+      name: 'example-skill',
+      sourcePath: 'fixtures/example-skill',
       reference: './skills/',
     });
   });

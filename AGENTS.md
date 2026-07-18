@@ -2,9 +2,9 @@
 
 ## Repository purpose
 
-**thoth-agents** is a multi-harness orchestration plugin for delegate-first
-workflows. It provides seven roles, native OpenCode delegation, Codex and Claude
-Code surfaces, provider-neutral memory boundaries, SDD skills, and a requirements interview.
+**thoth-agents** is an adaptive multi-harness orchestration plugin. It provides
+ten roles, native OpenCode delegation, Codex and Claude Code surfaces,
+provider-neutral memory boundaries, and direct/accelerated/full SDD routing.
 OpenCode is the stable default path; each harness has different guarantees.
 
 For task-specific knowledge, start with [`docs/agent/index.md`](docs/agent/index.md).
@@ -25,6 +25,9 @@ Keep `docs/agent/` documents on demand at startup.
 
 Prefer `webstorm-index` MCP tools for all project file navigation tasks, including text search, file search, file reading, and refactoring. This rule applies to the root agent and every delegated sub-agent. If `webstorm-index` is unavailable, returns errors, lacks the required capability, produces incomplete results, or otherwise blocks progress, the agent may use other available tools as a fallback. When doing so, it should use the least invasive suitable tool and resume using `webstorm-index` once it becomes practical.
 
+Use `webstorm-index` only for this `thoth-agents` repository. Never use it to
+navigate or modify any other project.
+
 ## High-level map
 
 - `src/index.ts`: entrypoint and composition of the OpenCode plugin.
@@ -33,7 +36,8 @@ Prefer `webstorm-index` MCP tools for all project file navigation tasks, includi
 - `src/cli/`: parser, commands, installation, configuration, and TUI.
 - `src/hooks/`, `src/mcp/`, `src/tools/`: runtime integrations. Provider-owned
   memory setup and lifecycle are external and are not bundled here.
-- `src/skills/`, `src/sdd/`: skills and SDD artifact governance.
+- `src/harness/core/sdd.ts`: SDD route, phase, and artifact governance.
+- `src/cli/skills.ts`: mandatory external skills for every harness.
 - `docs/agent/`: router and on-demand operational context.
 
 ## Environment and verified commands
@@ -59,13 +63,23 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - Keep changes small, explicit, and limited to the requested behavior.
 - Preserve others' work: never revert or discard changes you did not make.
 - Run the nearest focused validation first; expand only according to risk.
-- The root coordinator starts with the requirements interview and uses the
-  applicable SDD route for non-trivial work.
+- The adaptive root handles clear bounded work directly and selects direct,
+  accelerated, or full SDD according to scope, clarity, and risk.
 - Use roles intentionally: `explorer` discovers, `librarian` researches docs,
-  `oracle` reviews or diagnoses, `designer` owns UI/UX, `quick` makes mechanical
-  changes, and `deep` handles logic with correctness risk.
+  `oracle` reviews or diagnoses, `sdd-specify` owns requirements, `sdd-plan`
+  owns technical planning, `sdd-tasks` owns task decomposition, `designer` owns
+  UI/UX, `quick` makes mechanical changes, and `deep` handles correctness risk.
+- Delegate only for net gain, keep maximum depth 1, and use one writer per
+  mutable surface.
+- `simplify`, `tdd`, `progressive-context-router`, and
+  `architectural-grilling` are mandatory external skills for OpenCode, Codex,
+  and Claude. They are installed by the CLI, not plugin settings or lifecycle
+  hooks. QA executables remain project-owned.
+- Use `architectural-grilling` before specification only on explicit request or
+  unresolved material human-owned product/architecture decisions. Full SDD
+  alone does not activate it.
 - All visual or UX work goes through `designer`, not ad hoc editing.
-- `openspec/` is the governed coordination surface. thoth-mem is an independent
+- `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem is an independent
   provider; follow its installed guidance for memory and persistence mechanics.
 - Every `request_user_input` call MUST omit `autoResolutionMs` entirely, including
   `null` or `undefined`, so the question does not expire.

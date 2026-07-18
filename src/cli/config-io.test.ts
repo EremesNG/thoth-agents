@@ -125,8 +125,6 @@ describe('config-io', () => {
 
     const result = writeLiteConfig({
       hasTmux: true,
-      installSkills: false,
-      installCustomSkills: false,
       reset: false,
     });
     expect(result.success).toBe(true);
@@ -218,17 +216,7 @@ describe('config-io', () => {
     const litePath = join(tmpDir, 'opencode', 'thoth-agents.json');
     paths.ensureConfigDir();
 
-    writeFileSync(
-      configPath,
-      JSON.stringify({
-        plugin: ['thoth-agents'],
-        provider: {
-          kimi: {
-            npm: '@ai-sdk/openai-compatible',
-          },
-        },
-      }),
-    );
+    writeFileSync(configPath, JSON.stringify({ plugin: ['thoth-agents'] }));
     writeFileSync(
       litePath,
       JSON.stringify({
@@ -236,9 +224,6 @@ describe('config-io', () => {
         presets: {
           openai: {
             orchestrator: { model: 'openai/gpt-4' },
-            oracle: { model: 'anthropic/claude-opus-4-6' },
-            explorer: { model: 'github-copilot/grok-code-fast-1' },
-            librarian: { model: 'zai-coding-plan/glm-4.7' },
           },
         },
         tmux: { enabled: true },
@@ -247,11 +232,12 @@ describe('config-io', () => {
 
     const detected = detectCurrentConfig();
     expect(detected.isInstalled).toBe(true);
-    expect(detected.hasKimi).toBe(true);
     expect(detected.hasOpenAI).toBe(true);
-    expect(detected.hasAnthropic).toBe(true);
-    expect(detected.hasCopilot).toBe(true);
-    expect(detected.hasZaiPlan).toBe(true);
     expect(detected.hasTmux).toBe(true);
+    expect(Object.keys(detected).sort()).toEqual([
+      'hasOpenAI',
+      'hasTmux',
+      'isInstalled',
+    ]);
   });
 });

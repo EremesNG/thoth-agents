@@ -6,11 +6,14 @@ import {
 } from './constants';
 
 describe('OpenAI default model projection', () => {
-  test('defines the exact canonical model and effort for all six subagents', () => {
+  test('defines the exact canonical model and effort for all nine subagents', () => {
     expect(CONFIRMED_OPENAI_SUBAGENT_PRESET).toEqual({
       explorer: { model: 'gpt-5.6-luna', effort: 'low' },
       librarian: { model: 'gpt-5.6-luna', effort: 'xhigh' },
       oracle: { model: 'gpt-5.6-sol', effort: 'xhigh' },
+      'sdd-specify': { model: 'gpt-5.6-sol', effort: 'high' },
+      'sdd-plan': { model: 'gpt-5.6-sol', effort: 'high' },
+      'sdd-tasks': { model: 'gpt-5.6-luna', effort: 'medium' },
       designer: { model: 'gpt-5.6-sol', effort: 'medium' },
       quick: { model: 'gpt-5.6-luna', effort: 'xhigh' },
       deep: { model: 'gpt-5.6-sol', effort: 'medium' },

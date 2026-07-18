@@ -1,9 +1,7 @@
-import { AGENT_ALIASES } from './constants';
 import type { AgentOverrideConfig, PluginConfig } from './schema';
 
 /**
- * Get agent override config by name, supporting backward-compatible aliases.
- * Checks both the current name and any legacy alias names.
+ * Get an agent override by its canonical v0.3 role name.
  *
  * @param config - The plugin configuration
  * @param name - The current agent name
@@ -13,13 +11,7 @@ export function getAgentOverride(
   config: PluginConfig | undefined,
   name: string,
 ): AgentOverrideConfig | undefined {
-  const overrides = config?.agents ?? {};
-  return (
-    overrides[name] ??
-    overrides[
-      Object.keys(AGENT_ALIASES).find((k) => AGENT_ALIASES[k] === name) ?? ''
-    ]
-  );
+  return config?.agents?.[name];
 }
 
 /**

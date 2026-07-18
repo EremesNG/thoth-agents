@@ -15,10 +15,11 @@ describe('plugin runtime compatibility', () => {
     expect(source).not.toContain('including thoth_mem');
   });
 
-  test('preserves unrelated runtime hooks and exactly three harness registrations', () => {
+  test('keeps the runtime lean and exactly three harness registrations', () => {
     const source = readFileSync(pluginSourcePath, 'utf8');
 
-    expect(source).toContain('createPhaseReminderHook');
+    expect(source).not.toContain('createPhaseReminderHook');
+    expect(source).not.toContain('createPostReadNudgeHook');
     expect(source).toContain('createJsonErrorRecoveryHook');
     expect(source).toContain('createDelegateTaskRetryHook');
     expect([...SUPPORTED_HARNESSES].sort()).toEqual([

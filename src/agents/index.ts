@@ -17,10 +17,12 @@ import { createOracleAgent } from './oracle';
 import { type AgentDefinition, createOrchestratorAgent } from './orchestrator';
 import {
   appendPromptSections,
-  detectModelFamily,
   getStepBudgetPromptSection,
 } from './prompt-utils';
 import { createQuickAgent } from './quick';
+import { createSddPlanAgent } from './sdd-plan';
+import { createSddSpecifyAgent } from './sdd-specify';
+import { createSddTasksAgent } from './sdd-tasks';
 
 export type { AgentDefinition } from './orchestrator';
 
@@ -42,21 +44,15 @@ type BuiltinPermissionPresetName =
   | 'explorer'
   | 'librarian'
   | 'oracle'
+  | 'sdd-specify'
+  | 'sdd-plan'
+  | 'sdd-tasks'
   | 'designer'
   | 'quick'
   | 'deep';
 
 type AgentOverrideWithPermission = AgentOverrideConfig & {
   permission?: SDKAgentConfig['permission'];
-};
-
-const GEMINI_DEFAULT_STEPS: Record<SubagentName, number> = {
-  explorer: 120,
-  librarian: 80,
-  oracle: 80,
-  designer: 80,
-  quick: 40,
-  deep: 120,
 };
 
 const BUILTIN_PERMISSION_PRESETS = {
@@ -122,6 +118,48 @@ const BUILTIN_PERMISSION_PRESETS = {
     question: 'allow',
     skill: 'allow',
     edit: 'deny',
+    todowrite: 'deny',
+    task: 'deny',
+  },
+  'sdd-specify': {
+    read: 'allow',
+    edit: 'allow',
+    glob: 'allow',
+    grep: 'allow',
+    list: 'allow',
+    bash: 'allow',
+    codesearch: 'allow',
+    lsp: 'allow',
+    skill: 'allow',
+    question: 'allow',
+    todowrite: 'deny',
+    task: 'deny',
+  },
+  'sdd-plan': {
+    read: 'allow',
+    edit: 'allow',
+    glob: 'allow',
+    grep: 'allow',
+    list: 'allow',
+    bash: 'allow',
+    codesearch: 'allow',
+    lsp: 'allow',
+    skill: 'allow',
+    question: 'allow',
+    todowrite: 'deny',
+    task: 'deny',
+  },
+  'sdd-tasks': {
+    read: 'allow',
+    edit: 'allow',
+    glob: 'allow',
+    grep: 'allow',
+    list: 'allow',
+    bash: 'allow',
+    codesearch: 'allow',
+    lsp: 'allow',
+    skill: 'allow',
+    question: 'allow',
     todowrite: 'deny',
     task: 'deny',
   },
@@ -230,18 +268,6 @@ function applyStepBudgetPrompt(agent: AgentDefinition): void {
   );
 }
 
-function applyGeminiDefaultSteps(agent: AgentDefinition): void {
-  if (!isSubagent(agent.name) || agent.config.steps !== undefined) {
-    return;
-  }
-
-  if (detectModelFamily(agent._modelArray ?? agent.config.model) !== 'gemini') {
-    return;
-  }
-
-  agent.config.steps = GEMINI_DEFAULT_STEPS[agent.name];
-}
-
 function clonePermissionConfig(
   permission: BuiltinPermissionPreset,
 ): BuiltinPermissionPreset {
@@ -295,6 +321,9 @@ const SUBAGENT_FACTORIES: Record<CanonicalOpenAISubagentName, AgentFactory> = {
   explorer: createExplorerAgent,
   librarian: createLibrarianAgent,
   oracle: createOracleAgent,
+  'sdd-specify': createSddSpecifyAgent,
+  'sdd-plan': createSddPlanAgent,
+  'sdd-tasks': createSddTasksAgent,
   designer: createDesignerAgent,
   quick: createQuickAgent,
   deep: createDeepAgent,
@@ -323,7 +352,6 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     if (override) {
       applyOverrides(agent, override);
     }
-    applyGeminiDefaultSteps(agent);
     applyStepBudgetPrompt(agent);
     return agent;
   });

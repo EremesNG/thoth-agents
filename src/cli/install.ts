@@ -20,13 +20,13 @@ import {
   updateOpenCodeMainConfig,
   writeLiteConfig,
 } from './config-manager';
-import {
-  CUSTOM_SKILLS,
-  type InstallCustomSkillsReport,
-  installCustomSkills,
-} from './custom-skills';
 import { getExistingLiteConfigPath } from './paths';
-import { installRecommendedSkill, RECOMMENDED_SKILLS } from './skills';
+import {
+  getRequiredSkillInstallCommand,
+  installRequiredSkill,
+  REQUIRED_SKILLS,
+  type SkillInstallHarness,
+} from './skills';
 import type { ConfigMergeResult, InstallArgs, InstallConfig } from './types';
 
 // Colors
@@ -69,18 +69,6 @@ function printError(message: string): void {
 
 function printInfo(message: string): void {
   console.log(`${SYMBOLS.info} ${message}`);
-}
-
-function formatCustomSkillReasons(report: InstallCustomSkillsReport): string {
-  if (report.updatedSkills.length === 0 && report.removedSkills.length === 0) {
-    return 'all bundled skills already up to date';
-  }
-
-  return `${report.updatedSkills.length} updated, ${report.removedSkills.length} removed, ${report.skippedSkills.length} unchanged`;
-}
-
-function formatSkillReasons(reasons: string[]): string {
-  return reasons.join(', ');
 }
 
 async function checkOpenCodeInstalled(): Promise<{
@@ -128,17 +116,51 @@ function formatConfigSummary(): string {
   lines.push(`${BOLD}Configuration Summary${RESET}`);
   lines.push('');
   lines.push(`  ${BOLD}Preset:${RESET} ${BLUE}openai${RESET}`);
-  lines.push(`  ${SYMBOLS.check} Seven-agent thoth-agents roster`);
+  lines.push(`  ${SYMBOLS.check} Ten-role adaptive thoth-agents roster`);
   lines.push(`  ${SYMBOLS.check} OpenAI models by default`);
-  lines.push(`  ${SYMBOLS.check} Bundled SDD skills ready for install`);
+  lines.push(`  ${SYMBOLS.check} Direct, Accelerated, and Full SDD routing`);
   lines.push(
     `  ${DIM}○ Provider capability is external and was not evidenced by this install.${RESET}`,
   );
-  const seeDocs = 'see docs/provider-configurations.md';
-  lines.push(`  ${DIM}○ Kimi — ${seeDocs}${RESET}`);
-  lines.push(`  ${DIM}○ GitHub Copilot — ${seeDocs}${RESET}`);
-  lines.push(`  ${DIM}○ ZAI Coding Plan — ${seeDocs}${RESET}`);
+  lines.push(`  ${SYMBOLS.check} Required external skills for this harness`);
   return lines.join('\n');
+}
+
+function installRequiredSkillsForHarness(
+  harness: SkillInstallHarness,
+  dryRun: boolean | undefined,
+  homeDir = homedir(),
+): boolean {
+  if (dryRun) {
+    printInfo(`Dry run mode - required ${harness} skills:`);
+    for (const skill of REQUIRED_SKILLS) {
+      const { command, args } = getRequiredSkillInstallCommand(skill, harness);
+      printInfo(`  - ${skill.name}: ${command} ${args.join(' ')}`);
+    }
+    return true;
+  }
+
+  let installed = 0;
+  let alreadyInstalled = 0;
+  for (const skill of REQUIRED_SKILLS) {
+    printInfo(`Installing required skill ${skill.name} for ${harness}...`);
+    const result = installRequiredSkill(skill, harness, { homeDir });
+    if (result.status === 'failed') {
+      printError(`Failed to install required skill: ${skill.name}`);
+      return false;
+    }
+    if (result.status === 'installed') {
+      installed += 1;
+      printSuccess(`Installed: ${skill.name}`);
+    } else {
+      alreadyInstalled += 1;
+      printInfo(`Skipped: ${skill.name} (already installed)`);
+    }
+  }
+  printSuccess(
+    `${installed} required skills installed, ${alreadyInstalled} already installed`,
+  );
+  return true;
 }
 
 async function runInstall(config: InstallConfig): Promise<number> {
@@ -147,9 +169,7 @@ async function runInstall(config: InstallConfig): Promise<number> {
 
   printHeader(isUpdate);
 
-  let totalSteps = 3;
-  if (config.installSkills) totalSteps += 1;
-  if (config.installCustomSkills) totalSteps += 1;
+  const totalSteps = 4;
 
   let step = 1;
 
@@ -204,77 +224,8 @@ async function runInstall(config: InstallConfig): Promise<number> {
     }
   }
 
-  // Install skills if requested
-  if (config.installSkills) {
-    printStep(step++, totalSteps, 'Installing recommended external skills...');
-    if (config.dryRun) {
-      printInfo('Dry run mode - would install skills:');
-      for (const skill of RECOMMENDED_SKILLS) {
-        printInfo(`  - ${skill.name}`);
-      }
-    } else {
-      let skillsInstalled = 0;
-      let skillsAlreadyInstalled = 0;
-      for (const skill of RECOMMENDED_SKILLS) {
-        printInfo(`Installing ${skill.name}...`);
-        const result = installRecommendedSkill(skill);
-        if (result.status === 'installed') {
-          printSuccess(`Installed: ${skill.name}`);
-          skillsInstalled++;
-        } else if (result.status === 'already-installed') {
-          printInfo(`Skipped: ${skill.name} (already installed)`);
-          skillsAlreadyInstalled++;
-        } else {
-          printError(`Failed to install recommended skill: ${skill.name}`);
-          return 1;
-        }
-      }
-      printSuccess(
-        `${skillsInstalled} installed, ${skillsAlreadyInstalled} already installed`,
-      );
-    }
-  }
-
-  // Install bundled custom skills
-  if (config.installCustomSkills) {
-    printStep(step++, totalSteps, 'Installing bundled thoth-agents skills...');
-    if (config.dryRun) {
-      printInfo('Dry run mode - would install bundled skills:');
-      for (const skill of CUSTOM_SKILLS) {
-        printInfo(`  - ${skill.name}`);
-      }
-    } else {
-      const report = installCustomSkills();
-
-      for (const updatedSkill of report.updatedSkills) {
-        printSuccess(
-          `Installed: ${updatedSkill.skill.name} (${formatSkillReasons(updatedSkill.reasons)})`,
-        );
-      }
-
-      for (const skippedSkill of report.skippedSkills) {
-        printInfo(`Up to date: ${skippedSkill.name}`);
-      }
-
-      for (const removedSkill of report.removedSkills) {
-        printInfo(`Removed obsolete skill: ${removedSkill}`);
-      }
-
-      for (const failedSkill of report.failedSkills) {
-        printError(
-          `Failed: ${failedSkill.skill.name} (${formatSkillReasons(failedSkill.reasons)})`,
-        );
-      }
-
-      if (!report.success) {
-        return 1;
-      }
-
-      printSuccess(
-        `Bundled skills processed: ${formatCustomSkillReasons(report)}`,
-      );
-    }
-  }
+  printStep(step++, totalSteps, 'Installing required external skills...');
+  if (!installRequiredSkillsForHarness('opencode', config.dryRun)) return 1;
 
   // Summary
   console.log();
@@ -292,21 +243,11 @@ async function runInstall(config: InstallConfig): Promise<number> {
   console.log(`  1. Start OpenCode:`);
   console.log(`     ${BLUE}$ opencode${RESET}`);
   console.log();
-  const modelsInfo =
-    'Default configuration uses OpenAI models (gpt-5.4 / gpt-5.4-mini).';
+  const modelsInfo = 'Default configuration uses OpenAI models.';
   console.log(`${BOLD}${modelsInfo}${RESET}`);
   console.log(
-    `  ${DIM}Includes the seven-agent roster, native task delegation, and bundled SDD skills.${RESET}`,
+    `  ${DIM}Includes the ten-role adaptive roster, native delegation, and Direct / Accelerated / Full SDD routing.${RESET}`,
   );
-  const altProviders =
-    'For alternative providers (Kimi, GitHub Copilot, ZAI Coding Plan)';
-  console.log(`${BOLD}${altProviders}, see:${RESET}`);
-  const docsUrl =
-    'https://github.com/EremesNG/thoth-agents/' +
-    'blob/master/docs/provider-configurations.md';
-  console.log(`  ${BLUE}${docsUrl}${RESET}`);
-  console.log();
-
   return 0;
 }
 
@@ -314,8 +255,6 @@ export function createInstallConfig(args: InstallArgs): InstallConfig {
   return {
     agent: args.agent ?? 'opencode',
     hasTmux: args.tmux === 'yes',
-    installSkills: args.skills === 'yes',
-    installCustomSkills: true,
     dryRun: args.dryRun,
     reset: args.reset ?? false,
   };
@@ -338,6 +277,7 @@ export async function install(args: InstallArgs): Promise<number> {
       printError(`Codex install failed: ${result.error}`);
       return 1;
     }
+    if (!installRequiredSkillsForHarness('codex', config.dryRun)) return 1;
     printSuccess(
       config.dryRun
         ? 'Codex dry-run complete; no files written'
@@ -360,6 +300,7 @@ export async function install(args: InstallArgs): Promise<number> {
       printError(`Claude Code install failed: ${result.error}`);
       return 1;
     }
+    if (!installRequiredSkillsForHarness('claude', config.dryRun)) return 1;
     printSuccess(
       config.dryRun
         ? 'Claude Code dry-run complete; no files written'

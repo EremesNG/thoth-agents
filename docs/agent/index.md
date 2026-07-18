@@ -1,69 +1,45 @@
 # Agent context router
 
-Select the minimum context for the task here. Do not read every linked document
-by default.
+Select the smallest route that owns the requested behavior. Do not preload every
+linked document.
 
 ## Routing procedure
 
-1. An explicit route supplied by the user takes precedence over ambiguous
-   vocabulary.
-2. Without an explicit route, choose the domain that owns the modified public
-   behavior.
-3. Add an overlay only if that contract also changes.
-4. Search the listed code and test roots first.
-5. Expand context only for a concrete unresolved question.
+1. An explicit user route or file path wins.
+2. Otherwise choose the domain that owns the public behavior.
+3. Search named symbols, callers, registries, and tests before broad reading.
+4. Add an overlay only to answer a concrete cross-cutting question.
+5. Expand context only when evidence leaves a gap.
 
 ## Primary routes
 
-| Task signals | Read first | Probable code roots | Probable tests | Optional overlays |
-|---|---|---|---|---|
-| roles, prompts, permissions, models, dispatch, subagent return | [`agents-and-delegation.md`](agents-and-delegation.md) | `src/agents/`, `src/config/`, `src/delegation/` | `src/agents/**/*.test.ts`, `src/config/**/*.test.ts` | harness compatibility |
-| adapters, writers, agent packs, Codex/Claude/OpenCode surfaces, generated artifacts | [`harness-packaging.md`](harness-packaging.md) | `src/harness/` | `src/harness/**/*.test.ts` | public compatibility, installation |
-| OpenCode plugin, hooks, MCP, LSP, ast-grep, tmux, runtime fallback | [`runtime-integrations.md`](runtime-integrations.md) | `src/index.ts`, `src/hooks/`, `src/mcp/`, `src/tools/`, `src/utils/` | colocated tests and `src/plugin-node-runtime.test.ts` | persistent memory |
-| CLI, parser, TUI, install/update/reset, configuration files | [`cli-installation.md`](cli-installation.md) | `src/cli/` | `src/cli/**/*.test.ts`, `src/cli/**/*.test.tsx` | harness packaging |
-| requirements interview, SDD phases, OpenSpec, skills, plan review, verify loop | [`sdd-and-skills.md`](sdd-and-skills.md) | `src/skills/`, `src/sdd/`, `src/harness/core/sdd.ts` | `src/sdd/**/*.test.ts`, `src/harness/core/sdd.test.ts`, `src/harness/core/skills.test.ts` | persistent memory |
-| External provider boundary, continuity outcomes, topic keys, root/subagent ownership | [`memory-governance.md`](memory-governance.md) | `src/harness/core/memory-governance.ts` and harness adapters | `src/harness/core/memory-governance.test.ts` | SDD and skills |
-
-`src/delegation/` is listed as a probable root by declared responsibility, but
-its contents must be confirmed by search before assuming a specific entrypoint.
+| Task signals | Read first | Code roots | Primary tests | Optional overlay |
+| --- | --- | --- | --- | --- |
+| roles, prompts, permissions, models, delegation, return contract | [`agents-and-delegation.md`](agents-and-delegation.md) | `src/agents/`, `src/config/`, `src/harness/core/agent-pack.ts` | agent/config and agent-pack tests | harness packaging |
+| adapters, writers, generated artifacts, Codex/Claude/OpenCode surfaces | [`harness-packaging.md`](harness-packaging.md) | `src/harness/` | `src/harness/**/*.test.ts` | CLI installation |
+| OpenCode runtime, hooks, MCP, LSP, ast-grep, tmux, fallback | [`runtime-integrations.md`](runtime-integrations.md) | `src/index.ts`, `src/hooks/`, `src/mcp/`, `src/tools/` | colocated tests and `src/plugin-node-runtime.test.ts` | memory boundary |
+| parser, TUI, install, update, sync, status, required skills | [`cli-installation.md`](cli-installation.md) | `src/cli/` | `src/cli/**/*.test.ts`, `src/cli/**/*.test.tsx` | harness packaging |
+| direct/accelerated/full routing, architectural grilling, phase ownership, Spec Kit artifacts | [`sdd-and-skills.md`](sdd-and-skills.md) | `src/harness/core/sdd.ts`, phase-agent prompts | `src/harness/core/sdd.test.ts`, prompt tests | memory boundary |
+| external provider ownership, continuity outcomes, truthful capability state | [`memory-governance.md`](memory-governance.md) | `src/harness/core/memory-governance.ts`, adapters | memory-governance/provider-boundary tests | SDD |
 
 ## Cross-cutting overlays
 
-| Concern | When to load | Document or evidence |
-|---|---|---|
-| Architecture and dependency direction | a change crosses two primary routes or modifies plugin composition | [`architecture.md`](architecture.md) |
-| Verification | tests, CI, build, or pre-merge criteria must be selected | [`testing.md`](testing.md) |
-| Public compatibility | CLI, schema, harness artifact, generated prompt, or published package changes | [`harness-packaging.md`](harness-packaging.md), `README.md`, `thoth-agents.schema.json` |
-| Zod | a Zod schema under `.agents/skills/zod/` changes | [`../../.agents/skills/zod/AGENTS.md`](../../.agents/skills/zod/AGENTS.md); apply its local overlay without preloading it for other tasks |
+| Concern | Load when | Evidence |
+| --- | --- | --- |
+| Architecture | A change crosses two routes or plugin composition | [`architecture.md`](architecture.md) |
+| Verification | Selecting CI/build/test scope | [`testing.md`](testing.md) |
+| Public compatibility | CLI, schema, generated package, or published docs change | README, public docs, schema, writer tests |
+| Zod | A schema under `.agents/skills/zod/` changes | Its local `AGENTS.md` only |
 
-## Precedence when signals overlap
+## Fallback
 
-- An explicit file path beats general terms; then validate what behavior that
-  file actually owns.
-- A change to generation or harness capabilities is primarily packaging, even if
-  it also touches prompts or the CLI.
-- A change to install, update, or reset experience is primarily CLI; load
-  packaging only if produced artifacts change.
-- An SDD lifecycle rule is primarily SDD/skills; external provider guidance is
-  an overlay only for persistence, ownership, or recovery dependencies.
-- A change to `src/index.ts` is runtime unless the goal is only the form of an
-  artifact generated by `src/harness/`.
-
-## Fallback route
-
-If no route matches clearly:
-
-1. search the terms, paths, and symbols supplied by the user;
-2. locate nearby imports, registries, callers, and tests;
-3. inspect the nearest manifest or entrypoint;
-4. return to this index with a probable owner and a concrete question;
-5. create a new route only if the responsibility is durable and recurring.
-
-Do not use fallback as permission to read the entire repository.
+Search the user-supplied names and paths, then inspect the nearest definition,
+callers, tests, and manifest. Do not use uncertainty as permission to explore the
+entire repository.
 
 ## Shared references
 
-- [`architecture.md`](architecture.md): stable boundaries and composition.
-- [`testing.md`](testing.md): test selection and workflow evidence.
-- [`task-template.md`](task-template.md): compact cross-session handoff.
-- [`routing-cases.json`](routing-cases.json): router regression cases.
+- [`architecture.md`](architecture.md)
+- [`testing.md`](testing.md)
+- [`task-template.md`](task-template.md)
+- [`routing-cases.json`](routing-cases.json)

@@ -1,7 +1,13 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ProviderEvidenceInput } from '../../harness/types';
 import {
   applyClaudeCodePlan,
@@ -13,6 +19,13 @@ import {
   resolveClaudeCodeEffort,
 } from './claude-code';
 import type { HarnessStatusReport } from './types';
+
+const installRequiredSkillMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../skills', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../skills')>();
+  return { ...actual, installRequiredSkill: installRequiredSkillMock };
+});
 
 let home: string;
 
@@ -27,6 +40,19 @@ const getClaudeCodeStatusWithEvidence = getClaudeCodeStatus as unknown as (
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'cc-ops-'));
+  installRequiredSkillMock.mockReset();
+  installRequiredSkillMock.mockImplementation((skill, harness, options) => {
+    const path = join(
+      options.homeDir,
+      '.claude',
+      'skills',
+      skill.skillName,
+      'SKILL.md',
+    );
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, `---\nname: ${skill.skillName}\n---\n`);
+    return { skill, harness, skillPath: path, status: 'installed' };
+  });
 });
 
 afterEach(() => {
@@ -52,10 +78,34 @@ describe('claudeCodeOperationAdapter', () => {
 
     const plan = buildClaudeCodeInstallPlan(context());
     expect(plan.canApply).toBe(true);
+    expect(plan.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Install required external skills for Claude Code',
+        }),
+      ]),
+    );
     const result = applyClaudeCodePlan(plan);
     expect(result.applied).toBe(true);
+    expect(installRequiredSkillMock).toHaveBeenCalledTimes(4);
 
     expect(getClaudeCodeStatus(context()).state).toBe('installed');
+  });
+
+  test('Claude Code install is incomplete when a required skill fails', () => {
+    installRequiredSkillMock.mockReturnValue({ status: 'failed' });
+
+    const result = applyClaudeCodePlan(buildClaudeCodeInstallPlan(context()));
+
+    expect(result.applied).toBe(false);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: 'critical',
+          code: 'claude-code-required-skill-failed',
+        }),
+      ]),
+    );
   });
 
   test('propagates explicit unsupported provider evidence without changing consumer install state', () => {

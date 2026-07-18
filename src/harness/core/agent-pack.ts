@@ -3,13 +3,17 @@ export type AgentRoleName =
   | 'explorer'
   | 'librarian'
   | 'oracle'
+  | 'sdd-specify'
+  | 'sdd-plan'
+  | 'sdd-tasks'
   | 'designer'
   | 'quick'
   | 'deep';
 
 export type AgentMutationMode =
-  | 'primary-non-mutating'
+  | 'adaptive-root'
   | 'read-only'
+  | 'coordination-write'
   | 'write-capable';
 
 export type AgentDispatchMethod =
@@ -24,13 +28,21 @@ export interface AgentRoleContract {
   canMutateWorkspace: boolean;
   scope: string;
   responsibility: string;
+  writeScope?: string[];
   toolGovernance: string[];
   verification: string[];
 }
 
+export interface OrchestrationPolicy {
+  maxDelegationDepth: number;
+  singleWriter: boolean;
+  rules: string[];
+}
+
 export interface AgentPackContract {
   roles: AgentRoleContract[];
-  delegateFirstRules: string[];
+  orchestrationPolicy: OrchestrationPolicy;
+  returnContract: string[];
   verificationProtocol: string[];
 }
 
@@ -39,6 +51,9 @@ export const AGENT_ROLE_NAMES = [
   'explorer',
   'librarian',
   'oracle',
+  'sdd-specify',
+  'sdd-plan',
+  'sdd-tasks',
   'designer',
   'quick',
   'deep',
@@ -47,20 +62,21 @@ export const AGENT_ROLE_NAMES = [
 export const AGENT_ROLES = [
   {
     name: 'orchestrator',
-    mode: 'primary-non-mutating',
+    mode: 'adaptive-root',
     dispatch: 'root-coordinator',
-    canMutateWorkspace: false,
-    scope: 'coordination, routing, decisions, progress, and root memory',
+    canMutateWorkspace: true,
+    scope:
+      'requirements, routing, bounded direct work, decisions, and synthesis',
     responsibility:
-      'Delegate-first coordinator for SDD workflow, specialist dispatch, and root-session memory ownership.',
+      'Keep the task coherent, act directly when the work is clear and bounded, and delegate only when specialization or parallelism produces a net gain.',
     toolGovernance: [
-      'delegates inspection, writing, debugging, and verification',
-      'owns question prompts and root-session memory',
-      'does not perform inline workspace implementation',
+      'may inspect, edit, and verify bounded direct work',
+      'delegates independent or specialist work only when it produces a net gain',
+      'keeps requirements, decisions, and final synthesis in the root thread',
     ],
     verification: [
-      'routes verification to specialists',
-      'summarizes evidence from changed files, diagnostics, and tests',
+      'verifies direct work before completion',
+      'consolidates summarized evidence returned by child agents',
     ],
   },
   {
@@ -70,43 +86,90 @@ export const AGENT_ROLES = [
     canMutateWorkspace: false,
     scope: 'local repository discovery',
     responsibility:
-      'Find workspace facts fast and return paths, lines, symbols, constraints, edit targets, and conclusions.',
+      'Resolve broad or uncertain repository questions and return distilled evidence.',
     toolGovernance: [
-      'read/search/code-navigation tools only',
-      'no durable memory writes',
-      'no task delegation or progress ownership',
+      'uses read, search, and code-navigation tools only',
+      'does not mutate files or delegate further',
     ],
-    verification: ['reports confidence, anchors, unchecked areas, and gaps'],
+    verification: ['reports inspected paths, confidence, and remaining gaps'],
   },
   {
     name: 'librarian',
     mode: 'read-only',
     dispatch: 'task',
     canMutateWorkspace: false,
-    scope: 'external research plus local confirmation when needed',
+    scope:
+      'authoritative external research with local confirmation when needed',
     responsibility:
-      'Gather authoritative external evidence and distinguish official docs from examples.',
+      'Gather current authoritative evidence and separate documented facts from inference.',
     toolGovernance: [
-      'research and read-only local confirmation tools',
-      'no workspace mutation',
-      'no durable memory writes',
+      'uses research and read-only local tools',
+      'does not mutate files or delegate further',
     ],
-    verification: ['sources every substantive external claim with a URL'],
+    verification: ['provides direct sources for substantive external claims'],
   },
   {
     name: 'oracle',
     mode: 'read-only',
     dispatch: 'synchronous-task-only',
     canMutateWorkspace: false,
-    scope: 'advice, diagnosis, architecture, code review, and plan review',
+    scope: 'diagnosis, architecture, analysis, and independent verification',
     responsibility:
-      'Provide strategic technical guidance anchored to evidence and review SDD plans.',
+      'Review evidence, expose correctness risks, and judge whether the result satisfies its contracts.',
     toolGovernance: [
-      'read-only analysis and review',
-      'no implementation; may perform read-only SDD plan review and verification review, but does not persist artifacts',
-      'no task delegation',
+      'performs read-only analysis and review',
+      'does not implement, persist artifacts, or delegate further',
     ],
     verification: ['separates observations, risks, and recommendations'],
+  },
+  {
+    name: 'sdd-specify',
+    mode: 'coordination-write',
+    dispatch: 'synchronous-task-only',
+    canMutateWorkspace: true,
+    scope: 'feature intent and requirements contract',
+    responsibility:
+      'Produce or refine the Spec Kit-compatible feature specification without implementing product code.',
+    writeScope: ['openspec/'],
+    toolGovernance: [
+      'writes only governed coordination artifacts under openspec/',
+      'does not implement product code or delegate further',
+    ],
+    verification: [
+      'checks that requirements are testable and materially unambiguous',
+    ],
+  },
+  {
+    name: 'sdd-plan',
+    mode: 'coordination-write',
+    dispatch: 'synchronous-task-only',
+    canMutateWorkspace: true,
+    scope: 'technical plan and optional design-support artifacts',
+    responsibility:
+      'Translate an accepted specification into a technically executable Spec Kit-compatible plan.',
+    writeScope: ['openspec/'],
+    toolGovernance: [
+      'writes only governed coordination artifacts under openspec/',
+      'does not implement product code or delegate further',
+    ],
+    verification: ['checks plan coverage, constraints, and affected surfaces'],
+  },
+  {
+    name: 'sdd-tasks',
+    mode: 'coordination-write',
+    dispatch: 'synchronous-task-only',
+    canMutateWorkspace: true,
+    scope: 'dependency-ordered implementation tasks',
+    responsibility:
+      'Convert the accepted specification and plan into bounded, dependency-ordered tasks.',
+    writeScope: ['openspec/'],
+    toolGovernance: [
+      'writes only governed coordination artifacts under openspec/',
+      'does not implement product code or delegate further',
+    ],
+    verification: [
+      'checks task coverage, ordering, ownership, and verification steps',
+    ],
   },
   {
     name: 'designer',
@@ -115,13 +178,13 @@ export const AGENT_ROLES = [
     canMutateWorkspace: true,
     scope: 'UI/UX decisions, implementation, and visual verification',
     responsibility:
-      'Own user-facing implementation choices and visual QA for UI work.',
+      'Own user-facing implementation choices and visual quality for UI work.',
     toolGovernance: [
       'may edit focused UI/UX files',
       'owns screenshots and visual QA',
-      'does not delegate or own SDD progress',
+      'does not delegate further',
     ],
-    verification: ['includes visual verification status when applicable'],
+    verification: ['includes visual verification when applicable'],
   },
   {
     name: 'quick',
@@ -130,11 +193,11 @@ export const AGENT_ROLES = [
     canMutateWorkspace: true,
     scope: 'fast bounded implementation',
     responsibility:
-      'Implement well-defined narrow or mechanical changes with focused verification.',
+      'Implement narrow or mechanical changes with focused verification.',
     toolGovernance: [
-      'may edit bounded targets',
-      'does not perform broad rediscovery',
-      'does not delegate or own SDD progress',
+      'edits only bounded targets',
+      'escalates when discovery or correctness risk exceeds the assignment',
+      'does not delegate further',
     ],
     verification: ['runs the smallest sufficient focused check'],
   },
@@ -143,35 +206,52 @@ export const AGENT_ROLES = [
     mode: 'write-capable',
     dispatch: 'synchronous-task-only',
     canMutateWorkspace: true,
-    scope: 'thorough implementation and verification',
+    scope: 'correctness-critical implementation and verification',
     responsibility:
-      'Handle correctness-critical, multi-file, or edge-case-heavy changes with full local context analysis.',
+      'Handle multi-file, edge-case-heavy, or high-risk implementation with full local context.',
     toolGovernance: [
-      'may edit implementation and tests',
+      'may edit implementation and tests within the assigned surface',
       'validates shared behavior against related code and call sites',
-      'does not delegate or own SDD progress',
+      'does not delegate further',
     ],
-    verification: ['does not skip verification and reports edge-case evidence'],
+    verification: ['reports focused checks and relevant edge-case evidence'],
   },
 ] as const satisfies readonly AgentRoleContract[];
 
-export const DELEGATE_FIRST_RULES = [
-  'The orchestrator coordinates, decides, asks blocking questions, and delegates evidence or action.',
-  'Explorer, librarian, and oracle remain read-only specialists.',
-  'Designer, quick, and deep are write-capable leaf agents with synchronous task dispatch.',
-  'Subagents return findings, diffs, verification, and blockers rather than raw file dumps.',
-  'No leaf agent owns SDD progress checkboxes or orchestrator-only memory.',
+export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
+  maxDelegationDepth: 1,
+  singleWriter: true,
+  rules: [
+    'The root performs bounded direct work when scope and intent are clear.',
+    'Delegate only when specialization, context isolation, or independent parallel work creates a net gain.',
+    'Prefer child agents for read-heavy exploration, research, analysis, and verification.',
+    'Use one writer for each mutable surface and never parallelize overlapping writes.',
+    'Child agents return distilled evidence instead of raw logs or file dumps.',
+  ],
+};
+
+export const AGENT_RETURN_CONTRACT = [
+  'conclusion',
+  'evidence',
+  'verification',
+  'risks',
+  'openQuestions',
+  'nextAction',
 ] as const;
 
 export const VERIFICATION_PROTOCOL = [
-  'Completion reports include changed files and verification evidence.',
-  'Behavior changes require the smallest sufficient automated check or an explicitly documented check.',
-  'Visual changes require designer-owned visual QA when feasible.',
+  'Completion reports identify changed files and verification evidence.',
+  'Behavior changes receive the smallest sufficient automated check or a declared manual check.',
+  'Visual changes receive designer-owned visual QA when applicable.',
 ] as const;
 
 export const AGENT_PACK_CONTRACT: AgentPackContract = {
   roles: [...AGENT_ROLES],
-  delegateFirstRules: [...DELEGATE_FIRST_RULES],
+  orchestrationPolicy: {
+    ...ORCHESTRATION_POLICY,
+    rules: [...ORCHESTRATION_POLICY.rules],
+  },
+  returnContract: [...AGENT_RETURN_CONTRACT],
   verificationProtocol: [...VERIFICATION_PROTOCOL],
 };
 
@@ -189,10 +269,15 @@ export function getAgentPackContract(): AgentPackContract {
   return {
     roles: AGENT_PACK_CONTRACT.roles.map((role) => ({
       ...role,
+      writeScope: role.writeScope ? [...role.writeScope] : undefined,
       toolGovernance: [...role.toolGovernance],
       verification: [...role.verification],
     })),
-    delegateFirstRules: [...AGENT_PACK_CONTRACT.delegateFirstRules],
+    orchestrationPolicy: {
+      ...AGENT_PACK_CONTRACT.orchestrationPolicy,
+      rules: [...AGENT_PACK_CONTRACT.orchestrationPolicy.rules],
+    },
+    returnContract: [...AGENT_PACK_CONTRACT.returnContract],
     verificationProtocol: [...AGENT_PACK_CONTRACT.verificationProtocol],
   };
 }

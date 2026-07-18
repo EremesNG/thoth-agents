@@ -2,68 +2,37 @@
 
 ## Responsibility
 
-This route owns common contracts, adapters, capabilities, diagnostics, agent
-packs, and writers for OpenCode, Codex, and Claude Code. It also governs the
-shape of generated artifacts; command experience belongs to the CLI.
+This route owns the canonical contracts, adapters, capabilities, diagnostics,
+and writers for OpenCode, Codex, and Claude Code.
 
-## Signals and entrypoints
+## Entrypoints
 
-- Signals: harness, adapter, writer, capability, diagnostic, Codex plugin,
-  Claude plugin, OpenCode config, generated artifact.
-- `src/harness/registry.ts` defines `DEFAULT_HARNESS`, the registry, and
-  resolution.
-- `src/harness/adapters/` translates the common contract per harness.
-- `src/harness/writers/` writes harness-specific layouts and packages.
-- `src/harness/core/` contains shared agent-pack, SDD, and memory contracts.
+- `src/harness/registry.ts`: default/supported harnesses.
+- `src/harness/core/agent-pack.ts`: ten-role contract.
+- `src/harness/core/sdd.ts`: route/artifact contract.
+- `src/harness/adapters/`: harness translation.
+- `src/harness/writers/`: deterministic artifact layouts.
 
-## Invariants and risks
+## Invariants
 
-- OpenCode remains the stable default harness.
-- Codex and Claude Code are supported routes, but their dispatch, permission,
-  hook, and trust mechanisms must not be described as identical to OpenCode.
-- Enforcement gaps must retain `instruction-only` diagnostics or wording; do not
-  turn guidance into a runtime guarantee.
-- Provider-owned memory assets and lifecycle protocols are never bundled in a
-  harness package; installed provider guidance remains authoritative.
-- Changing a generated layout requires reviewing fixtures, writers, installation,
-  public documentation, and packaging included by `package.json`.
-- Do not edit generated artifacts as the source of truth; change the owning writer.
+- OpenCode remains the default.
+- Codex uses the ambient session as root plus nine specialist TOMLs.
+- Claude packages the root agent plus nine subagents.
+- No adapter bundles SDD phase skills or thoth-mem provider assets.
+- Required external skills are installed by `src/cli/skills.ts`, outside plugin
+  manifests.
+- Codex/Claude plugin manifests remain minimal and use only documented fields.
+- Capability gaps remain explicit; never claim cross-harness enforcement parity.
+- Generated files are outputs. Change the owning adapter/writer.
 
-## Existing documentation
+## Public references
 
-- [`../installation.md`](../installation.md): harness selection and installation.
-- [`../codex-install.md`](../codex-install.md): Codex layout and trust.
-- [`../codex-plugin-packaging.md`](../codex-plugin-packaging.md): Codex packaging.
-- [`../claude-code-plugin-packaging.md`](../claude-code-plugin-packaging.md):
-  Claude Code packaging.
+- [`../installation.md`](../installation.md)
+- [`../codex-install.md`](../codex-install.md)
+- [`../codex-plugin-packaging.md`](../codex-plugin-packaging.md)
+- [`../claude-code-plugin-packaging.md`](../claude-code-plugin-packaging.md)
 
-Use those documents for public detail, but validate sensitive claims against the
-current registry, adapters, writers, and tests.
+## Verification
 
-## Dependencies and overlays
-
-- Load [`agents-and-delegation.md`](agents-and-delegation.md) if the role or
-  common-prompt contract changes.
-- Load [`cli-installation.md`](cli-installation.md) if the user changes install,
-  update, reset, dry-run, or interactive selection.
-- Load [`memory-governance.md`](memory-governance.md) for memory capabilities.
-
-## Tests and verification
-
-- `src/harness/registry.test.ts` fixes resolution and fallback.
-- `src/harness/adapters/**/*.test.ts` fixes capabilities by harness.
-- `src/harness/writers/**/*.test.ts` fixes generated layout and content.
-- `src/harness/generate-codex-plugin.test.ts` and packaging tests cover Codex.
-- `src/cli/*install.test.ts` covers installation integration.
-
-## Expand context when
-
-- a published surface or npm package content changes;
-- a test reveals a difference between docs and generated output;
-- a capability cannot be validated as runtime-enforced.
-
-## Evidence and uncertainty
-
-- Verified in `package.json`, `src/harness/`, `src/cli/operations/`, and tests.
-- Future Codex/Claude runtime capabilities require current evidence; retain the
-  declared limitation until such evidence exists.
+Run adapter/writer tests first, then the consuming CLI install/operation tests.
+Add build/schema verification when published output changes.

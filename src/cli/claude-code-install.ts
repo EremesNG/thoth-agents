@@ -16,7 +16,6 @@ import {
   CLAUDE_CODE_ROLE_NAMES,
   resolveClaudeCodeTargets,
 } from './claude-code-paths';
-import { findPackageRoot } from './custom-skills';
 import {
   type ManagedModelState,
   emptyManagedModelState as sharedEmptyManagedModelState,
@@ -26,6 +25,7 @@ import {
   uniqueMessages,
   writeTextWithBackup,
 } from './managed-state-io';
+import { findPackageRoot } from './package-root';
 
 export { CLAUDE_CODE_ROLE_NAMES } from './claude-code-paths';
 
@@ -169,7 +169,7 @@ function roleForArtifact(
     artifact.path.replaceAll('\\', '/'),
   );
   const name = match?.[1];
-  // Only the six specialists are model-managed; the orchestrator agent uses
+  // Only specialist subagents are model-managed; the orchestrator agent uses
   // `inherit` and is activated as the main thread, so it is not a managed role.
   return name && (CLAUDE_CODE_ROLE_NAMES as readonly string[]).includes(name)
     ? (name as ClaudeCodeRoleName)
@@ -273,7 +273,7 @@ export function buildClaudeCodeSetupPlan(
     diagnostics: [
       `Installed as a skills-directory plugin at ${targets.pluginRoot}; it auto-loads as thoth-agents@skills-dir on the next Claude Code session.`,
       'Restart Claude Code or run /reload-plugins to activate it; run /plugin (Installed tab) to confirm thoth-agents@skills-dir is loaded.',
-      'The plugin settings.json activates the orchestrator agent as the main thread, so the session starts in delegate-first mode.',
+      'The plugin settings.json activates the adaptive orchestrator as the main thread; it works directly on bounded tasks and delegates only for net gain.',
       'Provider capability is owned by the external provider and is not established by this thoth-agents setup plan.',
     ],
     disclaimers: [

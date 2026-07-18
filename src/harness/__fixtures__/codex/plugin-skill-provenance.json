@@ -11,8 +11,8 @@
       "field": "skills",
       "path": ".codex-plugin/skills/",
       "reference": "./skills/",
-      "name": "sdd-apply",
-      "sourcePath": "src/skills/sdd-apply"
+      "name": "example-skill",
+      "sourcePath": "fixtures/example-skill"
     }
   ]
 }

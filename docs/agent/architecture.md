@@ -2,67 +2,52 @@
 
 ## System shape
 
-The package has two main executable surfaces: `src/index.ts` composes the
-OpenCode plugin, and `src/cli/index.ts` runs the installer/TUI. `src/harness/`
-maintains common contracts and adapters/writers for OpenCode, Codex, and Claude
-Code. Role and SDD contracts are shared, but each harness may apply them
-through runtime enforcement or instructions only. thoth-mem is an independently
-installed provider; its installation, hooks, lifecycle, protocol, runtime
-state, and persistence guidance is authoritative outside this package.
+`src/index.ts` composes the OpenCode plugin. `src/cli/index.ts` exposes install,
+status, update, sync, model, and TUI operations. `src/harness/` contains the
+canonical ten-role and SDD contracts plus OpenCode, Codex, and Claude adapters.
+
+thoth-mem is a separate provider/plugin. Its installation, hooks, MCP, lifecycle,
+persistence, runtime state, and recovery are outside this package.
 
 ## Entry flows
 
 ### OpenCode runtime
 
-1. `src/index.ts:ThothAgents` loads configuration with `loadPluginConfig`.
-2. `createAgents` and `renderOpenCodeAgentConfigs` produce role configuration.
-3. The entrypoint registers hooks, MCPs, and tools from `src/hooks/`, `src/mcp/`,
-   and `src/tools/`.
-4. Colocated tests and `src/plugin-node-runtime.test.ts` verify integration and
-   built-runtime contracts.
+1. Load plugin config.
+2. Create the ten agents and render native OpenCode definitions.
+3. Compose thoth-agents MCPs, tools, fallback, retry/recovery, update, and tmux
+   behavior.
+4. Leave provider-owned memory integration untouched.
 
 ### Multi-harness installation
 
-1. `src/cli/index.ts:main` combines `parseCliArgs`, `detectRuntimeContext`, and
-   `runCliCommand`.
-2. `src/cli/operations/index.ts` selects operations for `opencode`, `codex`, or
-   `claude`.
-3. `src/harness/registry.ts` resolves the adapter; `src/harness/writers/`
-   produces specific artifacts.
-4. Tests under `src/cli/` and `src/harness/` fix paths, layout, and diagnostics.
+1. Parse the CLI/TUI selection.
+2. Resolve the OpenCode, Codex, or Claude operation adapter.
+3. Render/write only that harness's managed surfaces.
+4. Install and verify the four mandatory external skills in the harness-native
+   global root.
 
-## Boundaries and ownership
+## Boundaries
 
-| Boundary | Owner | Contract | Verification |
-|---|---|---|---|
-| OpenCode plugin | `src/index.ts` and runtime integrations | main export `dist/index.js` | `src/plugin-node-runtime.test.ts` and colocated tests |
-| Published CLI | `src/cli/` | `thoth-agents` binary -> `dist/cli/index.js` | parser, commands, install, and operations tests |
-| Harness portability | `src/harness/` | adapters, capabilities, diagnostics, and writers | `src/harness/**/*.test.ts` |
-| Roles and prompts | `src/agents/`, `src/config/` | seven canonical names and overrides | agents/config tests |
-| Governed workflow | `src/harness/core/`, `src/skills/`, `src/sdd/` | SDD and memory contracts | core/SDD/governance tests |
+| Boundary | Owner | Contract |
+| --- | --- | --- |
+| OpenCode plugin runtime | `src/index.ts`, `src/hooks/`, `src/mcp/`, `src/tools/` | `dist/index.js` |
+| Published CLI | `src/cli/` | `thoth-agents` -> `dist/cli/index.js` |
+| Harness portability | `src/harness/` | adapters, capabilities, diagnostics, writers |
+| Roles/prompts | `src/agents/`, `src/config/`, `src/harness/core/agent-pack.ts` | ten canonical roles and overrides |
+| SDD | `src/harness/core/sdd.ts` | three routes and Spec Kit-compatible artifact graph |
+| Required skills | `src/cli/skills.ts` | simplify, tdd, progressive-context-router, architectural-grilling for all harnesses |
+| Memory provider | installed thoth-mem | provider mechanics and lifecycle |
 
-## Non-obvious invariants
+## Invariants
 
-- OpenCode is `DEFAULT_HARNESS` in `src/harness/registry.ts`.
-- `SUPPORTED_HARNESSES` derives from the registry; do not maintain parallel
-  lists without checking adapters, operations, and tests.
-- Harness capabilities are not equivalent: an `instruction-only` fallback must
-  remain visible as a limitation.
-- Provider-dependent outcomes remain evidence-only (`supported`, `degraded`, or
-  `unsupported`); consumer guidance never claims provider success or invents a
-  fallback.
-- The build combines `tsup`, TypeScript declarations, and schema generation;
-  declarations have no independent pipeline.
-
-## Expand context when
-
-- a change crosses runtime and installation artifacts;
-- it modifies published output, a schema, or generated prompts;
-- it changes memory ownership, SDD phases, or harness enforcement.
-
-## Evidence and uncertainty
-
-- Verified in `package.json`, `src/index.ts`, `src/cli/index.ts`,
-  `src/cli/operations/index.ts`, `src/harness/registry.ts`, and cited tests.
-- Existing installation documentation may lag behind tests; when they disagree,
-  prefer the current manifest, registries, writers, and tests.
+- OpenCode is the default harness.
+- Harness guarantees differ and instruction-only gaps stay visible.
+- The root may work directly; delegation must produce net gain.
+- Delegation depth is one and each mutable surface has one writer.
+- SDD phase agents write only `openspec/` coordination artifacts.
+- Architectural grilling is conditional and precedes specification only when a
+  material human-owned decision tree requires it.
+- OpenCode ships only the built-in OpenAI preset.
+- External required skills are not plugin settings or fake manifest dependencies.
+- Build includes tsup, declaration generation, and schema generation.

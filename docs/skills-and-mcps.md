@@ -29,9 +29,9 @@ verification.
 | `progressive-context-router` | `EremesNG/skills` | Repository instruction and context-router work |
 | `architectural-grilling` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision before specification |
 
-Build copies only the four owned skills to `integrations/codex/skills` and
-`integrations/claude-code/skills`. OpenCode `/thoth-init` copies those same
-owned skills to project `.agents/skills/` without overwriting existing files.
+Build copies only the four owned skills to the shared `plugin/skills` tree used
+by Codex and Claude. OpenCode `/thoth-init` copies those same owned skills to
+project `.agents/skills/` without overwriting existing files.
 
 For every harness, the thoth-agents installer invokes `npx skills add` with the
 canonical repository, exact skill name, global scope, and concrete harness
@@ -59,7 +59,7 @@ offline structural validator. Oracle semantic review remains a separate gate.
 
 ## thoth-agents MCPs
 
-The harness packages may expose the research MCPs used by thoth-agents:
+The shared harness bundle may expose the research MCPs used by thoth-agents:
 
 | MCP | Purpose |
 | --- | --- |
@@ -68,7 +68,7 @@ The harness packages may expose the research MCPs used by thoth-agents:
 | `grep_app` | Public code search. |
 
 Their exact configuration differs by harness. OpenCode composes them at runtime;
-Codex and Claude render their documented MCP configuration surfaces.
+Codex reads `plugin/codex.mcp.json`, while Claude reads `plugin/.mcp.json`.
 
 ## thoth-mem boundary
 

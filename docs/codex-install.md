@@ -13,7 +13,7 @@ codex plugin marketplace add EremesNG/thoth-agents
 
 Restart Codex, open `/plugins`, and install or enable `thoth-agents`. The
 catalog is `.agents/plugins/marketplace.json`; it resolves to the versioned
-`integrations/codex` package.
+shared `plugin/` bundle.
 
 The plugin contains the four thoth-owned SDD/init/constitution/archive skills
 and packaged MCP configuration. External execution skills are deliberately not

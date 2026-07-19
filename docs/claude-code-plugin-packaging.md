@@ -1,16 +1,19 @@
 # Claude Code Plugin Packaging
 
-The Claude Code distribution is generated at `integrations/claude-code` and
-published through `.claude-plugin/marketplace.json`.
+Claude Code consumes the shared distribution generated at `plugin/`, published
+through `.claude-plugin/marketplace.json`. Codex resolves to this same bundle;
+each harness reads its own manifest and MCP surface.
 
 ## Generated layout
 
 ```text
-integrations/claude-code/
+plugin/
+├── .codex-plugin/
 ├── .claude-plugin/
 │   ├── plugin.json
 │   └── .thoth-agents-plugin-assets.json
 ├── .mcp.json
+├── codex.mcp.json
 ├── settings.json
 ├── agents/
 │   ├── orchestrator.md
@@ -28,8 +31,9 @@ integrations/claude-code/
 ```
 
 Every agent Markdown file is generated from the canonical `src/agents/` prompt
-contract. The four owned skills are copied from the canonical root `skills/`
-tree. The plugin version and marketplace entry equal the root package version.
+contract. The four owned skills are copied once from the canonical root
+`skills/` tree. Codex-only assets are inert for Claude. Both plugin manifests
+and marketplace entries equal the root package version.
 
 ## Runtime behavior
 
@@ -45,11 +49,11 @@ external skills reside in Claude's global skill root after CLI installation.
 
 ## Generation lifecycle
 
-`pnpm run integration:sync` regenerates the manifest, marketplace, agent files,
-settings, MCP configuration, asset inventory, and four thoth-owned skills.
-External skills remain CLI-installed from their canonical repositories. Build
-and npm version lifecycle commands run this synchronization, keeping release
-versions and integration contents aligned.
+`pnpm run integration:sync` regenerates both manifests and marketplaces, Claude
+agent files/settings, both MCP surfaces, both asset inventories, and one copy of
+the four thoth-owned skills. External skills remain CLI-installed from their
+canonical repositories. Build and npm version lifecycle commands run this
+synchronization, keeping release versions and shared bundle contents aligned.
 
 ## Ownership and limitations
 

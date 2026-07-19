@@ -29,8 +29,9 @@ The marketplace name is `thoth-agents`; its catalog is
 claude plugin install thoth-agents@thoth-agents --scope user
 ```
 
-Claude copies `integrations/claude-code` into its manager-owned cache.
-thoth-agents never edits that cache directly.
+Claude copies the shared `plugin/` bundle into its manager-owned cache.
+Codex resolves to the same source through its own marketplace. thoth-agents
+never edits either manager cache directly.
 
 ## 3. Install the external skills
 

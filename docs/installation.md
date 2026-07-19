@@ -59,8 +59,8 @@ codex plugin marketplace add EremesNG/thoth-agents
 
 Restart Codex, open `/plugins`, and install or enable `thoth-agents`. The
 repository catalog `.agents/plugins/marketplace.json` points to
-`integrations/codex`, which contributes bundled owned skills and MCP
-configuration.
+the shared `plugin/` bundle, which contributes bundled owned skills and the
+Codex MCP configuration.
 
 Then apply the mandatory global orchestration layer from a terminal:
 

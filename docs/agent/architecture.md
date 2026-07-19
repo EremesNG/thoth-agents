@@ -14,7 +14,8 @@ persistence, state, and recovery are outside this package.
 
 1. OpenCode loads seven native role definitions and registers `/thoth-init`.
 2. Integration generation renders Claude agents from canonical prompt source and
-   copies the four thoth-owned skills into Codex and Claude packages.
+   assembles one shared `plugin/` bundle with a single copy of the four
+   thoth-owned skills.
 3. Codex marketplace installation exposes skills/MCP; mandatory CLI setup then
    materializes global custom-agent TOMLs, `~/.codex/AGENTS.md`, and config
    because the manifest cannot install them. `$thoth-init` creates project
@@ -31,7 +32,7 @@ persistence, state, and recovery are outside this package.
 | Roles/prompts | `src/agents/`, `src/config/`, `src/harness/core/agent-pack.ts` |
 | SDD ownership | `src/harness/core/sdd.ts` |
 | Detailed SDD/init/archive contracts | `skills/` |
-| Generated integrations | `src/harness/generate-integration-packages.ts` |
+| Generated shared plugin | `src/harness/generate-integration-packages.ts`, `plugin/` |
 | Installation and operations CLI | `src/cli/` |
 | Memory provider | installed thoth-mem |
 
@@ -44,4 +45,6 @@ persistence, state, and recovery are outside this package.
 - OpenCode ships only the OpenAI preset.
 - Owned SDD contracts are bundled; external skills come from canonical
   repositories during installation and are never fetched during an SDD.
-- Build synchronizes both integrations before compilation and schema generation.
+- Both marketplaces resolve to the shared `plugin/` bundle; harness-specific
+  manifests and MCP surfaces coexist without duplicating canonical skills.
+- Build synchronizes the shared plugin before compilation and schema generation.

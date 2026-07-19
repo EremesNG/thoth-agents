@@ -1,16 +1,21 @@
 # Codex Plugin Packaging
 
-The Codex distribution is generated at `integrations/codex` and published
-through `.agents/plugins/marketplace.json`.
+Codex consumes the shared distribution generated at `plugin/`, published
+through `.agents/plugins/marketplace.json`. Claude resolves to this same bundle;
+each harness reads its own manifest and MCP surface.
 
 ## Generated layout
 
 ```text
-integrations/codex/
+plugin/
 ├── .codex-plugin/
 │   ├── plugin.json
 │   └── .thoth-agents-plugin-assets.json
+├── .claude-plugin/
+├── codex.mcp.json
 ├── .mcp.json
+├── agents/
+├── settings.json
 └── skills/
     ├── thoth-init/
     ├── thoth-sdd/
@@ -18,9 +23,10 @@ integrations/codex/
     └── thoth-archive/
 ```
 
-The manifest declares `skills: "./skills/"` and the packaged MCP file. It does
-not declare or hide custom-agent TOMLs: Codex's documented plugin structure has
-no agents component.
+The Codex manifest declares `skills: "./skills/"` and
+`mcpServers: "./codex.mcp.json"`. The sibling Claude assets are inert for Codex.
+The manifest does not declare or hide custom-agent TOMLs: Codex's documented
+plugin structure has no agents component.
 
 ## Required global layer
 
@@ -35,11 +41,12 @@ canonical repositories. The plugin package cannot perform those global writes.
 
 ## Generation lifecycle
 
-`pnpm run integration:sync` renders package metadata, the four thoth-owned
-skills, and marketplace catalogs. External skills remain CLI-installed from
-their canonical repositories. `pnpm run build` synchronizes before compilation.
-The npm version lifecycle used by `release:patch`, `release:minor`, and
-`release:major` keeps both integration versions aligned with the root version.
+`pnpm run integration:sync` renders both harness manifests, their MCP surfaces,
+Claude agents/settings, one copy of the four thoth-owned skills, and both
+marketplace catalogs. External skills remain CLI-installed from their canonical
+repositories. `pnpm run build` synchronizes before compilation. The npm version
+lifecycle used by `release:patch`, `release:minor`, and `release:major` keeps
+both plugin manifests aligned with the root version.
 
 ## Ownership and limitations
 

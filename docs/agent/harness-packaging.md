@@ -6,7 +6,8 @@
 - `src/harness/core/agent-pack.ts`: seven-role contract
 - `src/harness/core/sdd.ts`: route and ownership contract
 - `src/harness/adapters/`: native translation
-- `src/harness/generate-integration-packages.ts`: Codex/Claude packages
+- `src/harness/generate-integration-packages.ts`: shared Codex/Claude plugin
+- `plugin/`: generated shared distribution bundle
 - `skills/`: canonical thoth-owned workflow bundle
 - `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`:
   repository marketplace catalogs
@@ -18,14 +19,16 @@
   Its plugin manifest carries skills/MCP but cannot install custom agents or
   `~/.codex/AGENTS.md`; `$thoth-init` creates project governance only.
 - Claude packages root plus six generated namespaced subagents.
-- Both packages include the four canonical thoth-owned skills. External skills
-  are installed from their source repositories by the mandatory CLI flow.
+- Both marketplaces resolve to one `plugin/` bundle containing one copy of the
+  four canonical thoth-owned skills. Harness-specific manifests and MCP files
+  coexist in that bundle. External skills are installed from their source
+  repositories by the mandatory CLI flow.
 - Native managers own marketplace snapshots, cache, enablement, and trust.
 - Generated files are outputs; edit canonical adapters, prompts, or skills.
 - Capability gaps remain explicit and deduplicated. Only unrecoverable required
   generation errors exit nonzero.
-- Build and npm version lifecycle synchronize plugin versions and generated
-  packages.
+- Build and npm version lifecycle synchronize both plugin manifests and the
+  generated shared bundle.
 - No adapter bundles thoth-mem lifecycle behavior or project QA executables.
 
 ## Verification

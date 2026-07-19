@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="img/thoth-agents-header.webp" alt="The cyber-Egyptian agents of thoth-agents" width="100%">
+  <img src="img/thoth-agents-header.webp" alt="Seven cyber-Egyptian thoth-agents roles, with Thoth as the Orchestrator centered between three read-only specialists and three implementation writers" width="100%">
   <h1>Thoth-Agents</h1>
   <p><i>Adaptive orchestration for OpenCode, Codex, and Claude Code.</i></p>
   <p><b>Seven roles</b> · <b>Three SDD routes</b> · <b>Runtime-autonomous SDD</b></p>
@@ -124,15 +124,137 @@ and limitations.
 
 ## Seven roles
 
-| Mode | Roles | Responsibility |
-| --- | --- | --- |
-| Adaptive root | `orchestrator` | Keep task ownership and synthesis, choose the route, coordinate SDD artifacts, and implement bounded work directly. |
-| Read-only | `explorer` | Resolve repository uncertainty and return decision-ready local evidence. |
-| Read-only | `librarian` | Gather current authoritative external evidence and label inference. |
-| Read-only | `oracle` | Challenge plans, own Full analysis, and independently verify every implementation. |
-| Writer | `designer` | Own UI/UX choices, implementation, and visual verification. |
-| Writer | `quick` | Make narrow, clear, low-risk edits within an explicit surface. |
-| Writer | `deep` | Handle multi-file, edge-case-heavy, or correctness-critical implementation. |
+One adaptive root and six specialists cover repository discovery, authoritative
+research, independent verification, UI/UX, narrow implementation, and
+correctness-critical work.
+
+### Adaptive root
+
+<table width="100%">
+  <tr>
+    <td width="34%" align="center" valign="top">
+      <img src="img/agents/orchestrator.webp" width="240" alt="Cyber-Egyptian Orchestrator represented by Thoth coordinating the team">
+    </td>
+    <td width="66%" valign="top">
+      <b>Orchestrator</b>
+      <br>
+      <i>Adaptive root and final synthesis.</i>
+      <br><br>
+      Keeps task ownership and synthesis, chooses the route, coordinates SDD
+      artifacts, and implements bounded work directly.
+      <br><br>
+      <b>Mode:</b> <code>adaptive-root</code>
+    </td>
+  </tr>
+</table>
+
+### Read-only specialists
+
+<table width="100%">
+  <tr>
+    <td width="34%" align="center" valign="top">
+      <img src="img/agents/explorer.webp" width="240" alt="Cyber-Egyptian Explorer represented by Anubis tracing repository paths">
+    </td>
+    <td width="66%" valign="top">
+      <b>Explorer</b>
+      <br>
+      <i>Decision-ready local discovery.</i>
+      <br><br>
+      Resolves repository uncertainty and returns decision-ready local evidence.
+      <br><br>
+      <b>Mode:</b> <code>read-only</code>
+    </td>
+  </tr>
+</table>
+
+<table width="100%">
+  <tr>
+    <td width="34%" align="center" valign="top">
+      <img src="img/agents/librarian.webp" width="240" alt="Cyber-Egyptian Librarian represented by Seshat consulting an authoritative scroll">
+    </td>
+    <td width="66%" valign="top">
+      <b>Librarian</b>
+      <br>
+      <i>Authoritative external research.</i>
+      <br><br>
+      Gathers current authoritative external evidence and labels inference.
+      <br><br>
+      <b>Mode:</b> <code>read-only</code>
+    </td>
+  </tr>
+</table>
+
+<table width="100%">
+  <tr>
+    <td width="34%" align="center" valign="top">
+      <img src="img/agents/oracle.webp" width="240" alt="Cyber-Egyptian Oracle represented by Ma'at weighing independent evidence">
+    </td>
+    <td width="66%" valign="top">
+      <b>Oracle</b>
+      <br>
+      <i>Independent analysis and verification.</i>
+      <br><br>
+      Challenges plans, owns Full analysis, and independently verifies every
+      implementation.
+      <br><br>
+      <b>Mode:</b> <code>read-only</code>
+    </td>
+  </tr>
+</table>
+
+### Implementation writers
+
+<table width="100%">
+  <tr>
+    <td width="34%" align="center" valign="top">
+      <img src="img/agents/designer.webp" width="240" alt="Cyber-Egyptian Designer represented by Hathor shaping interface geometry">
+    </td>
+    <td width="66%" valign="top">
+      <b>Designer</b>
+      <br>
+      <i>UI/UX ownership and visual quality.</i>
+      <br><br>
+      Owns UI/UX choices, implementation, and visual verification.
+      <br><br>
+      <b>Mode:</b> <code>write-capable</code>
+    </td>
+  </tr>
+</table>
+
+<table width="100%">
+  <tr>
+    <td width="34%" align="center" valign="top">
+      <img src="img/agents/quick.webp" width="240" alt="Cyber-Egyptian Quick represented by Horus placing a precise component">
+    </td>
+    <td width="66%" valign="top">
+      <b>Quick</b>
+      <br>
+      <i>Fast bounded implementation.</i>
+      <br><br>
+      Makes narrow, clear, low-risk edits within an explicit surface.
+      <br><br>
+      <b>Mode:</b> <code>write-capable</code>
+    </td>
+  </tr>
+</table>
+
+<table width="100%">
+  <tr>
+    <td width="34%" align="center" valign="top">
+      <img src="img/agents/deep.webp" width="240" alt="Cyber-Egyptian Deep represented by Sobek examining a complex mechanism">
+    </td>
+    <td width="66%" valign="top">
+      <b>Deep</b>
+      <br>
+      <i>Correctness-critical implementation.</i>
+      <br><br>
+      Handles multi-file, edge-case-heavy, or correctness-critical
+      implementation.
+      <br><br>
+      <b>Mode:</b> <code>write-capable</code>
+    </td>
+  </tr>
+</table>
 
 Children do not delegate. Each mutable surface has one writer. Parallel work is
 limited to independent surfaces. The implementation writer never reviews or
@@ -209,8 +331,8 @@ QA executables such as Playwright remain project-owned.
 
 Codex and Claude marketplace manifests are versioned in
 `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`. The
-generated integration packages live under `integrations/` and are synchronized
-by build and npm version lifecycle commands.
+two catalogs resolve to the same generated `plugin/` bundle. Build and npm
+version lifecycle commands keep that shared bundle synchronized.
 
 ## Models and provider boundaries
 

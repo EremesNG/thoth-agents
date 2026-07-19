@@ -99,7 +99,7 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain(
       'Run this CLI through a global install, npx, or pnpm dlx.',
     );
-    expect(output).toContain('ten-role roster');
+    expect(output).toContain('seven-role roster');
     expect(output).toContain(
       'simplify, tdd, progressive-context-router, and architectural-grilling',
     );
@@ -309,7 +309,7 @@ describe('commands plain operation formatters', () => {
         expect(output).toContain(backupPath);
         expect(output.split(backupPath)).toHaveLength(2);
       }
-      expect(output).toContain('Write thoth-agents ten-role config');
+      expect(output).toContain('Write thoth-agents seven-role config');
       expect(output).not.toContain(
         'Refresh bundled thoth-agents OpenCode skills',
       );

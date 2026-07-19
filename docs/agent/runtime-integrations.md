@@ -2,27 +2,23 @@
 
 ## Responsibility
 
-This route owns OpenCode plugin composition, thoth-agents hooks, research MCPs,
-LSP/ast-grep tools, tmux, and runtime model fallback. It does not own Codex or
-Claude installation and does not own provider memory lifecycle.
+This route owns OpenCode plugin composition, seven native role definitions,
+`/thoth-init`, thoth-agents hooks, research MCPs, LSP/ast-grep tools, tmux, and
+runtime model fallback. It does not own Codex/Claude manager state or provider
+memory lifecycle.
 
 ## Flow
 
-1. `src/index.ts` loads config and renders the ten OpenCode agents.
-2. It composes thoth-agents MCPs and tools.
-3. It registers update checking, delegation retry guidance, JSON recovery,
-   foreground fallback, and optional tmux behavior.
-4. It leaves required-skill installation to the CLI and thoth-mem integration to
-   the independent provider.
+1. Load config and render seven OpenCode roles.
+2. Register the offline `/thoth-init` command from the packaged skill.
+3. Compose MCPs, tools, fallback, retry/recovery, update, and optional tmux.
+4. Leave thoth-mem mechanics to the independent provider.
 
 ## Invariants
 
-- Preserve user agent overrides.
+- Preserve user agent and command overrides.
 - Respect `disabled_mcps`.
-- OpenCode generated defaults use only the built-in OpenAI preset.
-- No Copilot-specific header hook or alternate-provider preset is part of 0.3.0.
-- No phase-reminder, phase-skill sync, or provider lifecycle hook is bundled.
+- Generate only the built-in OpenAI preset.
+- No alternate-provider mapping, phase-agent reminder, or provider lifecycle
+  hook is bundled.
 - Tmux is OpenCode-only.
-
-Verify with colocated hook/MCP/tool tests and
-`src/plugin-node-runtime.test.ts` after build-affecting changes.

@@ -1,137 +1,113 @@
 # Claude Code Install
 
-Claude Code installation has two required layers: the native marketplace plugin
-and the thoth-agents CLI setup. Install the plugin first, then run the CLI. The
-plugin supplies the Claude-native agents and MCP configuration; the CLI installs
-the mandatory external skills and verifies the complete state.
+Claude Code receives a native plugin containing the orchestrator, six namespaced
+specialists, MCP configuration, and the four workflow skills owned by
+thoth-agents. The CLI remains a required installation step for the four external
+skills, but agents do not consume it during SDD phases.
 
 ## Requirements
 
-- Node.js `>=22.13`
-- A current Claude Code installation with the `claude plugin` commands
-- Git access to `EremesNG/thoth-agents`
-- Permission to add a user-scope marketplace and plugin
-- Network access for the mandatory external skills
+- Node.js `>=22.13` for bundled scripts
+- Claude Code with native plugin marketplace commands
+- Permission to add and trust `EremesNG/thoth-agents`
+- Network access during installation for the external skill repositories
 
 ## 1. Register the marketplace
 
-Run this in a normal terminal before invoking the thoth-agents CLI:
+Run in a terminal:
 
 ```bash
 claude plugin marketplace add EremesNG/thoth-agents --scope user
 ```
 
-The marketplace name is `thoth-agents` and its catalog lives at
-`.claude-plugin/marketplace.json` in the repository.
+The marketplace name is `thoth-agents`; its catalog is
+`.claude-plugin/marketplace.json`.
 
-## 2. Install the native plugin
+## 2. Install the plugin
 
 ```bash
 claude plugin install thoth-agents@thoth-agents --scope user
 ```
 
-Claude Code copies the versioned package under `integrations/claude-code` into
-its manager-owned plugin cache. thoth-agents never edits that cache directly.
+Claude copies `integrations/claude-code` into its manager-owned cache.
+thoth-agents never edits that cache directly.
 
-## 3. Run the mandatory CLI setup
+## 3. Install the external skills
 
-Inspect the zero-write plan, then apply it:
+After the two native commands succeed, preview and run the CLI layer:
 
 ```bash
 npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```
 
-The CLI recognizes the marketplace and enabled plugin as already installed. It
-then installs and verifies these global Claude skills:
+The installer invokes `npx skills add` for `simplify`, `tdd`,
+`progressive-context-router`, and `architectural-grilling`, targeting the global
+Claude skill root. A missing external skill makes the installation incomplete.
+
+## 4. Reload and initialize the project
+
+Restart Claude Code or run `/reload-plugins`, then open the target repository and
+invoke:
 
 ```text
-~/.claude/skills/simplify/
-~/.claude/skills/tdd/
-~/.claude/skills/progressive-context-router/
-~/.claude/skills/architectural-grilling/
+/thoth-agents:thoth-init
 ```
 
-These skills are standalone repositories, not plugin components. Claude plugin
-dependencies and plugin startup do not provide a general-purpose `postinstall`
-for them, so the CLI step has no supported replacement.
+Init creates missing `openspec/memory/constitution.md`, SDD templates, and
+initialization metadata. Claude discovers agents and thoth-owned phase contracts
+from the plugin; external execution skills come from the preceding CLI step.
+Project initialization is offline, idempotent, and preserves project-owned
+files.
 
-## 4. Reload and verify
+## Packaged surfaces
 
-Restart Claude Code or run:
+| Surface | Contents |
+| --- | --- |
+| `agents/` | Main `orchestrator` plus `explorer`, `librarian`, `oracle`, `designer`, `quick`, and `deep` generated from canonical source |
+| `skills/` | Owned SDD/init/constitution/archive skills only |
+| `.mcp.json` | Packaged thoth-agents research MCP configuration |
+| `settings.json` | Activates the orchestrator as the main plugin agent |
 
-```text
-/reload-plugins
-/plugin
-```
+Namespaced delegation uses `thoth-agents:<role>`. Children never delegate.
+Read-only `oracle` always owns Full analysis and every verification, regardless
+of who implemented the change.
 
-For terminal-readable state and thoth-agents drift checks:
+## Verification
 
 ```bash
 claude plugin marketplace list --json
 claude plugin list --json
+```
+
+Inside Claude Code, inspect `/plugin`. A healthy install shows the canonical
+marketplace, an enabled `thoth-agents@thoth-agents` plugin, and all mandatory
+external skills reported by the CLI:
+
+```bash
 npx thoth-agents@latest status --harness=claude
 ```
 
-A healthy installation has the canonical marketplace, an enabled
-`thoth-agents@thoth-agents` user plugin, and all four required global skills.
-
-## What each layer provides
-
-| Layer | Provides | Does not provide |
-| --- | --- | --- |
-| Native Claude plugin | Main `orchestrator` agent, nine namespaced subagents, `settings.json`, and research MCPs | Standalone global skills, project QA tools, or thoth-mem |
-| thoth-agents CLI | Required global skills, native-state verification, enable/update repair, status, and sync | Direct edits to Claude's plugin cache or post-install role-model rewrites |
-
-The documented first-install path performs the two native commands explicitly.
-The CLI can reconcile an absent, disabled, or stale native plugin during repair,
-update, and sync operations, but it cannot bypass Claude trust, organization
-policy, source conflicts, or an unreadable manager state.
-
 ## Limitations
 
-- Claude owns marketplace snapshots and the versioned plugin cache. Publish a
-  new thoth-agents version to change packaged agents or their default models.
-- `explorer`, `librarian`, and `oracle` deny `Write` and `Edit`, but exact
-  permission parity with OpenCode is not claimed.
-- The `openspec/`-only boundary for SDD coordination agents is
-  instruction-level because Claude permissions do not restrict Edit/Write to a
-  path pattern per agent.
-- Subagents cannot delegate further. The plugin orchestrator is the main thread
-  and keeps delegation depth at one.
+- Claude owns marketplace snapshots, cache files, and packaged model defaults;
+  publish a new plugin version to change them.
+- Explorer, librarian, and oracle deny `Write` and `Edit`. Fine-grained
+  `openspec/` path restrictions are instruction-level because Claude's plugin
+  permission map is not a path-pattern sandbox.
 - Background agents cannot surface interactive permission or clarification
-  prompts in the same way as foreground agents.
-- thoth-mem remains an independent plugin/provider and must be installed
-  separately.
-- Browser, visual, integration, and end-to-end QA executables remain
-  project-owned.
+  prompts like the foreground session.
+- Organization `strictKnownMarketplaces` policy can block registration or
+  updates; thoth-agents cannot bypass it.
+- Project-scope use requires workspace trust.
+- thoth-mem and project QA executables remain separate.
 
 ## Troubleshooting
 
-### `claude plugin` is unavailable
-
-Update Claude Code, restart the terminal, and confirm `claude --version`. The
-native marketplace flow requires a Claude Code release with plugin management.
-
-### Marketplace name conflict
-
-Run `claude plugin marketplace list --json`. If another source is already
-registered as `thoth-agents`, resolve it through Claude Code before rerunning the
-CLI. thoth-agents fails closed instead of replacing a conflicting source.
-
-### Organization policy blocks the marketplace
-
-Managed `strictKnownMarketplaces` policy can prevent registration or updates.
-The CLI cannot override that policy; ask the Claude administrator to allow the
-repository source.
-
-### Plugin is installed but skills are missing
-
-Rerun the CLI setup or apply sync:
-
-```bash
-npx thoth-agents@latest sync --harness=claude --apply
-```
+If `claude plugin` is unavailable, update Claude Code and restart the terminal.
+For a marketplace-name conflict, inspect `claude plugin marketplace list --json`
+and resolve the conflicting native source. If policy blocks the marketplace, ask
+the Claude administrator to allow the repository.
 
 ## Upstream references
 
@@ -139,6 +115,3 @@ npx thoth-agents@latest sync --harness=claude --apply
 - [Create and distribute a Claude Code marketplace](https://code.claude.com/docs/en/plugin-marketplaces)
 - [Claude Code plugin reference](https://code.claude.com/docs/en/plugins-reference)
 - [Claude Code subagents](https://code.claude.com/docs/en/sub-agents)
-
-See [Claude Code Plugin Packaging](claude-code-plugin-packaging.md) for the
-published package layout and generation contract.

@@ -1,7 +1,7 @@
 {
   "name": "thoth-agents",
   "version": "0.3.0",
-  "description": "Adaptive multi-harness orchestration with ten roles, Spec Kit-compatible SDD routes, and external provider boundaries.",
+  "description": "Adaptive multi-harness orchestration with seven roles, runtime-autonomous Spec Kit-compatible SDD routes, and external provider boundaries.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -34,6 +34,7 @@
   "homepage": "https://github.com/EremesNG/thoth-agents#readme",
   "files": [
     "dist",
+    "skills",
     "integrations",
     ".agents/plugins/marketplace.json",
     ".claude-plugin/marketplace.json",

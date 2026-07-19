@@ -39,7 +39,7 @@ describe('Codex adapter v0.3', () => {
     });
   });
 
-  test('renders the canonical nine child-agent TOML files', () => {
+  test('renders the canonical six specialist TOML files', () => {
     const paths = render()
       .artifacts.filter((entry) => entry.kind === 'agent-config')
       .map((entry) => entry.path);
@@ -48,9 +48,6 @@ describe('Codex adapter v0.3', () => {
       '.codex/agents/thoth-agents-explorer.toml',
       '.codex/agents/thoth-agents-librarian.toml',
       '.codex/agents/thoth-agents-oracle.toml',
-      '.codex/agents/thoth-agents-sdd-specify.toml',
-      '.codex/agents/thoth-agents-sdd-plan.toml',
-      '.codex/agents/thoth-agents-sdd-tasks.toml',
       '.codex/agents/thoth-agents-designer.toml',
       '.codex/agents/thoth-agents-quick.toml',
       '.codex/agents/thoth-agents-deep.toml',
@@ -67,34 +64,23 @@ describe('Codex adapter v0.3', () => {
     expect(root).toContain('Accelerated SDD');
     expect(root).toContain('collaboration.spawn_agent');
     expect(root).toContain('request_user_input');
-    expect(root).toContain('sdd-specify subagent');
+    expect(root).toContain('thoth-sdd');
+    expect(root).toMatch(/every.*verify|verify.*always/i);
+    expect(root).toContain('oracle');
     expect(root).not.toContain('delegate-first');
     expect(root).not.toContain('requirements-interview');
     expect(root).not.toContain('task_status');
+    expect(root).not.toContain('<phase-protocols>');
   });
 
-  test('renders read-only and coordination-write sandbox boundaries', () => {
+  test('renders read-only and writer sandbox boundaries', () => {
     const explorer = agentContent('explorer');
-    const specify = agentContent('sdd-specify');
+    const deep = agentContent('deep');
 
     expect(explorer).toContain('sandbox_mode = "read-only"');
     expect(explorer).toContain('Mode: read-only');
-    expect(specify).toContain('sandbox_mode = "workspace-write"');
-    expect(specify).toContain('coordination-write');
-    expect(specify).toContain('Do not edit product code');
-    expect(specify).toContain('openspec/');
-  });
-
-  test('uses the canonical speed-conscious models for phase agents', () => {
-    expect(agentContent('sdd-specify')).toContain('model = "gpt-5.6-sol"');
-    expect(agentContent('sdd-specify')).toContain(
-      'model_reasoning_effort = "high"',
-    );
-    expect(agentContent('sdd-plan')).toContain('model = "gpt-5.6-sol"');
-    expect(agentContent('sdd-tasks')).toContain('model = "gpt-5.6-luna"');
-    expect(agentContent('sdd-tasks')).toContain(
-      'model_reasoning_effort = "medium"',
-    );
+    expect(deep).toContain('sandbox_mode = "workspace-write"');
+    expect(deep).toContain('write-capable');
   });
 
   test('does not bundle a memory provider MCP', () => {
@@ -119,20 +105,15 @@ describe('Codex adapter v0.3', () => {
     expect(hookDiagnostics).toEqual([]);
   });
 
-  test('ships SDD behavior through agents instead of bundled phase skills', () => {
+  test('declares the thoth-owned bundled skill directory', () => {
     const result = render();
     const manifest = JSON.parse(
       String(artifact(result.artifacts, '.codex-plugin/plugin.json')?.content),
     ) as Record<string, unknown>;
 
-    expect(result.artifacts.some((entry) => entry.kind === 'skill')).toBe(
-      false,
-    );
-    expect(manifest.skills).toBeUndefined();
+    expect(manifest.skills).toBe('./skills/');
     expect(
-      result.artifacts.some((entry) =>
-        entry.path.includes('.codex-plugin/skills/'),
-      ),
+      result.artifacts.some((entry) => entry.path === '.codex-plugin/skills/'),
     ).toBe(false);
   });
 });

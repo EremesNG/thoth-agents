@@ -14,14 +14,11 @@ describe('agent-pack contract', () => {
       'explorer',
       'librarian',
       'oracle',
-      'sdd-specify',
-      'sdd-plan',
-      'sdd-tasks',
       'designer',
       'quick',
       'deep',
     ]);
-    expect(AGENT_ROLE_NAMES).toHaveLength(10);
+    expect(AGENT_ROLE_NAMES).toHaveLength(7);
   });
 
   test('makes the root adaptive instead of delegation-only', () => {
@@ -43,6 +40,9 @@ describe('agent-pack contract', () => {
     expect(contract.orchestrationPolicy.rules.join('\n')).not.toContain(
       'delegate-first',
     );
+    expect(getAgentRole('orchestrator').responsibility).toMatch(
+      /coordination|specification|planning/i,
+    );
   });
 
   test('keeps discovery and judgment read-only', () => {
@@ -54,23 +54,14 @@ describe('agent-pack contract', () => {
     }
   });
 
-  test('limits SDD phase agents to coordination artifacts', () => {
-    for (const name of ['sdd-specify', 'sdd-plan', 'sdd-tasks'] as const) {
-      expect(getAgentRole(name)).toMatchObject({
-        mode: 'coordination-write',
-        dispatch: 'synchronous-task-only',
-        canMutateWorkspace: true,
-        writeScope: ['openspec/'],
-      });
-    }
-  });
+  test('keeps sequential SDD coordination in the adaptive root', () => {
+    const role = getAgentRole('orchestrator');
 
-  test('assigns append-only convergence to sdd-tasks', () => {
-    const role = getAgentRole('sdd-tasks');
-
-    expect(role.responsibility).toMatch(/convergence/i);
+    expect(role.toolGovernance.join('\n')).toMatch(/openspec/i);
     expect(role.toolGovernance.join('\n')).toMatch(/append-only/i);
-    expect(role.toolGovernance.join('\n')).toMatch(/does not implement/i);
+    expect(role.toolGovernance.join('\n')).toMatch(
+      /load.*contract|contract.*demand/i,
+    );
   });
 
   test('keeps implementation ownership with the three writer roles', () => {
@@ -83,12 +74,16 @@ describe('agent-pack contract', () => {
     }
   });
 
-  test('allows quick to perform mechanical verified archive closeout', () => {
-    const role = getAgentRole('quick');
+  test('reserves independent analysis and every verification for oracle', () => {
+    const role = getAgentRole('oracle');
 
-    expect(role.scope).toMatch(/archive/i);
-    expect(role.responsibility).toMatch(/archive/i);
-    expect(role.toolGovernance.join('\n')).toMatch(/verify-report\.md/);
+    expect(role.scope).toMatch(/analysis/i);
+    expect(role.responsibility).toMatch(
+      /every.*verification|verification.*every/i,
+    );
+    expect(role.toolGovernance.join('\n')).toMatch(
+      /never.*implementer|independent/i,
+    );
   });
 
   test('defines one compact return contract for every child agent', () => {

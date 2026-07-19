@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  getRequiredSkillInstallCommand,
   getRequiredSkillPath,
   installRequiredSkill,
   REQUIRED_SKILLS,
@@ -43,7 +44,7 @@ describe('required skill install helper', () => {
     ).toEqual([
       {
         name: 'simplify',
-        repo: 'https://github.com/brianlovin/claude-config',
+        repo: 'https://github.com/EremesNG/skills',
         skillName: 'simplify',
       },
       {
@@ -101,9 +102,9 @@ describe('required skill install helper', () => {
     const result = installRequiredSkill(testSkill, harness, { homeDir });
 
     expect(result.status).toBe('failed');
-    expect(spawnSync).toHaveBeenCalledWith(
-      'npx',
-      [
+    expect(getRequiredSkillInstallCommand(testSkill, harness)).toEqual({
+      command: 'npx',
+      args: [
         'skills',
         'add',
         testSkill.repo,
@@ -114,6 +115,10 @@ describe('required skill install helper', () => {
         cliAgent,
         '--yes',
       ],
+    });
+    expect(spawnSync).toHaveBeenCalledWith(
+      'npx',
+      getRequiredSkillInstallCommand(testSkill, harness).args,
       { stdio: 'inherit' },
     );
   });

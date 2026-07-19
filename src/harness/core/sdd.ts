@@ -128,8 +128,8 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['explore'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-specify',
-    eligibleAgentRoles: ['sdd-specify'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason: 'Define the user-visible requirements and acceptance contract.',
   },
   {
@@ -140,8 +140,8 @@ export const SDD_PHASES = [
     activation: 'conditional',
     prerequisites: ['specify'],
     producesArtifact: false,
-    defaultAgentRole: 'sdd-specify',
-    eligibleAgentRoles: ['sdd-specify'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason: 'Resolve only material ambiguity that would change the solution.',
     condition:
       'Activate when unresolved decisions cannot be handled by a safe local assumption.',
@@ -154,8 +154,8 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['specify'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-plan',
-    eligibleAgentRoles: ['sdd-plan'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason: 'Translate requirements into an executable technical approach.',
   },
   {
@@ -166,8 +166,8 @@ export const SDD_PHASES = [
     activation: 'conditional',
     prerequisites: ['specify', 'plan'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-specify',
-    eligibleAgentRoles: ['sdd-specify'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason:
       'Audit requirement quality when risk justifies an explicit checklist.',
     condition:
@@ -181,8 +181,8 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['specify', 'plan'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-tasks',
-    eligibleAgentRoles: ['sdd-tasks'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason:
       'Produce dependency-ordered implementation slices with verification.',
   },
@@ -221,9 +221,9 @@ export const SDD_PHASES = [
     prerequisites: ['implement'],
     producesArtifact: true,
     defaultAgentRole: 'oracle',
-    eligibleAgentRoles: ['orchestrator', 'oracle'],
+    eligibleAgentRoles: ['oracle'],
     reason:
-      'Judge the result against requirements, contracts, and focused checks.',
+      'Independently judge the result against requirements, contracts, and focused checks.',
   },
   {
     id: 'converge',
@@ -233,8 +233,8 @@ export const SDD_PHASES = [
     activation: 'conditional',
     prerequisites: ['verify'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-tasks',
-    eligibleAgentRoles: ['sdd-tasks'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason:
       'Append traceable remaining work to tasks.md before another implementation loop.',
     condition: 'Activate only when verification finds actionable defects.',
@@ -247,8 +247,8 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['verify'],
     producesArtifact: true,
-    defaultAgentRole: 'quick',
-    eligibleAgentRoles: ['orchestrator', 'quick'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason:
       'Close a verified artifact-backed change with an audit report and dated archive move.',
   },
@@ -559,9 +559,10 @@ export const SDD_PHASE_PROTOCOLS = [
       'Changed files and project verification commands',
     ],
     instructions: [
+      'Oracle must be independent from the implementation writer; self-review never satisfies this phase.',
       'Run or inspect the smallest sufficient executed checks; static confidence alone is not evidence.',
       'Build a compliance matrix from every accepted requirement to code and executed checks.',
-      'For accelerated and full routes, the root persists the result as verify-report.md after read-only oracle review when applicable.',
+      'For accelerated and full routes, the root persists the read-only oracle result as verify-report.md.',
     ],
     allowedWrites: [
       'Root persistence only: openspec/changes/<feature>/verify-report.md for accelerated and full routes',
@@ -665,12 +666,12 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
     'Spec Kit artifact semantics are preserved inside the governed openspec store.',
     'Accelerated and full routes require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md.',
     'Research, data model, contracts, quickstart, and requirements checklist are created only when useful.',
-    'Phase agents write coordination artifacts; implementation ownership stays with the adaptive root or one writer role.',
+    'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; implementation ownership stays with the root or one writer role.',
     'Archive never implicitly merges a feature spec into openspec/specs; durable updates are explicit implementation tasks.',
   ],
   verificationRules: [
-    'Every route includes focused verification proportional to behavior and risk before completion.',
-    'Full SDD uses independent cross-artifact analysis before implementation.',
+    'Every route delegates focused verification to read-only oracle; the implementation writer never verifies its own work.',
+    'Full SDD delegates independent cross-artifact analysis to oracle before implementation.',
     'Accelerated and full verification persists verify-report.md with a pass or fail verdict and requirement compliance matrix.',
     'An artifact-backed fail verdict routes through append-only convergence, implementation, and verification again; direct work returns straight to implementation.',
     'A pass verdict is required before accelerated or full work can archive.',
@@ -895,13 +896,9 @@ phase=<phase-id>
 }
 
 export function getSddPhaseOwner(
-  route: SddRoute,
+  _route: SddRoute,
   phaseId: SddPhaseId,
 ): AgentRoleName {
-  if (phaseId === 'verify' && route !== 'full') {
-    return 'orchestrator';
-  }
-
   return getSddPhase(phaseId).defaultAgentRole;
 }
 

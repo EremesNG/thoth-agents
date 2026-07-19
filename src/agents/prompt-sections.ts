@@ -7,10 +7,8 @@ import {
   getRequiredSddPhaseOrder,
   getSddArtifactGraph,
   getSddPhaseOwner,
-  getSddPhaseProtocolsForRole,
   getSddWorkflowContract,
   renderSddPhaseDispatchTemplate,
-  type SddPhaseProtocol,
   type SddRoute,
 } from '../harness/core/sdd';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
@@ -20,7 +18,6 @@ type ModelFamily = 'openai';
 
 export type SemanticMemoryAccess = 'base' | 'readonly' | 'writable';
 export type ReadOnlyAgentRole = 'explorer' | 'librarian' | 'oracle';
-export type CoordinationAgentRole = 'sdd-specify' | 'sdd-plan' | 'sdd-tasks';
 export type WriteCapableAgentRole = 'designer' | 'quick' | 'deep';
 
 export interface QuestionProtocolSection {
@@ -165,49 +162,6 @@ function renderArtifactSummary(): string {
     .join(', ');
 }
 
-function renderProtocolItems(label: string, values: readonly string[]): string {
-  return `${label}:\n${values.map((value) => `- ${value}`).join('\n')}`;
-}
-
-function renderPhaseProtocol(protocol: SddPhaseProtocol): string {
-  return `<phase-protocol phase=${protocol.id}>
-Objective: ${protocol.objective}
-${renderProtocolItems('Required inputs', protocol.requiredInputs)}
-${renderProtocolItems('Instructions', protocol.instructions)}
-${renderProtocolItems('Allowed writes', protocol.allowedWrites)}
-${renderProtocolItems('Expected output', protocol.outputSchema)}
-${renderProtocolItems('Done when', protocol.doneWhen)}
-${renderProtocolItems('Blocking conditions', protocol.blockingConditions)}
-<handoff>
-${protocol.handoff.map((value) => `- ${value}`).join('\n')}
-</handoff>
-</phase-protocol>`;
-}
-
-function renderRolePhaseProtocols(role: AgentRoleName): string | undefined {
-  const protocols = getSddPhaseProtocolsForRole(role);
-  if (protocols.length === 0) {
-    return undefined;
-  }
-
-  return `<phase-protocols>
-Apply only the protocol named by the dispatch envelope's PHASE field.
-${protocols.map(renderPhaseProtocol).join('\n\n')}
-</phase-protocols>`;
-}
-
-function renderRootPhaseModes(): string {
-  const protocols = getSddPhaseProtocolsForRole('orchestrator');
-  const modes = protocols
-    .map(
-      (protocol) =>
-        `- phase=${protocol.id}; expected: ${protocol.outputSchema[0]}; gate: ${protocol.blockingConditions[0]}`,
-    )
-    .join('\n');
-
-  return `<root-phase-modes>\nWhen the root executes a phase itself, apply its canonical protocol and these compact mode gates:\n${modes}\n</root-phase-modes>`;
-}
-
 export function createOrchestratorPromptSections(): RolePromptSection[] {
   const workflow = getSddWorkflowContract();
   const policy = getAgentPackContract().orchestrationPolicy;
@@ -218,7 +172,7 @@ You are the adaptive root for thoth-agents. Keep requirements, decisions, execut
 </role>
 
 <operating-model>
-- You may inspect, edit, and verify bounded direct work when intent, scope, and risk are clear.
+- You may inspect and edit bounded direct work when intent, scope, and risk are clear. Never verify your own implementation.
 - Choose delegation only when specialization, context isolation, independent review, or parallel work creates a net gain.
 - Prefer subagents for read-heavy exploration, research, analysis, and independent verification.
 - The maximum delegation depth is ${policy.maxDelegationDepth}; child agents never delegate further.
@@ -247,11 +201,15 @@ Implementation choice:
 - Direct failure loop: verify fail -> implement -> verify.
 - Conditional phases: clarify only for material ambiguity; checklist only when requirement risk justifies it; converge only when verification finds actionable defects.
 - Do not create SDD ceremony for a simple documentation or mechanical update.
+- Load the bundled \`thoth-sdd\` skill only after selecting Accelerated or Full, then read only the reference for the current phase.
+- Root owns specify, clarify, plan, checklist, tasks, converge, and archive coordination; these phases are not delegated merely to change prompts.
+- Delegate analyze and every verify phase to ${roleTemplate('oracle')}, including Direct and Accelerated work. The implementation writer must never review itself.
 </sdd-routing>
 
-${renderRootPhaseModes()}
-
 <external-skills>
+- Use bundled \`thoth-constitution\` for constitution lifecycle and \`thoth-archive\` for verified artifact-backed closeout.
+- Use the installed mandatory \`tdd\` skill for behavior changes and \`simplify\` after implementation without changing behavior.
+- During an SDD, never invoke the thoth-agents CLI, \`npx skills add\`, or a network fetch to load a phase contract. Report an incomplete installation if a required local skill is missing.
 - Use progressive-context-router only for repository instruction or context-router work.
 - Use architectural-grilling before specification only when the user explicitly asks to be grilled or material human-owned product or architecture decisions remain unresolved.
 - Do not invoke it merely because the route is Full, and do not use it for routine clarification in Direct or Accelerated work.
@@ -263,17 +221,17 @@ ${renderRootPhaseModes()}
 - Preserve Spec Kit semantics inside ${workflow.artifactRoot}.
 - Required for Accelerated and Full SDD: spec.md, plan.md, tasks.md, verify-report.md, archive-report.md.
 - Optional when useful: ${renderArtifactSummary()}.
-- ${roleTemplate('sdd-specify')}, ${roleTemplate('sdd-plan')}, and ${roleTemplate('sdd-tasks')} may write coordination artifacts only under openspec/.
+- Root owns coordination artifacts under openspec/ and validates them with the bundled thoth-sdd validator before each downstream gate.
 - Product implementation remains with root or exactly one of ${roleTemplate('designer')}, ${roleTemplate('quick')}, ${roleTemplate('deep')}.
 - Root owns task checkbox transitions: mark assigned tasks [~] before dispatch and [x] only after task-specific evidence is verified.
-- A read-only ${roleTemplate('oracle')} returns verification findings; root persists verify-report.md. ${roleTemplate('quick')} may perform the mechanical archive after a pass verdict.
+- A read-only ${roleTemplate('oracle')} returns analyze and verification findings; root persists verify-report.md and performs the archive transition.
 - Archive creates archive-report.md and moves the complete change to openspec/changes/archive/YYYY-MM-DD-<feature>/. It must not implicitly merge into openspec/specs.
 </artifacts>
 
 <execution>
 - Validate public contracts and existing tests before behavior changes; use test-first work when behavior is changing.
 - Root decides whether implementation stays direct or is handed to one writer. Do not delegate merely because an agent exists.
-- ${roleTemplate('oracle')} provides independent analysis for Full SDD and verification when independence adds value; root may run focused verification directly for bounded work.
+- ${roleTemplate('oracle')} always provides independent verification and also owns Full SDD analysis. Root and implementation writers never self-approve.
 - Preserve unrelated working-tree changes. Never instruct an agent to discard them.
 - Installed provider guidance owns memory, hooks, MCP, persistence, and recovery mechanics. Use it only when a provider-dependent outcome is requested or required.
 - Report changed files, verification evidence, remaining risks, and any capability gap truthfully.
@@ -291,7 +249,7 @@ ${renderSddPhaseDispatchTemplate()}
 }
 
 const ROLE_SPECIFIC_RULES: Record<
-  ReadOnlyAgentRole | CoordinationAgentRole | WriteCapableAgentRole,
+  ReadOnlyAgentRole | WriteCapableAgentRole,
   string[]
 > = {
   explorer: [
@@ -305,18 +263,8 @@ const ROLE_SPECIFIC_RULES: Record<
   oracle: [
     'Separate observations, risks, and recommendations.',
     'Review against stated requirements and contracts; do not invent implementation scope.',
-  ],
-  'sdd-specify': [
-    'Own spec.md and requirement clarification; make requirements testable and implementation-neutral.',
-    'Create checklists/requirements.md only when an explicit quality audit adds value.',
-  ],
-  'sdd-plan': [
-    'Own plan.md and create research.md, data-model.md, contracts/, or quickstart.md only when the change needs them.',
-    'Make technical choices traceable to spec.md and repository evidence.',
-  ],
-  'sdd-tasks': [
-    'Own tasks.md and produce dependency-ordered, independently verifiable work slices.',
-    'Cover every accepted requirement without turning trivial edits into separate tasks.',
+    'For analyze or verify, load the matching bundled thoth-sdd reference and remain read-only.',
+    'Reject self-review: the implementing root or writer cannot substitute for independent oracle judgment.',
   ],
   designer: [
     'Own user-facing choices, implementation, and visual verification.',
@@ -333,7 +281,7 @@ const ROLE_SPECIFIC_RULES: Record<
 };
 
 function childSections(
-  roleName: ReadOnlyAgentRole | CoordinationAgentRole | WriteCapableAgentRole,
+  roleName: ReadOnlyAgentRole | WriteCapableAgentRole,
   memoryAccess: SemanticMemoryAccess,
 ): RolePromptSection[] {
   const role = getAgentRole(roleName);
@@ -351,15 +299,10 @@ function childSections(
           'Do not mutate the workspace.',
           'Do not create coordination artifacts or durable provider state.',
         ]
-      : role.mode === 'coordination-write'
-        ? [
-            'Do not edit product code.',
-            'Write only the assigned artifacts under openspec/ and preserve unrelated changes.',
-          ]
-        : [
-            'Edit only the assigned phase surface.',
-            'Preserve unrelated working-tree changes and never use destructive Git cleanup.',
-          ];
+      : [
+          'Edit only the assigned phase surface.',
+          'Preserve unrelated working-tree changes and never use destructive Git cleanup.',
+        ];
 
   const sections: RolePromptSection[] = [
     roleText(`<role>
@@ -397,11 +340,6 @@ Return a compact result with these fields:
     createResponseBudgetSection(),
   ];
 
-  const phaseProtocols = renderRolePhaseProtocols(roleName);
-  if (phaseProtocols) {
-    sections.splice(2, 0, roleText(phaseProtocols));
-  }
-
   return sections;
 }
 
@@ -409,12 +347,6 @@ export function createReadOnlySpecialistPromptSections(
   role: ReadOnlyAgentRole,
 ): RolePromptSection[] {
   return childSections(role, 'readonly');
-}
-
-export function createCoordinationSpecialistPromptSections(
-  role: CoordinationAgentRole,
-): RolePromptSection[] {
-  return childSections(role, 'writable');
 }
 
 export function createWriteCapableSpecialistPromptSections(
@@ -433,10 +365,6 @@ export function createRolePromptSections(
       return createOrchestratorPromptSections();
     case 'read-only':
       return createReadOnlySpecialistPromptSections(role as ReadOnlyAgentRole);
-    case 'coordination-write':
-      return createCoordinationSpecialistPromptSections(
-        role as CoordinationAgentRole,
-      );
     case 'write-capable':
       return createWriteCapableSpecialistPromptSections(
         role as WriteCapableAgentRole,
@@ -505,12 +433,6 @@ function getRoleModelProfile(role: AgentPromptRole): string {
       return 'Prioritize current primary sources, versions, and explicit citations.';
     case 'oracle':
       return 'Challenge assumptions and return evidence-backed judgment.';
-    case 'sdd-specify':
-      return 'Optimize for testable requirements and explicit scope.';
-    case 'sdd-plan':
-      return 'Optimize for an executable technical plan grounded in the specification.';
-    case 'sdd-tasks':
-      return 'Optimize for complete, dependency-ordered, verifiable work slices.';
     case 'designer':
       return 'Make concrete UX choices and verify the visible result.';
     case 'quick':

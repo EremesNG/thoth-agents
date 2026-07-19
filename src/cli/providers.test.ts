@@ -68,18 +68,6 @@ describe('providers', () => {
       model: 'openai/gpt-5.6-sol',
       variant: 'medium',
     });
-    expect(agents['sdd-specify']).toEqual({
-      model: 'openai/gpt-5.6-sol',
-      variant: 'high',
-    });
-    expect(agents['sdd-plan']).toEqual({
-      model: 'openai/gpt-5.6-sol',
-      variant: 'high',
-    });
-    expect(agents['sdd-tasks']).toEqual({
-      model: 'openai/gpt-5.6-luna',
-      variant: 'medium',
-    });
   });
 
   test('generateLiteConfig enables tmux when requested', () => {
@@ -106,7 +94,7 @@ describe('providers', () => {
     expect(agents.librarian.mcps).toBeUndefined();
   });
 
-  test('generateLiteConfig includes the canonical ten-role roster', () => {
+  test('generateLiteConfig includes the canonical seven-role roster', () => {
     const config = generateLiteConfig({
       hasTmux: false,
       reset: false,
@@ -121,9 +109,6 @@ describe('providers', () => {
       'oracle',
       'orchestrator',
       'quick',
-      'sdd-plan',
-      'sdd-specify',
-      'sdd-tasks',
     ]);
   });
 

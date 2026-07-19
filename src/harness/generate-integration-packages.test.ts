@@ -99,6 +99,7 @@ describe('generateIntegrationPackages', () => {
       expect(codexManifest).toMatchObject({
         name: 'thoth-agents',
         version: packageVersion,
+        skills: './skills/',
       });
       expect(claudeManifest).toMatchObject({
         name: 'thoth-agents',
@@ -107,13 +108,62 @@ describe('generateIntegrationPackages', () => {
       expect(existsSync(join(claudeRoot, 'agents', 'orchestrator.md'))).toBe(
         true,
       );
-      expect(canonicalClaudeAgents).toHaveLength(10);
+      expect(canonicalClaudeAgents).toHaveLength(7);
       for (const artifact of canonicalClaudeAgents) {
         expect(readFileSync(join(claudeRoot, artifact.path), 'utf8')).toBe(
           artifact.content,
         );
       }
       expect(existsSync(join(claudeRoot, 'settings.json'))).toBe(true);
+      const ownedSkills = [
+        'thoth-init',
+        'thoth-sdd',
+        'thoth-constitution',
+        'thoth-archive',
+      ];
+      for (const skill of ownedSkills) {
+        expect(
+          existsSync(join(codexRoot, 'skills', skill, 'SKILL.md')),
+          `Codex ${skill}`,
+        ).toBe(true);
+        expect(
+          existsSync(join(claudeRoot, 'skills', skill, 'SKILL.md')),
+          `Claude ${skill}`,
+        ).toBe(true);
+      }
+      for (const skill of [
+        'simplify',
+        'tdd',
+        'progressive-context-router',
+        'architectural-grilling',
+      ]) {
+        expect(
+          existsSync(join(codexRoot, 'skills', skill, 'SKILL.md')),
+          `Codex ${skill}`,
+        ).toBe(false);
+        expect(
+          existsSync(join(claudeRoot, 'skills', skill, 'SKILL.md')),
+          `Claude ${skill}`,
+        ).toBe(false);
+      }
+      expect(
+        listFiles(codexRoot).some((path) =>
+          path.includes(join('thoth-init', 'assets', 'codex-agents')),
+        ),
+      ).toBe(false);
+      expect(listFiles(codexRoot).some((path) => path.endsWith('.toml'))).toBe(
+        false,
+      );
+      expect(
+        existsSync(
+          join(codexRoot, 'skills', 'thoth-init', 'scripts', 'init.mjs'),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(claudeRoot, 'skills', 'thoth-init', 'scripts', 'init.mjs'),
+        ),
+      ).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

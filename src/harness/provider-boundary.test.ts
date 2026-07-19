@@ -212,7 +212,7 @@ describe('provider boundary', () => {
     expect(researchMcps).toMatch(/`exa`[\s\S]*`context7`[\s\S]*`grep_app`/i);
     expect(researchMcps).not.toMatch(/memory|thoth-mem/i);
     expect(memoryBoundary).toMatch(
-      /not a bundled skill or MCP[\s\S]*independently\s+installed plugin\/provider/i,
+      /not a bundled skill or MCP[\s\S]*independently\s+installed\s+plugin\/provider/i,
     );
   });
 

@@ -138,26 +138,29 @@ describe('Spec Kit workflow contract', () => {
     );
   });
 
-  test('routes phases through the minimal hybrid agent roster', () => {
+  test('keeps coordination in root and specialist work in stable roles', () => {
     const phases = getSddWorkflowContract().phases;
     const ownerOf = (id: string) =>
       phases.find((phase) => phase.id === id)?.defaultAgentRole;
 
     expect(ownerOf('explore')).toBe('explorer');
-    expect(ownerOf('specify')).toBe('sdd-specify');
-    expect(ownerOf('plan')).toBe('sdd-plan');
-    expect(ownerOf('tasks')).toBe('sdd-tasks');
+    expect(ownerOf('specify')).toBe('orchestrator');
+    expect(ownerOf('clarify')).toBe('orchestrator');
+    expect(ownerOf('plan')).toBe('orchestrator');
+    expect(ownerOf('checklist')).toBe('orchestrator');
+    expect(ownerOf('tasks')).toBe('orchestrator');
     expect(ownerOf('analyze')).toBe('oracle');
     expect(ownerOf('verify')).toBe('oracle');
     expect(ownerOf('implement')).toBe('orchestrator');
-    expect(ownerOf('converge')).toBe('sdd-tasks');
-    expect(ownerOf('archive')).toBe('quick');
+    expect(ownerOf('converge')).toBe('orchestrator');
+    expect(ownerOf('archive')).toBe('orchestrator');
   });
 
-  test('keeps bounded verification in the adaptive root and reserves independent review for full SDD', () => {
-    expect(getSddPhaseOwner('direct', 'verify')).toBe('orchestrator');
-    expect(getSddPhaseOwner('accelerated', 'verify')).toBe('orchestrator');
+  test('assigns every verification route to independent oracle review', () => {
+    expect(getSddPhaseOwner('direct', 'verify')).toBe('oracle');
+    expect(getSddPhaseOwner('accelerated', 'verify')).toBe('oracle');
     expect(getSddPhaseOwner('full', 'verify')).toBe('oracle');
+    expect(getSddPhaseOwner('full', 'analyze')).toBe('oracle');
   });
 
   test('gates implementation, convergence, and archive on their required handoffs', () => {

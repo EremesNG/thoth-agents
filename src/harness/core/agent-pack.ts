@@ -3,18 +3,11 @@ export type AgentRoleName =
   | 'explorer'
   | 'librarian'
   | 'oracle'
-  | 'sdd-specify'
-  | 'sdd-plan'
-  | 'sdd-tasks'
   | 'designer'
   | 'quick'
   | 'deep';
 
-export type AgentMutationMode =
-  | 'adaptive-root'
-  | 'read-only'
-  | 'coordination-write'
-  | 'write-capable';
+export type AgentMutationMode = 'adaptive-root' | 'read-only' | 'write-capable';
 
 export type AgentDispatchMethod =
   | 'root-coordinator'
@@ -51,9 +44,6 @@ export const AGENT_ROLE_NAMES = [
   'explorer',
   'librarian',
   'oracle',
-  'sdd-specify',
-  'sdd-plan',
-  'sdd-tasks',
   'designer',
   'quick',
   'deep',
@@ -66,16 +56,18 @@ export const AGENT_ROLES = [
     dispatch: 'root-coordinator',
     canMutateWorkspace: true,
     scope:
-      'requirements, routing, bounded direct work, decisions, and synthesis',
+      'requirements, SDD coordination, routing, bounded direct work, decisions, and synthesis',
     responsibility:
-      'Keep the task coherent, act directly when the work is clear and bounded, and delegate only when specialization or parallelism produces a net gain.',
+      'Keep the task coherent, own sequential specification, planning, task, convergence, and archive coordination, act directly when work is clear and bounded, and delegate only for net gain.',
     toolGovernance: [
-      'may inspect, edit, and verify bounded direct work',
+      'may inspect and edit bounded direct work, but every verification is delegated to oracle',
+      'loads the matching thoth-sdd phase contract on demand instead of carrying every phase protocol in its prompt',
+      'owns governed coordination writes under openspec/ and uses append-only tasks.md updates during convergence',
       'delegates independent or specialist work only when it produces a net gain',
       'keeps requirements, decisions, and final synthesis in the root thread',
     ],
     verification: [
-      'verifies direct work before completion',
+      'delegates analyze and every verify phase to oracle, including Direct and Accelerated routes',
       'consolidates summarized evidence returned by child agents',
     ],
   },
@@ -115,62 +107,12 @@ export const AGENT_ROLES = [
     canMutateWorkspace: false,
     scope: 'diagnosis, architecture, analysis, and independent verification',
     responsibility:
-      'Review evidence, expose correctness risks, and judge whether the result satisfies its contracts.',
+      'Independently analyze plans and perform every implementation verification, exposing correctness risks and judging whether results satisfy their contracts.',
     toolGovernance: [
-      'performs read-only analysis and review',
+      'performs read-only analysis and independent review and is never the implementer of the work it judges',
       'does not implement, persist artifacts, or delegate further',
     ],
     verification: ['separates observations, risks, and recommendations'],
-  },
-  {
-    name: 'sdd-specify',
-    mode: 'coordination-write',
-    dispatch: 'synchronous-task-only',
-    canMutateWorkspace: true,
-    scope: 'feature intent and requirements contract',
-    responsibility:
-      'Produce or refine the Spec Kit-compatible feature specification without implementing product code.',
-    writeScope: ['openspec/'],
-    toolGovernance: [
-      'writes only governed coordination artifacts under openspec/',
-      'does not implement product code or delegate further',
-    ],
-    verification: [
-      'checks that requirements are testable and materially unambiguous',
-    ],
-  },
-  {
-    name: 'sdd-plan',
-    mode: 'coordination-write',
-    dispatch: 'synchronous-task-only',
-    canMutateWorkspace: true,
-    scope: 'technical plan and optional design-support artifacts',
-    responsibility:
-      'Translate an accepted specification into a technically executable Spec Kit-compatible plan.',
-    writeScope: ['openspec/'],
-    toolGovernance: [
-      'writes only governed coordination artifacts under openspec/',
-      'does not implement product code or delegate further',
-    ],
-    verification: ['checks plan coverage, constraints, and affected surfaces'],
-  },
-  {
-    name: 'sdd-tasks',
-    mode: 'coordination-write',
-    dispatch: 'synchronous-task-only',
-    canMutateWorkspace: true,
-    scope: 'dependency-ordered implementation and convergence tasks',
-    responsibility:
-      'Convert the accepted specification and plan into bounded tasks, and append traceable convergence work from verification findings.',
-    writeScope: ['openspec/'],
-    toolGovernance: [
-      'writes only governed coordination artifacts under openspec/',
-      'does not implement product code or delegate further',
-      'uses append-only tasks.md updates during convergence',
-    ],
-    verification: [
-      'checks task coverage, ordering, ownership, and verification steps',
-    ],
   },
   {
     name: 'designer',
@@ -192,13 +134,12 @@ export const AGENT_ROLES = [
     mode: 'write-capable',
     dispatch: 'synchronous-task-only',
     canMutateWorkspace: true,
-    scope: 'fast bounded implementation and mechanical archive closeout',
+    scope: 'fast bounded implementation',
     responsibility:
-      'Implement narrow changes or mechanically archive a fully verified SDD change.',
+      'Implement narrow, clear, low-risk changes within an explicitly bounded surface.',
     toolGovernance: [
       'edits only bounded targets',
       'escalates when discovery or correctness risk exceeds the assignment',
-      'archives only from a passing verify-report.md and never interprets unresolved requirements',
       'does not delegate further',
     ],
     verification: ['runs the smallest sufficient focused check'],

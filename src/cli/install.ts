@@ -116,7 +116,7 @@ function formatConfigSummary(): string {
   lines.push(`${BOLD}Configuration Summary${RESET}`);
   lines.push('');
   lines.push(`  ${BOLD}Preset:${RESET} ${BLUE}openai${RESET}`);
-  lines.push(`  ${SYMBOLS.check} Ten-role adaptive thoth-agents roster`);
+  lines.push(`  ${SYMBOLS.check} Seven-role adaptive thoth-agents roster`);
   lines.push(`  ${SYMBOLS.check} OpenAI models by default`);
   lines.push(`  ${SYMBOLS.check} Direct, Accelerated, and Full SDD routing`);
   lines.push(
@@ -246,7 +246,7 @@ async function runInstall(config: InstallConfig): Promise<number> {
   const modelsInfo = 'Default configuration uses OpenAI models.';
   console.log(`${BOLD}${modelsInfo}${RESET}`);
   console.log(
-    `  ${DIM}Includes the ten-role adaptive roster, native delegation, and Direct / Accelerated / Full SDD routing.${RESET}`,
+    `  ${DIM}Includes the seven-role adaptive roster, native delegation, and Direct / Accelerated / Full SDD routing.${RESET}`,
   );
   return 0;
 }

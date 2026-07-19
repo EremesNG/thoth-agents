@@ -63,7 +63,7 @@ function createCodexPluginPackageManifest(context: HarnessRenderContext): {
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Adaptive multi-harness agent pack with ten roles and Spec Kit-compatible SDD coordination.',
+      'Bundled Spec Kit-compatible SDD skills and MCP configuration; the seven-role global Codex layer requires thoth-agents CLI setup.',
   };
 }
 
@@ -368,6 +368,12 @@ export const codexAdapter: HarnessAdapter = {
     const pluginPackage = renderCodexPluginPackage({
       manifest: createCodexPluginPackageManifest(context),
       assets: [
+        {
+          surfaceId: 'plugin-skills-directory',
+          manifestField: 'skills',
+          path: '.codex-plugin/skills/',
+          description: 'Codex plugin-bundled skill directory.',
+        },
         {
           surfaceId: 'plugin-mcp-json',
           manifestField: 'mcpServers',

@@ -2,135 +2,131 @@
 
 ## Requirements
 
-### Requirement: Classify three routes
+### Requirement: Select the lightest safe route
 
-The root MUST select `direct`, `accelerated`, or `full` from intent, scope,
-clarity, contract risk, failure cost, and an explicit SDD request.
+The adaptive root MUST select `direct`, `accelerated`, or `full` from intent,
+scope, clarity, contract risk, failure cost, and an explicit SDD request. It MUST
+NOT add artifact ceremony or delegation when clear bounded work can be completed
+directly.
 
 #### Scenario: Direct route
 
 - **GIVEN** work is clear, local, and low risk
 - **THEN** the route is `implement -> verify`
-- **AND** no coordination artifacts are required.
+- **AND** no coordination artifacts are created.
 
 #### Scenario: Accelerated route
 
-- **GIVEN** work is bounded multi-file, partially clear, or medium risk
-- **THEN** the happy-path route is
+- **GIVEN** work is bounded multi-file or moderate risk
+- **THEN** the route is
   `specify -> plan -> tasks -> implement -> verify -> archive`
-- **AND** accelerated SDD remains a first-class supported route.
+- **AND** it uses the canonical artifact formats and validator used by Full.
 
 #### Scenario: Full route
 
-- **GIVEN** SDD is explicit, scope is materially uncertain/cross-cutting, or risk
+- **GIVEN** SDD is explicit, scope is uncertain or cross-cutting, or failure cost
   is high
 - **THEN** the route is
   `explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive`.
 
-### Requirement: Preserve Spec Kit artifact semantics in openspec
+### Requirement: Load phase contracts on demand
 
-Accelerated and full routes MUST create `spec.md`, `plan.md`, and `tasks.md`
-under `openspec/changes/<feature>/`. Optional `research.md`, `data-model.md`,
-`contracts/`, `quickstart.md`, and `checklists/requirements.md` MUST be created
-only when useful. Artifact-backed verification MUST create `verify-report.md`,
-and successful closeout MUST create `archive-report.md` before the dated archive
-move.
+The root MUST own sequential coordination for `specify`, `clarify`, `plan`,
+`checklist`, `tasks`, `converge`, verification-report persistence, and `archive`.
+Detailed contracts MUST be loaded from the bundled `thoth-sdd`,
+`thoth-constitution`, and `thoth-archive` skills only when the current phase
+requires them. The system MUST NOT register phase-only agents or inflate every
+agent prompt with all phase protocols. Once installation is complete, an SDD
+phase MUST NOT invoke the thoth-agents CLI, `npx skills add`, or a network fetch;
+missing local contracts MUST be reported as installation drift.
 
-### Requirement: Use phase agents instead of phase skills
+#### Scenario: Root advances an artifact-backed route
 
-`sdd-specify`, `sdd-plan`, and `sdd-tasks` MUST own their corresponding
-coordination artifacts and MUST NOT implement product code or delegate further.
-The system MUST NOT bundle legacy SDD phase skills.
+- **WHEN** a route reaches a coordination phase
+- **THEN** root reads only that phase's bundled reference and required template
+- **AND** validates the artifact before the next downstream gate.
 
-### Requirement: Define one canonical protocol for every phase
+### Requirement: Preserve Spec Kit-grade artifact semantics
 
-Every SDD phase MUST declare its objective, required inputs, instructions,
-allowed writes, output schema, completion criteria, blocking conditions, and
-handoff in the shared TypeScript contract. Reused roles MUST activate only the
-protocol named by the dispatch envelope.
+Accelerated and Full MUST create `spec.md`, `plan.md`, and `tasks.md` under
+`openspec/changes/<feature>/`. Specifications MUST contain prioritized,
+independently testable `US#` stories, Given/When/Then acceptance scenarios,
+unique `FR-###` requirements, measurable `SC-###` criteria, assumptions,
+dependencies, edge cases, and explicit out-of-scope boundaries.
 
-Every delegated SDD phase MUST receive these fields: `PHASE`, `ROUTE / CHANGE`,
-`OBJECTIVE`, `INPUT ARTIFACTS`, `REQUIREMENTS`, `BOUNDARIES`, `VERIFICATION`,
-`EXPECTED OUTPUT`, and `HANDOFF`.
+Plans MUST record pre-design and post-design Constitution checks and map
+technical decisions to requirements, paths/interfaces, and verification seams.
+Tasks MUST use `T### [P?] [US#?]` grammar, identify an MVP, preserve independent
+story slices, name dependencies and safe parallel examples, place behavior tests
+before implementation, and map every FR/SC to executable work.
 
-#### Scenario: Oracle receives analyze mode
+Optional `research.md`, `data-model.md`, `contracts/`, `quickstart.md`, and
+`checklists/requirements.md` MUST be created only when useful.
 
-- **GIVEN** Full SDD has produced spec, plan, and tasks
-- **WHEN** the root delegates `phase=analyze` to `oracle`
-- **THEN** the oracle performs read-only cross-artifact consistency analysis
-- **AND** returns requirement coverage, severity-graded findings, and a readiness
-  verdict instead of applying the verify protocol.
+### Requirement: Enforce structural gates and independent judgment
 
-#### Scenario: Quick receives archive mode
+The bundled validator MUST reject malformed identifiers, missing story
+independence or acceptance examples, incomplete requirement/task coverage,
+missing Constitution checks, invalid task ordering or grammar, and incomplete
+checklist taxonomy or revalidation. Structural validation MUST NOT substitute
+for semantic oracle review.
 
-- **GIVEN** an artifact-backed route has a passing verification
-- **WHEN** the root delegates `phase=archive` to `quick`
-- **THEN** quick applies only the mechanical archive protocol
-- **AND** does not reinterpret requirements or perform implementation work.
+### Requirement: Keep optional gates conditional
 
-### Requirement: Keep optional phases conditional
+Clarification MUST activate only for material ambiguity. A requirements
+checklist MUST activate only for high-risk, compliance-sensitive, or
+ambiguity-prone scope. Convergence MUST activate only for actionable
+Accelerated/Full verification failures. These artifact-dependent gates MUST NOT
+run on Direct.
 
-Clarification MUST activate only for a material unresolved choice. A requirements
-checklist MUST activate only for high-risk/compliance/ambiguity signals.
-Clarification, requirements checklists, and convergence MUST remain unavailable
-on Direct because they depend on governed coordination artifacts. Convergence
-MUST activate only for actionable Accelerated/Full verification findings. It
-MUST append traceable remaining work to `tasks.md`, MUST NOT rewrite existing
-tasks, and MUST NOT edit product code. Control MUST return to implementation and
-then verification.
+Clarification MUST update canonical requirements instead of creating a parallel
+artifact. Checklists MUST use stable `CHK###` identifiers across Completeness,
+Clarity, Consistency, Measurability, and Coverage, and MUST record a distinct
+revalidation after accepted changes. Convergence MUST append traceable tasks and
+MUST NOT rewrite earlier tasks or edit product code.
 
 ### Requirement: Gate architectural grilling before specification
 
-`architectural-grilling` MUST remain outside the required SDD phase graph. The
-root MUST invoke it before specification only when the user explicitly requests
-the interview or material human-owned product/architecture decisions remain
-unresolved. Selecting Full SDD alone MUST NOT activate it.
+`architectural-grilling` MUST remain outside the required phase graph. The root
+MUST invoke it before specification only when explicitly requested or when a
+material human-owned product or architecture decision cannot be resolved from
+evidence or a safe documented assumption. Selecting Full alone MUST NOT activate
+it.
 
-#### Scenario: Decision tree requires grilling
+### Requirement: Require independent oracle review
 
-- **GIVEN** a material product or architecture branch requires a human decision
-- **WHEN** the root cannot resolve it from evidence or a safe local assumption
-- **THEN** `architectural-grilling` runs in discovery/decision mode before
-  `sdd-specify`
-- **AND** accepted decisions feed canonical `spec.md` and `plan.md` artifacts.
+`analyze` and every `verify` execution MUST be owned by read-only `oracle`,
+including Direct and Accelerated. The implementing root or writer MUST NOT
+approve its own work. Full analysis MUST challenge cross-artifact consistency,
+coverage, task ordering, checklist state, and Constitution compliance before
+implementation.
 
-#### Scenario: Routine SDD does not require grilling
+Artifact-backed verification MUST persist `verify-report.md` with an explicit
+PASS/FAIL verdict, compliance matrix, executed checks, stable findings, and
+residual risks. Direct verification returns the same judgment in-session without
+creating artifacts.
 
-- **GIVEN** the SDD route and material decisions are already clear
-- **THEN** the root MUST continue the selected route without invoking
-  `architectural-grilling`.
+#### Scenario: Verification fails
 
-### Requirement: Verify proportionally
-
-Every route MUST include focused verification before completion. The root MUST
-verify direct and accelerated work; full SDD MUST use independent oracle
-analysis before implementation and independent oracle verification afterward.
-Accelerated and Full MUST persist a compliance matrix, executed check evidence,
-issues, risks, and an explicit `pass` or `fail` verdict in `verify-report.md`. A
-read-only oracle returns the report content and the root persists it.
-
-#### Scenario: Failed verification converges
-
-- **GIVEN** Accelerated or Full verification returns `fail` with actionable
-  findings
-- **THEN** `sdd-tasks` appends a new Convergence phase to `tasks.md`
-- **AND** the route continues `implement -> verify`
+- **GIVEN** oracle returns FAIL for Accelerated or Full
+- **THEN** root appends convergence tasks linked to findings and FR/SC
+- **AND** assigns implementation to a separate writer before asking oracle to
+  verify again
 - **AND** archive remains blocked.
 
-#### Scenario: Failed Direct verification retries without SDD artifacts
+#### Scenario: Direct verification fails
 
-- **GIVEN** Direct verification returns `fail`
-- **THEN** the root returns directly to `implement -> verify`
-- **AND** no `tasks.md`, convergence phase, or archive is created.
+- **GIVEN** oracle returns FAIL for Direct
+- **THEN** root returns to `implement -> verify`
+- **AND** no SDD change directory or convergence artifact is created.
 
 ### Requirement: Archive verified artifact-backed changes
 
-Accelerated and Full MUST archive only when every task is complete,
-`verify-report.md` records `pass`, and no unresolved critical issue remains.
+Accelerated and Full MUST archive only when all tasks are complete,
+`verify-report.md` records PASS, and no unresolved CRITICAL finding remains.
 Archive MUST create `archive-report.md` and move the complete change to
 `openspec/changes/archive/YYYY-MM-DD-<feature>/`.
 
-Archive MUST NOT implicitly merge the feature specification into
-`openspec/specs/`; permanent specification or documentation changes MUST be
-explicit implementation tasks. Direct work MUST NOT create or archive an SDD
-change directory.
+Archive MUST NOT implicitly merge the feature into `openspec/specs/`; durable
+specification or documentation changes MUST be explicit implementation tasks.
+Direct work MUST NOT create or archive an SDD change directory.

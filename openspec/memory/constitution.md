@@ -1,8 +1,8 @@
 # thoth-agents Project Constitution
 
-Version: 2.2.0
+Version: 3.0.0
 Ratified: 2026-06-16
-Last-Amended: 2026-07-18
+Last-Amended: 2026-07-19
 
 This constitution governs active thoth-agents behavior. Spec Kit supplies SDD
 artifact semantics; thoth-agents stores them under `openspec/` and adds its
@@ -18,17 +18,20 @@ adaptive route policy.
 
 ### 1. Adaptive-root orchestration
 
-The root may inspect, edit, and verify clear bounded work directly. It delegates
-only when specialization, context isolation, independent review, or safe
-parallelism creates a net gain. Delegation depth is one and each mutable surface
-has one writer.
+The root may inspect and edit clear bounded work directly. It delegates only
+when specialization, context isolation, independent review, or safe parallelism
+creates a net gain, except that `analyze` and every `verify` phase are always
+delegated to `oracle`. Delegation depth is one and each mutable surface has one
+writer.
 
 ### 2. Explicit role boundaries
 
-Read-only roles (`explorer`, `librarian`, `oracle`) never mutate. Coordination
-roles (`sdd-specify`, `sdd-plan`, `sdd-tasks`) write only governed artifacts
-under `openspec/`. Implementation writers (`designer`, `quick`, `deep`) own their
-assigned product surfaces.
+The active pack contains exactly seven roles: `orchestrator`, `explorer`,
+`librarian`, `oracle`, `designer`, `quick`, and `deep`. Root/orchestrator owns
+sequential coordination and governed artifacts under `openspec/`; it loads phase
+contracts only when required. Read-only roles (`explorer`, `librarian`,
+`oracle`) never mutate. Root and implementation writers (`designer`, `quick`,
+`deep`) own only their explicitly bounded product surfaces.
 
 ### 3. Proportional Spec Kit-compatible SDD
 
@@ -50,7 +53,12 @@ OpenCode, Codex, and Claude Code derive behavior from shared role and SDD
 contracts, while adapters disclose enforcement gaps. OpenCode is the default and
 ships only the built-in OpenAI preset. `simplify`, `tdd`,
 `progressive-context-router`, and `architectural-grilling` are mandatory external
-skills installed by the CLI for every harness. Browser and QA executables remain
+skills installed by the CLI from their canonical repositories for every
+harness; they are never vendored into this repository. Plugin bundles contain
+only thoth-owned workflow skills. Installation may invoke the CLI and network,
+but an SDD phase never invokes the CLI, `npx skills add`, or a network fetch.
+Codex additionally requires the CLI to manage global agents, features, and the
+orchestrator block in `~/.codex/AGENTS.md`. Browser and QA executables remain
 project-owned.
 
 ### 5. Independent provider ownership
@@ -64,13 +72,19 @@ provider assets.
 
 Every route includes verification proportional to changed behavior and risk
 before completion. Completion reports identify changed surfaces and executed
-evidence. Full SDD adds independent analysis and verification. Artifact-backed
-failures append traceable convergence tasks before the implementation/re-check
-loop; Direct failures return straight to implementation. Accelerated and Full
-archive only after a passing verdict and no unresolved critical finding.
+evidence. Oracle independently verifies every route; Full SDD also adds
+oracle-owned pre-implementation analysis. Artifact-backed failures append
+traceable convergence tasks before the implementation/re-check loop; Direct
+failures return straight to implementation. Accelerated and Full archive only
+after a passing verdict and no unresolved critical finding.
 
 ## Sync-impact report
 
+- 3.0.0 | major: replace phase-only coordination roles with a seven-role pack,
+  require oracle-owned analysis and verification, distinguish CLI/network-based
+  installation from runtime-autonomous SDD, and keep external skills canonical
+  instead of vendored | constitution checks, SDD contracts, generated harness
+  packages, CLI installation, documentation, active specs, and tests.
 - 2.2.0 | minor: add typed phase protocols, the canonical dispatch envelope,
   durable verification reports, append-only convergence, and verified archive
   closeout for artifact-backed routes | SDD contracts, role prompts, active

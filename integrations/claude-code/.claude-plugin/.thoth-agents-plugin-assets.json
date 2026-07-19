@@ -9,17 +9,17 @@
     {
       "path": "agents/deep.md",
       "kind": "agent-config",
-      "sha256": "sha256:79d5308000fb38edf8a2b69fc149bf10fb29df5583dd34bcf6e71adcde2f2fb9"
+      "sha256": "sha256:8c41de273e0a72af6678219f181eb762cd773dc0724e9f2f2082599c27f7f72f"
     },
     {
       "path": "agents/designer.md",
       "kind": "agent-config",
-      "sha256": "sha256:e8030e4917242c240427d3f95480ad79dfb30c66e89e99debab1019b42f3e761"
+      "sha256": "sha256:bbc7af99fc416fe9fc002867ea2149d84d0ce5e04566580b63e8fc90cfdd0328"
     },
     {
       "path": "agents/explorer.md",
       "kind": "agent-config",
-      "sha256": "sha256:68739cfc2dee0c1f6c8c04f20cd46ac933761d6cba6c8ec5f556c55f4dcac66a"
+      "sha256": "sha256:f1fd7842c41a782c3f1392cedd17bba0e553e3b85c64b9b346105bb84ba0a9da"
     },
     {
       "path": "agents/librarian.md",
@@ -29,32 +29,17 @@
     {
       "path": "agents/oracle.md",
       "kind": "agent-config",
-      "sha256": "sha256:3402e2200d079275c324dc8f3016020a718f383c4021a40445325fb53163b776"
+      "sha256": "sha256:4cff5f1a950c9b0705e1a9d3265ef2d330c1c072404df3dc7ae40fa1b83a4077"
     },
     {
       "path": "agents/orchestrator.md",
       "kind": "agent-config",
-      "sha256": "sha256:5f6b6caf9fda30ba42b632213def1555cfcff1a73055ec4d6ff49c7c3dc6974b"
+      "sha256": "sha256:2e0b6eab2133448f90199a0e5b2dd4cb377f7c42a43d2a687babbb3b30543d8a"
     },
     {
       "path": "agents/quick.md",
       "kind": "agent-config",
-      "sha256": "sha256:22b9dd5c25c6b015758ec0bf88407ee4042d666d9b1646a83adb563b783be867"
-    },
-    {
-      "path": "agents/sdd-plan.md",
-      "kind": "agent-config",
-      "sha256": "sha256:2022953c136ef120ed5f9def5dad3c02468cdddb0ef61b9d34d7a05a403a5160"
-    },
-    {
-      "path": "agents/sdd-specify.md",
-      "kind": "agent-config",
-      "sha256": "sha256:8ced411dbf79bd6510c38632f4ce57ea8900d5d210ddc6bf26b31c268a3f53a7"
-    },
-    {
-      "path": "agents/sdd-tasks.md",
-      "kind": "agent-config",
-      "sha256": "sha256:340f5b3479abe0649389c9cc9abc1cc5b06db2d305008e8df94c788dbf3c5065"
+      "sha256": "sha256:f20883182b32d7629bba562ca034a7d7b0245dd285a642351e11e3eadc050144"
     },
     {
       "path": "settings.json",

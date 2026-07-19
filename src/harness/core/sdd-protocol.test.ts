@@ -86,17 +86,25 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(/must not.*merge.*openspec\/specs/i);
   });
 
-  test('exposes only the phase modes each reusable role can execute', () => {
+  test('keeps root coordination separate from independent oracle review', () => {
     expect(getSddPhaseProtocolsForRole('oracle').map(({ id }) => id)).toEqual([
       'analyze',
       'verify',
     ]);
     expect(
-      getSddPhaseProtocolsForRole('sdd-tasks').map(({ id }) => id),
-    ).toEqual(['tasks', 'converge']);
+      getSddPhaseProtocolsForRole('orchestrator').map(({ id }) => id),
+    ).toEqual([
+      'specify',
+      'clarify',
+      'plan',
+      'checklist',
+      'tasks',
+      'implement',
+      'converge',
+      'archive',
+    ]);
     expect(getSddPhaseProtocolsForRole('quick').map(({ id }) => id)).toEqual([
       'implement',
-      'archive',
     ]);
   });
 });

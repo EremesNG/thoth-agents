@@ -241,7 +241,7 @@ describe('Codex install setup plan', () => {
 
       const formatted = formatCodexSetupPlan(plan);
       expect(formatted).toContain('- merge-managed-block:');
-      expect(formatted.match(/- write-role-toml:/g)).toHaveLength(9);
+      expect(formatted.match(/- write-role-toml:/g)).toHaveLength(6);
       expect(formatted).toContain('- merge-toml:');
       expect(formatted).not.toContain('.codex/plugins');
       expect(formatted).not.toContain('.agents/plugins/marketplace.json');
@@ -274,7 +274,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('apply preserves root instructions and writes nine specialists without mutating plugin-manager state', () => {
+  test('apply preserves root instructions and writes six specialists without mutating plugin-manager state', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -305,7 +305,9 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('net gain');
       expect(root).toContain('Accelerated SDD');
       expect(root).toContain('maximum delegation depth is 1');
-      expect(root).toContain('sdd-specify subagent');
+      expect(root).toContain('bundled `thoth-sdd` skill');
+      expect(root).toContain('every verify phase to oracle subagent');
+      expect(root).not.toMatch(/sdd-(?:specify|plan|tasks) subagent/);
       expect(root).toContain('request_user_input');
       expect(root).toContain('omit `autoResolutionMs` entirely');
       expect(root).not.toContain('delegate-first');

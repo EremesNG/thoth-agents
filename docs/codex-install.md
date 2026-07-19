@@ -1,140 +1,98 @@
 # Codex Install
 
-Codex is an explicit thoth-agents harness. OpenCode remains the default.
+Codex installation has two required layers. The native plugin contributes
+skills and MCP configuration; the thoth-agents CLI materializes global custom
+agents, orchestrator instructions, and configuration that the plugin manifest
+cannot install.
 
-Installation has two required surfaces: the repository marketplace delivers the
-Codex plugin, while the thoth-agents CLI materializes the ambient root, custom
-subagents, feature configuration, model state, and mandatory external skills.
-Neither layer replaces the other.
-
-## 1. Register and install the native plugin
-
-Run this from an interactive Codex terminal:
+## 1. Install the native plugin
 
 ```bash
 codex plugin marketplace add EremesNG/thoth-agents
 ```
 
-Restart Codex, open `/plugins`, and install or enable `thoth-agents`. The catalog
-is versioned at `.agents/plugins/marketplace.json` and points to
-`./integrations/codex`; it is not synthesized into a personal marketplace. The
-plugin contributes the packaged thoth-agents research MCP configuration.
+Restart Codex, open `/plugins`, and install or enable `thoth-agents`. The
+catalog is `.agents/plugins/marketplace.json`; it resolves to the versioned
+`integrations/codex` package.
 
-## 2. Materialize the CLI-owned orchestration surfaces
+The plugin contains the four thoth-owned SDD/init/constitution/archive skills
+and packaged MCP configuration. External execution skills are deliberately not
+vendored. It contains no custom-agent TOMLs because Codex plugin manifests do
+not support an agents component.
+
+## 2. Apply the mandatory CLI layer
+
+Preview, then apply:
 
 ```bash
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
-The CLI prints the native marketplace command but does not copy files into
-`~/.codex/plugins` or merge `~/.agents/plugins/marketplace.json`. Codex owns its
-marketplace snapshots, installed-plugin cache, enablement, and trust decisions.
+User-scope setup manages:
 
-The CLI step is mandatory even when `/plugins` already reports a healthy native
-plugin. Codex plugins do not materialize the global root contract, standalone
-custom-agent TOMLs, managed feature configuration, or external global skills
-used by thoth-agents.
+- `~/.codex/AGENTS.md`: one bounded `thoth-agents:codex-root` orchestrator
+  section while preserving unrelated global instructions;
+- six `~/.codex/agents/thoth-agents-<role>.toml` files for `explorer`,
+  `librarian`, `oracle`, `designer`, `quick`, and `deep`;
+- `~/.codex/agents/.thoth-agents-managed-models.json`;
+- a backed-up merge in `~/.codex/config.toml` for the managed feature; and
+- mandatory external skills in `~/.codex/skills/` via `npx skills add`.
 
-## CLI-managed targets
+The ambient session is the orchestrator, so no orchestrator child TOML is
+generated. The CLI obtains external skills from their canonical repositories;
+it does not synthesize a personal plugin marketplace.
 
-User-scope installation manages:
+## 3. Restart and initialize each repository
 
-- `~/.codex/AGENTS.md`: one bounded root-instruction block; unrelated text is
-  preserved.
-- `~/.codex/agents/thoth-agents-{role}.toml`: nine custom agents:
-  `explorer`, `librarian`, `oracle`, `sdd-specify`, `sdd-plan`, `sdd-tasks`,
-  `designer`, `quick`, and `deep`.
-- `~/.codex/agents/.thoth-agents-managed-models.json`: model ownership state.
-- `~/.codex/config.toml`: a backed-up merge that enables
-  `features.default_mode_request_user_input`.
-- `~/.codex/skills/{simplify,tdd,progressive-context-router,architectural-grilling}/`:
-  required global skills.
-
-The ambient Codex session is the adaptive root, so no orchestrator child TOML is
-generated.
-
-## 3. Restart and verify
-
-Restart Codex after the CLI applies user configuration, then inspect:
+Restart Codex so global agents and instructions load. Review:
 
 ```text
 /plugins
 /hooks
 ```
 
-Run a complete drift check from the terminal:
+In each target repository invoke:
 
-```bash
-npx thoth-agents@latest status --harness=codex
+```text
+$thoth-init
 ```
+
+This final skill step is offline and idempotent. It creates only the missing
+project constitution, SDD templates, and init metadata under `openspec/`.
+Agent/global installation remains CLI-owned.
 
 ## Delegation and SDD
 
-Root instructions use Codex collaboration tools directly. The collaboration
-surface does not provide a hard installed-role selector, so thoth-agents carries
-the role in a prefixed task name and self-contained message; the generated TOMLs
-remain available as native custom-agent definitions. Children never delegate.
+The global root contract handles bounded work directly and delegates only for
+net gain. Children never delegate and each mutable surface has one writer.
+Root owns sequential SDD coordination through the bundled `thoth-sdd`
+contracts. Explorer owns Full discovery; read-only oracle owns Full analysis and
+every verification, including Direct and Accelerated.
 
-The root selects direct, accelerated, or full SDD. The three phase roles are
-custom agents, not plugin-bundled phase skills:
+Standalone TOMLs are native Codex configuration layers, but role selection and
+some permission constraints remain instruction-level in the collaboration
+runtime. An implementation writer cannot substitute for oracle verification.
 
-- `sdd-specify` owns requirements artifacts under `openspec/`;
-- `sdd-plan` owns the technical plan and optional support artifacts; and
-- `sdd-tasks` owns dependency-ordered tasks.
+## Trust and precedence
 
-The accelerated route remains available for bounded multi-file or moderate-risk
-work. See [SDD Pipeline](sdd-pipeline.md).
-
-## Mandatory skills
-
-The installer runs the skills CLI with `--agent codex --global --yes` for
-`simplify`, `tdd`, `progressive-context-router`, and `architectural-grilling`.
-Codex plugin marketplace sources do not provide a reliable package lifecycle for
-this dependency contract, so plugin installation alone is incomplete until the
-CLI confirms all four skills.
-
-## Trust review and limitations
-
-Registration never bypasses plugin/hook trust. Higher-precedence project,
-profile, CLI, system, or admin configuration may override user configuration.
-`request_user_input` is expected in Default mode when
-`features.default_mode_request_user_input = true`; every thoth-agents call omits
-`autoResolutionMs`.
-
-Additional constraints:
-
-- The ambient session is the root; there is no `orchestrator` child TOML.
-- Global `~/.codex/AGENTS.md` guidance loads automatically, but a more specific
-  repository or subtree `AGENTS.md` can take precedence.
-- Custom-agent TOMLs are native configuration layers. The collaboration runtime
-  does not expose a hard installed-role selector, so role matching remains
-  partly instruction-level.
-- Project-scoped `.codex/` configuration and hooks load only for trusted
-  projects. User, system, and managed policy remain separate.
-- The CLI enables only the managed feature needed for Default-mode user input;
-  it does not claim broad feature or enforcement parity with OpenCode.
-- Plugin installation does not include thoth-mem or project QA executables.
-
-## Dry-run and reset
-
-`--dry-run` prints root, role, config, marketplace guidance, and required-skill
-actions without writing or installing anything.
-
-`--reset` repairs only CLI-managed blocks, TOMLs, model state, and configuration
-keys. It does not delete or rewrite Codex marketplace snapshots, plugin caches,
-unrelated skills, or provider configuration.
+- The CLI cannot bypass native marketplace/plugin trust.
+- Global `~/.codex/AGENTS.md` may be refined or overridden by repository and
+  subtree instructions.
+- Profile, CLI, system, managed, and organization configuration retains its
+  documented precedence.
+- Project `.codex/` surfaces load only in trusted repositories.
+- `--reset` repairs managed blocks/files only; it does not delete plugin caches,
+  marketplaces, unrelated agents, skills, or provider configuration.
 
 ## Provider boundary
 
-thoth-mem is independent. Its plugin owns memory hooks, MCP, lifecycle,
-persistence, and recovery. Codex packaging here reports only provider-neutral,
-evidence-based capability outcomes.
+thoth-mem is independent and owns its hooks, MCP lifecycle, persistence, and
+recovery. thoth-agents does not install or emulate it.
 
 ## Upstream references
 
-- [Codex plugins](https://learn.chatgpt.com/docs/plugins)
-- [Codex plugin marketplace commands](https://learn.chatgpt.com/docs/developer-commands?surface=cli#cli-codex-plugin-marketplace)
-- [Codex `AGENTS.md`](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
+- [Build Codex plugins](https://learn.chatgpt.com/docs/build-plugins#plugin-structure)
 - [Codex custom subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+- [Codex `AGENTS.md`](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
 - [Codex hooks](https://learn.chatgpt.com/docs/hooks)

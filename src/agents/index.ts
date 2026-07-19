@@ -20,9 +20,6 @@ import {
   getStepBudgetPromptSection,
 } from './prompt-utils';
 import { createQuickAgent } from './quick';
-import { createSddPlanAgent } from './sdd-plan';
-import { createSddSpecifyAgent } from './sdd-specify';
-import { createSddTasksAgent } from './sdd-tasks';
 
 export type { AgentDefinition } from './orchestrator';
 
@@ -44,9 +41,6 @@ type BuiltinPermissionPresetName =
   | 'explorer'
   | 'librarian'
   | 'oracle'
-  | 'sdd-specify'
-  | 'sdd-plan'
-  | 'sdd-tasks'
   | 'designer'
   | 'quick'
   | 'deep';
@@ -118,48 +112,6 @@ const BUILTIN_PERMISSION_PRESETS = {
     question: 'allow',
     skill: 'allow',
     edit: 'deny',
-    todowrite: 'deny',
-    task: 'deny',
-  },
-  'sdd-specify': {
-    read: 'allow',
-    edit: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    bash: 'allow',
-    codesearch: 'allow',
-    lsp: 'allow',
-    skill: 'allow',
-    question: 'allow',
-    todowrite: 'deny',
-    task: 'deny',
-  },
-  'sdd-plan': {
-    read: 'allow',
-    edit: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    bash: 'allow',
-    codesearch: 'allow',
-    lsp: 'allow',
-    skill: 'allow',
-    question: 'allow',
-    todowrite: 'deny',
-    task: 'deny',
-  },
-  'sdd-tasks': {
-    read: 'allow',
-    edit: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    bash: 'allow',
-    codesearch: 'allow',
-    lsp: 'allow',
-    skill: 'allow',
-    question: 'allow',
     todowrite: 'deny',
     task: 'deny',
   },
@@ -321,9 +273,6 @@ const SUBAGENT_FACTORIES: Record<CanonicalOpenAISubagentName, AgentFactory> = {
   explorer: createExplorerAgent,
   librarian: createLibrarianAgent,
   oracle: createOracleAgent,
-  'sdd-specify': createSddSpecifyAgent,
-  'sdd-plan': createSddPlanAgent,
-  'sdd-tasks': createSddTasksAgent,
   designer: createDesignerAgent,
   quick: createQuickAgent,
   deep: createDeepAgent,

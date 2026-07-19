@@ -1,78 +1,51 @@
 # Codex Plugin Packaging
 
-thoth-agents ships a repository-native Codex marketplace instead of generating
-a personal marketplace or copying a plugin into a user's cache.
+The Codex distribution is generated at `integrations/codex` and published
+through `.agents/plugins/marketplace.json`.
 
-## Published layout
+## Generated layout
 
 ```text
-.agents/plugins/marketplace.json
 integrations/codex/
 ├── .codex-plugin/
 │   ├── plugin.json
 │   └── .thoth-agents-plugin-assets.json
-└── .mcp.json
+├── .mcp.json
+└── skills/
+    ├── thoth-init/
+    ├── thoth-sdd/
+    ├── thoth-constitution/
+    └── thoth-archive/
 ```
 
-The marketplace source is `./integrations/codex`. `package.json` includes both
-the catalog and integration directory in the published npm tarball.
+The manifest declares `skills: "./skills/"` and the packaged MCP file. It does
+not declare or hide custom-agent TOMLs: Codex's documented plugin structure has
+no agents component.
 
-## Manifest
+## Required global layer
 
-The 0.3.0 manifest is intentionally lean:
+After native `/plugins` installation, the thoth-agents CLI must write six
+standalone custom agents under `~/.codex/agents/`, the managed orchestrator block
+under `~/.codex/AGENTS.md`, and managed configuration under
+`~/.codex/config.toml`. It also installs the four external skills from their
+canonical repositories. The plugin package cannot perform those global writes.
 
-```json
-{
-  "name": "thoth-agents",
-  "version": "0.3.0",
-  "description": "Adaptive multi-harness agent pack with ten roles and Spec Kit-compatible SDD coordination.",
-  "mcpServers": "./.mcp.json"
-}
-```
+`$thoth-init` remains a bundled project-governance skill. It creates
+`openspec/` assets only and is not an agent installer.
 
-Only validated Codex manifest fields are emitted. The package contains the
-manifest, thoth-agents research MCP configuration, and deterministic asset
-provenance. It does not bundle SDD phase skills, external required skills,
-custom-agent TOMLs, root `AGENTS.md`, or thoth-mem assets.
+## Generation lifecycle
 
-Codex custom-agent TOMLs and root instructions use different native surfaces and
-are materialized by `npx thoth-agents@latest install --agent=codex`. Required
-skills are installed separately under `~/.codex/skills`.
+`pnpm run integration:sync` renders package metadata, the four thoth-owned
+skills, and marketplace catalogs. External skills remain CLI-installed from
+their canonical repositories. `pnpm run build` synchronizes before compilation.
+The npm version lifecycle used by `release:patch`, `release:minor`, and
+`release:major` keeps both integration versions aligned with the root version.
 
-## Native registration
+## Ownership and limitations
 
-```bash
-codex plugin marketplace add EremesNG/thoth-agents
-```
+Codex owns marketplace registration, installed snapshots, trust, and caches.
+thoth-agents does not copy plugins into personal manager directories. Standalone
+agent role matching and some permissions remain instruction-level.
 
-After restarting Codex, use `/plugins` for installation/enablement and `/hooks`
-for trust review. The thoth-agents CLI intentionally does not mutate
-`~/.codex/plugins` or a personal marketplace file; Codex owns those snapshots
-and caches.
-
-Native installation is only the package layer. Complete the CLI layer afterward:
-
-```bash
-npx thoth-agents@latest install --agent=codex --dry-run
-npx thoth-agents@latest install --agent=codex
-```
-
-Without the CLI, Codex does not receive the thoth-agents block in global
-`AGENTS.md`, the nine custom agents, managed Default-mode feature configuration,
-model ownership state, or mandatory external skills.
-
-## Generation and verification
-
-The catalogs and packages are generated from the harness adapters:
-
-```bash
-pnpm run build
-pnpm run integration:verify
-```
-
-`.codex-plugin/.thoth-agents-plugin-assets.json` records deterministic asset
-paths, fields, and hashes. Change the owning adapter/writer and regenerate; do
-not edit generated package files by hand.
-
-See [Codex Install](codex-install.md) for the complete two-surface install and
-trust flow.
+See [Build Codex plugins](https://learn.chatgpt.com/docs/build-plugins#plugin-structure)
+and [Codex custom subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).

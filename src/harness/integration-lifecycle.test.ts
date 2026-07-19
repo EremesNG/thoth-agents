@@ -33,10 +33,13 @@ describe('integration package lifecycle', () => {
 
   test('version lifecycle regenerates and verifies integration packages', () => {
     const { scripts } = readPackageMetadata();
+    const versionSteps = scripts.version.split('&&').map((step) => step.trim());
 
-    expect(scripts.version).toBe(
-      'pnpm run integration:sync && pnpm run integration:verify',
-    );
+    expect(versionSteps).toEqual([
+      'pnpm run integration:sync',
+      'pnpm run integration:verify',
+      'git add -- integrations .agents/plugins/marketplace.json .claude-plugin/marketplace.json',
+    ]);
     expect(scripts['integration:verify']).toContain(
       'src/harness/integration-lifecycle.test.ts',
     );
@@ -49,7 +52,9 @@ describe('integration package lifecycle', () => {
   ] as const)('release:%s uses the synchronizing npm version lifecycle', (level) => {
     const { scripts } = readPackageMetadata();
 
-    expect(scripts[`release:${level}`]).toContain(`npm version ${level}`);
+    expect(scripts[`release:${level}`]).toBe(
+      `npm version ${level} --ignore-scripts=false && git push --follow-tags`,
+    );
   });
 
   test('all versioned integration manifests match package.json', () => {

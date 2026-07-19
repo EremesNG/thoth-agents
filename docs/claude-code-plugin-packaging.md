@@ -106,7 +106,9 @@ available when only generated packages need refreshing. `release:patch`,
 `release:minor`, and `release:major` use npm's `version` lifecycle to regenerate
 and verify the Codex manifest, Claude manifest, and Claude marketplace entry
 after the root package version changes and before npm creates the release commit
-and tag.
+and tag. Each release command sets `--ignore-scripts=false` so a user-level npm
+configuration cannot skip the required lifecycle, and the lifecycle stages the
+generated integration surfaces explicitly.
 
 Generated provenance and package files, including `agents/*.md`, should be
 changed through their owning prompt source, adapter, or writer, not edited

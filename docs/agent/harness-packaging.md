@@ -37,8 +37,8 @@ and writers for OpenCode, Codex, and Claude Code.
   `src/agents/` through `claudeCodeAdapter`.
 - `npm version` runs the package `version` lifecycle before Git commit/tag
   creation. The `release:patch`, `release:minor`, and `release:major` commands
-  therefore regenerate and verify every versioned integration manifest after
-  the root version changes.
+  force that lifecycle with `--ignore-scripts=false`, then regenerate, verify,
+  and stage every generated integration surface after the root version changes.
 
 ## Public references
 

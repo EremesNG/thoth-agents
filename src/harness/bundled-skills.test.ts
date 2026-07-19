@@ -53,6 +53,37 @@ describe('bundled thoth-init', () => {
       expect(
         existsSync(join(project, 'openspec', 'memory', 'constitution.md')),
       ).toBe(true);
+      const initializedConstitution = readFileSync(
+        join(project, 'openspec', 'memory', 'constitution.md'),
+        'utf8',
+      );
+      expect(initializedConstitution).not.toContain('YYYY-MM-DD');
+      expect(initializedConstitution).toMatch(
+        /\*\*Ratified\*\*: \d{4}-\d{2}-\d{2}<br>/,
+      );
+      expect(initializedConstitution).toMatch(
+        /\*\*Last amended\*\*: \d{4}-\d{2}-\d{2}/,
+      );
+      const constitutionValidator = spawnSync(
+        process.execPath,
+        [
+          join(
+            packageRoot,
+            'plugin',
+            'skills',
+            'thoth-constitution',
+            'scripts',
+            'validate.mjs',
+          ),
+          '--constitution',
+          join(project, 'openspec', 'memory', 'constitution.md'),
+          '--json',
+        ],
+        { encoding: 'utf8' },
+      );
+      expect(constitutionValidator.status, constitutionValidator.stderr).toBe(
+        0,
+      );
       expect(
         existsSync(join(project, 'openspec', 'templates', 'spec.md')),
       ).toBe(true);
@@ -136,5 +167,60 @@ describe('bundled thoth-init', () => {
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
+  });
+});
+
+describe('canonical SDD bundle contracts', () => {
+  test('teaches traceable durable requirements and typed success criteria', () => {
+    const spec = readFileSync(
+      join(process.cwd(), 'skills', 'thoth-sdd', 'templates', 'spec.md'),
+      'utf8',
+    );
+
+    expect(spec).toContain('## Intent and scope');
+    expect(spec).toContain('**Affected capabilities**');
+    expect(spec).toContain('**Covers**: FR-001, SC-001');
+    expect(spec).toMatch(/FR-001 — .+`\[(?:INTERNAL|ADDED)/);
+    expect(spec).toContain('`[buildable]`');
+    expect(spec).toContain('`[outcome]`');
+  });
+
+  test('keeps parallelism and checklist revalidation honest and conditional', () => {
+    const tasks = readFileSync(
+      join(process.cwd(), 'skills', 'thoth-sdd', 'templates', 'tasks.md'),
+      'utf8',
+    );
+    const checklist = readFileSync(
+      join(process.cwd(), 'skills', 'thoth-sdd', 'templates', 'checklist.md'),
+      'utf8',
+    );
+
+    expect(tasks).toContain('None: [reason no tasks can safely overlap]');
+    expect(checklist).toContain('**Activation reason**');
+    expect(checklist).toContain('## Domain lenses');
+    expect(checklist).toContain('Not required: [evidence-backed reason]');
+  });
+
+  test('documents fast-forward gates and archive-ready closeout', () => {
+    const skill = readFileSync(
+      join(process.cwd(), 'skills', 'thoth-sdd', 'SKILL.md'),
+      'utf8',
+    );
+    const archive = readFileSync(
+      join(
+        process.cwd(),
+        'skills',
+        'thoth-sdd',
+        'templates',
+        'archive-report.md',
+      ),
+      'utf8',
+    );
+
+    expect(skill).toContain('fast-forward');
+    expect(skill).toContain('ready|closeout');
+    expect(skill).not.toContain('|final>');
+    expect(archive).toContain('**Status**: READY');
+    expect(archive).toContain('## Canonical specification sync');
   });
 });

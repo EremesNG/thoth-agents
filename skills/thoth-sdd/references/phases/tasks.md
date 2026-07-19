@@ -9,10 +9,12 @@ Every executable line uses exactly:
 - [ ] T### [P?] [US#?] description with FR-###/SC-### coverage in `exact/path` | Verify: observable outcome
 ```
 
-IDs are unique and sequential. `[P]` means the task can safely run in parallel
-without overlapping mutable files. `[US#]` links story work; omit it only for
-genuinely shared setup or closeout. Order tests before implementation for
-behavior changes, group work by independently deliverable story, identify the
-MVP story, state dependencies, and include concrete parallel execution examples.
-Every FR/SC must map to one or more tasks and every task must state a verification
-outcome. Avoid ceremonial tasks for trivial edits.
+IDs are unique and sequential. `[US#]` links story work; omit it only for shared
+setup or closeout. Cover every FR and **buildable** SC. Outcome SCs remain
+verification targets but do not justify artificial implementation tasks.
+
+Order test-first work before its implementation, group tasks by independently
+deliverable story, identify the MVP, and state dependencies. `[P]` is permitted
+only when mutable paths provably do not overlap and the Parallel execution
+section names a concrete pairing. If there is no safe parallel work, use
+`- None: <evidence-backed reason>` instead. Avoid ceremonial tasks.

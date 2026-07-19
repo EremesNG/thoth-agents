@@ -1,18 +1,21 @@
+<!--
+Sync Impact Report
+- Version change: 3.0.0 -> 4.0.0
+- Modified principles: Proportional Spec Kit-compatible SDD (transactional archive semantics defined); Evidence-led completion (durable closeout sync added)
+- Added sections: Governance
+- Removed sections: Semver policy (absorbed into Governance)
+- Templates: ✅ skills/thoth-sdd/templates; ✅ skills/thoth-archive; ✅ agent and SDD instructions; ✅ user documentation
+- Follow-up TODOs: None
+-->
 # thoth-agents Project Constitution
 
-Version: 3.0.0
-Ratified: 2026-06-16
-Last-Amended: 2026-07-19
+**Version**: 4.0.0<br>
+**Ratified**: 2026-06-16<br>
+**Last amended**: 2026-07-19
 
 This constitution governs active thoth-agents behavior. Spec Kit supplies SDD
 artifact semantics; thoth-agents stores them under `openspec/` and adds its
 adaptive route policy.
-
-## Semver policy
-
-- MAJOR: remove or redefine a principle.
-- MINOR: add a principle or materially expand governance.
-- PATCH: clarify wording without behavior change.
 
 ## Principles
 
@@ -45,7 +48,11 @@ explicit request or unresolved material human-owned product/architecture
 branches; Full SDD alone never requires it.
 Every phase has a shared typed protocol and a canonical dispatch envelope.
 Artifact-backed routes persist a verification verdict and close through a dated
-archive without implicitly merging into permanent specifications.
+archive. After oracle PASS, archive MUST transactionally synchronize only explicitly
+declared durable `ADDED`, `MODIFIED`, `REMOVED`, and `RENAMED` deltas into
+`openspec/specs/`; `[INTERNAL]` requirements never alter permanent
+specifications. Handled failures MUST roll back within the active process, but
+forced process or operating-system termination is not crash-atomic.
 
 ### 4. Truthful multi-harness contracts
 
@@ -76,10 +83,26 @@ evidence. Oracle independently verifies every route; Full SDD also adds
 oracle-owned pre-implementation analysis. Artifact-backed failures append
 traceable convergence tasks before the implementation/re-check loop; Direct
 failures return straight to implementation. Accelerated and Full archive only
-after a passing verdict and no unresolved critical finding.
+after a passing verdict, no unresolved critical finding, and successful transactional
+canonical synchronization of declared durable deltas.
 
-## Sync-impact report
+## Governance
 
+- Routine SDD planning MUST read active principles and record Constitution Check
+  evidence, but MUST NOT amend or revalidate constitution lifecycle metadata.
+- Amendments require explicit user direction, an updated Sync Impact Report,
+  and propagation to every affected template, instruction, and durable document.
+- MAJOR versions remove or redefine a principle or compatibility boundary.
+- MINOR versions add a principle/section or materially expand guidance.
+- PATCH versions clarify wording without semantic behavior change.
+
+## Amendment history
+
+- 4.0.0 | major: redefine artifact-backed archive as transactional synchronization
+  of explicitly declared durable deltas after oracle PASS with active-process
+  rollback for handled failures; add isolated
+  constitution lifecycle validation | SDD contracts, archive tooling, templates,
+  instructions, documentation, and tests.
 - 3.0.0 | major: replace phase-only coordination roles with a seven-role pack,
   require oracle-owned analysis and verification, distinguish CLI/network-based
   installation from runtime-autonomous SDD, and keep external skills canonical

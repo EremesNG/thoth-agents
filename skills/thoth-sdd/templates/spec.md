@@ -4,6 +4,12 @@
 **Route**: Accelerated | Full<br>
 **Status**: Draft
 
+## Intent and scope
+
+**Why**: [User or operator value.]<br>
+**Impact**: [Observable behavior and compatibility impact.]<br>
+**Affected capabilities**: `[capability-slug]` | None
+
 ## User stories
 
 ### US1 - [Outcome] (Priority: P1)
@@ -11,6 +17,8 @@
 As a [actor], I can [capability] so that [value].
 
 **Independent test**: [How this story is demonstrated in isolation.]
+
+**Covers**: FR-001, SC-001
 
 **Acceptance scenarios**:
 
@@ -22,11 +30,16 @@ As a [actor], I can [capability] so that [value].
 
 ## Functional requirements
 
-- **FR-001**: The system MUST [testable behavior].
+- **FR-001 — [Requirement name]**: `[ADDED capability-slug]` The system MUST [observable behavior].
+
+Use exactly one delta marker per FR: `[INTERNAL]`, `[ADDED capability-slug]`,
+`[MODIFIED capability-slug]`, `[REMOVED capability-slug]`, or
+`[RENAMED capability-slug FROM Previous requirement name]`.
 
 ## Success criteria
 
-- **SC-001**: [Measurable, implementation-independent outcome.]
+- **SC-001** `[buildable]`: [Measurable criterion implemented by this change.]
+- **SC-002** `[outcome]`: [Measurable product or operational outcome observed later.]
 
 ## Assumptions
 
@@ -34,7 +47,7 @@ As a [actor], I can [capability] so that [value].
 
 ## Dependencies
 
-- [External or internal dependency.]
+- [External or internal dependency, or None.]
 
 ## Out of scope
 

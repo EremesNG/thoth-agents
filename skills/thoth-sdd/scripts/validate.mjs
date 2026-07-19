@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, posix, resolve } from 'node:path';
 
 function parseArgs(argv) {
-  const values = { route: 'full', through: 'final', json: false };
+  const values = { route: 'full', through: 'ready', json: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--json') values.json = true;
@@ -18,10 +18,12 @@ function parseArgs(argv) {
     throw new Error('--route must be direct, accelerated, or full');
   }
   if (
-    !['specify', 'plan', 'tasks', 'checklist', 'final'].includes(values.through)
+    !['specify', 'plan', 'tasks', 'checklist', 'ready', 'closeout'].includes(
+      values.through,
+    )
   ) {
     throw new Error(
-      '--through must be specify, plan, tasks, checklist, or final',
+      '--through must be specify, plan, tasks, checklist, ready, or closeout',
     );
   }
   return values;
@@ -62,13 +64,6 @@ function sectionContent(content, heading) {
   return remainder.slice(0, nextHeading?.index ?? remainder.length).trim();
 }
 
-function definitionIds(content, prefix) {
-  return valuesFor(
-    new RegExp(`^- \\*\\*${prefix}-(\\d{3})\\*\\*:\\s*\\S`, 'gim'),
-    content,
-  );
-}
-
 function checkUniqueSequential(ids, prefix, artifact, errors) {
   if (new Set(ids).size !== ids.length) {
     errors.push(
@@ -91,12 +86,106 @@ function checkUniqueSequential(ids, prefix, artifact, errors) {
   }
 }
 
+const CAPABILITY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function parseRequirementDelta(metadata) {
+  if (metadata === 'INTERNAL') {
+    return { operation: 'INTERNAL' };
+  }
+
+  const change = /^(ADDED|MODIFIED|REMOVED)\s+(\S+)$/.exec(metadata);
+  if (change && CAPABILITY_PATTERN.test(change[2])) {
+    return { operation: change[1], capability: change[2] };
+  }
+
+  const rename = /^RENAMED\s+(\S+)\s+FROM\s+(.+)$/.exec(metadata);
+  if (
+    rename &&
+    CAPABILITY_PATTERN.test(rename[1]) &&
+    rename[2].trim().length > 0
+  ) {
+    return {
+      operation: 'RENAMED',
+      capability: rename[1],
+      previousTitle: rename[2].trim(),
+    };
+  }
+
+  return undefined;
+}
+
+function parseAffectedCapabilities(intentSection) {
+  const match = /^\*\*Affected capabilities\*\*:\s*(.+)$/im.exec(
+    intentSection ?? '',
+  );
+  if (!match) return undefined;
+  const value = match[1].replace(/<br>\s*$/i, '').trim();
+  if (/^None\.?$/i.test(value)) return [];
+  const capabilities = valuesFor(/`([^`]+)`/g, value);
+  return capabilities.length > 0 &&
+    capabilities.every((item) => CAPABILITY_PATTERN.test(item))
+    ? capabilities
+    : undefined;
+}
+
+function contractCandidateLines(content, prefix) {
+  const pattern = new RegExp(`^\\s*-\\s+(?:\\*\\*)?${prefix}\\b`, 'i');
+  return content.split(/\r?\n/).filter((line) => pattern.test(line));
+}
+
 function validateSpec(content, errors) {
   const artifact = 'spec.md';
+  const intentSection = sectionContent(content, 'Intent and scope');
+  const affectedCapabilities = parseAffectedCapabilities(intentSection);
+  if (
+    intentSection === undefined ||
+    !/^\*\*Why\*\*:\s*\S.+$/im.test(intentSection) ||
+    !/^\*\*Impact\*\*:\s*\S.+$/im.test(intentSection) ||
+    affectedCapabilities === undefined
+  ) {
+    errors.push(
+      issue(
+        'SDD-SPEC-INTENT',
+        artifact,
+        'Intent and scope must define Why, Impact, and valid affected capabilities or None.',
+      ),
+    );
+  }
+
+  const userStoriesSection = sectionContent(content, 'User stories');
+  const edgeCasesSection = sectionContent(content, 'Edge cases');
+  const functionalRequirementsSection = sectionContent(
+    content,
+    'Functional requirements',
+  );
+  const successCriteriaSection = sectionContent(content, 'Success criteria');
+  const dependenciesSection = sectionContent(content, 'Dependencies');
+  const missingSections = [
+    ['User stories', userStoriesSection],
+    ['Edge cases', edgeCasesSection],
+    ['Functional requirements', functionalRequirementsSection],
+    ['Success criteria', successCriteriaSection],
+    ['Dependencies', dependenciesSection],
+  ]
+    .filter(([, section]) => section === undefined)
+    .map(([heading]) => heading);
+  if (missingSections.length > 0) {
+    errors.push(
+      issue(
+        'SDD-SPEC-SECTIONS',
+        artifact,
+        `Canonical specification sections are missing: ${missingSections.join(', ')}.`,
+      ),
+    );
+  }
+
   const storyMatches = [
-    ...content.matchAll(/^###\s+US(\d+)\s+-.*\(Priority:\s*P\d+\)/gim),
+    ...(userStoriesSection ?? '').matchAll(
+      /^###\s+US(\d+)\s+-.*\(Priority:\s*P\d+\)/gim,
+    ),
   ];
   const storyIds = storyMatches.map((match) => match[1]);
+  const storyCoverage = new Set();
   if (storyIds.length === 0) {
     errors.push(
       issue(
@@ -110,15 +199,8 @@ function validateSpec(content, errors) {
     for (const [index, match] of storyMatches.entries()) {
       const start = match.index ?? 0;
       const next = storyMatches[index + 1]?.index;
-      const functionalRequirements = /^##\s+Functional requirements\s*$/im.exec(
-        content.slice(start),
-      );
-      const end =
-        next ??
-        (functionalRequirements?.index === undefined
-          ? content.length
-          : start + functionalRequirements.index);
-      const story = content.slice(start, end);
+      const end = next ?? userStoriesSection.length;
+      const story = userStoriesSection.slice(start, end);
       if (!/\*\*Independent test\*\*:\s*\S.+/i.test(story)) {
         errors.push(
           issue(
@@ -128,6 +210,21 @@ function validateSpec(content, errors) {
           ),
         );
       }
+      const covers = /^\*\*Covers\*\*:\s*(\S.+)$/im.exec(story);
+      const coveredIds = covers?.[1].match(/\b(?:FR|SC)-\d{3}\b/g) ?? [];
+      if (
+        !coveredIds.some((id) => id.startsWith('FR-')) ||
+        !coveredIds.some((id) => id.startsWith('SC-'))
+      ) {
+        errors.push(
+          issue(
+            'SDD-SPEC-STORY-COVERAGE',
+            artifact,
+            `US${match[1]} must map to its FR-### and SC-### contracts.`,
+          ),
+        );
+      }
+      for (const id of coveredIds) storyCoverage.add(id);
       if (
         !/\*\*Given\*\*[\s\S]+?\*\*When\*\*[\s\S]+?\*\*Then\*\*\s+\S/i.test(
           story,
@@ -144,12 +241,74 @@ function validateSpec(content, errors) {
     }
   }
 
-  const frIds = definitionIds(content, 'FR');
-  const scIds = definitionIds(content, 'SC');
+  const functionalRequirements = [
+    ...(functionalRequirementsSection ?? '').matchAll(
+      /^- \*\*FR-(\d{3})\s+—\s+(.+?)\*\*:\s*`\[(.+?)\]`\s+(\S.+)$/gim,
+    ),
+  ];
+  const successCriteria = [
+    ...(successCriteriaSection ?? '').matchAll(
+      /^- \*\*SC-(\d{3})\*\*\s+`\[(buildable|outcome)\]`:\s*(\S.+)$/gim,
+    ),
+  ];
+  const frIds = functionalRequirements.map((match) => match[1]);
+  const scIds = successCriteria.map((match) => match[1]);
+  const rawFrCandidates = contractCandidateLines(content, 'FR');
+  const rawScCandidates = contractCandidateLines(content, 'SC');
+  if (rawFrCandidates.length !== functionalRequirements.length) {
+    errors.push(
+      issue(
+        'SDD-SPEC-FR-FORMAT',
+        artifact,
+        'Every FR-### must use the canonical named requirement, delta metadata, and normative statement format.',
+      ),
+    );
+  }
   if (frIds.length === 0) {
     errors.push(issue('SDD-SPEC-FR', artifact, 'Add FR-### requirements.'));
   } else {
     checkUniqueSequential(frIds, 'FR', artifact, errors);
+    for (const match of functionalRequirements) {
+      if (!/\b(?:MUST|SHALL)\b/.test(match[4])) {
+        errors.push(
+          issue(
+            'SDD-SPEC-FR-NORMATIVE',
+            artifact,
+            `FR-${match[1]} must contain an observable MUST or SHALL statement.`,
+          ),
+        );
+      }
+      const delta = parseRequirementDelta(match[3]);
+      if (!delta) {
+        errors.push(
+          issue(
+            'SDD-SPEC-FR-DELTA',
+            artifact,
+            `FR-${match[1]} must declare INTERNAL, ADDED, MODIFIED, REMOVED, or RENAMED metadata.`,
+          ),
+        );
+      } else if (
+        delta.capability &&
+        !affectedCapabilities?.includes(delta.capability)
+      ) {
+        errors.push(
+          issue(
+            'SDD-SPEC-CAPABILITY-COVERAGE',
+            artifact,
+            `FR-${match[1]} targets undeclared capability ${delta.capability}.`,
+          ),
+        );
+      }
+    }
+  }
+  if (rawScCandidates.length !== successCriteria.length) {
+    errors.push(
+      issue(
+        'SDD-SPEC-SC-TYPE',
+        artifact,
+        'Every SC-### must be classified as buildable or outcome.',
+      ),
+    );
   }
   if (scIds.length === 0) {
     errors.push(
@@ -157,12 +316,9 @@ function validateSpec(content, errors) {
     );
   } else {
     checkUniqueSequential(scIds, 'SC', artifact, errors);
-    const successCriteria = [
-      ...content.matchAll(/^- \*\*SC-\d{3}\*\*:\s*(.+)$/gim),
-    ];
     const measurable =
       /(?:\b\d+(?:\.\d+)?\b|%|\b(?:all|every|none|zero|under|over|within|at least|at most|no more|fewer|pass(?:es)?|fail(?:s)?|accept(?:s)?|reject(?:s)?|preserve(?:s)?)\b)/i;
-    if (successCriteria.some((match) => !measurable.test(match[1]))) {
+    if (successCriteria.some((match) => !measurable.test(match[3]))) {
       errors.push(
         issue(
           'SDD-SPEC-SC-MEASURABLE',
@@ -183,7 +339,37 @@ function validateSpec(content, errors) {
     );
   }
 
-  return { storyIds, frIds, scIds };
+  const knownContracts = new Set([
+    ...frIds.map((id) => `FR-${id}`),
+    ...scIds.map((id) => `SC-${id}`),
+  ]);
+  const unknownCoverage = [...storyCoverage].filter(
+    (id) => !knownContracts.has(id),
+  );
+  const uncoveredContracts = [...knownContracts].filter(
+    (id) => !storyCoverage.has(id),
+  );
+  if (unknownCoverage.length > 0 || uncoveredContracts.length > 0) {
+    errors.push(
+      issue(
+        'SDD-SPEC-STORY-COVERAGE',
+        artifact,
+        `Story traceability is incomplete. Unknown: ${unknownCoverage.join(', ') || 'none'}; uncovered: ${uncoveredContracts.join(', ') || 'none'}.`,
+      ),
+    );
+  }
+
+  return {
+    storyIds,
+    frIds,
+    scIds,
+    buildableScIds: successCriteria
+      .filter((match) => match[2].toLowerCase() === 'buildable')
+      .map((match) => match[1]),
+    outcomeScIds: successCriteria
+      .filter((match) => match[2].toLowerCase() === 'outcome')
+      .map((match) => match[1]),
+  };
 }
 
 function constitutionEntries(content) {
@@ -197,7 +383,11 @@ function constitutionEntries(content) {
           line,
         );
       return match
-        ? { name: match[1].trim(), status: match[2].toUpperCase() }
+        ? {
+            name: match[1].trim(),
+            status: match[2].toUpperCase(),
+            evidence: match[3],
+          }
         : undefined;
     });
 }
@@ -228,9 +418,15 @@ function validatePlan(content, errors, constitution) {
   const postEntries = constitutionEntries(post);
   if (
     (pre !== undefined &&
-      (preEntries.length === 0 || preEntries.some((entry) => !entry))) ||
+      (preEntries.length === 0 ||
+        preEntries.some(
+          (entry) => !entry || !isConcreteEvidence(entry.evidence),
+        ))) ||
     (post !== undefined &&
-      (postEntries.length === 0 || postEntries.some((entry) => !entry)))
+      (postEntries.length === 0 ||
+        postEntries.some(
+          (entry) => !entry || !isConcreteEvidence(entry.evidence),
+        )))
   ) {
     errors.push(
       issue(
@@ -283,6 +479,36 @@ function validatePlan(content, errors, constitution) {
   }
 }
 
+function exactTaskPath(line) {
+  const description = line.split(' | Verify:', 1)[0];
+  const spans = [...description.matchAll(/`([^`\r\n]+)`/g)];
+  if (spans.length !== 1) return undefined;
+
+  const rawPath = spans[0][1].trim().replaceAll('\\', '/');
+  if (
+    rawPath.length === 0 ||
+    /^\[.*\]$/.test(rawPath) ||
+    /[*?[\]{}]/.test(rawPath) ||
+    rawPath.startsWith('!') ||
+    rawPath === '~' ||
+    rawPath.startsWith('~/') ||
+    rawPath.startsWith('/') ||
+    /^[a-z][a-z0-9+.-]*:/i.test(rawPath)
+  ) {
+    return undefined;
+  }
+
+  const normalized = posix.normalize(rawPath);
+  if (
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith('../')
+  ) {
+    return undefined;
+  }
+  return normalized.toLowerCase();
+}
+
 function validateTasks(content, errors, spec) {
   const artifact = 'tasks.md';
   const taskLines = content
@@ -292,13 +518,13 @@ function validateTasks(content, errors, spec) {
     /^- \[[ x~]\] T(\d{3})(?: \[P\])?(?: \[US(\d+)\])? .+`[^`\r\n]+`(?: \| Verify: \S.+)?\s*$/;
   if (
     taskLines.length === 0 ||
-    taskLines.some((line) => !taskShape.test(line))
+    taskLines.some((line) => !taskShape.test(line) || !exactTaskPath(line))
   ) {
     errors.push(
       issue(
         'SDD-TASK-FORMAT',
         artifact,
-        'Every task must use T### [P?] [US#?], a description, and an exact backticked path.',
+        'Every task must use T### [P?] [US#?], a description, and exactly one literal repository-relative path.',
       ),
     );
   }
@@ -337,7 +563,7 @@ function validateTasks(content, errors, spec) {
           (id) => !new RegExp(`\\bFR-${id}\\b`).test(taskLines.join('\n')),
         )
         .map((id) => `FR-${id}`),
-      ...spec.scIds
+      ...spec.buildableScIds
         .filter(
           (id) => !new RegExp(`\\bSC-${id}\\b`).test(taskLines.join('\n')),
         )
@@ -376,15 +602,63 @@ function validateTasks(content, errors, spec) {
       issue('SDD-TASK-DEPENDENCIES', artifact, 'Document task dependencies.'),
     );
   }
+  const parallelSection = sectionContent(
+    content,
+    'Parallel execution(?: examples)?',
+  );
+  const taskRecords = parsedTasks.map(({ line, match }) => ({
+    id: `T${match[1]}`,
+    parallel: /\[P\]/.test(line),
+    path: exactTaskPath(line),
+  }));
+  const tasksById = new Map(taskRecords.map((task) => [task.id, task]));
+  const hasParallelTask = taskRecords.some((task) => task.parallel);
+  const parallelLines = (parallelSection ?? '')
+    .split(/\r?\n/)
+    .map((line) => [line, [...new Set(line.match(/\bT\d{3}\b/g) ?? [])]])
+    .filter(([, ids]) => ids.length >= 2);
+  const referencedTaskIds = new Set(parallelLines.flatMap(([, ids]) => ids));
+  const hasParallelExample = parallelLines.length > 0;
+  const noParallelMatch = /^-\s+None:\s*(\S.*)$/im.exec(parallelSection ?? '');
+  const explainsNoParallelWork =
+    noParallelMatch !== null && isConcreteEvidence(noParallelMatch[1]);
+  const pathsOverlap = (left, right) =>
+    left === right ||
+    left.startsWith(`${right}/`) ||
+    right.startsWith(`${left}/`);
+  const unknownReferences = [...referencedTaskIds].filter(
+    (id) => !tasksById.has(id),
+  );
+  const omittedParallelTasks = taskRecords
+    .filter((task) => task.parallel && !referencedTaskIds.has(task.id))
+    .map((task) => task.id);
+  const examplesWithoutParallelTask = parallelLines.some(
+    ([, ids]) => !ids.some((id) => tasksById.get(id)?.parallel),
+  );
+  const overlappingExamples = parallelLines.some(([, ids]) => {
+    const paths = ids.map((id) => tasksById.get(id)?.path);
+    if (paths.some((path) => path === undefined)) return true;
+    return paths.some((path, index) =>
+      paths.slice(index + 1).some((other) => pathsOverlap(path, other)),
+    );
+  });
   if (
-    !/^##\s+Parallel execution examples\s*$/im.test(content) ||
-    !/\[P\]/.test(content)
+    parallelSection === undefined ||
+    (explainsNoParallelWork && hasParallelExample) ||
+    (hasParallelTask &&
+      (!hasParallelExample ||
+        explainsNoParallelWork ||
+        unknownReferences.length > 0 ||
+        omittedParallelTasks.length > 0 ||
+        examplesWithoutParallelTask ||
+        overlappingExamples)) ||
+    (!hasParallelTask && !explainsNoParallelWork)
   ) {
     errors.push(
       issue(
         'SDD-TASK-PARALLEL',
         artifact,
-        'Include [P] candidates and a concrete parallel execution example.',
+        'Document existing [P] tasks with non-overlapping paths, or explain why no safe parallel work exists.',
       ),
     );
   }
@@ -392,6 +666,18 @@ function validateTasks(content, errors, spec) {
 
 function validateChecklist(content, errors, spec, requireComplete) {
   const artifact = 'checklists/requirements.md';
+  const activationMatch = /^\*\*Activation reason\*\*:\s*(\S.*)$/im.exec(
+    content,
+  );
+  if (activationMatch === null || !isConcreteEvidence(activationMatch[1])) {
+    errors.push(
+      issue(
+        'SDD-CHECKLIST-ACTIVATION',
+        artifact,
+        'Record the concrete risk or ambiguity that activated the checklist.',
+      ),
+    );
+  }
   const checklistLines = content
     .split(/\r?\n/)
     .filter((line) => /^- \[[ x~]\]/.test(line));
@@ -429,7 +715,27 @@ function validateChecklist(content, errors, spec, requireComplete) {
     );
   }
   const initial = sectionContent(content, 'Initial validation');
+  const domainLenses = sectionContent(content, 'Domain lenses');
   const revalidation = sectionContent(content, 'Revalidation');
+  const noopRevalidationMatch =
+    revalidation === undefined
+      ? null
+      : /^-\s+Not required:\s*(\S.*)$/im.exec(revalidation);
+  const explicitNoopRevalidation =
+    noopRevalidationMatch !== null &&
+    isConcreteEvidence(noopRevalidationMatch[1]);
+  const hasRevalidationItems =
+    revalidation !== undefined &&
+    /^- \[[ x~]\] CHK\d{3}\b/im.test(revalidation);
+  const hasDomainItems =
+    domainLenses !== undefined &&
+    /^- \[[ x~]\] CHK\d{3}\b/im.test(domainLenses);
+  const noDomainLensesMatch =
+    domainLenses === undefined
+      ? null
+      : /^-\s+None:\s*(\S.*)$/im.exec(domainLenses);
+  const explicitNoDomainLenses =
+    noDomainLensesMatch !== null && isConcreteEvidence(noDomainLensesMatch[1]);
   const missingDimensions = [
     'Completeness',
     'Clarity',
@@ -449,15 +755,29 @@ function validateChecklist(content, errors, spec, requireComplete) {
     );
   }
   if (
+    domainLenses === undefined ||
+    (!hasDomainItems && !explicitNoDomainLenses) ||
+    (hasDomainItems && explicitNoDomainLenses)
+  ) {
+    errors.push(
+      issue(
+        'SDD-CHECKLIST-DOMAIN-LENSES',
+        artifact,
+        'Add applicable domain-lens checks or an evidence-backed None decision.',
+      ),
+    );
+  }
+  if (
     initial === undefined ||
     revalidation === undefined ||
-    !/^- \[[ x~]\] CHK\d{3}\b/im.test(revalidation)
+    (!hasRevalidationItems && !explicitNoopRevalidation) ||
+    (hasRevalidationItems && explicitNoopRevalidation)
   ) {
     errors.push(
       issue(
         'SDD-CHECKLIST-REVALIDATION',
         artifact,
-        'Record both initial validation and revalidation.',
+        'Record initial validation plus checked revalidation or an evidence-backed no-op.',
       ),
     );
   }
@@ -488,6 +808,214 @@ function validateChecklist(content, errors, spec, requireComplete) {
   }
 }
 
+function validateCloseoutTasks(content, errors) {
+  if (/^- \[(?: |~)\] T\d{3}\b/m.test(content)) {
+    errors.push(
+      issue(
+        'SDD-CLOSEOUT-TASKS',
+        'tasks.md',
+        'Closeout requires every task to be complete.',
+      ),
+    );
+  }
+}
+
+function parseComplianceMatrix(content) {
+  const matrix = sectionContent(content, 'Compliance matrix') ?? '';
+  const candidates = matrix
+    .split(/\r?\n/)
+    .filter((line) => /^\s*\|\s*(?:FR|SC)-/i.test(line));
+  const entries = [
+    ...matrix.matchAll(
+      /^\|\s*((?:FR|SC)-\d{3})(?:\s+`?\[(?:buildable|outcome)\]`?)?\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(PASS|RISK|FAIL)\s*\|\s*$/gim,
+    ),
+  ].map((match) => ({
+    id: match[1].toUpperCase(),
+    evidence: match[2],
+    check: match[3],
+    result: match[4].toUpperCase(),
+  }));
+  return { entries, malformed: candidates.length !== entries.length };
+}
+
+function isConcreteEvidence(value) {
+  const normalized = value.replaceAll('`', '').trim();
+  return (
+    normalized.length > 0 &&
+    !/^\[.*\]$/.test(normalized) &&
+    !/^(?:N\/?A|NONE|PENDING|TBD|NOT YET|-)[.!]?$/i.test(normalized)
+  );
+}
+
+function hasExplicitResidualRisk(content, id) {
+  const residualRisks = sectionContent(content, 'Residual risks') ?? '';
+  const match = new RegExp(`^-\\s+${id}\\s*:\\s*(\\S.*)$`, 'im').exec(
+    residualRisks,
+  );
+  return match !== null && isConcreteEvidence(match[1]);
+}
+
+function hasBlockingCriticalFinding(content) {
+  const findings = sectionContent(content, 'Findings') ?? '';
+  return findings.split(/\r?\n/).some((line) => {
+    if (!/\bCRITICAL\b/i.test(line)) return false;
+    if (/\bRESOLVED\b/i.test(line)) return false;
+    return !/\b(?:NO|ZERO)\s+(?:OPEN\s+)?CRITICAL\b/i.test(line);
+  });
+}
+
+function hasConcreteReviewDimensions(content) {
+  const dimensions = sectionContent(content, 'Review dimensions') ?? '';
+  return ['Completeness', 'Correctness', 'Coherence'].every((dimension) => {
+    const match = new RegExp(
+      `^-\\s*\\*\\*${dimension}\\*\\*:\\s*(\\S.*)$`,
+      'im',
+    ).exec(dimensions);
+    return match !== null && isConcreteEvidence(match[1]);
+  });
+}
+
+function validateVerifyReport(content, errors, spec) {
+  const artifact = 'verify-report.md';
+  if (
+    !/^\*\*Reviewer\*\*:\s*oracle(?:<br>)?\s*$/im.test(content) ||
+    !/^\*\*Independent from implementer\*\*:\s*Yes(?:<br>)?\s*$/im.test(content)
+  ) {
+    errors.push(
+      issue(
+        'SDD-VERIFY-INDEPENDENCE',
+        artifact,
+        'Closeout requires an oracle reviewer independent from the implementer.',
+      ),
+    );
+  }
+  if (!/^\*\*Verdict\*\*:\s*PASS\s*$/im.test(content)) {
+    errors.push(
+      issue(
+        'SDD-VERIFY-VERDICT',
+        artifact,
+        'Closeout requires an explicit PASS verdict.',
+      ),
+    );
+  }
+  if (hasBlockingCriticalFinding(content)) {
+    errors.push(
+      issue(
+        'SDD-VERIFY-CRITICAL',
+        artifact,
+        'Unresolved CRITICAL verification findings block closeout.',
+      ),
+    );
+  }
+
+  if (!hasConcreteReviewDimensions(content)) {
+    errors.push(
+      issue(
+        'SDD-VERIFY-DIMENSIONS',
+        artifact,
+        'Oracle must judge completeness, correctness, and coherence separately.',
+      ),
+    );
+  }
+
+  const matrix = parseComplianceMatrix(content);
+  const knownIds = new Set([
+    ...spec.frIds.map((id) => `FR-${id}`),
+    ...spec.scIds.map((id) => `SC-${id}`),
+  ]);
+  const rowIds = matrix.entries.map(({ id }) => id);
+  const duplicateIds = rowIds.filter(
+    (id, index) => rowIds.indexOf(id) !== index,
+  );
+  const unknownIds = rowIds.filter((id) => !knownIds.has(id));
+  const failedIds = matrix.entries
+    .filter(({ result }) => result === 'FAIL')
+    .map(({ id }) => id);
+  if (
+    matrix.malformed ||
+    duplicateIds.length > 0 ||
+    unknownIds.length > 0 ||
+    failedIds.length > 0
+  ) {
+    errors.push(
+      issue(
+        'SDD-VERIFY-MATRIX',
+        artifact,
+        `Compliance matrix rows must be canonical, unique, known, and non-FAIL. Duplicates: ${[...new Set(duplicateIds)].join(', ') || 'none'}; unknown: ${[...new Set(unknownIds)].join(', ') || 'none'}; failed: ${[...new Set(failedIds)].join(', ') || 'none'}.`,
+      ),
+    );
+  }
+  const rows = new Map(matrix.entries.map((entry) => [entry.id, entry]));
+  const required = [
+    ...spec.frIds.map((id) => `FR-${id}`),
+    ...spec.buildableScIds.map((id) => `SC-${id}`),
+  ];
+  const missing = required.filter((id) => {
+    const row = rows.get(id);
+    return (
+      row?.result !== 'PASS' ||
+      !isConcreteEvidence(row.evidence) ||
+      !isConcreteEvidence(row.check)
+    );
+  });
+  if (missing.length > 0) {
+    errors.push(
+      issue(
+        'SDD-VERIFY-COVERAGE',
+        artifact,
+        `Verification evidence is missing for: ${missing.join(', ')}.`,
+      ),
+    );
+  }
+
+  const unresolvedOutcomes = spec.outcomeScIds
+    .map((id) => `SC-${id}`)
+    .filter((id) => {
+      const row = rows.get(id);
+      if (!row) return true;
+      if (row.result === 'PASS') {
+        return (
+          !isConcreteEvidence(row.evidence) || !isConcreteEvidence(row.check)
+        );
+      }
+      return row.result !== 'RISK' || !hasExplicitResidualRisk(content, id);
+    });
+  if (unresolvedOutcomes.length > 0) {
+    errors.push(
+      issue(
+        'SDD-VERIFY-OUTCOME',
+        artifact,
+        `Outcome criteria require observed PASS evidence or an explicit residual RISK: ${unresolvedOutcomes.join(', ')}.`,
+      ),
+    );
+  }
+}
+
+function validateArchiveReport(content, errors) {
+  const artifact = 'archive-report.md';
+  const valid =
+    /^\*\*Status\*\*:\s*READY(?:<br>)?\s*$/im.test(content) &&
+    /^\*\*Oracle verdict\*\*:\s*PASS(?:<br>)?\s*$/im.test(content) &&
+    /^\*\*Archive path\*\*:\s*`openspec\/changes\/archive\/YYYY-MM-DD-\[feature\]\/`(?:<br>)?\s*$/im.test(
+      content,
+    ) &&
+    /verify-report\.md/i.test(
+      sectionContent(content, 'Verification lineage') ?? '',
+    ) &&
+    /^- Pending: archive applies declared durable deltas transactionally\.\s*$/im.test(
+      sectionContent(content, 'Canonical specification sync') ?? '',
+    );
+  if (!valid) {
+    errors.push(
+      issue(
+        'SDD-ARCHIVE-REPORT',
+        artifact,
+        'Archive report must be READY with oracle PASS, lineage, sync status, and the dated target placeholder.',
+      ),
+    );
+  }
+}
+
 function validate({ change, route, through }) {
   const root = resolve(change);
   const errors = [];
@@ -498,10 +1026,14 @@ function validate({ change, route, through }) {
   }
 
   const spec = readArtifact(root, 'spec.md', errors);
-  const requiresPlan = ['plan', 'checklist', 'tasks', 'final'].includes(
-    through,
-  );
-  const requiresTasks = ['tasks', 'final'].includes(through);
+  const requiresPlan = [
+    'plan',
+    'checklist',
+    'tasks',
+    'ready',
+    'closeout',
+  ].includes(through);
+  const requiresTasks = ['tasks', 'ready', 'closeout'].includes(through);
   const plan = requiresPlan ? readArtifact(root, 'plan.md', errors) : undefined;
   const tasks = requiresTasks
     ? readArtifact(root, 'tasks.md', errors)
@@ -528,15 +1060,31 @@ function validate({ change, route, through }) {
       checklist,
       errors,
       specContract,
-      through === 'checklist' || through === 'final',
+      ['checklist', 'ready', 'closeout'].includes(through),
     );
-  } else if (route === 'full' && through === 'final') {
+  } else if (route === 'full' && ['ready', 'closeout'].includes(through)) {
     warnings.push({
       code: 'SDD-CHECKLIST-CONDITIONAL',
       artifact: 'checklists/requirements.md',
       message:
         'No requirements checklist exists; confirm that risk did not activate the conditional checklist gate.',
     });
+  }
+
+  if (
+    through === 'closeout' &&
+    tasks !== undefined &&
+    specContract !== undefined
+  ) {
+    validateCloseoutTasks(tasks, errors);
+    const verifyReport = readArtifact(root, 'verify-report.md', errors);
+    const archiveReport = readArtifact(root, 'archive-report.md', errors);
+    if (verifyReport !== undefined) {
+      validateVerifyReport(verifyReport, errors, specContract);
+    }
+    if (archiveReport !== undefined) {
+      validateArchiveReport(archiveReport, errors);
+    }
   }
 
   return {

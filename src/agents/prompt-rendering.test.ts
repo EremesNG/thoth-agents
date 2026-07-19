@@ -98,6 +98,27 @@ describe('v0.3 prompt rendering', () => {
     );
   });
 
+  test('renders the agile route policy without weakening review', () => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      OPENCODE_PROMPT_DIALECT,
+    );
+
+    expect(prompt).toContain(
+      'Documentation or mechanical work may remain Direct across multiple files',
+    );
+    expect(prompt).toContain(
+      'run specify -> plan -> tasks in one uninterrupted root pass',
+    );
+    expect(prompt).toContain('Do not pause between those planning artifacts');
+    expect(prompt).toContain('revalidate only affected downstream artifacts');
+    expect(prompt).toContain(
+      'generic SDD request sets Accelerated as the minimum',
+    );
+    expect(prompt).toContain('requested route wins');
+    expect(prompt).not.toContain('explicitly requested SDD, uncertain');
+  });
+
   test('loads phase contracts on demand instead of inlining them', () => {
     const prompt = renderRolePrompt(
       createOrchestratorPromptSections(),

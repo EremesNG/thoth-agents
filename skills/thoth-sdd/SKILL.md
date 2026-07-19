@@ -1,6 +1,6 @@
 ---
 name: thoth-sdd
-description: Run thoth-agents Direct, Accelerated, or Full specification-driven development with Spec Kit-compatible artifacts and oracle-only analysis and verification.
+description: Run thoth-agents Direct, Accelerated, or Full specification-driven development with Spec Kit-grade artifacts, OpenSpec-style durable deltas, fast-forward planning, and oracle-only analysis and verification.
 ---
 
 # Thoth SDD
@@ -11,18 +11,26 @@ Select the lightest route that preserves correctness:
 - **Accelerated**: `specify -> plan -> tasks -> implement -> verify -> archive`
 - **Full**: `explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive`
 
-Conditional gates are `clarify`, `checklist`, and `converge`. Direct creates no
-SDD artifacts. Accelerated retains the fast pipeline but uses the same canonical
-formats and structural validator as Full.
+Conditional phases are `clarify`, `checklist`, and `converge`. Direct creates no
+SDD artifacts and may cover multiple documentation or mechanical files when the
+intent is clear and risk is low.
+
+Accelerated is a **fast-forward** route: root writes `spec.md`, `plan.md`, and
+`tasks.md` in one uninterrupted pass, validates structure without a routine user
+pause, and creates optional artifacts only for a concrete risk. Full uses
+phase-by-phase gates because uncertainty or failure cost justifies them.
+
+An explicitly named route wins. A generic request to “use SDD” sets Accelerated
+as the minimum; it does not force Full. User input is requested only for a
+material decision that evidence and safe assumptions cannot resolve.
 
 ## Ownership
 
-- Root executes sequential coordination: specify, clarify, plan, checklist,
-  tasks, converge, persistence of review reports, and archive.
+- Root owns sequential coordination artifacts, gate execution, and archive.
 - Explorer owns Full-route repository discovery.
 - Designer, quick, deep, or root may implement according to scope.
-- Oracle always owns `analyze` and **every** `verify`, including Direct and
-  Accelerated. The implementation writer never reviews itself.
+- Oracle always owns `analyze` and **every** `verify`. The implementation writer
+  never approves its own work.
 
 ## Progressive loading
 
@@ -45,20 +53,31 @@ Read only the current phase contract:
 | implement | `references/phases/implement.md` |
 | verify | `references/phases/verify.md` |
 | converge | `references/phases/converge.md` |
-| archive | use the bundled `thoth-archive` skill |
+| archive | bundled `thoth-archive` skill |
 
-Use templates from `templates/`. Before advancing an artifact-backed phase, run:
+## Validation gates
+
+Run the validator from this skill directory:
 
 ```text
-node scripts/validate.mjs --change openspec/changes/<feature> --route <accelerated|full> --through <specify|plan|tasks|checklist|final> --json
+node scripts/validate.mjs --change openspec/changes/<feature> --route <accelerated|full> --through <specify|plan|tasks|checklist|ready|closeout> --json
 ```
 
-Use the gate that has just completed: `specify` after the specification, `plan`
-after planning, `tasks` after decomposition, `checklist` after a conditional
-checklist pass, and `final` before implementation/analysis and again before
-archive. Planning and later gates require the project Constitution; the
-checklist gate also requires a completed plan and checked checklist. A gate
-never requires artifacts from a later phase.
+- **Accelerated**: `specify`, then `ready` after the fast-forward planning pass,
+  then `closeout` after independent verification and an archive report marked
+  `READY`.
+- **Full**: `specify`, `plan`, `tasks`, then `ready` before oracle analysis, and
+  `closeout` after independent verification.
+- **Checklist**: run only when activated; the later `ready` gate includes it if
+  present.
 
-Structural validation does not replace oracle judgment. It prevents malformed
-artifacts; oracle challenges correctness and evidence.
+`ready` validates the artifacts needed before analysis/implementation.
+`closeout` additionally requires completed tasks, independent oracle PASS,
+complete FR/buildable-SC evidence, an observed PASS or explicit residual RISK
+for every outcome SC, and an archive report ready for the transactional archive
+transition.
+
+When implementation evidence refines the same intent, root updates the canonical
+artifact and revalidates only affected downstream artifacts/gates. A changed
+intent starts a new change. Structural validation prevents malformed artifacts;
+oracle still judges completeness, correctness, coherence, and evidence.

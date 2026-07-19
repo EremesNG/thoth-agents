@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -66,12 +67,25 @@ function writeMissing(target, content, report) {
   report.created.push(target);
 }
 
-function installGovernance(project, report) {
-  copyMissing(
-    join(BUNDLE_ROOT, 'thoth-constitution', 'templates', 'constitution.md'),
-    join(project, 'openspec', 'memory', 'constitution.md'),
+function installConstitution(project, report) {
+  const target = join(project, 'openspec', 'memory', 'constitution.md');
+  const template = join(
+    BUNDLE_ROOT,
+    'thoth-constitution',
+    'templates',
+    'constitution.md',
+  );
+  if (!existsSync(template)) return;
+  const today = new Date().toISOString().slice(0, 10);
+  writeMissing(
+    target,
+    readFileSync(template, 'utf8').replaceAll('YYYY-MM-DD', today),
     report,
   );
+}
+
+function installGovernance(project, report) {
+  installConstitution(project, report);
   const templatesRoot = join(BUNDLE_ROOT, 'thoth-sdd', 'templates');
   if (existsSync(templatesRoot)) {
     for (const entry of readdirSync(templatesRoot)) {

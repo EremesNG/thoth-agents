@@ -4,7 +4,7 @@ stack: TypeScript, Node.js, pnpm, Biome, OpenCode Plugin SDK
 
 context: |
   thoth-agents is an adaptive orchestration plugin for OpenCode, Codex, and Claude Code.
-  It provides ten roles and direct, accelerated, and full Spec Kit-compatible SDD routes.
+  It provides seven roles and direct, accelerated, and full Spec Kit-compatible SDD routes.
   thoth-mem is an independent provider plugin and owns its own installation and lifecycle.
 
 rules:
@@ -14,6 +14,9 @@ rules:
   spec:
     - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
     - Use Given/When/Then scenarios
+    - Map every story to named FR/SC contracts
+    - Mark every FR as INTERNAL or an explicit durable capability delta
+    - Type every SC as buildable or outcome
   design:
     guidance:
       - Document architecture decisions with rationale
@@ -25,11 +28,12 @@ rules:
       external_research: true       # unresolved tech/library choice present
   tasks:
     guidance:
-      - Group tasks by phase with hierarchical numbering
-      - Require a per-task Verification block
-    tdd: false                      # TDD ordering flag (sdd-tasks-format)
-    traceability: true              # require [USN] + Spec: tag + Independent Test per task
-    parallel_markers: false         # [P] emission + executing-plans consumption (default off)
+      - Group tasks by independently testable story and identify the MVP
+      - Require T### [P?] [US#?], exact paths, FR/buildable-SC coverage, and Verify outcomes
+      - Emit [P] only with a concrete non-overlap example; otherwise explain why none is safe
+    tdd: true
+    traceability: true
+    parallel_markers: conditional
   apply:
     guidance:
       - Follow existing code patterns and conventions
@@ -38,8 +42,12 @@ rules:
     test_command: ''
     build_command: ''
     coverage_threshold: 0
+    outcome_disposition: pass_evidence_or_residual_risk
   archive:
-    - Warn before destructive merges
+    - Require closeout PASS before the dated move
+    - Transactionally synchronize only declared durable deltas into openspec/specs
+    - Roll back handled failures within the active process; do not claim crash atomicity
+    - Never synchronize INTERNAL requirements or undeclared prose
 
   # --- new mechanism sections ---
   constitution:
@@ -51,8 +59,11 @@ rules:
     require_coverage_percentage: true
   requirements_quality:
     enforce_block: true             # incomplete checklist blocks tasks phase
-    dimensions: [completeness, clarity, measurability, testability]
+    dimensions: [completeness, clarity, consistency, measurability, coverage]
+    domain_lenses: risk-driven
   clarification:
-    max_markers_per_spec: 3         # [NEEDS CLARIFICATION] cap enforced by plan-reviewer
+    ask_only_material: true
+    max_questions_per_pass: 5
+    update_canonical_spec: true
   handoffs:
     surface_hints: true             # surface SddPhaseContract.handoffHints at transitions

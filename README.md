@@ -110,7 +110,11 @@ troubleshooting, scopes, and limitations.
 The generated contract is shared, but runtime guarantees are not assumed to be
 identical across harnesses.
 
-## Adaptive orchestration
+## Ten-agent roster
+
+One adaptive root and nine specialists are organized around evidence, governed
+SDD coordination, and implementation. Each role has a distinct scope, but all
+harnesses share the same canonical contract.
 
 | Role group | Roles | Responsibility |
 | --- | --- | --- |
@@ -118,6 +122,157 @@ identical across harnesses.
 | Read-only evidence | `explorer`, `librarian`, `oracle` | Repository discovery, authoritative research, diagnosis, architecture, and independent review. |
 | SDD coordination | `sdd-specify`, `sdd-plan`, `sdd-tasks` | Write governed artifacts and append convergence tasks under `openspec/`; never implement product code. |
 | Writers | `designer`, `quick`, `deep` | UI/UX work, narrow changes, correctness-critical implementation, and verified mechanical archive closeout. |
+
+The portraits personify the roles through a shared cyber-Egyptian mythology
+theme while the descriptions below remain grounded in the runtime contract.
+
+### Adaptive root
+
+<table width="100%">
+  <tr>
+    <td width="100%" valign="top">
+      <img src="img/agents/orchestrator.webp" width="100%" alt="Cyber-Egyptian Orchestrator">
+      <br>
+      <b>Orchestrator</b>
+      <br>
+      <i>Adaptive root and final synthesis.</i>
+      <br><br>
+      Keeps the task coherent, works directly when scope is clear and bounded,
+      and delegates only when specialization or parallelism creates a net gain.
+      <br>
+      <b>Mode:</b> <code>adaptive-root</code>
+    </td>
+  </tr>
+</table>
+
+### Read-only evidence
+
+<table width="100%">
+  <tr>
+    <td width="33%" valign="top">
+      <img src="img/agents/explorer.webp" width="100%" alt="Cyber-Egyptian Explorer">
+      <br>
+      <b>Explorer</b>
+      <br>
+      <i>Fast local discovery.</i>
+      <br><br>
+      Resolves broad or uncertain repository questions and returns distilled
+      local evidence.
+      <br>
+      <b>Mode:</b> <code>read-only</code>
+    </td>
+    <td width="33%" valign="top">
+      <img src="img/agents/librarian.webp" width="100%" alt="Cyber-Egyptian Librarian">
+      <br>
+      <b>Librarian</b>
+      <br>
+      <i>Authoritative external research.</i>
+      <br><br>
+      Gathers current authoritative sources and separates documented facts from
+      inference.
+      <br>
+      <b>Mode:</b> <code>read-only</code>
+    </td>
+    <td width="33%" valign="top">
+      <img src="img/agents/oracle.webp" width="100%" alt="Cyber-Egyptian Oracle">
+      <br>
+      <b>Oracle</b>
+      <br>
+      <i>Diagnosis and independent judgment.</i>
+      <br><br>
+      Reviews architecture and correctness risk, then independently judges
+      whether the result satisfies its contracts.
+      <br>
+      <b>Mode:</b> <code>read-only</code>
+    </td>
+  </tr>
+</table>
+
+### Governed SDD coordination
+
+<table width="100%">
+  <tr>
+    <td width="33%" valign="top">
+      <img src="img/agents/sdd-specify.webp" width="100%" alt="Cyber-Egyptian SDD Specify">
+      <br>
+      <b>SDD Specify</b>
+      <br>
+      <i>Testable requirements contract.</i>
+      <br><br>
+      Produces or refines a Spec Kit-compatible feature specification without
+      implementing product code.
+      <br>
+      <b>Mode:</b> <code>coordination-write</code> under <code>openspec/</code>
+    </td>
+    <td width="33%" valign="top">
+      <img src="img/agents/sdd-plan.webp" width="100%" alt="Cyber-Egyptian SDD Plan">
+      <br>
+      <b>SDD Plan</b>
+      <br>
+      <i>Executable technical design.</i>
+      <br><br>
+      Turns an accepted specification into an executable technical plan and
+      design-support artifacts.
+      <br>
+      <b>Mode:</b> <code>coordination-write</code> under <code>openspec/</code>
+    </td>
+    <td width="33%" valign="top">
+      <img src="img/agents/sdd-tasks.webp" width="100%" alt="Cyber-Egyptian SDD Tasks">
+      <br>
+      <b>SDD Tasks</b>
+      <br>
+      <i>Ordered implementation and convergence.</i>
+      <br><br>
+      Converts the specification and plan into dependency-ordered work, then
+      appends traceable convergence tasks.
+      <br>
+      <b>Mode:</b> <code>coordination-write</code> under <code>openspec/</code>
+    </td>
+  </tr>
+</table>
+
+### Implementation writers
+
+<table width="100%">
+  <tr>
+    <td width="33%" valign="top">
+      <img src="img/agents/designer.webp" width="100%" alt="Cyber-Egyptian Designer">
+      <br>
+      <b>Designer</b>
+      <br>
+      <i>UI/UX implementation and visual quality.</i>
+      <br><br>
+      Owns user-facing implementation decisions, screenshots, and visual
+      verification.
+      <br>
+      <b>Mode:</b> <code>write-capable</code>
+    </td>
+    <td width="33%" valign="top">
+      <img src="img/agents/quick.webp" width="100%" alt="Cyber-Egyptian Quick">
+      <br>
+      <b>Quick</b>
+      <br>
+      <i>Fast bounded implementation.</i>
+      <br><br>
+      Implements narrow changes and performs mechanical archive closeout only
+      from a passing verification report.
+      <br>
+      <b>Mode:</b> <code>write-capable</code>
+    </td>
+    <td width="33%" valign="top">
+      <img src="img/agents/deep.webp" width="100%" alt="Cyber-Egyptian Deep">
+      <br>
+      <b>Deep</b>
+      <br>
+      <i>Correctness-critical implementation.</i>
+      <br><br>
+      Handles multi-file, edge-case-heavy, or high-risk implementation with full
+      local context.
+      <br>
+      <b>Mode:</b> <code>write-capable</code>
+    </td>
+  </tr>
+</table>
 
 Children do not delegate. Parallel work is reserved for independent surfaces,
 and overlapping writes are never parallelized.

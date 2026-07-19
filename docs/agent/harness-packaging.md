@@ -12,6 +12,10 @@ and writers for OpenCode, Codex, and Claude Code.
 - `src/harness/core/sdd.ts`: route/artifact contract.
 - `src/harness/adapters/`: harness translation.
 - `src/harness/writers/`: deterministic artifact layouts.
+- `src/harness/generate-integration-packages.ts`: checked-in Codex and Claude
+  marketplace packages.
+- `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`:
+  repository marketplace entrypoints.
 
 ## Invariants
 
@@ -22,6 +26,10 @@ and writers for OpenCode, Codex, and Claude Code.
 - Required external skills are installed by `src/cli/skills.ts`, outside plugin
   manifests.
 - Codex/Claude plugin manifests remain minimal and use only documented fields.
+- Codex and Claude packages live under `integrations/`; never generate them in a
+  user's plugin cache.
+- Claude installation and status use the native plugin manager. Its installed
+  cache is immutable to thoth-agents.
 - Capability gaps remain explicit; never claim cross-harness enforcement parity.
 - Generated files are outputs. Change the owning adapter/writer.
 
@@ -35,4 +43,6 @@ and writers for OpenCode, Codex, and Claude Code.
 ## Verification
 
 Run adapter/writer tests first, then the consuming CLI install/operation tests.
-Add build/schema verification when published output changes.
+Run `pnpm run integration:sync` after package-source changes and
+`pnpm run integration:verify` to prove the checked-in catalogs are current.
+Add build/schema and tarball verification when published output changes.

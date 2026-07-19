@@ -1,20 +1,14 @@
 # Claude Code Plugin Packaging
 
-thoth-agents installs Claude Code support as one plugin package under the Claude
-skills-directory discovery surface.
+thoth-agents ships a native Claude Code marketplace and installs through the
+Claude plugin manager. It never copies a plugin into `~/.claude/skills` or edits
+Claude's manager-owned plugin cache.
 
-```bash
-npx thoth-agents@latest install --agent=claude --dry-run
-npx thoth-agents@latest install --agent=claude
-```
-
-User scope targets `~/.claude/skills/thoth-agents`; project scope targets
-`<project>/.claude/skills/thoth-agents`.
-
-## Layout
+## Repository marketplace
 
 ```text
-thoth-agents/
+.claude-plugin/marketplace.json
+integrations/claude-code/
 ├── .claude-plugin/
 │   ├── plugin.json
 │   └── .thoth-agents-plugin-assets.json
@@ -30,32 +24,45 @@ thoth-agents/
 │   ├── quick.md
 │   └── deep.md
 ├── .mcp.json
-├── settings.json
-└── .thoth-agents-managed-models.json
+└── settings.json
 ```
 
-Only `plugin.json` and provenance live under `.claude-plugin/`. Claude plugin
-components remain at the plugin root.
+The catalog source is `./integrations/claude-code`. Both paths are included in
+the npm package and synchronized from the Claude adapter.
+
+## Native installation
+
+The supported path also installs mandatory external skills:
+
+```bash
+npx thoth-agents@latest install --agent=claude --dry-run
+npx thoth-agents@latest install --agent=claude
+```
+
+Internally, the CLI inspects native JSON manager state and, when needed, runs:
+
+```bash
+claude plugin marketplace add EremesNG/thoth-agents --scope user
+claude plugin install thoth-agents@thoth-agents --scope user
+```
+
+It enables an installed-but-disabled plugin instead of copying or reinstalling
+cache files. Conflicting marketplace names or unreadable manager state fail
+closed. Restart Claude Code or run `/reload-plugins`, then inspect `/plugin`.
 
 ## Adaptive root
 
-`settings.json` activates `orchestrator` as the main thread. It is an adaptive
-root: it handles clear bounded work directly and invokes a plugin-namespaced
-specialist only when delegation provides a net gain.
+`settings.json` activates `orchestrator` as the main plugin agent. It handles
+clear bounded work directly and invokes a namespaced specialist only when
+delegation provides a net gain. The orchestrator uses `model: inherit`, children
+do not delegate, and the root keeps one writer per mutable surface.
 
-The orchestrator uses `model: inherit` and does not restrict its tool set.
-Specialists cannot delegate further, and the root keeps one writer per mutable
-surface.
+## Subagent permissions and defaults
 
-## Subagent permissions
-
-- `explorer`, `librarian`, and `oracle` deny `Write` and `Edit` in frontmatter.
+- `explorer`, `librarian`, and `oracle` deny `Write` and `Edit`.
 - `sdd-specify`, `sdd-plan`, and `sdd-tasks` may write, but their
-  `openspec/`-only scope remains instruction-level because Claude Code cannot
-  restrict those tools to a per-agent path pattern.
+  `openspec/`-only boundary remains instruction-level.
 - `designer`, `quick`, and `deep` are write-capable within the assigned surface.
-
-Default specialist models are:
 
 | Roles | Model |
 | --- | --- |
@@ -63,24 +70,20 @@ Default specialist models are:
 | `librarian`, `sdd-specify`, `sdd-plan`, `designer`, `deep` | `sonnet` |
 | `oracle` | `opus` |
 
+These defaults are package-owned. The thoth-agents CLI does not rewrite models
+inside Claude's installed cache; change the adapter defaults and publish a new
+plugin version instead.
+
 ## Required external skills
 
 `simplify`, `tdd`, `progressive-context-router`, and `architectural-grilling`
-are mandatory but are not plugin components. The installer places them in the
-global Claude skill root:
+are mandatory but separate from the plugin package. The installer places them
+in the global Claude skill root. A native plugin-only install is incomplete until
+the CLI confirms all four skills.
 
-```text
-~/.claude/skills/simplify/SKILL.md
-~/.claude/skills/tdd/SKILL.md
-~/.claude/skills/progressive-context-router/SKILL.md
-~/.claude/skills/architectural-grilling/SKILL.md
-```
-
-Claude plugin `dependencies` identifies other plugins, not arbitrary standalone
-skills. Claude also has no general plugin `postinstall`. A `Setup` hook requires
-an explicit initialization flow, so it cannot guarantee dependency installation
-on ordinary plugin startup. The thoth-agents CLI is therefore the mandatory
-install and repair surface.
+Claude plugin dependencies identify plugins, not arbitrary standalone skills,
+and there is no ordinary plugin `postinstall` lifecycle for this purpose. The
+thoth-agents CLI therefore owns required-skill installation and repair.
 
 ## MCP and memory boundary
 
@@ -88,10 +91,12 @@ install and repair surface.
 `grep_app`). It does not contain thoth-mem. The independently installed
 thoth-mem plugin owns its own MCP, hooks, lifecycle, persistence, and recovery.
 
-## Activation and trust
+## Generation and verification
 
-Restart Claude Code or run `/reload-plugins`, then confirm thoth-agents in
-`/plugin`. Project-scope installation requires accepting workspace trust.
+```bash
+pnpm run integration:sync
+pnpm run integration:verify
+```
 
-While enabled, `settings.json` makes the thoth-agents orchestrator the main
-thread for that plugin scope.
+Generated provenance and package files should be changed through their owning
+adapter/writer, not edited directly.

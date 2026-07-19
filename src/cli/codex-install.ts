@@ -1,11 +1,10 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   codexAdapter,
   renderCodexRootInstructions,
 } from '../harness/adapters/codex';
-import { codexPluginRootArtifactPath } from '../harness/codex-plugin-paths';
 import type { HarnessArtifact } from '../harness/types';
 import { writeCodexConfigMerge } from './codex-config-io';
 import type { CodexInstallScope, CodexRoleName } from './codex-paths';
@@ -26,8 +25,6 @@ export type CodexSetupAction =
   | 'merge-managed-block'
   | 'write-role-toml'
   | 'write-managed-model-state'
-  | 'refresh-package'
-  | 'merge-marketplace'
   | 'merge-toml'
   | 'diagnose-only';
 
@@ -36,9 +33,6 @@ export type CodexTargetKind =
   | 'role-subagent-toml'
   | 'managed-model-state'
   | 'user-config'
-  | 'plugin-package'
-  | 'personal-plugin-source'
-  | 'personal-marketplace'
   | 'diagnostic';
 
 export interface CodexInstallConfig {
@@ -93,13 +87,6 @@ function mergeManagedBlock(existing: string, managedBlock: string): string {
   return `${existing}${existing.endsWith('\n') || existing.length === 0 ? '' : '\n'}\n${managedBlock}`;
 }
 
-function packageArtifactTarget(
-  packageRoot: string,
-  artifact: HarnessArtifact,
-): string {
-  return join(packageRoot, codexPluginRootArtifactPath(artifact.path));
-}
-
 function resolvePackageRoot(
   packageRoot: string | undefined,
 ): string | undefined {
@@ -107,40 +94,6 @@ function resolvePackageRoot(
   return (
     findPackageRoot(fileURLToPath(new URL('.', import.meta.url))) ?? undefined
   );
-}
-
-function normalizeRelativeMarketplacePath(path: string): string {
-  const normalized = path.replaceAll('\\', '/');
-  if (isAbsolute(path) || /^[A-Za-z]:\//.test(normalized)) return normalized;
-  if (normalized.startsWith('./')) return normalized;
-  return `./${normalized}`;
-}
-
-function marketplaceSourcePath(
-  homeDir: string,
-  personalPluginRoot: string,
-): string {
-  return normalizeRelativeMarketplacePath(
-    relative(homeDir, personalPluginRoot),
-  );
-}
-
-function managedMarketplaceEntry(
-  homeDir: string,
-  personalPluginRoot: string,
-): Record<string, unknown> {
-  return {
-    name: 'thoth-agents',
-    source: {
-      source: 'local',
-      path: marketplaceSourcePath(homeDir, personalPluginRoot),
-    },
-    policy: {
-      installation: 'AVAILABLE',
-      authentication: 'ON_INSTALL',
-    },
-    category: 'Productivity',
-  };
 }
 
 function emptyManagedModelState(): ManagedModelState {
@@ -393,40 +346,6 @@ function resolveRoleTomlContent(options: {
   return replaceRoleTomlEffort(options.renderedContent, currentEffort);
 }
 
-function mergePersonalMarketplace(
-  existing: string,
-  homeDir: string,
-  personalPluginRoot: string,
-): string {
-  const parsed = existing.trim()
-    ? (JSON.parse(existing) as Record<string, unknown>)
-    : {};
-  const plugins = Array.isArray(parsed.plugins) ? parsed.plugins : [];
-  const managedEntry = managedMarketplaceEntry(homeDir, personalPluginRoot);
-  const nextPlugins = plugins
-    .filter(
-      (entry) =>
-        !(
-          entry &&
-          typeof entry === 'object' &&
-          'name' in entry &&
-          entry.name === 'thoth-agents'
-        ),
-    )
-    .concat(managedEntry);
-
-  return stableJson({
-    ...parsed,
-    name:
-      typeof parsed.name === 'string' ? parsed.name : 'personal-marketplace',
-    interface:
-      parsed.interface && typeof parsed.interface === 'object'
-        ? parsed.interface
-        : { displayName: 'Personal Plugin Marketplace' },
-    plugins: nextPlugins,
-  });
-}
-
 function roleArtifactContent(
   role: CodexRoleName,
   artifacts: HarnessArtifact[],
@@ -452,9 +371,6 @@ export function buildCodexSetupPlan(
     projectRoot: config.projectRoot,
     ...(packageRoot ? { packageRoot } : {}),
   });
-  const packageArtifacts = render.artifacts.filter((artifact) =>
-    artifact.path.startsWith('.codex-plugin/'),
-  );
   const rootBlock = renderCodexRootInstructions();
   const managedModelState = readManagedModelState(targets.managedModelsPath);
   const nextManagedModelState = emptyManagedModelState();
@@ -496,25 +412,6 @@ export function buildCodexSetupPlan(
       requiresBackup: existsSync(targets.managedModelsPath),
       content: stableJson(nextManagedModelState),
     },
-    ...packageArtifacts.map(
-      (artifact): CodexSetupPlanItem => ({
-        kind: 'personal-plugin-source',
-        action: 'refresh-package',
-        targetPath: packageArtifactTarget(targets.personalPluginRoot, artifact),
-        description: `Refresh Personal Codex plugin source asset ${artifact.path}.`,
-        requiresBackup: false,
-        content: String(artifact.content ?? ''),
-      }),
-    ),
-    {
-      kind: 'personal-marketplace',
-      action: 'merge-marketplace',
-      targetPath: targets.personalMarketplacePath,
-      description:
-        'Register Personal Codex marketplace entry for the local thoth-agents plugin source.',
-      requiresBackup: existsSync(targets.personalMarketplacePath),
-      content: targets.personalPluginRoot,
-    },
     {
       kind: 'user-config',
       action: 'merge-toml',
@@ -539,7 +436,8 @@ export function buildCodexSetupPlan(
     configPath: targets.configPath,
     pluginId: config.pluginId,
     diagnostics: [
-      'Restart Codex, then run /plugins to review and enable the Personal thoth-agents plugin registered through ~/.agents/plugins/marketplace.json.',
+      'Register the published marketplace with `codex plugin marketplace add EremesNG/thoth-agents`, restart Codex, then open /plugins to install and enable thoth-agents.',
+      'The CLI does not copy a plugin into ~/.codex/plugins or merge ~/.agents/plugins/marketplace.json; Codex owns marketplace snapshots and installed plugin cache state.',
       'The /hooks surface may show hooks from independently installed plugins; this thoth-agents setup plan does not install provider hooks.',
       'Codex Default mode user-input requests require features.default_mode_request_user_input = true and use the request_user_input tool; other modes may not expose it.',
       'Higher-precedence Codex config (project, profile, CLI, system, or admin) may override user config feature flags.',
@@ -553,61 +451,11 @@ export function buildCodexSetupPlan(
 }
 
 export function formatCodexSetupPlan(plan: CodexSetupPlan): string {
-  const refreshPackageGroups = new Map<CodexTargetKind, CodexSetupPlanItem[]>();
-
-  for (const item of plan.items) {
-    if (item.action !== 'refresh-package') continue;
-    const group = refreshPackageGroups.get(item.kind) ?? [];
-    group.push(item);
-    refreshPackageGroups.set(item.kind, group);
-  }
-
-  const renderedRefreshKinds = new Set<CodexTargetKind>();
-  const lines: string[] = [];
-  for (const item of plan.items) {
-    if (item.action !== 'refresh-package') {
-      lines.push(`- ${item.action}: ${item.targetPath} (${item.description})`);
-      continue;
-    }
-    if (renderedRefreshKinds.has(item.kind)) continue;
-    renderedRefreshKinds.add(item.kind);
-    lines.push(formatRefreshPackageGroup(item.kind, refreshPackageGroups));
-  }
+  const lines = plan.items.map(
+    (item) => `- ${item.action}: ${item.targetPath} (${item.description})`,
+  );
 
   return ['Codex setup plan:', ...lines].join('\n');
-}
-
-function formatRefreshPackageGroup(
-  kind: CodexTargetKind,
-  groups: Map<CodexTargetKind, CodexSetupPlanItem[]>,
-): string {
-  const items = groups.get(kind) ?? [];
-  const description =
-    kind === 'personal-plugin-source'
-      ? 'Refresh Personal Codex plugin source'
-      : 'Refresh documented .codex-plugin package';
-  return `- refresh-package: ${commonTargetDirectory(items)} (${description}, ${items.length} files.)`;
-}
-
-function commonTargetDirectory(items: CodexSetupPlanItem[]): string {
-  if (items.length === 0) return '';
-  let common = dirname(items[0]?.targetPath ?? '');
-  for (const item of items.slice(1)) {
-    while (!isSameOrChildPath(item.targetPath, common)) {
-      const parent = dirname(common);
-      if (parent === common) return common;
-      common = parent;
-    }
-  }
-  return common;
-}
-
-function isSameOrChildPath(path: string, parent: string): boolean {
-  return (
-    path === parent ||
-    path.startsWith(`${parent}\\`) ||
-    path.startsWith(`${parent}/`)
-  );
 }
 
 export function applyCodexSetup(plan: CodexSetupPlan): CodexApplyResult {
@@ -619,10 +467,6 @@ export function applyCodexSetup(plan: CodexSetupPlan): CodexApplyResult {
   if (plan.dryRun) return { success: true, changed, diagnostics };
 
   try {
-    for (const targetPath of managedRefreshRoots(plan)) {
-      rmSync(targetPath, { recursive: true, force: true });
-    }
-
     for (const item of plan.items) {
       if (item.action === 'diagnose-only') continue;
       if (item.action === 'merge-toml') {
@@ -634,19 +478,6 @@ export function applyCodexSetup(plan: CodexSetupPlan): CodexApplyResult {
         diagnostics.push(...result.diffSummary, ...result.warnings);
         if (!result.success) throw new Error(result.error);
         if (result.changed) changed.push(item.targetPath);
-        continue;
-      }
-      if (item.action === 'merge-marketplace') {
-        if (item.content === undefined) continue;
-        const content = mergePersonalMarketplace(
-          existsSync(item.targetPath)
-            ? readFileSync(item.targetPath, 'utf8')
-            : '',
-          dirname(dirname(dirname(item.targetPath))),
-          item.content,
-        );
-        if (writeTextWithBackup(item.targetPath, content))
-          changed.push(item.targetPath);
         continue;
       }
       if (item.content === undefined) continue;
@@ -671,20 +502,4 @@ export function applyCodexSetup(plan: CodexSetupPlan): CodexApplyResult {
       error: error instanceof Error ? error.message : String(error),
     };
   }
-}
-
-function managedRefreshRoots(plan: CodexSetupPlan): string[] {
-  const refreshGroups = new Map<CodexTargetKind, CodexSetupPlanItem[]>();
-
-  for (const item of plan.items) {
-    if (item.action !== 'refresh-package') continue;
-    const group = refreshGroups.get(item.kind) ?? [];
-    group.push(item);
-    refreshGroups.set(item.kind, group);
-  }
-
-  return [...refreshGroups]
-    .filter(([kind]) => kind === 'personal-plugin-source')
-    .map(([, items]) => commonTargetDirectory(items))
-    .filter((path) => path.length > 0);
 }

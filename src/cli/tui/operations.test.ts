@@ -269,7 +269,7 @@ describe('TUI operations', () => {
     }
   });
 
-  test('Claude current effort comes from installed artifacts, not stale sidecar state', async () => {
+  test('Claude model display ignores manager-owned cache files', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tui-claude-current-'));
     const home = join(root, 'home');
     const plugin = join(home, '.claude', 'skills', 'thoth-agents');
@@ -302,12 +302,13 @@ describe('TUI operations', () => {
       });
 
       expect(roles.find((role) => role.role === 'deep')).toMatchObject({
-        model: 'opus',
-        effort: { kind: 'effort', value: 'high' },
+        model: 'sonnet',
       });
+      expect(
+        roles.find((role) => role.role === 'deep')?.effort,
+      ).toBeUndefined();
       expect(roles.find((role) => role.role === 'explorer')).toMatchObject({
         model: 'haiku',
-        effort: { kind: 'inherit' },
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -339,8 +340,10 @@ describe('TUI operations', () => {
       });
       expect(claude.find((role) => role.role === 'deep')).toMatchObject({
         model: 'sonnet',
-        effort: { kind: 'inherit' },
       });
+      expect(
+        claude.find((role) => role.role === 'deep')?.effort,
+      ).toBeUndefined();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

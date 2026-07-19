@@ -32,12 +32,8 @@ describe('Codex path resolution', () => {
     expect(targets.managedModelsPath).toBe(
       join('/custom/.codex', 'agents', '.thoth-agents-managed-models.json'),
     );
-    expect(targets.personalPluginRoot).toBe(
-      join('/custom/.codex', 'plugins', 'thoth-agents'),
-    );
-    expect(targets.personalMarketplacePath).toBe(
-      join('/home/alice', '.agents', 'plugins', 'marketplace.json'),
-    );
+    expect(Object.keys(targets)).not.toContain('personalPluginRoot');
+    expect(Object.keys(targets)).not.toContain('personalMarketplacePath');
   });
 
   test('resolves project-scope role and skill targets inside the project', () => {

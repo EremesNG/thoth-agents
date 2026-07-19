@@ -1,0 +1,65 @@
+{
+  "generatedBy": "thoth-agents",
+  "assets": [
+    {
+      "path": ".mcp.json",
+      "kind": "mcp-config",
+      "sha256": "sha256:fb7f49a386b6a88e5ead1134a8c57401751610ce9c4d078c7d76364c5225fbd2"
+    },
+    {
+      "path": "agents/deep.md",
+      "kind": "agent-config",
+      "sha256": "sha256:21aff7cb10b4966c3fa4848ebc0f900d583a1f2218485ae6b5505578e7afcbe6"
+    },
+    {
+      "path": "agents/designer.md",
+      "kind": "agent-config",
+      "sha256": "sha256:aadd53263dfbe02f5f2c70712f5cc530d6748e0c0d2679d1e3581115cbaf12a0"
+    },
+    {
+      "path": "agents/explorer.md",
+      "kind": "agent-config",
+      "sha256": "sha256:f1fd7842c41a782c3f1392cedd17bba0e553e3b85c64b9b346105bb84ba0a9da"
+    },
+    {
+      "path": "agents/librarian.md",
+      "kind": "agent-config",
+      "sha256": "sha256:31108695113cf173343bf0e799657ffc818b2d36527f315127f0b5a154cf7073"
+    },
+    {
+      "path": "agents/oracle.md",
+      "kind": "agent-config",
+      "sha256": "sha256:b460967eb1ab4c3ad0ab0ac74bd94bbfa4e667e45c98838548dfe52b322d1065"
+    },
+    {
+      "path": "agents/orchestrator.md",
+      "kind": "agent-config",
+      "sha256": "sha256:bb1b90990a27b4a1f122a4a72a4addd10def12b404034f7e63b71223b5bf3119"
+    },
+    {
+      "path": "agents/quick.md",
+      "kind": "agent-config",
+      "sha256": "sha256:c768ae2d8db8d7bac4f94b46bbfeee3788ccff6564b49c28f70e1a7a18e25cbe"
+    },
+    {
+      "path": "agents/sdd-plan.md",
+      "kind": "agent-config",
+      "sha256": "sha256:d10b94ae4c89849972dfad5757b459da7ac9f7cce6bf7cb35aceaa88d7e3817a"
+    },
+    {
+      "path": "agents/sdd-specify.md",
+      "kind": "agent-config",
+      "sha256": "sha256:3aeb1ab02c92f0f3ac992f6d92dd19e97c2c34387ff0691d21af407cfeb71656"
+    },
+    {
+      "path": "agents/sdd-tasks.md",
+      "kind": "agent-config",
+      "sha256": "sha256:3ab504f3f0eae81f04826be1af561c71ad2d1d962c17351769258ab2115fbcbf"
+    },
+    {
+      "path": "settings.json",
+      "kind": "harness-config",
+      "sha256": "sha256:ca3466db741811aeea0d55f0293b169019e7b3668e72da10271260520a4b8ee8"
+    }
+  ]
+}

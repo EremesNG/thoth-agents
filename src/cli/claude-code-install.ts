@@ -1,60 +1,46 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { claudeCodeAdapter } from '../harness/adapters/claude-code';
-import type { HarnessArtifact } from '../harness/types';
-import {
-  CLAUDE_CODE_MODELS,
-  isClaudeCodeModel,
-} from '../harness/writers/claude-code-subagent';
-import type {
-  ClaudeCodeInstallScope,
-  ClaudeCodeResolvedTargets,
-  ClaudeCodeRoleName,
-} from './claude-code-paths';
-import {
-  CLAUDE_CODE_ROLE_NAMES,
-  resolveClaudeCodeTargets,
-} from './claude-code-paths';
-import {
-  type ManagedModelState,
-  emptyManagedModelState as sharedEmptyManagedModelState,
-  parseManagedModelStateJson as sharedParseManagedModelStateJson,
-  readManagedModelState as sharedReadManagedModelState,
-  stableJson,
-  uniqueMessages,
-  writeTextWithBackup,
-} from './managed-state-io';
-import { findPackageRoot } from './package-root';
+import { spawnSync } from 'node:child_process';
+import { isClaudeCodeModel } from '../harness/writers/claude-code-subagent';
+import type { ClaudeCodeInstallScope } from './claude-code-paths';
 
 export { CLAUDE_CODE_ROLE_NAMES } from './claude-code-paths';
 
-export const CLAUDE_CODE_MANAGED_MODEL_STATE_VERSION = 1;
-
-// Re-exported under the install-layer name for API stability; the canonical
-// list lives with the ClaudeCodeModel type.
-export const CLAUDE_CODE_MODEL_ALIASES = CLAUDE_CODE_MODELS;
+const MARKETPLACE_NAME = 'thoth-agents';
+const MARKETPLACE_SOURCE = 'EremesNG/thoth-agents';
+const PLUGIN_ID = 'thoth-agents@thoth-agents';
+const MARKETPLACE_TARGET = 'claude://marketplaces/thoth-agents';
+const PLUGIN_TARGET = 'claude://plugins/thoth-agents@thoth-agents';
 
 export type ClaudeCodeSetupAction =
-  | 'write-plugin-file'
-  | 'write-managed-model-state';
+  | 'register-marketplace'
+  | 'install-plugin'
+  | 'update-plugin'
+  | 'enable-plugin';
 
-export type ClaudeCodeTargetKind =
-  | 'plugin-manifest'
-  | 'subagent'
-  | 'mcp-config'
-  | 'hook'
-  | 'skill'
-  | 'plugin-asset'
-  | 'managed-model-state';
+export type ClaudeCodeTargetKind = 'native-marketplace' | 'native-plugin';
+
+export interface ClaudeCommandResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface ClaudeCommandOptions {
+  cwd: string;
+}
+
+export type ClaudeCommandExecutor = (
+  command: string,
+  args: readonly string[],
+  options: ClaudeCommandOptions,
+) => ClaudeCommandResult;
 
 export interface ClaudeCodeInstallConfig {
   dryRun?: boolean;
   reset: boolean;
   scope: ClaudeCodeInstallScope;
   projectRoot: string;
-  homeDir?: string;
-  packageRoot?: string;
+  commandExecutor?: ClaudeCommandExecutor;
+  refresh?: boolean;
 }
 
 export interface ClaudeCodeSetupPlanItem {
@@ -62,9 +48,12 @@ export interface ClaudeCodeSetupPlanItem {
   action: ClaudeCodeSetupAction;
   targetPath: string;
   description: string;
-  requiresBackup: boolean;
-  content: string;
-  role?: ClaudeCodeRoleName;
+  requiresBackup: false;
+  command: {
+    executable: 'claude';
+    args: string[];
+    cwd: string;
+  };
 }
 
 export interface ClaudeCodeSetupPlan {
@@ -74,6 +63,10 @@ export interface ClaudeCodeSetupPlan {
   diagnostics: string[];
   disclaimers: string[];
   pluginRoot: string;
+  ready: boolean;
+  scope: ClaudeCodeInstallScope;
+  projectRoot: string;
+  commandExecutor: ClaudeCommandExecutor;
 }
 
 export interface ClaudeCodeApplyResult {
@@ -83,206 +76,260 @@ export interface ClaudeCodeApplyResult {
   error?: string;
 }
 
-export interface ClaudeCodeManagedModelOverride {
-  role: ClaudeCodeRoleName;
-  model: string;
-  catalogId?: string;
-  effort?: string;
-  clearEffort?: boolean;
+interface ClaudeManagerInspection {
+  ready: boolean;
+  marketplace: 'absent' | 'installed' | 'conflict' | 'unknown';
+  plugin: 'absent' | 'installed' | 'disabled' | 'unknown';
+  diagnostics: string[];
 }
 
 export const isClaudeCodeModelAlias = isClaudeCodeModel;
 
-export function parseSubagentModel(content: string): string | undefined {
-  return /^model:\s*(\S+)\s*$/m.exec(content)?.[1];
+function defaultCommandExecutor(
+  command: string,
+  args: readonly string[],
+  options: ClaudeCommandOptions,
+): ClaudeCommandResult {
+  const result = spawnSync(command, [...args], {
+    cwd: options.cwd,
+    encoding: 'utf8',
+    shell: false,
+    windowsHide: true,
+  });
+  return {
+    exitCode: result.status ?? (result.error ? 1 : 0),
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? result.error?.message ?? '',
+  };
 }
 
-export function replaceSubagentModel(content: string, model: string): string {
-  if (/^model:\s*\S+\s*$/m.test(content)) {
-    return content.replace(/^model:\s*\S+\s*$/m, `model: ${model}`);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseJsonRecords(content: string): Record<string, unknown>[] | null {
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (Array.isArray(parsed) && parsed.every(isRecord)) return parsed;
+    if (isRecord(parsed)) return [parsed];
+    return null;
+  } catch {
+    return null;
   }
-  return content;
 }
 
-export function parseSubagentEffort(content: string): string | undefined {
-  return /^effort:\s*(\S+)\s*$/m.exec(content)?.[1];
-}
-
-export function replaceSubagentEffort(
-  content: string,
-  effort: string | undefined,
-): string {
-  if (effort === undefined) {
-    return content.replace(/^effort:\s*\S+\s*\n/m, '');
+function isCanonicalMarketplace(entry: Record<string, unknown>): boolean {
+  if (entry.name !== MARKETPLACE_NAME) return false;
+  if (
+    entry.repo === MARKETPLACE_SOURCE ||
+    entry.source === MARKETPLACE_SOURCE
+  ) {
+    return true;
   }
-  if (/^effort:\s*\S+\s*$/m.test(content)) {
-    return content.replace(/^effort:\s*\S+\s*$/m, `effort: ${effort}`);
-  }
-  return content.replace(/^(model:\s*\S+\s*)$/m, `$1\neffort: ${effort}`);
-}
-
-function emptyManagedModelState(): ManagedModelState {
-  return sharedEmptyManagedModelState(CLAUDE_CODE_MANAGED_MODEL_STATE_VERSION);
-}
-
-export function parseManagedModelStateJson(
-  text: string | undefined,
-): ManagedModelState {
-  return sharedParseManagedModelStateJson(
-    text,
-    CLAUDE_CODE_MANAGED_MODEL_STATE_VERSION,
-  );
-}
-
-export function readManagedModelState(path: string): ManagedModelState {
-  return sharedReadManagedModelState(
-    path,
-    CLAUDE_CODE_MANAGED_MODEL_STATE_VERSION,
-  );
-}
-
-function resolvePackageRoot(
-  packageRoot: string | undefined,
-): string | undefined {
-  if (packageRoot) return packageRoot;
+  const source = entry.source;
   return (
-    findPackageRoot(fileURLToPath(new URL('.', import.meta.url))) ?? undefined
+    isRecord(source) &&
+    (source.repo === MARKETPLACE_SOURCE || source.source === MARKETPLACE_SOURCE)
   );
 }
 
-function targetKindForArtifact(
-  artifact: HarnessArtifact,
-): ClaudeCodeTargetKind {
-  const path = artifact.path.replaceAll('\\', '/');
-  if (path === '.claude-plugin/plugin.json') return 'plugin-manifest';
-  if (path.startsWith('agents/')) return 'subagent';
-  if (path === '.mcp.json') return 'mcp-config';
-  if (path.startsWith('hooks/')) return 'hook';
-  if (path.startsWith('skills/')) return 'skill';
-  return 'plugin-asset';
-}
-
-function roleForArtifact(
-  artifact: HarnessArtifact,
-): ClaudeCodeRoleName | undefined {
-  const match = /^agents\/([^/]+)\.md$/.exec(
-    artifact.path.replaceAll('\\', '/'),
+function inspectClaudeManager(
+  executor: ClaudeCommandExecutor,
+  cwd: string,
+  scope: ClaudeCodeInstallScope,
+): ClaudeManagerInspection {
+  const marketplaceResult = executor(
+    'claude',
+    ['plugin', 'marketplace', 'list', '--json'],
+    { cwd },
   );
-  const name = match?.[1];
-  // Only specialist subagents are model-managed; the orchestrator agent uses
-  // `inherit` and is activated as the main thread, so it is not a managed role.
-  return name && (CLAUDE_CODE_ROLE_NAMES as readonly string[]).includes(name)
-    ? (name as ClaudeCodeRoleName)
-    : undefined;
-}
+  const pluginResult = executor('claude', ['plugin', 'list', '--json'], {
+    cwd,
+  });
+  const diagnostics: string[] = [];
 
-function applyConfiguredModel(
-  content: string,
-  targetPath: string,
-  role: ClaudeCodeRoleName | undefined,
-  state: ManagedModelState,
-  nextState: ManagedModelState,
-  reset: boolean,
-): string {
-  const renderedModel = parseSubagentModel(content);
-  if (!role || !renderedModel) return content;
-
-  nextState.models[role] = renderedModel;
-  const configured = reset ? undefined : state.configuredModels?.[role];
-  let updated = content;
-  if (configured !== undefined) {
-    nextState.configuredModels ??= {};
-    nextState.configuredModels[role] = configured;
-    updated = replaceSubagentModel(updated, configured);
-  }
-
-  const configuredEffort = reset ? undefined : state.configuredEfforts?.[role];
-  if (configuredEffort !== undefined) {
-    nextState.configuredEfforts ??= {};
-    nextState.configuredEfforts[role] = configuredEffort;
-  }
-
-  if (!reset && existsSync(targetPath)) {
-    const installedEffort = parseSubagentEffort(
-      readFileSync(targetPath, 'utf8'),
+  if (marketplaceResult.exitCode !== 0 || pluginResult.exitCode !== 0) {
+    diagnostics.push(
+      'Claude Code native plugin state could not be inspected; no manager mutation will be attempted.',
     );
-    updated = replaceSubagentEffort(updated, installedEffort);
+    return {
+      ready: false,
+      marketplace: 'unknown',
+      plugin: 'unknown',
+      diagnostics,
+    };
   }
-  return updated;
+
+  const marketplaces = parseJsonRecords(marketplaceResult.stdout);
+  const plugins = parseJsonRecords(pluginResult.stdout);
+  if (!marketplaces || !plugins) {
+    diagnostics.push(
+      'Claude Code returned unparseable plugin manager JSON; no manager mutation will be attempted.',
+    );
+    return {
+      ready: false,
+      marketplace: 'unknown',
+      plugin: 'unknown',
+      diagnostics,
+    };
+  }
+
+  const namedMarketplaces = marketplaces.filter(
+    (entry) => entry.name === MARKETPLACE_NAME,
+  );
+  let marketplace: ClaudeManagerInspection['marketplace'] = 'absent';
+  if (namedMarketplaces.length > 0) {
+    marketplace = namedMarketplaces.every(isCanonicalMarketplace)
+      ? 'installed'
+      : 'conflict';
+  }
+  if (marketplace === 'conflict') {
+    diagnostics.push(
+      'A Claude marketplace named thoth-agents is registered from a different source; resolve it through Claude Code before retrying.',
+    );
+  }
+
+  const matchingPlugins = plugins.filter(
+    (entry) => entry.id === PLUGIN_ID && entry.scope === scope,
+  );
+  let plugin: ClaudeManagerInspection['plugin'] = 'absent';
+  if (matchingPlugins.some((entry) => entry.enabled === true)) {
+    plugin = 'installed';
+  } else if (matchingPlugins.length > 0) {
+    plugin = 'disabled';
+  }
+
+  return {
+    ready: marketplace !== 'conflict',
+    marketplace,
+    plugin,
+    diagnostics,
+  };
+}
+
+function commandItem(
+  action: ClaudeCodeSetupAction,
+  scope: ClaudeCodeInstallScope,
+  projectRoot: string,
+): ClaudeCodeSetupPlanItem {
+  if (action === 'register-marketplace') {
+    return {
+      kind: 'native-marketplace',
+      action,
+      targetPath: MARKETPLACE_TARGET,
+      description:
+        'Register the package-owned thoth-agents Claude marketplace.',
+      requiresBackup: false,
+      command: {
+        executable: 'claude',
+        args: [
+          'plugin',
+          'marketplace',
+          'add',
+          MARKETPLACE_SOURCE,
+          '--scope',
+          scope,
+        ],
+        cwd: projectRoot,
+      },
+    };
+  }
+
+  let command = 'install';
+  let description =
+    'Install the thoth-agents Claude plugin from its native marketplace.';
+  if (action === 'enable-plugin') {
+    command = 'enable';
+    description = 'Enable the manager-owned thoth-agents Claude plugin.';
+  } else if (action === 'update-plugin') {
+    command = 'update';
+    description = 'Update the manager-owned thoth-agents Claude plugin.';
+  }
+
+  return {
+    kind: 'native-plugin',
+    action,
+    targetPath: PLUGIN_TARGET,
+    description,
+    requiresBackup: false,
+    command: {
+      executable: 'claude',
+      args: ['plugin', command, PLUGIN_ID, '--scope', scope],
+      cwd: projectRoot,
+    },
+  };
 }
 
 export function buildClaudeCodeSetupPlan(
   config: ClaudeCodeInstallConfig,
 ): ClaudeCodeSetupPlan {
-  const targets = resolveClaudeCodeTargets({
-    scope: config.scope,
-    projectRoot: config.projectRoot,
-    homeDir: config.homeDir,
-  });
-  const packageRoot = resolvePackageRoot(config.packageRoot);
-  const render = claudeCodeAdapter.render({
-    projectRoot: config.projectRoot,
-    ...(packageRoot ? { packageRoot } : {}),
-  });
+  const commandExecutor = config.commandExecutor ?? defaultCommandExecutor;
+  const inspection = inspectClaudeManager(
+    commandExecutor,
+    config.projectRoot,
+    config.scope,
+  );
+  const items: ClaudeCodeSetupPlanItem[] = [];
 
-  const state = readManagedModelState(targets.managedModelsPath);
-  const nextState = emptyManagedModelState();
-
-  const items: ClaudeCodeSetupPlanItem[] = render.artifacts.map((artifact) => {
-    const role = roleForArtifact(artifact);
-    const rendered = String(artifact.content ?? '');
-    const targetPath = join(targets.pluginRoot, artifact.path);
-    const content =
-      role !== undefined
-        ? applyConfiguredModel(
-            rendered,
-            targetPath,
-            role,
-            state,
-            nextState,
-            config.reset,
-          )
-        : rendered;
-
-    return {
-      kind: targetKindForArtifact(artifact),
-      action: 'write-plugin-file',
-      targetPath,
-      description: `Materialize Claude Code plugin asset ${artifact.path}.`,
-      requiresBackup: existsSync(targetPath),
-      content,
-      ...(role ? { role } : {}),
-    };
-  });
-
-  items.push({
-    kind: 'managed-model-state',
-    action: 'write-managed-model-state',
-    targetPath: targets.managedModelsPath,
-    description:
-      'Record thoth-agents-managed Claude Code subagent model ownership state.',
-    requiresBackup: existsSync(targets.managedModelsPath),
-    content: stableJson(nextState),
-  });
+  if (inspection.ready) {
+    if (inspection.marketplace === 'absent') {
+      items.push(
+        commandItem('register-marketplace', config.scope, config.projectRoot),
+      );
+    }
+    if (inspection.plugin === 'absent') {
+      items.push(
+        commandItem('install-plugin', config.scope, config.projectRoot),
+      );
+    } else if (inspection.plugin === 'disabled') {
+      items.push(
+        commandItem('enable-plugin', config.scope, config.projectRoot),
+      );
+      if (config.refresh === true || config.reset) {
+        items.push(
+          commandItem('update-plugin', config.scope, config.projectRoot),
+        );
+      }
+    } else if (config.refresh === true || config.reset) {
+      items.push(
+        commandItem('update-plugin', config.scope, config.projectRoot),
+      );
+    }
+  }
 
   return {
     dryRun: config.dryRun === true,
     reset: config.reset,
     items,
-    pluginRoot: targets.pluginRoot,
+    pluginRoot: PLUGIN_TARGET,
+    ready: inspection.ready,
+    scope: config.scope,
+    projectRoot: config.projectRoot,
+    commandExecutor,
     diagnostics: [
-      `Installed as a skills-directory plugin at ${targets.pluginRoot}; it auto-loads as thoth-agents@skills-dir on the next Claude Code session.`,
-      'Restart Claude Code or run /reload-plugins to activate it; run /plugin (Installed tab) to confirm thoth-agents@skills-dir is loaded.',
-      'The plugin settings.json activates the adaptive orchestrator as the main thread; it works directly on bounded tasks and delegates only for net gain.',
+      ...inspection.diagnostics,
+      'Claude Code installs thoth-agents from EremesNG/thoth-agents through its native marketplace and owns the cached plugin files.',
+      'Restart Claude Code or run /reload-plugins after installation; use /plugin to inspect marketplace and plugin state.',
       'Provider capability is owned by the external provider and is not established by this thoth-agents setup plan.',
     ],
     disclaimers: [
-      'The orchestrator agent is the Claude Code main thread (plugin settings.json `agent` key); while enabled it replaces the default system prompt for every session in scope.',
-      'Read-only subagents must not mutate the workspace per their operational contract (instruction-level, not tooling-enforced).',
-      'Subagent models accept only sonnet, opus, haiku, or inherit.',
-      'Project-scope skills-directory plugins require accepting the workspace trust dialog.',
+      'The native plugin activates its orchestrator agent as the main thread through plugin-root settings.json.',
+      'Read-only subagents remain instruction/tool-denylist constrained; capability parity with other harnesses is not implied.',
+      'Per-role Claude model rewrites are unavailable because native marketplace cache contents are manager-owned and immutable to thoth-agents.',
     ],
   };
+}
+
+function uniqueMessages(messages: string[]): string[] {
+  return [...new Set(messages)];
+}
+
+function boundedCommandFailure(
+  item: ClaudeCodeSetupPlanItem,
+  result: ClaudeCommandResult,
+): string {
+  const detail = result.stderr.trim().replace(/\s+/g, ' ').slice(0, 240);
+  return `${item.description} Claude exited with code ${result.exitCode}${detail ? `: ${detail}` : '.'}`;
 }
 
 export function applyClaudeCodeSetup(
@@ -293,140 +340,59 @@ export function applyClaudeCodeSetup(
     ...plan.diagnostics,
     ...plan.disclaimers,
   ]);
+  if (!plan.ready) {
+    return {
+      success: false,
+      changed,
+      diagnostics,
+      error: 'Claude Code native plugin manager state is not safe to mutate.',
+    };
+  }
   if (plan.dryRun) return { success: true, changed, diagnostics };
 
-  try {
-    for (const item of plan.items) {
-      if (writeTextWithBackup(item.targetPath, item.content)) {
-        changed.push(item.targetPath);
-      }
+  for (const item of plan.items) {
+    const result = plan.commandExecutor(
+      item.command.executable,
+      item.command.args,
+      { cwd: item.command.cwd },
+    );
+    if (result.exitCode !== 0) {
+      return {
+        success: false,
+        changed,
+        diagnostics,
+        error: boundedCommandFailure(item, result),
+      };
     }
-    return { success: true, changed, diagnostics };
-  } catch (error) {
-    return {
-      success: false,
-      changed,
-      diagnostics,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-export function applyClaudeCodeManagedModelOverrides(
-  config: ClaudeCodeInstallConfig,
-  overrides: ClaudeCodeManagedModelOverride[],
-): ClaudeCodeApplyResult {
-  if (config.dryRun) {
-    return {
-      success: true,
-      changed: [],
-      diagnostics: [
-        'Dry-run Claude Code model override apply requested; no files were written.',
-      ],
-    };
+    changed.push(item.targetPath);
   }
 
-  const plan = buildClaudeCodeSetupPlan({
-    ...config,
-    dryRun: true,
-    reset: false,
-  });
-  const stateItem = plan.items.find(
-    (item) => item.action === 'write-managed-model-state',
+  const inspection = inspectClaudeManager(
+    plan.commandExecutor,
+    plan.projectRoot,
+    plan.scope,
   );
-  const statePath = stateItem?.targetPath;
-  if (!statePath) {
-    return {
-      success: false,
-      changed: [],
-      diagnostics: plan.diagnostics,
-      error: 'Claude Code managed model state target was not found.',
-    };
-  }
-
-  const changed: string[] = [];
-  const diagnostics = uniqueMessages([
-    ...plan.diagnostics,
-    ...plan.disclaimers,
-  ]);
-  // Seed from the plan's computed state, whose `models` map already holds the
-  // true rendered defaults (set before any configured override is applied).
-  // Re-deriving from roleItem.content would read the already-overridden model
-  // line and drift the managed-default tracking.
-  const state = parseManagedModelStateJson(stateItem?.content);
-  const nextState: ManagedModelState = {
-    version: CLAUDE_CODE_MANAGED_MODEL_STATE_VERSION,
-    models: { ...state.models },
-    ...(state.configuredModels
-      ? { configuredModels: { ...state.configuredModels } }
-      : {}),
-    ...(state.configuredEfforts
-      ? { configuredEfforts: { ...state.configuredEfforts } }
-      : {}),
-  };
-
-  try {
-    for (const override of overrides) {
-      if (
-        !isClaudeCodeModelAlias(override.model) &&
-        override.catalogId !== override.model
-      ) {
-        throw new Error(
-          `Unsupported Claude Code model "${override.model}" for ${override.role}; use sonnet, opus, haiku, or inherit.`,
-        );
-      }
-      const roleItem = plan.items.find(
-        (item) => item.kind === 'subagent' && item.role === override.role,
-      );
-      if (!roleItem) {
-        throw new Error(`Missing Claude Code subagent for ${override.role}.`);
-      }
-
-      const before = existsSync(roleItem.targetPath)
-        ? readFileSync(roleItem.targetPath, 'utf8')
-        : roleItem.content;
-      let updated = replaceSubagentModel(before, override.model);
-      if (override.clearEffort) {
-        updated = replaceSubagentEffort(updated, undefined);
-      } else if (override.effort !== undefined) {
-        updated = replaceSubagentEffort(updated, override.effort);
-      }
-      if (writeTextWithBackup(roleItem.targetPath, updated)) {
-        changed.push(roleItem.targetPath);
-      }
-      // models[role] keeps the rendered default from the plan; only the
-      // user-configured override is recorded.
-      nextState.configuredModels ??= {};
-      nextState.configuredModels[override.role] = override.model;
-      if (override.clearEffort) {
-        if (nextState.configuredEfforts) {
-          delete nextState.configuredEfforts[override.role];
-        }
-      } else if (override.effort !== undefined) {
-        nextState.configuredEfforts ??= {};
-        nextState.configuredEfforts[override.role] = override.effort;
-      }
-    }
-
-    if (writeTextWithBackup(statePath, stableJson(nextState))) {
-      changed.push(statePath);
-    }
-    return { success: true, changed, diagnostics };
-  } catch (error) {
+  diagnostics.push(...inspection.diagnostics);
+  if (
+    inspection.marketplace !== 'installed' ||
+    inspection.plugin !== 'installed'
+  ) {
     return {
       success: false,
       changed,
-      diagnostics,
-      error: error instanceof Error ? error.message : String(error),
+      diagnostics: uniqueMessages(diagnostics),
+      error:
+        'Claude Code did not verify the expected marketplace and enabled plugin after mutation.',
     };
   }
+
+  return { success: true, changed, diagnostics: uniqueMessages(diagnostics) };
 }
 
 export function formatClaudeCodeSetupPlan(plan: ClaudeCodeSetupPlan): string {
   const lines = plan.items.map(
-    (item) => `- ${item.action}: ${item.targetPath} (${item.description})`,
+    (item) =>
+      `- ${item.action}: ${item.command.executable} ${item.command.args.join(' ')}`,
   );
   return ['Claude Code setup plan:', ...lines].join('\n');
 }
-
-export type { ClaudeCodeResolvedTargets };

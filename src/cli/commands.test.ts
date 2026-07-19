@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -506,7 +506,12 @@ describe('explicit operation commands', () => {
       expect(result.code).toBe(0);
       expect(result.output).toContain(model);
       expect(result.output).toContain('high');
-      expect(result.output).toContain('Can apply: yes');
+      expect(result.output).toContain(
+        harness === 'claude' ? 'Can apply: no' : 'Can apply: yes',
+      );
+      if (harness === 'claude') {
+        expect(result.output).toContain('manager-owned');
+      }
     } finally {
       if (isolatedRoot) {
         if (originalConfigDir === undefined) {
@@ -524,7 +529,7 @@ describe('explicit operation commands', () => {
     }
   });
 
-  test('concrete Claude CLI resolution generates exact effort frontmatter', async () => {
+  test('concrete Claude CLI resolution refuses to rewrite manager cache frontmatter', async () => {
     const home = mkdtempSync(join(tmpdir(), 'claude-cli-effort-'));
     const model = 'anthropic/claude-opus-4.6';
     try {
@@ -549,13 +554,13 @@ describe('explicit operation commands', () => {
         { harness: 'claude', dryRun: true, roles },
         { cwd: process.cwd(), scope: 'user', homeDir: home },
       );
-      expect(applyClaudeCodePlan(plan).applied).toBe(true);
-      const output = readFileSync(
-        join(home, '.claude', 'skills', 'thoth-agents', 'agents', 'deep.md'),
-        'utf8',
-      );
-      expect(output).toContain(`model: ${model}`);
-      expect(output).toContain('effort: high');
+      expect(plan.canApply).toBe(false);
+      expect(applyClaudeCodePlan(plan).applied).toBe(false);
+      expect(
+        existsSync(
+          join(home, '.claude', 'skills', 'thoth-agents', 'agents', 'deep.md'),
+        ),
+      ).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

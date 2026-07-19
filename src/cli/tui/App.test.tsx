@@ -105,14 +105,14 @@ function manyCodexTargets(): HarnessStatusReport['targets'] {
     },
     {
       kind: 'file' as const,
-      label: 'plugin manifest',
-      path: 'C:\\Users\\EremesNG\\.codex\\plugins\\thoth-agents\\.codex-plugin\\plugin.json',
+      label: 'Codex config',
+      path: 'C:\\Users\\EremesNG\\.codex\\config.toml',
       state: 'installed' as const,
     },
     {
       kind: 'file' as const,
-      label: 'marketplace registry',
-      path: 'C:\\Users\\EremesNG\\.codex\\plugins\\marketplace.json',
+      label: 'managed model state',
+      path: 'C:\\Users\\EremesNG\\.codex\\agents\\.thoth-agents-managed-models.json',
       state: 'installed' as const,
     },
     {
@@ -123,8 +123,8 @@ function manyCodexTargets(): HarnessStatusReport['targets'] {
     },
     ...Array.from({ length: 8 }, (_, index) => ({
       kind: 'file' as const,
-      label: `Codex plugin file ${index + 1}`,
-      path: `C:\\Users\\EremesNG\\.codex\\plugins\\file-${index + 1}.toml`,
+      label: `Codex agent file ${index + 1}`,
+      path: `C:\\Users\\EremesNG\\.codex\\agents\\file-${index + 1}.toml`,
       state: 'installed' as const,
     })),
   ];
@@ -456,8 +456,10 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain('Tdd: [installed]');
     expect(lastFrame()).toContain('Agents');
     expect(lastFrame()).toContain('Designer: [installed]');
-    expect(lastFrame()).toContain('Plugin/MCP');
-    expect(lastFrame()).toContain('Marketplace');
+    expect(lastFrame()).toContain('Config');
+    expect(lastFrame()).toContain('Codex Config: [installed]');
+    expect(lastFrame()).toContain('Model state');
+    expect(lastFrame()).toContain('Managed Model State: [installed]');
     expect(lastFrame()).toContain('Root instructions');
     expect(lastFrame()).not.toContain('C:\\Users\\EremesNG');
     expect(lastFrame()).not.toContain('skills\\tdd\\SKILL.md');

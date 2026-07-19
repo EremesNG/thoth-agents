@@ -1,8 +1,21 @@
 # Codex Plugin Packaging
 
-thoth-agents renders a deterministic Codex package rooted at `.codex-plugin/`
-and installs it into the Personal plugin source
-`~/.codex/plugins/thoth-agents/`.
+thoth-agents ships a repository-native Codex marketplace instead of generating
+a personal marketplace or copying a plugin into a user's cache.
+
+## Published layout
+
+```text
+.agents/plugins/marketplace.json
+integrations/codex/
+├── .codex-plugin/
+│   ├── plugin.json
+│   └── .thoth-agents-plugin-assets.json
+└── .mcp.json
+```
+
+The marketplace source is `./integrations/codex`. `package.json` includes both
+the catalog and integration directory in the published npm tarball.
 
 ## Manifest
 
@@ -17,58 +30,38 @@ The 0.3.0 manifest is intentionally lean:
 }
 ```
 
-Only validated Codex manifest fields are emitted. The package writer rejects
-unknown fields and assets outside `.codex-plugin/` with diagnostics.
+Only validated Codex manifest fields are emitted. The package contains the
+manifest, thoth-agents research MCP configuration, and deterministic asset
+provenance. It does not bundle SDD phase skills, external required skills,
+custom-agent TOMLs, root `AGENTS.md`, or thoth-mem assets.
 
-## What is and is not bundled
+Codex custom-agent TOMLs and root instructions use different native surfaces and
+are materialized by `npx thoth-agents@latest install --agent=codex`. Required
+skills are installed separately under `~/.codex/skills`.
 
-The Personal plugin source contains the manifest, thoth-agents research MCP
-configuration, and deterministic asset provenance.
+## Native registration
 
-It does not bundle:
+```bash
+codex plugin marketplace add EremesNG/thoth-agents
+```
 
-- SDD phase skills;
-- the external `simplify`, `tdd`, `progressive-context-router`, or
-  `architectural-grilling` skills;
-- Codex custom-agent TOMLs;
-- root `AGENTS.md` instructions; or
-- thoth-mem hooks, MCP, protocol, or lifecycle assets.
+After restarting Codex, use `/plugins` for installation/enablement and `/hooks`
+for trust review. The thoth-agents CLI intentionally does not mutate
+`~/.codex/plugins` or a personal marketplace file; Codex owns those snapshots
+and caches.
 
-The installer materializes root instructions and nine specialist TOMLs through
-their native Codex target surfaces. Required external skills are installed
-separately under `~/.codex/skills` through the skills CLI.
+## Generation and verification
 
-## Why there is no plugin postinstall
+The catalogs and packages are generated from the harness adapters:
 
-Codex marketplace npm plugin sources are fetched without running package
-lifecycle scripts. A `postinstall` hook would therefore be unreliable for
-mandatory external skills. The thoth-agents CLI owns dependency installation,
-health checks, update, and repair.
-
-## Personal marketplace registration
-
-`install --agent=codex`:
-
-1. renders the deterministic package into `~/.codex/plugins/thoth-agents/`;
-2. merges a managed local source into `~/.agents/plugins/marketplace.json`;
-3. preserves unrelated marketplace entries; and
-4. leaves plugin enablement and trust review to `/plugins`.
-
-Registration does not bypass `/plugins`, `/hooks`, or configuration precedence.
-
-## Hook boundary
-
-The package writer can validate documented command-hook assets, but the current
-thoth-agents package does not install provider lifecycle hooks or use hooks to
-download external skills. Plugin hooks, when present in a future package, would
-still require the documented feature gate and trust review and would not become
-hard permission enforcement.
-
-## Generated provenance
+```bash
+pnpm run integration:sync
+pnpm run integration:verify
+```
 
 `.codex-plugin/.thoth-agents-plugin-assets.json` records deterministic asset
-paths, manifest fields, and hashes. It is generated output; change the owning
-writer rather than editing installed provenance directly.
+paths, fields, and hashes. Change the owning adapter/writer and regenerate; do
+not edit generated package files by hand.
 
-See [Codex Install](codex-install.md) for complete managed targets and trust
-steps.
+See [Codex Install](codex-install.md) for the complete two-surface install and
+trust flow.

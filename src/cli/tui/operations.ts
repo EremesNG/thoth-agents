@@ -10,12 +10,6 @@ import type {
   ProviderEvidenceInput,
 } from '../../harness/types';
 import {
-  buildClaudeCodeSetupPlan,
-  CLAUDE_CODE_ROLE_NAMES,
-  parseSubagentEffort,
-  parseSubagentModel,
-} from '../claude-code-install';
-import {
   buildCodexSetupPlan,
   CODEX_ROLE_NAMES,
   parseRoleTomlEffort,
@@ -154,38 +148,9 @@ export function getCodexModelRoles(
 }
 
 export function getClaudeCodeModelRoles(
-  source: ClaudeCodeOperationContext = claudeCodeContext,
+  _source: ClaudeCodeOperationContext = claudeCodeContext,
 ): ModelRoleInput[] {
-  try {
-    const plan = buildClaudeCodeSetupPlan({
-      dryRun: true,
-      reset: false,
-      scope: source.scope ?? 'user',
-      projectRoot: source.cwd,
-      homeDir: source.homeDir,
-      packageRoot: source.packageRoot,
-    });
-    return CLAUDE_CODE_ROLE_NAMES.map((role) => {
-      const item = plan.items.find(
-        (candidate) => candidate.kind === 'subagent' && candidate.role === role,
-      );
-      const content =
-        item && existsSync(item.targetPath)
-          ? readFileSync(item.targetPath, 'utf8')
-          : item?.content;
-      const model = content ? parseSubagentModel(content) : undefined;
-      const effort = content ? parseSubagentEffort(content) : undefined;
-      return {
-        role,
-        model: model ?? 'inherit',
-        effort: effort
-          ? { kind: 'effort' as const, value: effort }
-          : { kind: 'inherit' as const },
-      };
-    });
-  } catch {
-    return defaultClaudeCodeModelRoles();
-  }
+  return defaultClaudeCodeModelRoles();
 }
 
 function readRoleField(

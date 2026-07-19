@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "exa": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server"
+      ]
+    },
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "grep_app": {
+      "url": "https://mcp.grep.app"
+    }
+  }
+}

@@ -23,8 +23,8 @@ npx thoth-agents@latest install --agent=claude
 | Route | Main managed targets | When to use it |
 | --- | --- | --- |
 | OpenCode | OpenCode plugin entry and ten-role configuration | Default native plugin path. |
-| Codex | Root instructions, nine role TOMLs, Personal plugin source, marketplace entry, and managed feature flags | Codex ambient-root workflow. |
-| Claude Code | A single plugin package containing the root agent, nine subagents, settings, and MCP config | Claude Code plugin workflow. |
+| Codex | Repository marketplace plus root instructions, nine role TOMLs, and managed feature flags | Codex ambient-root workflow. |
+| Claude Code | Repository marketplace installed through the native manager, with a root agent, nine subagents, settings, and MCP config | Claude Code plugin workflow. |
 
 ## Mandatory external skills
 
@@ -95,9 +95,15 @@ preset is written.
 ## Codex
 
 ```bash
+codex plugin marketplace add EremesNG/thoth-agents
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
+
+The repository catalog is `.agents/plugins/marketplace.json`; it points to the
+versioned `integrations/codex` package. Run the Codex marketplace command in an
+interactive terminal, restart Codex, and install/enable `thoth-agents` from
+`/plugins`.
 
 User-scope installation manages:
 
@@ -105,14 +111,14 @@ User-scope installation manages:
 - `~/.codex/agents/thoth-agents-{role}.toml`: nine specialist roles, including
   `sdd-specify`, `sdd-plan`, and `sdd-tasks`;
 - `~/.codex/agents/.thoth-agents-managed-models.json`: model ownership state;
-- `~/.codex/plugins/thoth-agents/`: deterministic Personal plugin source;
-- `~/.agents/plugins/marketplace.json`: managed local marketplace entry;
 - `~/.codex/config.toml`: backed-up feature-gate merge; and
 - `~/.codex/skills/{simplify,tdd,progressive-context-router,architectural-grilling}/`:
   required global skills.
 
-The ambient Codex session is the orchestrator, so no orchestrator child TOML is
-created. Restart Codex after installation and review:
+The CLI does not copy a plugin into `~/.codex/plugins` or merge a personal
+marketplace. Codex owns those snapshots and caches. The ambient Codex session is
+the orchestrator, so no orchestrator child TOML is created. Restart Codex after
+installation and review:
 
 ```text
 /plugins
@@ -131,14 +137,26 @@ npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```
 
-User scope writes a plugin package under
-`~/.claude/skills/thoth-agents/` containing:
+The repository catalog `.claude-plugin/marketplace.json` points to
+`integrations/claude-code`. The installer uses Claude's native manager to run the
+equivalent of:
+
+```bash
+claude plugin marketplace add EremesNG/thoth-agents --scope user
+claude plugin install thoth-agents@thoth-agents --scope user
+```
+
+The versioned plugin package contains:
 
 - `.claude-plugin/plugin.json`;
-- `agents/orchestrator.md`, activated as the main thread by `settings.json`;
+- `agents/orchestrator.md`;
 - nine specialist files under `agents/`, including the three SDD phase agents;
 - `.mcp.json` for thoth-agents research MCPs; and
-- `.thoth-agents-managed-models.json`.
+- `settings.json`, which activates the orchestrator as the main plugin agent.
+
+Claude owns the installed cache. thoth-agents does not copy or mutate it, and
+post-install per-role model rewrites are unsupported; model-default changes are
+published as a new plugin package.
 
 Required external skills are separate global Claude skills under
 `~/.claude/skills/{simplify,tdd,progressive-context-router,architectural-grilling}/`;
@@ -158,12 +176,13 @@ npx thoth-agents@latest update --harness=claude
 npx thoth-agents@latest sync --harness=opencode --apply
 ```
 
-Status includes the harness package/configuration and every required global
-skill. Update and sync apply only to thoth-agents-managed surfaces and retain
-unrelated user content.
+Status includes native manager state, harness configuration, and every required
+global skill. Update and sync reconcile only thoth-agents-owned surfaces and
+retain unrelated user content.
 
 ## Reset safety
 
-`--reset` refreshes managed blocks, role files, model state, package assets, and
-managed configuration keys. It does not delete unrelated marketplaces, plugins,
-skills, provider configuration, or whole harness directories.
+`--reset` refreshes managed blocks, role files, model state, and managed
+configuration keys. It does not rewrite native marketplace snapshots or plugin
+caches, or delete unrelated skills, provider configuration, or harness
+directories.

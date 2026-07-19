@@ -1,21 +1,17 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { existsSync } from 'node:fs';
 import { CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS } from '../../harness/adapters/claude-code';
 import type { ProviderEvidenceInput } from '../../harness/types';
 import {
-  applyClaudeCodeManagedModelOverrides,
   applyClaudeCodeSetup,
   buildClaudeCodeSetupPlan,
   CLAUDE_CODE_ROLE_NAMES,
   type ClaudeCodeInstallConfig,
   type ClaudeCodeSetupPlan,
   type ClaudeCodeSetupPlanItem,
+  type ClaudeCommandExecutor,
   isClaudeCodeModelAlias,
 } from '../claude-code-install';
-import type {
-  ClaudeCodeInstallScope,
-  ClaudeCodeRoleName,
-} from '../claude-code-paths';
+import type { ClaudeCodeInstallScope } from '../claude-code-paths';
 import {
   getRequiredSkillInstallCommand,
   getRequiredSkillPath,
@@ -23,7 +19,6 @@ import {
   REQUIRED_SKILLS,
 } from '../skills';
 import type {
-  BackupExpectation,
   HarnessAction,
   HarnessOperationAdapter,
   HarnessStatusReport,
@@ -44,6 +39,7 @@ export interface ClaudeCodeOperationContext extends OperationContext {
   scope?: ClaudeCodeInstallScope;
   homeDir?: string;
   packageRoot?: string;
+  commandExecutor?: ClaudeCommandExecutor;
 }
 
 const CLAUDE_CODE_DISPLAY_NAME = 'Claude Code';
@@ -51,20 +47,6 @@ const claudeCodePlanSources = new WeakMap<
   OperationPlan,
   { setupPlan: ClaudeCodeSetupPlan; context: ClaudeCodeOperationContext }
 >();
-const claudeCodeModelSources = new WeakMap<
-  OperationPlan,
-  {
-    config: ClaudeCodeInstallConfig;
-    roles: {
-      role: ClaudeCodeRoleName;
-      model: string;
-      catalogId?: string;
-      effort?: string;
-      clearEffort?: boolean;
-    }[];
-  }
->();
-
 const CLAUDE_CODE_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
 export type ClaudeCodeEffortResolution =
@@ -104,12 +86,15 @@ export function resolveClaudeCodeEffort(
   };
 }
 
+const MODEL_CONFIG_DISABLED_REASON =
+  'Native Claude marketplace cache files are manager-owned; configure packaged agent defaults in the repository and publish a new plugin version.';
+
 const claudeCodeActions: HarnessAction[] = [
   {
     id: 'claude-code-status',
     kind: 'status',
     label: 'Status',
-    description: 'Inspect managed Claude Code plugin state',
+    description: 'Inspect native Claude Code marketplace and plugin state',
     dryRun: false,
     requiresConfirmation: false,
     supported: true,
@@ -127,7 +112,7 @@ const claudeCodeActions: HarnessAction[] = [
     id: 'claude-code-install',
     kind: 'install',
     label: 'Install',
-    description: 'Preview Claude Code plugin package install',
+    description: 'Preview native Claude marketplace registration and install',
     dryRun: true,
     requiresConfirmation: true,
     supported: true,
@@ -136,7 +121,7 @@ const claudeCodeActions: HarnessAction[] = [
     id: 'claude-code-update',
     kind: 'update',
     label: 'Update',
-    description: 'Preview Claude Code managed plugin refresh',
+    description: 'Preview native Claude plugin reconciliation',
     dryRun: true,
     requiresConfirmation: true,
     supported: true,
@@ -145,7 +130,8 @@ const claudeCodeActions: HarnessAction[] = [
     id: 'claude-code-sync',
     kind: 'sync',
     label: 'Sync',
-    description: 'Preview Claude Code managed plugin sync',
+    description:
+      'Preview native Claude plugin and required-skill reconciliation',
     dryRun: true,
     requiresConfirmation: true,
     supported: true,
@@ -154,10 +140,11 @@ const claudeCodeActions: HarnessAction[] = [
     id: 'claude-code-model-config',
     kind: 'model-config',
     label: 'Model',
-    description: 'Preview supported Claude Code subagent model line changes',
+    description: 'Claude agent models are package-owned defaults',
     dryRun: true,
-    requiresConfirmation: true,
-    supported: true,
+    requiresConfirmation: false,
+    supported: false,
+    disabledReason: MODEL_CONFIG_DISABLED_REASON,
   },
 ];
 
@@ -165,23 +152,22 @@ export const claudeCodeOperationAdapter = {
   id: 'claude',
   displayName: CLAUDE_CODE_DISPLAY_NAME,
   available: true,
-  description: 'Claude Code plugin package and managed subagent surfaces.',
+  description: 'Native Claude Code marketplace plugin and required skills.',
   actions: claudeCodeActions,
 } as const satisfies HarnessOperationAdapter;
 
 function claudeCodeConfig(
   context: ClaudeCodeOperationContext = { cwd: process.cwd() },
   dryRun: boolean,
+  refresh = false,
 ): ClaudeCodeInstallConfig {
   return {
     dryRun,
     reset: false,
-    // Match the installer (install.ts uses 'user') so post-install status,
-    // update, sync, and model commands resolve the same plugin root.
     scope: context.scope ?? 'user',
     projectRoot: context.cwd,
-    homeDir: context.homeDir,
-    packageRoot: context.packageRoot,
+    commandExecutor: context.commandExecutor,
+    refresh,
   };
 }
 
@@ -189,12 +175,13 @@ function claudeCodeDisclaimers() {
   return [
     {
       message:
-        'Read-only roles must not mutate the workspace per their operational contract (instruction-level, not tooling-enforced). The orchestrator is the main session.',
-      code: 'claude-code-first-class',
+        'Claude Code owns marketplace snapshots and installed plugin cache files; thoth-agents never edits that cache directly.',
+      code: 'claude-code-manager-owned-cache',
     },
     {
-      message: 'Subagent models accept only sonnet, opus, haiku, or inherit.',
-      code: 'claude-code-model-aliases',
+      message:
+        'Read-only roles remain instruction/tool-denylist constrained; the orchestrator is activated as the main plugin agent.',
+      code: 'claude-code-first-class',
     },
   ];
 }
@@ -209,14 +196,12 @@ function targetForItem(
   observed?: string,
 ): ManagedTarget {
   return {
-    kind:
-      item.kind === 'managed-model-state'
-        ? 'memory-state'
-        : 'generated-artifact',
+    kind: 'package',
     path: item.targetPath,
-    label: item.role
-      ? `Claude Code ${item.role} subagent`
-      : item.kind.replaceAll('-', ' '),
+    label:
+      item.kind === 'native-marketplace'
+        ? 'Claude Code marketplace'
+        : 'Claude Code plugin',
     state,
     expected: item.action,
     observed,
@@ -226,70 +211,49 @@ function targetForItem(
 
 function surfaceForItem(item: ClaudeCodeSetupPlanItem): ManagedSurface {
   return {
-    id: `${item.kind}:${item.role ?? basename(item.targetPath)}`,
-    label: item.role
-      ? `Claude Code ${item.role} subagent`
-      : item.kind.replaceAll('-', ' '),
+    id: `${item.kind}:${item.action}`,
+    label:
+      item.kind === 'native-marketplace'
+        ? 'Claude Code marketplace'
+        : 'Claude Code plugin',
     path: item.targetPath,
     description: item.description,
   };
 }
 
-function backupForItem(item: ClaudeCodeSetupPlanItem): BackupExpectation {
-  return {
-    required: item.requiresBackup,
-    strategy: item.requiresBackup ? 'managed-backup-file' : 'none',
-    destinations: item.requiresBackup
-      ? [{ path: `${item.targetPath}.bak`, label: 'managed backup' }]
-      : [],
-  };
-}
-
-function manifestState(item: ClaudeCodeSetupPlanItem): {
-  state: ManagedState;
-  observed: string;
-} {
-  if (!existsSync(item.targetPath))
-    return { state: 'missing', observed: 'absent' };
-  const observed = readFileSync(item.targetPath, 'utf8');
-  if (observed === item.content)
-    return { state: 'installed', observed: 'current' };
-  try {
-    const expectedVersion = JSON.parse(item.content).version;
-    const observedVersion = JSON.parse(observed).version;
-    if (
-      typeof expectedVersion === 'string' &&
-      typeof observedVersion === 'string' &&
-      expectedVersion !== observedVersion
-    ) {
-      return {
-        state: 'outdated',
-        observed: `version ${observedVersion}; expected ${expectedVersion}`,
-      };
-    }
-  } catch {
-    return { state: 'unknown', observed: 'unparseable plugin manifest' };
+function managerTargets(plan: ClaudeCodeSetupPlan): ManagedTarget[] {
+  if (!plan.ready) {
+    return [
+      {
+        kind: 'package',
+        path: plan.pluginRoot,
+        label: 'Claude Code native plugin',
+        state: 'unknown',
+        observed: 'native manager state is unsafe to mutate',
+      },
+    ];
   }
-  return { state: 'drift', observed: 'content differs' };
-}
-
-function contentState(item: ClaudeCodeSetupPlanItem): {
-  state: ManagedState;
-  observed: string;
-} {
-  if (!existsSync(item.targetPath))
-    return { state: 'missing', observed: 'absent' };
-  return readFileSync(item.targetPath, 'utf8') === item.content
-    ? { state: 'installed', observed: 'current' }
-    : { state: 'drift', observed: 'content differs' };
-}
-
-function classifyItem(item: ClaudeCodeSetupPlanItem): {
-  state: ManagedState;
-  observed: string;
-} {
-  if (item.kind === 'plugin-manifest') return manifestState(item);
-  return contentState(item);
+  if (plan.items.length === 0) {
+    return [
+      {
+        kind: 'package',
+        path: plan.pluginRoot,
+        label: 'Claude Code native plugin',
+        state: 'installed',
+        expected: 'registered marketplace and enabled plugin',
+        observed: 'registered and enabled',
+      },
+    ];
+  }
+  return plan.items.map((item) => {
+    if (item.action === 'enable-plugin') {
+      return targetForItem(item, 'drift', 'plugin disabled');
+    }
+    if (item.action === 'update-plugin') {
+      return targetForItem(item, 'installed', 'native update requested');
+    }
+    return targetForItem(item, 'missing', 'absent');
+  });
 }
 
 function aggregateState(states: ManagedState[]): ManagedState {
@@ -303,15 +267,15 @@ function aggregateState(states: ManagedState[]): ManagedState {
 function statusSummary(state: ManagedState): string {
   switch (state) {
     case 'installed':
-      return 'Claude Code managed plugin is installed and current.';
+      return 'Claude Code native plugin and required skills are installed.';
     case 'missing':
-      return 'Claude Code managed plugin is missing.';
+      return 'Claude Code native plugin or required skills are missing.';
     case 'drift':
-      return 'Claude Code managed plugin exists but differs from expected output.';
+      return 'Claude Code native plugin is installed but disabled or incomplete.';
     case 'outdated':
-      return 'Claude Code managed plugin includes an older generated manifest.';
+      return 'Claude Code native plugin is outdated.';
     case 'unknown':
-      return 'Claude Code managed plugin could not be classified safely.';
+      return 'Claude Code native plugin state could not be classified safely.';
   }
 }
 
@@ -369,27 +333,19 @@ function statusFromSetupPlan(
   plan: ClaudeCodeSetupPlan,
   context: ClaudeCodeOperationContext,
 ): HarnessStatusReport {
-  const classified = plan.items.map((item) => ({
-    item,
-    ...classifyItem(item),
-  }));
+  const manager = managerTargets(plan);
   const requiredSkills = claudeCodeRequiredSkillStatus(context);
-  const state = aggregateState([
-    ...classified.map((entry) => entry.state),
-    ...requiredSkills.targets.map((target) => target.state ?? 'unknown'),
-  ]);
-
+  const state = aggregateState(
+    [...manager, ...requiredSkills.targets].map(
+      (target) => target.state ?? 'unknown',
+    ),
+  );
   return {
     harness: 'claude',
     displayName: CLAUDE_CODE_DISPLAY_NAME,
     state,
     summary: statusSummary(state),
-    targets: [
-      ...classified.map(({ item, state, observed }) =>
-        targetForItem(item, state, observed),
-      ),
-      ...requiredSkills.targets,
-    ],
+    targets: [...manager, ...requiredSkills.targets],
     diagnostics: [
       ...plan.diagnostics.map((message) => ({
         severity: 'minor' as const,
@@ -411,9 +367,12 @@ export function getClaudeCodeStatus(
   evidence: ProviderEvidenceInput = {},
 ): HarnessStatusReport {
   const providerCapability = classifyProviderCapabilityEvidence(evidence);
-  let plan: ClaudeCodeSetupPlan;
   try {
-    plan = buildClaudeCodeSetupPlan(claudeCodeConfig(context, true));
+    const plan = buildClaudeCodeSetupPlan(claudeCodeConfig(context, true));
+    return {
+      ...statusFromSetupPlan(plan, context),
+      providerCapability,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
@@ -434,19 +393,14 @@ export function getClaudeCodeStatus(
       disclaimers: claudeCodeDisclaimers(),
     };
   }
-
-  return {
-    ...statusFromSetupPlan(plan, context),
-    providerCapability,
-  };
 }
 
 function planItemFromSetup(item: ClaudeCodeSetupPlanItem): OperationPlanItem {
   return {
     title: item.description,
     target: targetForItem(item),
-    preview: item.content,
-    backup: backupForItem(item),
+    preview: `${item.command.executable} ${item.command.args.join(' ')}`,
+    backup: { required: false, strategy: 'external' },
   };
 }
 
@@ -458,15 +412,10 @@ function planFromSetup(
   setupPlan: ClaudeCodeSetupPlan,
   context: ClaudeCodeOperationContext,
 ): OperationPlan {
-  // Classify the already-built setup plan rather than rebuilding it via
-  // getClaudeCodeStatus(), so a single install/update/sync preview renders the
-  // adapter (and re-reads the skill tree from disk) only once.
   const status = statusFromSetupPlan(setupPlan, context);
-  const canApply =
-    status.state === 'installed' ||
-    status.state === 'missing' ||
-    status.state === 'outdated' ||
-    status.state === 'drift';
+  const missingSkills = status.targets.some(
+    (target) => target.kind === 'skill' && target.state === 'missing',
+  );
   const plan: OperationPlan = {
     id,
     harness: 'claude',
@@ -474,14 +423,24 @@ function planFromSetup(
     title,
     summary,
     dryRun: true,
-    canApply,
+    canApply: setupPlan.ready && (setupPlan.items.length > 0 || missingSkills),
     targets: status.targets,
-    surfaces: setupPlan.items.map(surfaceForItem),
+    surfaces:
+      setupPlan.items.length > 0
+        ? setupPlan.items.map(surfaceForItem)
+        : [
+            {
+              id: 'native-plugin:installed',
+              label: 'Claude Code native plugin',
+              path: setupPlan.pluginRoot,
+              state: setupPlan.ready ? 'installed' : 'unknown',
+            },
+          ],
     backup: {
-      required: setupPlan.items.some((item) => item.requiresBackup),
-      strategy: 'managed-backup-file',
+      required: false,
+      strategy: 'external',
       description:
-        'Existing Claude Code plugin files are backed up before being overwritten.',
+        'Claude Code owns its marketplace snapshots and plugin cache.',
     },
     items: [
       ...setupPlan.items.map(planItemFromSetup),
@@ -503,8 +462,8 @@ export function buildClaudeCodeInstallPlan(
   return planFromSetup(
     'claude-code-install-preview',
     'install',
-    'Install Claude Code plugin package',
-    'Preview Claude Code plugin package install using buildClaudeCodeSetupPlan().',
+    'Install Claude Code native plugin',
+    'Preview native marketplace registration, plugin installation, and required skills.',
     buildClaudeCodeSetupPlan(claudeCodeConfig(context, true)),
     context,
   );
@@ -516,9 +475,9 @@ export function buildClaudeCodeUpdatePlan(
   return planFromSetup(
     'claude-code-update-preview',
     'update',
-    'Update Claude Code plugin package',
-    'Preview Claude Code managed plugin refresh using buildClaudeCodeSetupPlan().',
-    buildClaudeCodeSetupPlan(claudeCodeConfig(context, true)),
+    'Reconcile Claude Code native plugin',
+    'Preview native marketplace, enabled-plugin, and required-skill reconciliation.',
+    buildClaudeCodeSetupPlan(claudeCodeConfig(context, true, true)),
     context,
   );
 }
@@ -529,144 +488,56 @@ export function buildClaudeCodeSyncPlan(
   return planFromSetup(
     'claude-code-sync-preview',
     'sync',
-    'Sync Claude Code plugin package',
-    'Preview Claude Code managed plugin subagents, settings, and skills.',
+    'Sync Claude Code native plugin',
+    'Preview native marketplace, enabled-plugin, and required-skill reconciliation.',
     buildClaudeCodeSetupPlan(claudeCodeConfig(context, true)),
     context,
   );
 }
 
-function isClaudeCodeRole(role: string): role is ClaudeCodeRoleName {
-  return (CLAUDE_CODE_ROLE_NAMES as readonly string[]).includes(role);
-}
-
 export function buildClaudeCodeModelPlan(
   input: ModelConfigInput,
-  context: ClaudeCodeOperationContext = { cwd: process.cwd() },
+  _context: ClaudeCodeOperationContext = { cwd: process.cwd() },
 ): OperationPlan {
-  const status = getClaudeCodeStatus(context);
-  const resolvedRoles = input.roles.map((role) => ({
-    role,
-    effort: resolveClaudeCodeEffort(role),
-    validRole: isClaudeCodeRole(role.role),
-    validModel:
-      isClaudeCodeModelAlias(role.model) || role.catalogId === role.model,
-  }));
-  const supportedRoles = resolvedRoles
-    .filter((entry) => entry.validRole && entry.validModel && entry.effort.ok)
-    .map(({ role, effort }) => ({
-      role: role.role as ClaudeCodeRoleName,
-      model: role.model,
-      ...(role.catalogId ? { catalogId: role.catalogId } : {}),
-      ...(effort.ok && effort.effort !== undefined
-        ? { effort: effort.effort }
-        : {}),
-      ...(role.effort?.kind === 'inherit' ? { clearEffort: true } : {}),
-    }));
-  const rejectedRoles = resolvedRoles.filter(
-    (entry) => !entry.validRole || !entry.validModel,
-  );
-  const effortErrors = resolvedRoles.filter(
-    (entry) => entry.validRole && entry.validModel && !entry.effort.ok,
-  );
-  const warnings: OperationWarning[] = [
-    ...status.diagnostics,
-    ...(input.warnings ?? []),
-    ...rejectedRoles.map(({ role }) =>
-      warning(
-        `Claude Code does not accept role "${role.role}" with model "${role.model}"; roles must be one of ${CLAUDE_CODE_ROLE_NAMES.join(', ')} and models must be sonnet, opus, haiku, or inherit.`,
-        'claude-code-unsupported-model-role',
-      ),
-    ),
-    ...effortErrors.map(({ effort }) =>
-      warning(
-        effort.ok ? 'Unknown Claude Code effort error.' : effort.message,
-        effort.ok ? 'claude-code-effort-unknown' : effort.code,
-      ),
-    ),
-  ];
-  if (input.harness !== 'claude') {
-    warnings.push(
-      warning(
-        'Model plan target harness must be claude.',
-        'claude-code-model-harness-mismatch',
-      ),
-    );
-  }
-
-  const targets = supportedRoles.map(({ role }) => {
-    const target = status.targets.find((candidate) =>
-      candidate.path?.endsWith(`agents${pathSep()}${role}.md`),
-    );
-    return (
-      target ?? {
-        kind: 'generated-artifact' as const,
-        label: `Claude Code ${role} subagent`,
-        state: 'missing' as const,
-      }
-    );
-  });
-  const stateTarget = status.targets.find((target) =>
-    target.path?.endsWith('.thoth-agents-managed-models.json'),
-  );
-
-  const plan: OperationPlan = {
-    id: 'claude-code-model-config-preview',
+  const mismatch = input.harness !== 'claude';
+  return {
+    id: 'claude-code-model-config-unsupported',
     harness: 'claude',
     action: 'model-config',
-    title: 'Configure Claude Code subagent model lines',
-    summary:
-      'Preview model changes for generated Claude Code subagent files and managed model state only.',
+    title: 'Claude Code package-owned agent models',
+    summary: MODEL_CONFIG_DISABLED_REASON,
     dryRun: true,
-    canApply:
-      input.harness === 'claude' &&
-      supportedRoles.length > 0 &&
-      effortErrors.length === 0 &&
-      status.state !== 'unknown',
-    targets: [...targets, ...(stateTarget ? [stateTarget] : [])],
-    surfaces: targets.map((target) => ({
-      id: `claude-code-model:${target.label}`,
-      label: target.label ?? 'Claude Code subagent',
-      path: target.path,
-      state: target.state,
-    })),
-    backup: {
-      required: true,
-      strategy: 'managed-backup-file',
-      description:
-        'Existing subagent files and managed model state are backed up by the managed write helper.',
-    },
-    items: supportedRoles.map(({ role, model, effort }) => ({
-      title: `Set ${role} Claude Code subagent model line`,
-      target: targets.find((target) =>
-        target.path?.endsWith(`agents${pathSep()}${role}.md`),
-      ) ?? {
-        kind: 'generated-artifact',
-        label: `Claude Code ${role} subagent`,
+    canApply: false,
+    targets: input.target ? [input.target] : [],
+    surfaces: [],
+    backup: { required: false, strategy: 'none' },
+    items: input.roles.map((role) => ({
+      title: `Requested ${role.role} Claude Code model`,
+      target: {
+        kind: 'package',
+        label: `Claude Code ${role.role} packaged agent`,
       },
-      preview: JSON.stringify({ role, model, effort: effort ?? null }),
-      backup: { required: true, strategy: 'managed-backup-file' },
+      preview: JSON.stringify({
+        role: role.role,
+        model: role.model,
+        effort: role.effort ?? null,
+        catalogId: role.catalogId ?? null,
+      }),
+      backup: { required: false, strategy: 'none' },
     })),
-    warnings,
-    disclaimers: [
-      ...claudeCodeDisclaimers(),
-      ...(input.disclaimers ?? []),
-      {
-        message:
-          'Claude Code model configuration writes only generated subagent frontmatter model lines and the managed model state JSON.',
-        code: 'claude-code-model-supported-surface',
-      },
+    warnings: [
+      ...(input.warnings ?? []),
+      warning(
+        mismatch
+          ? 'Model plan target harness must be claude.'
+          : MODEL_CONFIG_DISABLED_REASON,
+        mismatch
+          ? 'claude-code-model-harness-mismatch'
+          : 'claude-code-model-cache-owned',
+      ),
     ],
+    disclaimers: [...claudeCodeDisclaimers(), ...(input.disclaimers ?? [])],
   };
-  claudeCodeModelSources.set(plan, {
-    config: claudeCodeConfig(context, false),
-    roles: supportedRoles,
-  });
-  return plan;
-}
-
-function pathSep(): string {
-  return process.platform === 'win32' ? '\\' : '/';
 }
 
 function rejectPlan(
@@ -698,14 +569,11 @@ function validateClaudeCodePlan(
       'Claude Code plan cannot be applied because canApply is false.',
     );
   }
-  if (!['install', 'update', 'sync', 'model-config'].includes(plan.action)) {
+  if (!['install', 'update', 'sync'].includes(plan.action)) {
     return rejectPlan(
       plan,
       `Unsupported Claude Code apply action: ${plan.action}.`,
     );
-  }
-  if (plan.items.length === 0) {
-    return rejectPlan(plan, 'Claude Code plan has no items to apply.');
   }
   return null;
 }
@@ -713,49 +581,6 @@ function validateClaudeCodePlan(
 export function applyClaudeCodePlan(plan: OperationPlan): OperationApplyResult {
   const rejection = validateClaudeCodePlan(plan);
   if (rejection) return rejection;
-
-  if (plan.action === 'model-config') {
-    const source = claudeCodeModelSources.get(plan);
-    if (!source) {
-      return rejectPlan(
-        plan,
-        'Claude Code model plan was not produced by buildClaudeCodeModelPlan in this process.',
-      );
-    }
-    const result = applyClaudeCodeManagedModelOverrides(
-      source.config,
-      source.roles.map((role) => ({
-        role: role.role,
-        model: role.model,
-        ...(role.catalogId ? { catalogId: role.catalogId } : {}),
-        ...(role.effort ? { effort: role.effort } : {}),
-        ...(role.clearEffort ? { clearEffort: true } : {}),
-      })),
-    );
-    return {
-      harness: 'claude',
-      action: 'model-config',
-      applied: result.success,
-      summary: result.success
-        ? 'Applied Claude Code subagent model overrides.'
-        : (result.error ??
-          'Failed to apply Claude Code subagent model overrides.'),
-      changedTargets: result.changed.map((path) => ({
-        kind: path.endsWith('.json') ? 'memory-state' : 'generated-artifact',
-        path,
-        label: basename(path),
-        state: 'installed',
-      })),
-      backups: result.changed
-        .filter((path) => existsSync(`${path}.bak`))
-        .map((path) => ({ path: `${path}.bak`, label: 'managed backup' })),
-      warnings: result.success
-        ? []
-        : [{ severity: 'critical', message: result.error ?? 'apply failed.' }],
-      disclaimers: claudeCodeDisclaimers(),
-    };
-  }
-
   const source = claudeCodePlanSources.get(plan);
   if (!source) {
     return rejectPlan(
@@ -763,6 +588,7 @@ export function applyClaudeCodePlan(plan: OperationPlan): OperationApplyResult {
       'Claude Code setup plan was not produced by a Claude Code operation plan builder in this process.',
     );
   }
+
   const result = applyClaudeCodeSetup({ ...source.setupPlan, dryRun: false });
   const requiredSkillWarnings: OperationWarning[] = [];
   const requiredSkillTargets: ManagedTarget[] = [];
@@ -789,29 +615,31 @@ export function applyClaudeCodePlan(plan: OperationPlan): OperationApplyResult {
     }
   }
   const success = result.success && requiredSkillWarnings.length === 0;
+  let summary =
+    result.error ?? `Failed to apply Claude Code ${plan.action} plan.`;
+  if (success) {
+    summary = `Applied Claude Code native ${plan.action} plan.`;
+  } else if (requiredSkillWarnings.length > 0) {
+    summary =
+      'Claude Code plugin was installed, but required skills failed to install.';
+  }
   return {
     harness: 'claude',
     action: plan.action,
     applied: success,
-    summary: success
-      ? `Applied Claude Code managed ${plan.action} plan.`
-      : requiredSkillWarnings.length > 0
-        ? 'Claude Code setup was written, but required skills failed to install.'
-        : (result.error ?? `Failed to apply Claude Code ${plan.action} plan.`),
+    summary,
     changedTargets: [
       ...result.changed.map((path) => ({
-        kind: path.endsWith('.json')
-          ? ('memory-state' as const)
-          : ('generated-artifact' as const),
+        kind: 'package' as const,
         path,
-        label: basename(path),
+        label: path.includes('/marketplaces/')
+          ? 'Claude Code marketplace'
+          : 'Claude Code plugin',
         state: 'installed' as const,
       })),
       ...requiredSkillTargets,
     ],
-    backups: result.changed
-      .filter((path) => existsSync(`${path}.bak`))
-      .map((path) => ({ path: `${path}.bak`, label: 'managed backup' })),
+    backups: [],
     warnings: [
       ...requiredSkillWarnings,
       ...(result.success

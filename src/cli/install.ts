@@ -291,7 +291,6 @@ export async function install(args: InstallArgs): Promise<number> {
       reset: config.reset,
       scope: 'user',
       projectRoot: cwd(),
-      homeDir: homedir(),
     });
     console.log(formatClaudeCodeSetupPlan(plan));
     const result = applyClaudeCodeSetup(plan);
@@ -304,7 +303,7 @@ export async function install(args: InstallArgs): Promise<number> {
     printSuccess(
       config.dryRun
         ? 'Claude Code dry-run complete; no files written'
-        : 'Claude Code plugin installed as thoth-agents@skills-dir (restart Claude Code or run /reload-plugins to activate)',
+        : 'Claude Code plugin installed as thoth-agents@thoth-agents through the native manager (restart Claude Code or run /reload-plugins to activate)',
     );
     return 0;
   }

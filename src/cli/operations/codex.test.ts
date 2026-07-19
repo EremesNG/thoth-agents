@@ -129,7 +129,7 @@ describe('Codex operations adapter', () => {
       resolveCodexEffort({ ...base, effort: { kind: 'inherit' } }),
     ).toEqual({ ok: true, value: undefined });
   });
-  test('Codex status classifies missing, installed, drift, outdated, and unknown states', () => {
+  test('Codex status classifies managed runtime surfaces without inspecting plugin-manager cache', () => {
     const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-ops-'));
     try {
       const home = join(dir, 'home');
@@ -146,24 +146,6 @@ describe('Codex operations adapter', () => {
         ),
       );
       expect(getCodexStatus(context(dir, home)).state).toBe('drift');
-
-      setup(dir, home);
-      const manifestPath = join(
-        home,
-        '.codex',
-        'plugins',
-        'thoth-agents',
-        '.codex-plugin',
-        'plugin.json',
-      );
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-        version: string;
-      };
-      writeFileSync(
-        manifestPath,
-        `${JSON.stringify({ ...manifest, version: '0.0.0' }, null, 2)}\n`,
-      );
-      expect(getCodexStatus(context(dir, home)).state).toBe('outdated');
 
       setup(dir, home);
       writeFileSync(managedModelsPath(home), '{ invalid json');

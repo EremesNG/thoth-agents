@@ -26,7 +26,12 @@ configuration, managed I/O, and required external skills.
 - There is no required-skill opt-out. A failed install makes the operation fail.
 - Dry-run writes nothing and prints required-skill commands.
 - Reset touches only thoth-agents-managed targets.
-- Codex trust review remains explicit through `/plugins` and `/hooks`.
+- Codex marketplace registration is an explicit interactive manager step;
+  trust review remains explicit through `/plugins` and `/hooks`.
+- Claude setup uses `claude plugin marketplace add`, `install`, and `enable`.
+  It never copies files into the Claude plugin-manager cache.
+- Claude per-role model rewrites are unsupported after installation because the
+  native manager owns the cached package.
 - CLI changes require parser/help/tests and public documentation in the same
   change.
 

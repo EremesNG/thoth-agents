@@ -34,6 +34,9 @@
   "homepage": "https://github.com/EremesNG/thoth-agents#readme",
   "files": [
     "dist",
+    "integrations",
+    ".agents/plugins/marketplace.json",
+    ".claude-plugin/marketplace.json",
     "thoth-agents.schema.json",
     "README.md",
     "LICENSE"
@@ -41,6 +44,8 @@
   "scripts": {
     "build": "tsup && tsc --emitDeclarationOnly && pnpm run generate-schema",
     "generate-schema": "tsx scripts/generate-schema.ts",
+    "integration:sync": "tsx src/harness/generate-integration-packages.ts",
+    "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts",
     "release:notes": "tsx scripts/generate-release-notes.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -49,7 +54,8 @@
     "check": "biome check --write .",
     "check:ci": "biome check .",
     "dev": "pnpm run build && opencode",
-    "prepublishOnly": "pnpm run build",
+    "prepublishOnly": "pnpm run integration:verify && pnpm run build",
+    "version": "pnpm run integration:sync && pnpm run integration:verify",
     "release:patch": "npm version patch && git push --follow-tags",
     "release:minor": "npm version minor && git push --follow-tags",
     "release:major": "npm version major && git push --follow-tags"

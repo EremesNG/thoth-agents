@@ -268,43 +268,6 @@ function userConfigState(item: CodexSetupPlanItem): {
   return { state: 'missing', observed: 'managed feature flag absent' };
 }
 
-function marketplaceState(item: CodexSetupPlanItem): {
-  state: ManagedState;
-  observed: string;
-} {
-  if (!existsSync(item.targetPath))
-    return { state: 'missing', observed: 'absent' };
-  try {
-    const parsed = JSON.parse(readFileSync(item.targetPath, 'utf8')) as {
-      plugins?: unknown;
-    };
-    const plugins = Array.isArray(parsed.plugins) ? parsed.plugins : [];
-    const entry = plugins.find(
-      (plugin) =>
-        plugin &&
-        typeof plugin === 'object' &&
-        'name' in plugin &&
-        plugin.name === 'thoth-agents',
-    );
-    if (!entry)
-      return { state: 'missing', observed: 'marketplace entry absent' };
-    const sourcePath =
-      typeof entry === 'object' &&
-      entry &&
-      'source' in entry &&
-      entry.source &&
-      typeof entry.source === 'object' &&
-      'path' in entry.source
-        ? String(entry.source.path)
-        : '';
-    return sourcePath.includes('.codex/plugins/thoth-agents')
-      ? { state: 'installed', observed: 'marketplace entry present' }
-      : { state: 'drift', observed: `marketplace source ${sourcePath}` };
-  } catch {
-    return { state: 'unknown', observed: 'unparseable marketplace JSON' };
-  }
-}
-
 function contentState(item: CodexSetupPlanItem): {
   state: ManagedState;
   observed: string;
@@ -312,27 +275,6 @@ function contentState(item: CodexSetupPlanItem): {
   if (!existsSync(item.targetPath))
     return { state: 'missing', observed: 'absent' };
   const observed = readFileSync(item.targetPath, 'utf8');
-  if (
-    basename(item.targetPath) === 'plugin.json' &&
-    item.targetPath.replaceAll('\\', '/').includes('/.codex-plugin/')
-  ) {
-    try {
-      const expectedVersion = JSON.parse(item.content ?? '{}').version;
-      const observedVersion = JSON.parse(observed).version;
-      if (
-        typeof expectedVersion === 'string' &&
-        typeof observedVersion === 'string' &&
-        expectedVersion !== observedVersion
-      ) {
-        return {
-          state: 'outdated',
-          observed: `version ${observedVersion}; expected ${expectedVersion}`,
-        };
-      }
-    } catch {
-      return { state: 'unknown', observed: 'unparseable plugin manifest' };
-    }
-  }
   if (item.content === observed)
     return { state: 'installed', observed: 'current' };
   if (item.role) {
@@ -360,7 +302,6 @@ function classifyItem(item: CodexSetupPlanItem): {
     return managedModelState(item);
   }
   if (item.action === 'merge-toml') return userConfigState(item);
-  if (item.action === 'merge-marketplace') return marketplaceState(item);
   return contentState(item);
 }
 
@@ -588,7 +529,7 @@ export function buildCodexSyncPlan(
     'codex-sync-preview',
     'sync',
     'Sync Codex managed configuration',
-    'Preview Codex managed root instructions, subagents, plugin source, marketplace entry, and feature gates.',
+    'Preview Codex managed root instructions, subagents, feature gates, and native marketplace guidance.',
     setupPlan,
     context,
   );

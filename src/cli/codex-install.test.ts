@@ -153,8 +153,11 @@ describe('Codex install setup plan', () => {
 
         expect(plan.dryRun).toBe(true);
         expect(
-          plan.items.some((item) => item.kind === 'personal-plugin-source'),
-        ).toBe(true);
+          plan.items.some((item) => item.targetPath.includes('.codex/plugins')),
+        ).toBe(false);
+        expect(plan.diagnostics.join('\n')).toContain(
+          'codex plugin marketplace add EremesNG/thoth-agents',
+        );
       } finally {
         process.chdir(previousCwd);
       }
@@ -181,11 +184,11 @@ describe('Codex install setup plan', () => {
         expect.arrayContaining([
           'root-instructions',
           'managed-model-state',
-          'personal-plugin-source',
-          'personal-marketplace',
           'user-config',
         ]),
       );
+      expect(itemKinds).not.toContain('personal-plugin-source');
+      expect(itemKinds).not.toContain('personal-marketplace');
       expect(itemKinds).not.toContain('plugin-package');
       expect(
         plan.items
@@ -203,6 +206,9 @@ describe('Codex install setup plan', () => {
         ),
       ).toBe(true);
       expect(plan.diagnostics.join('\n')).toContain('/plugins');
+      expect(plan.diagnostics.join('\n')).toContain(
+        'codex plugin marketplace add EremesNG/thoth-agents',
+      );
       expect(plan.diagnostics.join('\n')).toContain('/hooks');
       expect(plan.diagnostics.join('\n')).toContain(
         'features.default_mode_request_user_input',
@@ -221,7 +227,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('formats dry-run with only Personal plugin source package refresh', () => {
+  test('formats only managed runtime surfaces and omits manager-owned plugin paths', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const plan = buildCodexSetupPlan({
@@ -234,22 +240,11 @@ describe('Codex install setup plan', () => {
       });
 
       const formatted = formatCodexSetupPlan(plan);
-      const refreshLines = formatted
-        .split('\n')
-        .filter((line) => line.startsWith('- refresh-package:'));
-
-      expect(refreshLines).toHaveLength(1);
-      expect(refreshLines[0]).toContain('Refresh Personal Codex plugin source');
-      expect(refreshLines[0]).toContain(' files.');
-      expect(refreshLines[0]).toContain(
-        join(dir, 'home', '.codex', 'plugins', 'thoth-agents'),
-      );
-      expect(refreshLines[0]).not.toContain(join(dir, '.codex-plugin'));
-      expect(formatted).not.toContain('.codex-plugin/skills/');
-      expect(formatted).not.toContain('.codex-plugin/agents/');
-      expect(formatted).not.toContain(
-        'Refresh documented .codex-plugin package',
-      );
+      expect(formatted).toContain('- merge-managed-block:');
+      expect(formatted.match(/- write-role-toml:/g)).toHaveLength(9);
+      expect(formatted).toContain('- merge-toml:');
+      expect(formatted).not.toContain('.codex/plugins');
+      expect(formatted).not.toContain('.agents/plugins/marketplace.json');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -279,7 +274,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('apply preserves root instructions, writes nine specialists, and generates Personal plugin source only', () => {
+  test('apply preserves root instructions and writes nine specialists without mutating plugin-manager state', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -346,64 +341,10 @@ describe('Codex install setup plan', () => {
         ),
       ).toBe(false);
       expect(existsSync(join(dir, '.codex-plugin'))).toBe(false);
-      const personalPluginRoot = join(
-        home,
-        '.codex',
-        'plugins',
-        'thoth-agents',
-      );
-      expect(existsSync(join(personalPluginRoot, 'plugin.json'))).toBe(false);
-      expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(false);
-      const personalManifest = JSON.parse(
-        readFileSync(
-          join(personalPluginRoot, '.codex-plugin', 'plugin.json'),
-          'utf8',
-        ),
-      );
-      const marketplace = JSON.parse(
-        readFileSync(
-          join(home, '.agents', 'plugins', 'marketplace.json'),
-          'utf8',
-        ),
-      );
-      expect(personalManifest.name).toBe('thoth-agents');
-      expect(personalManifest.skills).toBeUndefined();
-      expect(personalManifest.mcpServers).toBe('./.mcp.json');
-      expect(personalManifest.hooks).toBeUndefined();
-      expect(personalManifest.customAgents).toBeUndefined();
-      expect(personalManifest.orchestrator).toBeUndefined();
-      expect(existsSync(join(personalPluginRoot, '.mcp.json'))).toBe(true);
-      expect(existsSync(join(personalPluginRoot, 'hooks', 'hooks.json'))).toBe(
-        false,
-      );
+      expect(existsSync(join(home, '.codex', 'plugins'))).toBe(false);
       expect(
-        JSON.parse(readFileSync(join(personalPluginRoot, '.mcp.json'), 'utf8')),
-      ).toEqual({
-        mcpServers: {
-          exa: {
-            command: 'npx',
-            args: ['-y', 'exa-mcp-server'],
-          },
-          context7: { url: 'https://mcp.context7.com/mcp' },
-          grep_app: { url: 'https://mcp.grep.app' },
-        },
-      });
-      expect(marketplace.plugins).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            name: 'thoth-agents',
-            source: {
-              source: 'local',
-              path: './.codex/plugins/thoth-agents',
-            },
-            policy: {
-              installation: 'AVAILABLE',
-              authentication: 'ON_INSTALL',
-            },
-            category: 'Productivity',
-          }),
-        ]),
-      );
+        existsSync(join(home, '.agents', 'plugins', 'marketplace.json')),
+      ).toBe(false);
       const userConfig = readFileSync(
         join(home, '.codex', 'config.toml'),
         'utf8',
@@ -439,7 +380,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('generates Personal plugin source when repo-local canonical package is missing', () => {
+  test('leaves an existing personal plugin cache untouched', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -468,16 +409,10 @@ describe('Codex install setup plan', () => {
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
       expect(existsSync(join(dir, '.codex-plugin'))).toBe(false);
-      expect(existsSync(personalPluginRoot)).toBe(true);
       expect(
-        existsSync(join(personalPluginRoot, '.codex-plugin', 'plugin.json')),
-      ).toBe(true);
-      expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(false);
-      expect(existsSync(join(personalPluginRoot, '.mcp.json'))).toBe(true);
-      expect(existsSync(join(personalPluginRoot, 'hooks', 'hooks.json'))).toBe(
-        false,
-      );
-      expect(existsSync(join(personalPluginRoot, 'plugin.json'))).toBe(false);
+        readFileSync(join(personalPluginRoot, 'plugin.json'), 'utf8'),
+      ).toBe('{"stale":true}\n');
+      expect(existsSync(join(personalPluginRoot, '.codex-plugin'))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -505,28 +440,9 @@ describe('Codex install setup plan', () => {
           }),
         );
 
-        const personalPluginRoot = join(
-          home,
-          '.codex',
-          'plugins',
-          'thoth-agents',
-        );
         expect(result.success).toBe(true);
-        expect(
-          existsSync(join(personalPluginRoot, '.codex-plugin', 'plugin.json')),
-        ).toBe(true);
-        expect(existsSync(join(personalPluginRoot, '.mcp.json'))).toBe(true);
-        expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(false);
-        const manifest = JSON.parse(
-          readFileSync(
-            join(personalPluginRoot, '.codex-plugin', 'plugin.json'),
-            'utf8',
-          ),
-        ) as { version?: string };
-        const packageJson = JSON.parse(
-          readFileSync(join(packageRoot, 'package.json'), 'utf8'),
-        ) as { version?: string };
-        expect(manifest.version).toBe(packageJson.version);
+        expect(existsSync(rolePath(home, 'explorer'))).toBe(true);
+        expect(existsSync(join(home, '.codex', 'plugins'))).toBe(false);
       } finally {
         process.chdir(previousCwd);
       }
@@ -535,7 +451,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('marketplace merge preserves unrelated plugins and refreshes managed entry', () => {
+  test('does not mutate an existing personal marketplace', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -565,6 +481,7 @@ describe('Codex install setup plan', () => {
         ),
       );
 
+      const before = readFileSync(marketplacePath, 'utf8');
       const result = applyCodexSetup(
         buildCodexSetupPlan({
           dryRun: false,
@@ -577,22 +494,7 @@ describe('Codex install setup plan', () => {
       );
 
       expect(result.success).toBe(true);
-      const marketplace = JSON.parse(readFileSync(marketplacePath, 'utf8'));
-      expect(marketplace.plugins).toHaveLength(2);
-      expect(marketplace.plugins[0]).toEqual({
-        name: 'other-plugin',
-        source: './plugins/other',
-      });
-      expect(marketplace.plugins[1]).toEqual(
-        expect.objectContaining({
-          name: 'thoth-agents',
-          category: 'Productivity',
-          source: {
-            source: 'local',
-            path: './.codex/plugins/thoth-agents',
-          },
-        }),
-      );
+      expect(readFileSync(marketplacePath, 'utf8')).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

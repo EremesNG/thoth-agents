@@ -35,6 +35,7 @@ npx thoth-agents@latest
 
 # Explicit harnesses
 npx thoth-agents@latest install --agent=opencode
+codex plugin marketplace add EremesNG/thoth-agents
 npx thoth-agents@latest install --agent=codex
 npx thoth-agents@latest install --agent=claude
 
@@ -52,13 +53,19 @@ Claude plugins provide a normal automatic `postinstall` lifecycle for arbitrary
 skill repositories. The CLI performs the equivalent `npx skills add ...
 --global --agent ... --yes` commands directly.
 
+Codex and Claude delivery is repository-native: the package includes
+`.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, and their
+versioned packages under `integrations/`. Claude is registered and installed
+through its native plugin manager; Codex marketplace registration remains an
+explicit interactive step printed by the CLI.
+
 ## Harness comparison
 
 | Harness | Installed orchestration surface | Required skill root | Important limitation |
 | --- | --- | --- | --- |
 | OpenCode | Plugin entry, ten-role config, runtime delegation, tools, MCPs, and hooks | `~/.config/opencode/skills` | OpenAI is the only built-in preset. |
-| Codex | Root `AGENTS.md` block, nine specialist TOMLs, Personal plugin source, marketplace entry, and feature flags | `~/.codex/skills` | The ambient session is the root; role matching and some permissions remain instruction-level. Review `/plugins` and `/hooks`. |
-| Claude Code | One plugin package with the orchestrator as main thread and nine auto-discovered subagents | `~/.claude/skills` | Coordination-agent write scope is instruction-level; project scope requires workspace trust. |
+| Codex | Repository marketplace plus root `AGENTS.md`, nine specialist TOMLs, and feature flags | `~/.codex/skills` | Marketplace registration/trust is native and interactive; the ambient session is the root. Review `/plugins` and `/hooks`. |
+| Claude Code | Repository marketplace installed by the native manager; orchestrator main agent plus nine subagents | `~/.claude/skills` | The installed cache is manager-owned; per-role model rewrites require publishing a new package. |
 
 The generated contract is shared, but runtime guarantees are not assumed to be
 identical across harnesses.

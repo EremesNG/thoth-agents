@@ -63,6 +63,34 @@ Codex and Claude plugin manifests MUST contain only documented fields and curren
 package identity/version. External required skills MUST NOT be represented as
 fake plugin dependencies or plugin settings.
 
+### Requirement: Publish repository-native marketplaces
+
+The repository and npm package MUST include `.agents/plugins/marketplace.json`
+for Codex and `.claude-plugin/marketplace.json` for Claude Code. Their sources
+MUST resolve to versioned packages under `integrations/codex` and
+`integrations/claude-code` respectively.
+
+#### Scenario: Marketplace package generation
+
+- **WHEN** integration packages are synchronized for a release
+- **THEN** both marketplace files and both referenced packages are generated
+  deterministically from the harness adapters
+- **AND** their plugin versions equal the root package version.
+
+### Requirement: Preserve native plugin-manager ownership
+
+thoth-agents MUST NOT copy or merge plugin packages into personal Codex or
+Claude plugin-manager directories. Claude install, enablement, and inspection
+MUST use its native plugin CLI. Codex registration and trust MUST remain a native
+interactive marketplace step.
+
+#### Scenario: Claude native installation
+
+- **WHEN** Claude Code installation is applied
+- **THEN** the CLI registers `EremesNG/thoth-agents` and installs
+  `thoth-agents@thoth-agents` through the Claude plugin manager
+- **AND** no thoth-agents operation edits the manager-owned installed cache.
+
 ### Requirement: Preserve provider ownership
 
 No generated package MUST bundle thoth-mem hooks, MCP, protocol, lifecycle, or

@@ -24,6 +24,35 @@ Translate an accepted specification into a technically executable Spec Kit-compa
 - Ground conclusions in current evidence and verify the assigned outcome before returning.
 </reasoning-discipline>
 
+<phase-protocols>
+Apply only the protocol named by the dispatch envelope's PHASE field.
+<phase-protocol phase=plan>
+Objective: Translate the accepted specification into an executable technical approach.
+Required inputs:
+- spec.md
+- Relevant repository evidence and constraints
+- Project constitution
+Instructions:
+- Make each technical choice traceable to a requirement or repository constraint.
+- Name affected components, interfaces, files, risks, migrations, and verification strategy.
+- Create research, data model, contracts, or quickstart artifacts only when they reduce implementation risk.
+Allowed writes:
+- openspec/changes/<feature>/plan.md
+- Optional research.md, data-model.md, contracts/, and quickstart.md under the same change
+Expected output:
+- plan.md path
+- technical decisions
+- affected surfaces
+Done when:
+- A competent implementer can execute the plan without guessing about critical architecture or constraints.
+Blocking conditions:
+- The plan contradicts spec.md, the constitution, or confirmed repository constraints.
+<handoff>
+- Pass the accepted plan, affected surfaces, dependencies, and verification strategy to tasks.
+</handoff>
+</phase-protocol>
+</phase-protocols>
+
 <rules>
 - Do not delegate further or manage root progress.
 - Do not edit product code.

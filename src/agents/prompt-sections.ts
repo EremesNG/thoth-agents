@@ -7,7 +7,10 @@ import {
   getRequiredSddPhaseOrder,
   getSddArtifactGraph,
   getSddPhaseOwner,
+  getSddPhaseProtocolsForRole,
   getSddWorkflowContract,
+  renderSddPhaseDispatchTemplate,
+  type SddPhaseProtocol,
   type SddRoute,
 } from '../harness/core/sdd';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
@@ -157,8 +160,52 @@ function renderRoleDirectory(): string {
 
 function renderArtifactSummary(): string {
   return getSddArtifactGraph()
+    .filter((artifact) => artifact.requiredFor.length === 0)
     .map((artifact) => artifact.path)
     .join(', ');
+}
+
+function renderProtocolItems(label: string, values: readonly string[]): string {
+  return `${label}:\n${values.map((value) => `- ${value}`).join('\n')}`;
+}
+
+function renderPhaseProtocol(protocol: SddPhaseProtocol): string {
+  return `<phase-protocol phase=${protocol.id}>
+Objective: ${protocol.objective}
+${renderProtocolItems('Required inputs', protocol.requiredInputs)}
+${renderProtocolItems('Instructions', protocol.instructions)}
+${renderProtocolItems('Allowed writes', protocol.allowedWrites)}
+${renderProtocolItems('Expected output', protocol.outputSchema)}
+${renderProtocolItems('Done when', protocol.doneWhen)}
+${renderProtocolItems('Blocking conditions', protocol.blockingConditions)}
+<handoff>
+${protocol.handoff.map((value) => `- ${value}`).join('\n')}
+</handoff>
+</phase-protocol>`;
+}
+
+function renderRolePhaseProtocols(role: AgentRoleName): string | undefined {
+  const protocols = getSddPhaseProtocolsForRole(role);
+  if (protocols.length === 0) {
+    return undefined;
+  }
+
+  return `<phase-protocols>
+Apply only the protocol named by the dispatch envelope's PHASE field.
+${protocols.map(renderPhaseProtocol).join('\n\n')}
+</phase-protocols>`;
+}
+
+function renderRootPhaseModes(): string {
+  const protocols = getSddPhaseProtocolsForRole('orchestrator');
+  const modes = protocols
+    .map(
+      (protocol) =>
+        `- phase=${protocol.id}; expected: ${protocol.outputSchema[0]}; gate: ${protocol.blockingConditions[0]}`,
+    )
+    .join('\n');
+
+  return `<root-phase-modes>\nWhen the root executes a phase itself, apply its canonical protocol and these compact mode gates:\n${modes}\n</root-phase-modes>`;
 }
 
 export function createOrchestratorPromptSections(): RolePromptSection[] {
@@ -195,9 +242,14 @@ Implementation choice:
 - Direct: clear, local, low-risk work. ${renderSddRoute('direct')}.
 - Accelerated SDD: bounded multi-file or moderate-risk work. ${renderSddRoute('accelerated')}.
 - Full SDD: explicitly requested SDD, uncertain or cross-cutting scope, high contract risk, or high failure cost. ${renderSddRoute('full')}.
+- Happy-path terminal transition for artifact-backed routes: verify -> archive.
+- Artifact-backed failure loop: verify fail -> converge -> implement -> verify. Converge appends traceable tasks and never edits product code.
+- Direct failure loop: verify fail -> implement -> verify.
 - Conditional phases: clarify only for material ambiguity; checklist only when requirement risk justifies it; converge only when verification finds actionable defects.
 - Do not create SDD ceremony for a simple documentation or mechanical update.
 </sdd-routing>
+
+${renderRootPhaseModes()}
 
 <external-skills>
 - Use progressive-context-router only for repository instruction or context-router work.
@@ -209,10 +261,13 @@ Implementation choice:
 
 <artifacts>
 - Preserve Spec Kit semantics inside ${workflow.artifactRoot}.
-- Required for Accelerated and Full SDD: spec.md, plan.md, tasks.md.
+- Required for Accelerated and Full SDD: spec.md, plan.md, tasks.md, verify-report.md, archive-report.md.
 - Optional when useful: ${renderArtifactSummary()}.
 - ${roleTemplate('sdd-specify')}, ${roleTemplate('sdd-plan')}, and ${roleTemplate('sdd-tasks')} may write coordination artifacts only under openspec/.
 - Product implementation remains with root or exactly one of ${roleTemplate('designer')}, ${roleTemplate('quick')}, ${roleTemplate('deep')}.
+- Root owns task checkbox transitions: mark assigned tasks [~] before dispatch and [x] only after task-specific evidence is verified.
+- A read-only ${roleTemplate('oracle')} returns verification findings; root persists verify-report.md. ${roleTemplate('quick')} may perform the mechanical archive after a pass verdict.
+- Archive creates archive-report.md and moves the complete change to openspec/changes/archive/YYYY-MM-DD-<feature>/. It must not implicitly merge into openspec/specs.
 </artifacts>
 
 <execution>
@@ -225,9 +280,11 @@ Implementation choice:
 </execution>
 
 <delegation>
-- Dispatch through \`{{delegationTool}}\` with a concrete task, bounded scope, relevant anchors, constraints, expected verification, and the compact return contract.
+- Dispatch through \`{{delegationTool}}\` with the canonical SDD phase envelope below. For non-SDD delegation, preserve the same concrete task, boundaries, evidence, and return discipline.
 - Launch agents together only when their work is independent. Wait for requested results before synthesis.
 - Child return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
+
+${renderSddPhaseDispatchTemplate()}
 </delegation>`),
     createQuestionProtocolSection(),
   ];
@@ -300,11 +357,11 @@ function childSections(
             'Write only the assigned artifacts under openspec/ and preserve unrelated changes.',
           ]
         : [
-            'Edit only the assigned implementation surface.',
+            'Edit only the assigned phase surface.',
             'Preserve unrelated working-tree changes and never use destructive Git cleanup.',
           ];
 
-  return [
+  const sections: RolePromptSection[] = [
     roleText(`<role>
 You are ${roleName}.
 </role>
@@ -339,6 +396,13 @@ Return a compact result with these fields:
 </return-contract>`),
     createResponseBudgetSection(),
   ];
+
+  const phaseProtocols = renderRolePhaseProtocols(roleName);
+  if (phaseProtocols) {
+    sections.splice(2, 0, roleText(phaseProtocols));
+  }
+
+  return sections;
 }
 
 export function createReadOnlySpecialistPromptSections(
@@ -507,7 +571,7 @@ function renderRoleText(
       '{{dispatch.synchronous-task-only}}',
       dialect.dispatchLabel('synchronous-task-only'),
     )
-    .replace(/\{\{role\.([\w-]+)\}\}/g, (_match, role: AgentPromptRole) =>
+    .replace(/{{role\.([\w-]+)}}/g, (_match, role: AgentPromptRole) =>
       dialect.renderRoleInvocation(role),
     );
 }

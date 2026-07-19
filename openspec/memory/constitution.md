@@ -1,6 +1,6 @@
 # thoth-agents Project Constitution
 
-Version: 2.1.0
+Version: 2.2.0
 Ratified: 2026-06-16
 Last-Amended: 2026-07-18
 
@@ -34,11 +34,15 @@ assigned product surfaces.
 
 The root selects direct, accelerated, or full SDD from intent, scope, clarity,
 contract risk, and failure cost. Accelerated SDD is a first-class route.
-Clarification, checklists, optional artifacts, and convergence activate only when
-their risk signal exists. Ceremony without decision or risk value is prohibited.
+Clarification, checklists, optional artifacts, and convergence activate on
+artifact-backed routes only when their risk signal exists. Ceremony without
+decision or risk value is prohibited.
 `architectural-grilling` is a conditional pre-specification gate only for an
 explicit request or unresolved material human-owned product/architecture
 branches; Full SDD alone never requires it.
+Every phase has a shared typed protocol and a canonical dispatch envelope.
+Artifact-backed routes persist a verification verdict and close through a dated
+archive without implicitly merging into permanent specifications.
 
 ### 4. Truthful multi-harness contracts
 
@@ -58,13 +62,19 @@ provider assets.
 
 ### 6. Evidence-led completion
 
-Every route ends in verification proportional to changed behavior and risk.
-Completion reports identify changed surfaces and executed evidence. Full SDD adds
-independent analysis and verification; actionable findings receive a bounded
-fix/re-check loop.
+Every route includes verification proportional to changed behavior and risk
+before completion. Completion reports identify changed surfaces and executed
+evidence. Full SDD adds independent analysis and verification. Artifact-backed
+failures append traceable convergence tasks before the implementation/re-check
+loop; Direct failures return straight to implementation. Accelerated and Full
+archive only after a passing verdict and no unresolved critical finding.
 
 ## Sync-impact report
 
+- 2.2.0 | minor: add typed phase protocols, the canonical dispatch envelope,
+  durable verification reports, append-only convergence, and verified archive
+  closeout for artifact-backed routes | SDD contracts, role prompts, active
+  specs, generated harness packages, documentation, and tests.
 - 2.1.0 | minor: replace the incomplete Playwright skill dependency with
   progressive context and conditional architectural decision skills while
   leaving QA tooling project-owned | SDD routing, required-skill installation,

@@ -116,8 +116,8 @@ identical across harnesses.
 | --- | --- | --- |
 | Root | `orchestrator` | Route the task, work directly when bounded, delegate only for net gain, and synthesize results. |
 | Read-only evidence | `explorer`, `librarian`, `oracle` | Repository discovery, authoritative research, diagnosis, architecture, and independent review. |
-| SDD coordination | `sdd-specify`, `sdd-plan`, `sdd-tasks` | Write only governed coordination artifacts under `openspec/`; never implement product code. |
-| Writers | `designer`, `quick`, `deep` | UI/UX work, narrow mechanical changes, and correctness-critical implementation. |
+| SDD coordination | `sdd-specify`, `sdd-plan`, `sdd-tasks` | Write governed artifacts and append convergence tasks under `openspec/`; never implement product code. |
+| Writers | `designer`, `quick`, `deep` | UI/UX work, narrow changes, correctness-critical implementation, and verified mechanical archive closeout. |
 
 Children do not delegate. Parallel work is reserved for independent surfaces,
 and overlapping writes are never parallelized.
@@ -129,8 +129,8 @@ failure cost.
 
 ```text
 direct:      implement -> verify
-accelerated: specify -> plan -> tasks -> implement -> verify
-full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify
+accelerated: specify -> plan -> tasks -> implement -> verify -> archive
+full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive
 ```
 
 - Direct is the default for clear, local, low-risk work, including small
@@ -139,7 +139,16 @@ full:        explore -> specify -> plan -> tasks -> analyze -> implement -> veri
   intentionally lean while preserving `spec.md`, `plan.md`, and `tasks.md`.
 - Full is used for explicit SDD requests, unresolved scope, cross-cutting work,
   or high risk.
-- Clarification, requirements checklists, and convergence are conditional.
+- Clarification and requirements checklists are conditional on artifact-backed
+  routes. A failed Accelerated/Full verification activates append-only
+  convergence, then returns to implementation and verification; Direct returns
+  straight to implementation. A pass archives artifact-backed work.
+- Every delegated SDD phase uses the same `PHASE`, `ROUTE / CHANGE`, `OBJECTIVE`,
+  `INPUT ARTIFACTS`, `REQUIREMENTS`, `BOUNDARIES`, `VERIFICATION`,
+  `EXPECTED OUTPUT`, and `HANDOFF` envelope.
+- Accelerated and Full persist `verify-report.md` and finish with
+  `archive-report.md` under the dated archived change. Direct work creates no SDD
+  artifacts and does not archive.
 - `architectural-grilling` is a conditional pre-specification gate only when
   explicitly requested or material human-owned product/architecture decisions
   remain unresolved. Full SDD alone does not activate it.

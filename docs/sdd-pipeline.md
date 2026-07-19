@@ -2,7 +2,10 @@
 
 thoth-agents 0.3.0 keeps SDD robustness while removing phase-skill overhead. The
 adaptive root selects one of three routes and invokes dedicated phase agents only
-when their artifacts provide value.
+when their artifacts provide value. Phase behavior is defined by compact typed
+protocols, not bundled skills: the static role contract describes capability,
+the phase protocol describes the operation, and the dispatch envelope carries
+run-specific context.
 
 Spec Kit semantics are the source of truth for requirements, planning, tasks,
 and optional design-support artifacts. thoth-agents keeps those semantics inside
@@ -12,19 +15,19 @@ the governed `openspec/changes/<feature>/` store.
 
 ```text
 direct:      implement -> verify
-accelerated: specify -> plan -> tasks -> implement -> verify
-full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify
+accelerated: specify -> plan -> tasks -> implement -> verify -> archive
+full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive
 ```
 
 Accelerated SDD is intentionally retained. It is the middle route for work that
 benefits from explicit artifacts but does not justify exploration and independent
 pre-implementation analysis.
 
-| Route | Select when | Required coordination artifacts | Verification owner |
+| Route | Select when | Required lifecycle artifacts | Verification owner |
 | --- | --- | --- | --- |
 | `direct` | Clear, local, low-risk work | None | Adaptive root |
-| `accelerated` | Bounded multi-file work, partial clarity, or medium contract/failure risk | `spec.md`, `plan.md`, `tasks.md` | Adaptive root |
-| `full` | Explicit SDD request, uncertain material scope, cross-cutting work, or high contract/failure risk | `spec.md`, `plan.md`, `tasks.md` | `oracle` |
+| `accelerated` | Bounded multi-file work, partial clarity, or medium contract/failure risk | `spec.md`, `plan.md`, `tasks.md`, `verify-report.md`, `archive-report.md` | Adaptive root |
+| `full` | Explicit SDD request, uncertain material scope, cross-cutting work, or high contract/failure risk | `spec.md`, `plan.md`, `tasks.md`, `verify-report.md`, `archive-report.md` | `oracle` |
 
 A small README correction should normally use direct work. SDD is not a ceremony
 tax applied to every request.
@@ -55,9 +58,11 @@ pipeline.
 | `analyze` | `oracle` | Independently check cross-artifact consistency. Full route only. |
 | `implement` | adaptive root, `designer`, `quick`, or `deep` | Make the product change with one writer per mutable surface. |
 | `verify` | root or `oracle`, by route | Check the result against requirements and focused evidence. |
+| `archive` | adaptive root or `quick` | Create the audit report and perform the dated archive move after a pass verdict. Artifact-backed routes only. |
 
-The three SDD phase agents may write only coordination artifacts under
-`openspec/`. They do not implement product code and do not delegate further.
+The three SDD coordination agents may write only coordination artifacts under
+`openspec/`. `sdd-tasks` also owns append-only convergence tasks. They do not
+implement product code and do not delegate further.
 
 ## Conditional phases
 
@@ -65,10 +70,37 @@ The three SDD phase agents may write only coordination artifacts under
 | --- | --- | --- |
 | `clarify` | An unresolved material decision cannot be handled by a safe local assumption. | `sdd-specify` |
 | `checklist` | Requirements are high-risk, compliance-sensitive, or ambiguity-prone. | `sdd-specify` |
-| `converge` | Verification finds an actionable defect. | Adaptive root routes a bounded fix and re-verification. |
+| `converge` | Artifact-backed verification returns `fail` with actionable, traceable gaps. | `sdd-tasks` appends a Convergence phase to `tasks.md`; implementation and verification then run again. |
 
-Conditional phases are not mandatory gates. They exist to recover rigor when the
-risk signal justifies it.
+Conditional phases are not mandatory gates. They exist only on Accelerated/Full
+routes to recover rigor when the risk signal justifies them.
+
+## Phase protocol and dispatch envelope
+
+`src/harness/core/sdd.ts` defines one `SddPhaseProtocol` for every phase. Each
+protocol declares its objective, required inputs, instructions, allowed writes,
+output schema, completion criteria, blockers, and handoff. Reused roles activate
+only the protocol named by the dispatch: for example, `oracle` distinguishes
+`phase=analyze` from `phase=verify`, while `quick` distinguishes
+`phase=implement` from `phase=archive`.
+
+Every delegated SDD phase uses this envelope:
+
+```text
+PHASE
+ROUTE / CHANGE
+OBJECTIVE
+INPUT ARTIFACTS
+REQUIREMENTS
+BOUNDARIES
+VERIFICATION
+EXPECTED OUTPUT
+HANDOFF
+```
+
+The root supplies the dynamic values and keeps phase results. The child static
+prompt supplies the canonical protocol. This avoids reinstalling one skill per
+phase while preserving explicit cross-phase contracts.
 
 ## Conditional architectural grilling
 
@@ -101,6 +133,8 @@ All paths below are relative to `openspec/changes/<feature>/`.
 | `data-model.md` | `plan` | `spec.md` | Optional |
 | `contracts/` | `plan` | `spec.md` | Optional |
 | `quickstart.md` | `plan` | `spec.md`, `plan.md` | Optional |
+| `verify-report.md` | `verify` | `spec.md`, `plan.md`, `tasks.md` | Accelerated, full |
+| `archive-report.md` | `archive` | `spec.md`, `plan.md`, `tasks.md`, `verify-report.md` | Accelerated, full |
 
 Optional artifacts are created only when they reduce implementation or
 verification risk. They are not generated as placeholders.
@@ -117,15 +151,41 @@ verification risk. They are not generated as placeholders.
 - Child returns are distilled conclusions and evidence, not raw logs or full
   file dumps.
 
-## Verification and convergence
+## Implementation, verification, and convergence
 
-Every route ends with verification proportional to behavior and risk. Direct and
-accelerated routes remain lightweight by default: the root runs the smallest
-sufficient focused checks. Full SDD adds independent `oracle` analysis before
-implementation and independent verification afterward.
+Every route includes verification proportional to behavior and risk before
+completion. Direct and accelerated routes remain lightweight by default: the
+root runs the smallest sufficient focused checks. Full SDD adds independent
+`oracle` analysis before implementation and independent verification afterward.
 
-Convergence is bounded to actionable findings. A clean result ends the route; a
-finding triggers a focused fix and re-check, not a restart of every SDD phase.
+For artifact-backed implementation, the root owns task state: it marks assigned
+tasks `[~]` before dispatch and `[x]` only after task-specific evidence has been
+verified. Writers receive the accepted artifacts, exact task slice, boundaries,
+and verification commands. Behavior changes use test-first execution.
+
+Accelerated and Full verification persist `verify-report.md` with an explicit
+`pass` or `fail` verdict, compliance matrix, executed checks, findings, and
+residual risks. An oracle remains read-only; the root persists its returned
+report. On Accelerated/Full, `fail` activates append-only convergence:
+`sdd-tasks` appends traceable remaining work without editing product code, then
+control returns to `implement -> verify`. Existing tasks are never rewritten or
+renumbered. Direct has no `tasks.md`, so a failed check returns straight to
+`implement -> verify`.
+
+## Archive lifecycle
+
+Direct work creates no SDD change directory and never archives. Accelerated and
+Full require a pass verdict, complete tasks, and no unresolved critical findings.
+The root or `quick` then:
+
+1. creates `archive-report.md` with verification lineage and residual warnings;
+2. moves the complete change to
+   `openspec/changes/archive/YYYY-MM-DD-<feature>/`; and
+3. returns the archive path and audit summary to the root.
+
+Archive does not implicitly merge feature content into `openspec/specs/`.
+Durable documentation or specification updates are explicit implementation tasks
+completed before verification.
 
 ## Memory boundary
 

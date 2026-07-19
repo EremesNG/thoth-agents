@@ -69,6 +69,17 @@ Full:        explore -> specify -> plan -> tasks -> analyze -> implement -> veri
 Root owns the sequential artifact phases. Oracle always owns `analyze` and
 `verify`. `clarify`, `checklist`, and `converge` are conditional.
 
+- Explicit route names win; generic SDD starts at Accelerated.
+- Multi-file docs/mechanical work can remain Direct when clear and low-risk.
+- Accelerated fast-forwards `specify -> plan -> tasks` without routine pauses.
+- Full adds exploration and oracle analysis only for uncertainty or high risk.
+- `ready` gates implementation; `closeout` gates transactional archive.
+
+Artifact-backed specs use named normative FRs with INTERNAL or durable delta
+metadata and typed buildable/outcome SCs. Archive applies only declared durable
+deltas to `openspec/specs/`; handled failures roll the sync back within the
+active process, but forced process or OS termination is not crash-atomic.
+
 ## Skills
 
 `thoth-init`, `thoth-sdd`, `thoth-constitution`, and `thoth-archive` ship in

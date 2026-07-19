@@ -19,7 +19,7 @@ linked document.
 | adapters, writers, generated artifacts, Codex/Claude/OpenCode surfaces | [`harness-packaging.md`](harness-packaging.md) | `src/harness/`, `skills/` | `src/harness/**/*.test.ts` | CLI installation |
 | OpenCode runtime, hooks, MCP, LSP, ast-grep, tmux, fallback | [`runtime-integrations.md`](runtime-integrations.md) | `src/index.ts`, `src/hooks/`, `src/mcp/`, `src/tools/` | colocated tests and `src/plugin-node-runtime.test.ts` | memory boundary |
 | parser, TUI, install, update, sync, status, required skills | [`cli-installation.md`](cli-installation.md) | `src/cli/` | `src/cli/**/*.test.ts`, `src/cli/**/*.test.tsx` | harness packaging |
-| direct/accelerated/full routing, phase contracts/envelopes, architectural grilling, Spec Kit artifacts, verify/converge/archive | [`sdd-and-skills.md`](sdd-and-skills.md) | `src/harness/core/sdd.ts`, `skills/` | `src/harness/core/sdd.test.ts`, `sdd-protocol.test.ts`, prompt and skill tests | memory boundary |
+| direct/accelerated/full routing, fast-forward gates, phase contracts/envelopes, Spec Kit artifacts, durable deltas, verify/converge/archive | [`sdd-and-skills.md`](sdd-and-skills.md) | `src/harness/core/sdd.ts`, `skills/` | `src/harness/core/sdd.test.ts`, `sdd-protocol.test.ts`, prompt and skill tests | memory boundary |
 | external provider ownership, continuity outcomes, truthful capability state | [`memory-governance.md`](memory-governance.md) | `src/harness/core/memory-governance.ts`, adapters | memory-governance/provider-boundary tests | SDD |
 
 ## Cross-cutting overlays

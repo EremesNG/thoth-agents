@@ -20,9 +20,11 @@ Claude Code. One adaptive root handles clear bounded work directly and delegates
 only when specialization, context isolation, independent review, or safe
 parallelism creates a net gain.
 
-The 0.3.0 distributions ship the seven-role contract and the thoth-owned Spec
-Kit-compatible SDD skills, templates, validator, initialization, and archive
-governance. During installation, the CLI obtains four mandatory external skills
+The 0.3.0 distributions ship the seven-role contract and thoth-owned SDD
+contracts that combine Spec Kit-grade traceability with OpenSpec-style durable
+deltas. Accelerated planning fast-forwards without routine pauses; structural
+`ready`/`closeout` gates and independent oracle review retain rigor. During
+installation, the CLI obtains four mandatory external skills
 from their canonical repositories with `npx skills add`. During an SDD, agents
 load local contracts and never need to invoke the thoth-agents CLI or download a
 phase contract.
@@ -271,14 +273,18 @@ Full:        explore -> specify -> plan -> tasks -> analyze -> implement -> veri
 
 | Route | Use when | Artifacts |
 | --- | --- | --- |
-| Direct | Clear, local, low-risk work | None; oracle returns its verdict in-session. |
-| Accelerated | Bounded multi-file or moderate-risk work | Canonical spec, plan, tasks, verification, and archive reports. |
-| Full | Explicit SDD, material uncertainty, cross-cutting contracts, or high failure cost | Accelerated artifacts plus exploration and independent pre-implementation analysis. |
+| Direct | Clear, bounded, low-risk work, including multi-file documentation/mechanical edits | None; oracle returns its verdict in-session. |
+| Accelerated | Generic SDD request, partial clarity, moderate risk, multi-surface behavior, or architecture | Canonical artifacts with fast-forward specification/planning/tasks. |
+| Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Accelerated artifacts plus exploration and independent pre-implementation analysis. |
 
 The root loads only the current phase contract from the bundled `thoth-sdd`
 skill. It owns specification, clarification, planning, requirements checklists,
 task decomposition, convergence, report persistence, and archive. `explorer`
 owns Full discovery; `oracle` always owns `analyze` and `verify`.
+
+An explicitly named route wins. A generic request to use SDD sets Accelerated as
+the minimum. Accelerated writes `spec.md -> plan.md -> tasks.md` in one
+uninterrupted root pass and does not pause for routine approval between phases.
 
 Conditional phases remain deliberately narrow:
 
@@ -290,10 +296,13 @@ Conditional phases remain deliberately narrow:
   requested or a material human-owned decision remains unresolved.
 
 Accelerated and Full use Spec Kit-grade formats: independent prioritized `US#`
-stories, Given/When/Then scenarios, `FR-###` and `SC-###` identifiers,
-Constitution checks, `T### [P?] [US#?]` task grammar, MVP and dependency
-guidance, per-task verification outcomes, parallel examples, progressive
-phase-aware validation, compliance reports, and a guarded dated archive. See
+stories with explicit FR/SC coverage, Given/When/Then scenarios, named normative
+FRs with durable/internal delta metadata, buildable/outcome SC types,
+Constitution checks, `T### [P?] [US#?]` task grammar, honest parallel-or-none
+evidence, risk-driven checklist lenses, `ready`/`closeout` validation, compliance
+reports, and transactional synchronization of declared durable deltas at archive.
+Handled failures roll back within the active process; forced process or OS
+termination is not crash-atomic. See
 [SDD Pipeline](docs/sdd-pipeline.md).
 
 ## Skills
@@ -304,8 +313,8 @@ Every harness package includes the workflow contracts owned by thoth-agents:
 | --- | --- |
 | `thoth-init` | Offline, idempotent project initialization. |
 | `thoth-sdd` | Route rules, phase contracts, templates, and structural validator. |
-| `thoth-constitution` | Project constitution lifecycle and pre/post design gates. |
-| `thoth-archive` | Passing closeout, audit report, and guarded archive move. |
+| `thoth-constitution` | Explicit governance SemVer lifecycle; routine plans only read principles. |
+| `thoth-archive` | Passing closeout, transactional durable-spec sync, audit report, and dated move. |
 
 The installer obtains these mandatory external skills from their single source
 of truth:

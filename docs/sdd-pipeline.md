@@ -1,9 +1,9 @@
 # SDD Pipeline
 
-thoth-agents keeps specification-driven development but removes phase-only
-agents and prompt-heavy ceremony. The adaptive root selects the lightest safe
-route, then loads only the current phase contract from the bundled `thoth-sdd`
-skill.
+thoth-agents combines Spec Kit-grade artifact rigor with OpenSpec-style durable
+requirement deltas. The adaptive root selects the lightest safe route, loads only
+the current phase contract, and keeps independent oracle review without turning
+small work into hours of ceremony.
 
 ## Routes
 
@@ -13,14 +13,20 @@ Accelerated: specify -> plan -> tasks -> implement -> verify -> archive
 Full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive
 ```
 
-| Route | Selection signal | Governance |
+| Route | Selection signal | Execution policy |
 | --- | --- | --- |
-| Direct | Clear, local, low-risk request | No SDD artifacts; independent verification remains mandatory. |
-| Accelerated | Bounded multi-file work or moderate risk | Full canonical artifact formats without exploration or pre-implementation analysis. |
-| Full | Explicit SDD, material uncertainty, cross-cutting contracts, high risk or failure cost | Adds read-only exploration and independent consistency analysis. |
+| Direct | Clear, bounded, low-risk work—including multi-file documentation or mechanical edits | No SDD artifacts; oracle still verifies independently. |
+| Accelerated | Generic SDD request, partial clarity, moderate risk/cost, multi-surface behavior, or architecture work | Root fast-forwards specification, plan, and tasks without routine pauses. |
+| Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Adds focused exploration, phase gates, and oracle analysis before implementation. |
 
-A README or similarly simple mechanical change should normally remain Direct.
-The existence of a phase or specialist is never, by itself, a reason to use it.
+An explicitly named route wins. A generic “use SDD” request makes Accelerated
+the minimum, but Full signals can still raise it. The number of files alone does
+not raise documentation or mechanical work out of Direct. A simple README update
+should normally remain Direct.
+
+`architectural-grilling` runs before specification only when explicitly
+requested or when a material product/architecture decision remains human-owned.
+Full by itself does not activate it.
 
 ## Ownership
 
@@ -28,36 +34,46 @@ The existence of a phase or specialist is never, by itself, a reason to use it.
 | --- | --- | --- |
 | `explore` | `explorer` | Read-only repository evidence |
 | `specify` | root | `openspec/changes/<feature>/spec.md` |
-| `clarify` | root | Update canonical `spec.md`; no parallel clarification artifact |
+| `clarify` | root | Canonical `spec.md`; no sidecar answer document |
 | `plan` | root | `plan.md` and justified support artifacts |
-| `checklist` | root | `checklists/requirements.md` |
+| `checklist` | root | Conditional `checklists/requirements.md` |
 | `tasks` | root | `tasks.md` |
 | `analyze` | `oracle` | Read-only findings returned to root |
-| `implement` | root, `designer`, `quick`, or `deep` | Exactly one writer per mutable surface |
+| `implement` | root, `designer`, `quick`, or `deep` | One writer per mutable surface |
 | `verify` | `oracle` | Always read-only and independent |
-| `converge` | root | Append-only `tasks.md` remediation |
-| `archive` | root | Guarded audit report and dated move |
+| `converge` | root | Append-only remediation in `tasks.md` |
+| `archive` | root | Transactional spec sync, audit report, and dated move |
 
-Oracle owns every verification in Direct, Accelerated, and Full. The root or
-writer that implemented the change cannot substitute for independent oracle
-judgment.
+The writer never substitutes for oracle. Oracle owns every verification and the
+Full pre-implementation analysis.
 
-## Progressive contracts
+## Fast-forward versus gated planning
 
-Static prompts contain route and ownership rules, not all SDD instructions.
-After selecting Accelerated or Full, root loads `thoth-sdd` and reads only
-`references/phases/<current>.md`. The owned `thoth-constitution` and
-`thoth-archive` skills are loaded only for their lifecycle gates.
+Accelerated writes `spec.md -> plan.md -> tasks.md` in one uninterrupted root
+pass. It validates `specify`, then `ready`; neither gate is a routine user pause.
+Optional research, data model, contracts, quickstart, clarification, or checklist
+artifacts appear only for a concrete risk signal.
 
-Installation may use the thoth-agents CLI and `npx skills add`, but pipeline
-execution does not. Every phase reads installed local contracts; a missing
-contract or mandatory external skill is reported as an incomplete installation
-instead of being downloaded mid-SDD.
+Full validates `specify`, `plan`, `tasks`, and `ready` separately because the
+route already carries uncertainty or material cost. `ready` precedes oracle
+analysis/implementation. Both artifact-backed routes use `closeout` after
+implementation and independent verification.
 
-Delegated phases receive a bounded envelope with phase, route/change, objective,
-input artifacts, requirements, boundaries, verification criteria, expected
-output, and handoff. Child agents return distilled evidence rather than chat
-transcripts or raw logs.
+If implementation evidence refines the same intent, root updates the canonical
+artifact and revalidates only affected downstream artifacts and gates. A changed
+intent starts a new change.
+
+## Progressive phase contracts
+
+Static role prompts carry only route and ownership rules. After selecting an
+artifact-backed route, root loads `thoth-sdd` and reads only
+`references/phases/<current>.md`. Delegated phases receive a bounded dispatch
+envelope rather than the entire pipeline prompt.
+
+Installation can use the thoth-agents CLI and `npx skills add`; SDD execution
+cannot. All phase contracts are local. A missing bundled contract or mandatory
+external skill is an incomplete installation, not permission to provision it
+mid-workflow.
 
 ## Canonical artifacts
 
@@ -70,37 +86,40 @@ tasks.md
 verify-report.md
 archive-report.md
 checklists/requirements.md   # conditional
-research.md                  # optional when it reduces risk
+research.md                  # optional when it resolves risk
 data-model.md                # optional
 contracts/                   # optional
 quickstart.md                # optional
 ```
 
-### Specification
+### Specification contract
 
-`spec.md` must include:
+`spec.md` records `Why`, `Impact`, and affected capability slugs, then defines:
 
-- prioritized `US#` stories that can be implemented and tested independently;
-- a plain-language outcome and independent test for each story;
-- Given/When/Then acceptance scenarios;
-- unique sequential `FR-###` functional requirements;
-- measurable, implementation-independent `SC-###` success criteria; and
-- edge cases, assumptions, dependencies, and explicit out-of-scope boundaries.
+- prioritized, independently testable `US#` stories;
+- `Covers: FR-###, SC-###` traceability and Given/When/Then scenarios per story;
+- sequential named FRs with normative `MUST`/`SHALL` behavior;
+- one delta marker on every FR: `[INTERNAL]`, `[ADDED capability]`,
+  `[MODIFIED capability]`, `[REMOVED capability]`, or
+  `[RENAMED capability FROM Previous title]`;
+- typed success criteria: `[buildable]` or `[outcome]`; and
+- edge cases, assumptions, dependencies, and explicit non-goals.
 
-Material ambiguity blocks advancement or activates `clarify`. Accepted answers
-are written into canonical requirements and revalidated.
+Buildable SCs need implementation tasks. Outcome SCs remain measurable product
+or operational verification targets without fake implementation work.
 
 ### Plan and constitution
 
-`plan.md` maps each technical choice to FR/SC or confirmed repository evidence,
-names affected components and exact paths/interfaces, and identifies migration,
-risk, and verification seams. It records a pre-design Constitution Check and a
-post-design check against concrete decisions. An unjustified violation blocks
-task generation.
+`plan.md` maps technical decisions to FR/SC or confirmed repository evidence,
+names exact components/interfaces/paths, and covers migration, risk, rollback,
+and verification seams. Support artifacts exist only when they reduce a named
+risk.
 
-The project constitution is `openspec/memory/constitution.md`. Init creates a
-starter only when the project has none; amendments are explicit and never
-silently regenerated.
+Routine planning reads `openspec/memory/constitution.md` and records pre/post
+design Constitution Checks. It does not bump or validate constitution lifecycle
+metadata. The `thoth-constitution` lifecycle activates only for an explicit
+amendment and requires governance SemVer, ISO dates, a Sync Impact Report, and
+propagation to affected templates/instructions/docs.
 
 ### Tasks
 
@@ -110,69 +129,85 @@ Every executable task uses:
 - [ ] T### [P?] [US#?] description with FR-###/SC-### coverage in `exact/path` | Verify: observable outcome
 ```
 
-`[P]` means safe parallel execution with no overlapping mutable files. `[US#]`
-links story work and is omitted only for genuinely shared setup or closeout.
-Tasks identify the MVP story, dependencies, concrete parallel examples,
-verification outcomes, and complete FR/SC coverage. Behavior tests precede
-implementation work.
+Tasks identify an independently testable MVP, dependencies, exact paths, and a
+verification outcome. They cover all FRs and buildable SCs. Behavior tests
+precede implementation.
 
-Root alone updates task state: `[~]` before dispatch and `[x]` only after
-checking task-specific evidence. Child writers do not edit task checkboxes.
+`[P]` is valid only for proven non-overlapping mutable paths and requires a
+concrete task pairing. If no safe parallel work exists, the artifact says
+`- None: <reason>`; it never invents parallelism to satisfy a template. Root
+alone moves task state from `[ ]` to `[~]` to `[x]` after evidence.
 
 ### Requirements checklist
 
-The conditional checklist audits requirement quality, not implementation. It
-uses stable `CHK###` IDs and covers Completeness, Clarity, Consistency,
-Measurability, and Coverage across stories, FR/SC, actors, failure modes, and
-non-functional constraints. It records an initial pass and a distinct
-revalidation after clarification or planning changes.
+Checklist is conditional. It records why it activated, then audits requirement
+quality across the base taxonomy: Completeness, Clarity, Consistency,
+Measurability, and Coverage. Applicable domain lenses—security, privacy,
+accessibility, compliance, performance, migration, or domain rules—are generated
+from actual risk; otherwise the artifact records an evidence-backed `None`.
 
-## Analysis and verification
+After a requirement-affecting change, the checklist records checked
+revalidation. When nothing relevant changed, it records an evidence-backed `Not
+required` instead of ceremonial repetition.
 
-Full `analyze` asks oracle to challenge contradictions, ambiguity, duplication,
-scope drift, orphan tasks, missing FR/SC coverage, ordering, checklist state,
-and Constitution compliance. Critical findings or uncovered baseline
-requirements block implementation.
+## Analyze, verify, and converge
 
-Every `verify` asks oracle to map accepted requirements to implementation
-evidence and executed checks. Direct returns PASS/FAIL in-session. Accelerated
-and Full persist `verify-report.md` with a compliance matrix, stable findings,
-commands/results, residual risk, and explicit verdict.
+Full `analyze` asks oracle to challenge three dimensions separately:
+completeness, correctness, and cross-artifact coherence. It detects ambiguity,
+contradictions, duplication, scope drift, invalid ordering, orphan tasks,
+constitution violations, and missing FR/buildable-SC coverage. Outcome SCs are
+reviewed as measurable targets, not task obligations.
+
+Every `verify` uses the same three dimensions and maps each FR/buildable SC to
+implementation evidence and executed checks. Direct returns PASS/FAIL in-session.
+Accelerated and Full persist `verify-report.md` with independence metadata,
+compliance matrix, stable findings, commands/results, and residual risks. Every
+outcome SC must have observed PASS evidence or a matrix RISK backed by an
+explicit residual-risk entry.
 
 Failed Direct work returns to `implement -> verify`. Failed artifact-backed work
-activates append-only `converge`, then returns to a separate implementation
-writer and oracle verification. Archive remains blocked until PASS.
+activates `converge`, which classifies each gap as `missing`, `partial`,
+`contradicts`, or `unrequested` and appends traceable tasks. With no actionable
+gap, `tasks.md` remains byte-for-byte unchanged. Implementation and oracle
+verification then repeat.
 
-## Archive
+## Closeout and archive
 
-Accelerated and Full finish only when all tasks are `[x]`, oracle records PASS,
-and no unresolved CRITICAL finding remains. Root creates `archive-report.md` and
-moves the change to:
+Before archive, `closeout` requires all tasks `[x]`, independent oracle PASS, no
+unresolved CRITICAL finding, complete FR/buildable-SC compliance evidence, a
+PASS-or-explicit-RISK disposition for every outcome SC, and `archive-report.md`
+status `READY`.
+
+The archive script validates every declared durable delta before touching
+`openspec/specs/`. It then stages, backs up, and transactionally applies ADDED,
+MODIFIED, REMOVED, and RENAMED requirement blocks and acceptance scenarios.
+`[INTERNAL]` requirements and undeclared prose never update permanent specs. A
+handled delta, report, or move failure triggers independent report recovery and
+rollback of canonical changes within the active process.
+
+This is not crash-atomic: forced process or operating-system termination between
+renames can leave `.spec.md.thoth-stage-*` or `spec.md.thoth-backup-*` files.
+Inspect those files and the canonical spec before retrying archive.
+
+On success, the report records `ARCHIVED`, the canonical sync result, and the
+change moves to:
 
 ```text
 openspec/changes/archive/YYYY-MM-DD-<feature>/
 ```
 
-Archive does not implicitly merge feature text into `openspec/specs/`. A
-permanent specification or documentation update must be an explicit
-implementation task before verification.
-
 ## Structural validation
 
-Run from the `thoth-sdd` skill directory:
+Run from the installed `thoth-sdd` skill directory:
 
 ```text
-node scripts/validate.mjs --change openspec/changes/<feature> --route <accelerated|full> --through <specify|plan|tasks|checklist|final> --json
+node scripts/validate.mjs --change openspec/changes/<feature> --route <accelerated|full> --through <specify|plan|tasks|checklist|ready|closeout> --json
 ```
 
-Select the gate that just completed. `specify` requires only `spec.md`; `plan`
-adds `plan.md` and requires `openspec/memory/constitution.md`; `checklist`
-requires that plan plus a completed conditional checklist; `tasks` adds
-`tasks.md`; and `final` validates the complete pre-implementation artifact set.
-No gate requires a future phase's output.
+`specify`, `plan`, `tasks`, and conditional `checklist` validate only artifacts
+available at that point. `ready` validates the complete pre-implementation set.
+`closeout` adds completed-task, oracle-independence, compliance, and
+archive-readiness checks. No gate requires a future phase output.
 
-The validator enforces identifiers, per-story independence and acceptance
-examples, exact Constitution principle coverage/evidence, task
-grammar/order/US-FR-SC coverage and verification outcomes,
-MVP/dependency/parallel guidance, and checklist IDs/taxonomy/coverage/
-revalidation. Structural success never replaces oracle's semantic judgment.
+Structural success does not replace oracle judgment; it makes artifact grammar,
+traceability, lifecycle, and closeout failures deterministic and fast.

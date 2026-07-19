@@ -2,38 +2,50 @@
 
 ## Responsibility
 
-This route owns route classification, phase ownership, conditional gates,
-Spec Kit-compatible artifacts, validation, and the thoth-owned workflow bundle.
+This route owns adaptive route classification, phase ownership, progressive
+contracts, Spec Kit-grade artifacts, OpenSpec-style durable deltas, validation,
+and the thoth-owned workflow bundle.
 
 ## Entrypoints
 
-- `src/harness/core/sdd.ts`: routes, owners, prerequisites, artifact graph,
-  dispatch envelope, verification, and archive metadata
-- `skills/thoth-sdd/`: lazy phase references, templates, validator
-- `skills/thoth-constitution/`: constitution lifecycle
-- `skills/thoth-archive/`: guarded archive
-- `skills/thoth-init/`: offline project bootstrap
-- `src/cli/skills.ts`: canonical repository mappings for mandatory external
-  execution skills
-- [`../sdd-pipeline.md`](../sdd-pipeline.md): public contract
+- `src/harness/core/sdd.ts`: route policies, protocols, artifact graph, and
+  dispatch envelopes
+- `skills/thoth-sdd/`: lazy phase references, templates, structural validator
+- `skills/thoth-constitution/`: explicit governance lifecycle and validator
+- `skills/thoth-archive/`: transactional durable-delta closeout
+- `skills/thoth-init/`: offline, non-overwriting project bootstrap
+- `src/cli/skills.ts`: canonical repositories for mandatory external skills
+- [`../sdd-pipeline.md`](../sdd-pipeline.md): public workflow contract
 
 ## Invariants
 
-- Direct remains ceremony-free; Accelerated and Full use canonical artifacts.
-- Root owns sequential coordination and loads the current reference on demand.
+- Explicit route requests win; generic SDD means Accelerated minimum.
+- Clear low-risk documentation/mechanical work may stay Direct across files.
+- Accelerated fast-forwards specify/plan/tasks without routine pauses; Full uses
+  phase gates for material uncertainty/risk.
+- Root owns sequential coordination and loads only the current phase reference.
 - Explorer owns Full discovery; oracle owns Full analysis and every verify.
-- The implementer never self-approves.
-- Specifications use US/FR/SC identifiers and independent acceptance examples.
-- Plans gate on the project constitution before and after design.
-- Tasks use exact T###/[P]/[US#] grammar, MVP/dependencies/parallel examples,
-  tests first, an observable verification outcome per task, and complete
-  US/FR/SC coverage.
-- Structural validation is phase-aware (`--through`), requires the Constitution
-  from planning onward, and never requires an artifact from a later gate.
-- Clarify, checklist, and converge are conditional; converge is append-only.
-- Archive requires complete tasks, oracle PASS, no unresolved CRITICAL issue,
-  and never implicitly merges into `openspec/specs/`.
-- Owned phase contracts are bundled. External skills are CLI-installed once;
-  SDD phase execution is CLI- and network-independent.
+- Specifications record Why/Impact/capabilities, story-to-FR/SC coverage, named
+  normative FRs with delta metadata, and buildable/outcome SC types.
+- Routine plans read the constitution and record evidence; only explicit
+  constitution amendments activate SemVer lifecycle validation.
+- Tasks cover FRs and buildable SCs, use honest `[P]` evidence or an explicit
+  no-parallel reason, and never manufacture work for outcome SCs.
+- Conditional checklists record activation, the five base quality dimensions,
+  applicable domain lenses, coverage, and checked or evidence-backed no-op
+  revalidation.
+- `ready` is the pre-implementation gate; `closeout` requires complete tasks,
+  independent oracle PASS, FR/buildable-SC evidence, explicit outcome-SC
+  disposition, and archive readiness.
+- Same-intent corrections revalidate only affected downstream artifacts. New
+  intent starts a new change.
+- Converge is append-only and uses the missing/partial/contradicts/unrequested
+  taxonomy; a no-gap result leaves tasks byte-for-byte unchanged.
+- Archive transactionally syncs only declared ADDED/MODIFIED/REMOVED/RENAMED durable
+  requirements after PASS. INTERNAL requirements and undeclared prose never
+  update `openspec/specs/`. Handled failures roll back within the active process;
+  forced process or OS termination is not crash-atomic.
+- Owned contracts are bundled. External skills are installed by the CLI once;
+  SDD execution remains CLI-, network-, and installer-independent.
 
 Provider persistence is an overlay only; follow installed provider guidance.

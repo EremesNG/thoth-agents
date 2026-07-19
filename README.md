@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="img/thoth-agents-header.webp" alt="Seven cyber-Egyptian thoth-agents roles, with Thoth as the Orchestrator centered between three read-only specialists and three implementation writers" width="100%">
+  <img src="img/thoth-agents-header.webp" alt="Seven human cyber-Egyptian thoth-agents roles, with Thoth as the Orchestrator centered between three read-only specialists and three implementation writers" width="100%">
   <h1>Thoth-Agents</h1>
   <p><i>Adaptive orchestration for OpenCode, Codex, and Claude Code.</i></p>
   <p><b>Seven roles</b> · <b>Three SDD routes</b> · <b>Runtime-autonomous SDD</b></p>
@@ -133,7 +133,7 @@ correctness-critical work.
 <table width="100%">
   <tr>
     <td width="34%" align="center" valign="top">
-      <img src="img/agents/orchestrator.webp" width="240" alt="Cyber-Egyptian Orchestrator represented by Thoth coordinating the team">
+      <img src="img/agents/orchestrator.webp" width="240" alt="Human cyber-Egyptian interpretation of Thoth coordinating the team as Orchestrator">
     </td>
     <td width="66%" valign="top">
       <b>Orchestrator</b>
@@ -153,7 +153,7 @@ correctness-critical work.
 <table width="100%">
   <tr>
     <td width="34%" align="center" valign="top">
-      <img src="img/agents/explorer.webp" width="240" alt="Cyber-Egyptian Explorer represented by Anubis tracing repository paths">
+      <img src="img/agents/explorer.webp" width="240" alt="Human cyber-Egyptian interpretation of Anubis tracing repository paths as Explorer">
     </td>
     <td width="66%" valign="top">
       <b>Explorer</b>
@@ -170,7 +170,7 @@ correctness-critical work.
 <table width="100%">
   <tr>
     <td width="34%" align="center" valign="top">
-      <img src="img/agents/librarian.webp" width="240" alt="Cyber-Egyptian Librarian represented by Seshat consulting an authoritative scroll">
+      <img src="img/agents/librarian.webp" width="240" alt="Human cyber-Egyptian interpretation of Seshat consulting an authoritative scroll as Librarian">
     </td>
     <td width="66%" valign="top">
       <b>Librarian</b>
@@ -187,7 +187,7 @@ correctness-critical work.
 <table width="100%">
   <tr>
     <td width="34%" align="center" valign="top">
-      <img src="img/agents/oracle.webp" width="240" alt="Cyber-Egyptian Oracle represented by Ma'at weighing independent evidence">
+      <img src="img/agents/oracle.webp" width="240" alt="Human cyber-Egyptian interpretation of Ma'at weighing independent evidence as Oracle">
     </td>
     <td width="66%" valign="top">
       <b>Oracle</b>
@@ -207,7 +207,7 @@ correctness-critical work.
 <table width="100%">
   <tr>
     <td width="34%" align="center" valign="top">
-      <img src="img/agents/designer.webp" width="240" alt="Cyber-Egyptian Designer represented by Hathor shaping interface geometry">
+      <img src="img/agents/designer.webp" width="240" alt="Human cyber-Egyptian interpretation of Hathor shaping interface geometry as Designer">
     </td>
     <td width="66%" valign="top">
       <b>Designer</b>
@@ -224,7 +224,7 @@ correctness-critical work.
 <table width="100%">
   <tr>
     <td width="34%" align="center" valign="top">
-      <img src="img/agents/quick.webp" width="240" alt="Cyber-Egyptian Quick represented by Horus placing a precise component">
+      <img src="img/agents/quick.webp" width="240" alt="Human cyber-Egyptian interpretation of Horus placing a precise component as Quick">
     </td>
     <td width="66%" valign="top">
       <b>Quick</b>
@@ -241,7 +241,7 @@ correctness-critical work.
 <table width="100%">
   <tr>
     <td width="34%" align="center" valign="top">
-      <img src="img/agents/deep.webp" width="240" alt="Cyber-Egyptian Deep represented by Sobek examining a complex mechanism">
+      <img src="img/agents/deep.webp" width="240" alt="Human cyber-Egyptian interpretation of Sobek examining a complex mechanism as Deep">
     </td>
     <td width="66%" valign="top">
       <b>Deep</b>

@@ -1,6 +1,6 @@
 <div align="center">
   <img src="img/thoth-agents-header.webp" alt="The ten-role cyber-Egyptian pantheon of thoth-agents" width="100%">
-  <h1>thoth-agents</h1>
+  <h1>Thoth-Agents</h1>
   <p><i>Adaptive orchestration for OpenCode, Codex, and Claude Code.</i></p>
   <p><b>Ten roles</b> · <b>Three SDD routes</b> · <b>One shared contract</b></p>
   <p>
@@ -21,9 +21,9 @@
 
 ---
 
-## What is thoth-agents?
+## What is Thoth-Agents?
 
-thoth-agents is an adaptive multi-harness orchestration plugin for OpenCode,
+Thoth-Agents is an adaptive multi-harness orchestration plugin for OpenCode,
 Codex, and Claude Code. It carries one canonical ten-role contract across all
 three harnesses, then translates that contract into each platform's native
 agents, configuration, plugin packaging, and installation surfaces.

@@ -44,11 +44,12 @@ NOT be represented as equivalent enforcement.
 
 ### Requirement: Distribute runtime-autonomous assets with explicit bootstrap
 
-The Codex and Claude packages MUST include the canonical owned workflow skills
-and MUST NOT vendor mandatory external execution skills. Installation for every
-harness MUST use the thoth-agents CLI as the authority and invoke `npx skills
-add` against each missing external skill's canonical repository. During SDD
-execution, no agent may invoke the CLI or download a phase contract.
+The shared Codex and Claude plugin bundle MUST include one copy of the canonical
+owned workflow skills and MUST NOT vendor mandatory external execution skills.
+Installation for every harness MUST use the thoth-agents CLI as the authority
+and invoke `npx skills add` against each missing external skill's canonical
+repository. During SDD execution, no agent may invoke the CLI or download a
+phase contract.
 
 OpenCode MUST expose `/thoth-init`, Codex MUST expose `$thoth-init`, and Claude
 MUST expose its namespaced `thoth-init` skill. Initialization MUST be offline,
@@ -63,24 +64,24 @@ materialize six standalone global TOMLs and the required root/config surfaces.
 
 The repository and npm package MUST include `.agents/plugins/marketplace.json`
 for Codex and `.claude-plugin/marketplace.json` for Claude. Their sources MUST
-resolve to versioned packages under `integrations/codex` and
-`integrations/claude-code`; generated plugin versions MUST equal the root package
-version.
+resolve to the same versioned bundle under `plugin/`; generated plugin versions
+MUST equal the root package version.
 
-### Requirement: Generate integrations from canonical source
+### Requirement: Generate the shared plugin from canonical source
 
-Claude agents MUST be generated from `src/agents/`. Both integration packages
-MUST receive only the canonical thoth-owned `skills/` tree. The Codex plugin package MUST NOT
-contain generated role TOMLs; the CLI writer remains their canonical delivery
-surface. Build and npm version lifecycle commands MUST synchronize generated
-plugin outputs.
+Claude agents MUST be generated from `src/agents/`. The shared bundle MUST
+receive one copy of the canonical thoth-owned `skills/` tree and MUST contain
+separate harness-specific manifests and MCP surfaces. The Codex plugin manifest
+MUST NOT declare generated role TOMLs; the CLI writer remains their canonical
+delivery surface. Build and npm version lifecycle commands MUST synchronize the
+generated shared plugin output.
 
 ### Requirement: Preserve native plugin-manager ownership
 
-thoth-agents MUST NOT copy or merge plugin packages into personal Codex or
+thoth-agents MUST NOT copy or merge the plugin bundle into personal Codex or
 Claude manager directories. Marketplace registration, enablement, trust, and
-installed caches remain harness-owned. Project initialization may write only the
-documented project surfaces required by the workflow.
+installed caches remain harness-owned. Project initialization may write only
+the documented project surfaces required by the workflow.
 
 ### Requirement: Distinguish capability gaps from generation failure
 

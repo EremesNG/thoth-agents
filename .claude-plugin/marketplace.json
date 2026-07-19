@@ -13,7 +13,7 @@
       "author": {
         "name": "thoth-agents maintainers"
       },
-      "source": "./integrations/claude-code",
+      "source": "./plugin",
       "category": "productivity",
       "homepage": "https://github.com/EremesNG/thoth-agents"
     }

@@ -377,7 +377,7 @@ export const codexAdapter: HarnessAdapter = {
         {
           surfaceId: 'plugin-mcp-json',
           manifestField: 'mcpServers',
-          path: '.codex-plugin/.mcp.json',
+          path: '.codex-plugin/codex.mcp.json',
           description: 'Codex plugin-bundled MCP server definitions.',
           content: stableJson(createCodexBuiltinMcpJsonConfig()),
         },

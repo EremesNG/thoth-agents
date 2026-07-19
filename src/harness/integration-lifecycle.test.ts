@@ -15,8 +15,8 @@ function readPackageMetadata(): PackageMetadata {
   return readJson<PackageMetadata>(join(process.cwd(), 'package.json'));
 }
 
-describe('integration package lifecycle', () => {
-  test('build regenerates integration packages before compiling', () => {
+describe('shared plugin lifecycle', () => {
+  test('build regenerates the shared plugin before compiling', () => {
     const { scripts } = readPackageMetadata();
     const buildSteps = scripts.build.split('&&').map((step) => step.trim());
     const prepublishSteps = scripts.prepublishOnly
@@ -31,14 +31,14 @@ describe('integration package lifecycle', () => {
     ]);
   });
 
-  test('version lifecycle regenerates and verifies integration packages', () => {
+  test('version lifecycle regenerates and verifies the shared plugin', () => {
     const { scripts } = readPackageMetadata();
     const versionSteps = scripts.version.split('&&').map((step) => step.trim());
 
     expect(versionSteps).toEqual([
       'pnpm run integration:sync',
       'pnpm run integration:verify',
-      'git add -- integrations .agents/plugins/marketplace.json .claude-plugin/marketplace.json',
+      'git add -- plugin .agents/plugins/marketplace.json .claude-plugin/marketplace.json',
     ]);
     expect(scripts['integration:verify']).toContain(
       'src/harness/integration-lifecycle.test.ts',
@@ -57,20 +57,14 @@ describe('integration package lifecycle', () => {
     );
   });
 
-  test('all versioned integration manifests match package.json', () => {
+  test('both plugin manifests match package.json', () => {
     const root = process.cwd();
     const { version } = readPackageMetadata();
     const codexManifest = readJson<{ version: string }>(
-      join(root, 'integrations', 'codex', '.codex-plugin', 'plugin.json'),
+      join(root, 'plugin', '.codex-plugin', 'plugin.json'),
     );
     const claudeManifest = readJson<{ version: string }>(
-      join(
-        root,
-        'integrations',
-        'claude-code',
-        '.claude-plugin',
-        'plugin.json',
-      ),
+      join(root, 'plugin', '.claude-plugin', 'plugin.json'),
     );
     const claudeMarketplace = readJson<{
       plugins: Array<{ name: string; version: string }>;

@@ -74,8 +74,8 @@ describe('Codex surface validation', () => {
       {
         id: 'plugin-mcp-json',
         status: 'validated',
-        path: '.codex-plugin/.mcp.json',
-        fields: ['mcpServers', './.mcp.json'],
+        path: '.codex-plugin/codex.mcp.json',
+        fields: ['mcpServers', './codex.mcp.json'],
       },
     ]);
   });
@@ -113,7 +113,7 @@ describe('Codex surface validation', () => {
         id: 'plugin-mcp-json',
         target: 'mcp-config',
         artifactKind: 'mcp-config',
-        path: '.codex-plugin/.mcp.json',
+        path: '.codex-plugin/codex.mcp.json',
       },
     ]);
   });

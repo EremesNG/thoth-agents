@@ -17,7 +17,7 @@
   },
   "overrides": [
     {
-      "includes": ["integrations/**"],
+      "includes": ["plugin/**"],
       "formatter": { "enabled": false },
       "linter": { "enabled": false },
       "assist": { "enabled": false }

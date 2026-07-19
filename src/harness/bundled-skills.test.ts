@@ -41,8 +41,7 @@ describe('bundled thoth-init', () => {
 
       const script = join(
         packageRoot,
-        'integrations',
-        'codex',
+        'plugin',
         'skills',
         'thoth-init',
         'scripts',

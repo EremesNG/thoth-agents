@@ -251,11 +251,11 @@ export const CODEX_SURFACES = [
     target: 'mcp-config',
     status: 'validated',
     artifactKind: 'mcp-config',
-    path: '.codex-plugin/.mcp.json',
-    fields: ['mcpServers', './.mcp.json'],
+    path: '.codex-plugin/codex.mcp.json',
+    fields: ['mcpServers', './codex.mcp.json'],
     diagnosticCode: 'codex.surface.plugin_mcp_json.validated',
     summary:
-      'Codex plugin packages can bundle MCP server definitions in plugin-root .mcp.json.',
+      'Codex plugin packages can reference bundled MCP server definitions from the plugin root.',
     evidence:
       'OpenAI Codex plugin docs describe bundled .mcp.json server definitions referenced from plugin.json using plugin-root relative paths.',
   },

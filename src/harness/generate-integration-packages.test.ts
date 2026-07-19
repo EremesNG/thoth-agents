@@ -32,7 +32,7 @@ describe('generateIntegrationPackages', () => {
     }
   ).version;
 
-  test('writes native Codex and Claude marketplace packages', () => {
+  test('writes one shared native Codex and Claude marketplace bundle', () => {
     const dir = mkdtempSync(join(tmpdir(), 'thoth-integration-packages-'));
     try {
       writeFileSync(
@@ -41,8 +41,7 @@ describe('generateIntegrationPackages', () => {
       );
 
       const result = generateIntegrationPackages({ projectRoot: dir });
-      const codexRoot = join(dir, 'integrations', 'codex');
-      const claudeRoot = join(dir, 'integrations', 'claude-code');
+      const pluginRoot = join(dir, 'plugin');
       const canonicalClaudeAgents = claudeCodeAdapter
         .render({ projectRoot: dir })
         .artifacts.filter((artifact) => artifact.path.startsWith('agents/'));
@@ -56,18 +55,18 @@ describe('generateIntegrationPackages', () => {
         readFileSync(join(dir, '.claude-plugin', 'marketplace.json'), 'utf8'),
       ) as Record<string, unknown>;
       const codexManifest = JSON.parse(
-        readFileSync(join(codexRoot, '.codex-plugin', 'plugin.json'), 'utf8'),
+        readFileSync(join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'),
       ) as Record<string, unknown>;
       const claudeManifest = JSON.parse(
-        readFileSync(join(claudeRoot, '.claude-plugin', 'plugin.json'), 'utf8'),
+        readFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8'),
       ) as Record<string, unknown>;
 
       expect(result.written).toEqual(
         expect.arrayContaining([
           join(dir, '.agents', 'plugins', 'marketplace.json'),
           join(dir, '.claude-plugin', 'marketplace.json'),
-          join(codexRoot, '.codex-plugin', 'plugin.json'),
-          join(claudeRoot, '.claude-plugin', 'plugin.json'),
+          join(pluginRoot, '.codex-plugin', 'plugin.json'),
+          join(pluginRoot, '.claude-plugin', 'plugin.json'),
         ]),
       );
       expect(codexMarketplace).toMatchObject({
@@ -75,7 +74,7 @@ describe('generateIntegrationPackages', () => {
         plugins: [
           {
             name: 'thoth-agents',
-            source: { source: 'local', path: './integrations/codex' },
+            source: { source: 'local', path: './plugin' },
             policy: {
               installation: 'AVAILABLE',
               authentication: 'ON_INSTALL',
@@ -91,7 +90,7 @@ describe('generateIntegrationPackages', () => {
           {
             name: 'thoth-agents',
             version: packageVersion,
-            source: './integrations/claude-code',
+            source: './plugin',
             category: 'productivity',
           },
         ],
@@ -100,21 +99,24 @@ describe('generateIntegrationPackages', () => {
         name: 'thoth-agents',
         version: packageVersion,
         skills: './skills/',
+        mcpServers: './codex.mcp.json',
       });
       expect(claudeManifest).toMatchObject({
         name: 'thoth-agents',
         version: packageVersion,
       });
-      expect(existsSync(join(claudeRoot, 'agents', 'orchestrator.md'))).toBe(
+      expect(existsSync(join(pluginRoot, 'agents', 'orchestrator.md'))).toBe(
         true,
       );
       expect(canonicalClaudeAgents).toHaveLength(7);
       for (const artifact of canonicalClaudeAgents) {
-        expect(readFileSync(join(claudeRoot, artifact.path), 'utf8')).toBe(
+        expect(readFileSync(join(pluginRoot, artifact.path), 'utf8')).toBe(
           artifact.content,
         );
       }
-      expect(existsSync(join(claudeRoot, 'settings.json'))).toBe(true);
+      expect(existsSync(join(pluginRoot, 'settings.json'))).toBe(true);
+      expect(existsSync(join(pluginRoot, '.mcp.json'))).toBe(true);
+      expect(existsSync(join(pluginRoot, 'codex.mcp.json'))).toBe(true);
       const ownedSkills = [
         'thoth-init',
         'thoth-sdd',
@@ -123,12 +125,8 @@ describe('generateIntegrationPackages', () => {
       ];
       for (const skill of ownedSkills) {
         expect(
-          existsSync(join(codexRoot, 'skills', skill, 'SKILL.md')),
-          `Codex ${skill}`,
-        ).toBe(true);
-        expect(
-          existsSync(join(claudeRoot, 'skills', skill, 'SKILL.md')),
-          `Claude ${skill}`,
+          existsSync(join(pluginRoot, 'skills', skill, 'SKILL.md')),
+          `Shared bundle ${skill}`,
         ).toBe(true);
       }
       for (const skill of [
@@ -138,30 +136,21 @@ describe('generateIntegrationPackages', () => {
         'architectural-grilling',
       ]) {
         expect(
-          existsSync(join(codexRoot, 'skills', skill, 'SKILL.md')),
-          `Codex ${skill}`,
-        ).toBe(false);
-        expect(
-          existsSync(join(claudeRoot, 'skills', skill, 'SKILL.md')),
-          `Claude ${skill}`,
+          existsSync(join(pluginRoot, 'skills', skill, 'SKILL.md')),
+          `Shared bundle ${skill}`,
         ).toBe(false);
       }
       expect(
-        listFiles(codexRoot).some((path) =>
+        listFiles(pluginRoot).some((path) =>
           path.includes(join('thoth-init', 'assets', 'codex-agents')),
         ),
       ).toBe(false);
-      expect(listFiles(codexRoot).some((path) => path.endsWith('.toml'))).toBe(
+      expect(listFiles(pluginRoot).some((path) => path.endsWith('.toml'))).toBe(
         false,
       );
       expect(
         existsSync(
-          join(codexRoot, 'skills', 'thoth-init', 'scripts', 'init.mjs'),
-        ),
-      ).toBe(true);
-      expect(
-        existsSync(
-          join(claudeRoot, 'skills', 'thoth-init', 'scripts', 'init.mjs'),
+          join(pluginRoot, 'skills', 'thoth-init', 'scripts', 'init.mjs'),
         ),
       ).toBe(true);
     } finally {
@@ -169,28 +158,31 @@ describe('generateIntegrationPackages', () => {
     }
   });
 
-  test('replaces stale integration output without provider-owned assets', () => {
+  test('replaces stale shared output and removes legacy integration bundles', () => {
     const dir = mkdtempSync(join(tmpdir(), 'thoth-integration-packages-'));
     try {
       writeFileSync(
         join(dir, 'package.json'),
         `${JSON.stringify({ name: 'thoth-agents', version: packageVersion })}\n`,
       );
+      const pluginRoot = join(dir, 'plugin');
       const codexRoot = join(dir, 'integrations', 'codex');
       const claudeRoot = join(dir, 'integrations', 'claude-code');
-      mkdirSync(codexRoot, { recursive: true });
-      mkdirSync(claudeRoot, { recursive: true });
-      writeFileSync(join(codexRoot, 'stale.txt'), 'stale');
-      writeFileSync(join(claudeRoot, 'stale.txt'), 'stale');
+      for (const root of [pluginRoot, codexRoot, claudeRoot]) {
+        mkdirSync(root, { recursive: true });
+        writeFileSync(join(root, 'stale.txt'), 'stale');
+      }
 
       generateIntegrationPackages({ projectRoot: dir });
 
-      expect(existsSync(join(codexRoot, 'stale.txt'))).toBe(false);
-      expect(existsSync(join(claudeRoot, 'stale.txt'))).toBe(false);
-      expect(readFileSync(join(codexRoot, '.mcp.json'), 'utf8')).not.toContain(
-        'thoth_mem',
-      );
-      expect(readFileSync(join(claudeRoot, '.mcp.json'), 'utf8')).not.toContain(
+      expect(existsSync(join(pluginRoot, 'stale.txt'))).toBe(false);
+      expect(existsSync(codexRoot)).toBe(false);
+      expect(existsSync(claudeRoot)).toBe(false);
+      expect(existsSync(join(dir, 'integrations'))).toBe(false);
+      expect(
+        readFileSync(join(pluginRoot, 'codex.mcp.json'), 'utf8'),
+      ).not.toContain('thoth_mem');
+      expect(readFileSync(join(pluginRoot, '.mcp.json'), 'utf8')).not.toContain(
         'thoth_mem',
       );
     } finally {
@@ -198,7 +190,26 @@ describe('generateIntegrationPackages', () => {
     }
   });
 
-  test('keeps committed marketplace packages synchronized with the generator', () => {
+  test('preserves unrelated content under the legacy integrations root', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-integration-packages-'));
+    try {
+      writeFileSync(
+        join(dir, 'package.json'),
+        `${JSON.stringify({ name: 'thoth-agents', version: packageVersion })}\n`,
+      );
+      const unrelatedFile = join(dir, 'integrations', 'custom', 'keep.txt');
+      mkdirSync(join(dir, 'integrations', 'custom'), { recursive: true });
+      writeFileSync(unrelatedFile, 'keep');
+
+      generateIntegrationPackages({ projectRoot: dir });
+
+      expect(readFileSync(unrelatedFile, 'utf8')).toBe('keep');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the committed shared plugin synchronized with the generator', () => {
     const dir = mkdtempSync(join(tmpdir(), 'thoth-integration-sync-'));
     try {
       writeFileSync(
@@ -207,20 +218,17 @@ describe('generateIntegrationPackages', () => {
       );
       generateIntegrationPackages({ projectRoot: dir });
 
-      for (const relativeRoot of [
-        join('integrations', 'codex'),
-        join('integrations', 'claude-code'),
-      ]) {
-        const generatedRoot = join(dir, relativeRoot);
-        const committedRoot = join(process.cwd(), relativeRoot);
-        const generatedFiles = listFiles(generatedRoot).sort();
-        expect(listFiles(committedRoot).sort()).toEqual(generatedFiles);
-        for (const path of generatedFiles) {
-          expect(readFileSync(join(committedRoot, path), 'utf8')).toBe(
-            readFileSync(join(generatedRoot, path), 'utf8'),
-          );
-        }
+      const relativeRoot = 'plugin';
+      const generatedRoot = join(dir, relativeRoot);
+      const committedRoot = join(process.cwd(), relativeRoot);
+      const generatedFiles = listFiles(generatedRoot).sort();
+      expect(listFiles(committedRoot).sort()).toEqual(generatedFiles);
+      for (const path of generatedFiles) {
+        expect(readFileSync(join(committedRoot, path), 'utf8')).toBe(
+          readFileSync(join(generatedRoot, path), 'utf8'),
+        );
       }
+      expect(existsSync(join(process.cwd(), 'integrations'))).toBe(false);
 
       for (const path of [
         join('.agents', 'plugins', 'marketplace.json'),

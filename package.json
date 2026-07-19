@@ -35,7 +35,7 @@
   "files": [
     "dist",
     "skills",
-    "integrations",
+    "plugin",
     ".agents/plugins/marketplace.json",
     ".claude-plugin/marketplace.json",
     "thoth-agents.schema.json",
@@ -56,7 +56,7 @@
     "check:ci": "biome check .",
     "dev": "pnpm run build && opencode",
     "prepublishOnly": "pnpm run build && pnpm run integration:verify",
-    "version": "pnpm run integration:sync && pnpm run integration:verify && git add -- integrations .agents/plugins/marketplace.json .claude-plugin/marketplace.json",
+    "version": "pnpm run integration:sync && pnpm run integration:verify && git add -- plugin .agents/plugins/marketplace.json .claude-plugin/marketplace.json",
     "release:patch": "npm version patch --ignore-scripts=false && git push --follow-tags",
     "release:minor": "npm version minor --ignore-scripts=false && git push --follow-tags",
     "release:major": "npm version major --ignore-scripts=false && git push --follow-tags"

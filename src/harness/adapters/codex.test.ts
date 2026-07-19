@@ -108,6 +108,17 @@ describe('Codex adapter v0.3', () => {
     expect(content).not.toContain('thoth_mem');
   });
 
+  test('does not emit hook diagnostics when the package has no hooks', () => {
+    const hookDiagnostics = render().diagnostics.filter((diagnostic) =>
+      diagnostic.code.includes('hooks'),
+    );
+
+    expect(
+      render().artifacts.some((entry) => entry.kind === 'hook-config'),
+    ).toBe(false);
+    expect(hookDiagnostics).toEqual([]);
+  });
+
   test('ships SDD behavior through agents instead of bundled phase skills', () => {
     const result = render();
     const manifest = JSON.parse(

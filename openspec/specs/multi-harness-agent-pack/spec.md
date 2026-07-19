@@ -51,6 +51,26 @@ Read-only roles MUST NOT mutate. SDD coordination roles MUST write only under
 `openspec/`. Implementation writers MUST remain scoped to assigned surfaces.
 Adapters MUST disclose any instruction-only enforcement gap.
 
+### Requirement: Distinguish capability gaps from fatal generation errors
+
+Integration generation MUST deduplicate diagnostics by code. An error with an
+`instruction-only` or `diagnostic-only` fallback MUST be presented as a
+non-fatal capability gap. Only an error without a recoverable fallback MUST make
+the generator exit nonzero.
+
+#### Scenario: Current Codex package has no hooks
+
+- **GIVEN** the generated Codex package contains no hook artifact
+- **WHEN** integration packages are synchronized
+- **THEN** no hook activation, feature-gate, or trust-readiness diagnostic is
+  emitted.
+
+#### Scenario: Required generation outcome has no fallback
+
+- **GIVEN** generation reports an error without a recoverable fallback
+- **THEN** it is presented as an error
+- **AND** the generator exits nonzero.
+
 ### Requirement: Isolate harness-specific writing
 
 OpenCode, Codex, and Claude artifacts MUST be written only by their corresponding

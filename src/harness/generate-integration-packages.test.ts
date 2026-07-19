@@ -11,7 +11,12 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { claudeCodeAdapter } from './adapters/claude-code';
-import { generateIntegrationPackages } from './generate-integration-packages';
+import {
+  formatIntegrationDiagnostic,
+  generateIntegrationPackages,
+  getIntegrationDiagnosticExitCode,
+  prepareIntegrationDiagnostics,
+} from './generate-integration-packages';
 
 function listFiles(root: string, current = root): string[] {
   return readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
@@ -178,5 +183,74 @@ describe('generateIntegrationPackages', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test('presents recoverable capability gaps once without failing the build', () => {
+    const report = prepareIntegrationDiagnostics([
+      {
+        severity: 'error',
+        code: 'codex.context.parent_injection.unvalidated',
+        message: 'Parent context is not machine-enforced.',
+        fallback: 'instruction-only',
+      },
+      {
+        severity: 'warning',
+        code: 'codex.context.parent_injection.unvalidated',
+        message: 'Duplicate governance diagnostic.',
+        fallback: 'instruction-only',
+      },
+      {
+        severity: 'warning',
+        code: 'codex.permission.memory.enforcement_gap',
+        message: 'Per-agent permission enforcement is unavailable.',
+        fallback: 'instruction-only',
+      },
+    ]);
+
+    expect(report).toEqual([
+      {
+        level: 'capability-gap',
+        code: 'codex.context.parent_injection.unvalidated',
+        message: 'Parent context is not machine-enforced.',
+        fallback: 'instruction-only',
+        fatal: false,
+      },
+      {
+        level: 'capability-gap',
+        code: 'codex.permission.memory.enforcement_gap',
+        message: 'Per-agent permission enforcement is unavailable.',
+        fallback: 'instruction-only',
+        fatal: false,
+      },
+    ]);
+    expect(getIntegrationDiagnosticExitCode(report)).toBe(0);
+    expect(formatIntegrationDiagnostic(report[0])).toBe(
+      'capability-gap (non-fatal): codex.context.parent_injection.unvalidated — Parent context is not machine-enforced. [fallback: instruction-only]',
+    );
+  });
+
+  test('reserves fatal errors and a nonzero exit code for diagnostics without recovery', () => {
+    const report = prepareIntegrationDiagnostics([
+      {
+        severity: 'error',
+        code: 'integration.artifact.write_failed',
+        message: 'A required artifact could not be written.',
+        fallback: 'none',
+      },
+    ]);
+
+    expect(report).toEqual([
+      {
+        level: 'error',
+        code: 'integration.artifact.write_failed',
+        message: 'A required artifact could not be written.',
+        fallback: 'none',
+        fatal: true,
+      },
+    ]);
+    expect(getIntegrationDiagnosticExitCode(report)).toBe(1);
+    expect(formatIntegrationDiagnostic(report[0])).toBe(
+      'error: integration.artifact.write_failed — A required artifact could not be written.',
+    );
   });
 });

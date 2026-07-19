@@ -120,9 +120,10 @@ function artifactKindForSurface(surfaceId: string): HarnessArtifact['kind'] {
 function codexHookPackageDiagnostic(
   code: string,
   message: string,
+  severity: HarnessDiagnostic['severity'] = 'warning',
 ): HarnessDiagnostic {
   return {
-    severity: 'warning',
+    severity,
     code,
     message,
     harness: 'codex',
@@ -165,6 +166,7 @@ function renderHookDefinitions(
       codexHookPackageDiagnostic(
         'codex.plugin.hooks.none_packaged',
         'No Codex plugin hooks were packaged because no hook definitions passed existing Codex hook validation.',
+        'info',
       ),
     );
     return { diagnostics };

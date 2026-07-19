@@ -80,6 +80,81 @@ export interface GenerateIntegrationPackagesResult {
   diagnostics: HarnessDiagnostic[];
 }
 
+export type IntegrationDiagnosticLevel =
+  | 'info'
+  | 'warning'
+  | 'capability-gap'
+  | 'error';
+
+export interface IntegrationDiagnosticReport {
+  level: IntegrationDiagnosticLevel;
+  code: string;
+  message: string;
+  fallback?: HarnessDiagnostic['fallback'];
+  fatal: boolean;
+}
+
+function hasRecoverableFallback(diagnostic: HarnessDiagnostic): boolean {
+  return (
+    diagnostic.fallback === 'instruction-only' ||
+    diagnostic.fallback === 'diagnostic-only'
+  );
+}
+
+function integrationDiagnosticLevel(
+  diagnostic: HarnessDiagnostic,
+  fatal: boolean,
+): IntegrationDiagnosticLevel {
+  if (fatal) return 'error';
+  if (diagnostic.severity === 'info') return 'info';
+  if (hasRecoverableFallback(diagnostic)) return 'capability-gap';
+  return 'warning';
+}
+
+export function prepareIntegrationDiagnostics(
+  diagnostics: readonly HarnessDiagnostic[],
+): IntegrationDiagnosticReport[] {
+  const uniqueByCode = new Map<string, HarnessDiagnostic>();
+  for (const diagnostic of diagnostics) {
+    if (!uniqueByCode.has(diagnostic.code)) {
+      uniqueByCode.set(diagnostic.code, diagnostic);
+    }
+  }
+
+  return [...uniqueByCode.values()].map((diagnostic) => {
+    const fatal =
+      diagnostic.severity === 'error' && !hasRecoverableFallback(diagnostic);
+
+    return {
+      level: integrationDiagnosticLevel(diagnostic, fatal),
+      code: diagnostic.code,
+      message: diagnostic.message,
+      ...(diagnostic.fallback ? { fallback: diagnostic.fallback } : {}),
+      fatal,
+    };
+  });
+}
+
+export function formatIntegrationDiagnostic(
+  diagnostic: IntegrationDiagnosticReport,
+): string {
+  const label =
+    diagnostic.level === 'capability-gap'
+      ? 'capability-gap (non-fatal)'
+      : diagnostic.level;
+  const fallback =
+    diagnostic.fallback && diagnostic.fallback !== 'none'
+      ? ` [fallback: ${diagnostic.fallback}]`
+      : '';
+  return `${label}: ${diagnostic.code} — ${diagnostic.message}${fallback}`;
+}
+
+export function getIntegrationDiagnosticExitCode(
+  diagnostics: readonly IntegrationDiagnosticReport[],
+): 0 | 1 {
+  return diagnostics.some((diagnostic) => diagnostic.fatal) ? 1 : 0;
+}
+
 export function generateIntegrationPackages({
   projectRoot,
 }: GenerateIntegrationPackagesOptions): GenerateIntegrationPackagesResult {
@@ -139,7 +214,12 @@ export function generateIntegrationPackages({
 if (import.meta.main) {
   const result = generateIntegrationPackages({ projectRoot: process.cwd() });
   for (const path of result.written) console.log(`wrote ${path}`);
-  for (const diagnostic of result.diagnostics) {
-    console.warn(`${diagnostic.severity}: ${diagnostic.code}`);
+  const diagnostics = prepareIntegrationDiagnostics(result.diagnostics);
+  for (const diagnostic of diagnostics) {
+    const line = formatIntegrationDiagnostic(diagnostic);
+    if (diagnostic.level === 'error') console.error(line);
+    else if (diagnostic.level === 'info') console.info(line);
+    else console.warn(line);
   }
+  process.exitCode = getIntegrationDiagnosticExitCode(diagnostics);
 }

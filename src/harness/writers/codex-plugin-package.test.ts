@@ -213,7 +213,10 @@ describe('Codex plugin package writer', () => {
         expect.objectContaining({
           code: 'codex.hooks.handler.agent_unsupported',
         }),
-        expect.objectContaining({ code: 'codex.plugin.hooks.none_packaged' }),
+        expect.objectContaining({
+          severity: 'info',
+          code: 'codex.plugin.hooks.none_packaged',
+        }),
       ]),
     );
   });

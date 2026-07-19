@@ -302,9 +302,17 @@ function renderConfigArtifacts(): {
   };
 }
 
-function capabilityDiagnostics(): HarnessDiagnostic[] {
+function capabilityDiagnostics({
+  includeHooks,
+}: {
+  includeHooks: boolean;
+}): HarnessDiagnostic[] {
   const surfaceDiagnostics = getCodexSurfaceRecords()
-    .filter((surface) => surface.status !== 'validated')
+    .filter(
+      (surface) =>
+        surface.status !== 'validated' &&
+        (includeHooks || surface.target !== 'hook-config'),
+    )
     .map(codexSurfaceDiagnostic);
 
   const governanceDiagnostics = memoryGovernanceDiagnostics({
@@ -367,15 +375,11 @@ export const codexAdapter: HarnessAdapter = {
           description: 'Codex plugin-bundled MCP server definitions.',
           content: stableJson(createCodexBuiltinMcpJsonConfig()),
         },
-        {
-          surfaceId: 'plugin-hooks-json',
-          manifestField: 'hooks',
-          path: '.codex-plugin/hooks/hooks.json',
-          description: 'Codex plugin-bundled hook configuration.',
-          hookDefinitions: [],
-        },
       ],
     });
+    const hasPackagedHooks = pluginPackage.artifacts.some(
+      (artifact) => artifact.kind === 'hook-config',
+    );
 
     return {
       harness: 'codex',
@@ -388,8 +392,8 @@ export const codexAdapter: HarnessAdapter = {
         ...agentArtifacts.diagnostics,
         ...configArtifacts.diagnostics,
         ...pluginPackage.diagnostics,
-        ...hookReadinessDiagnostics(),
-        ...capabilityDiagnostics(),
+        ...(hasPackagedHooks ? hookReadinessDiagnostics() : []),
+        ...capabilityDiagnostics({ includeHooks: hasPackagedHooks }),
       ],
     };
   },

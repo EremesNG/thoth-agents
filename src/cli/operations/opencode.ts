@@ -2,18 +2,13 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ALL_AGENT_NAMES } from '../../config';
+import type { ProviderEvidenceInput } from '../../harness/types';
 import {
   parseConfig,
   updateOpenCodeMainConfig,
   writeConfig,
   writeLiteConfig,
 } from '../config-io';
-import {
-  CUSTOM_SKILLS,
-  checkCustomSkillsNeedUpdate,
-  getCustomSkillsDir,
-  installCustomSkills,
-} from '../custom-skills';
 import {
   readManagedModelState,
   stableJson,
@@ -28,9 +23,10 @@ import {
 } from '../paths';
 import { generateLiteConfig } from '../providers';
 import {
-  getRecommendedSkillPath,
-  installRecommendedSkill,
-  RECOMMENDED_SKILLS,
+  getRequiredSkillInstallCommand,
+  getRequiredSkillPath,
+  installRequiredSkill,
+  REQUIRED_SKILLS,
 } from '../skills';
 import type { OpenCodeConfig } from '../types';
 import type {
@@ -47,6 +43,7 @@ import type {
   OperationPlanItem,
   OperationWarning,
 } from './types';
+import { classifyProviderCapabilityEvidence } from './types';
 
 const PACKAGE_NAME = 'thoth-agents';
 const EXPECTED_PLUGIN = `${PACKAGE_NAME}@latest`;
@@ -275,8 +272,7 @@ const openCodeActions: HarnessAction[] = [
     id: 'opencode-install',
     kind: 'install',
     label: 'Install',
-    description:
-      'Preview OpenCode install using --no-tui --tmux=no --skills=yes semantics',
+    description: 'Preview OpenCode install with required external skills',
     dryRun: true,
     requiresConfirmation: true,
     supported: true,
@@ -334,7 +330,7 @@ function targetForLiteConfig(state?: ManagedState): ManagedTarget {
     path: getExistingLiteConfigPath(),
     label: 'thoth-agents config',
     ...(state ? { state } : {}),
-    expected: `seven-agent ${OPENAI_PRESET} roster`,
+    expected: `ten-role ${OPENAI_PRESET} roster`,
   };
 }
 
@@ -366,93 +362,31 @@ function openCodeSkillTargets(context: OperationContext): {
   diagnostics: OperationWarning[];
 } {
   const homeDir = homeDirFromContext(context);
-  const recommendedTargets: ManagedTarget[] = RECOMMENDED_SKILLS.map(
-    (skill) => {
-      const path = getRecommendedSkillPath(skill, homeDir);
-      const installed = existsSync(path);
-      return {
-        kind: 'skill',
-        path,
-        label: titleCaseSkillName(skill.skillName),
-        state: installed ? 'installed' : 'missing',
-        expected: 'recommended global OpenCode skill',
-        observed: installed
-          ? 'recommended global skill installed'
-          : 'recommended global skill missing',
-      };
-    },
-  );
-  let staleSkillNames = new Set<string>();
-  let removedSkillNames: string[] = [];
-  let skillHealthError: string | undefined;
-  try {
-    const updateCheck = checkCustomSkillsNeedUpdate();
-    staleSkillNames = new Set(
-      updateCheck.skillsNeedingUpdate.map(({ skill }) => skill.name),
-    );
-    removedSkillNames = updateCheck.removedSkills;
-  } catch (error) {
-    skillHealthError = String(error);
-  }
-  const bundledTargets: ManagedTarget[] = CUSTOM_SKILLS.map((skill) => {
-    const path = join(getCustomSkillsDir(), skill.name, 'SKILL.md');
+  const requiredTargets: ManagedTarget[] = REQUIRED_SKILLS.map((skill) => {
+    const path = getRequiredSkillPath(skill, 'opencode', homeDir);
     const installed = existsSync(path);
-    const stale = installed && staleSkillNames.has(skill.name);
-    let state: ManagedState = 'installed';
-    let observed = 'bundled OpenCode skill installed and current';
-    if (!installed) {
-      state = 'missing';
-      observed = 'bundled OpenCode skill missing';
-    } else if (stale) {
-      state = 'drift';
-      observed = 'bundled OpenCode skill is outdated';
-    }
     return {
       kind: 'skill',
       path,
-      label: titleCaseSkillName(skill.name),
-      state,
-      expected: 'bundled thoth-agents OpenCode skill',
-      observed,
+      label: titleCaseSkillName(skill.skillName),
+      state: installed ? 'installed' : 'missing',
+      expected: 'required global OpenCode skill',
+      observed: installed
+        ? 'required global skill installed'
+        : 'required global skill missing',
     };
   });
   const diagnostics: OperationWarning[] = [];
-  if (recommendedTargets.some((target) => target.state === 'missing')) {
-    diagnostics.push({
-      severity: 'minor',
-      message:
-        'Recommended OpenCode global skills are missing; run the OpenCode install flow with skills enabled.',
-      code: 'opencode-recommended-skills-missing',
-    });
-  }
-  if (bundledTargets.some((target) => target.state === 'missing')) {
+  if (requiredTargets.some((target) => target.state === 'missing')) {
     diagnostics.push({
       severity: 'important',
       message:
-        'Bundled thoth-agents OpenCode skills are missing; run OpenCode install or sync to refresh managed skills.',
-      code: 'opencode-bundled-skills-missing',
-    });
-  }
-  if (
-    bundledTargets.some((target) => target.state === 'drift') ||
-    removedSkillNames.length > 0
-  ) {
-    diagnostics.push({
-      severity: 'important',
-      message:
-        'Bundled thoth-agents OpenCode skills are outdated; run OpenCode install or sync to refresh managed skills.',
-      code: 'opencode-bundled-skills-outdated',
-    });
-  }
-  if (skillHealthError) {
-    diagnostics.push({
-      severity: 'critical',
-      message: `Bundled skill health could not be classified: ${skillHealthError}`,
-      code: 'opencode-bundled-skills-health-unknown',
+        'Required OpenCode global skills are missing; run install or sync to restore them.',
+      code: 'opencode-required-skills-missing',
     });
   }
   return {
-    targets: [...recommendedTargets, ...bundledTargets],
+    targets: requiredTargets,
     diagnostics,
   };
 }
@@ -576,13 +510,11 @@ const REPAIRABLE_DIAGNOSTIC_CODES = new Set([
   'opencode-lite-config-missing',
   'opencode-roster-drift',
   ACTIVE_PRESET_SELECTED_CODE,
-  'opencode-bundled-skills-missing',
-  'opencode-bundled-skills-outdated',
+  'opencode-required-skills-missing',
 ]);
 
 const MODEL_PRECONFIG_SKILL_CODES = new Set([
-  'opencode-bundled-skills-missing',
-  'opencode-bundled-skills-outdated',
+  'opencode-required-skills-missing',
 ]);
 
 interface BlockingDetails {
@@ -635,16 +567,11 @@ function targetsForBlockingDiagnostic(
   ) {
     return lite ? [lite] : [];
   }
-  if (
-    code === 'opencode-bundled-skills-missing' ||
-    code === 'opencode-bundled-skills-outdated' ||
-    code === 'opencode-bundled-skills-health-unknown'
-  ) {
+  if (code === 'opencode-required-skills-missing') {
     return status.targets.filter(
       (target) =>
-        target.expected === 'bundled thoth-agents OpenCode skill' &&
-        (code === 'opencode-bundled-skills-health-unknown' ||
-          target.state !== 'installed'),
+        target.expected === 'required global OpenCode skill' &&
+        target.state !== 'installed',
     );
   }
   return [
@@ -716,7 +643,7 @@ function canApplyToManagedHealth(
   return blockingDetails(action, status).diagnostics.length === 0;
 }
 
-export function getOpenCodeStatus(
+function getOpenCodeManagedStatus(
   context: OperationContext = { cwd: process.cwd() },
 ): HarnessStatusReport {
   const mainPath = getExistingConfigPath();
@@ -1028,8 +955,8 @@ export function getOpenCodeStatus(
       displayName: 'OpenCode',
       state: 'drift',
       summary: selectedNamedPreset
-        ? 'A valid named OpenCode preset is active outside the managed seven-agent roster.'
-        : 'thoth-agents config does not match the expected seven-agent roster.',
+        ? 'A valid named OpenCode preset is active outside the managed ten-role roster.'
+        : 'thoth-agents config does not match the expected ten-role roster.',
       targets: [
         { ...mainTarget, state: 'installed' },
         { ...liteTarget, state: 'drift' },
@@ -1050,11 +977,16 @@ export function getOpenCodeStatus(
     };
   }
 
+  const requiredSkillsMissing = skillStatus.targets.some(
+    (target) => target.state === 'missing',
+  );
   return {
     harness: 'opencode',
     displayName: 'OpenCode',
-    state: 'installed',
-    summary: 'OpenCode managed thoth-agents configuration is installed.',
+    state: requiredSkillsMissing ? 'drift' : 'installed',
+    summary: requiredSkillsMissing
+      ? 'OpenCode configuration is installed, but required external skills are missing.'
+      : 'OpenCode managed thoth-agents configuration is installed.',
     targets: [
       { ...mainTarget, state: 'installed' },
       { ...liteTarget, state: 'installed' },
@@ -1062,6 +994,16 @@ export function getOpenCodeStatus(
     ],
     diagnostics: [...diagnostics, ...skillStatus.diagnostics],
     actions: openCodeActions,
+  };
+}
+
+export function getOpenCodeStatus(
+  context: OperationContext = { cwd: process.cwd() },
+  evidence: ProviderEvidenceInput = {},
+): HarnessStatusReport {
+  return {
+    ...getOpenCodeManagedStatus(context),
+    providerCapability: classifyProviderCapabilityEvidence(evidence),
   };
 }
 
@@ -1093,19 +1035,6 @@ function backupFromItems(
     strategy: primary?.strategy ?? 'none',
     ...(destinations.length > 0 ? { destinations } : {}),
     ...(primary?.description ? { description: primary.description } : {}),
-  };
-}
-
-function bundledSkillsRefreshItem(): OperationPlanItem {
-  const names = CUSTOM_SKILLS.map(({ name }) => name);
-  return {
-    title: 'Refresh bundled thoth-agents OpenCode skills',
-    target: {
-      kind: 'skill',
-      label: 'Bundled thoth-agents OpenCode skills',
-      expected: `${names.length} managed bundled skills`,
-    },
-    preview: JSON.stringify({ count: names.length, names }, null, 2),
   };
 }
 
@@ -1207,8 +1136,6 @@ export function buildOpenCodeSyncPlan(
   const generatedConfig = generateLiteConfig({
     agent: 'opencode',
     hasTmux: false,
-    installSkills: false,
-    installCustomSkills: true,
     dryRun: true,
     reset: false,
   });
@@ -1234,12 +1161,27 @@ export function buildOpenCodeSyncPlan(
         backup: defaultBackup(getExistingConfigPath()),
       },
       {
-        title: 'Write thoth-agents seven-agent config',
+        title: 'Write thoth-agents ten-role config',
         target: targetForLiteConfig(),
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(litePath),
       },
-      bundledSkillsRefreshItem(),
+      {
+        title: 'Install required external skills',
+        target: {
+          kind: 'skill',
+          label: 'Required OpenCode skills',
+          expected: REQUIRED_SKILLS.map(({ name }) => name).join(', '),
+        },
+        preview: JSON.stringify(
+          REQUIRED_SKILLS.map((skill) => ({
+            name: skill.name,
+            ...getRequiredSkillInstallCommand(skill, 'opencode'),
+          })),
+          null,
+          2,
+        ),
+      },
     ],
     _context,
   );
@@ -1253,8 +1195,6 @@ function tuiInstallConfig() {
   return {
     agent: 'opencode' as const,
     hasTmux: false,
-    installSkills: true,
-    installCustomSkills: true,
     dryRun: true,
     reset: false,
   };
@@ -1267,10 +1207,8 @@ export function buildOpenCodeInstallPlan(
   const installPreview = {
     noTui: true,
     hasTmux: false,
-    installSkills: true,
-    installCustomSkills: true,
-    equivalentCommand:
-      'install --agent=opencode --no-tui --tmux=no --skills=yes',
+    requiredSkills: REQUIRED_SKILLS.map((skill) => skill.name),
+    equivalentCommand: 'install --agent=opencode --no-tui --tmux=no',
   };
   const litePath = getExistingLiteConfigPath();
 
@@ -1278,7 +1216,7 @@ export function buildOpenCodeInstallPlan(
     'opencode-install-preview',
     'install',
     'Preview install',
-    'Preview OpenCode install equivalent to install --agent=opencode --no-tui --tmux=no --skills=yes.',
+    'Preview OpenCode install with the required external skills.',
     [
       {
         title: 'Apply OpenCode TUI install options',
@@ -1287,7 +1225,7 @@ export function buildOpenCodeInstallPlan(
           path: getExistingConfigPath(),
           label: 'OpenCode install options',
           state: getOpenCodeStatus(_context).state,
-          expected: '--no-tui --tmux=no --skills=yes',
+          expected: '--no-tui --tmux=no plus required external skills',
         },
         preview: JSON.stringify(installPreview, null, 2),
       },
@@ -1305,20 +1243,26 @@ export function buildOpenCodeInstallPlan(
         backup: defaultBackup(getExistingConfigPath()),
       },
       {
-        title: 'Write thoth-agents seven-agent config',
+        title: 'Write thoth-agents ten-role config',
         target: targetForLiteConfig(),
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(litePath),
       },
-      bundledSkillsRefreshItem(),
       {
-        title: 'Install recommended external skills',
+        title: 'Install required external skills',
         target: {
           kind: 'skill',
-          label: 'Recommended OpenCode skills',
-          expected: 'skills=yes',
+          label: 'Required OpenCode skills',
+          expected: REQUIRED_SKILLS.map(({ name }) => name).join(', '),
         },
-        preview: JSON.stringify({ installSkills: true }, null, 2),
+        preview: JSON.stringify(
+          REQUIRED_SKILLS.map((skill) => ({
+            name: skill.name,
+            ...getRequiredSkillInstallCommand(skill, 'opencode'),
+          })),
+          null,
+          2,
+        ),
       },
     ],
     _context,
@@ -1619,8 +1563,6 @@ function applyModelPlan(
     (generateLiteConfig({
       agent: 'opencode',
       hasTmux: false,
-      installSkills: false,
-      installCustomSkills: true,
       dryRun: false,
       reset: false,
     }) as OpenCodeConfig);
@@ -1695,97 +1637,31 @@ function applyModelPlan(
   };
 }
 
-function applyRecommendedSkills(): OperationWarning[] {
+function applyRequiredSkills(context: OperationContext): {
+  success: boolean;
+  warnings: OperationWarning[];
+} {
   const warnings: OperationWarning[] = [];
-  for (const skill of RECOMMENDED_SKILLS) {
+  const homeDir = homeDirFromContext(context);
+  for (const skill of REQUIRED_SKILLS) {
     try {
-      const result = installRecommendedSkill(skill);
+      const result = installRequiredSkill(skill, 'opencode', { homeDir });
       if (result.status !== 'failed') continue;
       warnings.push({
-        severity: 'important',
-        code: 'opencode-recommended-skill-failed',
-        message: `Failed to install optional recommended OpenCode skill: ${skill.name}.`,
+        severity: 'critical',
+        code: 'opencode-required-skill-failed',
+        message: `Failed to install required OpenCode skill: ${skill.name}.`,
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       warnings.push({
-        severity: 'important',
-        code: 'opencode-recommended-skill-failed',
-        message: `Failed to install optional recommended OpenCode skill ${skill.name}: ${reason}.`,
+        severity: 'critical',
+        code: 'opencode-required-skill-failed',
+        message: `Failed to install required OpenCode skill ${skill.name}: ${reason}.`,
       });
     }
   }
-  return warnings;
-}
-
-function bundledSkillsFailure(
-  plan: OperationPlan,
-  changedTargets: ManagedTarget[],
-  backups: { path: string; label?: string }[],
-  warnings: OperationWarning[],
-  detail: string,
-): OperationApplyResult {
-  const message = `Failed to install bundled thoth-agents OpenCode skills: ${detail}.`;
-  return {
-    harness: plan.harness,
-    action: plan.action,
-    applied: false,
-    summary: message,
-    changedTargets,
-    backups,
-    warnings: [
-      ...warnings,
-      {
-        severity: 'critical',
-        code: 'opencode-bundled-skills-failed',
-        message,
-      },
-    ],
-    disclaimers: defaultDisclaimers(),
-  };
-}
-
-function applyBundledSkills(
-  plan: OperationPlan,
-  changedTargets: ManagedTarget[],
-  backups: { path: string; label?: string }[],
-  warnings: OperationWarning[],
-): OperationApplyResult | null {
-  let bundled: ReturnType<typeof installCustomSkills>;
-  try {
-    bundled = installCustomSkills();
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return bundledSkillsFailure(
-      plan,
-      changedTargets,
-      backups,
-      warnings,
-      detail,
-    );
-  }
-  if (!bundled.success) {
-    const failedNames = bundled.failedSkills.map(({ skill }) => skill.name);
-    const detail =
-      failedNames.length > 0
-        ? failedNames.join(', ')
-        : 'unknown bundled skills';
-    return bundledSkillsFailure(
-      plan,
-      changedTargets,
-      backups,
-      warnings,
-      detail,
-    );
-  }
-
-  changedTargets.push({
-    kind: 'skill',
-    label: 'Bundled thoth-agents OpenCode skills',
-    state: 'installed',
-    observed: 'managed bundled skills refreshed',
-  });
-  return null;
+  return { success: warnings.length === 0, warnings };
 }
 
 export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
@@ -1860,8 +1736,6 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
       {
         agent: 'opencode',
         hasTmux: false,
-        installSkills: issued.payload.action === 'install',
-        installCustomSkills: true,
         dryRun: false,
         reset: false,
       },
@@ -1875,7 +1749,7 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
     }
     changedTargets.push({
       ...targetForLiteConfig('installed'),
-      observed: 'seven-agent roster written',
+      observed: 'ten-role roster written',
     });
     if (existsSync(`${liteResult.configPath}.bak`)) {
       backups.push({
@@ -1883,27 +1757,32 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
         label: 'thoth-agents config backup',
       });
     }
-    const skillsRejection = applyBundledSkills(
-      plan,
-      changedTargets,
-      backups,
-      warnings,
-    );
-    if (skillsRejection) return skillsRejection;
   }
 
-  if (issued.payload.action === 'install') {
-    warnings.push(...applyRecommendedSkills());
+  if (issued.payload.action === 'install' || issued.payload.action === 'sync') {
+    const requiredSkills = applyRequiredSkills(issued.context);
+    warnings.push(...requiredSkills.warnings);
     changedTargets.push({
       kind: 'skill',
-      label: 'Recommended OpenCode skills',
-      state: warnings.some(
-        (warning) => warning.code === 'opencode-recommended-skill-failed',
-      )
-        ? 'drift'
-        : 'installed',
-      observed: 'optional skills=yes processed',
+      label: 'Required OpenCode skills',
+      state: requiredSkills.success ? 'installed' : 'drift',
+      observed: requiredSkills.success
+        ? 'required external skills installed'
+        : 'required external skill installation failed',
     });
+    if (!requiredSkills.success) {
+      return {
+        harness: 'opencode',
+        action: plan.action,
+        applied: false,
+        summary:
+          'OpenCode configuration was written, but required skills failed to install.',
+        changedTargets,
+        backups,
+        warnings,
+        disclaimers: defaultDisclaimers(),
+      };
+    }
   }
 
   return {

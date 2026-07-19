@@ -1,93 +1,77 @@
 # thoth-agents Project Constitution
 
-Version: 1.0.0
+Version: 2.1.0
 Ratified: 2026-06-16
-Last-Amended: 2026-06-16
+Last-Amended: 2026-07-18
 
-Native thoth-agents governing principles. This artifact adopts the
-MECHANICS of versioned governance, not spec-kit's articles. Bump the
-semantic version on every edit per the policy below and append a
-Sync-Impact Report entry.
+This constitution governs active thoth-agents behavior. Spec Kit supplies SDD
+artifact semantics; thoth-agents stores them under `openspec/` and adds its
+adaptive route policy.
 
-Principles: delegate-first coordination, read-only role boundaries, governed
-persistence, multi-harness parity, and evidence-led verification.
+## Semver policy
 
-## Semver Bump Policy
-
-- MAJOR: a principle is removed or its meaning redefined.
-- MINOR: a principle is added or its guidance materially expanded.
-- PATCH: clarification or wording with no behavioral change.
-
-The bump is manual (no runtime parses this file). The editor MUST update
-`Version`, `Last-Amended`, and the `## Sync-Impact Report` on every change.
+- MAJOR: remove or redefine a principle.
+- MINOR: add a principle or materially expand governance.
+- PATCH: clarify wording without behavior change.
 
 ## Principles
 
-### Principle 1: Delegate-first coordination
+### 1. Adaptive-root orchestration
 
-**Statement**: The root/orchestrator coordinates and delegates execution to
-role-specialized agents; it does not absorb specialist work it should route.
+The root may inspect, edit, and verify clear bounded work directly. It delegates
+only when specialization, context isolation, independent review, or safe
+parallelism creates a net gain. Delegation depth is one and each mutable surface
+has one writer.
 
-**Rationale**: Delegation keeps each phase owned by the best-fit role and
-preserves the multi-agent dispatch model the pipeline is built on.
+### 2. Explicit role boundaries
 
-**Gate Implications**: A design or plan that collapses delegation into a
-single monolithic actor, or routes a phase to the wrong owner, violates
-this principle.
+Read-only roles (`explorer`, `librarian`, `oracle`) never mutate. Coordination
+roles (`sdd-specify`, `sdd-plan`, `sdd-tasks`) write only governed artifacts
+under `openspec/`. Implementation writers (`designer`, `quick`, `deep`) own their
+assigned product surfaces.
 
-### Principle 2: Read-only role boundaries
+### 3. Proportional Spec Kit-compatible SDD
 
-**Statement**: Read-only roles (explorer, librarian, oracle) MUST NOT mutate
-the workspace; only write-capable roles edit files.
+The root selects direct, accelerated, or full SDD from intent, scope, clarity,
+contract risk, and failure cost. Accelerated SDD is a first-class route.
+Clarification, checklists, optional artifacts, and convergence activate only when
+their risk signal exists. Ceremony without decision or risk value is prohibited.
+`architectural-grilling` is a conditional pre-specification gate only for an
+explicit request or unresolved material human-owned product/architecture
+branches; Full SDD alone never requires it.
 
-**Rationale**: Clear read/write boundaries make review and verification
-trustworthy and prevent accidental scope creep during discovery.
+### 4. Truthful multi-harness contracts
 
-**Gate Implications**: Assigning workspace edits to a read-only role, or
-having oracle/explorer/librarian write artifacts, violates this principle.
+OpenCode, Codex, and Claude Code derive behavior from shared role and SDD
+contracts, while adapters disclose enforcement gaps. OpenCode is the default and
+ships only the built-in OpenAI preset. `simplify`, `tdd`,
+`progressive-context-router`, and `architectural-grilling` are mandatory external
+skills installed by the CLI for every harness. Browser and QA executables remain
+project-owned.
 
-### Principle 3: Governed persistence
+### 5. Independent provider ownership
 
-**Statement**: Durable memory and artifacts use the governed surfaces
-(thoth-mem and `openspec/`) with the ownership rules in the persistence and
-thoth-mem conventions; ad hoc persistence patterns are not introduced.
+thoth-mem owns its installation, hooks, MCP, lifecycle, persistence, and
+recovery. thoth-agents does not copy provider protocol or claim provider effects
+without evidence. Install/reset operations preserve independently managed
+provider assets.
 
-**Rationale**: A single governed memory model keeps session/project scope,
-prompt ownership, and SDD artifacts consistent and recoverable.
+### 6. Evidence-led completion
 
-**Gate Implications**: Inventing alternate stores, saving subagent prompts as
-user intent, or bypassing the `sdd/*` namespace rules violates this principle.
+Every route ends in verification proportional to changed behavior and risk.
+Completion reports identify changed surfaces and executed evidence. Full SDD adds
+independent analysis and verification; actionable findings receive a bounded
+fix/re-check loop.
 
-### Principle 4: Multi-harness parity
+## Sync-impact report
 
-**Statement**: Behavior is defined once in shared layers (`_shared`
-conventions, unified skill prose, the `sdd.ts` contract) and applies
-identically across OpenCode, Claude Code, and Codex; per-harness prose is
-limited to declared capability gaps.
-
-**Rationale**: Shared-layer logic prevents dialect drift and keeps gate and
-artifact semantics portable.
-
-**Gate Implications**: Duplicating mechanics per dialect, or silently
-changing gate semantics for one harness instead of reporting an
-unsupported-capability limitation, violates this principle.
-
-### Principle 5: Evidence-led verification
-
-**Statement**: Completion claims are backed by executed evidence; the bounded
-verify loop and acceptance criteria gate progress, and failures escalate
-rather than being asserted away.
-
-**Rationale**: Verifiable evidence is the value proposition of the pipeline
-and the basis for trustworthy archive.
-
-**Gate Implications**: Marking work done without verification evidence, or
-skipping the verify gate, violates this principle.
-
-## Sync-Impact Report
-
-<!-- Newest entry on top. Each entry: version | change type | principles
-touched | downstream gates/artifacts affected. -->
-
-- 1.0.0 | initial ratification | all five principles introduced | establishes
-  the Constitution Check gate consumed by sdd-design and plan-reviewer.
+- 2.1.0 | minor: replace the incomplete Playwright skill dependency with
+  progressive context and conditional architectural decision skills while
+  leaving QA tooling project-owned | SDD routing, required-skill installation,
+  prompts, active specs, and documentation.
+- 2.0.0 | major: replace delegate-first/phase-skill governance with adaptive
+  root, ten roles, proportional Spec Kit-compatible SDD, mandatory external
+  skills, and explicit provider separation | all active role, SDD, harness,
+  install, documentation, and verification contracts.
+- 1.1.0 | historical: externalized thoth-mem provider boundary.
+- 1.0.0 | historical: initial constitution.

@@ -15,9 +15,9 @@ project-owned surfaces.
 - AND it MUST NOT identify the current project with the pre-rename package
   identity
 
-#### Scenario: Role names remain unchanged
+#### Scenario: Canonical role names remain stable
 - GIVEN the agent roster includes orchestrator, explorer, librarian, oracle,
-  designer, quick, and deep
+  sdd-specify, sdd-plan, sdd-tasks, designer, quick, and deep
 - WHEN canonical project identity is updated
 - THEN those role names MUST remain unchanged
 - AND the rename MUST NOT introduce role-level rebranding unrelated to the

@@ -1,9 +1,11 @@
 import type { AgentConfig as SDKAgentConfig } from '@opencode-ai/sdk/v2';
 import {
   type AgentOverrideConfig,
+  CONFIRMED_OPENAI_SUBAGENT_PRESET,
   DEFAULT_MODELS,
   getAgentOverride,
   loadAgentPrompt,
+  OPENCODE_OPENAI_ORCHESTRATOR_PRESET,
   type PluginConfig,
   SUBAGENT_NAMES,
 } from '../config';
@@ -15,10 +17,12 @@ import { createOracleAgent } from './oracle';
 import { type AgentDefinition, createOrchestratorAgent } from './orchestrator';
 import {
   appendPromptSections,
-  detectModelFamily,
   getStepBudgetPromptSection,
 } from './prompt-utils';
 import { createQuickAgent } from './quick';
+import { createSddPlanAgent } from './sdd-plan';
+import { createSddSpecifyAgent } from './sdd-specify';
+import { createSddTasksAgent } from './sdd-tasks';
 
 export type { AgentDefinition } from './orchestrator';
 
@@ -40,21 +44,15 @@ type BuiltinPermissionPresetName =
   | 'explorer'
   | 'librarian'
   | 'oracle'
+  | 'sdd-specify'
+  | 'sdd-plan'
+  | 'sdd-tasks'
   | 'designer'
   | 'quick'
   | 'deep';
 
 type AgentOverrideWithPermission = AgentOverrideConfig & {
   permission?: SDKAgentConfig['permission'];
-};
-
-const GEMINI_DEFAULT_STEPS: Record<SubagentName, number> = {
-  explorer: 120,
-  librarian: 80,
-  oracle: 80,
-  designer: 80,
-  quick: 40,
-  deep: 120,
 };
 
 const BUILTIN_PERMISSION_PRESETS = {
@@ -120,6 +118,48 @@ const BUILTIN_PERMISSION_PRESETS = {
     question: 'allow',
     skill: 'allow',
     edit: 'deny',
+    todowrite: 'deny',
+    task: 'deny',
+  },
+  'sdd-specify': {
+    read: 'allow',
+    edit: 'allow',
+    glob: 'allow',
+    grep: 'allow',
+    list: 'allow',
+    bash: 'allow',
+    codesearch: 'allow',
+    lsp: 'allow',
+    skill: 'allow',
+    question: 'allow',
+    todowrite: 'deny',
+    task: 'deny',
+  },
+  'sdd-plan': {
+    read: 'allow',
+    edit: 'allow',
+    glob: 'allow',
+    grep: 'allow',
+    list: 'allow',
+    bash: 'allow',
+    codesearch: 'allow',
+    lsp: 'allow',
+    skill: 'allow',
+    question: 'allow',
+    todowrite: 'deny',
+    task: 'deny',
+  },
+  'sdd-tasks': {
+    read: 'allow',
+    edit: 'allow',
+    glob: 'allow',
+    grep: 'allow',
+    list: 'allow',
+    bash: 'allow',
+    codesearch: 'allow',
+    lsp: 'allow',
+    skill: 'allow',
+    question: 'allow',
     todowrite: 'deny',
     task: 'deny',
   },
@@ -228,18 +268,6 @@ function applyStepBudgetPrompt(agent: AgentDefinition): void {
   );
 }
 
-function applyGeminiDefaultSteps(agent: AgentDefinition): void {
-  if (!isSubagent(agent.name) || agent.config.steps !== undefined) {
-    return;
-  }
-
-  if (detectModelFamily(agent._modelArray ?? agent.config.model) !== 'gemini') {
-    return;
-  }
-
-  agent.config.steps = GEMINI_DEFAULT_STEPS[agent.name];
-}
-
 function clonePermissionConfig(
   permission: BuiltinPermissionPreset,
 ): BuiltinPermissionPreset {
@@ -282,14 +310,20 @@ function getPrimaryModelForPrompt(
 
 export type SubagentName = (typeof SUBAGENT_NAMES)[number];
 
+type CanonicalOpenAISubagentName =
+  keyof typeof CONFIRMED_OPENAI_SUBAGENT_PRESET;
+
 export function isSubagent(name: string): name is SubagentName {
   return (SUBAGENT_NAMES as readonly string[]).includes(name);
 }
 
-const SUBAGENT_FACTORIES: Record<SubagentName, AgentFactory> = {
+const SUBAGENT_FACTORIES: Record<CanonicalOpenAISubagentName, AgentFactory> = {
   explorer: createExplorerAgent,
   librarian: createLibrarianAgent,
   oracle: createOracleAgent,
+  'sdd-specify': createSddSpecifyAgent,
+  'sdd-plan': createSddPlanAgent,
+  'sdd-tasks': createSddTasksAgent,
   designer: createDesignerAgent,
   quick: createQuickAgent,
   deep: createDeepAgent,
@@ -297,7 +331,10 @@ const SUBAGENT_FACTORIES: Record<SubagentName, AgentFactory> = {
 
 export function createAgents(config?: PluginConfig): AgentDefinition[] {
   const protoSubAgents = (
-    Object.entries(SUBAGENT_FACTORIES) as [SubagentName, AgentFactory][]
+    Object.entries(SUBAGENT_FACTORIES) as [
+      CanonicalOpenAISubagentName,
+      AgentFactory,
+    ][]
   ).map(([name, factory]) => {
     const override = getAgentOverride(config, name);
     const prompts = loadAgentPrompt(name, config?.preset);
@@ -305,7 +342,9 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
       getPrimaryModelForPrompt(override?.model) ??
       (DEFAULT_MODELS[name] as string);
 
-    return factory(model, prompts.prompt, prompts.appendPrompt);
+    const agent = factory(model, prompts.prompt, prompts.appendPrompt);
+    agent.config.variant = CONFIRMED_OPENAI_SUBAGENT_PRESET[name].effort;
+    return agent;
   });
 
   const allSubAgents = protoSubAgents.map((agent) => {
@@ -313,7 +352,6 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     if (override) {
       applyOverrides(agent, override);
     }
-    applyGeminiDefaultSteps(agent);
     applyStepBudgetPrompt(agent);
     return agent;
   });
@@ -321,10 +359,12 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
   const orchestratorOverride = getAgentOverride(config, 'orchestrator');
   const orchestratorPrompts = loadAgentPrompt('orchestrator', config?.preset);
   const orchestrator = createOrchestratorAgent(
-    orchestratorOverride?.model ?? DEFAULT_MODELS.orchestrator,
+    orchestratorOverride?.model ??
+      `openai/${OPENCODE_OPENAI_ORCHESTRATOR_PRESET.model}`,
     orchestratorPrompts.prompt,
     orchestratorPrompts.appendPrompt,
   );
+  orchestrator.config.variant = OPENCODE_OPENAI_ORCHESTRATOR_PRESET.effort;
 
   if (orchestratorOverride) {
     applyOverrides(orchestrator, orchestratorOverride);

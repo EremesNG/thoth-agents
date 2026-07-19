@@ -10,3 +10,21 @@ Use arrows and Enter. Escape goes back. q exits.
   Sync / Update - Preview managed setup changes
   Exit - Close the interactive setup"
 `;
+
+exports[`interactive TUI > TUI status snapshots consumer-managed state separately from supported provider evidence 1`] = `
+"thoth-agents
+OpenCode Status
+Consumer-managed state and external provider evidence. Escape returns. r refreshes.
+
+Consumer-managed state: installed
+OpenCode ready
+installed: 1
+Warnings: 0 Notes: 0
+Provider capability
+Provider capability: supported
+Evidence source: provider
+Evidence basis
+- Provider reported persistence and recovery availability.
+Config
+- OpenCode Config: [installed]"
+`;

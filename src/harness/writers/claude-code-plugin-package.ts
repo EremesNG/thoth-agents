@@ -1,5 +1,5 @@
+import { createHash } from 'node:crypto';
 import type { HarnessArtifact, HarnessDiagnostic } from '../types';
-import { sha256Hash } from './fs-skill-collect';
 
 export const CLAUDE_PLUGIN_MANIFEST_FIELDS = [
   'name',
@@ -53,6 +53,29 @@ function stableJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
+function sha256Hash(content: string | Uint8Array): string {
+  return `sha256:${createHash('sha256').update(content).digest('hex')}`;
+}
+
+function withoutProviderAsset(artifact: HarnessArtifact): HarnessArtifact {
+  if (!normalizePath(artifact.path).endsWith('.mcp.json')) return artifact;
+  const content =
+    typeof artifact.content === 'string'
+      ? artifact.content
+      : Buffer.from(artifact.content).toString('utf8');
+
+  try {
+    const parsed = JSON.parse(content) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    if (!parsed.mcpServers) return artifact;
+    const { thoth_mem: _provider, ...mcpServers } = parsed.mcpServers;
+    return { ...artifact, content: stableJson({ ...parsed, mcpServers }) };
+  } catch {
+    return artifact;
+  }
+}
+
 function orderedManifest(
   manifest: ClaudeCodePluginManifest,
 ): Record<string, unknown> {
@@ -84,9 +107,11 @@ function provenanceFor(
 export function renderClaudeCodePluginPackage(
   input: ClaudeCodePluginPackageInput,
 ): ClaudeCodePluginPackageResult {
-  const components = [...input.componentArtifacts].sort((left, right) =>
-    normalizePath(left.path).localeCompare(normalizePath(right.path)),
-  );
+  const components = input.componentArtifacts
+    .map(withoutProviderAsset)
+    .sort((left, right) =>
+      normalizePath(left.path).localeCompare(normalizePath(right.path)),
+    );
 
   const provenance = components
     .map(provenanceFor)

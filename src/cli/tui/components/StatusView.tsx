@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink';
+import type { ProviderCapabilityEvidence } from '../../../harness/types';
 import type {
   HarnessStatusReport,
   ManagedState,
@@ -10,6 +11,77 @@ export type StatusSection = 'targets' | 'warnings' | 'disclaimers';
 
 interface StatusViewProps {
   report: HarnessStatusReport;
+  providerEvidence?: ProviderCapabilityEvidence;
+  providerEvidenceLoading?: boolean;
+  providerEvidenceError?: string;
+}
+
+interface ProviderCapabilityViewProps {
+  evidence?: ProviderCapabilityEvidence;
+  loading?: boolean;
+  error?: string;
+  showHeading?: boolean;
+}
+
+const unsupportedEvidence: ProviderCapabilityEvidence = {
+  state: 'unsupported',
+  source: 'none',
+  basis: [],
+};
+
+export function ProviderCapabilityView({
+  evidence,
+  loading = false,
+  error,
+  showHeading = true,
+}: ProviderCapabilityViewProps) {
+  const capability = evidence ?? unsupportedEvidence;
+  return (
+    <Box flexDirection="column">
+      {showHeading ? (
+        <Text color={theme.accent}>Provider capability</Text>
+      ) : null}
+      {loading ? (
+        <Text color={theme.dim}>Loading provider capability evidence…</Text>
+      ) : error ? (
+        <>
+          <Text color={theme.warning}>
+            Provider evidence unavailable: {error}
+          </Text>
+          <Text color={theme.dim}>Press r to retry provider evidence.</Text>
+        </>
+      ) : (
+        <>
+          <Text>
+            Provider capability:{' '}
+            <Text color={stateColor(capability.state)}>{capability.state}</Text>
+          </Text>
+          <Text>
+            Evidence source:{' '}
+            <Text color={theme.accent}>{capability.source}</Text>
+          </Text>
+          {capability.basis.length > 0 ? (
+            <>
+              <Text color={theme.dim}>Evidence basis</Text>
+              {capability.basis.map((basis) => (
+                <Text key={basis}>- {basis}</Text>
+              ))}
+            </>
+          ) : (
+            <Text color={theme.dim}>
+              No provider or harness evidence was supplied.
+            </Text>
+          )}
+          {capability.state !== 'supported' ? (
+            <Text color={theme.dim}>
+              Refer to the installed provider guidance for authoritative
+              capability details.
+            </Text>
+          ) : null}
+        </>
+      )}
+    </Box>
+  );
 }
 
 function countByState(
@@ -179,7 +251,12 @@ function uniqueTargets(
   });
 }
 
-export function StatusView({ report }: StatusViewProps) {
+export function StatusView({
+  report,
+  providerEvidence = report.providerCapability,
+  providerEvidenceLoading = false,
+  providerEvidenceError,
+}: StatusViewProps) {
   const counts = countByState(report);
   const countText = Object.entries(counts)
     .map(([state, count]) => `${state}: ${count}`)
@@ -193,7 +270,8 @@ export function StatusView({ report }: StatusViewProps) {
   return (
     <Box flexDirection="column">
       <Text>
-        State: <Text color={stateColor(report.state)}>{report.state}</Text>
+        Consumer-managed state:{' '}
+        <Text color={stateColor(report.state)}>{report.state}</Text>
       </Text>
       <Text>{report.summary}</Text>
       <Text color={theme.dim}>{countText || 'No managed targets.'}</Text>
@@ -201,6 +279,28 @@ export function StatusView({ report }: StatusViewProps) {
         Warnings: {report.diagnostics.length} Notes:{' '}
         {report.disclaimers?.length ?? 0}
       </Text>
+      <ProviderCapabilityView
+        evidence={providerEvidence}
+        loading={providerEvidenceLoading}
+        error={providerEvidenceError}
+      />
+      {report.actions.some((action) => action.supported === false) ? (
+        <Box flexDirection="column">
+          <Text color={theme.warning}>
+            Unavailable provider-dependent actions
+          </Text>
+          {report.actions
+            .filter((action) => action.supported === false)
+            .map((action) => (
+              <Box key={action.id} flexDirection="column">
+                <Text>{action.label}: unavailable</Text>
+                {action.disabledReason ? (
+                  <Text color={theme.dim}>- {action.disabledReason}</Text>
+                ) : null}
+              </Box>
+            ))}
+        </Box>
+      ) : null}
       {categoryOrder.map((category) => {
         const targets = uniqueTargets(grouped.get(category) ?? []);
         if (targets.length === 0) return null;

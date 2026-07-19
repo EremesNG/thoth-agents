@@ -135,7 +135,7 @@ describe('Codex surface validation', () => {
     expect(
       validateCodexPluginPackageSurface({
         surfaceId: 'plugin-skills-directory',
-        path: '.agents/skills/sdd-apply/SKILL.md',
+        path: '.agents/skills/example-skill/SKILL.md',
         fields: ['skills'],
       }),
     ).toMatchObject({

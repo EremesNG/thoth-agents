@@ -1,359 +1,215 @@
-# Installation Guide
+# Installation
 
-Complete installation instructions for thoth-agents across supported harnesses.
-OpenCode is the stable default path. Codex is an explicit setup path with its
-own trust review and runtime caveats.
+thoth-agents 0.3.0 supports OpenCode, Codex, and Claude Code. OpenCode remains
+the default when no harness is selected.
 
-The OpenCode plugin entry and the npm binary are different surfaces. OpenCode
-loads the plugin from config such as `plugin: ["thoth-agents@latest"]`; that
-does not install a global `thoth-agents` command. Run the installer or
-interactive TUI through a globally installed binary, `npx thoth-agents@latest`,
-or `pnpm dlx thoth-agents@latest`.
+## Requirements
 
-## Table of Contents
-
-- [Choose a Harness](#choose-a-harness)
-- [OpenCode Setup](#opencode-setup)
-- [Codex Setup](#codex-setup)
-- [For LLM Agents](#for-llm-agents)
-- [Troubleshooting](#troubleshooting)
-- [Uninstallation](#uninstallation)
-
----
-
-## Choose a Harness
-
-| Harness | Command | Writes to | Best when |
-| --- | --- | --- | --- |
-| Interactive TUI | `npx thoth-agents@latest` in a TTY | Only when you choose an apply action | You want status/list/update/sync/model previews across supported harnesses. |
-| OpenCode default | `npx thoth-agents@latest install` | OpenCode plugin config, optional skills, optional tmux config | You want the stable native plugin flow. |
-| OpenCode explicit | `npx thoth-agents@latest install --agent=opencode` | Same as default OpenCode setup | You want to be explicit in automation. |
-| Codex explicit | `npx thoth-agents@latest install --agent=codex` | Codex AGENTS block, six role TOMLs, Personal plugin source, marketplace entry, managed feature flags | You want Codex role agents and bundled skills. |
-| Claude Code explicit | `npx thoth-agents@latest install --agent=claude` | One `.claude-plugin/` package: six subagents, `.mcp.json`, bundled skills, SessionStart root-injection hook | You want a native Claude Code plugin with auto-discovered subagents. |
-
-Use `--dry-run` before Codex or Claude Code install when you want to inspect the
-target plan and backups before writing files.
-
-## OpenCode Setup
-
-### Prerequisites
-
-- [OpenCode](https://opencode.ai/docs)
 - Node.js `>=22.13`
-- Corepack with `pnpm@11.2.2`
+- Network access during installation for the mandatory external skills
+- The selected harness installed separately
 
-### Quick Install
+## Installation model
 
-Run the no-argument TUI in an interactive terminal:
+thoth-agents separates native plugin delivery from CLI-managed setup. A native
+plugin can package agents, MCPs, settings, and other harness components, but it
+cannot reliably install arbitrary standalone skill repositories or write every
+user-level orchestration surface. Do not treat plugin-only installation as
+complete.
 
-```bash
-corepack enable
-corepack prepare pnpm@11.2.2 --activate
-npx thoth-agents@latest
-```
+| Harness | First install the native/plugin layer | Then run the CLI |
+| --- | --- | --- |
+| OpenCode | No separate command; the CLI adds the npm plugin entry. | `npx thoth-agents@latest install --agent=opencode` |
+| Codex | Add `EremesNG/thoth-agents`, restart, then install/enable from `/plugins`. | `npx thoth-agents@latest install --agent=codex` |
+| Claude Code | Add the marketplace and install `thoth-agents@thoth-agents` with the two native commands below. | `npx thoth-agents@latest install --agent=claude` |
 
-Or run the OpenCode installer directly:
+Running `npx thoth-agents@latest` opens the harness selector in an interactive
+TTY and defaults to OpenCode in non-interactive contexts. Explicit harness
+commands are recommended for reproducible setup and documentation.
 
-```bash
-corepack enable
-corepack prepare pnpm@11.2.2 --activate
-npx thoth-agents@latest install
-```
+## Mandatory external skills
 
-Or make the OpenCode target explicit:
+Every supported install runs the skills CLI for `simplify`, `tdd`,
+`progressive-context-router`, and `architectural-grilling`. They are
+requirements, not recommendations. Installation fails if a required skill
+cannot be installed or confirmed.
+
+| Harness | skills CLI agent | Global target |
+| --- | --- | --- |
+| OpenCode | `opencode` | `~/.config/opencode/skills` |
+| Codex | `codex` | `~/.codex/skills` |
+| Claude Code | `claude-code` | `~/.claude/skills` |
+
+There is no skip flag. Dry-run prints the exact commands without executing them.
+Browser and QA executables remain project-owned; thoth-agents does not install
+`playwright-cli`, Playwright, or another runner.
+
+The supported dependency-installation mechanism is the thoth-agents CLI. Codex
+marketplace npm sources are downloaded without running lifecycle scripts, so a
+package `postinstall` would not be reliable. Claude plugin dependencies identify
+plugins rather than arbitrary standalone skills, and plugin startup does not
+provide a general-purpose `postinstall` for them. A plugin-only install therefore
+remains incomplete until the CLI confirms every required global skill.
+
+## Common options
+
+| Option | Meaning |
+| --- | --- |
+| `--agent=opencode\|codex\|claude` | Select the installation target. |
+| `--dry-run` | Print the complete plan and skill commands without writing. |
+| `--reset` | Repair thoth-agents-managed targets only. |
+| `--no-tui` | Force the non-interactive path. |
+| `--tmux=yes\|no` | Configure OpenCode tmux integration. It does not apply to Codex or Claude. |
+
+Unknown legacy install options fail explicitly.
+
+## OpenCode
 
 ```bash
 npx thoth-agents@latest install --agent=opencode
+npx thoth-agents@latest install --agent=opencode --dry-run
 ```
 
-For non-interactive mode:
+The installer:
+
+1. merges `thoth-agents@latest` into the OpenCode plugin list;
+2. writes the OpenAI-only ten-role thoth-agents configuration;
+3. preserves unrelated OpenCode settings;
+4. optionally configures tmux; and
+5. installs all required skills under `~/.config/opencode/skills`.
+
+Adding only this entry manually loads the npm plugin but cannot install the
+required skills:
+
+```json
+{
+  "plugin": ["thoth-agents@latest"]
+}
+```
+
+Run the CLI afterward or use `sync --harness=opencode --apply`. Status reports
+missing required skills as drift.
+
+The generated preset is `openai`; no Kimi, Copilot, ZAI/GLM, or mixed-provider
+preset is written.
+
+## Codex
 
 ```bash
-npx thoth-agents@latest install --no-tui --tmux=no --skills=yes
-```
+# Native plugin layer
+codex plugin marketplace add EremesNG/thoth-agents
 
-In CI, redirected streams, and `TERM=dumb` terminals, the no-argument binary
-keeps the legacy automation-safe fallback and routes to OpenCode install with
-the TUI disabled.
+# Restart Codex, then install/enable thoth-agents from /plugins.
 
-### What OpenCode Install Sets Up
-
-The OpenCode path prepares the delegate-first seven-agent roster, generated
-provider presets, optional tmux integration, and plugin registration.
-
-When skills are enabled, it also installs or copies:
-
-- Bundled `requirements-interview`
-- Bundled `plan-reviewer`
-- Bundled `executing-plans`
-- Bundled SDD pipeline skills:
-  `sdd-init`, `sdd-propose`, `sdd-spec`, `sdd-clarify`, `sdd-design`,
-  `sdd-tasks`, `sdd-apply`, `sdd-verify`, `sdd-archive`, `sdd-constitution`
-- Recommended external skills such as `simplify` and `playwright-cli`
-
-### Configuration Options
-
-| Option | Description |
-| --- | --- |
-| `--agent=opencode|codex` | Select the harness target explicitly |
-| `--tmux=yes|no` | Enable tmux integration for OpenCode |
-| `--skills=yes|no` | Install recommended external skills and bundled repo skills |
-| `--no-tui` | Run without the interactive installer UI |
-| `--dry-run` | Simulate install without writing files |
-| `--reset` | Refresh managed generated files and config blocks |
-
-## Interactive and Explicit Commands
-
-Use the no-argument TUI for interactive status, list, update, sync, and model
-preview flows:
-
-```bash
-npx thoth-agents@latest
-```
-
-The CLI help also exposes explicit command names:
-
-```bash
-npx thoth-agents@latest status
-npx thoth-agents@latest list
-npx thoth-agents@latest update
-npx thoth-agents@latest sync
-npx thoth-agents@latest model
-```
-
-Preview flows describe managed targets and backup expectations before any apply
-step. OpenCode update/sync messaging refers to the plugin config entry
-`plugin: ["thoth-agents@latest"]`; it should not be read as evidence that a
-global npm binary exists.
-
-### After OpenCode Installation
-
-Authenticate with your OpenCode provider:
-
-```bash
-opencode auth login
-```
-
-Then start OpenCode and verify the roster:
-
-```bash
-opencode
-```
-
-Inside OpenCode:
-
-```text
-ping all agents
-```
-
-The generated OpenCode config can be edited at:
-
-- `~/.config/opencode/thoth-agents.json`
-- `~/.config/opencode/thoth-agents.jsonc`
-
-For alternative OpenCode providers and mixed-model presets, see
-[Provider Configurations](provider-configurations.md).
-
-## Codex Setup
-
-Codex install is separate from the OpenCode plugin install:
-
-```bash
+# CLI-managed orchestration layer
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
-The Codex path writes only managed Codex targets:
+The repository catalog is `.agents/plugins/marketplace.json`; it points to the
+versioned `integrations/codex` package. The native plugin provides the packaged
+research MCP configuration. It does not carry the root instructions, custom
+agent TOMLs, user feature configuration, or external skills; those belong to the
+CLI layer.
 
-- `~/.codex/AGENTS.md` managed thoth-agents root guidance block
-- `~/.codex/agents/thoth-agents-{role}.toml` for `explorer`, `librarian`,
-  `oracle`, `designer`, `quick`, and `deep`
-- `~/.codex/plugins/thoth-agents/` Personal plugin source
-- `~/.agents/plugins/marketplace.json` Personal marketplace entry
-- Managed feature flags in `~/.codex/config.toml`, when consented
+User-scope installation manages:
 
-Restart Codex after install, then review:
+- `~/.codex/AGENTS.md`: one bounded thoth-agents root block;
+- `~/.codex/agents/thoth-agents-{role}.toml`: nine specialist roles, including
+  `sdd-specify`, `sdd-plan`, and `sdd-tasks`;
+- `~/.codex/agents/.thoth-agents-managed-models.json`: model ownership state;
+- `~/.codex/config.toml`: backed-up feature-gate merge; and
+- `~/.codex/skills/{simplify,tdd,progressive-context-router,architectural-grilling}/`:
+  required global skills.
+
+The CLI does not copy a plugin into `~/.codex/plugins` or merge a personal
+marketplace. Codex owns those snapshots and caches. The ambient Codex session is
+the orchestrator, so no orchestrator child TOML is created. Restart Codex after
+installation and review:
 
 ```text
 /plugins
 /hooks
 ```
 
-Codex install does not create a selectable orchestrator TOML and does not bypass
-Codex trust review. Role permissions, memory governance, provider-per-agent
-settings, and hook behavior remain instruction-level or user-managed unless
-Codex documents hard controls for those surfaces.
+Plugin registration and feature flags do not bypass Codex trust review or
+higher-precedence project, profile, CLI, system, or admin configuration.
 
-See [Codex Install](codex-install.md),
-[Codex Plugin Packaging](codex-plugin-packaging.md), and
-[Codex Model Customization](codex-model-customization.md) for the focused Codex
-details.
+See [Codex Install](codex-install.md) for the detailed contract.
 
-## Claude Code Setup
+## Claude Code
 
-Claude Code install writes one auto-discovered plugin package:
+Run the native marketplace commands before the thoth-agents CLI:
 
 ```bash
+# Native plugin layer
+claude plugin marketplace add EremesNG/thoth-agents --scope user
+claude plugin install thoth-agents@thoth-agents --scope user
+
+# CLI-managed dependency and verification layer
 npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```
 
-The plugin is installed as a **skills-directory plugin** under
-`~/.claude/skills/thoth-agents` with `.claude-plugin/plugin.json`, seven agents
-in `agents/` (six specialists + an `orchestrator`), an `.mcp.json` server map,
-bundled `skills/`, and a plugin-root `settings.json` with
-`{ "agent": "orchestrator" }`. That `agent` key activates the orchestrator as
-the Claude Code **main thread** (replacing the default system prompt), so the
-session starts in delegate-first mode and bootstraps thoth-mem on its first
-turn. It auto-loads as `thoth-agents@skills-dir` on the next session (no
-marketplace, no install step) — restart Claude Code or run `/reload-plugins` to
-activate it, and confirm in `/plugin` → Installed. To use plain Claude Code in a
-project, disable the plugin there (`/plugin disable thoth-agents@skills-dir`).
+The repository catalog `.claude-plugin/marketplace.json` points to
+`integrations/claude-code`. Claude's native manager registers and caches the
+plugin. Once those two commands succeed, the thoth-agents CLI treats the native
+plugin as present and installs/verifies the required global skills. It may also
+reconcile disabled or stale native state during repair, update, or sync, but the
+documented first-install flow keeps marketplace trust and plugin installation
+explicit.
 
-Claude Code is a first-class harness: role permissions are enforced by each
-subagent frontmatter `tools` allowlist, hooks are harness-run, and delegation
-uses the native `Task(subagent_type: ...)` flow. Subagent models accept only
-`sonnet`, `opus`, `haiku`, or `inherit`.
+The versioned plugin package contains:
 
-See [Claude Code Plugin Packaging](claude-code-plugin-packaging.md) for the
-focused details.
+- `.claude-plugin/plugin.json`;
+- `agents/orchestrator.md`;
+- nine specialist files under `agents/`, including the three SDD phase agents;
+- `.mcp.json` for thoth-agents research MCPs; and
+- `settings.json`, which activates the orchestrator as the main plugin agent.
 
-## Non-Destructive Behavior
+Claude owns the installed cache. thoth-agents does not copy or mutate it, and
+post-install per-role model rewrites are unsupported; model-default changes are
+published as a new plugin package.
 
-By default, the installer avoids overwriting unmanaged user content. When a
-managed file or block is refreshed, backups are created where the installer
-supports them.
+Required external skills are separate global Claude skills under
+`~/.claude/skills/{simplify,tdd,progressive-context-router,architectural-grilling}/`;
+they are not copied into the thoth-agents plugin manifest.
 
-Use `--reset` to repair or refresh managed generated targets:
+Restart Claude Code or run `/reload-plugins`, then confirm the plugin in
+`/plugin`. Project-scope installation requires workspace trust.
 
-```bash
-npx thoth-agents@latest install --reset
-```
+See [Claude Code Install](claude-code-install.md) for troubleshooting and
+[Claude Code Plugin Packaging](claude-code-plugin-packaging.md) for the package
+contract.
 
-For Codex, `--reset` refreshes managed blocks and generated targets; it does
-not delete unrelated plugins, marketplaces, config directories, or user files.
+## Capability and enforcement limitations
 
-## For LLM Agents
+| Harness | Limitation |
+| --- | --- |
+| OpenCode | It is the strongest runtime-integrated path, but 0.3.0 ships only the OpenAI built-in model preset. |
+| Codex | The ambient session is the root. Custom agents are native TOML layers, but runtime role matching and some permission boundaries remain instruction-level. Global `AGENTS.md` and user config can be overridden by more specific or higher-precedence configuration. |
+| Claude Code | The manager owns installed cache files and packaged model defaults. Read-only roles use tool denylists, while `openspec/` path restriction is instruction-level. Background agents cannot handle interactive prompts like foreground agents. |
 
-If you are helping a user set up thoth-agents, first identify the target
-harness.
+No harness install includes thoth-mem or project QA executables. Trust,
+organization policy, and higher-precedence harness configuration remain in
+force; thoth-agents does not bypass them.
 
-### OpenCode Path
-
-```bash
-opencode --version
-npx thoth-agents@latest install --agent=opencode --no-tui --tmux=no --skills=yes
-```
-
-Ask the user to authenticate if interaction is required:
+## Status, update, and sync
 
 ```bash
-opencode auth login
+npx thoth-agents@latest status
+npx thoth-agents@latest status --harness=codex
+npx thoth-agents@latest update --harness=claude
+npx thoth-agents@latest sync --harness=opencode --apply
 ```
 
-Then ask the user to verify with:
+Status includes native manager state, harness configuration, and every required
+global skill. Update and sync reconcile only thoth-agents-owned surfaces and
+retain unrelated user content.
 
-```text
-ping all agents
-```
+## Reset safety
 
-### Codex Path
-
-```bash
-npx thoth-agents@latest install --agent=codex --dry-run
-npx thoth-agents@latest install --agent=codex
-```
-
-Ask the user to restart Codex and complete `/plugins` and `/hooks` trust review.
-
-### Follow-Up Docs
-
-- [README orientation](../README.md)
-- [Provider Configurations](provider-configurations.md)
-- [Quick Reference](quick-reference.md)
-- [SDD Pipeline](sdd-pipeline.md)
-- [Skills and MCPs](skills-and-mcps.md)
-
----
-
-## Troubleshooting
-
-### Installer Fails
-
-Check available options:
-
-```bash
-npx thoth-agents@latest install --help
-```
-
-### Agents Not Responding In OpenCode
-
-1. Check auth status:
-
-   ```bash
-   opencode auth status
-   ```
-
-2. Verify the OpenCode plugin config exists:
-
-   - `~/.config/opencode/thoth-agents.json`
-   - `~/.config/opencode/thoth-agents.jsonc`
-
-3. Confirm the provider is configured in OpenCode.
-
-### Codex Roles Or Skills Not Available
-
-1. Restart Codex after install.
-2. Review plugin state with `/plugins`.
-3. Review hook state with `/hooks`.
-4. Confirm the install was run with `--agent=codex`.
-
-### Editor Validation
-
-Add a `$schema` reference for autocomplete and inline validation:
-
-```jsonc
-{
-  "$schema": "https://unpkg.com/thoth-agents@latest/thoth-agents.schema.json"
-}
-```
-
-### Tmux Integration Not Working
-
-Tmux integration is OpenCode-scoped. Run OpenCode with a port that matches
-`OPENCODE_PORT`:
-
-```bash
-tmux
-export OPENCODE_PORT=4096
-opencode --port 4096
-```
-
-See the [Tmux Integration Guide](tmux-integration.md) for more detail.
-
----
-
-## Uninstallation
-
-### OpenCode
-
-1. Remove `"thoth-agents"` from the `plugin` array in
-   `~/.config/opencode/opencode.json` or `opencode.jsonc`.
-2. Optionally remove generated config files:
-   `~/.config/opencode/thoth-agents.json`,
-   `~/.config/opencode/thoth-agents.jsonc`, and any managed backup next to
-   those files.
-
-3. Optionally remove recommended external skills:
-
-   ```bash
-   npx skills remove simplify
-   npx skills remove playwright-cli
-   ```
-
-### Codex
-
-Remove the managed thoth-agents block from `~/.codex/AGENTS.md`, remove the
-generated `~/.codex/agents/thoth-agents-{role}.toml` files, remove the Personal
-plugin source at `~/.codex/plugins/thoth-agents/`, and remove the matching
-Personal marketplace entry if you no longer use it.
+`--reset` refreshes managed blocks, role files, model state, and managed
+configuration keys. It does not rewrite native marketplace snapshots or plugin
+caches, or delete unrelated skills, provider configuration, or harness
+directories.

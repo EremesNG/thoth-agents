@@ -17,6 +17,10 @@
   },
   "overrides": [
     {
+      "includes": ["integrations/**"],
+      "formatter": { "enabled": false }
+    },
+    {
       "includes": ["**/*.test.ts", "**/*.test.tsx"],
       "linter": {
         "rules": {

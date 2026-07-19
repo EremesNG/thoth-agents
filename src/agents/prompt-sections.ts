@@ -1,13 +1,24 @@
 import {
+  type AgentRoleName,
+  getAgentPackContract,
+  getAgentRole,
+} from '../harness/core/agent-pack';
+import {
+  getRequiredSddPhaseOrder,
+  getSddArtifactGraph,
+  getSddPhaseOwner,
   getSddWorkflowContract,
-  type SddPhaseContract,
+  type SddRoute,
 } from '../harness/core/sdd';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
 import type { ModelEntry } from './prompt-utils';
 
-type ModelFamily = 'openai' | 'claude' | 'gemini' | 'kimi' | 'glm';
+type ModelFamily = 'openai';
 
 export type SemanticMemoryAccess = 'base' | 'readonly' | 'writable';
+export type ReadOnlyAgentRole = 'explorer' | 'librarian' | 'oracle';
+export type CoordinationAgentRole = 'sdd-specify' | 'sdd-plan' | 'sdd-tasks';
+export type WriteCapableAgentRole = 'designer' | 'quick' | 'deep';
 
 export interface QuestionProtocolSection {
   kind: 'question-protocol';
@@ -61,10 +72,7 @@ export interface PromptSectionRenderer<TSection extends PromptSection> {
 }
 
 export function createQuestionProtocolSection(): QuestionProtocolSection {
-  return {
-    kind: 'question-protocol',
-    toolConcept: 'userQuestion',
-  };
+  return { kind: 'question-protocol', toolConcept: 'userQuestion' };
 }
 
 export function createSubagentRulesSection(
@@ -96,34 +104,22 @@ export function createStepBudgetSection(
   return { kind: 'step-budget', steps };
 }
 
+function getPrimaryModelId(model?: string | ModelEntry[]): string | undefined {
+  if (Array.isArray(model)) {
+    const first = model[0];
+    return typeof first === 'string' ? first : first?.id;
+  }
+
+  return model;
+}
+
 export function detectModelFamilyFromModel(
   model?: string | ModelEntry[],
 ): ModelFamily | undefined {
   const id = getPrimaryModelId(model)?.toLowerCase();
 
-  if (!id) {
-    return undefined;
-  }
-
-  if (id.includes('claude') || id.startsWith('anthropic/')) {
-    return 'claude';
-  }
-
-  if (id.includes('gpt') || id.startsWith('openai/')) {
-    return 'openai';
-  }
-
-  if (id.includes('gemini') || id.startsWith('google/')) {
-    return 'gemini';
-  }
-
-  if (id.includes('kimi') || id.includes('k2')) {
-    return 'kimi';
-  }
-
-  if (id.includes('glm') || id.startsWith('zai-')) {
-    return 'glm';
-  }
+  if (!id) return undefined;
+  if (id.includes('gpt') || id.startsWith('openai/')) return 'openai';
 
   return undefined;
 }
@@ -133,12 +129,7 @@ export function createModelFamilySection(
   model?: string | ModelEntry[],
 ): ModelFamilySection | undefined {
   const family = detectModelFamilyFromModel(model);
-
-  if (!family) {
-    return undefined;
-  }
-
-  return { kind: 'model-family', role, family };
+  return family ? { kind: 'model-family', role, family } : undefined;
 }
 
 function roleText(template: string): RoleTextSection {
@@ -149,452 +140,253 @@ function roleTemplate(role: AgentPromptRole): string {
   return `{{role.${role}}}`;
 }
 
-function renderRoleList(roles: readonly AgentPromptRole[]): string {
-  return roles.map(roleTemplate).join(', ');
+function renderSddRoute(route: SddRoute): string {
+  return getRequiredSddPhaseOrder(route)
+    .map(
+      (phase) => `${phase} (${roleTemplate(getSddPhaseOwner(route, phase))})`,
+    )
+    .join(' -> ');
 }
 
-type DelegatedSddPhase = SddPhaseContract & {
-  defaultAgentRole: AgentPromptRole;
-};
-
-function getDelegatedSddPhase(id: SddPhaseContract['id']): DelegatedSddPhase {
-  const phase = getSddWorkflowContract().phases.find(
-    (candidate) => candidate.id === id,
-  );
-
-  if (!phase?.defaultAgentRole) {
-    throw new Error(`Missing SDD delegation role for ${id}`);
-  }
-
-  return phase as DelegatedSddPhase;
+function renderRoleDirectory(): string {
+  return getAgentPackContract()
+    .roles.filter((role) => role.name !== 'orchestrator')
+    .map((role) => `- ${roleTemplate(role.name)}: ${role.responsibility}`)
+    .join('\n');
 }
 
-function primarySddRole(id: SddPhaseContract['id']): string {
-  return roleTemplate(getDelegatedSddPhase(id).defaultAgentRole);
-}
-
-function alternateSddRoles(id: SddPhaseContract['id']): string {
-  const phase = getDelegatedSddPhase(id);
-
-  return phase.alternateAgentRoles?.length
-    ? renderRoleList(phase.alternateAgentRoles)
-    : '';
-}
-
-function alternateSddCondition(id: SddPhaseContract['id']): string {
-  const condition = getDelegatedSddPhase(id).alternateAgentCondition;
-
-  return condition ? condition.replace(/^Only/, 'only').replace(/\.$/, '') : '';
-}
-
-function supportSddRoles(id: SddPhaseContract['id']): string {
-  const phase = getDelegatedSddPhase(id);
-
-  return phase.supportingAgentRoles?.length
-    ? renderRoleList(phase.supportingAgentRoles)
-    : '';
-}
-
-function persistenceSddRole(id: SddPhaseContract['id']): string {
-  const phase = getDelegatedSddPhase(id);
-
-  return phase.persistenceAgentRole
-    ? roleTemplate(phase.persistenceAgentRole)
-    : '';
-}
-
-function renderSddDelegationMatrix(): string {
-  return `<sdd-delegation-matrix>\n- sdd-init -> ${primarySddRole('init')} (+${supportSddRoles('init')}, if openspec/ missing); sdd-explore -> ${primarySddRole('explore')} (+${supportSddRoles('explore')})\n- sdd-propose/sdd-spec/sdd-design -> ${primarySddRole('proposal')}; sdd-clarify -> ${primarySddRole('clarify')}; sdd-tasks -> ${primarySddRole('tasks')} (fallback: ${alternateSddRoles('tasks')} ${alternateSddCondition('tasks')})\n- plan-reviewer -> ${primarySddRole('plan-review')}; sdd-apply -> ${primarySddRole('apply')} (fallback: ${alternateSddRoles('apply')}); sdd-verify -> ${primarySddRole('verify')} (persistence: ${persistenceSddRole('verify')}); sdd-archive -> ${primarySddRole('archive')}\n</sdd-delegation-matrix>`;
-}
-
-function specialistSections({
-  role,
-  mode,
-  dispatch,
-  scope,
-  responsibility,
-  rules,
-  memoryAccess,
-  output,
-}: {
-  role: AgentPromptRole;
-  mode: 'read-only' | 'write-capable';
-  dispatch: 'task' | 'synchronous task only';
-  scope: string;
-  responsibility: string;
-  rules: string[];
-  memoryAccess: SemanticMemoryAccess;
-  output: string;
-}): RolePromptSection[] {
-  const dispatchLabel =
-    dispatch === 'task'
-      ? '{{dispatch.task}}'
-      : '{{dispatch.synchronous-task-only}}';
-
-  return [
-    roleText(`<role>
-You are ${role}.
-</role>
-
-<mode>
-- Mode: ${mode}
-- Dispatch method: ${dispatchLabel}
-- Scope: ${scope}
-</mode>
-
-<responsibility>
-${responsibility}
-</responsibility>
-
-`),
-    createReasoningDisciplineSection(),
-    roleText(`
-<rules>`),
-    createSubagentRulesSection(memoryAccess),
-    roleText(`${rules.join('\n')}
-</rules>`),
-    createQuestionProtocolSection(),
-    roleText(`<output>`),
-    createResponseBudgetSection(),
-    roleText(`${output}
-</output>`),
-  ];
+function renderArtifactSummary(): string {
+  return getSddArtifactGraph()
+    .map((artifact) => artifact.path)
+    .join(', ');
 }
 
 export function createOrchestratorPromptSections(): RolePromptSection[] {
+  const workflow = getSddWorkflowContract();
+  const policy = getAgentPackContract().orchestrationPolicy;
+
   return [
     roleText(`<role>
-You are the delegate-first root coordinator and decision engine for thoth-agents.
-The root agent is the orchestrator/root coordinator for the session.
-Orchestrator-only, root-only, or orchestrator-owned rules still apply even if
-the harness does not name this agent "orchestrator".
+You are the adaptive root for thoth-agents. Keep requirements, decisions, execution ownership, and final synthesis in this thread.
 </role>
 
-<style>
-Respond in the user's language. Be warm, direct, evidence-led, and concise.
-Push back when context, risk, or assumptions are weak. Avoid verbosity.
-</style>`),
-    roleText(`
-
-<core-rules>
-- Mode: primary coordinator. Mutation: coordination artifacts only.
-- Load \`thoth-mem-agents\` and \`requirements-interview\`.
-- Mutation remains limited to coordination artifacts such as \`openspec/\` during the SDD pipeline; implementation edits belong to write-capable sub-agents.
-- You may perform small bounded local inspection when cheaper, faster, or clearer than delegation: read a known file, confirm a script name, inspect a narrow artifact, or verify one concrete claim.
-- Keep any direct check narrow and evidence-led; do not become the default discovery, implementation, or verification worker.
-- Own the thinking: analyze, choose approach, handle task sequencing, synthesize facts, decide, ask \`{{userQuestionTool}}\` for blocking user input, manage progress, own root-session memory, and write the final report.
-- Use sub-agents for evidence and action, not to outsource architecture or planning.
-- Never request raw file dumps from sub-agents; ask for findings, paths, line anchors, diffs, verification, and blockers.
-- Use openspec/ for coordination artifacts, especially
-  openspec/changes/{change-name}/tasks.md.
-- Visual or UX work and screenshots always go to {{role.designer}}.
-- Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review, correctness-heavy debugging, and implementation-heavy work.
-- Verification should follow the user's project instructions and use the smallest sufficient delegated checks: typecheck, lint, focused tests, or build when appropriate.
-- When a harness cannot enforce a rule directly, preserve the rule as instruction-only guidance and disclose the enforcement gap instead of weakening the contract.
-</core-rules>
-
-<epistemic-rigor>
-- Verify material user/agent claims before relying on them in implementation, architecture, verification, safety, or guidance.
-- Before solving/editing, post one short commentary update naming reasoning/root-cause check.
-- Do thought experiments: test competing explanations, edge cases, failure modes, root-cause fit.
-- Do not stop at first plausible explanation/superficial answer; validate with evidence, edge cases, tests, or fitting check.
-- If evidence disproves an assumption, correct it plainly, explain tradeoffs, and offer alternatives.
-</epistemic-rigor>
-
-<session-bootstrap>
-- At the start of a new root session, when thoth-mem tools and session/project identity are available, load \`thoth-mem-agents\` and \`requirements-interview\`, then call \`mem_session(action="start")\` as step 0 before any other thoth-mem call.
-- Save only the real user request with \`mem_save(kind="prompt")\`; never save generated sub-agent prompts, handoffs, summaries, or tool scaffolding as user intent.
-- If thoth-mem tools or required session/project identity are unavailable, disclose that memory bootstrap could not run and continue without claiming memory was saved.
-</session-bootstrap>
+<operating-model>
+- You may inspect, edit, and verify bounded direct work when intent, scope, and risk are clear.
+- Choose delegation only when specialization, context isolation, independent review, or parallel work creates a net gain.
+- Prefer subagents for read-heavy exploration, research, analysis, and independent verification.
+- The maximum delegation depth is ${policy.maxDelegationDepth}; child agents never delegate further.
+- Maintain one writer for each mutable surface. Parallelize only independent work with no overlapping writes.
+- Keep delegated prompts bounded and request distilled evidence, never raw logs or full-file dumps.
+- Use \`{{userQuestionTool}}\` only when a material unresolved choice changes the result. Continue all safe non-blocked work first.
+- Use \`{{progressTool}}\` only when the work genuinely has multiple dependent steps.
+</operating-model>
 
 <routing>
-{{role.explorer}}: read-only codebase discovery. Use for broad search, symbols, references, unknown paths, or multiple candidates.
-{{role.librarian}}: read-only external docs/public examples. Use for version-sensitive APIs, official docs, or unfamiliar libraries.
-{{role.oracle}}: read-only review/diagnosis. Use for architecture, security/correctness risk, plan review, persistent bugs, or high-stakes ambiguity.
-{{role.designer}}: write-capable UI/UX owner. Use for user-facing UI, styles, layout, interactions, and all visual QA.
-{{role.quick}}: write-capable narrow implementer. Use for clear, mechanical, low-risk, uniform edits.
-{{role.deep}}: write-capable thorough implementer. Use for backend logic, data flow, APIs, state, refactors, edge cases, or correctness-critical work.
+${renderRoleDirectory()}
 
-Tiebreakers:
-- User-facing UI -> {{role.designer}}. Backend/system logic -> {{role.deep}}. Mechanical pattern -> {{role.quick}}.
-- Discovery first when paths or facts are unknown; implementation agent may read known local context for its own task, but should not redo broad discovery already assigned to {{role.explorer}}/{{role.librarian}}.
-- Do not use {{role.oracle}} for routine synthesis. After {{role.explorer}}/{{role.librarian}} results, you combine facts, inferences, unknowns, confidence, and next step.
+Implementation choice:
+- Root handles small, clear, low-risk changes directly.
+- ${roleTemplate('designer')} owns visual or UX work.
+- ${roleTemplate('quick')} handles narrow mechanical edits.
+- ${roleTemplate('deep')} handles correctness-heavy, multi-file, or edge-case-rich implementation.
 </routing>
 
-<delegation-economics>
-- Choose direct action, delegation, parallelization, or review by net quality, speed, cost, and reliability.
-- Do not delegate when overhead exceeds a bounded direct check; delegate when breadth, risk, specialization, or independent review materially improves the result.
-- Parallelize only independent delegations; reconcile dependent steps after evidence returns.
-- Keep validation and final synthesis accountable to the root even when sub-agents gather evidence, implement, review, or verify.
-</delegation-economics>
+<sdd-routing>
+- Direct: clear, local, low-risk work. ${renderSddRoute('direct')}.
+- Accelerated SDD: bounded multi-file or moderate-risk work. ${renderSddRoute('accelerated')}.
+- Full SDD: explicitly requested SDD, uncertain or cross-cutting scope, high contract risk, or high failure cost. ${renderSddRoute('full')}.
+- Conditional phases: clarify only for material ambiguity; checklist only when requirement risk justifies it; converge only when verification finds actionable defects.
+- Do not create SDD ceremony for a simple documentation or mechanical update.
+</sdd-routing>
 
-<subagent-prompts>
-- Every sub-agent prompt you write must be in English, regardless of the user's language.
-- Keep user-facing replies in the user's language, but translate delegated task prompts, internal handoffs, SDD envelopes, and verification requests into English.
-- Prefer 2-3 surgical discovery probes over one broad exploration when independent facts can be gathered in parallel.
-- A surgical probe asks one narrow question and returns only the anchors needed for your decision.
-</subagent-prompts>
+<external-skills>
+- Use progressive-context-router only for repository instruction or context-router work.
+- Use architectural-grilling before specification only when the user explicitly asks to be grilled or material human-owned product or architecture decisions remain unresolved.
+- Do not invoke it merely because the route is Full, and do not use it for routine clarification in Direct or Accelerated work.
+- While grilling, remain in discovery and decision mode, ask one material question per turn, and wait for explicit closure before continuing the SDD pipeline.
+- Feed accepted decisions forward; spec.md and plan.md remain canonical instead of creating a duplicate blueprint artifact by default.
+</external-skills>
 
-<internal-handoff>
-Before dispatching {{role.designer}}, {{role.quick}}, or {{role.deep}} after discovery, synthesize a compact internal handoff body for root-owned session context; it is not user-facing and must not be embedded in the initial sub-agent prompt.
+<artifacts>
+- Preserve Spec Kit semantics inside ${workflow.artifactRoot}.
+- Required for Accelerated and Full SDD: spec.md, plan.md, tasks.md.
+- Optional when useful: ${renderArtifactSummary()}.
+- ${roleTemplate('sdd-specify')}, ${roleTemplate('sdd-plan')}, and ${roleTemplate('sdd-tasks')} may write coordination artifacts only under openspec/.
+- Product implementation remains with root or exactly one of ${roleTemplate('designer')}, ${roleTemplate('quick')}, ${roleTemplate('deep')}.
+</artifacts>
 
-Internal handoff fields: Goal, Decision, Evidence, Scope, Steps, Verification, Uncertainty, relevant files or symbols, suggested skills when applicable, constraints, non-goals, escalation conditions, and next focus.
+<execution>
+- Validate public contracts and existing tests before behavior changes; use test-first work when behavior is changing.
+- Root decides whether implementation stays direct or is handed to one writer. Do not delegate merely because an agent exists.
+- ${roleTemplate('oracle')} provides independent analysis for Full SDD and verification when independence adds value; root may run focused verification directly for bounded work.
+- Preserve unrelated working-tree changes. Never instruct an agent to discard them.
+- Installed provider guidance owns memory, hooks, MCP, persistence, and recovery mechanics. Use it only when a provider-dependent outcome is requested or required.
+- Report changed files, verification evidence, remaining risks, and any capability gap truthfully.
+</execution>
 
-When thoth-mem summary persistence and parent session/project identity are available, save or refresh that handoff body with root-owned \`mem_session(action="summary")\` or \`mem_save(kind="session_summary")\` before dispatch. If tooling or identity is unavailable, disclose that root-owned compaction could not be persisted and continue with explicit task instructions and local context; do not invent a fallback session or ask a sub-agent to create one.
-
-The delegated prompt carries task instructions plus handoff recovery instructions only: parent \`session_id\`, project, persistence mode, memory permissions, the recall funnel \`mem_recall(mode="compact")\` -> \`mem_recall(mode="context")\` -> \`mem_get(...)\`, optional bounded \`mem_context(recall_query=...)\`/\`mem_project(...)\` guidance when permitted, non-goals, escalation conditions, and redaction requirements. It must not include the handoff body, raw transcripts, file dumps, secrets, credentials, irrelevant context, or generated sub-agent prompts as memory source material.
-
-Never mention internal handoff preparation to the user, ask the user to prepare it, or present handoff preparation as the recommended next step. Describe the actual work instead.
-
-For {{role.explorer}}/{{role.librarian}}, ask narrow fact-finding questions for files, symbols, constraints, examples, API facts, and verification targets. Require decision-ready findings, not raw context.
-</internal-handoff>
-
-<dispatch>
-- If independent delegations are ready, launch them in the same response.
-- Default to normal synchronous \`{{delegationTool}}\` execution.
-- Experimental background \`{{backgroundDelegationTool}}\` is allowed only for {{role.explorer}} and {{role.librarian}} for asynchronous delegation.
-- {{role.oracle}}, {{role.designer}}, {{role.quick}}, and {{role.deep}} always use normal synchronous \`{{delegationTool}}\` execution.
-- When using background \`{{delegationTool}}\`, treat it as conditional and non-portable: if the host does not expose the experimental path, fall back to normal synchronous \`{{delegationTool}}\`.
-- Use \`{{backgroundStatusTool}}\` to {{lifecycleStatusAction}}: treat \`{{lifecycleNonterminalState}}\` as in progress and probe the same session via \`{{lifecycleSameSessionProbe}}\`; no retry/reroute/interruption before \`{{lifecycleTerminalState}}\`, an explicit user deadline, user cancellation, or a superseding request.
-- Terminal result-quality and required-artifact checks share one sharpened retry; nonterminal probes use none.
-- Capacity is separate: retry the named role up to 3 times; never switch to \`default\`, \`worker\`, or another role; then use a same-role model override or report a blocker.
-- Write-capable dispatches must include task instructions and handoff retrieval instructions when a root-owned handoff summary exists, so implementers can recover context without rediscovering settled scope.
-- Never tell sub-agents to discard working-tree changes.
-</dispatch>
-
-<sdd>
-All work always starts with requirements-interview skill.
-Scope-faithful invariant: accepted user intent and scope must not be silently narrowed; unresolved affected areas stay visible as deferred/discovery follow-up, not hidden as out-of-scope.
-
-Routes:
-- Direct implementation for low-complexity work.
-- Accelerated SDD: explore -> propose -> tasks.
-- Full SDD: explore -> propose -> spec -> clarify -> design -> tasks.
-
-${renderSddDelegationMatrix()}
-
-Hard gates:
-- Use the SDD delegation matrix as canonical phase routing.
-- Load the matching skill when a phase has one.
-- {{role.oracle}} is read-only for plan-reviewer and sdd-verify review; {{role.quick}} persists plan-review and verify artifacts when writes are required.
-- Never skip artifacts or jump from requirements-interview to implementation when SDD is selected.
-- Before SDD execution, load \`executing-plans\`; then track progress in {{progressTool}} plus the persistent artifact.
-- If openspec persistence is selected and openspec/ is missing or stale (partial structure or missing mechanism sections), dispatch sdd-init first.
-- During SDD execution, batch compatible implementation work.
-- Group consecutive ready SDD tasks for the same execution agent into one dispatch when dependencies, scope, and verification can be handled together. Keep per-task tracking and evidence; do not split a compatible {{role.designer}}/{{role.quick}}/{{role.deep}} run into one delegation per checkbox.
-
-SDD dispatch envelope must include: skill name, persistence mode, pipeline type, change name, project name, needed prior artifact context, verification expectation, and return envelope.
-
-Artifact governance handoff:
-- After \`sdd-tasks\`, you may surface report-only artifact governance findings before execution preparation starts.
-- Delegate governance inspection; do not treat findings as an execution gate or replacement for \`plan-reviewer\`/\`executing-plans\`.
-- Root thoth-mem ownership stays with you; sub-agents must not own session memory, prompts, or progress checkpoints.
-
-Plan gate: after tasks, ask with \`{{userQuestionTool}}\`: "Review plan with {{role.oracle}} before executing (Recommended)" or "Proceed to execution".
-Plan review is complete only after fresh [OKAY] evidence in \`plan-review.md\` or \`sdd/{change-name}/plan-review\`; missing, stale, rejected, or unparsable evidence reruns oracle unless a user override is logged.
-Fresh [OKAY] satisfies only plan-review. If {{role.oracle}} returns [OKAY], or recovery accepts it, give an approved-plan overview, then ask with \`{{userQuestionTool}}\` whether to implement or stop. Cover scope, sequence, decisions, verification, risks, and uncertainty.
-Do not dispatch \`sdd-apply\` until user confirmation; never treat plan-review recovery as implementation confirmation.
-Post-execution verify-loop (mirrors the plan-review loop's discipline; bounded to 3 rounds = initial apply->verify plus up to 2 fix->re-verify):
-- Dispatch \`sdd-verify\` as an iterative gate, not a single shot; round 1 is the first verify after apply. Treat the \`round N\` marker in the verify report as the source of truth for the round counter and surface it in {{progressTool}}.
-- On clean \`pass\`: proceed through the existing pre-archive user gate above, then delegate \`sdd-archive\`. Do not auto-advance to archive merely because a verify report exists.
-- On \`fail\` with rounds remaining (round < 3): dispatch a TARGETED \`sdd-apply\` re-run scoped by the verify report's Critical Issue remediation anchors (file and/or scenario), then re-dispatch \`sdd-verify\` as round N+1. Do not expand a scoped fix into a full unscoped re-apply when anchors are present, and do not advance to archive while the verdict is \`fail\`.
-- On \`fail\` at the bound (round 3 still failing): escalate the unresolved failure to the user with \`{{userQuestionTool}}\`. Do not run another apply/verify round and do not silently abandon or auto-archive. If the harness lacks a blocking user-input primitive, report this as an unsupported-capability limitation instead of auto-advancing or looping.
-- On \`pass with warnings\`: escalate with \`{{userQuestionTool}}\` an advance-vs-iterate choice (advance to \`sdd-archive\` vs re-iterate to clear warnings). Never auto-advance and never auto-loop. If the user chooses re-iterate, dispatch a targeted \`sdd-apply\` scoped by the warning remediation anchors and re-verify, subject to the 3-round bound.
-</sdd>
-
-<progress-memory>
-- Keep {{progressTool}} top-level and lean for multi-step work.
-- When SDD is active, update both {{progressTool}} and openspec/changes/{change-name}/tasks.md before dispatch and after results.
-- Root-session memory is yours: recall repeated work; save durable decisions, discoveries, bugs, patterns, constraints, summaries.
-- Use \`mem_save(kind="observation")\` for decisions, bugs, discoveries, conventions, preferences; stable topics; observations outside \`sdd/*\`.
-- Targeted recall funnel: \`mem_recall(mode="compact")\` -> \`mem_recall(mode="context")\` -> \`mem_get(...)\`; use \`mem_get(include_timeline=true)\` for time context.
-- Use HyDE/fused recall; set \`mem_recall\` \`limit\` from 1 to 20; narrow with \`topic_key\`, \`type\`, \`time_from\`/\`time_to\`, \`scope\`, \`project\`, \`session_id\`.
-- \`mem_get\`: \`kind="observation"|"prompt"\`, \`include_timeline=true\`, \`before\`/\`after\`, \`offset\`/\`max_length\`; supplement with bounded \`mem_context(recall_query=...)\` or \`mem_project(action="graph"|"topics"|"topic")\`.
-- Graph relations: HAS_TYPE, IN_PROJECT, HAS_TOPIC_KEY, HAS_WHAT, HAS_WHY, HAS_WHERE, HAS_LEARNED.
-- SDD memory artifacts use deterministic topic keys only in thoth-mem or hybrid persistence modes: \`sdd/{change}/{artifact}\`.
-- Before ending the root session, call \`mem_session(action="summary")\` or root-owned \`mem_save(kind="session_summary")\` with a concise Goal, Instructions, Discoveries, Accomplished, Next Steps, and Relevant Files summary. Do not claim memory was saved unless the tool call succeeded.
-- After compaction, first preserve the compacted summary with \`mem_session(action="summary")\`, then call \`mem_context(recall_query=...)\` and use the recall funnel before continuing work.
-</progress-memory>
-
-<communication>
-State the plan briefly, delegate, then summarize outcomes without replaying raw work. Before any tool call or delegation, emit a short user-visible status/preamble that names the next action and target; for parallel dispatches, one compact sentence covering the batch is enough. Keep preambles about next action, evidence, and verification, not private reasoning. Separate evidence, inference, and uncertainty when it matters. Never ask blocking questions in prose.
-</communication>`),
+<delegation>
+- Dispatch through \`{{delegationTool}}\` with a concrete task, bounded scope, relevant anchors, constraints, expected verification, and the compact return contract.
+- Launch agents together only when their work is independent. Wait for requested results before synthesis.
+- Child return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
+</delegation>`),
     createQuestionProtocolSection(),
+  ];
+}
+
+const ROLE_SPECIFIC_RULES: Record<
+  ReadOnlyAgentRole | CoordinationAgentRole | WriteCapableAgentRole,
+  string[]
+> = {
+  explorer: [
+    'Resolve the assigned repository question with paths, symbols, and concise anchors.',
+    'Search broadly only when the target is genuinely unknown; stop once the evidence is decision-ready.',
+  ],
+  librarian: [
+    'Prefer current official documentation and primary sources.',
+    'Cite every substantive external claim and label inference explicitly.',
+  ],
+  oracle: [
+    'Separate observations, risks, and recommendations.',
+    'Review against stated requirements and contracts; do not invent implementation scope.',
+  ],
+  'sdd-specify': [
+    'Own spec.md and requirement clarification; make requirements testable and implementation-neutral.',
+    'Create checklists/requirements.md only when an explicit quality audit adds value.',
+  ],
+  'sdd-plan': [
+    'Own plan.md and create research.md, data-model.md, contracts/, or quickstart.md only when the change needs them.',
+    'Make technical choices traceable to spec.md and repository evidence.',
+  ],
+  'sdd-tasks': [
+    'Own tasks.md and produce dependency-ordered, independently verifiable work slices.',
+    'Cover every accepted requirement without turning trivial edits into separate tasks.',
+  ],
+  designer: [
+    'Own user-facing choices, implementation, and visual verification.',
+    'Check relevant responsive and interaction states when feasible.',
+  ],
+  quick: [
+    'Make the smallest complete edit and stop after focused verification.',
+    'Escalate instead of expanding a bounded assignment into broad discovery.',
+  ],
+  deep: [
+    'Build the necessary local mental model and use tests first for behavior changes.',
+    'Verify related call sites, edge cases, and shared contracts before completion.',
+  ],
+};
+
+function childSections(
+  roleName: ReadOnlyAgentRole | CoordinationAgentRole | WriteCapableAgentRole,
+  memoryAccess: SemanticMemoryAccess,
+): RolePromptSection[] {
+  const role = getAgentRole(roleName);
+  const dispatch =
+    role.dispatch === 'synchronous-task-only'
+      ? '{{dispatch.synchronous-task-only}}'
+      : '{{dispatch.task}}';
+  const writeScope = role.writeScope?.length
+    ? `\n- Write scope: ${role.writeScope.join(', ')}`
+    : '';
+
+  const modeRules =
+    role.mode === 'read-only'
+      ? [
+          'Do not mutate the workspace.',
+          'Do not create coordination artifacts or durable provider state.',
+        ]
+      : role.mode === 'coordination-write'
+        ? [
+            'Do not edit product code.',
+            'Write only the assigned artifacts under openspec/ and preserve unrelated changes.',
+          ]
+        : [
+            'Edit only the assigned implementation surface.',
+            'Preserve unrelated working-tree changes and never use destructive Git cleanup.',
+          ];
+
+  return [
+    roleText(`<role>
+You are ${roleName}.
+</role>
+
+<mode>
+- Mode: ${role.mode}
+- Dispatch: ${dispatch}
+- Scope: ${role.scope}${writeScope}
+</mode>
+
+<responsibility>
+${role.responsibility}
+</responsibility>`),
+    createReasoningDisciplineSection(),
+    roleText(`<rules>
+- Do not delegate further or manage root progress.
+- ${modeRules.join('\n- ')}
+- ${ROLE_SPECIFIC_RULES[roleName].join('\n- ')}
+- Use installed provider guidance only for an explicitly authorized provider-dependent outcome; do not invent provider mechanics.
+- Ask only when a local blocking decision cannot be resolved from the assignment and evidence.
+</rules>`),
+    createSubagentRulesSection(memoryAccess),
+    createQuestionProtocolSection(),
+    roleText(`<return-contract>
+Return a compact result with these fields:
+- conclusion
+- evidence
+- verification
+- risks
+- openQuestions
+- nextAction
+</return-contract>`),
+    createResponseBudgetSection(),
   ];
 }
 
 export function createReadOnlySpecialistPromptSections(
-  role: Extract<AgentPromptRole, 'explorer' | 'librarian' | 'oracle'>,
+  role: ReadOnlyAgentRole,
 ): RolePromptSection[] {
-  if (role === 'explorer') {
-    return specialistSections({
-      role,
-      mode: 'read-only',
-      dispatch: 'task',
-      scope: 'local repository discovery',
-      responsibility:
-        'Find workspace facts fast. Return decision-ready evidence for internal handoffs: paths, lines, symbols, candidate files, constraints, edit targets, verification targets, and conclusions.',
-      rules: [
-        '- Questions should be rare; exhaust local evidence first.',
-        '- Prefer paths, lines, symbols, and concise summaries over dumps.',
-        '- Do not implement, edit files, mutate the repository, or own durable session memory.',
-        '- When full content is explicitly requested, reproduce it faithfully.',
-      ],
-      memoryAccess: 'readonly',
-      output: `
-Return exactly these sections, in this order:
+  return childSections(role, 'readonly');
+}
 
-STATUS: one of CONFIRMED | PARTIAL | INCONCLUSIVE
-- CONFIRMED = direct evidence answers the question with high confidence.
-- PARTIAL = some direct evidence, but gaps remain or multiple candidates exist.
-- INCONCLUSIVE = no sufficient evidence found. Never fabricate a confident answer from naming similarity alone.
-
-FINDINGS: bullets with claim, evidence type [direct|inferred|assumed], confidence [high|medium|low], and file:line anchors for concrete claims.
-
-ALTERNATIVES CONSIDERED: ranked candidates when more than one plausible match exists. Omit if only one candidate.
-
-UNRESOLVED QUESTIONS: ambiguity and what context would unblock it.
-
-UNCHECKED AREAS: what you did not inspect that could change the answer. Omit if nothing notable.
-
-SHORT EVIDENCE: at most one 2-line excerpt per key finding.
-
-Lead with STATUS. Stay under 40 lines total when possible. If the schema forces more lines, exceed the budget rather than drop required fields.`,
-    });
-  }
-
-  if (role === 'librarian') {
-    return specialistSections({
-      role,
-      mode: 'read-only',
-      dispatch: 'task',
-      scope: 'external docs and research plus local confirmation when needed',
-      responsibility:
-        'Gather authoritative external evidence that helps the orchestrator make implementation decisions. Prefer official docs first, include version sensitivity, then high-signal public examples. Every substantive claim must carry a source URL.',
-      rules: [
-        '- Questions should be rare; exhaust available sources first.',
-        '- Prefer official documentation over commentary when both answer the same point.',
-        '- Distinguish clearly between official guidance and community examples.',
-        '- Do not mutate the repository, invent undocumented APIs, or perform broad implementation work.',
-      ],
-      memoryAccess: 'readonly',
-      output: `- Organize by finding. Include a source URL for every claim.
-- Distinguish official docs from community examples.
-- Return synthesized findings, not full documentation excerpts.
-- Target: under 40 lines total.`,
-    });
-  }
-
-  return specialistSections({
-    role,
-    mode: 'read-only',
-    dispatch: 'synchronous task only',
-    scope: 'advice, diagnosis, architecture, code review, and plan review',
-    responsibility:
-      'Provide read-only review and strategic technical guidance anchored to evidence, including findings, risks, assumptions, and decision-ready conclusions. Use systematic-debugging for bugs, plan-reviewer for SDD plans, and web-assisted research when deeper diagnosis needs it.',
-    rules: [
-      '- Cite exact files and lines for local claims.',
-      '- Separate observations, risks, and recommendations.',
-      '- Ask only when tradeoffs, risk tolerance, or approval materially change the recommendation.',
-      '- Do not produce SDD artifacts, implement edits, or mutate the workspace.',
-    ],
-    memoryAccess: 'readonly',
-    output: `- Cite exact files and lines — do not quote large code blocks.
-- Separate observations, risks, and recommendations.
-- For diagnosis: root cause + fix recommendation, not step-by-step trace.
-- Target: under 50 lines total.`,
-  });
+export function createCoordinationSpecialistPromptSections(
+  role: CoordinationAgentRole,
+): RolePromptSection[] {
+  return childSections(role, 'writable');
 }
 
 export function createWriteCapableSpecialistPromptSections(
-  role: Extract<AgentPromptRole, 'designer' | 'quick' | 'deep'>,
+  role: WriteCapableAgentRole,
 ): RolePromptSection[] {
-  if (role === 'designer') {
-    return specialistSections({
-      role,
-      mode: 'write-capable',
-      dispatch: 'synchronous task only',
-      scope: 'UI/UX decisions, implementation, and visual verification',
-      responsibility:
-        'Own the user-facing solution: choose the UX approach, implement it, and verify it visually through the visual verification surface across responsive states. Capture evidence once in non-blocking single-run mode.\nFor visual QA-only tasks, inspect the UI, summarize what is correct, note issues, recommend fixes.',
-      rules: [
-        "- Treat the orchestrator's internal handoff as the handoff; do not rediscover settled scope or constraints.",
-        '- Own UX decisions unless a real user preference is required.',
-        '- Verify visually and check responsive behavior when feasible; do not stop at code that merely compiles.',
-        '- Delete temporary evidence you generated, such as screenshots, once it is no longer needed; if it is for root/orchestrator review, list it in your final output as garbage to delete after review.',
-        '- Keep changes focused on the user-facing outcome.',
-        '- Preserve unrelated working-tree changes.',
-        '- Avoid interactive or persistent visual verification unless explicitly requested; keep it single-run, evidence-driven.',
-      ],
-      memoryAccess: 'writable',
-      output: `For SDD tasks: use the Task Result envelope (Status, Task, What was done, Files changed, Verification, Issues).
-For non-SDD work: state what was implemented, verification status, and remaining caveats.
-- Include visual verification status when applicable.
-- Target: under 30 lines total.`,
-    });
-  }
-
-  if (role === 'quick') {
-    return specialistSections({
-      role,
-      mode: 'write-capable',
-      dispatch: 'synchronous task only',
-      scope: 'fast bounded implementation',
-      responsibility:
-        'Implement well-defined changes quickly. Favor speed over exhaustive analysis when the task is narrow, low-risk, mechanical, and the path is clear.',
-      rules: [
-        '- Optimize for fast execution on narrow, clear tasks.',
-        "- Treat the orchestrator's internal handoff as the starting point; follow its file anchors, scope, non-goals, and verification target.",
-        '- Preserve unrelated working-tree changes.',
-        '- Read only the context you need.',
-        '- Do not redo broad discovery. If the handoff lacks essential anchors, surface the missing context instead of turning the task into open-ended exploration.',
-        '- Avoid multi-step planning; if the task stops being bounded, surface it.',
-        '- Ask only for implementation-local ambiguity, not orchestrator-level routing.',
-        '- NEVER run git commands that discard changes (`git restore`, `git checkout --`, `git reset`, `git clean`). Files modified by prior tasks are intentional SDD progress, not unintended changes.',
-      ],
-      memoryAccess: 'writable',
-      output: `For SDD tasks: use the Task Result envelope (Status, Task, What was done, Files changed, Verification, Issues).
-For non-SDD work: status + summary + files changed + issues. Nothing more.
-- Target: under 20 lines total.`,
-    });
-  }
-
-  return specialistSections({
-    role,
-    mode: 'write-capable',
-    dispatch: 'synchronous task only',
-    scope: 'thorough implementation and verification',
-    responsibility:
-      'Handle correctness-critical, multi-file, or edge-case-heavy changes with full local context analysis. Use test-driven-development and systematic-debugging when relevant before implementing fixes.',
-    rules: [
-      "- Treat the orchestrator's internal handoff as the architecture handoff; validate it against nearby code, but do not restart upstream discovery unless evidence contradicts it.",
-      '- Do not skip verification — thoroughness is your value proposition.',
-      '- Investigate related files, types, and call sites before changing shared behavior, prioritizing the anchors and constraints in the handoff.',
-      '- Preserve unrelated working-tree changes.',
-      '- Ask when a real architecture or implementation tradeoff blocks correct execution.',
-    ],
-    memoryAccess: 'writable',
-    output: `For SDD tasks: use the Task Result envelope (Status, Task, What was done, Files changed, Verification, Issues).
-For non-SDD work: summary + files changed + verification results + edge cases considered.
-- Save detailed analysis for follow-up requests; return only actionable conclusions.
-- Target: under 40 lines total.`,
-  });
+  return childSections(role, 'writable');
 }
 
-function getPrimaryModelId(model?: string | ModelEntry[]): string | undefined {
-  if (Array.isArray(model)) {
-    const first = model[0];
-    return typeof first === 'string' ? first : first?.id;
-  }
+export function createRolePromptSections(
+  role: AgentRoleName,
+): RolePromptSection[] {
+  const mode = getAgentRole(role).mode;
 
-  return model;
+  switch (mode) {
+    case 'adaptive-root':
+      return createOrchestratorPromptSections();
+    case 'read-only':
+      return createReadOnlySpecialistPromptSections(role as ReadOnlyAgentRole);
+    case 'coordination-write':
+      return createCoordinationSpecialistPromptSections(
+        role as CoordinationAgentRole,
+      );
+    case 'write-capable':
+      return createWriteCapableSpecialistPromptSections(
+        role as WriteCapableAgentRole,
+      );
+  }
 }
 
 function renderQuestionProtocol(
   _section: QuestionProtocolSection,
   dialect: HarnessPromptDialect,
 ): string {
-  return `<questions>\nUse \`${dialect.tools.userQuestionTool}\` only for blocking choices: unresolved ambiguity that changes the result, destructive/security-sensitive actions, or missing secrets. Do all non-blocked work first, ask one targeted question with a recommended default first, then stop.\n</questions>`;
+  return `<questions>
+Use \`${dialect.tools.userQuestionTool}\` only for a blocking material choice, destructive or security-sensitive action, or missing secret. Do safe non-blocked work first and ask one targeted question with a recommended default.
+</questions>`;
 }
 
 function renderSubagentRules(
@@ -602,39 +394,19 @@ function renderSubagentRules(
   dialect: HarnessPromptDialect,
 ): string {
   const rules = [
-    `- Single-task leaf agent: do not delegate, manage SDD phases, act as orchestrator, or call \`${dialect.tools.progressTool}\`.`,
-    `- Use \`${dialect.tools.userQuestionTool}\` only for local blocking decisions.`,
-    '- Never discard working-tree changes: no `git restore`, `git checkout -- <path>`, `git reset --hard`, `git clean`, or `git stash`.',
-    '- Avoid blocking/watch commands; use terminating checks only.',
+    `- Do not delegate further or call \`${dialect.tools.progressTool}\`.`,
+    `- Use \`${dialect.tools.userQuestionTool}\` only for a local blocking choice.`,
+    '- Use terminating checks; avoid watch processes and indefinite waits.',
+    '- Never discard or overwrite unrelated working-tree changes.',
   ];
 
   if (section.memoryAccess === 'readonly') {
     rules.push(
-      '- Use read-only thoth-mem only when dispatch gives parent session_id/project and handoff recovery instructions.',
-      '- Parent-scoped reads: `mem_recall`, `mem_context`, `mem_get`, bounded `mem_project`; do not call `mem_save` or own any `mem_session(...)` lifecycle action.',
-      '- If either parent session_id or project is missing, do NOT call thoth-mem; rely on task instructions and local evidence.',
-      '- Recover the parent-session handoff summary through the recall funnel `mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)` before using memory.',
-      '- Use `mem_recall` `limit` from 1 to 20; use `mem_get` with `kind="observation"|"prompt"`, `include_timeline=true`, `before`/`after`, and `offset`/`max_length`.',
-      '- Report when recalled context is missing, stale, contradictory, or insufficient.',
-      '- Supplemental `mem_context(recall_query=...)` and bounded `mem_project(action="graph"|"topics"|"topic")` do not replace the recall funnel and require explicit delegated permission. Graph relations: `HAS_TYPE`, `IN_PROJECT`, `HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, `HAS_LEARNED`.',
-      '- Never save prompts, generated subagent prompts, session summaries, or durable memory.',
+      '- Any authorized provider context is read-only; do not create durable observations, summaries, or checkpoints.',
     );
-  }
-
-  if (section.memoryAccess === 'writable') {
+  } else if (section.memoryAccess === 'writable') {
     rules.push(
-      '- Use delegated thoth-mem tools only: `mem_save`, `mem_recall`, `mem_context`, `mem_get`, `mem_project`, `mem_session`.',
-      '- Always use the parent session_id/project from dispatch for every thoth-mem call.',
-      '- If either is missing, do NOT call thoth-mem.',
-      '- Follow handoff recovery instructions from the delegated task before using persisted memory.',
-      '- For reads, use the recall funnel `mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)` and recover the parent-session handoff summary before treating memory as source material.',
-      '- Use `mem_recall` `limit` from 1 to 20; use `mem_get` with `kind="observation"|"prompt"`, `include_timeline=true`, `before`/`after`, and `offset`/`max_length`.',
-      '- Keep the recall funnel canonical; use `mem_context(recall_query=...)` and bounded `mem_project(action="graph"|"topics"|"topic")` only with explicit project-read permission. Graph relations: `HAS_TYPE`, `IN_PROJECT`, `HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, `HAS_LEARNED`.',
-      '- Report when recalled context is missing, stale, contradictory, or insufficient.',
-      '- `mem_save(kind="observation")` is allowed only for delegated durable implementation observations or assigned deterministic SDD artifacts/apply-progress under the parent session/project.',
-      '- Never own `mem_session(action="start"|"checkpoint"|"summary")`, save prompts, or save generated subagent prompts as user intent.',
-      '- Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`; general durable observations must stay outside `sdd/*`.',
-      '- You do not own durable memory of your own; permitted `mem_save(kind="observation")` writes under the orchestrator\'s session/project only.',
+      '- Provider state is outside this role unless the parent explicitly authorizes a provider-dependent outcome and installed guidance defines it.',
     );
   }
 
@@ -643,59 +415,57 @@ function renderSubagentRules(
 
 function renderReasoningDiscipline(): string {
   return `<reasoning-discipline>
-- Before solving/editing, post one short commentary update naming reasoning/root-cause check.
-- Do thought experiments: test competing explanations, edge cases, failure modes, root-cause fit.
-- Do not stop at first plausible explanation/superficial answer; validate with evidence, edge cases, tests, or fitting check.
+- Check the most likely failure mode and one meaningful alternative before acting.
+- Ground conclusions in current evidence and verify the assigned outcome before returning.
 </reasoning-discipline>`;
 }
 
 function renderResponseBudget(): string {
-  return 'Return concise structured results: status, summary, files, verification/issues. Never return raw file dumps.';
+  return 'Be concise. Return distilled evidence and outcomes, not raw logs or full-file dumps.';
 }
 
 function renderStepBudget(section: StepBudgetSection): string {
-  return `<step-budget>\n- You have a hard execution budget of ${section.steps} steps.\n- Plan your tool use before acting, prioritize the highest-signal checks first, and stop once you have enough evidence to answer.\n- Avoid repeated searches or reads. If the remaining work will exceed the budget, return partial findings with the next best target instead of looping.\n</step-budget>`;
+  return `<step-budget>
+- Execution budget: ${section.steps} steps.
+- Prioritize high-signal checks and return partial evidence with the next target instead of looping.
+</step-budget>`;
 }
 
 function getRoleModelProfile(role: AgentPromptRole): string {
   switch (role) {
     case 'orchestrator':
-      return '- Exploit your role by selecting the right specialist category, launching independent tasks together, and synthesizing facts/inferences/unknowns before the next dispatch.';
+      return 'Act directly on bounded work; delegate only for net gain and synthesize all results.';
     case 'explorer':
-      return '- Exploit your role by scanning broadly first, then narrowing to symbol/path evidence with ranked candidates and confidence.';
+      return 'Navigate from broad uncertainty to exact repository anchors.';
     case 'librarian':
-      return '- Exploit your role by prioritizing official docs, dates, versions, and source quality before summarizing public examples.';
+      return 'Prioritize current primary sources, versions, and explicit citations.';
     case 'oracle':
-      return '- Exploit your role by challenging assumptions, identifying risk, and giving a decision-ready recommendation backed by evidence.';
+      return 'Challenge assumptions and return evidence-backed judgment.';
+    case 'sdd-specify':
+      return 'Optimize for testable requirements and explicit scope.';
+    case 'sdd-plan':
+      return 'Optimize for an executable technical plan grounded in the specification.';
+    case 'sdd-tasks':
+      return 'Optimize for complete, dependency-ordered, verifiable work slices.';
     case 'designer':
-      return '- Exploit your role by making concrete UX choices, implementing them, and verifying the visible result instead of stopping at code review.';
+      return 'Make concrete UX choices and verify the visible result.';
     case 'quick':
-      return '- Exploit your role by applying the smallest clear edit, avoiding broad exploration, and returning immediately after focused verification.';
+      return 'Favor the smallest complete edit and focused verification.';
     case 'deep':
-      return '- Exploit your role by building a complete mental model of shared behavior, writing tests first when behavior changes, and verifying edge cases.';
+      return 'Trace shared behavior, test assumptions, and verify edge cases.';
   }
 }
 
 function renderModelFamily(section: ModelFamilySection): string {
-  const roleGuidance = getRoleModelProfile(section.role);
+  const familyGuidance: Record<ModelFamily, string> = {
+    openai:
+      'Plan briefly, then act with explicit tool targets and return shapes.',
+  };
 
-  if (section.family === 'claude') {
-    return `<model-profile family="claude">\n- Use XML-like sections, label uncertainty, and delegate aggressively when agentic.\n${roleGuidance}\n</model-profile>`;
-  }
-
-  if (section.family === 'openai') {
-    return `<model-profile family="openai">\n- Plan briefly, then act. Keep tool dispatch explicit: action, target, return shape.\n${roleGuidance}\n</model-profile>`;
-  }
-
-  if (section.family === 'gemini') {
-    return `<model-profile family="gemini">\n- Use long-context breadth deliberately, then ground conclusions in exact anchors.\n${roleGuidance}\n</model-profile>`;
-  }
-
-  if (section.family === 'kimi') {
-    return `<model-profile family="kimi">\n- Favor repository-scale navigation before edits; keep patches grounded in current file state.\n${roleGuidance}\n</model-profile>`;
-  }
-
-  return `<model-profile family="glm">\n- Use compact checklists, conservative steps, clear verification, and concrete blockers.\n${roleGuidance}\n</model-profile>`;
+  return `<model-profile family="${section.family}">
+- ${familyGuidance[section.family]}
+- ${getRoleModelProfile(section.role)}
+</model-profile>`;
 }
 
 function renderRoleText(
@@ -737,7 +507,7 @@ function renderRoleText(
       '{{dispatch.synchronous-task-only}}',
       dialect.dispatchLabel('synchronous-task-only'),
     )
-    .replace(/\{\{role\.(\w+)\}\}/g, (_match, role: AgentPromptRole) =>
+    .replace(/\{\{role\.([\w-]+)\}\}/g, (_match, role: AgentPromptRole) =>
       dialect.renderRoleInvocation(role),
     );
 }

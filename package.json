@@ -1,7 +1,7 @@
 {
   "name": "thoth-agents",
-  "version": "0.2.11",
-  "description": "Delegate-first OpenCode plugin with seven agents, thoth-mem persistence, and bundled SDD skills.",
+  "version": "0.3.0",
+  "description": "Adaptive multi-harness orchestration with ten roles, Spec Kit-compatible SDD routes, and external provider boundaries.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -22,7 +22,7 @@
     "llm",
     "claude",
     "gpt",
-    "gemini"
+    "sdd"
   ],
   "repository": {
     "type": "git",
@@ -34,15 +34,18 @@
   "homepage": "https://github.com/EremesNG/thoth-agents#readme",
   "files": [
     "dist",
-    "src/skills",
-    "src/skills/_shared",
+    "integrations",
+    ".agents/plugins/marketplace.json",
+    ".claude-plugin/marketplace.json",
     "thoth-agents.schema.json",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup && tsc --emitDeclarationOnly && pnpm run generate-schema",
+    "build": "pnpm run integration:sync && tsup && tsc --emitDeclarationOnly && pnpm run generate-schema",
     "generate-schema": "tsx scripts/generate-schema.ts",
+    "integration:sync": "tsx src/harness/generate-integration-packages.ts",
+    "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts src/harness/integration-lifecycle.test.ts",
     "release:notes": "tsx scripts/generate-release-notes.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -51,16 +54,17 @@
     "check": "biome check --write .",
     "check:ci": "biome check .",
     "dev": "pnpm run build && opencode",
-    "prepublishOnly": "pnpm run build",
-    "release:patch": "npm version patch && git push --follow-tags",
-    "release:minor": "npm version minor && git push --follow-tags",
-    "release:major": "npm version major && git push --follow-tags"
+    "prepublishOnly": "pnpm run build && pnpm run integration:verify",
+    "version": "pnpm run integration:sync && pnpm run integration:verify && git add -- integrations .agents/plugins/marketplace.json .claude-plugin/marketplace.json",
+    "release:patch": "npm version patch --ignore-scripts=false && git push --follow-tags",
+    "release:minor": "npm version minor --ignore-scripts=false && git push --follow-tags",
+    "release:major": "npm version major --ignore-scripts=false && git push --follow-tags"
   },
   "dependencies": {
     "@ast-grep/cli": "^0.40.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "@opencode-ai/plugin": "1.4.7",
-    "@opencode-ai/sdk": "1.4.7",
+    "@opencode-ai/plugin": "1.18.2",
+    "@opencode-ai/sdk": "1.18.2",
     "ink": "^7.0.3",
     "react": "^19.2.6",
     "unique-names-generator": "^4.7.1",

@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -7,7 +8,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { ProviderEvidenceInput } from '../../harness/types';
 import { applyCodexSetup, buildCodexSetupPlan } from '../codex-install';
 import {
   applyCodexPlan,
@@ -18,8 +20,43 @@ import {
   getCodexStatus,
   resolveCodexEffort,
 } from './codex';
+import type { HarnessStatusReport } from './types';
+
+const installRequiredSkillMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../skills', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../skills')>();
+  return { ...actual, installRequiredSkill: installRequiredSkillMock };
+});
 
 const PACKAGE_ROOT = process.cwd();
+
+function requiredSkillPath(home: string, name: string): string {
+  return join(home, '.codex', 'skills', name, 'SKILL.md');
+}
+
+function writeRequiredSkills(home: string): void {
+  for (const name of [
+    'simplify',
+    'tdd',
+    'progressive-context-router',
+    'architectural-grilling',
+  ]) {
+    const path = requiredSkillPath(home, name);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, `---\nname: ${name}\n---\n`);
+  }
+}
+
+beforeEach(() => {
+  installRequiredSkillMock.mockReset();
+  installRequiredSkillMock.mockImplementation((skill, harness, options) => {
+    const path = requiredSkillPath(options.homeDir, skill.skillName);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, `---\nname: ${skill.skillName}\n---\n`);
+    return { skill, harness, skillPath: path, status: 'installed' };
+  });
+});
 
 function context(dir: string, home: string) {
   return {
@@ -28,6 +65,11 @@ function context(dir: string, home: string) {
     packageRoot: PACKAGE_ROOT,
   };
 }
+
+const getCodexStatusWithEvidence = getCodexStatus as unknown as (
+  operationContext: ReturnType<typeof context>,
+  evidence?: ProviderEvidenceInput,
+) => HarnessStatusReport;
 
 function setup(dir: string, home: string): void {
   const result = applyCodexSetup(
@@ -41,6 +83,7 @@ function setup(dir: string, home: string): void {
     }),
   );
   expect(result.success).toBe(true);
+  writeRequiredSkills(home);
 }
 
 function rolePath(home: string, role: string): string {
@@ -86,7 +129,7 @@ describe('Codex operations adapter', () => {
       resolveCodexEffort({ ...base, effort: { kind: 'inherit' } }),
     ).toEqual({ ok: true, value: undefined });
   });
-  test('Codex status classifies missing, installed, drift, outdated, and unknown states', () => {
+  test('Codex status classifies managed runtime surfaces without inspecting plugin-manager cache', () => {
     const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-ops-'));
     try {
       const home = join(dir, 'home');
@@ -105,24 +148,6 @@ describe('Codex operations adapter', () => {
       expect(getCodexStatus(context(dir, home)).state).toBe('drift');
 
       setup(dir, home);
-      const manifestPath = join(
-        home,
-        '.codex',
-        'plugins',
-        'thoth-agents',
-        '.codex-plugin',
-        'plugin.json',
-      );
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-        version: string;
-      };
-      writeFileSync(
-        manifestPath,
-        `${JSON.stringify({ ...manifest, version: '0.0.0' }, null, 2)}\n`,
-      );
-      expect(getCodexStatus(context(dir, home)).state).toBe('outdated');
-
-      setup(dir, home);
       writeFileSync(managedModelsPath(home), '{ invalid json');
       const unknown = getCodexStatus(context(dir, home));
       expect(unknown.state).toBe('unknown');
@@ -131,6 +156,28 @@ describe('Codex operations adapter', () => {
           target.observed?.includes('unparseable managed model state'),
         ),
       ).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('reports degraded provider evidence without degrading installed consumer state', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-evidence-'));
+    try {
+      const home = join(dir, 'home');
+      setup(dir, home);
+      const providerEvidence = {
+        state: 'degraded' as const,
+        source: 'harness' as const,
+        basis: ['persistence evidenced; continuity not evidenced'],
+      };
+
+      const status = getCodexStatusWithEvidence(context(dir, home), {
+        providerEvidence,
+      });
+
+      expect(status.state).toBe('installed');
+      expect(status.providerCapability).toEqual(providerEvidence);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -176,11 +223,41 @@ describe('Codex operations adapter', () => {
       expect(plan.dryRun).toBe(true);
       expect(plan.canApply).toBe(true);
       expect(plan.title).toContain('Install');
+      expect(plan.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: 'Install required external skills for Codex',
+          }),
+        ]),
+      );
       expect(existsSync(join(home, '.codex'))).toBe(false);
 
       const applied = applyCodexPlan(plan);
       expect(applied.applied).toBe(true);
       expect(existsSync(rolePath(home, 'deep'))).toBe(true);
+      expect(installRequiredSkillMock).toHaveBeenCalledTimes(4);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('Codex install is incomplete when a required skill fails', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-required-skill-'));
+    try {
+      const home = join(dir, 'home');
+      installRequiredSkillMock.mockReturnValue({ status: 'failed' });
+
+      const applied = applyCodexPlan(buildCodexInstallPlan(context(dir, home)));
+
+      expect(applied.applied).toBe(false);
+      expect(applied.warnings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            severity: 'critical',
+            code: 'codex-required-skill-failed',
+          }),
+        ]),
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -272,7 +349,7 @@ describe('Codex operations adapter', () => {
       const quickAfter = readFileSync(quickPath, 'utf8');
       expect(roleModel(quickAfter)).toBe('gpt-5.4-mini');
       expect(quickAfter).toContain('sandbox_mode = "read-only"');
-      expect(quickAfter).toContain('model_reasoning_effort = "medium"');
+      expect(quickAfter).toContain('model_reasoning_effort = "xhigh"');
       expect(quickAfter).not.toContain('toggle');
       expect(quickAfter).not.toContain('budget_tokens');
 

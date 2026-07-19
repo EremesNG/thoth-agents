@@ -1,255 +1,242 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
-  applyClaudeCodeManagedModelOverrides,
   applyClaudeCodeSetup,
   buildClaudeCodeSetupPlan,
+  type ClaudeCodeInstallConfig,
+  type ClaudeCommandExecutor,
   isClaudeCodeModelAlias,
-  parseSubagentEffort,
-  parseSubagentModel,
-  replaceSubagentEffort,
-  replaceSubagentModel,
 } from './claude-code-install';
 
-let home: string;
+interface ManagerState {
+  marketplace: boolean;
+  plugin: boolean;
+  enabled: boolean;
+  source?: string;
+  failMutation?: boolean;
+  failInspection?: boolean;
+  mutations: string[];
+}
 
-function config(overrides: { dryRun?: boolean; reset?: boolean } = {}) {
-  return {
-    dryRun: overrides.dryRun ?? false,
-    reset: overrides.reset ?? false,
-    scope: 'user' as const,
-    projectRoot: process.cwd(),
-    homeDir: home,
+let projectRoot: string;
+
+function executor(state: ManagerState): ClaudeCommandExecutor {
+  return (_command, args) => {
+    const key = args.join(' ');
+    if (key === 'plugin marketplace list --json') {
+      if (state.failInspection) {
+        return { exitCode: 1, stdout: '', stderr: 'inspection failed' };
+      }
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(
+          state.marketplace
+            ? [
+                {
+                  name: 'thoth-agents',
+                  source: 'github',
+                  repo: state.source ?? 'EremesNG/thoth-agents',
+                },
+              ]
+            : [],
+        ),
+        stderr: '',
+      };
+    }
+    if (key === 'plugin list --json') {
+      if (state.failInspection) {
+        return { exitCode: 1, stdout: '', stderr: 'inspection failed' };
+      }
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(
+          state.plugin
+            ? [
+                {
+                  id: 'thoth-agents@thoth-agents',
+                  scope: 'user',
+                  enabled: state.enabled,
+                },
+              ]
+            : [],
+        ),
+        stderr: '',
+      };
+    }
+    state.mutations.push(key);
+    if (state.failMutation) {
+      return {
+        exitCode: 17,
+        stdout: '',
+        stderr: `native mutation failed for ${key}`,
+      };
+    }
+    if (key.startsWith('plugin marketplace add ')) state.marketplace = true;
+    if (key.startsWith('plugin install ')) {
+      state.plugin = true;
+      state.enabled = true;
+    }
+    if (key.startsWith('plugin enable ')) state.enabled = true;
+    return { exitCode: 0, stdout: 'ok', stderr: '' };
   };
 }
 
-function pluginRoot(): string {
-  return join(home, '.claude', 'skills', 'thoth-agents');
+function config(
+  state: ManagerState,
+  overrides: Partial<ClaudeCodeInstallConfig> = {},
+): ClaudeCodeInstallConfig {
+  return {
+    dryRun: false,
+    reset: false,
+    scope: 'user',
+    projectRoot,
+    commandExecutor: executor(state),
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), 'cc-install-'));
+  projectRoot = mkdtempSync(join(tmpdir(), 'cc-native-install-'));
 });
 
 afterEach(() => {
-  rmSync(home, { recursive: true, force: true });
+  rmSync(projectRoot, { recursive: true, force: true });
 });
 
 describe('claude-code-install', () => {
-  test('frontmatter model helpers parse and replace', () => {
-    const content = '---\nname: deep\nmodel: opus\ntools: Read\n---\nbody';
-    expect(parseSubagentModel(content)).toBe('opus');
-    expect(parseSubagentModel(replaceSubagentModel(content, 'haiku'))).toBe(
-      'haiku',
-    );
-  });
-
-  test('frontmatter effort helpers add, replace, and remove without changing body', () => {
-    const content = '---\nname: deep\nmodel: opus\ntools: Read\n---\nbody';
-    const added = replaceSubagentEffort(content, 'high');
-    expect(parseSubagentEffort(added)).toBe('high');
-    expect(added).toContain('tools: Read\n---\nbody');
-
-    const replaced = replaceSubagentEffort(added, 'max');
-    expect(parseSubagentEffort(replaced)).toBe('max');
-    expect(replaceSubagentEffort(replaced, undefined)).toBe(content);
-  });
-
-  test('model alias guard rejects arbitrary models', () => {
+  test('recognizes only documented Claude model aliases', () => {
     expect(isClaudeCodeModelAlias('opus')).toBe(true);
-    expect(isClaudeCodeModelAlias('inherit')).toBe(true);
     expect(isClaudeCodeModelAlias('gpt-5.4')).toBe(false);
   });
 
-  test('dry-run setup plan writes nothing', () => {
-    const plan = buildClaudeCodeSetupPlan(config({ dryRun: true }));
-    const result = applyClaudeCodeSetup(plan);
-    expect(result.success).toBe(true);
-    expect(result.changed).toEqual([]);
-    expect(existsSync(pluginRoot())).toBe(false);
-  });
+  test('dry-run plans native marketplace operations without mutating manager state', () => {
+    const state: ManagerState = {
+      marketplace: false,
+      plugin: false,
+      enabled: false,
+      mutations: [],
+    };
+    const plan = buildClaudeCodeSetupPlan(config(state, { dryRun: true }));
 
-  test('apply writes the plugin package and is idempotent with backups', () => {
-    const first = applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-    expect(first.success).toBe(true);
-    expect(first.changed.length).toBeGreaterThan(0);
-    expect(
-      existsSync(join(pluginRoot(), '.claude-plugin', 'plugin.json')),
-    ).toBe(true);
-    expect(existsSync(join(pluginRoot(), 'agents', 'deep.md'))).toBe(true);
-    expect(existsSync(join(pluginRoot(), 'agents', 'orchestrator.md'))).toBe(
-      true,
-    );
-    expect(existsSync(join(pluginRoot(), '.mcp.json'))).toBe(true);
-    expect(existsSync(join(pluginRoot(), 'settings.json'))).toBe(true);
-
-    // Re-apply: identical content is skipped (no changes, no backups).
-    const second = applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-    expect(second.changed).toEqual([]);
-    expect(existsSync(join(pluginRoot(), 'agents', 'deep.md.bak'))).toBe(false);
-  });
-
-  test('setup preserves installed effort and treats an absent field as inherit', () => {
-    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-    const deepPath = join(pluginRoot(), 'agents', 'deep.md');
-    const explorerPath = join(pluginRoot(), 'agents', 'explorer.md');
-    writeFileSync(
-      deepPath,
-      replaceSubagentEffort(readFileSync(deepPath, 'utf8'), 'high'),
-    );
-    writeFileSync(
-      explorerPath,
-      replaceSubagentEffort(readFileSync(explorerPath, 'utf8'), undefined),
-    );
-    const statePath = join(pluginRoot(), '.thoth-agents-managed-models.json');
-    const state = JSON.parse(readFileSync(statePath, 'utf8'));
-    state.configuredEfforts = { explorer: 'max' };
-    writeFileSync(statePath, JSON.stringify(state, null, 2));
-
-    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-
-    expect(parseSubagentEffort(readFileSync(deepPath, 'utf8'))).toBe('high');
-    expect(
-      parseSubagentEffort(readFileSync(explorerPath, 'utf8')),
-    ).toBeUndefined();
-  });
-
-  test('model-only Claude override preserves installed effort until explicitly cleared', () => {
-    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-    const deepPath = join(pluginRoot(), 'agents', 'deep.md');
-    writeFileSync(
-      deepPath,
-      replaceSubagentEffort(readFileSync(deepPath, 'utf8'), 'high'),
-    );
-
-    expect(
-      applyClaudeCodeManagedModelOverrides(config(), [
-        { role: 'deep', model: 'opus' },
-      ]).success,
-    ).toBe(true);
-    expect(parseSubagentEffort(readFileSync(deepPath, 'utf8'))).toBe('high');
-
-    expect(
-      applyClaudeCodeManagedModelOverrides(config(), [
-        { role: 'deep', model: 'opus', clearEffort: true },
-      ]).success,
-    ).toBe(true);
-    expect(parseSubagentEffort(readFileSync(deepPath, 'utf8'))).toBeUndefined();
-  });
-
-  test('managed model override updates frontmatter and persists state', () => {
-    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-
-    const result = applyClaudeCodeManagedModelOverrides(config(), [
-      { role: 'explorer', model: 'haiku' },
+    expect(plan.items.map((item) => item.action)).toEqual([
+      'register-marketplace',
+      'install-plugin',
     ]);
-    expect(result.success).toBe(true);
-
-    const explorer = readFileSync(
-      join(pluginRoot(), 'agents', 'explorer.md'),
-      'utf8',
-    );
-    expect(parseSubagentModel(explorer)).toBe('haiku');
-
-    const state = JSON.parse(
-      readFileSync(
-        join(pluginRoot(), '.thoth-agents-managed-models.json'),
-        'utf8',
-      ),
-    ) as { configuredModels?: Record<string, string> };
-    expect(state.configuredModels?.explorer).toBe('haiku');
-
-    // A subsequent setup plan re-applies the configured override.
-    const replan = buildClaudeCodeSetupPlan(config());
-    const explorerItem = replan.items.find((item) => item.role === 'explorer');
-    expect(parseSubagentModel(String(explorerItem?.content))).toBe('haiku');
+    expect(applyClaudeCodeSetup(plan)).toMatchObject({
+      success: true,
+      changed: [],
+    });
+    expect(state.mutations).toEqual([]);
+    expect(existsSync(join(projectRoot, '.claude', 'skills'))).toBe(false);
   });
 
-  test('manual concrete model-only override survives regeneration without excluded controls', () => {
-    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-    const model = 'anthropic/claude-opus-4.6';
-
-    const result = applyClaudeCodeManagedModelOverrides(config(), [
-      { role: 'deep', model, catalogId: model },
-    ]);
-    expect(result.success).toBe(true);
-    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-
-    const output = readFileSync(
-      join(pluginRoot(), 'agents', 'deep.md'),
-      'utf8',
-    );
-    expect(parseSubagentModel(output)).toBe(model);
-    expect(parseSubagentEffort(output)).toBeUndefined();
-    expect(output).not.toContain('toggle');
-    expect(output).not.toContain('budget_tokens');
-  });
-
-  test('managed effort override updates frontmatter and persists state', () => {
-    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-
-    const result = applyClaudeCodeManagedModelOverrides(config(), [
-      { role: 'deep', model: 'opus', effort: 'max' },
-    ]);
-    expect(result.success).toBe(true);
-
-    const deep = readFileSync(join(pluginRoot(), 'agents', 'deep.md'), 'utf8');
-    expect(parseSubagentEffort(deep)).toBe('max');
-    const state = JSON.parse(
-      readFileSync(
-        join(pluginRoot(), '.thoth-agents-managed-models.json'),
-        'utf8',
-      ),
-    ) as { configuredEfforts?: Record<string, string> };
-    expect(state.configuredEfforts?.deep).toBe('max');
-  });
-
-  test('rejects unsupported model aliases on override', () => {
-    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-    const result = applyClaudeCodeManagedModelOverrides(config(), [
-      { role: 'deep', model: 'gpt-5.4' as never },
-    ]);
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Unsupported Claude Code model');
-  });
-
-  test('managed default tracking does not drift across repeated overrides', () => {
-    applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config()));
-
-    // explorer's rendered default is 'haiku'. Override twice.
-    applyClaudeCodeManagedModelOverrides(config(), [
-      { role: 'explorer', model: 'sonnet' },
-    ]);
-    applyClaudeCodeManagedModelOverrides(config(), [
-      { role: 'explorer', model: 'opus' },
-    ]);
-
-    const state = JSON.parse(
-      readFileSync(
-        join(pluginRoot(), '.thoth-agents-managed-models.json'),
-        'utf8',
-      ),
-    ) as {
-      models?: Record<string, string>;
-      configuredModels?: Record<string, string>;
+  test('installs through the native manager and becomes an exact no-op', () => {
+    const state: ManagerState = {
+      marketplace: false,
+      plugin: false,
+      enabled: false,
+      mutations: [],
     };
 
-    // models[role] must remain the rendered default, not the last override.
-    expect(state.models?.explorer).toBe('haiku');
-    expect(state.configuredModels?.explorer).toBe('opus');
+    const first = applyClaudeCodeSetup(buildClaudeCodeSetupPlan(config(state)));
+    expect(first).toMatchObject({
+      success: true,
+      changed: [
+        'claude://marketplaces/thoth-agents',
+        'claude://plugins/thoth-agents@thoth-agents',
+      ],
+    });
+    expect(state.mutations).toEqual([
+      'plugin marketplace add EremesNG/thoth-agents --scope user',
+      'plugin install thoth-agents@thoth-agents --scope user',
+    ]);
+    expect(existsSync(join(projectRoot, '.claude', 'skills'))).toBe(false);
 
-    // A reset plan restores the true rendered default.
-    const resetItem = buildClaudeCodeSetupPlan(
-      config({ reset: true }),
-    ).items.find((item) => item.role === 'explorer');
-    expect(parseSubagentModel(String(resetItem?.content))).toBe('haiku');
+    state.mutations.length = 0;
+    const secondPlan = buildClaudeCodeSetupPlan(config(state));
+    expect(secondPlan.items).toEqual([]);
+    expect(applyClaudeCodeSetup(secondPlan)).toMatchObject({
+      success: true,
+      changed: [],
+    });
+    expect(state.mutations).toEqual([]);
+  });
+
+  test('enables an installed disabled plugin without reinstalling it', () => {
+    const state: ManagerState = {
+      marketplace: true,
+      plugin: true,
+      enabled: false,
+      mutations: [],
+    };
+    const plan = buildClaudeCodeSetupPlan(config(state));
+
+    expect(plan.items.map((item) => item.action)).toEqual(['enable-plugin']);
+    expect(applyClaudeCodeSetup(plan).success).toBe(true);
+    expect(state.mutations).toEqual([
+      'plugin enable thoth-agents@thoth-agents --scope user',
+    ]);
+  });
+
+  test('refreshes an installed plugin through the native manager', () => {
+    const state: ManagerState = {
+      marketplace: true,
+      plugin: true,
+      enabled: true,
+      mutations: [],
+    };
+    const plan = buildClaudeCodeSetupPlan(config(state, { refresh: true }));
+
+    expect(plan.items.map((item) => item.action)).toEqual(['update-plugin']);
+    expect(applyClaudeCodeSetup(plan).success).toBe(true);
+    expect(state.mutations).toEqual([
+      'plugin update thoth-agents@thoth-agents --scope user',
+    ]);
+  });
+
+  test('fails closed for unreadable or conflicting marketplace state', () => {
+    const unreadable: ManagerState = {
+      marketplace: false,
+      plugin: false,
+      enabled: false,
+      failInspection: true,
+      mutations: [],
+    };
+    const unreadablePlan = buildClaudeCodeSetupPlan(config(unreadable));
+    expect(unreadablePlan.ready).toBe(false);
+    expect(applyClaudeCodeSetup(unreadablePlan).success).toBe(false);
+    expect(unreadable.mutations).toEqual([]);
+
+    const conflict: ManagerState = {
+      marketplace: true,
+      plugin: false,
+      enabled: false,
+      source: 'other/thoth-agents',
+      mutations: [],
+    };
+    const conflictPlan = buildClaudeCodeSetupPlan(config(conflict));
+    expect(conflictPlan.ready).toBe(false);
+    expect(applyClaudeCodeSetup(conflictPlan).success).toBe(false);
+    expect(conflict.mutations).toEqual([]);
+  });
+
+  test('reports bounded native command failure without writing plugin files', () => {
+    const state: ManagerState = {
+      marketplace: false,
+      plugin: false,
+      enabled: false,
+      failMutation: true,
+      mutations: [],
+    };
+
+    const result = applyClaudeCodeSetup(
+      buildClaudeCodeSetupPlan(config(state)),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('exited with code 17');
+    expect(existsSync(join(projectRoot, '.claude', 'skills'))).toBe(false);
   });
 });

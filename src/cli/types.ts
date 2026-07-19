@@ -5,7 +5,6 @@ export interface InstallArgs {
   tui: boolean;
   agent?: InstallAgent;
   tmux?: BooleanArg;
-  skills?: BooleanArg;
   dryRun?: boolean;
   reset?: boolean;
 }
@@ -58,8 +57,6 @@ export interface OpenCodeConfig {
 export interface InstallConfig {
   agent: InstallAgent;
   hasTmux: boolean;
-  installSkills: boolean;
-  installCustomSkills: boolean;
   dryRun?: boolean;
   reset: boolean;
 }
@@ -72,14 +69,7 @@ export interface ConfigMergeResult {
 
 export interface DetectedConfig {
   isInstalled: boolean;
-  hasKimi: boolean;
   hasOpenAI: boolean;
-  hasAnthropic?: boolean;
-  hasCopilot?: boolean;
-  hasZaiPlan?: boolean;
-  hasAntigravity: boolean;
-  hasChutes?: boolean;
-  hasOpencodeZen: boolean;
   hasTmux: boolean;
 }
 

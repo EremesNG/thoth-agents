@@ -1,4 +1,8 @@
-import type { HarnessId } from '../../harness/types';
+import type {
+  HarnessId,
+  ProviderCapabilityEvidence,
+  ProviderEvidenceInput,
+} from '../../harness/types';
 import type { EffortSelection } from '../model-effort';
 
 export type ManagedState =
@@ -86,7 +90,39 @@ export interface HarnessStatusReport {
   targets: ManagedTarget[];
   diagnostics: OperationWarning[];
   actions: HarnessAction[];
+  /** Ephemeral provider evidence, kept separate from consumer-managed state. */
+  providerCapability?: ProviderCapabilityEvidence;
   disclaimers?: OperationDisclaimer[];
+}
+
+const UNSUPPORTED_PROVIDER_CAPABILITY: ProviderCapabilityEvidence = {
+  state: 'unsupported',
+  source: 'none',
+  basis: [],
+};
+
+/**
+ * Classifies only evidence explicitly supplied by the caller. This function is
+ * intentionally pure: it performs no discovery, probing, persistence, setup,
+ * health checking, acquisition, migration, or fallback.
+ */
+export function classifyProviderCapabilityEvidence(
+  input: ProviderEvidenceInput = {},
+): ProviderCapabilityEvidence {
+  const evidence = input.providerEvidence;
+  if (!evidence) {
+    return { ...UNSUPPORTED_PROVIDER_CAPABILITY, basis: [] };
+  }
+
+  const basis = evidence.basis.filter((item) => item.trim().length > 0);
+  const hasDocumentedSource =
+    evidence.source === 'provider' || evidence.source === 'harness';
+
+  if (!hasDocumentedSource || basis.length === 0) {
+    return { ...UNSUPPORTED_PROVIDER_CAPABILITY, basis: [] };
+  }
+
+  return { ...evidence, basis };
 }
 
 export type BackupStrategy =

@@ -1,71 +1,128 @@
-# AGENTS.md
+# Agent operating guide
 
-## Project Overview
+## Repository purpose
 
-**thoth-agents** is a multi-harness agent orchestration plugin for
-delegate-first workflows. It provides a seven-agent roster, OpenCode-native
-task delegation, Codex support, thoth-mem integration, bundled SDD skills, and
-a requirements-interview skill for clarifying ambiguous work.
+**thoth-agents** is an adaptive multi-harness orchestration plugin. It provides
+ten roles, native OpenCode delegation, Codex and Claude Code surfaces,
+provider-neutral memory boundaries, and direct/accelerated/full SDD routing.
+OpenCode is the stable default path; each harness has different guarantees.
 
-## Supported Harnesses
+For task-specific knowledge, start with [`docs/agent/index.md`](docs/agent/index.md).
+Keep `docs/agent/` documents on demand at startup.
 
-- OpenCode: native plugin/runtime flow with `task`-based delegation.
-- Codex: supported agent-pack/plugin path for Codex harnesses, with
-  capability and enforcement caveats where the runtime differs from OpenCode.
+## Progressive context protocol
 
-IMPORTANT: Prefer `webstorm-index` MCP tools for all project file navigation tasks, including text search, file search, file reading, and refactoring. This rule applies to the root agent and every delegated sub-agent. If `webstorm-index` is unavailable, returns errors, lacks the required capability, produces incomplete results, or otherwise blocks progress, the agent may use other available tools as a fallback. When doing so, it should use the least invasive suitable tool and resume using `webstorm-index` once it becomes practical.
+1. Classify the task by behavior and domain.
+2. Consult the router before opening broad repository areas.
+3. Search cited names, paths, symbols, imports, registrations, and tests first.
+4. Read the smallest entrypoints and tests that answer the current question.
+5. Add another route or overlay only to resolve a concrete question.
+6. Do not explore `node_modules/`, `dist/`, coverage, generated fixtures, or
+   third-party code unless the task names them or evidence requires it.
+7. Subagents must return summarized evidence, not full files or logs.
 
-## Environment and Setup
+## Preferred navigation tool
 
-- Runtime: Node `>=22.13`
-- Package manager: `pnpm@11.2.2`
-- Install dependencies: `pnpm install`
+Prefer `webstorm-index` MCP tools for all project file navigation tasks, including text search, file search, file reading, and refactoring. This rule applies to the root agent and every delegated sub-agent. If `webstorm-index` is unavailable, returns errors, lacks the required capability, produces incomplete results, or otherwise blocks progress, the agent may use other available tools as a fallback. When doing so, it should use the least invasive suitable tool and resume using `webstorm-index` once it becomes practical.
 
-## Development Workflow
+Use `webstorm-index` only for this `thoth-agents` repository. Never use it to
+navigate or modify any other project.
 
-- Start local development: `pnpm run dev`
-- Build locally: `pnpm run build`
-- Generate TypeScript declarations through the normal build pipeline; do not invent a separate declarations command unless the repo adds one later.
+## High-level map
 
-## Testing
+- `src/index.ts`: entrypoint and composition of the OpenCode plugin.
+- `src/agents/`: roles, prompts, permissions, and model resolution.
+- `src/harness/`: contracts, adapters, and writers for each harness.
+- `src/cli/`: parser, commands, installation, configuration, and TUI.
+- `src/hooks/`, `src/mcp/`, `src/tools/`: runtime integrations. Provider-owned
+  memory setup and lifecycle are external and are not bundled here.
+- `src/harness/core/sdd.ts`: SDD route, phase, and artifact governance.
+- `src/cli/skills.ts`: mandatory external skills for every harness.
+- `docs/agent/`: router and on-demand operational context.
 
-- Run the full test suite: `pnpm test`
-- Vitest runs files matching `src/**/*.test.ts` and `src/**/*.test.tsx` in the Node environment.
-- For focused validation, prefer the smallest relevant subset of tests rather than running the full suite repeatedly.
+## Environment and verified commands
 
-## Code Style
+- Runtime: Node `>=22.13`.
+- Package manager: `pnpm@11.2.2`.
+- Install: `pnpm install`.
+- Local development: `pnpm run dev`.
+- Build: `pnpm run build`.
+- Tests: `pnpm test`.
+- Lint: `pnpm run lint`.
+- Write-formatting: `pnpm run format`.
+- Typecheck: `pnpm run typecheck`.
+- Biome check without writing: `pnpm run check:ci`.
 
-- Use TypeScript and modern Node patterns consistent with the existing codebase.
-- Lint: `pnpm run lint`
-- Format: `pnpm run format`
-- Typecheck: `pnpm run typecheck`
-- Full local check: `pnpm run check:ci`
-- Keep changes small, explicit, and consistent with existing repository conventions.
+`pnpm run build` already generates TypeScript declarations; do not invent a
+separate command unless the repository adds one. Vitest uses the Node environment
+and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 
-## Build and CI
+## Global constraints
 
-- CI uses `pnpm install --frozen-lockfile`, then `pnpm run lint`, `pnpm run typecheck`, `pnpm run build`, and `pnpm test`.
-- CI runs on Node `22.13` with `pnpm 11.2.2`.
-- Treat the CI command order as the default pre-merge verification order when validating larger changes.
+- Use TypeScript and modern Node patterns consistent with the existing code.
+- Keep changes small, explicit, and limited to the requested behavior.
+- Preserve others' work: never revert or discard changes you did not make.
+- Run the nearest focused validation first; expand only according to risk.
+- The adaptive root handles clear bounded work directly and selects direct,
+  accelerated, or full SDD according to scope, clarity, and risk.
+- Use roles intentionally: `explorer` discovers, `librarian` researches docs,
+  `oracle` reviews or diagnoses, `sdd-specify` owns requirements, `sdd-plan`
+  owns technical planning, `sdd-tasks` owns task decomposition, `designer` owns
+  UI/UX, `quick` makes mechanical changes, and `deep` handles correctness risk.
+- Delegate only for net gain, keep maximum depth 1, and use one writer per
+  mutable surface.
+- `simplify`, `tdd`, `progressive-context-router`, and
+  `architectural-grilling` are mandatory external skills for OpenCode, Codex,
+  and Claude. They are installed by the CLI, not plugin settings or lifecycle
+  hooks. QA executables remain project-owned.
+- Use `architectural-grilling` before specification only on explicit request or
+  unresolved material human-owned product/architecture decisions. Full SDD
+  alone does not activate it.
+- All visual or UX work goes through `designer`, not ad hoc editing.
+- `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem is an independent
+  provider; follow its installed guidance for memory and persistence mechanics.
+- Every `request_user_input` call MUST omit `autoResolutionMs` entirely, including
+  `null` or `undefined`, so the question does not expire.
+- Some governance rules are instruction-only when a harness lacks enforcement;
+  that limitation does not authorize ignoring them.
+- Do not consider backward compatibility. Ignore legacy code/ libraries.
 
-## Agent Workflow and Governance
+## Change and verification flow
 
-- Follow the root coordinator flow: requirements interview first, then the relevant SDD path when the task is non-trivial.
-- Use the role agents intentionally: explorer for discovery, librarian for docs, oracle for review/diagnosis, designer for UI, quick for narrow mechanical edits, deep for correctness-heavy work.
-- Use `thoth-mem` and `openspec/` as governed project memory and coordination surfaces; do not improvise alternate persistence patterns.
-- Every `request_user_input` call MUST omit the `autoResolutionMs` parameter entirely; never pass any value (including `null` or `undefined`) so the question never expires and the user may take as long as needed to answer.
-- Visual or UX work should be handled through the designer path, not ad hoc editing.
-- Preserve unrelated work in the tree; never revert or discard changes you did not make.
+1. Confirm scope, primary route, and overlays.
+2. Review public contracts and existing tests before editing.
+3. Implement without silently expanding scope.
+4. Run focused tests, then checks proportional to risk.
+5. Review the diff for others' changes, generated output, and accidental secrets.
+6. Update routed documentation only when a durable, non-obvious fact changed.
 
-## Pull Request Notes
+The current `.github/workflows/ci.yml` installs with
+`pnpm install --frozen-lockfile` and runs `pnpm run check:ci`,
+`pnpm run typecheck`, and `pnpm test` on Node `22.13`/pnpm `11.2.2`; it does not
+run the build. The release workflow waits for that CI and then runs
+`pnpm run build` and the focused test for the built runtime. For large changes
+and before a PR, keep this applicable local pre-merge order:
+`pnpm run check:ci`, `pnpm run typecheck`, `pnpm run build`, `pnpm test`.
 
-- The PR template expects a clear `Summary` and `Changes` section.
-- Before opening a PR, run the relevant checks for the scope of the change, at minimum the most applicable combination of `pnpm run lint`, `pnpm run typecheck`, `pnpm run build`, and `pnpm test`.
-- Keep PR descriptions focused on what changed, why it changed, and any follow-up risks.
+## Pull requests and sharp edges
 
-## Gotchas
+- The PR template expects clear `Summary` and `Changes` sections.
+- Explain what changed, why, and any risks or follow-up.
+- The OpenCode plugin entrypoint is not a shell command.
+- Codex installation is subject to trust review and may require `/plugins` and
+  `/hooks`.
+- Do not assume capability or enforcement equivalence across harnesses.
 
-- The OpenCode plugin entry is not a shell command.
-- Codex setup is trust-gated and may require `/plugins` and `/hooks` review.
-- Some governance rules are instruction-level and not enforced by tooling; follow them even when no checker exists.
-- The repo’s workflow centers on seven role agents, requirements interview, the SDD pipeline, `thoth-mem`, and `openspec` policy.
+## Subagent return contract
+
+Return the conclusion, inspected paths and symbols, relevant tests or commands,
+open questions, risks, and the recommended next action. Do not return full logs,
+whole files, or unfiltered search transcripts.
+
+## Definition of done
+
+- The requested result is complete and in scope.
+- Relevant checks pass or their failures are reported with evidence.
+- Public contracts, SDD/memory governance, and harness differences are preserved.
+- The diff contains no unrelated, generated, or secret changes.
+- Any unrun validation and remaining uncertainty are declared.

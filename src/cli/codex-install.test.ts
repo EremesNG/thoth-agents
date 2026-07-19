@@ -9,7 +9,6 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_THOTH_COMMAND } from '../config';
 import {
   applyCodexManagedModelOverrides,
   applyCodexSetup,
@@ -111,12 +110,12 @@ describe('Codex install setup plan', () => {
         packageRoot: PACKAGE_ROOT,
       });
       const expected = {
-        oracle: { model: 'gpt-5.6-sol', effort: 'high' },
-        librarian: { model: 'gpt-5.6-luna', effort: 'low' },
+        oracle: { model: 'gpt-5.6-sol', effort: 'xhigh' },
+        librarian: { model: 'gpt-5.6-luna', effort: 'xhigh' },
         explorer: { model: 'gpt-5.6-luna', effort: 'low' },
-        designer: { model: 'gpt-5.6-terra', effort: 'high' },
-        quick: { model: 'gpt-5.6-luna', effort: 'medium' },
-        deep: { model: 'gpt-5.6-terra', effort: 'xhigh' },
+        designer: { model: 'gpt-5.6-sol', effort: 'medium' },
+        quick: { model: 'gpt-5.6-luna', effort: 'xhigh' },
+        deep: { model: 'gpt-5.6-sol', effort: 'medium' },
       } as const;
 
       for (const [role, defaults] of Object.entries(expected)) {
@@ -154,8 +153,11 @@ describe('Codex install setup plan', () => {
 
         expect(plan.dryRun).toBe(true);
         expect(
-          plan.items.some((item) => item.kind === 'personal-plugin-source'),
-        ).toBe(true);
+          plan.items.some((item) => item.targetPath.includes('.codex/plugins')),
+        ).toBe(false);
+        expect(plan.diagnostics.join('\n')).toContain(
+          'codex plugin marketplace add EremesNG/thoth-agents',
+        );
       } finally {
         process.chdir(previousCwd);
       }
@@ -182,11 +184,11 @@ describe('Codex install setup plan', () => {
         expect.arrayContaining([
           'root-instructions',
           'managed-model-state',
-          'personal-plugin-source',
-          'personal-marketplace',
           'user-config',
         ]),
       );
+      expect(itemKinds).not.toContain('personal-plugin-source');
+      expect(itemKinds).not.toContain('personal-marketplace');
       expect(itemKinds).not.toContain('plugin-package');
       expect(
         plan.items
@@ -204,6 +206,9 @@ describe('Codex install setup plan', () => {
         ),
       ).toBe(true);
       expect(plan.diagnostics.join('\n')).toContain('/plugins');
+      expect(plan.diagnostics.join('\n')).toContain(
+        'codex plugin marketplace add EremesNG/thoth-agents',
+      );
       expect(plan.diagnostics.join('\n')).toContain('/hooks');
       expect(plan.diagnostics.join('\n')).toContain(
         'features.default_mode_request_user_input',
@@ -222,7 +227,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('formats dry-run with only Personal plugin source package refresh', () => {
+  test('formats only managed runtime surfaces and omits manager-owned plugin paths', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const plan = buildCodexSetupPlan({
@@ -235,22 +240,11 @@ describe('Codex install setup plan', () => {
       });
 
       const formatted = formatCodexSetupPlan(plan);
-      const refreshLines = formatted
-        .split('\n')
-        .filter((line) => line.startsWith('- refresh-package:'));
-
-      expect(refreshLines).toHaveLength(1);
-      expect(refreshLines[0]).toContain('Refresh Personal Codex plugin source');
-      expect(refreshLines[0]).toContain(' files.');
-      expect(refreshLines[0]).toContain(
-        join(dir, 'home', '.codex', 'plugins', 'thoth-agents'),
-      );
-      expect(refreshLines[0]).not.toContain(join(dir, '.codex-plugin'));
-      expect(formatted).not.toContain('.codex-plugin/skills/');
-      expect(formatted).not.toContain('.codex-plugin/agents/');
-      expect(formatted).not.toContain(
-        'Refresh documented .codex-plugin package',
-      );
+      expect(formatted).toContain('- merge-managed-block:');
+      expect(formatted.match(/- write-role-toml:/g)).toHaveLength(9);
+      expect(formatted).toContain('- merge-toml:');
+      expect(formatted).not.toContain('.codex/plugins');
+      expect(formatted).not.toContain('.agents/plugins/marketplace.json');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -280,13 +274,17 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('apply preserves root instructions, backs up existing files, writes six roles and generates Personal plugin source only', () => {
+  test('apply preserves root instructions and writes nine specialists without mutating plugin-manager state', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
       const agentsFile = join(home, '.codex', 'AGENTS.md');
       mkdirSync(join(home, '.codex'), { recursive: true });
       writeFileSync(agentsFile, 'User guidance\n', { flush: true });
+      writeFileSync(
+        join(home, '.codex', 'config.toml'),
+        '[mcp_servers.thoth_mem]\ncommand = "provider-owned"\nargs = ["serve"]\n',
+      );
       const plan = buildCodexSetupPlan({
         dryRun: false,
         reset: true,
@@ -302,33 +300,17 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('User guidance');
       expect(root).toContain('thoth-agents:codex-root:start');
       expect(root).toContain('thoth-agents:codex-root:start -->\n<role>');
-      expect(root).toContain('delegate-first root coordinator');
-      expect(root).toContain(
-        'small bounded local inspection when cheaper, faster, or clearer than delegation',
-      );
-      expect(root).toContain(
-        'Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review',
-      );
-      expect(root).toContain(
-        'Verify material user/agent claims before relying on them',
-      );
-      expect(root).toContain(
-        'correct it plainly, explain tradeoffs, and offer alternatives',
-      );
-      expect(root).toContain('net quality, speed, cost, and reliability');
-      expect(root).toContain('Internal handoff fields');
-      expect(root).toContain('Hard gates');
-      expect(root).toContain('Plan gate: after tasks');
-      expect(root).toContain('load `executing-plans`');
-      expect(root).toContain(
-        'Visual or UX work and screenshots always go to designer',
-      );
-      expect(root).toContain('Root-session memory is yours');
+      expect(root).toContain('adaptive root');
+      expect(root).toContain('bounded direct work');
+      expect(root).toContain('net gain');
+      expect(root).toContain('Accelerated SDD');
+      expect(root).toContain('maximum delegation depth is 1');
+      expect(root).toContain('sdd-specify subagent');
       expect(root).toContain('request_user_input');
-      expect(root).toContain('Default mode');
-      expect(root).toContain(
-        'Whenever the root orchestrator calls `request_user_input`, it MUST NEVER set or pass `autoResolutionMs`; omit the field entirely.',
-      );
+      expect(root).toContain('omit `autoResolutionMs` entirely');
+      expect(root).not.toContain('delegate-first');
+      expect(root).not.toContain('executing-plans');
+      expect(root).not.toContain('requirements-interview');
       expect(root).not.toContain('Use `question` only');
       expect(root).not.toContain('@designer');
       expectNoLeakedCodexAdaptationMarkers(root);
@@ -359,79 +341,46 @@ describe('Codex install setup plan', () => {
         ),
       ).toBe(false);
       expect(existsSync(join(dir, '.codex-plugin'))).toBe(false);
-      const personalPluginRoot = join(
-        home,
-        '.codex',
-        'plugins',
-        'thoth-agents',
-      );
-      expect(existsSync(join(personalPluginRoot, 'plugin.json'))).toBe(false);
-      expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(true);
+      expect(existsSync(join(home, '.codex', 'plugins'))).toBe(false);
       expect(
-        existsSync(join(personalPluginRoot, 'skills', 'sdd-apply', 'SKILL.md')),
-      ).toBe(true);
-      const personalManifest = JSON.parse(
-        readFileSync(
-          join(personalPluginRoot, '.codex-plugin', 'plugin.json'),
-          'utf8',
-        ),
+        existsSync(join(home, '.agents', 'plugins', 'marketplace.json')),
+      ).toBe(false);
+      const userConfig = readFileSync(
+        join(home, '.codex', 'config.toml'),
+        'utf8',
       );
-      const marketplace = JSON.parse(
-        readFileSync(
-          join(home, '.agents', 'plugins', 'marketplace.json'),
-          'utf8',
-        ),
-      );
-      expect(personalManifest.name).toBe('thoth-agents');
-      expect(personalManifest.mcpServers).toBe('./.mcp.json');
-      expect(personalManifest.hooks).toBeUndefined();
-      expect(personalManifest.customAgents).toBeUndefined();
-      expect(personalManifest.orchestrator).toBeUndefined();
-      expect(existsSync(join(personalPluginRoot, '.mcp.json'))).toBe(true);
-      expect(existsSync(join(personalPluginRoot, 'hooks', 'hooks.json'))).toBe(
-        false,
-      );
-      expect(
-        JSON.parse(readFileSync(join(personalPluginRoot, '.mcp.json'), 'utf8')),
-      ).toEqual({
-        mcpServers: {
-          thoth_mem: {
-            command: DEFAULT_THOTH_COMMAND[0],
-            args: DEFAULT_THOTH_COMMAND.slice(1),
-          },
-          exa: {
-            command: 'npx',
-            args: ['-y', 'exa-mcp-server'],
-          },
-          context7: { url: 'https://mcp.context7.com/mcp' },
-          grep_app: { url: 'https://mcp.grep.app' },
-        },
-      });
-      expect(marketplace.plugins).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            name: 'thoth-agents',
-            source: {
-              source: 'local',
-              path: './.codex/plugins/thoth-agents',
-            },
-            policy: {
-              installation: 'AVAILABLE',
-              authentication: 'ON_INSTALL',
-            },
-            category: 'Productivity',
-          }),
-        ]),
-      );
-      expect(
-        readFileSync(join(home, '.codex', 'config.toml'), 'utf8'),
-      ).toContain('default_mode_request_user_input = true');
+      expect(userConfig).toContain('default_mode_request_user_input = true');
+      expect(userConfig).toContain('[mcp_servers.thoth_mem]');
+      expect(userConfig).toContain('command = "provider-owned"');
+      expect(userConfig).toContain('args = ["serve"]');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test('generates Personal plugin source when repo-local canonical package is missing', () => {
+  test('setup diagnostics do not claim bundled provider hooks or memory capability', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-provider-boundary-'));
+    try {
+      const plan = buildCodexSetupPlan({
+        dryRun: true,
+        reset: false,
+        scope: 'user',
+        projectRoot: dir,
+        homeDir: join(dir, 'home'),
+        packageRoot: PACKAGE_ROOT,
+      });
+      const diagnostics = [...plan.diagnostics, ...plan.disclaimers].join('\n');
+
+      expect(diagnostics).not.toContain('Run /hooks');
+      expect(diagnostics).not.toMatch(/bootstraps? thoth-mem/i);
+      expect(diagnostics).not.toMatch(/memory governance.*enforcement/i);
+      expect(diagnostics).toContain('external provider');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('leaves an existing personal plugin cache untouched', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -460,25 +409,16 @@ describe('Codex install setup plan', () => {
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
       expect(existsSync(join(dir, '.codex-plugin'))).toBe(false);
-      expect(existsSync(personalPluginRoot)).toBe(true);
       expect(
-        existsSync(join(personalPluginRoot, '.codex-plugin', 'plugin.json')),
-      ).toBe(true);
-      expect(existsSync(join(personalPluginRoot, 'skills'))).toBe(true);
-      expect(
-        existsSync(join(personalPluginRoot, 'skills', 'sdd-apply', 'SKILL.md')),
-      ).toBe(true);
-      expect(existsSync(join(personalPluginRoot, '.mcp.json'))).toBe(true);
-      expect(existsSync(join(personalPluginRoot, 'hooks', 'hooks.json'))).toBe(
-        false,
-      );
-      expect(existsSync(join(personalPluginRoot, 'plugin.json'))).toBe(false);
+        readFileSync(join(personalPluginRoot, 'plugin.json'), 'utf8'),
+      ).toBe('{"stale":true}\n');
+      expect(existsSync(join(personalPluginRoot, '.codex-plugin'))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test('copies bundled skill files from package root when caller cwd is outside the package repo', () => {
+  test('uses the package root when caller cwd is outside the package repo', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-dlx-install-'));
     const callerProject = join(dir, 'caller-project');
     const home = join(dir, 'home');
@@ -500,39 +440,9 @@ describe('Codex install setup plan', () => {
           }),
         );
 
-        const personalPluginRoot = join(
-          home,
-          '.codex',
-          'plugins',
-          'thoth-agents',
-        );
-        const skillPath = join(
-          personalPluginRoot,
-          'skills',
-          'sdd-apply',
-          'SKILL.md',
-        );
-        const skillManifest = JSON.parse(
-          readFileSync(
-            join(personalPluginRoot, 'skills', '.thoth-agents-manifest.json'),
-            'utf8',
-          ),
-        ) as { skills?: Array<{ name?: string; outputPath?: string }> };
-
         expect(result.success).toBe(true);
-        expect(result.diagnostics.join('\n')).not.toContain(
-          'codex.skill.source_missing',
-        );
-        expect(existsSync(skillPath)).toBe(true);
-        expect(readFileSync(skillPath, 'utf8')).toContain('sdd-apply');
-        expect(skillManifest.skills).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              name: 'sdd-apply',
-              outputPath: '.codex-plugin/skills/sdd-apply/SKILL.md',
-            }),
-          ]),
-        );
+        expect(existsSync(rolePath(home, 'explorer'))).toBe(true);
+        expect(existsSync(join(home, '.codex', 'plugins'))).toBe(false);
       } finally {
         process.chdir(previousCwd);
       }
@@ -541,7 +451,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('marketplace merge preserves unrelated plugins and refreshes managed entry', () => {
+  test('does not mutate an existing personal marketplace', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -571,6 +481,7 @@ describe('Codex install setup plan', () => {
         ),
       );
 
+      const before = readFileSync(marketplacePath, 'utf8');
       const result = applyCodexSetup(
         buildCodexSetupPlan({
           dryRun: false,
@@ -583,22 +494,7 @@ describe('Codex install setup plan', () => {
       );
 
       expect(result.success).toBe(true);
-      const marketplace = JSON.parse(readFileSync(marketplacePath, 'utf8'));
-      expect(marketplace.plugins).toHaveLength(2);
-      expect(marketplace.plugins[0]).toEqual({
-        name: 'other-plugin',
-        source: './plugins/other',
-      });
-      expect(marketplace.plugins[1]).toEqual(
-        expect.objectContaining({
-          name: 'thoth-agents',
-          category: 'Productivity',
-          source: {
-            source: 'local',
-            path: './.codex/plugins/thoth-agents',
-          },
-        }),
-      );
+      expect(readFileSync(marketplacePath, 'utf8')).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -665,7 +561,7 @@ describe('Codex install setup plan', () => {
         .toBe('gpt-5.3-codex-spark');
       expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBe('high');
       const state = readManagedModelState(home);
-      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
+      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-sol');
       expect
         .soft(state.configuredModels?.['thoth-agents-deep.toml'])
         .toBe('gpt-5.3-codex-spark');
@@ -705,7 +601,7 @@ describe('Codex install setup plan', () => {
       );
 
       const before = readManagedModelState(home);
-      expect(before.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
+      expect(before.models['thoth-agents-deep.toml']).toBe('gpt-5.6-sol');
       expect(
         applyCodexManagedModelOverrides(
           {
@@ -724,7 +620,7 @@ describe('Codex install setup plan', () => {
       expect(roleModel(readFileSync(target, 'utf8'))).toBe(
         'gpt-5.3-codex-spark',
       );
-      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-terra');
+      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-sol');
       expect(state.configuredModels?.['thoth-agents-deep.toml']).toBe(
         'gpt-5.3-codex-spark',
       );
@@ -755,7 +651,7 @@ describe('Codex install setup plan', () => {
 
       const updated = readFileSync(target, 'utf8');
       expect(roleModel(updated)).toBe('user-custom-model');
-      expect(parseRoleTomlEffort(updated)).toBe('xhigh');
+      expect(parseRoleTomlEffort(updated)).toBe('medium');
       expect(updated).not.toContain('toggle');
       expect(updated).not.toContain('budget_tokens');
       expect(updated).toContain('sandbox_mode = "workspace-write"');
@@ -841,7 +737,7 @@ describe('Codex install setup plan', () => {
         replaceRoleModel(installed, 'designer-user-model')
           .replace('name = "designer"', 'name = "renamed"')
           .replace(
-            'description = "Own user-facing implementation choices and visual QA for UI work."',
+            'description = "Own user-facing implementation choices and visual quality for UI work."',
             'description = "user edited"',
           )
           .replace(
@@ -860,7 +756,7 @@ describe('Codex install setup plan', () => {
       expect(roleModel(updated)).toBe('designer-user-model');
       expect(updated).toContain('name = "designer"');
       expect(updated).toContain(
-        'description = "Own user-facing implementation choices and visual QA for UI work."',
+        'description = "Own user-facing implementation choices and visual quality for UI work."',
       );
       expect(parseRoleTomlEffort(updated)).toBe('high');
       expect(updated).not.toContain('USER EDIT');

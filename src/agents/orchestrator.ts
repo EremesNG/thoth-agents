@@ -18,14 +18,9 @@ export interface AgentDefinition {
   _modelArray?: Array<{ id: string; variant?: string }>;
 }
 
-const OPENCODE_RUNTIME_SECTION = `<opencode-runtime>
-In the OpenCode harness, an automatic \`<reminder>...</reminder>\` workflow block followed by a \`\\n\\n---\\n\\n\` separator is prepended to your user messages as harness scaffolding, not user input.
-When saving the user prompt via mem_save(kind="prompt"), you MUST exclude that injected \`<reminder>\` block and the \`---\` separator, and persist only the real user request text that follows.
-</opencode-runtime>`;
-
-const ORCHESTRATOR_PROMPT = appendPromptSections(
-  renderRolePrompt(createOrchestratorPromptSections(), OPENCODE_PROMPT_DIALECT),
-  OPENCODE_RUNTIME_SECTION,
+const ORCHESTRATOR_PROMPT = renderRolePrompt(
+  createOrchestratorPromptSections(),
+  OPENCODE_PROMPT_DIALECT,
 );
 
 export function createOrchestratorAgent(
@@ -45,7 +40,7 @@ export function createOrchestratorAgent(
   const definition: AgentDefinition = {
     name: 'orchestrator',
     description:
-      'Delegate-first coordinator for SDD workflow, specialist dispatch, and root-session memory ownership.',
+      'Adaptive root coordinator that handles bounded work directly and delegates only for net gain.',
     config: {
       temperature: 0.1,
       prompt,

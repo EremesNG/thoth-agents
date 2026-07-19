@@ -50,7 +50,7 @@ describe('CLI harness surface', () => {
     });
   });
 
-  test('keeps explicit install flags compatible', () => {
+  test('parses the v0.3 install surface without an optional skills flag', () => {
     expect(
       parseCliArgs([
         'install',
@@ -59,7 +59,6 @@ describe('CLI harness surface', () => {
         '--no-tui',
         '--reset',
         '--tmux=yes',
-        '--skills=no',
       ]),
     ).toEqual({
       command: 'install',
@@ -69,8 +68,11 @@ describe('CLI harness surface', () => {
         dryRun: true,
         reset: true,
         tmux: 'yes',
-        skills: 'no',
       },
+    });
+    expect(parseCliArgs(['install', '--skills=no'])).toEqual({
+      command: 'error',
+      message: 'Unsupported install option: --skills=no',
     });
   });
 

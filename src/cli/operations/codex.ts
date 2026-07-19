@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename } from 'node:path';
+import type { ProviderEvidenceInput } from '../../harness/types';
 import {
   applyCodexManagedModelOverrides,
   applyCodexSetup,
@@ -13,6 +14,12 @@ import {
   parseRoleTomlModel,
 } from '../codex-install';
 import type { CodexInstallScope, CodexRoleName } from '../codex-paths';
+import {
+  getRequiredSkillInstallCommand,
+  getRequiredSkillPath,
+  installRequiredSkill,
+  REQUIRED_SKILLS,
+} from '../skills';
 import type {
   BackupExpectation,
   HarnessAction,
@@ -29,6 +36,7 @@ import type {
   OperationPlanItem,
   OperationWarning,
 } from './types';
+import { classifyProviderCapabilityEvidence } from './types';
 
 export interface CodexOperationContext extends OperationContext {
   scope?: CodexInstallScope;
@@ -39,7 +47,10 @@ export interface CodexOperationContext extends OperationContext {
 }
 
 const CODEX_DISPLAY_NAME = 'Codex';
-const codexPlanSources = new WeakMap<OperationPlan, CodexSetupPlan>();
+const codexPlanSources = new WeakMap<
+  OperationPlan,
+  { setupPlan: CodexSetupPlan; context: CodexOperationContext }
+>();
 const codexModelSources = new WeakMap<
   OperationPlan,
   {
@@ -143,7 +154,7 @@ function codexDisclaimers() {
     },
     {
       message:
-        'Provider-per-role behavior, hook trust, permissions, and memory governance are instruction-level or user-managed unless Codex exposes runtime controls.',
+        'Provider-per-role behavior and permissions are instruction-level or user-managed unless Codex exposes runtime controls.',
       code: 'codex-runtime-limits',
     },
   ];
@@ -257,43 +268,6 @@ function userConfigState(item: CodexSetupPlanItem): {
   return { state: 'missing', observed: 'managed feature flag absent' };
 }
 
-function marketplaceState(item: CodexSetupPlanItem): {
-  state: ManagedState;
-  observed: string;
-} {
-  if (!existsSync(item.targetPath))
-    return { state: 'missing', observed: 'absent' };
-  try {
-    const parsed = JSON.parse(readFileSync(item.targetPath, 'utf8')) as {
-      plugins?: unknown;
-    };
-    const plugins = Array.isArray(parsed.plugins) ? parsed.plugins : [];
-    const entry = plugins.find(
-      (plugin) =>
-        plugin &&
-        typeof plugin === 'object' &&
-        'name' in plugin &&
-        plugin.name === 'thoth-agents',
-    );
-    if (!entry)
-      return { state: 'missing', observed: 'marketplace entry absent' };
-    const sourcePath =
-      typeof entry === 'object' &&
-      entry &&
-      'source' in entry &&
-      entry.source &&
-      typeof entry.source === 'object' &&
-      'path' in entry.source
-        ? String(entry.source.path)
-        : '';
-    return sourcePath.includes('.codex/plugins/thoth-agents')
-      ? { state: 'installed', observed: 'marketplace entry present' }
-      : { state: 'drift', observed: `marketplace source ${sourcePath}` };
-  } catch {
-    return { state: 'unknown', observed: 'unparseable marketplace JSON' };
-  }
-}
-
 function contentState(item: CodexSetupPlanItem): {
   state: ManagedState;
   observed: string;
@@ -301,27 +275,6 @@ function contentState(item: CodexSetupPlanItem): {
   if (!existsSync(item.targetPath))
     return { state: 'missing', observed: 'absent' };
   const observed = readFileSync(item.targetPath, 'utf8');
-  if (
-    basename(item.targetPath) === 'plugin.json' &&
-    item.targetPath.replaceAll('\\', '/').includes('/.codex-plugin/')
-  ) {
-    try {
-      const expectedVersion = JSON.parse(item.content ?? '{}').version;
-      const observedVersion = JSON.parse(observed).version;
-      if (
-        typeof expectedVersion === 'string' &&
-        typeof observedVersion === 'string' &&
-        expectedVersion !== observedVersion
-      ) {
-        return {
-          state: 'outdated',
-          observed: `version ${observedVersion}; expected ${expectedVersion}`,
-        };
-      }
-    } catch {
-      return { state: 'unknown', observed: 'unparseable plugin manifest' };
-    }
-  }
   if (item.content === observed)
     return { state: 'installed', observed: 'current' };
   if (item.role) {
@@ -349,7 +302,6 @@ function classifyItem(item: CodexSetupPlanItem): {
     return managedModelState(item);
   }
   if (item.action === 'merge-toml') return userConfigState(item);
-  if (item.action === 'merge-marketplace') return marketplaceState(item);
   return contentState(item);
 }
 
@@ -376,9 +328,61 @@ function statusSummary(state: ManagedState): string {
   }
 }
 
+function codexRequiredSkillStatus(context: CodexOperationContext): {
+  targets: ManagedTarget[];
+  diagnostics: OperationWarning[];
+} {
+  const targets: ManagedTarget[] = REQUIRED_SKILLS.map((skill) => {
+    const path = getRequiredSkillPath(skill, 'codex', context.homeDir);
+    const installed = existsSync(path);
+    return {
+      kind: 'skill',
+      path,
+      label: `Codex required skill: ${skill.name}`,
+      state: installed ? 'installed' : 'missing',
+      expected: 'required global Codex skill',
+      observed: installed ? 'installed' : 'missing',
+    };
+  });
+  return {
+    targets,
+    diagnostics: targets.some((target) => target.state === 'missing')
+      ? [
+          {
+            severity: 'important',
+            code: 'codex-required-skills-missing',
+            message:
+              'Required Codex skills are missing; run install, update, or sync to restore them.',
+          },
+        ]
+      : [],
+  };
+}
+
+function codexRequiredSkillPlanItem(): OperationPlanItem {
+  return {
+    title: 'Install required external skills for Codex',
+    target: {
+      kind: 'skill',
+      label: 'Required Codex skills',
+      expected: REQUIRED_SKILLS.map(({ name }) => name).join(', '),
+    },
+    preview: JSON.stringify(
+      REQUIRED_SKILLS.map((skill) => ({
+        name: skill.name,
+        ...getRequiredSkillInstallCommand(skill, 'codex'),
+      })),
+      null,
+      2,
+    ),
+  };
+}
+
 export function getCodexStatus(
   context: CodexOperationContext = { cwd: process.cwd() },
+  evidence: ProviderEvidenceInput = {},
 ): HarnessStatusReport {
+  const providerCapability = classifyProviderCapabilityEvidence(evidence);
   let plan: CodexSetupPlan;
   try {
     plan = buildCodexSetupPlan(codexConfig(context, true));
@@ -398,6 +402,7 @@ export function getCodexStatus(
         },
       ],
       actions: codexActions,
+      providerCapability,
       disclaimers: codexDisclaimers(),
     };
   }
@@ -405,23 +410,32 @@ export function getCodexStatus(
   const classified = plan.items
     .filter((item) => item.action !== 'diagnose-only')
     .map((item) => ({ item, ...classifyItem(item) }));
-  const state = aggregateState(classified.map((item) => item.state));
-  const diagnostics = plan.diagnostics.map((message) => ({
+  const requiredSkills = codexRequiredSkillStatus(context);
+  const state = aggregateState([
+    ...classified.map((item) => item.state),
+    ...requiredSkills.targets.map((target) => target.state ?? 'unknown'),
+  ]);
+  const diagnostics: OperationWarning[] = plan.diagnostics.map((message) => ({
     severity: 'minor' as const,
     message,
     code: 'codex-diagnostic',
   }));
+  diagnostics.push(...requiredSkills.diagnostics);
 
   return {
     harness: 'codex',
     displayName: CODEX_DISPLAY_NAME,
     state,
     summary: statusSummary(state),
-    targets: classified.map(({ item, state, observed }) =>
-      targetForItem(item, state, observed),
-    ),
+    targets: [
+      ...classified.map(({ item, state, observed }) =>
+        targetForItem(item, state, observed),
+      ),
+      ...requiredSkills.targets,
+    ],
     diagnostics,
     actions: codexActions,
+    providerCapability,
     disclaimers: [
       ...codexDisclaimers(),
       ...plan.disclaimers.map((message) => ({ message })),
@@ -469,7 +483,10 @@ function planFromSetup(
       description:
         'Codex setup apply uses the existing installer backup behavior for files that already exist.',
     },
-    items: setupPlan.items.map(planItemFromSetup),
+    items: [
+      ...setupPlan.items.map(planItemFromSetup),
+      codexRequiredSkillPlanItem(),
+    ],
     warnings: [
       ...status.diagnostics,
       ...(canApply
@@ -486,7 +503,7 @@ function planFromSetup(
       ...setupPlan.disclaimers.map((message) => ({ message })),
     ],
   };
-  codexPlanSources.set(plan, setupPlan);
+  codexPlanSources.set(plan, { setupPlan, context });
   return plan;
 }
 
@@ -512,7 +529,7 @@ export function buildCodexSyncPlan(
     'codex-sync-preview',
     'sync',
     'Sync Codex managed configuration',
-    'Preview Codex managed root instructions, subagents, plugin source, marketplace entry, and feature gates.',
+    'Preview Codex managed root instructions, subagents, feature gates, and native marketplace guidance.',
     setupPlan,
     context,
   );
@@ -780,38 +797,73 @@ export function applyCodexPlan(plan: OperationPlan): OperationApplyResult {
     };
   }
 
-  const setupPlan = codexPlanSources.get(plan);
-  if (!setupPlan) {
+  const source = codexPlanSources.get(plan);
+  if (!source) {
     return rejectPlan(
       plan,
       'Codex setup plan was not produced by a Codex operation plan builder in this process.',
     );
   }
-  const result = applyCodexSetup({ ...setupPlan, dryRun: false });
+  const result = applyCodexSetup({ ...source.setupPlan, dryRun: false });
+  const requiredSkillWarnings: OperationWarning[] = [];
+  const requiredSkillTargets: ManagedTarget[] = [];
+  if (result.success) {
+    for (const skill of REQUIRED_SKILLS) {
+      const installed = installRequiredSkill(skill, 'codex', {
+        homeDir: source.context.homeDir,
+      });
+      const success = installed.status !== 'failed';
+      requiredSkillTargets.push({
+        kind: 'skill',
+        path: installed.skillPath,
+        label: `Codex required skill: ${skill.name}`,
+        state: success ? 'installed' : 'drift',
+        observed: success ? installed.status : 'installation failed',
+      });
+      if (!success) {
+        requiredSkillWarnings.push({
+          severity: 'critical',
+          code: 'codex-required-skill-failed',
+          message: `Failed to install required Codex skill: ${skill.name}.`,
+        });
+      }
+    }
+  }
+  const success = result.success && requiredSkillWarnings.length === 0;
   return {
     harness: 'codex',
     action: plan.action,
-    applied: result.success,
-    summary: result.success
+    applied: success,
+    summary: success
       ? `Applied Codex managed ${plan.action} plan.`
-      : (result.error ?? `Failed to apply Codex ${plan.action} plan.`),
-    changedTargets: result.changed.map((path) => ({
-      kind: path.endsWith('.json') ? 'memory-state' : 'generated-artifact',
-      path,
-      label: basename(path),
-      state: 'installed',
-    })),
+      : requiredSkillWarnings.length > 0
+        ? `Codex setup was written, but required skills failed to install.`
+        : (result.error ?? `Failed to apply Codex ${plan.action} plan.`),
+    changedTargets: [
+      ...result.changed.map((path) => ({
+        kind: path.endsWith('.json')
+          ? ('memory-state' as const)
+          : ('generated-artifact' as const),
+        path,
+        label: basename(path),
+        state: 'installed' as const,
+      })),
+      ...requiredSkillTargets,
+    ],
     backups: result.changed
       .filter((path) => existsSync(`${path}.bak`))
       .map((path) => ({ path: `${path}.bak`, label: 'managed backup' })),
-    warnings: result.success
-      ? []
-      : [
-          {
-            severity: 'critical',
-            message: result.error ?? 'Codex setup apply failed.',
-          },
-        ],
+    warnings: [
+      ...requiredSkillWarnings,
+      ...(result.success
+        ? []
+        : [
+            {
+              severity: 'critical' as const,
+              message: result.error ?? 'Codex setup apply failed.',
+            },
+          ]),
+    ],
     disclaimers: codexDisclaimers(),
   };
 }

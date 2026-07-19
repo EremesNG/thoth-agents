@@ -1,173 +1,79 @@
-# Provider Configurations
+# Provider Configuration
 
-OpenCode provider presets map models and variants to the seven thoth-agents
-roles. This page is OpenCode-scoped because it edits OpenCode plugin config
-files. Codex users should use
-[Codex Model Customization](codex-model-customization.md) for Codex role model
-defaults and customization boundaries.
+## OpenCode built-in preset
 
-## Config File Location
+thoth-agents 0.3.0 ships one built-in OpenCode model mapping: `openai`.
 
-Edit one of:
+Kimi, GitHub Copilot, ZAI/GLM, and mixed-provider presets were removed. The
+installer does not write provider credentials or alternate provider blocks.
 
-- `~/.config/opencode/thoth-agents.json`
-- `~/.config/opencode/thoth-agents.jsonc`
+| Role | OpenCode model | Variant |
+| --- | --- | --- |
+| `orchestrator` | `openai/gpt-5.6-sol` | `xhigh` |
+| `explorer` | `openai/gpt-5.6-luna` | `low` |
+| `librarian` | `openai/gpt-5.6-luna` | `xhigh` |
+| `oracle` | `openai/gpt-5.6-sol` | `xhigh` |
+| `sdd-specify` | `openai/gpt-5.6-sol` | `high` |
+| `sdd-plan` | `openai/gpt-5.6-sol` | `high` |
+| `sdd-tasks` | `openai/gpt-5.6-luna` | `medium` |
+| `designer` | `openai/gpt-5.6-sol` | `medium` |
+| `quick` | `openai/gpt-5.6-luna` | `xhigh` |
+| `deep` | `openai/gpt-5.6-sol` | `medium` |
 
-Project-local OpenCode overrides can also live at:
+The generated shape is equivalent to:
 
-- `.opencode/thoth-agents.json`
-- `.opencode/thoth-agents.jsonc`
+```json
+{
+  "$schema": "https://unpkg.com/thoth-agents@latest/thoth-agents.schema.json",
+  "preset": "openai",
+  "presets": {
+    "openai": {
+      "orchestrator": {
+        "model": "openai/gpt-5.6-sol",
+        "variant": "xhigh"
+      }
+    }
+  }
+}
+```
 
-## Important Note
+The actual generated `openai` object includes all ten roles from the table.
 
-This config maps models and variants to agents for the OpenCode plugin path.
-Skill and MCP usage is prompt-driven rather than configured through per-agent
-allowlists. Codex provider configuration is handled through Codex config and the
-validated surfaces described in
-[Codex Model Customization](codex-model-customization.md).
+## Explicit role overrides
 
-## Default: OpenAI
-
-The OpenCode installer generates this preset automatically:
+Advanced users may override a role through the `agents` object without creating
+another built-in preset:
 
 ```json
 {
   "preset": "openai",
-  "presets": {
-    "openai": {
-      "orchestrator": { "model": "openai/gpt-5.4" },
-      "oracle": { "model": "openai/gpt-5.4", "variant": "high" },
-      "librarian": { "model": "openai/gpt-5.4-mini", "variant": "low" },
-      "explorer": { "model": "openai/gpt-5.4-mini", "variant": "low" },
-      "designer": { "model": "openai/gpt-5.4-mini", "variant": "medium" },
-      "quick": { "model": "openai/gpt-5.4-mini", "variant": "low" },
-      "deep": { "model": "openai/gpt-5.4", "variant": "high" }
+  "agents": {
+    "deep": {
+      "model": "openai/gpt-5.6-sol",
+      "variant": "high"
     }
   }
 }
 ```
 
-## Kimi For Coding
+User overrides win over generated defaults where the harness supports them. An
+arbitrary provider-qualified override is user-managed and is not a shipped or
+validated thoth-agents provider preset.
 
-```json
-{
-  "preset": "kimi",
-  "presets": {
-    "kimi": {
-      "orchestrator": { "model": "kimi-for-coding/k2p5" },
-      "oracle": { "model": "kimi-for-coding/k2p5", "variant": "high" },
-      "librarian": { "model": "kimi-for-coding/k2p5", "variant": "low" },
-      "explorer": { "model": "kimi-for-coding/k2p5", "variant": "low" },
-      "designer": { "model": "kimi-for-coding/k2p5", "variant": "medium" },
-      "quick": { "model": "kimi-for-coding/k2p5", "variant": "low" },
-      "deep": { "model": "kimi-for-coding/k2p5", "variant": "high" }
-    }
-  }
-}
-```
+## Codex and Claude Code
 
-Authenticate with OpenCode:
+Codex receives providerless OpenAI model names in custom-agent TOMLs because that
+is the native Codex model surface. Claude Code uses its native `haiku`, `sonnet`,
+`opus`, or `inherit` values for plugin agents. Those harness-native choices do
+not reintroduce alternate OpenCode presets.
 
-```bash
-opencode auth login
-```
+Codex specialist models can be changed through the bounded thoth-agents model
+operation described in [Codex Model Customization](codex-model-customization.md).
+The Codex root remains user-controlled. Claude agent defaults are stored in the
+versioned native plugin package; because Claude owns its installed cache, changing
+them requires publishing and installing a new thoth-agents version.
 
-## GitHub Copilot
+## Credentials
 
-```json
-{
-  "preset": "copilot",
-  "presets": {
-    "copilot": {
-      "orchestrator": { "model": "github-copilot/claude-opus-4.6" },
-      "oracle": { "model": "github-copilot/claude-opus-4.6", "variant": "high" },
-      "librarian": { "model": "github-copilot/grok-code-fast-1", "variant": "low" },
-      "explorer": { "model": "github-copilot/grok-code-fast-1", "variant": "low" },
-      "designer": {
-        "model": "github-copilot/gemini-3.1-pro-preview",
-        "variant": "medium"
-      },
-      "quick": { "model": "github-copilot/claude-sonnet-4.6", "variant": "low" },
-      "deep": { "model": "github-copilot/claude-opus-4.6", "variant": "high" }
-    }
-  }
-}
-```
-
-## ZAI Coding Plan
-
-```json
-{
-  "preset": "zai-plan",
-  "presets": {
-    "zai-plan": {
-      "orchestrator": { "model": "zai-coding-plan/glm-5" },
-      "oracle": { "model": "zai-coding-plan/glm-5", "variant": "high" },
-      "librarian": { "model": "zai-coding-plan/glm-5", "variant": "low" },
-      "explorer": { "model": "zai-coding-plan/glm-5", "variant": "low" },
-      "designer": { "model": "zai-coding-plan/glm-5", "variant": "medium" },
-      "quick": { "model": "zai-coding-plan/glm-5", "variant": "low" },
-      "deep": { "model": "zai-coding-plan/glm-5", "variant": "high" }
-    }
-  }
-}
-```
-
-## Mixing Providers
-
-OpenCode can mix providers across agents:
-
-```json
-{
-  "preset": "my-mix",
-  "presets": {
-    "my-mix": {
-      "orchestrator": { "model": "openai/gpt-5.4" },
-      "oracle": { "model": "openai/gpt-5.4", "variant": "high" },
-      "librarian": { "model": "kimi-for-coding/k2p5", "variant": "low" },
-      "explorer": { "model": "github-copilot/grok-code-fast-1", "variant": "low" },
-      "designer": { "model": "kimi-for-coding/k2p5", "variant": "medium" },
-      "quick": { "model": "openai/gpt-5.4-mini", "variant": "low" },
-      "deep": { "model": "openai/gpt-5.4", "variant": "high" }
-    }
-  }
-}
-```
-
-## Switching Presets
-
-### Method 1: Edit the config file
-
-Set `preset` to the key you want to use:
-
-```json
-{
-  "preset": "my-mix"
-}
-```
-
-### Method 2: Environment variable
-
-The environment variable takes precedence over the file:
-
-```bash
-export THOTH_AGENTS_PRESET=my-mix
-opencode
-```
-
-## Codex Model Configuration
-
-Codex generated subagents use Codex custom-agent TOML fields, not OpenCode
-provider presets. The current validated Codex surface supports per-agent
-`model` and `model_reasoning_effort` output, while provider-per-agent TOML
-fields remain validation-required before they can be generated.
-
-See [Codex Model Customization](codex-model-customization.md) for the supported
-Codex path.
-
-## Related Docs
-
-- [Installation Guide](installation.md)
-- [Quick Reference](quick-reference.md)
-- [Skills and MCPs](skills-and-mcps.md)
-- [Codex Model Customization](codex-model-customization.md)
+thoth-agents never writes provider credentials. Configure authentication through
+the selected harness and provider's supported mechanism.

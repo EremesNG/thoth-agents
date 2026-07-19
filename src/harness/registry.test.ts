@@ -6,6 +6,27 @@ import {
 } from './registry';
 
 describe('harness registry', () => {
+  test('keeps exactly the three accepted harnesses provider-asset free', () => {
+    expect(SUPPORTED_HARNESSES).toEqual(['opencode', 'codex', 'claude']);
+
+    for (const harness of SUPPORTED_HARNESSES) {
+      const rendered = resolveHarness(harness);
+      expect(rendered.ok).toBe(true);
+      if (!rendered.ok) continue;
+
+      const output = rendered.adapter.render({
+        projectRoot: process.cwd(),
+      });
+      const serialized = output.artifacts
+        .map((artifact) => `${artifact.path}\n${String(artifact.content)}`)
+        .join('\n');
+
+      expect(serialized).not.toContain('thoth_mem');
+      expect(serialized).not.toMatch(/skills[\\/]thoth-mem-agents/i);
+      expect(serialized).not.toContain('bundled MCP server');
+    }
+  });
+
   test('defaults to OpenCode with no generated artifacts', () => {
     const result = resolveHarness(undefined);
 
@@ -32,9 +53,13 @@ describe('harness registry', () => {
     expect(result).toMatchObject({ ok: true, harness: 'claude' });
     if (result.ok) {
       expect(result.adapter.displayName).toBe('Claude Code');
-      for (const status of Object.values(result.adapter.capabilities)) {
-        expect(status).toBe('supported');
-      }
+      expect(result.adapter.capabilities).toMatchObject({
+        agentDefinitions: 'supported',
+        delegatedExecution: 'supported',
+        rolePermissions: 'supported',
+        parentContextInjection: 'supported',
+        memoryGovernanceEnforcement: 'instruction-only',
+      });
     }
   });
 

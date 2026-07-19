@@ -47,6 +47,21 @@ function normalizePath(value: string): string {
   return value.replace(/\\/g, '/');
 }
 
+function stripProviderMcp(content: string | undefined): string | undefined {
+  if (content === undefined) return undefined;
+
+  try {
+    const parsed = JSON.parse(content) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    if (!parsed.mcpServers) return content;
+    const { thoth_mem: _provider, ...mcpServers } = parsed.mcpServers;
+    return stableJson({ ...parsed, mcpServers });
+  } catch {
+    return content;
+  }
+}
+
 function pluginRootReference(pathValue: string): string {
   const normalized = normalizePath(pathValue);
   const relative = normalized.slice('.codex-plugin/'.length);
@@ -319,7 +334,11 @@ export function renderCodexPluginPackage(
       continue;
     }
 
-    const assetContent = hookContent.content ?? asset.content;
+    const rawAssetContent = hookContent.content ?? asset.content;
+    const assetContent =
+      asset.surfaceId === 'plugin-mcp-json'
+        ? stripProviderMcp(rawAssetContent)
+        : rawAssetContent;
     const reference = pluginRootReference(assetPath);
     manifest[asset.manifestField] = reference;
 

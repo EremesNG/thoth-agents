@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { ALL_AGENT_NAMES } from '../config';
 import {
   generateLiteConfig,
   MODEL_MAPPINGS,
@@ -6,16 +7,14 @@ import {
 } from './providers';
 
 describe('providers', () => {
-  test('MODEL_MAPPINGS has exactly 4 providers', () => {
+  test('MODEL_MAPPINGS exposes only the OpenAI preset', () => {
     const keys = Object.keys(MODEL_MAPPINGS);
-    expect(keys.sort()).toEqual(['copilot', 'kimi', 'openai', 'zai-plan']);
+    expect(keys).toEqual(['openai']);
   });
 
   test('generateLiteConfig always generates openai preset', () => {
     const config = generateLiteConfig({
       hasTmux: false,
-      installSkills: false,
-      installCustomSkills: false,
       reset: false,
     });
 
@@ -23,23 +22,21 @@ describe('providers', () => {
     expect(config.preset).toBe('openai');
     const agents = (config.presets as any).openai;
     expect(agents).toBeDefined();
-    expect(agents.orchestrator.model).toBe('openai/gpt-5.4');
-    expect(agents.orchestrator.variant).toBeUndefined();
+    expect(agents.orchestrator.model).toBe('openai/gpt-5.6-sol');
+    expect(agents.orchestrator.variant).toBe('xhigh');
     expect(agents.quick).toEqual({
       model: 'openai/gpt-5.6-luna',
-      variant: 'medium',
+      variant: 'xhigh',
     });
     expect(agents.deep).toEqual({
-      model: 'openai/gpt-5.6-terra',
-      variant: 'xhigh',
+      model: 'openai/gpt-5.6-sol',
+      variant: 'medium',
     });
   });
 
   test('generateLiteConfig uses the confirmed OpenAI subagent preset', () => {
     const config = generateLiteConfig({
       hasTmux: false,
-      installSkills: false,
-      installCustomSkills: false,
       reset: false,
     });
 
@@ -49,35 +46,45 @@ describe('providers', () => {
     );
     expect(agents.oracle).toEqual({
       model: 'openai/gpt-5.6-sol',
-      variant: 'high',
+      variant: 'xhigh',
     });
     expect(agents.librarian).toEqual({
       model: 'openai/gpt-5.6-luna',
-      variant: 'low',
+      variant: 'xhigh',
     });
     expect(agents.explorer).toEqual({
       model: 'openai/gpt-5.6-luna',
       variant: 'low',
     });
     expect(agents.designer).toEqual({
-      model: 'openai/gpt-5.6-terra',
-      variant: 'high',
+      model: 'openai/gpt-5.6-sol',
+      variant: 'medium',
     });
     expect(agents.quick).toEqual({
       model: 'openai/gpt-5.6-luna',
-      variant: 'medium',
+      variant: 'xhigh',
     });
     expect(agents.deep).toEqual({
-      model: 'openai/gpt-5.6-terra',
-      variant: 'xhigh',
+      model: 'openai/gpt-5.6-sol',
+      variant: 'medium',
+    });
+    expect(agents['sdd-specify']).toEqual({
+      model: 'openai/gpt-5.6-sol',
+      variant: 'high',
+    });
+    expect(agents['sdd-plan']).toEqual({
+      model: 'openai/gpt-5.6-sol',
+      variant: 'high',
+    });
+    expect(agents['sdd-tasks']).toEqual({
+      model: 'openai/gpt-5.6-luna',
+      variant: 'medium',
     });
   });
 
   test('generateLiteConfig enables tmux when requested', () => {
     const config = generateLiteConfig({
       hasTmux: true,
-      installSkills: false,
-      installCustomSkills: false,
       reset: false,
     });
 
@@ -89,8 +96,6 @@ describe('providers', () => {
   test('generateLiteConfig omits per-agent skills and mcps fields', () => {
     const config = generateLiteConfig({
       hasTmux: false,
-      installSkills: true,
-      installCustomSkills: false,
       reset: false,
     });
 
@@ -101,11 +106,9 @@ describe('providers', () => {
     expect(agents.librarian.mcps).toBeUndefined();
   });
 
-  test('generateLiteConfig includes the seven-agent roster', () => {
+  test('generateLiteConfig includes the canonical ten-role roster', () => {
     const config = generateLiteConfig({
       hasTmux: false,
-      installSkills: false,
-      installCustomSkills: false,
       reset: false,
     });
 
@@ -118,14 +121,21 @@ describe('providers', () => {
       'oracle',
       'orchestrator',
       'quick',
+      'sdd-plan',
+      'sdd-specify',
+      'sdd-tasks',
     ]);
+  });
+
+  test('every maintained provider mapping covers the canonical roster', () => {
+    for (const mapping of Object.values(MODEL_MAPPINGS)) {
+      expect(Object.keys(mapping).sort()).toEqual([...ALL_AGENT_NAMES].sort());
+    }
   });
 
   test('quick and deep presets remain lean model-only configs', () => {
     const config = generateLiteConfig({
       hasTmux: false,
-      installSkills: true,
-      installCustomSkills: false,
       reset: false,
     });
 

@@ -1,428 +1,224 @@
-<div align="center">
-<img src="img/team.png" alt="thoth-agents agents" width="420">
+# thoth-agents
 
-<p><i>Seven specialized agents, one delegate-first workflow across supported harnesses.</i></p>
-  <p><b>thoth-agents</b> - Multi-harness orchestration - Thoth-mem persistence - Bundled SDD pipeline</p>
-  <p>
-    <a href="https://github.com/EremesNG/thoth-agents/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/EremesNG/thoth-agents/ci.yml?branch=master&label=CI" alt="CI status"></a>
-    <a href="https://www.npmjs.com/package/thoth-agents"><img src="https://img.shields.io/npm/v/thoth-agents?label=npm" alt="npm version"></a>
-    <a href="https://github.com/EremesNG/thoth-agents/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/thoth-agents" alt="MIT license"></a>
-    <img src="https://img.shields.io/node/v/thoth-agents" alt="Node.js version">
-    <img src="https://img.shields.io/badge/pnpm-11.2.2-F69220?logo=pnpm&logoColor=white" alt="pnpm 11.2.2">
-  </p>
-</div>
+Adaptive multi-harness orchestration for OpenCode, Codex, and Claude Code.
 
----
+Version 0.3.0 replaces the old delegate-first, phase-skill pipeline with a
+lighter adaptive root, ten canonical roles, and three explicit SDD routes. The
+root handles clear bounded work directly and delegates only when specialization,
+context isolation, independent review, or safe parallelism creates a net gain.
 
-thoth-agents is a delegate-first agent system for coding harnesses. It started
-as an OpenCode plugin and now provides a shared seven-agent workflow for
-OpenCode, Codex, and Claude Code, with each harness getting the integration
-surface that fits it best.
+## What 0.3.0 provides
 
-OpenCode remains the stable default path: native plugin install, native `task`
-delegation, optional tmux monitoring, and generated config. Codex is supported
-through an explicit agent-pack and Personal plugin setup path, with documented
-trust review and the current `collaboration.*` delegation surface. Codex can
-spawn and coordinate generic tasks programmatically, while named installed-role
-selection and per-role enforcement remain instruction-level. Claude Code is a first-class path: a
-single auto-discovered plugin package with native subagents, harness-enforced
-hooks, MCP, skills, and per-agent tool permissions.
+- OpenCode as the default and strongest runtime-integrated path.
+- First-class Codex and Claude Code installation surfaces.
+- Ten roles: `orchestrator`, `explorer`, `librarian`, `oracle`, `sdd-specify`,
+  `sdd-plan`, `sdd-tasks`, `designer`, `quick`, and `deep`.
+- Direct, accelerated, and full SDD routes with Spec Kit artifact semantics
+  stored under `openspec/changes/<feature>/`.
+- A maximum delegation depth of one and one writer per mutable surface.
+- Mandatory `simplify`, `tdd`, `progressive-context-router`, and
+  `architectural-grilling` skills for every supported harness.
+- An OpenAI-only built-in model preset for OpenCode.
+- A provider-neutral boundary: thoth-mem owns its own installation, hooks, MCP,
+  lifecycle, persistence, and recovery behavior.
 
-## What It Is
+thoth-agents does not bundle SDD phase skills and does not install or emulate
+thoth-mem.
 
-- A canonical seven-agent roster: `orchestrator`, `explorer`, `librarian`,
-  `oracle`, `designer`, `quick`, and `deep`.
-- A delegate-first operating model that keeps the root coordinator focused on
-  decisions while specialists gather evidence, implement, review, and verify.
-- A bundled requirements interview and SDD pipeline for moving from ambiguous
-  requests to planned, verified implementation.
-- A thoth-mem integration for durable project memory, SDD artifacts, and
-  cross-session recovery.
-- A multi-harness package that preserves OpenCode defaults while adding a
-  Codex setup path.
+## Installation
 
-## What It Is Not
-
-- It is not a claim that every harness has identical runtime behavior.
-- It is not a replacement for each harness's security, trust, sandbox, or
-  approval model.
-- It does not rename the seven roles or require new visual assets.
-- It does not make Codex tmux-aware; tmux integration is scoped to OpenCode
-  child `task` sessions.
-
-## Harness Support
-
-
-| Harness     | Status                     | Setup path                                                                              | Notes                                                                                                                                                                                                                                                 |
-| ----------- | -------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OpenCode    | Stable default             | `npx thoth-agents@latest install` or `npx thoth-agents@latest install --agent=opencode` | Native plugin config, native`task` delegation, optional tmux panes, OpenCode provider auth.                                                                                                                                                           |
-| Codex       | Supported explicit path    | `npx thoth-agents@latest install --agent=codex`                                         | Installs ambient/root guidance, six role subagents, and a Personal plugin source. Uses the current `collaboration.*` tools for generic delegation; named-role selection and per-role enforcement remain instruction-level. Requires `/plugins` and `/hooks` trust review. |
-| Claude Code | Supported first-class path | `npx thoth-agents@latest install --agent=claude`                                        | Installs one Claude Code plugin: six specialist subagents (`Task(subagent_type: ...)`), an `orchestrator` agent activated as the main thread via `settings.json`, `.mcp.json`, and bundled skills. Role permissions are enforced by subagent `tools`. |
-
-OpenCode can load the plugin with:
-
-```jsonc
-{
-  "plugin": ["thoth-agents@latest"]
-}
-```
-
-That plugin entry is not a shell command. To run the installer or TUI, use the
-npm binary through a global install, `npx thoth-agents@latest`, or
-`pnpm dlx thoth-agents@latest`.
-
-## Quick Start
-
-Run the binary with no arguments in an interactive terminal to open the
-multi-harness TUI:
-
-```bash
-npx thoth-agents@latest
-```
-
-The same no-argument binary invocation falls back to the OpenCode install path
-in CI, redirected, or `TERM=dumb` terminals. Use explicit commands when you
-need deterministic automation.
+Node.js `>=22.13` is required. A complete installation may have two layers:
+the harness-native plugin and the thoth-agents CLI setup. The CLI step is
+required even after the plugin is installed because plugin packages cannot
+materialize every user-level orchestration surface or install the four external
+skills.
 
 ### OpenCode
 
 ```bash
-npx thoth-agents@latest install
 npx thoth-agents@latest install --agent=opencode
-opencode auth login
-opencode
 ```
 
-Then ask OpenCode to verify the roster:
-
-```text
-ping all agents
-```
-
-For non-interactive setup:
-
-```bash
-npx thoth-agents@latest install --no-tui --tmux=no --skills=yes
-```
-
-Interactive status, list, update, sync, and model previews are available from
-the no-argument TUI. Command help also documents the explicit command names for
-terminal workflows.
+The CLI adds the npm plugin entry, writes the OpenAI-only ten-role
+configuration, and installs the required skills.
 
 ### Codex
 
-Review the plan first, then install explicitly:
-
 ```bash
+# 1. Register the native repository marketplace.
+codex plugin marketplace add EremesNG/thoth-agents
+
+# 2. Restart Codex, open /plugins, and install/enable thoth-agents.
+
+# 3. Preview and apply the required CLI-managed surfaces.
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
-Restart Codex and review plugin/hook trust:
-
-```text
-/plugins
-/hooks
-```
-
-Codex install does not create a selectable orchestrator TOML, does not bypass
-trust review, and does not make role permissions or memory governance hard
-runtime guarantees unless Codex exposes those controls.
-
-Generated root guidance binds delegation to direct `collaboration.*` tools:
-`spawn_agent({ task_name, message, fork_turns? })`, mailbox-oriented
-`wait_agent`, live status through `list_agents`, non-triggering `send_message`,
-turn-triggering `followup_task`, and explicit `interrupt_agent`. A wait timeout
-or silence remains in progress; it is not a collected result body.
+The Codex plugin provides the packaged research MCP configuration. The CLI is
+still required: it installs the global orchestrator instructions in
+`~/.codex/AGENTS.md`, nine custom-agent TOMLs, the managed Default-mode feature
+flag, model ownership state, and all required global skills.
 
 ### Claude Code
 
-Preview, then install the plugin package:
+Run both native plugin commands **before** calling the thoth-agents CLI:
 
 ```bash
+# 1. Register the marketplace.
+claude plugin marketplace add EremesNG/thoth-agents --scope user
+
+# 2. Install the plugin from that marketplace.
+claude plugin install thoth-agents@thoth-agents --scope user
+
+# 3. Preview and apply the required CLI-managed dependencies.
 npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```
 
-This writes a single Claude Code **skills-directory plugin** under
-`~/.claude/skills/thoth-agents`: `.claude-plugin/plugin.json`, seven
-auto-discovered agents in `agents/` (six specialists + an `orchestrator`), an
-`.mcp.json` server map, bundled `skills/`, and a plugin-root `settings.json`
-with `{ "agent": "orchestrator" }`. That `agent` key activates the orchestrator
-as the **main thread** — replacing the default system prompt — so the session
-starts in delegate-first mode and bootstraps thoth-mem on its first turn. It
-auto-loads as `thoth-agents@skills-dir` on the next session (no marketplace or
-install step); restart Claude Code or run `/reload-plugins` to activate it
-(confirm in `/plugin` → Installed). The orchestrator delegates to specialists
-with `Task(subagent_type: explorer|librarian|oracle|designer|quick|deep)`. Role
-permissions are enforced through each specialist's frontmatter `tools` allowlist.
-You can also emit the package without installing it:
+Restart Claude Code or run `/reload-plugins`, then inspect `/plugin`. The native
+plugin provides the orchestrator, nine subagents, settings, and research MCPs.
+The CLI remains mandatory because it installs and verifies the external skills
+under `~/.claude/skills`; a plugin-only install is incomplete.
 
-```bash
-npx thoth-agents@latest generate --harness=claude --dry-run
-```
+### Why the CLI is required
 
-See [docs/claude-code-plugin-packaging.md](docs/claude-code-plugin-packaging.md).
+| Harness | Native/plugin layer | Additional CLI-owned layer |
+| --- | --- | --- |
+| OpenCode | npm plugin entry loaded by OpenCode | Ten-role configuration, optional tmux setup, and required skills |
+| Codex | Repository marketplace plugin and research MCPs | `~/.codex/AGENTS.md`, nine custom agents, feature configuration, model state, and required skills |
+| Claude Code | Marketplace plugin with orchestrator, subagents, settings, and research MCPs | Required global skills plus native-state verification and repair |
 
-### Reset Generated Config
+Every install requires `simplify`, `tdd`, `progressive-context-router`, and
+`architectural-grilling`. A missing or failed skill is an unhealthy installation
+and causes the CLI operation to fail; there is no opt-out. Plugin marketplaces
+do not provide a reliable general-purpose `postinstall` for these standalone
+skill repositories.
 
-```bash
-npx thoth-agents@latest install --reset
-```
+See [Installation](docs/installation.md), [Codex Install](docs/codex-install.md),
+and [Claude Code Install](docs/claude-code-install.md) for verification,
+troubleshooting, scopes, and limitations.
 
-## Seven-Agent Roster
+## Harness comparison
 
-The delegate-first philosophy is simple: the `orchestrator` coordinates while
-specialists execute. Shared concepts are the same across harnesses, but the
-dispatch mechanism is harness-bound. In OpenCode, specialists are launched with
-the native `task` tool. In Codex, the installed role agents and plugin-bundled
-skills provide the closest supported workflow, with some behavior enforced by
-instructions rather than hard runtime APIs.
+| Harness | Installed orchestration surface | Required skill root | Important limitation |
+| --- | --- | --- | --- |
+| OpenCode | Plugin entry, ten-role config, runtime delegation, tools, MCPs, and hooks | `~/.config/opencode/skills` | OpenAI is the only built-in preset. |
+| Codex | Native plugin plus CLI-managed root `AGENTS.md`, nine specialist TOMLs, and feature flag | `~/.codex/skills` | The ambient session is the root. Role selection and some enforcement remain instruction-level; review `/plugins` and `/hooks`. |
+| Claude Code | Native marketplace plugin; orchestrator main agent plus nine subagents | `~/.claude/skills` | Run marketplace add/install before the CLI. Cache and role-model defaults are package/manager-owned. |
 
-### Primary Agent
+The generated contract is shared, but runtime guarantees are not assumed to be
+identical across harnesses.
 
-<table width="100%">
-  <tr>
-    <td width="100%" valign="top">
-      <img src="img/orchestrator.png" width="100%" alt="Orchestrator">
-      <br>
-      <b>Orchestrator</b>
-      <br>
-      <i>Root coordinator and sole primary agent.</i>
-      <br><br>
-      <b>Role:</b> The root coordinator. Handles delegation, sequencing, memory ownership, requirements routing, and SDD progress tracking. Does not read or modify source files directly when running as the root coordinator.
-      <br>
-      <b>Mode:</b> primary, non-mutating
-      <br>
-      <b>Dispatch:</b> sync coordinator
-      <br>
-      <b>Recommended:</b>
-      <br>
-      <code>anthropic/claude-opus-4-6</code> - <code>openai/gpt-5.4</code> - <code>kimi-for-coding/k2p5</code>
-      <br>
-      <b>Personality:</b> Autonomous deep coordinator; owns decisions and works through specialists.
-    </td>
-  </tr>
-</table>
+## Adaptive orchestration
 
-### Specialist Subagents
+| Role group | Roles | Responsibility |
+| --- | --- | --- |
+| Root | `orchestrator` | Route the task, work directly when bounded, delegate only for net gain, and synthesize results. |
+| Read-only evidence | `explorer`, `librarian`, `oracle` | Repository discovery, authoritative research, diagnosis, architecture, and independent review. |
+| SDD coordination | `sdd-specify`, `sdd-plan`, `sdd-tasks` | Write only governed coordination artifacts under `openspec/`; never implement product code. |
+| Writers | `designer`, `quick`, `deep` | UI/UX work, narrow mechanical changes, and correctness-critical implementation. |
 
-<table width="100%">
-  <tr>
-    <td width="33%" valign="top">
-      <img src="img/explorer.png" width="100%" alt="Explorer">
-      <br>
-      <b>Explorer</b>
-      <br>
-      <i>Fast local discovery.</i>
-      <br><br>
-      <b>Role:</b> Local codebase discovery and navigation. Finds files, symbols, references, constraints, and verification targets.
-      <br>
-      <b>Mode:</b> read-only
-      <br>
-      <b>Dispatch:</b> harness-bound specialist dispatch
-      <br>
-      <b>Recommended:</b>
-      <br>
-      <code>Grok Code Fast</code> - <code>openai/gpt-5.4-nano</code> - <code>anthropic/claude-haiku-4-5</code>
-    </td>
-    <td width="33%" valign="top">
-      <img src="img/librarian.png" width="100%" alt="Librarian">
-      <br>
-      <b>Librarian</b>
-      <br>
-      <i>External docs and examples.</i>
-      <br><br>
-      <b>Role:</b> External docs and API research. Validates version-specific behavior with official docs or public examples.
-      <br>
-      <b>Mode:</b> read-only
-      <br>
-      <b>Dispatch:</b> harness-bound specialist dispatch
-      <br>
-      <b>Recommended:</b>
-      <br>
-      <code>openai/gpt-5.4</code> - <code>anthropic/claude-sonnet-4-6</code> - <code>google/gemini-3.1-pro-preview</code>
-    </td>
-    <td width="33%" valign="top">
-      <img src="img/oracle.png" width="100%" alt="Oracle">
-      <br>
-      <b>Oracle</b>
-      <br>
-      <i>Deep review and diagnosis.</i>
-      <br><br>
-      <b>Role:</b> Strategic advisor for debugging, architecture review, code review, security/correctness risk, and SDD plan review.
-      <br>
-      <b>Mode:</b> read-only
-      <br>
-      <b>Dispatch:</b> synchronous advisory specialist
-      <br>
-      <b>Recommended:</b>
-      <br>
-      <code>openai/gpt-5.4</code> - <code>anthropic/claude-opus-4-6</code> - <code>opencode-go/glm-5</code>
-    </td>
-  </tr>
-  <tr>
-    <td width="33%" valign="top">
-      <img src="img/designer.png" width="100%" alt="Designer">
-      <br>
-      <b>Designer</b>
-      <br>
-      <i>UI, UX, frontend, and visual QA.</i>
-      <br><br>
-      <b>Role:</b> User-facing design and implementation. Owns visual decisions, browser checks, screenshots, and UX quality.
-      <br>
-      <b>Mode:</b> write-capable
-      <br>
-      <b>Dispatch:</b> synchronous implementation specialist
-      <br>
-      <b>Recommended:</b>
-      <br>
-      <code>google/gemini-3.1-pro-preview</code> - <code>opencode-go/glm-5</code> - <code>kimi-for-coding/k2p5</code>
-    </td>
-    <td width="33%" valign="top">
-      <img src="img/quick.png" width="100%" alt="Quick">
-      <br>
-      <b>Quick</b>
-      <br>
-      <i>Fast bounded implementation.</i>
-      <br><br>
-      <b>Role:</b> Narrow, mechanical, low-risk edits where the approach is already clear.
-      <br>
-      <b>Mode:</b> write-capable
-      <br>
-      <b>Dispatch:</b> synchronous implementation specialist
-      <br>
-      <b>Recommended:</b>
-      <br>
-      <code>openai/gpt-5.4-mini</code> - <code>anthropic/claude-haiku-4-5</code> - <code>google/gemini-3-flash-preview</code>
-    </td>
-    <td width="33%" valign="top">
-      <img src="img/deep.png" width="100%" alt="Deep">
-      <br>
-      <b>Deep</b>
-      <br>
-      <i>Thorough implementation and verification.</i>
-      <br><br>
-      <b>Role:</b> Correctness-critical, multi-file, edge-case-heavy implementation and verification.
-      <br>
-      <b>Mode:</b> write-capable
-      <br>
-      <b>Dispatch:</b> synchronous implementation specialist
-      <br>
-      <b>Recommended:</b>
-      <br>
-      <code>openai/gpt-5.4</code> - <code>anthropic/claude-opus-4-6</code> - <code>google/gemini-3.1-pro-preview</code>
-    </td>
-  </tr>
-</table>
+Children do not delegate. Parallel work is reserved for independent surfaces,
+and overlapping writes are never parallelized.
 
-## SDD And Memory
+## SDD routing
 
-The bundled requirements interview is the front door for open-ended work. It
-clarifies intent, assesses scope, asks for user approval when needed, and routes
-work into direct implementation, accelerated SDD, or full SDD.
+The root classifies each request by intent, scope, clarity, contract risk, and
+failure cost.
 
 ```text
-propose -> spec -> clarify -> design -> tasks -> apply -> verify -> archive
+direct:      implement -> verify
+accelerated: specify -> plan -> tasks -> implement -> verify
+full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify
 ```
 
-For moderate work, the accelerated path usually runs `propose -> tasks`. For
-high-risk or high-complexity work, the full path adds specification and design
-artifacts before task execution.
+- Direct is the default for clear, local, low-risk work, including small
+  documentation changes.
+- Accelerated is retained for bounded multi-file or moderate-risk work. It is
+  intentionally lean while preserving `spec.md`, `plan.md`, and `tasks.md`.
+- Full is used for explicit SDD requests, unresolved scope, cross-cutting work,
+  or high risk.
+- Clarification, requirements checklists, and convergence are conditional.
+- `architectural-grilling` is a conditional pre-specification gate only when
+  explicitly requested or material human-owned product/architecture decisions
+  remain unresolved. Full SDD alone does not activate it.
+- User input is requested only when a material unresolved choice would change
+  the result.
 
-Artifacts can be persisted in four modes:
+See [SDD Pipeline](docs/sdd-pipeline.md) for the artifact graph and ownership
+rules.
 
+## Required external skills
 
-| Mode        | Writes to              | Cost   | Use when                                   |
-| ----------- | ---------------------- | ------ | ------------------------------------------ |
-| `thoth-mem` | Memory only            | Low    | Fast iteration without repo planning files |
-| `openspec`  | `openspec/` files only | Medium | Reviewable planning artifacts in the repo  |
-| `hybrid`    | Both                   | High   | Maximum durability; default                |
-| `none`      | Neither                | Lowest | Ephemeral iterations, no persistence       |
+Every install, update, and sync path treats these as required:
 
-[Thoth-mem](https://github.com/EremesNG/thoth-mem) is the local memory MCP used for durable observations, architectural
-decisions, SDD artifacts, and session summaries. The core retrieval pattern is:
+| Skill | Source | Purpose |
+| --- | --- | --- |
+| `simplify` | `https://github.com/brianlovin/claude-config` | Keep implementation lean and remove accidental complexity. |
+| `tdd` | `https://github.com/mattpocock/skills` | Test-driven feature and bug-fix workflow. |
+| `progressive-context-router` | `https://github.com/EremesNG/skills` | Maintain small repository instructions and verified on-demand context. |
+| `architectural-grilling` | `https://github.com/EremesNG/skills` | Resolve high-impact product, architecture, and delivery decisions before specification. |
 
-1. `mem_recall(mode="compact")` for compact candidate records
-2. `mem_recall(mode="context")` for expanded retrieved context
-3. `mem_get(...)` for the full selected record; use
-   `mem_get(include_timeline=true)` when chronology matters
+thoth-agents does not install `playwright-cli` or a browser runner. Projects
+choose and provision their own QA tooling.
 
-Use HyDE/fused hybrid recall (sentence + chunk vectors, FTS, KG enrichment) for
-semantic or ambiguous searches; set `mem_recall` `limit` from 1 to 20; narrow
-with `topic_key`, `type`, `time_from`, `time_to`, `scope`, `project`, and
-`session_id` filters. Use `mem_get` with `kind="observation"|"prompt"`,
-`include_timeline=true` plus `before`/`after`, and `offset`/`max_length` for
-large content. Use bounded `mem_context(recall_query=...)` or
-`mem_project(action="graph"|"topics"|"topic")` for supplemental project
-context; `mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`,
-`HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.
+For exact generated commands and per-harness locations, see
+[Skills and MCPs](docs/skills-and-mcps.md).
 
-## Skills And MCPs
+## OpenCode models
 
-thoth-agents ships bundled skills for requirements discovery, plan review, SDD
-planning/execution, verification, and archiving. It also registers MCP servers
-for docs research, public code search, and local memory where the harness
-supports that delivery surface.
+The generated OpenCode configuration contains only the `openai` preset. Kimi,
+GitHub Copilot, ZAI/GLM, and mixed-provider mappings are not shipped in 0.3.0.
+Role-level configuration remains available for explicit advanced overrides, but
+those overrides are not additional built-in presets.
 
+See [Provider Configuration](docs/provider-configurations.md).
 
-| Surface          | Shared concept                                 | OpenCode binding                                             | Codex binding                                                    | Claude Code binding                                               |
-| ---------------- | ---------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Skills           | Requirements, SDD, review, execution workflows | Copied into the OpenCode skills directory when`--skills=yes` | Packaged as plugin-bundled skills for the Personal plugin source | Bundled in the plugin`skills/` directory                          |
-| MCPs             | `exa`, `context7`, `grep_app`, `thoth_mem`     | Registered by generated OpenCode plugin config               | Packaged/configured only on validated Codex surfaces             | Bundled in the plugin`.mcp.json` (`type: "http"` for URL servers) |
-| Delegation       | Seven-role specialist workflow                 | Native`task` tool                                            | Direct `collaboration.*` generic task delegation; role behavior carried by task name/message | Native`Task(subagent_type: ...)` over auto-discovered subagents   |
-| Blocking choices | Use a structured question surface              | OpenCode`question` tool                                      | `request_user_input` when enabled and available                  | `AskUserQuestion` tool                                            |
+## Operations
 
-See [docs/skills-and-mcps.md](docs/skills-and-mcps.md) for the detailed matrix.
+```bash
+npx thoth-agents@latest status
+npx thoth-agents@latest list
+npx thoth-agents@latest update --harness=codex
+npx thoth-agents@latest sync --harness=claude
+npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
+```
 
-## Documentation
+Mutating operations preserve unrelated user content and use managed ownership
+markers or state files. `--reset` repairs only thoth-agents-managed targets; it
+is not a broad destructive force option.
 
-- [Installation](docs/installation.md): OpenCode default setup, explicit Codex
-  setup, non-interactive installs, reset behavior, and troubleshooting.
-- [Codex Install](docs/codex-install.md): Codex targets, backups, dry-run
-  behavior, trust review, and limitations.
-- [Quick Reference](docs/quick-reference.md): Agent roster, SDD flow, memory,
-  delegation, tmux, and key config fields.
-- [Skills and MCPs](docs/skills-and-mcps.md): Bundled skills, MCP servers, and
-  harness delivery surfaces.
-- [Provider Configurations](docs/provider-configurations.md): OpenCode provider
-  presets, fallback chains, and Codex customization cross-links.
-- [Tmux Integration](docs/tmux-integration.md): OpenCode-scoped live pane
-  monitoring for delegated `task` sessions.
-- [SDD Pipeline](docs/sdd-pipeline.md): Planning and execution workflow details.
-- [Codex Plugin Packaging](docs/codex-plugin-packaging.md): Codex plugin package
-  layout and packaging boundaries.
-- [Codex Surface Validation](docs/codex-surface-validation.md): Validated,
-  unknown, and unsupported Codex generation surfaces.
-- [Codex Model Customization](docs/codex-model-customization.md): Codex role
-  model defaults and customization limits.
+## Memory provider boundary
+
+thoth-mem is an independent plugin/provider. Install it separately and follow
+its installed guidance. thoth-agents coordinates only provider-neutral outcomes
+such as truthful capability reporting, role authorization, and resumable
+handoffs; it does not bundle thoth-mem hooks, MCP configuration, protocol text,
+or lifecycle logic.
 
 ## Development
 
-The OpenCode integration targets `@opencode-ai/plugin` and
-`@opencode-ai/sdk` v1.4.7. The repository also contains Codex adapter and
-packaging code for the multi-harness install path.
-
-Use Node.js `>=22.13` with Corepack-managed `pnpm@11.2.2`:
-
 ```bash
-corepack enable
-corepack prepare pnpm@11.2.2 --activate
 pnpm install
+pnpm run check:ci
+pnpm run typecheck
+pnpm run build
+pnpm test
 ```
 
+Runtime versions are fixed by `package.json`: Node `>=22.13` and
+`pnpm@11.2.2`.
 
-| Command              | Purpose                                                       |
-| -------------------- | ------------------------------------------------------------- |
-| `pnpm run build`     | Build TypeScript into`dist/` and generate declarations/schema |
-| `pnpm run typecheck` | Run TypeScript type checking without emit                     |
-| `pnpm test`          | Run the Vitest suite                                          |
-| `pnpm run lint`      | Run Biome linter                                              |
-| `pnpm run format`    | Run Biome formatter                                           |
-| `pnpm run check`     | Run Biome check with auto-fix                                 |
-| `pnpm run check:ci`  | Run Biome check without writes                                |
-| `pnpm run dev`       | Build and launch the OpenCode plugin in local dev mode        |
+## Documentation
 
-## License
-
-MIT
+- [Installation](docs/installation.md)
+- [Quick Reference](docs/quick-reference.md)
+- [SDD Pipeline](docs/sdd-pipeline.md)
+- [Skills and MCPs](docs/skills-and-mcps.md)
+- [Codex Install](docs/codex-install.md)
+- [Codex Plugin Packaging](docs/codex-plugin-packaging.md)
+- [Codex Model Customization](docs/codex-model-customization.md)
+- [Claude Code Install](docs/claude-code-install.md)
+- [Claude Code Plugin Packaging](docs/claude-code-plugin-packaging.md)
+- [Provider Configuration](docs/provider-configurations.md)

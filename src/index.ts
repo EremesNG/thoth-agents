@@ -1,19 +1,12 @@
-import path from 'node:path';
 import type { Plugin } from '@opencode-ai/plugin';
-import type { Event, Model, Part } from '@opencode-ai/sdk';
 import { createAgents } from './agents';
 import { loadPluginConfig, type TmuxConfig } from './config';
 import { renderOpenCodeAgentConfigs } from './harness/adapters/opencode';
 import {
   createAutoUpdateCheckerHook,
-  createChatHeadersHook,
   createDelegateTaskRetryHook,
   createJsonErrorRecoveryHook,
-  createPhaseReminderHook,
-  createPostReadNudgeHook,
-  createThothMemHook,
   ForegroundFallbackManager,
-  syncSkillsOnStartup,
 } from './hooks';
 import { createBuiltinMcps } from './mcp';
 import {
@@ -29,26 +22,8 @@ import { startTmuxCheck } from './utils';
 import { log } from './utils/logger';
 import { TmuxSessionManager } from './utils/tmux-session-manager';
 
-type SessionContextModel = { providerID: string; modelID: string };
-
-type SessionContext = {
-  model?: SessionContextModel;
-  variant?: string;
-};
-
-function resolveProjectName(project: object, directory: string): string {
-  const runtimeProjectName =
-    'name' in project && typeof project.name === 'string'
-      ? project.name
-      : undefined;
-
-  return runtimeProjectName || path.basename(directory) || 'thoth-agents';
-}
-
 const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
-  const { client, directory, project, $: shell } = ctx;
-  const projectName = resolveProjectName(project, directory);
-  const sessionContext = new Map<string, SessionContext>();
+  const { client, directory, $: shell } = ctx;
 
   const config = loadPluginConfig(directory);
   const agentDefs = createAgents(config);
@@ -105,20 +80,12 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
     directory,
   });
 
-  try {
-    syncSkillsOnStartup();
-  } catch (error) {
-    console.error('[plugin] Failed to sync bundled skills on startup');
-    log('[plugin] Skill sync failed during initialization', error);
-  }
-
   // Start tmux availability check if enabled.
   if (tmuxConfig.enabled) {
     startTmuxCheck();
   }
 
-  // Register built-in MCPs, including thoth_mem.
-  const mcps = createBuiltinMcps(config.disabled_mcps, config.thoth);
+  const mcps = createBuiltinMcps(config.disabled_mcps);
 
   // Initialize TmuxSessionManager to handle OpenCode's built-in Task tool sessions
   const tmuxSessionManager = new TmuxSessionManager(ctx, tmuxConfig);
@@ -133,21 +100,6 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
     shell,
   );
 
-  // Initialize phase reminder hook for workflow compliance
-  const phaseReminderHook = createPhaseReminderHook();
-
-  // Initialize post-read nudge hook
-  const postReadNudgeHook = createPostReadNudgeHook();
-
-  const thothMemHook = createThothMemHook({
-    project: projectName,
-    directory,
-    thoth: config.thoth,
-    enabled: true,
-  });
-
-  const chatHeadersHook = createChatHeadersHook(ctx);
-
   // Initialize delegate-task retry guidance hook
   const delegateTaskRetryHook = createDelegateTaskRetryHook(ctx);
 
@@ -160,28 +112,6 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
     runtimeChains,
     config.fallback?.enabled !== false && Object.keys(runtimeChains).length > 0,
   );
-
-  // Hook input/output types for thoth-mem integration
-  type ThothChatMessageInput = { sessionID: string };
-  type ThothChatMessageOutput = {
-    parts: Part[];
-    message: { summary?: { title?: string; body?: string } };
-  };
-  type ThothSystemTransformInput = { sessionID?: string; model: Model };
-  type ThothSystemTransformOutput = { system: string[] };
-  type ThothCompactingInput = { sessionID: string };
-  type ThothCompactingOutput = { context: string[]; prompt?: string };
-  type ThothToolAfterInput = {
-    tool: string;
-    sessionID: string;
-    callID: string;
-    args: unknown;
-  };
-  type ThothToolAfterOutput = {
-    title: string;
-    output: string;
-    metadata: unknown;
-  };
 
   return {
     name: 'thoth-agents',
@@ -293,13 +223,10 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
         for (const [agentName, modelArray] of Object.entries(effectiveArrays)) {
           if (modelArray.length === 0) continue;
 
-          // Use the first model in the effective array.
-          // Not all providers require entries in opencodeConfig.provider —
-          // some are loaded automatically by opencode (e.g. github-copilot,
-          // openrouter). We cannot distinguish these from truly unconfigured
-          // providers at config-hook time, so we cannot gate on the provider
-          // config keys. Runtime failover is handled separately by
-          // ForegroundFallbackManager.
+          // Use the first model in the effective array. Explicit user-managed
+          // model chains are not gated on OpenCode provider config because the
+          // host may resolve them outside this plugin. Runtime failover is
+          // handled separately by ForegroundFallbackManager.
           const chosen = modelArray[0];
           const entry = configAgent[agentName] as
             | Record<string, unknown>
@@ -330,25 +257,11 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
     },
 
     event: async (input) => {
-      if (input.event.type === 'session.deleted') {
-        const deletedEvent = input.event as {
-          properties?: { info?: { id?: string }; sessionID?: string };
-        };
-        const deletedSessionId =
-          deletedEvent.properties?.info?.id ??
-          deletedEvent.properties?.sessionID;
-        if (deletedSessionId) {
-          sessionContext.delete(deletedSessionId);
-        }
-      }
-
       // Runtime model fallback for foreground agents (rate-limit detection)
       await foregroundFallback.handleEvent(input.event);
 
       // Handle auto-update checking
       await autoUpdateChecker.event(input);
-
-      await thothMemHook.event(input as { event: Event });
 
       // Handle tmux pane spawning for OpenCode's Task tool sessions
       await tmuxSessionManager.onSessionCreated(
@@ -377,82 +290,7 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
       );
     },
 
-    'chat.headers': chatHeadersHook['chat.headers'],
-
-    'chat.message': async (input, output) => {
-      const chatInput = input as {
-        sessionID: string;
-        model?: { providerID?: string; modelID?: string };
-        variant?: string;
-      };
-
-      if (chatInput.sessionID) {
-        const previous = sessionContext.get(chatInput.sessionID);
-        const context: SessionContext = {
-          model: previous?.model,
-          variant: previous?.variant,
-        };
-
-        if (
-          typeof chatInput.model?.providerID === 'string' &&
-          typeof chatInput.model?.modelID === 'string'
-        ) {
-          context.model = {
-            providerID: chatInput.model.providerID,
-            modelID: chatInput.model.modelID,
-          };
-        }
-
-        if (typeof chatInput.variant === 'string') {
-          context.variant = chatInput.variant;
-        }
-
-        sessionContext.set(chatInput.sessionID, context);
-      }
-
-      if (thothMemHook['chat.message']) {
-        await thothMemHook['chat.message'](
-          input as ThothChatMessageInput,
-          output as ThothChatMessageOutput,
-        );
-      }
-    },
-
-    'experimental.chat.system.transform': async (input, output) => {
-      if (thothMemHook['experimental.chat.system.transform']) {
-        await thothMemHook['experimental.chat.system.transform'](
-          input as ThothSystemTransformInput,
-          output as ThothSystemTransformOutput,
-        );
-      }
-    },
-
-    'experimental.chat.messages.transform': async (input, output) => {
-      await phaseReminderHook['experimental.chat.messages.transform'](
-        input as Record<string, never>,
-        output as {
-          messages: Array<{
-            info: { role: string; agent?: string; sessionID?: string };
-            parts: Array<{
-              type: string;
-              text?: string;
-              [key: string]: unknown;
-            }>;
-          }>;
-        },
-      );
-    },
-
-    'experimental.session.compacting': async (input, output) => {
-      if (thothMemHook['experimental.session.compacting']) {
-        await thothMemHook['experimental.session.compacting'](
-          input as ThothCompactingInput,
-          output as ThothCompactingOutput,
-        );
-      }
-    },
-
-    // Post-tool hooks: retry guidance for delegation errors + post-read nudge
+    // Post-tool hooks: retry guidance for delegation and JSON errors.
     'tool.execute.after': async (input, output) => {
       await delegateTaskRetryHook['tool.execute.after'](
         input as { tool: string },
@@ -469,26 +307,6 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
           title: string;
           output: unknown;
           metadata: unknown;
-        },
-      );
-
-      if (thothMemHook['tool.execute.after']) {
-        await thothMemHook['tool.execute.after'](
-          input as ThothToolAfterInput,
-          output as ThothToolAfterOutput,
-        );
-      }
-
-      await postReadNudgeHook['tool.execute.after'](
-        input as {
-          tool: string;
-          sessionID?: string;
-          callID?: string;
-        },
-        output as {
-          title: string;
-          output: string;
-          metadata: Record<string, unknown>;
         },
       );
     },

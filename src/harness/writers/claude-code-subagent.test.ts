@@ -88,4 +88,17 @@ describe('renderClaudeCodeSubagent', () => {
     expect(explicit).toContain('effort: max');
     expect(inherited).not.toMatch(/^effort:/m);
   });
+
+  test('renders a denylist without dropping inherited MCP tools', () => {
+    const output = renderClaudeCodeSubagent({
+      name: 'explorer',
+      description: 'Read-only discovery',
+      model: 'haiku',
+      disallowedTools: 'Write, Edit',
+      instructions: 'body',
+    });
+
+    expect(output).toContain('disallowedTools: "Write, Edit"');
+    expect(output).not.toMatch(/^tools:/m);
+  });
 });

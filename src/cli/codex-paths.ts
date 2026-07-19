@@ -6,6 +6,9 @@ export type CodexRoleName =
   | 'explorer'
   | 'librarian'
   | 'oracle'
+  | 'sdd-specify'
+  | 'sdd-plan'
+  | 'sdd-tasks'
   | 'designer'
   | 'quick'
   | 'deep';
@@ -14,6 +17,9 @@ export const CODEX_ROLE_NAMES = [
   'explorer',
   'librarian',
   'oracle',
+  'sdd-specify',
+  'sdd-plan',
+  'sdd-tasks',
   'designer',
   'quick',
   'deep',
@@ -35,8 +41,6 @@ export interface CodexResolvedTargets {
   managedModelsPath: string;
   skillsDir: string;
   packageRoot: string;
-  personalPluginRoot: string;
-  personalMarketplacePath: string;
 }
 
 export function getCodexHome(
@@ -74,12 +78,5 @@ export function resolveCodexTargets(
         ? join(options.projectRoot, '.agents', 'skills')
         : join(options.homeDir ?? homedir(), '.agents', 'skills'),
     packageRoot: join(options.projectRoot, '.codex-plugin'),
-    personalPluginRoot: join(codexHome, 'plugins', 'thoth-agents'),
-    personalMarketplacePath: join(
-      options.homeDir ?? homedir(),
-      '.agents',
-      'plugins',
-      'marketplace.json',
-    ),
   };
 }

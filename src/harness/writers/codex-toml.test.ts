@@ -120,6 +120,9 @@ describe('Codex TOML writer', () => {
       surfaceId: 'mcp-server-config',
       values: {
         mcp_servers: {
+          context7: {
+            url: 'https://mcp.context7.com/mcp',
+          },
           thoth_mem: {
             command: 'pnpm',
             args: ['dlx', 'thoth-mem@latest'],
@@ -131,6 +134,8 @@ describe('Codex TOML writer', () => {
     expect(config.diagnostics).toEqual([]);
     expect(mcp.diagnostics).toEqual([]);
     expect(config.content).toBe(codexFixture('config.toml'));
+    expect(mcp.content).not.toContain('[mcp_servers.thoth_mem]');
+    expect(mcp.content).toContain('[mcp_servers.context7]');
     expect(mcp.content).toBe(codexFixture('mcp.toml'));
   });
 

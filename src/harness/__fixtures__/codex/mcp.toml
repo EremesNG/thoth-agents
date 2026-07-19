@@ -1,5 +1,4 @@
 [mcp_servers]
 
-[mcp_servers.thoth_mem]
-args = ["dlx", "thoth-mem@latest"]
-command = "pnpm"
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"

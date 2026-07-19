@@ -1,12 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { ALL_AGENT_NAMES, DEFAULT_MODELS } from '../../config';
-import type { HarnessId } from '../../harness/types';
 import {
-  buildClaudeCodeSetupPlan,
-  CLAUDE_CODE_ROLE_NAMES,
-  parseSubagentEffort,
-  parseSubagentModel,
-} from '../claude-code-install';
+  ALL_AGENT_NAMES,
+  getDefaultOpenCodeModel,
+  getDefaultOpenCodeVariant,
+} from '../../config';
+import type {
+  HarnessId,
+  ProviderCapabilityEvidence,
+  ProviderEvidenceInput,
+} from '../../harness/types';
 import {
   buildCodexSetupPlan,
   CODEX_ROLE_NAMES,
@@ -60,7 +62,11 @@ export type TuiAction =
   | 'model';
 
 export interface TuiOperations {
-  status(harness: HarnessId): HarnessStatusReport;
+  status(
+    harness: HarnessId,
+    evidence?: ProviderEvidenceInput,
+  ): HarnessStatusReport;
+  providerCapability?(harness: HarnessId): Promise<ProviderCapabilityEvidence>;
   modelRoles(harness: HarnessId): ModelRoleInput[];
   modelOptions(harness: HarnessId): Promise<ModelOption[]>;
   plan(
@@ -81,7 +87,8 @@ const claudeCodeContext: ClaudeCodeOperationContext = {
 export const opencodeModelRoles: ModelRoleInput[] = ALL_AGENT_NAMES.map(
   (role) => ({
     role,
-    model: DEFAULT_MODELS[role] ?? 'openai/gpt-5.4',
+    model: getDefaultOpenCodeModel(role),
+    effort: { kind: 'effort', value: getDefaultOpenCodeVariant(role) },
   }),
 );
 
@@ -141,38 +148,9 @@ export function getCodexModelRoles(
 }
 
 export function getClaudeCodeModelRoles(
-  source: ClaudeCodeOperationContext = claudeCodeContext,
+  _source: ClaudeCodeOperationContext = claudeCodeContext,
 ): ModelRoleInput[] {
-  try {
-    const plan = buildClaudeCodeSetupPlan({
-      dryRun: true,
-      reset: false,
-      scope: source.scope ?? 'user',
-      projectRoot: source.cwd,
-      homeDir: source.homeDir,
-      packageRoot: source.packageRoot,
-    });
-    return CLAUDE_CODE_ROLE_NAMES.map((role) => {
-      const item = plan.items.find(
-        (candidate) => candidate.kind === 'subagent' && candidate.role === role,
-      );
-      const content =
-        item && existsSync(item.targetPath)
-          ? readFileSync(item.targetPath, 'utf8')
-          : item?.content;
-      const model = content ? parseSubagentModel(content) : undefined;
-      const effort = content ? parseSubagentEffort(content) : undefined;
-      return {
-        role,
-        model: model ?? 'inherit',
-        effort: effort
-          ? { kind: 'effort' as const, value: effort }
-          : { kind: 'inherit' as const },
-      };
-    });
-  } catch {
-    return defaultClaudeCodeModelRoles();
-  }
+  return defaultClaudeCodeModelRoles();
 }
 
 function readRoleField(
@@ -220,16 +198,20 @@ export function getOpenCodeModelRoles(): ModelRoleInput[] {
       : undefined;
 
   return ALL_AGENT_NAMES.map((role) => {
-    const variant =
+    const defaultModel = getDefaultOpenCodeModel(role);
+    const model =
+      readRoleField(agents, role, 'model') ??
+      readRoleField(activePreset, role, 'model') ??
+      defaultModel;
+    const configuredVariant =
       readRoleField(agents, role, 'variant') ??
       readRoleField(activePreset, role, 'variant');
+    const variant =
+      configuredVariant ??
+      (model === defaultModel ? getDefaultOpenCodeVariant(role) : undefined);
     return {
       role,
-      model:
-        readRoleField(agents, role, 'model') ??
-        readRoleField(activePreset, role, 'model') ??
-        DEFAULT_MODELS[role] ??
-        'openai/gpt-5.4',
+      model,
       effort: variant
         ? { kind: 'effort' as const, value: variant }
         : { kind: 'inherit' as const },
@@ -254,12 +236,12 @@ function buildTuiModelPlan(
 }
 
 export const defaultTuiOperations: TuiOperations = {
-  status(harness) {
-    if (harness === 'opencode') return getOpenCodeStatus(context);
+  status(harness, evidence) {
+    if (harness === 'opencode') return getOpenCodeStatus(context, evidence);
     if (harness === 'claude') {
-      return getClaudeCodeStatus(claudeCodeContext);
+      return getClaudeCodeStatus(claudeCodeContext, evidence);
     }
-    return getCodexStatus(codexContext);
+    return getCodexStatus(codexContext, evidence);
   },
   modelRoles(harness) {
     if (harness === 'opencode') return getOpenCodeModelRoles();

@@ -1,5 +1,6 @@
 import { render } from 'ink-testing-library';
 import { describe, expect, test } from 'vitest';
+import type { ProviderCapabilityEvidence } from '../../harness/types';
 import type {
   HarnessStatusReport,
   ModelRoleInput,
@@ -38,6 +39,32 @@ function status(summary = 'OpenCode ready'): HarnessStatusReport {
   };
 }
 
+function statusWithProviderEvidence(
+  providerCapability: ProviderCapabilityEvidence,
+  summary = 'OpenCode ready',
+): HarnessStatusReport {
+  return {
+    ...status(summary),
+    providerCapability,
+  };
+}
+
+function expectProviderNeutralLanguage(frame: string): void {
+  const normalized = frame.toLowerCase();
+  for (const forbidden of [
+    'install thoth-mem',
+    'set up thoth-mem',
+    'bootstrap',
+    'health check',
+    'probe provider',
+    'acquire provider',
+    'migrate provider',
+    'provider fallback',
+  ]) {
+    expect(normalized).not.toContain(forbidden);
+  }
+}
+
 function opencodeStatusWithSkills(): HarnessStatusReport {
   return {
     ...status('OpenCode skills ready'),
@@ -46,16 +73,16 @@ function opencodeStatusWithSkills(): HarnessStatusReport {
       {
         kind: 'skill',
         label: 'Simplify',
-        path: 'C:\\Users\\EremesNG\\.agents\\skills\\simplify\\SKILL.md',
+        path: 'C:\\Users\\EremesNG\\.config\\opencode\\skills\\simplify\\SKILL.md',
         state: 'installed',
-        observed: 'recommended global skill installed',
+        observed: 'required global skill installed',
       },
       {
         kind: 'skill',
-        label: 'Playwright-CLI',
-        path: 'C:\\Users\\EremesNG\\.agents\\skills\\playwright-cli\\SKILL.md',
+        label: 'Architectural-Grilling',
+        path: 'C:\\Users\\EremesNG\\.config\\opencode\\skills\\architectural-grilling\\SKILL.md',
         state: 'missing',
-        observed: 'recommended global skill missing',
+        observed: 'required global skill missing',
       },
     ],
   };
@@ -64,9 +91,9 @@ function opencodeStatusWithSkills(): HarnessStatusReport {
 function manyCodexTargets(): HarnessStatusReport['targets'] {
   return [
     {
-      kind: 'file' as const,
-      label: 'personal plugin source',
-      path: 'C:\\Users\\EremesNG\\.codex\\plugins\\thoth-agents\\skills\\sdd-archive\\SKILL.md',
+      kind: 'skill' as const,
+      label: 'TDD',
+      path: 'C:\\Users\\EremesNG\\.codex\\skills\\tdd\\SKILL.md',
       state: 'installed' as const,
       observed: 'current',
     },
@@ -78,14 +105,14 @@ function manyCodexTargets(): HarnessStatusReport['targets'] {
     },
     {
       kind: 'file' as const,
-      label: 'plugin manifest',
-      path: 'C:\\Users\\EremesNG\\.codex\\plugins\\thoth-agents\\.codex-plugin\\plugin.json',
+      label: 'Codex config',
+      path: 'C:\\Users\\EremesNG\\.codex\\config.toml',
       state: 'installed' as const,
     },
     {
       kind: 'file' as const,
-      label: 'marketplace registry',
-      path: 'C:\\Users\\EremesNG\\.codex\\plugins\\marketplace.json',
+      label: 'managed model state',
+      path: 'C:\\Users\\EremesNG\\.codex\\agents\\.thoth-agents-managed-models.json',
       state: 'installed' as const,
     },
     {
@@ -96,8 +123,8 @@ function manyCodexTargets(): HarnessStatusReport['targets'] {
     },
     ...Array.from({ length: 8 }, (_, index) => ({
       kind: 'file' as const,
-      label: `Codex plugin file ${index + 1}`,
-      path: `C:\\Users\\EremesNG\\.codex\\plugins\\file-${index + 1}.toml`,
+      label: `Codex agent file ${index + 1}`,
+      path: `C:\\Users\\EremesNG\\.codex\\agents\\file-${index + 1}.toml`,
       state: 'installed' as const,
     })),
   ];
@@ -426,14 +453,16 @@ describe('interactive TUI', () => {
 
     expect(lastFrame()).toContain('Codex Status');
     expect(lastFrame()).toContain('Skills');
-    expect(lastFrame()).toContain('SDD-Archive: [installed]');
+    expect(lastFrame()).toContain('Tdd: [installed]');
     expect(lastFrame()).toContain('Agents');
     expect(lastFrame()).toContain('Designer: [installed]');
-    expect(lastFrame()).toContain('Plugin/MCP');
-    expect(lastFrame()).toContain('Marketplace');
+    expect(lastFrame()).toContain('Config');
+    expect(lastFrame()).toContain('Codex Config: [installed]');
+    expect(lastFrame()).toContain('Model state');
+    expect(lastFrame()).toContain('Managed Model State: [installed]');
     expect(lastFrame()).toContain('Root instructions');
     expect(lastFrame()).not.toContain('C:\\Users\\EremesNG');
-    expect(lastFrame()).not.toContain('skills\\sdd-archive\\SKILL.md');
+    expect(lastFrame()).not.toContain('skills\\tdd\\SKILL.md');
   });
 
   test('TUI compact OpenCode status groups skills with concise labels', async () => {
@@ -451,11 +480,96 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain('OpenCode Status');
     expect(lastFrame()).toContain('Skills');
     expect(lastFrame()).toContain('Simplify: [installed]');
-    expect(lastFrame()).toContain('Playwright-CLI: [missing]');
+    expect(lastFrame()).toContain('Architectural-Grilling: [missing]');
     expect(lastFrame()).not.toContain('C:\\Users\\EremesNG');
     expect(lastFrame()).not.toContain(
-      '.agents\\skills\\playwright-cli\\SKILL.md',
+      '.config\\opencode\\skills\\architectural-grilling\\SKILL.md',
     );
+  });
+
+  test('TUI status snapshots consumer-managed state separately from supported provider evidence', async () => {
+    const supported = statusWithProviderEvidence({
+      state: 'supported',
+      source: 'provider',
+      basis: ['Provider reported persistence and recovery availability.'],
+    });
+    const { lastFrame, stdin } = render(
+      <App
+        operations={operations(undefined, { opencode: supported })}
+        exitOnQuit={false}
+      />,
+    );
+
+    await openStatus(stdin);
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatchSnapshot();
+    expect(frame).toContain('Consumer-managed state: installed');
+    expect(frame).toContain('Provider capability: supported');
+    expect(frame).toContain('Evidence source: provider');
+    expect(frame).toContain(
+      'Provider reported persistence and recovery availability.',
+    );
+    expectProviderNeutralLanguage(frame);
+  });
+
+  test('TUI status keeps degraded provider evidence informational and points to provider guidance', async () => {
+    const degraded: HarnessStatusReport = {
+      ...statusWithProviderEvidence({
+        state: 'degraded',
+        source: 'harness',
+        basis: ['Harness evidenced persistence but not recovery availability.'],
+      }),
+      actions: [
+        {
+          id: 'provider-continuity',
+          kind: 'status',
+          label: 'Provider-backed continuity',
+          description: 'Requires provider evidence.',
+          dryRun: true,
+          requiresConfirmation: false,
+          supported: false,
+          disabledReason: 'Recovery capability was not evidenced.',
+        },
+      ],
+    };
+    const { lastFrame, stdin } = render(
+      <App
+        operations={operations(undefined, { opencode: degraded })}
+        exitOnQuit={false}
+      />,
+    );
+
+    await openStatus(stdin);
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Consumer-managed state: installed');
+    expect(frame).toContain('Provider capability: degraded');
+    expect(frame).toContain('Evidence source: harness');
+    expect(frame).toContain(
+      'Harness evidenced persistence but not recovery availability.',
+    );
+    expect(frame).toContain('Refer to the installed provider guidance');
+    expect(frame).toContain('Provider-backed continuity: unavailable');
+    expect(frame).toContain('Recovery capability was not evidenced.');
+    expectProviderNeutralLanguage(frame);
+  });
+
+  test('TUI status treats omitted provider evidence as unsupported without failing installed consumer state', async () => {
+    const { lastFrame, stdin } = render(
+      <App operations={operations()} exitOnQuit={false} />,
+    );
+
+    await openStatus(stdin);
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Consumer-managed state: installed');
+    expect(frame).toContain('Provider capability: unsupported');
+    expect(frame).toContain('Evidence source: none');
+    expect(frame).toContain('No provider or harness evidence was supplied.');
+    expect(frame).not.toContain('Consumer-managed state: failed');
+    expect(frame).not.toContain('OpenCode failed');
+    expectProviderNeutralLanguage(frame);
   });
 
   test('TUI blocked status renders diagnostic codes and target observations', async () => {
@@ -467,13 +581,7 @@ describe('interactive TUI', () => {
           kind: 'config',
           label: 'thoth-agents config',
           state: 'drift',
-          observed: 'preset: agents; roles: 7/7',
-        },
-        {
-          kind: 'skill',
-          label: 'Bundled skill: sdd-apply',
-          state: 'missing',
-          observed: 'managed bundled skill missing',
+          observed: 'preset: agents; roles: 7/10',
         },
       ],
       diagnostics: [
@@ -481,11 +589,6 @@ describe('interactive TUI', () => {
           severity: 'important',
           code: 'opencode-roster-drift',
           message: 'Managed OpenCode roster uses the legacy agents preset.',
-        },
-        {
-          severity: 'important',
-          code: 'opencode-bundled-skills-missing',
-          message: 'Bundled thoth-agents OpenCode skills are missing.',
         },
       ],
     };
@@ -499,16 +602,10 @@ describe('interactive TUI', () => {
     await openStatus(stdin);
 
     expect(lastFrame()).toContain(
-      'Thoth Agents Config: [drift] - preset: agents; roles: 7/7',
-    );
-    expect(lastFrame()).toContain(
-      'Bundled skill: sdd-apply: [missing] - managed bundled skill missing',
+      'Thoth Agents Config: [drift] - preset: agents; roles: 7/10',
     );
     expect(lastFrame()).toContain(
       '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
-    );
-    expect(lastFrame()).toContain(
-      '[important] [opencode-bundled-skills-missing] Bundled thoth-agents OpenCode skills are missing.',
     );
   });
 
@@ -604,19 +701,166 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain('No writes until explicit apply.');
   });
 
+  test('TUI preview and apply keep consumer actions usable beside unsupported provider evidence', async () => {
+    const base = operations();
+    const unsupported: ProviderCapabilityEvidence = {
+      state: 'unsupported',
+      source: 'none',
+      basis: [],
+    };
+    const ops: TuiOperations = {
+      ...base,
+      plan(harness, action) {
+        return {
+          ...base.plan(harness, action),
+          providerCapability: unsupported,
+        } as OperationPlan;
+      },
+      apply(operationPlan) {
+        return {
+          ...base.apply(operationPlan),
+          providerCapability: unsupported,
+        } as OperationApplyResult;
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openUpdatePreview(stdin);
+
+    let frame = lastFrame() ?? '';
+    expect(frame).toContain('Consumer operation');
+    expect(frame).toContain('Managed action: update');
+    expect(frame).toContain('Can apply: yes');
+    expect(frame).toContain('Provider capability: unsupported');
+    expect(frame).toContain('No provider or harness evidence was supplied.');
+    expectProviderNeutralLanguage(frame);
+
+    await press(stdin, 'a');
+
+    frame = lastFrame() ?? '';
+    expect(base.applied).toHaveLength(1);
+    expect(frame).toContain('Consumer result: Applied test plan.');
+    expect(frame).toContain('Provider capability: unsupported');
+    expectProviderNeutralLanguage(frame);
+  });
+
+  test('provider evidence loading is single-flight and ignores a stale completion after back and reopen', async () => {
+    const first = deferred<ProviderCapabilityEvidence>();
+    const second = deferred<ProviderCapabilityEvidence>();
+    const requests = [first, second];
+    let requestCount = 0;
+    const ops = {
+      ...operations(),
+      providerCapability() {
+        const request = requests[requestCount];
+        requestCount += 1;
+        return request?.promise ?? Promise.reject(new Error('unexpected call'));
+      },
+    } as TuiOperations;
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openStatus(stdin);
+    expect(lastFrame()).toContain('Loading provider capability evidence');
+    await flushInk();
+    expect(requestCount).toBe(1);
+
+    await press(stdin, '\u001B');
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('Loading provider capability evidence');
+    expect(requestCount).toBe(2);
+
+    first.resolve({
+      state: 'degraded',
+      source: 'harness',
+      basis: ['Stale harness evidence.'],
+    });
+    await flushInk();
+    expect(lastFrame()).toContain('Loading provider capability evidence');
+    expect(lastFrame()).not.toContain('Stale harness evidence.');
+
+    second.resolve({
+      state: 'supported',
+      source: 'provider',
+      basis: ['Current provider evidence.'],
+    });
+    await flushInk();
+    expect(lastFrame()).toContain('Provider capability: supported');
+    expect(lastFrame()).toContain('Current provider evidence.');
+    expect(lastFrame()).not.toContain('Stale harness evidence.');
+  });
+
+  test('provider evidence failure offers retry and keeps consumer status intact', async () => {
+    const first = deferred<ProviderCapabilityEvidence>();
+    const second = deferred<ProviderCapabilityEvidence>();
+    const requests = [first, second];
+    let requestCount = 0;
+    const ops = {
+      ...operations(),
+      providerCapability() {
+        const request = requests[requestCount];
+        requestCount += 1;
+        return request?.promise ?? Promise.reject(new Error('unexpected call'));
+      },
+    } as TuiOperations;
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openStatus(stdin);
+    void first.promise.catch(() => undefined);
+    first.reject(new Error('evidence surface unavailable'));
+    await flushInk();
+
+    let frame = lastFrame() ?? '';
+    expect(frame).toContain('Consumer-managed state: installed');
+    expect(frame).toContain(
+      'Provider evidence unavailable: evidence surface unavailable',
+    );
+    expect(frame).toContain('Press r to retry provider evidence');
+    expect(frame).not.toContain('Consumer-managed state: failed');
+
+    await press(stdin, 'r');
+    expect(requestCount).toBe(2);
+    expect(lastFrame()).toContain('Loading provider capability evidence');
+
+    second.resolve({
+      state: 'supported',
+      source: 'provider',
+      basis: ['Provider evidence recovered.'],
+    });
+    await flushInk();
+    frame = lastFrame() ?? '';
+    expect(frame).toContain('Provider capability: supported');
+    expect(frame).toContain('Provider evidence recovered.');
+  });
+
+  test('pending provider evidence does not block synchronous model paths', async () => {
+    const pending = deferred<ProviderCapabilityEvidence>();
+    const ops = {
+      ...operations(),
+      providerCapability: () => pending.promise,
+    } as TuiOperations;
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+
+    expect(lastFrame()).toContain('Codex Models');
+    expect(lastFrame()).toContain('explorer: gpt-5.3-codex-spark');
+  });
+
   test('TUI blocked plan renders diagnostic codes and target observations', async () => {
     const blockerTargets: OperationPlan['targets'] = [
       {
         kind: 'config',
         label: 'thoth-agents config',
         state: 'drift',
-        observed: 'preset: agents; roles: 7/7',
-      },
-      {
-        kind: 'skill',
-        label: 'Bundled skill: sdd-apply',
-        state: 'missing',
-        observed: 'managed bundled skill missing',
+        observed: 'preset: agents; roles: 7/10',
       },
     ];
     const blockedPlan: OperationPlan = {
@@ -629,11 +873,6 @@ describe('interactive TUI', () => {
           severity: 'important',
           code: 'opencode-roster-drift',
           message: 'Managed OpenCode roster uses the legacy agents preset.',
-        },
-        {
-          severity: 'important',
-          code: 'opencode-bundled-skills-missing',
-          message: 'Bundled thoth-agents OpenCode skills are missing.',
         },
       ],
     };
@@ -648,36 +887,30 @@ describe('interactive TUI', () => {
     await openUpdatePreview(stdin);
 
     expect(lastFrame()).toContain(
-      'thoth-agents config: [drift] - preset: agents; roles: 7/7',
-    );
-    expect(lastFrame()).toContain(
-      'Bundled skill: sdd-apply: [missing] - managed bundled skill missing',
+      'thoth-agents config: [drift] - preset: agents; roles: 7/10',
     );
     expect(lastFrame()).toContain(
       '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
     );
-    expect(lastFrame()).toContain(
-      '[important] [opencode-bundled-skills-missing] Bundled thoth-agents OpenCode skills are missing.',
-    );
   });
 
-  test('TUI blocker targets exclude missing optional recommended skills', async () => {
+  test('TUI blocker targets render only targets explicitly marked as blockers', async () => {
     const managedBlocker: OperationPlan['targets'][number] = {
       kind: 'config',
       label: 'thoth-agents config',
       state: 'drift',
       observed: 'preset: agents; roles: 7/7',
     };
-    const optionalRecommendation: OperationPlan['targets'][number] = {
-      kind: 'skill',
-      label: 'Playwright-CLI',
-      state: 'missing',
-      observed: 'recommended global skill missing',
+    const nonBlockingTarget: OperationPlan['targets'][number] = {
+      kind: 'file',
+      label: 'Unmanaged user config',
+      state: 'installed',
+      observed: 'preserved',
     };
     const blockedPlan: OperationPlan = {
       ...plan('update'),
       canApply: false,
-      targets: [managedBlocker, optionalRecommendation],
+      targets: [managedBlocker, nonBlockingTarget],
       blockerTargets: [managedBlocker],
     };
     const ops = {
@@ -694,8 +927,8 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain(
       'thoth-agents config: [drift] - preset: agents; roles: 7/7',
     );
-    expect(lastFrame()).not.toContain('Playwright-CLI');
-    expect(lastFrame()).not.toContain('recommended global skill missing');
+    expect(lastFrame()).not.toContain('Unmanaged user config');
+    expect(lastFrame()).not.toContain('preserved');
   });
 
   test('TUI failed apply renders result diagnostic codes and target observations', async () => {

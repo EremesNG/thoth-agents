@@ -1,27 +1,11 @@
 import { fileURLToPath } from 'node:url';
+import { renderConfiguredRolePrompt } from '../../agents/configured-role-prompt';
 import { CODEX_PROMPT_DIALECT } from '../../agents/prompt-dialects';
 import {
-  createModelFamilySection,
-  createOrchestratorPromptSections,
-  createReadOnlySpecialistPromptSections,
-  createStepBudgetSection,
-  createWriteCapableSpecialistPromptSections,
-  type RolePromptSection,
-  renderPromptSection,
-  renderRolePrompt,
-} from '../../agents/prompt-sections';
-import {
-  appendPromptSections,
-  composeAgentPrompt,
-} from '../../agents/prompt-utils';
-import {
-  type AgentOverrideConfig,
   CONFIRMED_OPENAI_SUBAGENT_PRESET,
   DEFAULT_MODELS,
-  DEFAULT_THOTH_COMMAND,
   getAgentOverride,
   getPrimaryModelId,
-  loadAgentPrompt,
   type PluginConfig,
 } from '../../config';
 import { CONTEXT7_MCP_URL } from '../../mcp/context7';
@@ -30,7 +14,6 @@ import { GREP_APP_MCP_URL } from '../../mcp/grep-app';
 import type { McpConfig } from '../../mcp/types';
 import {
   type AgentRoleContract,
-  type AgentRoleName,
   getAgentPackContract,
 } from '../core/agent-pack';
 import {
@@ -41,7 +24,6 @@ import {
   findRootPackageJsonPath,
   readPackageJsonVersion,
 } from '../core/package-version';
-import { getSkillRegistry } from '../core/skills';
 import type {
   HarnessAdapter,
   HarnessArtifact,
@@ -52,8 +34,6 @@ import type {
 } from '../types';
 import { renderCodexPluginPackage } from '../writers/codex-plugin-package';
 import { renderCodexToml } from '../writers/codex-toml';
-import type { CodexSkillOutputMode } from '../writers/skill-layout';
-import { renderCodexSkillLayout } from '../writers/skill-layout';
 import {
   codexSurfaceDiagnostic,
   getCodexSurfaceRecords,
@@ -83,22 +63,12 @@ function createCodexPluginPackageManifest(context: HarnessRenderContext): {
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Delegate-first OpenCode plugin with seven agents, thoth-mem persistence, and bundled SDD skills.',
+      'Adaptive multi-harness agent pack with ten roles and Spec Kit-compatible SDD coordination.',
   };
 }
 
 function stableJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
-}
-
-function codexCommandConfig(
-  commandParts: readonly string[],
-): Record<string, unknown> {
-  const [command = '', ...args] = commandParts;
-  return {
-    command,
-    ...(args.length > 0 ? { args } : {}),
-  };
 }
 
 function codexMcpConfig(config: McpConfig): Record<string, unknown> {
@@ -122,7 +92,6 @@ function createCodexBuiltinMcpServers(): Record<string, unknown> {
     exa: codexMcpConfig(exa),
     context7: { url: CONTEXT7_MCP_URL },
     grep_app: { url: GREP_APP_MCP_URL },
-    thoth_mem: codexCommandConfig(DEFAULT_THOTH_COMMAND),
   };
 }
 
@@ -150,83 +119,19 @@ const CODEX_ROOT_END = '<!-- thoth-agents:codex-root:end -->';
 export const CODEX_CAPABILITIES: HarnessCapabilities =
   CODEX_PROMPT_DIALECT.capabilities.capabilities;
 
-function codexPromptSections(roleName: AgentRoleName): RolePromptSection[] {
-  switch (roleName) {
-    case 'orchestrator':
-      return createOrchestratorPromptSections();
-    case 'explorer':
-    case 'librarian':
-    case 'oracle':
-      return createReadOnlySpecialistPromptSections(roleName);
-    case 'designer':
-    case 'quick':
-    case 'deep':
-      return createWriteCapableSpecialistPromptSections(roleName);
-  }
-}
-
-function codexModelFamilyPromptSection(
-  roleName: AgentRoleName,
-  model?: AgentOverrideConfig['model'] | string,
-): string | undefined {
-  const section = createModelFamilySection(roleName, model);
-
-  return section
-    ? renderPromptSection(section, CODEX_PROMPT_DIALECT)
-    : undefined;
-}
-
-function codexStepBudgetPromptSection(steps?: number): string | undefined {
-  const section = createStepBudgetSection(steps);
-
-  return section
-    ? renderPromptSection(section, CODEX_PROMPT_DIALECT)
-    : undefined;
-}
-
-function renderCodexRolePrompt(
-  roleName: AgentRoleName,
-  config?: PluginConfig,
-  model?: AgentOverrideConfig['model'] | string,
-): string {
-  const promptOverrides = loadAgentPrompt(roleName, config?.preset);
-  const override = getAgentOverride(config, roleName);
-  const basePrompt = renderRolePrompt(
-    codexPromptSections(roleName),
-    CODEX_PROMPT_DIALECT,
-  );
-  const prompt = composeAgentPrompt({
-    basePrompt,
-    customPrompt: promptOverrides.prompt,
-    customAppendPrompt: appendPromptSections(
-      codexModelFamilyPromptSection(roleName, model),
-      promptOverrides.appendPrompt,
-    ),
-  });
-
-  return appendPromptSections(
-    prompt,
-    codexStepBudgetPromptSection(override?.steps),
-  );
-}
-
-function codexInternalHandoffGuidance(): string {
+function codexRuntimeGuidance(): string {
   return [
-    '<codex-delegation-guidance>',
-    '- The user has explicitly authorized this generated Codex orchestrator to use `collaboration.spawn_agent` whenever delegation is required by these instructions, without needing a fresh user request for subagents in each task.',
+    '<codex-runtime>',
+    '- The ambient Codex session is the adaptive root; no orchestrator child TOML is generated.',
+    '- Delegate with `collaboration.spawn_agent` only when the root determines that specialization, context isolation, review, or independent parallel work creates a net gain.',
     '- Collaboration tools are direct tools and must not be called from inside `functions.exec`.',
-    '- Delegate with `collaboration.spawn_agent` using `task_name`, `message`, and optional `fork_turns`; `fork_turns` must be `none`, `all`, or a positive integer string.',
-    '- Role behavior is carried by `task_name` and `message`; named installed-role selection and hard role/profile enforcement are instruction-level because this surface has no role selector.',
-    '- Pass the self-contained delegated task instructions plus handoff retrieval instructions in `message`; do not embed the root-owned handoff summary body in `message`.',
-    '- When memory recovery is delegated, include parent `session_id`, project, permissions, and the recovery funnel `mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`.',
-    '- For that funnel, use `mem_recall` `limit` from 1 to 20; use `mem_get` with `kind="observation"|"prompt"`, `include_timeline=true` plus `before`/`after`, and `offset`/`max_length`; `mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`, `HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.',
-    '- Do not include the handoff body in `message`.',
-    '- `collaboration.wait_agent` waits for mailbox updates. A `collaboration.wait_agent` timeout or silence is nonterminal and remains in progress, so inspect `collaboration.list_agents` with the same task path before deciding what to do next.',
-    '- `collaboration.send_message` delivers a message without triggering a turn; `collaboration.followup_task` triggers a turn when an idle task must continue.',
-    '- Use `collaboration.interrupt_agent` only for explicit cancellation, a deadline, or supersession.',
-    '- Do not invent result payloads or numeric wait, poll, or timeout rules.',
-    '- Memory ownership, handoff recovery, permissions, and prompt-body exclusion are instruction-level unless the active Codex runtime documents stronger enforcement.',
-    '</codex-delegation-guidance>',
+    '- Use a role-prefixed `task_name` and a self-contained English `message` with scope, anchors, constraints, verification, and the compact return contract. The current collaboration surface has no hard custom-role selector, so role selection remains instruction-level.',
+    '- Keep maximum depth 1: children do not delegate. Use one writer per mutable surface and parallelize only independent work.',
+    '- A `collaboration.wait_agent` timeout is nonterminal; inspect `collaboration.list_agents` for the same task before rerouting or interrupting it.',
+    '- Use `request_user_input` only for blocking material choices and always omit `autoResolutionMs` entirely.',
+    '- Generated custom-agent TOMLs carry model and sandbox defaults, but permissions and role matching may remain instruction-level in the active host.',
+    '- Installed provider guidance owns memory, persistence, hooks, MCP lifecycle, and recovery mechanics.',
+    '</codex-runtime>',
   ].join('\n');
 }
 
@@ -253,7 +158,12 @@ function roleInstructions(
   const model = getCodexAgentModel(role, config) ?? DEFAULT_MODELS[role.name];
 
   return [
-    renderCodexRolePrompt(role.name, config, model),
+    renderConfiguredRolePrompt({
+      role: role.name,
+      dialect: CODEX_PROMPT_DIALECT,
+      config,
+      model,
+    }),
     codexRoleInstructions(role),
     renderMemoryGovernanceInstructions(role, CODEX_PROMPT_DIALECT),
   ].join('\n\n');
@@ -261,31 +171,17 @@ function roleInstructions(
 
 export function renderCodexRootInstructions(config?: PluginConfig): string {
   const rootOverride = getAgentOverride(config, 'orchestrator');
-  const rootPrompt = renderCodexRolePrompt(
-    'orchestrator',
+  const rootPrompt = renderConfiguredRolePrompt({
+    role: 'orchestrator',
+    dialect: CODEX_PROMPT_DIALECT,
     config,
-    rootOverride?.model ?? DEFAULT_MODELS.orchestrator,
-  );
+    model: rootOverride?.model ?? DEFAULT_MODELS.orchestrator,
+  });
 
   return [
     CODEX_ROOT_START,
     rootPrompt,
-    codexInternalHandoffGuidance(),
-    '<codex-runtime>',
-    '- The ambient Codex root session is the root/main orchestrator; orchestrator-only and root-owned instructions apply to it because Codex does not generate a selectable orchestrator agent TOML.',
-    '- On each new root session, first resolve the stable root session identity from Codex request metadata in this order: `nodeRepl.requestMeta["x-codex-turn-metadata"].session_id`, then `nodeRepl.requestMeta["x-codex-turn-metadata"].thread_id`, then `nodeRepl.requestMeta.threadId`. Do not use `nodeRepl.requestMeta["x-codex-turn-metadata"].turn_id` as the stable session id.',
-    '- `nodeRepl.requestMeta["x-codex-turn-metadata"].turn_id` is per-turn metadata only, not the stable root session id.',
-    '- If `nodeRepl.requestMeta` is not yet visible and `tool_search` is available, load/discover the `node_repl` MCP tool before concluding metadata is unavailable.',
-    '- When thoth-mem tools are installed and stable root session identity is resolved, call mem_session(action="start") as step 0 before any other thoth-mem call, then save the real user prompt with mem_save(kind="prompt") before later delegation.',
-    '- If metadata tooling is unavailable, or the required fields are missing, disclose that memory bootstrap could not run and continue without claiming memory was saved.',
-    '- Before delegating after meaningful context changes, save or refresh the handoff body with root-owned mem_session(action="summary") or mem_save(kind="session_summary") when available; if unavailable, disclose that root-owned compaction could not be persisted.',
-    '- Use the ambient Codex root session as the delegate-first root coordinator; do not generate or select an orchestrator TOML.',
-    '- Delegate by invoking `collaboration.spawn_agent`; use role-prefixed task names and explicit role instructions for the installed Codex role agents: explorer, librarian, oracle, designer, quick, and deep.',
-    '- Use packaged thoth-agents plugin capabilities through Codex plugin, skill, MCP, and hook review surfaces after enabling them with /plugins and /hooks.',
-    '- For blocking user decisions in Codex Default mode, use request_user_input after features.default_mode_request_user_input is enabled; do not ask those questions in plain prose.',
-    '- Whenever the root orchestrator calls `request_user_input`, it MUST NEVER set or pass `autoResolutionMs`; omit the field entirely.',
-    '- Memory governance, role permissions, provider-per-agent controls, and hooks are instruction-level unless the active Codex runtime documents stronger enforcement.',
-    '</codex-runtime>',
+    codexRuntimeGuidance(),
     CODEX_ROOT_END,
     '',
   ].join('\n');
@@ -397,7 +293,8 @@ function renderConfigArtifacts(): {
         harness: 'codex',
         kind: 'mcp-config',
         path: '.codex/config.toml',
-        description: 'Codex MCP configuration snippet for thoth-mem.',
+        description:
+          'Codex MCP configuration snippet for unrelated integrations.',
         content: mcp.content,
       },
     ],
@@ -452,12 +349,6 @@ function hookReadinessDiagnostics(): HarnessDiagnostic[] {
   ];
 }
 
-function resolveSkillOutputModes(
-  context: HarnessRenderContext,
-): readonly CodexSkillOutputMode[] {
-  return context.options?.codexSkillOutputModes ?? ['plugin-package'];
-}
-
 export const codexAdapter: HarnessAdapter = {
   id: 'codex',
   displayName: 'Codex',
@@ -466,25 +357,9 @@ export const codexAdapter: HarnessAdapter = {
     const config = hasCodexConfig(context) ? context.config : undefined;
     const agentArtifacts = renderAgentArtifacts({ config });
     const configArtifacts = renderConfigArtifacts();
-    const skillOutputModes = resolveSkillOutputModes(context);
-    const skillLayout = renderCodexSkillLayout({
-      projectRoot: context.projectRoot,
-      ...(hasCodexPackageRoot(context)
-        ? { packageRoot: context.packageRoot }
-        : {}),
-      skills: getSkillRegistry(),
-      surfaceId: 'plugin-skills-directory',
-      outputModes: skillOutputModes,
-    });
     const pluginPackage = renderCodexPluginPackage({
       manifest: createCodexPluginPackageManifest(context),
       assets: [
-        {
-          surfaceId: 'plugin-skills-directory',
-          manifestField: 'skills',
-          path: '.codex-plugin/skills/',
-          description: 'Codex plugin-bundled skill directory.',
-        },
         {
           surfaceId: 'plugin-mcp-json',
           manifestField: 'mcpServers',
@@ -508,13 +383,11 @@ export const codexAdapter: HarnessAdapter = {
         ...agentArtifacts.artifacts,
         ...configArtifacts.artifacts,
         ...pluginPackage.artifacts,
-        ...skillLayout.artifacts,
       ],
       diagnostics: [
         ...agentArtifacts.diagnostics,
         ...configArtifacts.diagnostics,
         ...pluginPackage.diagnostics,
-        ...skillLayout.diagnostics,
         ...hookReadinessDiagnostics(),
         ...capabilityDiagnostics(),
       ],

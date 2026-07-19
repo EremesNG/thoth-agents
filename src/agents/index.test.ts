@@ -2,1031 +2,222 @@ import type { AgentConfig } from '@opencode-ai/sdk/v2';
 import { describe, expect, test } from 'vitest';
 import type { PluginConfig } from '../config';
 import { SUBAGENT_NAMES } from '../config';
-import { renderCodexRootInstructions } from '../harness/adapters/codex';
 import { createAgents, getAgentConfigs, isSubagent } from './index';
-import { createOrchestratorAgent } from './orchestrator';
-import { composeAgentPrompt } from './prompt-utils';
 
 type PermissionRecord = Exclude<
   NonNullable<AgentConfig['permission']>,
   'allow' | 'ask' | 'deny'
 >;
 
-const EXPECTED_DEFAULT_PERMISSIONS: Record<
-  string,
-  NonNullable<AgentConfig['permission']>
-> = {
-  orchestrator: {
-    read: 'allow',
-    edit: 'allow',
-    write: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    bash: 'allow',
-    codesearch: 'allow',
-    lsp: 'allow',
-    skill: 'allow',
-    question: 'allow',
-    webfetch: 'allow',
-    exa: 'allow',
-    todowrite: 'allow',
-    task: 'allow',
-    external_directory: 'allow',
-  },
-  explorer: {
-    read: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    codesearch: 'allow',
-    lsp: 'allow',
-    external_directory: 'allow',
-    bash: 'allow',
-    question: 'allow',
-    skill: 'allow',
-    edit: 'deny',
-    todowrite: 'deny',
-    task: 'deny',
-  },
-  librarian: {
-    read: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    external_directory: 'allow',
-    bash: 'allow',
-    webfetch: 'allow',
-    exa: 'allow',
-    codesearch: 'allow',
-    question: 'allow',
-    skill: 'allow',
-    edit: 'deny',
-    todowrite: 'deny',
-    task: 'deny',
-  },
-  oracle: {
-    read: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    lsp: 'allow',
-    codesearch: 'allow',
-    webfetch: 'allow',
-    exa: 'allow',
-    external_directory: 'allow',
-    bash: 'allow',
-    question: 'allow',
-    skill: 'allow',
-    edit: 'deny',
-    todowrite: 'deny',
-    task: 'deny',
-  },
-  designer: {
-    read: 'allow',
-    edit: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    bash: 'allow',
-    codesearch: 'allow',
-    lsp: 'allow',
-    skill: 'allow',
-    question: 'allow',
-    todowrite: 'deny',
-    task: 'deny',
-    external_directory: {
-      '~/.config/opencode/skills/**': 'allow',
-    },
-  },
-  quick: {
-    read: 'allow',
-    edit: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    bash: 'allow',
-    question: 'allow',
-    codesearch: 'allow',
-    lsp: 'allow',
-    skill: 'allow',
-    todowrite: 'deny',
-    task: 'deny',
-    external_directory: {
-      '~/.config/opencode/skills/**': 'allow',
-    },
-  },
-  deep: {
-    read: 'allow',
-    edit: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    bash: 'allow',
-    codesearch: 'allow',
-    lsp: 'allow',
-    skill: 'allow',
-    question: 'allow',
-    webfetch: 'allow',
-    exa: 'allow',
-    todowrite: 'deny',
-    task: 'deny',
-    external_directory: {
-      '~/.config/opencode/skills/**': 'allow',
-    },
-  },
-};
+const ROLE_NAMES = [
+  'orchestrator',
+  'explorer',
+  'librarian',
+  'oracle',
+  'sdd-specify',
+  'sdd-plan',
+  'sdd-tasks',
+  'designer',
+  'quick',
+  'deep',
+] as const;
 
-function getAgentByName(
-  name: string,
-  config?: PluginConfig,
-): ReturnType<typeof createAgents>[number] | undefined {
+const READ_ONLY_ROLES = ['explorer', 'librarian', 'oracle'] as const;
+const COORDINATION_ROLES = ['sdd-specify', 'sdd-plan', 'sdd-tasks'] as const;
+const WRITER_ROLES = ['designer', 'quick', 'deep'] as const;
+
+function getAgent(name: string, config?: PluginConfig) {
   return createAgents(config).find((agent) => agent.name === name);
 }
 
-function getPermission(
-  name: string,
-  config?: PluginConfig,
-): NonNullable<AgentConfig['permission']> {
-  const permission = getAgentConfigs(config)[name]?.permission;
-  expect(permission).toBeDefined();
-  return permission as NonNullable<AgentConfig['permission']>;
+function permission(name: string, config?: PluginConfig): PermissionRecord {
+  const value = getAgentConfigs(config)[name]?.permission;
+  expect(value).toBeDefined();
+  expect(typeof value).toBe('object');
+  return value as PermissionRecord;
 }
 
-function getPermissionRecord(
-  name: string,
-  config?: PluginConfig,
-): PermissionRecord {
-  const permission = getPermission(name, config);
-  expect(typeof permission).toBe('object');
-  return permission as PermissionRecord;
-}
-
-describe('agent alias backward compatibility', () => {
-  test("applies 'explore' config to 'explorer' agent", () => {
-    const config: PluginConfig = {
-      agents: {
-        explore: { model: 'test/old-explore-model' },
-      },
-    };
-
-    expect(getAgentByName('explorer', config)?.config.model).toBe(
-      'test/old-explore-model',
-    );
+describe('OpenCode v0.3 agent roster', () => {
+  test('creates the minimal hybrid ten-role roster', () => {
+    expect(createAgents().map((agent) => agent.name)).toEqual(ROLE_NAMES);
+    expect(SUBAGENT_NAMES).toEqual(ROLE_NAMES.slice(1));
   });
 
-  test("applies 'frontend-ui-ux-engineer' config to 'designer' agent", () => {
-    const config: PluginConfig = {
-      agents: {
-        'frontend-ui-ux-engineer': { model: 'test/old-frontend-model' },
-      },
-    };
-
-    expect(getAgentByName('designer', config)?.config.model).toBe(
-      'test/old-frontend-model',
-    );
-  });
-
-  test('new name takes priority over old alias', () => {
-    const config: PluginConfig = {
-      agents: {
-        explore: { model: 'old-model' },
-        explorer: { model: 'new-model' },
-      },
-    };
-
-    expect(getAgentByName('explorer', config)?.config.model).toBe('new-model');
-  });
-
-  test('temperature override via old alias', () => {
-    const config: PluginConfig = {
-      agents: {
-        explore: { temperature: 0.5 },
-      },
-    };
-
-    expect(getAgentByName('explorer', config)?.config.temperature).toBe(0.5);
-  });
-
-  test('variant override via old alias', () => {
-    const config: PluginConfig = {
-      agents: {
-        explore: { variant: 'low' },
-      },
-    };
-
-    expect(getAgentByName('explorer', config)?.config.variant).toBe('low');
-  });
-});
-
-describe('orchestrator agent', () => {
-  test('orchestrator is first in agents array', () => {
-    expect(createAgents()[0]?.name).toBe('orchestrator');
-  });
-
-  test('orchestrator has explicit full-access permission map', () => {
-    expect(getPermission('orchestrator')).toEqual(
-      EXPECTED_DEFAULT_PERMISSIONS.orchestrator,
-    );
-  });
-
-  test('orchestrator accepts overrides', () => {
-    const config: PluginConfig = {
-      agents: {
-        orchestrator: { model: 'custom-orchestrator-model', temperature: 0.3 },
-      },
-    };
-
-    expect(getAgentByName('orchestrator', config)?.config.model).toBe(
-      'custom-orchestrator-model',
-    );
-    expect(getAgentByName('orchestrator', config)?.config.temperature).toBe(
-      0.3,
-    );
-  });
-
-  test('orchestrator accepts variant override', () => {
-    const config: PluginConfig = {
-      agents: {
-        orchestrator: { variant: 'high' },
-      },
-    };
-
-    expect(getAgentByName('orchestrator', config)?.config.variant).toBe('high');
-  });
-
-  test('orchestrator stores model array with per-model variants in _modelArray', () => {
-    const config: PluginConfig = {
-      agents: {
-        orchestrator: {
-          model: [
-            { id: 'google/gemini-3-pro', variant: 'high' },
-            { id: 'github-copilot/claude-3.5-haiku' },
-            'openai/gpt-4',
-          ],
-        },
-      },
-    };
-
-    const orchestrator = getAgentByName('orchestrator', config);
-    expect(orchestrator?._modelArray).toEqual([
-      { id: 'google/gemini-3-pro', variant: 'high' },
-      { id: 'github-copilot/claude-3.5-haiku' },
-      { id: 'openai/gpt-4' },
-    ]);
-    expect(orchestrator?.config.model).toBeUndefined();
-  });
-
-  test('orchestrator prompt is delegate-first with bounded direct checks', () => {
-    const prompt = getAgentByName('orchestrator')?.config.prompt;
-    expect(prompt).toContain('delegate-first');
-
-    expect(prompt).toContain(
-      'You may perform small bounded local inspection when cheaper, faster, or clearer than delegation',
-    );
-    expect(prompt).toContain('Keep any direct check narrow and evidence-led');
-    expect(prompt).toContain(
-      'do not become the default discovery, implementation, or verification worker',
-    );
-    expect(prompt).toContain(
-      'Delegate broad search, multi-file edits, risky verification, UI visual QA, independent review, correctness-heavy debugging, and implementation-heavy work.',
-    );
-    expect(prompt).toContain('Own the thinking');
-    expect(prompt).toContain(
-      'Use sub-agents for evidence and action, not to outsource architecture or planning.',
-    );
-    expect(prompt).toContain(
-      'Verify material user/agent claims before relying on them',
-    );
-    expect(prompt).toContain(
-      'Choose direct action, delegation, parallelization, or review by net quality, speed, cost, and reliability.',
-    );
-    expect(prompt).toContain('<internal-handoff>');
-    expect(prompt).toContain('Internal handoff fields');
-    expect(prompt).toContain('root-owned session context');
-    expect(prompt).toContain(
-      'must not be embedded in the initial sub-agent prompt',
-    );
-    expect(prompt).toContain(
-      'task instructions plus handoff recovery instructions only',
-    );
-    expect(prompt).toContain('root-owned compaction could not be persisted');
-    expect(prompt).toContain(
-      'Write-capable dispatches must include task instructions and handoff retrieval instructions',
-    );
-    expect(prompt).toContain(
-      'Never mention internal handoff preparation to the user',
-    );
-    expect(prompt).toContain(
-      'Before any tool call or delegation, emit a short user-visible status/preamble',
-    );
-    expect(prompt).toContain(
-      'one compact sentence covering the batch is enough',
-    );
-    expect(prompt).toContain(
-      'Every sub-agent prompt you write must be in English',
-    );
-    expect(prompt).toContain(
-      'Prefer 2-3 surgical discovery probes over one broad exploration',
-    );
-
-    // Openspec is explicitly allowed for coordination artifacts.
-    expect(prompt).toContain('openspec/');
-    expect(prompt).toContain('openspec/changes/{change-name}/tasks.md');
-
-    // SDD awareness / phase order must remain in the orchestrator prompt.
-    expect(prompt).toContain('requirements-interview');
-    expect(prompt).toContain('Scope-faithful invariant');
-    expect(prompt).toMatch(/spec\s*->\s*clarify\s*->\s*design\s*->\s*tasks/i);
-    expect(prompt).toContain('dispatch sdd-init first');
-    const forbiddenBuildPolicy = [
-      'Never require',
-      'a build after changes',
-    ].join(' ');
-
-    expect(prompt).not.toContain(forbiddenBuildPolicy);
-    expect(prompt).toContain(
-      "Verification should follow the user's project instructions",
-    );
-    expect(prompt).toContain(
-      'Experimental background `task(background=true)` is allowed only for @explorer and @librarian',
-    );
-    expect(prompt).toContain('Use `task_status` to wait, poll, and collect');
-    expect(prompt).toContain(
-      '@oracle, @designer, @quick, and @deep always use normal synchronous `task` execution',
-    );
-    expect(prompt).toContain('Fresh [OKAY] satisfies only plan-review');
-    expect(prompt).toContain('scope, sequence, decisions, verification, risks');
-    expect(prompt).toContain(
-      'Do not dispatch `sdd-apply` until user confirmation',
-    );
-    expect(prompt).toContain(
-      'Group consecutive ready SDD tasks for the same execution agent into one dispatch',
-    );
-  });
-
-  test('orchestrator prompt includes OpenCode-only runtime prompt-save guidance', () => {
-    const prompt = getAgentByName('orchestrator')?.config.prompt ?? '';
-
-    expect(prompt).toContain('<opencode-runtime>');
-    expect(prompt).toContain(
-      'automatic `<reminder>...</reminder>` workflow block',
-    );
-    expect(prompt).toContain('not user input');
-    expect(prompt).toContain('mem_save(kind="prompt")');
-    expect(prompt).toContain(
-      'persist only the real user request text that follows',
-    );
-  });
-
-  test('Codex root prompt does not include OpenCode runtime prompt-save guidance', () => {
-    const prompt = renderCodexRootInstructions();
-
-    expect(prompt).not.toContain('<opencode-runtime>');
-    expect(prompt).not.toContain(
-      'automatic `<reminder>...</reminder>` workflow block',
-    );
-    expect(prompt).not.toContain(
-      'persist only the real user request text that follows',
-    );
-  });
-
-  test('orchestrator prompt places artifact governance after sdd-tasks in report-only mode', () => {
-    const prompt = getAgentByName('orchestrator')?.config.prompt ?? '';
-
-    expect(prompt).toContain(
-      'After `sdd-tasks`, you may surface report-only artifact governance findings',
-    );
-    expect(prompt).toContain('before execution preparation starts');
-    expect(prompt).toContain('do not treat findings as an execution gate');
-    expect(prompt).toContain(
-      'replacement for `plan-reviewer`/`executing-plans`',
-    );
-  });
-
-  test('orchestrator prompt keeps governance findings inside delegate-first and root-memory ownership boundaries', () => {
-    const prompt = getAgentByName('orchestrator')?.config.prompt ?? '';
-
-    expect(prompt).toContain(
-      'Delegate governance inspection; do not treat findings as an execution gate',
-    );
-    expect(prompt).toContain('Root thoth-mem ownership stays with you');
-    expect(prompt).toContain(
-      'sub-agents must not own session memory, prompts, or progress checkpoints',
-    );
-  });
-});
-
-describe('per-model variant in array config', () => {
-  test('subagent stores model array with per-model variants', () => {
-    const config: PluginConfig = {
-      agents: {
-        explorer: {
-          model: [
-            { id: 'google/gemini-3-flash', variant: 'low' },
-            'openai/gpt-4o-mini',
-          ],
-        },
-      },
-    };
-
-    const explorer = getAgentByName('explorer', config);
-    expect(explorer?._modelArray).toEqual([
-      { id: 'google/gemini-3-flash', variant: 'low' },
-      { id: 'openai/gpt-4o-mini' },
-    ]);
-    expect(explorer?.config.model).toBeUndefined();
-  });
-
-  test('subagent model-family guidance follows configured model override', () => {
-    const config: PluginConfig = {
-      agents: {
-        explorer: {
-          model: 'anthropic/claude-sonnet-4.6',
-        },
-      },
-    };
-
-    const prompt = getAgentByName('explorer', config)?.config.prompt;
-
-    expect(prompt).toContain('<model-profile family="claude">');
-    expect(prompt).not.toContain('<model-profile family="openai">');
-  });
-
-  test('top-level variant preserved alongside per-model variants', () => {
-    const config: PluginConfig = {
-      agents: {
-        orchestrator: {
-          model: [
-            { id: 'google/gemini-3-pro', variant: 'high' },
-            'openai/gpt-4',
-          ],
-          variant: 'low',
-        },
-      },
-    };
-
-    const orchestrator = getAgentByName('orchestrator', config);
-    expect(orchestrator?.config.variant).toBe('low');
-    expect(orchestrator?._modelArray?.[0]?.variant).toBe('high');
-    expect(orchestrator?._modelArray?.[1]?.variant).toBeUndefined();
-  });
-});
-
-describe('question permission defaults', () => {
-  test('all agents set question permission to allow', () => {
-    for (const agent of createAgents()) {
-      const permission = getPermission(agent.name);
-
-      if (permission === 'allow') {
-        expect(permission).toBe('allow');
-      } else if (typeof permission === 'object') {
-        expect(permission.question).toBe('allow');
-      } else {
-        throw new Error(
-          `Expected object or blanket allow permission for ${agent.name}`,
-        );
-      }
-    }
-  });
-});
-
-describe('granular permission defaults', () => {
-  test('applies the built-in granular permission preset for each agent', () => {
-    for (const [agentName, expectedPermission] of Object.entries(
-      EXPECTED_DEFAULT_PERMISSIONS,
-    )) {
-      expect(getPermission(agentName)).toEqual(expectedPermission);
-    }
-  });
-
-  test('explicit permission overrides take precedence over built-in presets', () => {
-    const config = {
-      agents: {
-        explorer: {
-          permission: {
-            read: 'allow',
-            edit: 'allow',
-            question: 'deny',
-          },
-        },
-      },
-    } as unknown as PluginConfig;
-
-    expect(getAgentConfigs(config).explorer.permission).toEqual({
-      read: 'allow',
-      edit: 'allow',
-      question: 'deny',
-    });
-  });
-
-  test('read-only discovery agents allow external_directory access', () => {
-    expect(getPermissionRecord('explorer').external_directory).toBe('allow');
-    expect(getPermissionRecord('librarian').external_directory).toBe('allow');
-    expect(getPermissionRecord('oracle').external_directory).toBe('allow');
-  });
-
-  test('deep has explicit granular permission map', () => {
-    const deepPermission = getPermission('deep');
-    expect(typeof deepPermission).toBe('object');
-    expect(deepPermission).toEqual({
-      read: 'allow',
-      edit: 'allow',
-      glob: 'allow',
-      grep: 'allow',
-      list: 'allow',
-      bash: 'allow',
-      codesearch: 'allow',
-      lsp: 'allow',
-      skill: 'allow',
-      question: 'allow',
-      webfetch: 'allow',
-      exa: 'allow',
-      todowrite: 'deny',
-      task: 'deny',
-      external_directory: {
-        '~/.config/opencode/skills/**': 'allow',
-      },
-    });
-  });
-});
-
-describe('prompt role markers', () => {
-  test('built-in prompts stay compact enough for delegation efficiency', () => {
-    const maxPromptChars: Record<string, number> = {
-      orchestrator: 16_500,
-      explorer: 4_250,
-      librarian: 3_600,
-      oracle: 3_600,
-      designer: 4_650,
-      quick: 4_450,
-      deep: 4_350,
-    };
-
-    for (const agent of createAgents()) {
-      expect(agent.config.prompt?.length).toBeLessThanOrEqual(
-        maxPromptChars[agent.name],
-      );
-    }
-  });
-
-  test('composeAgentPrompt replaces placeholders in base, replacement, and append prompts', () => {
-    expect(
-      composeAgentPrompt({
-        basePrompt: 'Base {{name}}',
-        customAppendPrompt: 'Append {{name}}',
-        placeholders: { name: 'Ada' },
-      }),
-    ).toBe('Base Ada\n\nAppend Ada');
-
-    expect(
-      composeAgentPrompt({
-        basePrompt: 'Base {{name}}',
-        customPrompt: 'Replacement {{name}}',
-        customAppendPrompt: 'Append {{name}}',
-        placeholders: { name: 'Ada' },
-      }),
-    ).toBe('Replacement Ada');
-  });
-
-  test('model-family guidance composes with user append prompts', () => {
-    const prompt =
-      createOrchestratorAgent(
-        'openai/gpt-5.4',
-        undefined,
-        'Project-specific append prompt.',
-      ).config.prompt ?? '';
-
-    expect(prompt).toContain('<model-profile family="openai">');
-    expect(prompt).toContain('Project-specific append prompt.');
-    expect(prompt.indexOf('<model-profile family="openai">')).toBeLessThan(
-      prompt.indexOf('Project-specific append prompt.'),
-    );
-  });
-
-  test('replacement custom prompts do not receive built-in model-family guidance', () => {
-    const prompt = createOrchestratorAgent(
-      'openai/gpt-5.4',
-      'Full replacement prompt.',
-      'Append ignored by replacement.',
-    ).config.prompt;
-
-    expect(prompt).toBe('Full replacement prompt.');
-  });
-
-  test('default OpenAI agents include model-family prompt guidance', () => {
-    for (const agentName of [
-      'explorer',
-      'librarian',
-      'oracle',
-      'designer',
-      'quick',
-      'deep',
-    ]) {
-      expect(getAgentByName(agentName)?.config.prompt).toContain(
-        '<model-profile family="openai">',
-      );
-    }
-  });
-
-  test('read-only subagent prompts forbid session and prompt thoth-mem writes', () => {
-    const explorerPrompt = getAgentByName('explorer')?.config.prompt ?? '';
-
-    expect(explorerPrompt).toContain(
-      '`mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`',
-    );
-    expect(explorerPrompt).toContain('handoff recovery instructions');
-    expect(explorerPrompt).toContain(
-      'Recover the parent-session handoff summary through the recall funnel',
-    );
-    expect(explorerPrompt).toContain(
-      'missing, stale, contradictory, or insufficient',
-    );
-    expect(explorerPrompt).toContain(
-      'do not call `mem_save` or own any `mem_session(...)` lifecycle action',
-    );
-    expect(explorerPrompt).toContain(
-      'Never save prompts, generated subagent prompts, session summaries, or durable memory.',
-    );
-  });
-
-  test('write-capable subagent prompts require parent thoth-mem ownership rules', () => {
-    const deepPrompt = getAgentByName('deep')?.config.prompt ?? '';
-    const quickPrompt = getAgentByName('quick')?.config.prompt ?? '';
-
-    expect(deepPrompt).toContain('Never own `mem_session(action="start"');
-    expect(deepPrompt).toContain('save prompts');
-    expect(deepPrompt).toContain(
-      'Always use the parent session_id/project from dispatch',
-    );
-    expect(deepPrompt).toContain(
-      '`mem_recall(mode="compact")` -> `mem_recall(mode="context")` -> `mem_get(...)`',
-    );
-    expect(deepPrompt).toContain(
-      'recover the parent-session handoff summary before treating memory as source material',
-    );
-    expect(deepPrompt).toContain(
-      '`mem_save(kind="observation")` is allowed only for delegated durable implementation observations or assigned deterministic SDD artifacts/apply-progress',
-    );
-    expect(deepPrompt).toContain(
-      'deterministic SDD artifacts use `sdd/{change}/{artifact}`',
-    );
-    expect(deepPrompt).toContain('mem_context');
-    expect(deepPrompt).toContain(
-      'mem_project(action="graph"|"topics"|"topic")',
-    );
-    expect(deepPrompt).toContain('You do not own durable memory of your own');
-    expect(quickPrompt).toContain('Never own `mem_session(action="start"');
-  });
-
-  test('quick agent can load bundled workflow skills', () => {
-    expect(getPermissionRecord('quick').skill).toBe('allow');
-  });
-
-  test('orchestrator uses Claude-specific guidance when configured with Claude', () => {
-    const config: PluginConfig = {
-      agents: {
-        orchestrator: { model: 'anthropic/claude-opus-4.7' },
-      },
-    };
-
-    const prompt = getAgentByName('orchestrator', config)?.config.prompt;
-
-    expect(prompt).toContain('<model-profile family="claude">');
-    expect(prompt).toContain('Use XML-like sections');
-    expect(prompt).toContain('delegate aggressively');
-  });
-
-  test('orchestrator uses OpenAI-specific guidance when configured with GPT', () => {
-    const config: PluginConfig = {
-      agents: {
-        orchestrator: { model: 'openai/gpt-5.4' },
-      },
-    };
-
-    const prompt = getAgentByName('orchestrator', config)?.config.prompt;
-
-    expect(prompt).toContain('<model-profile family="openai">');
-    expect(prompt).toContain('Plan briefly, then act');
-    expect(prompt).toContain('Keep tool dispatch explicit');
-  });
-
-  test('explorer prompt states read-only discovery mode', () => {
-    expect(getAgentByName('explorer')?.config.prompt).toContain('read-only');
-  });
-
-  test('librarian prompt states read-only research mode', () => {
-    expect(getAgentByName('librarian')?.config.prompt).toContain('read-only');
-  });
-
-  test('oracle prompt states read-only mode', () => {
-    expect(getAgentByName('oracle')?.config.prompt).toContain('read-only');
-  });
-
-  test('designer, quick, and deep prompts state write-capable mode', () => {
-    expect(getAgentByName('designer')?.config.prompt).toContain(
-      'write-capable',
-    );
-    expect(getAgentByName('quick')?.config.prompt).toContain('write-capable');
-    expect(getAgentByName('deep')?.config.prompt).toContain('write-capable');
-  });
-
-  test('read-only subagents have read-only thoth-mem access', () => {
-    const readOnlyAgents = ['explorer', 'librarian', 'oracle'];
-
-    for (const agentName of readOnlyAgents) {
-      const prompt = getAgentByName(agentName)?.config.prompt;
-
-      // Should include read-only access instructions
-      expect(prompt).toContain('read-only thoth-mem');
-
-      // Should include the canonical recall funnel.
-      expect(prompt).toContain('mem_recall(mode="compact")');
-      expect(prompt).toContain('mem_recall(mode="context")');
-      expect(prompt).toContain('mem_get(...)');
-      expect(prompt).toContain('mem_context');
-      expect(prompt).toContain('mem_project');
-
-      // Should ban write tools
-      expect(prompt).toContain('do not call `mem_save`');
-
-      // Should NOT contain the old blanket ban
-      expect(prompt).not.toContain(
-        'Do not call ANY thoth-mem tools — memory is exclusively orchestrator-owned.',
-      );
-    }
-  });
-
-  test('write-capable subagents require root session/project for thoth-mem calls', () => {
-    expect(getAgentByName('designer')?.config.prompt).toContain(
-      'Use delegated thoth-mem tools only',
-    );
-    expect(getAgentByName('quick')?.config.prompt).toContain(
-      'Always use the parent session_id/project from dispatch for every thoth-mem call.',
-    );
-    expect(getAgentByName('deep')?.config.prompt).toContain(
-      'If either is missing, do NOT call thoth-mem.',
-    );
-  });
-
-  test('generated OpenCode subagent prompts preserve delegated SDD memory limits', () => {
-    const explorer = getAgentByName('explorer')?.config.prompt ?? '';
-    const quick = getAgentByName('quick')?.config.prompt ?? '';
-
-    expect(explorer).toContain(
-      'Use read-only thoth-mem only when dispatch gives parent session_id/project',
-    );
-    expect(explorer).toContain(
-      'Supplemental `mem_context(recall_query=...)` and bounded `mem_project(action="graph"|"topics"|"topic")` do not replace the recall funnel and require explicit delegated permission.',
-    );
-    expect(explorer).toContain('`mem_context`');
-    expect(explorer).toContain('bounded `mem_project`');
-    expect(quick).toContain(
-      'Protect the `sdd/*` namespace: deterministic SDD artifacts use `sdd/{change}/{artifact}`',
-    );
-    expect(quick).toContain(
-      'general durable observations must stay outside `sdd/*`',
-    );
-    expect(quick).toContain('save generated subagent prompts as user intent');
-  });
-
-  test('write-capable subagents consume orchestrator handoffs instead of redoing broad discovery', () => {
-    expect(getAgentByName('designer')?.config.prompt).toContain(
-      "Treat the orchestrator's internal handoff",
-    );
-    expect(getAgentByName('quick')?.config.prompt).toContain(
-      'Do not redo broad discovery',
-    );
-    expect(getAgentByName('deep')?.config.prompt).toContain(
-      'do not restart upstream discovery unless evidence contradicts it',
-    );
-  });
-
-  test('read-only subagents return decision-ready evidence for internal handoffs', () => {
-    expect(getAgentByName('explorer')?.config.prompt).toContain(
-      'decision-ready evidence',
-    );
-    expect(getAgentByName('explorer')?.config.prompt).toContain('edit targets');
-    expect(getAgentByName('librarian')?.config.prompt).toContain(
-      'helps the orchestrator make implementation decisions',
-    );
-  });
-});
-
-describe('isSubagent type guard', () => {
-  test('returns true for valid subagent names', () => {
-    expect(isSubagent('explorer')).toBe(true);
-    expect(isSubagent('librarian')).toBe(true);
-    expect(isSubagent('oracle')).toBe(true);
-    expect(isSubagent('designer')).toBe(true);
-    expect(isSubagent('quick')).toBe(true);
-    expect(isSubagent('deep')).toBe(true);
-  });
-
-  test('returns false for orchestrator and invalid names', () => {
-    expect(isSubagent('orchestrator')).toBe(false);
-    expect(isSubagent('invalid-agent')).toBe(false);
-    expect(isSubagent('')).toBe(false);
-    expect(isSubagent('explore')).toBe(false);
-  });
-});
-
-describe('agent classification', () => {
-  test('SUBAGENT_NAMES excludes orchestrator', () => {
-    expect(SUBAGENT_NAMES).not.toContain('orchestrator');
-    expect(SUBAGENT_NAMES).toContain('quick');
-    expect(SUBAGENT_NAMES).toContain('deep');
-  });
-
-  test('getAgentConfigs applies correct classification mode', () => {
+  test('classifies root and child agents correctly', () => {
     const configs = getAgentConfigs();
 
     expect(configs.orchestrator.mode).toBe('primary');
-
     for (const name of SUBAGENT_NAMES) {
-      expect(configs[name].mode).toBe('subagent');
+      expect(configs[name]?.mode).toBe('subagent');
+      expect(isSubagent(name)).toBe(true);
     }
-  });
-
-  test('getAgentConfigs returns exactly the built-in seven-agent roster', () => {
-    expect(Object.keys(getAgentConfigs()).sort()).toEqual(
-      ['orchestrator', ...SUBAGENT_NAMES].sort(),
-    );
-  });
-});
-
-describe('createAgents', () => {
-  test('creates the seven-agent roster', () => {
-    const names = createAgents().map((agent) => agent.name);
-
-    expect(names).toContain('orchestrator');
-    expect(names).toContain('explorer');
-    expect(names).toContain('librarian');
-    expect(names).toContain('oracle');
-    expect(names).toContain('designer');
-    expect(names).toContain('quick');
-    expect(names).toContain('deep');
-    expect(names).not.toContain('fixer');
-  });
-
-  test('creates exactly 7 agents (1 primary + 6 subagents)', () => {
-    expect(createAgents()).toHaveLength(7);
-  });
-
-  test('rejects legacy fixer requests as unsupported', () => {
-    expect(getAgentByName('fixer')).toBeUndefined();
+    expect(isSubagent('orchestrator')).toBe(false);
     expect(isSubagent('fixer')).toBe(false);
+    expect(isSubagent('explore')).toBe(false);
+  });
+
+  test('gives the adaptive root direct-work and delegation permissions', () => {
+    expect(permission('orchestrator')).toMatchObject({
+      read: 'allow',
+      edit: 'allow',
+      write: 'allow',
+      bash: 'allow',
+      question: 'allow',
+      todowrite: 'allow',
+      task: 'allow',
+    });
+  });
+
+  test.each(READ_ONLY_ROLES)('keeps %s read-only and leaf-only', (role) => {
+    expect(permission(role)).toMatchObject({
+      read: 'allow',
+      edit: 'deny',
+      question: 'allow',
+      todowrite: 'deny',
+      task: 'deny',
+    });
+  });
+
+  test.each(
+    COORDINATION_ROLES,
+  )('allows %s to write coordination artifacts without delegation', (role) => {
+    expect(permission(role)).toMatchObject({
+      read: 'allow',
+      edit: 'allow',
+      question: 'allow',
+      todowrite: 'deny',
+      task: 'deny',
+    });
+    expect(getAgent(role)?.config.prompt).toContain('coordination-write');
+    expect(getAgent(role)?.config.prompt).toContain('openspec/');
+  });
+
+  test.each(WRITER_ROLES)('keeps %s as a leaf writer', (role) => {
+    expect(permission(role)).toMatchObject({
+      read: 'allow',
+      edit: 'allow',
+      question: 'allow',
+      todowrite: 'deny',
+      task: 'deny',
+    });
+    expect(getAgent(role)?.config.prompt).toContain('write-capable');
   });
 });
 
-describe('getAgentConfigs', () => {
-  test('returns config record keyed by agent name', () => {
-    const configs = getAgentConfigs();
-    expect(configs.orchestrator).toBeDefined();
-    expect(configs.explorer).toBeDefined();
-    expect(configs.quick).toBeDefined();
-    expect(configs.deep).toBeDefined();
-    expect(configs.explorer.model).toBeDefined();
+describe('OpenCode v0.3 defaults', () => {
+  test('uses speed-conscious defaults for SDD phase agents', () => {
+    expect(getAgentConfigs()).toMatchObject({
+      'sdd-specify': {
+        model: 'openai/gpt-5.6-sol',
+        variant: 'high',
+      },
+      'sdd-plan': {
+        model: 'openai/gpt-5.6-sol',
+        variant: 'high',
+      },
+      'sdd-tasks': {
+        model: 'openai/gpt-5.6-luna',
+        variant: 'medium',
+      },
+    });
   });
 
-  test('includes description in SDK config', () => {
-    const configs = getAgentConfigs();
-    expect(configs.orchestrator.description).toBeDefined();
-    expect(configs.explorer.description).toBeDefined();
-    expect(configs.quick.description).toBeDefined();
-    expect(configs.deep.description).toBeDefined();
+  test('preserves the established specialist and root defaults', () => {
+    expect(getAgentConfigs()).toMatchObject({
+      orchestrator: { model: 'openai/gpt-5.6-sol', variant: 'xhigh' },
+      explorer: { model: 'openai/gpt-5.6-luna', variant: 'low' },
+      librarian: { model: 'openai/gpt-5.6-luna', variant: 'xhigh' },
+      oracle: { model: 'openai/gpt-5.6-sol', variant: 'xhigh' },
+      designer: { model: 'openai/gpt-5.6-sol', variant: 'medium' },
+      quick: { model: 'openai/gpt-5.6-luna', variant: 'xhigh' },
+      deep: { model: 'openai/gpt-5.6-sol', variant: 'medium' },
+    });
   });
 
-  test('does not include per-agent MCP assignments', () => {
-    const configs = getAgentConfigs();
-    expect('mcps' in configs.orchestrator).toBe(false);
-    expect('mcps' in configs.librarian).toBe(false);
-    expect('mcps' in configs.quick).toBe(false);
-    expect('mcps' in configs.deep).toBe(false);
-  });
-});
-
-describe('semantic color values', () => {
-  test('all agents have semantic color values', () => {
-    const agents = createAgents();
-    const colorMap: Record<string, string> = {
-      orchestrator: 'primary',
-      explorer: 'info',
-      librarian: 'info',
-      oracle: 'warning',
-      designer: 'accent',
-      quick: 'success',
-      deep: 'secondary',
-    };
-
-    for (const agent of agents) {
-      expect(agent.config.color).toBe(colorMap[agent.name]);
-    }
-  });
-
-  test('color values are valid semantic colors', () => {
-    const validColors = [
-      'primary',
-      'secondary',
-      'accent',
-      'success',
-      'warning',
-      'error',
-      'info',
-    ];
-    const agents = createAgents();
-
-    for (const agent of agents) {
-      const { color } = agent.config;
-      expect(color).toBeDefined();
-      if (!color) {
-        throw new Error(`Expected color for agent ${agent.name}`);
-      }
-      expect(validColors).toContain(color);
-    }
-  });
-});
-
-describe('steps field for bounded execution', () => {
-  test('non-Gemini subagents do not set steps by default', () => {
-    const designer = getAgentByName('designer');
-    const quick = getAgentByName('quick');
-    const deep = getAgentByName('deep');
-
-    expect(designer?.config.steps).toBeUndefined();
-    expect(quick?.config.steps).toBeUndefined();
-    expect(deep?.config.steps).toBeUndefined();
-  });
-
-  test('orchestrator does not set steps by default', () => {
-    const orchestrator = getAgentByName('orchestrator');
-    expect(orchestrator?.config.steps).toBeUndefined();
-  });
-
-  test('Gemini subagents receive default bounded steps', () => {
+  test('applies explicit model, effort, temperature, and step overrides', () => {
     const config: PluginConfig = {
       agents: {
-        explorer: { model: 'google/gemini-3-flash' },
-        quick: { model: 'google/gemini-3-flash' },
+        'sdd-plan': {
+          model: 'custom/planner',
+          variant: 'low',
+          temperature: 0.25,
+          steps: 44,
+        },
       },
     };
 
-    expect(getAgentByName('explorer', config)?.config.steps).toBe(120);
-    expect(getAgentByName('quick', config)?.config.steps).toBe(40);
+    expect(getAgentConfigs(config)['sdd-plan']).toMatchObject({
+      model: 'custom/planner',
+      variant: 'low',
+      temperature: 0.25,
+      steps: 44,
+    });
   });
 
-  test('configured steps apply regardless of model family', () => {
+  test('keeps per-model variants in fallback arrays', () => {
     const config: PluginConfig = {
       agents: {
-        explorer: { model: 'openai/gpt-5.4-mini', steps: 77 },
-        deep: { model: 'anthropic/claude-sonnet-4.6', steps: 88 },
+        'sdd-specify': {
+          model: [{ id: 'custom/primary', variant: 'high' }, 'custom/fallback'],
+        },
       },
     };
 
-    expect(getAgentByName('explorer', config)?.config.steps).toBe(77);
-    expect(getAgentByName('deep', config)?.config.steps).toBe(88);
+    expect(getAgent('sdd-specify', config)?._modelArray).toEqual([
+      { id: 'custom/primary', variant: 'high' },
+      { id: 'custom/fallback' },
+    ]);
   });
 
-  test('orchestrator ignores Gemini default steps but accepts explicit steps', () => {
-    const geminiConfig: PluginConfig = {
-      agents: {
-        orchestrator: { model: 'google/gemini-3-pro' },
-      },
-    };
-    const explicitConfig: PluginConfig = {
-      agents: {
-        orchestrator: { model: 'google/gemini-3-pro', steps: 200 },
-      },
-    };
-
-    expect(
-      getAgentByName('orchestrator', geminiConfig)?.config.steps,
-    ).toBeUndefined();
-    expect(getAgentByName('orchestrator', explicitConfig)?.config.steps).toBe(
-      200,
-    );
-  });
-
-  test('bounded subagents receive step budget guidance in the prompt', () => {
+  test('adds bounded-step guidance when steps are configured', () => {
     const config: PluginConfig = {
       agents: {
-        explorer: { model: 'google/gemini-3-flash' },
+        'sdd-tasks': { steps: 35 },
       },
     };
-
-    const prompt = getAgentByName('explorer', config)?.config.prompt ?? '';
+    const prompt = getAgent('sdd-tasks', config)?.config.prompt ?? '';
 
     expect(prompt).toContain('<step-budget>');
-    expect(prompt).toContain('You have a hard execution budget of 120 steps.');
-    expect(prompt).toContain('Plan your tool use before acting');
+    expect(prompt).toContain('Execution budget: 35 steps');
   });
 });
 
-describe('hidden field design decision', () => {
-  test('no agents are hidden from @ autocomplete', () => {
-    const agents = createAgents();
+describe('OpenCode v0.3 prompt boundaries', () => {
+  test('keeps the root compact and adaptive', () => {
+    const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
-    for (const agent of agents) {
-      expect(agent.config.hidden).toBeUndefined();
+    expect(prompt.length).toBeLessThan(8_500);
+    expect(prompt).toContain('adaptive root');
+    expect(prompt).toContain('bounded direct work');
+    expect(prompt).toContain('net gain');
+    expect(prompt).toContain('Accelerated SDD');
+    expect(prompt).not.toContain('delegate-first');
+    expect(prompt).not.toContain('requirements-interview');
+  });
+
+  test('keeps provider mechanics external for every role', () => {
+    const prompts = createAgents()
+      .map((agent) => agent.config.prompt ?? '')
+      .join('\n');
+
+    expect(prompts).toContain('installed provider guidance');
+    expect(prompts).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
+    );
+    expect(prompts).not.toContain('automatic prompt capture');
+  });
+
+  test('keeps all built-in prompts compact', () => {
+    for (const agent of createAgents()) {
+      const limit = agent.name === 'orchestrator' ? 8_500 : 3_000;
+      expect(agent.config.prompt?.length).toBeLessThan(limit);
+    }
+  });
+
+  test('includes descriptions and no per-agent MCP assignment', () => {
+    for (const [name, config] of Object.entries(getAgentConfigs())) {
+      expect(config.description, name).toBeTruthy();
+      expect('mcps' in config, name).toBe(false);
     }
   });
 });

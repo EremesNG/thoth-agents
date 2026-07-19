@@ -2,8 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { DEFAULT_MODELS } from '../../config';
+import type {
+  ProviderCapabilityEvidence,
+  ProviderEvidenceInput,
+} from '../../harness/types';
 import { loadModelsDevCatalog } from '../model-catalog';
+import type { HarnessStatusReport } from '../operations';
 
 const parseConfigMock = vi.hoisted(() => vi.fn());
 
@@ -77,6 +81,19 @@ describe('TUI operations', () => {
       role: 'deep',
       model: 'openai/current-deep',
       effort: { kind: 'inherit' },
+    });
+  });
+
+  test('OpenCode model roles use canonical orchestrator defaults without config', async () => {
+    useOpenCodeConfig(undefined);
+    const { getOpenCodeModelRoles } = await import('./operations');
+
+    expect(
+      getOpenCodeModelRoles().find(({ role }) => role === 'orchestrator'),
+    ).toEqual({
+      role: 'orchestrator',
+      model: 'openai/gpt-5.6-sol',
+      effort: { kind: 'effort', value: 'xhigh' },
     });
   });
 
@@ -201,8 +218,8 @@ describe('TUI operations', () => {
     });
     expect(roles.find(({ role }) => role === 'deep')).toEqual({
       role: 'deep',
-      model: DEFAULT_MODELS.deep ?? 'openai/gpt-5.4',
-      effort: { kind: 'inherit' },
+      model: 'openai/gpt-5.6-sol',
+      effort: { kind: 'effort', value: 'medium' },
     });
   });
 
@@ -252,7 +269,7 @@ describe('TUI operations', () => {
     }
   });
 
-  test('Claude current effort comes from installed artifacts, not stale sidecar state', async () => {
+  test('Claude model display ignores manager-owned cache files', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tui-claude-current-'));
     const home = join(root, 'home');
     const plugin = join(home, '.claude', 'skills', 'thoth-agents');
@@ -285,12 +302,13 @@ describe('TUI operations', () => {
       });
 
       expect(roles.find((role) => role.role === 'deep')).toMatchObject({
-        model: 'opus',
-        effort: { kind: 'effort', value: 'high' },
+        model: 'sonnet',
       });
+      expect(
+        roles.find((role) => role.role === 'deep')?.effort,
+      ).toBeUndefined();
       expect(roles.find((role) => role.role === 'explorer')).toMatchObject({
         model: 'haiku',
-        effort: { kind: 'inherit' },
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -317,13 +335,15 @@ describe('TUI operations', () => {
       });
 
       expect(codex.find((role) => role.role === 'deep')).toMatchObject({
-        model: 'gpt-5.6-terra',
-        effort: { kind: 'effort', value: 'xhigh' },
+        model: 'gpt-5.6-sol',
+        effort: { kind: 'effort', value: 'medium' },
       });
       expect(claude.find((role) => role.role === 'deep')).toMatchObject({
         model: 'sonnet',
-        effort: { kind: 'inherit' },
       });
+      expect(
+        claude.find((role) => role.role === 'deep')?.effort,
+      ).toBeUndefined();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -343,6 +363,9 @@ describe('TUI operations', () => {
       'explorer',
       'librarian',
       'oracle',
+      'sdd-specify',
+      'sdd-plan',
+      'sdd-tasks',
       'designer',
       'quick',
       'deep',
@@ -361,5 +384,54 @@ describe('TUI operations', () => {
       'inherit',
       'anthropic/claude-sonnet-4-5',
     ]);
+  });
+
+  test.each([
+    {
+      label: 'supported provider evidence',
+      evidence: {
+        state: 'supported',
+        source: 'provider',
+        basis: ['Provider reported persistence and recovery availability.'],
+      },
+    },
+    {
+      label: 'degraded harness evidence',
+      evidence: {
+        state: 'degraded',
+        source: 'harness',
+        basis: ['Harness reported persistence but not recovery availability.'],
+      },
+    },
+  ] satisfies ReadonlyArray<{
+    label: string;
+    evidence: ProviderCapabilityEvidence;
+  }>)('forwards $label without changing consumer-managed state', async ({
+    evidence,
+  }) => {
+    const { defaultTuiOperations } = await import('./operations');
+    const statusWithEvidence = defaultTuiOperations.status as unknown as (
+      harness: 'opencode',
+      input: ProviderEvidenceInput,
+    ) => HarnessStatusReport;
+
+    const report = statusWithEvidence('opencode', {
+      providerEvidence: evidence,
+    });
+
+    expect(report.providerCapability).toEqual(evidence);
+    expect(report.state).not.toBe(evidence.state);
+  });
+
+  test('defaults omitted provider evidence to unsupported without failing consumer status', async () => {
+    const { defaultTuiOperations } = await import('./operations');
+    const report = defaultTuiOperations.status('opencode');
+
+    expect(report.providerCapability).toEqual({
+      state: 'unsupported',
+      source: 'none',
+      basis: [],
+    });
+    expect(report.state).not.toBe('unknown');
   });
 });

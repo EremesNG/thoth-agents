@@ -161,8 +161,6 @@ export function parseInstallArgs(args: string[]): InstallArgs {
       result.tui = false;
     } else if (arg.startsWith('--tmux=')) {
       result.tmux = parseBooleanArg('--tmux', arg.split('=')[1] ?? '');
-    } else if (arg.startsWith('--skills=')) {
-      result.skills = parseBooleanArg('--skills', arg.split('=')[1] ?? '');
     } else if (arg === '--dry-run') {
       result.dryRun = true;
     } else if (arg === '--reset') {
@@ -177,6 +175,8 @@ export function parseInstallArgs(args: string[]): InstallArgs {
       result.agent = agent;
     } else if (arg === '-h' || arg === '--help') {
       throw new Error('help');
+    } else {
+      throw new Error(`Unsupported install option: ${arg}`);
     }
   }
 

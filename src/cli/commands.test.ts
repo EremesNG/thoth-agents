@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -11,8 +11,8 @@ import {
   resolveCliModelRoles,
   runCliCommand,
 } from './commands';
-import { CUSTOM_SKILLS } from './custom-skills';
 import type { ModelOption } from './model-catalog';
+import { resolveOperationHarness } from './operations';
 import {
   applyClaudeCodePlan,
   buildClaudeCodeModelPlan,
@@ -99,6 +99,20 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain(
       'Run this CLI through a global install, npx, or pnpm dlx.',
     );
+    expect(output).toContain('ten-role roster');
+    expect(output).toContain(
+      'simplify, tdd, progressive-context-router, and architectural-grilling',
+    );
+    expect(output).not.toContain('playwright-cli');
+    expect(output).toContain(
+      'External required skills are installed for every harness',
+    );
+    expect(output).not.toContain('--skills');
+    expect(output).not.toContain('alternative providers');
+    expect(output).not.toContain('thoth-mem defaults');
+    expect(output).toContain(
+      'Provider capability is external and reported only from caller-supplied evidence.',
+    );
     expect(output).not.toContain(
       'status                Show managed install status (future phase)',
     );
@@ -137,6 +151,33 @@ describe('commands plain operation formatters', () => {
     }
   });
 
+  test('status output renders provider capability as a separate evidence section', () => {
+    const output = formatHarnessStatusReport([
+      {
+        harness: 'codex',
+        displayName: 'Codex',
+        state: 'installed',
+        summary: 'Consumer-managed files are current.',
+        targets: [],
+        diagnostics: [],
+        actions: [],
+        providerCapability: {
+          state: 'degraded',
+          source: 'harness',
+          basis: ['persistence evidenced; continuity not evidenced'],
+        },
+      },
+    ]);
+
+    expect(output).toContain('State: installed');
+    expect(output).toContain('Provider capability: degraded');
+    expect(output).toContain('Evidence source: harness');
+    expect(output).toContain(
+      'Evidence basis: persistence evidenced; continuity not evidenced',
+    );
+    expect(output).not.toContain('State: degraded');
+  });
+
   test('list output shows supported harness metadata and unavailable entries', () => {
     const output = formatHarnessList([
       {
@@ -169,6 +210,15 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain('Claude [unavailable]');
     expect(output).toContain('Status - Inspect OpenCode config');
     expect(output).toContain('Not supported.');
+  });
+
+  test('unsupported harness metadata names the exact supported scope without fallback', () => {
+    const output = formatHarnessList([resolveOperationHarness('gemini')]);
+
+    expect(output).toContain('gemini [unavailable]');
+    expect(output).toContain('Unsupported harness "gemini".');
+    expect(output).toContain('opencode, codex, claude');
+    expect(output).not.toMatch(/fallback|best effort/i);
   });
 
   test('mutation plan output identifies target harness and safety metadata', () => {
@@ -235,7 +285,7 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain('The npm binary still requires');
   });
 
-  test('OpenCode sync output renders unique main and lite backups plus bundled skills', () => {
+  test('OpenCode sync output renders unique main and lite backups without bundled phase skills', () => {
     const xdgRoot = mkdtempSync(join(tmpdir(), 'thoth-opencode-format-'));
     const root = join(xdgRoot, 'opencode');
     const originalConfigDir = process.env.OPENCODE_CONFIG_DIR;
@@ -259,13 +309,10 @@ describe('commands plain operation formatters', () => {
         expect(output).toContain(backupPath);
         expect(output.split(backupPath)).toHaveLength(2);
       }
-      expect(output).toContain(
-        '- Refresh bundled thoth-agents OpenCode skills',
+      expect(output).toContain('Write thoth-agents ten-role config');
+      expect(output).not.toContain(
+        'Refresh bundled thoth-agents OpenCode skills',
       );
-      expect(output).toContain(`"count": ${CUSTOM_SKILLS.length}`);
-      for (const { name } of CUSTOM_SKILLS) {
-        expect(output).toContain(`"${name}"`);
-      }
     } finally {
       if (originalConfigDir === undefined) {
         delete process.env.OPENCODE_CONFIG_DIR;
@@ -329,13 +376,7 @@ describe('commands plain operation formatters', () => {
         kind: 'config' as const,
         label: 'thoth-agents config',
         state: 'drift' as const,
-        observed: 'preset: agents; roles: 7/7',
-      },
-      {
-        kind: 'skill' as const,
-        label: 'Bundled skill: sdd-apply',
-        state: 'missing' as const,
-        observed: 'managed bundled skill missing',
+        observed: 'preset: agents; roles: 7/10',
       },
     ];
     const warnings = [
@@ -343,11 +384,6 @@ describe('commands plain operation formatters', () => {
         severity: 'important' as const,
         code: 'opencode-roster-drift',
         message: 'Managed OpenCode roster uses the legacy agents preset.',
-      },
-      {
-        severity: 'important' as const,
-        code: 'opencode-bundled-skills-missing',
-        message: 'Bundled thoth-agents OpenCode skills are missing.',
       },
     ];
     const blockedPlan: OperationPlan = {
@@ -386,13 +422,7 @@ describe('commands plain operation formatters', () => {
         '[important] [opencode-roster-drift] Managed OpenCode roster uses the legacy agents preset.',
       );
       expect(output).toContain(
-        '[important] [opencode-bundled-skills-missing] Bundled thoth-agents OpenCode skills are missing.',
-      );
-      expect(output).toContain(
-        'thoth-agents config: config [drift] observed preset: agents; roles: 7/7',
-      );
-      expect(output).toContain(
-        'Bundled skill: sdd-apply: skill [missing] observed managed bundled skill missing',
+        'thoth-agents config: config [drift] observed preset: agents; roles: 7/10',
       );
     }
     expect(formatOperationPlan(blockedPlan)).toContain('Blocking targets:');
@@ -400,6 +430,23 @@ describe('commands plain operation formatters', () => {
 });
 
 describe('explicit operation commands', () => {
+  test('variant-only OpenCode orchestrator input preserves the canonical default model', () => {
+    expect(
+      resolveCliModelRoles('opencode', [
+        {
+          role: 'orchestrator',
+          effort: { kind: 'effort', value: 'custom-variant' },
+        },
+      ]),
+    ).toEqual([
+      {
+        role: 'orchestrator',
+        model: 'openai/gpt-5.6-sol',
+        effort: { kind: 'effort', value: 'custom-variant' },
+      },
+    ]);
+  });
+
   test.each([
     ['codex', 'gpt-5.6-sol', 'openai/gpt-5.6-sol'],
     ['opencode', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-sol'],
@@ -459,7 +506,12 @@ describe('explicit operation commands', () => {
       expect(result.code).toBe(0);
       expect(result.output).toContain(model);
       expect(result.output).toContain('high');
-      expect(result.output).toContain('Can apply: yes');
+      expect(result.output).toContain(
+        harness === 'claude' ? 'Can apply: no' : 'Can apply: yes',
+      );
+      if (harness === 'claude') {
+        expect(result.output).toContain('manager-owned');
+      }
     } finally {
       if (isolatedRoot) {
         if (originalConfigDir === undefined) {
@@ -477,7 +529,7 @@ describe('explicit operation commands', () => {
     }
   });
 
-  test('concrete Claude CLI resolution generates exact effort frontmatter', async () => {
+  test('concrete Claude CLI resolution refuses to rewrite manager cache frontmatter', async () => {
     const home = mkdtempSync(join(tmpdir(), 'claude-cli-effort-'));
     const model = 'anthropic/claude-opus-4.6';
     try {
@@ -502,13 +554,13 @@ describe('explicit operation commands', () => {
         { harness: 'claude', dryRun: true, roles },
         { cwd: process.cwd(), scope: 'user', homeDir: home },
       );
-      expect(applyClaudeCodePlan(plan).applied).toBe(true);
-      const output = readFileSync(
-        join(home, '.claude', 'skills', 'thoth-agents', 'agents', 'deep.md'),
-        'utf8',
-      );
-      expect(output).toContain(`model: ${model}`);
-      expect(output).toContain('effort: high');
+      expect(plan.canApply).toBe(false);
+      expect(applyClaudeCodePlan(plan).applied).toBe(false);
+      expect(
+        existsSync(
+          join(home, '.claude', 'skills', 'thoth-agents', 'agents', 'deep.md'),
+        ),
+      ).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

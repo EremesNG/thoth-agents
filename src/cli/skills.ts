@@ -3,43 +3,46 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-/**
- * A recommended skill to install via `npx skills add`.
- */
-export interface RecommendedSkill {
-  /** Human-readable name for prompts */
+export type SkillInstallHarness = 'opencode' | 'codex' | 'claude';
+
+/** An external skill required by every supported thoth-agents harness. */
+export interface RequiredSkill {
   name: string;
-  /** GitHub repo URL for `npx skills add` */
   repo: string;
-  /** Skill name within the repo (--skill flag) */
   skillName: string;
-  /** Description shown to user during install */
   description: string;
-  /** Optional commands to run after the skill is added */
-  postInstallCommands?: string[];
 }
 
-export type RecommendedSkillInstallStatus =
+export type RequiredSkillInstallStatus =
   | 'installed'
   | 'already-installed'
   | 'failed';
 
-export interface RecommendedSkillInstallResult {
-  skill: RecommendedSkill;
-  status: RecommendedSkillInstallStatus;
+export interface RequiredSkillInstallResult {
+  skill: RequiredSkill;
+  harness: SkillInstallHarness;
+  status: RequiredSkillInstallStatus;
   skillPath: string;
   error?: unknown;
 }
 
-interface InstallRecommendedSkillOptions {
+interface InstallRequiredSkillOptions {
   homeDir?: string;
 }
 
-/**
- * List of recommended skills.
- * Add new skills here to include them in the installation flow.
- */
-export const RECOMMENDED_SKILLS: RecommendedSkill[] = [
+const SKILLS_CLI_AGENT: Record<SkillInstallHarness, string> = {
+  opencode: 'opencode',
+  codex: 'codex',
+  claude: 'claude-code',
+};
+
+const GLOBAL_SKILL_ROOT: Record<SkillInstallHarness, readonly string[]> = {
+  opencode: ['.config', 'opencode', 'skills'],
+  codex: ['.codex', 'skills'],
+  claude: ['.claude', 'skills'],
+};
+
+export const REQUIRED_SKILLS: readonly RequiredSkill[] = [
   {
     name: 'simplify',
     repo: 'https://github.com/brianlovin/claude-config',
@@ -47,98 +50,97 @@ export const RECOMMENDED_SKILLS: RecommendedSkill[] = [
     description: 'YAGNI code simplification expert',
   },
   {
-    name: 'playwright-cli',
-    repo: 'https://github.com/microsoft/playwright-cli',
-    skillName: 'playwright-cli',
-    description: 'Browser automation for visual checks and testing',
+    name: 'tdd',
+    repo: 'https://github.com/mattpocock/skills',
+    skillName: 'tdd',
+    description: 'Test-driven development workflow',
+  },
+  {
+    name: 'progressive-context-router',
+    repo: 'https://github.com/EremesNG/skills',
+    skillName: 'progressive-context-router',
+    description: 'Repository instruction and on-demand context routing',
+  },
+  {
+    name: 'architectural-grilling',
+    repo: 'https://github.com/EremesNG/skills',
+    skillName: 'architectural-grilling',
+    description: 'Conditional product and architecture decision interview',
   },
 ];
 
-export function getRecommendedSkillPath(
-  skill: RecommendedSkill,
+export function getRequiredSkillPath(
+  skill: RequiredSkill,
+  harness: SkillInstallHarness,
   homeDir = homedir(),
 ): string {
-  return join(homeDir, '.agents', 'skills', skill.skillName, 'SKILL.md');
-}
-
-export function isRecommendedSkillInstalled(
-  skill: RecommendedSkill,
-  options: InstallRecommendedSkillOptions = {},
-): boolean {
-  return existsSync(getRecommendedSkillPath(skill, options.homeDir));
-}
-
-function runSkillInstallCommand(skill: RecommendedSkill): {
-  success: boolean;
-  error?: unknown;
-} {
-  const args = [
-    'skills',
-    'add',
-    skill.repo,
-    '--skill',
+  return join(
+    homeDir,
+    ...GLOBAL_SKILL_ROOT[harness],
     skill.skillName,
-    '-a',
-    'opencode',
-    '-y',
-    '--global',
-  ];
+    'SKILL.md',
+  );
+}
 
+export function isRequiredSkillInstalled(
+  skill: RequiredSkill,
+  harness: SkillInstallHarness,
+  options: InstallRequiredSkillOptions = {},
+): boolean {
+  return existsSync(getRequiredSkillPath(skill, harness, options.homeDir));
+}
+
+export function getRequiredSkillInstallCommand(
+  skill: RequiredSkill,
+  harness: SkillInstallHarness,
+): { command: 'npx'; args: string[] } {
+  return {
+    command: 'npx',
+    args: [
+      'skills',
+      'add',
+      skill.repo,
+      '--skill',
+      skill.skillName,
+      '--global',
+      '--agent',
+      SKILLS_CLI_AGENT[harness],
+      '--yes',
+    ],
+  };
+}
+
+/** Install one mandatory skill into the selected harness's global skill root. */
+export function installRequiredSkill(
+  skill: RequiredSkill,
+  harness: SkillInstallHarness,
+  options: InstallRequiredSkillOptions = {},
+): RequiredSkillInstallResult {
+  const skillPath = getRequiredSkillPath(skill, harness, options.homeDir);
+  if (isRequiredSkillInstalled(skill, harness, options)) {
+    return { skill, harness, status: 'already-installed', skillPath };
+  }
+
+  const { command, args } = getRequiredSkillInstallCommand(skill, harness);
   try {
-    const result = spawnSync('npx', args, { stdio: 'inherit' });
-    if (result.status !== 0) {
-      return { success: false };
+    const result = spawnSync(command, args, { stdio: 'inherit' });
+    if (result.status === 0) {
+      return { skill, harness, status: 'installed', skillPath };
     }
-
-    // Run post-install commands if any
-    if (skill.postInstallCommands && skill.postInstallCommands.length > 0) {
-      console.log(`Running post-install commands for ${skill.name}...`);
-      for (const cmd of skill.postInstallCommands) {
-        console.log(`> ${cmd}`);
-        const [command, ...cmdArgs] = cmd.split(' ');
-        const cmdResult = spawnSync(command, cmdArgs, { stdio: 'inherit' });
-        if (cmdResult.status !== 0) {
-          console.warn(`Post-install command failed: ${cmd}`);
-        }
-      }
+    if (isRequiredSkillInstalled(skill, harness, options)) {
+      return { skill, harness, status: 'already-installed', skillPath };
     }
-
-    return { success: true };
+    return { skill, harness, status: 'failed', skillPath, error: result.error };
   } catch (error) {
-    console.error(`Failed to install skill: ${skill.name}`, error);
-    return { success: false, error };
+    return { skill, harness, status: 'failed', skillPath, error };
   }
 }
 
-/**
- * Install a recommended OpenCode skill with idempotent semantics.
- */
-export function installRecommendedSkill(
-  skill: RecommendedSkill,
-  options: InstallRecommendedSkillOptions = {},
-): RecommendedSkillInstallResult {
-  const skillPath = getRecommendedSkillPath(skill, options.homeDir);
-  if (isRecommendedSkillInstalled(skill, options)) {
-    return { skill, status: 'already-installed', skillPath };
-  }
-
-  const result = runSkillInstallCommand(skill);
-  if (result.success) {
-    return { skill, status: 'installed', skillPath };
-  }
-
-  if (isRecommendedSkillInstalled(skill, options)) {
-    return { skill, status: 'already-installed', skillPath };
-  }
-
-  return { skill, status: 'failed', skillPath, error: result.error };
-}
-
-/**
- * Install a skill using `npx skills add`.
- * @param skill - The skill to install
- * @returns True if installation succeeded, false otherwise
- */
-export function installSkill(skill: RecommendedSkill): boolean {
-  return installRecommendedSkill(skill).status === 'installed';
+export function installRequiredSkills(
+  harness: SkillInstallHarness,
+  options: InstallRequiredSkillOptions = {},
+): RequiredSkillInstallResult[] {
+  return REQUIRED_SKILLS.map((skill) =>
+    installRequiredSkill(skill, harness, options),
+  );
 }

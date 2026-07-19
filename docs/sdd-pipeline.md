@@ -1,420 +1,134 @@
 # SDD Pipeline
 
-This document explains the bundled spec-driven development workflow shipped with
-thoth-agents.
+thoth-agents 0.3.0 keeps SDD robustness while removing phase-skill overhead. The
+adaptive root selects one of three routes and invokes dedicated phase agents only
+when their artifacts provide value.
 
-## Overview
+Spec Kit semantics are the source of truth for requirements, planning, tasks,
+and optional design-support artifacts. thoth-agents keeps those semantics inside
+the governed `openspec/changes/<feature>/` store.
 
-The full pipeline is:
+## Routes
 
 ```text
-sdd-init (if openspec/ missing) -> sdd-explore -> propose -> spec -> clarify -> design -> tasks -> apply -> verify -> archive
+direct:      implement -> verify
+accelerated: specify -> plan -> tasks -> implement -> verify
+full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify
 ```
 
-The requirements interview runs before this when the request is ambiguous, open-ended, or too
-large to implement safely without scope alignment.
+Accelerated SDD is intentionally retained. It is the middle route for work that
+benefits from explicit artifacts but does not justify exploration and independent
+pre-implementation analysis.
 
-If `openspec/` does not exist yet, `sdd-init` bootstraps the structure before
-planning artifacts are created.
-
-## How the Requirements Interview Feeds into SDD
-
-The bundled `requirements-interview` skill decides the handoff route
-after clarification using a 6-dimension complexity assessment (logic
-depth, contract sensitivity, context span, discovery need, failure
-cost, and concern coupling).
-
-- low complexity: direct implementation
-- moderate complexity: accelerated SDD, usually `sdd-explore -> propose -> tasks`
-- high complexity: full SDD pipeline
-
-Routing is based on the nature and risk of the change, not file count.
-A mechanical rename across many files routes direct, while a dense
-business-logic rewrite in two files may need full SDD.
-
-Before SDD begins, the user chooses an artifact store mode.
-
-## Artifact Store Policy
-
-The artifact store controls where planning artifacts persist.
-
-| Mode | Writes to | Token cost | Use when |
+| Route | Select when | Required coordination artifacts | Verification owner |
 | --- | --- | --- | --- |
-| `thoth-mem` | thoth memory only | Low | You want lightweight planning with no repo files |
-| `openspec` | `openspec/` files only | Medium | You want reviewable repo artifacts |
-| `hybrid` | both | High | You want maximum durability and recovery |
-| `none` | Neither | Lowest | Ephemeral iterations, no artifact persistence |
+| `direct` | Clear, local, low-risk work | None | Adaptive root |
+| `accelerated` | Bounded multi-file work, partial clarity, or medium contract/failure risk | `spec.md`, `plan.md`, `tasks.md` | Adaptive root |
+| `full` | Explicit SDD request, uncertain material scope, cross-cutting work, or high contract/failure risk | `spec.md`, `plan.md`, `tasks.md` | `oracle` |
 
-Config:
+A small README correction should normally use direct work. SDD is not a ceremony
+tax applied to every request.
 
-```json
-{
-  "artifactStore": {
-    "mode": "hybrid"
-  }
-}
-```
+## Classification inputs
 
-Default mode is `hybrid`.
+The root considers:
 
-## Phase-by-Phase Flow
+- intent: documentation, mechanical, behavioral, or architectural;
+- scope: local, multi-file, or cross-cutting;
+- clarity: clear, partial, or uncertain;
+- public/internal contract risk;
+- cost of failure; and
+- whether the user explicitly requested SDD.
 
-Dispatch notes:
+User input is requested only when a material unresolved decision would change
+the result. Partial but safely assumable detail does not automatically block the
+pipeline.
 
-- Dispatch independent phases or subtasks in parallel when they do not depend on
-  each other.
-- If a delegated phase fails or returns conflicting results, retry once with a
-  more specific prompt.
-- After that retry, report the limitation or failure clearly to the user.
-- Maximum retries per delegated task: one.
+## Required phases
 
-## Delegation Matrix
+| Phase | Owner | Purpose |
+| --- | --- | --- |
+| `explore` | `explorer` | Resolve broad repository uncertainty. Full route only. |
+| `specify` | `sdd-specify` | Define testable user-visible requirements and acceptance criteria. |
+| `plan` | `sdd-plan` | Translate the accepted specification into an executable technical approach. |
+| `tasks` | `sdd-tasks` | Produce dependency-ordered, verifiable implementation slices. |
+| `analyze` | `oracle` | Independently check cross-artifact consistency. Full route only. |
+| `implement` | adaptive root, `designer`, `quick`, or `deep` | Make the product change with one writer per mutable surface. |
+| `verify` | root or `oracle`, by route | Check the result against requirements and focused evidence. |
 
-| Phase | Primary delegate | Support / fallback | Why |
+The three SDD phase agents may write only coordination artifacts under
+`openspec/`. They do not implement product code and do not delegate further.
+
+## Conditional phases
+
+| Phase | Activate only when | Owner |
+| --- | --- | --- |
+| `clarify` | An unresolved material decision cannot be handled by a safe local assumption. | `sdd-specify` |
+| `checklist` | Requirements are high-risk, compliance-sensitive, or ambiguity-prone. | `sdd-specify` |
+| `converge` | Verification finds an actionable defect. | Adaptive root routes a bounded fix and re-verification. |
+
+Conditional phases are not mandatory gates. They exist to recover rigor when the
+risk signal justifies it.
+
+## Conditional architectural grilling
+
+`architectural-grilling` is an external pre-specification decision gate, not an
+SDD phase. Activate it only when:
+
+- the user explicitly asks to be grilled; or
+- material product or architecture branches remain human-owned and unresolved.
+
+Do not activate it for Direct or Accelerated work, routine clarification, or
+merely because the route is Full. While active, the root stays in discovery and
+decision mode, asks one material question per turn, and waits for explicit
+closure. If the user stops early, unresolved branches and their risk remain
+visible rather than being converted into assumptions.
+
+Closed decisions feed `spec.md` and `plan.md`. Those remain the canonical
+artifacts; no additional blueprint file is required by thoth-agents.
+
+## Artifact graph
+
+All paths below are relative to `openspec/changes/<feature>/`.
+
+| Artifact | Producer | Consumes | Required for |
 | --- | --- | --- | --- |
-| `sdd-init` | `quick` | `explorer` support | Fast mechanical bootstrap; explorer supplies repository facts when needed. |
-| `sdd-explore` | `explorer` | `librarian` for external APIs/docs | Read-only repository discovery before artifact-producing phases. |
-| `sdd-propose` | `deep` | `oracle` review when risk is high | Structured reasoning, alternatives, and trade-off synthesis. |
-| `sdd-spec` | `deep` | `oracle` review when ambiguity is high | Quality-sensitive requirement contract and scenarios. |
-| `sdd-clarify` | `deep` | `oracle` fallback | Bounded resolution of residual spec ambiguity before design (full pipeline only). |
-| `sdd-design` | `deep` | `designer` only for UI/UX concerns | Technical architecture, file changes, interfaces, and data flow. |
-| `sdd-tasks` | `quick` | `deep` fallback for complex plans | Mechanical conversion of settled design into ordered tasks. |
-| `plan-reviewer` | `oracle` | `quick` persists the artifact when writes are required | Independent read-only executability review; result is durable at `plan-review.md`. |
-| `sdd-apply` | `deep` | `quick` for mechanical batches, `designer` for UI/visual work | Correctness-heavy implementation by default. |
-| `sdd-verify` | `oracle` | `quick` persists the report when writes are required | Independent verification review against specs and evidence. |
-| `sdd-archive` | `quick` | None | Mechanical closeout after verification passes. |
-
-`sdd-constitution` is a governance skill, not a linear pipeline phase. It is
-invoked explicitly (or accepted from a non-blocking auto-suggest emitted by
-`sdd-verify` and `sdd-archive`) to amend the constitution. Its suggested owner is
-`deep`, with `oracle` review for principle changes. See
-[Constitution Governance](#constitution-governance) below.
-
-### 0. `sdd-init`
-
-Bootstraps OpenSpec structure when OpenSpec-backed persistence is selected and
-`openspec/` is missing.
-
-### 1. `sdd-explore`
-
-Maps the repository context needed for SDD: existing implementations,
-dependencies, tests, conventions, and verification targets. This is read-only
-and feeds the proposal phase.
-
-### 2. `sdd-propose`
-
-Creates or updates `proposal.md` for a named change.
-
-Typical output:
-
-- intent
-- scope
-- affected areas
-- risks
-- rollback plan
-- success criteria
-
-Canonical file path when OpenSpec files are enabled:
-
-```text
-openspec/changes/{change-name}/proposal.md
-```
-
-### 3. `sdd-spec`
-
-Turns the proposal into requirements and Given/When/Then scenarios.
-
-Typical output:
-
-- ADDED requirements
-- MODIFIED requirements
-- REMOVED requirements
-- RFC 2119 wording
-- scenario-based acceptance criteria
-
-Canonical file path:
-
-```text
-openspec/changes/{change-name}/specs/{domain}/spec.md
-```
-
-### 4. `sdd-clarify`
-
-Resolves residual ambiguity that survives `sdd-spec` before `sdd-design`
-consumes the spec. Full pipeline only; the accelerated and direct routes skip
-it. It scans the spec against an ambiguity taxonomy (ambiguous quantifiers,
-undefined terms, missing error/edge behavior, unresolved decision forks,
-underspecified data shapes, unstated non-functional bounds) plus every
-`[NEEDS CLARIFICATION]` marker, resolves a bounded set (capped per spec file,
-default 3) via informed-guess defaults or a blocking question, and writes the
-resolutions back into the same delta spec in place. It creates no new artifact
-and reuses the canonical `sdd/{change-name}/spec` topic key (upsert).
-
-Typical output:
-
-- residual ambiguities resolved in place (marker/taxonomy class -> resolution)
-- recorded defaults folded into the spec's `## Assumptions`
-- re-validated `checklists/requirements.md` and design handoff hints
-
-Canonical file path (edited in place):
-
-```text
-openspec/changes/{change-name}/specs/{domain}/spec.md
-```
-
-### 5. `sdd-design`
-
-Explains how the approved spec will be built.
-
-Typical output:
-
-- technical approach
-- architecture decisions
-- data flow
-- file changes
-- interfaces or contracts
-- testing strategy
-
-Canonical file path:
-
-```text
-openspec/changes/{change-name}/design.md
-```
-
-#### Optional design sub-artifacts
-
-Beyond the always-present `design.md`, `sdd-design` MAY emit optional plan
-sub-artifacts when both the config gate (`rules.design.sub_artifacts: true`) and
-the complexity threshold (`rules.design.complexity_threshold`) are met. An
-eligible change may still produce zero. The optional types are `research.md`
-(genuine unknown investigation), `data-model.md` (non-trivial data shape),
-`contracts/` (interfaces to pin), and `quickstart.md` (a runnable smoke path).
-When the config gate is `false` or absent, no sub-artifacts are produced.
-
-### 6. `sdd-tasks`
-
-Generates an executable checklist from the proposal, spec, and design.
-
-Typical output:
-
-- phased checklist
-- concrete file references
-- explicit verification steps
-- dependency-respecting order
-
-Canonical file path:
-
-```text
-openspec/changes/{change-name}/tasks.md
-```
-
-#### Task annotation conventions
-
-`tasks.md` items use optional, additive annotations (legacy task lists without
-them still execute):
-
-- **`[P]`** — a parallel marker placed AFTER the `N.M` number
-  (`- [ ] 2.1 [P] Title`). It flags a task that is intra-phase, dependency-free
-  of every other task in the same phase, and assigned to the same execution
-  agent. Gated by `rules.tasks.parallel_markers`.
-- **`[USN-<n>]`** — a user-story-number grouping label (a coarse story/epic
-  bucket). It is NOT the requirement linkage.
-- **`Priority: P<n>`** — task priority, one of `P1`, `P2`, `P3`.
-- **`Spec:` trace tag** — names the exact requirement the task implements in
-  `{domain}/{Requirement Name}` (optionally `#{Scenario Name}`) form. This is the
-  requirement linkage `plan-reviewer` counts for coverage.
-- **`Independent Test:`** — how the task's outcome is verified in isolation,
-  without depending on other tasks being complete.
-- **`[NEEDS CLARIFICATION]`** — a residual-ambiguity marker; `sdd-clarify`
-  resolves these (capped per spec file) before design.
-
-### 7. `sdd-apply`
-
-Implements assigned tasks and reports structured results back to the
-`orchestrator`.
-
-Typical output:
-
-- status: completed, failed, or partial
-- what changed
-- files changed
-- verification evidence
-- blockers or remaining work
-
-`sdd-apply` executes assigned work. It does not own task checkbox updates.
-
-### 8. `sdd-verify`
-
-Builds a verification report against specs and execution evidence.
-
-Typical output:
-
-- completeness summary
-- build and test evidence
-- scenario compliance matrix
-- issues found
-- verdict
-
-Canonical file path:
-
-```text
-openspec/changes/{change-name}/verify-report.md
-```
-
-### 9. `sdd-archive`
-
-Closes the loop by merging verified deltas into main specs and archiving the
-change.
-
-Typical output:
-
-- merged domains
-- archive path
-- verification lineage
-- audit summary
-
-Archive path pattern:
-
-```text
-openspec/changes/archive/YYYY-MM-DD-{change-name}/
-```
-
-## Constitution Governance
-
-The project constitution (`openspec/memory/constitution.md`) is governed across
-its full lifecycle:
-
-- **Created** by `sdd-init` when the OpenSpec structure is bootstrapped.
-- **Enforced live** by `sdd-design` (Constitution Check self-review) and
-  `plan-reviewer` (independent Constitution Check). Both read the constitution at
-  evaluation time, so amendments propagate to gates without re-installing assets.
-- **Amended** by `sdd-constitution`, the only writable target being
-  `openspec/memory/constitution.md`. An amendment bumps the semver `Version:`
-  (MAJOR = a principle removed or redefined; MINOR = a principle added or
-  guidance materially expanded; PATCH = clarification with no behavioral change),
-  updates `Last-Amended:`, and prepends one `## Sync-Impact Report` entry. The
-  bump requires explicit human confirmation; there is no auto-bump.
-- **Report-only propagation**: `sdd-constitution` names the live-read consuming
-  gates and flags in-flight `design.md` / `tasks.md` that reference changed
-  principles for human re-review. It never edits those artifacts or any other
-  bundled/installed asset.
-- **Auto-suggest**: `sdd-verify` and `sdd-archive` may emit a non-blocking
-  suggestion to record an amendment when a completed change is
-  governance-touching; a human chooses whether to invoke `sdd-constitution`.
-
-## Plan Reviewer Oracle Loop
-
-After `sdd-tasks`, the `orchestrator` can run an oracle review loop with the
-bundled `plan-reviewer` skill.
-
-Blocking user decisions during this loop or any later execution step MUST go
-through the `question` tool rather than plain-text questions.
-
-Flow:
-
-1. Generate `tasks.md`
-2. Dispatch oracle with `plan-reviewer`
-3. Persist the returned review payload at `openspec/changes/{change-name}/plan-review.md` and/or `sdd/{change-name}/plan-review`, according to the selected persistence mode
-4. If result is `[OKAY]`, ask the user whether to proceed to implementation
-5. Do not run `sdd-apply` until the user confirms implementation
-6. If result is `[REJECT]`, fix only the blocking issues
-7. Re-run review until `[OKAY]`, then ask for implementation confirmation
-
-`plan-reviewer` is intentionally narrow. It checks executability, not style. On recovery, a saved `[OKAY]` is accepted only when every recorded reviewed-artifact SHA-256 digest still matches the current planning artifacts. Missing, stale, rejected, or unparsable evidence fails closed and reruns Oracle. A fresh approval satisfies plan-review only; it never confirms implementation.
-
-Canonical plan-review artifact:
-
-```text
-openspec/changes/{change-name}/plan-review.md
-```
-
-Canonical memory topic:
-
-```text
-sdd/{change-name}/plan-review
-```
-
-## Task Progress Tracking
-
-The `executing-plans` skill defines the task-state model used during execution.
-
-Progress tracking has two mandatory layers:
-
-- `todowrite`: macro-level visual task list for the user; always active for
-  multi-step work
-- Persistent SDD artifact: canonical checkboxes in `tasks.md` and/or thoth
-  memory
-
-Both layers must be updated before dispatching work and again after receiving
-results.
-
-| State | Meaning |
-| --- | --- |
-| `- [ ]` | Pending |
-| `- [~]` | In progress |
-| `- [x]` | Completed |
-| `- [-]` | Skipped with explicit reason |
-
-Rules:
-
-1. Mark a task or same-agent batch `- [~]` before dispatching work
-2. Mark each task `- [x]` only after verification succeeds
-3. Mark a task `- [-]` only with a clear skip or escalation reason
-4. Group consecutive ready tasks for the same execution agent into one dispatch
-   when dependencies, scope, and verification can be handled together
-5. Update both tracking layers before dispatch and after results return
-6. Re-read `tasks.md` after each update to confirm persistence
-
-## Executing-Plans Ownership Model
-
-`executing-plans` makes the `orchestrator` the owner of progress tracking.
-
-- The `orchestrator` updates checkbox state
-- Sub-agents return structured results
-- Verification happens before completion is recorded
-- Escalation occurs after repeated failures instead of silent skipping
-
-## Thoth Topic Keys
-
-When the selected mode includes thoth memory, SDD artifacts use deterministic
-topic keys:
-
-```text
-sdd/{change-name}/proposal
-sdd/{change-name}/spec
-sdd/{change-name}/design
-sdd/{change-name}/design-brief
-sdd/{change-name}/tasks
-sdd/{change-name}/plan-review
-sdd/{change-name}/apply-progress
-sdd/{change-name}/verify-report
-sdd/{change-name}/archive-report
-```
-
-For targeted memory retrieval, use the recall funnel:
-
-1. `mem_recall(mode="compact")` — scan candidate IDs and titles with focused
-   topic-key/query filters.
-2. `mem_recall(mode="context")` — expand the strongest hits into retrieved
-   context.
-3. `mem_get(id=..., include_timeline=true)` — fetch full content and timeline
-   context when chronology matters.
-
-Use HyDE/fused hybrid recall (sentence + chunk vectors, FTS, KG enrichment) for
-semantic or ambiguous searches; set `mem_recall` `limit` from 1 to 20; narrow
-with `topic_key`, `type`, `time_from`, `time_to`, `scope`, `project`, and
-`session_id` filters. Use `mem_get` with `kind="observation"|"prompt"`,
-`include_timeline=true` plus `before`/`after`, and `offset`/`max_length` for
-large content. Use bounded `mem_context(recall_query=...)` or
-`mem_project(action="graph"|"topics"|"topic")` for supplemental project
-context; `mem_project(action="graph")` relations are `HAS_TYPE`, `IN_PROJECT`,
-`HAS_TOPIC_KEY`, `HAS_WHAT`, `HAS_WHY`, `HAS_WHERE`, and `HAS_LEARNED`.
-
-An automatic save nudge also reminds the `orchestrator` to persist observations
-after each completed task.
-
-## Related Docs
-
-- [Quick Reference](quick-reference.md)
-- [Skills and MCPs](skills-and-mcps.md)
-- [Installation Guide](installation.md)
+| `spec.md` | `specify` | — | Accelerated, full |
+| `plan.md` | `plan` | `spec.md` | Accelerated, full |
+| `tasks.md` | `tasks` | `spec.md`, `plan.md` | Accelerated, full |
+| `checklists/requirements.md` | `checklist` | `spec.md` | Conditional |
+| `research.md` | `plan` | `spec.md` | Optional |
+| `data-model.md` | `plan` | `spec.md` | Optional |
+| `contracts/` | `plan` | `spec.md` | Optional |
+| `quickstart.md` | `plan` | `spec.md`, `plan.md` | Optional |
+
+Optional artifacts are created only when they reduce implementation or
+verification risk. They are not generated as placeholders.
+
+## Delegation rules
+
+- Maximum depth is one: child agents never create grandchildren.
+- The root may do bounded direct work.
+- Delegate only for specialization, context isolation, independent review, or
+  truly independent parallel work.
+- Maintain one writer per mutable surface.
+- Read-heavy exploration, research, analysis, and verification are preferred
+  delegation candidates.
+- Child returns are distilled conclusions and evidence, not raw logs or full
+  file dumps.
+
+## Verification and convergence
+
+Every route ends with verification proportional to behavior and risk. Direct and
+accelerated routes remain lightweight by default: the root runs the smallest
+sufficient focused checks. Full SDD adds independent `oracle` analysis before
+implementation and independent verification afterward.
+
+Convergence is bounded to actionable findings. A clean result ends the route; a
+finding triggers a focused fix and re-check, not a restart of every SDD phase.
+
+## Memory boundary
+
+`openspec/` is the filesystem coordination surface. If thoth-mem is installed,
+its own guidance controls persistence, session continuity, checkpointing, and
+recovery. thoth-agents does not duplicate those mechanics in the SDD pipeline.

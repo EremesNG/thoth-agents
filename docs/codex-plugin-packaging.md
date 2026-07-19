@@ -1,75 +1,78 @@
 # Codex Plugin Packaging
 
-Codex packaging for thoth-agents is centered on a deterministic plugin
-package rooted at `.codex-plugin/`. `install --agent=codex` renders that package
-layout directly into the Personal plugin source directory
-`~/.codex/plugins/thoth-agents/` and registers that source in
-`~/.agents/plugins/marketplace.json`. Registration does not bypass `/plugins`,
-bypass `/hooks`, or complete trust review.
+thoth-agents ships a repository-native Codex marketplace instead of generating
+a personal marketplace or copying a plugin into a user's cache.
 
-This page is the Codex technical packaging record. For the product-level
-multi-harness orientation, see the [README](../README.md). For install commands
-and trust-review steps, see [Codex Install](codex-install.md).
+## Published layout
 
-## Primary delivery strategy
+```text
+.agents/plugins/marketplace.json
+integrations/codex/
+├── .codex-plugin/
+│   ├── plugin.json
+│   └── .thoth-agents-plugin-assets.json
+└── .mcp.json
+```
 
-Plugin-bundled skills are the primary Codex delivery mode. A package manifest at
-`.codex-plugin/plugin.json` references package-local assets with plugin-root
-relative paths such as:
+The marketplace source is `./integrations/codex`. `package.json` includes both
+the catalog and integration directory in the published npm tarball.
+
+## Manifest
+
+The 0.3.0 manifest is intentionally lean:
 
 ```json
 {
   "name": "thoth-agents",
-  "version": "1.0.0",
-  "description": "Delegate-first agents and SDD skills for Codex.",
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  "version": "0.3.0",
+  "description": "Adaptive multi-harness agent pack with ten roles and Spec Kit-compatible SDD coordination.",
+  "mcpServers": "./.mcp.json"
 }
 ```
 
-Only official Codex plugin manifest keys are emitted: `name`, `version`,
-`description`, `skills`, `mcpServers`, `apps`, `hooks`, and `interface`.
-Unvalidated fields and paths outside `.codex-plugin/` are skipped with
-diagnostics. Codex custom agents are not bundled in `plugin.json`; the installer
-materializes six role subagent TOML files separately under Codex agent targets.
+Only validated Codex manifest fields are emitted. The package contains the
+manifest, thoth-agents research MCP configuration, and deterministic asset
+provenance. It does not bundle SDD phase skills, external required skills,
+custom-agent TOMLs, root `AGENTS.md`, or thoth-mem assets.
 
-## Fallback and development mode
+Codex custom-agent TOMLs and root instructions use different native surfaces and
+are materialized by `npx thoth-agents@latest install --agent=codex`. Required
+skills are installed separately under `~/.codex/skills`.
 
-Repo-local `.agents/skills` remains a validated Codex surface for fallback,
-development, or repository-local testing. It is not the primary package artifact
-for this project. Future adapter integration must require an explicit fallback
-option before emitting `.agents/skills` as Codex skill output.
+## Native registration
 
-## Hook packaging boundaries
+```bash
+codex plugin marketplace add EremesNG/thoth-agents
+```
 
-Hook bundles may be packaged under `.codex-plugin/hooks/hooks.json` and
-referenced from `plugin.json` as `./hooks/hooks.json` only after they pass the
-validated Codex hook surface rules. Packaging a hook bundle is distinct from
-runtime activation:
+After restarting Codex, use `/plugins` for installation/enablement and `/hooks`
+for trust review. The thoth-agents CLI intentionally does not mutate
+`~/.codex/plugins` or a personal marketplace file; Codex owns those snapshots
+and caches.
 
-- `features.plugin_hooks` must be enabled by Codex configuration before plugin
-  hooks can run.
-- Codex trust review must happen before bundled hooks are trusted.
-- Packaged hooks must not be described as hard permission enforcement or as
-  automatically active runtime behavior.
+Native installation is only the package layer. Complete the CLI layer afterward:
 
-## Unresolved duplicate-scope risk
+```bash
+npx thoth-agents@latest install --agent=codex --dry-run
+npx thoth-agents@latest install --agent=codex
+```
 
-Codex runtime precedence is not yet verified when the same skill name exists in
-both plugin-bundled `./skills/` content and repo-local `.agents/skills`. Until
-that is validated, packaging code and docs must report duplicate-scope risk and
-avoid claiming an override order.
+Without the CLI, Codex does not receive the thoth-agents block in global
+`AGENTS.md`, the nine custom agents, managed Default-mode feature configuration,
+model ownership state, or mandatory external skills.
 
-## Installer integration
+## Generation and verification
 
-`install --agent=codex` refreshes the Personal plugin source under
-`~/.codex/plugins/thoth-agents/` from the deterministic package layout,
-merges a managed entry into `~/.agents/plugins/marketplace.json`, merges root
-Codex instructions into `~/.codex/AGENTS.md`, materializes the six role
-subagents, and sets documented feature gates in `~/.codex/config.toml` through a
-backed-up TOML merge,
-including `features.default_mode_request_user_input` for the Codex Default mode
-`request_user_input` tool. It intentionally does not copy assets into
-undocumented Codex cache internals or guess a plugin id for
-`[plugins."..."].enabled`; after install, restart Codex and use `/plugins` and
-`/hooks` for enablement and trust review.
+The catalogs and packages are generated from the harness adapters:
+
+```bash
+pnpm run build
+pnpm run integration:verify
+```
+
+`.codex-plugin/.thoth-agents-plugin-assets.json` records deterministic asset
+paths, fields, and hashes. Change the owning adapter/writer and regenerate; do
+not edit generated package files by hand.
+
+See [Codex Install](codex-install.md) for the complete two-surface install and
+trust flow.

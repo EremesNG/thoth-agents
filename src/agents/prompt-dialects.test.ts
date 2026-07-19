@@ -132,14 +132,14 @@ describe('prompt dialects', () => {
 
   test('renders Claude Code-native tool and role wording as a first-class harness', () => {
     expect(CLAUDE_CODE_PROMPT_DIALECT.harness).toBe('claude');
-    expect(CLAUDE_CODE_PROMPT_DIALECT.tools.delegationTool).toBe('Task');
+    expect(CLAUDE_CODE_PROMPT_DIALECT.tools.delegationTool).toBe('Agent');
     expect(CLAUDE_CODE_PROMPT_DIALECT.tools.userQuestionTool).toBe(
       'AskUserQuestion',
     );
     expect(CLAUDE_CODE_PROMPT_DIALECT.tools.progressTool).toBe('TodoWrite');
     // Plugin subagents are namespaced: subagent_type is `thoth-agents:<role>`.
     expect(CLAUDE_CODE_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
-      'Task(subagent_type: thoth-agents:deep)',
+      'Agent(subagent_type: thoth-agents:deep)',
     );
     expect(
       CLAUDE_CODE_PROMPT_DIALECT.renderRoleInvocation('orchestrator'),
@@ -152,13 +152,12 @@ describe('prompt dialects', () => {
     );
   });
 
-  test('Claude Code is first-class with no capability disclosures', () => {
+  test('Claude Code is first-class and discloses provider governance limits', () => {
     for (const capability of [
       'delegatedExecution',
       'runtimeHooks',
       'rolePermissions',
       'parentContextInjection',
-      'memoryGovernanceEnforcement',
     ] as const) {
       expect(
         CLAUDE_CODE_PROMPT_DIALECT.capabilities.renderCapabilityDisclosure(
@@ -169,6 +168,16 @@ describe('prompt dialects', () => {
         CLAUDE_CODE_PROMPT_DIALECT.capabilities.capabilities[capability],
       ).toBe('supported');
     }
+
+    expect(
+      CLAUDE_CODE_PROMPT_DIALECT.capabilities.capabilities
+        .memoryGovernanceEnforcement,
+    ).toBe('instruction-only');
+    expect(
+      CLAUDE_CODE_PROMPT_DIALECT.capabilities.renderCapabilityDisclosure(
+        'memoryGovernanceEnforcement',
+      ),
+    ).toContain('instruction-only in Claude Code');
   });
 
   test('supports OpenCode, Codex, and Claude Code prompt dialect ids', () => {

@@ -17,22 +17,28 @@ function artifact(
   return artifacts.find((entry) => entry.path.endsWith(suffix));
 }
 
-describe('claudeCodeAdapter', () => {
-  test('is a first-class adapter with all capabilities supported', () => {
+describe('Claude Code adapter v0.3', () => {
+  test('reports enforcement gaps truthfully', () => {
     expect(claudeCodeAdapter.id).toBe('claude');
-    expect(claudeCodeAdapter.displayName).toBe('Claude Code');
-    for (const status of Object.values(CLAUDE_CODE_CAPABILITIES)) {
-      expect(status).toBe('supported');
-    }
+    expect(CLAUDE_CODE_CAPABILITIES).toMatchObject({
+      agentDefinitions: 'supported',
+      delegatedExecution: 'supported',
+      parallelDelegation: 'supported',
+      runtimeHooks: 'supported',
+      mcpConfiguration: 'supported',
+      skillPackaging: 'supported',
+      rolePermissions: 'supported',
+      parentContextInjection: 'supported',
+      memoryGovernanceEnforcement: 'instruction-only',
+    });
   });
 
-  test('renders six specialist subagents plus an orchestrator agent', () => {
-    const { artifacts } = render();
-    const agents = artifacts
-      .filter((entry) => entry.kind === 'agent-config')
+  test('renders nine specialists plus the main-thread orchestrator', () => {
+    const paths = render()
+      .artifacts.filter((entry) => entry.kind === 'agent-config')
       .map((entry) => entry.path);
 
-    expect(agents).toEqual([
+    expect(paths).toEqual([
       'agents/deep.md',
       'agents/designer.md',
       'agents/explorer.md',
@@ -40,120 +46,87 @@ describe('claudeCodeAdapter', () => {
       'agents/oracle.md',
       'agents/orchestrator.md',
       'agents/quick.md',
+      'agents/sdd-plan.md',
+      'agents/sdd-specify.md',
+      'agents/sdd-tasks.md',
     ]);
   });
 
-  test('orchestrator agent inherits all tools and is activated as the main thread', () => {
-    const { artifacts } = render();
-    const orchestrator = String(
-      artifact(artifacts, 'agents/orchestrator.md')?.content,
-    );
-
-    // No `tools:` frontmatter line → inherits every tool (Task, AskUserQuestion,
-    // TodoWrite, MCP, edit tools).
-    expect(orchestrator).not.toMatch(/^tools:/m);
-    expect(orchestrator).toContain('model: inherit');
-
-    const settings = JSON.parse(
-      String(artifact(artifacts, 'settings.json')?.content),
-    ) as { agent?: string };
-    expect(settings.agent).toBe('orchestrator');
-  });
-
-  test('does not generate a SessionStart hook (main-thread agent replaces it)', () => {
-    const { artifacts } = render();
-    expect(artifacts.some((entry) => entry.path.includes('hooks/'))).toBe(
-      false,
-    );
-  });
-
-  test('omits the tools frontmatter for every specialist so they inherit all tools', () => {
-    const { artifacts } = render();
-    const specialists = [
-      'agents/explorer.md',
-      'agents/librarian.md',
-      'agents/oracle.md',
-      'agents/designer.md',
-      'agents/quick.md',
-      'agents/deep.md',
-    ];
-
-    for (const suffix of specialists) {
-      const content = String(artifact(artifacts, suffix)?.content);
-      // No `tools:` frontmatter line → inherits every tool, including MCP
-      // servers (thoth-mem, context7, exa, grep_app). Read-only enforcement is
-      // instruction-level via each role's operational contract.
-      expect(content).not.toMatch(/^tools:/m);
-    }
-
-    const explorer = String(artifact(artifacts, 'agents/explorer.md')?.content);
-    const deep = String(artifact(artifacts, 'agents/deep.md')?.content);
-    expect(explorer).toContain('model: haiku');
-    expect(deep).toContain('model: sonnet');
-  });
-
-  test('applies the configured per-role model defaults', () => {
+  test('uses speed-conscious Claude model aliases for SDD agents', () => {
     const { artifacts } = render();
     const modelOf = (suffix: string) =>
       /^model:\s*(\S+)/m.exec(
         String(artifact(artifacts, suffix)?.content),
       )?.[1];
 
-    expect(modelOf('agents/explorer.md')).toBe('haiku');
-    expect(modelOf('agents/librarian.md')).toBe('sonnet');
-    expect(modelOf('agents/oracle.md')).toBe('opus');
-    expect(modelOf('agents/designer.md')).toBe('sonnet');
-    expect(modelOf('agents/quick.md')).toBe('haiku');
-    expect(modelOf('agents/deep.md')).toBe('sonnet');
-    expect(String(artifact(artifacts, 'agents/deep.md')?.content)).not.toMatch(
-      /^effort:/m,
-    );
+    expect(modelOf('agents/sdd-specify.md')).toBe('sonnet');
+    expect(modelOf('agents/sdd-plan.md')).toBe('sonnet');
+    expect(modelOf('agents/sdd-tasks.md')).toBe('haiku');
   });
 
-  test('renders .mcp.json with http type for url-based servers', () => {
+  test('renders adaptive native root instructions with namespaced roles', () => {
+    const instructions = renderClaudeCodeRootInstructions();
+
+    expect(instructions.length).toBeLessThan(9_500);
+    expect(instructions).toContain('adaptive root');
+    expect(instructions).toContain('Accelerated SDD');
+    expect(instructions).toContain('Agent');
+    expect(instructions).toContain('AskUserQuestion');
+    expect(instructions).toContain('TodoWrite');
+    expect(instructions).toContain('thoth-agents:sdd-specify');
+    expect(instructions).not.toContain('delegate-first');
+    expect(instructions).not.toContain('requirements-interview');
+  });
+
+  test('limits phase agents by instruction and discloses enforcement level', () => {
+    const { artifacts } = render();
+    const specify = String(
+      artifact(artifacts, 'agents/sdd-specify.md')?.content,
+    );
+    const explorer = String(artifact(artifacts, 'agents/explorer.md')?.content);
+
+    expect(specify).toContain('coordination-write');
+    expect(specify).toContain('Do not edit product code');
+    expect(specify).toContain('openspec/');
+    expect(specify).toContain('instruction-level');
+    expect(explorer).toContain('Mode: read-only');
+    expect(explorer).toContain('disallowedTools: "Write, Edit"');
+  });
+
+  test('activates the orchestrator as the main thread', () => {
+    const { artifacts } = render();
+    const orchestrator = String(
+      artifact(artifacts, 'agents/orchestrator.md')?.content,
+    );
+    const settings = JSON.parse(
+      String(artifact(artifacts, 'settings.json')?.content),
+    ) as { agent?: string };
+
+    expect(orchestrator).not.toMatch(/^tools:/m);
+    expect(orchestrator).toContain('model: inherit');
+    expect(settings.agent).toBe('orchestrator');
+  });
+
+  test('bundles unrelated MCP servers but no memory provider', () => {
     const { artifacts } = render();
     const mcp = JSON.parse(
       String(artifact(artifacts, '.mcp.json')?.content),
-    ) as { mcpServers: Record<string, { type?: string; url?: string }> };
+    ) as {
+      mcpServers: Record<string, unknown>;
+    };
 
-    expect(mcp.mcpServers.context7).toEqual({
-      type: 'http',
-      url: 'https://mcp.context7.com/mcp',
-    });
-    expect(mcp.mcpServers.grep_app.type).toBe('http');
-    expect(mcp.mcpServers.exa).toMatchObject({ command: 'npx' });
-    expect(mcp.mcpServers.thoth_mem).toMatchObject({ command: 'npx' });
+    expect(mcp.mcpServers.context7).toBeDefined();
+    expect(mcp.mcpServers.grep_app).toBeDefined();
+    expect(mcp.mcpServers.exa).toBeDefined();
+    expect(mcp.mcpServers.thoth_mem).toBeUndefined();
   });
 
-  test('stamps the manifest version from the root package.json and emits no diagnostics', () => {
-    const result = render();
-    const manifest = JSON.parse(
-      String(artifact(result.artifacts, 'plugin.json')?.content),
-    ) as { name: string; version: string };
-
-    expect(manifest.name).toBe('thoth-agents');
-    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+/);
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  test('root instructions describe Task delegation and AskUserQuestion', () => {
-    const instructions = renderClaudeCodeRootInstructions();
-    expect(instructions).toContain('Task tool');
-    expect(instructions).toContain('subagent_type');
-    expect(instructions).toContain('AskUserQuestion');
-    expect(instructions).toContain('TodoWrite');
-  });
-
-  test('delegation references use the plugin-namespaced subagent_type', () => {
-    const instructions = renderClaudeCodeRootInstructions();
-    // The routing menu and dispatch rules must use thoth-agents:<role>, not bare
-    // role names, because plugin subagents are registered under the plugin name.
-    expect(instructions).toContain('thoth-agents:explorer');
-    expect(instructions).toContain('thoth-agents:deep');
-    expect(instructions).not.toMatch(/subagent_type:\s*explorer\b/);
-
+  test('ships SDD behavior through agents instead of bundled phase skills', () => {
     const { artifacts } = render();
-    const explorer = String(artifact(artifacts, 'agents/explorer.md')?.content);
-    expect(explorer).toContain('Task(subagent_type: thoth-agents:explorer)');
+
+    expect(artifacts.some((entry) => entry.kind === 'skill')).toBe(false);
+    expect(artifacts.some((entry) => entry.path.startsWith('skills/'))).toBe(
+      false,
+    );
   });
 });

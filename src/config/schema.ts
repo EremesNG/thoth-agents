@@ -6,6 +6,9 @@ const AGENT_NAMES = [
   'designer',
   'explorer',
   'librarian',
+  'sdd-specify',
+  'sdd-plan',
+  'sdd-tasks',
   'quick',
   'deep',
 ] as const;
@@ -50,6 +53,9 @@ export const ManualPlanSchema = z
     designer: ManualAgentPlanSchema,
     explorer: ManualAgentPlanSchema,
     librarian: ManualAgentPlanSchema,
+    'sdd-specify': ManualAgentPlanSchema,
+    'sdd-plan': ManualAgentPlanSchema,
+    'sdd-tasks': ManualAgentPlanSchema,
     quick: ManualAgentPlanSchema,
     deep: ManualAgentPlanSchema,
   })
@@ -68,6 +74,9 @@ const FallbackChainsSchema = z
     designer: AgentModelChainSchema.optional(),
     explorer: AgentModelChainSchema.optional(),
     librarian: AgentModelChainSchema.optional(),
+    'sdd-specify': AgentModelChainSchema.optional(),
+    'sdd-plan': AgentModelChainSchema.optional(),
+    'sdd-tasks': AgentModelChainSchema.optional(),
     quick: AgentModelChainSchema.optional(),
     deep: AgentModelChainSchema.optional(),
   })
@@ -127,35 +136,8 @@ export type Preset = z.infer<typeof PresetSchema>;
 
 // MCP names
 export const AgentNameSchema = z.enum(AGENT_NAMES);
-export const McpNameSchema = z.enum([
-  'exa',
-  'context7',
-  'grep_app',
-  'thoth_mem',
-]);
+export const McpNameSchema = z.enum(['exa', 'context7', 'grep_app']);
 export type McpName = string;
-
-export const ThothConfigSchema = z.object({
-  command: z.array(z.string()).optional(),
-  data_dir: z.string().optional(),
-  environment: z.record(z.string(), z.string()).optional(),
-  timeout: z.number().optional(),
-  http_port: z.number().optional(),
-});
-
-export type ThothConfig = z.infer<typeof ThothConfigSchema>;
-
-export const ArtifactStoreModeSchema = z.enum([
-  'thoth-mem',
-  'openspec',
-  'hybrid',
-]);
-
-export const ArtifactStoreConfigSchema = z.object({
-  mode: ArtifactStoreModeSchema.default('hybrid'),
-});
-
-export type ArtifactStoreConfig = z.infer<typeof ArtifactStoreConfigSchema>;
 
 export const CodexGenerationConfigSchema = z.object({
   enabled: z.boolean().default(false),
@@ -197,8 +179,6 @@ export const PluginConfigSchema = z.object({
   disabled_mcps: z.array(z.string()).optional(),
   tmux: TmuxConfigSchema.optional(),
   fallback: FailoverConfigSchema.optional(),
-  thoth: ThothConfigSchema.optional(),
-  artifactStore: ArtifactStoreConfigSchema.optional(),
   codex: CodexGenerationConfigSchema.optional(),
   claudeCode: ClaudeCodeGenerationConfigSchema.optional(),
 });

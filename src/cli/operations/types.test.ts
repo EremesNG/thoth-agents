@@ -1,7 +1,111 @@
 import { describe, expect, test } from 'vitest';
 import type { OperationPlan } from './types';
+import * as operationTypes from './types';
+
+type EvidenceInput = {
+  providerEvidence?: {
+    state: 'supported' | 'degraded' | 'unsupported';
+    source: 'provider' | 'harness' | 'none';
+    basis: string[];
+  };
+};
+
+function classifyEvidence(input: EvidenceInput = {}): unknown {
+  const classifier = (
+    operationTypes as unknown as {
+      classifyProviderCapabilityEvidence?: (value: EvidenceInput) => unknown;
+    }
+  ).classifyProviderCapabilityEvidence;
+
+  return classifier?.(input) ?? 'missing-provider-evidence-classifier';
+}
 
 describe('OperationPlan', () => {
+  test('classifies complete caller-supplied evidence as supported', () => {
+    expect(
+      classifyEvidence({
+        providerEvidence: {
+          state: 'supported',
+          source: 'provider',
+          basis: ['documented provider outcome evidence'],
+        },
+      }),
+    ).toEqual({
+      state: 'supported',
+      source: 'provider',
+      basis: ['documented provider outcome evidence'],
+    });
+  });
+
+  test('classifies partial caller-supplied evidence as degraded', () => {
+    expect(
+      classifyEvidence({
+        providerEvidence: {
+          state: 'degraded',
+          source: 'harness',
+          basis: ['persistence evidenced; continuity not evidenced'],
+        },
+      }),
+    ).toEqual({
+      state: 'degraded',
+      source: 'harness',
+      basis: ['persistence evidenced; continuity not evidenced'],
+    });
+  });
+
+  test('fails contradictory caller-supplied evidence closed as unsupported', () => {
+    expect(
+      classifyEvidence({
+        providerEvidence: {
+          state: 'supported',
+          source: 'none',
+          basis: ['consumer package presence only'],
+        },
+      }),
+    ).toEqual({ state: 'unsupported', source: 'none', basis: [] });
+  });
+
+  test('fails stale or unsubstantiated caller evidence closed as unsupported', () => {
+    expect(
+      classifyEvidence({
+        providerEvidence: {
+          state: 'supported',
+          source: 'provider',
+          basis: [],
+        },
+      }),
+    ).toEqual({ state: 'unsupported', source: 'none', basis: [] });
+  });
+
+  test('defaults omitted evidence to unsupported without changing consumer state', () => {
+    expect(classifyEvidence()).toEqual({
+      state: 'unsupported',
+      source: 'none',
+      basis: [],
+    });
+  });
+
+  test('returns ephemeral evidence reports without retaining prior caller evidence', () => {
+    const supplied = {
+      providerEvidence: {
+        state: 'supported' as const,
+        source: 'provider' as const,
+        basis: ['provider-observed continuity'],
+      },
+    };
+
+    const first = classifyEvidence(supplied);
+    const second = classifyEvidence();
+
+    expect(first).toEqual(supplied.providerEvidence);
+    expect(first).not.toBe(supplied.providerEvidence);
+    expect(second).toEqual({
+      state: 'unsupported',
+      source: 'none',
+      basis: [],
+    });
+  });
+
   test('models dry-run preview safety metadata as first-class fields', () => {
     const plan: OperationPlan = {
       id: 'codex-sync-preview',

@@ -25,47 +25,87 @@ context isolation, independent review, or safe parallelism creates a net gain.
 thoth-agents does not bundle SDD phase skills and does not install or emulate
 thoth-mem.
 
-## Install
+## Installation
 
-Node.js `>=22.13` is required.
+Node.js `>=22.13` is required. A complete installation may have two layers:
+the harness-native plugin and the thoth-agents CLI setup. The CLI step is
+required even after the plugin is installed because plugin packages cannot
+materialize every user-level orchestration surface or install the four external
+skills.
+
+### OpenCode
 
 ```bash
-# Interactive harness selection in a TTY; OpenCode in non-interactive contexts
-npx thoth-agents@latest
-
-# Explicit harnesses
 npx thoth-agents@latest install --agent=opencode
-codex plugin marketplace add EremesNG/thoth-agents
-npx thoth-agents@latest install --agent=codex
-npx thoth-agents@latest install --agent=claude
-
-# Inspect without writing
-npx thoth-agents@latest install --agent=codex --dry-run
 ```
 
-The installer always installs the four required external skills into the
-selected harness's global skill directory. A missing or failed skill install is
-an unhealthy installation and causes the command to fail. There is no opt-out.
+The CLI adds the npm plugin entry, writes the OpenAI-only ten-role
+configuration, and installs the required skills.
 
-Use the thoth-agents CLI as the supported installation path. Codex plugin
-marketplace sources do not run npm lifecycle scripts, and neither Codex nor
-Claude plugins provide a normal automatic `postinstall` lifecycle for arbitrary
-skill repositories. The CLI performs the equivalent `npx skills add ...
---global --agent ... --yes` commands directly.
+### Codex
 
-Codex and Claude delivery is repository-native: the package includes
-`.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, and their
-versioned packages under `integrations/`. Claude is registered and installed
-through its native plugin manager; Codex marketplace registration remains an
-explicit interactive step printed by the CLI.
+```bash
+# 1. Register the native repository marketplace.
+codex plugin marketplace add EremesNG/thoth-agents
+
+# 2. Restart Codex, open /plugins, and install/enable thoth-agents.
+
+# 3. Preview and apply the required CLI-managed surfaces.
+npx thoth-agents@latest install --agent=codex --dry-run
+npx thoth-agents@latest install --agent=codex
+```
+
+The Codex plugin provides the packaged research MCP configuration. The CLI is
+still required: it installs the global orchestrator instructions in
+`~/.codex/AGENTS.md`, nine custom-agent TOMLs, the managed Default-mode feature
+flag, model ownership state, and all required global skills.
+
+### Claude Code
+
+Run both native plugin commands **before** calling the thoth-agents CLI:
+
+```bash
+# 1. Register the marketplace.
+claude plugin marketplace add EremesNG/thoth-agents --scope user
+
+# 2. Install the plugin from that marketplace.
+claude plugin install thoth-agents@thoth-agents --scope user
+
+# 3. Preview and apply the required CLI-managed dependencies.
+npx thoth-agents@latest install --agent=claude --dry-run
+npx thoth-agents@latest install --agent=claude
+```
+
+Restart Claude Code or run `/reload-plugins`, then inspect `/plugin`. The native
+plugin provides the orchestrator, nine subagents, settings, and research MCPs.
+The CLI remains mandatory because it installs and verifies the external skills
+under `~/.claude/skills`; a plugin-only install is incomplete.
+
+### Why the CLI is required
+
+| Harness | Native/plugin layer | Additional CLI-owned layer |
+| --- | --- | --- |
+| OpenCode | npm plugin entry loaded by OpenCode | Ten-role configuration, optional tmux setup, and required skills |
+| Codex | Repository marketplace plugin and research MCPs | `~/.codex/AGENTS.md`, nine custom agents, feature configuration, model state, and required skills |
+| Claude Code | Marketplace plugin with orchestrator, subagents, settings, and research MCPs | Required global skills plus native-state verification and repair |
+
+Every install requires `simplify`, `tdd`, `progressive-context-router`, and
+`architectural-grilling`. A missing or failed skill is an unhealthy installation
+and causes the CLI operation to fail; there is no opt-out. Plugin marketplaces
+do not provide a reliable general-purpose `postinstall` for these standalone
+skill repositories.
+
+See [Installation](docs/installation.md), [Codex Install](docs/codex-install.md),
+and [Claude Code Install](docs/claude-code-install.md) for verification,
+troubleshooting, scopes, and limitations.
 
 ## Harness comparison
 
 | Harness | Installed orchestration surface | Required skill root | Important limitation |
 | --- | --- | --- | --- |
 | OpenCode | Plugin entry, ten-role config, runtime delegation, tools, MCPs, and hooks | `~/.config/opencode/skills` | OpenAI is the only built-in preset. |
-| Codex | Repository marketplace plus root `AGENTS.md`, nine specialist TOMLs, and feature flags | `~/.codex/skills` | Marketplace registration/trust is native and interactive; the ambient session is the root. Review `/plugins` and `/hooks`. |
-| Claude Code | Repository marketplace installed by the native manager; orchestrator main agent plus nine subagents | `~/.claude/skills` | The installed cache is manager-owned; per-role model rewrites require publishing a new package. |
+| Codex | Native plugin plus CLI-managed root `AGENTS.md`, nine specialist TOMLs, and feature flag | `~/.codex/skills` | The ambient session is the root. Role selection and some enforcement remain instruction-level; review `/plugins` and `/hooks`. |
+| Claude Code | Native marketplace plugin; orchestrator main agent plus nine subagents | `~/.claude/skills` | Run marketplace add/install before the CLI. Cache and role-model defaults are package/manager-owned. |
 
 The generated contract is shared, but runtime guarantees are not assumed to be
 identical across harnesses.
@@ -178,5 +218,7 @@ Runtime versions are fixed by `package.json`: Node `>=22.13` and
 - [Skills and MCPs](docs/skills-and-mcps.md)
 - [Codex Install](docs/codex-install.md)
 - [Codex Plugin Packaging](docs/codex-plugin-packaging.md)
+- [Codex Model Customization](docs/codex-model-customization.md)
+- [Claude Code Install](docs/claude-code-install.md)
 - [Claude Code Plugin Packaging](docs/claude-code-plugin-packaging.md)
 - [Provider Configuration](docs/provider-configurations.md)

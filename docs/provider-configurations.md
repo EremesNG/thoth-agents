@@ -67,6 +67,12 @@ is the native Codex model surface. Claude Code uses its native `haiku`, `sonnet`
 `opus`, or `inherit` values for plugin agents. Those harness-native choices do
 not reintroduce alternate OpenCode presets.
 
+Codex specialist models can be changed through the bounded thoth-agents model
+operation described in [Codex Model Customization](codex-model-customization.md).
+The Codex root remains user-controlled. Claude agent defaults are stored in the
+versioned native plugin package; because Claude owns its installed cache, changing
+them requires publishing and installing a new thoth-agents version.
+
 ## Credentials
 
 thoth-agents never writes provider credentials. Configure authentication through

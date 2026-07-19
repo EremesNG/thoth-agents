@@ -3,25 +3,29 @@
 ## Install
 
 ```bash
+# OpenCode
 npx thoth-agents@latest install --agent=opencode
+
+# Codex: add the marketplace, install from /plugins, then run the CLI
+codex plugin marketplace add EremesNG/thoth-agents
 npx thoth-agents@latest install --agent=codex
+
+# Claude Code: both native commands must precede the CLI
+claude plugin marketplace add EremesNG/thoth-agents --scope user
+claude plugin install thoth-agents@thoth-agents --scope user
 npx thoth-agents@latest install --agent=claude
 ```
-
-Codex also requires native repository-marketplace registration:
-
-```bash
-codex plugin marketplace add EremesNG/thoth-agents
-```
-
-Claude installation uses its native manager to register
-`EremesNG/thoth-agents` and install `thoth-agents@thoth-agents`.
 
 Add `--dry-run` to inspect the plan. `--reset` repairs managed assets only.
 
 Every install requires `simplify`, `tdd`, `progressive-context-router`, and
 `architectural-grilling`. The CLI installs them globally for the selected
 harness; there is no skip option. QA executables remain project-owned.
+
+Plugin installation alone is incomplete. For Codex, the CLI adds the global
+orchestrator instructions, nine custom agents, feature configuration, model
+state, and skills. For Claude, the native plugin supplies the orchestrator and
+subagents while the CLI installs and verifies the required global skills.
 
 ## Harnesses
 
@@ -99,4 +103,5 @@ and recovery. thoth-agents keeps only provider-neutral orchestration boundaries.
 - [SDD Pipeline](sdd-pipeline.md)
 - [Skills and MCPs](skills-and-mcps.md)
 - [Codex Install](codex-install.md)
+- [Claude Code Install](claude-code-install.md)
 - [Claude Code Plugin Packaging](claude-code-plugin-packaging.md)

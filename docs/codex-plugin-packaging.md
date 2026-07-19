@@ -50,12 +50,23 @@ for trust review. The thoth-agents CLI intentionally does not mutate
 `~/.codex/plugins` or a personal marketplace file; Codex owns those snapshots
 and caches.
 
+Native installation is only the package layer. Complete the CLI layer afterward:
+
+```bash
+npx thoth-agents@latest install --agent=codex --dry-run
+npx thoth-agents@latest install --agent=codex
+```
+
+Without the CLI, Codex does not receive the thoth-agents block in global
+`AGENTS.md`, the nine custom agents, managed Default-mode feature configuration,
+model ownership state, or mandatory external skills.
+
 ## Generation and verification
 
 The catalogs and packages are generated from the harness adapters:
 
 ```bash
-pnpm run integration:sync
+pnpm run build
 pnpm run integration:verify
 ```
 

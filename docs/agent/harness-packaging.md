@@ -28,8 +28,11 @@ and writers for OpenCode, Codex, and Claude Code.
 - Codex/Claude plugin manifests remain minimal and use only documented fields.
 - Codex and Claude packages live under `integrations/`; never generate them in a
   user's plugin cache.
+- Public installation distinguishes the native package layer from CLI-managed
+  user surfaces. Plugin-only installation is incomplete for every harness.
 - Claude installation and status use the native plugin manager. Its installed
-  cache is immutable to thoth-agents.
+  cache is immutable to thoth-agents; documented first install adds the
+  marketplace and plugin before running the CLI.
 - Capability gaps remain explicit; never claim cross-harness enforcement parity.
 - Generated files are outputs. Change the owning adapter/writer.
 - `pnpm run build` regenerates both integration packages before compiling, so
@@ -45,6 +48,7 @@ and writers for OpenCode, Codex, and Claude Code.
 - [`../installation.md`](../installation.md)
 - [`../codex-install.md`](../codex-install.md)
 - [`../codex-plugin-packaging.md`](../codex-plugin-packaging.md)
+- [`../claude-code-install.md`](../claude-code-install.md)
 - [`../claude-code-plugin-packaging.md`](../claude-code-plugin-packaging.md)
 
 ## Verification

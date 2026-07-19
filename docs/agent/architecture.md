@@ -21,10 +21,13 @@ persistence, runtime state, and recovery are outside this package.
 
 ### Multi-harness installation
 
-1. Parse the CLI/TUI selection.
-2. Resolve the OpenCode, Codex, or Claude operation adapter.
-3. Render/write only that harness's managed surfaces.
-4. Install and verify the four mandatory external skills in the harness-native
+1. Complete the harness-native plugin step where required. Codex uses its
+   repository marketplace and `/plugins`; Claude runs marketplace add/install
+   before the CLI.
+2. Parse the CLI/TUI selection.
+3. Resolve the OpenCode, Codex, or Claude operation adapter.
+4. Render/write only that harness's managed surfaces.
+5. Install and verify the four mandatory external skills in the harness-native
    global root.
 
 ## Boundaries
@@ -50,4 +53,5 @@ persistence, runtime state, and recovery are outside this package.
   material human-owned decision tree requires it.
 - OpenCode ships only the built-in OpenAI preset.
 - External required skills are not plugin settings or fake manifest dependencies.
-- Build includes tsup, declaration generation, and schema generation.
+- Build first regenerates the Codex and Claude integration packages, then runs
+  tsup, declaration generation, and schema generation.

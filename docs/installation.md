@@ -9,22 +9,23 @@ the default when no harness is selected.
 - Network access during installation for the mandatory external skills
 - The selected harness installed separately
 
-## Choose a harness
+## Installation model
 
-```bash
-# TTY: interactive selector. Non-TTY: OpenCode install.
-npx thoth-agents@latest
+thoth-agents separates native plugin delivery from CLI-managed setup. A native
+plugin can package agents, MCPs, settings, and other harness components, but it
+cannot reliably install arbitrary standalone skill repositories or write every
+user-level orchestration surface. Do not treat plugin-only installation as
+complete.
 
-npx thoth-agents@latest install --agent=opencode
-npx thoth-agents@latest install --agent=codex
-npx thoth-agents@latest install --agent=claude
-```
-
-| Route | Main managed targets | When to use it |
+| Harness | First install the native/plugin layer | Then run the CLI |
 | --- | --- | --- |
-| OpenCode | OpenCode plugin entry and ten-role configuration | Default native plugin path. |
-| Codex | Repository marketplace plus root instructions, nine role TOMLs, and managed feature flags | Codex ambient-root workflow. |
-| Claude Code | Repository marketplace installed through the native manager, with a root agent, nine subagents, settings, and MCP config | Claude Code plugin workflow. |
+| OpenCode | No separate command; the CLI adds the npm plugin entry. | `npx thoth-agents@latest install --agent=opencode` |
+| Codex | Add `EremesNG/thoth-agents`, restart, then install/enable from `/plugins`. | `npx thoth-agents@latest install --agent=codex` |
+| Claude Code | Add the marketplace and install `thoth-agents@thoth-agents` with the two native commands below. | `npx thoth-agents@latest install --agent=claude` |
+
+Running `npx thoth-agents@latest` opens the harness selector in an interactive
+TTY and defaults to OpenCode in non-interactive contexts. Explicit harness
+commands are recommended for reproducible setup and documentation.
 
 ## Mandatory external skills
 
@@ -45,10 +46,10 @@ Browser and QA executables remain project-owned; thoth-agents does not install
 
 The supported dependency-installation mechanism is the thoth-agents CLI. Codex
 marketplace npm sources are downloaded without running lifecycle scripts, so a
-package `postinstall` would not be reliable. Claude plugin manifests also have
-no general `postinstall` field; a `Setup` hook requires an explicit Claude init
-operation and is not normal plugin-startup installation. A plugin-only install
-therefore remains incomplete until the required global skills exist.
+package `postinstall` would not be reliable. Claude plugin dependencies identify
+plugins rather than arbitrary standalone skills, and plugin startup does not
+provide a general-purpose `postinstall` for them. A plugin-only install therefore
+remains incomplete until the CLI confirms every required global skill.
 
 ## Common options
 
@@ -95,15 +96,21 @@ preset is written.
 ## Codex
 
 ```bash
+# Native plugin layer
 codex plugin marketplace add EremesNG/thoth-agents
+
+# Restart Codex, then install/enable thoth-agents from /plugins.
+
+# CLI-managed orchestration layer
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
 The repository catalog is `.agents/plugins/marketplace.json`; it points to the
-versioned `integrations/codex` package. Run the Codex marketplace command in an
-interactive terminal, restart Codex, and install/enable `thoth-agents` from
-`/plugins`.
+versioned `integrations/codex` package. The native plugin provides the packaged
+research MCP configuration. It does not carry the root instructions, custom
+agent TOMLs, user feature configuration, or external skills; those belong to the
+CLI layer.
 
 User-scope installation manages:
 
@@ -132,19 +139,25 @@ See [Codex Install](codex-install.md) for the detailed contract.
 
 ## Claude Code
 
+Run the native marketplace commands before the thoth-agents CLI:
+
 ```bash
+# Native plugin layer
+claude plugin marketplace add EremesNG/thoth-agents --scope user
+claude plugin install thoth-agents@thoth-agents --scope user
+
+# CLI-managed dependency and verification layer
 npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```
 
 The repository catalog `.claude-plugin/marketplace.json` points to
-`integrations/claude-code`. The installer uses Claude's native manager to run the
-equivalent of:
-
-```bash
-claude plugin marketplace add EremesNG/thoth-agents --scope user
-claude plugin install thoth-agents@thoth-agents --scope user
-```
+`integrations/claude-code`. Claude's native manager registers and caches the
+plugin. Once those two commands succeed, the thoth-agents CLI treats the native
+plugin as present and installs/verifies the required global skills. It may also
+reconcile disabled or stale native state during repair, update, or sync, but the
+documented first-install flow keeps marketplace trust and plugin installation
+explicit.
 
 The versioned plugin package contains:
 
@@ -165,7 +178,21 @@ they are not copied into the thoth-agents plugin manifest.
 Restart Claude Code or run `/reload-plugins`, then confirm the plugin in
 `/plugin`. Project-scope installation requires workspace trust.
 
-See [Claude Code Plugin Packaging](claude-code-plugin-packaging.md).
+See [Claude Code Install](claude-code-install.md) for troubleshooting and
+[Claude Code Plugin Packaging](claude-code-plugin-packaging.md) for the package
+contract.
+
+## Capability and enforcement limitations
+
+| Harness | Limitation |
+| --- | --- |
+| OpenCode | It is the strongest runtime-integrated path, but 0.3.0 ships only the OpenAI built-in model preset. |
+| Codex | The ambient session is the root. Custom agents are native TOML layers, but runtime role matching and some permission boundaries remain instruction-level. Global `AGENTS.md` and user config can be overridden by more specific or higher-precedence configuration. |
+| Claude Code | The manager owns installed cache files and packaged model defaults. Read-only roles use tool denylists, while `openspec/` path restriction is instruction-level. Background agents cannot handle interactive prompts like foreground agents. |
+
+No harness install includes thoth-mem or project QA executables. Trust,
+organization policy, and higher-precedence harness configuration remain in
+force; thoth-agents does not bypass them.
 
 ## Status, update, and sync
 

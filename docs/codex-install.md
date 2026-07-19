@@ -2,11 +2,12 @@
 
 Codex is an explicit thoth-agents harness. OpenCode remains the default.
 
-Installation has two native surfaces: the repository marketplace delivers the
+Installation has two required surfaces: the repository marketplace delivers the
 Codex plugin, while the thoth-agents CLI materializes the ambient root, custom
-subagents, feature gate, and mandatory external skills.
+subagents, feature configuration, model state, and mandatory external skills.
+Neither layer replaces the other.
 
-## Register the repository marketplace
+## 1. Register and install the native plugin
 
 Run this from an interactive Codex terminal:
 
@@ -16,9 +17,10 @@ codex plugin marketplace add EremesNG/thoth-agents
 
 Restart Codex, open `/plugins`, and install or enable `thoth-agents`. The catalog
 is versioned at `.agents/plugins/marketplace.json` and points to
-`./integrations/codex`; it is not synthesized into a personal marketplace.
+`./integrations/codex`; it is not synthesized into a personal marketplace. The
+plugin contributes the packaged thoth-agents research MCP configuration.
 
-## Materialize the Codex orchestration surfaces
+## 2. Materialize the CLI-owned orchestration surfaces
 
 ```bash
 npx thoth-agents@latest install --agent=codex --dry-run
@@ -28,6 +30,11 @@ npx thoth-agents@latest install --agent=codex
 The CLI prints the native marketplace command but does not copy files into
 `~/.codex/plugins` or merge `~/.agents/plugins/marketplace.json`. Codex owns its
 marketplace snapshots, installed-plugin cache, enablement, and trust decisions.
+
+The CLI step is mandatory even when `/plugins` already reports a healthy native
+plugin. Codex plugins do not materialize the global root contract, standalone
+custom-agent TOMLs, managed feature configuration, or external global skills
+used by thoth-agents.
 
 ## CLI-managed targets
 
@@ -46,6 +53,21 @@ User-scope installation manages:
 
 The ambient Codex session is the adaptive root, so no orchestrator child TOML is
 generated.
+
+## 3. Restart and verify
+
+Restart Codex after the CLI applies user configuration, then inspect:
+
+```text
+/plugins
+/hooks
+```
+
+Run a complete drift check from the terminal:
+
+```bash
+npx thoth-agents@latest status --harness=codex
+```
 
 ## Delegation and SDD
 
@@ -72,20 +94,27 @@ Codex plugin marketplace sources do not provide a reliable package lifecycle for
 this dependency contract, so plugin installation alone is incomplete until the
 CLI confirms all four skills.
 
-## Trust review
-
-After both installation surfaces are complete, restart Codex and inspect:
-
-```text
-/plugins
-/hooks
-```
+## Trust review and limitations
 
 Registration never bypasses plugin/hook trust. Higher-precedence project,
 profile, CLI, system, or admin configuration may override user configuration.
 `request_user_input` is expected in Default mode when
 `features.default_mode_request_user_input = true`; every thoth-agents call omits
 `autoResolutionMs`.
+
+Additional constraints:
+
+- The ambient session is the root; there is no `orchestrator` child TOML.
+- Global `~/.codex/AGENTS.md` guidance loads automatically, but a more specific
+  repository or subtree `AGENTS.md` can take precedence.
+- Custom-agent TOMLs are native configuration layers. The collaboration runtime
+  does not expose a hard installed-role selector, so role matching remains
+  partly instruction-level.
+- Project-scoped `.codex/` configuration and hooks load only for trusted
+  projects. User, system, and managed policy remain separate.
+- The CLI enables only the managed feature needed for Default-mode user input;
+  it does not claim broad feature or enforcement parity with OpenCode.
+- Plugin installation does not include thoth-mem or project QA executables.
 
 ## Dry-run and reset
 
@@ -101,3 +130,11 @@ unrelated skills, or provider configuration.
 thoth-mem is independent. Its plugin owns memory hooks, MCP, lifecycle,
 persistence, and recovery. Codex packaging here reports only provider-neutral,
 evidence-based capability outcomes.
+
+## Upstream references
+
+- [Codex plugins](https://learn.chatgpt.com/docs/plugins)
+- [Codex plugin marketplace commands](https://learn.chatgpt.com/docs/developer-commands?surface=cli#cli-codex-plugin-marketplace)
+- [Codex `AGENTS.md`](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
+- [Codex custom subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+- [Codex hooks](https://learn.chatgpt.com/docs/hooks)

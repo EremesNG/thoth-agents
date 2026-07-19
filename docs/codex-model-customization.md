@@ -1,71 +1,61 @@
 # Codex Model Customization
 
-The Codex adapter generates one custom-agent TOML file per role under
-`.codex/agents/thoth-agents-{role}.toml`. Generated non-orchestrator
-subagents receive explicit model defaults so Codex users can start with
-role-appropriate GPT-family models while the root Codex thread remains
-user-controlled.
+The Codex CLI installation writes one user-scope custom-agent TOML per
+specialist under `~/.codex/agents/thoth-agents-{role}.toml`. The ambient Codex
+session remains the orchestrator and keeps the model selected by the user or
+active Codex configuration.
 
-For the broader multi-harness orientation, see the
-[README](../README.md). For OpenCode provider presets, see
-[Provider Configurations](provider-configurations.md).
+For installation ownership, see [Codex Install](codex-install.md). For the
+OpenCode-only built-in provider preset, see
+[Provider Configuration](provider-configurations.md).
 
-## Generated subagent defaults
+## Generated specialist defaults
 
-The generated non-orchestrator agent files include `model`:
+| Role | Model | Reasoning effort |
+| --- | --- | --- |
+| `explorer` | `gpt-5.6-luna` | `low` |
+| `librarian` | `gpt-5.6-luna` | `xhigh` |
+| `oracle` | `gpt-5.6-sol` | `xhigh` |
+| `sdd-specify` | `gpt-5.6-sol` | `high` |
+| `sdd-plan` | `gpt-5.6-sol` | `high` |
+| `sdd-tasks` | `gpt-5.6-luna` | `medium` |
+| `designer` | `gpt-5.6-sol` | `medium` |
+| `quick` | `gpt-5.6-luna` | `xhigh` |
+| `deep` | `gpt-5.6-sol` | `medium` |
 
-| Role | Generated model |
-| --- | --- |
-| `oracle` | `gpt-5.5` |
-| `librarian` | `gpt-5.4-mini` |
-| `explorer` | `gpt-5.4-mini` |
-| `designer` | `gpt-5.4-mini` |
-| `quick` | `gpt-5.4-mini` |
-| `deep` | `gpt-5.5` |
+No `orchestrator` TOML is generated. Configure the root model through normal
+Codex user, project, profile, or session controls.
 
-No selectable Codex `orchestrator` TOML is generated in v1, and the generated
-`.codex/config.toml` snippet does not set a root `model`. Choose the root Codex
-model in your normal Codex user or project configuration.
+## Change a managed specialist model
 
-## Override a generated subagent model
+Preview and apply model changes through the thoth-agents CLI rather than editing
+the generated TOML directly:
 
-Use the existing `agents.<role>.model` plugin configuration shape to opt in to a
-different Codex subagent model during generation:
-
-```json
-{
-  "agents": {
-    "oracle": { "model": "gpt-5.5-codex-custom" },
-    "explorer": { "model": [{ "id": "gpt-5.4-mini-custom" }] }
-  }
-}
+```bash
+npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ```
 
-Only the configured subagent changes. Unconfigured subagents keep the generated
-defaults, and `orchestrator` remains omitted from generated Codex model output.
-When `model` is an array, Codex generation uses the first entry's model id.
+The operation updates only the selected managed TOML model fields and
+`~/.codex/agents/.thoth-agents-managed-models.json`. It creates bounded backups
+and preserves unrelated TOML content.
 
 ## Reasoning effort
 
-Generated Codex agent TOML includes `model_reasoning_effort` only on validated
-Codex agent surfaces. The generated values are:
+The default effort is emitted only while the role uses its package-owned default
+model. An explicit model override can omit or replace that default according to
+the model plan supplied by the CLI. Codex ultimately validates model and effort
+availability against the active catalog and configuration.
 
-- `high` for `oracle`, `deep`, and `orchestrator`
-- `medium` for `librarian`, `explorer`, `designer`, and `quick`
+## Limitations
 
-If you remove `model_reasoning_effort` from an agent file, Codex inherits or
-falls back according to the active Codex configuration instead of the generated
-agent-specific value.
-
-## Custom providers
-
-Configure custom providers through Codex configuration, not through generated
-agent defaults. Codex supports root/project settings such as `model_provider`
-and provider tables like `[model_providers.<id>]` in `.codex/config.toml` or the
-user-level Codex config.
-
-Provider-per-agent overrides are intentionally not generated. The current
-validated Codex subagent surface covers per-agent `model` and
-`model_reasoning_effort`, but provider-per-agent TOML fields are not confirmed
-by the validation record. Treat provider-per-agent customization as
-validation-required before adding it to generated artifacts.
+- The root model is never managed by thoth-agents.
+- Only the nine generated thoth-agents specialist TOMLs are supported model
+  targets.
+- Provider-per-agent configuration is not generated. Configure custom providers
+  through supported Codex user-level provider configuration.
+- More specific project, profile, CLI, system, or managed configuration may
+  override user-level defaults.
+- Model configuration does not strengthen role selection, permissions, memory
+  governance, or provider boundaries.
+- Claude Code model defaults are package-owned and cannot be rewritten through
+  this Codex operation.

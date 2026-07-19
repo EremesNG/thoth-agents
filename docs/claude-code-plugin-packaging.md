@@ -35,23 +35,26 @@ harness-specific dialect from the canonical prompt implementation under
 
 ## Native installation
 
-The supported path also installs mandatory external skills:
-
-```bash
-npx thoth-agents@latest install --agent=claude --dry-run
-npx thoth-agents@latest install --agent=claude
-```
-
-Internally, the CLI inspects native JSON manager state and, when needed, runs:
+The supported first-install order is native marketplace registration, native
+plugin installation, and then mandatory CLI setup:
 
 ```bash
 claude plugin marketplace add EremesNG/thoth-agents --scope user
 claude plugin install thoth-agents@thoth-agents --scope user
+npx thoth-agents@latest install --agent=claude --dry-run
+npx thoth-agents@latest install --agent=claude
 ```
 
-It enables an installed-but-disabled plugin instead of copying or reinstalling
+The CLI inspects Claude's native JSON manager state and treats an already
+installed plugin as healthy. During repair, update, or sync it can register,
+install, update, or enable missing native state, but it never copies or rewrites
 cache files. Conflicting marketplace names or unreadable manager state fail
 closed. Restart Claude Code or run `/reload-plugins`, then inspect `/plugin`.
+
+The CLI remains required after native installation because it installs and
+verifies the four standalone external skills. See
+[Claude Code Install](claude-code-install.md) for the complete procedure and
+limitations.
 
 ## Adaptive root
 

@@ -28,8 +28,13 @@ configuration, managed I/O, and required external skills.
 - Reset touches only thoth-agents-managed targets.
 - Codex marketplace registration is an explicit interactive manager step;
   trust review remains explicit through `/plugins` and `/hooks`.
-- Claude setup uses `claude plugin marketplace add`, `install`, and `enable`.
-  It never copies files into the Claude plugin-manager cache.
+- The documented Claude first-install path runs `claude plugin marketplace add`
+  and `claude plugin install` before the thoth-agents CLI. The CLI reconciles
+  native state and installs the required global skills; it never copies files
+  into the Claude plugin-manager cache.
+- Native plugin installation never makes the CLI optional. Codex needs its root
+  instructions, custom agents, feature merge, model state, and skills; Claude
+  needs its standalone required skills and complete-state verification.
 - Claude per-role model rewrites are unsupported after installation because the
   native manager owns the cached package.
 - CLI changes require parser/help/tests and public documentation in the same
@@ -43,4 +48,6 @@ configuration, managed I/O, and required external skills.
 - required skills: `skills.test.ts` and all three operation tests
 - TUI: `src/cli/tui/**/*.test.tsx`
 
-See [`../installation.md`](../installation.md).
+See [`../installation.md`](../installation.md),
+[`../codex-install.md`](../codex-install.md), and
+[`../claude-code-install.md`](../claude-code-install.md).

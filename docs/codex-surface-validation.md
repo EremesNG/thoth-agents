@@ -11,9 +11,9 @@ is not registered and validated.
 | Root instructions | `~/.codex/AGENTS.md` managed block | Adaptive root contract |
 | Custom agents | `~/.codex/agents/thoth-agents-{role}.toml` | Nine specialist roles |
 | User config | `~/.codex/config.toml` | Default-mode user input feature |
-| Plugin manifest | Personal source derived from `.codex-plugin/plugin.json` | Package identity and assets |
-| Plugin MCP | `.codex-plugin/.mcp.json` | thoth-agents research MCPs |
-| Personal marketplace | `~/.agents/plugins/marketplace.json` | Local plugin-source registration |
+| Plugin manifest | `integrations/codex/.codex-plugin/plugin.json` | Native package identity and component references |
+| Plugin MCP | `integrations/codex/.mcp.json` | thoth-agents research MCPs |
+| Repository marketplace | `.agents/plugins/marketplace.json` | Versioned repository-native plugin source |
 | Global skills | `~/.codex/skills/{skill}/SKILL.md` | Mandatory external skills installed by the CLI |
 
 The phase roles are custom-agent TOMLs, not plugin-bundled skills.
@@ -31,8 +31,9 @@ Allowed manifest keys are `name`, `version`, `description`, `skills`,
 `mcpServers`, `apps`, `hooks`, and `interface`. Current output uses only the
 identity fields and `mcpServers`.
 
-Every package path must remain under `.codex-plugin/`; absolute paths and `..`
-segments fail validation. Unknown fields are omitted with an explicit diagnostic.
+The manifest remains under `.codex-plugin/`; conventional component assets such
+as `.mcp.json` live at the plugin root. Absolute paths and `..` segments fail
+validation. Unknown fields are omitted with an explicit diagnostic.
 
 ## Delegation and permissions
 

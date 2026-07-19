@@ -64,6 +64,21 @@ The thoth-agents CLI is therefore the deterministic installation and repair
 surface. A direct plugin-only installation is incomplete until all four global
 skills are present.
 
+For Codex, the CLI also owns surfaces that are intentionally outside the native
+plugin package: the bounded orchestrator block in `~/.codex/AGENTS.md`, nine
+custom-agent TOMLs, managed feature configuration, and model ownership state.
+For Claude Code, first register the marketplace and install the native plugin,
+then run the CLI to install and verify the skills:
+
+```bash
+claude plugin marketplace add EremesNG/thoth-agents --scope user
+claude plugin install thoth-agents@thoth-agents --scope user
+npx thoth-agents@latest install --agent=claude
+```
+
+See [Installation](installation.md), [Codex Install](codex-install.md), and
+[Claude Code Install](claude-code-install.md).
+
 ## SDD responsibilities
 
 | Phase | Owner | Artifact scope |

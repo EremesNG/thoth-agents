@@ -159,13 +159,14 @@ export const AGENT_ROLES = [
     mode: 'coordination-write',
     dispatch: 'synchronous-task-only',
     canMutateWorkspace: true,
-    scope: 'dependency-ordered implementation tasks',
+    scope: 'dependency-ordered implementation and convergence tasks',
     responsibility:
-      'Convert the accepted specification and plan into bounded, dependency-ordered tasks.',
+      'Convert the accepted specification and plan into bounded tasks, and append traceable convergence work from verification findings.',
     writeScope: ['openspec/'],
     toolGovernance: [
       'writes only governed coordination artifacts under openspec/',
       'does not implement product code or delegate further',
+      'uses append-only tasks.md updates during convergence',
     ],
     verification: [
       'checks task coverage, ordering, ownership, and verification steps',
@@ -191,12 +192,13 @@ export const AGENT_ROLES = [
     mode: 'write-capable',
     dispatch: 'synchronous-task-only',
     canMutateWorkspace: true,
-    scope: 'fast bounded implementation',
+    scope: 'fast bounded implementation and mechanical archive closeout',
     responsibility:
-      'Implement narrow or mechanical changes with focused verification.',
+      'Implement narrow changes or mechanically archive a fully verified SDD change.',
     toolGovernance: [
       'edits only bounded targets',
       'escalates when discovery or correctness risk exceeds the assignment',
+      'archives only from a passing verify-report.md and never interprets unresolved requirements',
       'does not delegate further',
     ],
     verification: ['runs the smallest sufficient focused check'],

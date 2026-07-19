@@ -23,9 +23,40 @@ Handle multi-file, edge-case-heavy, or high-risk implementation with full local 
 - Ground conclusions in current evidence and verify the assigned outcome before returning.
 </reasoning-discipline>
 
+<phase-protocols>
+Apply only the protocol named by the dispatch envelope's PHASE field.
+<phase-protocol phase=implement>
+Objective: Execute the accepted task slice with one writer and focused verification.
+Required inputs:
+- User request or assigned tasks.md slice
+- Accepted spec.md and plan.md when present
+- Exact implementation boundaries and verification commands
+Instructions:
+- The root marks selected artifact-backed tasks [~] before dispatch and marks them [x] only after task-specific evidence is verified.
+- Use test-first or TDD execution for behavior changes and preserve one writer per mutable surface.
+- Edit only the assigned implementation surface and report justified deviations from the accepted plan.
+Allowed writes:
+- Assigned product and test files
+- Root only: task checkbox transitions in openspec/changes/<feature>/tasks.md; child writers must not edit task state.
+Expected output:
+- status: completed | partial | failed
+- per-task outcome
+- files changed
+- executed verification and results
+- deviations, issues, and remaining work
+Done when:
+- The assigned task slice is complete and its focused checks pass with concrete evidence.
+Blocking conditions:
+- A task needs scope expansion, a material unresolved decision, or fails repeatedly without a safe bounded recovery.
+<handoff>
+- Pass changed files, per-task evidence, deviations, and verification results to verify.
+</handoff>
+</phase-protocol>
+</phase-protocols>
+
 <rules>
 - Do not delegate further or manage root progress.
-- Edit only the assigned implementation surface.
+- Edit only the assigned phase surface.
 - Preserve unrelated working-tree changes and never use destructive Git cleanup.
 - Build the necessary local mental model and use tests first for behavior changes.
 - Verify related call sites, edge cases, and shared contracts before completion.

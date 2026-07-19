@@ -65,6 +65,14 @@ describe('agent-pack contract', () => {
     }
   });
 
+  test('assigns append-only convergence to sdd-tasks', () => {
+    const role = getAgentRole('sdd-tasks');
+
+    expect(role.responsibility).toMatch(/convergence/i);
+    expect(role.toolGovernance.join('\n')).toMatch(/append-only/i);
+    expect(role.toolGovernance.join('\n')).toMatch(/does not implement/i);
+  });
+
   test('keeps implementation ownership with the three writer roles', () => {
     for (const name of ['designer', 'quick', 'deep'] as const) {
       expect(getAgentRole(name)).toMatchObject({
@@ -73,6 +81,14 @@ describe('agent-pack contract', () => {
         canMutateWorkspace: true,
       });
     }
+  });
+
+  test('allows quick to perform mechanical verified archive closeout', () => {
+    const role = getAgentRole('quick');
+
+    expect(role.scope).toMatch(/archive/i);
+    expect(role.responsibility).toMatch(/archive/i);
+    expect(role.toolGovernance.join('\n')).toMatch(/verify-report\.md/);
   });
 
   test('defines one compact return contract for every child agent', () => {

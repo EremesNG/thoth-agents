@@ -92,6 +92,52 @@ describe('v0.3 prompt rendering', () => {
     expect(prompt).toContain('plan.md');
     expect(prompt).toContain('tasks.md');
     expect(prompt).toContain('openspec/changes/<feature>/');
+    expect(prompt).toContain('verify -> archive');
+    expect(prompt).toContain(
+      'Artifact-backed failure loop: verify fail -> converge -> implement -> verify',
+    );
+    expect(prompt).toContain(
+      'Direct failure loop: verify fail -> implement -> verify',
+    );
+  });
+
+  test('gives the adaptive root compact contracts for phases it executes', () => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      OPENCODE_PROMPT_DIALECT,
+    );
+
+    expect(prompt).toContain('<root-phase-modes>');
+    expect(prompt).toContain('phase=implement');
+    expect(prompt).toContain('phase=verify');
+    expect(prompt).toContain('verdict: pass | fail');
+    expect(prompt).toContain('phase=archive');
+    expect(prompt).not.toContain('<phase-protocol phase=verify>');
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('requires the canonical SDD dispatch envelope in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+
+    for (const heading of [
+      'PHASE',
+      'ROUTE / CHANGE',
+      'OBJECTIVE',
+      'INPUT ARTIFACTS',
+      'REQUIREMENTS',
+      'BOUNDARIES',
+      'VERIFICATION',
+      'EXPECTED OUTPUT',
+      'HANDOFF',
+    ]) {
+      expect(prompt).toContain(heading);
+    }
   });
 
   test.each([
@@ -144,6 +190,32 @@ describe('v0.3 prompt rendering', () => {
     expect(prompt).toContain('Do not mutate the workspace');
   });
 
+  test('distinguishes oracle analyze and verify phase modes', () => {
+    const prompt = renderRolePrompt(
+      createReadOnlySpecialistPromptSections('oracle'),
+      OPENCODE_PROMPT_DIALECT,
+    );
+
+    expect(prompt).toContain('phase=analyze');
+    expect(prompt).toContain('cross-artifact consistency');
+    expect(prompt).toContain('requirement coverage');
+    expect(prompt).toContain('phase=verify');
+    expect(prompt).toContain('compliance matrix');
+    expect(prompt).toContain('verify-report.md');
+  });
+
+  test('gives explorer an explicit evidence handoff to specification', () => {
+    const prompt = renderRolePrompt(
+      createReadOnlySpecialistPromptSections('explorer'),
+      OPENCODE_PROMPT_DIALECT,
+    );
+
+    expect(prompt).toContain('phase=explore');
+    expect(prompt).toContain('relevant paths');
+    expect(prompt).toContain('handoff');
+    expect(prompt).toContain('specify');
+  });
+
   test.each(WRITER_ROLES)('keeps %s as a bounded leaf writer', (role) => {
     const prompt = renderRolePrompt(
       createWriteCapableSpecialistPromptSections(role),
@@ -153,6 +225,31 @@ describe('v0.3 prompt rendering', () => {
     expect(prompt).toContain(`You are ${role}`);
     expect(prompt).toContain('write-capable');
     expect(prompt).toContain('Do not delegate further');
+  });
+
+  test('gives quick distinct implement and archive protocols', () => {
+    const prompt = renderRolePrompt(
+      createWriteCapableSpecialistPromptSections('quick'),
+      OPENCODE_PROMPT_DIALECT,
+    );
+
+    expect(prompt).toContain('phase=implement');
+    expect(prompt).toContain('assigned implementation surface');
+    expect(prompt).toContain('phase=archive');
+    expect(prompt).toContain('archive-report.md');
+    expect(prompt).toMatch(/must not implicitly merge/i);
+  });
+
+  test('gives sdd-tasks an append-only convergence mode', () => {
+    const prompt = renderRolePrompt(
+      createCoordinationSpecialistPromptSections('sdd-tasks'),
+      OPENCODE_PROMPT_DIALECT,
+    );
+
+    expect(prompt).toContain('phase=tasks');
+    expect(prompt).toContain('phase=converge');
+    expect(prompt).toContain('append-only');
+    expect(prompt).toContain('Do not edit product code');
   });
 
   test('uses the shared compact child return contract', () => {

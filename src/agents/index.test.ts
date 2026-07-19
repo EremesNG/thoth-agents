@@ -209,8 +209,8 @@ describe('OpenCode v0.3 prompt boundaries', () => {
 
   test('keeps all built-in prompts compact', () => {
     for (const agent of createAgents()) {
-      const limit = agent.name === 'orchestrator' ? 8_500 : 3_000;
-      expect(agent.config.prompt?.length).toBeLessThan(limit);
+      const limit = agent.name === 'orchestrator' ? 8_500 : 5_000;
+      expect(agent.config.prompt?.length, agent.name).toBeLessThan(limit);
     }
   });
 

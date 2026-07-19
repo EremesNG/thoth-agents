@@ -34,6 +34,11 @@ and writers for OpenCode, Codex, and Claude Code.
   cache is immutable to thoth-agents; documented first install adds the
   marketplace and plugin before running the CLI.
 - Capability gaps remain explicit; never claim cross-harness enforcement parity.
+- Integration-build diagnostics are deduplicated by code. Recoverable
+  instruction-only or diagnostic-only gaps are non-fatal; only an error without
+  a fallback exits nonzero.
+- Do not emit Codex hook activation/readiness diagnostics when the generated
+  package contains no hook artifact.
 - Generated files are outputs. Change the owning adapter/writer.
 - `pnpm run build` regenerates both integration packages before compiling, so
   Claude `agents/*.md` always comes from the canonical prompt code under

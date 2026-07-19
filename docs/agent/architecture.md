@@ -38,7 +38,7 @@ persistence, runtime state, and recovery are outside this package.
 | Published CLI | `src/cli/` | `thoth-agents` -> `dist/cli/index.js` |
 | Harness portability | `src/harness/` | adapters, capabilities, diagnostics, writers |
 | Roles/prompts | `src/agents/`, `src/config/`, `src/harness/core/agent-pack.ts` | ten canonical roles and overrides |
-| SDD | `src/harness/core/sdd.ts` | three routes and Spec Kit-compatible artifact graph |
+| SDD | `src/harness/core/sdd.ts` | routes, typed phase protocols, dispatch envelope, artifact graph, convergence, verification, and archive |
 | Required skills | `src/cli/skills.ts` | simplify, tdd, progressive-context-router, architectural-grilling for all harnesses |
 | Memory provider | installed thoth-mem | provider mechanics and lifecycle |
 
@@ -49,6 +49,10 @@ persistence, runtime state, and recovery are outside this package.
 - The root may work directly; delegation must produce net gain.
 - Delegation depth is one and each mutable surface has one writer.
 - SDD phase agents write only `openspec/` coordination artifacts.
+- SDD delegation composes the static role contract, the named phase protocol,
+  and one run-specific envelope; phase skills are not bundled.
+- Artifact-backed routes persist verification evidence and archive only after a
+  pass verdict. Convergence is append-only and never implements product code.
 - Architectural grilling is conditional and precedes specification only when a
   material human-owned decision tree requires it.
 - OpenCode ships only the built-in OpenAI preset.

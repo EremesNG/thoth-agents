@@ -55,7 +55,24 @@ interception. Any packaged hook still requires its feature gate and trust review
 
 thoth-agents 0.3.0 does not use a Codex hook as an external-skill `postinstall`.
 Marketplace npm sources do not run lifecycle scripts, so the CLI installs and
-checks required skills directly.
+checks required skills directly. Because the current package contains no hooks,
+integration sync and build do not emit hook activation or trust-readiness
+diagnostics.
+
+## Build diagnostics
+
+Integration generation distinguishes a capability limitation from a fatal build
+error:
+
+- `info` records an intentional condition that requires no action;
+- `capability-gap (non-fatal)` records an instruction-only or diagnostic-only
+  fallback and is emitted once per diagnostic code;
+- `warning` records a non-fatal condition without a fallback classification;
+- `error` is reserved for a required outcome with no recoverable fallback and
+  makes the generator exit nonzero.
+
+Capability gaps remain visible because Codex does not provide hard enforcement
+parity for every OpenCode behavior. They do not make package generation fail.
 
 ## Provider boundary
 

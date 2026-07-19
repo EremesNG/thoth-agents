@@ -9,17 +9,17 @@
     {
       "path": "agents/deep.md",
       "kind": "agent-config",
-      "sha256": "sha256:21aff7cb10b4966c3fa4848ebc0f900d583a1f2218485ae6b5505578e7afcbe6"
+      "sha256": "sha256:79d5308000fb38edf8a2b69fc149bf10fb29df5583dd34bcf6e71adcde2f2fb9"
     },
     {
       "path": "agents/designer.md",
       "kind": "agent-config",
-      "sha256": "sha256:aadd53263dfbe02f5f2c70712f5cc530d6748e0c0d2679d1e3581115cbaf12a0"
+      "sha256": "sha256:e8030e4917242c240427d3f95480ad79dfb30c66e89e99debab1019b42f3e761"
     },
     {
       "path": "agents/explorer.md",
       "kind": "agent-config",
-      "sha256": "sha256:f1fd7842c41a782c3f1392cedd17bba0e553e3b85c64b9b346105bb84ba0a9da"
+      "sha256": "sha256:68739cfc2dee0c1f6c8c04f20cd46ac933761d6cba6c8ec5f556c55f4dcac66a"
     },
     {
       "path": "agents/librarian.md",
@@ -29,32 +29,32 @@
     {
       "path": "agents/oracle.md",
       "kind": "agent-config",
-      "sha256": "sha256:b460967eb1ab4c3ad0ab0ac74bd94bbfa4e667e45c98838548dfe52b322d1065"
+      "sha256": "sha256:3402e2200d079275c324dc8f3016020a718f383c4021a40445325fb53163b776"
     },
     {
       "path": "agents/orchestrator.md",
       "kind": "agent-config",
-      "sha256": "sha256:bb1b90990a27b4a1f122a4a72a4addd10def12b404034f7e63b71223b5bf3119"
+      "sha256": "sha256:5f6b6caf9fda30ba42b632213def1555cfcff1a73055ec4d6ff49c7c3dc6974b"
     },
     {
       "path": "agents/quick.md",
       "kind": "agent-config",
-      "sha256": "sha256:c768ae2d8db8d7bac4f94b46bbfeee3788ccff6564b49c28f70e1a7a18e25cbe"
+      "sha256": "sha256:22b9dd5c25c6b015758ec0bf88407ee4042d666d9b1646a83adb563b783be867"
     },
     {
       "path": "agents/sdd-plan.md",
       "kind": "agent-config",
-      "sha256": "sha256:d10b94ae4c89849972dfad5757b459da7ac9f7cce6bf7cb35aceaa88d7e3817a"
+      "sha256": "sha256:2022953c136ef120ed5f9def5dad3c02468cdddb0ef61b9d34d7a05a403a5160"
     },
     {
       "path": "agents/sdd-specify.md",
       "kind": "agent-config",
-      "sha256": "sha256:3aeb1ab02c92f0f3ac992f6d92dd19e97c2c34387ff0691d21af407cfeb71656"
+      "sha256": "sha256:8ced411dbf79bd6510c38632f4ce57ea8900d5d210ddc6bf26b31c268a3f53a7"
     },
     {
       "path": "agents/sdd-tasks.md",
       "kind": "agent-config",
-      "sha256": "sha256:3ab504f3f0eae81f04826be1af561c71ad2d1d962c17351769258ab2115fbcbf"
+      "sha256": "sha256:340f5b3479abe0649389c9cc9abc1cc5b06db2d305008e8df94c788dbf3c5065"
     },
     {
       "path": "settings.json",

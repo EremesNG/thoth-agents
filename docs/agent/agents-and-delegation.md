@@ -22,6 +22,10 @@ Harness adapters translate the same intent into native artifacts.
 - Keep one writer per mutable surface.
 - Read-only roles do not mutate.
 - SDD phase roles write only under `openspec/` and do not implement product code.
+- Each SDD dispatch names a `phase=<id>` and supplies the canonical phase
+  envelope. A reused role applies only that phase's generated protocol.
+- `sdd-tasks` owns both initial task generation and append-only convergence;
+  `quick` may perform mechanical archive closeout after a passing verification.
 - The root uses `progressive-context-router` only for repository-instruction
   work and gates `architectural-grilling` to unresolved material human-owned
   decisions before specification.

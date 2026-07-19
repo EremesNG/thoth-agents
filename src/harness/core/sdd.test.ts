@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  canEnterSddPhase,
   classifySddRoute,
   getRequiredSddPhaseOrder,
   getSddArtifactGraph,
@@ -85,6 +86,7 @@ describe('Spec Kit workflow contract', () => {
       'tasks',
       'implement',
       'verify',
+      'archive',
     ]);
   });
 
@@ -97,6 +99,7 @@ describe('Spec Kit workflow contract', () => {
       'analyze',
       'implement',
       'verify',
+      'archive',
     ]);
   });
 
@@ -106,6 +109,18 @@ describe('Spec Kit workflow contract', () => {
       .map((phase) => phase.id);
 
     expect(conditional).toEqual(['clarify', 'checklist', 'converge']);
+  });
+
+  test('keeps artifact-dependent conditional phases out of the direct route', () => {
+    for (const target of ['clarify', 'checklist', 'converge'] as const) {
+      expect(
+        canEnterSddPhase({
+          route: 'direct',
+          completed: ['implement', 'verify'],
+          target,
+        }),
+      ).toBe(false);
+    }
   });
 
   test('keeps architectural grilling as a conditional pre-specification gate, not an SDD phase', () => {
@@ -135,12 +150,59 @@ describe('Spec Kit workflow contract', () => {
     expect(ownerOf('analyze')).toBe('oracle');
     expect(ownerOf('verify')).toBe('oracle');
     expect(ownerOf('implement')).toBe('orchestrator');
+    expect(ownerOf('converge')).toBe('sdd-tasks');
+    expect(ownerOf('archive')).toBe('quick');
   });
 
   test('keeps bounded verification in the adaptive root and reserves independent review for full SDD', () => {
     expect(getSddPhaseOwner('direct', 'verify')).toBe('orchestrator');
     expect(getSddPhaseOwner('accelerated', 'verify')).toBe('orchestrator');
     expect(getSddPhaseOwner('full', 'verify')).toBe('oracle');
+  });
+
+  test('gates implementation, convergence, and archive on their required handoffs', () => {
+    expect(
+      canEnterSddPhase({
+        route: 'full',
+        completed: ['explore', 'specify', 'plan', 'tasks'],
+        target: 'implement',
+      }),
+    ).toBe(false);
+    expect(
+      canEnterSddPhase({
+        route: 'full',
+        completed: ['explore', 'specify', 'plan', 'tasks', 'analyze'],
+        target: 'implement',
+      }),
+    ).toBe(true);
+    expect(
+      canEnterSddPhase({
+        route: 'accelerated',
+        completed: ['specify', 'plan', 'tasks', 'implement'],
+        target: 'converge',
+      }),
+    ).toBe(false);
+    expect(
+      canEnterSddPhase({
+        route: 'accelerated',
+        completed: ['specify', 'plan', 'tasks', 'implement', 'verify'],
+        target: 'converge',
+      }),
+    ).toBe(true);
+    expect(
+      canEnterSddPhase({
+        route: 'accelerated',
+        completed: ['specify', 'plan', 'tasks', 'implement'],
+        target: 'archive',
+      }),
+    ).toBe(false);
+    expect(
+      canEnterSddPhase({
+        route: 'accelerated',
+        completed: ['specify', 'plan', 'tasks', 'implement', 'verify'],
+        target: 'archive',
+      }),
+    ).toBe(true);
   });
 
   test('does not reference phase skills or a mandatory interview', () => {
@@ -208,6 +270,20 @@ describe('Spec Kit workflow contract', () => {
         producedBy: 'plan',
         consumes: ['spec', 'plan'],
         requiredFor: [],
+      },
+      {
+        id: 'verify-report',
+        path: 'verify-report.md',
+        producedBy: 'verify',
+        consumes: ['spec', 'plan', 'tasks'],
+        requiredFor: ['accelerated', 'full'],
+      },
+      {
+        id: 'archive-report',
+        path: 'archive-report.md',
+        producedBy: 'archive',
+        consumes: ['spec', 'plan', 'tasks', 'verify-report'],
+        requiredFor: ['accelerated', 'full'],
       },
     ]);
   });

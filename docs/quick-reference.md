@@ -45,9 +45,9 @@ subagents while the CLI installs and verifies the required global skills.
 | `oracle` | read-only | Diagnosis, architecture, and independent review |
 | `sdd-specify` | `openspec/` writer | Requirements, clarification, optional checklist |
 | `sdd-plan` | `openspec/` writer | Technical plan and optional support artifacts |
-| `sdd-tasks` | `openspec/` writer | Dependency-ordered implementation tasks |
+| `sdd-tasks` | `openspec/` writer | Dependency-ordered tasks and append-only convergence |
 | `designer` | writer | UI/UX implementation and visual QA |
-| `quick` | writer | Narrow or mechanical changes |
+| `quick` | writer | Narrow changes and verified mechanical archive closeout |
 | `deep` | writer | Correctness-critical or cross-file implementation |
 
 Delegation depth is one. Use one writer per mutable surface.
@@ -56,14 +56,20 @@ Delegation depth is one. Use one writer per mutable surface.
 
 ```text
 direct:      implement -> verify
-accelerated: specify -> plan -> tasks -> implement -> verify
-full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify
+accelerated: specify -> plan -> tasks -> implement -> verify -> archive
+full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive
 ```
 
 - Direct: clear, local, low risk.
 - Accelerated: bounded multi-file or moderate risk.
 - Full: explicit SDD, material uncertainty, cross-cutting scope, or high risk.
-- Clarify, checklist, and converge are conditional.
+- Clarify and checklist are conditional on Accelerated/Full.
+- Verify fail on Accelerated/Full: `converge -> implement -> verify`.
+- Verify fail on Direct: `implement -> verify`.
+- Verify pass on Accelerated/Full: persist `verify-report.md`, create
+  `archive-report.md`, and move the change to the dated archive.
+- Every SDD delegation includes the canonical phase envelope from `PHASE`
+  through `HANDOFF`; the static role prompt supplies that phase's protocol.
 
 Accelerated and full use:
 
@@ -71,11 +77,16 @@ Accelerated and full use:
 openspec/changes/<feature>/
 ├── spec.md
 ├── plan.md
-└── tasks.md
+├── tasks.md
+├── verify-report.md
+└── archive-report.md
 ```
 
 Optional: `checklists/requirements.md`, `research.md`, `data-model.md`,
 `contracts/`, and `quickstart.md`.
+
+After a passing archive gate, the complete directory moves to
+`openspec/changes/archive/YYYY-MM-DD-<feature>/`.
 
 ## OpenCode models
 

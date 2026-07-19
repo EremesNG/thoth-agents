@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { claudeCodeAdapter } from './adapters/claude-code';
 import { generateIntegrationPackages } from './generate-integration-packages';
 
 function listFiles(root: string, current = root): string[] {
@@ -37,6 +38,9 @@ describe('generateIntegrationPackages', () => {
       const result = generateIntegrationPackages({ projectRoot: dir });
       const codexRoot = join(dir, 'integrations', 'codex');
       const claudeRoot = join(dir, 'integrations', 'claude-code');
+      const canonicalClaudeAgents = claudeCodeAdapter
+        .render({ projectRoot: dir })
+        .artifacts.filter((artifact) => artifact.path.startsWith('agents/'));
       const codexMarketplace = JSON.parse(
         readFileSync(
           join(dir, '.agents', 'plugins', 'marketplace.json'),
@@ -98,6 +102,12 @@ describe('generateIntegrationPackages', () => {
       expect(existsSync(join(claudeRoot, 'agents', 'orchestrator.md'))).toBe(
         true,
       );
+      expect(canonicalClaudeAgents).toHaveLength(10);
+      for (const artifact of canonicalClaudeAgents) {
+        expect(readFileSync(join(claudeRoot, artifact.path), 'utf8')).toBe(
+          artifact.content,
+        );
+      }
       expect(existsSync(join(claudeRoot, 'settings.json'))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });

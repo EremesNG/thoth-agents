@@ -42,10 +42,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup && tsc --emitDeclarationOnly && pnpm run generate-schema",
+    "build": "pnpm run integration:sync && tsup && tsc --emitDeclarationOnly && pnpm run generate-schema",
     "generate-schema": "tsx scripts/generate-schema.ts",
     "integration:sync": "tsx src/harness/generate-integration-packages.ts",
-    "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts",
+    "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts src/harness/integration-lifecycle.test.ts",
     "release:notes": "tsx scripts/generate-release-notes.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -54,7 +54,7 @@
     "check": "biome check --write .",
     "check:ci": "biome check .",
     "dev": "pnpm run build && opencode",
-    "prepublishOnly": "pnpm run integration:verify && pnpm run build",
+    "prepublishOnly": "pnpm run build && pnpm run integration:verify",
     "version": "pnpm run integration:sync && pnpm run integration:verify",
     "release:patch": "npm version patch && git push --follow-tags",
     "release:minor": "npm version minor && git push --follow-tags",

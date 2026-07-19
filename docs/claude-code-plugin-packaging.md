@@ -28,7 +28,10 @@ integrations/claude-code/
 ```
 
 The catalog source is `./integrations/claude-code`. Both paths are included in
-the npm package and synchronized from the Claude adapter.
+the npm package and synchronized from the Claude adapter. Agent Markdown is not
+maintained independently: `claudeCodeAdapter` renders the role contracts and
+harness-specific dialect from the canonical prompt implementation under
+`src/agents/`.
 
 ## Native installation
 
@@ -94,9 +97,17 @@ thoth-mem plugin owns its own MCP, hooks, lifecycle, persistence, and recovery.
 ## Generation and verification
 
 ```bash
-pnpm run integration:sync
+pnpm run build
 pnpm run integration:verify
 ```
 
-Generated provenance and package files should be changed through their owning
-adapter/writer, not edited directly.
+`build` runs `integration:sync` before compiling. The sync command remains
+available when only generated packages need refreshing. `release:patch`,
+`release:minor`, and `release:major` use npm's `version` lifecycle to regenerate
+and verify the Codex manifest, Claude manifest, and Claude marketplace entry
+after the root package version changes and before npm creates the release commit
+and tag.
+
+Generated provenance and package files, including `agents/*.md`, should be
+changed through their owning prompt source, adapter, or writer, not edited
+directly.

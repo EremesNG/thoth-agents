@@ -13,7 +13,7 @@ and writers for OpenCode, Codex, and Claude Code.
 - `src/harness/adapters/`: harness translation.
 - `src/harness/writers/`: deterministic artifact layouts.
 - `src/harness/generate-integration-packages.ts`: checked-in Codex and Claude
-  marketplace packages.
+  marketplace packages, rendered from the harness adapters.
 - `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`:
   repository marketplace entrypoints.
 
@@ -32,6 +32,13 @@ and writers for OpenCode, Codex, and Claude Code.
   cache is immutable to thoth-agents.
 - Capability gaps remain explicit; never claim cross-harness enforcement parity.
 - Generated files are outputs. Change the owning adapter/writer.
+- `pnpm run build` regenerates both integration packages before compiling, so
+  Claude `agents/*.md` always comes from the canonical prompt code under
+  `src/agents/` through `claudeCodeAdapter`.
+- `npm version` runs the package `version` lifecycle before Git commit/tag
+  creation. The `release:patch`, `release:minor`, and `release:major` commands
+  therefore regenerate and verify every versioned integration manifest after
+  the root version changes.
 
 ## Public references
 
@@ -43,6 +50,8 @@ and writers for OpenCode, Codex, and Claude Code.
 ## Verification
 
 Run adapter/writer tests first, then the consuming CLI install/operation tests.
-Run `pnpm run integration:sync` after package-source changes and
-`pnpm run integration:verify` to prove the checked-in catalogs are current.
-Add build/schema and tarball verification when published output changes.
+`pnpm run build` includes `integration:sync`; use that command directly only
+when you need to refresh generated packages without compiling. Run
+`pnpm run integration:verify` to prove the checked-in catalogs, generated Claude
+agents, lifecycle scripts, and plugin versions are current. Add schema and
+tarball verification when published output changes.

@@ -4,35 +4,13 @@
 
 ### Requirement: Select the lightest safe route
 
-The adaptive root MUST select `direct`, `accelerated`, or `full` from intent,
-scope, clarity, contract risk, and failure cost. An explicitly named route MUST
-win. A generic request to use SDD MUST make Accelerated the minimum without
-preventing Full when Full risk signals apply.
+The system MUST assess intent, scope, clarity, contract risk, and failure cost, present an evidence-based Direct, Accelerated, or Full recommendation, and obtain the user's explicit route selection before route-specific execution unless the user already named a route; the user's selected route MUST win.
 
-Clear low-risk documentation or mechanical work MAY remain Direct across
-multiple files. File count alone MUST NOT add artifact ceremony or delegation.
+#### Scenario: US1 - Choose the SDD route 1
 
-#### Scenario: Direct route
-
-- **GIVEN** work is clear, bounded, low risk, and documentation/mechanical
-- **THEN** the route is `implement -> verify`
-- **AND** no coordination artifacts are created.
-
-#### Scenario: Accelerated route
-
-- **GIVEN** SDD is requested generically, clarity is partial, risk is moderate,
-  or behavior/architecture spans multiple surfaces
-- **THEN** the route is
-  `specify -> plan -> tasks -> implement -> verify -> archive`
-- **AND** root fast-forwards specification, plan, and tasks without routine user
-  pauses.
-
-#### Scenario: Full route
-
-- **GIVEN** a material decision is unresolved, behavior/architecture is
-  cross-cutting, contract risk is high, or failure cost is high
-- **THEN** the route is
-  `explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive`.
+- **GIVEN** the original request already names Direct, Accelerated, or Full
+- **WHEN** routing starts
+- **THEN** that request counts as the user's choice and
 
 ### Requirement: Load phase contracts on demand
 
@@ -117,16 +95,13 @@ assumption. Selecting Full alone MUST NOT activate it.
 
 ### Requirement: Require independent oracle judgment
 
-`analyze` and every `verify` MUST be owned by read-only `oracle`, including
-Direct and Accelerated. The implementing root or writer MUST NOT approve its own
-work. Oracle MUST judge completeness, correctness, and cross-artifact coherence
-as distinct dimensions.
+Pre-implementation `plan-review` MUST be conditional on the user's choice and owned by read-only Oracle when selected. Every post-implementation `verify` MUST remain owned by read-only Oracle for Direct, Accelerated, and Full, and no implementation writer or plan-review approval MAY satisfy final verification.
 
-Full analysis MUST challenge contradictions, ambiguity, duplication, scope
-drift, task ordering, checklist state, Constitution compliance, and missing
-FR/buildable-SC coverage. Verification MUST map every FR/buildable SC to
-implementation evidence and executed checks. Artifact-backed verification MUST
-persist `verify-report.md`; Direct returns the same judgment in-session.
+#### Scenario: US2 - Decide whether Oracle reviews the plan 1
+
+- **GIVEN** the user chooses review
+- **WHEN** Oracle applies `plan-reviewer`
+- **THEN** it returns `[OKAY]` or `[REJECT]`, reports no more than three true
 
 ### Requirement: Revalidate proportionally when evidence refines artifacts
 
@@ -163,3 +138,23 @@ On success, archive MUST mark `archive-report.md` ARCHIVED, record updated
 capabilities or no durable delta, and move the complete change to
 `openspec/changes/archive/YYYY-MM-DD-<feature>/`. Direct MUST NOT create or
 archive an SDD change directory.
+
+### Requirement: Offer user-controlled plan review
+
+After an Accelerated or Full change passes the `ready` gate, the system MUST recommend Oracle plan review and MUST let the user choose that review or proceed without it before implementation; Direct MUST NOT activate this choice.
+
+#### Scenario: US2 - Decide whether Oracle reviews the plan 1
+
+- **GIVEN** the user chooses review
+- **WHEN** Oracle applies `plan-reviewer`
+- **THEN** it returns `[OKAY]` or `[REJECT]`, reports no more than three true
+
+### Requirement: Execute and persist selected plan review
+
+When the user selects review, the system MUST load the bundled `plan-reviewer` contract, delegate read-only review to Oracle, preserve exact `[OKAY]`/`[REJECT]` semantics with at most three blockers, and let the root persist `openspec/changes/<feature>/plan-review.md` with SHA-256 freshness data for the reviewed planning artifacts. A declined review MUST NOT block implementation, and `[OKAY]` MUST NOT itself authorize implementation.
+
+#### Scenario: US2 - Decide whether Oracle reviews the plan 1
+
+- **GIVEN** the user chooses review
+- **WHEN** Oracle applies `plan-reviewer`
+- **THEN** it returns `[OKAY]` or `[REJECT]`, reports no more than three true

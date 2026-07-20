@@ -110,3 +110,19 @@ evidence as supported, degraded, or unsupported.
 Generated OpenCode configuration MUST contain only the `openai` built-in preset
 for the seven-role roster. It MUST NOT generate Kimi, Copilot, ZAI/GLM, or
 mixed-provider mappings.
+
+### Requirement: Bundle the plan reviewer
+
+The canonical thoth-owned skill bundle and every generated or initialized harness distribution MUST include `plan-reviewer`, while generated root prompts MUST express route selection and review selection through each harness's native blocking input surface.
+
+#### Scenario: US3 - Receive the same choices in every harness 1
+
+- **GIVEN** any supported harness
+- **WHEN** its root prompt is rendered
+- **THEN** it tells the root to recommend a route, wait for the user's choice, and offer
+
+#### Scenario: US3 - Receive the same choices in every harness 2
+
+- **GIVEN** Codex or Claude uses a harness-specific blocking input primitive
+- **WHEN** either user decision is requested
+- **THEN** the generated prompt names

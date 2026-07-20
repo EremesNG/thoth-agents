@@ -39,6 +39,8 @@ navigate or modify any other project.
 - `src/harness/core/sdd.ts`: SDD route, phase, and artifact governance.
 - `skills/`: canonical thoth-owned workflow skills for every harness.
 - `src/cli/skills.ts`: mandatory external-skill installation via `npx skills add`.
+- `src/cli/thoth-mem-install.ts`: bounded invocation and evidence parsing for
+  provider-owned thoth-mem setup.
 - `docs/agent/`: router and on-demand operational context.
 
 ## Environment and verified commands
@@ -82,8 +84,16 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   unresolved material human-owned product/architecture decisions. Full SDD
   alone does not activate it.
 - All visual or UX work goes through `designer`, not ad hoc editing.
-- `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem is an independent
-  provider; follow its installed guidance for memory and persistence mechanics.
+- `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem
+  is an independent provider; follow its installed guidance for memory and
+  persistence mechanics.
+- Every harness install invokes thoth-mem's public global setup after
+  thoth-agents-owned setup and mandatory skills. Only consistent `complete`
+  evidence succeeds; never translate reset into provider force, rollback, or
+  asset mutation.
+- Runtime memory authorization is `none`, `recall`, or `observe`, independent of
+  workspace mode. Root owns session lifecycle and real-user intent; `openspec/`
+  stays canonical and phase artifacts are not mirrored into thoth-mem.
 - Every `request_user_input` call MUST omit `autoResolutionMs` entirely, including
   `null` or `undefined`, so the question does not expire.
 - Some governance rules are instruction-only when a harness lacks enforcement;

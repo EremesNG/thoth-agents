@@ -7,8 +7,9 @@ seven-role and SDD contracts plus OpenCode, Codex, and Claude adapters. `skills/
 is the canonical thoth-owned workflow bundle. `src/cli/` owns installation plus
 status, repair, model, and TUI operations.
 
-thoth-mem is a separate provider/plugin. Its installation, hooks, MCP lifecycle,
-persistence, state, and recovery are outside this package.
+thoth-mem is a separate provider/plugin. thoth-agents invokes its public setup
+during installation, while provider mutations, hooks, MCP lifecycle, skill,
+persistence, receipts, state, and recovery remain outside this package.
 
 ## Runtime and delivery flows
 
@@ -18,11 +19,11 @@ persistence, state, and recovery are outside this package.
    thoth-owned skills.
 3. Codex marketplace installation exposes skills/MCP; mandatory CLI setup then
    materializes global custom-agent TOMLs, `~/.codex/AGENTS.md`, and config
-   because the manifest cannot install them. `$thoth-init` creates project
-   governance only.
+   because the manifest cannot install them, installs external skills, and
+   invokes provider-owned thoth-mem setup. `$thoth-init` creates project governance only.
 4. Claude marketplace installation exposes its generated agents and owned
-   skills; mandatory CLI setup installs external skills, and namespaced init
-   creates project governance only.
+   skills; mandatory CLI setup installs external skills and invokes thoth-mem
+   setup, while namespaced init creates project governance only.
 
 ## Boundaries
 
@@ -34,7 +35,7 @@ persistence, state, and recovery are outside this package.
 | Detailed SDD/init/archive contracts | `skills/` |
 | Generated shared plugin | `src/harness/generate-integration-packages.ts`, `plugin/` |
 | Installation and operations CLI | `src/cli/` |
-| Memory provider | installed thoth-mem |
+| Memory setup/runtime mechanics | installed thoth-mem; thoth-agents only invokes its public setup and supplies bounded authorization |
 
 ## Invariants
 
@@ -45,6 +46,10 @@ persistence, state, and recovery are outside this package.
 - OpenCode ships only the OpenAI preset.
 - Owned SDD contracts are bundled; external skills come from canonical
   repositories during installation and are never fetched during an SDD.
+- Every harness install requires consistent thoth-mem `complete` evidence;
+  provider assets and recovery remain independently owned.
+- Dispatch memory authorization is `none`, `recall`, or `observe`, independent
+  of workspace mode; root lifecycle never transfers and `openspec/` remains canonical.
 - Both marketplaces resolve to the shared `plugin/` bundle; harness-specific
   manifests and MCP surfaces coexist without duplicating canonical skills.
 - Build synchronizes the shared plugin before compilation and schema generation.

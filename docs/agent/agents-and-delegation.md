@@ -16,7 +16,10 @@ definitions and applies overrides; harness adapters translate the same intent.
 - Root handles clear bounded work directly and owns sequential SDD coordination.
 - Delegate only for net gain; depth is one and each mutable surface has one
   writer.
-- Explorer, librarian, and oracle never mutate.
+- Explorer, librarian, and oracle never mutate the workspace.
+- Every dispatch carries bounded thoth-mem `none|recall|observe` authorization
+  independently of workspace mode. `observe` may permit a durable provider
+  observation, but root lifecycle and real-user intent never transfer.
 - Oracle owns Full analysis and every verification. An implementer cannot
   approve its own result.
 - Designer owns UI/UX, quick owns narrow work, and deep owns correctness-heavy
@@ -32,5 +35,6 @@ definitions and applies overrides; harness adapters translate the same intent.
 - `src/harness/core/agent-pack.ts` and `.test.ts`
 - `src/agents/index.ts` and `src/agents/index.test.ts`
 - `src/agents/prompt-sections.ts` and prompt-rendering tests
+- `src/harness/core/memory-governance.ts` and `sdd-protocol.test.ts`
 - `src/config/constants.ts`, `schema.ts`, and config tests
 - adapter tests for serialized harness output

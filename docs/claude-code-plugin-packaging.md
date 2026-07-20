@@ -46,6 +46,8 @@ Claude discovers plugin skills automatically. The namespaced
 `/thoth-agents:thoth-init` skill creates only missing project governance because
 agents and owned skills already reside in the manager-owned cache. Mandatory
 external skills reside in Claude's global skill root after CLI installation.
+That CLI also invokes thoth-mem's public provider setup; no thoth-mem asset is
+copied into this shared bundle.
 
 ## Generation lifecycle
 
@@ -61,4 +63,6 @@ Claude owns marketplace snapshots, installed cache files, enablement, and
 packaged model defaults. thoth-agents never edits its cache. Native tool denials
 protect read-only roles, but path-pattern write restriction remains
 instruction-level. Background agents do not have the foreground session's full
-interactive behavior.
+interactive behavior. thoth-mem independently owns its hooks, MCP, skill,
+lifecycle, persistence, receipts, and recovery even though thoth-agents
+orchestrates its setup during installation.

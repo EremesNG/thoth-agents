@@ -70,10 +70,24 @@ artifact-backed route, root loads `thoth-sdd` and reads only
 `references/phases/<current>.md`. Delegated phases receive a bounded dispatch
 envelope rather than the entire pipeline prompt.
 
+Every dispatch also carries a compact MEMORY block: provider, project, stable
+root session identity or `unavailable`, `none|recall|observe` authorization, and
+bounded recalled context. This authorization is independent of workspace write
+permission. A read-only explorer or oracle may persist one durable provider
+observation when explicitly given `observe`, but can never mutate files or own
+root lifecycle.
+
 Installation can use the thoth-agents CLI and `npx skills add`; SDD execution
 cannot. All phase contracts are local. A missing bundled contract or mandatory
 external skill is an incomplete installation, not permission to provision it
 mid-workflow.
+
+thoth-mem follows the same runtime boundary. Installation may invoke its public
+setup CLI, but SDD phases load the already installed `thoth-mem` skill and MCP
+surface. Root uses it for bounded prior-work recall, reusable decisions, root
+causes, conventions, discoveries, verified compaction, and semantic continuity.
+Provider failure degrades memory only; it does not block unrelated
+implementation or oracle verification.
 
 ## Canonical artifacts
 
@@ -91,6 +105,10 @@ data-model.md                # optional
 contracts/                   # optional
 quickstart.md                # optional
 ```
+
+These files are the single SDD source of truth. thoth-mem may preserve durable
+lessons and root continuity under its own guidance, but phase artifacts are not
+mirrored into provider memory.
 
 ### Specification contract
 

@@ -43,8 +43,11 @@ npx thoth-agents@latest install --agent=claude
 ```
 
 Every installation uses the thoth-agents CLI to install external skills through
-`npx skills add`. Codex also needs it because its plugin cannot install custom
-agents or write `~/.codex/AGENTS.md`. SDD phases never call the CLI.
+`npx skills add`, then invoke provider-owned thoth-mem setup. Only a consistent
+thoth-mem `complete` result completes installation; printed manual actions and
+receipts remain provider-owned. Codex also needs the CLI because its plugin
+cannot install custom agents or write `~/.codex/AGENTS.md`. SDD phases never
+call either CLI.
 
 ## Roles
 
@@ -102,4 +105,9 @@ npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
   config; `$thoth-init` creates project SDD governance only.
 - Claude requires both native marketplace commands before its namespaced skill
   exists.
-- thoth-mem and QA executables are separate.
+- thoth-mem owns its hooks, MCP, skill, lifecycle, persistence, receipts, and
+  recovery. thoth-agents only invokes its public setup during installation.
+- Runtime memory authorization is `none`, `recall`, or `observe` and does not
+  alter workspace write permission. Root lifecycle never transfers.
+- `openspec/` remains canonical; SDD artifacts are not mirrored into thoth-mem.
+- QA executables remain separate and project-owned.

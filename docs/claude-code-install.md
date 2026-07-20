@@ -3,14 +3,16 @@
 Claude Code receives a native plugin containing the orchestrator, six namespaced
 specialists, MCP configuration, and the four workflow skills owned by
 thoth-agents. The CLI remains a required installation step for the four external
-skills, but agents do not consume it during SDD phases.
+skills and provider-owned thoth-mem setup, but agents do not consume either CLI
+during SDD phases.
 
 ## Requirements
 
 - Node.js `>=22.13` for bundled scripts
 - Claude Code with native plugin marketplace commands
 - Permission to add and trust `EremesNG/thoth-agents`
-- Network access during installation for the external skill repositories
+- Network access during installation for the external skill repositories and
+  thoth-mem setup package
 
 ## 1. Register the marketplace
 
@@ -33,7 +35,7 @@ Claude copies the shared `plugin/` bundle into its manager-owned cache.
 Codex resolves to the same source through its own marketplace. thoth-agents
 never edits either manager cache directly.
 
-## 3. Install the external skills
+## 3. Install the external skills and thoth-mem
 
 After the two native commands succeed, preview and run the CLI layer:
 
@@ -44,7 +46,10 @@ npx thoth-agents@latest install --agent=claude
 
 The installer invokes `npx skills add` for `simplify`, `tdd`,
 `progressive-context-router`, and `architectural-grilling`, targeting the global
-Claude skill root. A missing external skill makes the installation incomplete.
+Claude skill root. It then invokes `npx -y thoth-mem@latest setup claude --scope
+global --json`; dry-run adds provider `--plan`. A missing skill or any thoth-mem
+result other than consistent `complete` evidence makes installation incomplete.
+Provider manual actions and receipt remain visible for recovery.
 
 ## 4. Reload and initialize the project
 
@@ -101,7 +106,14 @@ npx thoth-agents@latest status --harness=claude
 - Organization `strictKnownMarketplaces` policy can block registration or
   updates; thoth-agents cannot bypass it.
 - Project-scope use requires workspace trust.
-- thoth-mem and project QA executables remain separate.
+- thoth-mem remains independently owned. thoth-agents invokes only its public
+  setup; hooks, MCP, skill, lifecycle, persistence, receipts, and recovery remain
+  provider-owned.
+- Project QA executables remain separate.
+
+At runtime, agents follow the installed thoth-mem skill. Root owns stable session
+identity and lifecycle; a child receives bounded `none`, `recall`, or `observe`
+authorization without gaining workspace writes. `openspec/` remains canonical.
 
 ## Troubleshooting
 

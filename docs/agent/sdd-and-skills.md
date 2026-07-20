@@ -47,5 +47,10 @@ and the thoth-owned workflow bundle.
   forced process or OS termination is not crash-atomic.
 - Owned contracts are bundled. External skills are installed by the CLI once;
   SDD execution remains CLI-, network-, and installer-independent.
+- Delegated envelopes carry a MEMORY block with provider/project/session
+  identity, `none|recall|observe`, and bounded context. This does not alter
+  workspace mode or delegate root lifecycle.
 
-Provider persistence is an overlay only; follow installed provider guidance.
+Provider persistence is an overlay only. Follow the installed thoth-mem skill
+for durable lessons and continuity, while `openspec/` stays canonical and phase
+artifacts are never mirrored.

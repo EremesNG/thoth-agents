@@ -11,6 +11,11 @@ phase execution does not.
 - OpenCode is the default CLI harness.
 - Mandatory external skills are installed from canonical repositories through
   `npx skills add`; this repository must not vendor their source.
+- After owned setup and external skills, every harness invokes the official
+  global `thoth-mem setup` command. Dry-run uses provider `--plan`; only
+  consistent `complete` evidence completes installation.
+- Provider diagnostics, manual actions, and receipt are surfaced. Consumer
+  reset never becomes provider `--force`, rollback, removal, or file repair.
 - Browser and QA executables remain project-owned.
 - Dry-run writes nothing; reset touches only bounded managed targets.
 - Native Codex and Claude marketplace trust remains explicit and manager-owned.
@@ -18,7 +23,8 @@ phase execution does not.
   feature configuration, and external global skills. `$thoth-init` creates
   project SDD governance only.
 - Claude requires native marketplace add/install before its plugin surfaces
-  exist; then the CLI installs external skills without editing Claude's cache.
+  exist; then the CLI installs external skills and requests provider setup
+  without editing Claude's cache.
 - CLI changes require parser/help/tests and public docs in the same change.
 
 ## Verification
@@ -26,4 +32,5 @@ phase execution does not.
 - parser/help/runtime: `parser.test.ts`, `commands.test.ts`, `index.test.ts`
 - install/config: install, path, and operation tests
 - external skill command construction: `skills.test.ts`
+- provider command/result contract: `thoth-mem-install.test.ts`
 - TUI: `src/cli/tui/**/*.test.tsx`

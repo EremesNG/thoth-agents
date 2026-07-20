@@ -39,6 +39,11 @@ selector. There are no vendored copies of these external skills in this
 repository or the generated plugin packages. A failed mandatory skill install
 fails the overall installation.
 
+After the external skills, the same installation command invokes thoth-mem's
+public setup for the selected harness. This administrative call is installation
+orchestration, not a bundled provider implementation; SDD phases never invoke
+either CLI.
+
 ## SDD contract loading
 
 `thoth-sdd` contains one reference per phase. Detailed contracts are absent from
@@ -74,7 +79,20 @@ Codex reads `plugin/codex.mcp.json`, while Claude reads `plugin/.mcp.json`.
 
 thoth-mem is not a bundled skill or MCP. It is an independently installed
 plugin/provider and owns its hooks, MCP setup, persistence, recovery, capability
-evidence, and lifecycle behavior.
+evidence, receipts, installed skill, and lifecycle behavior.
+
+`npx thoth-agents@latest install` invokes `npx -y thoth-mem@latest setup
+<opencode|codex|claude> --scope global --json` after thoth-agents-owned setup and
+mandatory skills. Dry-run adds thoth-mem's zero-write `--plan`; thoth-agents does
+not pass `--force`, edit provider files, or claim success unless status and exit
+evidence consistently report `complete`.
+
+At runtime, root and children load the installed `thoth-mem` skill only for an
+authorized memory outcome. Root owns stable session identity, real-user intent,
+and lifecycle. A child receives `none`, `recall`, or `observe` separately from
+its workspace permissions; `observe` can authorize a durable provider
+observation without allowing file edits or root lifecycle. `openspec/` remains
+canonical, and phase artifacts are not mirrored into provider memory.
 
 ## QA boundary
 

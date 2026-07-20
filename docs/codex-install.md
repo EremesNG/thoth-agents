@@ -37,11 +37,15 @@ User-scope setup manages:
   `librarian`, `oracle`, `designer`, `quick`, and `deep`;
 - `~/.codex/agents/.thoth-agents-managed-models.json`;
 - a backed-up merge in `~/.codex/config.toml` for the managed feature; and
-- mandatory external skills in `~/.codex/skills/` via `npx skills add`.
+- mandatory external skills in `~/.codex/skills/` via `npx skills add`;
+- provider-owned thoth-mem setup through `npx -y thoth-mem@latest setup codex
+  --scope global --json`.
 
 The ambient session is the orchestrator, so no orchestrator child TOML is
 generated. The CLI obtains external skills from their canonical repositories;
-it does not synthesize a personal plugin marketplace.
+it does not synthesize a personal plugin marketplace. Dry-run delegates to
+thoth-mem's `--plan` mode. A partial or user-action result keeps the combined
+installation incomplete and prints provider diagnostics, actions, and receipt.
 
 ## 3. Restart and initialize each repository
 
@@ -87,8 +91,15 @@ runtime. An implementation writer cannot substitute for oracle verification.
 
 ## Provider boundary
 
-thoth-mem is independent and owns its hooks, MCP lifecycle, persistence, and
-recovery. thoth-agents does not install or emulate it.
+thoth-mem is independent and owns its hooks, MCP, installed skill, lifecycle,
+persistence, receipts, and recovery. thoth-agents orchestrates only its public
+setup command after the Codex layer; it never passes provider `--force`, edits
+provider targets, or emulates provider mechanics.
+
+During runtime the root follows the installed thoth-mem skill for recall,
+durable lessons, compaction, and semantic completion. Delegated `none`, `recall`,
+or `observe` authorization is independent from Codex workspace permissions and
+never transfers root lifecycle. `openspec/` remains the canonical SDD store.
 
 ## Upstream references
 

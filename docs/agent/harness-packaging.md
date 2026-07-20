@@ -22,14 +22,16 @@
 - Both marketplaces resolve to one `plugin/` bundle containing one copy of the
   four canonical thoth-owned skills. Harness-specific manifests and MCP files
   coexist in that bundle. External skills are installed from their source
-  repositories by the mandatory CLI flow.
+  repositories by the mandatory CLI flow; the same flow invokes thoth-mem's
+  public setup without copying provider assets into the bundle.
 - Native managers own marketplace snapshots, cache, enablement, and trust.
 - Generated files are outputs; edit canonical adapters, prompts, or skills.
 - Capability gaps remain explicit and deduplicated. Only unrecoverable required
   generation errors exit nonzero.
 - Build and npm version lifecycle synchronize both plugin manifests and the
   generated shared bundle.
-- No adapter bundles thoth-mem lifecycle behavior or project QA executables.
+- No adapter bundles thoth-mem hooks, MCP, skill, lifecycle behavior, or project
+  QA executables.
 
 ## Verification
 

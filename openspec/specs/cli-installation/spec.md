@@ -125,3 +125,31 @@ OpenCode status and model-role readback MUST recognize a complete active `preset
 - **GIVEN** the first apply completed successfully
 - **WHEN** a second valid model plan is built and applied
 - **THEN** it remains eligible and preserves the activated `agents` preset
+
+### Requirement: Install owned OpenCode workflow skills globally
+
+The OpenCode installer MUST synchronize the five canonical thoth-owned workflow skill trees from the installed thoth-agents package into `~/.config/opencode/skills/` as a required global installation step.
+
+#### Scenario: US1 - Complete the global OpenCode installation 1
+
+- **GIVEN** a complete published thoth-agents package
+- **WHEN** `install --agent=opencode` runs
+- **THEN** `thoth-init`, `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer` are synchronized under `~/.config/opencode/skills/` before installation can report success
+
+#### Scenario: US1 - Complete the global OpenCode installation 2
+
+- **GIVEN** an existing stale copy of a thoth-owned OpenCode skill
+- **WHEN** installation runs again
+- **THEN** the global owned copy matches the canonical packaged skill rather than remaining stale
+
+#### Scenario: US1 - Complete the global OpenCode installation 3
+
+- **GIVEN** dry-run installation
+- **WHEN** owned skill installation is planned
+- **THEN** the destination and five owned skills are reported without writing them
+
+#### Scenario: US1 - Complete the global OpenCode installation 4
+
+- **GIVEN** an incomplete canonical bundle or a failed global skill synchronization
+- **WHEN** OpenCode installation runs
+- **THEN** the overall installation fails and does not claim provider or combined installation completion

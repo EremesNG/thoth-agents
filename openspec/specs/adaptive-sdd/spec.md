@@ -158,3 +158,59 @@ When the user selects review, the system MUST load the bundled `plan-reviewer` c
 - **GIVEN** the user chooses review
 - **WHEN** Oracle applies `plan-reviewer`
 - **THEN** it returns `[OKAY]` or `[REJECT]`, reports no more than three true
+
+### Requirement: Limit thoth-init to project governance
+
+The bundled `thoth-init` operation MUST only create, inspect, or update paths beneath the target project's `openspec/` directory and MUST NOT install skills, agents, plugins, harness configuration, or external dependencies.
+
+#### Scenario: US2 - Initialize only project OpenSpec governance 1
+
+- **GIVEN** an empty project directory
+- **WHEN** `thoth-init` runs
+- **THEN** it creates the minimum `openspec/` directory graph, metadata, constitution, and missing SDD templates required by the governed flows
+
+#### Scenario: US2 - Initialize only project OpenSpec governance 2
+
+- **GIVEN** an existing constitution or template
+- **WHEN** `thoth-init` synchronizes the structure
+- **THEN** it preserves that project-owned file content and creates only missing governance assets
+
+#### Scenario: US2 - Initialize only project OpenSpec governance 3
+
+- **GIVEN** any supported harness invokes `thoth-init`
+- **WHEN** initialization completes
+- **THEN** it creates or changes no path outside `openspec/` and performs no network or installer command
+
+#### Scenario: US2 - Initialize only project OpenSpec governance 4
+
+- **GIVEN** a required OpenSpec directory path is occupied by a file
+- **WHEN** initialization runs
+- **THEN** it fails truthfully instead of creating a partial or misleading ready state
+
+### Requirement: Synchronize the minimum OpenSpec structure
+
+The bundled `thoth-init` operation MUST idempotently ensure the required `openspec/changes/archive/`, `openspec/specs/`, `openspec/memory/`, and `openspec/templates/` structure plus missing packaged governance assets while preserving existing project-owned constitutions and templates.
+
+#### Scenario: US2 - Initialize only project OpenSpec governance 1
+
+- **GIVEN** an empty project directory
+- **WHEN** `thoth-init` runs
+- **THEN** it creates the minimum `openspec/` directory graph, metadata, constitution, and missing SDD templates required by the governed flows
+
+#### Scenario: US2 - Initialize only project OpenSpec governance 2
+
+- **GIVEN** an existing constitution or template
+- **WHEN** `thoth-init` synchronizes the structure
+- **THEN** it preserves that project-owned file content and creates only missing governance assets
+
+#### Scenario: US2 - Initialize only project OpenSpec governance 3
+
+- **GIVEN** any supported harness invokes `thoth-init`
+- **WHEN** initialization completes
+- **THEN** it creates or changes no path outside `openspec/` and performs no network or installer command
+
+#### Scenario: US2 - Initialize only project OpenSpec governance 4
+
+- **GIVEN** a required OpenSpec directory path is occupied by a file
+- **WHEN** initialization runs
+- **THEN** it fails truthfully instead of creating a partial or misleading ready state

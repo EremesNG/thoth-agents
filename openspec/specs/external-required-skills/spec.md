@@ -32,9 +32,31 @@ plugin/project bundle.
 
 ### Requirement: Preserve harness-native discovery
 
-External skills MUST be installed into each harness's global native skill root.
-OpenCode `/thoth-init` MUST copy only the thoth-owned workflow skills under the
-project's `.agents/skills/` directory without overwriting existing files.
+The system MUST install external skills through their canonical repositories and MUST materialize packaged thoth-owned OpenCode workflow skills in OpenCode's global native skill root; SDD availability MUST NOT depend on `thoth-init` copying skills into a project.
+
+#### Scenario: US1 - Complete the global OpenCode installation 1
+
+- **GIVEN** a complete published thoth-agents package
+- **WHEN** `install --agent=opencode` runs
+- **THEN** `thoth-init`, `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer` are synchronized under `~/.config/opencode/skills/` before installation can report success
+
+#### Scenario: US1 - Complete the global OpenCode installation 2
+
+- **GIVEN** an existing stale copy of a thoth-owned OpenCode skill
+- **WHEN** installation runs again
+- **THEN** the global owned copy matches the canonical packaged skill rather than remaining stale
+
+#### Scenario: US1 - Complete the global OpenCode installation 3
+
+- **GIVEN** dry-run installation
+- **WHEN** owned skill installation is planned
+- **THEN** the destination and five owned skills are reported without writing them
+
+#### Scenario: US1 - Complete the global OpenCode installation 4
+
+- **GIVEN** an incomplete canonical bundle or a failed global skill synchronization
+- **WHEN** OpenCode installation runs
+- **THEN** the overall installation fails and does not claim provider or combined installation completion
 
 ### Requirement: Leave QA tooling to the project
 

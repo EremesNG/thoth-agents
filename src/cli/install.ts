@@ -27,7 +27,16 @@ import {
   REQUIRED_SKILLS,
   type SkillInstallHarness,
 } from './skills';
+import {
+  runThothMemSetup,
+  type ThothMemSetupOptions,
+  type ThothMemSetupResult,
+} from './thoth-mem-install';
 import type { ConfigMergeResult, InstallArgs, InstallConfig } from './types';
+
+export interface InstallDependencies {
+  runThothMemSetup?: (options: ThothMemSetupOptions) => ThothMemSetupResult;
+}
 
 // Colors
 const GREEN = '\x1b[32m';
@@ -71,6 +80,10 @@ function printInfo(message: string): void {
   console.log(`${SYMBOLS.info} ${message}`);
 }
 
+function printWarning(message: string): void {
+  console.log(`${SYMBOLS.warn} ${message}`);
+}
+
 async function checkOpenCodeInstalled(): Promise<{
   ok: boolean;
   version?: string;
@@ -111,7 +124,7 @@ function handleStepResult(
   return true;
 }
 
-function formatConfigSummary(): string {
+function formatConfigSummary(dryRun: boolean | undefined): string {
   const lines: string[] = [];
   lines.push(`${BOLD}Configuration Summary${RESET}`);
   lines.push('');
@@ -120,7 +133,10 @@ function formatConfigSummary(): string {
   lines.push(`  ${SYMBOLS.check} OpenAI models by default`);
   lines.push(`  ${SYMBOLS.check} Direct, Accelerated, and Full SDD routing`);
   lines.push(
-    `  ${DIM}○ Provider capability is external and was not evidenced by this install.${RESET}`,
+    `  ${SYMBOLS.check} ${dryRun ? 'thoth-mem setup plan confirmed' : 'thoth-mem setup completed through its provider-owned installer'}`,
+  );
+  lines.push(
+    `  ${DIM}○ thoth-mem remains the owner of hooks, MCP, skill, lifecycle, persistence, receipts, and recovery.${RESET}`,
   );
   lines.push(`  ${SYMBOLS.check} Required external skills for this harness`);
   return lines.join('\n');
@@ -137,6 +153,7 @@ function installRequiredSkillsForHarness(
       const { command, args } = getRequiredSkillInstallCommand(skill, harness);
       printInfo(`  - ${skill.name}: ${command} ${args.join(' ')}`);
     }
+    printSuccess(`Required external skills planned for ${harness}`);
     return true;
   }
 
@@ -163,13 +180,56 @@ function installRequiredSkillsForHarness(
   return true;
 }
 
-async function runInstall(config: InstallConfig): Promise<number> {
+function printThothMemSetupResult(
+  result: ThothMemSetupResult,
+  dryRun: boolean | undefined,
+): boolean {
+  printInfo(`Provider command: ${result.command} ${result.args.join(' ')}`);
+  for (const step of result.steps) {
+    printInfo(`thoth-mem: ${step.name} [${step.outcome}]`);
+  }
+  for (const diagnostic of result.diagnostics) printInfo(diagnostic);
+  if (result.receipt) printInfo(`thoth-mem receipt: ${result.receipt}`);
+  for (const action of result.manualActions) {
+    printWarning(`thoth-mem manual action: ${action}`);
+  }
+
+  if (!result.success) {
+    printError(`thoth-mem setup is incomplete: ${result.status}`);
+    if (result.error) printError(result.error);
+    return false;
+  }
+
+  printSuccess(
+    dryRun
+      ? 'thoth-mem setup plan confirmed'
+      : 'thoth-mem setup complete through its provider-owned installer',
+  );
+  return true;
+}
+
+function installThothMemForHarness(
+  harness: SkillInstallHarness,
+  dryRun: boolean | undefined,
+  dependencies: InstallDependencies,
+): boolean {
+  const setup = dependencies.runThothMemSetup ?? runThothMemSetup;
+  return printThothMemSetupResult(
+    setup({ harness, dryRun, cwd: cwd() }),
+    dryRun,
+  );
+}
+
+async function runInstall(
+  config: InstallConfig,
+  dependencies: InstallDependencies,
+): Promise<number> {
   const detected = detectCurrentConfig();
   const isUpdate = detected.isInstalled;
 
   printHeader(isUpdate);
 
-  const totalSteps = 4;
+  const totalSteps = 5;
 
   let step = 1;
 
@@ -227,9 +287,14 @@ async function runInstall(config: InstallConfig): Promise<number> {
   printStep(step++, totalSteps, 'Installing required external skills...');
   if (!installRequiredSkillsForHarness('opencode', config.dryRun)) return 1;
 
+  printStep(step++, totalSteps, 'Configuring provider-owned thoth-mem...');
+  if (!installThothMemForHarness('opencode', config.dryRun, dependencies)) {
+    return 1;
+  }
+
   // Summary
   console.log();
-  console.log(formatConfigSummary());
+  console.log(formatConfigSummary(config.dryRun));
   console.log();
 
   const statusMsg = isUpdate
@@ -260,7 +325,10 @@ export function createInstallConfig(args: InstallArgs): InstallConfig {
   };
 }
 
-export async function install(args: InstallArgs): Promise<number> {
+export async function install(
+  args: InstallArgs,
+  dependencies: InstallDependencies = {},
+): Promise<number> {
   const config = createInstallConfig(args);
   if (config.agent === 'codex') {
     const plan = buildCodexSetupPlan({
@@ -278,6 +346,9 @@ export async function install(args: InstallArgs): Promise<number> {
       return 1;
     }
     if (!installRequiredSkillsForHarness('codex', config.dryRun)) return 1;
+    if (!installThothMemForHarness('codex', config.dryRun, dependencies)) {
+      return 1;
+    }
     printSuccess(
       config.dryRun
         ? 'Codex dry-run complete; no files written'
@@ -300,6 +371,9 @@ export async function install(args: InstallArgs): Promise<number> {
       return 1;
     }
     if (!installRequiredSkillsForHarness('claude', config.dryRun)) return 1;
+    if (!installThothMemForHarness('claude', config.dryRun, dependencies)) {
+      return 1;
+    }
     printSuccess(
       config.dryRun
         ? 'Claude Code dry-run complete; no files written'
@@ -307,5 +381,5 @@ export async function install(args: InstallArgs): Promise<number> {
     );
     return 0;
   }
-  return runInstall(config);
+  return runInstall(config, dependencies);
 }

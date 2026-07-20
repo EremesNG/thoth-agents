@@ -1,7 +1,9 @@
+import { fileURLToPath } from 'node:url';
 import type { Plugin } from '@opencode-ai/plugin';
 import { createAgents } from './agents';
 import { loadPluginConfig, type TmuxConfig } from './config';
 import { renderOpenCodeAgentConfigs } from './harness/adapters/opencode';
+import { createOpenCodeInitCommand } from './harness/opencode-init-command';
 import {
   createAutoUpdateCheckerHook,
   createDelegateTaskRetryHook,
@@ -28,6 +30,11 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
   const config = loadPluginConfig(directory);
   const agentDefs = createAgents(config);
   const agents = renderOpenCodeAgentConfigs(config);
+  const packageRoot = fileURLToPath(new URL('..', import.meta.url));
+  const thothInitCommand = createOpenCodeInitCommand({
+    projectRoot: directory,
+    packageRoot,
+  });
 
   // Build a map of agent name → priority model array for runtime fallback.
   // Populated when the user configures model as an array in their plugin config.
@@ -135,6 +142,15 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
         | Record<string, unknown>
         | undefined;
       setUserLspConfig(lspConfig);
+
+      const commands = (opencodeConfig.command ?? {}) as Record<
+        string,
+        unknown
+      >;
+      if (!commands['thoth-init']) {
+        commands['thoth-init'] = thothInitCommand;
+      }
+      opencodeConfig.command = commands;
 
       // Only set default_agent if not already configured by the user
       // and the plugin config doesn't explicitly disable this behavior

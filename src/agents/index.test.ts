@@ -14,16 +14,12 @@ const ROLE_NAMES = [
   'explorer',
   'librarian',
   'oracle',
-  'sdd-specify',
-  'sdd-plan',
-  'sdd-tasks',
   'designer',
   'quick',
   'deep',
 ] as const;
 
 const READ_ONLY_ROLES = ['explorer', 'librarian', 'oracle'] as const;
-const COORDINATION_ROLES = ['sdd-specify', 'sdd-plan', 'sdd-tasks'] as const;
 const WRITER_ROLES = ['designer', 'quick', 'deep'] as const;
 
 function getAgent(name: string, config?: PluginConfig) {
@@ -38,7 +34,7 @@ function permission(name: string, config?: PluginConfig): PermissionRecord {
 }
 
 describe('OpenCode v0.3 agent roster', () => {
-  test('creates the minimal hybrid ten-role roster', () => {
+  test('creates the seven-role adaptive roster', () => {
     expect(createAgents().map((agent) => agent.name)).toEqual(ROLE_NAMES);
     expect(SUBAGENT_NAMES).toEqual(ROLE_NAMES.slice(1));
   });
@@ -78,20 +74,6 @@ describe('OpenCode v0.3 agent roster', () => {
     });
   });
 
-  test.each(
-    COORDINATION_ROLES,
-  )('allows %s to write coordination artifacts without delegation', (role) => {
-    expect(permission(role)).toMatchObject({
-      read: 'allow',
-      edit: 'allow',
-      question: 'allow',
-      todowrite: 'deny',
-      task: 'deny',
-    });
-    expect(getAgent(role)?.config.prompt).toContain('coordination-write');
-    expect(getAgent(role)?.config.prompt).toContain('openspec/');
-  });
-
   test.each(WRITER_ROLES)('keeps %s as a leaf writer', (role) => {
     expect(permission(role)).toMatchObject({
       read: 'allow',
@@ -105,23 +87,6 @@ describe('OpenCode v0.3 agent roster', () => {
 });
 
 describe('OpenCode v0.3 defaults', () => {
-  test('uses speed-conscious defaults for SDD phase agents', () => {
-    expect(getAgentConfigs()).toMatchObject({
-      'sdd-specify': {
-        model: 'openai/gpt-5.6-sol',
-        variant: 'high',
-      },
-      'sdd-plan': {
-        model: 'openai/gpt-5.6-sol',
-        variant: 'high',
-      },
-      'sdd-tasks': {
-        model: 'openai/gpt-5.6-luna',
-        variant: 'medium',
-      },
-    });
-  });
-
   test('preserves the established specialist and root defaults', () => {
     expect(getAgentConfigs()).toMatchObject({
       orchestrator: { model: 'openai/gpt-5.6-sol', variant: 'xhigh' },
@@ -137,7 +102,7 @@ describe('OpenCode v0.3 defaults', () => {
   test('applies explicit model, effort, temperature, and step overrides', () => {
     const config: PluginConfig = {
       agents: {
-        'sdd-plan': {
+        deep: {
           model: 'custom/planner',
           variant: 'low',
           temperature: 0.25,
@@ -146,7 +111,7 @@ describe('OpenCode v0.3 defaults', () => {
       },
     };
 
-    expect(getAgentConfigs(config)['sdd-plan']).toMatchObject({
+    expect(getAgentConfigs(config).deep).toMatchObject({
       model: 'custom/planner',
       variant: 'low',
       temperature: 0.25,
@@ -157,13 +122,13 @@ describe('OpenCode v0.3 defaults', () => {
   test('keeps per-model variants in fallback arrays', () => {
     const config: PluginConfig = {
       agents: {
-        'sdd-specify': {
+        oracle: {
           model: [{ id: 'custom/primary', variant: 'high' }, 'custom/fallback'],
         },
       },
     };
 
-    expect(getAgent('sdd-specify', config)?._modelArray).toEqual([
+    expect(getAgent('oracle', config)?._modelArray).toEqual([
       { id: 'custom/primary', variant: 'high' },
       { id: 'custom/fallback' },
     ]);
@@ -172,10 +137,10 @@ describe('OpenCode v0.3 defaults', () => {
   test('adds bounded-step guidance when steps are configured', () => {
     const config: PluginConfig = {
       agents: {
-        'sdd-tasks': { steps: 35 },
+        quick: { steps: 35 },
       },
     };
-    const prompt = getAgent('sdd-tasks', config)?.config.prompt ?? '';
+    const prompt = getAgent('quick', config)?.config.prompt ?? '';
 
     expect(prompt).toContain('<step-budget>');
     expect(prompt).toContain('Execution budget: 35 steps');
@@ -191,8 +156,12 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     expect(prompt).toContain('bounded direct work');
     expect(prompt).toContain('net gain');
     expect(prompt).toContain('Accelerated SDD');
+    expect(prompt).toContain('thoth-sdd');
+    expect(prompt).toContain('oracle');
+    expect(prompt).toMatch(/every.*verify|verify.*always/i);
     expect(prompt).not.toContain('delegate-first');
     expect(prompt).not.toContain('requirements-interview');
+    expect(prompt).not.toContain('<phase-protocols>');
   });
 
   test('keeps provider mechanics external for every role', () => {
@@ -200,7 +169,8 @@ describe('OpenCode v0.3 prompt boundaries', () => {
       .map((agent) => agent.config.prompt ?? '')
       .join('\n');
 
-    expect(prompts).toContain('installed provider guidance');
+    expect(prompts).toContain('installed `thoth-mem` skill');
+    expect(prompts).toContain('do not invent provider mechanics');
     expect(prompts).not.toMatch(
       /mem_(?:save|recall|get|context|project|session)\s*\(/,
     );

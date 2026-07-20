@@ -3,7 +3,7 @@
 ## Repository purpose
 
 **thoth-agents** is an adaptive multi-harness orchestration plugin. It provides
-ten roles, native OpenCode delegation, Codex and Claude Code surfaces,
+seven roles, native OpenCode delegation, Codex and Claude Code surfaces,
 provider-neutral memory boundaries, and direct/accelerated/full SDD routing.
 OpenCode is the stable default path; each harness has different guarantees.
 
@@ -37,7 +37,10 @@ navigate or modify any other project.
 - `src/hooks/`, `src/mcp/`, `src/tools/`: runtime integrations. Provider-owned
   memory setup and lifecycle are external and are not bundled here.
 - `src/harness/core/sdd.ts`: SDD route, phase, and artifact governance.
-- `src/cli/skills.ts`: mandatory external skills for every harness.
+- `skills/`: canonical thoth-owned workflow skills for every harness.
+- `src/cli/skills.ts`: mandatory external-skill installation via `npx skills add`.
+- `src/cli/thoth-mem-install.ts`: bounded invocation and evidence parsing for
+  provider-owned thoth-mem setup.
 - `docs/agent/`: router and on-demand operational context.
 
 ## Environment and verified commands
@@ -66,21 +69,31 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - The adaptive root handles clear bounded work directly and selects direct,
   accelerated, or full SDD according to scope, clarity, and risk.
 - Use roles intentionally: `explorer` discovers, `librarian` researches docs,
-  `oracle` reviews or diagnoses, `sdd-specify` owns requirements, `sdd-plan`
-  owns technical planning, `sdd-tasks` owns task decomposition, `designer` owns
+  `oracle` owns analysis and every independent verification, `designer` owns
   UI/UX, `quick` makes mechanical changes, and `deep` handles correctness risk.
+  Root owns sequential SDD coordination and loads bundled phase contracts on
+  demand.
 - Delegate only for net gain, keep maximum depth 1, and use one writer per
   mutable surface.
 - `simplify`, `tdd`, `progressive-context-router`, and
   `architectural-grilling` are mandatory external skills for OpenCode, Codex,
-  and Claude. They are installed by the CLI, not plugin settings or lifecycle
-  hooks. QA executables remain project-owned.
+  and Claude. The installer obtains them from their canonical repositories with
+  `npx skills add`; SDD phases never invoke the CLI or download contracts. QA
+  executables remain project-owned.
 - Use `architectural-grilling` before specification only on explicit request or
   unresolved material human-owned product/architecture decisions. Full SDD
   alone does not activate it.
 - All visual or UX work goes through `designer`, not ad hoc editing.
-- `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem is an independent
-  provider; follow its installed guidance for memory and persistence mechanics.
+- `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem
+  is an independent provider; follow its installed guidance for memory and
+  persistence mechanics.
+- Every harness install invokes thoth-mem's public global setup after
+  thoth-agents-owned setup and mandatory skills. Only consistent `complete`
+  evidence succeeds; never translate reset into provider force, rollback, or
+  asset mutation.
+- Runtime memory authorization is `none`, `recall`, or `observe`, independent of
+  workspace mode. Root owns session lifecycle and real-user intent; `openspec/`
+  stays canonical and phase artifacts are not mirrored into thoth-mem.
 - Every `request_user_input` call MUST omit `autoResolutionMs` entirely, including
   `null` or `undefined`, so the question does not expire.
 - Some governance rules are instruction-only when a harness lacks enforcement;
@@ -109,8 +122,10 @@ and before a PR, keep this applicable local pre-merge order:
 - The PR template expects clear `Summary` and `Changes` sections.
 - Explain what changed, why, and any risks or follow-up.
 - The OpenCode plugin entrypoint is not a shell command.
-- Codex installation is subject to trust review and may require `/plugins` and
-  `/hooks`.
+- Codex installation is subject to trust review and requires `/plugins`; its
+  plugin manifest cannot install custom agents or global instructions, so the
+  CLI must manage `~/.codex/agents/`, `~/.codex/AGENTS.md`, and global config.
+  `$thoth-init` initializes project SDD governance only.
 - Do not assume capability or enforcement equivalence across harnesses.
 
 ## Subagent return contract

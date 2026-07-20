@@ -1,6 +1,0 @@
-{
-  "name": "thoth-agents",
-  "version": "0.3.0",
-  "description": "Adaptive multi-harness agent pack with ten roles and Spec Kit-compatible SDD coordination.",
-  "mcpServers": "./.mcp.json"
-}

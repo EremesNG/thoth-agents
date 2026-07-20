@@ -1,0 +1,16 @@
+{
+  "generatedBy": "thoth-agents",
+  "assets": [
+    {
+      "field": "mcpServers",
+      "path": ".codex-plugin/codex.mcp.json",
+      "reference": "./codex.mcp.json",
+      "sha256": "sha256:dc8257883af56113f909c858874dfdbbd498f25972fe4f995dda36c67bfe7280"
+    },
+    {
+      "field": "skills",
+      "path": ".codex-plugin/skills/",
+      "reference": "./skills/"
+    }
+  ]
+}

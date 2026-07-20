@@ -1,4 +1,5 @@
 import type { AgentRoleName } from './agent-pack';
+import type { MemoryDispatchContract } from './memory-governance';
 
 export type SddRoute = 'direct' | 'accelerated' | 'full';
 
@@ -11,6 +12,17 @@ export type SddIntent =
 export type SddScope = 'local' | 'multi-file' | 'cross-cutting';
 export type SddClarity = 'clear' | 'partial' | 'uncertain';
 export type SddRisk = 'low' | 'medium' | 'high';
+export type SddPlanningMode = 'none' | 'fast-forward' | 'gated';
+export type SddValidationGate =
+  | 'specify'
+  | 'plan'
+  | 'tasks'
+  | 'checklist'
+  | 'ready'
+  | 'closeout';
+export type SddArtifactRevisionPolicy =
+  | 'none'
+  | 'revalidate-affected-downstream';
 
 export interface SddRoutingInput {
   intent: SddIntent;
@@ -18,7 +30,8 @@ export interface SddRoutingInput {
   clarity: SddClarity;
   contractRisk: SddRisk;
   failureCost: SddRisk;
-  explicitSdd?: boolean;
+  requestedRoute?: SddRoute;
+  sddRequested?: boolean;
 }
 
 export interface SddRoutingDecision {
@@ -76,6 +89,7 @@ export interface SddPhaseDispatchInput {
   requirements?: string[];
   boundaries?: string[];
   verification?: string[];
+  memory: MemoryDispatchContract;
 }
 
 export type SddArtifactId =
@@ -101,9 +115,19 @@ export interface SddArtifactContract {
 export interface SddWorkflowContract {
   artifactRoot: string;
   phases: SddPhaseContract[];
+  routePolicies: SddRouteExecutionPolicy[];
   routingRules: string[];
   artifactRules: string[];
   verificationRules: string[];
+}
+
+export interface SddRouteExecutionPolicy {
+  route: SddRoute;
+  planningMode: SddPlanningMode;
+  validationGates: SddValidationGate[];
+  optionalArtifactsByDefault: boolean;
+  routineUserPauses: boolean;
+  artifactRevisionPolicy: SddArtifactRevisionPolicy;
 }
 
 export const SDD_PHASES = [
@@ -128,8 +152,8 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['explore'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-specify',
-    eligibleAgentRoles: ['sdd-specify'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason: 'Define the user-visible requirements and acceptance contract.',
   },
   {
@@ -140,8 +164,8 @@ export const SDD_PHASES = [
     activation: 'conditional',
     prerequisites: ['specify'],
     producesArtifact: false,
-    defaultAgentRole: 'sdd-specify',
-    eligibleAgentRoles: ['sdd-specify'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason: 'Resolve only material ambiguity that would change the solution.',
     condition:
       'Activate when unresolved decisions cannot be handled by a safe local assumption.',
@@ -154,8 +178,8 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['specify'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-plan',
-    eligibleAgentRoles: ['sdd-plan'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason: 'Translate requirements into an executable technical approach.',
   },
   {
@@ -166,8 +190,8 @@ export const SDD_PHASES = [
     activation: 'conditional',
     prerequisites: ['specify', 'plan'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-specify',
-    eligibleAgentRoles: ['sdd-specify'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason:
       'Audit requirement quality when risk justifies an explicit checklist.',
     condition:
@@ -181,8 +205,8 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['specify', 'plan'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-tasks',
-    eligibleAgentRoles: ['sdd-tasks'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason:
       'Produce dependency-ordered implementation slices with verification.',
   },
@@ -221,9 +245,9 @@ export const SDD_PHASES = [
     prerequisites: ['implement'],
     producesArtifact: true,
     defaultAgentRole: 'oracle',
-    eligibleAgentRoles: ['orchestrator', 'oracle'],
+    eligibleAgentRoles: ['oracle'],
     reason:
-      'Judge the result against requirements, contracts, and focused checks.',
+      'Independently judge the result against requirements, contracts, and focused checks.',
   },
   {
     id: 'converge',
@@ -233,8 +257,8 @@ export const SDD_PHASES = [
     activation: 'conditional',
     prerequisites: ['verify'],
     producesArtifact: true,
-    defaultAgentRole: 'sdd-tasks',
-    eligibleAgentRoles: ['sdd-tasks'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason:
       'Append traceable remaining work to tasks.md before another implementation loop.',
     condition: 'Activate only when verification finds actionable defects.',
@@ -247,10 +271,10 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['verify'],
     producesArtifact: true,
-    defaultAgentRole: 'quick',
-    eligibleAgentRoles: ['orchestrator', 'quick'],
+    defaultAgentRole: 'orchestrator',
+    eligibleAgentRoles: ['orchestrator'],
     reason:
-      'Close a verified artifact-backed change with an audit report and dated archive move.',
+      'Transactionally sync declared durable deltas and close verified work with a dated audit trail.',
   },
 ] as const satisfies readonly SddPhaseContract[];
 
@@ -327,6 +351,33 @@ export const SDD_ARTIFACT_GRAPH = [
   },
 ] as const satisfies readonly SddArtifactContract[];
 
+export const SDD_ROUTE_EXECUTION_POLICIES = [
+  {
+    route: 'direct',
+    planningMode: 'none',
+    validationGates: [],
+    optionalArtifactsByDefault: false,
+    routineUserPauses: false,
+    artifactRevisionPolicy: 'none',
+  },
+  {
+    route: 'accelerated',
+    planningMode: 'fast-forward',
+    validationGates: ['specify', 'ready', 'closeout'],
+    optionalArtifactsByDefault: false,
+    routineUserPauses: false,
+    artifactRevisionPolicy: 'revalidate-affected-downstream',
+  },
+  {
+    route: 'full',
+    planningMode: 'gated',
+    validationGates: ['specify', 'plan', 'tasks', 'ready', 'closeout'],
+    optionalArtifactsByDefault: false,
+    routineUserPauses: false,
+    artifactRevisionPolicy: 'revalidate-affected-downstream',
+  },
+] as const satisfies readonly SddRouteExecutionPolicy[];
+
 export const SDD_PHASE_PROTOCOLS = [
   {
     id: 'explore',
@@ -368,8 +419,11 @@ export const SDD_PHASE_PROTOCOLS = [
       'Project constitution and existing public contracts when relevant',
     ],
     instructions: [
-      'Describe what users need and why without prescribing implementation.',
-      'Capture assumptions, user stories, acceptance scenarios, edge cases, and measurable success criteria.',
+      'Record intent and scope as Why, Impact, and Affected capabilities before prescribing any contract.',
+      'Define prioritized independent stories and map each story to its FR-### and SC-### contracts with Covers metadata.',
+      'Give every normative MUST or SHALL requirement a descriptive title and declare it INTERNAL or as an ADDED, MODIFIED, REMOVED, or RENAMED durable capability delta.',
+      'Classify every success criterion as buildable or outcome; both remain measurable, but only buildable criteria require implementation task coverage.',
+      'Capture assumptions, acceptance scenarios, edge cases, dependencies, and explicit non-goals.',
       'Use a clarification marker only when no safe default exists and the answer materially changes scope or behavior.',
     ],
     allowedWrites: ['openspec/changes/<feature>/spec.md'],
@@ -379,7 +433,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'open clarifications',
     ],
     doneWhen: [
-      'Every accepted requirement is testable, materially unambiguous, and implementation-neutral.',
+      'Every accepted FR and SC is testable, materially unambiguous, mapped to a story, and implementation-neutral.',
     ],
     blockingConditions: [
       'A material unresolved choice prevents a truthful acceptance contract.',
@@ -420,6 +474,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'Make each technical choice traceable to a requirement or repository constraint.',
       'Name affected components, interfaces, files, risks, migrations, and verification strategy.',
       'Create research, data model, contracts, or quickstart artifacts only when they reduce implementation risk.',
+      'Read active constitution principles for the plan; do not amend or run constitution lifecycle validation unless an explicit constitution amendment is itself in scope.',
     ],
     allowedWrites: [
       'openspec/changes/<feature>/plan.md',
@@ -443,6 +498,8 @@ export const SDD_PHASE_PROTOCOLS = [
     requiredInputs: ['spec.md', 'Risk or compliance reason for the audit'],
     instructions: [
       'Evaluate requirement completeness, clarity, consistency, measurability, and scenario coverage.',
+      'Record the risk or ambiguity activation reason and add only the applicable security, accessibility, compliance, performance, migration, or domain lenses.',
+      'Record checked revalidation after requirement-affecting changes, or an evidence-backed no-op when nothing relevant changed.',
       'Do not turn the checklist into implementation tests or QA execution steps.',
     ],
     allowedWrites: ['openspec/changes/<feature>/checklists/requirements.md'],
@@ -469,14 +526,15 @@ export const SDD_PHASE_PROTOCOLS = [
       'Optional planning support artifacts',
     ],
     instructions: [
-      'Cover every accepted requirement with concrete tasks, exact paths, dependencies, and verification.',
+      'Cover every FR and buildable SC with concrete tasks, exact paths, dependencies, and verification; outcome SC remain verification targets but do not require fake implementation tasks.',
       'Put test-first work before its corresponding implementation when behavior changes.',
+      'Mark [P] only for proven non-overlapping mutable surfaces; otherwise state why no safe parallel work exists.',
       'Do not create ceremonial tasks for trivial edits or combine unrelated mutable surfaces.',
     ],
     allowedWrites: ['openspec/changes/<feature>/tasks.md'],
     outputSchema: ['tasks.md path', 'requirement coverage', 'dependency order'],
     doneWhen: [
-      'Every requirement has executable task coverage and every task has a verification step.',
+      'Every FR and buildable SC has executable task coverage and every task has a verification step.',
     ],
     blockingConditions: [
       'A task requires an unresolved requirement, architecture choice, or hidden prerequisite.',
@@ -492,6 +550,8 @@ export const SDD_PHASE_PROTOCOLS = [
     requiredInputs: ['spec.md', 'plan.md', 'tasks.md', 'Project constitution'],
     instructions: [
       'Detect contradictions, ambiguity, duplication, scope drift, orphan tasks, and uncovered requirements.',
+      'Challenge artifact completeness, requirement correctness, and cross-artifact coherence as separate review dimensions.',
+      'Require task coverage for every FR and buildable SC; assess outcome SC as measurable verification targets without manufacturing implementation tasks.',
       'Report requirement coverage as a percentage and classify findings as CRITICAL, HIGH, MEDIUM, or LOW.',
       'Treat constitution violations and baseline requirements with zero task coverage as blocking.',
     ],
@@ -527,6 +587,8 @@ export const SDD_PHASE_PROTOCOLS = [
       'The root marks selected artifact-backed tasks [~] before dispatch and marks them [x] only after task-specific evidence is verified.',
       'Use test-first or TDD execution for behavior changes and preserve one writer per mutable surface.',
       'Edit only the assigned implementation surface and report justified deviations from the accepted plan.',
+      'When evidence refines the same intent, return it to root so canonical artifacts are updated and only affected downstream artifacts and gates are revalidated.',
+      'Start a new change instead of expanding the active one when the intent changes.',
     ],
     allowedWrites: [
       'Assigned product and test files',
@@ -559,9 +621,12 @@ export const SDD_PHASE_PROTOCOLS = [
       'Changed files and project verification commands',
     ],
     instructions: [
+      'Oracle must be independent from the implementation writer; self-review never satisfies this phase.',
       'Run or inspect the smallest sufficient executed checks; static confidence alone is not evidence.',
+      'Judge completeness, correctness, and coherence independently so a passing test cannot hide missing or contradictory scope.',
       'Build a compliance matrix from every accepted requirement to code and executed checks.',
-      'For accelerated and full routes, the root persists the result as verify-report.md after read-only oracle review when applicable.',
+      'Record every outcome SC as PASS with concrete observed evidence or RISK with an explicit residual-risk entry.',
+      'For accelerated and full routes, the root persists the read-only oracle result as verify-report.md.',
     ],
     allowedWrites: [
       'Root persistence only: openspec/changes/<feature>/verify-report.md for accelerated and full routes',
@@ -594,8 +659,9 @@ export const SDD_PHASE_PROTOCOLS = [
     ],
     instructions: [
       'Use an append-only update: add one new Convergence phase to tasks.md and never rewrite, renumber, reorder, or delete existing tasks.',
-      'Append one traceable task per actionable gap, ordered by severity and linked to its source requirement.',
+      'Classify each gap as missing, partial, contradicts, or unrequested; append one traceable task per actionable gap, ordered by severity and linked to its source requirement.',
       'Must not edit product code; implementation belongs to the next implement pass.',
+      'If there is no actionable gap, leave tasks.md byte-for-byte unchanged.',
     ],
     allowedWrites: [
       'Append-only changes to openspec/changes/<feature>/tasks.md',
@@ -627,20 +693,24 @@ export const SDD_PHASE_PROTOCOLS = [
     instructions: [
       'Confirm all tasks are complete, verify-report.md records pass, and there are no unresolved critical issues.',
       'Create archive-report.md with verification lineage, completed scope, residual warnings, and final archive path.',
+      'After oracle pass, transactionally synchronize only explicitly declared durable deltas from spec.md into openspec/specs.',
+      'Stage and back up canonical writes so handled failures roll back within the active process; this is not crash-atomic across forced process or operating-system termination.',
       'Move the complete change to openspec/changes/archive/YYYY-MM-DD-<feature>/.',
-      'Must not implicitly merge feature content into openspec/specs; durable specification or documentation updates must be explicit implementation tasks.',
+      'An INTERNAL requirement never updates openspec/specs; undeclared prose is never merged.',
     ],
     allowedWrites: [
       'openspec/changes/<feature>/archive-report.md',
+      'Declared durable requirement updates under openspec/specs/',
       'Move openspec/changes/<feature>/ to openspec/changes/archive/YYYY-MM-DD-<feature>/',
     ],
     outputSchema: [
       'status: archived | blocked',
       'archive path',
+      'canonical specifications updated',
       'audit summary and verification lineage',
     ],
     doneWhen: [
-      'The audit report exists and the complete change directory is present at the dated archive path.',
+      'Declared durable deltas are transactionally synchronized, the audit report records the result, and the complete change directory is present at the dated archive path.',
     ],
     blockingConditions: [
       'Archive is blocked unless all tasks are complete, verify-report.md has verdict pass, and no unresolved critical issue remains.',
@@ -654,10 +724,16 @@ export const SDD_PHASE_PROTOCOLS = [
 export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
   artifactRoot: 'openspec/changes/<feature>/',
   phases: [...SDD_PHASES],
+  routePolicies: SDD_ROUTE_EXECUTION_POLICIES.map((policy) => ({
+    ...policy,
+    validationGates: [...policy.validationGates],
+  })),
   routingRules: [
-    'Direct work is the default for clear, local, low-risk changes.',
-    'Accelerated SDD is used for bounded multi-file or moderate-risk work.',
-    'Full SDD is used for explicit SDD requests, unresolved scope, cross-cutting work, or high risk.',
+    'An explicitly requested direct, accelerated, or full route wins; a generic SDD request sets accelerated as the minimum route.',
+    'Direct work is the default for clear, bounded, low-risk changes; documentation and mechanical work may remain direct across multiple files.',
+    'Accelerated SDD is used for multi-surface behavior, architecture, partial clarity, moderate risk, or broad non-behavioral coordination.',
+    'Accelerated planning fast-forwards specify, plan, and tasks in one uninterrupted root pass without routine user pauses.',
+    'Full SDD is used for unresolved scope, cross-cutting behavior or architecture, high contract risk, or high failure cost.',
     'Use architectural-grilling before specification only when the user explicitly requests it or material product or architecture decisions remain human-owned and unresolved; never require it merely because the route is Full.',
     'User input is requested only when a material unresolved decision would change the result.',
   ],
@@ -665,12 +741,13 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
     'Spec Kit artifact semantics are preserved inside the governed openspec store.',
     'Accelerated and full routes require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md.',
     'Research, data model, contracts, quickstart, and requirements checklist are created only when useful.',
-    'Phase agents write coordination artifacts; implementation ownership stays with the adaptive root or one writer role.',
-    'Archive never implicitly merges a feature spec into openspec/specs; durable updates are explicit implementation tasks.',
+    'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; implementation ownership stays with the root or one writer role.',
+    'After oracle PASS, archive transactionally synchronizes only explicitly declared durable ADDED, MODIFIED, REMOVED, and RENAMED requirement deltas into openspec/specs; INTERNAL requirements and undeclared prose never update permanent specifications.',
+    'Archive stages and backs up writes so handled failures roll back within the active process; forced process or operating-system termination is not crash-atomic.',
   ],
   verificationRules: [
-    'Every route includes focused verification proportional to behavior and risk before completion.',
-    'Full SDD uses independent cross-artifact analysis before implementation.',
+    'Every route delegates focused verification to read-only oracle; the implementation writer never verifies its own work.',
+    'Full SDD delegates independent cross-artifact analysis to oracle before implementation.',
     'Accelerated and full verification persists verify-report.md with a pass or fail verdict and requirement compliance matrix.',
     'An artifact-backed fail verdict routes through append-only convergence, implementation, and verification again; direct work returns straight to implementation.',
     'A pass verdict is required before accelerated or full work can archive.',
@@ -701,54 +778,93 @@ function cloneProtocol(protocol: SddPhaseProtocol): SddPhaseProtocol {
 }
 
 export function classifySddRoute(input: SddRoutingInput): SddRoutingDecision {
-  const reasons: string[] = [];
+  const requiresUserInput = input.clarity === 'uncertain';
 
-  if (input.explicitSdd) {
-    reasons.push('The user explicitly requested SDD.');
-  }
-  if (input.clarity === 'uncertain') {
-    reasons.push(
-      'A material scope or requirements decision remains unresolved.',
-    );
-  }
-  if (input.scope === 'cross-cutting') {
-    reasons.push('The change crosses multiple architectural surfaces.');
-  }
-  if (input.contractRisk === 'high') {
-    reasons.push('The public or internal contract risk is high.');
-  }
-  if (input.failureCost === 'high') {
-    reasons.push('The cost of an incorrect change is high.');
-  }
-
-  if (reasons.length > 0) {
+  if (input.requestedRoute) {
     return {
-      route: 'full',
-      requiresUserInput: input.clarity === 'uncertain',
-      reasons,
+      route: input.requestedRoute,
+      requiresUserInput,
+      reasons: [
+        `The user explicitly requested the ${input.requestedRoute} route.`,
+      ],
     };
   }
 
-  const useLeanRoute =
-    input.scope === 'multi-file' ||
-    input.clarity === 'partial' ||
-    input.contractRisk === 'medium' ||
-    input.failureCost === 'medium';
+  const fullReasons: string[] = [];
 
-  if (useLeanRoute) {
+  if (input.clarity === 'uncertain') {
+    fullReasons.push(
+      'A material scope or requirements decision remains unresolved.',
+    );
+  }
+  if (
+    input.scope === 'cross-cutting' &&
+    (input.intent === 'behavior' || input.intent === 'architecture')
+  ) {
+    fullReasons.push('The change crosses multiple behavioral surfaces.');
+  }
+  if (input.contractRisk === 'high') {
+    fullReasons.push('The public or internal contract risk is high.');
+  }
+  if (input.failureCost === 'high') {
+    fullReasons.push('The cost of an incorrect change is high.');
+  }
+
+  if (fullReasons.length > 0) {
+    return {
+      route: 'full',
+      requiresUserInput,
+      reasons: fullReasons,
+    };
+  }
+
+  const acceleratedReasons: string[] = [];
+  if (input.sddRequested) {
+    acceleratedReasons.push('The user requested an SDD-backed change.');
+  }
+  if (input.clarity === 'partial') {
+    acceleratedReasons.push(
+      'The bounded scope benefits from explicit planning.',
+    );
+  }
+  if (input.contractRisk === 'medium' || input.failureCost === 'medium') {
+    acceleratedReasons.push('Moderate risk justifies traceable artifacts.');
+  }
+  if (input.intent === 'architecture') {
+    acceleratedReasons.push(
+      'The architectural intent benefits from a recorded design.',
+    );
+  }
+  if (input.intent === 'behavior' && input.scope === 'multi-file') {
+    acceleratedReasons.push(
+      'The behavior spans multiple implementation surfaces.',
+    );
+  }
+  if (
+    (input.intent === 'documentation' || input.intent === 'mechanical') &&
+    input.scope === 'cross-cutting'
+  ) {
+    acceleratedReasons.push(
+      'The broad non-behavioral change benefits from coordination.',
+    );
+  }
+
+  if (acceleratedReasons.length > 0) {
     return {
       route: 'accelerated',
       requiresUserInput: false,
-      reasons: [
-        'The work is bounded but benefits from explicit specification, planning, and tasks.',
-      ],
+      reasons: acceleratedReasons,
     };
   }
 
   return {
     route: 'direct',
     requiresUserInput: false,
-    reasons: ['The work is clear, local, and low risk.'],
+    reasons: [
+      input.scope === 'multi-file'
+        ? 'The multi-file work is clear, low risk, and mechanically bounded.'
+        : 'The work is clear, bounded, and low risk.',
+    ],
   };
 }
 
@@ -756,9 +872,30 @@ export function getSddWorkflowContract(): SddWorkflowContract {
   return {
     artifactRoot: SDD_WORKFLOW_CONTRACT.artifactRoot,
     phases: SDD_WORKFLOW_CONTRACT.phases.map(clonePhase),
+    routePolicies: SDD_WORKFLOW_CONTRACT.routePolicies.map((policy) => ({
+      ...policy,
+      validationGates: [...policy.validationGates],
+    })),
     routingRules: [...SDD_WORKFLOW_CONTRACT.routingRules],
     artifactRules: [...SDD_WORKFLOW_CONTRACT.artifactRules],
     verificationRules: [...SDD_WORKFLOW_CONTRACT.verificationRules],
+  };
+}
+
+export function getSddRouteExecutionPolicy(
+  route: SddRoute,
+): SddRouteExecutionPolicy {
+  const policy = SDD_ROUTE_EXECUTION_POLICIES.find(
+    (candidate) => candidate.route === route,
+  );
+
+  if (!policy) {
+    throw new Error(`Unknown SDD route policy: ${route}`);
+  }
+
+  return {
+    ...policy,
+    validationGates: [...policy.validationGates],
   };
 }
 
@@ -836,6 +973,17 @@ export function renderSddPhaseDispatchEnvelope(
     ...protocol.blockingConditions.map((value) => `Block when: ${value}`),
     ...(input.verification ?? []),
   ];
+  const project = input.memory.project.trim();
+  const rootSessionId = input.memory.rootSessionId?.trim();
+  if (input.memory.provider !== 'thoth-mem' || project.length === 0) {
+    throw new Error('memory dispatch requires thoth-mem and a project name');
+  }
+  if (input.memory.rootSessionId !== undefined && !rootSessionId) {
+    throw new Error('root session identity must be stable or omitted');
+  }
+  const memoryContext = input.memory.context?.length
+    ? input.memory.context
+    : ['none'];
 
   return `## PHASE
 phase=${input.phase}
@@ -862,7 +1010,15 @@ ${renderDispatchList(verification)}
 ${renderDispatchList(protocol.outputSchema)}
 
 ## HANDOFF
-${renderDispatchList(protocol.handoff)}`;
+${renderDispatchList(protocol.handoff)}
+
+## MEMORY
+provider=thoth-mem
+project=${project}
+root_session_id=${rootSessionId ?? 'unavailable'}
+authorization=${input.memory.authorization}
+context:
+${renderDispatchList(memoryContext)}`;
 }
 
 export function renderSddPhaseDispatchTemplate(): string {
@@ -891,17 +1047,21 @@ phase=<phase-id>
 <phase result fields>
 
 ## HANDOFF
-<what the next phase must preserve>`;
+<what the next phase must preserve>
+
+## MEMORY
+provider=thoth-mem
+project=<project-name>
+root_session_id=<stable-root-session-id|unavailable>
+authorization=<none|recall|observe>
+context:
+<bounded recalled context or - none>`;
 }
 
 export function getSddPhaseOwner(
-  route: SddRoute,
+  _route: SddRoute,
   phaseId: SddPhaseId,
 ): AgentRoleName {
-  if (phaseId === 'verify' && route !== 'full') {
-    return 'orchestrator';
-  }
-
   return getSddPhase(phaseId).defaultAgentRole;
 }
 

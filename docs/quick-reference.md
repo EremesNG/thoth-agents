@@ -1,118 +1,113 @@
 # Quick Reference
 
-## Install
+## Install and initialize
 
 ```bash
-# OpenCode
+# OpenCode, in a terminal
+npx thoth-agents@latest install --agent=opencode --dry-run
 npx thoth-agents@latest install --agent=opencode
+```
 
-# Codex: add the marketplace, install from /plugins, then run the CLI
+```text
+# OpenCode, after restart
+/thoth-init
+```
+
+```bash
+# Codex, in a terminal
 codex plugin marketplace add EremesNG/thoth-agents
-npx thoth-agents@latest install --agent=codex
+```
 
-# Claude Code: both native commands must precede the CLI
+```bash
+# Codex, after restart and installation from /plugins: return to a terminal
+npx thoth-agents@latest install --agent=codex --dry-run
+npx thoth-agents@latest install --agent=codex
+```
+
+```text
+# Restart Codex, then initialize each repository
+$thoth-init
+```
+
+```bash
+# Claude Code, in a terminal
 claude plugin marketplace add EremesNG/thoth-agents --scope user
 claude plugin install thoth-agents@thoth-agents --scope user
+npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```
 
-Add `--dry-run` to inspect the plan. `--reset` repairs managed assets only.
+```text
+# Claude Code, after restart or /reload-plugins
+/thoth-agents:thoth-init
+```
 
-Every install requires `simplify`, `tdd`, `progressive-context-router`, and
-`architectural-grilling`. The CLI installs them globally for the selected
-harness; there is no skip option. QA executables remain project-owned.
-
-Plugin installation alone is incomplete. For Codex, the CLI adds the global
-orchestrator instructions, nine custom agents, feature configuration, model
-state, and skills. For Claude, the native plugin supplies the orchestrator and
-subagents while the CLI installs and verifies the required global skills.
-
-## Harnesses
-
-| Harness | Root | Specialists | Required skill root |
-| --- | --- | --- | --- |
-| OpenCode | Primary `orchestrator` agent | Nine native subagents | `~/.config/opencode/skills` |
-| Codex | Ambient session plus repository marketplace | Nine custom-agent TOMLs | `~/.codex/skills` |
-| Claude Code | Native marketplace plugin `orchestrator` activated by `settings.json` | Nine plugin subagents | `~/.claude/skills` |
+Every installation uses the thoth-agents CLI to install external skills through
+`npx skills add`, then invoke provider-owned thoth-mem setup. Only a consistent
+thoth-mem `complete` result completes installation; printed manual actions and
+receipts remain provider-owned. Codex also needs the CLI because its plugin
+cannot install custom agents or write `~/.codex/AGENTS.md`. SDD phases never
+call either CLI.
 
 ## Roles
 
 | Role | Mode | Use |
 | --- | --- | --- |
-| `orchestrator` | adaptive root | Direct bounded work, routing, decisions, synthesis |
-| `explorer` | read-only | Repository discovery |
-| `librarian` | read-only | Current authoritative research |
-| `oracle` | read-only | Diagnosis, architecture, and independent review |
-| `sdd-specify` | `openspec/` writer | Requirements, clarification, optional checklist |
-| `sdd-plan` | `openspec/` writer | Technical plan and optional support artifacts |
-| `sdd-tasks` | `openspec/` writer | Dependency-ordered tasks and append-only convergence |
-| `designer` | writer | UI/UX implementation and visual QA |
-| `quick` | writer | Narrow changes and verified mechanical archive closeout |
-| `deep` | writer | Correctness-critical or cross-file implementation |
+| `orchestrator` | adaptive root | Direct work, route selection, SDD coordination, final synthesis |
+| `explorer` | read-only | Repository discovery for real uncertainty |
+| `librarian` | read-only | Current authoritative external research |
+| `oracle` | read-only | Full analysis and every independent verification |
+| `designer` | writer | UI/UX implementation and visual quality |
+| `quick` | writer | Narrow mechanical work |
+| `deep` | writer | Correctness-heavy or cross-cutting implementation |
 
-Delegation depth is one. Use one writer per mutable surface.
-
-## SDD routes
+## Routes
 
 ```text
-direct:      implement -> verify
-accelerated: specify -> plan -> tasks -> implement -> verify -> archive
-full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive
+Direct:      implement -> verify
+Accelerated: specify -> plan -> tasks -> implement -> verify -> archive
+Full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive
 ```
 
-- Direct: clear, local, low risk.
-- Accelerated: bounded multi-file or moderate risk.
-- Full: explicit SDD, material uncertainty, cross-cutting scope, or high risk.
-- Clarify and checklist are conditional on Accelerated/Full.
-- Verify fail on Accelerated/Full: `converge -> implement -> verify`.
-- Verify fail on Direct: `implement -> verify`.
-- Verify pass on Accelerated/Full: persist `verify-report.md`, create
-  `archive-report.md`, and move the change to the dated archive.
-- Every SDD delegation includes the canonical phase envelope from `PHASE`
-  through `HANDOFF`; the static role prompt supplies that phase's protocol.
+Root owns the sequential artifact phases. Oracle always owns `analyze` and
+`verify`. `clarify`, `checklist`, and `converge` are conditional.
 
-Accelerated and full use:
+- Explicit route names win; generic SDD starts at Accelerated.
+- Multi-file docs/mechanical work can remain Direct when clear and low-risk.
+- Accelerated fast-forwards `specify -> plan -> tasks` without routine pauses.
+- Full adds exploration and oracle analysis only for uncertainty or high risk.
+- `ready` gates implementation; `closeout` gates transactional archive.
 
-```text
-openspec/changes/<feature>/
-├── spec.md
-├── plan.md
-├── tasks.md
-├── verify-report.md
-└── archive-report.md
-```
+Artifact-backed specs use named normative FRs with INTERNAL or durable delta
+metadata and typed buildable/outcome SCs. Archive applies only declared durable
+deltas to `openspec/specs/`; handled failures roll the sync back within the
+active process, but forced process or OS termination is not crash-atomic.
 
-Optional: `checklists/requirements.md`, `research.md`, `data-model.md`,
-`contracts/`, and `quickstart.md`.
+## Skills
 
-After a passing archive gate, the complete directory moves to
-`openspec/changes/archive/YYYY-MM-DD-<feature>/`.
-
-## OpenCode models
-
-The only built-in OpenCode preset is `openai`. Generated mappings do not include
-Kimi, Copilot, ZAI/GLM, or mixed-provider presets.
+`thoth-init`, `thoth-sdd`, `thoth-constitution`, and `thoth-archive` ship in
+every harness bundle. The installer obtains `simplify`, `tdd`,
+`progressive-context-router`, and `architectural-grilling` from their canonical
+repositories.
 
 ## Operations
 
 ```bash
 npx thoth-agents@latest status
 npx thoth-agents@latest list
-npx thoth-agents@latest update --harness=codex
-npx thoth-agents@latest sync --harness=claude --apply
 npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ```
 
-## Memory
+## Boundaries
 
-thoth-mem is independent. Its plugin owns hooks, MCP, lifecycle, persistence,
-and recovery. thoth-agents keeps only provider-neutral orchestration boundaries.
-
-## More detail
-
-- [Installation](installation.md)
-- [SDD Pipeline](sdd-pipeline.md)
-- [Skills and MCPs](skills-and-mcps.md)
-- [Codex Install](codex-install.md)
-- [Claude Code Install](claude-code-install.md)
-- [Claude Code Plugin Packaging](claude-code-plugin-packaging.md)
+- OpenCode ships only the OpenAI built-in preset.
+- Codex requires the CLI for global agents, `~/.codex/AGENTS.md`, and managed
+  config; `$thoth-init` creates project SDD governance only.
+- Claude requires both native marketplace commands before its namespaced skill
+  exists.
+- thoth-mem owns its hooks, MCP, skill, lifecycle, persistence, receipts, and
+  recovery. thoth-agents only invokes its public setup during installation.
+- Runtime memory authorization is `none`, `recall`, or `observe` and does not
+  alter workspace write permission. Root lifecycle never transfers.
+- `openspec/` remains canonical; SDD artifacts are not mirrored into thoth-mem.
+- QA executables remain separate and project-owned.

@@ -33,7 +33,7 @@ describe('Claude Code adapter v0.3', () => {
     });
   });
 
-  test('renders nine specialists plus the main-thread orchestrator', () => {
+  test('renders six specialists plus the main-thread orchestrator', () => {
     const paths = render()
       .artifacts.filter((entry) => entry.kind === 'agent-config')
       .map((entry) => entry.path);
@@ -46,22 +46,19 @@ describe('Claude Code adapter v0.3', () => {
       'agents/oracle.md',
       'agents/orchestrator.md',
       'agents/quick.md',
-      'agents/sdd-plan.md',
-      'agents/sdd-specify.md',
-      'agents/sdd-tasks.md',
     ]);
   });
 
-  test('uses speed-conscious Claude model aliases for SDD agents', () => {
+  test('uses specialist Claude model aliases', () => {
     const { artifacts } = render();
     const modelOf = (suffix: string) =>
       /^model:\s*(\S+)/m.exec(
         String(artifact(artifacts, suffix)?.content),
       )?.[1];
 
-    expect(modelOf('agents/sdd-specify.md')).toBe('sonnet');
-    expect(modelOf('agents/sdd-plan.md')).toBe('sonnet');
-    expect(modelOf('agents/sdd-tasks.md')).toBe('haiku');
+    expect(modelOf('agents/oracle.md')).toBe('opus');
+    expect(modelOf('agents/quick.md')).toBe('haiku');
+    expect(modelOf('agents/deep.md')).toBe('sonnet');
   });
 
   test('renders adaptive native root instructions with namespaced roles', () => {
@@ -73,22 +70,18 @@ describe('Claude Code adapter v0.3', () => {
     expect(instructions).toContain('Agent');
     expect(instructions).toContain('AskUserQuestion');
     expect(instructions).toContain('TodoWrite');
-    expect(instructions).toContain('thoth-agents:sdd-specify');
+    expect(instructions).toContain('thoth-sdd');
+    expect(instructions).toContain('thoth-agents:oracle');
+    expect(instructions).toMatch(/every.*verify|verify.*always/i);
     expect(instructions).not.toContain('delegate-first');
     expect(instructions).not.toContain('requirements-interview');
+    expect(instructions).not.toContain('<phase-protocols>');
   });
 
-  test('limits phase agents by instruction and discloses enforcement level', () => {
+  test('limits read-only roles by native tool denial', () => {
     const { artifacts } = render();
-    const specify = String(
-      artifact(artifacts, 'agents/sdd-specify.md')?.content,
-    );
     const explorer = String(artifact(artifacts, 'agents/explorer.md')?.content);
 
-    expect(specify).toContain('coordination-write');
-    expect(specify).toContain('Do not edit product code');
-    expect(specify).toContain('openspec/');
-    expect(specify).toContain('instruction-level');
     expect(explorer).toContain('Mode: read-only');
     expect(explorer).toContain('disallowedTools: "Write, Edit"');
   });
@@ -119,14 +112,5 @@ describe('Claude Code adapter v0.3', () => {
     expect(mcp.mcpServers.grep_app).toBeDefined();
     expect(mcp.mcpServers.exa).toBeDefined();
     expect(mcp.mcpServers.thoth_mem).toBeUndefined();
-  });
-
-  test('ships SDD behavior through agents instead of bundled phase skills', () => {
-    const { artifacts } = render();
-
-    expect(artifacts.some((entry) => entry.kind === 'skill')).toBe(false);
-    expect(artifacts.some((entry) => entry.path.startsWith('skills/'))).toBe(
-      false,
-    );
   });
 });

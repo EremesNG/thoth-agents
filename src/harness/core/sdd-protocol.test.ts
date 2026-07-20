@@ -33,9 +33,39 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(/coverage/i);
     expect(serialized).toMatch(/CRITICAL/);
     expect(serialized).toMatch(/readiness/i);
+    expect(serialized).toMatch(/completeness/i);
+    expect(serialized).toMatch(/correctness/i);
+    expect(serialized).toMatch(/coherence/i);
+    expect(serialized).toMatch(/buildable/i);
+    expect(serialized).toMatch(/outcome/i);
     expect(protocol.allowedWrites).toEqual([
       'None; analysis is read-only and returns its report in-session.',
     ]);
+  });
+
+  test('makes specification deltas, story coverage, and SC type explicit', () => {
+    const serialized = JSON.stringify(getSddPhaseProtocol('specify'));
+
+    expect(serialized).toMatch(/why/i);
+    expect(serialized).toMatch(/impact/i);
+    expect(serialized).toMatch(/affected capabilities/i);
+    expect(serialized).toMatch(/FR-###/);
+    expect(serialized).toMatch(/ADDED/);
+    expect(serialized).toMatch(/RENAMED/);
+    expect(serialized).toMatch(/buildable/);
+    expect(serialized).toMatch(/outcome/);
+  });
+
+  test('keeps task parallelism and domain checklists evidence-driven', () => {
+    const tasks = JSON.stringify(getSddPhaseProtocol('tasks'));
+    const checklist = JSON.stringify(getSddPhaseProtocol('checklist'));
+
+    expect(tasks).toMatch(/buildable/i);
+    expect(tasks).toMatch(/outcome/i);
+    expect(tasks).toMatch(/no safe parallel/i);
+    expect(checklist).toMatch(/activation reason/i);
+    expect(checklist).toMatch(/domain lens/i);
+    expect(checklist).toMatch(/revalidation/i);
   });
 
   test('keeps implementation task state root-owned and evidence-driven', () => {
@@ -49,6 +79,14 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(/assigned.*surface/i);
   });
 
+  test('allows same-intent artifact refinement without restarting the SDD', () => {
+    const serialized = JSON.stringify(getSddPhaseProtocol('implement'));
+
+    expect(serialized).toMatch(/same intent/i);
+    expect(serialized).toMatch(/affected downstream/i);
+    expect(serialized).toMatch(/new change.*intent changes/i);
+  });
+
   test('restores a durable verification verdict for artifact-backed routes', () => {
     const protocol = getSddPhaseProtocol('verify');
     const serialized = JSON.stringify(protocol);
@@ -59,6 +97,20 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(/executed checks/i);
     expect(serialized).toMatch(/fail.*converge/i);
     expect(serialized).toMatch(/pass.*archive/i);
+    expect(serialized).toMatch(/completeness/i);
+    expect(serialized).toMatch(/correctness/i);
+    expect(serialized).toMatch(/coherence/i);
+  });
+
+  test('describes archive as declared transactional synchronization, not implicit merge', () => {
+    const contract = getSddWorkflowContract();
+    const rules = contract.artifactRules.join(' ');
+
+    expect(rules).toMatch(/declared durable/i);
+    expect(rules).toMatch(/transactionally/i);
+    expect(rules).toMatch(/active process/i);
+    expect(rules).toMatch(/INTERNAL/i);
+    expect(rules).not.toMatch(/never implicitly merges/i);
   });
 
   test('uses Spec Kit append-only convergence without editing product code', () => {
@@ -70,9 +122,14 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(/must not edit product code/i);
     expect(serialized).toMatch(/tasks-appended/);
     expect(serialized).toMatch(/implement/);
+    expect(serialized).toMatch(/missing/);
+    expect(serialized).toMatch(/partial/);
+    expect(serialized).toMatch(/contradicts/);
+    expect(serialized).toMatch(/unrequested/);
+    expect(serialized).toMatch(/byte-for-byte unchanged/i);
   });
 
-  test('archives only verified artifact-backed work without implicit spec merging', () => {
+  test('archives only verified work and syncs declared durable deltas', () => {
     const protocol = getSddPhaseProtocol('archive');
     const serialized = JSON.stringify(protocol);
 
@@ -83,20 +140,32 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(
       /openspec\/changes\/archive\/YYYY-MM-DD-<feature>\//,
     );
-    expect(serialized).toMatch(/must not.*merge.*openspec\/specs/i);
+    expect(serialized).toMatch(/explicitly declared.*delta/i);
+    expect(serialized).toMatch(/after.*pass/i);
+    expect(serialized).toMatch(/transactionally/i);
+    expect(serialized).toMatch(/active process/i);
+    expect(serialized).toMatch(/openspec\/specs/i);
   });
 
-  test('exposes only the phase modes each reusable role can execute', () => {
+  test('keeps root coordination separate from independent oracle review', () => {
     expect(getSddPhaseProtocolsForRole('oracle').map(({ id }) => id)).toEqual([
       'analyze',
       'verify',
     ]);
     expect(
-      getSddPhaseProtocolsForRole('sdd-tasks').map(({ id }) => id),
-    ).toEqual(['tasks', 'converge']);
+      getSddPhaseProtocolsForRole('orchestrator').map(({ id }) => id),
+    ).toEqual([
+      'specify',
+      'clarify',
+      'plan',
+      'checklist',
+      'tasks',
+      'implement',
+      'converge',
+      'archive',
+    ]);
     expect(getSddPhaseProtocolsForRole('quick').map(({ id }) => id)).toEqual([
       'implement',
-      'archive',
     ]);
   });
 });
@@ -115,6 +184,13 @@ describe('SDD phase dispatch envelope', () => {
       requirements: ['Respect the project constitution.'],
       boundaries: ['Do not modify the workspace.'],
       verification: ['Report requirement coverage as a percentage.'],
+      memory: {
+        provider: 'thoth-mem',
+        project: 'thoth-agents',
+        rootSessionId: 'root-session-123',
+        authorization: 'observe',
+        context: ['Prior decision: OpenSpec artifacts remain canonical.'],
+      },
     });
 
     for (const heading of [
@@ -127,6 +203,7 @@ describe('SDD phase dispatch envelope', () => {
       'VERIFICATION',
       'EXPECTED OUTPUT',
       'HANDOFF',
+      'MEMORY',
     ]) {
       expect(envelope).toContain(`## ${heading}`);
     }
@@ -136,6 +213,30 @@ describe('SDD phase dispatch envelope', () => {
     expect(envelope).toContain('Respect the project constitution.');
     expect(envelope).toContain('Do not modify the workspace.');
     expect(envelope).toContain('readiness verdict');
+    expect(envelope).toContain('provider=thoth-mem');
+    expect(envelope).toContain('project=thoth-agents');
+    expect(envelope).toContain('root_session_id=root-session-123');
+    expect(envelope).toContain('authorization=observe');
+    expect(envelope).toContain(
+      'Prior decision: OpenSpec artifacts remain canonical.',
+    );
+  });
+
+  test('renders unavailable stable identity explicitly instead of inventing one', () => {
+    const envelope = renderSddPhaseDispatchEnvelope({
+      phase: 'verify',
+      route: 'direct',
+      changeName: 'readme-fix',
+      memory: {
+        provider: 'thoth-mem',
+        project: 'thoth-agents',
+        authorization: 'none',
+      },
+    });
+
+    expect(envelope).toContain('root_session_id=unavailable');
+    expect(envelope).toContain('authorization=none');
+    expect(envelope).toContain('- none');
   });
 
   test('rejects a required phase that does not belong to the selected route', () => {
@@ -144,6 +245,11 @@ describe('SDD phase dispatch envelope', () => {
         phase: 'archive',
         route: 'direct',
         changeName: 'readme-fix',
+        memory: {
+          provider: 'thoth-mem',
+          project: 'thoth-agents',
+          authorization: 'none',
+        },
       }),
     ).toThrow('archive is not available in the direct route');
   });
@@ -154,6 +260,11 @@ describe('SDD phase dispatch envelope', () => {
         phase: 'converge',
         route: 'direct',
         changeName: 'readme-fix',
+        memory: {
+          provider: 'thoth-mem',
+          project: 'thoth-agents',
+          authorization: 'none',
+        },
       }),
     ).toThrow('converge is not available in the direct route');
   });

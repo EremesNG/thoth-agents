@@ -2,52 +2,35 @@
 
 ## Responsibility
 
-This route owns parsing, help, TUI, install, status, update, sync, model
-configuration, managed I/O, and required external skills.
-
-## Entrypoints
-
-- `src/cli/index.ts` and `parser.ts`
-- `src/cli/commands.ts`
-- `src/cli/install.ts`
-- `src/cli/operations/`
-- `src/cli/skills.ts`
-- `src/cli/tui/`
+`src/cli/` owns installation, parsing, help, TUI, status, repair, model
+configuration, and managed I/O. Installation depends on the CLI; normal SDD
+phase execution does not.
 
 ## Invariants
 
-- The OpenCode plugin entry is not a shell command; use the published CLI through
-  an install, `npx`, or `pnpm dlx`.
-- OpenCode is the default harness.
-- `simplify`, `tdd`, `progressive-context-router`, and
-  `architectural-grilling` are mandatory for all three harnesses.
-- Browser and QA executables are project-owned; the CLI does not install
-  `playwright-cli` or Playwright.
-- There is no required-skill opt-out. A failed install makes the operation fail.
-- Dry-run writes nothing and prints required-skill commands.
-- Reset touches only thoth-agents-managed targets.
-- Codex marketplace registration is an explicit interactive manager step;
-  trust review remains explicit through `/plugins` and `/hooks`.
-- The documented Claude first-install path runs `claude plugin marketplace add`
-  and `claude plugin install` before the thoth-agents CLI. The CLI reconciles
-  native state and installs the required global skills; it never copies files
-  into the Claude plugin-manager cache.
-- Native plugin installation never makes the CLI optional. Codex needs its root
-  instructions, custom agents, feature merge, model state, and skills; Claude
-  needs its standalone required skills and complete-state verification.
-- Claude per-role model rewrites are unsupported after installation because the
-  native manager owns the cached package.
-- CLI changes require parser/help/tests and public documentation in the same
-  change.
+- OpenCode is the default CLI harness.
+- Mandatory external skills are installed from canonical repositories through
+  `npx skills add`; this repository must not vendor their source.
+- After owned setup and external skills, every harness invokes the official
+  global `thoth-mem setup` command. Dry-run uses provider `--plan`; only
+  consistent `complete` evidence completes installation.
+- Provider diagnostics, manual actions, and receipt are surfaced. Consumer
+  reset never becomes provider `--force`, rollback, removal, or file repair.
+- Browser and QA executables remain project-owned.
+- Dry-run writes nothing; reset touches only bounded managed targets.
+- Native Codex and Claude marketplace trust remains explicit and manager-owned.
+- Codex CLI installation is mandatory for global agents, root instructions,
+  feature configuration, and external global skills. `$thoth-init` creates
+  project SDD governance only.
+- Claude requires native marketplace add/install before its plugin surfaces
+  exist; then the CLI installs external skills and requests provider setup
+  without editing Claude's cache.
+- CLI changes require parser/help/tests and public docs in the same change.
 
 ## Verification
 
 - parser/help/runtime: `parser.test.ts`, `commands.test.ts`, `index.test.ts`
-- install/config: `install.test.ts`, `codex-install.test.ts`,
-  `claude-code-install.test.ts`, path/config tests
-- required skills: `skills.test.ts` and all three operation tests
+- install/config: install, path, and operation tests
+- external skill command construction: `skills.test.ts`
+- provider command/result contract: `thoth-mem-install.test.ts`
 - TUI: `src/cli/tui/**/*.test.tsx`
-
-See [`../installation.md`](../installation.md),
-[`../codex-install.md`](../codex-install.md), and
-[`../claude-code-install.md`](../claude-code-install.md).

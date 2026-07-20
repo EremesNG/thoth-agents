@@ -6,9 +6,6 @@ const AGENT_NAMES = [
   'designer',
   'explorer',
   'librarian',
-  'sdd-specify',
-  'sdd-plan',
-  'sdd-tasks',
   'quick',
   'deep',
 ] as const;
@@ -53,9 +50,6 @@ export const ManualPlanSchema = z
     designer: ManualAgentPlanSchema,
     explorer: ManualAgentPlanSchema,
     librarian: ManualAgentPlanSchema,
-    'sdd-specify': ManualAgentPlanSchema,
-    'sdd-plan': ManualAgentPlanSchema,
-    'sdd-tasks': ManualAgentPlanSchema,
     quick: ManualAgentPlanSchema,
     deep: ManualAgentPlanSchema,
   })
@@ -74,9 +68,6 @@ const FallbackChainsSchema = z
     designer: AgentModelChainSchema.optional(),
     explorer: AgentModelChainSchema.optional(),
     librarian: AgentModelChainSchema.optional(),
-    'sdd-specify': AgentModelChainSchema.optional(),
-    'sdd-plan': AgentModelChainSchema.optional(),
-    'sdd-tasks': AgentModelChainSchema.optional(),
     quick: AgentModelChainSchema.optional(),
     deep: AgentModelChainSchema.optional(),
   })

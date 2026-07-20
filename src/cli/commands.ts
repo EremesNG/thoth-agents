@@ -289,7 +289,7 @@ OpenCode loads the plugin with config such as:
 That plugin entry does not create a global thoth-agents command.
 Run this CLI through a global install, npx, or pnpm dlx.
 
-OpenCode install configures the adaptive ten-role roster and native task delegation.
+OpenCode install configures the adaptive seven-role roster and native task delegation.
 Provider capability is external and reported only from caller-supplied evidence.
 
 External required skills are installed for every harness:

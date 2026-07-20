@@ -5,6 +5,7 @@ import {
   getRequiredSddPhaseOrder,
   getSddArtifactGraph,
   getSddPhaseOwner,
+  getSddRouteExecutionPolicy,
   getSddWorkflowContract,
 } from './sdd';
 
@@ -24,6 +25,72 @@ describe('adaptive SDD routing', () => {
     });
   });
 
+  test.each([
+    'documentation',
+    'mechanical',
+  ] as const)('keeps clear low-risk multi-file %s work direct', (intent) => {
+    expect(
+      classifySddRoute({
+        intent,
+        scope: 'multi-file',
+        clarity: 'clear',
+        contractRisk: 'low',
+        failureCost: 'low',
+      }),
+    ).toMatchObject({
+      route: 'direct',
+      requiresUserInput: false,
+    });
+  });
+
+  test('uses accelerated SDD for clear multi-file behavior work', () => {
+    expect(
+      classifySddRoute({
+        intent: 'behavior',
+        scope: 'multi-file',
+        clarity: 'clear',
+        contractRisk: 'low',
+        failureCost: 'low',
+      }),
+    ).toMatchObject({
+      route: 'accelerated',
+      requiresUserInput: false,
+    });
+  });
+
+  test('treats a generic SDD request as accelerated unless risk requires full', () => {
+    expect(
+      classifySddRoute({
+        intent: 'documentation',
+        scope: 'local',
+        clarity: 'clear',
+        contractRisk: 'low',
+        failureCost: 'low',
+        sddRequested: true,
+      }),
+    ).toMatchObject({
+      route: 'accelerated',
+      requiresUserInput: false,
+    });
+  });
+
+  test.each([
+    'direct',
+    'accelerated',
+    'full',
+  ] as const)('honors an explicit %s route request', (requestedRoute) => {
+    expect(
+      classifySddRoute({
+        intent: 'architecture',
+        scope: 'cross-cutting',
+        clarity: 'clear',
+        contractRisk: 'high',
+        failureCost: 'high',
+        requestedRoute,
+      }).route,
+    ).toBe(requestedRoute);
+  });
+
   test('routes moderate bounded work to accelerated SDD', () => {
     expect(
       classifySddRoute({
@@ -40,7 +107,6 @@ describe('adaptive SDD routing', () => {
   });
 
   test.each([
-    ['explicit request', { explicitSdd: true }],
     ['uncertain scope', { clarity: 'uncertain' as const }],
     ['public contract risk', { contractRisk: 'high' as const }],
     ['high failure cost', { failureCost: 'high' as const }],
@@ -75,6 +141,34 @@ describe('adaptive SDD routing', () => {
 });
 
 describe('Spec Kit workflow contract', () => {
+  test('keeps Direct free of planning artifacts and scripted gates', () => {
+    expect(getSddRouteExecutionPolicy('direct')).toMatchObject({
+      planningMode: 'none',
+      validationGates: [],
+      optionalArtifactsByDefault: false,
+      routineUserPauses: false,
+    });
+  });
+
+  test('fast-forwards Accelerated planning with only two planning gates', () => {
+    expect(getSddRouteExecutionPolicy('accelerated')).toMatchObject({
+      planningMode: 'fast-forward',
+      validationGates: ['specify', 'ready', 'closeout'],
+      optionalArtifactsByDefault: false,
+      routineUserPauses: false,
+      artifactRevisionPolicy: 'revalidate-affected-downstream',
+    });
+  });
+
+  test('keeps Full gated without phase-locking artifact corrections', () => {
+    expect(getSddRouteExecutionPolicy('full')).toMatchObject({
+      planningMode: 'gated',
+      validationGates: ['specify', 'plan', 'tasks', 'ready', 'closeout'],
+      routineUserPauses: false,
+      artifactRevisionPolicy: 'revalidate-affected-downstream',
+    });
+  });
+
   test('keeps direct work ceremony-free', () => {
     expect(getRequiredSddPhaseOrder('direct')).toEqual(['implement', 'verify']);
   });
@@ -138,26 +232,29 @@ describe('Spec Kit workflow contract', () => {
     );
   });
 
-  test('routes phases through the minimal hybrid agent roster', () => {
+  test('keeps coordination in root and specialist work in stable roles', () => {
     const phases = getSddWorkflowContract().phases;
     const ownerOf = (id: string) =>
       phases.find((phase) => phase.id === id)?.defaultAgentRole;
 
     expect(ownerOf('explore')).toBe('explorer');
-    expect(ownerOf('specify')).toBe('sdd-specify');
-    expect(ownerOf('plan')).toBe('sdd-plan');
-    expect(ownerOf('tasks')).toBe('sdd-tasks');
+    expect(ownerOf('specify')).toBe('orchestrator');
+    expect(ownerOf('clarify')).toBe('orchestrator');
+    expect(ownerOf('plan')).toBe('orchestrator');
+    expect(ownerOf('checklist')).toBe('orchestrator');
+    expect(ownerOf('tasks')).toBe('orchestrator');
     expect(ownerOf('analyze')).toBe('oracle');
     expect(ownerOf('verify')).toBe('oracle');
     expect(ownerOf('implement')).toBe('orchestrator');
-    expect(ownerOf('converge')).toBe('sdd-tasks');
-    expect(ownerOf('archive')).toBe('quick');
+    expect(ownerOf('converge')).toBe('orchestrator');
+    expect(ownerOf('archive')).toBe('orchestrator');
   });
 
-  test('keeps bounded verification in the adaptive root and reserves independent review for full SDD', () => {
-    expect(getSddPhaseOwner('direct', 'verify')).toBe('orchestrator');
-    expect(getSddPhaseOwner('accelerated', 'verify')).toBe('orchestrator');
+  test('assigns every verification route to independent oracle review', () => {
+    expect(getSddPhaseOwner('direct', 'verify')).toBe('oracle');
+    expect(getSddPhaseOwner('accelerated', 'verify')).toBe('oracle');
     expect(getSddPhaseOwner('full', 'verify')).toBe('oracle');
+    expect(getSddPhaseOwner('full', 'analyze')).toBe('oracle');
   });
 
   test('gates implementation, convergence, and archive on their required handoffs', () => {

@@ -2,22 +2,35 @@ import type { HarnessPromptDialect } from '../../agents/prompt-dialects';
 import type { HarnessCapabilityStatus, HarnessDiagnostic } from '../types';
 import type { AgentRoleContract, AgentRoleName } from './agent-pack';
 
+export type MemoryAuthorization = 'none' | 'recall' | 'observe';
+
+export interface MemoryDispatchContract {
+  provider: 'thoth-mem';
+  project: string;
+  rootSessionId?: string;
+  authorization: MemoryAuthorization;
+  context?: string[];
+}
+
 export interface RoleMemoryGovernance {
   role: AgentRoleName;
+  workspaceMode: AgentRoleContract['mode'];
   requiresParentContext: boolean;
-  mayReadProjectMemory: boolean;
-  mayWriteDurableObservations: boolean;
-  protectsSddNamespace: boolean;
+  availableAuthorizations: MemoryAuthorization[];
+  ownsRootLifecycle: boolean;
   rules: string[];
 }
 
 export interface MemoryOrchestrationContract {
+  provider: 'thoth-mem';
   providerOwnership: 'external';
-  protectedTopicNamespaces: ['sdd/*'];
-  canonicalTopicKey: 'sdd/{change}/{artifact}';
+  installedGuidance: 'thoth-mem skill';
+  canonicalSddStore: 'openspec/';
+  prohibitsSddArtifactMirroring: true;
   requiresParentAuthorization: true;
-  handoffOutcome: 'authorized-context-available';
-  completionOutcome: 'resumable-summary-or-checkpoint';
+  rootLifecycleOwner: 'orchestrator';
+  handoffOutcome: 'bounded-memory-contract';
+  completionOutcome: 'provider-confirmed-semantic-summary';
   prohibitsFalseSuccess: true;
   prohibitsConsumerFallback: true;
   roles: RoleMemoryGovernance[];
@@ -34,20 +47,22 @@ export interface MemoryGovernanceDiagnosticInput {
 
 function roleRules(role: AgentRoleContract): string[] {
   const sharedRules = [
-    'Provider-dependent use requires parent-scoped authorization with the parent session and project supplied by dispatch.',
+    'thoth-mem remains an external provider; its installed provider guidance is authoritative for memory operations and thoth-agents does not prescribe the mechanism.',
+    'Provider-dependent use requires parent-scoped authorization with the stable root session identity or explicit unavailable state and project supplied by dispatch.',
+    'The MEMORY authorization is none, recall, or observe: none forbids provider work, recall permits bounded reads, and observe additionally permits one bounded durable observation under the delegated scope.',
     'Only authorized context may be used, and the delegate must report missing, stale, contradictory, or insufficient context instead of guessing.',
-    'A handoff must keep accepted scope, decisions, permissions, and artifacts available to the authorized delegate.',
-    'Completion continuity is a resumable summary or checkpoint outcome; it does not permanently close or finalize work.',
-    'The installed provider guidance is authoritative for provider operations; consumer guidance does not prescribe the mechanism.',
+    'Memory authorization never changes workspace permissions or grants control of root lifecycle and real-user-intent ownership.',
+    'A handoff must keep accepted scope, decisions, permissions, and artifacts plus bounded memory context available to the authorized delegate.',
+    'Completion continuity is a provider-confirmed semantic summary outcome owned by the root.',
     'Missing capability evidence is reported as degraded or unsupported and never as successful persistence or recovery.',
-    'Protect the sdd/* namespace and use only the canonical sdd/{change}/{artifact} identity for governed SDD artifacts in provider-backed modes.',
+    'openspec/ is the canonical SDD store; do not mirror spec.md, plan.md, tasks.md, verification reports, or archive reports into provider memory.',
     'Do not invent a consumer fallback or silently change the selected persistence mode.',
   ];
 
   if (role.name === 'orchestrator') {
     return [
       ...sharedRules,
-      'The root coordinator owns authorization and the outcome-level continuity responsibility.',
+      'The root coordinator owns authorization, root lifecycle, real-user-intent handling, and semantic completion outcomes.',
       'Dispatch task and authorization context without embedding secrets, raw transcripts, or irrelevant context.',
     ];
   }
@@ -55,13 +70,15 @@ function roleRules(role: AgentRoleContract): string[] {
   if (role.mode === 'read-only') {
     return [
       ...sharedRules,
-      'Read-only role permissions remain intact: provider use cannot authorize durable writes.',
+      'For a read-only workspace role, observe may authorize a durable provider observation but does not authorize workspace mutation.',
+      'Root lifecycle ownership never transfers to this delegate.',
     ];
   }
 
   return [
     ...sharedRules,
-    'Write-capable role permissions remain intact: durable observations or assigned SDD artifacts still require explicit authorization and parent scope.',
+    'For a write-capable workspace role, provider observations still require observe authorization and the delegated parent scope.',
+    'Root lifecycle ownership never transfers to this delegate.',
   ];
 }
 
@@ -70,10 +87,10 @@ export function getRoleMemoryGovernance(
 ): RoleMemoryGovernance {
   return {
     role: role.name,
+    workspaceMode: role.mode,
     requiresParentContext: role.name !== 'orchestrator',
-    mayReadProjectMemory: true,
-    mayWriteDurableObservations: role.mode === 'write-capable',
-    protectsSddNamespace: true,
+    availableAuthorizations: ['none', 'recall', 'observe'],
+    ownsRootLifecycle: role.name === 'orchestrator',
     rules: roleRules(role),
   };
 }
@@ -82,12 +99,15 @@ export function getMemoryGovernanceContract(
   roles: readonly AgentRoleContract[],
 ): MemoryGovernanceContract {
   return {
+    provider: 'thoth-mem',
     providerOwnership: 'external',
-    protectedTopicNamespaces: ['sdd/*'],
-    canonicalTopicKey: 'sdd/{change}/{artifact}',
+    installedGuidance: 'thoth-mem skill',
+    canonicalSddStore: 'openspec/',
+    prohibitsSddArtifactMirroring: true,
     requiresParentAuthorization: true,
-    handoffOutcome: 'authorized-context-available',
-    completionOutcome: 'resumable-summary-or-checkpoint',
+    rootLifecycleOwner: 'orchestrator',
+    handoffOutcome: 'bounded-memory-contract',
+    completionOutcome: 'provider-confirmed-semantic-summary',
     prohibitsFalseSuccess: true,
     prohibitsConsumerFallback: true,
     roles: roles.map(getRoleMemoryGovernance),
@@ -107,7 +127,7 @@ export function renderMemoryGovernanceInstructions(
     : [];
 
   return [
-    'External provider memory governance:',
+    'External thoth-mem provider memory governance:',
     ...governance.rules.map((rule) => `- ${rule}`),
     ...harnessRules,
     `- Runtime enforcement: ${role.name === 'orchestrator' ? 'root-owned outcomes' : 'instruction-level unless the target harness validates per-agent memory controls'}.`,

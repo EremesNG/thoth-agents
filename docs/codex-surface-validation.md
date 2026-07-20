@@ -1,81 +1,31 @@
 # Codex Surface Validation
 
-`src/harness/adapters/codex-surfaces.ts` is the machine-readable gate for Codex
-artifact generation. Writers fail closed when a surface, path, or manifest field
-is not registered and validated.
+After native plugin installation and the mandatory CLI layer, validate:
 
-## Surfaces used by 0.3.0
+| Surface | Expected state |
+| --- | --- |
+| `/plugins` | `thoth-agents` installed and enabled from `EremesNG/thoth-agents` |
+| Plugin skills | SDD/init/constitution/archive and four mandatory execution skills discoverable |
+| `~/.codex/AGENTS.md` | One bounded `thoth-agents:codex-root` block; unrelated global guidance preserved |
+| `~/.codex/agents/` | Six `thoth-agents-<role>.toml` files and managed model state; no orchestrator child |
+| `~/.codex/config.toml` | Managed request-user-input feature merge present |
+| Project `openspec/` | Constitution, templates, and init metadata after `$thoth-init` |
 
-| Surface | Generated or managed target | Use |
-| --- | --- | --- |
-| Root instructions | `~/.codex/AGENTS.md` managed block | Adaptive root contract |
-| Custom agents | `~/.codex/agents/thoth-agents-{role}.toml` | Nine specialist roles |
-| User config | `~/.codex/config.toml` | Default-mode user input feature |
-| Plugin manifest | `integrations/codex/.codex-plugin/plugin.json` | Native package identity and component references |
-| Plugin MCP | `integrations/codex/.mcp.json` | thoth-agents research MCPs |
-| Repository marketplace | `.agents/plugins/marketplace.json` | Versioned repository-native plugin source |
-| Global skills | `~/.codex/skills/{skill}/SKILL.md` | Mandatory external skills installed by the CLI |
+Run:
 
-The phase roles are custom-agent TOMLs, not plugin-bundled skills.
+```bash
+npx thoth-agents@latest status --harness=codex
+```
 
-## Validated but unused package surfaces
+Restart Codex after global setup. In each repository, `$thoth-init` should be
+idempotent and preserve project-owned governance. It does not create custom
+agents or alter global instructions.
 
-The registry recognizes documented plugin `skills/` and command-hook surfaces so
-the generic package writer can validate them. The current thoth-agents package
-does not bundle SDD phase skills, provider lifecycle hooks, or skill-installation
-hooks. Validation of a possible surface does not mean 0.3.0 emits it.
+## Known enforcement gaps
 
-## Plugin manifest rules
-
-Allowed manifest keys are `name`, `version`, `description`, `skills`,
-`mcpServers`, `apps`, `hooks`, and `interface`. Current output uses only the
-identity fields and `mcpServers`.
-
-The manifest remains under `.codex-plugin/`; conventional component assets such
-as `.mcp.json` live at the plugin root. Absolute paths and `..` segments fail
-validation. Unknown fields are omitted with an explicit diagnostic.
-
-## Delegation and permissions
-
-The current collaboration runtime supports generic programmatic delegation,
-mailbox waits, task-tree inspection, messages, follow-up turns, and interruption.
-It does not expose a hard installed-role selector. The root therefore expresses
-role intent in task names/messages, and per-role matching remains
-instruction-level.
-
-Custom-agent TOMLs carry model, effort, and sandbox defaults. Do not claim exact
-OpenCode permission-map parity where Codex does not document an equivalent hard
-control.
-
-## Hooks
-
-The registry validates documented command-hook events and rejects prompt/agent
-handlers, unsupported output fields, async execution, and claims of full tool
-interception. Any packaged hook still requires its feature gate and trust review.
-
-thoth-agents 0.3.0 does not use a Codex hook as an external-skill `postinstall`.
-Marketplace npm sources do not run lifecycle scripts, so the CLI installs and
-checks required skills directly. Because the current package contains no hooks,
-integration sync and build do not emit hook activation or trust-readiness
-diagnostics.
-
-## Build diagnostics
-
-Integration generation distinguishes a capability limitation from a fatal build
-error:
-
-- `info` records an intentional condition that requires no action;
-- `capability-gap (non-fatal)` records an instruction-only or diagnostic-only
-  fallback and is emitted once per diagnostic code;
-- `warning` records a non-fatal condition without a fallback classification;
-- `error` is reserved for a required outcome with no recoverable fallback and
-  makes the generator exit nonzero.
-
-Capability gaps remain visible because Codex does not provide hard enforcement
-parity for every OpenCode behavior. They do not make package generation fail.
-
-## Provider boundary
-
-No Codex surface generated here installs thoth-mem. Provider-specific hooks, MCP,
-session identity, persistence, and recovery remain owned by the independently
-installed provider.
+- The ambient session is root.
+- Collaboration has no hard installed-role selector, so role matching remains
+  partly instruction-level.
+- Some per-role permission boundaries cannot match OpenCode enforcement.
+- Global guidance/config may be overridden by more specific or managed layers.
+- Native plugin and hook trust remain Codex-owned.

@@ -4,18 +4,18 @@ import { type PluginConfig, SUBAGENT_NAMES } from '../../config';
 import { opencodeAdapter, renderOpenCodeAgentConfigs } from './opencode';
 
 describe('OpenCode harness adapter v0.3', () => {
-  test('renders the canonical ten-role roster without adaptation drift', () => {
+  test('renders the canonical seven-role roster without adaptation drift', () => {
     const rendered = renderOpenCodeAgentConfigs();
 
     expect(Object.keys(rendered)).toEqual(['orchestrator', ...SUBAGENT_NAMES]);
     expect(rendered).toEqual(getAgentConfigs());
   });
 
-  test('preserves canonical overrides including SDD phase agents', () => {
+  test('preserves canonical overrides for the focused specialist roster', () => {
     const config: PluginConfig = {
       agents: {
         orchestrator: { model: 'test/orchestrator', temperature: 0.2 },
-        'sdd-plan': { model: 'test/planner', steps: 12 },
+        deep: { model: 'test/deep', steps: 12 },
         quick: {
           permission: { read: 'allow', edit: 'deny' },
         },
@@ -25,30 +25,32 @@ describe('OpenCode harness adapter v0.3', () => {
 
     expect(rendered).toEqual(getAgentConfigs(config));
     expect(rendered.orchestrator.mode).toBe('primary');
-    expect(rendered['sdd-plan'].mode).toBe('subagent');
-    expect(rendered['sdd-plan'].model).toBe('test/planner');
+    expect(rendered.deep.mode).toBe('subagent');
+    expect(rendered.deep.model).toBe('test/deep');
     expect(rendered.quick.permission).toEqual({
       read: 'allow',
       edit: 'deny',
     });
   });
 
-  test('keeps adaptive routing and coordination boundaries in native wording', () => {
+  test('keeps adaptive routing and independent review in native wording', () => {
     const configs = renderOpenCodeAgentConfigs();
     const root = configs.orchestrator.prompt ?? '';
-    const specify = configs['sdd-specify'].prompt ?? '';
+    const oracle = configs.oracle.prompt ?? '';
 
     expect(root).toContain('adaptive root');
     expect(root).toContain('Accelerated SDD');
-    expect(root).toContain('@sdd-specify');
+    expect(root).toContain('bundled `thoth-sdd` skill');
+    expect(root).toContain('every verify phase to @oracle');
+    expect(root).not.toMatch(/@sdd-(?:specify|plan|tasks)/);
     expect(root).toContain('`task`');
     expect(root).toContain('`question`');
     expect(root).not.toContain('collaboration.spawn_agent');
     expect(root).not.toContain('requirements-interview');
 
-    expect(specify).toContain('coordination-write');
-    expect(specify).toContain('openspec/');
-    expect(specify).toContain('Do not edit product code');
+    expect(oracle).toContain('matching bundled thoth-sdd reference');
+    expect(oracle).toContain('Reject self-review');
+    expect(oracle).toContain('Do not mutate the workspace');
   });
 
   test('reports the first-class OpenCode capability surface', () => {
@@ -78,7 +80,8 @@ describe('OpenCode harness adapter v0.3', () => {
         ?.content,
     );
 
-    expect(content).toContain('installed provider guidance');
+    expect(content).toContain('installed `thoth-mem` skill');
+    expect(content).toContain('do not invent provider mechanics');
     expect(content).not.toMatch(
       /mem_(?:save|recall|get|context|project|session)\s*\(/,
     );

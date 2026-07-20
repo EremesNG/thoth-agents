@@ -53,9 +53,6 @@ export const CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS = {
   explorer: 'haiku',
   librarian: 'sonnet',
   oracle: 'opus',
-  'sdd-specify': 'sonnet',
-  'sdd-plan': 'sonnet',
-  'sdd-tasks': 'haiku',
   designer: 'sonnet',
   quick: 'haiku',
   deep: 'sonnet',
@@ -97,11 +94,7 @@ function claudeCodeRoleInstructions(role: AgentRoleContract): string {
       ? [
           '- Write and Edit are denied in frontmatter while all other inherited tools, including MCP tools, remain available.',
         ]
-      : role.mode === 'coordination-write'
-        ? [
-            '- The openspec/ write scope is instruction-level because Claude Code tool permissions cannot restrict Edit/Write to a path pattern per agent.',
-          ]
-        : []),
+      : []),
     ...role.toolGovernance.map((rule) => `- ${rule}`),
     ...role.verification.map((rule) => `- ${rule}`),
     '</role-operational-contract>',
@@ -213,7 +206,7 @@ function createPluginManifest(
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Adaptive multi-harness agent pack with ten roles and Spec Kit-compatible SDD coordination for Claude Code.',
+      'Adaptive multi-harness agent pack with seven roles and a runtime-autonomous Spec Kit-compatible SDD bundle for Claude Code.',
     author: { name: 'thoth-agents' },
   };
 }

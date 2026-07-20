@@ -45,7 +45,7 @@ const GLOBAL_SKILL_ROOT: Record<SkillInstallHarness, readonly string[]> = {
 export const REQUIRED_SKILLS: readonly RequiredSkill[] = [
   {
     name: 'simplify',
-    repo: 'https://github.com/brianlovin/claude-config',
+    repo: 'https://github.com/EremesNG/skills',
     skillName: 'simplify',
     description: 'YAGNI code simplification expert',
   },

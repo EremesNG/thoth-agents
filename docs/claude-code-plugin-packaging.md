@@ -1,118 +1,68 @@
 # Claude Code Plugin Packaging
 
-thoth-agents ships a native Claude Code marketplace and installs through the
-Claude plugin manager. It never copies a plugin into `~/.claude/skills` or edits
-Claude's manager-owned plugin cache.
+Claude Code consumes the shared distribution generated at `plugin/`, published
+through `.claude-plugin/marketplace.json`. Codex resolves to this same bundle;
+each harness reads its own manifest and MCP surface.
 
-## Repository marketplace
+## Generated layout
 
 ```text
-.claude-plugin/marketplace.json
-integrations/claude-code/
+plugin/
+├── .codex-plugin/
 ├── .claude-plugin/
 │   ├── plugin.json
 │   └── .thoth-agents-plugin-assets.json
+├── .mcp.json
+├── codex.mcp.json
+├── settings.json
 ├── agents/
 │   ├── orchestrator.md
 │   ├── explorer.md
 │   ├── librarian.md
 │   ├── oracle.md
-│   ├── sdd-specify.md
-│   ├── sdd-plan.md
-│   ├── sdd-tasks.md
 │   ├── designer.md
 │   ├── quick.md
 │   └── deep.md
-├── .mcp.json
-└── settings.json
+└── skills/
+    ├── thoth-init/
+    ├── thoth-sdd/
+    ├── thoth-constitution/
+    └── thoth-archive/
 ```
 
-The catalog source is `./integrations/claude-code`. Both paths are included in
-the npm package and synchronized from the Claude adapter. Agent Markdown is not
-maintained independently: `claudeCodeAdapter` renders the role contracts and
-harness-specific dialect from the canonical prompt implementation under
-`src/agents/`.
+Every agent Markdown file is generated from the canonical `src/agents/` prompt
+contract. The four owned skills are copied once from the canonical root
+`skills/` tree. Codex-only assets are inert for Claude. Both plugin manifests
+and marketplace entries equal the root package version.
 
-## Native installation
+## Runtime behavior
 
-The supported first-install order is native marketplace registration, native
-plugin installation, and then mandatory CLI setup:
+`settings.json` activates the orchestrator in the main thread. Specialist
+delegation uses the `thoth-agents:<role>` namespace. Explorer, librarian, and
+oracle deny write/edit tools; implementation roles retain bounded write access.
+Oracle always owns analyze and verify.
 
-```bash
-claude plugin marketplace add EremesNG/thoth-agents --scope user
-claude plugin install thoth-agents@thoth-agents --scope user
-npx thoth-agents@latest install --agent=claude --dry-run
-npx thoth-agents@latest install --agent=claude
-```
+Claude discovers plugin skills automatically. The namespaced
+`/thoth-agents:thoth-init` skill creates only missing project governance because
+agents and owned skills already reside in the manager-owned cache. Mandatory
+external skills reside in Claude's global skill root after CLI installation.
+That CLI also invokes thoth-mem's public provider setup; no thoth-mem asset is
+copied into this shared bundle.
 
-The CLI inspects Claude's native JSON manager state and treats an already
-installed plugin as healthy. During repair, update, or sync it can register,
-install, update, or enable missing native state, but it never copies or rewrites
-cache files. Conflicting marketplace names or unreadable manager state fail
-closed. Restart Claude Code or run `/reload-plugins`, then inspect `/plugin`.
+## Generation lifecycle
 
-The CLI remains required after native installation because it installs and
-verifies the four standalone external skills. See
-[Claude Code Install](claude-code-install.md) for the complete procedure and
-limitations.
+`pnpm run integration:sync` regenerates both manifests and marketplaces, Claude
+agent files/settings, both MCP surfaces, both asset inventories, and one copy of
+the four thoth-owned skills. External skills remain CLI-installed from their
+canonical repositories. Build and npm version lifecycle commands run this
+synchronization, keeping release versions and shared bundle contents aligned.
 
-## Adaptive root
+## Ownership and limitations
 
-`settings.json` activates `orchestrator` as the main plugin agent. It handles
-clear bounded work directly and invokes a namespaced specialist only when
-delegation provides a net gain. The orchestrator uses `model: inherit`, children
-do not delegate, and the root keeps one writer per mutable surface.
-
-## Subagent permissions and defaults
-
-- `explorer`, `librarian`, and `oracle` deny `Write` and `Edit`.
-- `sdd-specify`, `sdd-plan`, and `sdd-tasks` may write, but their
-  `openspec/`-only boundary remains instruction-level.
-- `designer`, `quick`, and `deep` are write-capable within the assigned surface.
-
-| Roles | Model |
-| --- | --- |
-| `explorer`, `sdd-tasks`, `quick` | `haiku` |
-| `librarian`, `sdd-specify`, `sdd-plan`, `designer`, `deep` | `sonnet` |
-| `oracle` | `opus` |
-
-These defaults are package-owned. The thoth-agents CLI does not rewrite models
-inside Claude's installed cache; change the adapter defaults and publish a new
-plugin version instead.
-
-## Required external skills
-
-`simplify`, `tdd`, `progressive-context-router`, and `architectural-grilling`
-are mandatory but separate from the plugin package. The installer places them
-in the global Claude skill root. A native plugin-only install is incomplete until
-the CLI confirms all four skills.
-
-Claude plugin dependencies identify plugins, not arbitrary standalone skills,
-and there is no ordinary plugin `postinstall` lifecycle for this purpose. The
-thoth-agents CLI therefore owns required-skill installation and repair.
-
-## MCP and memory boundary
-
-`.mcp.json` contains the thoth-agents research MCPs (`exa`, `context7`, and
-`grep_app`). It does not contain thoth-mem. The independently installed
-thoth-mem plugin owns its own MCP, hooks, lifecycle, persistence, and recovery.
-
-## Generation and verification
-
-```bash
-pnpm run build
-pnpm run integration:verify
-```
-
-`build` runs `integration:sync` before compiling. The sync command remains
-available when only generated packages need refreshing. `release:patch`,
-`release:minor`, and `release:major` use npm's `version` lifecycle to regenerate
-and verify the Codex manifest, Claude manifest, and Claude marketplace entry
-after the root package version changes and before npm creates the release commit
-and tag. Each release command sets `--ignore-scripts=false` so a user-level npm
-configuration cannot skip the required lifecycle, and the lifecycle stages the
-generated integration surfaces explicitly.
-
-Generated provenance and package files, including `agents/*.md`, should be
-changed through their owning prompt source, adapter, or writer, not edited
-directly.
+Claude owns marketplace snapshots, installed cache files, enablement, and
+packaged model defaults. thoth-agents never edits its cache. Native tool denials
+protect read-only roles, but path-pattern write restriction remains
+instruction-level. Background agents do not have the foreground session's full
+interactive behavior. thoth-mem independently owns its hooks, MCP, skill,
+lifecycle, persistence, receipts, and recovery even though thoth-agents
+orchestrates its setup during installation.

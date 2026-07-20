@@ -15,6 +15,7 @@ const PROVIDER_BOUNDARY_TARGETS = {
     'docs/sdd-pipeline.md',
     'docs/quick-reference.md',
     'docs/codex-install.md',
+    'docs/claude-code-install.md',
     'docs/claude-code-plugin-packaging.md',
     'docs/agent/index.md',
     'docs/agent/routing-cases.json',
@@ -39,6 +40,8 @@ const PROVIDER_BOUNDARY_TARGETS = {
     'src/harness/writers/codex-plugin-package.ts',
     'src/harness/writers/codex-toml.ts',
     'src/harness/writers/claude-code-plugin-package.ts',
+    'src/cli/install.ts',
+    'src/cli/thoth-mem-install.ts',
     'src/hooks/index.ts',
     'src/mcp/index.ts',
   ],
@@ -135,16 +138,16 @@ describe('provider boundary', () => {
 
   test('reads the complete closed manifest and rejects deleted paths, bundled assets, and consumer protocols', async () => {
     const targets = await readTargets();
-    expect(targets).toHaveLength(30);
+    expect(targets).toHaveLength(33);
     expect(
       targets.filter(({ group }) => group === 'documentationAndMetadata'),
-    ).toHaveLength(18);
+    ).toHaveLength(19);
     expect(
       targets.filter(({ group }) => group === 'lifecycleFixtures'),
     ).toHaveLength(2);
     expect(
       targets.filter(({ group }) => group === 'consumerSurfaces'),
-    ).toHaveLength(10);
+    ).toHaveLength(12);
 
     for (const target of targets) {
       for (const rule of DELETED_PATH_RULES) {
@@ -212,7 +215,63 @@ describe('provider boundary', () => {
     expect(researchMcps).toMatch(/`exa`[\s\S]*`context7`[\s\S]*`grep_app`/i);
     expect(researchMcps).not.toMatch(/memory|thoth-mem/i);
     expect(memoryBoundary).toMatch(
-      /not a bundled skill or MCP[\s\S]*independently\s+installed plugin\/provider/i,
+      /not a bundled skill or MCP[\s\S]*independently\s+installed\s+plugin\/provider/i,
+    );
+  });
+
+  test('orchestrates only the official provider setup surface for every harness', async () => {
+    const targets = await readTargets();
+    const setup = targets.find(
+      ({ path }) => path === 'src/cli/thoth-mem-install.ts',
+    );
+    const install = targets.find(({ path }) => path === 'src/cli/install.ts');
+
+    expect(setup?.content).toMatch(/thoth-mem@latest[\s\S]*setup/);
+    expect(setup?.content).toMatch(/--scope[\s\S]*global[\s\S]*--json/);
+    expect(setup?.content).toContain('--plan');
+    expect(setup?.content).not.toMatch(/--force|rollback/i);
+    expect(setup?.content).not.toMatch(
+      /writeFile|appendFile|mkdir|rmSync|unlink|renameSync/,
+    );
+
+    for (const harness of ['opencode', 'codex', 'claude']) {
+      expect(install?.content).toContain(
+        `installThothMemForHarness('${harness}'`,
+      );
+    }
+  });
+
+  test('documents mandatory provider setup without transferring provider ownership', async () => {
+    const targets = await readTargets();
+    const docs = new Map(
+      targets
+        .filter(({ group }) => group === 'documentationAndMetadata')
+        .map(({ path, content }) => [path, content]),
+    );
+
+    for (const path of [
+      'README.md',
+      'docs/installation.md',
+      'docs/quick-reference.md',
+      'docs/codex-install.md',
+      'docs/claude-code-install.md',
+    ]) {
+      expect(docs.get(path), path).toMatch(/thoth-agents[\s\S]*thoth-mem/i);
+      expect(docs.get(path), path).toMatch(
+        /provider-owned|owns its own|owns its/i,
+      );
+    }
+
+    const installation = docs.get('docs/installation.md');
+    for (const harness of ['opencode', 'codex', 'claude']) {
+      expect(installation).toContain(`setup ${harness}`);
+    }
+    expect(installation).toMatch(/partial[\s\S]*requires_user_action/i);
+    expect(installation).toMatch(/--dry-run[\s\S]*--plan/i);
+
+    const combined = [...docs.values()].join('\n');
+    expect(combined).not.toMatch(
+      /thoth-agents (?:does not|neither) install[^\n]{0,80}thoth-mem/i,
     );
   });
 

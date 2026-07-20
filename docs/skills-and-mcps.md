@@ -1,133 +1,70 @@
 # Skills and MCPs
 
-thoth-agents 0.3.0 does not bundle SDD phase skills. SDD phases are owned by the
-`sdd-specify`, `sdd-plan`, and `sdd-tasks` agents, while implementation remains
-with the adaptive root or one writer role.
+thoth-agents 0.3.0 separates compact role prompts from detailed, on-demand
+workflow contracts. The thoth-owned phase contracts ship inside the plugin
+bundle, while mandatory external skills are installed from their canonical
+repositories during setup. SDD execution itself requires neither the CLI nor a
+runtime download.
 
-## Required external skills
+## Owned workflow skills
 
-These skills are mandatory for OpenCode, Codex, and Claude Code:
-
-| Skill | Repository | Intended use |
-| --- | --- | --- |
-| `simplify` | `https://github.com/brianlovin/claude-config` | Reduce accidental complexity after implementation. |
-| `tdd` | `https://github.com/mattpocock/skills` | Test-driven feature and bug-fix workflow. |
-| `progressive-context-router` | `https://github.com/EremesNG/skills` | Bootstrap, audit, refactor, or refresh repository instruction routing. |
-| `architectural-grilling` | `https://github.com/EremesNG/skills` | Resolve material product, architecture, and delivery branches before specification. |
-
-The installer invokes the Vercel skills CLI with `--global`, a concrete harness
-agent, and `--yes`. For example, the TDD dependency is installed as:
-
-```bash
-# OpenCode
-npx skills add https://github.com/mattpocock/skills --skill tdd --global --agent opencode --yes
-
-# Codex
-npx skills add https://github.com/mattpocock/skills --skill tdd --global --agent codex --yes
-
-# Claude Code
-npx skills add https://github.com/mattpocock/skills --skill tdd --global --agent claude-code --yes
-```
-
-The two EremesNG skills use the same command shape:
-
-```bash
-npx skills add https://github.com/EremesNG/skills --skill progressive-context-router --global --agent <opencode|codex|claude-code> --yes
-npx skills add https://github.com/EremesNG/skills --skill architectural-grilling --global --agent <opencode|codex|claude-code> --yes
-```
-
-`simplify` uses the same flags with its own repository and skill name.
-
-| Harness | Required skill files |
+| Skill | Contract |
 | --- | --- |
-| OpenCode | `~/.config/opencode/skills/{simplify,tdd,progressive-context-router,architectural-grilling}/SKILL.md` |
-| Codex | `~/.codex/skills/{simplify,tdd,progressive-context-router,architectural-grilling}/SKILL.md` |
-| Claude Code | `~/.claude/skills/{simplify,tdd,progressive-context-router,architectural-grilling}/SKILL.md` |
+| `thoth-init` | Offline, idempotent project initialization and harness-specific project surfaces |
+| `thoth-sdd` | Route selection, progressive phase references, templates, and structural validation |
+| `thoth-constitution` | Constitution creation, amendment, and pre/post planning gates |
+| `thoth-archive` | Passing verification gate, audit report, and dated archive move |
 
-Install, update, sync, and status share this required-skill contract. A missing
-skill is drift; a failed required-skill install makes the operation unsuccessful.
-Dry-run reports the commands without executing them.
+The adaptive root loads only the current contract. It owns specify, clarify,
+plan, checklist, tasks, converge, report persistence, and archive. Explorer owns
+Full discovery. Oracle is always read-only and owns Full analysis plus every
+verification.
 
-## Why the CLI owns installation
+## Mandatory execution skills
 
-External skills are deliberately not encoded as plugin manifest dependencies or
-plugin settings:
-
-- Codex `plugin.json` dependency-like surfaces describe plugin assets, not npm
-  lifecycle execution for arbitrary repositories.
-- Codex npm marketplace sources are fetched without running lifecycle scripts.
-- Claude plugin `dependencies` refers to other plugins, not standalone skills.
-- Claude `Setup` hooks run only through explicit initialization flows and are not
-  a normal plugin-startup `postinstall`.
-
-The thoth-agents CLI is therefore the deterministic installation and repair
-surface. A direct plugin-only installation is incomplete until all four global
-skills are present.
-
-For Codex, the CLI also owns surfaces that are intentionally outside the native
-plugin package: the bounded orchestrator block in `~/.codex/AGENTS.md`, nine
-custom-agent TOMLs, managed feature configuration, and model ownership state.
-For Claude Code, first register the marketplace and install the native plugin,
-then run the CLI to install and verify the skills:
-
-```bash
-claude plugin marketplace add EremesNG/thoth-agents --scope user
-claude plugin install thoth-agents@thoth-agents --scope user
-npx thoth-agents@latest install --agent=claude
-```
-
-See [Installation](installation.md), [Codex Install](codex-install.md), and
-[Claude Code Install](claude-code-install.md).
-
-## SDD responsibilities
-
-| Phase | Owner | Artifact scope |
+| Skill | Canonical source | Trigger |
 | --- | --- | --- |
-| Specify and conditional clarification/checklist | `sdd-specify` | `openspec/changes/<feature>/spec.md` and optional `checklists/requirements.md` |
-| Plan and optional design-support artifacts | `sdd-plan` | `plan.md`, optional `research.md`, `data-model.md`, `contracts/`, `quickstart.md` |
-| Task decomposition | `sdd-tasks` | `tasks.md` |
+| `simplify` | `EremesNG/skills` | After implementation, simplify touched code without behavior changes |
+| `tdd` | `mattpocock/skills` | Before implementing behavior changes |
+| `progressive-context-router` | `EremesNG/skills` | Repository instruction and context-router work |
+| `architectural-grilling` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision before specification |
 
-These are agent roles, not user-invoked phase skills. See
-[SDD Pipeline](sdd-pipeline.md).
+Build copies only the four owned skills to the shared `plugin/skills` tree used
+by Codex and Claude. OpenCode `/thoth-init` copies those same owned skills to
+project `.agents/skills/` without overwriting existing files.
 
-## Architectural decision gate
+For every harness, the thoth-agents installer invokes `npx skills add` with the
+canonical repository, exact skill name, global scope, and concrete harness
+selector. There are no vendored copies of these external skills in this
+repository or the generated plugin packages. A failed mandatory skill install
+fails the overall installation.
 
-`architectural-grilling` is not a required SDD phase and does not replace
-ordinary clarification by `sdd-specify`. The adaptive root invokes it before
-specification only when the user explicitly asks to be grilled or material
-human-owned product/architecture decisions still branch. Merely selecting Full
-SDD is not enough.
+After the external skills, the same installation command invokes thoth-mem's
+public setup for the selected harness. This administrative call is installation
+orchestration, not a bundled provider implementation; SDD phases never invoke
+either CLI.
 
-The interview remains in discovery/decision mode, asks one material question per
-turn, and waits for explicit closure. Accepted decisions feed `spec.md` and
-`plan.md`; those artifacts remain canonical, so thoth-agents does not create a
-second mandatory blueprint artifact.
+## SDD contract loading
 
-## User-owned QA
+`thoth-sdd` contains one reference per phase. Detailed contracts are absent from
+the static agent prompts and loaded only after a route reaches that phase.
 
-thoth-agents does not install `playwright-cli`, Playwright itself, or another
-browser runner. A skill without its corresponding executable cannot guarantee a
-working QA surface, while installing a project/global CLI would be invasive.
-Each project therefore chooses its browser, visual, integration, and end-to-end
-QA tooling. The `designer` and verification roles follow the available project
-commands and evidence.
+| Phase | Owner |
+| --- | --- |
+| `explore` | read-only `explorer` |
+| `specify`, `clarify`, `plan`, `checklist`, `tasks` | root |
+| `analyze` | read-only `oracle` |
+| `implement` | root or one bounded writer |
+| `verify` | read-only `oracle` for every route |
+| `converge`, report persistence, `archive` | root |
 
-## Handoff assessment
-
-The [Matt Pocock `handoff` skill](https://github.com/mattpocock/skills/blob/main/skills/productivity/handoff/SKILL.md)
-is deliberately user-invoked and writes a compact document to the operating
-system temporary directory. thoth-agents does not install or auto-run it.
-
-Its always-needed semantics already belong to the core flow: bounded delegation
-prompts, compact child returns, `docs/agent/task-template.md`, and provider-owned
-continuity when thoth-mem is installed. The external skill still adds value as
-an explicit opt-in when a user wants a portable, redacted cross-session or
-cross-harness document. That manual artifact is complementary, not a mandatory
-phase or automatic handoff mechanism.
+Artifact-backed phases use canonical templates, FR/SC and US identifiers,
+Constitution checks, exact task grammar, checklist taxonomy/revalidation, and an
+offline structural validator. Oracle semantic review remains a separate gate.
 
 ## thoth-agents MCPs
 
-The harness packages may expose the research MCPs used by thoth-agents:
+The shared harness bundle may expose the research MCPs used by thoth-agents:
 
 | MCP | Purpose |
 | --- | --- |
@@ -136,11 +73,29 @@ The harness packages may expose the research MCPs used by thoth-agents:
 | `grep_app` | Public code search. |
 
 Their exact configuration differs by harness. OpenCode composes them at runtime;
-Codex and Claude packages render their documented MCP configuration surfaces.
+Codex reads `plugin/codex.mcp.json`, while Claude reads `plugin/.mcp.json`.
 
 ## thoth-mem boundary
 
-thoth-mem is not a bundled skill or MCP of thoth-agents. It is an independently
-installed plugin/provider and owns its installation, hooks, MCP server, session
-lifecycle, persistence protocol, runtime state, and recovery behavior. Follow the
-guidance installed by thoth-mem itself.
+thoth-mem is not a bundled skill or MCP. It is an independently installed
+plugin/provider and owns its hooks, MCP setup, persistence, recovery, capability
+evidence, receipts, installed skill, and lifecycle behavior.
+
+`npx thoth-agents@latest install` invokes `npx -y thoth-mem@latest setup
+<opencode|codex|claude> --scope global --json` after thoth-agents-owned setup and
+mandatory skills. Dry-run adds thoth-mem's zero-write `--plan`; thoth-agents does
+not pass `--force`, edit provider files, or claim success unless status and exit
+evidence consistently report `complete`.
+
+At runtime, root and children load the installed `thoth-mem` skill only for an
+authorized memory outcome. Root owns stable session identity, real-user intent,
+and lifecycle. A child receives `none`, `recall`, or `observe` separately from
+its workspace permissions; `observe` can authorize a durable provider
+observation without allowing file edits or root lifecycle. `openspec/` remains
+canonical, and phase artifacts are not mirrored into provider memory.
+
+## QA boundary
+
+`playwright-cli`, Playwright, browser drivers, integration runners, and other QA
+executables remain project-owned. A workflow may use an already available QA
+surface but must not provision one merely because thoth-agents is installed.

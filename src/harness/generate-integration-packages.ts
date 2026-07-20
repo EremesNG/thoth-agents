@@ -1,5 +1,15 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { claudeCodeAdapter } from './adapters/claude-code';
 import { codexAdapter } from './adapters/codex';
 import { codexPluginRootArtifactPath } from './codex-plugin-paths';
@@ -9,8 +19,18 @@ import {
 } from './core/package-version';
 import type { HarnessArtifact, HarnessDiagnostic } from './types';
 
-const CODEX_INTEGRATION_ROOT = join('integrations', 'codex');
-const CLAUDE_INTEGRATION_ROOT = join('integrations', 'claude-code');
+const SHARED_PLUGIN_ROOT = 'plugin';
+const LEGACY_INTEGRATIONS_ROOT = 'integrations';
+const LEGACY_INTEGRATION_ROOTS = [
+  join(LEGACY_INTEGRATIONS_ROOT, 'codex'),
+  join(LEGACY_INTEGRATIONS_ROOT, 'claude-code'),
+] as const;
+const OWNED_SKILL_NAMES = [
+  'thoth-init',
+  'thoth-sdd',
+  'thoth-constitution',
+  'thoth-archive',
+] as const;
 
 function stableJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
@@ -25,7 +45,7 @@ function codexMarketplaceContent(): string {
         name: 'thoth-agents',
         source: {
           source: 'local',
-          path: './integrations/codex',
+          path: './plugin',
         },
         policy: {
           installation: 'AVAILABLE',
@@ -42,16 +62,16 @@ function claudeMarketplaceContent(version: string): string {
     $schema: 'https://anthropic.com/claude-code/marketplace.schema.json',
     name: 'thoth-agents',
     description:
-      'Adaptive orchestration with ten roles and direct, accelerated, and full Spec Kit-compatible SDD routes.',
+      'Adaptive orchestration with seven roles and runtime-autonomous direct, accelerated, and full Spec Kit-compatible SDD routes.',
     owner: { name: 'thoth-agents maintainers' },
     plugins: [
       {
         name: 'thoth-agents',
         description:
-          'Adaptive root orchestration, specialist subagents, and Spec Kit-compatible SDD coordination.',
+          'Adaptive root orchestration, six specialist subagents, and a runtime-autonomous Spec Kit-compatible SDD bundle.',
         version,
         author: { name: 'thoth-agents maintainers' },
-        source: './integrations/claude-code',
+        source: './plugin',
         category: 'productivity',
         homepage: 'https://github.com/EremesNG/thoth-agents',
       },
@@ -61,14 +81,49 @@ function claudeMarketplaceContent(version: string): string {
 
 function writeArtifact(
   projectRoot: string,
-  integrationRoot: string,
+  bundleRoot: string,
   artifact: HarnessArtifact,
   relativePath = artifact.path,
 ): string {
-  const targetPath = join(projectRoot, integrationRoot, relativePath);
+  const targetPath = join(projectRoot, bundleRoot, relativePath);
   mkdirSync(dirname(targetPath), { recursive: true });
   writeFileSync(targetPath, String(artifact.content ?? ''));
   return targetPath;
+}
+
+function canonicalSkillsRoot(projectRoot: string): string {
+  const candidates = [
+    join(projectRoot, 'skills'),
+    fileURLToPath(new URL('../../skills/', import.meta.url)),
+    join(process.cwd(), 'skills'),
+  ];
+  const root = candidates.find((candidate) =>
+    existsSync(join(candidate, 'thoth-init', 'SKILL.md')),
+  );
+
+  if (!root) {
+    throw new Error('Could not locate the canonical bundled skills directory.');
+  }
+  return root;
+}
+
+function copySkillTree(
+  source: string,
+  target: string,
+  written: string[],
+): void {
+  mkdirSync(target, { recursive: true });
+  for (const entry of readdirSync(source).sort()) {
+    const sourcePath = join(source, entry);
+    const targetPath = join(target, entry);
+    if (statSync(sourcePath).isDirectory()) {
+      copySkillTree(sourcePath, targetPath, written);
+      continue;
+    }
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, readFileSync(sourcePath));
+    written.push(targetPath);
+  }
 }
 
 export interface GenerateIntegrationPackagesOptions {
@@ -163,10 +218,17 @@ export function generateIntegrationPackages({
   const written: string[] = [];
 
   for (const relativeRoot of [
-    CODEX_INTEGRATION_ROOT,
-    CLAUDE_INTEGRATION_ROOT,
+    SHARED_PLUGIN_ROOT,
+    ...LEGACY_INTEGRATION_ROOTS,
   ]) {
     rmSync(join(projectRoot, relativeRoot), { recursive: true, force: true });
+  }
+  const legacyIntegrationsRoot = join(projectRoot, LEGACY_INTEGRATIONS_ROOT);
+  if (
+    existsSync(legacyIntegrationsRoot) &&
+    readdirSync(legacyIntegrationsRoot).length === 0
+  ) {
+    rmdirSync(legacyIntegrationsRoot);
   }
 
   for (const artifact of codexRender.artifacts) {
@@ -174,7 +236,7 @@ export function generateIntegrationPackages({
     written.push(
       writeArtifact(
         projectRoot,
-        CODEX_INTEGRATION_ROOT,
+        SHARED_PLUGIN_ROOT,
         artifact,
         codexPluginRootArtifactPath(artifact.path),
       ),
@@ -182,7 +244,16 @@ export function generateIntegrationPackages({
   }
 
   for (const artifact of claudeRender.artifacts) {
-    written.push(writeArtifact(projectRoot, CLAUDE_INTEGRATION_ROOT, artifact));
+    written.push(writeArtifact(projectRoot, SHARED_PLUGIN_ROOT, artifact));
+  }
+
+  const skillsRoot = canonicalSkillsRoot(projectRoot);
+  for (const skillName of OWNED_SKILL_NAMES) {
+    copySkillTree(
+      join(skillsRoot, skillName),
+      join(projectRoot, SHARED_PLUGIN_ROOT, 'skills', skillName),
+      written,
+    );
   }
 
   const version = readPackageJsonVersion(
@@ -206,7 +277,7 @@ export function generateIntegrationPackages({
   written.push(codexMarketplacePath, claudeMarketplacePath);
 
   return {
-    written,
+    written: [...new Set(written)],
     diagnostics: [...codexRender.diagnostics, ...claudeRender.diagnostics],
   };
 }

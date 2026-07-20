@@ -189,24 +189,6 @@ describe('loadPluginConfig', () => {
             fallback2: 'chutes/kimi-k2.5',
             fallback3: 'opencode/gpt-5-nano',
           },
-          'sdd-specify': {
-            primary: 'openai/gpt-5.6-sol',
-            fallback1: 'anthropic/claude-opus-4-6',
-            fallback2: 'chutes/kimi-k2.5',
-            fallback3: 'opencode/gpt-5-nano',
-          },
-          'sdd-plan': {
-            primary: 'openai/gpt-5.6-sol',
-            fallback1: 'anthropic/claude-opus-4-6',
-            fallback2: 'chutes/kimi-k2.5',
-            fallback3: 'opencode/gpt-5-nano',
-          },
-          'sdd-tasks': {
-            primary: 'openai/gpt-5.6-luna',
-            fallback1: 'anthropic/claude-sonnet-4.6',
-            fallback2: 'chutes/kimi-k2.5',
-            fallback3: 'opencode/gpt-5-nano',
-          },
           quick: {
             primary: 'openai/gpt-5.4-mini',
             fallback1: 'anthropic/claude-sonnet-4.6',
@@ -228,7 +210,6 @@ describe('loadPluginConfig', () => {
       'chutes/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8-TEE',
     );
     expect(config.manualPlan?.quick?.primary).toBe('openai/gpt-5.4-mini');
-    expect(config.manualPlan?.['sdd-plan']?.primary).toBe('openai/gpt-5.6-sol');
     expect(config.manualPlan?.deep?.fallback1).toBe(
       'anthropic/claude-opus-4-6',
     );

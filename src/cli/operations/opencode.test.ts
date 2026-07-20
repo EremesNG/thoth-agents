@@ -173,16 +173,16 @@ describe('OpenCode operations adapter v0.3', () => {
     ).toBe(false);
   });
 
-  test('previews ten-role sync and install flows with required external skills', () => {
+  test('previews seven-role sync and external-skill install commands', () => {
     const sync = buildOpenCodeSyncPlan(context());
     const install = buildOpenCodeInstallPlan(context());
     const previews = [...sync.items, ...install.items]
       .map(({ preview }) => preview ?? '')
       .join('\n');
 
-    expect(previews).toContain('sdd-specify');
-    expect(previews).toContain('sdd-plan');
-    expect(previews).toContain('sdd-tasks');
+    expect(previews).not.toMatch(/sdd-(?:specify|plan|tasks)/);
+    expect(previews).toContain('orchestrator');
+    expect(previews).toContain('oracle');
     expect([...sync.items, ...install.items]).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -210,7 +210,7 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(Object.keys(written.presets.openai)).toEqual(ALL_AGENT_NAMES);
     expect(result.changedTargets).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ observed: 'ten-role roster written' }),
+        expect.objectContaining({ observed: 'seven-role roster written' }),
         expect.objectContaining({ label: 'Required OpenCode skills' }),
       ]),
     );
@@ -243,7 +243,7 @@ describe('OpenCode operations adapter v0.3', () => {
     );
   });
 
-  test('accepts model overrides for SDD phase agents', () => {
+  test('accepts model overrides for focused implementation agents', () => {
     writeManagedConfig();
     writeRequiredSkill('simplify');
     writeRequiredSkill('tdd');
@@ -255,7 +255,7 @@ describe('OpenCode operations adapter v0.3', () => {
         dryRun: true,
         roles: [
           {
-            role: 'sdd-plan',
+            role: 'deep',
             provider: 'openai',
             model: 'gpt-5.6-sol',
           },
@@ -270,7 +270,7 @@ describe('OpenCode operations adapter v0.3', () => {
     };
 
     expect(result.applied).toBe(true);
-    expect(written.agents['sdd-plan']).toEqual({
+    expect(written.agents.deep).toEqual({
       model: 'openai/gpt-5.6-sol',
     });
   });

@@ -1,60 +1,56 @@
-# SDD and required skills
+# SDD and bundled skills
 
 ## Responsibility
 
-This route owns direct/accelerated/full classification, phase ownership,
-conditional gates, and the Spec Kit-compatible artifact graph. It also connects
-SDD behavior to the mandatory external-skill contract without turning phases
-back into skills.
+This route owns adaptive route classification, phase ownership, progressive
+contracts, Spec Kit-grade artifacts, OpenSpec-style durable deltas, validation,
+and the thoth-owned workflow bundle.
 
 ## Entrypoints
 
-- `src/harness/core/sdd.ts`: route classifier, phases, owners, prerequisites,
-  typed phase protocols, dispatch envelope, artifact graph, verification, and
-  archive rules.
-- `src/agents/sdd-specify.ts`, `sdd-plan.ts`, `sdd-tasks.ts`: phase roles.
-- `src/cli/skills.ts`: mandatory `simplify`, `tdd`,
-  `progressive-context-router`, and `architectural-grilling` install.
-- [`../sdd-pipeline.md`](../sdd-pipeline.md): maintained public contract.
+- `src/harness/core/sdd.ts`: route policies, protocols, artifact graph, and
+  dispatch envelopes
+- `skills/thoth-sdd/`: lazy phase references, templates, structural validator
+- `skills/thoth-constitution/`: explicit governance lifecycle and validator
+- `skills/thoth-archive/`: transactional durable-delta closeout
+- `skills/thoth-init/`: offline, non-overwriting project bootstrap
+- `src/cli/skills.ts`: canonical repositories for mandatory external skills
+- [`../sdd-pipeline.md`](../sdd-pipeline.md): public workflow contract
 
 ## Invariants
 
-- Direct is the default for clear, local, low-risk work.
-- Accelerated is retained for bounded multi-file or moderate-risk work.
-- Full is for explicit SDD, material uncertainty, cross-cutting scope, or high
-  risk.
-- Accelerated/full require `spec.md`, `plan.md`, `tasks.md`,
-  `verify-report.md`, and `archive-report.md` during the change lifecycle, which
-  ends under `openspec/changes/archive/YYYY-MM-DD-<feature>/`.
-- Clarify, checklist, and converge are conditional on artifact-backed routes.
-- `architectural-grilling` is a conditional pre-specification gate, not an SDD
-  phase. Use it only on explicit request or unresolved material human-owned
-  product/architecture decisions; Full SDD alone is insufficient.
-- Accepted grilling decisions feed canonical `spec.md` and `plan.md`; do not
-  create a duplicate blueprint by default.
-- User input is only for a material unresolved choice.
-- Phase agents write coordination artifacts only; implementation belongs to the
-  root or one writer role.
-- Static role prompts carry only the protocols that role may execute; every SDD
-  delegation supplies the shared `PHASE` through `HANDOFF` envelope.
-- `oracle` distinguishes read-only analyze and verify modes; the root persists
-  artifact-backed verification as `verify-report.md`.
-- A failed artifact-backed verification routes through append-only `sdd-tasks`
-  convergence, implementation, and verification again. Direct returns straight
-  to implementation and verification.
-- Direct ends after focused verification. Accelerated/full archive only after a
-  pass verdict, complete tasks, and no unresolved critical findings.
-- Archive creates `archive-report.md`, performs the dated change-directory move,
-  and never implicitly merges into `openspec/specs/`.
-- There are no bundled SDD phase skills or legacy artifact-governance runtime.
+- Explicit route requests win; generic SDD means Accelerated minimum.
+- Clear low-risk documentation/mechanical work may stay Direct across files.
+- Accelerated fast-forwards specify/plan/tasks without routine pauses; Full uses
+  phase gates for material uncertainty/risk.
+- Root owns sequential coordination and loads only the current phase reference.
+- Explorer owns Full discovery; oracle owns Full analysis and every verify.
+- Specifications record Why/Impact/capabilities, story-to-FR/SC coverage, named
+  normative FRs with delta metadata, and buildable/outcome SC types.
+- Routine plans read the constitution and record evidence; only explicit
+  constitution amendments activate SemVer lifecycle validation.
+- Tasks cover FRs and buildable SCs, use honest `[P]` evidence or an explicit
+  no-parallel reason, and never manufacture work for outcome SCs.
+- Conditional checklists record activation, the five base quality dimensions,
+  applicable domain lenses, coverage, and checked or evidence-backed no-op
+  revalidation.
+- `ready` is the pre-implementation gate; `closeout` requires complete tasks,
+  independent oracle PASS, FR/buildable-SC evidence, explicit outcome-SC
+  disposition, and archive readiness.
+- Same-intent corrections revalidate only affected downstream artifacts. New
+  intent starts a new change.
+- Converge is append-only and uses the missing/partial/contradicts/unrequested
+  taxonomy; a no-gap result leaves tasks byte-for-byte unchanged.
+- Archive transactionally syncs only declared ADDED/MODIFIED/REMOVED/RENAMED durable
+  requirements after PASS. INTERNAL requirements and undeclared prose never
+  update `openspec/specs/`. Handled failures roll back within the active process;
+  forced process or OS termination is not crash-atomic.
+- Owned contracts are bundled. External skills are installed by the CLI once;
+  SDD execution remains CLI-, network-, and installer-independent.
+- Delegated envelopes carry a MEMORY block with provider/project/session
+  identity, `none|recall|observe`, and bounded context. This does not alter
+  workspace mode or delegate root lifecycle.
 
-## Tests
-
-- `src/harness/core/sdd.test.ts`
-- `src/harness/core/sdd-protocol.test.ts`
-- `src/agents/prompt-rendering.test.ts`
-- `src/harness/adapters/*.test.ts` when the rendered contract changes
-- `src/cli/skills.test.ts` and operation tests for required-skill behavior
-
-Provider persistence is an overlay only. Follow the installed provider guidance
-instead of copying lifecycle mechanics into this route.
+Provider persistence is an overlay only. Follow the installed thoth-mem skill
+for durable lessons and continuity, while `openspec/` stays canonical and phase
+artifacts are never mirrored.

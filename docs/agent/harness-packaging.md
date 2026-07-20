@@ -1,66 +1,40 @@
 # Harness packaging and compatibility
 
-## Responsibility
-
-This route owns the canonical contracts, adapters, capabilities, diagnostics,
-and writers for OpenCode, Codex, and Claude Code.
-
 ## Entrypoints
 
-- `src/harness/registry.ts`: default/supported harnesses.
-- `src/harness/core/agent-pack.ts`: ten-role contract.
-- `src/harness/core/sdd.ts`: route/artifact contract.
-- `src/harness/adapters/`: harness translation.
-- `src/harness/writers/`: deterministic artifact layouts.
-- `src/harness/generate-integration-packages.ts`: checked-in Codex and Claude
-  marketplace packages, rendered from the harness adapters.
+- `src/harness/registry.ts`: supported/default harnesses
+- `src/harness/core/agent-pack.ts`: seven-role contract
+- `src/harness/core/sdd.ts`: route and ownership contract
+- `src/harness/adapters/`: native translation
+- `src/harness/generate-integration-packages.ts`: shared Codex/Claude plugin
+- `plugin/`: generated shared distribution bundle
+- `skills/`: canonical thoth-owned workflow bundle
 - `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`:
-  repository marketplace entrypoints.
+  repository marketplace catalogs
 
 ## Invariants
 
-- OpenCode remains the default.
-- Codex uses the ambient session as root plus nine specialist TOMLs.
-- Claude packages the root agent plus nine subagents.
-- No adapter bundles SDD phase skills or thoth-mem provider assets.
-- Required external skills are installed by `src/cli/skills.ts`, outside plugin
-  manifests.
-- Codex/Claude plugin manifests remain minimal and use only documented fields.
-- Codex and Claude packages live under `integrations/`; never generate them in a
-  user's plugin cache.
-- Public installation distinguishes the native package layer from CLI-managed
-  user surfaces. Plugin-only installation is incomplete for every harness.
-- Claude installation and status use the native plugin manager. Its installed
-  cache is immutable to thoth-agents; documented first install adds the
-  marketplace and plugin before running the CLI.
-- Capability gaps remain explicit; never claim cross-harness enforcement parity.
-- Integration-build diagnostics are deduplicated by code. Recoverable
-  instruction-only or diagnostic-only gaps are non-fatal; only an error without
-  a fallback exits nonzero.
-- Do not emit Codex hook activation/readiness diagnostics when the generated
-  package contains no hook artifact.
-- Generated files are outputs. Change the owning adapter/writer.
-- `pnpm run build` regenerates both integration packages before compiling, so
-  Claude `agents/*.md` always comes from the canonical prompt code under
-  `src/agents/` through `claudeCodeAdapter`.
-- `npm version` runs the package `version` lifecycle before Git commit/tag
-  creation. The `release:patch`, `release:minor`, and `release:major` commands
-  force that lifecycle with `--ignore-scripts=false`, then regenerate, verify,
-  and stage every generated integration surface after the root version changes.
-
-## Public references
-
-- [`../installation.md`](../installation.md)
-- [`../codex-install.md`](../codex-install.md)
-- [`../codex-plugin-packaging.md`](../codex-plugin-packaging.md)
-- [`../claude-code-install.md`](../claude-code-install.md)
-- [`../claude-code-plugin-packaging.md`](../claude-code-plugin-packaging.md)
+- OpenCode remains default.
+- Codex uses ambient root plus six global TOMLs created by the mandatory CLI.
+  Its plugin manifest carries skills/MCP but cannot install custom agents or
+  `~/.codex/AGENTS.md`; `$thoth-init` creates project governance only.
+- Claude packages root plus six generated namespaced subagents.
+- Both marketplaces resolve to one `plugin/` bundle containing one copy of the
+  four canonical thoth-owned skills. Harness-specific manifests and MCP files
+  coexist in that bundle. External skills are installed from their source
+  repositories by the mandatory CLI flow; the same flow invokes thoth-mem's
+  public setup without copying provider assets into the bundle.
+- Native managers own marketplace snapshots, cache, enablement, and trust.
+- Generated files are outputs; edit canonical adapters, prompts, or skills.
+- Capability gaps remain explicit and deduplicated. Only unrecoverable required
+  generation errors exit nonzero.
+- Build and npm version lifecycle synchronize both plugin manifests and the
+  generated shared bundle.
+- No adapter bundles thoth-mem hooks, MCP, skill, lifecycle behavior, or project
+  QA executables.
 
 ## Verification
 
-Run adapter/writer tests first, then the consuming CLI install/operation tests.
-`pnpm run build` includes `integration:sync`; use that command directly only
-when you need to refresh generated packages without compiling. Run
-`pnpm run integration:verify` to prove the checked-in catalogs, generated Claude
-agents, lifecycle scripts, and plugin versions are current. Add schema and
-tarball verification when published output changes.
+Run focused adapter/generator tests, `pnpm run integration:sync`, and
+`pnpm run integration:verify`. Use `pnpm run build` for the full generated and
+compiled contract.

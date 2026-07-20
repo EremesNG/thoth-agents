@@ -359,9 +359,11 @@ version lifecycle commands keep that shared bundle synchronized.
 
 ## Models and provider boundaries
 
-OpenCode ships only an `openai` preset. Kimi, GitHub Copilot, ZAI/GLM, and
-mixed-provider mappings are not built in. Explicit per-role model overrides
-remain available.
+OpenCode install and sync ship and select only the `openai` preset. Kimi,
+GitHub Copilot, ZAI/GLM, and mixed-provider mappings are not built in. Explicit
+per-role model overrides remain available. Applying model configuration creates
+a complete seven-role `agents` preset from the effective values and activates
+it with `preset: agents`; unrelated presets and configuration remain intact.
 
 thoth-mem is an independent plugin/provider. `thoth-agents install` orchestrates
 its public setup command, but thoth-mem owns the resulting hooks, MCP, skill,
@@ -391,7 +393,9 @@ npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 
 In the interactive `Configure models` flow, `Apply` is always available. When
 no role is dirty, it reapplies every currently displayed role value; after an
-edit, preview and apply remain limited to the dirty roles.
+edit, preview and apply remain limited to the dirty roles. In OpenCode, both
+`Apply` and `Apply changes` materialize the complete effective roster and
+activate the named `agents` preset.
 
 It does not bypass native marketplace trust or edit manager-owned caches
 directly; Codex and Claude own their native manager mutations.

@@ -199,16 +199,18 @@ export function getOpenCodeModelRoles(): ModelRoleInput[] {
 
   return ALL_AGENT_NAMES.map((role) => {
     const defaultModel = getDefaultOpenCodeModel(role);
-    const model =
+    const configuredModel =
       readRoleField(agents, role, 'model') ??
-      readRoleField(activePreset, role, 'model') ??
-      defaultModel;
+      readRoleField(activePreset, role, 'model');
+    const model = configuredModel ?? defaultModel;
     const configuredVariant =
       readRoleField(agents, role, 'variant') ??
       readRoleField(activePreset, role, 'variant');
     const variant =
       configuredVariant ??
-      (model === defaultModel ? getDefaultOpenCodeVariant(role) : undefined);
+      (configuredModel === undefined
+        ? getDefaultOpenCodeVariant(role)
+        : undefined);
     return {
       role,
       model,

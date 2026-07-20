@@ -49,6 +49,7 @@ import { classifyProviderCapabilityEvidence } from './types';
 const PACKAGE_NAME = 'thoth-agents';
 const EXPECTED_PLUGIN = `${PACKAGE_NAME}@latest`;
 const OPENAI_PRESET = 'openai';
+const APPLIED_MODELS_PRESET = 'agents';
 const ROLE_NAMES = [...ALL_AGENT_NAMES];
 
 interface NormalizedOpenCodeRoleOverride {
@@ -424,39 +425,27 @@ function hasManagedPluginDrift(config: OpenCodeConfig | null): boolean {
 
 function liteConfigMarker(config: OpenCodeConfig | null): string {
   const preset = typeof config?.preset === 'string' ? config.preset : undefined;
-  const presets =
-    config?.presets && typeof config.presets === 'object'
-      ? (config.presets as Record<string, unknown>)
+  const presets = configRecord(config?.presets);
+  const managedPreset =
+    preset === OPENAI_PRESET || preset === APPLIED_MODELS_PRESET
+      ? configRecord(presets[preset])
       : {};
-  const openaiPreset =
-    presets[OPENAI_PRESET] && typeof presets[OPENAI_PRESET] === 'object'
-      ? (presets[OPENAI_PRESET] as Record<string, unknown>)
-      : {};
-  const legacyAgents =
-    config?.agents && typeof config.agents === 'object'
-      ? (config.agents as Record<string, unknown>)
-      : {};
+  const legacyAgents = configRecord(config?.agents);
   const roles = ROLE_NAMES.filter(
-    (role) => role in openaiPreset || role in legacyAgents,
+    (role) => role in managedPreset || role in legacyAgents,
   );
   return `preset: ${preset ?? 'none'}; observed roles: ${roles.join(', ')}`;
 }
 
-function hasSevenAgentPreset(config: OpenCodeConfig | null): boolean {
-  if (!config || config.preset !== OPENAI_PRESET) return false;
-  if (!config.presets || typeof config.presets !== 'object') return false;
-  const presets = config.presets as Record<string, unknown>;
-  const openaiPreset = presets[OPENAI_PRESET];
-  if (!openaiPreset || typeof openaiPreset !== 'object') return false;
-  const roles = openaiPreset as Record<string, unknown>;
-  return ROLE_NAMES.every((role) => {
-    const value = roles[role];
-    return (
-      value !== null &&
-      typeof value === 'object' &&
-      typeof (value as { model?: unknown }).model === 'string'
-    );
-  });
+function hasManagedSevenAgentPreset(config: OpenCodeConfig | null): boolean {
+  if (
+    !config ||
+    (config.preset !== OPENAI_PRESET && config.preset !== APPLIED_MODELS_PRESET)
+  ) {
+    return false;
+  }
+  const presets = configRecord(config.presets);
+  return hasCompleteAgentRoster(presets[config.preset]);
 }
 
 function hasSelectedNamedPreset(config: OpenCodeConfig | null): boolean {
@@ -465,7 +454,7 @@ function hasSelectedNamedPreset(config: OpenCodeConfig | null): boolean {
     typeof config.preset !== 'string' ||
     config.preset.length === 0 ||
     config.preset === OPENAI_PRESET ||
-    config.preset === 'agents'
+    config.preset === APPLIED_MODELS_PRESET
   ) {
     return false;
   }
@@ -487,17 +476,11 @@ function hasSelectedNamedPreset(config: OpenCodeConfig | null): boolean {
 }
 
 function hasLegacySevenAgentRoster(config: OpenCodeConfig | null): boolean {
-  if (!config || config.preset !== 'agents') return false;
-  if (!config.agents || typeof config.agents !== 'object') return false;
-  const agents = config.agents as Record<string, unknown>;
-  return ROLE_NAMES.every((role) => {
-    const value = agents[role];
-    return (
-      value !== null &&
-      typeof value === 'object' &&
-      typeof (value as { model?: unknown }).model === 'string'
-    );
-  });
+  return (
+    config?.preset === APPLIED_MODELS_PRESET &&
+    !hasManagedSevenAgentPreset(config) &&
+    hasCompleteAgentRoster(config.agents)
+  );
 }
 
 const ACTIVE_PRESET_SELECTED_CODE = 'opencode-active-preset-selected';
@@ -710,7 +693,7 @@ function getOpenCodeManagedStatus(
 
   if (!mainExists || !hasExpectedPlugin(main.config)) {
     if (hasManagedPluginDrift(main.config)) {
-      const currentRoster = hasSevenAgentPreset(lite.config);
+      const currentRoster = hasManagedSevenAgentPreset(lite.config);
       const legacyRoster = hasLegacySevenAgentRoster(lite.config);
       const selectedNamedPreset = hasSelectedNamedPreset(lite.config);
       const recognizedRoster =
@@ -794,7 +777,7 @@ function getOpenCodeManagedStatus(
     }
 
     if (!mainExists && liteExists) {
-      const currentRoster = hasSevenAgentPreset(lite.config);
+      const currentRoster = hasManagedSevenAgentPreset(lite.config);
       const legacyRoster = hasLegacySevenAgentRoster(lite.config);
       const selectedNamedPreset = hasSelectedNamedPreset(lite.config);
       if (!currentRoster && !legacyRoster && !selectedNamedPreset) {
@@ -955,7 +938,7 @@ function getOpenCodeManagedStatus(
     };
   }
 
-  if (!hasSevenAgentPreset(lite.config)) {
+  if (!hasManagedSevenAgentPreset(lite.config)) {
     const selectedNamedPreset = hasSelectedNamedPreset(lite.config);
     return {
       harness: 'opencode',
@@ -1553,6 +1536,46 @@ function invalidModelPayloadReason(
   return undefined;
 }
 
+function configRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function hasCompleteAgentRoster(value: unknown): boolean {
+  const roles = configRecord(value);
+  return ROLE_NAMES.every(
+    (role) => typeof configRecord(roles[role]).model === 'string',
+  );
+}
+
+function effectiveRolePreset(
+  base: OpenCodeConfig,
+  generated: OpenCodeConfig,
+): Record<string, Record<string, unknown>> {
+  const presets = configRecord(base.presets);
+  const generatedPresets = configRecord(generated.presets);
+  const defaults = configRecord(generatedPresets[OPENAI_PRESET]);
+  const selected =
+    typeof base.preset === 'string' ? configRecord(presets[base.preset]) : {};
+  const selectedIsMaterializedAgentsPreset =
+    base.preset === APPLIED_MODELS_PRESET && hasCompleteAgentRoster(selected);
+  const rootAgents = configRecord(base.agents);
+
+  return Object.fromEntries(
+    ROLE_NAMES.map((role) => [
+      role,
+      {
+        ...(selectedIsMaterializedAgentsPreset
+          ? {}
+          : configRecord(defaults[role])),
+        ...configRecord(selected[role]),
+        ...configRecord(rootAgents[role]),
+      },
+    ]),
+  );
+}
+
 function applyModelPlan(
   roles: readonly NormalizedOpenCodeRoleOverride[],
 ): OperationApplyResult {
@@ -1565,18 +1588,15 @@ function applyModelPlan(
   ensureConfigDir();
   const targetPath = getExistingLiteConfigPath();
   const parsed = parseConfig(targetPath);
-  const base =
-    parsed.config ??
-    (generateLiteConfig({
-      agent: 'opencode',
-      hasTmux: false,
-      dryRun: false,
-      reset: false,
-    }) as OpenCodeConfig);
-  const agents =
-    base.agents && typeof base.agents === 'object'
-      ? { ...(base.agents as Record<string, unknown>) }
-      : {};
+  const generated = generateLiteConfig({
+    agent: 'opencode',
+    hasTmux: false,
+    dryRun: false,
+    reset: false,
+  }) as OpenCodeConfig;
+  const base = parsed.config ?? generated;
+  const agents = { ...configRecord(base.agents) };
+  const appliedPreset = effectiveRolePreset(base, generated);
 
   const statePath = getOpenCodeManagedModelStatePath();
   const state = readManagedModelState(statePath, 1);
@@ -1585,7 +1605,10 @@ function applyModelPlan(
 
   for (const [role, override] of roleModels) {
     const current = {
-      ...((agents[role] as Record<string, unknown> | undefined) ?? {}),
+      ...configRecord(agents[role]),
+    };
+    const presetRole = {
+      ...configRecord(appliedPreset[role]),
     };
     const currentVariant =
       typeof current.variant === 'string' ? current.variant : undefined;
@@ -1596,7 +1619,9 @@ function applyModelPlan(
       (trackedVariant === undefined || currentVariant !== trackedVariant);
 
     current.model = override.model;
+    presetRole.model = override.model;
     if (userOwnsVariant) {
+      presetRole.variant = currentVariant;
       delete configuredEfforts[role];
       warnings.push({
         severity: 'important',
@@ -1605,14 +1630,22 @@ function applyModelPlan(
       });
     } else if (override.variant === null) {
       delete current.variant;
+      delete presetRole.variant;
       delete configuredEfforts[role];
     } else {
       current.variant = override.variant;
+      presetRole.variant = override.variant;
       configuredEfforts[role] = override.variant;
     }
     agents[role] = current;
+    appliedPreset[role] = presetRole;
   }
   base.agents = agents;
+  base.presets = {
+    ...configRecord(base.presets),
+    [APPLIED_MODELS_PRESET]: appliedPreset,
+  };
+  base.preset = APPLIED_MODELS_PRESET;
   writeConfig(targetPath, base);
   writeTextWithBackup(
     statePath,

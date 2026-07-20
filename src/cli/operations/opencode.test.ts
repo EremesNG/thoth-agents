@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ALL_AGENT_NAMES } from '../../config';
 import { generateLiteConfig } from '../providers';
+import { getOpenCodeModelRoles } from '../tui/operations';
 
 const installRequiredSkillMock = vi.hoisted(() =>
   vi.fn(() => ({ status: 'installed' as const })),
@@ -131,6 +132,25 @@ describe('OpenCode operations adapter v0.3', () => {
     return path;
   }
 
+  function writeAllRequiredSkills(): void {
+    writeRequiredSkill('simplify');
+    writeRequiredSkill('tdd');
+    writeRequiredSkill('progressive-context-router');
+    writeRequiredSkill('architectural-grilling');
+  }
+
+  function cataloguedOpenCodeRoles() {
+    return getOpenCodeModelRoles().map((role) =>
+      role.effort?.kind === 'effort'
+        ? {
+            ...role,
+            catalogId: role.model,
+            availableEfforts: [role.effort.value],
+          }
+        : role,
+    );
+  }
+
   test('classifies missing required skills as managed drift', () => {
     writeManagedConfig();
     const status = getOpenCodeStatus(context());
@@ -224,10 +244,12 @@ describe('OpenCode operations adapter v0.3', () => {
   test('applies an install with the complete canonical roster', () => {
     const result = applyOpenCodePlan(buildOpenCodeInstallPlan(context()));
     const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as {
+      preset: string;
       presets: { openai: Record<string, unknown> };
     };
 
     expect(result.applied).toBe(true);
+    expect(written.preset).toBe('openai');
     expect(Object.keys(written.presets.openai)).toEqual(ALL_AGENT_NAMES);
     expect(result.changedTargets).toEqual(
       expect.arrayContaining([
@@ -248,6 +270,18 @@ describe('OpenCode operations adapter v0.3', () => {
     );
   });
 
+  test('applies sync with the built-in OpenAI preset active', () => {
+    const result = applyOpenCodePlan(buildOpenCodeSyncPlan(context()));
+    const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as {
+      preset: string;
+      presets: { openai: Record<string, unknown> };
+    };
+
+    expect(result.applied).toBe(true);
+    expect(written.preset).toBe('openai');
+    expect(Object.keys(written.presets.openai)).toEqual(ALL_AGENT_NAMES);
+  });
+
   test('blocks completion when a required skill cannot be installed', () => {
     installRequiredSkillMock.mockReturnValue({ status: 'failed' });
 
@@ -264,12 +298,31 @@ describe('OpenCode operations adapter v0.3', () => {
     );
   });
 
-  test('accepts model overrides for focused implementation agents', () => {
+  test('activates a complete agents preset without losing effective fields', () => {
     writeManagedConfig();
-    writeRequiredSkill('simplify');
-    writeRequiredSkill('tdd');
-    writeRequiredSkill('progressive-context-router');
-    writeRequiredSkill('architectural-grilling');
+    writeAllRequiredSkills();
+    const baseConfig = validLiteConfig();
+    const customPreset = {
+      librarian: {
+        model: 'custom/librarian',
+        variant: 'selected-librarian',
+        temperature: 0.4,
+      },
+      deep: { model: 'custom/deep', temperature: 0.5 },
+    };
+    writeJson(liteConfigPath(), {
+      ...baseConfig,
+      preset: 'custom',
+      presets: {
+        ...(baseConfig.presets as Record<string, unknown>),
+        custom: customPreset,
+      },
+      agents: {
+        explorer: { variant: 'root-explorer', temperature: 0.25 },
+        deep: { temperature: 0.75 },
+      },
+      tmux: { enabled: true, layout: 'tiled', main_pane_size: 55 },
+    });
     const plan = buildOpenCodeModelPlan(
       {
         harness: 'opencode',
@@ -278,7 +331,7 @@ describe('OpenCode operations adapter v0.3', () => {
           {
             role: 'deep',
             provider: 'openai',
-            model: 'gpt-5.6-sol',
+            model: 'gpt-5.6-terra',
           },
         ],
       },
@@ -287,13 +340,192 @@ describe('OpenCode operations adapter v0.3', () => {
 
     const result = applyOpenCodePlan(plan);
     const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as {
-      agents: Record<string, { model: string; variant?: string }>;
+      preset: string;
+      presets: Record<string, Record<string, Record<string, string | number>>>;
+      agents: Record<string, Record<string, string | number>>;
+      tmux: { enabled: boolean; layout: string; main_pane_size: number };
     };
 
     expect(result.applied).toBe(true);
-    expect(written.agents.deep).toEqual({
-      model: 'openai/gpt-5.6-sol',
+    expect(written.preset).toBe('agents');
+    expect(Object.keys(written.presets.agents ?? {})).toEqual(ALL_AGENT_NAMES);
+    expect(written.presets.agents?.explorer).toEqual({
+      model: 'openai/gpt-5.6-luna',
+      variant: 'root-explorer',
+      temperature: 0.25,
     });
+    expect(written.presets.agents?.deep).toEqual({
+      model: 'openai/gpt-5.6-terra',
+      temperature: 0.75,
+    });
+    expect(written.presets.agents?.librarian).toEqual({
+      model: 'custom/librarian',
+      variant: 'selected-librarian',
+      temperature: 0.4,
+    });
+    expect(written.presets.custom).toEqual(customPreset);
+    expect(written.agents.deep).toEqual({
+      model: 'openai/gpt-5.6-terra',
+      temperature: 0.75,
+    });
+    expect(written.tmux).toEqual({
+      enabled: true,
+      layout: 'tiled',
+      main_pane_size: 55,
+    });
+  });
+
+  test('activates all unchanged displayed roles as the agents preset', () => {
+    writeManagedConfig();
+    writeAllRequiredSkills();
+    const displayedRoles = cataloguedOpenCodeRoles();
+    const plan = buildOpenCodeModelPlan(
+      { harness: 'opencode', dryRun: true, roles: displayedRoles },
+      context(),
+    );
+
+    expect(displayedRoles).toHaveLength(ALL_AGENT_NAMES.length);
+    expect(plan.canApply, JSON.stringify(plan.warnings)).toBe(true);
+    const result = applyOpenCodePlan(plan);
+    expect(result.applied, JSON.stringify(result.warnings)).toBe(true);
+    const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as {
+      preset: string;
+      presets: Record<string, Record<string, Record<string, unknown>>>;
+      agents: Record<string, Record<string, unknown>>;
+    };
+
+    expect(written.preset).toBe('agents');
+    expect(Object.keys(written.presets.agents ?? {})).toEqual(ALL_AGENT_NAMES);
+    expect(Object.keys(written.agents)).toEqual(ALL_AGENT_NAMES);
+    for (const role of displayedRoles) {
+      const persisted = written.presets.agents?.[role.role];
+      expect(persisted?.model).toBe(role.model);
+      if (role.effort?.kind === 'effort') {
+        expect(persisted?.variant).toBe(role.effort.value);
+      } else {
+        expect(persisted).not.toHaveProperty('variant');
+      }
+    }
+  });
+
+  test('prefers a complete agents preset over the root-only legacy shape', () => {
+    writeManagedConfig();
+    writeAllRequiredSkills();
+    const plan = buildOpenCodeModelPlan(
+      {
+        harness: 'opencode',
+        dryRun: true,
+        roles: cataloguedOpenCodeRoles(),
+      },
+      context(),
+    );
+    expect(applyOpenCodePlan(plan).applied).toBe(true);
+
+    writeJson(mainConfigPath(), { plugin: ['thoth-agents@0.3.0'] });
+    const pluginDrift = getOpenCodeStatus(context());
+    expect(pluginDrift.state).toBe('drift');
+    expect(pluginDrift.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'opencode-plugin-drift' }),
+      ]),
+    );
+    expect(pluginDrift.diagnostics).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'opencode-roster-drift' }),
+      ]),
+    );
+
+    rmSync(mainConfigPath());
+    const missingMain = getOpenCodeStatus(context());
+    expect(missingMain.state).toBe('missing');
+    expect(missingMain.diagnostics).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'opencode-roster-drift' }),
+      ]),
+    );
+
+    const legacy = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as Record<
+      string,
+      unknown
+    > & {
+      presets: Record<string, unknown>;
+    };
+    delete legacy.presets.agents;
+    writeJson(liteConfigPath(), legacy);
+    writeJson(mainConfigPath(), { plugin: ['thoth-agents@latest'] });
+    const rootOnlyLegacy = getOpenCodeStatus(context());
+    expect(rootOnlyLegacy.state).toBe('drift');
+    expect(rootOnlyLegacy.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'opencode-roster-drift' }),
+      ]),
+    );
+  });
+
+  test('recognizes and reapplies the activated agents preset', () => {
+    writeManagedConfig();
+    writeAllRequiredSkills();
+    const firstPlan = buildOpenCodeModelPlan(
+      {
+        harness: 'opencode',
+        dryRun: true,
+        roles: [
+          {
+            role: 'explorer',
+            model: 'openai/gpt-5.6-luna',
+            effort: { kind: 'inherit' },
+          },
+          { role: 'deep', model: 'openai/gpt-5.6-terra' },
+        ],
+      },
+      context(),
+    );
+
+    expect(applyOpenCodePlan(firstPlan).applied).toBe(true);
+    const beforeSecondApply = getOpenCodeModelRoles();
+    const status = getOpenCodeStatus(context());
+
+    expect(status.state).toBe('installed');
+    expect(status.diagnostics).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'opencode-roster-drift' }),
+      ]),
+    );
+    expect(beforeSecondApply.find(({ role }) => role === 'deep')).toEqual({
+      role: 'deep',
+      model: 'openai/gpt-5.6-terra',
+      effort: { kind: 'inherit' },
+    });
+    expect(beforeSecondApply.find(({ role }) => role === 'explorer')).toEqual({
+      role: 'explorer',
+      model: 'openai/gpt-5.6-luna',
+      effort: { kind: 'inherit' },
+    });
+
+    const secondPlan = buildOpenCodeModelPlan(
+      {
+        harness: 'opencode',
+        dryRun: true,
+        roles: [{ role: 'deep', model: 'openai/gpt-5.6-sol' }],
+      },
+      context(),
+    );
+    expect(secondPlan.canApply).toBe(true);
+    expect(applyOpenCodePlan(secondPlan).applied).toBe(true);
+
+    const afterSecondApply = getOpenCodeModelRoles();
+    expect(afterSecondApply.filter(({ role }) => role !== 'deep')).toEqual(
+      beforeSecondApply.filter(({ role }) => role !== 'deep'),
+    );
+    expect(afterSecondApply.find(({ role }) => role === 'deep')).toEqual({
+      role: 'deep',
+      model: 'openai/gpt-5.6-sol',
+      effort: { kind: 'inherit' },
+    });
+    const written = JSON.parse(readFileSync(liteConfigPath(), 'utf8')) as {
+      presets: { agents: Record<string, Record<string, unknown>> };
+    };
+    expect(written.presets.agents.explorer).not.toHaveProperty('variant');
   });
 
   test('rejects unissued or mutated plans before writing', () => {

@@ -14,12 +14,7 @@ npx thoth-agents@latest install --agent=opencode
 ```
 
 ```bash
-# Codex, in a terminal
-codex plugin marketplace add EremesNG/thoth-agents
-```
-
-```bash
-# Codex, after restart and installation from /plugins: return to a terminal
+# Codex, in a terminal; includes native marketplace/plugin installation
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```

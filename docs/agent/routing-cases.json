@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "cases": [
     {
       "id": "single-domain-agent-permission",
@@ -18,6 +18,15 @@
       "expected_overlays": [],
       "expected_code_roots": ["src/cli/"],
       "notes": "The parser, help, and CLI tests are sufficient while the writer remains unchanged."
+    },
+    {
+      "id": "single-domain-codex-native-install",
+      "task": "Change how the Codex installer registers its marketplace and installs the native plugin.",
+      "expected_primary": "cli-installation",
+      "expected_first_read": "docs/agent/cli-installation.md",
+      "expected_overlays": ["public-compatibility"],
+      "expected_code_roots": ["src/cli/"],
+      "notes": "Inspect codex-plugin-install, the install coordinator, focused tests, and public Codex installation docs; harness generation changes only if the packaged catalog changes."
     },
     {
       "id": "cross-cutting-codex-memory",

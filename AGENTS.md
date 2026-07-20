@@ -122,10 +122,11 @@ and before a PR, keep this applicable local pre-merge order:
 - The PR template expects clear `Summary` and `Changes` sections.
 - Explain what changed, why, and any risks or follow-up.
 - The OpenCode plugin entrypoint is not a shell command.
-- Codex installation is subject to trust review and requires `/plugins`; its
-  plugin manifest cannot install custom agents or global instructions, so the
-  CLI must manage `~/.codex/agents/`, `~/.codex/AGENTS.md`, and global config.
-  `$thoth-init` initializes project SDD governance only.
+- Codex installation remains subject to native trust and policy. The CLI invokes
+  the official marketplace/plugin manager commands, then manages
+  `~/.codex/agents/`, `~/.codex/AGENTS.md`, and global config because the plugin
+  manifest cannot install those surfaces. `$thoth-init` initializes project SDD
+  governance only.
 - Do not assume capability or enforcement equivalence across harnesses.
 
 ## Subagent return contract

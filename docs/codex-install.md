@@ -5,22 +5,7 @@ skills and MCP configuration; the thoth-agents CLI materializes global custom
 agents, orchestrator instructions, and configuration that the plugin manifest
 cannot install.
 
-## 1. Install the native plugin
-
-```bash
-codex plugin marketplace add EremesNG/thoth-agents
-```
-
-Restart Codex, open `/plugins`, and install or enable `thoth-agents`. The
-catalog is `.agents/plugins/marketplace.json`; it resolves to the versioned
-shared `plugin/` bundle.
-
-The plugin contains the four thoth-owned SDD/init/constitution/archive skills
-and packaged MCP configuration. External execution skills are deliberately not
-vendored. It contains no custom-agent TOMLs because Codex plugin manifests do
-not support an agents component.
-
-## 2. Apply the mandatory CLI layer
+## 1. Run the combined installer
 
 Preview, then apply:
 
@@ -28,6 +13,28 @@ Preview, then apply:
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
+
+The CLI inspects `codex plugin marketplace list --json` and `codex plugin list
+--available --json`. When needed, it runs the native unattended commands:
+
+```bash
+codex plugin marketplace add EremesNG/thoth-agents --json
+codex plugin add thoth-agents@thoth-agents --json
+```
+
+It does not write Codex marketplace or plugin-cache files directly. A
+same-named marketplace from another source, unreadable manager state, command
+failure, or failed post-install verification stops setup before the global
+files are changed. Dry-run prints the native plan without running either
+mutation. The catalog is `.agents/plugins/marketplace.json`; it resolves to the
+versioned shared `plugin/` bundle.
+
+The plugin contains the four thoth-owned SDD/init/constitution/archive skills
+and packaged MCP configuration. External execution skills are deliberately not
+vendored. It contains no custom-agent TOMLs because Codex plugin manifests do
+not support an agents component.
+
+## 2. Mandatory global layer
 
 User-scope setup manages:
 
@@ -43,9 +50,10 @@ User-scope setup manages:
 
 The ambient session is the orchestrator, so no orchestrator child TOML is
 generated. The CLI obtains external skills from their canonical repositories;
-it does not synthesize a personal plugin marketplace. Dry-run delegates to
-thoth-mem's `--plan` mode. A partial or user-action result keeps the combined
-installation incomplete and prints provider diagnostics, actions, and receipt.
+Codex remains the owner of its marketplace snapshot and plugin cache. Dry-run
+delegates to thoth-mem's `--plan` mode. A partial or user-action result keeps the
+combined installation incomplete and prints provider diagnostics, actions, and
+receipt.
 
 ## 3. Restart and initialize each repository
 
@@ -80,7 +88,8 @@ runtime. An implementation writer cannot substitute for oracle verification.
 
 ## Trust and precedence
 
-- The CLI cannot bypass native marketplace/plugin trust.
+- The CLI invokes the native manager but cannot bypass marketplace/plugin trust
+  or higher-precedence policy.
 - Global `~/.codex/AGENTS.md` may be refined or overridden by repository and
   subtree instructions.
 - Profile, CLI, system, managed, and organization configuration retains its

@@ -65,25 +65,19 @@ from the CLI step. Existing project-owned files are preserved.
 
 ### Codex
 
-Register the repository marketplace from a terminal:
-
-```bash
-codex plugin marketplace add EremesNG/thoth-agents
-```
-
-Restart Codex, open `/plugins`, and install or enable `thoth-agents`. Then return
-to a terminal and apply the mandatory global layer:
+Preview, then run the combined native-plugin and global-layer installer:
 
 ```bash
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
-The CLI writes the orchestrator block to `~/.codex/AGENTS.md`, creates six
-custom-agent TOMLs under `~/.codex/agents/`, and merges the managed feature into
-`~/.codex/config.toml`. It also installs the external skills and invokes
-provider-owned thoth-mem setup. Restart Codex again, then initialize each target
-repository's SDD governance:
+The CLI first uses Codex's native manager to register `EremesNG/thoth-agents`
+and install or enable `thoth-agents@thoth-agents`. It then writes the
+orchestrator block to `~/.codex/AGENTS.md`, creates six custom-agent TOMLs under
+`~/.codex/agents/`, merges the managed feature into `~/.codex/config.toml`,
+installs the external skills, and invokes provider-owned thoth-mem setup.
+Restart Codex, then initialize each target repository's SDD governance:
 
 ```text
 $thoth-init
@@ -345,7 +339,7 @@ diagnostics, manual actions, and receipt paths remain visible for recovery.
 | Harness | Important limitation |
 | --- | --- |
 | OpenCode | Strongest integrated path. The CLI installs the npm plugin configuration, external skills, and provider-owned thoth-mem setup; `/thoth-init` materializes thoth-owned project skills/governance. Only the OpenAI built-in preset ships. |
-| Codex | Native plugin installation is incomplete without the CLI. The CLI manages global `AGENTS.md`, six agent TOMLs, config, external skills, and thoth-mem setup; `$thoth-init` only initializes per-repository SDD governance. Runtime role matching and some permissions remain instruction-level. |
+| Codex | The CLI installs the native plugin and manages global `AGENTS.md`, six agent TOMLs, config, external skills, and thoth-mem setup; `$thoth-init` only initializes per-repository SDD governance. Runtime role matching and some permissions remain instruction-level. |
 | Claude Code | Run both native marketplace commands before the CLI installs external skills and requests thoth-mem setup. The native manager owns cache files; fine-grained path restrictions remain instruction-level. |
 
 Codex and Claude marketplace manifests are versioned in
@@ -385,7 +379,8 @@ npx thoth-agents@latest install --agent=claude
 npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ```
 
-It does not replace native marketplace trust or mutate manager-owned caches.
+It does not bypass native marketplace trust or edit manager-owned caches
+directly; Codex and Claude own their native manager mutations.
 
 ## Documentation
 

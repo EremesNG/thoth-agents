@@ -30,11 +30,12 @@ plugin structure has no agents component.
 
 ## Required global layer
 
-After native `/plugins` installation, the thoth-agents CLI must write six
-standalone custom agents under `~/.codex/agents/`, the managed orchestrator block
-under `~/.codex/AGENTS.md`, and managed configuration under
-`~/.codex/config.toml`. It also installs the four external skills from their
-canonical repositories. The plugin package cannot perform those global writes.
+The thoth-agents CLI first asks Codex's native manager to register the published
+marketplace and install the plugin. It then writes six standalone custom agents
+under `~/.codex/agents/`, the managed orchestrator block under
+`~/.codex/AGENTS.md`, and managed configuration under `~/.codex/config.toml`.
+It also installs the four external skills from their canonical repositories.
+The plugin package cannot perform those global writes.
 
 `$thoth-init` remains a bundled project-governance skill. It creates
 `openspec/` assets only and is not an agent installer.
@@ -51,8 +52,9 @@ both plugin manifests aligned with the root version.
 ## Ownership and limitations
 
 Codex owns marketplace registration, installed snapshots, trust, and caches.
-thoth-agents does not copy plugins into personal manager directories. Standalone
-agent role matching and some permissions remain instruction-level.
+thoth-agents invokes official manager commands but does not copy plugins into
+personal manager directories itself. Standalone agent role matching and some
+permissions remain instruction-level.
 
 See [Build Codex plugins](https://learn.chatgpt.com/docs/build-plugins#plugin-structure)
 and [Codex custom subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).

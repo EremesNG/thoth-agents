@@ -21,14 +21,15 @@ or the network.
 
 Nested package installation is non-interactive: the CLI confirms both `npx`
 package acquisition and the `skills` operation explicitly. On Windows it routes
-npm's `npx.cmd` shim through `cmd.exe`; Linux and macOS execute `npx` directly.
+npm's `npx.cmd` shim and Codex's `codex.cmd` shim through `cmd.exe`; Linux and
+macOS execute those commands directly.
 
 ## Supported flow
 
 | Harness | Native/plugin step | Required completion step |
 | --- | --- | --- |
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, external skills, and thoth-mem | Restart, then `/thoth-init` in each repository |
-| Codex | Add `EremesNG/thoth-agents`, restart, install/enable from `/plugins` | `npx thoth-agents@latest install --agent=codex` applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
+| Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add marketplace and install `thoth-agents@thoth-agents` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
 
 ## Common CLI options
@@ -36,7 +37,7 @@ npm's `npx.cmd` shim through `cmd.exe`; Linux and macOS execute `npx` directly.
 | Option | Meaning |
 | --- | --- |
 | `--agent=opencode\|codex\|claude` | Select the installation target. |
-| `--dry-run` | Print the thoth-agents plan and invoke thoth-mem with its zero-write `--plan` mode. |
+| `--dry-run` | Print native-manager and thoth-agents plans, then invoke thoth-mem with its zero-write `--plan` mode. |
 | `--reset` | Repair only thoth-agents-managed targets; it never becomes thoth-mem `--force`. |
 | `--no-tui` | Force the non-interactive path. |
 | `--tmux=yes\|no` | Configure OpenCode tmux integration; it does not apply to Codex or Claude. |
@@ -58,25 +59,21 @@ preset is generated.
 
 ## Codex
 
-First install the native package:
-
-```bash
-codex plugin marketplace add EremesNG/thoth-agents
-```
-
-Restart Codex, open `/plugins`, and install or enable `thoth-agents`. The
-repository catalog `.agents/plugins/marketplace.json` points to
-the shared `plugin/` bundle, which contributes bundled owned skills and the
-Codex MCP configuration.
-
-Then apply the mandatory global orchestration layer from a terminal:
+Preview, then run the combined native-plugin and global-orchestration setup:
 
 ```bash
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
-The CLI manages:
+The CLI inspects Codex's JSON manager state, registers `EremesNG/thoth-agents`
+when absent, and installs or enables `thoth-agents@thoth-agents` with `codex
+plugin add`. It fails closed for an unreadable manager state or a marketplace
+with the same name from another source, and verifies the enabled plugin after
+mutation. The repository catalog `.agents/plugins/marketplace.json` points to
+the shared `plugin/` bundle.
+
+The remaining CLI setup manages:
 
 - `~/.codex/AGENTS.md`: one bounded orchestrator block;
 - `~/.codex/agents/thoth-agents-{explorer,librarian,oracle,designer,quick,deep}.toml`;
@@ -88,7 +85,8 @@ After those thoth-agents-owned operations, the CLI invokes thoth-mem's Codex
 setup and preserves its diagnostics, manual actions, and receipt path.
 
 The ambient Codex session is root, so no orchestrator child TOML exists. The CLI
-does not copy a plugin into a personal manager cache or bypass `/plugins` trust.
+does not copy a plugin into a personal manager cache or bypass Codex trust; it
+delegates marketplace and plugin mutations to the native manager.
 
 Restart Codex after the CLI step. In every target repository invoke
 `$thoth-init`; this creates only missing `openspec/` governance. It does not

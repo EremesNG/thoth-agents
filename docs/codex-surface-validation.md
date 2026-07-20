@@ -1,6 +1,7 @@
 # Codex Surface Validation
 
-After native plugin installation and the mandatory CLI layer, validate:
+After the CLI completes native plugin installation and the mandatory global
+layer, validate:
 
 | Surface | Expected state |
 | --- | --- |

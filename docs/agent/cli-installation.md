@@ -18,10 +18,13 @@ phase execution does not.
   reset never becomes provider `--force`, rollback, removal, or file repair.
 - Browser and QA executables remain project-owned.
 - Dry-run writes nothing; reset touches only bounded managed targets.
-- Native Codex and Claude marketplace trust remains explicit and manager-owned.
+- Codex and Claude marketplace trust, snapshots, and caches remain
+  manager-owned; installers may invoke their official native manager commands
+  but never edit those files directly.
 - Codex CLI installation is mandatory for global agents, root instructions,
-  feature configuration, and external global skills. `$thoth-init` creates
-  project SDD governance only.
+  feature configuration, external global skills, and native plugin setup. It
+  fails closed before global writes when Codex manager inspection or plugin
+  verification fails. `$thoth-init` creates project SDD governance only.
 - Claude requires native marketplace add/install before its plugin surfaces
   exist; then the CLI installs external skills and requests provider setup
   without editing Claude's cache.

@@ -389,6 +389,10 @@ npx thoth-agents@latest install --agent=claude
 npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ```
 
+In the interactive `Configure models` flow, `Apply` is always available. When
+no role is dirty, it reapplies every currently displayed role value; after an
+edit, preview and apply remain limited to the dirty roles.
+
 It does not bypass native marketplace trust or edit manager-owned caches
 directly; Codex and Claude own their native manager mutations.
 

@@ -1028,6 +1028,39 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain('deep: gpt-5.5');
   });
 
+  test('model Apply is always available and reapplies every current role when unchanged', async () => {
+    const currentRoles: ModelRoleInput[] = [
+      {
+        role: 'explorer',
+        model: 'gpt-current',
+        provider: 'openai',
+        effort: { kind: 'effort', value: 'high' },
+        catalogId: 'openai/gpt-current',
+        availableEfforts: ['high'],
+      },
+      {
+        role: 'deep',
+        model: 'gpt-deep',
+        effort: { kind: 'inherit' },
+      },
+    ];
+    const ops = operations(undefined, undefined, { codex: currentRoles });
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openCodexModels(stdin);
+    for (let index = 0; index < currentRoles.length; index += 1) {
+      await press(stdin, 'j');
+    }
+
+    expect(lastFrame()).toMatch(/> Apply(?:\r?\n|$)/);
+    await press(stdin, '\r');
+
+    expect(ops.modelPlanRoles.at(-1)).toEqual(currentRoles);
+    expect(ops.applied).toHaveLength(1);
+  });
+
   test('model catalog loading and failure stay visible without blocking manual entry', async () => {
     const pending = deferred<ModelOption[]>();
     const ops = operations({ codex: pending.promise });

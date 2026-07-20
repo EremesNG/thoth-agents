@@ -180,16 +180,20 @@ function normalizeSelection(
   return Math.min(current, items.length - 1);
 }
 
-function changedRoles(rows: readonly ModelRoleView[]): ModelRoleInput[] {
+function rolesForModelPlan(
+  rows: readonly ModelRoleView[],
+  includeUnchanged = false,
+): ModelRoleInput[] {
   return rows
-    .filter((role) => role.dirty)
+    .filter((role) => includeUnchanged || role.dirty)
     .map((role) => {
       const effortChanged =
         role.effort?.kind !== role.currentEffort.kind ||
         (role.effort?.kind === 'effort' &&
           role.currentEffort.kind === 'effort' &&
           role.effort.value !== role.currentEffort.value);
-      const includeEffort = effortChanged || role.effort?.kind === 'effort';
+      const includeEffort =
+        includeUnchanged || effortChanged || role.effort?.kind === 'effort';
       return {
         role: role.role,
         model: role.model,
@@ -370,11 +374,13 @@ export function App({
           (option) => option.id === modelChoiceSelection.id,
         );
   const choiceSelected = selectedModelIndex < 0 ? 0 : selectedModelIndex;
-  const dirtyRoles = changedRoles(modelRows);
+  const dirtyRoles = rolesForModelPlan(modelRows);
+  const rolesToApply =
+    dirtyRoles.length > 0 ? dirtyRoles : rolesForModelPlan(modelRows, true);
   const modelActions =
     dirtyRoles.length > 0
-      ? ['Preview changes', 'Apply changes', 'Back']
-      : ['Back'];
+      ? ['Preview changes', 'Apply', 'Back']
+      : ['Apply', 'Back'];
   const modelMenuItems: MenuItem[] = [
     ...modelRows.map((role) => ({
       id: role.role,
@@ -488,7 +494,7 @@ export function App({
   }
 
   function previewModelChanges(applyImmediately: boolean): void {
-    const nextPlan = operations.modelPlan(modelHarness, dirtyRoles);
+    const nextPlan = operations.modelPlan(modelHarness, rolesToApply);
     setPlan(nextPlan);
     setPreviewAction(applyImmediately ? 'apply' : 'cancel');
     setPreviewBackView('modelRoles');
@@ -754,7 +760,7 @@ export function App({
         const action = modelActions[modelSelected - modelRows.length];
         if (action === 'Back') setView('manageHarness');
         if (action === 'Preview changes') previewModelChanges(false);
-        if (action === 'Apply changes') previewModelChanges(true);
+        if (action === 'Apply') previewModelChanges(true);
       }
       return;
     }

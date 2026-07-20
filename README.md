@@ -20,7 +20,7 @@ Claude Code. One adaptive root handles clear bounded work directly and delegates
 only when specialization, context isolation, independent review, or safe
 parallelism creates a net gain.
 
-The 0.3.0 distributions ship the seven-role contract and thoth-owned SDD
+The plugin ships the seven-role contract and thoth-owned SDD
 contracts that combine Spec Kit-grade traceability with OpenSpec-style durable
 deltas. Accelerated planning fast-forwards without routine pauses; structural
 `ready`/`closeout` gates and independent oracle review retain rigor. During

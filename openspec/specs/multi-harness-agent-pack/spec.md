@@ -17,7 +17,7 @@ roles.
 
 #### Scenario: Codex specialist materialization
 
-- **WHEN** mandatory Codex CLI installation runs after native plugin trust
+- **WHEN** mandatory Codex CLI installation runs with the native manager available
 - **THEN** the ambient session remains root and six global specialist TOMLs are written
 - **AND** the orchestrator contract is merged into `~/.codex/AGENTS.md`
 - **AND** no orchestrator child TOML is created.
@@ -66,6 +66,16 @@ The repository and npm package MUST include `.agents/plugins/marketplace.json`
 for Codex and `.claude-plugin/marketplace.json` for Claude. Their sources MUST
 resolve to the same versioned bundle under `plugin/`; generated plugin versions
 MUST equal the root package version.
+
+### Requirement: Install the Codex plugin through its native manager
+
+The Codex installer MUST inspect JSON marketplace and plugin state, register
+`EremesNG/thoth-agents` when absent, and install or enable
+`thoth-agents@thoth-agents` through official `codex plugin` commands before
+writing global agent-pack files. It MUST fail closed on unreadable state, a
+same-named marketplace from another source, command failure, or failed
+post-install verification. Dry-run MUST plan these commands without mutating the
+native manager.
 
 ### Requirement: Generate the shared plugin from canonical source
 

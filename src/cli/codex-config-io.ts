@@ -260,7 +260,7 @@ export function mergeCodexManagedConfig(
     diffSummary.push(`ensure plugins."${options.pluginId}".enabled = true`);
   } else {
     diffSummary.push(
-      'plugin enablement left to /plugins; no guessed plugin id written',
+      'plugin installation and enablement owned by the native Codex plugin manager; no plugin table written',
     );
   }
 
@@ -379,11 +379,11 @@ function buildCodexManagedConfigPatch(
   ];
   if (options.pluginId) {
     diffSummary.push(
-      `plugin enablement for "${options.pluginId}" is not textually merged; use /plugins to enable it`,
+      `plugin enablement for "${options.pluginId}" is not textually merged; use the native Codex plugin manager`,
     );
   } else {
     diffSummary.push(
-      'plugin enablement left to /plugins; no guessed plugin id written',
+      'plugin installation and enablement owned by the native Codex plugin manager; no plugin table written',
     );
   }
 

@@ -12,6 +12,11 @@ import {
   formatCodexSetupPlan,
 } from './codex-install';
 import {
+  applyCodexPluginSetup,
+  buildCodexPluginSetupPlan,
+  formatCodexPluginSetupPlan,
+} from './codex-plugin-install';
+import {
   detectCurrentConfig,
   generateLiteConfig,
   getOpenCodePath,
@@ -331,11 +336,24 @@ export async function install(
 ): Promise<number> {
   const config = createInstallConfig(args);
   if (config.agent === 'codex') {
+    const projectRoot = cwd();
+    const pluginPlan = buildCodexPluginSetupPlan({
+      dryRun: config.dryRun,
+      projectRoot,
+    });
+    console.log(formatCodexPluginSetupPlan(pluginPlan));
+    const pluginResult = applyCodexPluginSetup(pluginPlan);
+    for (const diagnostic of pluginResult.diagnostics) printInfo(diagnostic);
+    if (!pluginResult.success) {
+      printError(`Codex plugin install failed: ${pluginResult.error}`);
+      return 1;
+    }
+
     const plan = buildCodexSetupPlan({
       dryRun: config.dryRun,
       reset: config.reset,
       scope: 'user',
-      projectRoot: cwd(),
+      projectRoot,
       homeDir: homedir(),
     });
     console.log(formatCodexSetupPlan(plan));
@@ -352,7 +370,7 @@ export async function install(
     printSuccess(
       config.dryRun
         ? 'Codex dry-run complete; no files written'
-        : 'Codex agent-pack setup complete',
+        : 'Codex plugin installed as thoth-agents@thoth-agents and agent-pack setup complete (restart Codex to activate)',
     );
     return 0;
   }

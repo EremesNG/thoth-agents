@@ -1,6 +1,21 @@
 import { describe, expect, test, vi } from 'vitest';
+import { buildCodexSetupPlan } from './codex-install';
+import {
+  applyCodexPluginSetup,
+  buildCodexPluginSetupPlan,
+} from './codex-plugin-install';
 import { createInstallConfig, install } from './install';
 import type { ThothMemSetupResult } from './thoth-mem-install';
+
+vi.mock('./codex-plugin-install', () => ({
+  buildCodexPluginSetupPlan: vi.fn(() => ({ dryRun: true })),
+  formatCodexPluginSetupPlan: vi.fn(() => 'Codex plugin setup plan'),
+  applyCodexPluginSetup: vi.fn(() => ({
+    success: true,
+    changed: [],
+    diagnostics: [],
+  })),
+}));
 
 vi.mock('./codex-install', () => ({
   buildCodexSetupPlan: vi.fn(() => ({ dryRun: true })),
@@ -107,6 +122,70 @@ describe('install', () => {
 
     expect(config).not.toHaveProperty('harness');
     expect(config).not.toHaveProperty('installCustomSkills');
+  });
+
+  test('Codex installation applies the native plugin-manager plan', async () => {
+    vi.clearAllMocks();
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (message?: unknown) => lines.push(String(message));
+    try {
+      const code = await install(
+        {
+          agent: 'codex',
+          tui: false,
+          tmux: 'no',
+          dryRun: true,
+          reset: false,
+        },
+        { runThothMemSetup: () => providerResult('codex') },
+      );
+
+      expect(code).toBe(0);
+      expect(buildCodexPluginSetupPlan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dryRun: true,
+          projectRoot: process.cwd(),
+        }),
+      );
+      expect(applyCodexPluginSetup).toHaveBeenCalledOnce();
+      expect(lines.join('\n')).toContain('Codex plugin setup plan');
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test('Codex installation stops before managed files when the native manager fails', async () => {
+    vi.clearAllMocks();
+    vi.mocked(applyCodexPluginSetup).mockReturnValueOnce({
+      success: false,
+      changed: [],
+      diagnostics: ['manager unavailable'],
+      error: 'Codex native plugin manager state is not safe to mutate.',
+    });
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (message?: unknown) => lines.push(String(message));
+    try {
+      const code = await install(
+        {
+          agent: 'codex',
+          tui: false,
+          tmux: 'no',
+          dryRun: false,
+          reset: false,
+        },
+        { runThothMemSetup: () => providerResult('codex') },
+      );
+
+      expect(code).toBe(1);
+      expect(buildCodexSetupPlan).not.toHaveBeenCalled();
+      expect(lines.join('\n')).toContain(
+        'Codex plugin install failed: Codex native plugin manager state is not safe to mutate.',
+      );
+    } finally {
+      console.log = originalLog;
+    }
   });
 
   test.each([

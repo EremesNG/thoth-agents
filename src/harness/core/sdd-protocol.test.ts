@@ -184,6 +184,13 @@ describe('SDD phase dispatch envelope', () => {
       requirements: ['Respect the project constitution.'],
       boundaries: ['Do not modify the workspace.'],
       verification: ['Report requirement coverage as a percentage.'],
+      memory: {
+        provider: 'thoth-mem',
+        project: 'thoth-agents',
+        rootSessionId: 'root-session-123',
+        authorization: 'observe',
+        context: ['Prior decision: OpenSpec artifacts remain canonical.'],
+      },
     });
 
     for (const heading of [
@@ -196,6 +203,7 @@ describe('SDD phase dispatch envelope', () => {
       'VERIFICATION',
       'EXPECTED OUTPUT',
       'HANDOFF',
+      'MEMORY',
     ]) {
       expect(envelope).toContain(`## ${heading}`);
     }
@@ -205,6 +213,30 @@ describe('SDD phase dispatch envelope', () => {
     expect(envelope).toContain('Respect the project constitution.');
     expect(envelope).toContain('Do not modify the workspace.');
     expect(envelope).toContain('readiness verdict');
+    expect(envelope).toContain('provider=thoth-mem');
+    expect(envelope).toContain('project=thoth-agents');
+    expect(envelope).toContain('root_session_id=root-session-123');
+    expect(envelope).toContain('authorization=observe');
+    expect(envelope).toContain(
+      'Prior decision: OpenSpec artifacts remain canonical.',
+    );
+  });
+
+  test('renders unavailable stable identity explicitly instead of inventing one', () => {
+    const envelope = renderSddPhaseDispatchEnvelope({
+      phase: 'verify',
+      route: 'direct',
+      changeName: 'readme-fix',
+      memory: {
+        provider: 'thoth-mem',
+        project: 'thoth-agents',
+        authorization: 'none',
+      },
+    });
+
+    expect(envelope).toContain('root_session_id=unavailable');
+    expect(envelope).toContain('authorization=none');
+    expect(envelope).toContain('- none');
   });
 
   test('rejects a required phase that does not belong to the selected route', () => {
@@ -213,6 +245,11 @@ describe('SDD phase dispatch envelope', () => {
         phase: 'archive',
         route: 'direct',
         changeName: 'readme-fix',
+        memory: {
+          provider: 'thoth-mem',
+          project: 'thoth-agents',
+          authorization: 'none',
+        },
       }),
     ).toThrow('archive is not available in the direct route');
   });
@@ -223,6 +260,11 @@ describe('SDD phase dispatch envelope', () => {
         phase: 'converge',
         route: 'direct',
         changeName: 'readme-fix',
+        memory: {
+          provider: 'thoth-mem',
+          project: 'thoth-agents',
+          authorization: 'none',
+        },
       }),
     ).toThrow('converge is not available in the direct route');
   });

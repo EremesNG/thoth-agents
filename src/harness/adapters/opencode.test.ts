@@ -80,7 +80,8 @@ describe('OpenCode harness adapter v0.3', () => {
         ?.content,
     );
 
-    expect(content).toContain('installed provider guidance');
+    expect(content).toContain('installed `thoth-mem` skill');
+    expect(content).toContain('do not invent provider mechanics');
     expect(content).not.toMatch(
       /mem_(?:save|recall|get|context|project|session)\s*\(/,
     );

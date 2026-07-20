@@ -17,7 +17,7 @@ import type { ModelEntry } from './prompt-utils';
 
 type ModelFamily = 'openai';
 
-export type SemanticMemoryAccess = 'base' | 'readonly' | 'writable';
+export type SemanticMemoryAccess = 'dispatch-scoped';
 export type ReadOnlyAgentRole = 'explorer' | 'librarian' | 'oracle';
 export type WriteCapableAgentRole = 'designer' | 'quick' | 'deep';
 
@@ -77,7 +77,7 @@ export function createQuestionProtocolSection(): QuestionProtocolSection {
 }
 
 export function createSubagentRulesSection(
-  memoryAccess: SemanticMemoryAccess = 'base',
+  memoryAccess: SemanticMemoryAccess = 'dispatch-scoped',
 ): SubagentRulesSection {
   return {
     kind: 'subagent-rules',
@@ -176,10 +176,9 @@ You are the adaptive root for thoth-agents. Keep requirements, decisions, execut
 
 <operating-model>
 - Handle bounded direct work when intent and risk are clear; never verify your own implementation.
-- Delegate only for net gain from specialization, context isolation, independent review, or safe parallelism; prefer read-heavy work.
-- The maximum delegation depth is ${policy.maxDelegationDepth}; child agents never delegate further.
+- Delegate only for net gain from specialization, context isolation, review, or safe parallelism. The maximum delegation depth is ${policy.maxDelegationDepth}; children never delegate.
 - Maintain one writer for each mutable surface. Parallelize only independent work with no overlapping writes.
-- Keep prompts bounded and request distilled evidence, not raw logs or full files.
+- Keep prompts bounded; request distilled evidence, not raw logs or full files.
 - Use \`{{userQuestionTool}}\` only when a material unresolved choice changes the result. Continue all safe non-blocked work first.
 - Use \`{{progressTool}}\` only when the work genuinely has multiple dependent steps.
 </operating-model>
@@ -208,36 +207,37 @@ ${renderRoleDirectory()}
 <external-skills>
 - Use bundled \`thoth-constitution\` for constitution lifecycle and \`thoth-archive\` for verified artifact-backed closeout.
 - Use the installed mandatory \`tdd\` skill for behavior changes and \`simplify\` after implementation without changing behavior.
-- During an SDD, never invoke the thoth-agents CLI, \`npx skills add\`, or a network fetch to load a phase contract. Report an incomplete installation if a required local skill is missing.
+- During an SDD, never invoke the thoth-agents CLI, \`npx skills add\`, or a network fetch. A missing local contract means incomplete installation.
 - Use progressive-context-router only for repository instruction or context-router work.
 - Use architectural-grilling before specification only when the user explicitly asks to be grilled or material human-owned product or architecture decisions remain unresolved.
-- Do not invoke it merely because the route is Full, and do not use it for routine clarification in Direct or Accelerated work.
-- While grilling, remain in discovery and decision mode, ask one material question per turn, and wait for explicit closure before continuing the SDD pipeline.
+- Do not invoke it merely because the route is Full. While grilling, ask one material question per turn and await explicit closure.
 - Feed accepted decisions forward; spec.md and plan.md remain canonical instead of creating a duplicate blueprint artifact by default.
 </external-skills>
 
+<memory>
+- Load the installed \`thoth-mem\` skill for resume or prior work and provider-backed memory; never invent its protocol.
+- Preserve a durable decision, root cause, convention, or discovery only when reusable. Root owns the stable root session ID, project, lifecycle, real-user intent, and authorization; never invent identity or confirmed effects.
+- Follow the skill at verified compaction and a meaningful semantic boundary. Children receive only bounded MEMORY dispatch and never own root lifecycle.
+- \`openspec/\` remains canonical; do not mirror SDD phase artifacts into provider memory. A memory failure degrades memory only and does not block unrelated implementation or verification.
+</memory>
+
 <artifacts>
 - Preserve Spec Kit semantics inside ${workflow.artifactRoot}.
-- Required for Accelerated and Full SDD: spec.md, plan.md, tasks.md, verify-report.md, archive-report.md.
-- Optional when useful: ${renderArtifactSummary()}.
-- Root owns coordination artifacts under openspec/ and uses the route-specific bundled thoth-sdd validation gates.
-- Product work stays with root or one writer; root alone moves task state [~] -> [x] after evidence.
-- ${roleTemplate('oracle')} returns read-only findings; root persists verify-report.md and archives.
-- Archive creates archive-report.md, synchronizes only explicitly declared durable specification deltas after oracle PASS, and moves the complete change to openspec/changes/archive/YYYY-MM-DD-<feature>/.
+- Accelerated and Full require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md; optional when useful: ${renderArtifactSummary()}.
+- Root owns openspec/ coordination and thoth-sdd gates; product work has one writer, and root alone moves [~] -> [x] after evidence.
+- ${roleTemplate('oracle')} returns read-only findings. Root persists verification; after PASS, archive syncs declared durable deltas and moves the change to openspec/changes/archive/YYYY-MM-DD-<feature>/.
 </artifacts>
 
 <execution>
-- Validate public contracts and existing tests before behavior changes; use test-first work when behavior is changing.
-- Root decides whether implementation stays direct or is handed to one writer. Do not delegate merely because an agent exists.
+- Validate contracts and tests first; use test-first work for behavior. Root or one writer implements; do not delegate merely because an agent exists.
 - ${roleTemplate('oracle')} always provides independent verification and also owns Full SDD analysis. Root and implementation writers never self-approve.
 - Preserve unrelated working-tree changes. Never instruct an agent to discard them.
-- Installed provider guidance owns memory, hooks, MCP, persistence, and recovery mechanics. Use it only when a provider-dependent outcome is requested or required.
 - Report changed files, evidence, risks, and capability gaps truthfully.
 </execution>
 
 <delegation>
 - Dispatch through \`{{delegationTool}}\` with this envelope; use the same boundaries for non-SDD work.
-- Launch agents together only when their work is independent. Wait for requested results before synthesis.
+- Parallelize only independent work and await requested results before synthesis.
 - Child return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
 
 ${renderSddPhaseDispatchTemplate()}
@@ -280,7 +280,6 @@ const ROLE_SPECIFIC_RULES: Record<
 
 function childSections(
   roleName: ReadOnlyAgentRole | WriteCapableAgentRole,
-  memoryAccess: SemanticMemoryAccess,
 ): RolePromptSection[] {
   const role = getAgentRole(roleName);
   const dispatch =
@@ -295,7 +294,7 @@ function childSections(
     role.mode === 'read-only'
       ? [
           'Do not mutate the workspace.',
-          'Do not create coordination artifacts or durable provider state.',
+          'Do not create coordination artifacts.',
         ]
       : [
           'Edit only the assigned phase surface.',
@@ -321,10 +320,9 @@ ${role.responsibility}
 - Do not delegate further or manage root progress.
 - ${modeRules.join('\n- ')}
 - ${ROLE_SPECIFIC_RULES[roleName].join('\n- ')}
-- Use installed provider guidance only for an explicitly authorized provider-dependent outcome; do not invent provider mechanics.
 - Ask only when a local blocking decision cannot be resolved from the assignment and evidence.
 </rules>`),
-    createSubagentRulesSection(memoryAccess),
+    createSubagentRulesSection(),
     createQuestionProtocolSection(),
     roleText(`<return-contract>
 Return a compact result with these fields:
@@ -344,13 +342,13 @@ Return a compact result with these fields:
 export function createReadOnlySpecialistPromptSections(
   role: ReadOnlyAgentRole,
 ): RolePromptSection[] {
-  return childSections(role, 'readonly');
+  return childSections(role);
 }
 
 export function createWriteCapableSpecialistPromptSections(
   role: WriteCapableAgentRole,
 ): RolePromptSection[] {
-  return childSections(role, 'writable');
+  return childSections(role);
 }
 
 export function createRolePromptSections(
@@ -390,13 +388,13 @@ function renderSubagentRules(
     '- Never discard or overwrite unrelated working-tree changes.',
   ];
 
-  if (section.memoryAccess === 'readonly') {
+  if (section.memoryAccess === 'dispatch-scoped') {
     rules.push(
-      '- Any authorized provider context is read-only; do not create durable observations, summaries, or checkpoints.',
-    );
-  } else if (section.memoryAccess === 'writable') {
-    rules.push(
-      '- Provider state is outside this role unless the parent explicitly authorizes a provider-dependent outcome and installed guidance defines it.',
+      '- Read the dispatch MEMORY block: `none` forbids provider work, `recall` permits bounded reads, and `observe` additionally permits a bounded durable observation under the delegated scope.',
+      '- For `recall` or `observe`, load and follow the installed `thoth-mem` skill; do not invent provider mechanics or claim unconfirmed effects.',
+      '- MEMORY authorization does not authorize workspace mutation. It never transfers root lifecycle or real-user-intent ownership to a child.',
+      '- `openspec/` remains canonical; do not mirror SDD phase artifacts into provider memory.',
+      '- Report unavailable, degraded, stale, contradictory, or insufficient memory evidence and continue unrelated assigned work when safe.',
     );
   }
 

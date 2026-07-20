@@ -151,9 +151,35 @@ describe('v0.3 prompt rendering', () => {
       'VERIFICATION',
       'EXPECTED OUTPUT',
       'HANDOFF',
+      'MEMORY',
     ]) {
       expect(prompt).toContain(heading);
     }
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('routes durable memory through installed thoth-mem guidance in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+
+    expect(prompt).toContain('installed `thoth-mem` skill');
+    expect(prompt).toMatch(/resume|prior work/i);
+    expect(prompt).toMatch(/decision.*root cause.*convention.*discovery/i);
+    expect(prompt).toContain('verified compaction');
+    expect(prompt).toContain('meaningful semantic boundary');
+    expect(prompt).toContain('stable root session ID');
+    expect(prompt).toMatch(/never invent/i);
+    expect(prompt).toContain('`openspec/` remains canonical');
+    expect(prompt).toMatch(/do not mirror/i);
+    expect(prompt).toMatch(/memory failure.*does not block/i);
+    expect(prompt).not.toMatch(
+      /mem_(?:save|recall|get|context|project|session)\s*\(/,
+    );
   });
 
   test.each([
@@ -193,6 +219,48 @@ describe('v0.3 prompt rendering', () => {
     expect(prompt).toContain(`You are ${role}`);
     expect(prompt).toContain('read-only');
     expect(prompt).toContain('Do not mutate the workspace');
+  });
+
+  test('keeps memory authorization independent from workspace mutation mode', () => {
+    const explorer = renderRolePrompt(
+      createReadOnlySpecialistPromptSections('explorer'),
+      OPENCODE_PROMPT_DIALECT,
+    );
+    const deep = renderRolePrompt(
+      createWriteCapableSpecialistPromptSections('deep'),
+      OPENCODE_PROMPT_DIALECT,
+    );
+
+    for (const prompt of [explorer, deep]) {
+      expect(prompt).toContain('MEMORY');
+      expect(prompt).toContain('`none`');
+      expect(prompt).toContain('`recall`');
+      expect(prompt).toContain('`observe`');
+      expect(prompt).toContain('installed `thoth-mem` skill');
+      expect(prompt).toMatch(/does not authorize workspace mutation/i);
+      expect(prompt).toMatch(/never.*root lifecycle/i);
+    }
+    expect(explorer).toMatch(/observe.*durable observation/i);
+    expect(explorer).not.toContain(
+      'do not create durable observations, summaries, or checkpoints',
+    );
+    expect(explorer).toContain('Do not mutate the workspace');
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('keeps OpenSpec canonical in every $harness child prompt', (dialect) => {
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      const prompt = renderRolePrompt(sectionsFor(role), dialect);
+
+      expect(prompt, role).toContain('`openspec/` remains canonical');
+      expect(prompt, role).toMatch(/do not mirror.*SDD phase artifacts/i);
+      expect(prompt, role).not.toMatch(
+        /mem_(?:save|recall|get|context|project|session)\s*\(/,
+      );
+    }
   });
 
   test('makes oracle the independent on-demand analyze and verify reviewer', () => {

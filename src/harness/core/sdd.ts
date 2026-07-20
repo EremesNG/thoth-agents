@@ -1,4 +1,5 @@
 import type { AgentRoleName } from './agent-pack';
+import type { MemoryDispatchContract } from './memory-governance';
 
 export type SddRoute = 'direct' | 'accelerated' | 'full';
 
@@ -88,6 +89,7 @@ export interface SddPhaseDispatchInput {
   requirements?: string[];
   boundaries?: string[];
   verification?: string[];
+  memory: MemoryDispatchContract;
 }
 
 export type SddArtifactId =
@@ -971,6 +973,17 @@ export function renderSddPhaseDispatchEnvelope(
     ...protocol.blockingConditions.map((value) => `Block when: ${value}`),
     ...(input.verification ?? []),
   ];
+  const project = input.memory.project.trim();
+  const rootSessionId = input.memory.rootSessionId?.trim();
+  if (input.memory.provider !== 'thoth-mem' || project.length === 0) {
+    throw new Error('memory dispatch requires thoth-mem and a project name');
+  }
+  if (input.memory.rootSessionId !== undefined && !rootSessionId) {
+    throw new Error('root session identity must be stable or omitted');
+  }
+  const memoryContext = input.memory.context?.length
+    ? input.memory.context
+    : ['none'];
 
   return `## PHASE
 phase=${input.phase}
@@ -997,7 +1010,15 @@ ${renderDispatchList(verification)}
 ${renderDispatchList(protocol.outputSchema)}
 
 ## HANDOFF
-${renderDispatchList(protocol.handoff)}`;
+${renderDispatchList(protocol.handoff)}
+
+## MEMORY
+provider=thoth-mem
+project=${project}
+root_session_id=${rootSessionId ?? 'unavailable'}
+authorization=${input.memory.authorization}
+context:
+${renderDispatchList(memoryContext)}`;
 }
 
 export function renderSddPhaseDispatchTemplate(): string {
@@ -1026,7 +1047,15 @@ phase=<phase-id>
 <phase result fields>
 
 ## HANDOFF
-<what the next phase must preserve>`;
+<what the next phase must preserve>
+
+## MEMORY
+provider=thoth-mem
+project=<project-name>
+root_session_id=<stable-root-session-id|unavailable>
+authorization=<none|recall|observe>
+context:
+<bounded recalled context or - none>`;
 }
 
 export function getSddPhaseOwner(

@@ -20,16 +20,21 @@ describe('memory governance contract', () => {
 
     expect(contract).toEqual(
       expect.objectContaining({
+        provider: 'thoth-mem',
         providerOwnership: 'external',
-        protectedTopicNamespaces: ['sdd/*'],
-        canonicalTopicKey: 'sdd/{change}/{artifact}',
+        installedGuidance: 'thoth-mem skill',
+        canonicalSddStore: 'openspec/',
+        prohibitsSddArtifactMirroring: true,
         requiresParentAuthorization: true,
-        handoffOutcome: 'authorized-context-available',
-        completionOutcome: 'resumable-summary-or-checkpoint',
+        rootLifecycleOwner: 'orchestrator',
+        handoffOutcome: 'bounded-memory-contract',
+        completionOutcome: 'provider-confirmed-semantic-summary',
         prohibitsFalseSuccess: true,
         prohibitsConsumerFallback: true,
       }),
     );
+    expect(contract).not.toHaveProperty('protectedTopicNamespaces');
+    expect(contract).not.toHaveProperty('canonicalTopicKey');
     expect(JSON.stringify(contract)).not.toMatch(
       /mem_(?:save|recall|get|context|project|session)|recallChain|allowedTools|forbiddenTools|rootOwnedOperations/i,
     );
@@ -39,13 +44,15 @@ describe('memory governance contract', () => {
     const prompt = renderMemoryGovernanceInstructions(getAgentRole('deep'));
 
     expect(prompt).toContain('installed provider guidance');
+    expect(prompt).toContain('thoth-mem');
     expect(prompt).toContain('parent-scoped authorization');
     expect(prompt).toContain(
       'accepted scope, decisions, permissions, and artifacts',
     );
-    expect(prompt).toContain('resumable summary or checkpoint outcome');
+    expect(prompt).toContain('root lifecycle');
+    expect(prompt).toContain('openspec/');
+    expect(prompt).toMatch(/do not mirror/i);
     expect(prompt).toContain('degraded or unsupported');
-    expect(prompt).toContain('sdd/{change}/{artifact}');
     expect(prompt).not.toMatch(PROVIDER_OPERATION_PATTERN);
     expect(prompt).not.toMatch(
       /consumer-owned fallback|permanent closure|end-session|finalization/i,
@@ -58,11 +65,24 @@ describe('memory governance contract', () => {
 
     expect(explorer.role).toBe('explorer');
     expect(explorer.requiresParentContext).toBe(true);
-    expect(explorer.mayWriteDurableObservations).toBe(false);
+    expect(explorer.workspaceMode).toBe('read-only');
+    expect(explorer.availableAuthorizations).toEqual([
+      'none',
+      'recall',
+      'observe',
+    ]);
+    expect(explorer.ownsRootLifecycle).toBe(false);
     expect(deep.role).toBe('deep');
     expect(deep.requiresParentContext).toBe(true);
-    expect(deep.mayWriteDurableObservations).toBe(true);
+    expect(deep.workspaceMode).toBe('write-capable');
+    expect(deep.availableAuthorizations).toEqual(
+      explorer.availableAuthorizations,
+    );
+    expect(deep.ownsRootLifecycle).toBe(false);
     expect(explorer.rules.join('\n')).toContain('parent-scoped authorization');
+    expect(explorer.rules.join('\n')).toContain(
+      'does not authorize workspace mutation',
+    );
     expect(deep.rules.join('\n')).toContain('authorized context');
     expect([...explorer.rules, ...deep.rules].join('\n')).not.toMatch(
       PROVIDER_OPERATION_PATTERN,
@@ -81,8 +101,8 @@ describe('memory governance contract', () => {
 
     for (const prompt of [openCode, codex]) {
       expect(prompt).toContain('parent-scoped authorization');
-      expect(prompt).toContain('resumable summary or checkpoint outcome');
-      expect(prompt).toContain('sdd/{change}/{artifact}');
+      expect(prompt).toContain('provider-confirmed semantic summary');
+      expect(prompt).toContain('openspec/');
       expect(prompt).not.toMatch(PROVIDER_OPERATION_PATTERN);
     }
 

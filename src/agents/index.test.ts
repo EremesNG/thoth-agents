@@ -169,7 +169,8 @@ describe('OpenCode v0.3 prompt boundaries', () => {
       .map((agent) => agent.config.prompt ?? '')
       .join('\n');
 
-    expect(prompts).toContain('installed provider guidance');
+    expect(prompts).toContain('installed `thoth-mem` skill');
+    expect(prompts).toContain('do not invent provider mechanics');
     expect(prompts).not.toMatch(
       /mem_(?:save|recall|get|context|project|session)\s*\(/,
     );

@@ -45,17 +45,7 @@ export const QUESTION_PROTOCOL = renderPromptSection(
 );
 
 export const SUBAGENT_RULES = renderPromptSection(
-  createSubagentRulesSection('base'),
-  OPENCODE_PROMPT_DIALECT,
-);
-
-export const SUBAGENT_RULES_READONLY = renderPromptSection(
-  createSubagentRulesSection('readonly'),
-  OPENCODE_PROMPT_DIALECT,
-);
-
-export const SUBAGENT_RULES_WRITABLE = renderPromptSection(
-  createSubagentRulesSection('writable'),
+  createSubagentRulesSection(),
   OPENCODE_PROMPT_DIALECT,
 );
 

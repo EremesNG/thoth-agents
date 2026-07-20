@@ -17,6 +17,7 @@ task.
 Return `pass` or `fail`, compliance matrix, commands/results, stable findings,
 critical issues, warnings, and remediation anchors. For Direct, return the
 verdict in-session. For Accelerated and Full, root persists oracle's exact result
-using `templates/verify-report.md`. Fail routes to converge (straight back to
-implement for Direct); PASS permits closeout and archive for artifact-backed
-routes.
+using `<skill-dir>/templates/verify-report.md`, where `<skill-dir>` is the
+directory containing the installed `thoth-sdd/SKILL.md`. Fail routes to converge
+(straight back to implement for Direct); PASS permits closeout and archive for
+artifact-backed routes.

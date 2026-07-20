@@ -1,5 +1,20 @@
 # Tasks: [Feature name]
 
+## Authoring contract
+
+Replace every HTML anchor below with real content; do not append new tasks next
+to retained examples. Across the entire file, task identifiers start at `T001`
+and increase by exactly one without resetting for a new story or section.
+
+The canonical task form is:
+``- [ ] T001 [P] [US1] Description with FR-###/SC-### coverage in `path/to/file` | Verify: observable outcome``
+
+`[P]` is optional and must precede the optional `[US#]` tag. Before
+`| Verify:`, each task must contain exactly one backtick span, reserved for one
+literal repository-relative path. Do not use placeholders, globs, absolute or
+home-relative paths, repository escapes, URIs, or extra backticks. Every task
+must end with a concrete `Verify` outcome.
+
 ## MVP scope
 
 [Name the first independently testable story and its completion evidence.]
@@ -10,20 +25,18 @@
 
 ## Story US1
 
-- [ ] T001 [US1] Add the failing behavior test for FR-001 and buildable SC-001 in `[exact/test/path]` | Verify: the focused test fails for the missing behavior
-- [ ] T002 [US1] Implement FR-001 and buildable SC-001 in `[exact/source/path]` | Verify: the focused test passes
-- [ ] T003 [P] [US1] Update independent documentation for FR-001 in `[exact/doc/path]` | Verify: the documented contract matches the tested behavior
+<!-- STORY-US1-TASKS -->
 
 Outcome SCs remain verification targets; do not manufacture implementation tasks
 for them.
 
 ## Parallel execution
 
-[Keep exactly one form below. Use `[P]` only when mutable paths cannot overlap.]
+[Replace the anchor with exactly one form: concrete task pairings covering every
+`[P]` task, or `- None: <evidence-backed reason>`. Never keep both forms.]
 
-- T003 may run with T001 because `[exact/doc/path]` and `[exact/test/path]` do not overlap.
-- None: [reason no tasks can safely overlap]
+<!-- PARALLEL-EXECUTION-EVIDENCE -->
 
 ## Final verification
 
-- [ ] T004 [US1] Map FR-001 and buildable SC-001 evidence in `[verify-report path]` | Verify: oracle records a passing verdict with executed evidence
+<!-- FINAL-VERIFICATION-TASKS -->

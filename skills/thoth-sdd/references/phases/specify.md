@@ -3,7 +3,9 @@
 **Owner**: root<br>
 **Output**: `openspec/changes/<feature>/spec.md`
 
-Start from `templates/spec.md` and remain implementation-neutral.
+Start from `<skill-dir>/templates/spec.md`, where `<skill-dir>` is the directory
+containing the installed `thoth-sdd/SKILL.md`, and remain
+implementation-neutral.
 
 - Record **Why**, **Impact**, and affected kebab-case capability slugs (or
   `None`).

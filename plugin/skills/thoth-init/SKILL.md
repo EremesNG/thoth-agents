@@ -19,13 +19,18 @@ target structure before changing it, then ensures these minimum paths exist:
 - `openspec/changes/archive/`
 - `openspec/specs/`
 - `openspec/memory/`
-- `openspec/templates/`
 - `openspec/.thoth-agents.json`
 
-Missing constitution and SDD template files are copied from the installed
-bundle. Existing constitution and template files remain byte-for-byte intact;
-the thoth-managed manifest may be normalized to the current contract. Inspect
-the JSON `created`, `managed`, and `preserved` arrays when reporting the result.
+The missing constitution is copied from the installed sibling
+`thoth-constitution` skill. An existing constitution remains byte-for-byte
+intact, while the thoth-managed manifest may be normalized to the current
+contract. Any legacy `openspec/templates/` tree is outside the managed graph and
+remains untouched. Inspect the JSON `created`, `managed`, and `preserved` arrays
+when reporting the result.
+
+The initializer never creates, copies, validates, reads, or synchronizes SDD
+workflow templates. Those assets remain in the installed `thoth-sdd` skill and
+are consumed directly from that bundle by the workflow phase contracts.
 
 This operation is offline, idempotent, and harness-neutral. Every write stays
 inside `openspec/`. It never installs or synchronizes skills, agents, plugins,

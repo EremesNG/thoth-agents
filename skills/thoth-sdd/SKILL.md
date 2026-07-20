@@ -37,6 +37,10 @@ Accelerated the minimum recommendation but does not force it.
 
 ## Progressive loading
 
+Resolve `<skill-dir>` as the directory containing this `SKILL.md`, and resolve
+`<skills-root>` as its parent directory. Every bundled path below is anchored to
+one of those installed roots, never to the project or current working directory.
+
 Use only installed local contracts during the pipeline. Never invoke the
 thoth-agents CLI, `npx skills add`, or a network fetch to advance an SDD phase.
 If a required contract or external skill is missing, stop and report an
@@ -46,24 +50,24 @@ Read only the current phase contract:
 
 | Phase | Contract |
 | --- | --- |
-| explore | `references/phases/explore.md` |
-| specify | `references/phases/specify.md` |
-| clarify | `references/phases/clarify.md` |
-| plan | `references/phases/plan.md` |
-| checklist | `references/phases/checklist.md` |
-| tasks | `references/phases/tasks.md` |
-| plan-review | bundled `plan-reviewer` skill |
-| implement | `references/phases/implement.md` |
-| verify | `references/phases/verify.md` |
-| converge | `references/phases/converge.md` |
-| archive | bundled `thoth-archive` skill |
+| explore | `<skill-dir>/references/phases/explore.md` |
+| specify | `<skill-dir>/references/phases/specify.md` |
+| clarify | `<skill-dir>/references/phases/clarify.md` |
+| plan | `<skill-dir>/references/phases/plan.md` |
+| checklist | `<skill-dir>/references/phases/checklist.md` |
+| tasks | `<skill-dir>/references/phases/tasks.md` |
+| plan-review | `<skills-root>/plan-reviewer/SKILL.md` |
+| implement | `<skill-dir>/references/phases/implement.md` |
+| verify | `<skill-dir>/references/phases/verify.md` |
+| converge | `<skill-dir>/references/phases/converge.md` |
+| archive | `<skills-root>/thoth-archive/SKILL.md` |
 
 ## Validation gates
 
-Run the validator from this skill directory:
+Run the validator from its installed absolute path:
 
 ```text
-node scripts/validate.mjs --change openspec/changes/<feature> --route <accelerated|full> --through <specify|plan|tasks|checklist|ready|closeout> --json
+node "<skill-dir>/scripts/validate.mjs" --change openspec/changes/<feature> --route <accelerated|full> --through <specify|plan|tasks|checklist|ready|closeout> --json
 ```
 
 - **Accelerated**: `specify`, then `ready` after the fast-forward planning pass,

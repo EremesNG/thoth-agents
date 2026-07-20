@@ -70,7 +70,6 @@ describe('bundled thoth-init', () => {
         join('changes', 'archive'),
         'specs',
         'memory',
-        'templates',
       ]) {
         expect(
           existsSync(join(project, 'openspec', directory)),
@@ -111,9 +110,7 @@ describe('bundled thoth-init', () => {
       expect(constitutionValidator.status, constitutionValidator.stderr).toBe(
         0,
       );
-      expect(
-        existsSync(join(project, 'openspec', 'templates', 'spec.md')),
-      ).toBe(true);
+      expect(existsSync(join(project, 'openspec', 'templates'))).toBe(false);
       expect(existsSync(join(project, '.agents'))).toBe(false);
       expect(existsSync(join(project, '.opencode'))).toBe(false);
       expect(existsSync(join(project, '.claude'))).toBe(false);
@@ -152,7 +149,7 @@ describe('bundled thoth-init', () => {
     }
   });
 
-  test('preserves existing constitution and templates byte-for-byte', () => {
+  test('preserves the constitution and ignores legacy templates byte-for-byte', () => {
     const project = mkdtempSync(join(tmpdir(), 'thoth-preserve-'));
     const script = join(
       process.cwd(),
@@ -184,9 +181,13 @@ describe('bundled thoth-init', () => {
       expect(readFileSync(templatePath, 'utf8')).toBe(
         '# Custom spec template\r\n',
       );
-      expect(JSON.parse(result.stdout).preserved).toEqual(
-        expect.arrayContaining([constitutionPath, templatePath]),
-      );
+      const report = JSON.parse(result.stdout);
+      expect(report.preserved).toContain(constitutionPath);
+      expect([
+        ...report.created,
+        ...report.managed,
+        ...report.preserved,
+      ]).not.toContain(templatePath);
       expect(existsSync(join(project, '.agents'))).toBe(false);
     } finally {
       rmSync(project, { recursive: true, force: true });
@@ -246,7 +247,7 @@ describe('bundled thoth-init', () => {
     }
   });
 
-  test('rejects an incomplete bundle before writing OpenSpec assets', () => {
+  test('initializes without a bundled SDD template directory', () => {
     const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-incomplete-'));
     const project = mkdtempSync(join(tmpdir(), 'thoth-project-'));
 
@@ -271,11 +272,10 @@ describe('bundled thoth-init', () => {
 
       const result = runInit(script, project);
 
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(
-        'Bundled SDD template directory is missing',
-      );
-      expect(existsSync(join(project, 'openspec'))).toBe(false);
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ status: 'ready' });
+      expect(existsSync(join(project, 'openspec'))).toBe(true);
+      expect(existsSync(join(project, 'openspec', 'templates'))).toBe(false);
     } finally {
       rmSync(packageRoot, { recursive: true, force: true });
       rmSync(project, { recursive: true, force: true });
@@ -284,6 +284,105 @@ describe('bundled thoth-init', () => {
 });
 
 describe('canonical SDD bundle contracts', () => {
+  test('resolves workflow assets from the installed skill bundle', () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-contracts-'));
+
+    try {
+      writeFileSync(
+        join(packageRoot, 'package.json'),
+        `${JSON.stringify({ name: 'thoth-agents', version: '0.3.0' })}\n`,
+      );
+      generateIntegrationPackages({ projectRoot: packageRoot });
+
+      for (const skillsRoot of [
+        join(process.cwd(), 'skills'),
+        join(packageRoot, 'plugin', 'skills'),
+      ]) {
+        const sddRoot = join(skillsRoot, 'thoth-sdd');
+        const sddSkill = readFileSync(join(sddRoot, 'SKILL.md'), 'utf8');
+        const archiveSkill = readFileSync(
+          join(skillsRoot, 'thoth-archive', 'SKILL.md'),
+          'utf8',
+        );
+        const initSkill = readFileSync(
+          join(skillsRoot, 'thoth-init', 'SKILL.md'),
+          'utf8',
+        );
+        const planReviewerSkill = readFileSync(
+          join(skillsRoot, 'plan-reviewer', 'SKILL.md'),
+          'utf8',
+        );
+        const constitutionSkill = readFileSync(
+          join(skillsRoot, 'thoth-constitution', 'SKILL.md'),
+          'utf8',
+        );
+        const phaseTemplates = new Map([
+          ['specify.md', 'spec.md'],
+          ['plan.md', 'plan.md'],
+          ['checklist.md', 'checklist.md'],
+          ['tasks.md', 'tasks.md'],
+          ['verify.md', 'verify-report.md'],
+        ]);
+
+        expect(sddSkill).toContain(
+          'Resolve `<skill-dir>` as the directory containing this `SKILL.md`',
+        );
+        expect(sddSkill).toContain(
+          '`<skill-dir>/references/phases/specify.md`',
+        );
+        expect(sddSkill).toContain('node "<skill-dir>/scripts/validate.mjs"');
+
+        for (const [phase, template] of phaseTemplates) {
+          const contract = readFileSync(
+            join(sddRoot, 'references', 'phases', phase),
+            'utf8',
+          );
+          expect(contract, phase).toContain(
+            `<skill-dir>/templates/${template}`,
+          );
+        }
+
+        expect(archiveSkill).toContain(
+          '`<skills-root>/thoth-sdd/templates/archive-report.md`',
+        );
+        expect(archiveSkill).toContain(
+          'node "<skills-root>/thoth-sdd/scripts/validate.mjs"',
+        );
+        expect(archiveSkill).toContain(
+          'node "<skill-dir>/scripts/archive.mjs"',
+        );
+        expect(`${sddSkill}\n${archiveSkill}`).not.toContain(
+          'openspec/templates/',
+        );
+        expect(initSkill).not.toContain('- `openspec/templates/`');
+        expect(initSkill).toContain('node "<skill-dir>/scripts/init.mjs"');
+        expect(initSkill).toMatch(
+          /never (?:creates?|copies|validates|reads|synchronizes)[\s\S]+SDD\s+workflow templates/i,
+        );
+        expect(initSkill).toMatch(
+          /legacy `openspec\/templates\/`[\s\S]+untouched/i,
+        );
+        expect(planReviewerSkill).toContain(
+          'Resolve `<skill-dir>` as the directory containing this `SKILL.md`',
+        );
+        expect(planReviewerSkill).toContain(
+          '`<skill-dir>/templates/plan-review.md`',
+        );
+        expect(constitutionSkill).toContain(
+          'Resolve `<skill-dir>` as the directory containing this `SKILL.md`',
+        );
+        expect(constitutionSkill).toContain(
+          'node "<skill-dir>/scripts/validate.mjs"',
+        );
+        expect(constitutionSkill).toContain(
+          '`<skill-dir>/templates/constitution.md`',
+        );
+      }
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('defines a freshness-aware read-only plan review contract', () => {
     const skillPath = join(
       process.cwd(),
@@ -346,10 +445,70 @@ describe('canonical SDD bundle contracts', () => {
       'utf8',
     );
 
-    expect(tasks).toContain('None: [reason no tasks can safely overlap]');
+    expect(tasks).toContain('`- None: <evidence-backed reason>`');
+    expect(tasks).toContain('<!-- PARALLEL-EXECUTION-EVIDENCE -->');
     expect(checklist).toContain('**Activation reason**');
     expect(checklist).toContain('## Domain lenses');
     expect(checklist).toContain('Not required: [evidence-backed reason]');
+  });
+
+  test('keeps plan and task scaffolds parser-inert until populated', () => {
+    const plan = readFileSync(
+      join(process.cwd(), 'skills', 'thoth-sdd', 'templates', 'plan.md'),
+      'utf8',
+    );
+    const tasks = readFileSync(
+      join(process.cwd(), 'skills', 'thoth-sdd', 'templates', 'tasks.md'),
+      'utf8',
+    );
+
+    expect(plan).toContain('one ordered name set');
+    expect(plan).toContain('<!-- PRE-DESIGN-CONSTITUTION-ENTRIES -->');
+    expect(plan).toContain('<!-- POST-DESIGN-CONSTITUTION-ENTRIES -->');
+    expect(plan).not.toMatch(/^- \*\*\[Exact principle heading/m);
+    expect(tasks).toContain('start at `T001`');
+    expect(tasks).toContain('exactly one backtick span');
+    expect(tasks).toContain('<!-- STORY-US1-TASKS -->');
+    expect(tasks).toContain('<!-- FINAL-VERIFICATION-TASKS -->');
+    expect(tasks).not.toMatch(/^- \[[ x~]\] T\d{3}/m);
+  });
+
+  test('keeps verification and archive templates aligned with closeout fields', () => {
+    const verifyReport = readFileSync(
+      join(
+        process.cwd(),
+        'skills',
+        'thoth-sdd',
+        'templates',
+        'verify-report.md',
+      ),
+      'utf8',
+    );
+    const archiveReport = readFileSync(
+      join(
+        process.cwd(),
+        'skills',
+        'thoth-sdd',
+        'templates',
+        'archive-report.md',
+      ),
+      'utf8',
+    );
+
+    for (const dimension of ['Completeness', 'Correctness', 'Coherence']) {
+      expect(verifyReport).toContain(`- **${dimension}**:`);
+    }
+    expect(verifyReport).toContain('## Compliance matrix');
+    expect(verifyReport).toContain('SC-001 `[buildable]`');
+    expect(verifyReport).toContain('SC-002 `[outcome]`');
+    expect(verifyReport).toContain('## Residual risks');
+    expect(archiveReport).toContain('**Status**: READY');
+    expect(archiveReport).toContain(
+      '`openspec/changes/archive/YYYY-MM-DD-[feature]/`',
+    );
+    expect(archiveReport).toContain(
+      'Pending: archive applies declared durable deltas transactionally.',
+    );
   });
 
   test('documents fast-forward gates and archive-ready closeout', () => {

@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 
 import {
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs';
@@ -21,7 +19,6 @@ const OPEN_SPEC_DIRECTORIES = [
   join('openspec', 'changes', 'archive'),
   join('openspec', 'specs'),
   join('openspec', 'memory'),
-  join('openspec', 'templates'),
 ];
 
 function parseArgs(argv) {
@@ -52,37 +49,6 @@ function assertRegularFile(path, label) {
   }
 }
 
-function collectFiles(sourceRoot, targetRoot) {
-  if (!existsSync(sourceRoot)) {
-    throw new Error(`Bundled SDD template directory is missing: ${sourceRoot}`);
-  }
-  assertDirectory(sourceRoot, 'Bundled template directory');
-  const entries = [];
-
-  function visit(source, target) {
-    for (const entry of readdirSync(source, { withFileTypes: true })) {
-      const sourcePath = join(source, entry.name);
-      const targetPath = join(target, entry.name);
-      if (entry.isSymbolicLink()) {
-        throw new Error(
-          `Bundled templates cannot contain symlinks: ${sourcePath}`,
-        );
-      }
-      if (entry.isDirectory()) {
-        entries.push({ kind: 'directory', target: targetPath });
-        visit(sourcePath, targetPath);
-      } else if (entry.isFile()) {
-        entries.push({ kind: 'file', source: sourcePath, target: targetPath });
-      } else {
-        throw new Error(`Unsupported bundled template entry: ${sourcePath}`);
-      }
-    }
-  }
-
-  visit(sourceRoot, targetRoot);
-  return entries;
-}
-
 function preflight(project) {
   assertDirectory(project, 'Project root');
   if (!existsSync(project)) {
@@ -104,19 +70,8 @@ function preflight(project) {
     );
   }
 
-  const templates = collectFiles(
-    join(BUNDLE_ROOT, 'thoth-sdd', 'templates'),
-    join(project, 'openspec', 'templates'),
-  );
   for (const directory of OPEN_SPEC_DIRECTORIES) {
     assertDirectory(join(project, directory), 'OpenSpec path');
-  }
-  for (const entry of templates) {
-    if (entry.kind === 'directory') {
-      assertDirectory(entry.target, 'OpenSpec template path');
-    } else {
-      assertRegularFile(entry.target, 'OpenSpec template path');
-    }
   }
 
   const constitutionTarget = join(
@@ -133,22 +88,12 @@ function preflight(project) {
     constitutionSource,
     constitutionTarget,
     manifestTarget,
-    templates,
   };
 }
 
 function createDirectory(target, report) {
   if (existsSync(target)) return;
   mkdirSync(target);
-  report.created.push(target);
-}
-
-function copyPreservingExisting(source, target, report) {
-  if (existsSync(target)) {
-    report.preserved.push(target);
-    return;
-  }
-  cpSync(source, target, { errorOnExist: true });
   report.created.push(target);
 }
 
@@ -178,10 +123,6 @@ function synchronizeManagedFile(target, content, report) {
 function synchronizeOpenSpec(project, assets, report) {
   for (const directory of OPEN_SPEC_DIRECTORIES) {
     createDirectory(join(project, directory), report);
-  }
-  for (const entry of assets.templates) {
-    if (entry.kind === 'directory') createDirectory(entry.target, report);
-    else copyPreservingExisting(entry.source, entry.target, report);
   }
 
   const today = new Date().toISOString().slice(0, 10);

@@ -5,6 +5,9 @@
 **Activation**: high contract/failure risk, compliance sensitivity, or
 ambiguity-prone scope
 
+When activated, start from `<skill-dir>/templates/checklist.md`, where
+`<skill-dir>` is the directory containing the installed `thoth-sdd/SKILL.md`.
+
 Record the concrete activation reason. Use sequential `CHK###` items to audit
 the requirements—not implementation—across the base taxonomy: Completeness,
 Clarity, Consistency, Measurability, and Coverage.

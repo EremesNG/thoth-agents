@@ -26,10 +26,14 @@ Oracle review; mandatory final Oracle verify still applies.
 
 ## Ownership and inputs
 
+Resolve `<skill-dir>` as the directory containing this `SKILL.md`. Every bundled
+asset path in this contract is anchored to that installed skill root rather than
+the project or current working directory.
+
 Root coordinates the phase and dispatches Oracle. Oracle remains read-only: it
 must not edit source, SDD artifacts, or coordination state. Root persists the
 returned review at `openspec/changes/<change>/plan-review.md` using
-`templates/plan-review.md`.
+`<skill-dir>/templates/plan-review.md`.
 
 Review these canonical inputs:
 

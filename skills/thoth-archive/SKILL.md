@@ -6,16 +6,20 @@ description: Close a passing artifact-backed thoth-agents change by transactiona
 # Thoth Archive
 
 Archive is the required terminal transition for Accelerated and Full routes.
+Resolve `<skill-dir>` as the directory containing this `SKILL.md`, and resolve
+`<skills-root>` as its parent directory. Bundled paths below are anchored to
+those installed roots rather than the project or current working directory.
 
 1. Confirm every task is `[x]`, `verify-report.md` records independent oracle
    `PASS`, its compliance matrix covers every FR and buildable SC, every outcome
    SC has observed PASS evidence or an explicit residual RISK, and no unresolved
    CRITICAL issue remains.
-2. Prepare `archive-report.md` from the bundled template with status `READY`,
+2. Prepare `archive-report.md` from
+   `<skills-root>/thoth-sdd/templates/archive-report.md` with status `READY`,
    verification lineage, completed scope, deviations, residual warnings, and
    the pending canonical-sync line.
-3. Run the thoth-sdd validator through `closeout`.
-4. Run `scripts/archive.mjs --change <path> --date YYYY-MM-DD --json`.
+3. Run `node "<skills-root>/thoth-sdd/scripts/validate.mjs"` through `closeout`.
+4. Run `node "<skill-dir>/scripts/archive.mjs" --change <path> --date YYYY-MM-DD --json`.
 5. Return the dated archive path, updated capability specifications, and audit
    summary.
 

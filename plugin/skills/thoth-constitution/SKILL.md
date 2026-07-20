@@ -6,6 +6,9 @@ description: Create or explicitly amend the project constitution, choose its gov
 # Thoth Constitution
 
 The canonical project constitution is `openspec/memory/constitution.md`.
+Resolve `<skill-dir>` as the directory containing this `SKILL.md`. Every bundled
+validator or template path below is anchored to that installed skill root rather
+than the project or current working directory.
 
 ## Routine SDD
 
@@ -36,10 +39,10 @@ a confirmed durable governance change.
 6. Remove unexplained placeholders and deferred TODOs, then run:
 
 ```bash
-node skills/thoth-constitution/scripts/validate.mjs \
+node "<skill-dir>/scripts/validate.mjs" \
   --constitution openspec/memory/constitution.md --json
 ```
 
-Initialization copies `templates/constitution.md` only when the project has no
-constitution, resolves its date placeholders, and never overwrites a
-project-owned constitution.
+Initialization copies `<skill-dir>/templates/constitution.md` only when the
+project has no constitution, resolves its date placeholders, and never
+overwrites a project-owned constitution.

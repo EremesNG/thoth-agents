@@ -1,5 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -173,6 +179,75 @@ const VALID_CONSTITUTION = `# Project Constitution
 
 Use one bounded public seam.
 `;
+
+const TEMPLATE_ROOT = join(process.cwd(), 'skills', 'thoth-sdd', 'templates');
+
+function replaceRequired(content: string, marker: string, replacement: string) {
+  if (!content.includes(marker)) {
+    throw new Error(`Template marker is missing: ${marker}`);
+  }
+  return content.replace(marker, replacement);
+}
+
+function materializePlanningTemplates() {
+  let plan = readFileSync(join(TEMPLATE_ROOT, 'plan.md'), 'utf8')
+    .replaceAll('[Feature name]', 'Example')
+    .replace(
+      '[Current behavior, constraints, and affected surfaces.]',
+      'The example has one bounded public seam and no migration.',
+    )
+    .replace(
+      '| FR-001 | [Decision] | `[exact/path]` | [Public seam] |',
+      '| FR-001 | Add the observable example | `src/example.ts` | Focused test |',
+    )
+    .replaceAll('[reason or not needed]', 'Not needed for this bounded change')
+    .replace(
+      '- [Risk, mitigation, rollback or migration.]',
+      '- Risk is limited to the example seam; revert the source file to roll back.',
+    );
+  plan = replaceRequired(
+    plan,
+    '<!-- PRE-DESIGN-CONSTITUTION-ENTRIES -->',
+    '- **Simplicity**: PASS — The design uses one bounded public seam.',
+  );
+  plan = replaceRequired(
+    plan,
+    '<!-- POST-DESIGN-CONSTITUTION-ENTRIES -->',
+    '- **Simplicity**: PASS — The implementation keeps the same bounded seam.',
+  );
+
+  let tasks = readFileSync(join(TEMPLATE_ROOT, 'tasks.md'), 'utf8')
+    .replaceAll('[Feature name]', 'Example')
+    .replace(
+      '[Name the first independently testable story and its completion evidence.]',
+      'US1 is complete when the focused example test passes.',
+    )
+    .replace(
+      '`T001 -> T002`; [cross-story dependency notes, or None.]',
+      '`T001 -> T002`; documentation can follow the failing test independently.',
+    );
+  tasks = replaceRequired(
+    tasks,
+    '<!-- STORY-US1-TASKS -->',
+    [
+      '- [ ] T001 [US1] Cover FR-001 and SC-001 with a failing example test in `src/example.test.ts` | Verify: the focused test fails for the expected missing behavior',
+      '- [ ] T002 [US1] Implement FR-001 and SC-001 in `src/example.ts` | Verify: the focused test passes and reports the observable result',
+      '- [ ] T003 [P] [US1] Document FR-001 and SC-001 in `README.md` | Verify: the documented example matches the tested public behavior',
+    ].join('\n'),
+  );
+  tasks = replaceRequired(
+    tasks,
+    '<!-- PARALLEL-EXECUTION-EVIDENCE -->',
+    '- T003 may run with T001 because their literal task paths do not overlap.',
+  );
+  tasks = replaceRequired(
+    tasks,
+    '<!-- FINAL-VERIFICATION-TASKS -->',
+    '- [ ] T004 [US1] Map FR-001 and SC-001 evidence in `openspec/changes/example/verify-report.md` | Verify: oracle records a passing verdict with executed evidence',
+  );
+
+  return { plan, tasks };
+}
 
 function createChange(prefix: string) {
   const project = mkdtempSync(join(tmpdir(), prefix));
@@ -409,6 +484,67 @@ describe('Spec Kit-compatible structural validator', () => {
         valid: true,
         errors: [],
       });
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('accepts completed planning artifacts materialized from bundled templates', () => {
+    const { project, change } = createChange('thoth-template-ready-');
+    try {
+      const { plan, tasks } = materializePlanningTemplates();
+      writeFixture(change, { plan, tasks });
+
+      const result = validate(change, 'ready');
+
+      expect(result.status, result.stdout).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        valid: true,
+        errors: [],
+      });
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    [
+      'mismatched Constitution principle coverage',
+      ({ plan, tasks }: { plan: string; tasks: string }) => ({
+        plan: plan.replace(
+          '- **Simplicity**: PASS — The implementation keeps the same bounded seam.',
+          '- **Assurance**: PASS — Oracle reviews the result.',
+        ),
+        tasks,
+      }),
+      'SDD-PLAN-CONSTITUTION-COVERAGE',
+    ],
+    [
+      'a non-literal task path',
+      ({ plan, tasks }: { plan: string; tasks: string }) => ({
+        plan,
+        tasks: tasks.replace('`src/example.ts`', '`[exact/source/path]`'),
+      }),
+      'SDD-TASK-FORMAT',
+    ],
+    [
+      'a non-sequential task identifier',
+      ({ plan, tasks }: { plan: string; tasks: string }) => ({
+        plan,
+        tasks: tasks.replace('T002 [US1]', 'T005 [US1]'),
+      }),
+      'SDD-TASK-SEQUENCE',
+    ],
+  ])('retains %s errors for template-derived artifacts', (_label, mutate, code) => {
+    const { project, change } = createChange('thoth-template-invalid-');
+    try {
+      writeFixture(change, mutate(materializePlanningTemplates()));
+
+      const report = JSON.parse(validate(change, 'ready').stdout) as {
+        errors: Array<{ code: string }>;
+      };
+
+      expect(report.errors.map((error) => error.code)).toContain(code);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

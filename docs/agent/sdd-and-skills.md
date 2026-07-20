@@ -56,8 +56,10 @@ and the thoth-owned workflow bundle.
   forced process or OS termination is not crash-atomic.
 - Owned contracts are bundled. OpenCode's CLI installs them globally; Codex and
   Claude discover them from their plugin bundle. External skills are installed
-  by the CLI once; `thoth-init` only manages `openspec/`, and SDD execution
-  remains CLI-, network-, and installer-independent.
+  by the CLI once. Phase contracts resolve templates and validators relative to
+  the installed `thoth-sdd` skill. `thoth-init` manages only the minimum
+  `openspec/` governance graph, constitution, and metadata; SDD execution remains
+  CLI-, network-, and installer-independent.
 - Delegated envelopes carry a MEMORY block with provider/project/session
   identity, `none|recall|observe`, and bounded context. This does not alter
   workspace mode or delegate root lifecycle.

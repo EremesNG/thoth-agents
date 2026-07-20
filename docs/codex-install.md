@@ -71,9 +71,10 @@ In each target repository invoke:
 $thoth-init
 ```
 
-This final skill step is offline and idempotent. It creates only the missing
-project constitution, SDD templates, and init metadata under `openspec/`.
-Agent/global installation remains CLI-owned.
+This final skill step is offline and idempotent. It creates only the minimum
+OpenSpec directories, a missing project constitution, and init metadata under
+`openspec/`. SDD templates stay in the installed `thoth-sdd` plugin skill and
+are read there by phase contracts. Agent/global installation remains CLI-owned.
 
 ## Delegation and SDD
 

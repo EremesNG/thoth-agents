@@ -42,6 +42,8 @@ Build copies only the five owned skills to the shared `plugin/skills` tree used
 by Codex and Claude. OpenCode's CLI installer copies those same packaged skills
 to `~/.config/opencode/skills/`, the native global discovery root. `/thoth-init`
 only initializes or synchronizes the minimum project `openspec/` structure.
+Every SDD phase anchors its contract, template, and validator paths to the
+installed `thoth-sdd` skill; no project-local template directory is required.
 
 For every harness, the thoth-agents installer invokes `npx skills add` with the
 canonical repository, exact skill name, global scope, and concrete harness
@@ -70,7 +72,11 @@ the static agent prompts and loaded only after a route reaches that phase.
 
 Artifact-backed phases use canonical templates, FR/SC and US identifiers,
 Constitution checks, exact task grammar, checklist taxonomy/revalidation, and an
-offline structural validator. Oracle semantic review remains a separate gate.
+offline structural validator. Plans reuse the same exact active Constitution
+principle names before and after design. Task IDs start at `T001`, remain global
+and sequential, and each task carries exactly one literal repository-relative
+path before its verification outcome. Oracle semantic review remains a separate
+gate.
 
 ## thoth-agents MCPs
 

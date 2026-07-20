@@ -60,11 +60,11 @@ invoke:
 /thoth-agents:thoth-init
 ```
 
-Init preflights and synchronizes the minimum `openspec/` directories,
-constitution, SDD templates, and initialization metadata. Claude discovers
-agents and thoth-owned phase contracts from the plugin; external execution
-skills come from the preceding CLI step. Project initialization is offline,
-idempotent, and preserves existing constitutions and templates.
+Init preflights and synchronizes the minimum `openspec/` directories, a missing
+constitution, and initialization metadata. Claude discovers agents, phase
+contracts, and SDD templates from the plugin; external execution skills come
+from the preceding CLI step. Project initialization is offline and idempotent,
+preserves existing constitutions, and leaves legacy project templates untouched.
 
 ## Packaged surfaces
 

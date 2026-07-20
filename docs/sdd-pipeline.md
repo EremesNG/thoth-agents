@@ -230,10 +230,11 @@ openspec/changes/archive/YYYY-MM-DD-<feature>/
 
 ## Structural validation
 
-Run from the installed `thoth-sdd` skill directory:
+Resolve `<skill-dir>` as the directory containing the installed
+`thoth-sdd/SKILL.md`, then run:
 
 ```text
-node scripts/validate.mjs --change openspec/changes/<feature> --route <accelerated|full> --through <specify|plan|tasks|checklist|ready|closeout> --json
+node "<skill-dir>/scripts/validate.mjs" --change openspec/changes/<feature> --route <accelerated|full> --through <specify|plan|tasks|checklist|ready|closeout> --json
 ```
 
 `specify`, `plan`, `tasks`, and conditional `checklist` validate only artifacts

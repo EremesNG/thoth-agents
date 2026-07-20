@@ -56,8 +56,10 @@ seven-role OpenAI preset, synchronizes all five packaged thoth-owned skills into
 skills add`. Status and repair verify the resulting global discovery targets.
 It then requires provider-owned thoth-mem setup to complete. Restart OpenCode
 and invoke `/thoth-init`; it only preflights and synchronizes the minimum
-`openspec/` governance structure while preserving existing constitutions and
-templates. No Kimi, Copilot, ZAI/GLM, or mixed-provider preset is generated.
+`openspec/` governance structure while preserving existing constitutions. SDD
+phases resolve templates directly from the globally installed `thoth-sdd` skill;
+init leaves any legacy `openspec/templates/` tree untouched. No Kimi, Copilot,
+ZAI/GLM, or mixed-provider preset is generated.
 
 ## Codex
 
@@ -92,7 +94,8 @@ delegates marketplace and plugin mutations to the native manager.
 
 Restart Codex after the CLI step. In every target repository invoke
 `$thoth-init`; this preflights and synchronizes only the minimum `openspec/`
-governance. It does not install agents or global instructions.
+governance. It does not install agents, global instructions, or project template
+copies; the plugin's installed `thoth-sdd` skill remains the template source.
 
 Review `/plugins` and `/hooks`. Global instructions and configuration remain
 subject to more specific project/subtree instructions, profiles, managed policy,
@@ -119,7 +122,7 @@ Restart Claude Code or run `/reload-plugins`, then invoke
 orchestrator, six namespaced subagents, MCP configuration, and thoth-owned skill
 tree natively. The CLI installs and verifies the external skills, then invokes
 thoth-mem's Claude setup. Init preflights and synchronizes only the minimum
-`openspec/` governance.
+`openspec/` governance; workflow templates remain in the installed plugin skill.
 
 Claude owns marketplace snapshots, cache files, enablement, and packaged model
 defaults; thoth-agents never edits that cache.
@@ -129,7 +132,8 @@ defaults; thoth-agents never edits that cache.
 All harness distributions carry only thoth-owned workflow skills: `thoth-init`,
 `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer`.
 OpenCode installation materializes these five under its global user skill root;
-`thoth-init` never installs them into a project.
+`thoth-init` never installs them or copies their workflow templates into a
+project.
 
 The CLI installs `simplify`, `tdd`, `progressive-context-router`, and
 `architectural-grilling` from their canonical GitHub repositories using the

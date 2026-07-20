@@ -38,7 +38,9 @@ It also installs the four external skills from their canonical repositories.
 The plugin package cannot perform those global writes.
 
 `$thoth-init` remains a bundled project-governance skill. It preflights and
-synchronizes only minimum `openspec/` assets and is not an agent installer.
+synchronizes only minimum `openspec/` directories, constitution, and metadata;
+it is not an agent or template installer. Phase contracts resolve templates
+directly from the sibling installed `thoth-sdd` skill.
 
 ## Generation lifecycle
 

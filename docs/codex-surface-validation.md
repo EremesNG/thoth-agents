@@ -10,7 +10,7 @@ layer, validate:
 | `~/.codex/AGENTS.md` | One bounded `thoth-agents:codex-root` block; unrelated global guidance preserved |
 | `~/.codex/agents/` | Six `thoth-agents-<role>.toml` files and managed model state; no orchestrator child |
 | `~/.codex/config.toml` | Managed request-user-input feature merge present |
-| Project `openspec/` | Constitution, templates, and init metadata after `$thoth-init` |
+| Project `openspec/` | Minimum directory graph, constitution, and init metadata after `$thoth-init`; no template copies required |
 
 Run:
 
@@ -20,7 +20,8 @@ npx thoth-agents@latest status --harness=codex
 
 Restart Codex after global setup. In each repository, `$thoth-init` should be
 idempotent and preserve project-owned governance. It does not create custom
-agents or alter global instructions.
+agents, alter global instructions, or copy templates from the installed
+`thoth-sdd` skill.
 
 ## Known enforcement gaps
 

@@ -67,8 +67,9 @@ The installer materializes the five packaged thoth-owned workflow skills under
 canonical repositories, and thoth-mem completes its own provider setup. The
 `/thoth-init` command only initializes or synchronizes the minimum `openspec/`
 governance structure. It never installs skills, agents, plugins, harness
-configuration, or dependencies, and it preserves existing constitutions and
-templates.
+configuration, dependencies, or workflow templates. SDD phases read templates
+directly from the globally installed `thoth-sdd` skill; any legacy project
+`openspec/templates/` tree remains untouched.
 
 ### Codex
 
@@ -90,8 +91,10 @@ Restart Codex, then initialize each target repository's SDD governance:
 $thoth-init
 ```
 
-The plugin contributes skills and MCP configuration. `$thoth-init` creates only
-missing `openspec/` governance files; it does not pretend to install agents.
+The plugin contributes skills, their workflow templates, and MCP configuration.
+`$thoth-init` creates only missing `openspec/` governance files; SDD phases read
+templates from the plugin's installed `thoth-sdd` skill instead of copying them
+into the repository.
 
 Review `/plugins` and `/hooks` after installation. Codex trust and
 higher-precedence instructions remain in force.
@@ -124,7 +127,7 @@ Claude discovers the packaged orchestrator, six namespaced subagents, and five
 thoth-owned skills from the plugin. The CLI installs the external skills into
 Claude's global skill root and requires thoth-mem's own setup result to be
 complete. Init creates only the missing project governance files; it never edits
-Claude's manager-owned plugin cache.
+Claude's manager-owned plugin cache or copies workflow templates out of it.
 
 See [Installation](docs/installation.md), [Codex Install](docs/codex-install.md),
 and [Claude Code Install](docs/claude-code-install.md) for scopes, verification,

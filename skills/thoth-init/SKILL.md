@@ -1,30 +1,33 @@
 ---
 name: thoth-init
-description: Initialize project SDD governance and OpenCode local skills from the installed bundle; Codex global agents and instructions remain CLI-owned.
+description: Initialize or synchronize the minimum project OpenSpec governance structure required by thoth-agents SDD flows.
 ---
 
 # Thoth Init
 
-Initialize the current project from this installed skill bundle. Resolve
-`<skill-dir>` as the directory containing this `SKILL.md`, then run the bundled
-script by absolute path:
+Initialize or synchronize the current project's OpenSpec governance from this
+installed skill bundle. Resolve `<skill-dir>` as the directory containing this
+`SKILL.md`, then run the bundled script by absolute path:
 
 ```text
-node "<skill-dir>/scripts/init.mjs" --project <project-root> --harness <opencode|codex|claude> --json
+node "<skill-dir>/scripts/init.mjs" --project <project-root> --json
 ```
 
-- OpenCode materializes the five thoth-owned workflow skills under
-  `.agents/skills/`.
-- Codex init creates project governance only. Codex plugin manifests cannot
-  install custom agents or global instructions; first run the mandatory
-  thoth-agents CLI setup that manages `~/.codex/agents/`,
-  `~/.codex/AGENTS.md`, and `~/.codex/config.toml`.
-- Claude uses auto-discovered plugin agents and owned skills; init creates only
-  project governance assets.
+The project root must already exist. The initializer preflights the complete
+target structure before changing it, then ensures these minimum paths exist:
 
-For every harness, installation must already have used the thoth-agents CLI to
-install mandatory external skills from their canonical repositories. This init
-skill never invokes the CLI or downloads a skill.
+- `openspec/changes/archive/`
+- `openspec/specs/`
+- `openspec/memory/`
+- `openspec/templates/`
+- `openspec/.thoth-agents.json`
 
-The operation is offline and idempotent. It never overwrites the project
-constitution, templates, or unrelated instruction content.
+Missing constitution and SDD template files are copied from the installed
+bundle. Existing constitution and template files remain byte-for-byte intact;
+the thoth-managed manifest may be normalized to the current contract. Inspect
+the JSON `created`, `managed`, and `preserved` arrays when reporting the result.
+
+This operation is offline, idempotent, and harness-neutral. Every write stays
+inside `openspec/`. It never installs or synchronizes skills, agents, plugins,
+harness configuration, external dependencies, or global instruction files;
+those are responsibilities of `npx thoth-agents install`.

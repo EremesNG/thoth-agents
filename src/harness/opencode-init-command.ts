@@ -36,12 +36,13 @@ export function createOpenCodeInitCommand({
     subtask: false,
     template: `Initialize this project now using the bundled thoth-init skill.
 
-The operation must stay project-scoped, idempotent, and offline. Run:
+The operation must stay scoped to openspec/, idempotent, and offline. Run:
 
-node "${scriptPath}" --project "${projectRoot}" --harness opencode --json
+node "${scriptPath}" --project "${projectRoot}" --json
 
-Inspect the JSON result, report created and preserved files, and do not download
-skills or invoke the thoth-agents CLI.
+Inspect the JSON result and report created, managed, and preserved OpenSpec
+assets. Do not install skills or agents, download dependencies, modify harness
+configuration, or invoke the thoth-agents CLI.
 
 Bundled skill contract:
 

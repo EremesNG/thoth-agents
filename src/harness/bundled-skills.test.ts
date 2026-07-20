@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -12,16 +13,20 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { generateIntegrationPackages } from './generate-integration-packages';
 
-function runInit(script: string, project: string, harness: string) {
+function runInit(
+  script: string,
+  project: string,
+  extraArguments: string[] = [],
+) {
   return spawnSync(
     process.execPath,
-    [script, '--project', project, '--harness', harness, '--json'],
+    [script, '--project', project, '--json', ...extraArguments],
     { encoding: 'utf8' },
   );
 }
 
 describe('bundled thoth-init', () => {
-  test('initializes Codex governance without pretending the plugin can install agents', () => {
+  test('initializes only the minimum OpenSpec governance structure', () => {
     const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-bundle-'));
     const project = mkdtempSync(join(tmpdir(), 'thoth-project-'));
 
@@ -47,9 +52,31 @@ describe('bundled thoth-init', () => {
         'scripts',
         'init.mjs',
       );
-      const first = runInit(script, project, 'codex');
+      const first = runInit(script, project);
 
       expect(first.status, first.stderr).toBe(0);
+      const report = JSON.parse(first.stdout);
+      expect(report).toMatchObject({
+        status: 'ready',
+        project,
+      });
+      expect(report).not.toHaveProperty('harness');
+      expect(report).toHaveProperty('created');
+      expect(report).toHaveProperty('managed');
+      expect(report).toHaveProperty('preserved');
+
+      for (const directory of [
+        'changes',
+        join('changes', 'archive'),
+        'specs',
+        'memory',
+        'templates',
+      ]) {
+        expect(
+          existsSync(join(project, 'openspec', directory)),
+          directory,
+        ).toBe(true);
+      }
       expect(
         existsSync(join(project, 'openspec', 'memory', 'constitution.md')),
       ).toBe(true);
@@ -87,17 +114,20 @@ describe('bundled thoth-init', () => {
       expect(
         existsSync(join(project, 'openspec', 'templates', 'spec.md')),
       ).toBe(true);
-      expect(
-        existsSync(
-          join(project, '.codex', 'agents', 'thoth-agents-oracle.toml'),
-        ),
-      ).toBe(false);
+      expect(existsSync(join(project, '.agents'))).toBe(false);
+      expect(existsSync(join(project, '.opencode'))).toBe(false);
+      expect(existsSync(join(project, '.claude'))).toBe(false);
       expect(readFileSync(join(project, 'AGENTS.md'), 'utf8')).toBe(
         '# Project instructions\n',
       );
       expect(readFileSync(join(project, '.codex', 'config.toml'), 'utf8')).toBe(
         '[features]\nunrelated_feature = true\n',
       );
+      expect(readdirSync(project).sort()).toEqual([
+        '.codex',
+        'AGENTS.md',
+        'openspec',
+      ]);
 
       const constitutionPath = join(
         project,
@@ -107,14 +137,14 @@ describe('bundled thoth-init', () => {
       );
       writeFileSync(constitutionPath, '# Project-owned constitution\n');
 
-      const second = runInit(script, project, 'codex');
+      const second = runInit(script, project);
       expect(second.status, second.stderr).toBe(0);
       expect(readFileSync(constitutionPath, 'utf8')).toBe(
         '# Project-owned constitution\n',
       );
       expect(JSON.parse(second.stdout)).toMatchObject({
-        harness: 'codex',
         status: 'ready',
+        created: [],
       });
     } finally {
       rmSync(packageRoot, { recursive: true, force: true });
@@ -122,8 +152,8 @@ describe('bundled thoth-init', () => {
     }
   });
 
-  test('materializes only thoth-owned runtime skills for OpenCode', () => {
-    const project = mkdtempSync(join(tmpdir(), 'thoth-opencode-'));
+  test('preserves existing constitution and templates byte-for-byte', () => {
+    const project = mkdtempSync(join(tmpdir(), 'thoth-preserve-'));
     const script = join(
       process.cwd(),
       'skills',
@@ -133,39 +163,121 @@ describe('bundled thoth-init', () => {
     );
 
     try {
-      const result = runInit(script, project, 'opencode');
+      const constitutionPath = join(
+        project,
+        'openspec',
+        'memory',
+        'constitution.md',
+      );
+      const templatePath = join(project, 'openspec', 'templates', 'spec.md');
+      mkdirSync(join(project, 'openspec', 'memory'), { recursive: true });
+      mkdirSync(join(project, 'openspec', 'templates'), { recursive: true });
+      writeFileSync(constitutionPath, '# Custom constitution\r\n');
+      writeFileSync(templatePath, '# Custom spec template\r\n');
+
+      const result = runInit(script, project);
 
       expect(result.status, result.stderr).toBe(0);
-      for (const skill of [
-        'thoth-init',
-        'thoth-sdd',
-        'thoth-constitution',
-        'thoth-archive',
-        'plan-reviewer',
-      ]) {
-        expect(
-          existsSync(join(project, '.agents', 'skills', skill, 'SKILL.md')),
-          skill,
-        ).toBe(true);
-      }
-      expect(
-        readFileSync(
-          join(project, '.agents', 'skills', 'thoth-sdd', 'SKILL.md'),
-          'utf8',
-        ),
-      ).toMatch(/Never invoke the\s+thoth-agents CLI, `npx skills add`/);
-      for (const skill of [
-        'simplify',
-        'tdd',
-        'progressive-context-router',
-        'architectural-grilling',
-      ]) {
-        expect(
-          existsSync(join(project, '.agents', 'skills', skill, 'SKILL.md')),
-          skill,
-        ).toBe(false);
-      }
+      expect(readFileSync(constitutionPath, 'utf8')).toBe(
+        '# Custom constitution\r\n',
+      );
+      expect(readFileSync(templatePath, 'utf8')).toBe(
+        '# Custom spec template\r\n',
+      );
+      expect(JSON.parse(result.stdout).preserved).toEqual(
+        expect.arrayContaining([constitutionPath, templatePath]),
+      );
+      expect(existsSync(join(project, '.agents'))).toBe(false);
     } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects obsolete harness arguments and nonexistent project roots', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'thoth-preflight-'));
+    const project = join(parent, 'missing-project');
+    const script = join(
+      process.cwd(),
+      'skills',
+      'thoth-init',
+      'scripts',
+      'init.mjs',
+    );
+
+    try {
+      const obsolete = runInit(script, parent, ['--harness', 'opencode']);
+      expect(obsolete.status).not.toBe(0);
+      expect(obsolete.stderr).toContain('Unknown argument: --harness');
+
+      const missing = runInit(script, project);
+      expect(missing.status).not.toBe(0);
+      expect(missing.stderr).toContain('existing project directory');
+      expect(existsSync(project)).toBe(false);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  test('preflights path collisions before writing any OpenSpec assets', () => {
+    const project = mkdtempSync(join(tmpdir(), 'thoth-collision-'));
+    const script = join(
+      process.cwd(),
+      'skills',
+      'thoth-init',
+      'scripts',
+      'init.mjs',
+    );
+
+    try {
+      mkdirSync(join(project, 'openspec'));
+      writeFileSync(join(project, 'openspec', 'changes'), 'collision\n');
+
+      const result = runInit(script, project);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('must be a directory');
+      expect(existsSync(join(project, 'openspec', 'memory'))).toBe(false);
+      expect(existsSync(join(project, 'openspec', 'templates'))).toBe(false);
+      expect(existsSync(join(project, 'openspec', '.thoth-agents.json'))).toBe(
+        false,
+      );
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects an incomplete bundle before writing OpenSpec assets', () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-incomplete-'));
+    const project = mkdtempSync(join(tmpdir(), 'thoth-project-'));
+
+    try {
+      writeFileSync(
+        join(packageRoot, 'package.json'),
+        `${JSON.stringify({ name: 'thoth-agents', version: '0.3.0' })}\n`,
+      );
+      generateIntegrationPackages({ projectRoot: packageRoot });
+      rmSync(join(packageRoot, 'plugin', 'skills', 'thoth-sdd', 'templates'), {
+        recursive: true,
+        force: true,
+      });
+      const script = join(
+        packageRoot,
+        'plugin',
+        'skills',
+        'thoth-init',
+        'scripts',
+        'init.mjs',
+      );
+
+      const result = runInit(script, project);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Bundled SDD template directory is missing',
+      );
+      expect(existsSync(join(project, 'openspec'))).toBe(false);
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
       rmSync(project, { recursive: true, force: true });
     }
   });

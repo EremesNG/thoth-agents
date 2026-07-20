@@ -1,6 +1,6 @@
 {
   "name": "thoth-agents",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Bundled Spec Kit-compatible SDD skills and MCP configuration; the seven-role global Codex layer requires thoth-agents CLI setup.",
   "skills": "./skills/",
   "mcpServers": "./codex.mcp.json"

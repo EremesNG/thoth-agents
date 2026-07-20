@@ -41,10 +41,16 @@ const SKILLS_CLI_AGENT: Record<SkillInstallHarness, string> = {
   claude: 'claude-code',
 };
 
-const GLOBAL_SKILL_ROOT: Record<SkillInstallHarness, readonly string[]> = {
-  opencode: ['.config', 'opencode', 'skills'],
-  codex: ['.codex', 'skills'],
-  claude: ['.claude', 'skills'],
+const GLOBAL_SKILL_ROOTS: Record<
+  SkillInstallHarness,
+  readonly (readonly string[])[]
+> = {
+  opencode: [
+    ['.config', 'opencode', 'skills'],
+    ['.agents', 'skills'],
+  ],
+  codex: [['.agents', 'skills']],
+  claude: [['.claude', 'skills']],
 };
 
 export const REQUIRED_SKILLS: readonly RequiredSkill[] = [
@@ -74,16 +80,35 @@ export const REQUIRED_SKILLS: readonly RequiredSkill[] = [
   },
 ];
 
+export function getRequiredSkillPaths(
+  skill: RequiredSkill,
+  harness: SkillInstallHarness,
+  homeDir = homedir(),
+): string[] {
+  return GLOBAL_SKILL_ROOTS[harness].map((root) =>
+    join(homeDir, ...root, skill.skillName, 'SKILL.md'),
+  );
+}
+
 export function getRequiredSkillPath(
   skill: RequiredSkill,
   harness: SkillInstallHarness,
   homeDir = homedir(),
 ): string {
-  return join(
-    homeDir,
-    ...GLOBAL_SKILL_ROOT[harness],
-    skill.skillName,
-    'SKILL.md',
+  const [primaryPath] = getRequiredSkillPaths(skill, harness, homeDir);
+  if (!primaryPath) {
+    throw new Error(`No global skill root is configured for ${harness}.`);
+  }
+  return primaryPath;
+}
+
+export function getInstalledRequiredSkillPath(
+  skill: RequiredSkill,
+  harness: SkillInstallHarness,
+  homeDir = homedir(),
+): string | undefined {
+  return getRequiredSkillPaths(skill, harness, homeDir).find((path) =>
+    existsSync(path),
   );
 }
 
@@ -92,7 +117,9 @@ export function isRequiredSkillInstalled(
   harness: SkillInstallHarness,
   options: InstallRequiredSkillOptions = {},
 ): boolean {
-  return existsSync(getRequiredSkillPath(skill, harness, options.homeDir));
+  return Boolean(
+    getInstalledRequiredSkillPath(skill, harness, options.homeDir),
+  );
 }
 
 export function getRequiredSkillInstallCommand(
@@ -124,8 +151,18 @@ export function installRequiredSkill(
   options: InstallRequiredSkillOptions = {},
 ): RequiredSkillInstallResult {
   const skillPath = getRequiredSkillPath(skill, harness, options.homeDir);
-  if (isRequiredSkillInstalled(skill, harness, options)) {
-    return { skill, harness, status: 'already-installed', skillPath };
+  const installedPath = getInstalledRequiredSkillPath(
+    skill,
+    harness,
+    options.homeDir,
+  );
+  if (installedPath) {
+    return {
+      skill,
+      harness,
+      status: 'already-installed',
+      skillPath: installedPath,
+    };
   }
 
   const { command, args } = getRequiredSkillInstallCommand(
@@ -136,10 +173,27 @@ export function installRequiredSkill(
   try {
     const result = spawnSync(command, args, { stdio: 'inherit' });
     if (result.status === 0) {
-      return { skill, harness, status: 'installed', skillPath };
+      return {
+        skill,
+        harness,
+        status: 'installed',
+        skillPath:
+          getInstalledRequiredSkillPath(skill, harness, options.homeDir) ??
+          skillPath,
+      };
     }
-    if (isRequiredSkillInstalled(skill, harness, options)) {
-      return { skill, harness, status: 'already-installed', skillPath };
+    const recoveredPath = getInstalledRequiredSkillPath(
+      skill,
+      harness,
+      options.homeDir,
+    );
+    if (recoveredPath) {
+      return {
+        skill,
+        harness,
+        status: 'already-installed',
+        skillPath: recoveredPath,
+      };
     }
     return { skill, harness, status: 'failed', skillPath, error: result.error };
   } catch (error) {

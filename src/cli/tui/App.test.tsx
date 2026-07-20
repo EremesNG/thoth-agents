@@ -93,7 +93,7 @@ function manyCodexTargets(): HarnessStatusReport['targets'] {
     {
       kind: 'skill' as const,
       label: 'TDD',
-      path: 'C:\\Users\\EremesNG\\.codex\\skills\\tdd\\SKILL.md',
+      path: 'C:\\Users\\EremesNG\\.agents\\skills\\tdd\\SKILL.md',
       state: 'installed' as const,
       observed: 'current',
     },

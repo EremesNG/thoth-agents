@@ -32,7 +32,7 @@ vi.mock('../skills', async (importOriginal) => {
 const PACKAGE_ROOT = process.cwd();
 
 function requiredSkillPath(home: string, name: string): string {
-  return join(home, '.codex', 'skills', name, 'SKILL.md');
+  return join(home, '.agents', 'skills', name, 'SKILL.md');
 }
 
 function writeRequiredSkills(home: string): void {

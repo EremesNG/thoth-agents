@@ -25,7 +25,7 @@ const testSkill: RequiredSkill = {
 
 const expectedPaths: Record<SkillInstallHarness, string[]> = {
   opencode: ['.config', 'opencode', 'skills'],
-  codex: ['.codex', 'skills'],
+  codex: ['.agents', 'skills'],
   claude: ['.claude', 'skills'],
 };
 
@@ -86,6 +86,27 @@ describe('required skill install helper', () => {
     expect(result.status).toBe('already-installed');
     expect(result.skillPath).toBe(skillPath);
     expect(getRequiredSkillPath(testSkill, harness, homeDir)).toBe(skillPath);
+    expect(spawnSync).not.toHaveBeenCalled();
+  });
+
+  test('returns the existing OpenCode agent-compatible global skill path', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-skill-home-'));
+    const skillPath = join(
+      homeDir,
+      '.agents',
+      'skills',
+      'simplify',
+      'SKILL.md',
+    );
+    mkdirSync(join(skillPath, '..'), { recursive: true });
+    writeFileSync(skillPath, '');
+
+    const result = installRequiredSkill(testSkill, 'opencode', { homeDir });
+
+    expect(result).toMatchObject({
+      status: 'already-installed',
+      skillPath,
+    });
     expect(spawnSync).not.toHaveBeenCalled();
   });
 

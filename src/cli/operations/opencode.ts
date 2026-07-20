@@ -23,6 +23,7 @@ import {
 } from '../paths';
 import { generateLiteConfig } from '../providers';
 import {
+  getInstalledRequiredSkillPath,
   getRequiredSkillInstallCommand,
   getRequiredSkillPath,
   installRequiredSkill,
@@ -363,8 +364,14 @@ function openCodeSkillTargets(context: OperationContext): {
 } {
   const homeDir = homeDirFromContext(context);
   const requiredTargets: ManagedTarget[] = REQUIRED_SKILLS.map((skill) => {
-    const path = getRequiredSkillPath(skill, 'opencode', homeDir);
-    const installed = existsSync(path);
+    const installedPath = getInstalledRequiredSkillPath(
+      skill,
+      'opencode',
+      homeDir,
+    );
+    const path =
+      installedPath ?? getRequiredSkillPath(skill, 'opencode', homeDir);
+    const installed = installedPath !== undefined;
     return {
       kind: 'skill',
       path,

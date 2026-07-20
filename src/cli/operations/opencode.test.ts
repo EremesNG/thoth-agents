@@ -117,18 +117,18 @@ describe('OpenCode operations adapter v0.3', () => {
     writeJson(liteConfigPath(), validLiteConfig());
   }
 
-  function writeRequiredSkill(name: string): void {
-    const path = join(
-      configRoot,
-      'home',
-      '.config',
-      'opencode',
-      'skills',
-      name,
-      'SKILL.md',
-    );
+  function writeRequiredSkill(
+    name: string,
+    root: 'opencode' | 'agents' = 'opencode',
+  ): string {
+    const rootSegments =
+      root === 'opencode'
+        ? ['.config', 'opencode', 'skills']
+        : ['.agents', 'skills'];
+    const path = join(configRoot, 'home', ...rootSegments, name, 'SKILL.md');
     mkdirSync(join(path, '..'), { recursive: true });
     writeFileSync(path, `---\nname: ${name}\n---\n`);
+    return path;
   }
 
   test('classifies missing required skills as managed drift', () => {
@@ -170,6 +170,27 @@ describe('OpenCode operations adapter v0.3', () => {
     ]);
     expect(
       skills.some(({ expected }) => expected?.includes('bundled thoth-agents')),
+    ).toBe(false);
+  });
+
+  test('accepts required external skills from both OpenCode global roots', () => {
+    writeManagedConfig();
+    const expectedPaths = [
+      writeRequiredSkill('simplify'),
+      writeRequiredSkill('tdd', 'agents'),
+      writeRequiredSkill('progressive-context-router'),
+      writeRequiredSkill('architectural-grilling', 'agents'),
+    ];
+
+    const status = getOpenCodeStatus(context());
+    const skills = status.targets.filter(({ kind }) => kind === 'skill');
+
+    expect(status.state).toBe('installed');
+    expect(skills.map(({ path }) => path)).toEqual(expectedPaths);
+    expect(
+      status.diagnostics.some(
+        ({ code }) => code === 'opencode-required-skills-missing',
+      ),
     ).toBe(false);
   });
 

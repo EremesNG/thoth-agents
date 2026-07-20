@@ -13,7 +13,7 @@ orchestration layer that its plugin manifest cannot provide.
 - Network access during installation for the plugin, external skills, and
   provider-owned thoth-mem setup
 
-The four thoth-owned workflow skills are packaged. The installer obtains the
+The five thoth-owned workflow skills are packaged. The installer obtains the
 four mandatory external skills from their canonical repositories with `npx
 skills add`, then invokes thoth-mem's public setup command. Once installed, SDD
 phases load local contracts and provider guidance without consuming either CLI
@@ -54,7 +54,7 @@ seven-role OpenAI preset, and installs all four external skills with `npx skills
 add`. Status and repair accept the two OpenCode global discovery roots managed
 here: `~/.config/opencode/skills/` and `~/.agents/skills/`. It then requires
 provider-owned thoth-mem setup to complete. Restart OpenCode and invoke
-`/thoth-init`; it copies the four thoth-owned skills to `.agents/skills/` and
+`/thoth-init`; it copies the five thoth-owned skills to `.agents/skills/` and
 creates missing `openspec/` governance while preserving project-owned files. No
 Kimi, Copilot, ZAI/GLM, or mixed-provider preset is generated.
 

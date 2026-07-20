@@ -15,7 +15,7 @@ persistence, receipts, state, and recovery remain outside this package.
 
 1. OpenCode loads seven native role definitions and registers `/thoth-init`.
 2. Integration generation renders Claude agents from canonical prompt source and
-   assembles one shared `plugin/` bundle with a single copy of the four
+   assembles one shared `plugin/` bundle with a single copy of the five
    thoth-owned skills.
 3. Codex CLI setup invokes the native manager to install the plugin, then
    materializes global custom-agent TOMLs, `~/.codex/AGENTS.md`, and config
@@ -41,8 +41,11 @@ persistence, receipts, state, and recovery remain outside this package.
 ## Invariants
 
 - OpenCode is default; harness guarantees differ.
-- Root coordinates SDD and loads only the current contract.
-- Oracle owns analyze and every verify.
+- Root recommends an SDD route; the user selects it. Root then coordinates SDD
+  and loads only the current contract.
+- After `ready`, Accelerated and Full offer optional Oracle plan review or
+  proceeding without it. Oracle owns selected plan review and every final
+  verify; review approval never substitutes for verify.
 - Delegation depth is one; one writer owns each mutable surface.
 - OpenCode ships only the OpenAI preset.
 - Owned SDD contracts are bundled; external skills come from canonical

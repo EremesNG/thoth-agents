@@ -1,28 +1,29 @@
 # SDD Pipeline
 
 thoth-agents combines Spec Kit-grade artifact rigor with OpenSpec-style durable
-requirement deltas. The adaptive root selects the lightest safe route, loads only
-the current phase contract, and keeps independent oracle review without turning
-small work into hours of ceremony.
+requirement deltas. The adaptive root recommends the lightest safe route, the
+user selects Direct, Accelerated, or Full, and root loads only the current phase
+contract.
 
 ## Routes
 
 ```text
 Direct:      implement -> verify
 Accelerated: specify -> plan -> tasks -> implement -> verify -> archive
-Full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive
+Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archive
 ```
 
 | Route | Selection signal | Execution policy |
 | --- | --- | --- |
 | Direct | Clear, bounded, low-risk work—including multi-file documentation or mechanical edits | No SDD artifacts; oracle still verifies independently. |
 | Accelerated | Generic SDD request, partial clarity, moderate risk/cost, multi-surface behavior, or architecture work | Root fast-forwards specification, plan, and tasks without routine pauses. |
-| Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Adds focused exploration, phase gates, and oracle analysis before implementation. |
+| Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Adds focused exploration and separate phase gates. |
 
-An explicitly named route wins. A generic “use SDD” request makes Accelerated
-the minimum, but Full signals can still raise it. The number of files alone does
-not raise documentation or mechanical work out of Direct. A simple README update
-should normally remain Direct.
+An explicitly named route is the user's selection and wins. Otherwise root
+assesses the work, recommends one route, presents Direct, Accelerated, and Full,
+and waits for the user's choice. A generic “use SDD” request makes Accelerated
+the minimum recommendation, but does not choose on the user's behalf. The number
+of files alone does not raise documentation or mechanical work out of Direct.
 
 `architectural-grilling` runs before specification only when explicitly
 requested or when a material product/architecture decision remains human-owned.
@@ -38,26 +39,27 @@ Full by itself does not activate it.
 | `plan` | root | `plan.md` and justified support artifacts |
 | `checklist` | root | Conditional `checklists/requirements.md` |
 | `tasks` | root | `tasks.md` |
-| `analyze` | `oracle` | Read-only findings returned to root |
+| `plan-review` | `oracle` | Optional read-only findings when the user selects review after `ready` |
 | `implement` | root, `designer`, `quick`, or `deep` | One writer per mutable surface |
 | `verify` | `oracle` | Always read-only and independent |
 | `converge` | root | Append-only remediation in `tasks.md` |
 | `archive` | root | Transactional spec sync, audit report, and dated move |
 
-The writer never substitutes for oracle. Oracle owns every verification and the
-Full pre-implementation analysis.
+The writer never substitutes for oracle. Oracle owns every final verification
+and each user-selected pre-implementation plan review.
 
 ## Fast-forward versus gated planning
 
 Accelerated writes `spec.md -> plan.md -> tasks.md` in one uninterrupted root
-pass. It validates `specify`, then `ready`; neither gate is a routine user pause.
+pass. It validates `specify`, then `ready`; planning gates are not routine user
+pauses, but the post-`ready` review choice is.
 Optional research, data model, contracts, quickstart, clarification, or checklist
 artifacts appear only for a concrete risk signal.
 
 Full validates `specify`, `plan`, `tasks`, and `ready` separately because the
-route already carries uncertainty or material cost. `ready` precedes oracle
-analysis/implementation. Both artifact-backed routes use `closeout` after
-implementation and independent verification.
+route already carries uncertainty or material cost. On both artifact-backed
+routes, `ready` precedes the user's review-or-proceed choice and implementation;
+`closeout` follows implementation and independent verification.
 
 If implementation evidence refines the same intent, root updates the canonical
 artifact and revalidates only affected downstream artifacts and gates. A changed
@@ -104,6 +106,7 @@ research.md                  # optional when it resolves risk
 data-model.md                # optional
 contracts/                   # optional
 quickstart.md                # optional
+plan-review.md               # optional when the user selects Oracle review
 ```
 
 These files are the single SDD source of truth. thoth-mem may preserve durable
@@ -168,13 +171,24 @@ After a requirement-affecting change, the checklist records checked
 revalidation. When nothing relevant changed, it records an evidence-backed `Not
 required` instead of ceremonial repetition.
 
-## Analyze, verify, and converge
+## Plan review, verify, and converge
 
-Full `analyze` asks oracle to challenge three dimensions separately:
-completeness, correctness, and cross-artifact coherence. It detects ambiguity,
-contradictions, duplication, scope drift, invalid ordering, orphan tasks,
-constitution violations, and missing FR/buildable-SC coverage. Outcome SCs are
-reviewed as measurable targets, not task obligations.
+After `ready` on Accelerated or Full, root recommends and presents two choices:
+`Review plan with Oracle (Recommended)` and `Proceed without review`. The user
+decides. Proceeding skips pre-implementation Oracle review and authorizes
+implementation; it does not skip final verification.
+
+When selected, the bundled `plan-reviewer` asks read-only Oracle to judge
+completeness, correctness, cross-artifact coherence, buildability, and outcome
+coverage. Oracle returns exactly `[OKAY]` or `[REJECT]`; rejection identifies at
+most three actionable blockers. Root repairs canonical artifacts and offers the
+choice again. A fresh `[OKAY]` is persisted in `plan-review.md` with SHA-256
+digests, then root summarizes the approved plan and separately asks whether to
+implement or stop. The artifact stays in OpenSpec and is not mirrored into
+provider memory.
+
+Plan review is optional and never substitutes for mandatory final Oracle
+verification.
 
 Every `verify` uses the same three dimensions and maps each FR/buildable SC to
 implementation evidence and executed checks. Direct returns PASS/FAIL in-session.

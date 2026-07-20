@@ -20,7 +20,8 @@
   `~/.codex/AGENTS.md`; `$thoth-init` creates project governance only.
 - Claude packages root plus six generated namespaced subagents.
 - Both marketplaces resolve to one `plugin/` bundle containing one copy of the
-  four canonical thoth-owned skills. Harness-specific manifests and MCP files
+  five canonical thoth-owned skills, including `plan-reviewer`.
+  Harness-specific manifests and MCP files
   coexist in that bundle. External skills are installed from their source
   repositories by the mandatory CLI flow; the same flow invokes thoth-mem's
   public setup without copying provider assets into the bundle.

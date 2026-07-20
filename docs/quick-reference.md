@@ -48,10 +48,10 @@ call either CLI.
 
 | Role | Mode | Use |
 | --- | --- | --- |
-| `orchestrator` | adaptive root | Direct work, route selection, SDD coordination, final synthesis |
+| `orchestrator` | adaptive root | Direct work, route recommendation, SDD coordination, final synthesis |
 | `explorer` | read-only | Repository discovery for real uncertainty |
 | `librarian` | read-only | Current authoritative external research |
-| `oracle` | read-only | Full analysis and every independent verification |
+| `oracle` | read-only | User-selected plan review and every independent final verification |
 | `designer` | writer | UI/UX implementation and visual quality |
 | `quick` | writer | Narrow mechanical work |
 | `deep` | writer | Correctness-heavy or cross-cutting implementation |
@@ -61,16 +61,20 @@ call either CLI.
 ```text
 Direct:      implement -> verify
 Accelerated: specify -> plan -> tasks -> implement -> verify -> archive
-Full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive
+Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archive
 ```
 
-Root owns the sequential artifact phases. Oracle always owns `analyze` and
-`verify`. `clarify`, `checklist`, and `converge` are conditional.
+Root owns the sequential artifact phases. Oracle owns selected `plan-review` and
+every `verify`. `clarify`, `checklist`, `plan-review`, and `converge` are conditional.
 
-- Explicit route names win; generic SDD starts at Accelerated.
+- Explicit route names are user selections and win. Otherwise root recommends
+  one route and waits for the user's Direct, Accelerated, or Full choice;
+  generic SDD makes Accelerated the minimum recommendation.
 - Multi-file docs/mechanical work can remain Direct when clear and low-risk.
 - Accelerated fast-forwards `specify -> plan -> tasks` without routine pauses.
-- Full adds exploration and oracle analysis only for uncertainty or high risk.
+- Full adds exploration and separate planning gates for uncertainty or high risk.
+- After `ready`, Accelerated and Full offer optional Oracle plan review or
+  proceeding without it; every final verify remains mandatory.
 - `ready` gates implementation; `closeout` gates transactional archive.
 
 Artifact-backed specs use named normative FRs with INTERNAL or durable delta
@@ -80,7 +84,8 @@ active process, but forced process or OS termination is not crash-atomic.
 
 ## Skills
 
-`thoth-init`, `thoth-sdd`, `thoth-constitution`, and `thoth-archive` ship in
+`thoth-init`, `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and
+`plan-reviewer` ship in
 every harness bundle. The installer obtains `simplify`, `tdd`,
 `progressive-context-router`, and `architectural-grilling` from their canonical
 repositories.

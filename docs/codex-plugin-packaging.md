@@ -43,7 +43,7 @@ The plugin package cannot perform those global writes.
 ## Generation lifecycle
 
 `pnpm run integration:sync` renders both harness manifests, their MCP surfaces,
-Claude agents/settings, one copy of the four thoth-owned skills, and both
+Claude agents/settings, one copy of the five thoth-owned skills, and both
 marketplace catalogs. External skills remain CLI-installed from their canonical
 repositories. `pnpm run build` synchronizes before compilation. The npm version
 lifecycle used by `release:patch`, `release:minor`, and `release:major` keeps

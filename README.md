@@ -23,7 +23,10 @@ parallelism creates a net gain.
 The plugin ships the seven-role contract and thoth-owned SDD
 contracts that combine Spec Kit-grade traceability with OpenSpec-style durable
 deltas. Accelerated planning fast-forwards without routine pauses; structural
-`ready`/`closeout` gates and independent oracle review retain rigor. During
+`ready`/`closeout` gates and independent oracle review retain rigor. Root
+recommends Direct, Accelerated, or Full and the user selects the route. After
+`ready`, artifact-backed routes offer optional Oracle plan review or proceeding
+without it; every final verification remains mandatory. During
 installation, the CLI obtains four mandatory external skills
 from their canonical repositories with `npx skills add` and invokes the official
 provider-owned thoth-mem setup for the selected harness. During an SDD, agents
@@ -58,7 +61,7 @@ Restart OpenCode and initialize the current repository:
 /thoth-init
 ```
 
-This copies the four thoth-owned workflow skills into `.agents/skills/` and
+This copies the five thoth-owned workflow skills into `.agents/skills/` and
 creates missing `openspec/` governance files. The external skills are already in
 one of the OpenCode global discovery roots managed here,
 `~/.config/opencode/skills/` or `~/.agents/skills/`, and thoth-mem has completed
@@ -115,7 +118,7 @@ Restart Claude Code or run `/reload-plugins`, then initialize the repository:
 /thoth-agents:thoth-init
 ```
 
-Claude discovers the packaged orchestrator, six namespaced subagents, and four
+Claude discovers the packaged orchestrator, six namespaced subagents, and five
 thoth-owned skills from the plugin. The CLI installs the external skills into
 Claude's global skill root and requires thoth-mem's own setup result to be
 complete. Init creates only the missing project governance files; it never edits
@@ -143,8 +146,8 @@ correctness-critical work.
       <br>
       <i>Adaptive root and final synthesis.</i>
       <br><br>
-      Keeps task ownership and synthesis, chooses the route, coordinates SDD
-      artifacts, and implements bounded work directly.
+      Keeps task ownership and synthesis, recommends a route for the user's
+      selection, coordinates SDD artifacts, and implements bounded work directly.
       <br><br>
       <b>Mode:</b> <code>adaptive-root</code>
     </td>
@@ -197,7 +200,7 @@ correctness-critical work.
       <br>
       <i>Independent analysis and verification.</i>
       <br><br>
-      Challenges plans, owns Full analysis, and independently verifies every
+      Reviews plans when the user requests it and independently verifies every
       implementation.
       <br><br>
       <b>Mode:</b> <code>read-only</code>
@@ -269,29 +272,33 @@ Accelerated work.
 ```text
 Direct:      implement -> verify
 Accelerated: specify -> plan -> tasks -> implement -> verify -> archive
-Full:        explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive
+Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archive
 ```
 
 | Route | Use when | Artifacts |
 | --- | --- | --- |
 | Direct | Clear, bounded, low-risk work, including multi-file documentation/mechanical edits | None; oracle returns its verdict in-session. |
 | Accelerated | Generic SDD request, partial clarity, moderate risk, multi-surface behavior, or architecture | Canonical artifacts with fast-forward specification/planning/tasks. |
-| Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Accelerated artifacts plus exploration and independent pre-implementation analysis. |
+| Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Accelerated artifacts plus exploration and separate planning gates. |
 
 The root loads only the current phase contract from the bundled `thoth-sdd`
 skill. It owns specification, clarification, planning, requirements checklists,
 task decomposition, convergence, report persistence, and archive. `explorer`
-owns Full discovery; `oracle` always owns `analyze` and `verify`.
+owns Full discovery; `oracle` owns user-selected plan review and every `verify`.
 
-An explicitly named route wins. A generic request to use SDD sets Accelerated as
-the minimum. Accelerated writes `spec.md -> plan.md -> tasks.md` in one
-uninterrupted root pass and does not pause for routine approval between phases.
+An explicitly named route is the user's selection and wins. Otherwise root
+recommends one of all three routes and waits for the user's choice. A generic
+request to use SDD sets Accelerated as the minimum recommendation. Accelerated
+writes `spec.md -> plan.md -> tasks.md` in one uninterrupted root pass and does
+not pause for routine approval between those planning phases.
 
 Conditional phases remain deliberately narrow:
 
 - `clarify` runs only for a material ambiguity and updates canonical `spec.md`;
 - `checklist` audits high-risk requirement quality with `CHK###` taxonomy and a
   separate revalidation pass;
+- `plan-review` is offered after `ready` on Accelerated and Full; the user chooses
+  `Review plan with Oracle (Recommended)` or `Proceed without review`;
 - `converge` appends tasks only after failed artifact-backed verification; and
 - `architectural-grilling` runs before specification only when explicitly
   requested or a material human-owned decision remains unresolved.
@@ -316,6 +323,7 @@ Every harness package includes the workflow contracts owned by thoth-agents:
 | `thoth-sdd` | Route rules, phase contracts, templates, and structural validator. |
 | `thoth-constitution` | Explicit governance SemVer lifecycle; routine plans only read principles. |
 | `thoth-archive` | Passing closeout, transactional durable-spec sync, audit report, and dated move. |
+| `plan-reviewer` | Optional read-only Oracle plan review with exact `[OKAY]`/`[REJECT]` results and freshness evidence. |
 
 The installer obtains these mandatory external skills from their single source
 of truth:

@@ -66,13 +66,14 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - Keep changes small, explicit, and limited to the requested behavior.
 - Preserve others' work: never revert or discard changes you did not make.
 - Run the nearest focused validation first; expand only according to risk.
-- The adaptive root handles clear bounded work directly and selects direct,
-  accelerated, or full SDD according to scope, clarity, and risk.
+- The adaptive root handles clear bounded work directly, assesses scope,
+  clarity, and risk, and recommends direct, accelerated, or full SDD. The user
+  selects the route; an explicitly selected route wins.
 - Use roles intentionally: `explorer` discovers, `librarian` researches docs,
-  `oracle` owns analysis and every independent verification, `designer` owns
-  UI/UX, `quick` makes mechanical changes, and `deep` handles correctness risk.
-  Root owns sequential SDD coordination and loads bundled phase contracts on
-  demand.
+  `oracle` owns user-selected plan review and every independent verification,
+  `designer` owns UI/UX, `quick` makes mechanical changes, and `deep` handles
+  correctness risk. Root owns sequential SDD coordination and loads bundled
+  phase contracts on demand.
 - Delegate only for net gain, keep maximum depth 1, and use one writer per
   mutable surface.
 - `simplify`, `tdd`, `progressive-context-router`, and
@@ -83,6 +84,11 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - Use `architectural-grilling` before specification only on explicit request or
   unresolved material human-owned product/architecture decisions. Full SDD
   alone does not activate it.
+- After `ready` on Accelerated or Full, recommend the optional read-only Oracle
+  plan review and let the user choose review or proceeding without it. Plan
+  approval never replaces mandatory final Oracle verification.
+- `plan-reviewer` is a thoth-owned bundled skill; its OpenSpec artifact remains
+  root-written and is never mirrored into provider memory.
 - All visual or UX work goes through `designer`, not ad hoc editing.
 - `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem
   is an independent provider; follow its installed guidance for memory and
@@ -102,7 +108,7 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 
 ## Change and verification flow
 
-1. Confirm scope, primary route, and overlays.
+1. Confirm scope, recommend a primary route, and obtain the user's selection.
 2. Review public contracts and existing tests before editing.
 3. Implement without silently expanding scope.
 4. Run focused tests, then checks proportional to risk.

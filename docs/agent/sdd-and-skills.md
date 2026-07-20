@@ -14,17 +14,22 @@ and the thoth-owned workflow bundle.
 - `skills/thoth-constitution/`: explicit governance lifecycle and validator
 - `skills/thoth-archive/`: transactional durable-delta closeout
 - `skills/thoth-init/`: offline, non-overwriting project bootstrap
+- `skills/plan-reviewer/`: optional blocker-focused Oracle review and freshness
+  template
 - `src/cli/skills.ts`: canonical repositories for mandatory external skills
 - [`../sdd-pipeline.md`](../sdd-pipeline.md): public workflow contract
 
 ## Invariants
 
-- Explicit route requests win; generic SDD means Accelerated minimum.
+- An explicit route request is the user's selection and wins. Otherwise root
+  recommends Direct, Accelerated, or Full and waits for the user's choice;
+  generic SDD makes Accelerated the minimum recommendation.
 - Clear low-risk documentation/mechanical work may stay Direct across files.
 - Accelerated fast-forwards specify/plan/tasks without routine pauses; Full uses
   phase gates for material uncertainty/risk.
 - Root owns sequential coordination and loads only the current phase reference.
-- Explorer owns Full discovery; oracle owns Full analysis and every verify.
+- Explorer owns Full discovery; oracle owns user-selected plan review and every
+  final verify.
 - Specifications record Why/Impact/capabilities, story-to-FR/SC coverage, named
   normative FRs with delta metadata, and buildable/outcome SC types.
 - Routine plans read the constitution and record evidence; only explicit
@@ -37,6 +42,9 @@ and the thoth-owned workflow bundle.
 - `ready` is the pre-implementation gate; `closeout` requires complete tasks,
   independent oracle PASS, FR/buildable-SC evidence, explicit outcome-SC
   disposition, and archive readiness.
+- After `ready`, both artifact-backed routes offer `Review plan with Oracle
+  (Recommended)` or `Proceed without review`. Review is optional; final verify
+  remains mandatory.
 - Same-intent corrections revalidate only affected downstream artifacts. New
   intent starts a new change.
 - Converge is append-only and uses the missing/partial/contradicts/unrequested

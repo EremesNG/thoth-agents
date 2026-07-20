@@ -27,11 +27,12 @@ plugin/
     ├── thoth-init/
     ├── thoth-sdd/
     ├── thoth-constitution/
-    └── thoth-archive/
+    ├── thoth-archive/
+    └── plan-reviewer/
 ```
 
 Every agent Markdown file is generated from the canonical `src/agents/` prompt
-contract. The four owned skills are copied once from the canonical root
+contract. The five owned skills are copied once from the canonical root
 `skills/` tree. Codex-only assets are inert for Claude. Both plugin manifests
 and marketplace entries equal the root package version.
 
@@ -40,7 +41,7 @@ and marketplace entries equal the root package version.
 `settings.json` activates the orchestrator in the main thread. Specialist
 delegation uses the `thoth-agents:<role>` namespace. Explorer, librarian, and
 oracle deny write/edit tools; implementation roles retain bounded write access.
-Oracle always owns analyze and verify.
+Oracle owns user-selected plan review and every final verify.
 
 Claude discovers plugin skills automatically. The namespaced
 `/thoth-agents:thoth-init` skill creates only missing project governance because
@@ -53,7 +54,7 @@ copied into this shared bundle.
 
 `pnpm run integration:sync` regenerates both manifests and marketplaces, Claude
 agent files/settings, both MCP surfaces, both asset inventories, and one copy of
-the four thoth-owned skills. External skills remain CLI-installed from their
+the five thoth-owned skills. External skills remain CLI-installed from their
 canonical repositories. Build and npm version lifecycle commands run this
 synchronization, keeping release versions and shared bundle contents aligned.
 

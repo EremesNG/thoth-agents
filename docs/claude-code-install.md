@@ -71,13 +71,13 @@ files.
 | Surface | Contents |
 | --- | --- |
 | `agents/` | Main `orchestrator` plus `explorer`, `librarian`, `oracle`, `designer`, `quick`, and `deep` generated from canonical source |
-| `skills/` | Owned SDD/init/constitution/archive skills only |
+| `skills/` | Five owned workflow skills, including `plan-reviewer` |
 | `.mcp.json` | Packaged thoth-agents research MCP configuration |
 | `settings.json` | Activates the orchestrator as the main plugin agent |
 
 Namespaced delegation uses `thoth-agents:<role>`. Children never delegate.
-Read-only `oracle` always owns Full analysis and every verification, regardless
-of who implemented the change.
+Read-only `oracle` owns user-selected plan review and every final verification,
+regardless of who implemented the change.
 
 ## Verification
 

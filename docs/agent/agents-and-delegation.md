@@ -20,8 +20,9 @@ definitions and applies overrides; harness adapters translate the same intent.
 - Every dispatch carries bounded thoth-mem `none|recall|observe` authorization
   independently of workspace mode. `observe` may permit a durable provider
   observation, but root lifecycle and real-user intent never transfer.
-- Oracle owns Full analysis and every verification. An implementer cannot
-  approve its own result.
+- Oracle owns each user-selected plan review and every final verification. An
+  implementer cannot approve its own result, and plan approval never replaces
+  verification.
 - Designer owns UI/UX, quick owns narrow work, and deep owns correctness-heavy
   implementation.
 - Root loads detailed phase contracts from bundled skills on demand instead of

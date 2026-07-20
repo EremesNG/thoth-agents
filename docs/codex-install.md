@@ -29,8 +29,8 @@ files are changed. Dry-run prints the native plan without running either
 mutation. The catalog is `.agents/plugins/marketplace.json`; it resolves to the
 versioned shared `plugin/` bundle.
 
-The plugin contains the four thoth-owned SDD/init/constitution/archive skills
-and packaged MCP configuration. External execution skills are deliberately not
+The plugin contains the five thoth-owned workflow skills, including
+`plan-reviewer`, and packaged MCP configuration. External execution skills are deliberately not
 vendored. It contains no custom-agent TOMLs because Codex plugin manifests do
 not support an agents component.
 
@@ -80,8 +80,9 @@ Agent/global installation remains CLI-owned.
 The global root contract handles bounded work directly and delegates only for
 net gain. Children never delegate and each mutable surface has one writer.
 Root owns sequential SDD coordination through the bundled `thoth-sdd`
-contracts. Explorer owns Full discovery; read-only oracle owns Full analysis and
-every verification, including Direct and Accelerated.
+contracts, recommends a route, and follows the user's selection. Explorer owns
+Full discovery; read-only Oracle owns user-selected plan review and every final
+verification, including Direct and Accelerated.
 
 Standalone TOMLs are native Codex configuration layers, but role selection and
 some permission constraints remain instruction-level in the collaboration

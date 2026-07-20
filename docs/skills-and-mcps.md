@@ -11,14 +11,23 @@ runtime download.
 | Skill | Contract |
 | --- | --- |
 | `thoth-init` | Offline, idempotent project initialization and harness-specific project surfaces |
-| `thoth-sdd` | Route selection, progressive phase references, templates, and structural validation |
+| `thoth-sdd` | Route recommendation and user selection, progressive phase references, templates, and structural validation |
 | `thoth-constitution` | Constitution creation, amendment, and pre/post planning gates |
 | `thoth-archive` | Passing verification gate, audit report, and dated archive move |
+| `plan-reviewer` | Optional user-selected, blocker-focused Oracle plan review with SHA-256 freshness evidence |
 
 The adaptive root loads only the current contract. It owns specify, clarify,
 plan, checklist, tasks, converge, report persistence, and archive. Explorer owns
-Full discovery. Oracle is always read-only and owns Full analysis plus every
-verification.
+Full discovery. Oracle is always read-only and owns each user-selected plan
+review plus every final verification.
+
+After `ready` on Accelerated or Full, root offers `Review plan with Oracle
+(Recommended)` or `Proceed without review`. If review is selected,
+`plan-reviewer` returns exactly `[OKAY]` or `[REJECT]` and no more than three
+actionable blockers. Root alone persists `plan-review.md` under the active
+OpenSpec change with reviewed-source SHA-256 digests. It is never mirrored into
+provider memory. A fresh `[OKAY]` still requires separate implementation
+confirmation and never replaces mandatory final Oracle verification.
 
 ## Mandatory execution skills
 
@@ -29,7 +38,7 @@ verification.
 | `progressive-context-router` | `EremesNG/skills` | Repository instruction and context-router work |
 | `architectural-grilling` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision before specification |
 
-Build copies only the four owned skills to the shared `plugin/skills` tree used
+Build copies only the five owned skills to the shared `plugin/skills` tree used
 by Codex and Claude. OpenCode `/thoth-init` copies those same owned skills to
 project `.agents/skills/` without overwriting existing files.
 
@@ -53,7 +62,7 @@ the static agent prompts and loaded only after a route reaches that phase.
 | --- | --- |
 | `explore` | read-only `explorer` |
 | `specify`, `clarify`, `plan`, `checklist`, `tasks` | root |
-| `analyze` | read-only `oracle` |
+| `plan-review` | optional read-only `oracle`, only after the user selects review |
 | `implement` | root or one bounded writer |
 | `verify` | read-only `oracle` for every route |
 | `converge`, report persistence, `archive` | root |

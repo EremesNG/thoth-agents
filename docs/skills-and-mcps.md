@@ -10,7 +10,7 @@ runtime download.
 
 | Skill | Contract |
 | --- | --- |
-| `thoth-init` | Offline, idempotent project initialization and harness-specific project surfaces |
+| `thoth-init` | Offline, idempotent initialization and synchronization of minimum `openspec/` governance only |
 | `thoth-sdd` | Route recommendation and user selection, progressive phase references, templates, and structural validation |
 | `thoth-constitution` | Constitution creation, amendment, and pre/post planning gates |
 | `thoth-archive` | Passing verification gate, audit report, and dated archive move |
@@ -39,8 +39,9 @@ confirmation and never replaces mandatory final Oracle verification.
 | `architectural-grilling` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision before specification |
 
 Build copies only the five owned skills to the shared `plugin/skills` tree used
-by Codex and Claude. OpenCode `/thoth-init` copies those same owned skills to
-project `.agents/skills/` without overwriting existing files.
+by Codex and Claude. OpenCode's CLI installer copies those same packaged skills
+to `~/.config/opencode/skills/`, the native global discovery root. `/thoth-init`
+only initializes or synchronizes the minimum project `openspec/` structure.
 
 For every harness, the thoth-agents installer invokes `npx skills add` with the
 canonical repository, exact skill name, global scope, and concrete harness

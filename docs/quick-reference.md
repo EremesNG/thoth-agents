@@ -38,11 +38,12 @@ npx thoth-agents@latest install --agent=claude
 ```
 
 Every installation uses the thoth-agents CLI to install external skills through
-`npx skills add`, then invoke provider-owned thoth-mem setup. Only a consistent
-thoth-mem `complete` result completes installation; printed manual actions and
-receipts remain provider-owned. Codex also needs the CLI because its plugin
-cannot install custom agents or write `~/.codex/AGENTS.md`. SDD phases never
-call either CLI.
+`npx skills add`, then invoke provider-owned thoth-mem setup. For OpenCode it
+also synchronizes the five packaged owned skills globally under
+`~/.config/opencode/skills/`. Only a consistent thoth-mem `complete` result
+completes installation; printed manual actions and receipts remain
+provider-owned. Codex also needs the CLI because its plugin cannot install
+custom agents or write `~/.codex/AGENTS.md`. SDD phases never call either CLI.
 
 ## Roles
 
@@ -101,6 +102,9 @@ npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ## Boundaries
 
 - OpenCode ships only the OpenAI built-in preset.
+- Every `thoth-init` surface only initializes or synchronizes minimum
+  `openspec/` governance; installation owns skills, agents, plugins, harness
+  configuration, and dependencies.
 - Codex requires the CLI for global agents, `~/.codex/AGENTS.md`, and managed
   config; `$thoth-init` creates project SDD governance only.
 - Claude requires both native marketplace commands before its namespaced skill

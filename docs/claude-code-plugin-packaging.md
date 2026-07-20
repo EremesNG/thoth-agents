@@ -44,11 +44,11 @@ oracle deny write/edit tools; implementation roles retain bounded write access.
 Oracle owns user-selected plan review and every final verify.
 
 Claude discovers plugin skills automatically. The namespaced
-`/thoth-agents:thoth-init` skill creates only missing project governance because
-agents and owned skills already reside in the manager-owned cache. Mandatory
-external skills reside in Claude's global skill root after CLI installation.
-That CLI also invokes thoth-mem's public provider setup; no thoth-mem asset is
-copied into this shared bundle.
+`/thoth-agents:thoth-init` skill only synchronizes minimum project `openspec/`
+governance because agents and owned skills already reside in the manager-owned
+cache. Mandatory external skills reside in Claude's global skill root after CLI
+installation. That CLI also invokes thoth-mem's public provider setup; no
+thoth-mem asset is copied into this shared bundle.
 
 ## Generation lifecycle
 

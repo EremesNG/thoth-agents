@@ -13,11 +13,12 @@ orchestration layer that its plugin manifest cannot provide.
 - Network access during installation for the plugin, external skills, and
   provider-owned thoth-mem setup
 
-The five thoth-owned workflow skills are packaged. The installer obtains the
-four mandatory external skills from their canonical repositories with `npx
-skills add`, then invokes thoth-mem's public setup command. Once installed, SDD
-phases load local contracts and provider guidance without consuming either CLI
-or the network.
+The five thoth-owned workflow skills are packaged. Codex and Claude discover
+them through their native plugin managers; the OpenCode installer synchronizes
+them into `~/.config/opencode/skills/`. The installer obtains the four mandatory
+external skills from their canonical repositories with `npx skills add`, then
+invokes thoth-mem's public setup command. Once installed, SDD phases load local
+contracts and provider guidance without consuming either CLI or the network.
 
 Nested package installation is non-interactive: the CLI confirms both `npx`
 package acquisition and the `skills` operation explicitly. On Windows it routes
@@ -28,7 +29,7 @@ macOS execute those commands directly.
 
 | Harness | Native/plugin step | Required completion step |
 | --- | --- | --- |
-| OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, external skills, and thoth-mem | Restart, then `/thoth-init` in each repository |
+| OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository to initialize `openspec/` |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add marketplace and install `thoth-agents@thoth-agents` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
 
@@ -50,13 +51,13 @@ npx thoth-agents@latest install --agent=opencode
 ```
 
 The CLI adds `thoth-agents@latest` to OpenCode configuration, writes the
-seven-role OpenAI preset, and installs all four external skills with `npx skills
-add`. Status and repair accept the two OpenCode global discovery roots managed
-here: `~/.config/opencode/skills/` and `~/.agents/skills/`. It then requires
-provider-owned thoth-mem setup to complete. Restart OpenCode and invoke
-`/thoth-init`; it copies the five thoth-owned skills to `.agents/skills/` and
-creates missing `openspec/` governance while preserving project-owned files. No
-Kimi, Copilot, ZAI/GLM, or mixed-provider preset is generated.
+seven-role OpenAI preset, synchronizes all five packaged thoth-owned skills into
+`~/.config/opencode/skills/`, and installs all four external skills with `npx
+skills add`. Status and repair verify the resulting global discovery targets.
+It then requires provider-owned thoth-mem setup to complete. Restart OpenCode
+and invoke `/thoth-init`; it only preflights and synchronizes the minimum
+`openspec/` governance structure while preserving existing constitutions and
+templates. No Kimi, Copilot, ZAI/GLM, or mixed-provider preset is generated.
 
 ## Codex
 
@@ -90,8 +91,8 @@ does not copy a plugin into a personal manager cache or bypass Codex trust; it
 delegates marketplace and plugin mutations to the native manager.
 
 Restart Codex after the CLI step. In every target repository invoke
-`$thoth-init`; this creates only missing `openspec/` governance. It does not
-install agents or global instructions.
+`$thoth-init`; this preflights and synchronizes only the minimum `openspec/`
+governance. It does not install agents or global instructions.
 
 Review `/plugins` and `/hooks`. Global instructions and configuration remain
 subject to more specific project/subtree instructions, profiles, managed policy,
@@ -117,7 +118,8 @@ Restart Claude Code or run `/reload-plugins`, then invoke
 `/thoth-agents:thoth-init` in each repository. Claude discovers the packaged
 orchestrator, six namespaced subagents, MCP configuration, and thoth-owned skill
 tree natively. The CLI installs and verifies the external skills, then invokes
-thoth-mem's Claude setup. Init creates missing `openspec/` governance only.
+thoth-mem's Claude setup. Init preflights and synchronizes only the minimum
+`openspec/` governance.
 
 Claude owns marketplace snapshots, cache files, enablement, and packaged model
 defaults; thoth-agents never edits that cache.
@@ -125,7 +127,9 @@ defaults; thoth-agents never edits that cache.
 ## Skill ownership
 
 All harness distributions carry only thoth-owned workflow skills: `thoth-init`,
-`thoth-sdd`, `thoth-constitution`, and `thoth-archive`.
+`thoth-sdd`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer`.
+OpenCode installation materializes these five under its global user skill root;
+`thoth-init` never installs them into a project.
 
 The CLI installs `simplify`, `tdd`, `progressive-context-router`, and
 `architectural-grilling` from their canonical GitHub repositories using the
@@ -170,7 +174,7 @@ mirrored into thoth-mem.
 
 | Harness | Limitation |
 | --- | --- |
-| OpenCode | CLI installation is required for external skills and thoth-mem setup; only the OpenAI built-in preset ships. |
+| OpenCode | CLI installation is required for global owned skills, external skills, and thoth-mem setup; npm plugins cannot declare package-relative native skill roots, and only the OpenAI built-in preset ships. |
 | Codex | Plugin manifests cannot install custom agents or write `~/.codex/AGENTS.md`; the CLI layer and provider setup are mandatory. Installed-role selection and some permissions remain instruction-level. |
 | Claude Code | Native marketplace/install steps must precede the CLI and provider setup. Native tool denials protect read-only roles, but fine-grained write-path restriction remains instruction-level. |
 

@@ -37,8 +37,8 @@ under `~/.codex/agents/`, the managed orchestrator block under
 It also installs the four external skills from their canonical repositories.
 The plugin package cannot perform those global writes.
 
-`$thoth-init` remains a bundled project-governance skill. It creates
-`openspec/` assets only and is not an agent installer.
+`$thoth-init` remains a bundled project-governance skill. It preflights and
+synchronizes only minimum `openspec/` assets and is not an agent installer.
 
 ## Generation lifecycle
 

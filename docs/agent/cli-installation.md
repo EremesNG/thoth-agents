@@ -9,6 +9,9 @@ phase execution does not.
 ## Invariants
 
 - OpenCode is the default CLI harness.
+- OpenCode installation synchronizes all five packaged thoth-owned skills into
+  `~/.config/opencode/skills/`; status, install, and sync share that inventory.
+  `/thoth-init` owns only project `openspec/` governance.
 - Mandatory external skills are installed from canonical repositories through
   `npx skills add`; this repository must not vendor their source.
 - After owned setup and external skills, every harness invokes the official

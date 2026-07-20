@@ -13,7 +13,8 @@ and the thoth-owned workflow bundle.
 - `skills/thoth-sdd/`: lazy phase references, templates, structural validator
 - `skills/thoth-constitution/`: explicit governance lifecycle and validator
 - `skills/thoth-archive/`: transactional durable-delta closeout
-- `skills/thoth-init/`: offline, non-overwriting project bootstrap
+- `skills/thoth-init/`: offline, preflighted synchronization of minimum project
+  `openspec/` governance only
 - `skills/plan-reviewer/`: optional blocker-focused Oracle review and freshness
   template
 - `src/cli/skills.ts`: canonical repositories for mandatory external skills
@@ -53,8 +54,10 @@ and the thoth-owned workflow bundle.
   requirements after PASS. INTERNAL requirements and undeclared prose never
   update `openspec/specs/`. Handled failures roll back within the active process;
   forced process or OS termination is not crash-atomic.
-- Owned contracts are bundled. External skills are installed by the CLI once;
-  SDD execution remains CLI-, network-, and installer-independent.
+- Owned contracts are bundled. OpenCode's CLI installs them globally; Codex and
+  Claude discover them from their plugin bundle. External skills are installed
+  by the CLI once; `thoth-init` only manages `openspec/`, and SDD execution
+  remains CLI-, network-, and installer-independent.
 - Delegated envelopes carry a MEMORY block with provider/project/session
   identity, `none|recall|observe`, and bounded context. This does not alter
   workspace mode or delegate root lifecycle.

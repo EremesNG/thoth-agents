@@ -48,7 +48,8 @@ and permission semantics.
 
 ### OpenCode
 
-Install the plugin configuration, external skills, and thoth-mem companion:
+Install the plugin configuration, five thoth-owned skills, four external
+skills, and the thoth-mem companion globally:
 
 ```bash
 npx thoth-agents@latest install --agent=opencode --dry-run
@@ -61,12 +62,13 @@ Restart OpenCode and initialize the current repository:
 /thoth-init
 ```
 
-This copies the five thoth-owned workflow skills into `.agents/skills/` and
-creates missing `openspec/` governance files. The external skills are already in
-one of the OpenCode global discovery roots managed here,
-`~/.config/opencode/skills/` or `~/.agents/skills/`, and thoth-mem has completed
-its own provider setup from the CLI step. Existing project-owned files are
-preserved.
+The installer materializes the five packaged thoth-owned workflow skills under
+`~/.config/opencode/skills/`; external skills are installed globally from their
+canonical repositories, and thoth-mem completes its own provider setup. The
+`/thoth-init` command only initializes or synchronizes the minimum `openspec/`
+governance structure. It never installs skills, agents, plugins, harness
+configuration, or dependencies, and it preserves existing constitutions and
+templates.
 
 ### Codex
 
@@ -319,7 +321,7 @@ Every harness package includes the workflow contracts owned by thoth-agents:
 
 | Skill | Purpose |
 | --- | --- |
-| `thoth-init` | Offline, idempotent project initialization. |
+| `thoth-init` | Offline, idempotent initialization and synchronization of minimum `openspec/` governance only. |
 | `thoth-sdd` | Route rules, phase contracts, templates, and structural validator. |
 | `thoth-constitution` | Explicit governance SemVer lifecycle; routine plans only read principles. |
 | `thoth-archive` | Passing closeout, transactional durable-spec sync, audit report, and dated move. |
@@ -348,7 +350,7 @@ diagnostics, manual actions, and receipt paths remain visible for recovery.
 
 | Harness | Important limitation |
 | --- | --- |
-| OpenCode | Strongest integrated path. The CLI installs the npm plugin configuration, external skills, and provider-owned thoth-mem setup; `/thoth-init` materializes thoth-owned project skills/governance. Only the OpenAI built-in preset ships. |
+| OpenCode | Strongest integrated path. The CLI installs the npm plugin configuration, global thoth-owned and external skills, and provider-owned thoth-mem setup; `/thoth-init` only initializes per-repository `openspec/` governance. Only the OpenAI built-in preset ships. |
 | Codex | The CLI installs the native plugin and manages global `AGENTS.md`, six agent TOMLs, config, external skills, and thoth-mem setup; `$thoth-init` only initializes per-repository SDD governance. Runtime role matching and some permissions remain instruction-level. |
 | Claude Code | Run both native marketplace commands before the CLI installs external skills and requests thoth-mem setup. The native manager owns cache files; fine-grained path restrictions remain instruction-level. |
 

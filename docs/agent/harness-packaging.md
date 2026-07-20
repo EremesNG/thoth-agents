@@ -15,6 +15,9 @@
 ## Invariants
 
 - OpenCode remains default.
+- OpenCode npm plugin loading does not expose package-relative native skills;
+  the CLI synchronizes the five canonical owned skill trees into
+  `~/.config/opencode/skills/`. Init never creates project-local skill copies.
 - Codex uses ambient root plus six global TOMLs created by the mandatory CLI.
   Its plugin manifest carries skills/MCP but cannot install custom agents or
   `~/.codex/AGENTS.md`; `$thoth-init` creates project governance only.

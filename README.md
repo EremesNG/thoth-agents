@@ -60,8 +60,10 @@ Restart OpenCode and initialize the current repository:
 
 This copies the four thoth-owned workflow skills into `.agents/skills/` and
 creates missing `openspec/` governance files. The external skills are already in
-OpenCode's global skill root and thoth-mem has completed its own provider setup
-from the CLI step. Existing project-owned files are preserved.
+one of the OpenCode global discovery roots managed here,
+`~/.config/opencode/skills/` or `~/.agents/skills/`, and thoth-mem has completed
+its own provider setup from the CLI step. Existing project-owned files are
+preserved.
 
 ### Codex
 

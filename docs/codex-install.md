@@ -44,7 +44,8 @@ User-scope setup manages:
   `librarian`, `oracle`, `designer`, `quick`, and `deep`;
 - `~/.codex/agents/.thoth-agents-managed-models.json`;
 - a backed-up merge in `~/.codex/config.toml` for the managed feature; and
-- mandatory external skills in `~/.codex/skills/` via `npx skills add`;
+- mandatory external skills in Codex's user skill root, `~/.agents/skills/`,
+  via `npx skills add`;
 - provider-owned thoth-mem setup through `npx -y thoth-mem@latest setup codex
   --scope global --json`.
 
@@ -113,6 +114,7 @@ never transfers root lifecycle. `openspec/` remains the canonical SDD store.
 ## Upstream references
 
 - [Build Codex plugins](https://learn.chatgpt.com/docs/build-plugins#plugin-structure)
+- [Build Codex skills](https://learn.chatgpt.com/docs/build-skills#where-to-save-skills)
 - [Codex custom subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
 - [Codex `AGENTS.md`](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
 - [Codex hooks](https://learn.chatgpt.com/docs/hooks)

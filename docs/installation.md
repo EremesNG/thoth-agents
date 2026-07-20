@@ -51,11 +51,12 @@ npx thoth-agents@latest install --agent=opencode
 
 The CLI adds `thoth-agents@latest` to OpenCode configuration, writes the
 seven-role OpenAI preset, and installs all four external skills with `npx skills
-add`. It then requires provider-owned thoth-mem setup to complete. Restart
-OpenCode and invoke `/thoth-init`; it copies the four thoth-owned
-skills to `.agents/skills/` and creates missing `openspec/` governance while
-preserving project-owned files. No Kimi, Copilot, ZAI/GLM, or mixed-provider
-preset is generated.
+add`. Status and repair accept the two OpenCode global discovery roots managed
+here: `~/.config/opencode/skills/` and `~/.agents/skills/`. It then requires
+provider-owned thoth-mem setup to complete. Restart OpenCode and invoke
+`/thoth-init`; it copies the four thoth-owned skills to `.agents/skills/` and
+creates missing `openspec/` governance while preserving project-owned files. No
+Kimi, Copilot, ZAI/GLM, or mixed-provider preset is generated.
 
 ## Codex
 

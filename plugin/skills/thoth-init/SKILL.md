@@ -13,7 +13,7 @@ script by absolute path:
 node "<skill-dir>/scripts/init.mjs" --project <project-root> --harness <opencode|codex|claude> --json
 ```
 
-- OpenCode materializes the four thoth-owned workflow skills under
+- OpenCode materializes the five thoth-owned workflow skills under
   `.agents/skills/`.
 - Codex init creates project governance only. Codex plugin manifests cannot
   install custom agents or global instructions; first run the mandatory

@@ -67,7 +67,7 @@ export const AGENT_ROLES = [
       'keeps requirements, decisions, and final synthesis in the root thread',
     ],
     verification: [
-      'delegates analyze and every verify phase to oracle, including Direct and Accelerated routes',
+      'delegates selected plan-review and every verify phase to oracle; plan review stays optional and final verification stays mandatory',
       'consolidates summarized evidence returned by child agents',
     ],
   },
@@ -105,9 +105,10 @@ export const AGENT_ROLES = [
     mode: 'read-only',
     dispatch: 'synchronous-task-only',
     canMutateWorkspace: false,
-    scope: 'diagnosis, architecture, analysis, and independent verification',
+    scope:
+      'diagnosis, architecture, optional plan review, and independent verification',
     responsibility:
-      'Independently analyze plans and perform every implementation verification, exposing correctness risks and judging whether results satisfy their contracts.',
+      'Independently review plans when the user requests it and perform every implementation verification, exposing correctness risks and judging whether results satisfy their contracts.',
     toolGovernance: [
       'performs read-only analysis and independent review and is never the implementer of the work it judges',
       'does not implement, persist artifacts, or delegate further',

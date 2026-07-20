@@ -20,6 +20,7 @@ const OWNED_SKILL_NAMES = [
   'thoth-sdd',
   'thoth-constitution',
   'thoth-archive',
+  'plan-reviewer',
 ];
 
 function parseArgs(argv) {

@@ -1,15 +1,15 @@
 <!--
 Sync Impact Report
-- Version change: 3.0.0 -> 4.0.0
-- Modified principles: Proportional Spec Kit-compatible SDD (transactional archive semantics defined); Evidence-led completion (durable closeout sync added)
-- Added sections: Governance
-- Removed sections: Semver policy (absorbed into Governance)
-- Templates: ✅ skills/thoth-sdd/templates; ✅ skills/thoth-archive; ✅ agent and SDD instructions; ✅ user documentation
+- Version change: 4.0.0 -> 5.0.0
+- Modified principles: Adaptive-root orchestration (user-owned route and optional plan review); Proportional Spec Kit-compatible SDD (ready review choice); Evidence-led completion (optional plan review separated from mandatory verify)
+- Added sections: None
+- Removed sections: None
+- Templates: ✅ skills/thoth-sdd; ✅ skills/plan-reviewer; ✅ skills/thoth-constitution/templates; ✅ agent and SDD instructions; ✅ user documentation
 - Follow-up TODOs: None
 -->
 # thoth-agents Project Constitution
 
-**Version**: 4.0.0<br>
+**Version**: 5.0.0<br>
 **Ratified**: 2026-06-16<br>
 **Last amended**: 2026-07-19
 
@@ -21,11 +21,7 @@ adaptive route policy.
 
 ### 1. Adaptive-root orchestration
 
-The root may inspect and edit clear bounded work directly. It delegates only
-when specialization, context isolation, independent review, or safe parallelism
-creates a net gain, except that `analyze` and every `verify` phase are always
-delegated to `oracle`. Delegation depth is one and each mutable surface has one
-writer.
+The root may inspect and edit clear bounded work directly. The root recommends a route; the user selects Direct, Accelerated, or Full. An explicitly selected route wins; Root may explain material risk but cannot substitute its recommendation. Root delegates only when specialization, context isolation, independent review, or safe parallelism creates a net gain, except that each user-selected plan review and every final `verify` phase are delegated to `oracle`. Delegation depth is one and each mutable surface has one writer.
 
 ### 2. Explicit role boundaries
 
@@ -38,8 +34,9 @@ contracts only when required. Read-only roles (`explorer`, `librarian`,
 
 ### 3. Proportional Spec Kit-compatible SDD
 
-The root selects direct, accelerated, or full SDD from intent, scope, clarity,
-contract risk, and failure cost. Accelerated SDD is a first-class route.
+The root assesses intent, scope, clarity, contract risk, and failure cost to
+recommend direct, accelerated, or full SDD. The user owns the selection, and
+Accelerated SDD is a first-class route.
 Clarification, checklists, optional artifacts, and convergence activate on
 artifact-backed routes only when their risk signal exists. Ceremony without
 decision or risk value is prohibited.
@@ -47,6 +44,9 @@ decision or risk value is prohibited.
 explicit request or unresolved material human-owned product/architecture
 branches; Full SDD alone never requires it.
 Every phase has a shared typed protocol and a canonical dispatch envelope.
+Pre-implementation plan review is optional and user-selected. After the `ready`
+gate on Accelerated or Full, Root recommends Oracle review and the user chooses
+review or proceeding without it.
 Artifact-backed routes persist a verification verdict and close through a dated
 archive. After oracle PASS, archive MUST transactionally synchronize only explicitly
 declared durable `ADDED`, `MODIFIED`, `REMOVED`, and `RENAMED` deltas into
@@ -79,8 +79,9 @@ provider assets.
 
 Every route includes verification proportional to changed behavior and risk
 before completion. Completion reports identify changed surfaces and executed
-evidence. Oracle independently verifies every route; Full SDD also adds
-oracle-owned pre-implementation analysis. Artifact-backed failures append
+evidence. Every final verify remains mandatory and oracle-owned. A user-selected
+pre-implementation plan review is independent and never substitutes for final
+verification. Artifact-backed failures append
 traceable convergence tasks before the implementation/re-check loop; Direct
 failures return straight to implementation. Accelerated and Full archive only
 after a passing verdict, no unresolved critical finding, and successful transactional
@@ -98,6 +99,11 @@ canonical synchronization of declared durable deltas.
 
 ## Amendment history
 
+- 5.0.0 | major: restore user ownership of Direct, Accelerated, or Full route
+  selection; make pre-implementation Oracle plan review optional after `ready`;
+  preserve mandatory independent final verification | SDD contracts,
+  plan-reviewer skill, generated harness prompts, governance templates,
+  instructions, documentation, and tests.
 - 4.0.0 | major: redefine artifact-backed archive as transactional synchronization
   of explicitly declared durable deltas after oracle PASS with active-process
   rollback for handled failures; add isolated

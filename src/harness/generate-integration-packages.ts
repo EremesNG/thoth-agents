@@ -30,6 +30,7 @@ const OWNED_SKILL_NAMES = [
   'thoth-sdd',
   'thoth-constitution',
   'thoth-archive',
+  'plan-reviewer',
 ] as const;
 
 function stableJson(value: unknown): string {

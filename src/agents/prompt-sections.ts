@@ -188,7 +188,7 @@ ${renderRoleDirectory()}
 </routing>
 
 <sdd-routing>
-- An explicitly requested route wins; a generic SDD request sets Accelerated as the minimum unless Full risk applies.
+- An explicitly requested route wins: no duplicate route-selection prompt. Otherwise assess and recommend one route, ask with \`{{userQuestionTool}}\`, and wait for the user to select Direct, Accelerated, or Full. The recommendation is not the decision. The user's selected route wins; explain risk without overriding it. A generic SDD request sets Accelerated as the minimum unless Full risk applies.
 - Direct: clear, bounded, low-risk work. ${renderSddRoute('direct')}.
 - Documentation or mechanical work may remain Direct across multiple files when it is clear and low risk.
 - Accelerated SDD: multi-surface behavior, architecture, partial clarity, or moderate risk. ${renderSddRoute('accelerated')}.
@@ -196,12 +196,13 @@ ${renderRoleDirectory()}
 - Its thoth-sdd validator gates are ${accelerated.validationGates.join(' -> ')}; optional artifacts are off by default.
 - Full SDD: uncertain scope, cross-cutting behavior or architecture, high contract risk, or high failure cost. ${renderSddRoute('full')}.
 - Full gates are ${full.validationGates.join(' -> ')}; checklist remains conditional.
+- After \`ready\` on Accelerated/Full, ask with \`{{userQuestionTool}}\`: \`Review plan with Oracle (Recommended)\` or \`Proceed without review\`. Skipping plan review means no pre-implementation Oracle review. If selected, load \`plan-reviewer\`, delegate read-only review, and accept only \`[OKAY]\` or \`[REJECT]\` with at most 3 actionable blockers. After \`[OKAY]\`, summarize and ask whether to implement or stop. Plan review never replaces mandatory final Oracle verify.
 - Happy path: verify -> archive. Artifact-backed failure loop: verify fail -> converge -> implement -> verify. Direct failure loop: verify fail -> implement -> verify.
-- Conditional phases: clarify only for material ambiguity; checklist only when requirement risk justifies it; converge only when verification finds actionable defects.
+- Conditional phases: clarify for material ambiguity; checklist for requirement risk; plan-review by user choice; converge for verification defects.
 - When implementation discoveries refine the same intent, update the canonical artifact and revalidate only affected downstream artifacts. Split a new change when the intent changes.
 - Load the bundled \`thoth-sdd\` skill only after selecting Accelerated or Full, then read only the reference for the current phase.
 - Root owns specify, clarify, plan, checklist, tasks, converge, and archive coordination; these phases are not delegated merely to change prompts.
-- Delegate analyze and every verify phase to ${roleTemplate('oracle')}, including Direct and Accelerated work. The implementation writer must never review itself.
+- Delegate each user-selected plan review and every verify phase to ${roleTemplate('oracle')}. The implementation writer must never review itself.
 </sdd-routing>
 
 <external-skills>
@@ -230,7 +231,7 @@ ${renderRoleDirectory()}
 
 <execution>
 - Validate contracts and tests first; use test-first work for behavior. Root or one writer implements; do not delegate merely because an agent exists.
-- ${roleTemplate('oracle')} always provides independent verification and also owns Full SDD analysis. Root and implementation writers never self-approve.
+- ${roleTemplate('oracle')} owns selected plan review and every verification; root and writers never self-approve.
 - Preserve unrelated working-tree changes. Never instruct an agent to discard them.
 - Report changed files, evidence, risks, and capability gaps truthfully.
 </execution>
@@ -261,7 +262,7 @@ const ROLE_SPECIFIC_RULES: Record<
   oracle: [
     'Separate observations, risks, and recommendations.',
     'Review against stated requirements and contracts; do not invent implementation scope.',
-    'For analyze or verify, load the matching bundled thoth-sdd reference and remain read-only.',
+    'For plan-review, load the bundled plan-reviewer skill; for verify, load the matching bundled thoth-sdd reference and remain read-only.',
     'Reject self-review: the implementing root or writer cannot substitute for independent oracle judgment.',
   ],
   designer: [

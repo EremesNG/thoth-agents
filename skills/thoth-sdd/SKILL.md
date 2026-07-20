@@ -5,32 +5,35 @@ description: Run thoth-agents Direct, Accelerated, or Full specification-driven 
 
 # Thoth SDD
 
-Select the lightest route that preserves correctness:
+Assess the work, recommend the lightest route that preserves correctness, and
+let the user select:
 
 - **Direct**: `implement -> verify`
 - **Accelerated**: `specify -> plan -> tasks -> implement -> verify -> archive`
-- **Full**: `explore -> specify -> plan -> tasks -> analyze -> implement -> verify -> archive`
+- **Full**: `explore -> specify -> plan -> tasks -> implement -> verify -> archive`
 
-Conditional phases are `clarify`, `checklist`, and `converge`. Direct creates no
+Conditional phases are `clarify`, `checklist`, `plan-review`, and `converge`. Direct creates no
 SDD artifacts and may cover multiple documentation or mechanical files when the
 intent is clear and risk is low.
 
 Accelerated is a **fast-forward** route: root writes `spec.md`, `plan.md`, and
-`tasks.md` in one uninterrupted pass, validates structure without a routine user
-pause, and creates optional artifacts only for a concrete risk. Full uses
-phase-by-phase gates because uncertainty or failure cost justifies them.
+`tasks.md` in one uninterrupted pass and creates optional artifacts only for a
+concrete risk. After `ready`, both artifact-backed routes pause once to offer
+`Review plan with Oracle (Recommended)` or `Proceed without review`. Full uses
+separate planning gates because uncertainty or failure cost justifies them.
 
-An explicitly named route wins. A generic request to “use SDD” sets Accelerated
-as the minimum; it does not force Full. User input is requested only for a
-material decision that evidence and safe assumptions cannot resolve.
+An explicitly named route counts as the user's selection. Otherwise assess and
+recommend Direct, Accelerated, or Full, then wait for the user to choose; the
+recommendation is not the decision. A generic request to “use SDD” makes
+Accelerated the minimum recommendation but does not force it.
 
 ## Ownership
 
 - Root owns sequential coordination artifacts, gate execution, and archive.
 - Explorer owns Full-route repository discovery.
 - Designer, quick, deep, or root may implement according to scope.
-- Oracle always owns `analyze` and **every** `verify`. The implementation writer
-  never approves its own work.
+- Oracle owns `plan-review` when the user selects it and **every** `verify`. The
+  implementation writer never approves its own work.
 
 ## Progressive loading
 
@@ -49,7 +52,7 @@ Read only the current phase contract:
 | plan | `references/phases/plan.md` |
 | checklist | `references/phases/checklist.md` |
 | tasks | `references/phases/tasks.md` |
-| analyze | `references/phases/analyze.md` |
+| plan-review | bundled `plan-reviewer` skill |
 | implement | `references/phases/implement.md` |
 | verify | `references/phases/verify.md` |
 | converge | `references/phases/converge.md` |
@@ -66,12 +69,15 @@ node scripts/validate.mjs --change openspec/changes/<feature> --route <accelerat
 - **Accelerated**: `specify`, then `ready` after the fast-forward planning pass,
   then `closeout` after independent verification and an archive report marked
   `READY`.
-- **Full**: `specify`, `plan`, `tasks`, then `ready` before oracle analysis, and
-  `closeout` after independent verification.
+- **Full**: `specify`, `plan`, `tasks`, then `ready` before the optional review
+  choice or implementation, and `closeout` after independent verification.
 - **Checklist**: run only when activated; the later `ready` gate includes it if
   present.
 
-`ready` validates the artifacts needed before analysis/implementation.
+`ready` validates the artifacts needed before the user chooses
+`Review plan with Oracle (Recommended)` or `Proceed without review`. Review
+approval remains separate from implementation confirmation and never satisfies
+final verification.
 `closeout` additionally requires completed tasks, independent oracle PASS,
 complete FR/buildable-SC evidence, an observed PASS or explicit residual RISK
 for every outcome SC, and an archive report ready for the transactional archive

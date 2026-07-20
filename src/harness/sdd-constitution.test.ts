@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -54,6 +54,46 @@ function validate(content: string) {
 }
 
 describe('constitution lifecycle validator', () => {
+  test('keeps route selection user-owned and separates optional plan review from final verify', () => {
+    const repositoryConstitution = readFileSync(
+      join(process.cwd(), 'openspec', 'memory', 'constitution.md'),
+      'utf8',
+    );
+    const initializedConstitution = readFileSync(
+      join(
+        process.cwd(),
+        'skills',
+        'thoth-constitution',
+        'templates',
+        'constitution.md',
+      ),
+      'utf8',
+    );
+
+    expect(repositoryConstitution).toContain('**Version**: 5.0.0');
+    expect(repositoryConstitution).toContain(
+      'The root recommends a route; the user selects Direct, Accelerated, or Full',
+    );
+    expect(repositoryConstitution).toContain(
+      'Pre-implementation plan review is optional and user-selected',
+    );
+    expect(repositoryConstitution).toContain(
+      'Every final verify remains mandatory and oracle-owned',
+    );
+    expect(repositoryConstitution).not.toContain(
+      'Full SDD also adds oracle-owned pre-implementation analysis',
+    );
+    expect(initializedConstitution).toContain(
+      'SDD route selection MUST remain user-owned after an evidence-based recommendation',
+    );
+    expect(initializedConstitution).toContain(
+      'Pre-implementation plan review is optional and user-selected',
+    );
+    expect(initializedConstitution).toContain(
+      'Every final verify MUST use an independent read-only reviewer',
+    );
+  });
+
   test('keeps the repository constitution lifecycle valid', () => {
     const result = spawnSync(
       process.execPath,

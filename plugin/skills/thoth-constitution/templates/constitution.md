@@ -24,6 +24,7 @@ infrastructure without a current requirement is prohibited.
 
 Delivery MUST use the smallest coherent design that satisfies accepted
 requirements. Non-goals MUST be named, and scope cannot expand silently.
+SDD route selection MUST remain user-owned after an evidence-based recommendation.
 
 ### III. Testable contracts
 
@@ -32,8 +33,7 @@ changes MUST use test-first execution at an agreed public seam when practical.
 
 ### IV. Independent assurance
 
-The implementation writer cannot approve its own work. Analyze and verify MUST
-be performed by an independent read-only reviewer.
+The implementation writer cannot approve its own work. Pre-implementation plan review is optional and user-selected. When selected, it uses an independent read-only reviewer. Every final verify MUST use an independent read-only reviewer.
 
 ### V. Traceable delivery
 

@@ -74,10 +74,11 @@ describe('agent-pack contract', () => {
     }
   });
 
-  test('reserves independent analysis and every verification for oracle', () => {
+  test('reserves selected plan review and every verification for oracle', () => {
     const role = getAgentRole('oracle');
 
-    expect(role.scope).toMatch(/analysis/i);
+    expect(role.scope).toMatch(/optional plan review/i);
+    expect(role.responsibility).toMatch(/review plans.*user requests/i);
     expect(role.responsibility).toMatch(
       /every.*verification|verification.*every/i,
     );

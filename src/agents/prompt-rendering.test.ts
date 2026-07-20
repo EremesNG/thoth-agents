@@ -50,7 +50,7 @@ describe('v0.3 prompt rendering', () => {
       dialect,
     );
 
-    expect(prompt.length).toBeLessThan(8_000);
+    expect(prompt.length).toBeLessThan(9_000);
     expect(prompt).toContain('adaptive root');
     expect(prompt).toContain('bounded direct work');
     expect(prompt).toContain('net gain');
@@ -65,7 +65,6 @@ describe('v0.3 prompt rendering', () => {
       'requirements-interview',
       'sdd-propose',
       'sdd-init',
-      'plan-review.md',
       'executing-plans',
     ]) {
       expect(prompt).not.toContain(legacy);
@@ -83,7 +82,7 @@ describe('v0.3 prompt rendering', () => {
       'Root owns specify, clarify, plan, checklist, tasks',
     );
     expect(prompt).toContain(
-      'Delegate analyze and every verify phase to @oracle',
+      'Delegate each user-selected plan review and every verify phase to @oracle',
     );
     expect(prompt).toContain('bundled `thoth-sdd` skill');
     expect(prompt).toContain('spec.md');
@@ -117,6 +116,50 @@ describe('v0.3 prompt rendering', () => {
     );
     expect(prompt).toContain('requested route wins');
     expect(prompt).not.toContain('explicitly requested SDD, uncertain');
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('keeps SDD route authority with the user in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+
+    expect(prompt).toContain('assess and recommend one route');
+    expect(prompt).toContain(
+      'wait for the user to select Direct, Accelerated, or Full',
+    );
+    expect(prompt).toContain('The recommendation is not the decision');
+    expect(prompt).toContain("The user's selected route wins");
+    expect(prompt).toContain('no duplicate route-selection prompt');
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('keeps pre-implementation review optional and final verification mandatory in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+
+    expect(prompt).toContain('Review plan with Oracle (Recommended)');
+    expect(prompt).toContain('Proceed without review');
+    expect(prompt).toContain('plan-reviewer');
+    expect(prompt).toContain('[OKAY]');
+    expect(prompt).toContain('[REJECT]');
+    expect(prompt).toContain('at most 3 actionable blockers');
+    expect(prompt).toContain('ask whether to implement or stop');
+    expect(prompt).toContain(
+      'Skipping plan review means no pre-implementation Oracle review',
+    );
+    expect(prompt).toContain(
+      'Plan review never replaces mandatory final Oracle verify',
+    );
   });
 
   test('loads phase contracts on demand instead of inlining them', () => {
@@ -263,13 +306,18 @@ describe('v0.3 prompt rendering', () => {
     }
   });
 
-  test('makes oracle the independent on-demand analyze and verify reviewer', () => {
+  test('makes oracle the independent on-demand plan and final reviewer', () => {
     const prompt = renderRolePrompt(
       createReadOnlySpecialistPromptSections('oracle'),
       OPENCODE_PROMPT_DIALECT,
     );
 
-    expect(prompt).toContain('matching bundled thoth-sdd reference');
+    expect(prompt).toContain(
+      'For plan-review, load the bundled plan-reviewer skill',
+    );
+    expect(prompt).toContain(
+      'for verify, load the matching bundled thoth-sdd reference',
+    );
     expect(prompt).toContain('remain read-only');
     expect(prompt).toContain('Reject self-review');
     expect(prompt).toContain('requirements and contracts');

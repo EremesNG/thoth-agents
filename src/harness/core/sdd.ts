@@ -47,7 +47,7 @@ export type SddPhaseId =
   | 'plan'
   | 'checklist'
   | 'tasks'
-  | 'analyze'
+  | 'plan-review'
   | 'implement'
   | 'verify'
   | 'converge'
@@ -101,6 +101,7 @@ export type SddArtifactId =
   | 'data-model'
   | 'contracts'
   | 'quickstart'
+  | 'plan-review'
   | 'verify-report'
   | 'archive-report';
 
@@ -211,17 +212,19 @@ export const SDD_PHASES = [
       'Produce dependency-ordered implementation slices with verification.',
   },
   {
-    id: 'analyze',
+    id: 'plan-review',
     order: 6,
-    availableFor: ['full'],
-    requiredFor: ['full'],
-    activation: 'required',
-    prerequisites: ['specify', 'plan', 'tasks'],
-    producesArtifact: false,
+    availableFor: ['accelerated', 'full'],
+    requiredFor: [],
+    activation: 'conditional',
+    prerequisites: ['tasks'],
+    producesArtifact: true,
     defaultAgentRole: 'oracle',
     eligibleAgentRoles: ['oracle'],
     reason:
-      'Independently check cross-artifact consistency before high-risk implementation.',
+      'Offer independent blocker-only plan review when the user selects it after planning passes ready.',
+    condition:
+      'Activate only after ready when the user chooses Review plan with Oracle (Recommended).',
   },
   {
     id: 'implement',
@@ -229,7 +232,7 @@ export const SDD_PHASES = [
     availableFor: ['direct', 'accelerated', 'full'],
     requiredFor: ['direct', 'accelerated', 'full'],
     activation: 'required',
-    prerequisites: ['tasks', 'analyze'],
+    prerequisites: ['tasks'],
     producesArtifact: false,
     defaultAgentRole: 'orchestrator',
     eligibleAgentRoles: ['orchestrator', 'designer', 'quick', 'deep'],
@@ -336,6 +339,13 @@ export const SDD_ARTIFACT_GRAPH = [
     requiredFor: [],
   },
   {
+    id: 'plan-review',
+    path: 'plan-review.md',
+    producedBy: 'plan-review',
+    consumes: ['spec', 'plan', 'tasks'],
+    requiredFor: [],
+  },
+  {
     id: 'verify-report',
     path: 'verify-report.md',
     producedBy: 'verify',
@@ -365,7 +375,7 @@ export const SDD_ROUTE_EXECUTION_POLICIES = [
     planningMode: 'fast-forward',
     validationGates: ['specify', 'ready', 'closeout'],
     optionalArtifactsByDefault: false,
-    routineUserPauses: false,
+    routineUserPauses: true,
     artifactRevisionPolicy: 'revalidate-affected-downstream',
   },
   {
@@ -373,7 +383,7 @@ export const SDD_ROUTE_EXECUTION_POLICIES = [
     planningMode: 'gated',
     validationGates: ['specify', 'plan', 'tasks', 'ready', 'closeout'],
     optionalArtifactsByDefault: false,
-    routineUserPauses: false,
+    routineUserPauses: true,
     artifactRevisionPolicy: 'revalidate-affected-downstream',
   },
 ] as const satisfies readonly SddRouteExecutionPolicy[];
@@ -540,38 +550,48 @@ export const SDD_PHASE_PROTOCOLS = [
       'A task requires an unresolved requirement, architecture choice, or hidden prerequisite.',
     ],
     handoff: [
-      'Pass spec.md, plan.md, tasks.md, dependencies, and verification commands to analyze or implement.',
+      'After ready, pass spec.md, plan.md, tasks.md, dependencies, and verification commands to the user-selected plan-review path or implement.',
     ],
   },
   {
-    id: 'analyze',
+    id: 'plan-review',
     objective:
-      'Perform read-only cross-artifact consistency and readiness analysis before full SDD implementation.',
-    requiredInputs: ['spec.md', 'plan.md', 'tasks.md', 'Project constitution'],
+      'Perform the user-selected read-only blocker review before Accelerated or Full implementation.',
+    requiredInputs: [
+      'spec.md',
+      'plan.md',
+      'tasks.md',
+      'Optional active requirements checklist',
+      'Project constitution',
+      'Explicit user choice to review after the ready gate',
+    ],
     instructions: [
-      'Detect contradictions, ambiguity, duplication, scope drift, orphan tasks, and uncovered requirements.',
-      'Challenge artifact completeness, requirement correctness, and cross-artifact coherence as separate review dimensions.',
+      'Load the bundled plan-reviewer skill and review executability, completeness, correctness, and coherence without redesigning the plan.',
       'Require task coverage for every FR and buildable SC; assess outcome SC as measurable verification targets without manufacturing implementation tasks.',
-      'Report requirement coverage as a percentage and classify findings as CRITICAL, HIGH, MEDIUM, or LOW.',
-      'Treat constitution violations and baseline requirements with zero task coverage as blocking.',
+      'Return exact [OKAY] or [REJECT] semantics, default to [OKAY], and report at most three true blockers with the smallest fixes.',
+      'Provide the reviewed artifact set so root can persist plan-review.md with SHA-256 freshness evidence; Oracle never writes it.',
+      'Keep plan-review approval separate from implementation confirmation and mandatory final verify.',
     ],
     allowedWrites: [
-      'None; analysis is read-only and returns its report in-session.',
+      'None; Oracle is read-only. Root persists plan-review.md when review runs.',
     ],
     outputSchema: [
-      'findings table with stable IDs and severity',
+      'status: [OKAY] or [REJECT]',
+      'zero to three blocker findings with smallest fixes',
+      'non-blocking cautions',
       'requirement coverage percentage',
       'constitution alignment',
-      'readiness verdict: ready | blocked',
+      'reviewed artifact freshness manifest input',
     ],
     doneWhen: [
-      'Every high-signal cross-artifact inconsistency has a severity and remediation anchor.',
+      'Oracle has returned an exact status and every true blocker has a concrete remediation anchor.',
     ],
     blockingConditions: [
-      'Any unresolved CRITICAL finding or constitution violation blocks implementation.',
+      '[REJECT] blocks the review path until root repairs planning blockers, the user explicitly proceeds without review, or an explicit override is recorded.',
     ],
     handoff: [
-      'On ready, pass the reviewed artifact set and cautions to implement; on blocked, return findings to the owning coordination phase.',
+      'On [OKAY], root persists review evidence, presents the approved-plan overview, and asks whether to implement or stop.',
+      'A plan-review result never satisfies mandatory final verify.',
     ],
   },
   {
@@ -729,25 +749,25 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
     validationGates: [...policy.validationGates],
   })),
   routingRules: [
-    'An explicitly requested direct, accelerated, or full route wins; a generic SDD request sets accelerated as the minimum route.',
+    'The root recommends direct, accelerated, or full from risk evidence, but the user selects the route; an explicitly requested route already counts as selection.',
     'Direct work is the default for clear, bounded, low-risk changes; documentation and mechanical work may remain direct across multiple files.',
     'Accelerated SDD is used for multi-surface behavior, architecture, partial clarity, moderate risk, or broad non-behavioral coordination.',
-    'Accelerated planning fast-forwards specify, plan, and tasks in one uninterrupted root pass without routine user pauses.',
+    'Accelerated planning fast-forwards specify, plan, and tasks without pauses between those artifacts, then offers the user optional oracle plan review after ready.',
     'Full SDD is used for unresolved scope, cross-cutting behavior or architecture, high contract risk, or high failure cost.',
     'Use architectural-grilling before specification only when the user explicitly requests it or material product or architecture decisions remain human-owned and unresolved; never require it merely because the route is Full.',
-    'User input is requested only when a material unresolved decision would change the result.',
+    'Route selection and the post-ready plan-review choice are explicit user decisions; other input is requested only when a material unresolved decision changes the result.',
   ],
   artifactRules: [
     'Spec Kit artifact semantics are preserved inside the governed openspec store.',
     'Accelerated and full routes require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md.',
-    'Research, data model, contracts, quickstart, and requirements checklist are created only when useful.',
+    'Research, data model, contracts, quickstart, requirements checklist, and plan-review.md are optional and created only when useful or selected.',
     'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; implementation ownership stays with the root or one writer role.',
     'After oracle PASS, archive transactionally synchronizes only explicitly declared durable ADDED, MODIFIED, REMOVED, and RENAMED requirement deltas into openspec/specs; INTERNAL requirements and undeclared prose never update permanent specifications.',
     'Archive stages and backs up writes so handled failures roll back within the active process; forced process or operating-system termination is not crash-atomic.',
   ],
   verificationRules: [
     'Every route delegates focused verification to read-only oracle; the implementation writer never verifies its own work.',
-    'Full SDD delegates independent cross-artifact analysis to oracle before implementation.',
+    'Accelerated and Full offer read-only oracle plan review after ready; it runs only when the user selects it and never replaces final verification.',
     'Accelerated and full verification persists verify-report.md with a pass or fail verdict and requirement compliance matrix.',
     'An artifact-backed fail verdict routes through append-only convergence, implementation, and verification again; direct work returns straight to implementation.',
     'A pass verdict is required before accelerated or full work can archive.',
@@ -778,7 +798,8 @@ function cloneProtocol(protocol: SddPhaseProtocol): SddPhaseProtocol {
 }
 
 export function classifySddRoute(input: SddRoutingInput): SddRoutingDecision {
-  const requiresUserInput = input.clarity === 'uncertain';
+  const requiresUserInput =
+    input.requestedRoute === undefined || input.clarity === 'uncertain';
 
   if (input.requestedRoute) {
     return {
@@ -852,14 +873,14 @@ export function classifySddRoute(input: SddRoutingInput): SddRoutingDecision {
   if (acceleratedReasons.length > 0) {
     return {
       route: 'accelerated',
-      requiresUserInput: false,
+      requiresUserInput,
       reasons: acceleratedReasons,
     };
   }
 
   return {
     route: 'direct',
-    requiresUserInput: false,
+    requiresUserInput,
     reasons: [
       input.scope === 'multi-file'
         ? 'The multi-file work is clear, low risk, and mechanically bounded.'

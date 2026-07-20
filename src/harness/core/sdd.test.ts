@@ -21,7 +21,7 @@ describe('adaptive SDD routing', () => {
       }),
     ).toMatchObject({
       route: 'direct',
-      requiresUserInput: false,
+      requiresUserInput: true,
     });
   });
 
@@ -39,7 +39,7 @@ describe('adaptive SDD routing', () => {
       }),
     ).toMatchObject({
       route: 'direct',
-      requiresUserInput: false,
+      requiresUserInput: true,
     });
   });
 
@@ -54,7 +54,7 @@ describe('adaptive SDD routing', () => {
       }),
     ).toMatchObject({
       route: 'accelerated',
-      requiresUserInput: false,
+      requiresUserInput: true,
     });
   });
 
@@ -70,7 +70,7 @@ describe('adaptive SDD routing', () => {
       }),
     ).toMatchObject({
       route: 'accelerated',
-      requiresUserInput: false,
+      requiresUserInput: true,
     });
   });
 
@@ -78,7 +78,7 @@ describe('adaptive SDD routing', () => {
     'direct',
     'accelerated',
     'full',
-  ] as const)('honors an explicit %s route request', (requestedRoute) => {
+  ] as const)('honors an explicit %s route selection', (requestedRoute) => {
     expect(
       classifySddRoute({
         intent: 'architecture',
@@ -87,8 +87,11 @@ describe('adaptive SDD routing', () => {
         contractRisk: 'high',
         failureCost: 'high',
         requestedRoute,
-      }).route,
-    ).toBe(requestedRoute);
+      }),
+    ).toMatchObject({
+      route: requestedRoute,
+      requiresUserInput: false,
+    });
   });
 
   test('routes moderate bounded work to accelerated SDD', () => {
@@ -102,7 +105,7 @@ describe('adaptive SDD routing', () => {
       }),
     ).toMatchObject({
       route: 'accelerated',
-      requiresUserInput: false,
+      requiresUserInput: true,
     });
   });
 
@@ -124,7 +127,7 @@ describe('adaptive SDD routing', () => {
     ).toBe('full');
   });
 
-  test('asks only when a material decision remains unresolved', () => {
+  test('requires user input when a recommended route has not been selected', () => {
     expect(
       classifySddRoute({
         intent: 'architecture',
@@ -155,7 +158,7 @@ describe('Spec Kit workflow contract', () => {
       planningMode: 'fast-forward',
       validationGates: ['specify', 'ready', 'closeout'],
       optionalArtifactsByDefault: false,
-      routineUserPauses: false,
+      routineUserPauses: true,
       artifactRevisionPolicy: 'revalidate-affected-downstream',
     });
   });
@@ -164,7 +167,7 @@ describe('Spec Kit workflow contract', () => {
     expect(getSddRouteExecutionPolicy('full')).toMatchObject({
       planningMode: 'gated',
       validationGates: ['specify', 'plan', 'tasks', 'ready', 'closeout'],
-      routineUserPauses: false,
+      routineUserPauses: true,
       artifactRevisionPolicy: 'revalidate-affected-downstream',
     });
   });
@@ -184,29 +187,38 @@ describe('Spec Kit workflow contract', () => {
     ]);
   });
 
-  test('adds discovery and independent analysis only for full SDD', () => {
+  test('adds discovery only for full while plan review stays optional', () => {
     expect(getRequiredSddPhaseOrder('full')).toEqual([
       'explore',
       'specify',
       'plan',
       'tasks',
-      'analyze',
       'implement',
       'verify',
       'archive',
     ]);
   });
 
-  test('models clarify, checklist, and converge as conditional gates', () => {
+  test('models clarify, checklist, plan review, and converge as conditional gates', () => {
     const conditional = getSddWorkflowContract()
       .phases.filter((phase) => phase.activation === 'conditional')
       .map((phase) => phase.id);
 
-    expect(conditional).toEqual(['clarify', 'checklist', 'converge']);
+    expect(conditional).toEqual([
+      'clarify',
+      'checklist',
+      'plan-review',
+      'converge',
+    ]);
   });
 
   test('keeps artifact-dependent conditional phases out of the direct route', () => {
-    for (const target of ['clarify', 'checklist', 'converge'] as const) {
+    for (const target of [
+      'clarify',
+      'checklist',
+      'plan-review',
+      'converge',
+    ] as const) {
       expect(
         canEnterSddPhase({
           route: 'direct',
@@ -243,33 +255,48 @@ describe('Spec Kit workflow contract', () => {
     expect(ownerOf('plan')).toBe('orchestrator');
     expect(ownerOf('checklist')).toBe('orchestrator');
     expect(ownerOf('tasks')).toBe('orchestrator');
-    expect(ownerOf('analyze')).toBe('oracle');
+    expect(ownerOf('plan-review')).toBe('oracle');
     expect(ownerOf('verify')).toBe('oracle');
     expect(ownerOf('implement')).toBe('orchestrator');
     expect(ownerOf('converge')).toBe('orchestrator');
     expect(ownerOf('archive')).toBe('orchestrator');
   });
 
-  test('assigns every verification route to independent oracle review', () => {
+  test('assigns selected plan review and every verification to oracle', () => {
     expect(getSddPhaseOwner('direct', 'verify')).toBe('oracle');
     expect(getSddPhaseOwner('accelerated', 'verify')).toBe('oracle');
     expect(getSddPhaseOwner('full', 'verify')).toBe('oracle');
-    expect(getSddPhaseOwner('full', 'analyze')).toBe('oracle');
+    expect(getSddPhaseOwner('accelerated', 'plan-review')).toBe('oracle');
+    expect(getSddPhaseOwner('full', 'plan-review')).toBe('oracle');
   });
 
-  test('gates implementation, convergence, and archive on their required handoffs', () => {
+  test('allows review or skip after planning and still gates convergence and archive', () => {
     expect(
       canEnterSddPhase({
         route: 'full',
         completed: ['explore', 'specify', 'plan', 'tasks'],
         target: 'implement',
       }),
+    ).toBe(true);
+    expect(
+      canEnterSddPhase({
+        route: 'accelerated',
+        completed: ['specify', 'plan'],
+        target: 'plan-review',
+      }),
     ).toBe(false);
     expect(
       canEnterSddPhase({
+        route: 'accelerated',
+        completed: ['specify', 'plan', 'tasks'],
+        target: 'plan-review',
+      }),
+    ).toBe(true);
+    expect(
+      canEnterSddPhase({
         route: 'full',
-        completed: ['explore', 'specify', 'plan', 'tasks', 'analyze'],
-        target: 'implement',
+        completed: ['explore', 'specify', 'plan', 'tasks'],
+        target: 'plan-review',
       }),
     ).toBe(true);
     expect(
@@ -366,6 +393,13 @@ describe('Spec Kit workflow contract', () => {
         path: 'quickstart.md',
         producedBy: 'plan',
         consumes: ['spec', 'plan'],
+        requiredFor: [],
+      },
+      {
+        id: 'plan-review',
+        path: 'plan-review.md',
+        producedBy: 'plan-review',
+        consumes: ['spec', 'plan', 'tasks'],
         requiredFor: [],
       },
       {

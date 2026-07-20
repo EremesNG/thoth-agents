@@ -141,6 +141,7 @@ describe('bundled thoth-init', () => {
         'thoth-sdd',
         'thoth-constitution',
         'thoth-archive',
+        'plan-reviewer',
       ]) {
         expect(
           existsSync(join(project, '.agents', 'skills', skill, 'SKILL.md')),
@@ -171,6 +172,44 @@ describe('bundled thoth-init', () => {
 });
 
 describe('canonical SDD bundle contracts', () => {
+  test('defines a freshness-aware read-only plan review contract', () => {
+    const skillPath = join(
+      process.cwd(),
+      'skills',
+      'plan-reviewer',
+      'SKILL.md',
+    );
+    const templatePath = join(
+      process.cwd(),
+      'skills',
+      'plan-reviewer',
+      'templates',
+      'plan-review.md',
+    );
+
+    expect(existsSync(skillPath)).toBe(true);
+    expect(existsSync(templatePath)).toBe(true);
+
+    const skill = readFileSync(skillPath, 'utf8');
+    const template = readFileSync(templatePath, 'utf8');
+
+    expect(skill).toContain('name: plan-reviewer');
+    expect(skill).toContain('[OKAY]');
+    expect(skill).toContain('[REJECT]');
+    expect(skill).toContain('at most 3 actionable blockers');
+    expect(skill).toContain('SHA-256');
+    expect(skill).toMatch(/Oracle.*read-only/is);
+    expect(skill).toMatch(/Root.*persists.*plan-review\.md/is);
+    expect(skill).toContain('ask whether to implement or stop');
+    expect(skill).toContain('mandatory final Oracle verify');
+    expect(skill).toMatch(/do not mirror.*provider memory/is);
+    expect(template).toContain('**Status**: [OKAY|REJECT]');
+    expect(template).toContain('## Source SHA-256');
+    expect(template).toContain('spec.md');
+    expect(template).toContain('plan.md');
+    expect(template).toContain('tasks.md');
+  });
+
   test('teaches traceable durable requirements and typed success criteria', () => {
     const spec = readFileSync(
       join(process.cwd(), 'skills', 'thoth-sdd', 'templates', 'spec.md'),

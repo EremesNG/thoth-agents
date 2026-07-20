@@ -122,6 +122,7 @@ describe('generateIntegrationPackages', () => {
         'thoth-sdd',
         'thoth-constitution',
         'thoth-archive',
+        'plan-reviewer',
       ];
       for (const skill of ownedSkills) {
         expect(
@@ -129,6 +130,17 @@ describe('generateIntegrationPackages', () => {
           `Shared bundle ${skill}`,
         ).toBe(true);
       }
+      expect(
+        existsSync(
+          join(
+            pluginRoot,
+            'skills',
+            'plan-reviewer',
+            'templates',
+            'plan-review.md',
+          ),
+        ),
+      ).toBe(true);
       for (const skill of [
         'simplify',
         'tdd',

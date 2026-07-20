@@ -23,23 +23,26 @@ describe('SDD phase protocols', () => {
     }
   });
 
-  test('gives analyze the Spec Kit read-only consistency gate', () => {
-    const protocol = getSddPhaseProtocol('analyze');
+  test('gives selected plan review the blocker-only read-only gate', () => {
+    const protocol = getSddPhaseProtocol('plan-review');
     const serialized = JSON.stringify(protocol);
 
     expect(protocol.requiredInputs).toEqual(
       expect.arrayContaining(['spec.md', 'plan.md', 'tasks.md']),
     );
     expect(serialized).toMatch(/coverage/i);
-    expect(serialized).toMatch(/CRITICAL/);
-    expect(serialized).toMatch(/readiness/i);
+    expect(serialized).toMatch(/\[OKAY\]/);
+    expect(serialized).toMatch(/\[REJECT\]/);
+    expect(serialized).toMatch(/at most three|no more than three/i);
+    expect(serialized).toMatch(/SHA-256/i);
     expect(serialized).toMatch(/completeness/i);
     expect(serialized).toMatch(/correctness/i);
     expect(serialized).toMatch(/coherence/i);
     expect(serialized).toMatch(/buildable/i);
     expect(serialized).toMatch(/outcome/i);
+    expect(serialized).toMatch(/final.*verify|verify.*final/i);
     expect(protocol.allowedWrites).toEqual([
-      'None; analysis is read-only and returns its report in-session.',
+      'None; Oracle is read-only. Root persists plan-review.md when review runs.',
     ]);
   });
 
@@ -149,7 +152,7 @@ describe('SDD phase protocols', () => {
 
   test('keeps root coordination separate from independent oracle review', () => {
     expect(getSddPhaseProtocolsForRole('oracle').map(({ id }) => id)).toEqual([
-      'analyze',
+      'plan-review',
       'verify',
     ]);
     expect(
@@ -173,7 +176,7 @@ describe('SDD phase protocols', () => {
 describe('SDD phase dispatch envelope', () => {
   test('combines the canonical phase protocol with run-specific context', () => {
     const envelope = renderSddPhaseDispatchEnvelope({
-      phase: 'analyze',
+      phase: 'plan-review',
       route: 'full',
       changeName: 'phase-contracts',
       inputArtifacts: [
@@ -207,12 +210,12 @@ describe('SDD phase dispatch envelope', () => {
     ]) {
       expect(envelope).toContain(`## ${heading}`);
     }
-    expect(envelope).toContain('analyze');
+    expect(envelope).toContain('plan-review');
     expect(envelope).toContain('full / phase-contracts');
     expect(envelope).toContain('spec.md');
     expect(envelope).toContain('Respect the project constitution.');
     expect(envelope).toContain('Do not modify the workspace.');
-    expect(envelope).toContain('readiness verdict');
+    expect(envelope).toContain('[OKAY] or [REJECT]');
     expect(envelope).toContain('provider=thoth-mem');
     expect(envelope).toContain('project=thoth-agents');
     expect(envelope).toContain('root_session_id=root-session-123');

@@ -44,7 +44,9 @@ describe('thoth-mem setup adapter', () => {
     ['codex', 'codex'],
     ['claude', 'claude'],
   ] as const)('builds the official global setup command for %s', (harness, providerHarness) => {
-    expect(getThothMemSetupCommand(harness, false)).toEqual({
+    expect(
+      getThothMemSetupCommand(harness, false, { platform: 'linux' }),
+    ).toEqual({
       command: 'npx',
       args: [
         '-y',
@@ -59,8 +61,12 @@ describe('thoth-mem setup adapter', () => {
   });
 
   test('adds plan only for dry-run and never infers force from consumer setup', () => {
-    const planned = getThothMemSetupCommand('codex', true);
-    const applied = getThothMemSetupCommand('codex', false);
+    const planned = getThothMemSetupCommand('codex', true, {
+      platform: 'linux',
+    });
+    const applied = getThothMemSetupCommand('codex', false, {
+      platform: 'linux',
+    });
 
     expect(planned.args).toEqual([
       '-y',
@@ -75,6 +81,32 @@ describe('thoth-mem setup adapter', () => {
     expect(applied.args).not.toContain('--plan');
     expect(planned.args).not.toContain('--force');
     expect(applied.args).not.toContain('--force');
+  });
+
+  test('routes the provider npx package shim through cmd.exe on Windows', () => {
+    const commandShell = 'C:\\Windows\\System32\\cmd.exe';
+
+    expect(
+      getThothMemSetupCommand('codex', false, {
+        platform: 'win32',
+        commandShell,
+      }),
+    ).toEqual({
+      command: commandShell,
+      args: [
+        '/d',
+        '/s',
+        '/c',
+        'npx.cmd',
+        '-y',
+        'thoth-mem@latest',
+        'setup',
+        'codex',
+        '--scope',
+        'global',
+        '--json',
+      ],
+    });
   });
 
   test('accepts only consistent complete provider evidence', () => {

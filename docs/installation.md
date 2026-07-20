@@ -19,6 +19,10 @@ skills add`, then invokes thoth-mem's public setup command. Once installed, SDD
 phases load local contracts and provider guidance without consuming either CLI
 or the network.
 
+Nested package installation is non-interactive: the CLI confirms both `npx`
+package acquisition and the `skills` operation explicitly. On Windows it routes
+npm's `npx.cmd` shim through `cmd.exe`; Linux and macOS execute `npx` directly.
+
 ## Supported flow
 
 | Harness | Native/plugin step | Required completion step |

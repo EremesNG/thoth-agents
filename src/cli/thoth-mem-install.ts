@@ -1,4 +1,9 @@
 import { spawnSync } from 'node:child_process';
+import {
+  getNpxCommand,
+  type NpxCommand,
+  type NpxCommandOptions,
+} from './npx-command';
 import type { InstallAgent } from './types';
 
 export const THOTH_MEM_SETUP_TIMEOUT_MS = 120_000;
@@ -52,7 +57,7 @@ export interface ThothMemSetupResult {
   diagnostics: string[];
   manualActions: string[];
   receipt: string | null;
-  command: 'npx';
+  command: string;
   args: string[];
   exitCode: number | null;
   error?: string;
@@ -174,7 +179,7 @@ function isTimeoutError(error: unknown): boolean {
 
 function invalidResult(
   harness: InstallAgent,
-  command: 'npx',
+  command: string,
   args: string[],
   exitCode: number | null,
   error: string,
@@ -199,10 +204,10 @@ function invalidResult(
 export function getThothMemSetupCommand(
   harness: InstallAgent,
   dryRun: boolean,
-): { command: 'npx'; args: string[] } {
-  return {
-    command: 'npx',
-    args: [
+  options: NpxCommandOptions = {},
+): NpxCommand {
+  return getNpxCommand(
+    [
       '-y',
       'thoth-mem@latest',
       'setup',
@@ -212,7 +217,8 @@ export function getThothMemSetupCommand(
       ...(dryRun ? ['--plan'] : []),
       '--json',
     ],
-  };
+    options,
+  );
 }
 
 export function runThothMemSetup(

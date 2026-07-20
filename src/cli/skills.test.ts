@@ -99,12 +99,20 @@ describe('required skill install helper', () => {
       status: 1,
     } as ReturnType<typeof spawnSync>);
 
-    const result = installRequiredSkill(testSkill, harness, { homeDir });
+    const result = installRequiredSkill(testSkill, harness, {
+      homeDir,
+      platform: 'linux',
+    });
 
     expect(result.status).toBe('failed');
-    expect(getRequiredSkillInstallCommand(testSkill, harness)).toEqual({
+    expect(
+      getRequiredSkillInstallCommand(testSkill, harness, {
+        platform: 'linux',
+      }),
+    ).toEqual({
       command: 'npx',
       args: [
+        '--yes',
         'skills',
         'add',
         testSkill.repo,
@@ -118,7 +126,56 @@ describe('required skill install helper', () => {
     });
     expect(spawnSync).toHaveBeenCalledWith(
       'npx',
-      getRequiredSkillInstallCommand(testSkill, harness).args,
+      getRequiredSkillInstallCommand(testSkill, harness, {
+        platform: 'linux',
+      }).args,
+      { stdio: 'inherit' },
+    );
+  });
+
+  test('routes the npx package shim through cmd.exe on Windows', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-skill-home-'));
+    const commandShell = 'C:\\Windows\\System32\\cmd.exe';
+    vi.mocked(spawnSync).mockReturnValueOnce({
+      status: 1,
+    } as ReturnType<typeof spawnSync>);
+
+    const result = installRequiredSkill(testSkill, 'codex', {
+      homeDir,
+      platform: 'win32',
+      commandShell,
+    });
+
+    const expectedCommand = {
+      command: commandShell,
+      args: [
+        '/d',
+        '/s',
+        '/c',
+        'npx.cmd',
+        '--yes',
+        'skills',
+        'add',
+        testSkill.repo,
+        '--skill',
+        testSkill.skillName,
+        '--global',
+        '--agent',
+        'codex',
+        '--yes',
+      ],
+    };
+
+    expect(result.status).toBe('failed');
+    expect(
+      getRequiredSkillInstallCommand(testSkill, 'codex', {
+        platform: 'win32',
+        commandShell,
+      }),
+    ).toEqual(expectedCommand);
+    expect(spawnSync).toHaveBeenCalledWith(
+      expectedCommand.command,
+      expectedCommand.args,
       { stdio: 'inherit' },
     );
   });

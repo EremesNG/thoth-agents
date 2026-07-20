@@ -2,6 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import {
+  getNpxCommand,
+  type NpxCommand,
+  type NpxCommandOptions,
+} from './npx-command';
 
 export type SkillInstallHarness = 'opencode' | 'codex' | 'claude';
 
@@ -26,7 +31,7 @@ export interface RequiredSkillInstallResult {
   error?: unknown;
 }
 
-interface InstallRequiredSkillOptions {
+interface InstallRequiredSkillOptions extends NpxCommandOptions {
   homeDir?: string;
 }
 
@@ -93,10 +98,11 @@ export function isRequiredSkillInstalled(
 export function getRequiredSkillInstallCommand(
   skill: RequiredSkill,
   harness: SkillInstallHarness,
-): { command: 'npx'; args: string[] } {
-  return {
-    command: 'npx',
-    args: [
+  options: NpxCommandOptions = {},
+): NpxCommand {
+  return getNpxCommand(
+    [
+      '--yes',
       'skills',
       'add',
       skill.repo,
@@ -107,7 +113,8 @@ export function getRequiredSkillInstallCommand(
       SKILLS_CLI_AGENT[harness],
       '--yes',
     ],
-  };
+    options,
+  );
 }
 
 /** Install one mandatory skill into the selected harness's global skill root. */
@@ -121,7 +128,11 @@ export function installRequiredSkill(
     return { skill, harness, status: 'already-installed', skillPath };
   }
 
-  const { command, args } = getRequiredSkillInstallCommand(skill, harness);
+  const { command, args } = getRequiredSkillInstallCommand(
+    skill,
+    harness,
+    options,
+  );
   try {
     const result = spawnSync(command, args, { stdio: 'inherit' });
     if (result.status === 0) {

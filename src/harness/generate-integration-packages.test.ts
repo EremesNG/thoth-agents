@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { claudeCodeAdapter } from './adapters/claude-code';
+import { THOTH_OWNED_SKILL_NAMES } from './core/owned-skills';
 import {
   formatIntegrationDiagnostic,
   generateIntegrationPackages,
@@ -117,14 +118,7 @@ describe('generateIntegrationPackages', () => {
       expect(existsSync(join(pluginRoot, 'settings.json'))).toBe(true);
       expect(existsSync(join(pluginRoot, '.mcp.json'))).toBe(true);
       expect(existsSync(join(pluginRoot, 'codex.mcp.json'))).toBe(true);
-      const ownedSkills = [
-        'thoth-init',
-        'thoth-sdd',
-        'thoth-constitution',
-        'thoth-archive',
-        'plan-reviewer',
-      ];
-      for (const skill of ownedSkills) {
+      for (const skill of THOTH_OWNED_SKILL_NAMES) {
         expect(
           existsSync(join(pluginRoot, 'skills', skill, 'SKILL.md')),
           `Shared bundle ${skill}`,
@@ -165,6 +159,18 @@ describe('generateIntegrationPackages', () => {
           join(pluginRoot, 'skills', 'thoth-init', 'scripts', 'init.mjs'),
         ),
       ).toBe(true);
+      const initContract = readFileSync(
+        join(pluginRoot, 'skills', 'thoth-init', 'SKILL.md'),
+        'utf8',
+      );
+      const initScript = readFileSync(
+        join(pluginRoot, 'skills', 'thoth-init', 'scripts', 'init.mjs'),
+        'utf8',
+      );
+      expect(initContract).toContain('Every write stays\ninside `openspec/`');
+      expect(initContract).not.toContain('--harness');
+      expect(initScript).not.toContain("'.agents'");
+      expect(initScript).not.toContain('OWNED_SKILL_NAMES');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ALL_AGENT_NAMES } from '../../config';
+import { THOTH_OWNED_SKILL_NAMES } from '../../harness/core/owned-skills';
 import { generateLiteConfig } from '../providers';
 import { getOpenCodeModelRoles } from '../tui/operations';
 
@@ -137,6 +138,9 @@ describe('OpenCode operations adapter v0.3', () => {
     writeRequiredSkill('tdd');
     writeRequiredSkill('progressive-context-router');
     writeRequiredSkill('architectural-grilling');
+    for (const skillName of THOTH_OWNED_SKILL_NAMES) {
+      writeRequiredSkill(skillName);
+    }
   }
 
   function cataloguedOpenCodeRoles() {
@@ -169,28 +173,27 @@ describe('OpenCode operations adapter v0.3', () => {
     ).toBe(false);
   });
 
-  test('reports the four required external skills and no bundled phase skills', () => {
+  test('reports all owned and external global skills', () => {
     writeManagedConfig();
     writeRequiredSkill('simplify');
 
     const status = getOpenCodeStatus(context());
     const skills = status.targets.filter(({ kind }) => kind === 'skill');
 
-    expect(skills).toEqual([
-      expect.objectContaining({ label: 'Simplify', state: 'installed' }),
-      expect.objectContaining({ label: 'Tdd', state: 'missing' }),
-      expect.objectContaining({
-        label: 'Progressive-Context-Router',
-        state: 'missing',
-      }),
-      expect.objectContaining({
-        label: 'Architectural-Grilling',
-        state: 'missing',
-      }),
-    ]);
+    expect(skills).toHaveLength(9);
+    expect(skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Simplify', state: 'installed' }),
+        expect.objectContaining({ label: 'Tdd', state: 'missing' }),
+        expect.objectContaining({ label: 'Thoth-SDD', state: 'missing' }),
+        expect.objectContaining({ label: 'Plan-Reviewer', state: 'missing' }),
+      ]),
+    );
     expect(
-      skills.some(({ expected }) => expected?.includes('bundled thoth-agents')),
-    ).toBe(false);
+      skills.filter(({ observed }) =>
+        observed?.includes('thoth-owned global skill'),
+      ),
+    ).toHaveLength(5);
   });
 
   test('accepts required external skills from both OpenCode global roots', () => {
@@ -200,6 +203,7 @@ describe('OpenCode operations adapter v0.3', () => {
       writeRequiredSkill('tdd', 'agents'),
       writeRequiredSkill('progressive-context-router'),
       writeRequiredSkill('architectural-grilling', 'agents'),
+      ...THOTH_OWNED_SKILL_NAMES.map((name) => writeRequiredSkill(name)),
     ];
 
     const status = getOpenCodeStatus(context());
@@ -214,7 +218,7 @@ describe('OpenCode operations adapter v0.3', () => {
     ).toBe(false);
   });
 
-  test('previews seven-role sync and external-skill install commands', () => {
+  test('previews seven-role sync and all global skill installation', () => {
     const sync = buildOpenCodeSyncPlan(context());
     const install = buildOpenCodeInstallPlan(context());
     const previews = [...sync.items, ...install.items]
@@ -224,10 +228,10 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(previews).not.toMatch(/sdd-(?:specify|plan|tasks)/);
     expect(previews).toContain('orchestrator');
     expect(previews).toContain('oracle');
-    expect([...sync.items, ...install.items]).not.toEqual(
+    expect([...sync.items, ...install.items]).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          title: 'Refresh bundled thoth-agents OpenCode skills',
+          title: 'Synchronize global thoth-owned OpenCode skills',
         }),
       ]),
     );
@@ -236,6 +240,9 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(previews).toContain('tdd');
     expect(previews).toContain('progressive-context-router');
     expect(previews).toContain('architectural-grilling');
+    for (const skillName of THOTH_OWNED_SKILL_NAMES) {
+      expect(previews).toContain(skillName);
+    }
     expect(previews).not.toContain('playwright-cli');
     expect(existsSync(mainConfigPath())).toBe(false);
     expect(existsSync(liteConfigPath())).toBe(false);
@@ -263,6 +270,22 @@ describe('OpenCode operations adapter v0.3', () => {
       'opencode',
       expect.any(Object),
     );
+    for (const skillName of THOTH_OWNED_SKILL_NAMES) {
+      expect(
+        existsSync(
+          join(
+            configRoot,
+            'home',
+            '.config',
+            'opencode',
+            'skills',
+            skillName,
+            'SKILL.md',
+          ),
+        ),
+        skillName,
+      ).toBe(true);
+    }
     expect(installRequiredSkillMock).toHaveBeenCalledWith(
       expect.objectContaining({ skillName: 'architectural-grilling' }),
       'opencode',

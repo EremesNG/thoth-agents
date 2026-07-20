@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { buildCodexSetupPlan } from './codex-install';
 import {
@@ -252,10 +255,42 @@ describe('install', () => {
       expect(output).toContain('tdd');
       expect(output).toContain('progressive-context-router');
       expect(output).toContain('architectural-grilling');
+      expect(output).toContain('thoth-init');
+      expect(output).toContain('thoth-sdd');
+      expect(output).toContain('thoth-constitution');
+      expect(output).toContain('thoth-archive');
+      expect(output).toContain('plan-reviewer');
       expect(output).not.toContain('playwright-cli');
       expect(output).toContain('opencode');
     } finally {
       console.log = originalLog;
+    }
+  });
+
+  test('OpenCode stops before provider setup when the owned bundle is incomplete', async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-owned-missing-'));
+    const lines: string[] = [];
+    const originalLog = console.log;
+    const runThothMemSetup = vi.fn(() => providerResult('opencode'));
+    console.log = (message?: unknown) => lines.push(String(message));
+    try {
+      const code = await install(
+        {
+          agent: 'opencode',
+          tui: false,
+          tmux: 'no',
+          dryRun: true,
+          reset: false,
+        },
+        { runThothMemSetup, opencodeOwnedSkillPackageRoot: packageRoot },
+      );
+
+      expect(code).toBe(1);
+      expect(runThothMemSetup).not.toHaveBeenCalled();
+      expect(lines.join('\n')).not.toContain('thoth-mem setup plan confirmed');
+    } finally {
+      console.log = originalLog;
+      rmSync(packageRoot, { recursive: true, force: true });
     }
   });
 

@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { claudeCodeAdapter } from './adapters/claude-code';
 import { codexAdapter } from './adapters/codex';
 import { codexPluginRootArtifactPath } from './codex-plugin-paths';
+import { THOTH_OWNED_SKILL_NAMES } from './core/owned-skills';
 import {
   findRootPackageJsonPath,
   readPackageJsonVersion,
@@ -25,14 +26,6 @@ const LEGACY_INTEGRATION_ROOTS = [
   join(LEGACY_INTEGRATIONS_ROOT, 'codex'),
   join(LEGACY_INTEGRATIONS_ROOT, 'claude-code'),
 ] as const;
-const OWNED_SKILL_NAMES = [
-  'thoth-init',
-  'thoth-sdd',
-  'thoth-constitution',
-  'thoth-archive',
-  'plan-reviewer',
-] as const;
-
 function stableJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -249,7 +242,7 @@ export function generateIntegrationPackages({
   }
 
   const skillsRoot = canonicalSkillsRoot(projectRoot);
-  for (const skillName of OWNED_SKILL_NAMES) {
+  for (const skillName of THOTH_OWNED_SKILL_NAMES) {
     copySkillTree(
       join(skillsRoot, skillName),
       join(projectRoot, SHARED_PLUGIN_ROOT, 'skills', skillName),

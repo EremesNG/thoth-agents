@@ -16,6 +16,10 @@ import {
 } from '../managed-state-io';
 import { resolveOpenCodeEffort } from '../opencode-effort';
 import {
+  getOpenCodeOwnedSkillEntries,
+  syncOpenCodeOwnedSkills,
+} from '../owned-skills';
+import {
   ensureConfigDir,
   getExistingConfigPath,
   getExistingLiteConfigPath,
@@ -384,8 +388,28 @@ function openCodeSkillTargets(context: OperationContext): {
         : 'required global skill missing',
     };
   });
+  const ownedTargets: ManagedTarget[] = getOpenCodeOwnedSkillEntries({
+    homeDir,
+  }).map((skill) => {
+    const path = join(skill.destinationPath, 'SKILL.md');
+    const installed = existsSync(path);
+    return {
+      kind: 'skill',
+      path,
+      label: titleCaseSkillName(skill.name),
+      state: installed ? 'installed' : 'missing',
+      expected: 'required global OpenCode skill',
+      observed: installed
+        ? 'thoth-owned global skill installed'
+        : 'thoth-owned global skill missing',
+    };
+  });
   const diagnostics: OperationWarning[] = [];
-  if (requiredTargets.some((target) => target.state === 'missing')) {
+  if (
+    [...requiredTargets, ...ownedTargets].some(
+      (target) => target.state === 'missing',
+    )
+  ) {
     diagnostics.push({
       severity: 'important',
       message:
@@ -394,7 +418,7 @@ function openCodeSkillTargets(context: OperationContext): {
     });
   }
   return {
-    targets: requiredTargets,
+    targets: [...requiredTargets, ...ownedTargets],
     diagnostics,
   };
 }
@@ -559,9 +583,7 @@ function targetsForBlockingDiagnostic(
   }
   if (code === 'opencode-required-skills-missing') {
     return status.targets.filter(
-      (target) =>
-        target.expected === 'required global OpenCode skill' &&
-        target.state !== 'installed',
+      (target) => target.kind === 'skill' && target.state !== 'installed',
     );
   }
   return [
@@ -975,7 +997,7 @@ function getOpenCodeManagedStatus(
     displayName: 'OpenCode',
     state: requiredSkillsMissing ? 'drift' : 'installed',
     summary: requiredSkillsMissing
-      ? 'OpenCode configuration is installed, but required external skills are missing.'
+      ? 'OpenCode configuration is installed, but required global skills are missing.'
       : 'OpenCode managed thoth-agents configuration is installed.',
     targets: [
       { ...mainTarget, state: 'installed' },
@@ -1121,7 +1143,7 @@ export function buildOpenCodeUpdatePlan(
 }
 
 export function buildOpenCodeSyncPlan(
-  _context: OperationContext = { cwd: process.cwd() },
+  context: OperationContext = { cwd: process.cwd() },
 ): OperationPlan {
   const generatedConfig = generateLiteConfig({
     agent: 'opencode',
@@ -1130,6 +1152,10 @@ export function buildOpenCodeSyncPlan(
     reset: false,
   });
   const litePath = getExistingLiteConfigPath();
+  const ownedSkills = syncOpenCodeOwnedSkills({
+    dryRun: true,
+    homeDir: homeDirFromContext(context),
+  });
 
   const { plan, status } = planFromItems(
     'opencode-sync-preview',
@@ -1140,7 +1166,7 @@ export function buildOpenCodeSyncPlan(
       {
         title: 'Ensure OpenCode plugin points at thoth-agents@latest',
         target: targetForMainConfig(),
-        state: getOpenCodeStatus(_context).state,
+        state: getOpenCodeStatus(context).state,
         preview: `plugin: ["${EXPECTED_PLUGIN}"]`,
         backup: defaultBackup(getExistingConfigPath()),
       },
@@ -1155,6 +1181,15 @@ export function buildOpenCodeSyncPlan(
         target: targetForLiteConfig(),
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(litePath),
+      },
+      {
+        title: 'Synchronize global thoth-owned OpenCode skills',
+        target: {
+          kind: 'skill',
+          label: 'Thoth-owned OpenCode skills',
+          expected: ownedSkills.skills.map(({ name }) => name).join(', '),
+        },
+        preview: JSON.stringify(ownedSkills, null, 2),
       },
       {
         title: 'Install required external skills',
@@ -1173,9 +1208,9 @@ export function buildOpenCodeSyncPlan(
         ),
       },
     ],
-    _context,
+    context,
   );
-  return issueOpenCodePlan(plan, status, _context, {
+  return issueOpenCodePlan(plan, status, context, {
     kind: 'fixed',
     action: 'sync',
   });
@@ -1191,12 +1226,17 @@ function tuiInstallConfig() {
 }
 
 export function buildOpenCodeInstallPlan(
-  _context: OperationContext = { cwd: process.cwd() },
+  context: OperationContext = { cwd: process.cwd() },
 ): OperationPlan {
+  const ownedSkills = syncOpenCodeOwnedSkills({
+    dryRun: true,
+    homeDir: homeDirFromContext(context),
+  });
   const generatedConfig = generateLiteConfig(tuiInstallConfig());
   const installPreview = {
     noTui: true,
     hasTmux: false,
+    ownedSkills: ownedSkills.skills.map((skill) => skill.name),
     requiredSkills: REQUIRED_SKILLS.map((skill) => skill.name),
     equivalentCommand: 'install --agent=opencode --no-tui --tmux=no',
   };
@@ -1206,7 +1246,7 @@ export function buildOpenCodeInstallPlan(
     'opencode-install-preview',
     'install',
     'Preview install',
-    'Preview OpenCode install with the required external skills.',
+    'Preview OpenCode install with the required global skills.',
     [
       {
         title: 'Apply OpenCode TUI install options',
@@ -1214,15 +1254,15 @@ export function buildOpenCodeInstallPlan(
           kind: 'config',
           path: getExistingConfigPath(),
           label: 'OpenCode install options',
-          state: getOpenCodeStatus(_context).state,
-          expected: '--no-tui --tmux=no plus required external skills',
+          state: getOpenCodeStatus(context).state,
+          expected: '--no-tui --tmux=no plus required global skills',
         },
         preview: JSON.stringify(installPreview, null, 2),
       },
       {
         title: 'Ensure OpenCode plugin points at thoth-agents@latest',
         target: targetForMainConfig(),
-        state: getOpenCodeStatus(_context).state,
+        state: getOpenCodeStatus(context).state,
         preview: `plugin: ["${EXPECTED_PLUGIN}"]`,
         backup: defaultBackup(getExistingConfigPath()),
       },
@@ -1237,6 +1277,15 @@ export function buildOpenCodeInstallPlan(
         target: targetForLiteConfig(),
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(litePath),
+      },
+      {
+        title: 'Synchronize global thoth-owned OpenCode skills',
+        target: {
+          kind: 'skill',
+          label: 'Thoth-owned OpenCode skills',
+          expected: ownedSkills.skills.map(({ name }) => name).join(', '),
+        },
+        preview: JSON.stringify(ownedSkills, null, 2),
       },
       {
         title: 'Install required external skills',
@@ -1255,9 +1304,9 @@ export function buildOpenCodeInstallPlan(
         ),
       },
     ],
-    _context,
+    context,
   );
-  return issueOpenCodePlan(plan, status, _context, {
+  return issueOpenCodePlan(plan, status, context, {
     kind: 'fixed',
     action: 'install',
   });
@@ -1704,6 +1753,26 @@ function applyRequiredSkills(context: OperationContext): {
   return { success: warnings.length === 0, warnings };
 }
 
+function applyOwnedSkills(context: OperationContext): {
+  success: boolean;
+  warnings: OperationWarning[];
+} {
+  const result = syncOpenCodeOwnedSkills({
+    homeDir: homeDirFromContext(context),
+  });
+  if (result.success) return { success: true, warnings: [] };
+  return {
+    success: false,
+    warnings: [
+      {
+        severity: 'critical',
+        code: 'opencode-owned-skills-sync-failed',
+        message: `Failed to synchronize thoth-owned OpenCode skills: ${result.error ?? 'unknown error'}.`,
+      },
+    ],
+  };
+}
+
 export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
   const rejection = validateApplyPlan(plan);
   if (rejection) return rejection;
@@ -1800,6 +1869,30 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
   }
 
   if (issued.payload.action === 'install' || issued.payload.action === 'sync') {
+    const ownedSkills = applyOwnedSkills(issued.context);
+    warnings.push(...ownedSkills.warnings);
+    changedTargets.push({
+      kind: 'skill',
+      label: 'Thoth-owned OpenCode skills',
+      state: ownedSkills.success ? 'installed' : 'drift',
+      observed: ownedSkills.success
+        ? 'thoth-owned global skills synchronized'
+        : 'thoth-owned global skill synchronization failed',
+    });
+    if (!ownedSkills.success) {
+      return {
+        harness: 'opencode',
+        action: plan.action,
+        applied: false,
+        summary:
+          'OpenCode configuration was written, but thoth-owned skills failed to synchronize.',
+        changedTargets,
+        backups,
+        warnings,
+        disclaimers: defaultDisclaimers(),
+      };
+    }
+
     const requiredSkills = applyRequiredSkills(issued.context);
     warnings.push(...requiredSkills.warnings);
     changedTargets.push({

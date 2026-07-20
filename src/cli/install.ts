@@ -25,6 +25,7 @@ import {
   updateOpenCodeMainConfig,
   writeLiteConfig,
 } from './config-manager';
+import { syncOpenCodeOwnedSkills } from './owned-skills';
 import { getExistingLiteConfigPath } from './paths';
 import {
   getRequiredSkillInstallCommand,
@@ -40,6 +41,8 @@ import {
 import type { ConfigMergeResult, InstallArgs, InstallConfig } from './types';
 
 export interface InstallDependencies {
+  homeDir?: string;
+  opencodeOwnedSkillPackageRoot?: string;
   runThothMemSetup?: (options: ThothMemSetupOptions) => ThothMemSetupResult;
 }
 
@@ -143,8 +146,35 @@ function formatConfigSummary(dryRun: boolean | undefined): string {
   lines.push(
     `  ${DIM}○ thoth-mem remains the owner of hooks, MCP, skill, lifecycle, persistence, receipts, and recovery.${RESET}`,
   );
+  lines.push(`  ${SYMBOLS.check} Global thoth-owned OpenCode skills`);
   lines.push(`  ${SYMBOLS.check} Required external skills for this harness`);
   return lines.join('\n');
+}
+
+function installOwnedSkillsForOpenCode(
+  dryRun: boolean | undefined,
+  dependencies: InstallDependencies,
+): boolean {
+  const result = syncOpenCodeOwnedSkills({
+    dryRun,
+    homeDir: dependencies.homeDir ?? homedir(),
+    packageRoot: dependencies.opencodeOwnedSkillPackageRoot,
+  });
+  for (const skill of result.skills) {
+    printInfo(`  - ${skill.name}: ${skill.destinationPath}`);
+  }
+  if (!result.success) {
+    printError(
+      `Failed to synchronize global thoth-owned OpenCode skills: ${result.error ?? 'unknown error'}`,
+    );
+    return false;
+  }
+  printSuccess(
+    dryRun
+      ? 'Global thoth-owned OpenCode skills planned'
+      : 'Global thoth-owned OpenCode skills synchronized',
+  );
+  return true;
 }
 
 function installRequiredSkillsForHarness(
@@ -234,7 +264,7 @@ async function runInstall(
 
   printHeader(isUpdate);
 
-  const totalSteps = 5;
+  const totalSteps = 6;
 
   let step = 1;
 
@@ -289,8 +319,22 @@ async function runInstall(
     }
   }
 
+  printStep(
+    step++,
+    totalSteps,
+    'Synchronizing global thoth-owned OpenCode skills...',
+  );
+  if (!installOwnedSkillsForOpenCode(config.dryRun, dependencies)) return 1;
+
   printStep(step++, totalSteps, 'Installing required external skills...');
-  if (!installRequiredSkillsForHarness('opencode', config.dryRun)) return 1;
+  if (
+    !installRequiredSkillsForHarness(
+      'opencode',
+      config.dryRun,
+      dependencies.homeDir ?? homedir(),
+    )
+  )
+    return 1;
 
   printStep(step++, totalSteps, 'Configuring provider-owned thoth-mem...');
   if (!installThothMemForHarness('opencode', config.dryRun, dependencies)) {

@@ -5,16 +5,6 @@
       "type": "remote",
       "url": "http://127.0.0.1:29173/index-mcp/streamable-http",
       "enabled": true
-    },
-    "mcp-steroid": {
-      "type": "local",
-      "command": [
-        "cmd",
-        "/d",
-        "/c",
-        "C:\\Users\\EremesNG\\.mcp-steroid\\bin\\devrig.cmd mcp"
-      ],
-      "enabled": true
     }
   }
 }

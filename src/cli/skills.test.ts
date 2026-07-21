@@ -154,7 +154,7 @@ describe('required skill install helper', () => {
     );
   });
 
-  test('routes the npx package shim through cmd.exe on Windows', () => {
+  test('routes the complete npx command through cmd.exe on Windows', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-skill-home-'));
     const commandShell = 'C:\\Windows\\System32\\cmd.exe';
     vi.mocked(spawnSync).mockReturnValueOnce({
@@ -173,17 +173,7 @@ describe('required skill install helper', () => {
         '/d',
         '/s',
         '/c',
-        'npx.cmd',
-        '--yes',
-        'skills',
-        'add',
-        testSkill.repo,
-        '--skill',
-        testSkill.skillName,
-        '--global',
-        '--agent',
-        'codex',
-        '--yes',
+        'npx --yes skills add https://example.test/simplify --skill simplify --global --agent codex --yes',
       ],
     };
 

@@ -84,7 +84,7 @@ export function getCodexCommand(
 
   return {
     command: options.commandShell ?? process.env.ComSpec ?? 'cmd.exe',
-    args: ['/d', '/s', '/c', 'codex.cmd', ...args],
+    args: ['/d', '/s', '/c', 'codex', ...args],
   };
 }
 

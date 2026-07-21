@@ -18,6 +18,6 @@ export function getNpxCommand(
 
   return {
     command: options.commandShell ?? process.env.ComSpec ?? 'cmd.exe',
-    args: ['/d', '/s', '/c', 'npx.cmd', ...args],
+    args: ['/d', '/s', '/c', ['npx', ...args].join(' ')],
   };
 }

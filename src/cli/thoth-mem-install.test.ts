@@ -83,7 +83,7 @@ describe('thoth-mem setup adapter', () => {
     expect(applied.args).not.toContain('--force');
   });
 
-  test('routes the provider npx package shim through cmd.exe on Windows', () => {
+  test('routes the complete provider command through cmd.exe on Windows', () => {
     const commandShell = 'C:\\Windows\\System32\\cmd.exe';
 
     expect(
@@ -97,14 +97,7 @@ describe('thoth-mem setup adapter', () => {
         '/d',
         '/s',
         '/c',
-        'npx.cmd',
-        '-y',
-        'thoth-mem@latest',
-        'setup',
-        'codex',
-        '--scope',
-        'global',
-        '--json',
+        'npx -y thoth-mem@latest setup codex --scope global --json',
       ],
     });
   });

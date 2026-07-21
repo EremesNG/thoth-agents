@@ -65,7 +65,7 @@ function executor(state: ManagerState): CodexCommandExecutor {
 }
 
 describe('Codex native plugin installation', () => {
-  test('routes the Codex npm shim through cmd.exe on Windows', () => {
+  test('routes Codex through an extension-neutral command on Windows', () => {
     const invocation = getCodexCommand(
       ['plugin', 'list', '--available', '--json'],
       { platform: 'win32', commandShell: 'C:\\Windows\\System32\\cmd.exe' },
@@ -77,7 +77,7 @@ describe('Codex native plugin installation', () => {
         '/d',
         '/s',
         '/c',
-        'codex.cmd',
+        'codex',
         'plugin',
         'list',
         '--available',

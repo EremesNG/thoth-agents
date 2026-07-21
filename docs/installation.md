@@ -21,9 +21,10 @@ invokes thoth-mem's public setup command. Once installed, SDD phases load local
 contracts and provider guidance without consuming either CLI or the network.
 
 Nested package installation is non-interactive: the CLI confirms both `npx`
-package acquisition and the `skills` operation explicitly. On Windows it routes
-npm's `npx.cmd` shim and Codex's `codex.cmd` shim through `cmd.exe`; Linux and
-macOS execute those commands directly.
+package acquisition and the `skills` operation explicitly. On Windows it passes
+each complete `npx` command as one `cmd.exe /c` payload and invokes the
+extension-neutral `codex` command, supporting both standalone `codex.exe` and
+npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 
 ## Supported flow
 

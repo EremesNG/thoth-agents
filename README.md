@@ -56,6 +56,11 @@ npx thoth-agents@latest install --agent=opencode --dry-run
 npx thoth-agents@latest install --agent=opencode
 ```
 
+Here, `@latest` selects which CLI release runs. That CLI writes the exact
+executing release to OpenCode configuration, for example
+`plugin: ["thoth-agents@0.4.8"]`; it never writes a `latest` plugin entry or
+falls back to one when package identity cannot be verified.
+
 Restart OpenCode and initialize the current repository:
 
 ```text
@@ -393,8 +398,30 @@ npx thoth-agents@latest list
 npx thoth-agents@latest install --agent=opencode
 npx thoth-agents@latest install --agent=codex
 npx thoth-agents@latest install --agent=claude
+npx thoth-agents@latest update --harness=opencode
+npx thoth-agents@latest update --harness=opencode --apply
 npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ```
+
+`update` previews by default. Applying it performs the same complete refresh as
+installation for the selected harness: OpenCode refreshes its exact plugin pin,
+managed configuration, owned skills, external skills, and provider setup;
+Codex runs native plugin setup before its global agent pack, external skills,
+and provider setup; Claude refreshes its native plugin before external skills
+and provider setup. Any required failure makes the operation fail rather than
+claiming a complete update.
+
+After every required step succeeds, the CLI records that harness's executing
+version in
+`${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. `status` shows
+the executing CLI version and this last complete CLI-managed version. The three
+harness records are independent: native Codex or Claude marketplace updates do
+not advance them and do not prove that CLI-managed agents, skills,
+configuration, or provider setup are current.
+
+OpenCode's runtime release check is notification-only. It does not rewrite the
+exact plugin pin, invalidate package state, or run a package manager. Follow the
+notification by rerunning the latest CLI installer or applying CLI Update.
 
 In the interactive `Configure models` flow, `Apply` is always available. When
 no role is dirty, it reapplies every currently displayed role value; after an

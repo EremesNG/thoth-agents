@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   formatHarnessList,
   formatHarnessStatusReport,
@@ -26,6 +26,7 @@ import type {
   OperationContext,
   OperationPlan,
 } from './operations/types';
+import { resolveExecutingPackageVersion } from './package-version';
 import { parseCliArgs } from './parser';
 
 interface TestModelServices {
@@ -34,6 +35,7 @@ interface TestModelServices {
   modelOptions(
     harness: 'codex' | 'opencode' | 'claude',
   ): Promise<ModelOption[]>;
+  applyOperationPlan?(plan: OperationPlan): OperationApplyResult;
 }
 
 async function captureCommand(
@@ -88,11 +90,18 @@ describe('commands plain operation formatters', () => {
     }
 
     const output = lines.join('\n');
+    const executing = resolveExecutingPackageVersion();
+    expect(executing.ok).toBe(true);
+    if (!executing.ok) return;
 
     expect(output).toContain('thoth-agents CLI (npm binary: thoth-agents)');
     expect(output).toContain('Open the interactive TUI in a TTY');
     expect(output).toContain('fall back to OpenCode install in CI/non-TTY');
-    expect(output).toContain('plugin: ["thoth-agents@latest"]');
+    expect(output).toContain(`plugin: ["thoth-agents@${executing.version}"]`);
+    expect(output).not.toContain('plugin: ["thoth-agents@latest"]');
+    expect(output).toContain(
+      '@latest selects the CLI release; OpenCode receives that exact version pin.',
+    );
     expect(output).toContain(
       'That plugin entry does not create a global thoth-agents command.',
     );
@@ -107,6 +116,13 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain(
       'External required skills are installed for every harness',
     );
+    expect(output).toContain(
+      'Update performs the complete selected-harness CLI refresh',
+    );
+    expect(output).toContain(
+      'Codex and Claude marketplace versions remain native-manager-owned',
+    );
+    expect(output).toContain('install-state.json');
     expect(output).not.toContain('--skills');
     expect(output).not.toContain('alternative providers');
     expect(output).not.toContain('thoth-mem defaults');
@@ -176,6 +192,36 @@ describe('commands plain operation formatters', () => {
       'Evidence basis: persistence evidenced; continuity not evidenced',
     );
     expect(output).not.toContain('State: degraded');
+  });
+
+  test('status output labels executing and recorded official CLI versions', () => {
+    const output = formatHarnessStatusReport([
+      {
+        harness: 'claude',
+        displayName: 'Claude Code',
+        state: 'outdated',
+        summary: 'CLI refresh required.',
+        targets: [
+          {
+            kind: 'file',
+            label: 'CLI-managed install version',
+            path: '/home/.config/thoth-agents/install-state.json',
+            state: 'outdated',
+            expected: 'executing 0.4.8',
+            observed: 'recorded 0.4.7',
+          },
+        ],
+        diagnostics: [],
+        actions: [],
+      },
+    ]);
+
+    expect(output).toContain('Official CLI-managed install:');
+    expect(output).toContain('Executing CLI version: 0.4.8');
+    expect(output).toContain('Recorded complete-install version: 0.4.7');
+    expect(output).toContain(
+      'Native marketplace versions do not advance this record.',
+    );
   });
 
   test('list output shows supported harness metadata and unavailable entries', () => {
@@ -579,13 +625,52 @@ describe('explicit operation commands', () => {
   });
 
   test('status dispatches to operation status services for all harnesses', async () => {
-    const result = await captureCommand(['status']);
+    const isolatedRoot = mkdtempSync(join(tmpdir(), 'thoth-command-status-'));
+    const originalConfigDir = process.env.OPENCODE_CONFIG_DIR;
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    process.env.OPENCODE_CONFIG_DIR = join(isolatedRoot, 'opencode');
+    process.env.XDG_CONFIG_HOME = isolatedRoot;
+    const services: TestModelServices = {
+      operationContext: () =>
+        ({
+          cwd: isolatedRoot,
+          env: {
+            HOME: join(isolatedRoot, 'home'),
+            XDG_CONFIG_HOME: isolatedRoot,
+          },
+          homeDir: join(isolatedRoot, 'home'),
+          packageRoot: process.cwd(),
+          commandExecutor: () => ({
+            exitCode: 0,
+            stdout: '[]',
+            stderr: '',
+          }),
+        }) as OperationContext,
+      modelRoles: () => [],
+      modelOptions: async () => [],
+    };
 
-    expect(result.code).toBe(0);
-    expect(result.output).toContain('OpenCode (opencode)');
-    expect(result.output).toContain('Codex (codex)');
-    expect(result.output).toContain('State:');
-    expectNoPlaceholder(result.output);
+    try {
+      const result = await captureCommand(['status'], services);
+
+      expect(result.code).toBe(0);
+      expect(result.output).toContain('OpenCode (opencode)');
+      expect(result.output).toContain('Codex (codex)');
+      expect(result.output).toContain('State:');
+      expectNoPlaceholder(result.output);
+    } finally {
+      if (originalConfigDir === undefined) {
+        delete process.env.OPENCODE_CONFIG_DIR;
+      } else {
+        process.env.OPENCODE_CONFIG_DIR = originalConfigDir;
+      }
+      if (originalXdgConfigHome === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+      }
+      rmSync(isolatedRoot, { recursive: true, force: true });
+    }
   });
 
   test('list dispatches to operation registry metadata', async () => {
@@ -606,8 +691,83 @@ describe('explicit operation commands', () => {
     expect(result.output).toContain('Target harness: OpenCode (opencode)');
     expect(result.output).toContain('Action: update');
     expect(result.output).toContain('Dry run: yes');
+    expect(result.output).toContain('Plan provider-owned thoth-mem setup');
+    expect(result.output).toContain('Record completed OpenCode CLI install');
+    expect(result.output).not.toContain(
+      'Ensure OpenCode plugin points at thoth-agents@latest',
+    );
     expect(result.output).not.toContain('Applied: yes');
     expectNoPlaceholder(result.output);
+  });
+
+  test('update preview is non-mutating and failed apply returns nonzero', async () => {
+    const isolatedRoot = mkdtempSync(join(tmpdir(), 'thoth-command-update-'));
+    const originalConfigDir = process.env.OPENCODE_CONFIG_DIR;
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    process.env.OPENCODE_CONFIG_DIR = join(isolatedRoot, 'opencode');
+    process.env.XDG_CONFIG_HOME = isolatedRoot;
+    const applyOperationPlan = vi.fn(
+      (plan: OperationPlan): OperationApplyResult => ({
+        harness: plan.harness,
+        action: plan.action,
+        applied: false,
+        summary: 'injected update failure',
+        changedTargets: [],
+        backups: [],
+        warnings: [
+          {
+            severity: 'critical',
+            message: 'required finalization failed',
+          },
+        ],
+        disclaimers: [],
+      }),
+    );
+    const services: TestModelServices = {
+      operationContext: () => ({
+        cwd: isolatedRoot,
+        env: {
+          HOME: join(isolatedRoot, 'home'),
+          XDG_CONFIG_HOME: isolatedRoot,
+        },
+      }),
+      modelRoles: () => [],
+      modelOptions: async () => [],
+      applyOperationPlan,
+    };
+
+    try {
+      const preview = await captureCommand(
+        ['update', '--harness=opencode'],
+        services,
+      );
+      expect(preview.code).toBe(0);
+      expect(applyOperationPlan).not.toHaveBeenCalled();
+      expect(existsSync(join(isolatedRoot, 'opencode', 'opencode.json'))).toBe(
+        false,
+      );
+
+      const applied = await captureCommand(
+        ['update', '--harness=opencode', '--apply'],
+        services,
+      );
+      expect(applied.code).toBe(1);
+      expect(applied.output).toContain('Applied: no');
+      expect(applied.output).toContain('injected update failure');
+      expect(applyOperationPlan).toHaveBeenCalledOnce();
+    } finally {
+      if (originalConfigDir === undefined) {
+        delete process.env.OPENCODE_CONFIG_DIR;
+      } else {
+        process.env.OPENCODE_CONFIG_DIR = originalConfigDir;
+      }
+      if (originalXdgConfigHome === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+      }
+      rmSync(isolatedRoot, { recursive: true, force: true });
+    }
   });
 
   test('sync renders a dry-run plan for an explicit harness', async () => {

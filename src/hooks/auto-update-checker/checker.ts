@@ -169,7 +169,6 @@ export function findPluginEntry(directory: string): PluginEntryInfo | null {
   return null;
 }
 
-const _cachedLocalVersion: string | null = null;
 let cachedPackageVersion: string | null = null;
 
 /**
@@ -210,53 +209,6 @@ export function getCachedVersion(): string | null {
   }
 
   return null;
-}
-
-/**
- * Safely updates a pinned version in the configuration file.
- * It attempts to replace the exact plugin string to preserve comments and formatting.
- */
-export function updatePinnedVersion(
-  configPath: string,
-  oldEntry: string,
-  newVersion: string,
-): boolean {
-  try {
-    if (!fs.existsSync(configPath)) return false;
-
-    const content = fs.readFileSync(configPath, 'utf-8');
-    const newEntry = `${PACKAGE_NAME}@${newVersion}`;
-
-    // Check if the old entry actually exists as a quoted string
-    const escapedOldEntry = oldEntry.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const entryRegex = new RegExp(`(["'])${escapedOldEntry}\\1`, 'g');
-
-    if (!entryRegex.test(content)) {
-      log(
-        `[auto-update-checker] Entry "${oldEntry}" not found in ${configPath}`,
-      );
-      return false;
-    }
-
-    // Perform the replacement
-    const updatedContent = content.replace(entryRegex, `$1${newEntry}$1`);
-
-    if (updatedContent === content) {
-      return false;
-    }
-
-    fs.writeFileSync(configPath, updatedContent, 'utf-8');
-    log(
-      `[auto-update-checker] Updated ${configPath}: ${oldEntry} → ${newEntry}`,
-    );
-    return true;
-  } catch (err) {
-    log(
-      `[auto-update-checker] Failed to update config file ${configPath}:`,
-      err,
-    );
-    return false;
-  }
 }
 
 /**

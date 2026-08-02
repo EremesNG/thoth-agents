@@ -6,6 +6,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { isValidPackageVersion } from './package-version';
 import {
   ensureConfigDir,
   ensureOpenCodeConfigDir,
@@ -92,12 +93,15 @@ export function writeConfig(configPath: string, config: OpenCodeConfig): void {
   renameSync(tmpPath, configPath);
 }
 
-export async function addPluginToOpenCodeConfig(): Promise<ConfigMergeResult> {
-  return updateOpenCodeMainConfig({ ensurePlugin: true });
+export async function addPluginToOpenCodeConfig(
+  pluginVersion: string,
+): Promise<ConfigMergeResult> {
+  return updateOpenCodeMainConfig({ ensurePlugin: true, pluginVersion });
 }
 
 export interface OpenCodeMainConfigUpdate {
   ensurePlugin?: boolean;
+  pluginVersion?: string;
   disableDefaults?: boolean;
 }
 
@@ -112,7 +116,7 @@ function mergeOpenCodeMainConfig(
         (plugin) =>
           plugin !== PACKAGE_NAME && !plugin.startsWith(`${PACKAGE_NAME}@`),
       ),
-      `${PACKAGE_NAME}@latest`,
+      `${PACKAGE_NAME}@${update.pluginVersion}`,
     ];
   }
 
@@ -141,6 +145,14 @@ export function updateOpenCodeMainConfig(
   update: OpenCodeMainConfigUpdate,
 ): ConfigMergeResult {
   const configPath = getExistingConfigPath();
+
+  if (update.ensurePlugin && !isValidPackageVersion(update.pluginVersion)) {
+    return {
+      success: false,
+      configPath,
+      error: 'An approved plugin version is required.',
+    };
+  }
 
   try {
     ensureOpenCodeConfigDir();

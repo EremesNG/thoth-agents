@@ -13,11 +13,24 @@ import {
 } from '../claude-code-install';
 import type { ClaudeCodeInstallScope } from '../claude-code-paths';
 import {
+  type FinalizeHarnessInstallOptions,
+  finalizeHarnessInstall,
+} from '../install-completion';
+import {
+  getInstallLedgerPath,
+  type InstallLedgerOptions,
+} from '../install-ledger';
+import {
+  type ExecutingPackageVersionResult,
+  resolveExecutingPackageVersion,
+} from '../package-version';
+import {
   getRequiredSkillInstallCommand,
   getRequiredSkillPath,
   installRequiredSkill,
   REQUIRED_SKILLS,
 } from '../skills';
+import { getThothMemSetupCommand } from '../thoth-mem-install';
 import type {
   HarnessAction,
   HarnessOperationAdapter,
@@ -33,19 +46,36 @@ import type {
   OperationPlanItem,
   OperationWarning,
 } from './types';
-import { classifyProviderCapabilityEvidence } from './types';
+import {
+  classifyProviderCapabilityEvidence,
+  getCliManagedInstallVersionTarget,
+  getInstallCompletionEvidence,
+} from './types';
 
 export interface ClaudeCodeOperationContext extends OperationContext {
   scope?: ClaudeCodeInstallScope;
   homeDir?: string;
   packageRoot?: string;
   commandExecutor?: ClaudeCommandExecutor;
+  resolveExecutingPackageVersion?: () => ExecutingPackageVersionResult;
+  buildClaudeCodeSetupPlan?: typeof buildClaudeCodeSetupPlan;
+  applyClaudeCodeSetup?: typeof applyClaudeCodeSetup;
+  installRequiredSkill?: typeof installRequiredSkill;
+  finalizeHarnessInstall?: (
+    options: FinalizeHarnessInstallOptions,
+  ) => ReturnType<typeof finalizeHarnessInstall>;
+  runThothMemSetup?: FinalizeHarnessInstallOptions['runThothMemSetup'];
+  installLedgerOptions?: InstallLedgerOptions;
 }
 
 const CLAUDE_CODE_DISPLAY_NAME = 'Claude Code';
 const claudeCodePlanSources = new WeakMap<
   OperationPlan,
-  { setupPlan: ClaudeCodeSetupPlan; context: ClaudeCodeOperationContext }
+  {
+    setupPlan: ClaudeCodeSetupPlan;
+    context: ClaudeCodeOperationContext;
+    version?: string;
+  }
 >();
 const CLAUDE_CODE_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
@@ -367,10 +397,16 @@ export function getClaudeCodeStatus(
   evidence: ProviderEvidenceInput = {},
 ): HarnessStatusReport {
   const providerCapability = classifyProviderCapabilityEvidence(evidence);
+  const installVersionTarget = getCliManagedInstallVersionTarget('claude', {
+    env: context.env,
+    homeDir: context.homeDir,
+  });
   try {
     const plan = buildClaudeCodeSetupPlan(claudeCodeConfig(context, true));
+    const status = statusFromSetupPlan(plan, context);
     return {
-      ...statusFromSetupPlan(plan, context),
+      ...status,
+      targets: [...status.targets, installVersionTarget],
       providerCapability,
     };
   } catch (error) {
@@ -380,7 +416,7 @@ export function getClaudeCodeStatus(
       displayName: CLAUDE_CODE_DISPLAY_NAME,
       state: 'unknown',
       summary: `Claude Code setup plan could not be built: ${message}`,
-      targets: [],
+      targets: [installVersionTarget],
       diagnostics: [
         {
           severity: 'critical',
@@ -404,6 +440,17 @@ function planItemFromSetup(item: ClaudeCodeSetupPlanItem): OperationPlanItem {
   };
 }
 
+function claudeLedgerOptions(
+  context: ClaudeCodeOperationContext,
+): InstallLedgerOptions {
+  return (
+    context.installLedgerOptions ?? {
+      env: context.env,
+      homeDir: context.homeDir,
+    }
+  );
+}
+
 function planFromSetup(
   id: string,
   action: OperationPlan['action'],
@@ -411,11 +458,51 @@ function planFromSetup(
   summary: string,
   setupPlan: ClaudeCodeSetupPlan,
   context: ClaudeCodeOperationContext,
+  version?: string,
 ): OperationPlan {
   const status = statusFromSetupPlan(setupPlan, context);
   const missingSkills = status.targets.some(
     (target) => target.kind === 'skill' && target.state === 'missing',
   );
+  const providerCommand = getThothMemSetupCommand('claude', true);
+  const nativeSetupItems: OperationPlanItem[] =
+    setupPlan.items.length > 0
+      ? setupPlan.items.map(planItemFromSetup)
+      : [
+          {
+            title: 'Verify Claude Code native marketplace and plugin state',
+            target: {
+              kind: 'package',
+              path: setupPlan.pluginRoot,
+              label: 'Claude Code native thoth-agents plugin',
+            },
+            preview:
+              'Inspect and verify the canonical marketplace and enabled native plugin.',
+            backup: { required: false, strategy: 'external' },
+          },
+        ];
+  const completionItems: OperationPlanItem[] = version
+    ? [
+        {
+          title: 'Plan provider-owned thoth-mem setup for Claude Code',
+          target: {
+            kind: 'surface',
+            label: 'Provider-owned thoth-mem setup',
+          },
+          preview: `${providerCommand.command} ${providerCommand.args.join(' ')}`,
+        },
+        {
+          title: 'Record completed Claude Code CLI install',
+          target: {
+            kind: 'file',
+            path: getInstallLedgerPath(claudeLedgerOptions(context)),
+            label: 'CLI-managed install version',
+            expected: `recorded ${version}`,
+          },
+          preview: JSON.stringify({ harness: 'claude', version }),
+        },
+      ]
+    : [];
   const plan: OperationPlan = {
     id,
     harness: 'claude',
@@ -443,8 +530,9 @@ function planFromSetup(
         'Claude Code owns its marketplace snapshots and plugin cache.',
     },
     items: [
-      ...setupPlan.items.map(planItemFromSetup),
+      ...nativeSetupItems,
       claudeCodeRequiredSkillPlanItem(),
+      ...completionItems,
     ],
     warnings: status.diagnostics,
     disclaimers: [
@@ -452,45 +540,67 @@ function planFromSetup(
       ...setupPlan.disclaimers.map((message) => ({ message })),
     ],
   };
-  claudeCodePlanSources.set(plan, { setupPlan, context });
+  claudeCodePlanSources.set(plan, {
+    setupPlan,
+    context,
+    ...(version ? { version } : {}),
+  });
+  return plan;
+}
+
+function buildCompleteClaudeCodePlan(
+  action: 'install' | 'update',
+  context: ClaudeCodeOperationContext,
+): OperationPlan {
+  const resolveVersion =
+    context.resolveExecutingPackageVersion ?? resolveExecutingPackageVersion;
+  const packageVersion = resolveVersion();
+  const buildSetup =
+    context.buildClaudeCodeSetupPlan ?? buildClaudeCodeSetupPlan;
+  const plan = planFromSetup(
+    `claude-code-${action}-preview`,
+    action,
+    `${action === 'install' ? 'Install' : 'Update'} complete Claude Code setup`,
+    'Preview native marketplace/plugin refresh, required skills, provider setup, and CLI ledger commit.',
+    buildSetup(claudeCodeConfig(context, true, action === 'update')),
+    context,
+    packageVersion.ok ? packageVersion.version : undefined,
+  );
+  if (!packageVersion.ok) {
+    plan.canApply = false;
+    plan.warnings.push(
+      warning(
+        packageVersion.error.message,
+        'claude-code-package-version-unresolved',
+      ),
+    );
+  }
   return plan;
 }
 
 export function buildClaudeCodeInstallPlan(
   context: ClaudeCodeOperationContext = { cwd: process.cwd() },
 ): OperationPlan {
-  return planFromSetup(
-    'claude-code-install-preview',
-    'install',
-    'Install Claude Code native plugin',
-    'Preview native marketplace registration, plugin installation, and required skills.',
-    buildClaudeCodeSetupPlan(claudeCodeConfig(context, true)),
-    context,
-  );
+  return buildCompleteClaudeCodePlan('install', context);
 }
 
 export function buildClaudeCodeUpdatePlan(
   context: ClaudeCodeOperationContext = { cwd: process.cwd() },
 ): OperationPlan {
-  return planFromSetup(
-    'claude-code-update-preview',
-    'update',
-    'Reconcile Claude Code native plugin',
-    'Preview native marketplace, enabled-plugin, and required-skill reconciliation.',
-    buildClaudeCodeSetupPlan(claudeCodeConfig(context, true, true)),
-    context,
-  );
+  return buildCompleteClaudeCodePlan('update', context);
 }
 
 export function buildClaudeCodeSyncPlan(
   context: ClaudeCodeOperationContext = { cwd: process.cwd() },
 ): OperationPlan {
+  const buildSetup =
+    context.buildClaudeCodeSetupPlan ?? buildClaudeCodeSetupPlan;
   return planFromSetup(
     'claude-code-sync-preview',
     'sync',
     'Sync Claude Code native plugin',
     'Preview native marketplace, enabled-plugin, and required-skill reconciliation.',
-    buildClaudeCodeSetupPlan(claudeCodeConfig(context, true)),
+    buildSetup(claudeCodeConfig(context, true)),
     context,
   );
 }
@@ -589,12 +699,31 @@ export function applyClaudeCodePlan(plan: OperationPlan): OperationApplyResult {
     );
   }
 
-  const result = applyClaudeCodeSetup({ ...source.setupPlan, dryRun: false });
+  if (source.version) {
+    const resolveVersion =
+      source.context.resolveExecutingPackageVersion ??
+      resolveExecutingPackageVersion;
+    const currentVersion = resolveVersion();
+    if (!currentVersion.ok || currentVersion.version !== source.version) {
+      return rejectPlan(
+        plan,
+        currentVersion.ok
+          ? `Approved package version changed from ${source.version} to ${currentVersion.version} before apply.`
+          : currentVersion.error.message,
+      );
+    }
+  }
+
+  const applySetup =
+    source.context.applyClaudeCodeSetup ?? applyClaudeCodeSetup;
+  const result = applySetup({ ...source.setupPlan, dryRun: false });
   const requiredSkillWarnings: OperationWarning[] = [];
   const requiredSkillTargets: ManagedTarget[] = [];
   if (result.success) {
+    const installSkill =
+      source.context.installRequiredSkill ?? installRequiredSkill;
     for (const skill of REQUIRED_SKILLS) {
-      const installed = installRequiredSkill(skill, 'claude', {
+      const installed = installSkill(skill, 'claude', {
         homeDir: source.context.homeDir,
       });
       const success = installed.status !== 'failed';
@@ -614,7 +743,7 @@ export function applyClaudeCodePlan(plan: OperationPlan): OperationApplyResult {
       }
     }
   }
-  const success = result.success && requiredSkillWarnings.length === 0;
+  let success = result.success && requiredSkillWarnings.length === 0;
   let summary =
     result.error ?? `Failed to apply Claude Code ${plan.action} plan.`;
   if (success) {
@@ -623,34 +752,62 @@ export function applyClaudeCodePlan(plan: OperationPlan): OperationApplyResult {
     summary =
       'Claude Code plugin was installed, but required skills failed to install.';
   }
+  const changedTargets: ManagedTarget[] = [
+    ...result.changed.map((path) => ({
+      kind: 'package' as const,
+      path,
+      label: path.includes('/marketplaces/')
+        ? 'Claude Code marketplace'
+        : 'Claude Code plugin',
+      state: 'installed' as const,
+    })),
+    ...requiredSkillTargets,
+  ];
+  const warnings: OperationWarning[] = [
+    ...requiredSkillWarnings,
+    ...(result.success
+      ? []
+      : [
+          {
+            severity: 'critical' as const,
+            message: result.error ?? 'apply failed.',
+          },
+        ]),
+  ];
+
+  if (success && source.version && plan.action !== 'sync') {
+    const finalize =
+      source.context.finalizeHarnessInstall ?? finalizeHarnessInstall;
+    const completion = finalize({
+      harness: 'claude',
+      version: source.version,
+      dryRun: false,
+      cwd: source.context.cwd,
+      runThothMemSetup: source.context.runThothMemSetup,
+      ledgerOptions: claudeLedgerOptions(source.context),
+    });
+    const completionEvidence = getInstallCompletionEvidence(completion, {
+      codePrefix: 'claude-code',
+      version: source.version,
+      fallbackError: 'Claude Code install finalization failed.',
+    });
+    warnings.push(...completionEvidence.warnings);
+    changedTargets.push(...completionEvidence.targets);
+    if (completion.success) {
+      summary = `Applied complete Claude Code ${plan.action} plan.`;
+    } else {
+      success = false;
+      summary = completion.error ?? 'Claude Code install finalization failed.';
+    }
+  }
   return {
     harness: 'claude',
     action: plan.action,
     applied: success,
     summary,
-    changedTargets: [
-      ...result.changed.map((path) => ({
-        kind: 'package' as const,
-        path,
-        label: path.includes('/marketplaces/')
-          ? 'Claude Code marketplace'
-          : 'Claude Code plugin',
-        state: 'installed' as const,
-      })),
-      ...requiredSkillTargets,
-    ],
+    changedTargets,
     backups: [],
-    warnings: [
-      ...requiredSkillWarnings,
-      ...(result.success
-        ? []
-        : [
-            {
-              severity: 'critical' as const,
-              message: result.error ?? 'apply failed.',
-            },
-          ]),
-    ],
+    warnings,
     disclaimers: claudeCodeDisclaimers(),
   };
 }

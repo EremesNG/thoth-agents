@@ -31,7 +31,7 @@ function status(summary = 'OpenCode ready'): HarnessStatusReport {
         label: 'OpenCode config',
         path: longWindowsPath,
         state: 'installed',
-        observed: 'plugin includes thoth-agents@latest',
+        observed: 'plugin includes thoth-agents@0.4.8',
       },
     ],
     diagnostics: [],
@@ -170,7 +170,7 @@ function plan(
             {
               title: 'Ensure managed config',
               target: status().targets[0],
-              preview: 'plugin: ["thoth-agents@latest"]',
+              preview: 'plugin: ["thoth-agents@0.4.8"]',
             },
           ],
     warnings: [
@@ -419,6 +419,7 @@ describe('interactive TUI', () => {
     expect(lastFrame()).toContain('Status');
     expect(lastFrame()).toContain('Manage Harnesses');
     expect(lastFrame()).toContain('Sync / Update');
+    expect(lastFrame()).toContain('complete CLI-managed refresh');
     expect(lastFrame()).toContain('Exit');
     expect(lastFrame()).not.toContain('Configure Models');
     expect(lastFrame()).not.toContain('OpenCode Status');
@@ -699,6 +700,86 @@ describe('interactive TUI', () => {
 
     expect(lastFrame()).toContain('Preview update');
     expect(lastFrame()).toContain('No writes until explicit apply.');
+    expect(lastFrame()).toContain('Complete CLI-managed refresh');
+    expect(lastFrame()).toContain('only after explicit confirmation');
+    expect(lastFrame()).toContain('[Apply complete refresh]');
+    expect(lastFrame()).toContain('thoth-agents@0.4.8');
+    expect(lastFrame()).not.toContain('thoth-agents@latest');
+  });
+
+  test('TUI failed Update reports a failed complete refresh without claiming native marketplace ownership', async () => {
+    const base = operations();
+    const ops: TuiOperations = {
+      ...base,
+      apply(operationPlan) {
+        base.applied.push(operationPlan);
+        return {
+          harness: operationPlan.harness,
+          action: operationPlan.action,
+          applied: false,
+          summary: 'Required skill installation failed.',
+          changedTargets: [],
+          backups: [],
+          warnings: [],
+          disclaimers: [],
+        };
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openUpdatePreview(stdin);
+    expect(base.applied).toHaveLength(0);
+    await press(stdin, 'a');
+
+    const frame = lastFrame() ?? '';
+    expect(base.applied).toHaveLength(1);
+    expect(frame).toContain(
+      'Complete CLI refresh result: failed — Required skill installation failed.',
+    );
+    expect(frame).toContain(
+      'Codex and Claude native marketplace versions remain independent.',
+    );
+    expect(frame).not.toContain('marketplace cache');
+  });
+
+  test('TUI status clearly identifies executing and last complete recorded CLI versions', async () => {
+    const ledgerStatus: HarnessStatusReport = {
+      ...status('OpenCode needs a complete CLI refresh.'),
+      state: 'outdated',
+      targets: [
+        ...status().targets,
+        {
+          kind: 'file',
+          label: 'CLI-managed install version',
+          state: 'outdated',
+          expected: 'executing 0.4.8',
+          observed: 'recorded 0.4.7',
+          description:
+            'Authoritative last complete CLI-managed install version; native marketplace state is independent.',
+        },
+      ],
+    };
+    const { lastFrame, stdin } = render(
+      <App
+        operations={operations(undefined, { opencode: ledgerStatus })}
+        exitOnQuit={false}
+      />,
+    );
+
+    await openStatus(stdin);
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('CLI-managed version');
+    expect(frame).toContain('Executing: 0.4.8');
+    expect(frame).toContain('Recorded: 0.4.7');
+    expect(frame).toContain(
+      'Recorded is the last complete CLI-managed version.',
+    );
+    expect(frame).toContain(
+      'Codex/Claude native marketplace versions are independent.',
+    );
   });
 
   test('TUI preview and apply keep consumer actions usable beside unsupported provider evidence', async () => {
@@ -741,7 +822,9 @@ describe('interactive TUI', () => {
 
     frame = lastFrame() ?? '';
     expect(base.applied).toHaveLength(1);
-    expect(frame).toContain('Consumer result: Applied test plan.');
+    expect(frame).toContain(
+      'Complete CLI refresh result: completed — Applied test plan.',
+    );
     expect(frame).toContain('Provider capability: unsupported');
     expectProviderNeutralLanguage(frame);
   });

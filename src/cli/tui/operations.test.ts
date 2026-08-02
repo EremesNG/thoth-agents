@@ -3,13 +3,86 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
+  HarnessId,
   ProviderCapabilityEvidence,
   ProviderEvidenceInput,
 } from '../../harness/types';
 import { loadModelsDevCatalog } from '../model-catalog';
-import type { HarnessStatusReport } from '../operations';
+import type {
+  HarnessStatusReport,
+  OperationApplyResult,
+  OperationPlan,
+} from '../operations';
 
 const parseConfigMock = vi.hoisted(() => vi.fn());
+const operationDispatchSpies = vi.hoisted(() => ({
+  opencodeUpdate: vi.fn(),
+  codexUpdate: vi.fn(),
+  claudeUpdate: vi.fn(),
+  opencodeApply: vi.fn(),
+  codexApply: vi.fn(),
+  claudeApply: vi.fn(),
+}));
+
+vi.mock('../operations/opencode', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('../operations/opencode')>();
+  return {
+    ...original,
+    buildOpenCodeUpdatePlan: () => {
+      operationDispatchSpies.opencodeUpdate();
+      return completeDispatchPlan('opencode');
+    },
+    applyOpenCodePlan: (
+      plan: Parameters<typeof original.applyOpenCodePlan>[0],
+    ) => {
+      operationDispatchSpies.opencodeApply(plan);
+      if (plan.id === 'tui-dispatch-test') {
+        return dispatchApplyResult('opencode', 'OpenCode');
+      }
+      return original.applyOpenCodePlan(plan);
+    },
+  };
+});
+
+vi.mock('../operations/codex', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../operations/codex')>();
+  return {
+    ...original,
+    buildCodexUpdatePlan: () => {
+      operationDispatchSpies.codexUpdate();
+      return completeDispatchPlan('codex');
+    },
+    applyCodexPlan: (plan: Parameters<typeof original.applyCodexPlan>[0]) => {
+      operationDispatchSpies.codexApply(plan);
+      if (plan.id === 'tui-dispatch-test') {
+        return dispatchApplyResult('codex', 'Codex');
+      }
+      return original.applyCodexPlan(plan);
+    },
+  };
+});
+
+vi.mock('../operations/claude-code', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('../operations/claude-code')>();
+  return {
+    ...original,
+    buildClaudeCodeUpdatePlan: () => {
+      operationDispatchSpies.claudeUpdate();
+      return completeDispatchPlan('claude');
+    },
+    applyClaudeCodePlan: (
+      plan: Parameters<typeof original.applyClaudeCodePlan>[0],
+    ) => {
+      operationDispatchSpies.claudeApply(plan);
+      if (plan.id === 'tui-dispatch-test') {
+        return dispatchApplyResult('claude', 'Claude');
+      }
+      return original.applyClaudeCodePlan(plan);
+    },
+  };
+});
 
 vi.mock('../paths', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../paths')>()),
@@ -24,6 +97,55 @@ vi.mock('../config-io', async (importOriginal) => ({
 vi.mock('../model-catalog', () => ({
   loadModelsDevCatalog: vi.fn(),
 }));
+
+function completeDispatchPlan(harness: HarnessId): OperationPlan {
+  return {
+    id: `${harness}-complete-update`,
+    harness,
+    action: 'update',
+    title: `Update complete ${harness} setup`,
+    summary: 'Preview the complete shared operation update.',
+    dryRun: true,
+    canApply: true,
+    targets: [],
+    surfaces: [],
+    backup: { required: false, strategy: 'none' },
+    items: [
+      {
+        title: 'Plan provider setup',
+        target: {
+          kind: 'surface',
+          label: 'Provider-owned thoth-mem setup',
+        },
+      },
+      {
+        title: 'Record completed CLI install',
+        target: {
+          kind: 'file',
+          label: 'CLI-managed install version',
+        },
+      },
+    ],
+    warnings: [],
+    disclaimers: [],
+  };
+}
+
+function dispatchApplyResult(
+  harness: HarnessId,
+  displayName: string,
+): OperationApplyResult {
+  return {
+    harness,
+    action: 'update',
+    applied: false,
+    summary: `${displayName} shared apply boundary reached.`,
+    changedTargets: [],
+    backups: [],
+    warnings: [],
+    disclaimers: [],
+  };
+}
 
 const checkedAt = '2026-07-11T00:00:00.000Z';
 
@@ -381,6 +503,37 @@ describe('TUI operations', () => {
       'inherit',
       'anthropic/claude-sonnet-4-5',
     ]);
+  });
+
+  test.each([
+    ['opencode', 'opencodeUpdate', 'opencodeApply'],
+    ['codex', 'codexUpdate', 'codexApply'],
+    ['claude', 'claudeUpdate', 'claudeApply'],
+  ] as const)('routes %s Update planning and apply through its complete shared operation service', async (harness, planSpy, applySpy) => {
+    const { defaultTuiOperations } = await import('./operations');
+
+    const updatePlan = defaultTuiOperations.plan(harness, 'update');
+    expect(operationDispatchSpies[planSpy]).toHaveBeenCalledTimes(1);
+    expect(updatePlan.title).toContain('complete');
+    expect(updatePlan.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          target: expect.objectContaining({
+            label: 'Provider-owned thoth-mem setup',
+          }),
+        }),
+        expect.objectContaining({
+          target: expect.objectContaining({
+            label: 'CLI-managed install version',
+          }),
+        }),
+      ]),
+    );
+
+    const dispatchPlan = { ...updatePlan, id: 'tui-dispatch-test' };
+    const result = defaultTuiOperations.apply(dispatchPlan);
+    expect(operationDispatchSpies[applySpy]).toHaveBeenCalledWith(dispatchPlan);
+    expect(result.summary).toContain('shared apply boundary reached');
   });
 
   test.each([

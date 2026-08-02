@@ -15,11 +15,30 @@ import {
 } from '../codex-install';
 import type { CodexInstallScope, CodexRoleName } from '../codex-paths';
 import {
+  applyCodexPluginSetup,
+  buildCodexPluginSetupPlan,
+  type CodexCommandExecutor,
+  type CodexPluginSetupPlan,
+} from '../codex-plugin-install';
+import {
+  type FinalizeHarnessInstallOptions,
+  finalizeHarnessInstall,
+} from '../install-completion';
+import {
+  getInstallLedgerPath,
+  type InstallLedgerOptions,
+} from '../install-ledger';
+import {
+  type ExecutingPackageVersionResult,
+  resolveExecutingPackageVersion,
+} from '../package-version';
+import {
   getRequiredSkillInstallCommand,
   getRequiredSkillPath,
   installRequiredSkill,
   REQUIRED_SKILLS,
 } from '../skills';
+import { getThothMemSetupCommand } from '../thoth-mem-install';
 import type {
   BackupExpectation,
   HarnessAction,
@@ -36,7 +55,11 @@ import type {
   OperationPlanItem,
   OperationWarning,
 } from './types';
-import { classifyProviderCapabilityEvidence } from './types';
+import {
+  classifyProviderCapabilityEvidence,
+  getCliManagedInstallVersionTarget,
+  getInstallCompletionEvidence,
+} from './types';
 
 export interface CodexOperationContext extends OperationContext {
   scope?: CodexInstallScope;
@@ -44,12 +67,29 @@ export interface CodexOperationContext extends OperationContext {
   codexHome?: string;
   packageRoot?: string;
   pluginId?: string;
+  resolveExecutingPackageVersion?: () => ExecutingPackageVersionResult;
+  codexPluginCommandExecutor?: CodexCommandExecutor;
+  buildCodexPluginSetupPlan?: typeof buildCodexPluginSetupPlan;
+  applyCodexPluginSetup?: typeof applyCodexPluginSetup;
+  buildCodexSetupPlan?: typeof buildCodexSetupPlan;
+  applyCodexSetup?: typeof applyCodexSetup;
+  installRequiredSkill?: typeof installRequiredSkill;
+  finalizeHarnessInstall?: (
+    options: FinalizeHarnessInstallOptions,
+  ) => ReturnType<typeof finalizeHarnessInstall>;
+  runThothMemSetup?: FinalizeHarnessInstallOptions['runThothMemSetup'];
+  installLedgerOptions?: InstallLedgerOptions;
 }
 
 const CODEX_DISPLAY_NAME = 'Codex';
 const codexPlanSources = new WeakMap<
   OperationPlan,
-  { setupPlan: CodexSetupPlan; context: CodexOperationContext }
+  {
+    setupPlan: CodexSetupPlan;
+    pluginPlan?: CodexPluginSetupPlan;
+    context: CodexOperationContext;
+    version?: string;
+  }
 >();
 const codexModelSources = new WeakMap<
   OperationPlan,
@@ -383,6 +423,10 @@ export function getCodexStatus(
   evidence: ProviderEvidenceInput = {},
 ): HarnessStatusReport {
   const providerCapability = classifyProviderCapabilityEvidence(evidence);
+  const installVersionTarget = getCliManagedInstallVersionTarget('codex', {
+    env: context.env,
+    homeDir: context.homeDir,
+  });
   let plan: CodexSetupPlan;
   try {
     plan = buildCodexSetupPlan(codexConfig(context, true));
@@ -393,7 +437,7 @@ export function getCodexStatus(
       displayName: CODEX_DISPLAY_NAME,
       state: 'unknown',
       summary: `Codex setup plan could not be built: ${message}`,
-      targets: [],
+      targets: [installVersionTarget],
       diagnostics: [
         {
           severity: 'critical',
@@ -432,6 +476,7 @@ export function getCodexStatus(
         targetForItem(item, state, observed),
       ),
       ...requiredSkills.targets,
+      installVersionTarget,
     ],
     diagnostics,
     actions: codexActions,
@@ -452,6 +497,32 @@ function planItemFromSetup(item: CodexSetupPlanItem): OperationPlanItem {
   };
 }
 
+function planItemFromPluginSetup(
+  item: CodexPluginSetupPlan['items'][number],
+): OperationPlanItem {
+  return {
+    title: item.description,
+    target: {
+      kind: 'package',
+      path: item.targetPath,
+      label: 'Codex native plugin manager target',
+    },
+    preview: `${item.command.executable} ${item.command.args.join(' ')}`,
+    backup: { required: false, strategy: 'external' },
+  };
+}
+
+function codexLedgerOptions(
+  context: CodexOperationContext,
+): InstallLedgerOptions {
+  return (
+    context.installLedgerOptions ?? {
+      env: context.env,
+      homeDir: context.homeDir,
+    }
+  );
+}
+
 function planFromSetup(
   id: string,
   action: OperationPlan['action'],
@@ -459,12 +530,56 @@ function planFromSetup(
   summary: string,
   setupPlan: CodexSetupPlan,
   context: CodexOperationContext,
+  completion?: { pluginPlan: CodexPluginSetupPlan; version: string },
 ): OperationPlan {
   const status = getCodexStatus(context);
   const canApply =
-    status.state === 'installed' ||
-    status.state === 'missing' ||
-    status.state === 'outdated';
+    (status.state === 'installed' ||
+      status.state === 'missing' ||
+      status.state === 'outdated') &&
+    (completion?.pluginPlan.ready ?? true);
+  const providerCommand = getThothMemSetupCommand('codex', true);
+  const nativePluginItems: OperationPlanItem[] = completion
+    ? completion.pluginPlan.items.length > 0
+      ? completion.pluginPlan.items.map(planItemFromPluginSetup)
+      : [
+          {
+            title: 'Verify Codex native plugin manager state',
+            target: {
+              kind: 'package',
+              label: 'Codex native thoth-agents plugin',
+            },
+            preview:
+              'Inspect and post-verify the canonical thoth-agents marketplace and enabled plugin.',
+            backup: { required: false, strategy: 'external' },
+          },
+        ]
+    : [];
+  const completionItems: OperationPlanItem[] = completion
+    ? [
+        {
+          title: 'Plan provider-owned thoth-mem setup for Codex',
+          target: {
+            kind: 'surface',
+            label: 'Provider-owned thoth-mem setup',
+          },
+          preview: `${providerCommand.command} ${providerCommand.args.join(' ')}`,
+        },
+        {
+          title: 'Record completed Codex CLI install',
+          target: {
+            kind: 'file',
+            path: getInstallLedgerPath(codexLedgerOptions(context)),
+            label: 'CLI-managed install version',
+            expected: `recorded ${completion.version}`,
+          },
+          preview: JSON.stringify({
+            harness: 'codex',
+            version: completion.version,
+          }),
+        },
+      ]
+    : [];
   const plan: OperationPlan = {
     id,
     harness: 'codex',
@@ -484,8 +599,10 @@ function planFromSetup(
         'Codex setup apply uses the existing installer backup behavior for files that already exist.',
     },
     items: [
+      ...nativePluginItems,
       ...setupPlan.items.map(planItemFromSetup),
       codexRequiredSkillPlanItem(),
+      ...completionItems,
     ],
     warnings: [
       ...status.diagnostics,
@@ -503,28 +620,75 @@ function planFromSetup(
       ...setupPlan.disclaimers.map((message) => ({ message })),
     ],
   };
-  codexPlanSources.set(plan, { setupPlan, context });
+  codexPlanSources.set(plan, {
+    setupPlan,
+    context,
+    ...(completion
+      ? {
+          pluginPlan: completion.pluginPlan,
+          version: completion.version,
+        }
+      : {}),
+  });
+  return plan;
+}
+
+function buildCompleteCodexPlan(
+  action: 'install' | 'update',
+  context: CodexOperationContext,
+): OperationPlan {
+  const resolveVersion =
+    context.resolveExecutingPackageVersion ?? resolveExecutingPackageVersion;
+  const packageVersion = resolveVersion();
+  const buildPlugin =
+    context.buildCodexPluginSetupPlan ?? buildCodexPluginSetupPlan;
+  const pluginPlan = buildPlugin({
+    dryRun: true,
+    projectRoot: context.cwd,
+    commandExecutor: context.codexPluginCommandExecutor,
+  });
+  const buildSetup = context.buildCodexSetupPlan ?? buildCodexSetupPlan;
+  const setupPlan = buildSetup(codexConfig(context, true));
+  const plan = planFromSetup(
+    `codex-${action}-preview`,
+    action,
+    `${action === 'install' ? 'Install' : 'Update'} complete Codex setup`,
+    `Preview Codex native plugin, global agent pack, required skills, provider setup, and CLI ledger ${action}.`,
+    setupPlan,
+    context,
+    packageVersion.ok
+      ? { pluginPlan, version: packageVersion.version }
+      : undefined,
+  );
+  if (!packageVersion.ok) {
+    plan.canApply = false;
+    plan.warnings.push(
+      warning(packageVersion.error.message, 'codex-package-version-unresolved'),
+    );
+  }
+  if (!pluginPlan.ready) {
+    plan.canApply = false;
+    plan.warnings.push(
+      warning(
+        'Codex native plugin manager state is not safe to mutate.',
+        'codex-native-plugin-not-ready',
+      ),
+    );
+  }
   return plan;
 }
 
 export function buildCodexUpdatePlan(
   context: CodexOperationContext = { cwd: process.cwd() },
 ): OperationPlan {
-  const setupPlan = buildCodexSetupPlan(codexConfig(context, true));
-  return planFromSetup(
-    'codex-update-preview',
-    'update',
-    'Update Codex managed setup',
-    'Preview Codex managed setup refresh using buildCodexSetupPlan().',
-    setupPlan,
-    context,
-  );
+  return buildCompleteCodexPlan('update', context);
 }
 
 export function buildCodexSyncPlan(
   context: CodexOperationContext = { cwd: process.cwd() },
 ): OperationPlan {
-  const setupPlan = buildCodexSetupPlan(codexConfig(context, true));
+  const buildSetup = context.buildCodexSetupPlan ?? buildCodexSetupPlan;
+  const setupPlan = buildSetup(codexConfig(context, true));
   return planFromSetup(
     'codex-sync-preview',
     'sync',
@@ -538,15 +702,7 @@ export function buildCodexSyncPlan(
 export function buildCodexInstallPlan(
   context: CodexOperationContext = { cwd: process.cwd() },
 ): OperationPlan {
-  const setupPlan = buildCodexSetupPlan(codexConfig(context, true));
-  return planFromSetup(
-    'codex-install-preview',
-    'install',
-    'Install Codex managed setup',
-    'Preview Codex managed agent-pack setup using buildCodexSetupPlan().',
-    setupPlan,
-    context,
-  );
+  return buildCompleteCodexPlan('install', context);
 }
 
 function normalizeCodexModel(input: ModelRoleInput): string {
@@ -804,12 +960,74 @@ export function applyCodexPlan(plan: OperationPlan): OperationApplyResult {
       'Codex setup plan was not produced by a Codex operation plan builder in this process.',
     );
   }
-  const result = applyCodexSetup({ ...source.setupPlan, dryRun: false });
+  if (source.version) {
+    const resolveVersion =
+      source.context.resolveExecutingPackageVersion ??
+      resolveExecutingPackageVersion;
+    const currentVersion = resolveVersion();
+    if (!currentVersion.ok || currentVersion.version !== source.version) {
+      return rejectPlan(
+        plan,
+        currentVersion.ok
+          ? `Approved package version changed from ${source.version} to ${currentVersion.version} before apply.`
+          : currentVersion.error.message,
+      );
+    }
+  }
+
+  const changedTargets: ManagedTarget[] = [];
+  const warnings: OperationWarning[] = [];
+  if (source.pluginPlan) {
+    const applyPlugin =
+      source.context.applyCodexPluginSetup ?? applyCodexPluginSetup;
+    const nativeResult = applyPlugin({
+      ...source.pluginPlan,
+      dryRun: false,
+    });
+    warnings.push(
+      ...nativeResult.diagnostics.map((message) => ({
+        severity: 'minor' as const,
+        code: 'codex-native-plugin-diagnostic',
+        message,
+      })),
+    );
+    changedTargets.push(
+      ...nativeResult.changed.map((path) => ({
+        kind: 'package' as const,
+        path,
+        label: 'Codex native plugin manager target',
+        state: 'installed' as const,
+      })),
+    );
+    if (!nativeResult.success) {
+      const message = nativeResult.error ?? 'Codex native plugin setup failed.';
+      warnings.push({
+        severity: 'critical',
+        code: 'codex-native-plugin-failed',
+        message,
+      });
+      return {
+        harness: 'codex',
+        action: plan.action,
+        applied: false,
+        summary: message,
+        changedTargets,
+        backups: [],
+        warnings,
+        disclaimers: codexDisclaimers(),
+      };
+    }
+  }
+
+  const applySetup = source.context.applyCodexSetup ?? applyCodexSetup;
+  const result = applySetup({ ...source.setupPlan, dryRun: false });
   const requiredSkillWarnings: OperationWarning[] = [];
   const requiredSkillTargets: ManagedTarget[] = [];
   if (result.success) {
+    const installSkill =
+      source.context.installRequiredSkill ?? installRequiredSkill;
     for (const skill of REQUIRED_SKILLS) {
-      const installed = installRequiredSkill(skill, 'codex', {
+      const installed = installSkill(skill, 'codex', {
         homeDir: source.context.homeDir,
       });
       const success = installed.status !== 'failed';
@@ -829,41 +1047,67 @@ export function applyCodexPlan(plan: OperationPlan): OperationApplyResult {
       }
     }
   }
-  const success = result.success && requiredSkillWarnings.length === 0;
+  let success = result.success && requiredSkillWarnings.length === 0;
+  let summary = success
+    ? `Applied Codex managed ${plan.action} plan.`
+    : requiredSkillWarnings.length > 0
+      ? `Codex setup was written, but required skills failed to install.`
+      : (result.error ?? `Failed to apply Codex ${plan.action} plan.`);
+  warnings.push(...requiredSkillWarnings);
+  if (!result.success) {
+    warnings.push({
+      severity: 'critical',
+      message: result.error ?? 'Codex setup apply failed.',
+    });
+  }
+  changedTargets.push(
+    ...result.changed.map((path) => ({
+      kind: path.endsWith('.json')
+        ? ('memory-state' as const)
+        : ('generated-artifact' as const),
+      path,
+      label: basename(path),
+      state: 'installed' as const,
+    })),
+    ...requiredSkillTargets,
+  );
+
+  if (success && source.version && plan.action !== 'sync') {
+    const finalize =
+      source.context.finalizeHarnessInstall ?? finalizeHarnessInstall;
+    const completion = finalize({
+      harness: 'codex',
+      version: source.version,
+      dryRun: false,
+      cwd: source.context.cwd,
+      runThothMemSetup: source.context.runThothMemSetup,
+      ledgerOptions: codexLedgerOptions(source.context),
+    });
+    const completionEvidence = getInstallCompletionEvidence(completion, {
+      codePrefix: 'codex',
+      version: source.version,
+      fallbackError: 'Codex install finalization failed.',
+    });
+    warnings.push(...completionEvidence.warnings);
+    changedTargets.push(...completionEvidence.targets);
+    if (completion.success) {
+      summary = `Applied complete Codex ${plan.action} plan.`;
+    } else {
+      success = false;
+      summary = completion.error ?? 'Codex install finalization failed.';
+    }
+  }
+
   return {
     harness: 'codex',
     action: plan.action,
     applied: success,
-    summary: success
-      ? `Applied Codex managed ${plan.action} plan.`
-      : requiredSkillWarnings.length > 0
-        ? `Codex setup was written, but required skills failed to install.`
-        : (result.error ?? `Failed to apply Codex ${plan.action} plan.`),
-    changedTargets: [
-      ...result.changed.map((path) => ({
-        kind: path.endsWith('.json')
-          ? ('memory-state' as const)
-          : ('generated-artifact' as const),
-        path,
-        label: basename(path),
-        state: 'installed' as const,
-      })),
-      ...requiredSkillTargets,
-    ],
+    summary,
+    changedTargets,
     backups: result.changed
       .filter((path) => existsSync(`${path}.bak`))
       .map((path) => ({ path: `${path}.bak`, label: 'managed backup' })),
-    warnings: [
-      ...requiredSkillWarnings,
-      ...(result.success
-        ? []
-        : [
-            {
-              severity: 'critical' as const,
-              message: result.error ?? 'Codex setup apply failed.',
-            },
-          ]),
-    ],
+    warnings,
     disclaimers: codexDisclaimers(),
   };
 }

@@ -16,7 +16,6 @@ export interface PackageJson {
 
 export interface AutoUpdateCheckerOptions {
   showStartupToast?: boolean;
-  autoUpdate?: boolean;
 }
 
 export interface PluginEntryInfo {

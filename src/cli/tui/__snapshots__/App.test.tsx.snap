@@ -7,7 +7,7 @@ Use arrows and Enter. Escape goes back. q exits.
 
 > Status - Inspect a harness
   Manage Harnesses - List managed surfaces and actions
-  Sync / Update - Preview managed setup changes
+  Sync / Update - Preview sync or a complete CLI-managed refresh
   Exit - Close the interactive setup"
 `;
 

@@ -25,7 +25,7 @@ import { log } from './utils/logger';
 import { TmuxSessionManager } from './utils/tmux-session-manager';
 
 const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
-  const { client, directory, $: shell } = ctx;
+  const { client, directory } = ctx;
 
   const config = loadPluginConfig(directory);
   const agentDefs = createAgents(config);
@@ -98,14 +98,9 @@ const ThothAgents: Plugin = async (ctx, _options?: Record<string, unknown>) => {
   const tmuxSessionManager = new TmuxSessionManager(ctx, tmuxConfig);
 
   // Initialize auto-update checker hook
-  const autoUpdateChecker = createAutoUpdateCheckerHook(
-    ctx,
-    {
-      showStartupToast: true,
-      autoUpdate: true,
-    },
-    shell,
-  );
+  const autoUpdateChecker = createAutoUpdateCheckerHook(ctx, {
+    showStartupToast: true,
+  });
 
   // Initialize delegate-task retry guidance hook
   const delegateTaskRetryHook = createDelegateTaskRetryHook(ctx);

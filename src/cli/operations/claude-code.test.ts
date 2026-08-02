@@ -10,10 +10,18 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ProviderEvidenceInput } from '../../harness/types';
 import type { ClaudeCommandExecutor } from '../claude-code-install';
+import { finalizeHarnessInstall } from '../install-completion';
+import {
+  getInstallLedgerPath,
+  readInstallLedger,
+  recordCompletedInstall,
+} from '../install-ledger';
+import { resolveExecutingPackageVersion } from '../package-version';
 import {
   applyClaudeCodePlan,
   buildClaudeCodeInstallPlan,
   buildClaudeCodeModelPlan,
+  buildClaudeCodeSyncPlan,
   buildClaudeCodeUpdatePlan,
   claudeCodeOperationAdapter,
   defaultClaudeCodeModelRoles,
@@ -39,6 +47,24 @@ interface ManagerState {
 
 let home: string;
 let manager: ManagerState;
+
+function claudeProviderResult() {
+  return {
+    success: true,
+    evidenceValid: true,
+    status: 'complete' as const,
+    changed: true,
+    harness: 'claude' as const,
+    target: 'C:/provider/claude',
+    steps: [{ name: 'Provider setup', outcome: 'complete' as const }],
+    diagnostics: ['provider complete'],
+    manualActions: [],
+    receipt: null,
+    command: 'npx',
+    args: ['thoth-mem@latest'],
+    exitCode: 0,
+  };
+}
 
 function commandExecutor(state: ManagerState): ClaudeCommandExecutor {
   return (_command, args) => {
@@ -97,9 +123,12 @@ function commandExecutor(state: ManagerState): ClaudeCommandExecutor {
 function context() {
   return {
     cwd: process.cwd(),
+    env: {},
     scope: 'user' as const,
     homeDir: home,
     commandExecutor: commandExecutor(manager),
+    runThothMemSetup: () => claudeProviderResult(),
+    installLedgerOptions: { homeDir: home, env: {} },
   };
 }
 
@@ -136,6 +165,172 @@ afterEach(() => {
 });
 
 describe('claudeCodeOperationAdapter', () => {
+  function completeProviderResult() {
+    return claudeProviderResult();
+  }
+
+  test.each([
+    ['install', buildClaudeCodeInstallPlan],
+    ['update', buildClaudeCodeUpdatePlan],
+  ] as const)('%s keeps native refresh before skills, provider, and ledger', (action, buildPlan) => {
+    const effects: string[] = [];
+    const nativeExecutor = commandExecutor(manager);
+    const trackedExecutor: ClaudeCommandExecutor = (command, args, options) => {
+      const key = args.join(' ');
+      if (!key.includes(' list ')) effects.push(`native:${key}`);
+      return nativeExecutor(command, args, options);
+    };
+    const installSkill = vi.fn((skill: { name: string }) => {
+      effects.push(`external:${skill.name}`);
+      return {
+        status: 'installed' as const,
+        skillPath: join(home, '.claude', 'skills', skill.name),
+      };
+    });
+    const finalize = vi.fn((options) => {
+      effects.push('provider-ledger');
+      return finalizeHarnessInstall(options);
+    });
+    const operationContext = {
+      ...context(),
+      commandExecutor: trackedExecutor,
+      resolveExecutingPackageVersion: () => ({
+        ok: true as const,
+        version: '0.4.8',
+        packageRoot: process.cwd(),
+      }),
+      installRequiredSkill: installSkill,
+      finalizeHarnessInstall: finalize,
+      installLedgerOptions: { homeDir: home, env: {} },
+    };
+
+    const plan = buildPlan(operationContext);
+    const titles = plan.items.map(({ title }) => title);
+
+    expect(plan.action).toBe(action);
+    expect(titles).toEqual(
+      expect.arrayContaining([
+        'Install required external skills for Claude Code',
+        'Plan provider-owned thoth-mem setup for Claude Code',
+        'Record completed Claude Code CLI install',
+      ]),
+    );
+    expect(effects).toEqual([]);
+    expect(installSkill).not.toHaveBeenCalled();
+    expect(finalize).not.toHaveBeenCalled();
+
+    const result = applyClaudeCodePlan(plan);
+
+    expect(result.applied).toBe(true);
+    expect(effects).toEqual([
+      'native:plugin marketplace add EremesNG/thoth-agents --scope user',
+      'native:plugin install thoth-agents@thoth-agents --scope user',
+      ...[
+        'simplify',
+        'tdd',
+        'progressive-context-router',
+        'architectural-grilling',
+      ].map((name) => `external:${name}`),
+      'provider-ledger',
+    ]);
+    expect(readInstallLedger({ homeDir: home, env: {} })).toMatchObject({
+      status: 'valid',
+      ledger: { harnesses: { claude: { version: '0.4.8' } } },
+    });
+  });
+
+  test('reports incomplete provider finalization after Claude native and skill success', () => {
+    const finalize = vi.fn(() => ({
+      success: false,
+      provider: {
+        ...completeProviderResult(),
+        success: false,
+        status: 'partial' as const,
+        diagnostics: ['provider partial'],
+        exitCode: 2,
+      },
+      ledger: {
+        status: 'not-attempted' as const,
+        path: getInstallLedgerPath({ homeDir: home, env: {} }),
+      },
+      error: 'provider incomplete',
+    }));
+    const operationContext = {
+      ...context(),
+      resolveExecutingPackageVersion: () => ({
+        ok: true as const,
+        version: '0.4.8',
+        packageRoot: process.cwd(),
+      }),
+      finalizeHarnessInstall: finalize,
+      installRequiredSkill: vi.fn(() => ({ status: 'installed' as const })),
+      installLedgerOptions: { homeDir: home, env: {} },
+    };
+
+    const result = applyClaudeCodePlan(
+      buildClaudeCodeUpdatePlan(operationContext),
+    );
+
+    expect(result.applied).toBe(false);
+    expect(result.summary).toContain('provider incomplete');
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: 'provider partial' }),
+      ]),
+    );
+  });
+
+  test('sync remains narrower and does not advance the Claude CLI ledger', () => {
+    manager.marketplace = true;
+    manager.plugin = true;
+    manager.enabled = true;
+
+    expect(buildClaudeCodeInstallPlan(context()).items[0]?.title).toBe(
+      'Verify Claude Code native marketplace and plugin state',
+    );
+
+    const result = applyClaudeCodePlan(buildClaudeCodeSyncPlan(context()));
+
+    expect(result.applied).toBe(true);
+    expect(readInstallLedger({ homeDir: home, env: {} }).status).toBe(
+      'missing',
+    );
+  });
+
+  test('keeps the CLI-managed version authoritative across native marketplace changes', () => {
+    const executing = resolveExecutingPackageVersion();
+    expect(executing.ok).toBe(true);
+    if (!executing.ok) return;
+    const recordedVersion = executing.version === '0.4.7' ? '0.4.6' : '0.4.7';
+    expect(
+      recordCompletedInstall({
+        harness: 'claude',
+        version: recordedVersion,
+        homeDir: home,
+        env: {},
+      }).success,
+    ).toBe(true);
+    const versionTarget = () =>
+      getClaudeCodeStatus(context()).targets.find(
+        ({ label }) => label === 'CLI-managed install version',
+      );
+
+    expect(versionTarget()).toMatchObject({
+      state: 'outdated',
+      expected: `executing ${executing.version}`,
+      observed: `recorded ${recordedVersion}`,
+    });
+
+    manager.marketplace = true;
+    manager.plugin = true;
+    manager.enabled = true;
+    expect(getClaudeCodeStatus(context()).state).toBe('missing');
+    expect(versionTarget()).toMatchObject({
+      state: 'outdated',
+      observed: `recorded ${recordedVersion}`,
+    });
+  });
+
   test('exposes native plugin operations and disables cache model rewrites', () => {
     expect(claudeCodeOperationAdapter.id).toBe('claude');
     expect(claudeCodeOperationAdapter.available).toBe(true);

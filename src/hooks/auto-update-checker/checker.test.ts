@@ -1,11 +1,6 @@
 import * as fs from 'node:fs';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-  extractChannel,
-  findPluginEntry,
-  getLocalDevVersion,
-  updatePinnedVersion,
-} from './checker';
+import { extractChannel, findPluginEntry, getLocalDevVersion } from './checker';
 
 // Mock the dependencies
 vi.mock('./constants', () => ({
@@ -19,7 +14,6 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn((_p: string) => false),
   readFileSync: vi.fn((_p: string) => ''),
   statSync: vi.fn((_p: string) => ({ isDirectory: () => true })),
-  writeFileSync: vi.fn(() => {}),
 }));
 
 describe('auto-update-checker/checker', () => {
@@ -32,8 +26,6 @@ describe('auto-update-checker/checker', () => {
     (fs.statSync as any).mockImplementation((_p: string) => ({
       isDirectory: () => true,
     }));
-    (fs.writeFileSync as any).mockReset();
-    (fs.writeFileSync as any).mockImplementation(() => {});
   });
 
   describe('extractChannel', () => {
@@ -128,29 +120,6 @@ describe('auto-update-checker/checker', () => {
       expect(entry).not.toBeNull();
       expect(entry?.isPinned).toBe(true);
       expect(entry?.pinnedVersion).toBe('1.0.0');
-    });
-  });
-
-  describe('updatePinnedVersion', () => {
-    test('updates pinned package-manager entry without rewriting config shape', () => {
-      const existsMock = fs.existsSync as any;
-      const readMock = fs.readFileSync as any;
-      const writeMock = fs.writeFileSync as any;
-      const configPath = '/mock/config/opencode.json';
-      const originalConfig =
-        '{\n  "plugin": [\n    "thoth-agents@1.0.0"\n  ]\n}\n';
-
-      existsMock.mockImplementation((p: string) => p === configPath);
-      readMock.mockReturnValue(originalConfig);
-
-      expect(
-        updatePinnedVersion(configPath, 'thoth-agents@1.0.0', '1.2.3'),
-      ).toBe(true);
-      expect(writeMock).toHaveBeenCalledWith(
-        configPath,
-        originalConfig.replace('thoth-agents@1.0.0', 'thoth-agents@1.2.3'),
-        'utf-8',
-      );
     });
   });
 });

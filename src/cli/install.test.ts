@@ -1,14 +1,39 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { applyClaudeCodeSetup } from './claude-code-install';
 import { buildCodexSetupPlan } from './codex-install';
 import {
   applyCodexPluginSetup,
   buildCodexPluginSetupPlan,
 } from './codex-plugin-install';
 import { createInstallConfig, install } from './install';
+import {
+  getInstallLedgerPath,
+  readInstallLedger,
+  recordCompletedInstall,
+} from './install-ledger';
 import type { ThothMemSetupResult } from './thoth-mem-install';
+
+const installRequiredSkillMock = vi.hoisted(() =>
+  vi.fn(() => ({ status: 'installed' as const })),
+);
+
+vi.mock('./skills', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./skills')>();
+  return {
+    ...actual,
+    installRequiredSkill: installRequiredSkillMock,
+  };
+});
 
 vi.mock('./codex-plugin-install', () => ({
   buildCodexPluginSetupPlan: vi.fn(() => ({ dryRun: true })),
@@ -39,6 +64,16 @@ vi.mock('./claude-code-install', () => ({
     diagnostics: [],
   })),
 }));
+
+vi.mock('./config-manager', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./config-manager')>();
+  return {
+    ...actual,
+    isOpenCodeInstalled: vi.fn(async () => true),
+    getOpenCodeVersion: vi.fn(async () => '1.0.0'),
+    getOpenCodePath: vi.fn(() => 'C:/opencode/bin/opencode'),
+  };
+});
 
 function providerExitCode(
   status: ThothMemSetupResult['status'],
@@ -264,6 +299,306 @@ describe('install', () => {
       expect(output).toContain('opencode');
     } finally {
       console.log = originalLog;
+    }
+  });
+
+  test('OpenCode installation rejects unresolved package identity before config mutation', async () => {
+    const configRoot = mkdtempSync(join(tmpdir(), 'thoth-install-identity-'));
+    const configDir = join(configRoot, 'opencode');
+    const configPath = join(configDir, 'opencode.json');
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(configPath, '{"plugin":["user-plugin"]}');
+    process.env.XDG_CONFIG_HOME = configRoot;
+    const resolvePackageVersion = vi.fn(() => ({
+      ok: false as const,
+      error: {
+        code: 'package-version-invalid' as const,
+        message: 'Executing package metadata has no valid semantic version.',
+      },
+    }));
+    const updateMainConfig = vi.fn(() => ({
+      success: true,
+      configPath,
+    }));
+    const originalLog = console.log;
+    console.log = () => undefined;
+
+    try {
+      const code = await install(
+        {
+          agent: 'opencode',
+          tui: false,
+          tmux: 'no',
+          dryRun: false,
+          reset: false,
+        },
+        {
+          resolveExecutingPackageVersion: resolvePackageVersion,
+          updateOpenCodeMainConfig: updateMainConfig,
+        },
+      );
+
+      expect(code).toBe(1);
+      expect(resolvePackageVersion).toHaveBeenCalledOnce();
+      expect(updateMainConfig).not.toHaveBeenCalled();
+      expect(readFileSync(configPath, 'utf8')).toBe(
+        '{"plugin":["user-plugin"]}',
+      );
+      expect(existsSync(`${configPath}.bak`)).toBe(false);
+    } finally {
+      console.log = originalLog;
+      if (originalXdgConfigHome === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+      }
+      rmSync(configRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('OpenCode installation passes the approved exact version to config mutation', async () => {
+    const effects: string[] = [];
+    const updateMainConfig = vi.fn(() => {
+      effects.push('config');
+      return {
+        success: false,
+        configPath: 'C:/opencode/opencode.json',
+        error: 'stop after observing config request',
+      };
+    });
+    const originalLog = console.log;
+    console.log = () => undefined;
+
+    try {
+      const code = await install(
+        {
+          agent: 'opencode',
+          tui: false,
+          tmux: 'no',
+          dryRun: false,
+          reset: false,
+        },
+        {
+          resolveExecutingPackageVersion: () => {
+            effects.push('identity');
+            return {
+              ok: true,
+              version: '0.4.8-beta.1',
+              packageRoot: 'C:/thoth-agents',
+            };
+          },
+          updateOpenCodeMainConfig: updateMainConfig,
+        },
+      );
+
+      expect(code).toBe(1);
+      expect(effects).toEqual(['identity', 'config']);
+      expect(updateMainConfig).toHaveBeenCalledWith({
+        ensurePlugin: true,
+        pluginVersion: '0.4.8-beta.1',
+        disableDefaults: true,
+      });
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test.each([
+    'codex',
+    'claude',
+  ] as const)('%s installation rejects unresolved package identity before native mutation', async (agent) => {
+    vi.clearAllMocks();
+    const resolvePackageVersion = vi.fn(() => ({
+      ok: false as const,
+      error: {
+        code: 'package-version-invalid' as const,
+        message: 'Executing package metadata has no valid semantic version.',
+      },
+    }));
+    const runProvider = vi.fn(() => providerResult(agent));
+    const originalLog = console.log;
+    console.log = () => undefined;
+
+    try {
+      const code = await install(
+        {
+          agent,
+          tui: false,
+          tmux: 'no',
+          dryRun: false,
+          reset: false,
+        },
+        {
+          resolveExecutingPackageVersion: resolvePackageVersion,
+          runThothMemSetup: runProvider,
+        },
+      );
+
+      expect(code).toBe(1);
+      expect(resolvePackageVersion).toHaveBeenCalledOnce();
+      expect(runProvider).not.toHaveBeenCalled();
+      if (agent === 'codex') {
+        expect(applyCodexPluginSetup).not.toHaveBeenCalled();
+      } else {
+        expect(applyClaudeCodeSetup).not.toHaveBeenCalled();
+      }
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test('records independent versions after every explicit harness install succeeds', async () => {
+    vi.clearAllMocks();
+    installRequiredSkillMock.mockReturnValue({ status: 'installed' });
+    const configRoot = mkdtempSync(join(tmpdir(), 'thoth-explicit-ledger-'));
+    const homeDir = join(configRoot, 'home');
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+    const originalOpenCodeConfigDir = process.env.OPENCODE_CONFIG_DIR;
+    process.env.XDG_CONFIG_HOME = configRoot;
+    process.env.OPENCODE_CONFIG_DIR = join(configRoot, 'opencode');
+    const originalLog = console.log;
+    console.log = () => undefined;
+
+    try {
+      for (const agent of ['opencode', 'codex', 'claude'] as const) {
+        const code = await install(
+          {
+            agent,
+            tui: false,
+            tmux: 'no',
+            dryRun: false,
+            reset: false,
+          },
+          {
+            homeDir,
+            resolveExecutingPackageVersion: () => ({
+              ok: true,
+              version: '0.4.8',
+              packageRoot: process.cwd(),
+            }),
+            runThothMemSetup: () => providerResult(agent),
+            installLedgerOptions: { configRoot },
+          },
+        );
+        expect(code).toBe(0);
+      }
+
+      expect(readInstallLedger({ configRoot })).toEqual({
+        status: 'valid',
+        path: getInstallLedgerPath({ configRoot }),
+        ledger: {
+          schemaVersion: 1,
+          harnesses: {
+            opencode: { version: '0.4.8' },
+            codex: { version: '0.4.8' },
+            claude: { version: '0.4.8' },
+          },
+        },
+      });
+    } finally {
+      console.log = originalLog;
+      if (originalXdgConfigHome === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+      }
+      if (originalOpenCodeConfigDir === undefined) {
+        delete process.env.OPENCODE_CONFIG_DIR;
+      } else {
+        process.env.OPENCODE_CONFIG_DIR = originalOpenCodeConfigDir;
+      }
+      rmSync(configRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('provider failure does not advance an explicit install record', async () => {
+    vi.clearAllMocks();
+    const configRoot = mkdtempSync(join(tmpdir(), 'thoth-provider-ledger-'));
+    expect(
+      recordCompletedInstall({
+        harness: 'codex',
+        version: '0.4.7',
+        configRoot,
+      }).success,
+    ).toBe(true);
+    const originalLog = console.log;
+    console.log = () => undefined;
+
+    try {
+      const code = await install(
+        {
+          agent: 'codex',
+          tui: false,
+          tmux: 'no',
+          dryRun: false,
+          reset: false,
+        },
+        {
+          resolveExecutingPackageVersion: () => ({
+            ok: true,
+            version: '0.4.8',
+            packageRoot: process.cwd(),
+          }),
+          runThothMemSetup: () => providerResult('codex', 'partial'),
+          installLedgerOptions: { configRoot },
+        },
+      );
+
+      expect(code).toBe(1);
+      expect(readInstallLedger({ configRoot })).toMatchObject({
+        status: 'valid',
+        ledger: { harnesses: { codex: { version: '0.4.7' } } },
+      });
+    } finally {
+      console.log = originalLog;
+      rmSync(configRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('ledger failure makes explicit installation fail without advancing the record', async () => {
+    vi.clearAllMocks();
+    const configRoot = mkdtempSync(join(tmpdir(), 'thoth-ledger-failure-'));
+    expect(
+      recordCompletedInstall({
+        harness: 'claude',
+        version: '0.4.7',
+        configRoot,
+      }).success,
+    ).toBe(true);
+    const ledgerPath = getInstallLedgerPath({ configRoot });
+    mkdirSync(`${ledgerPath}.tmp`);
+    const originalLog = console.log;
+    console.log = () => undefined;
+
+    try {
+      const code = await install(
+        {
+          agent: 'claude',
+          tui: false,
+          tmux: 'no',
+          dryRun: false,
+          reset: false,
+        },
+        {
+          resolveExecutingPackageVersion: () => ({
+            ok: true,
+            version: '0.4.8',
+            packageRoot: process.cwd(),
+          }),
+          runThothMemSetup: () => providerResult('claude'),
+          installLedgerOptions: { configRoot },
+        },
+      );
+
+      expect(code).toBe(1);
+      expect(readInstallLedger({ configRoot })).toMatchObject({
+        status: 'valid',
+        ledger: { harnesses: { claude: { version: '0.4.7' } } },
+      });
+    } finally {
+      console.log = originalLog;
+      rmSync(configRoot, { recursive: true, force: true });
     }
   });
 

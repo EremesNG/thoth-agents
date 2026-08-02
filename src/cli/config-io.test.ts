@@ -102,7 +102,7 @@ describe('config-io', () => {
     });
   });
 
-  test('addPluginToOpenCodeConfig adds plugin and removes duplicates', async () => {
+  test('addPluginToOpenCodeConfig writes the approved exact version', async () => {
     const configPath = join(tmpDir, 'opencode', 'opencode.json');
     paths.ensureConfigDir();
     writeFileSync(
@@ -110,13 +110,68 @@ describe('config-io', () => {
       JSON.stringify({ plugin: ['other', 'thoth-agents@1.0.0'] }),
     );
 
-    const result = await addPluginToOpenCodeConfig();
+    const result = await addPluginToOpenCodeConfig('0.4.8');
     expect(result.success).toBe(true);
 
     const saved = JSON.parse(readFileSync(configPath, 'utf-8'));
-    expect(saved.plugin).toContain('thoth-agents@latest');
+    expect(saved.plugin).toContain('thoth-agents@0.4.8');
     expect(saved.plugin).not.toContain('thoth-agents@1.0.0');
+    expect(saved.plugin).not.toContain('thoth-agents@latest');
     expect(saved.plugin.length).toBe(2);
+  });
+
+  test('replaces every managed entry form while preserving unrelated plugin order', () => {
+    const configPath = join(tmpDir, 'opencode', 'opencode.json');
+    paths.ensureConfigDir();
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        plugin: [
+          'first',
+          'thoth-agents',
+          'second',
+          'thoth-agents@next',
+          'third',
+          'thoth-agents@0.3.8',
+          'fourth',
+        ],
+      }),
+    );
+
+    const result = updateOpenCodeMainConfig({
+      ensurePlugin: true,
+      pluginVersion: '0.4.8-beta.1',
+    });
+
+    expect(result.success).toBe(true);
+    expect(JSON.parse(readFileSync(configPath, 'utf8')).plugin).toEqual([
+      'first',
+      'second',
+      'third',
+      'fourth',
+      'thoth-agents@0.4.8-beta.1',
+    ]);
+  });
+
+  test.each([
+    undefined,
+    '',
+    'latest',
+  ])('rejects an unapproved plugin version without mutating config: %s', (pluginVersion) => {
+    const configPath = join(tmpDir, 'opencode', 'opencode.json');
+    paths.ensureConfigDir();
+    const original = JSON.stringify({ plugin: ['user-plugin'] });
+    writeFileSync(configPath, original);
+
+    const result = updateOpenCodeMainConfig({
+      ensurePlugin: true,
+      pluginVersion,
+    });
+
+    expect(result.success).toBe(false);
+    expect(readFileSync(configPath, 'utf8')).toBe(original);
+    expect(existsSync(`${configPath}.bak`)).toBe(false);
+    expect(existsSync(`${configPath}.tmp`)).toBe(false);
   });
 
   test('writeLiteConfig writes lite config with OpenAI preset', () => {
@@ -171,13 +226,14 @@ describe('config-io', () => {
 
     const result = updateOpenCodeMainConfig({
       ensurePlugin: true,
+      pluginVersion: '0.4.8',
       disableDefaults: true,
     });
 
     expect(result.success).toBe(true);
     expect(readFileSync(`${configPath}.bak`, 'utf8')).toBe(original);
     expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual({
-      plugin: ['user-plugin', 'thoth-agents@latest'],
+      plugin: ['user-plugin', 'thoth-agents@0.4.8'],
       theme: 'user-owned',
       agent: {
         explore: {
@@ -202,6 +258,7 @@ describe('config-io', () => {
 
     const result = updateOpenCodeMainConfig({
       ensurePlugin: true,
+      pluginVersion: '0.4.8',
       disableDefaults: true,
     });
 

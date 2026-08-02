@@ -46,6 +46,7 @@ import type {
   OperationPlan,
   OperationWarning,
 } from './operations/types';
+import { resolveExecutingPackageVersion } from './package-version';
 import { getModelOptions, type ModelOption } from './tui/model-catalog';
 import {
   getClaudeCodeModelRoles,
@@ -73,6 +74,21 @@ function formatTarget(target: ManagedTarget): string {
   const expected = target.expected ? ` expected ${target.expected}` : '';
   const observed = target.observed ? ` observed ${target.observed}` : '';
   return `- ${label}${location}${state}${expected}${observed}`;
+}
+
+function formatCliManagedInstall(targets: readonly ManagedTarget[]): string[] {
+  const target = targets.find(
+    ({ label }) => label === 'CLI-managed install version',
+  );
+  if (!target) return [];
+  const executing = target.expected?.replace(/^executing\s+/, '') ?? 'unknown';
+  const recorded = target.observed?.replace(/^recorded\s+/, '') ?? 'unknown';
+  return [
+    'Official CLI-managed install:',
+    `Executing CLI version: ${executing}`,
+    `Recorded complete-install version: ${recorded}`,
+    'Native marketplace versions do not advance this record.',
+  ];
 }
 
 function formatPaths(paths: OperationPath[]): string[] {
@@ -121,6 +137,7 @@ export function formatHarnessStatusReport(
       `${report.displayName ?? getOperationHarness(report.harness).displayName} (${report.harness})`,
       `State: ${report.state}`,
       `Summary: ${report.summary}`,
+      ...formatCliManagedInstall(report.targets),
       ...(report.providerCapability
         ? [
             'Provider evidence:',
@@ -247,6 +264,10 @@ export function formatOperationApplyResult(
 }
 
 export function printHelp(): void {
+  const packageVersion = resolveExecutingPackageVersion();
+  const exactPluginEntry = packageVersion.ok
+    ? `thoth-agents@${packageVersion.version}`
+    : 'thoth-agents@<executing-version-unavailable>';
   console.log(`
 thoth-agents CLI (npm binary: thoth-agents)
 
@@ -260,9 +281,9 @@ Commands:
   (no command)          Open the interactive TUI in a TTY; fall back to OpenCode install in CI/non-TTY
   install               Install OpenCode, Codex, or Claude Code agent assets
   generate              Generate harness-specific artifacts
-  status                Show managed install status
+  status                Show official CLI-managed versions and managed install status
   list                  List managed surfaces and actions
-  update                Preview managed updates
+  update                Preview a complete selected-harness CLI refresh
   sync                  Preview managed configuration sync
   model                 Preview role model/provider settings
 
@@ -270,6 +291,7 @@ Options:
   --tmux=yes|no          Enable tmux integration (yes/no)
   --no-tui               Non-interactive mode
   --dry-run              Simulate install without writing files
+  --apply                Apply a reviewed update, sync, or model plan
   --reset                Repair managed installer-owned targets
   --agent=opencode|codex|claude
                          Select OpenCode plugin install (default), Codex agent-pack, or Claude Code plugin setup
@@ -284,10 +306,18 @@ Generate options:
 
 OpenCode plugin config and the npm binary are separate surfaces.
 OpenCode loads the plugin with config such as:
-  plugin: ["thoth-agents@latest"]
+  plugin: ["${exactPluginEntry}"]
 
 That plugin entry does not create a global thoth-agents command.
 Run this CLI through a global install, npx, or pnpm dlx.
+@latest selects the CLI release; OpenCode receives that exact version pin.
+
+Update performs the complete selected-harness CLI refresh and records success last.
+The official record is $XDG_CONFIG_HOME/thoth-agents/install-state.json,
+or ~/.config/thoth-agents/install-state.json when XDG_CONFIG_HOME is unset.
+Codex and Claude marketplace versions remain native-manager-owned and do not prove
+that CLI-managed agents, skills, configuration, or provider setup are aligned.
+Runtime release checks notify only; use the latest CLI install or interactive CLI Update.
 
 OpenCode install configures the adaptive seven-role roster and native task delegation.
 Provider capability is external and reported only from caller-supplied evidence.
@@ -326,10 +356,12 @@ function selectedHarness(
   return args.harness ?? fallback;
 }
 
-function statusReports(args: OperationArgs): HarnessStatusReport[] {
+function statusReports(
+  args: OperationArgs,
+  context: OperationContext = operationContext(),
+): HarnessStatusReport[] {
   const harnesses =
     args.all || !args.harness ? SUPPORTED_OPERATION_HARNESSES : [args.harness];
-  const context = operationContext();
   return harnesses.map((harness) => {
     if (harness === 'opencode') return getOpenCodeStatus(context);
     if (harness === 'claude') return getClaudeCodeStatus(context);
@@ -340,9 +372,9 @@ function statusReports(args: OperationArgs): HarnessStatusReport[] {
 function buildOperationPlan(
   command: Extract<CliOperationCommand, 'update' | 'sync'>,
   args: OperationArgs,
+  context: OperationContext = operationContext(),
 ): OperationPlan {
   const harness = selectedHarness(args);
-  const context = operationContext();
   if (harness === 'opencode') {
     return command === 'update'
       ? buildOpenCodeUpdatePlan(context)
@@ -423,6 +455,7 @@ export interface CliModelCommandServices {
   operationContext(): OperationContext;
   modelRoles(harness: OperationHarnessArg): ModelRoleInput[];
   modelOptions(harness: OperationHarnessArg): Promise<ModelOption[]>;
+  applyOperationPlan?(plan: OperationPlan): OperationApplyResult;
 }
 
 const defaultModelCommandServices: CliModelCommandServices = {
@@ -476,7 +509,11 @@ function applyOperationPlan(plan: OperationPlan): OperationApplyResult {
   return applyCodexPlan(plan);
 }
 
-function printPlanOrApply(plan: OperationPlan, args: OperationArgs): number {
+function printPlanOrApply(
+  plan: OperationPlan,
+  args: OperationArgs,
+  applyPlan: (plan: OperationPlan) => OperationApplyResult,
+): number {
   if (args.apply && args.dryRun) {
     console.error('--apply cannot be combined with --dry-run.');
     return 1;
@@ -487,8 +524,9 @@ function printPlanOrApply(plan: OperationPlan, args: OperationArgs): number {
     return 0;
   }
 
-  console.log(formatOperationApplyResult(applyOperationPlan(plan)));
-  return 0;
+  const result = applyPlan(plan);
+  console.log(formatOperationApplyResult(result));
+  return result.applied ? 0 : 1;
 }
 
 async function runOperationCommand(
@@ -497,7 +535,11 @@ async function runOperationCommand(
   services: CliModelCommandServices,
 ): Promise<number> {
   if (command === 'status') {
-    console.log(formatHarnessStatusReport(statusReports(args)));
+    console.log(
+      formatHarnessStatusReport(
+        statusReports(args, services.operationContext()),
+      ),
+    );
     return 0;
   }
 
@@ -507,12 +549,20 @@ async function runOperationCommand(
   }
 
   if (command === 'update' || command === 'sync') {
-    return printPlanOrApply(buildOperationPlan(command, args), args);
+    return printPlanOrApply(
+      buildOperationPlan(command, args, services.operationContext()),
+      args,
+      services.applyOperationPlan ?? applyOperationPlan,
+    );
   }
 
   const plan = await buildModelPlan(args, services);
   if (!plan) return printModelGuidance();
-  return printPlanOrApply(plan, args);
+  return printPlanOrApply(
+    plan,
+    args,
+    services.applyOperationPlan ?? applyOperationPlan,
+  );
 }
 
 export function printHarnessGeneration(args: GenerateArgs): number {

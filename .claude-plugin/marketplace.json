@@ -9,7 +9,7 @@
     {
       "name": "thoth-agents",
       "description": "Adaptive root orchestration, six specialist subagents, and a runtime-autonomous Spec Kit-compatible SDD bundle.",
-      "version": "0.3.8",
+      "version": "0.3.9",
       "author": {
         "name": "thoth-agents maintainers"
       },

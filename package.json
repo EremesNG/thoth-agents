@@ -1,6 +1,6 @@
 {
   "name": "thoth-agents",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Adaptive multi-harness orchestration with seven roles, runtime-autonomous Spec Kit-compatible SDD routes, and external provider boundaries.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

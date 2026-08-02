@@ -3,7 +3,10 @@ import type {
   ProviderCapabilityEvidence,
   ProviderEvidenceInput,
 } from '../../harness/types';
+import type { HarnessInstallCompletionResult } from '../install-completion';
+import { type InstallHarnessId, readInstallLedger } from '../install-ledger';
 import type { EffortSelection } from '../model-effort';
+import { resolveExecutingPackageVersion } from '../package-version';
 
 export type ManagedState =
   | 'installed'
@@ -59,6 +62,98 @@ export interface ManagedTarget {
   expected?: string;
   observed?: string;
   description?: string;
+}
+
+export function getInstallCompletionEvidence(
+  completion: HarnessInstallCompletionResult,
+  options: { codePrefix: string; version: string; fallbackError: string },
+): { targets: ManagedTarget[]; warnings: OperationWarning[] } {
+  const targets: ManagedTarget[] = [
+    {
+      kind: 'surface',
+      label: 'Provider-owned thoth-mem setup',
+      state: completion.provider.success ? 'installed' : 'drift',
+      observed: completion.provider.status,
+    },
+  ];
+  const warnings: OperationWarning[] = [
+    ...completion.provider.diagnostics.map((message) => ({
+      severity: 'minor' as const,
+      code: `${options.codePrefix}-provider-diagnostic`,
+      message,
+    })),
+    ...completion.provider.manualActions.map((message) => ({
+      severity: 'important' as const,
+      code: `${options.codePrefix}-provider-manual-action`,
+      message,
+    })),
+  ];
+  if (completion.provider.receipt) {
+    targets.push({
+      kind: 'file',
+      path: completion.provider.receipt,
+      label: 'thoth-mem setup receipt',
+      observed: 'provider-owned receipt',
+    });
+  }
+  if (completion.success) {
+    targets.push({
+      kind: 'file',
+      path: completion.ledger.path,
+      label: 'CLI-managed install version',
+      state: 'installed',
+      observed: `recorded ${options.version}`,
+    });
+  } else {
+    warnings.push({
+      severity: 'critical',
+      code: `${options.codePrefix}-install-finalization-failed`,
+      message: completion.error ?? options.fallbackError,
+    });
+  }
+  return { targets, warnings };
+}
+
+export function getCliManagedInstallVersionTarget(
+  harness: InstallHarnessId,
+  context: Pick<OperationContext, 'env'> & { homeDir?: string } = {},
+): ManagedTarget {
+  const executing = resolveExecutingPackageVersion();
+  const ledger = readInstallLedger({
+    env: context.env,
+    homeDir: context.homeDir,
+  });
+  const recordedVersion =
+    ledger.status === 'valid'
+      ? ledger.ledger.harnesses[harness]?.version
+      : undefined;
+
+  let state: ManagedState;
+  if (!executing.ok || ledger.status === 'invalid') {
+    state = 'unknown';
+  } else if (!recordedVersion) {
+    state = 'missing';
+  } else {
+    state = recordedVersion === executing.version ? 'installed' : 'outdated';
+  }
+
+  return {
+    kind: 'file',
+    path: ledger.path,
+    label: 'CLI-managed install version',
+    state,
+    expected: executing.ok
+      ? `executing ${executing.version}`
+      : 'executing unknown',
+    observed:
+      ledger.status === 'invalid'
+        ? 'recorded unknown (invalid ledger)'
+        : recordedVersion
+          ? `recorded ${recordedVersion}`
+          : 'recorded missing',
+    description:
+      'Authoritative last complete CLI-managed install version; native marketplace state is independent.',
+  };
 }
 
 export interface ManagedSurface {

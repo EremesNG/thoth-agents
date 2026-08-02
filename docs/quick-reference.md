@@ -96,8 +96,27 @@ repositories.
 ```bash
 npx thoth-agents@latest status
 npx thoth-agents@latest list
+npx thoth-agents@latest update --harness=opencode
+npx thoth-agents@latest update --harness=opencode --apply
+npx thoth-agents@latest update --harness=codex --apply
+npx thoth-agents@latest update --harness=claude --apply
 npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ```
+
+`@latest` selects the CLI release. OpenCode is configured with that release's
+exact version, never a `latest` plugin entry. `update` previews by default;
+`--apply` performs the complete selected-harness installation refresh, including
+native setup where applicable, managed surfaces, required skills, and provider
+setup. Rerunning `install --agent=<harness>` is the equivalent explicit update
+path.
+
+The CLI records each harness's last fully completed version independently in
+`${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. Dry-runs and
+failures do not advance it. Codex and Claude native marketplace updates do not
+advance it either; `status` reports the executing and recorded CLI versions.
+
+OpenCode runtime update checks only notify. They never rewrite the plugin pin,
+invalidate package state, or install the newer release.
 
 ## Boundaries
 
@@ -109,6 +128,8 @@ npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
   config; `$thoth-init` creates project SDD governance only.
 - Claude requires both native marketplace commands before its namespaced skill
   exists.
+- Codex and Claude native managers own plugin versions and caches; the CLI
+  ledger is the authority only for the separate complete CLI-managed setup.
 - thoth-mem owns its hooks, MCP, skill, lifecycle, persistence, receipts, and
   recovery. thoth-agents only invokes its public setup during installation.
 - Runtime memory authorization is `none`, `recall`, or `observe` and does not

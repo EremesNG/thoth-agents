@@ -82,7 +82,7 @@ const rootItems: RootMenuItem[] = [
     id: 'sync',
     action: 'sync',
     label: 'Sync / Update',
-    detail: 'Preview managed setup changes',
+    detail: 'Preview sync or a complete CLI-managed refresh',
   },
   {
     id: 'exit',
@@ -97,7 +97,7 @@ const actionItems: ActionMenuItem[] = [
     id: 'update',
     action: 'update',
     label: 'Update',
-    detail: 'Refresh managed plugin/setup entries',
+    detail: 'Preview a complete CLI-managed refresh',
   },
   {
     id: 'sync',
@@ -113,7 +113,7 @@ const installManageItems: ManageMenuItem[] = [
     id: 'install',
     action: 'install',
     label: 'Install',
-    detail: 'Preview managed setup install',
+    detail: 'Preview the complete CLI-managed install',
   },
   { id: 'back', action: 'back', label: 'Back', detail: 'Choose harness' },
 ];
@@ -129,7 +129,7 @@ const manageItems: ManageMenuItem[] = [
     id: 'update',
     action: 'update',
     label: 'Update preview',
-    detail: 'Preview managed plugin/setup refresh',
+    detail: 'Preview a complete CLI-managed refresh',
   },
   {
     id: 'sync',

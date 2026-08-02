@@ -25,7 +25,16 @@ import {
   updateOpenCodeMainConfig,
   writeLiteConfig,
 } from './config-manager';
+import {
+  finalizeHarnessInstall,
+  type HarnessInstallCompletionResult,
+} from './install-completion';
+import type { InstallLedgerOptions } from './install-ledger';
 import { syncOpenCodeOwnedSkills } from './owned-skills';
+import {
+  type ExecutingPackageVersionResult,
+  resolveExecutingPackageVersion,
+} from './package-version';
 import { getExistingLiteConfigPath } from './paths';
 import {
   getRequiredSkillInstallCommand,
@@ -33,10 +42,9 @@ import {
   REQUIRED_SKILLS,
   type SkillInstallHarness,
 } from './skills';
-import {
-  runThothMemSetup,
-  type ThothMemSetupOptions,
-  type ThothMemSetupResult,
+import type {
+  ThothMemSetupOptions,
+  ThothMemSetupResult,
 } from './thoth-mem-install';
 import type { ConfigMergeResult, InstallArgs, InstallConfig } from './types';
 
@@ -44,6 +52,10 @@ export interface InstallDependencies {
   homeDir?: string;
   opencodeOwnedSkillPackageRoot?: string;
   runThothMemSetup?: (options: ThothMemSetupOptions) => ThothMemSetupResult;
+  resolveExecutingPackageVersion?: () => ExecutingPackageVersionResult;
+  updateOpenCodeMainConfig?: typeof updateOpenCodeMainConfig;
+  finalizeHarnessInstall?: typeof finalizeHarnessInstall;
+  installLedgerOptions?: InstallLedgerOptions;
 }
 
 // Colors
@@ -243,21 +255,42 @@ function printThothMemSetupResult(
   return true;
 }
 
-function installThothMemForHarness(
+function finalizeInstallForHarness(
   harness: SkillInstallHarness,
   dryRun: boolean | undefined,
+  version: string,
   dependencies: InstallDependencies,
 ): boolean {
-  const setup = dependencies.runThothMemSetup ?? runThothMemSetup;
-  return printThothMemSetupResult(
-    setup({ harness, dryRun, cwd: cwd() }),
+  const finalize =
+    dependencies.finalizeHarnessInstall ?? finalizeHarnessInstall;
+  const result: HarnessInstallCompletionResult = finalize({
+    harness,
+    version,
     dryRun,
-  );
+    cwd: cwd(),
+    runThothMemSetup: dependencies.runThothMemSetup,
+    ledgerOptions: dependencies.installLedgerOptions ?? {
+      homeDir: dependencies.homeDir ?? homedir(),
+    },
+  });
+  const providerComplete = printThothMemSetupResult(result.provider, dryRun);
+  if (!providerComplete) return false;
+  if (!result.success) {
+    printError(result.error ?? 'Failed to record the completed CLI install.');
+    return false;
+  }
+  if (result.ledger.status === 'planned') {
+    printInfo(`CLI-managed install record planned: ${result.ledger.path}`);
+  } else if (result.ledger.status === 'recorded') {
+    printSuccess(`CLI-managed install version recorded: ${result.ledger.path}`);
+  }
+  return true;
 }
 
 async function runInstall(
   config: InstallConfig,
   dependencies: InstallDependencies,
+  pluginVersion: string,
 ): Promise<number> {
   const detected = detectCurrentConfig();
   const isUpdate = detected.isInstalled;
@@ -283,8 +316,11 @@ async function runInstall(
   if (config.dryRun) {
     printInfo('Dry run mode - skipping main config update');
   } else {
-    const mainConfigResult = updateOpenCodeMainConfig({
+    const updateMainConfig =
+      dependencies.updateOpenCodeMainConfig ?? updateOpenCodeMainConfig;
+    const mainConfigResult = updateMainConfig({
       ensurePlugin: true,
+      pluginVersion,
       disableDefaults: true,
     });
     if (!handleStepResult(mainConfigResult, 'Main config updated')) return 1;
@@ -337,7 +373,14 @@ async function runInstall(
     return 1;
 
   printStep(step++, totalSteps, 'Configuring provider-owned thoth-mem...');
-  if (!installThothMemForHarness('opencode', config.dryRun, dependencies)) {
+  if (
+    !finalizeInstallForHarness(
+      'opencode',
+      config.dryRun,
+      pluginVersion,
+      dependencies,
+    )
+  ) {
     return 1;
   }
 
@@ -379,6 +422,17 @@ export async function install(
   dependencies: InstallDependencies = {},
 ): Promise<number> {
   const config = createInstallConfig(args);
+  const resolvePackageVersion =
+    dependencies.resolveExecutingPackageVersion ??
+    resolveExecutingPackageVersion;
+  const packageVersion = resolvePackageVersion();
+  if (!packageVersion.ok) {
+    printError(
+      `Could not resolve the executing thoth-agents package version: ${packageVersion.error.message}`,
+    );
+    return 1;
+  }
+
   if (config.agent === 'codex') {
     const projectRoot = cwd();
     const pluginPlan = buildCodexPluginSetupPlan({
@@ -398,7 +452,7 @@ export async function install(
       reset: config.reset,
       scope: 'user',
       projectRoot,
-      homeDir: homedir(),
+      homeDir: dependencies.homeDir ?? homedir(),
     });
     console.log(formatCodexSetupPlan(plan));
     const result = applyCodexSetup(plan);
@@ -407,8 +461,22 @@ export async function install(
       printError(`Codex install failed: ${result.error}`);
       return 1;
     }
-    if (!installRequiredSkillsForHarness('codex', config.dryRun)) return 1;
-    if (!installThothMemForHarness('codex', config.dryRun, dependencies)) {
+    if (
+      !installRequiredSkillsForHarness(
+        'codex',
+        config.dryRun,
+        dependencies.homeDir ?? homedir(),
+      )
+    )
+      return 1;
+    if (
+      !finalizeInstallForHarness(
+        'codex',
+        config.dryRun,
+        packageVersion.version,
+        dependencies,
+      )
+    ) {
       return 1;
     }
     printSuccess(
@@ -432,8 +500,22 @@ export async function install(
       printError(`Claude Code install failed: ${result.error}`);
       return 1;
     }
-    if (!installRequiredSkillsForHarness('claude', config.dryRun)) return 1;
-    if (!installThothMemForHarness('claude', config.dryRun, dependencies)) {
+    if (
+      !installRequiredSkillsForHarness(
+        'claude',
+        config.dryRun,
+        dependencies.homeDir ?? homedir(),
+      )
+    )
+      return 1;
+    if (
+      !finalizeInstallForHarness(
+        'claude',
+        config.dryRun,
+        packageVersion.version,
+        dependencies,
+      )
+    ) {
       return 1;
     }
     printSuccess(
@@ -443,5 +525,5 @@ export async function install(
     );
     return 0;
   }
-  return runInstall(config, dependencies);
+  return runInstall(config, dependencies, packageVersion.version);
 }

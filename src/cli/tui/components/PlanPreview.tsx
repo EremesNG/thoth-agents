@@ -41,6 +41,15 @@ export function PlanPreview({
 }: PlanPreviewProps) {
   const blockerTargets = plan.blockerTargets ?? [];
   const providerEvidence = providerEvidenceFor(result ?? plan);
+  const completeOperation =
+    plan.action === 'update'
+      ? 'refresh'
+      : plan.action === 'install'
+        ? 'install'
+        : undefined;
+  const applyLabel = completeOperation
+    ? `Apply complete ${completeOperation}`
+    : 'Apply';
   return (
     <Box flexDirection="column">
       <Text bold>{plan.title}</Text>
@@ -51,6 +60,19 @@ export function PlanPreview({
       </Text>
       <Text>Managed action: {plan.action}</Text>
       <Text>Can apply: {plan.canApply ? 'yes' : 'no'}</Text>
+      {completeOperation ? (
+        <Box flexDirection="column">
+          <Text color={theme.accent}>
+            Complete CLI-managed {completeOperation}
+          </Text>
+          <Text color={theme.dim}>
+            The selected harness changes only after explicit confirmation.
+          </Text>
+          <Text color={theme.dim}>
+            Codex and Claude native marketplace versions remain independent.
+          </Text>
+        </Box>
+      ) : null}
       {providerEvidence ? (
         <ProviderCapabilityView evidence={providerEvidence} />
       ) : null}
@@ -111,7 +133,7 @@ export function PlanPreview({
       ))}
       <Box marginTop={1}>
         <Text color={selectedAction === 'apply' ? theme.accent : undefined}>
-          [Apply]
+          [{applyLabel}]
         </Text>
         <Text> </Text>
         <Text color={selectedAction === 'cancel' ? theme.accent : undefined}>
@@ -122,7 +144,9 @@ export function PlanPreview({
       {result ? (
         <Box flexDirection="column">
           <Text color={result.applied ? theme.ok : theme.warning}>
-            Consumer result: {result.summary}
+            {completeOperation
+              ? `Complete CLI ${completeOperation} result: ${result.applied ? 'completed' : 'failed'} — ${result.summary}`
+              : `Consumer result: ${result.summary}`}
           </Text>
           {!result.applied &&
           ((result.diagnosticTargets?.length ?? 0) > 0 ||

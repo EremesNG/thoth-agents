@@ -41,6 +41,7 @@ const PROVIDER_BOUNDARY_TARGETS = {
     'src/harness/writers/codex-toml.ts',
     'src/harness/writers/claude-code-plugin-package.ts',
     'src/cli/install.ts',
+    'src/cli/install-completion.ts',
     'src/cli/thoth-mem-install.ts',
     'src/hooks/index.ts',
     'src/mcp/index.ts',
@@ -138,7 +139,7 @@ describe('provider boundary', () => {
 
   test('reads the complete closed manifest and rejects deleted paths, bundled assets, and consumer protocols', async () => {
     const targets = await readTargets();
-    expect(targets).toHaveLength(33);
+    expect(targets).toHaveLength(34);
     expect(
       targets.filter(({ group }) => group === 'documentationAndMetadata'),
     ).toHaveLength(19);
@@ -147,7 +148,7 @@ describe('provider boundary', () => {
     ).toHaveLength(2);
     expect(
       targets.filter(({ group }) => group === 'consumerSurfaces'),
-    ).toHaveLength(12);
+    ).toHaveLength(13);
 
     for (const target of targets) {
       for (const rule of DELETED_PATH_RULES) {
@@ -225,6 +226,9 @@ describe('provider boundary', () => {
       ({ path }) => path === 'src/cli/thoth-mem-install.ts',
     );
     const install = targets.find(({ path }) => path === 'src/cli/install.ts');
+    const completion = targets.find(
+      ({ path }) => path === 'src/cli/install-completion.ts',
+    );
 
     expect(setup?.content).toMatch(/thoth-mem@latest[\s\S]*setup/);
     expect(setup?.content).toMatch(/--scope[\s\S]*global[\s\S]*--json/);
@@ -234,11 +238,31 @@ describe('provider boundary', () => {
       /writeFile|appendFile|mkdir|rmSync|unlink|renameSync/,
     );
 
+    const sharedFinalizer = install?.content.match(
+      /function\s+([A-Za-z]\w*)\s*\(\s*harness\s*:\s*SkillInstallHarness[\s\S]*?dependencies\.finalizeHarnessInstall\s*\?\?\s*finalizeHarnessInstall/,
+    )?.[1];
+    expect(sharedFinalizer).toBeDefined();
+    if (!sharedFinalizer) return;
+
     for (const harness of ['opencode', 'codex', 'claude']) {
-      expect(install?.content).toContain(
-        `installThothMemForHarness('${harness}'`,
+      expect(install?.content).toMatch(
+        new RegExp(`${sharedFinalizer}\\s*\\(\\s*['"]${harness}['"]`),
       );
     }
+
+    const providerImports = [
+      ...(completion?.content.matchAll(
+        /from\s*['"]([^'"]*thoth-mem[^'"]*)['"]/g,
+      ) ?? []),
+    ].map((match) => match[1]);
+    expect(providerImports).toEqual(['./thoth-mem-install']);
+    expect(completion?.content).toMatch(
+      /options\.runThothMemSetup\s*\?\?\s*runThothMemSetup/,
+    );
+    expect(completion?.content).not.toMatch(/--force|rollback/i);
+    expect(completion?.content).not.toMatch(
+      /writeFile|appendFile|mkdir|rmSync|unlink|renameSync/,
+    );
   });
 
   test('documents mandatory provider setup without transferring provider ownership', async () => {

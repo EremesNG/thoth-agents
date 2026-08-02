@@ -102,9 +102,11 @@ interface CategorizedTarget {
   label: string;
   state: ManagedState | undefined;
   detail?: string;
+  notes?: string[];
 }
 
 const categoryOrder = [
+  'CLI-managed version',
   'Agents',
   'Skills',
   'Plugin/MCP',
@@ -149,6 +151,22 @@ function categorizeTarget(target: ManagedTarget): CategorizedTarget {
   const detail = target.state !== 'installed' ? target.observed : undefined;
   const agent = path.match(/thoth-agents-([a-z0-9_-]+)\.toml$/i);
   const skill = path.match(/skills\/([^/]+)\/SKILL\.md$/i);
+
+  if (/CLI-managed install version/i.test(label)) {
+    const executing =
+      target.expected?.replace(/^executing\s+/i, '') ?? 'unknown';
+    const recorded = target.observed?.replace(/^recorded\s+/i, '') ?? 'unknown';
+    return {
+      category: 'CLI-managed version',
+      label: 'Last complete install',
+      state: target.state,
+      detail: `Executing: ${executing} · Recorded: ${recorded}`,
+      notes: [
+        'Recorded is the last complete CLI-managed version.',
+        'Codex/Claude native marketplace versions are independent.',
+      ],
+    };
+  }
 
   if (agent?.[1]) {
     return {
@@ -310,17 +328,28 @@ export function StatusView({
           <Box key={category} flexDirection="column">
             <Text color={theme.accent}>{category}</Text>
             {visible.map((target) => (
-              <Text key={`${category}-${target.label}-${target.state}`}>
-                - {target.label}
-                {target.state ? (
-                  <Text color={stateColor(target.state)}>
-                    : [{target.state}]
+              <Box
+                key={`${category}-${target.label}-${target.state}`}
+                flexDirection="column"
+              >
+                <Text>
+                  - {target.label}
+                  {target.state ? (
+                    <Text color={stateColor(target.state)}>
+                      : [{target.state}]
+                    </Text>
+                  ) : null}
+                  {target.detail ? (
+                    <Text color={theme.dim}> - {target.detail}</Text>
+                  ) : null}
+                </Text>
+                {target.notes?.map((note) => (
+                  <Text key={note} color={theme.dim}>
+                    {' '}
+                    {note}
                   </Text>
-                ) : null}
-                {target.detail ? (
-                  <Text color={theme.dim}> - {target.detail}</Text>
-                ) : null}
-              </Text>
+                ))}
+              </Box>
             ))}
             {hidden > 0 ? <Text color={theme.dim}> +{hidden} more</Text> : null}
           </Box>

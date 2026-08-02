@@ -1,8 +1,8 @@
 # Installation
 
-thoth-agents 0.3.0 supports OpenCode, Codex, and Claude Code. The distributions
-share one seven-role and Spec Kit-compatible SDD contract. Installation uses the
-CLI for every harness, while Codex additionally requires a CLI-managed global
+thoth-agents supports OpenCode, Codex, and Claude Code. The distributions share
+one seven-role and Spec Kit-compatible SDD contract. Installation uses the CLI
+for every harness, while Codex additionally requires a CLI-managed global
 orchestration layer that its plugin manifest cannot provide.
 
 ## Requirements
@@ -51,16 +51,22 @@ npx thoth-agents@latest install --agent=opencode --dry-run
 npx thoth-agents@latest install --agent=opencode
 ```
 
-The CLI adds `thoth-agents@latest` to OpenCode configuration, writes the
-seven-role OpenAI preset, synchronizes all five packaged thoth-owned skills into
-`~/.config/opencode/skills/`, and installs all four external skills with `npx
-skills add`. Status and repair verify the resulting global discovery targets.
-It then requires provider-owned thoth-mem setup to complete. Restart OpenCode
-and invoke `/thoth-init`; it only preflights and synchronizes the minimum
-`openspec/` governance structure while preserving existing constitutions. SDD
-phases resolve templates directly from the globally installed `thoth-sdd` skill;
-init leaves any legacy `openspec/templates/` tree untouched. No Kimi, Copilot,
-ZAI/GLM, or mixed-provider preset is generated.
+`@latest` selects the CLI release to execute. The CLI resolves that package's
+version before any managed write and puts the exact version in OpenCode
+configuration, for example `thoth-agents@0.4.8`. It replaces bare, tagged, or
+older thoth-agents entries with one exact entry while preserving unrelated
+plugins. If package identity or version cannot be verified, installation fails
+before changing configuration and never substitutes `latest`.
+
+The CLI also writes the seven-role OpenAI preset, synchronizes all five packaged
+thoth-owned skills into `~/.config/opencode/skills/`, and installs all four
+external skills with `npx skills add`. Status and repair verify the resulting
+global discovery targets. It then requires provider-owned thoth-mem setup to
+complete. Restart OpenCode and invoke `/thoth-init`; it only preflights and
+synchronizes the minimum `openspec/` governance structure while preserving
+existing constitutions. SDD phases resolve templates directly from the globally
+installed `thoth-sdd` skill; init leaves any legacy `openspec/templates/` tree
+untouched. No Kimi, Copilot, ZAI/GLM, or mixed-provider preset is generated.
 
 ## Codex
 
@@ -186,11 +192,65 @@ mirrored into thoth-mem.
 No distribution bundles thoth-mem or project QA executables. thoth-mem remains
 an independently owned provider/plugin installed through its own public setup.
 
-## Status and repair
+## Updates and authoritative install state
+
+Rerunning the latest installer and applying Update are the two supported update
+paths. Update previews by default; add `--apply` only after reviewing the plan:
+
+```bash
+npx thoth-agents@latest update --harness=opencode
+npx thoth-agents@latest update --harness=opencode --apply
+npx thoth-agents@latest update --harness=codex --apply
+npx thoth-agents@latest update --harness=claude --apply
+```
+
+Applied Update is installation-equivalent for the selected harness:
+
+| Harness | Complete refresh order |
+| --- | --- |
+| OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
+| Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
+| Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
+
+The versioned CLI-owned ledger is located at
+`${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps
+independent `opencode`, `codex`, and `claude` records. Each record is the version
+of the CLI release that most recently completed every required step for that
+harness; it is not a native plugin version.
+
+For existing installations, a missing ledger is expected until each harness
+first completes installation or applied Update under this contract. Status
+reports that harness's record as missing rather than inferring it from OpenCode
+package state or a Codex/Claude marketplace. Rerun the latest installer or apply
+Update once per harness to establish its record.
+
+The CLI commits the selected harness record last using temporary-file
+replacement. A preview, dry-run, cancellation, or failed native, managed,
+required-skill, provider, or ledger step does not advance the record; the
+previous completed version remains authoritative. A malformed ledger also
+remains untouched after earlier failures. Once a complete operation is ready to
+record success, the CLI preserves the malformed file as `install-state.json.bak`
+and replaces it with valid schema-v1 state.
+
+Codex and Claude marketplace managers continue to own native plugin versions,
+trust, snapshots, and caches. A native marketplace update neither changes this
+ledger nor proves that the CLI-managed global agents, skills, configuration, or
+provider setup were refreshed. Use `status` to compare the executing CLI version
+with the recorded complete-install version.
+
+OpenCode runtime checks only notify when a newer release exists. They do not
+rewrite the exact plugin entry, invalidate package state, or install packages in
+the background. Follow the notification by rerunning
+`npx thoth-agents@latest install --agent=opencode` or applying interactive or
+command-line Update.
+
+## Status, update, and repair
 
 ```bash
 npx thoth-agents@latest status
 npx thoth-agents@latest status --harness=codex
+npx thoth-agents@latest update --harness=codex
+npx thoth-agents@latest update --harness=codex --apply
 npx thoth-agents@latest sync --harness=codex --apply
 npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ```

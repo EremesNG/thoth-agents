@@ -11,6 +11,13 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ALL_AGENT_NAMES } from '../../config';
 import { THOTH_OWNED_SKILL_NAMES } from '../../harness/core/owned-skills';
+import { finalizeHarnessInstall } from '../install-completion';
+import {
+  getInstallLedgerPath,
+  readInstallLedger,
+  recordCompletedInstall,
+} from '../install-ledger';
+import { resolveExecutingPackageVersion } from '../package-version';
 import { generateLiteConfig } from '../providers';
 import { getOpenCodeModelRoles } from '../tui/operations';
 
@@ -61,6 +68,12 @@ import {
   getOpenCodeStatus,
 } from './opencode';
 
+const EXECUTING_PACKAGE = resolveExecutingPackageVersion();
+if (!EXECUTING_PACKAGE.ok) {
+  throw new Error(EXECUTING_PACKAGE.error.message);
+}
+const EXECUTING_PLUGIN = `thoth-agents@${EXECUTING_PACKAGE.version}`;
+
 describe('OpenCode operations adapter v0.3', () => {
   let configRoot: string;
   let tempRoot: string;
@@ -95,7 +108,12 @@ describe('OpenCode operations adapter v0.3', () => {
 
   const context = () => ({
     cwd: configRoot,
-    env: { HOME: join(configRoot, 'home') },
+    env: {
+      HOME: join(configRoot, 'home'),
+      XDG_CONFIG_HOME: tempRoot,
+    },
+    runThothMemSetup: () => completeProviderResult(),
+    installLedgerOptions: { configRoot: tempRoot },
   });
 
   const mainConfigPath = () => join(configRoot, 'opencode.json');
@@ -115,7 +133,7 @@ describe('OpenCode operations adapter v0.3', () => {
   }
 
   function writeManagedConfig(): void {
-    writeJson(mainConfigPath(), { plugin: ['thoth-agents@latest'] });
+    writeJson(mainConfigPath(), { plugin: [EXECUTING_PLUGIN] });
     writeJson(liteConfigPath(), validLiteConfig());
   }
 
@@ -154,6 +172,246 @@ describe('OpenCode operations adapter v0.3', () => {
         : role,
     );
   }
+
+  function completeProviderResult() {
+    return {
+      success: true,
+      evidenceValid: true,
+      status: 'complete' as const,
+      changed: true,
+      harness: 'opencode' as const,
+      target: 'C:/provider/opencode',
+      steps: [{ name: 'Provider setup', outcome: 'complete' as const }],
+      diagnostics: ['provider complete'],
+      manualActions: [],
+      receipt: null,
+      command: 'npx',
+      args: ['thoth-mem@latest'],
+      exitCode: 0,
+    };
+  }
+
+  test.each([
+    ['install', buildOpenCodeInstallPlan],
+    ['update', buildOpenCodeUpdatePlan],
+  ] as const)('%s preview is complete and apply preserves required effect order', (action, buildPlan) => {
+    const effects: string[] = [];
+    const updateMainConfig = vi.fn(() => {
+      effects.push('config');
+      return { success: true, configPath: mainConfigPath() };
+    });
+    const writeLite = vi.fn(() => {
+      effects.push('lite-config');
+      return { success: true, configPath: liteConfigPath() };
+    });
+    const syncOwnedSkills = vi.fn((options: { dryRun?: boolean }) => {
+      if (!options.dryRun) effects.push('owned-skills');
+      return {
+        success: true,
+        status: options.dryRun ? ('planned' as const) : ('installed' as const),
+        skills: [
+          {
+            name: 'thoth-sdd' as const,
+            sourcePath: 'C:/package/skills/thoth-sdd',
+            destinationPath: 'C:/home/skills/thoth-sdd',
+          },
+        ],
+      };
+    });
+    const installSkill = vi.fn((skill: { name: string }) => {
+      effects.push(`external:${skill.name}`);
+      return {
+        status: 'installed' as const,
+        skillPath: `C:/skills/${skill.name}`,
+      };
+    });
+    const finalize = vi.fn((options) => {
+      effects.push('provider-ledger');
+      return finalizeHarnessInstall(options);
+    });
+    const operationContext = {
+      ...context(),
+      resolveExecutingPackageVersion: () => ({
+        ok: true as const,
+        version: '0.4.8',
+        packageRoot: process.cwd(),
+      }),
+      updateOpenCodeMainConfig: updateMainConfig,
+      writeLiteConfig: writeLite,
+      syncOpenCodeOwnedSkills: syncOwnedSkills,
+      installRequiredSkill: installSkill,
+      finalizeHarnessInstall: finalize,
+      installLedgerOptions: { configRoot: tempRoot },
+    };
+
+    const plan = buildPlan(operationContext);
+    const titles = plan.items.map(({ title }) => title);
+
+    expect(plan.action).toBe(action);
+    expect(titles).toEqual(
+      expect.arrayContaining([
+        'Ensure OpenCode plugin points at thoth-agents@0.4.8',
+        'Disable OpenCode default agents',
+        'Write thoth-agents seven-role config',
+        'Synchronize global thoth-owned OpenCode skills',
+        'Install required external skills',
+        'Plan provider-owned thoth-mem setup',
+        'Record completed OpenCode CLI install',
+      ]),
+    );
+    expect(updateMainConfig).not.toHaveBeenCalled();
+    expect(writeLite).not.toHaveBeenCalled();
+    expect(installSkill).not.toHaveBeenCalled();
+    expect(finalize).not.toHaveBeenCalled();
+
+    const result = applyOpenCodePlan(plan);
+
+    expect(result.applied).toBe(true);
+    expect(updateMainConfig).toHaveBeenCalledWith({
+      ensurePlugin: true,
+      pluginVersion: '0.4.8',
+      disableDefaults: true,
+    });
+    expect(effects).toEqual([
+      'config',
+      'lite-config',
+      'owned-skills',
+      ...[
+        'simplify',
+        'tdd',
+        'progressive-context-router',
+        'architectural-grilling',
+      ].map((name) => `external:${name}`),
+      'provider-ledger',
+    ]);
+    expect(readInstallLedger({ configRoot: tempRoot })).toMatchObject({
+      status: 'valid',
+      ledger: { harnesses: { opencode: { version: '0.4.8' } } },
+    });
+  });
+
+  test('rejects changed exact-version provenance before OpenCode mutation', () => {
+    let version = '0.4.8';
+    const updateMainConfig = vi.fn(() => ({
+      success: true,
+      configPath: mainConfigPath(),
+    }));
+    const operationContext = {
+      ...context(),
+      resolveExecutingPackageVersion: () => ({
+        ok: true as const,
+        version,
+        packageRoot: process.cwd(),
+      }),
+      updateOpenCodeMainConfig: updateMainConfig,
+    };
+    const plan = buildOpenCodeUpdatePlan(operationContext);
+    version = '0.4.9';
+
+    const result = applyOpenCodePlan(plan);
+
+    expect(result.applied).toBe(false);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'opencode-package-version-changed' }),
+      ]),
+    );
+    expect(updateMainConfig).not.toHaveBeenCalled();
+  });
+
+  test('reports provider failure and does not claim OpenCode update completion', () => {
+    const finalize = vi.fn(() => ({
+      success: false,
+      provider: {
+        ...completeProviderResult(),
+        success: false,
+        status: 'partial' as const,
+        diagnostics: ['provider partial'],
+        manualActions: ['Run provider recovery.'],
+        receipt: 'C:/provider/partial.json',
+        exitCode: 2,
+      },
+      ledger: {
+        status: 'not-attempted' as const,
+        path: getInstallLedgerPath({ configRoot: tempRoot }),
+      },
+      error: 'provider incomplete',
+    }));
+    const operationContext = {
+      ...context(),
+      resolveExecutingPackageVersion: () => ({
+        ok: true as const,
+        version: '0.4.8',
+        packageRoot: process.cwd(),
+      }),
+      finalizeHarnessInstall: finalize,
+      installLedgerOptions: { configRoot: tempRoot },
+    };
+
+    const result = applyOpenCodePlan(buildOpenCodeUpdatePlan(operationContext));
+
+    expect(result.applied).toBe(false);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: 'provider partial' }),
+        expect.objectContaining({ message: 'Run provider recovery.' }),
+      ]),
+    );
+    expect(result.summary).toContain('provider incomplete');
+  });
+
+  test('reports matching, mismatched, missing, and invalid CLI-managed versions', () => {
+    const executing = resolveExecutingPackageVersion();
+    expect(executing.ok).toBe(true);
+    if (!executing.ok) return;
+    const versionTarget = () =>
+      getOpenCodeStatus(context()).targets.find(
+        ({ label }) => label === 'CLI-managed install version',
+      );
+    const ledgerOptions = { configRoot: tempRoot };
+
+    expect(versionTarget()).toMatchObject({
+      kind: 'file',
+      path: getInstallLedgerPath(ledgerOptions),
+      state: 'missing',
+      expected: `executing ${executing.version}`,
+      observed: 'recorded missing',
+    });
+
+    expect(
+      recordCompletedInstall({
+        harness: 'opencode',
+        version: executing.version,
+        ...ledgerOptions,
+      }).success,
+    ).toBe(true);
+    expect(versionTarget()).toMatchObject({
+      state: 'installed',
+      expected: `executing ${executing.version}`,
+      observed: `recorded ${executing.version}`,
+    });
+
+    const priorVersion = executing.version === '0.4.7' ? '0.4.6' : '0.4.7';
+    expect(
+      recordCompletedInstall({
+        harness: 'opencode',
+        version: priorVersion,
+        ...ledgerOptions,
+      }).success,
+    ).toBe(true);
+    expect(versionTarget()).toMatchObject({
+      state: 'outdated',
+      expected: `executing ${executing.version}`,
+      observed: `recorded ${priorVersion}`,
+    });
+
+    writeFileSync(getInstallLedgerPath(ledgerOptions), '{ malformed');
+    expect(versionTarget()).toMatchObject({
+      state: 'unknown',
+      expected: `executing ${executing.version}`,
+      observed: 'recorded unknown (invalid ledger)',
+    });
+  });
 
   test('classifies missing required skills as managed drift', () => {
     writeManagedConfig();
@@ -303,6 +561,7 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(result.applied).toBe(true);
     expect(written.preset).toBe('openai');
     expect(Object.keys(written.presets.openai)).toEqual(ALL_AGENT_NAMES);
+    expect(readInstallLedger({ configRoot: tempRoot }).status).toBe('missing');
   });
 
   test('blocks completion when a required skill cannot be installed', () => {
@@ -475,7 +734,7 @@ describe('OpenCode operations adapter v0.3', () => {
     };
     delete legacy.presets.agents;
     writeJson(liteConfigPath(), legacy);
-    writeJson(mainConfigPath(), { plugin: ['thoth-agents@latest'] });
+    writeJson(mainConfigPath(), { plugin: [EXECUTING_PLUGIN] });
     const rootOnlyLegacy = getOpenCodeStatus(context());
     expect(rootOnlyLegacy.state).toBe('drift');
     expect(rootOnlyLegacy.diagnostics).toEqual(

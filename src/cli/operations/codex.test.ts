@@ -11,6 +11,10 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ProviderEvidenceInput } from '../../harness/types';
 import { applyCodexSetup, buildCodexSetupPlan } from '../codex-install';
+import type { CodexCommandExecutor } from '../codex-plugin-install';
+import { finalizeHarnessInstall } from '../install-completion';
+import { readInstallLedger, recordCompletedInstall } from '../install-ledger';
+import { resolveExecutingPackageVersion } from '../package-version';
 import {
   applyCodexPlan,
   buildCodexInstallPlan,
@@ -48,6 +52,52 @@ function writeRequiredSkills(home: string): void {
   }
 }
 
+function codexProviderResult() {
+  return {
+    success: true,
+    evidenceValid: true,
+    status: 'complete' as const,
+    changed: true,
+    harness: 'codex' as const,
+    target: 'C:/provider/codex',
+    steps: [{ name: 'Provider setup', outcome: 'complete' as const }],
+    diagnostics: ['provider complete'],
+    manualActions: [],
+    receipt: null,
+    command: 'npx',
+    args: ['thoth-mem@latest'],
+    exitCode: 0,
+  };
+}
+
+const installedCodexManagerExecutor: CodexCommandExecutor = (
+  _command,
+  args,
+) => {
+  const key = args.join(' ');
+  if (key === 'plugin marketplace list --json') {
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        marketplaces: [
+          { name: 'thoth-agents', source: 'EremesNG/thoth-agents' },
+        ],
+      }),
+      stderr: '',
+    };
+  }
+  if (key === 'plugin list --available --json') {
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        installed: [{ pluginId: 'thoth-agents@thoth-agents', enabled: true }],
+      }),
+      stderr: '',
+    };
+  }
+  return { exitCode: 1, stdout: '', stderr: 'unexpected native mutation' };
+};
+
 beforeEach(() => {
   installRequiredSkillMock.mockReset();
   installRequiredSkillMock.mockImplementation((skill, harness, options) => {
@@ -61,8 +111,12 @@ beforeEach(() => {
 function context(dir: string, home: string) {
   return {
     cwd: dir,
+    env: {},
     homeDir: home,
     packageRoot: PACKAGE_ROOT,
+    codexPluginCommandExecutor: installedCodexManagerExecutor,
+    runThothMemSetup: () => codexProviderResult(),
+    installLedgerOptions: { homeDir: home, env: {} },
   };
 }
 
@@ -99,6 +153,221 @@ function roleModel(content: string): string | undefined {
 }
 
 describe('Codex operations adapter', () => {
+  test.each([
+    ['install', buildCodexInstallPlan],
+    ['update', buildCodexUpdatePlan],
+  ] as const)('%s runs native manager before managed setup, skills, provider, and ledger', (action, buildPlan) => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-parity-'));
+    try {
+      const home = join(dir, 'home');
+      const effects: string[] = [];
+      let marketplace = false;
+      let plugin = false;
+      const commandExecutor: CodexCommandExecutor = (_command, args) => {
+        const key = args.join(' ');
+        if (key === 'plugin marketplace list --json') {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({
+              marketplaces: marketplace
+                ? [
+                    {
+                      name: 'thoth-agents',
+                      source: 'EremesNG/thoth-agents',
+                    },
+                  ]
+                : [],
+            }),
+            stderr: '',
+          };
+        }
+        if (key === 'plugin list --available --json') {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({
+              installed: plugin
+                ? [
+                    {
+                      pluginId: 'thoth-agents@thoth-agents',
+                      enabled: true,
+                    },
+                  ]
+                : [],
+            }),
+            stderr: '',
+          };
+        }
+        effects.push(
+          key.startsWith('plugin marketplace add')
+            ? 'native-marketplace'
+            : 'native-plugin',
+        );
+        if (key.startsWith('plugin marketplace add')) marketplace = true;
+        if (key.startsWith('plugin add')) plugin = true;
+        return { exitCode: 0, stdout: '{}', stderr: '' };
+      };
+      const applyManagedSetup = vi.fn(() => {
+        effects.push('agent-pack');
+        return { success: true, changed: [], diagnostics: [] };
+      });
+      const installSkill = vi.fn((skill: { name: string }) => {
+        effects.push(`external:${skill.name}`);
+        return {
+          status: 'installed' as const,
+          skillPath: join(home, '.agents', 'skills', skill.name),
+        };
+      });
+      const finalize = vi.fn((options) => {
+        effects.push('provider-ledger');
+        return finalizeHarnessInstall(options);
+      });
+      const operationContext = {
+        ...context(dir, home),
+        resolveExecutingPackageVersion: () => ({
+          ok: true as const,
+          version: '0.4.8',
+          packageRoot: process.cwd(),
+        }),
+        codexPluginCommandExecutor: commandExecutor,
+        applyCodexSetup: applyManagedSetup,
+        installRequiredSkill: installSkill,
+        finalizeHarnessInstall: finalize,
+        installLedgerOptions: { homeDir: home, env: {} },
+      };
+
+      const plan = buildPlan(operationContext);
+      const titles = plan.items.map(({ title }) => title);
+
+      expect(plan.action).toBe(action);
+      expect(titles[0]).toContain('marketplace');
+      expect(titles).toEqual(
+        expect.arrayContaining([
+          'Install required external skills for Codex',
+          'Plan provider-owned thoth-mem setup for Codex',
+          'Record completed Codex CLI install',
+        ]),
+      );
+      expect(effects).toEqual([]);
+      expect(applyManagedSetup).not.toHaveBeenCalled();
+      expect(installSkill).not.toHaveBeenCalled();
+      expect(finalize).not.toHaveBeenCalled();
+
+      const result = applyCodexPlan(plan);
+
+      expect(result.applied).toBe(true);
+      expect(effects).toEqual([
+        'native-marketplace',
+        'native-plugin',
+        'agent-pack',
+        ...[
+          'simplify',
+          'tdd',
+          'progressive-context-router',
+          'architectural-grilling',
+        ].map((name) => `external:${name}`),
+        'provider-ledger',
+      ]);
+      expect(readInstallLedger({ homeDir: home, env: {} })).toMatchObject({
+        status: 'valid',
+        ledger: { harnesses: { codex: { version: '0.4.8' } } },
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('fails before Codex managed files when native manager apply fails', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-native-fail-'));
+    try {
+      const home = join(dir, 'home');
+      const commandExecutor: CodexCommandExecutor = (_command, args) => {
+        const key = args.join(' ');
+        if (key.includes(' list')) {
+          return {
+            exitCode: 0,
+            stdout: key.startsWith('plugin marketplace')
+              ? '{"marketplaces":[]}'
+              : '{"installed":[]}',
+            stderr: '',
+          };
+        }
+        return { exitCode: 1, stdout: '', stderr: 'native failure' };
+      };
+      const applyManagedSetup = vi.fn();
+      const finalize = vi.fn();
+      const operationContext = {
+        ...context(dir, home),
+        resolveExecutingPackageVersion: () => ({
+          ok: true as const,
+          version: '0.4.8',
+          packageRoot: process.cwd(),
+        }),
+        codexPluginCommandExecutor: commandExecutor,
+        applyCodexSetup: applyManagedSetup,
+        finalizeHarnessInstall: finalize,
+      };
+
+      const result = applyCodexPlan(buildCodexUpdatePlan(operationContext));
+
+      expect(result.applied).toBe(false);
+      expect(result.warnings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: expect.stringContaining('native failure'),
+          }),
+        ]),
+      );
+      expect(applyManagedSetup).not.toHaveBeenCalled();
+      expect(finalize).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('reports the authoritative CLI-managed version independently of native marketplace state', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'thoth-codex-ledger-status-'));
+    try {
+      const home = join(dir, 'home');
+      const executing = resolveExecutingPackageVersion();
+      expect(executing.ok).toBe(true);
+      if (!executing.ok) return;
+      const versionTarget = () =>
+        getCodexStatus(context(dir, home)).targets.find(
+          ({ label }) => label === 'CLI-managed install version',
+        );
+
+      expect(versionTarget()).toMatchObject({
+        state: 'missing',
+        expected: `executing ${executing.version}`,
+        observed: 'recorded missing',
+      });
+
+      const recordedVersion = executing.version === '0.4.7' ? '0.4.6' : '0.4.7';
+      expect(
+        recordCompletedInstall({
+          harness: 'codex',
+          version: recordedVersion,
+          homeDir: home,
+          env: {},
+        }).success,
+      ).toBe(true);
+      expect(versionTarget()).toMatchObject({
+        state: 'outdated',
+        expected: `executing ${executing.version}`,
+        observed: `recorded ${recordedVersion}`,
+      });
+
+      setup(dir, home);
+      expect(getCodexStatus(context(dir, home)).state).toBe('installed');
+      expect(versionTarget()).toMatchObject({
+        state: 'outdated',
+        observed: `recorded ${recordedVersion}`,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('resolves only exact catalog efforts in the documented Codex surface', () => {
     const base = {
       role: 'deep',
@@ -207,6 +476,11 @@ describe('Codex operations adapter', () => {
         ),
       ).toBe(true);
       expect(existsSync(join(home, '.codex'))).toBe(false);
+
+      expect(applyCodexPlan(sync).applied).toBe(true);
+      expect(readInstallLedger({ homeDir: home, env: {} }).status).toBe(
+        'missing',
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -223,6 +497,9 @@ describe('Codex operations adapter', () => {
       expect(plan.dryRun).toBe(true);
       expect(plan.canApply).toBe(true);
       expect(plan.title).toContain('Install');
+      expect(plan.items[0]?.title).toBe(
+        'Verify Codex native plugin manager state',
+      );
       expect(plan.items).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

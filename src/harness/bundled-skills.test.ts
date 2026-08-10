@@ -421,16 +421,33 @@ describe('canonical SDD bundle contracts', () => {
     expect(template).toContain('tasks.md');
   });
 
-  test('teaches traceable durable requirements and typed success criteria', () => {
+  test('teaches baseline-relative durable requirements and typed success criteria', () => {
     const spec = readFileSync(
       join(process.cwd(), 'skills', 'thoth-sdd', 'templates', 'spec.md'),
+      'utf8',
+    );
+    const specify = readFileSync(
+      join(
+        process.cwd(),
+        'skills',
+        'thoth-sdd',
+        'references',
+        'phases',
+        'specify.md',
+      ),
       'utf8',
     );
 
     expect(spec).toContain('## Intent and scope');
     expect(spec).toContain('**Affected capabilities**');
     expect(spec).toContain('**Covers**: FR-001, SC-001');
-    expect(spec).toMatch(/FR-001 — .+`\[(?:INTERNAL|ADDED)/);
+    expect(spec).toContain('`[DELTA capability-slug]`');
+    expect(spec).not.toMatch(/^- \*\*FR-001.+`\[ADDED/m);
+    expect(`${spec}\n${specify}`).toMatch(
+      /ADDED[\s\S]+MODIFIED[\s\S]+REMOVED[\s\S]+RENAMED/,
+    );
+    expect(specify).toContain('openspec/specs/<capability>/spec.md');
+    expect(specify).toContain('semantic-overlap review');
     expect(spec).toContain('`[buildable]`');
     expect(spec).toContain('`[outcome]`');
   });

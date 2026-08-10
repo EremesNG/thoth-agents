@@ -296,6 +296,45 @@ describe('SDD archive transition', () => {
   });
 
   test.each([
+    {
+      label: 'titleless requirement heading',
+      canonical:
+        '# Example Specification\n\n## Requirements\n\n### Requirement:\n\nBroken body.\n',
+    },
+    {
+      label: 'duplicate exact requirement title',
+      canonical: `${EXISTING_CANONICAL_SPEC}\n### Requirement: Existing behavior\n\nDuplicate body.\n`,
+    },
+  ])('rejects a canonical baseline with $label before permanent writes', ({
+    canonical,
+  }) => {
+    const fixture = createChange();
+    try {
+      const capabilityDir = join(fixture.specs, 'example');
+      const canonicalPath = join(capabilityDir, 'spec.md');
+      const reportPath = join(fixture.change, 'archive-report.md');
+      mkdirSync(capabilityDir, { recursive: true });
+      writeFileSync(canonicalPath, canonical);
+      writeFileSync(join(fixture.change, 'spec.md'), DURABLE_DELTA_SPEC);
+      writeFileSync(
+        join(fixture.change, 'verify-report.md'),
+        DURABLE_VERIFY_REPORT,
+      );
+      const originalReport = readFileSync(reportPath, 'utf8');
+
+      const result = archive(fixture.change);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('SDD-SPEC-DELTA-BASELINE');
+      expect(readFileSync(canonicalPath, 'utf8')).toBe(canonical);
+      expect(readFileSync(reportPath, 'utf8')).toBe(originalReport);
+      expect(existsSync(fixture.change)).toBe(true);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
     [
       'a non-oracle reviewer',
       VALID_VERIFY_REPORT.replace(
@@ -442,6 +481,53 @@ describe('SDD archive transition', () => {
       expect(canonical).not.toContain('### Requirement: Old name');
       expect(canonical).toContain('### Requirement: New name');
       expect(canonical).toContain('#### Scenario: US1 - Durable delivery 1');
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    {
+      label: 'ADDED for an existing exact title',
+      spec: DURABLE_DELTA_SPEC.replace(
+        'FR-001 — Added behavior',
+        'FR-001 — Existing behavior',
+      ),
+      code: 'SDD-SPEC-DELTA-ADDED-EXISTS',
+    },
+    {
+      label: 'MODIFIED for a missing exact title',
+      spec: DURABLE_DELTA_SPEC.replace(
+        'FR-002 — Existing behavior',
+        'FR-002 — Missing behavior',
+      ),
+      code: 'SDD-SPEC-DELTA-MODIFIED-MISSING',
+    },
+  ])('rejects $label with the shared preflight before permanent writes', ({
+    spec,
+    code,
+  }) => {
+    const fixture = createChange();
+    try {
+      const capabilityDir = join(fixture.specs, 'example');
+      const canonicalPath = join(capabilityDir, 'spec.md');
+      const reportPath = join(fixture.change, 'archive-report.md');
+      mkdirSync(capabilityDir, { recursive: true });
+      writeFileSync(canonicalPath, EXISTING_CANONICAL_SPEC);
+      writeFileSync(join(fixture.change, 'spec.md'), spec);
+      writeFileSync(
+        join(fixture.change, 'verify-report.md'),
+        DURABLE_VERIFY_REPORT,
+      );
+      const originalReport = readFileSync(reportPath, 'utf8');
+
+      const result = archive(fixture.change);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(code);
+      expect(readFileSync(canonicalPath, 'utf8')).toBe(EXISTING_CANONICAL_SPEC);
+      expect(readFileSync(reportPath, 'utf8')).toBe(originalReport);
+      expect(existsSync(fixture.change)).toBe(true);
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

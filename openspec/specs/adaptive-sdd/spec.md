@@ -30,17 +30,37 @@ The root MUST own sequential coordination for `specify`, `clarify`, `plan`, `che
 
 ### Requirement: Preserve traceable specification semantics
 
-Accelerated and Full MUST create `spec.md`, `plan.md`, and `tasks.md` under
-`openspec/changes/<feature>/`. A specification MUST record Why, Impact, and
-affected capability slugs; prioritized independent `US#` stories; explicit
-story-to-FR/SC coverage; Given/When/Then scenarios; assumptions; dependencies;
-edge cases; and non-goals.
+Accelerated and Full specification authoring MUST inspect every affected canonical capability before choosing durable delta metadata; `MODIFIED` and `REMOVED` MUST preserve an existing exact requirement title, `RENAMED` MUST name the exact previous title when the title changes, and `ADDED` MUST be used only when no canonical requirement already expresses the behavior.
 
-Every FR MUST have a sequential ID, descriptive title, normative `MUST`/`SHALL`
-statement, and exactly one marker: INTERNAL, ADDED, MODIFIED, REMOVED, or RENAMED
-with a capability target. Every SC MUST be typed buildable or outcome. Buildable
-SCs MUST receive executable task coverage; outcome SCs MUST remain measurable
-verification targets and MUST NOT create fake implementation work.
+#### Scenario: US1 - Reject incorrect delta intent before planning 1
+
+- **GIVEN** a canonical capability already contains the exact named requirement
+- **WHEN** the specification marks that title `ADDED`
+- **THEN** the validator rejects it with a stable added-title-exists diagnostic
+
+#### Scenario: US1 - Reject incorrect delta intent before planning 2
+
+- **GIVEN** a canonical capability or named requirement does not exist
+- **WHEN** the specification marks that title `MODIFIED` or `REMOVED`
+- **THEN** the validator rejects it with a stable missing-title diagnostic
+
+#### Scenario: US1 - Reject incorrect delta intent before planning 3
+
+- **GIVEN** a rename names a missing previous title or collides with an existing destination title
+- **WHEN** the specification gate runs
+- **THEN** the validator rejects the invalid rename before planning
+
+#### Scenario: US1 - Reject incorrect delta intent before planning 4
+
+- **GIVEN** a valid addition targets an existing capability under a new exact title
+- **WHEN** the specification gate runs
+- **THEN** the validator accepts the deterministic title check and emits a semantic-overlap review warning that identifies the existing capability baseline
+
+#### Scenario: US1 - Reject incorrect delta intent before planning 5
+
+- **GIVEN** the root selects a durable marker
+- **WHEN** it authors the specification
+- **THEN** it first reads the affected canonical specification and preserves exact existing titles for modification or removal, uses `RENAMED` for title changes, and uses `ADDED` only for genuinely new behavior
 
 ### Requirement: Preserve executable planning and task semantics
 
@@ -79,17 +99,37 @@ relevant changed it MUST record an evidence-backed no-op.
 
 ### Requirement: Enforce route-specific structural gates
 
-The validator MUST expose `specify`, `plan`, `tasks`, `checklist`, `ready`, and
-`closeout` gates. Accelerated MUST validate specify, ready, and closeout; Full
-MUST additionally validate plan and tasks separately. A gate MUST NOT require a
-future artifact.
+The validator MUST compare every declared durable delta with the canonical requirement baseline at `specify` and every downstream artifact gate, MUST reject deterministically incompatible exact-title operations with stable diagnostic codes, MUST evaluate multiple deltas in declaration order, MUST warn when an exact-title-valid `ADDED` targets an existing nonempty capability, and MUST preserve valid additions to absent capabilities and `[INTERNAL]` behavior.
 
-`ready` MUST validate the pre-analysis/implementation set. `closeout` MUST
-require completed tasks, independent oracle PASS, no unresolved CRITICAL
-finding, complete FR/buildable-SC compliance evidence, an observed PASS with
-concrete evidence or an explicit residual RISK for every outcome SC, and an
-archive report marked READY. Structural validation MUST NOT substitute for
-oracle judgment.
+#### Scenario: US1 - Reject incorrect delta intent before planning 1
+
+- **GIVEN** a canonical capability already contains the exact named requirement
+- **WHEN** the specification marks that title `ADDED`
+- **THEN** the validator rejects it with a stable added-title-exists diagnostic
+
+#### Scenario: US1 - Reject incorrect delta intent before planning 2
+
+- **GIVEN** a canonical capability or named requirement does not exist
+- **WHEN** the specification marks that title `MODIFIED` or `REMOVED`
+- **THEN** the validator rejects it with a stable missing-title diagnostic
+
+#### Scenario: US1 - Reject incorrect delta intent before planning 3
+
+- **GIVEN** a rename names a missing previous title or collides with an existing destination title
+- **WHEN** the specification gate runs
+- **THEN** the validator rejects the invalid rename before planning
+
+#### Scenario: US1 - Reject incorrect delta intent before planning 4
+
+- **GIVEN** a valid addition targets an existing capability under a new exact title
+- **WHEN** the specification gate runs
+- **THEN** the validator accepts the deterministic title check and emits a semantic-overlap review warning that identifies the existing capability baseline
+
+#### Scenario: US1 - Reject incorrect delta intent before planning 5
+
+- **GIVEN** the root selects a durable marker
+- **WHEN** it authors the specification
+- **THEN** it first reads the affected canonical specification and preserves exact existing titles for modification or removal, uses `RENAMED` for title changes, and uses `ADDED` only for genuinely new behavior
 
 ### Requirement: Isolate constitution lifecycle from routine SDD
 
@@ -133,24 +173,25 @@ after the next implementation pass.
 
 ### Requirement: Transactionally archive verified durable deltas
 
-Accelerated and Full MUST archive only when closeout passes. Archive MUST
-validate every declared durable delta before changing permanent specs, then
-transactionally apply ADDED, MODIFIED, REMOVED, and RENAMED named requirement blocks
-and their scenarios to `openspec/specs/`.
+Archive MUST use the same canonical parser and durable-delta preflight rules as the validator, MUST report the same stable incompatibility codes before staging or changing permanent specifications, and MUST preserve its existing transactional apply, rollback, report update, and dated-move behavior for valid deltas.
 
-INTERNAL requirements and undeclared prose MUST NOT update permanent specs. If a
-delta, report update, or final move raises a handled error, report recovery and
-canonical rollback MUST be attempted independently, all recoverable canonical
-writes MUST roll back, and the active change MUST remain in place.
+#### Scenario: US2 - Preserve the same final archive defense 1
 
-Archive is not crash-atomic across forced process or operating-system
-termination. It MUST disclose that staged or backup files may require inspection
-before retrying.
+- **GIVEN** an otherwise ready change marks an existing title `ADDED`
+- **WHEN** archive preflight runs
+- **THEN** it reports the same added-title-exists code, changes no canonical specification, and leaves the active change in place
 
-On success, archive MUST mark `archive-report.md` ARCHIVED, record updated
-capabilities or no durable delta, and move the complete change to
-`openspec/changes/archive/YYYY-MM-DD-<feature>/`. Direct MUST NOT create or
-archive an SDD change directory.
+#### Scenario: US2 - Preserve the same final archive defense 2
+
+- **GIVEN** an otherwise ready change marks a missing title `MODIFIED`
+- **WHEN** archive preflight runs
+- **THEN** it reports the same missing-title code, changes no canonical specification, and leaves the active change in place
+
+#### Scenario: US2 - Preserve the same final archive defense 3
+
+- **GIVEN** all durable deltas agree with the canonical baseline
+- **WHEN** archive runs
+- **THEN** its existing transactional synchronization behavior remains unchanged
 
 ### Requirement: Offer user-controlled plan review
 

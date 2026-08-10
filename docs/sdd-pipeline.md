@@ -126,6 +126,14 @@ mirrored into provider memory.
 - typed success criteria: `[buildable]` or `[outcome]`; and
 - edge cases, assumptions, dependencies, and explicit non-goals.
 
+Durable markers are baseline-relative. Before authoring them, the root reads the
+affected `openspec/specs/<capability>/spec.md`: `MODIFIED` and `REMOVED` reuse an
+exact existing requirement title, `RENAMED` names the exact previous title, and
+`ADDED` is reserved for behavior not already expressed canonically. Only
+`ADDED` is valid when the capability does not exist. Because exact-title checks
+cannot prove that differently named requirements are semantically distinct, an
+addition to an existing nonempty capability emits a review warning.
+
 Buildable SCs need implementation tasks. Outcome SCs remain measurable product
 or operational verification targets without fake implementation work.
 
@@ -209,6 +217,11 @@ Before archive, `closeout` requires all tasks `[x]`, independent oracle PASS, no
 unresolved CRITICAL finding, complete FR/buildable-SC compliance evidence, a
 PASS-or-explicit-RISK disposition for every outcome SC, and `archive-report.md`
 status `READY`.
+
+The structural validator loads the canonical requirement baseline at `specify`
+and every later gate. It rejects exact-title operation conflicts with stable
+diagnostic codes before planning or implementation. This early preflight and the
+archive executable share one ordered delta decision engine.
 
 The archive script validates every declared durable delta before touching
 `openspec/specs/`. It then stages, backs up, and transactionally applies ADDED,

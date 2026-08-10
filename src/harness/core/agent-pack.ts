@@ -170,6 +170,10 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     'Delegate only when specialization, context isolation, or independent parallel work creates a net gain.',
     'Prefer child agents for read-heavy exploration, research, analysis, and verification.',
     'Use one writer for each mutable surface and never parallelize overlapping writes.',
+    'A fresh subagent instance is the default when the objective, SDD phase, mutable surface, or independent judgment changes.',
+    'Continue an existing subagent only to steer, complete, or clarify the same bounded assignment; completed agents are not a reusable role pool.',
+    'Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance; reuse is limited to clarifying current findings.',
+    'Wait and status operations collect only the active nonterminal assignment and do not authorize later reuse.',
     'Child agents return distilled evidence instead of raw logs or file dumps.',
   ],
 };

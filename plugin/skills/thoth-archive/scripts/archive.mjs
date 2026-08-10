@@ -10,8 +10,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import {
+  CAPABILITY_PATTERN,
+  parseCanonicalSpec,
+  parseRequirementDelta as parseSharedRequirementDelta,
+  preflightRequirementDeltas,
+} from '../../thoth-sdd/scripts/durable-deltas.mjs';
 
-const CAPABILITY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const TEST_FAULTS = new Set(
   (process.env.THOTH_ARCHIVE_TEST_FAULT ?? '')
     .split(',')
@@ -270,26 +275,8 @@ function assertArchivable(change, contract) {
 }
 
 function parseDeltaMetadata(metadata) {
-  if (metadata === 'INTERNAL') return { operation: 'INTERNAL' };
-
-  const change = /^(ADDED|MODIFIED|REMOVED)\s+(\S+)$/.exec(metadata);
-  if (change && CAPABILITY_PATTERN.test(change[2])) {
-    return { operation: change[1], capability: change[2] };
-  }
-
-  const rename = /^RENAMED\s+(\S+)\s+FROM\s+(.+)$/.exec(metadata);
-  if (
-    rename &&
-    CAPABILITY_PATTERN.test(rename[1]) &&
-    rename[2].trim().length > 0
-  ) {
-    return {
-      operation: 'RENAMED',
-      capability: rename[1],
-      previousTitle: rename[2].trim(),
-    };
-  }
-
+  const delta = parseSharedRequirementDelta(metadata);
+  if (delta) return delta;
   throw new Error(`Invalid requirement delta metadata: [${metadata}]`);
 }
 
@@ -418,27 +405,6 @@ function parseChangeSpec(spec) {
   };
 }
 
-function parseCanonicalSpec(content) {
-  const headings = [...content.matchAll(/^### Requirement:\s+(.+?)\s*$/gm)];
-  const requirements = new Map();
-  const prefix =
-    headings.length === 0
-      ? content.trimEnd()
-      : content.slice(0, headings[0].index).trimEnd();
-
-  for (const [index, heading] of headings.entries()) {
-    const start = heading.index ?? 0;
-    const end = headings[index + 1]?.index ?? content.length;
-    const title = heading[1].trim();
-    if (requirements.has(title)) {
-      throw new Error(`Canonical specification repeats requirement: ${title}`);
-    }
-    requirements.set(title, content.slice(start, end).trim());
-  }
-
-  return { prefix, requirements };
-}
-
 function newCanonicalSpec(capability) {
   const title = capability
     .split('-')
@@ -480,41 +446,34 @@ function planCanonicalUpdates(specRoot, deltas) {
   for (const [capability, capabilityDeltas] of byCapability) {
     const path = join(specRoot, capability, 'spec.md');
     const present = existsSync(path);
-    const canonical = present
-      ? parseCanonicalSpec(readFileSync(path, 'utf8'))
-      : newCanonicalSpec(capability);
+    let canonical;
+    try {
+      canonical = present
+        ? parseCanonicalSpec(readFileSync(path, 'utf8'))
+        : newCanonicalSpec(capability);
+    } catch (error) {
+      throw new Error(
+        `SDD-SPEC-DELTA-BASELINE: ${capability} canonical baseline is invalid: ${errorMessage(error)}`,
+      );
+    }
+    const preflight = preflightRequirementDeltas({
+      capability,
+      present,
+      requirements: canonical.requirements,
+      deltas: capabilityDeltas,
+    });
+    if (preflight.errors.length > 0) {
+      const [first] = preflight.errors;
+      throw new Error(`${first.code}: ${first.message}`);
+    }
 
     for (const delta of capabilityDeltas) {
       if (delta.operation === 'ADDED') {
-        if (canonical.requirements.has(delta.title)) {
-          throw new Error(
-            `${capability} already contains requirement: ${delta.title}`,
-          );
-        }
         canonical.requirements.set(delta.title, renderRequirement(delta));
         continue;
       }
 
-      if (!present) {
-        throw new Error(
-          `${capability} has no canonical specification for ${delta.operation}`,
-        );
-      }
-
       if (delta.operation === 'RENAMED') {
-        if (!canonical.requirements.has(delta.previousTitle)) {
-          throw new Error(
-            `${capability} does not contain requirement: ${delta.previousTitle}`,
-          );
-        }
-        if (
-          delta.previousTitle !== delta.title &&
-          canonical.requirements.has(delta.title)
-        ) {
-          throw new Error(
-            `${capability} already contains requirement: ${delta.title}`,
-          );
-        }
         const entries = [...canonical.requirements.entries()];
         canonical.requirements = new Map(
           entries.map(([title, block]) =>
@@ -526,11 +485,6 @@ function planCanonicalUpdates(specRoot, deltas) {
         continue;
       }
 
-      if (!canonical.requirements.has(delta.title)) {
-        throw new Error(
-          `${capability} does not contain requirement: ${delta.title}`,
-        );
-      }
       if (delta.operation === 'MODIFIED') {
         canonical.requirements.set(delta.title, renderRequirement(delta));
       } else if (delta.operation === 'REMOVED') {

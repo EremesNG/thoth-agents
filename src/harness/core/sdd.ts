@@ -431,7 +431,8 @@ export const SDD_PHASE_PROTOCOLS = [
     instructions: [
       'Record intent and scope as Why, Impact, and Affected capabilities before prescribing any contract.',
       'Define prioritized independent stories and map each story to its FR-### and SC-### contracts with Covers metadata.',
-      'Give every normative MUST or SHALL requirement a descriptive title and declare it INTERNAL or as an ADDED, MODIFIED, REMOVED, or RENAMED durable capability delta.',
+      'Inspect each affected canonical capability before choosing durable metadata: ADDED is only for genuinely new behavior; MODIFIED and REMOVED preserve exact existing titles; RENAMED names the exact previous title; only ADDED is valid when the capability is absent.',
+      'Give every normative MUST or SHALL requirement a descriptive title and declare it INTERNAL or as an ADDED, MODIFIED, REMOVED, or RENAMED durable capability delta; treat an ADDED warning on an existing capability as a required semantic-overlap review.',
       'Classify every success criterion as buildable or outcome; both remain measurable, but only buildable criteria require implementation task coverage.',
       'Capture assumptions, acceptance scenarios, edge cases, dependencies, and explicit non-goals.',
       'Use a clarification marker only when no safe default exists and the answer materially changes scope or behavior.',

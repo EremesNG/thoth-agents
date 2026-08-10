@@ -31,6 +31,13 @@ The script reads delta metadata directly from `spec.md`:
 - `[RENAMED capability FROM Previous title]` renames and replaces it.
 - `[INTERNAL]` never changes `openspec/specs/`.
 
+The SDD validator preflights these operations against the canonical requirement
+titles from `specify` onward. Archive reuses the same ordered parser and
+preflight as a final defense before staging writes, preserving stable
+`SDD-SPEC-DELTA-*` incompatibility codes. An `ADDED` warning for an existing
+nonempty capability requires semantic-overlap review because differently named
+requirements cannot be proven distinct by exact-title tooling alone.
+
 All delta targets are validated before any permanent specification changes. The
 operation stages and rolls back the full canonical update if a delta, report
 update, or final move raises a handled error in the active process. Report and

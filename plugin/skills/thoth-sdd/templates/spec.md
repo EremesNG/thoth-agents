@@ -30,7 +30,15 @@ As a [actor], I can [capability] so that [value].
 
 ## Functional requirements
 
-- **FR-001 — [Requirement name]**: `[ADDED capability-slug]` The system MUST [observable behavior].
+- **FR-001 — [Requirement name]**: `[DELTA capability-slug]` The system MUST [observable behavior].
+
+Replace `DELTA` after inspecting `openspec/specs/<capability>/spec.md`. Use
+`ADDED` only for behavior not expressed by a canonical requirement, `MODIFIED`
+or `REMOVED` only with the exact existing requirement title, and
+`RENAMED capability-slug FROM Exact previous title` when the title changes. Only
+`ADDED` is valid when the canonical capability is absent. An addition to an
+existing nonempty capability requires semantic-overlap review even when its
+exact title is new.
 
 Use exactly one delta marker per FR: `[INTERNAL]`, `[ADDED capability-slug]`,
 `[MODIFIED capability-slug]`, `[REMOVED capability-slug]`, or

@@ -45,6 +45,24 @@ describe('agent-pack contract', () => {
     );
   });
 
+  test('defines fresh delegation and bounded continuation as canonical policy', () => {
+    const rules = getAgentPackContract().orchestrationPolicy.rules.join('\n');
+
+    expect(rules).toContain(
+      'fresh subagent instance is the default when the objective, SDD phase, mutable surface, or independent judgment changes',
+    );
+    expect(rules).toContain(
+      'only to steer, complete, or clarify the same bounded assignment',
+    );
+    expect(rules).toContain('completed agents are not a reusable role pool');
+    expect(rules).toContain(
+      'Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance',
+    );
+    expect(rules).toContain(
+      'Wait and status operations collect only the active nonterminal assignment and do not authorize later reuse',
+    );
+  });
+
   test('keeps discovery and judgment read-only', () => {
     for (const name of ['explorer', 'librarian', 'oracle'] as const) {
       expect(getAgentRole(name)).toMatchObject({

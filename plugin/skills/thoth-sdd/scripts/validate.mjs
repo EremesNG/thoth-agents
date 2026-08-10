@@ -2,6 +2,12 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, posix, resolve } from 'node:path';
+import {
+  CAPABILITY_PATTERN,
+  parseCanonicalSpec,
+  parseRequirementDelta,
+  preflightRequirementDeltas,
+} from './durable-deltas.mjs';
 
 function parseArgs(argv) {
   const values = { route: 'full', through: 'ready', json: false };
@@ -84,34 +90,6 @@ function checkUniqueSequential(ids, prefix, artifact, errors) {
       ),
     );
   }
-}
-
-const CAPABILITY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-function parseRequirementDelta(metadata) {
-  if (metadata === 'INTERNAL') {
-    return { operation: 'INTERNAL' };
-  }
-
-  const change = /^(ADDED|MODIFIED|REMOVED)\s+(\S+)$/.exec(metadata);
-  if (change && CAPABILITY_PATTERN.test(change[2])) {
-    return { operation: change[1], capability: change[2] };
-  }
-
-  const rename = /^RENAMED\s+(\S+)\s+FROM\s+(.+)$/.exec(metadata);
-  if (
-    rename &&
-    CAPABILITY_PATTERN.test(rename[1]) &&
-    rename[2].trim().length > 0
-  ) {
-    return {
-      operation: 'RENAMED',
-      capability: rename[1],
-      previousTitle: rename[2].trim(),
-    };
-  }
-
-  return undefined;
 }
 
 function parseAffectedCapabilities(intentSection) {
@@ -264,6 +242,7 @@ function validateSpec(content, errors) {
       ),
     );
   }
+  const durableDeltas = [];
   if (frIds.length === 0) {
     errors.push(issue('SDD-SPEC-FR', artifact, 'Add FR-### requirements.'));
   } else {
@@ -298,6 +277,11 @@ function validateSpec(content, errors) {
             `FR-${match[1]} targets undeclared capability ${delta.capability}.`,
           ),
         );
+      } else if (delta.operation !== 'INTERNAL') {
+        durableDeltas.push({
+          title: match[2].trim(),
+          ...delta,
+        });
       }
     }
   }
@@ -369,7 +353,54 @@ function validateSpec(content, errors) {
     outcomeScIds: successCriteria
       .filter((match) => match[2].toLowerCase() === 'outcome')
       .map((match) => match[1]),
+    durableDeltas,
   };
+}
+
+function validateDurableDeltaIntent(specRoot, deltas, errors, warnings) {
+  const byCapability = new Map();
+  for (const delta of deltas) {
+    const current = byCapability.get(delta.capability) ?? [];
+    current.push(delta);
+    byCapability.set(delta.capability, current);
+  }
+
+  for (const [capability, capabilityDeltas] of byCapability) {
+    const path = join(specRoot, capability, 'spec.md');
+    const present = existsSync(path);
+    let canonical;
+    try {
+      canonical = present
+        ? parseCanonicalSpec(readFileSync(path, 'utf8'))
+        : { requirements: new Map() };
+    } catch (error) {
+      errors.push(
+        issue(
+          'SDD-SPEC-DELTA-BASELINE',
+          'spec.md',
+          `${capability} canonical baseline is invalid: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+      continue;
+    }
+
+    const result = preflightRequirementDeltas({
+      capability,
+      present,
+      requirements: canonical.requirements,
+      deltas: capabilityDeltas,
+    });
+    errors.push(
+      ...result.errors.map((entry) =>
+        issue(entry.code, 'spec.md', entry.message),
+      ),
+    );
+    warnings.push(
+      ...result.warnings.map((entry) =>
+        issue(entry.code, 'spec.md', entry.message),
+      ),
+    );
+  }
 }
 
 function constitutionEntries(content) {
@@ -1047,6 +1078,14 @@ function validate({ change, route, through }) {
 
   const specContract =
     spec === undefined ? undefined : validateSpec(spec, errors);
+  if (specContract !== undefined) {
+    validateDurableDeltaIntent(
+      join(root, '..', '..', 'specs'),
+      specContract.durableDeltas,
+      errors,
+      warnings,
+    );
+  }
   const constitution = readArtifact(
     join(root, '..', '..'),
     'memory/constitution.md',

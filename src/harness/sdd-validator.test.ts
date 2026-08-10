@@ -261,6 +261,24 @@ function createChange(prefix: string) {
   return { project, change };
 }
 
+function writeCanonicalSpec(project: string, content: string) {
+  const capability = join(project, 'openspec', 'specs', 'example');
+  mkdirSync(capability, { recursive: true });
+  writeFileSync(join(capability, 'spec.md'), content);
+}
+
+function writeCanonicalRequirements(project: string, ...titles: string[]) {
+  writeCanonicalSpec(
+    project,
+    `# Example Specification\n\n## Requirements\n\n${titles
+      .map(
+        (title) =>
+          `### Requirement: ${title}\n\nThe system MUST preserve ${title}.`,
+      )
+      .join('\n\n')}\n`,
+  );
+}
+
 function writeFixture(
   root: string,
   overrides: Partial<{
@@ -306,6 +324,244 @@ describe('Spec Kit-compatible structural validator', () => {
       const result = validate(change, 'specify');
 
       expect(result.status, result.stdout).toBe(0);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    {
+      label: 'ADDED when the exact title already exists',
+      spec: VALID_SPEC,
+      canonicalTitles: ['Observable example'],
+      code: 'SDD-SPEC-DELTA-ADDED-EXISTS',
+    },
+    {
+      label: 'MODIFIED when the exact title is missing',
+      spec: VALID_SPEC.replace('[ADDED example]', '[MODIFIED example]'),
+      canonicalTitles: [],
+      code: 'SDD-SPEC-DELTA-MODIFIED-MISSING',
+    },
+    {
+      label: 'REMOVED when the exact title is missing',
+      spec: VALID_SPEC.replace('[ADDED example]', '[REMOVED example]'),
+      canonicalTitles: [],
+      code: 'SDD-SPEC-DELTA-REMOVED-MISSING',
+    },
+    {
+      label: 'RENAMED when the previous title is missing',
+      spec: VALID_SPEC.replace(
+        '[ADDED example]',
+        '[RENAMED example FROM Previous example]',
+      ),
+      canonicalTitles: [],
+      code: 'SDD-SPEC-DELTA-RENAMED-SOURCE-MISSING',
+    },
+    {
+      label: 'RENAMED when the destination title already exists',
+      spec: VALID_SPEC.replace(
+        '[ADDED example]',
+        '[RENAMED example FROM Previous example]',
+      ),
+      canonicalTitles: ['Previous example', 'Observable example'],
+      code: 'SDD-SPEC-DELTA-RENAMED-TARGET-EXISTS',
+    },
+  ])('rejects $label during specify', ({ spec, canonicalTitles, code }) => {
+    const { project, change } = createChange('thoth-delta-mismatch-');
+    try {
+      if (canonicalTitles.length > 0) {
+        writeCanonicalRequirements(project, ...canonicalTitles);
+      }
+      writeFileSync(join(change, 'spec.md'), spec);
+
+      const result = validate(change, 'specify');
+      const report = JSON.parse(result.stdout) as {
+        valid: boolean;
+        errors: Array<{ code: string }>;
+      };
+
+      expect(result.status).toBe(1);
+      expect(report.valid).toBe(false);
+      expect(report.errors.map((error) => error.code)).toContain(code);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('accepts MODIFIED for an existing exact title', () => {
+    const { project, change } = createChange('thoth-delta-modified-');
+    try {
+      writeCanonicalRequirements(project, 'Observable example');
+      writeFileSync(
+        join(change, 'spec.md'),
+        VALID_SPEC.replace('[ADDED example]', '[MODIFIED example]'),
+      );
+
+      const result = validate(change, 'specify');
+
+      expect(result.status, result.stdout).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        valid: true,
+        errors: [],
+      });
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('warns when ADDED targets an existing nonempty capability', () => {
+    const { project, change } = createChange('thoth-delta-review-');
+    try {
+      writeCanonicalRequirements(project, 'Existing behavior');
+      writeFileSync(join(change, 'spec.md'), VALID_SPEC);
+
+      const result = validate(change, 'specify');
+      const report = JSON.parse(result.stdout) as {
+        valid: boolean;
+        errors: unknown[];
+        warnings: Array<{ code: string; message: string }>;
+      };
+
+      expect(result.status, result.stdout).toBe(0);
+      expect(report.valid).toBe(true);
+      expect(report.errors).toEqual([]);
+      expect(report.warnings).toContainEqual(
+        expect.objectContaining({
+          code: 'SDD-SPEC-DELTA-ADDED-REVIEW',
+          message: expect.stringContaining('Existing behavior'),
+        }),
+      );
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects a titleless canonical requirement heading', () => {
+    const { project, change } = createChange('thoth-delta-malformed-');
+    try {
+      writeCanonicalSpec(
+        project,
+        '# Example Specification\n\n## Requirements\n\n### Requirement:\n\nBroken body.\n',
+      );
+      writeFileSync(join(change, 'spec.md'), VALID_SPEC);
+
+      const result = validate(change, 'specify');
+      const report = JSON.parse(result.stdout) as {
+        valid: boolean;
+        errors: Array<{ code: string }>;
+      };
+
+      expect(result.status).toBe(1);
+      expect(report.valid).toBe(false);
+      expect(report.errors.map((error) => error.code)).toContain(
+        'SDD-SPEC-DELTA-BASELINE',
+      );
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects duplicate canonical requirement titles', () => {
+    const { project, change } = createChange('thoth-delta-duplicate-');
+    try {
+      writeCanonicalRequirements(
+        project,
+        'Observable example',
+        'Observable example',
+      );
+      writeFileSync(join(change, 'spec.md'), VALID_SPEC);
+
+      const result = validate(change, 'specify');
+      const report = JSON.parse(result.stdout) as {
+        valid: boolean;
+        errors: Array<{ code: string }>;
+      };
+
+      expect(result.status).toBe(1);
+      expect(report.valid).toBe(false);
+      expect(report.errors.map((error) => error.code)).toContain(
+        'SDD-SPEC-DELTA-BASELINE',
+      );
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('evaluates dependent durable deltas in declaration order', () => {
+    const { project, change } = createChange('thoth-delta-ordered-');
+    try {
+      writeCanonicalRequirements(project, 'Previous example');
+      const orderedSpec = VALID_SPEC.replace(
+        '**Covers**: FR-001, SC-001, SC-002',
+        '**Covers**: FR-001, FR-002, FR-003, SC-001, SC-002',
+      ).replace(
+        '- **FR-001 — Observable example**: `[ADDED example]` The system MUST expose the example.',
+        [
+          '- **FR-001 — Observable example**: `[RENAMED example FROM Previous example]` The system MUST expose the renamed example.',
+          '- **FR-002 — Observable example**: `[MODIFIED example]` The system MUST expose the updated example.',
+          '- **FR-003 — Observable example**: `[REMOVED example]` The system MUST no longer expose the example.',
+        ].join('\n'),
+      );
+      writeFileSync(join(change, 'spec.md'), orderedSpec);
+
+      const result = validate(change, 'specify');
+
+      expect(result.status, result.stdout).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        valid: true,
+        errors: [],
+      });
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    'plan',
+    'tasks',
+    'ready',
+  ])('rechecks durable intent through the %s gate', (through) => {
+    const { project, change } = createChange('thoth-delta-later-gate-');
+    try {
+      writeCanonicalRequirements(project, 'Observable example');
+      writeFixture(change);
+
+      const result = validate(change, through);
+      const report = JSON.parse(result.stdout) as {
+        valid: boolean;
+        errors: Array<{ code: string }>;
+      };
+
+      expect(result.status).toBe(1);
+      expect(report.valid).toBe(false);
+      expect(report.errors.map((error) => error.code)).toContain(
+        'SDD-SPEC-DELTA-ADDED-EXISTS',
+      );
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  test('does not read canonical baselines for INTERNAL requirements', () => {
+    const { project, change } = createChange('thoth-delta-internal-');
+    try {
+      writeCanonicalSpec(
+        project,
+        '# Example Specification\n\n## Requirements\n\n### Requirement:\n\nBroken body.\n',
+      );
+      writeFileSync(
+        join(change, 'spec.md'),
+        VALID_SPEC.replace('[ADDED example]', '[INTERNAL]'),
+      );
+
+      const result = validate(change, 'specify');
+
+      expect(result.status, result.stdout).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

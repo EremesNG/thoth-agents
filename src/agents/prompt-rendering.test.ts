@@ -71,6 +71,56 @@ describe('v0.3 prompt rendering', () => {
     }
   });
 
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('starts fresh at work and judgment boundaries in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+
+    expect(prompt).toContain('<delegation-lifecycle>');
+    expect(prompt).toContain(
+      'new objective, SDD phase, mutable surface, or independent judgment',
+    );
+    expect(prompt).toContain(dialect.tools.lifecycle.freshDelegation);
+    expect(prompt).toContain(dialect.tools.lifecycle.independentContext);
+    expect(prompt).toContain(
+      'Never treat completed agents as a reusable role pool',
+    );
+    expect(prompt).toContain(
+      'Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance',
+    );
+    expect(prompt).toContain(
+      'An existing Oracle session may only clarify its current findings',
+    );
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('continues only the same bounded assignment in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+
+    expect(prompt).toContain(
+      dialect.tools.lifecycle.sameAssignmentContinuation,
+    );
+    expect(prompt).toContain(
+      'only to steer, complete, or clarify the same bounded assignment',
+    );
+    expect(prompt).toContain('never to cross a work boundary');
+    expect(prompt).toContain(dialect.tools.lifecycle.sameSessionProbe);
+    expect(prompt).toContain(
+      'only collects the active nonterminal assignment and does not authorize later reuse',
+    );
+  });
+
   test('keeps Spec Kit coordination in root and independent review in oracle', () => {
     const prompt = renderRolePrompt(
       createOrchestratorPromptSections(),

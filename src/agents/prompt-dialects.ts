@@ -7,6 +7,9 @@ import type { HarnessCapabilities, HarnessId } from '../harness/types';
 export type AgentPromptRole = AgentRoleName;
 
 export interface LifecycleNomenclature {
+  freshDelegation: string;
+  sameAssignmentContinuation: string;
+  independentContext: string;
   statusAction: string;
   terminalState: string;
   nonterminalState: string;
@@ -123,6 +126,10 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
     progressTool: 'todowrite',
     hostStatusSurface: 'task_status',
     lifecycle: {
+      freshDelegation: '`task` without `task_id`',
+      sameAssignmentContinuation: '`task` with the prior `task_id`',
+      independentContext:
+        'omitting `task_id` creates an isolated child session',
       statusAction: 'wait, poll, and collect',
       terminalState: 'terminal task_status result',
       nonterminalState: 'nonterminal task_status result',
@@ -157,6 +164,11 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
     progressTool: 'functions.update_plan',
     hostStatusSurface: 'collaboration.list_agents',
     lifecycle: {
+      freshDelegation: '`collaboration.spawn_agent` with `fork_turns="none"`',
+      sameAssignmentContinuation:
+        '`collaboration.followup_task` for the existing agent',
+      independentContext:
+        '`fork_turns="none"` prevents parent-history inheritance',
       statusAction: 'wait and inspect status',
       terminalState: 'terminal mailbox completion or failure update',
       nonterminalState: 'collaboration.wait_agent timeout or silence',
@@ -207,6 +219,9 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
     progressTool: 'TodoWrite',
     hostStatusSurface: 'TodoWrite',
     lifecycle: {
+      freshDelegation: 'a normal `Agent` invocation',
+      sameAssignmentContinuation: '`SendMessage` to the prior agent ID',
+      independentContext: 'do not use `fork` for independent work',
       statusAction: 'wait, inspect, and collect',
       terminalState: 'terminal TaskOutput result',
       nonterminalState: 'nonterminal TaskOutput result',

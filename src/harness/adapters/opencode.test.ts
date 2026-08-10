@@ -53,6 +53,19 @@ describe('OpenCode harness adapter v0.3', () => {
     expect(oracle).toContain('Do not mutate the workspace');
   });
 
+  test('renders OpenCode-native fresh and continuation lifecycle guidance', () => {
+    const root = renderOpenCodeAgentConfigs().orchestrator.prompt ?? '';
+
+    expect(root).toContain('`task` without `task_id`');
+    expect(root).toContain('`task` with the prior `task_id`');
+    expect(root).toContain(
+      'omitting `task_id` creates an isolated child session',
+    );
+    expect(root).not.toContain('collaboration.followup_task');
+    expect(root).not.toContain('SendMessage');
+    expect(root).not.toContain('fork_turns');
+  });
+
   test('reports the first-class OpenCode capability surface', () => {
     expect(opencodeAdapter.id).toBe('opencode');
     expect(opencodeAdapter.capabilities).toMatchObject({

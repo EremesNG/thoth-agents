@@ -1,6 +1,6 @@
 {
   "name": "thoth-agents",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "description": "Adaptive multi-harness agent pack with seven roles and a runtime-autonomous Spec Kit-compatible SDD bundle for Claude Code.",
   "author": {
     "name": "thoth-agents"

@@ -126,3 +126,113 @@ The canonical thoth-owned skill bundle and every generated or initialized harnes
 - **GIVEN** Codex or Claude uses a harness-specific blocking input primitive
 - **WHEN** either user decision is requested
 - **THEN** the generated prompt names
+
+### Requirement: Fresh delegation at work boundaries
+
+The canonical orchestration policy MUST make a fresh subagent instance the default whenever the objective, SDD phase, mutable surface, or independent-judgment boundary changes.
+
+#### Scenario: US1 - Receive fresh specialists at work boundaries 1
+
+- **GIVEN** a specialist completed one bounded assignment
+- **WHEN** the root delegates a different objective, SDD phase, mutable surface, or independent judgment
+- **THEN** the root creates a fresh native subagent instance
+
+#### Scenario: US1 - Receive fresh specialists at work boundaries 2
+
+- **GIVEN** Oracle performed an optional plan review
+- **WHEN** final implementation verification begins
+- **THEN** the root delegates that verification to a fresh Oracle instance
+
+#### Scenario: US1 - Receive fresh specialists at work boundaries 3
+
+- **GIVEN** Oracle returned findings that need clarification
+- **WHEN** the root asks only about those same findings without requesting a new approval or PASS judgment
+- **THEN** the root may continue that exact Oracle assignment
+
+### Requirement: Bounded continuation exception
+
+The canonical orchestration policy MUST permit resuming or steering an existing subagent only for the exact same bounded assignment and MUST NOT treat completed role instances as a reusable pool.
+
+#### Scenario: US2 - Continue only the same bounded assignment 1
+
+- **GIVEN** a specialist is still executing a bounded assignment
+- **WHEN** the root supplies a correction or missing context for that same assignment
+- **THEN** the root may continue the existing session
+
+#### Scenario: US2 - Continue only the same bounded assignment 2
+
+- **GIVEN** a specialist completed a bounded assignment
+- **WHEN** the root requests clarification or completion of that unchanged assignment and no independent judgment is required
+- **THEN** the root may resume it deliberately
+
+#### Scenario: US2 - Continue only the same bounded assignment 3
+
+- **GIVEN** the root is waiting for a running task
+- **WHEN** it uses the harness status or wait surface
+- **THEN** that operation is treated as collection of the existing assignment rather than permission to reuse the session for later work
+
+### Requirement: Fresh independent judgment
+
+Every Oracle plan review, verification round, and PASS-producing judgment MUST use a fresh Oracle instance; an existing Oracle session MAY be resumed only to clarify its current findings without issuing a new approval judgment.
+
+#### Scenario: US1 - Receive fresh specialists at work boundaries 1
+
+- **GIVEN** a specialist completed one bounded assignment
+- **WHEN** the root delegates a different objective, SDD phase, mutable surface, or independent judgment
+- **THEN** the root creates a fresh native subagent instance
+
+#### Scenario: US1 - Receive fresh specialists at work boundaries 2
+
+- **GIVEN** Oracle performed an optional plan review
+- **WHEN** final implementation verification begins
+- **THEN** the root delegates that verification to a fresh Oracle instance
+
+#### Scenario: US1 - Receive fresh specialists at work boundaries 3
+
+- **GIVEN** Oracle returned findings that need clarification
+- **WHEN** the root asks only about those same findings without requesting a new approval or PASS judgment
+- **THEN** the root may continue that exact Oracle assignment
+
+### Requirement: Status is not reuse
+
+Native wait and status operations MUST remain scoped to collecting a nonterminal assignment and MUST NOT authorize reusing that session for a later work unit.
+
+#### Scenario: US2 - Continue only the same bounded assignment 1
+
+- **GIVEN** a specialist is still executing a bounded assignment
+- **WHEN** the root supplies a correction or missing context for that same assignment
+- **THEN** the root may continue the existing session
+
+#### Scenario: US2 - Continue only the same bounded assignment 2
+
+- **GIVEN** a specialist completed a bounded assignment
+- **WHEN** the root requests clarification or completion of that unchanged assignment and no independent judgment is required
+- **THEN** the root may resume it deliberately
+
+#### Scenario: US2 - Continue only the same bounded assignment 3
+
+- **GIVEN** the root is waiting for a running task
+- **WHEN** it uses the harness status or wait surface
+- **THEN** that operation is treated as collection of the existing assignment rather than permission to reuse the session for later work
+
+### Requirement: Native lifecycle translation
+
+Each supported harness MUST render its native fresh and continuation mechanisms: Codex `spawn_agent` with `fork_turns="none"` versus `followup_task`, OpenCode `task` without `task_id` versus the prior `task_id`, and Claude Code normal `Agent` versus `SendMessage`, while avoiding inherited/forked context for independent work.
+
+#### Scenario: US3 - Apply native lifecycle operations consistently 1
+
+- **GIVEN** Codex requires fresh delegation
+- **WHEN** its root prompt is rendered
+- **THEN** it names `collaboration.spawn_agent` with `fork_turns="none"`; continuation names `collaboration.followup_task`
+
+#### Scenario: US3 - Apply native lifecycle operations consistently 2
+
+- **GIVEN** OpenCode requires fresh delegation
+- **WHEN** its root prompt is rendered
+- **THEN** it names `task` without `task_id`; continuation allows the prior `task_id` only for the same assignment
+
+#### Scenario: US3 - Apply native lifecycle operations consistently 3
+
+- **GIVEN** Claude Code requires fresh delegation
+- **WHEN** its root prompt is rendered
+- **THEN** it names a normal `Agent` invocation; continuation names `SendMessage` to the prior agent ID and independent work forbids forked context inheritance

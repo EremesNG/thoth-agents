@@ -5,7 +5,6 @@ import {
 } from '../harness/core/agent-pack';
 import {
   getRequiredSddPhaseOrder,
-  getSddArtifactGraph,
   getSddPhaseOwner,
   getSddRouteExecutionPolicy,
   getSddWorkflowContract,
@@ -156,13 +155,6 @@ function renderRoleDirectory(): string {
     .join('\n');
 }
 
-function renderArtifactSummary(): string {
-  return getSddArtifactGraph()
-    .filter((artifact) => artifact.requiredFor.length === 0)
-    .map((artifact) => artifact.path)
-    .join(', ');
-}
-
 export function createOrchestratorPromptSections(): RolePromptSection[] {
   const workflow = getSddWorkflowContract();
   const policy = getAgentPackContract().orchestrationPolicy;
@@ -179,9 +171,18 @@ You are the adaptive root for thoth-agents. Keep requirements, decisions, execut
 - Delegate only for net gain from specialization, context isolation, review, or safe parallelism. The maximum delegation depth is ${policy.maxDelegationDepth}; children never delegate.
 - Maintain one writer for each mutable surface. Parallelize only independent work with no overlapping writes.
 - Keep prompts bounded; request distilled evidence, not raw logs or full files.
+- Preserve unrelated changes; report changed files, evidence, risks, and capability gaps.
 - Use \`{{userQuestionTool}}\` only when a material unresolved choice changes the result. Continue all safe non-blocked work first.
 - Use \`{{progressTool}}\` only when the work genuinely has multiple dependent steps.
 </operating-model>
+
+<delegation-lifecycle>
+- A new objective, SDD phase, mutable surface, or independent judgment is a work boundary: start a fresh specialist using {{lifecycleFreshDelegation}}. Never treat completed agents as a reusable role pool.
+- Independent context: {{lifecycleIndependentContext}}.
+- Continue with {{lifecycleSameAssignmentContinuation}} only to steer, complete, or clarify the same bounded assignment; never to cross a work boundary.
+- {{lifecycleSameSessionProbe}} only collects the active nonterminal assignment and does not authorize later reuse.
+- Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance. An existing Oracle session may only clarify its current findings.
+</delegation-lifecycle>
 
 <routing>
 ${renderRoleDirectory()}
@@ -216,29 +217,20 @@ ${renderRoleDirectory()}
 </external-skills>
 
 <memory>
-- Load the installed \`thoth-mem\` skill for resume or prior work and provider-backed memory; never invent its protocol.
-- Preserve a durable decision, root cause, convention, or discovery only when reusable. Root owns the stable root session ID, project, lifecycle, real-user intent, and authorization; never invent identity or confirmed effects.
-- Follow the skill at verified compaction and a meaningful semantic boundary. Children receive only bounded MEMORY dispatch and never own root lifecycle.
-- \`openspec/\` remains canonical; do not mirror SDD phase artifacts into provider memory. A memory failure degrades memory only and does not block unrelated implementation or verification.
+- Load the installed \`thoth-mem\` skill for resume or prior work; never invent its protocol.
+- Preserve a durable decision, root cause, convention, or discovery only when reusable. Root owns the stable root session ID, project, lifecycle, real-user intent, and authorization.
+- Follow the skill at verified compaction or a meaningful semantic boundary; children receive only bounded MEMORY and never own root lifecycle.
+- \`openspec/\` remains canonical; do not mirror SDD phase artifacts. A memory failure does not block unrelated work.
 </memory>
 
 <artifacts>
-- Preserve Spec Kit semantics inside ${workflow.artifactRoot}.
-- Accelerated and Full require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md; optional when useful: ${renderArtifactSummary()}.
-- Root owns openspec/ coordination and thoth-sdd gates; product work has one writer, and root alone moves [~] -> [x] after evidence.
-- ${roleTemplate('oracle')} returns read-only findings. Root persists verification; after PASS, archive syncs declared durable deltas and moves the change to openspec/changes/archive/YYYY-MM-DD-<feature>/.
+- In ${workflow.artifactRoot}, Accelerated and Full require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md.
+- Root owns openspec/ gates and task state, moves [~] -> [x] after evidence, and keeps one product writer.
+- ${roleTemplate('oracle')} returns read-only findings; root persists verification and archives declared durable deltas after PASS.
 </artifacts>
 
-<execution>
-- Validate contracts and tests first; use test-first work for behavior. Root or one writer implements; do not delegate merely because an agent exists.
-- ${roleTemplate('oracle')} owns selected plan review and every verification; root and writers never self-approve.
-- Preserve unrelated working-tree changes. Never instruct an agent to discard them.
-- Report changed files, evidence, risks, and capability gaps truthfully.
-</execution>
-
 <delegation>
-- Dispatch through \`{{delegationTool}}\` with this envelope; use the same boundaries for non-SDD work.
-- Parallelize only independent work and await requested results before synthesis.
+- Use this envelope for all \`{{delegationTool}}\` delegation; parallelize only independent work and await results.
 - Child return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
 
 ${renderSddPhaseDispatchTemplate()}
@@ -472,6 +464,18 @@ function renderRoleText(
     .replaceAll(
       '{{lifecycleStatusAction}}',
       dialect.tools.lifecycle.statusAction,
+    )
+    .replaceAll(
+      '{{lifecycleFreshDelegation}}',
+      dialect.tools.lifecycle.freshDelegation,
+    )
+    .replaceAll(
+      '{{lifecycleIndependentContext}}',
+      dialect.tools.lifecycle.independentContext,
+    )
+    .replaceAll(
+      '{{lifecycleSameAssignmentContinuation}}',
+      dialect.tools.lifecycle.sameAssignmentContinuation,
     )
     .replaceAll(
       '{{lifecycleTerminalState}}',

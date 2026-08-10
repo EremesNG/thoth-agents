@@ -78,6 +78,17 @@ describe('Claude Code adapter v0.3', () => {
     expect(instructions).not.toContain('<phase-protocols>');
   });
 
+  test('renders Claude-native fresh and continuation lifecycle guidance', () => {
+    const instructions = renderClaudeCodeRootInstructions();
+
+    expect(instructions).toContain('a normal `Agent` invocation');
+    expect(instructions).toContain('`SendMessage` to the prior agent ID');
+    expect(instructions).toContain('do not use `fork` for independent work');
+    expect(instructions).not.toContain('collaboration.followup_task');
+    expect(instructions).not.toContain('task_id');
+    expect(instructions).not.toContain('fork_turns');
+  });
+
   test('limits read-only roles by native tool denial', () => {
     const { artifacts } = render();
     const explorer = String(artifact(artifacts, 'agents/explorer.md')?.content);

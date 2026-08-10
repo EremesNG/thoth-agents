@@ -112,6 +112,11 @@ describe('prompt dialects', () => {
 
   test('models portable lifecycle status and same-session probe terminology', () => {
     expect(CODEX_PROMPT_DIALECT.tools.lifecycle).toEqual({
+      freshDelegation: '`collaboration.spawn_agent` with `fork_turns="none"`',
+      sameAssignmentContinuation:
+        '`collaboration.followup_task` for the existing agent',
+      independentContext:
+        '`fork_turns="none"` prevents parent-history inheritance',
       statusAction: 'wait and inspect status',
       terminalState: 'terminal mailbox completion or failure update',
       nonterminalState: 'collaboration.wait_agent timeout or silence',
@@ -119,10 +124,24 @@ describe('prompt dialects', () => {
       enforcement: 'runtime-supported',
     });
     expect(OPENCODE_PROMPT_DIALECT.tools.lifecycle).toEqual({
+      freshDelegation: '`task` without `task_id`',
+      sameAssignmentContinuation: '`task` with the prior `task_id`',
+      independentContext:
+        'omitting `task_id` creates an isolated child session',
       statusAction: 'wait, poll, and collect',
       terminalState: 'terminal task_status result',
       nonterminalState: 'nonterminal task_status result',
       sameSessionProbe: 'task_status on the same task session',
+      enforcement: 'runtime-supported',
+    });
+    expect(CLAUDE_CODE_PROMPT_DIALECT.tools.lifecycle).toEqual({
+      freshDelegation: 'a normal `Agent` invocation',
+      sameAssignmentContinuation: '`SendMessage` to the prior agent ID',
+      independentContext: 'do not use `fork` for independent work',
+      statusAction: 'wait, inspect, and collect',
+      terminalState: 'terminal TaskOutput result',
+      nonterminalState: 'nonterminal TaskOutput result',
+      sameSessionProbe: 'TaskOutput on the same task session',
       enforcement: 'runtime-supported',
     });
     expect(

@@ -73,6 +73,22 @@ describe('Codex adapter v0.3', () => {
     expect(root).not.toContain('<phase-protocols>');
   });
 
+  test('renders Codex-native fresh and continuation lifecycle guidance', () => {
+    const root = renderCodexRootInstructions();
+
+    expect(root).toContain(
+      '`collaboration.spawn_agent` with `fork_turns="none"`',
+    );
+    expect(root).toContain(
+      '`collaboration.followup_task` for the existing agent',
+    );
+    expect(root).toContain(
+      '`fork_turns="none"` prevents parent-history inheritance',
+    );
+    expect(root).not.toContain('task_id');
+    expect(root).not.toContain('SendMessage');
+  });
+
   test('renders read-only and writer sandbox boundaries', () => {
     const explorer = agentContent('explorer');
     const deep = agentContent('deep');

@@ -244,7 +244,7 @@ describe('Spec Kit workflow contract', () => {
     );
   });
 
-  test('keeps coordination in root and specialist work in stable roles', () => {
+  test('keeps coordination in root and implementation ownership adaptive', () => {
     const phases = getSddWorkflowContract().phases;
     const ownerOf = (id: string) =>
       phases.find((phase) => phase.id === id)?.defaultAgentRole;
@@ -257,7 +257,7 @@ describe('Spec Kit workflow contract', () => {
     expect(ownerOf('tasks')).toBe('orchestrator');
     expect(ownerOf('plan-review')).toBe('oracle');
     expect(ownerOf('verify')).toBe('oracle');
-    expect(ownerOf('implement')).toBe('orchestrator');
+    expect(ownerOf('implement')).toBe('adaptive-implementation');
     expect(ownerOf('converge')).toBe('orchestrator');
     expect(ownerOf('archive')).toBe('orchestrator');
   });
@@ -268,6 +268,16 @@ describe('Spec Kit workflow contract', () => {
     expect(getSddPhaseOwner('full', 'verify')).toBe('oracle');
     expect(getSddPhaseOwner('accelerated', 'plan-review')).toBe('oracle');
     expect(getSddPhaseOwner('full', 'plan-review')).toBe('oracle');
+  });
+
+  test.each([
+    'direct',
+    'accelerated',
+    'full',
+  ] as const)('uses one adaptive implementation owner under %s', (route) => {
+    expect(getSddPhaseOwner(route, 'implement')).toBe(
+      'adaptive-implementation',
+    );
   });
 
   test('allows review or skip after planning and still gates convergence and archive', () => {

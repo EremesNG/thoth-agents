@@ -13,9 +13,17 @@ definitions and applies overrides; harness adapters translate the same intent.
 
 ## Invariants
 
-- Root handles clear bounded work directly and owns sequential SDD coordination.
-- Delegate only for net gain; depth is one and each mutable surface has one
-  writer.
+- Root owns sequential SDD coordination. SDD routes govern artifacts and gates,
+  not implementation ownership: root, `designer`, `quick`, or `deep` may
+  implement in Direct, Accelerated, or Full.
+- Delegate only for demonstrated net gain; depth is one and each mutable surface
+  has one writer. Treat explicit safe user direction as an ownership input.
+- Prefer delegation for specialization, focused context, independent bounded
+  work, safe parallelism, or demonstrated quality, latency, or total-cost gain.
+  Prefer root continuity for short work, one ordered reasoning chain, frequent
+  shared-state writes, accumulated context, rediscovery, or coordination cost.
+  Route name, file count alone, and cheaper model price without end-to-end
+  evidence are insufficient ownership signals.
 - Explorer, librarian, and oracle never mutate the workspace.
 - Every dispatch carries bounded thoth-mem `none|recall|observe` authorization
   independently of workspace mode. `observe` may permit a durable provider
@@ -23,8 +31,18 @@ definitions and applies overrides; harness adapters translate the same intent.
 - Oracle owns each user-selected plan review and every final verification. An
   implementer cannot approve its own result, and plan approval never replaces
   verification.
-- Designer owns UI/UX, quick owns narrow work, and deep owns correctness-heavy
-  implementation.
+- Only after root decides delegation creates net gain, select the specialist:
+
+  | Signal | Writer | Escalation boundary |
+  | --- | --- | --- |
+  | User-facing UI/UX or visual quality | `designer` | Coupled backend contracts or high risk move to `deep`. |
+  | Known narrow mechanical low-risk surface | `quick` | Discovery, coupling, migrations, edge cases, or higher failure cost move to `deep`. |
+  | Coupled multi-file, shared contracts, migrations, concurrency, edge cases, or high risk | `deep` | Material product/architecture choices return to root. |
+
+  Proven independent surfaces may use separate writers with non-overlapping
+  files. Overlapping or compatibility-coupled work stays with one `deep` writer
+  and ordered handoffs. When delegation has no demonstrated net gain, root may
+  retain the accepted surface under any route.
 - Root loads detailed phase contracts from bundled skills on demand instead of
   delegating merely to change prompts.
 - Children return conclusion, evidence, verification, risks, open questions,
@@ -46,7 +64,7 @@ clarify its current findings without issuing a new judgment.
 | Harness | Fresh work | Same-assignment continuation |
 | --- | --- | --- |
 | OpenCode | Call `task` without `task_id`. | Pass the prior `task_id`. |
-| Codex | Call `collaboration.spawn_agent` with `fork_turns="none"`. | Call `collaboration.followup_task` for the existing agent. |
+| Codex | Call `collaboration.spawn_agent` with `fork_turns="none"`; set `agent_type` when the active schema exposes it, otherwise use a role-prefixed bounded fallback and report instruction-only selection. | Call `collaboration.followup_task` for the existing agent. |
 | Claude Code | Use a normal `Agent` invocation and do not use `fork` for independent work. | Use `SendMessage` with the prior agent ID. |
 
 ## Entrypoints and tests

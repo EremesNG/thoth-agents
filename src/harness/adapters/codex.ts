@@ -15,11 +15,9 @@ import type { McpConfig } from '../../mcp/types';
 import {
   type AgentRoleContract,
   getAgentPackContract,
+  renderAgentRoutingDescription,
 } from '../core/agent-pack';
-import {
-  memoryGovernanceDiagnostics,
-  renderMemoryGovernanceInstructions,
-} from '../core/memory-governance';
+import { memoryGovernanceDiagnostics } from '../core/memory-governance';
 import {
   findRootPackageJsonPath,
   readPackageJsonVersion,
@@ -125,7 +123,7 @@ function codexRuntimeGuidance(): string {
     '- The ambient Codex session is the adaptive root; no orchestrator child TOML is generated.',
     '- Delegate with `collaboration.spawn_agent` only when the root determines that specialization, context isolation, review, or independent parallel work creates a net gain.',
     '- Collaboration tools are direct tools and must not be called from inside `functions.exec`.',
-    '- Use a role-prefixed `task_name` and a self-contained English `message` with scope, anchors, constraints, verification, and the compact return contract. The current collaboration surface has no hard custom-role selector, so role selection remains instruction-level.',
+    '- When the active `collaboration.spawn_agent` schema exposes `agent_type`, set it to the selected canonical role. When it does not, use a role-prefixed `task_name` plus a self-contained bounded envelope; that fallback is instruction-only.',
     '- Keep maximum depth 1: children do not delegate. Use one writer per mutable surface and parallelize only independent work.',
     '- A `collaboration.wait_agent` timeout is nonterminal; inspect `collaboration.list_agents` for the same task before rerouting or interrupting it.',
     '- Use `request_user_input` only for blocking material choices and always omit `autoResolutionMs` entirely.',
@@ -138,15 +136,8 @@ function codexRuntimeGuidance(): string {
 function codexRoleInstructions(role: AgentRoleContract): string {
   return [
     '<role-operational-contract>',
-    `- Role: ${role.name}`,
-    `- Mode: ${role.mode}`,
-    `- Scope: ${role.scope}`,
-    `- Responsibility: ${role.responsibility}`,
-    '- Use request_user_input for local blocking decisions.',
     '- Permissions, memory governance, runtime hooks, and provider-per-agent controls are instruction-level unless the active Codex runtime documents stronger enforcement.',
     `- ${role.name} runs as a Codex custom-agent TOML entry; the orchestrator remains the ambient Codex root session, not a generated role TOML.`,
-    ...role.toolGovernance.map((rule) => `- ${rule}`),
-    ...role.verification.map((rule) => `- ${rule}`),
     '</role-operational-contract>',
   ].join('\n');
 }
@@ -165,7 +156,6 @@ function roleInstructions(
       model,
     }),
     codexRoleInstructions(role),
-    renderMemoryGovernanceInstructions(role, CODEX_PROMPT_DIALECT),
   ].join('\n\n');
 }
 
@@ -239,7 +229,7 @@ function renderAgentArtifacts({ config }: { config?: PluginConfig }): {
       surfaceId: 'project-agent-toml',
       values: {
         name: role.name,
-        description: role.responsibility,
+        description: renderAgentRoutingDescription(role),
         developer_instructions: roleInstructions(role, config),
         ...(model ? { model } : {}),
         ...(effort ? { model_reasoning_effort: effort } : {}),

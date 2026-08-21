@@ -59,8 +59,19 @@ describe('Codex adapter v0.3', () => {
 
     expect(root.length).toBeLessThan(10_000);
     expect(root).toContain('adaptive root');
-    expect(root).toContain('bounded direct work');
+    expect(root).toContain(
+      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead',
+    );
     expect(root).toContain('net gain');
+    expect(root).toContain('<implementation-ownership>');
+    expect(root).toContain(
+      'SDD routes govern artifacts and gates, not implementation ownership.',
+    );
+    expect(root).toContain(
+      'Explicit safe user direction is an ownership input.',
+    );
+    expect(root).not.toMatch(/Direct micro-action/i);
+    expect(root).not.toMatch(/Artifact-backed implement follows/i);
     expect(root).toContain('Accelerated SDD');
     expect(root).toContain('collaboration.spawn_agent');
     expect(root).toContain('request_user_input');
@@ -87,6 +98,31 @@ describe('Codex adapter v0.3', () => {
     );
     expect(root).not.toContain('task_id');
     expect(root).not.toContain('SendMessage');
+  });
+
+  test('uses conditional agent_type selection with a bounded instruction-only fallback', () => {
+    const root = renderCodexRootInstructions();
+    expect(root).toContain('schema exposes `agent_type`');
+    expect(root).toContain('role-prefixed `task_name`');
+    expect(root).toContain('fallback is instruction-only');
+    expect(root).not.toMatch(/Codex (?:always|universally).*agent_type/i);
+  });
+
+  test('renders canonical routable descriptions for every specialist', () => {
+    for (const name of [
+      'explorer',
+      'librarian',
+      'oracle',
+      'designer',
+      'quick',
+      'deep',
+    ]) {
+      const content = agentContent(name);
+      expect(content, name).toContain('Use when:');
+      expect(content, name).toContain('Do not use when:');
+      expect(content, name).toContain('Escalate when:');
+      expect(content, name).toContain('Verification:');
+    }
   });
 
   test('renders read-only and writer sandbox boundaries', () => {

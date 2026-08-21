@@ -2,10 +2,10 @@ import {
   type AgentRoleName,
   getAgentPackContract,
   getAgentRole,
+  type ImplementationOwnershipPolicy,
 } from '../harness/core/agent-pack';
 import {
   getRequiredSddPhaseOrder,
-  getSddPhaseOwner,
   getSddRouteExecutionPolicy,
   getSddWorkflowContract,
   renderSddPhaseDispatchTemplate,
@@ -141,18 +141,31 @@ function roleTemplate(role: AgentPromptRole): string {
 }
 
 function renderSddRoute(route: SddRoute): string {
-  return getRequiredSddPhaseOrder(route)
-    .map(
-      (phase) => `${phase} (${roleTemplate(getSddPhaseOwner(route, phase))})`,
-    )
-    .join(' -> ');
+  return getRequiredSddPhaseOrder(route).join(' -> ');
+}
+
+function renderImplementationOwnershipPolicy(
+  policy: ImplementationOwnershipPolicy,
+): string {
+  return `<implementation-ownership>
+- SDD routes govern artifacts and gates, not implementation ownership.
+- Eligible owners in every route: ${policy.eligibleOwners
+    .map((owner) => roleTemplate(owner))
+    .join(', ')}.
+- Delegation benefits: ${policy.delegationBenefits.join('; ')}.
+- Root continuity benefits: ${policy.rootContinuityBenefits.join('; ')}.
+- Explicit safe user direction is an ownership input.
+- Insufficient signals: ${policy.insufficientSignals.join('; ')}.
+- Only after deciding delegation creates net gain: use ${roleTemplate('designer')} for UI/UX, ${roleTemplate('quick')} for known narrow low-risk work, and ${roleTemplate('deep')} for coupled or high-risk work.
+</implementation-ownership>`;
 }
 
 function renderRoleDirectory(): string {
-  return getAgentPackContract()
-    .roles.filter((role) => role.name !== 'orchestrator')
-    .map((role) => `- ${roleTemplate(role.name)}: ${role.responsibility}`)
-    .join('\n');
+  return [
+    `- ${roleTemplate('explorer')}: uncertain local discovery; read-only.`,
+    `- ${roleTemplate('librarian')}: external evidence; read-only.`,
+    `- ${roleTemplate('oracle')}: review/verify; read-only, never implementer.`,
+  ].join('\n');
 }
 
 export function createOrchestratorPromptSections(): RolePromptSection[] {
@@ -163,13 +176,13 @@ export function createOrchestratorPromptSections(): RolePromptSection[] {
 
   return [
     roleText(`<role>
-You are the adaptive root for thoth-agents. Keep requirements, decisions, execution ownership, and final synthesis in this thread.
+You are the adaptive root for thoth-agents. Keep requirements, decisions, ownership, and synthesis here.
 </role>
 
 <operating-model>
-- Handle bounded direct work when intent and risk are clear; never verify your own implementation.
-- Delegate only for net gain from specialization, context isolation, review, or safe parallelism. The maximum delegation depth is ${policy.maxDelegationDepth}; children never delegate.
-- Maintain one writer for each mutable surface. Parallelize only independent work with no overlapping writes.
+- Handle bounded implementation directly in any route when continuity outweighs delegation overhead; never self-verify.
+- The maximum delegation depth is ${policy.maxDelegationDepth}; children never delegate.
+- Keep one writer per mutable surface; parallelize only non-overlapping work.
 - Keep prompts bounded; request distilled evidence, not raw logs or full files.
 - Preserve unrelated changes; report changed files, evidence, risks, and capability gaps.
 - Use \`{{userQuestionTool}}\` only when a material unresolved choice changes the result. Continue all safe non-blocked work first.
@@ -188,6 +201,8 @@ You are the adaptive root for thoth-agents. Keep requirements, decisions, execut
 ${renderRoleDirectory()}
 </routing>
 
+${renderImplementationOwnershipPolicy(policy.implementationOwnership)}
+
 <sdd-routing>
 - An explicitly requested route wins: no duplicate route-selection prompt. Otherwise assess and recommend one route, ask with \`{{userQuestionTool}}\`, and wait for the user to select Direct, Accelerated, or Full. The recommendation is not the decision. The user's selected route wins; explain risk without overriding it. A generic SDD request sets Accelerated as the minimum unless Full risk applies.
 - Direct: clear, bounded, low-risk work. ${renderSddRoute('direct')}.
@@ -203,6 +218,7 @@ ${renderRoleDirectory()}
 - When implementation discoveries refine the same intent, update the canonical artifact and revalidate only affected downstream artifacts. Split a new change when the intent changes.
 - Load the bundled \`thoth-sdd\` skill only after selecting Accelerated or Full, then read only the reference for the current phase.
 - Root owns specify, clarify, plan, checklist, tasks, converge, and archive coordination; these phases are not delegated merely to change prompts.
+- Record owner, net-gain rationale, surface, requirements, and checks before implement or dispatch.
 - Delegate each user-selected plan review and every verify phase to ${roleTemplate('oracle')}. The implementation writer must never review itself.
 </sdd-routing>
 
@@ -307,13 +323,18 @@ You are ${roleName}.
 
 <responsibility>
 ${role.responsibility}
-</responsibility>`),
+</responsibility>
+
+<routing-contract>
+- Use when: ${role.useWhen.join(' ')}
+- Do not use when: ${role.doNotUseWhen.join(' ')}
+- Escalate when: ${role.escalateWhen.join(' ')}
+- Verification: ${role.verification.join(' ')}
+</routing-contract>`),
     createReasoningDisciplineSection(),
     roleText(`<rules>
-- Do not delegate further or manage root progress.
 - ${modeRules.join('\n- ')}
 - ${ROLE_SPECIFIC_RULES[roleName].join('\n- ')}
-- Ask only when a local blocking decision cannot be resolved from the assignment and evidence.
 </rules>`),
     createSubagentRulesSection(),
     createQuestionProtocolSection(),
@@ -375,8 +396,7 @@ function renderSubagentRules(
   dialect: HarnessPromptDialect,
 ): string {
   const rules = [
-    `- Do not delegate further or call \`${dialect.tools.progressTool}\`.`,
-    `- Use \`${dialect.tools.userQuestionTool}\` only for a local blocking choice.`,
+    `- Do not delegate further or call \`${dialect.tools.progressTool}\`; root owns progress.`,
     '- Use terminating checks; avoid watch processes and indefinite waits.',
     '- Never discard or overwrite unrelated working-tree changes.',
   ];

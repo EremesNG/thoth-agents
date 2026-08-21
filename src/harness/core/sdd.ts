@@ -54,6 +54,7 @@ export type SddPhaseId =
   | 'archive';
 
 export type SddPhaseActivation = 'required' | 'conditional';
+export type SddPhaseOwner = AgentRoleName | 'adaptive-implementation';
 
 export interface SddPhaseContract {
   id: SddPhaseId;
@@ -63,7 +64,7 @@ export interface SddPhaseContract {
   activation: SddPhaseActivation;
   prerequisites: SddPhaseId[];
   producesArtifact: boolean;
-  defaultAgentRole: AgentRoleName;
+  defaultAgentRole: SddPhaseOwner;
   eligibleAgentRoles: AgentRoleName[];
   reason: string;
   condition?: string;
@@ -234,10 +235,10 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['tasks'],
     producesArtifact: false,
-    defaultAgentRole: 'orchestrator',
+    defaultAgentRole: 'adaptive-implementation',
     eligibleAgentRoles: ['orchestrator', 'designer', 'quick', 'deep'],
     reason:
-      'Let the adaptive root act directly or route the settled work to one writer.',
+      'Choose root, designer, quick, or deep from task-shaped net gain independently from the SDD route.',
   },
   {
     id: 'verify',
@@ -603,10 +604,18 @@ export const SDD_PHASE_PROTOCOLS = [
       'User request or assigned tasks.md slice',
       'Accepted spec.md and plan.md when present',
       'Exact implementation boundaries and verification commands',
+      'Implementation owner decision (orchestrator, designer, quick, or deep), exact mutable surface, requirement anchors, and task-shape/net-gain rationale',
     ],
     instructions: [
-      'The root marks selected artifact-backed tasks [~] before dispatch and marks them [x] only after task-specific evidence is verified.',
+      'The root marks selected artifact-backed tasks [~] before implementation and marks them [x] only after task-specific evidence is verified; Direct or no-artifact work has no task state.',
+      'The SDD route governs artifacts and gates, not implementation ownership; choose root or a specialist from explicit safe user direction and demonstrated task-shaped net gain.',
+      'When root owns implementation, retain the accepted mutable surface with no child dispatch; when a specialist owns implementation, send one bounded dispatch with the exact surface, requirements, and verification.',
       'Use test-first or TDD execution for behavior changes and preserve one writer per mutable surface.',
+      'Balance specialization, context isolation, independent work, quality, latency, and total cost against sequential dependency, shared mutable state, accumulated context, rediscovery, and coordination overhead.',
+      'Only after deciding delegation creates net gain, select designer for user-facing UI/UX, quick for known narrow low-risk work, and deep for coupled multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk work.',
+      'Record the owner decision, rationale, exact mutable surface, requirement anchors, and verification before implementation or dispatch.',
+      'Proven independent surfaces may use separate writers with non-overlapping files; overlapping or compatibility-coupled surfaces use one deep writer and ordered handoffs.',
+      'Quick and designer must escalate before expanding into deep-risk or compatibility-coupled scope.',
       'Edit only the assigned implementation surface and report justified deviations from the accepted plan.',
       'When evidence refines the same intent, return it to root so canonical artifacts are updated and only affected downstream artifacts and gates are revalidated.',
       'Start a new change instead of expanding the active one when the intent changes.',
@@ -629,7 +638,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'A task needs scope expansion, a material unresolved decision, or fails repeatedly without a safe bounded recovery.',
     ],
     handoff: [
-      'Pass changed files, per-task evidence, deviations, and verification results to verify.',
+      'Pass changed files, per-task evidence, deviations, and verification results to a fresh Oracle for independent verify.',
     ],
   },
   {
@@ -762,7 +771,7 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
     'Spec Kit artifact semantics are preserved inside the governed openspec store.',
     'Accelerated and full routes require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md.',
     'Research, data model, contracts, quickstart, requirements checklist, and plan-review.md are optional and created only when useful or selected.',
-    'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; implementation ownership stays with the root or one writer role.',
+    'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; Accelerated and Full implementation selects designer, quick, or deep, while Direct permits one isolated low-risk root micro-action.',
     'After oracle PASS, archive transactionally synchronizes only explicitly declared durable ADDED, MODIFIED, REMOVED, and RENAMED requirement deltas into openspec/specs; INTERNAL requirements and undeclared prose never update permanent specifications.',
     'Archive stages and backs up writes so handled failures roll back within the active process; forced process or operating-system termination is not crash-atomic.',
   ],
@@ -1083,7 +1092,7 @@ context:
 export function getSddPhaseOwner(
   _route: SddRoute,
   phaseId: SddPhaseId,
-): AgentRoleName {
+): SddPhaseOwner {
   return getSddPhase(phaseId).defaultAgentRole;
 }
 

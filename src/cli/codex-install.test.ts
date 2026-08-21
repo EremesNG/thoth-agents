@@ -110,11 +110,11 @@ describe('Codex install setup plan', () => {
         packageRoot: PACKAGE_ROOT,
       });
       const expected = {
-        oracle: { model: 'gpt-5.6-sol', effort: 'xhigh' },
-        librarian: { model: 'gpt-5.6-luna', effort: 'xhigh' },
+        oracle: { model: 'gpt-5.6-sol', effort: 'high' },
+        librarian: { model: 'gpt-5.6-luna', effort: 'high' },
         explorer: { model: 'gpt-5.6-luna', effort: 'low' },
         designer: { model: 'gpt-5.6-sol', effort: 'medium' },
-        quick: { model: 'gpt-5.6-luna', effort: 'xhigh' },
+        quick: { model: 'gpt-5.6-luna', effort: 'low' },
         deep: { model: 'gpt-5.6-sol', effort: 'medium' },
       } as const;
 
@@ -301,7 +301,10 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('thoth-agents:codex-root:start');
       expect(root).toContain('thoth-agents:codex-root:start -->\n<role>');
       expect(root).toContain('adaptive root');
-      expect(root).toContain('bounded direct work');
+      expect(root).toContain('<implementation-ownership>');
+      expect(root).toContain(
+        'SDD routes govern artifacts and gates, not implementation ownership.',
+      );
       expect(root).toContain('net gain');
       expect(root).toContain('Accelerated SDD');
       expect(root).toContain('maximum delegation depth is 1');
@@ -758,8 +761,9 @@ describe('Codex install setup plan', () => {
       expect(roleModel(updated)).toBe('designer-user-model');
       expect(updated).toContain('name = "designer"');
       expect(updated).toContain(
-        'description = "Own user-facing implementation choices and visual quality for UI work."',
+        'description = "Own user-facing implementation choices',
       );
+      expect(updated).toContain('Use when: User-facing UI/UX');
       expect(parseRoleTomlEffort(updated)).toBe('high');
       expect(updated).not.toContain('USER EDIT');
     } finally {

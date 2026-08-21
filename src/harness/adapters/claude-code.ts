@@ -18,8 +18,8 @@ import {
   type AgentRoleContract,
   type AgentRoleName,
   getAgentPackContract,
+  renderAgentRoutingDescription,
 } from '../core/agent-pack';
-import { renderMemoryGovernanceInstructions } from '../core/memory-governance';
 import {
   findRootPackageJsonPath,
   readPackageJsonVersion,
@@ -63,6 +63,17 @@ export const CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS = {
 
 type ClaudeCodeSubagentName = keyof typeof CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS;
 
+export const CLAUDE_CODE_SUBAGENT_DEFAULT_EFFORTS = {
+  explorer: 'low',
+  quick: 'low',
+  designer: 'medium',
+  deep: 'medium',
+  librarian: 'high',
+  oracle: 'high',
+} as const satisfies Record<ClaudeCodeSubagentName, string>;
+
+const CLAUDE_CODE_EFFORTS = new Set(['low', 'medium', 'high', 'max']);
+
 function isClaudeCodeSubagentName(
   name: string,
 ): name is ClaudeCodeSubagentName {
@@ -81,22 +92,26 @@ function getClaudeCodeAgentModel(
   return CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS[role.name];
 }
 
+function getClaudeCodeAgentEffort(
+  role: AgentRoleContract,
+  config?: PluginConfig,
+): string | undefined {
+  if (!isClaudeCodeSubagentName(role.name)) return undefined;
+  const configured = config?.agents?.[role.name]?.variant;
+  return configured && CLAUDE_CODE_EFFORTS.has(configured)
+    ? configured
+    : CLAUDE_CODE_SUBAGENT_DEFAULT_EFFORTS[role.name];
+}
+
 function claudeCodeRoleInstructions(role: AgentRoleContract): string {
   return [
     '<role-operational-contract>',
-    `- Role: ${role.name}`,
-    `- Mode: ${role.mode}`,
-    `- Scope: ${role.scope}`,
-    `- Responsibility: ${role.responsibility}`,
-    '- Use AskUserQuestion for local blocking decisions.',
     `- ${role.name} runs as an auto-discovered Claude Code plugin subagent invoked via Agent(subagent_type: ${claudeCodeSubagentType(role.name)}); plugin subagents are namespaced with the plugin name. The orchestrator is the main Claude Code session.`,
     ...(role.mode === 'read-only'
       ? [
           '- Write and Edit are denied in frontmatter while all other inherited tools, including MCP tools, remain available.',
         ]
       : []),
-    ...role.toolGovernance.map((rule) => `- ${rule}`),
-    ...role.verification.map((rule) => `- ${rule}`),
     '</role-operational-contract>',
   ].join('\n');
 }
@@ -115,7 +130,6 @@ function roleInstructions(
       model,
     }),
     claudeCodeRoleInstructions(role),
-    renderMemoryGovernanceInstructions(role, CLAUDE_CODE_PROMPT_DIALECT),
   ].join('\n\n');
 }
 
@@ -222,8 +236,9 @@ function renderSubagentArtifacts(config?: PluginConfig): HarnessArtifact[] {
     // instruction-level.
     const content = renderClaudeCodeSubagent({
       name: role.name,
-      description: role.responsibility,
+      description: renderAgentRoutingDescription(role),
       model: getClaudeCodeAgentModel(role, config),
+      effort: getClaudeCodeAgentEffort(role, config),
       ...(role.mode === 'read-only' ? { disallowedTools: 'Write, Edit' } : {}),
       instructions: roleInstructions(role, config),
     });

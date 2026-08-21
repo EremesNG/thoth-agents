@@ -9,15 +9,19 @@ ZAI/GLM, and mixed-provider mappings are intentionally absent.
 | --- | --- | --- |
 | `orchestrator` | `openai/gpt-5.6-sol` | `xhigh` |
 | `explorer` | `openai/gpt-5.6-luna` | `low` |
-| `librarian` | `openai/gpt-5.6-luna` | `xhigh` |
-| `oracle` | `openai/gpt-5.6-sol` | `xhigh` |
+| `librarian` | `openai/gpt-5.6-luna` | `high` |
+| `oracle` | `openai/gpt-5.6-sol` | `high` |
 | `designer` | `openai/gpt-5.6-sol` | `medium` |
-| `quick` | `openai/gpt-5.6-luna` | `xhigh` |
+| `quick` | `openai/gpt-5.6-luna` | `low` |
 | `deep` | `openai/gpt-5.6-sol` | `medium` |
 
 Model IDs and supported variants remain subject to the active harness catalog.
 Users may override individual roles in `thoth-agents.json`; an explicit override
 is not a built-in provider preset.
+
+These are reasoning-effort defaults, not measured task price, latency, token, or
+quality guarantees. Valid explicit role variants win; model-only Codex overrides
+do not invent an effort for an unknown custom model.
 
 ## Policy
 

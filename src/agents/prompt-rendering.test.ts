@@ -52,13 +52,45 @@ describe('v0.3 prompt rendering', () => {
 
     expect(prompt.length).toBeLessThan(9_000);
     expect(prompt).toContain('adaptive root');
-    expect(prompt).toContain('bounded direct work');
+    expect(prompt).toContain(
+      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead; never self-verify.',
+    );
+    expect(prompt).not.toContain(
+      'Keep bounded direct work to one isolated low-risk Direct micro-action',
+    );
     expect(prompt).toContain('net gain');
     expect(prompt).toContain('maximum delegation depth is 1');
     expect(prompt).toContain('one writer');
     expect(prompt).toContain('Direct');
     expect(prompt).toContain('Accelerated SDD');
     expect(prompt).toContain('Full SDD');
+    expect(prompt.match(/<implementation-ownership>/g)).toHaveLength(1);
+    expect(prompt).toContain(
+      'SDD routes govern artifacts and gates, not implementation ownership.',
+    );
+    expect(prompt).toContain(
+      'Delegation benefits: specialization; context isolation; independent bounded work; safe parallelism; quality, latency, or total-cost gain.',
+    );
+    expect(prompt).toContain(
+      'Root continuity benefits: short work; one ordered reasoning chain; frequent shared-state writes; already-loaded context; rediscovery and coordination cost.',
+    );
+    expect(prompt).toContain(
+      'Explicit safe user direction is an ownership input.',
+    );
+    expect(prompt).toContain(
+      'Insufficient signals: SDD route name; file count alone; cheaper model price without end-to-end evidence.',
+    );
+    expect(prompt).toContain(
+      'Only after deciding delegation creates net gain: use',
+    );
+    expect(prompt).toContain('UI/UX');
+    expect(prompt).toContain('known narrow low-risk work');
+    expect(prompt).toContain('coupled or high-risk work');
+    expect(prompt).toContain('never implementer');
+    expect(prompt).not.toMatch(/Direct micro-action/i);
+    expect(prompt).not.toMatch(/Artifact-backed implement follows/i);
+    expect(prompt).not.toMatch(/Accelerated[^\n]*selected writer/i);
+    expect(prompt).not.toMatch(/Full[^\n]*selected writer/i);
 
     for (const legacy of [
       'delegate-first',
@@ -69,6 +101,22 @@ describe('v0.3 prompt rendering', () => {
     ]) {
       expect(prompt).not.toContain(legacy);
     }
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('renders each child semantic rule family once in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createWriteCapableSpecialistPromptSections('quick'),
+      dialect,
+    );
+    expect(prompt.match(/<routing-contract>/g)).toHaveLength(1);
+    expect(prompt.match(/<questions>/g)).toHaveLength(1);
+    expect(prompt.match(/<return-contract>/g)).toHaveLength(1);
+    expect(prompt.match(/Read the dispatch MEMORY block/g)).toHaveLength(1);
+    expect(prompt.match(/Do not delegate further/g)).toHaveLength(1);
   });
 
   test.each([

@@ -2,12 +2,17 @@ import { describe, expect, test } from 'vitest';
 import type { HarnessArtifact } from '../types';
 import {
   CLAUDE_CODE_CAPABILITIES,
+  type ClaudeCodeRenderContext,
   claudeCodeAdapter,
   renderClaudeCodeRootInstructions,
 } from './claude-code';
 
 function render() {
   return claudeCodeAdapter.render({ projectRoot: process.cwd() });
+}
+
+function renderWithConfig(config: ClaudeCodeRenderContext) {
+  return claudeCodeAdapter.render(config);
 }
 
 function artifact(
@@ -61,11 +66,70 @@ describe('Claude Code adapter v0.3', () => {
     expect(modelOf('agents/deep.md')).toBe('sonnet');
   });
 
+  test('renders proportional effort frontmatter with valid override precedence', () => {
+    const defaults = render().artifacts;
+    const effortOf = (artifacts: HarnessArtifact[], suffix: string) =>
+      /^effort:\s*(\S+)/m.exec(
+        String(artifact(artifacts, suffix)?.content),
+      )?.[1];
+
+    expect(effortOf(defaults, 'agents/explorer.md')).toBe('low');
+    expect(effortOf(defaults, 'agents/quick.md')).toBe('low');
+    expect(effortOf(defaults, 'agents/designer.md')).toBe('medium');
+    expect(effortOf(defaults, 'agents/deep.md')).toBe('medium');
+    expect(effortOf(defaults, 'agents/librarian.md')).toBe('high');
+    expect(effortOf(defaults, 'agents/oracle.md')).toBe('high');
+
+    const overridden = renderWithConfig({
+      projectRoot: process.cwd(),
+      config: {
+        agents: { quick: { variant: 'high' }, deep: { variant: 'invalid' } },
+      },
+    }).artifacts;
+    expect(effortOf(overridden, 'agents/quick.md')).toBe('high');
+    expect(effortOf(overridden, 'agents/deep.md')).toBe('medium');
+  });
+
+  test('renders namespaced explicit selection and canonical routing descriptions', () => {
+    const result = render();
+    expect(renderClaudeCodeRootInstructions()).toContain('subagent_type');
+    expect(renderClaudeCodeRootInstructions()).toContain(
+      'thoth-agents:designer',
+    );
+    for (const name of [
+      'explorer',
+      'librarian',
+      'oracle',
+      'designer',
+      'quick',
+      'deep',
+    ]) {
+      const content = String(
+        artifact(result.artifacts, `agents/${name}.md`)?.content,
+      );
+      expect(content, name).toContain('Use when:');
+      expect(content, name).toContain('Do not use when:');
+      expect(content, name).toContain('Escalate when:');
+    }
+  });
+
   test('renders adaptive native root instructions with namespaced roles', () => {
     const instructions = renderClaudeCodeRootInstructions();
 
     expect(instructions.length).toBeLessThan(9_500);
     expect(instructions).toContain('adaptive root');
+    expect(instructions).toContain('<implementation-ownership>');
+    expect(instructions).toContain(
+      'SDD routes govern artifacts and gates, not implementation ownership.',
+    );
+    expect(instructions).toContain(
+      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead',
+    );
+    expect(instructions).toContain(
+      'Only after deciding delegation creates net gain',
+    );
+    expect(instructions).not.toMatch(/Direct micro-action/i);
+    expect(instructions).not.toMatch(/Artifact-backed implement follows/i);
     expect(instructions).toContain('Accelerated SDD');
     expect(instructions).toContain('Agent');
     expect(instructions).toContain('AskUserQuestion');

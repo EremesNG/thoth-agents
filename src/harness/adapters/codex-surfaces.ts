@@ -277,13 +277,14 @@ export const CODEX_SURFACES = [
     target: 'permission-control',
     status: 'unsupported',
     fields: [
-      'named installed-role selection',
+      'conditional agent_type selection',
+      'role-prefixed fallback',
       'per-role permission enforcement',
       'per-agent tool allow/deny equivalent to OpenCode permissions',
     ],
     diagnosticCode: 'codex.permission.memory.enforcement_gap',
     summary:
-      'Named installed-role selection and per-role permission enforcement are instruction-only because collaboration.spawn_agent has no role selector; OpenCode-style per-agent MCP/tool deny maps are not validated.',
+      'Static packages cannot guarantee active-runtime named-role selection: use collaboration.spawn_agent agent_type when exposed, otherwise the bounded role-prefixed fallback is instruction-only; per-role permission enforcement and OpenCode-style MCP/tool deny maps are not validated.',
     evidence:
       'Codex approvals/security docs cover sandbox and approval policies, not exact OpenCode per-agent permission maps.',
     fallback: 'instruction-only',

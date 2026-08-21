@@ -33,9 +33,9 @@ describe('agent-pack contract', () => {
       maxDelegationDepth: 1,
       singleWriter: true,
     });
-    expect(contract.orchestrationPolicy.rules.join('\n')).toContain(
-      'bounded direct work',
-    );
+    expect(contract.orchestrationPolicy.implementationOwnership).toMatchObject({
+      routeIndependent: true,
+    });
     expect(contract.orchestrationPolicy.rules.join('\n')).toContain('net gain');
     expect(contract.orchestrationPolicy.rules.join('\n')).not.toContain(
       'delegate-first',
@@ -43,6 +43,55 @@ describe('agent-pack contract', () => {
     expect(getAgentRole('orchestrator').responsibility).toMatch(
       /coordination|specification|planning/i,
     );
+  });
+
+  test('chooses implementation ownership from task-shaped net gain instead of route', () => {
+    const contract = getAgentPackContract();
+    const ownership = contract.orchestrationPolicy.implementationOwnership;
+
+    expect(ownership).toEqual({
+      eligibleOwners: ['orchestrator', 'designer', 'quick', 'deep'],
+      routeIndependent: true,
+      delegationBenefits: [
+        'specialization',
+        'context isolation',
+        'independent bounded work',
+        'safe parallelism',
+        'quality, latency, or total-cost gain',
+      ],
+      rootContinuityBenefits: [
+        'short work',
+        'one ordered reasoning chain',
+        'frequent shared-state writes',
+        'already-loaded context',
+        'rediscovery and coordination cost',
+      ],
+      userDirection: 'explicit safe user direction is an ownership input',
+      insufficientSignals: [
+        'SDD route name',
+        'file count alone',
+        'cheaper model price without end-to-end evidence',
+      ],
+    });
+
+    const root = getAgentRole('orchestrator');
+    const rootContract = [
+      root.responsibility,
+      ...root.useWhen,
+      ...root.doNotUseWhen,
+      ...root.escalateWhen,
+    ].join('\n');
+    const rules = contract.orchestrationPolicy.rules.join('\n');
+
+    expect(rootContract).toContain('every route');
+    expect(rootContract).toContain('demonstrated net gain');
+    expect(rules).toContain(
+      'Direct, Accelerated, Full, and no-artifact execution govern artifacts and gates, not implementation ownership.',
+    );
+    expect(rules).toContain(
+      'After deciding to delegate implementation, select designer for UI/UX, quick for known narrow low-risk work, and deep for coupled or high-risk work.',
+    );
+    expect(rules).not.toMatch(/Direct micro-action|Artifact-backed.*selects/i);
   });
 
   test('defines fresh delegation and bounded continuation as canonical policy', () => {

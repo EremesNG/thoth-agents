@@ -91,10 +91,10 @@ describe('OpenCode v0.3 defaults', () => {
     expect(getAgentConfigs()).toMatchObject({
       orchestrator: { model: 'openai/gpt-5.6-sol', variant: 'xhigh' },
       explorer: { model: 'openai/gpt-5.6-luna', variant: 'low' },
-      librarian: { model: 'openai/gpt-5.6-luna', variant: 'xhigh' },
-      oracle: { model: 'openai/gpt-5.6-sol', variant: 'xhigh' },
+      librarian: { model: 'openai/gpt-5.6-luna', variant: 'high' },
+      oracle: { model: 'openai/gpt-5.6-sol', variant: 'high' },
       designer: { model: 'openai/gpt-5.6-sol', variant: 'medium' },
-      quick: { model: 'openai/gpt-5.6-luna', variant: 'xhigh' },
+      quick: { model: 'openai/gpt-5.6-luna', variant: 'low' },
       deep: { model: 'openai/gpt-5.6-sol', variant: 'medium' },
     });
   });
@@ -153,8 +153,19 @@ describe('OpenCode v0.3 prompt boundaries', () => {
 
     expect(prompt.length).toBeLessThan(8_500);
     expect(prompt).toContain('adaptive root');
-    expect(prompt).toContain('bounded direct work');
+    expect(prompt).toContain(
+      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead',
+    );
     expect(prompt).toContain('net gain');
+    expect(prompt).toContain('<implementation-ownership>');
+    expect(prompt).toContain(
+      'SDD routes govern artifacts and gates, not implementation ownership.',
+    );
+    expect(prompt).toContain(
+      'Explicit safe user direction is an ownership input.',
+    );
+    expect(prompt).not.toMatch(/Direct micro-action/i);
+    expect(prompt).not.toMatch(/Artifact-backed implement follows/i);
     expect(prompt).toContain('Accelerated SDD');
     expect(prompt).toContain('thoth-sdd');
     expect(prompt).toContain('oracle');
@@ -188,6 +199,11 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     for (const [name, config] of Object.entries(getAgentConfigs())) {
       expect(config.description, name).toBeTruthy();
       expect('mcps' in config, name).toBe(false);
+      if (name !== 'orchestrator') {
+        expect(config.description, name).toContain('Use when:');
+        expect(config.description, name).toContain('Do not use when:');
+        expect(config.description, name).toContain('Escalate when:');
+      }
     }
   });
 });

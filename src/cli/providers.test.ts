@@ -26,7 +26,7 @@ describe('providers', () => {
     expect(agents.orchestrator.variant).toBe('xhigh');
     expect(agents.quick).toEqual({
       model: 'openai/gpt-5.6-luna',
-      variant: 'xhigh',
+      variant: 'low',
     });
     expect(agents.deep).toEqual({
       model: 'openai/gpt-5.6-sol',
@@ -46,11 +46,11 @@ describe('providers', () => {
     );
     expect(agents.oracle).toEqual({
       model: 'openai/gpt-5.6-sol',
-      variant: 'xhigh',
+      variant: 'high',
     });
     expect(agents.librarian).toEqual({
       model: 'openai/gpt-5.6-luna',
-      variant: 'xhigh',
+      variant: 'high',
     });
     expect(agents.explorer).toEqual({
       model: 'openai/gpt-5.6-luna',
@@ -62,7 +62,7 @@ describe('providers', () => {
     });
     expect(agents.quick).toEqual({
       model: 'openai/gpt-5.6-luna',
-      variant: 'xhigh',
+      variant: 'low',
     });
     expect(agents.deep).toEqual({
       model: 'openai/gpt-5.6-sol',

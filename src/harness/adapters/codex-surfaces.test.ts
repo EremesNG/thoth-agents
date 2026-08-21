@@ -255,9 +255,8 @@ describe('Codex surface validation', () => {
       status: 'unsupported',
       fallback: 'instruction-only',
     });
-    expect(surface?.summary.toLowerCase()).toContain(
-      'named installed-role selection',
-    );
+    expect(surface?.summary.toLowerCase()).toContain('agent_type when exposed');
+    expect(surface?.summary.toLowerCase()).toContain('role-prefixed fallback');
     expect(surface?.summary.toLowerCase()).toContain(
       'per-role permission enforcement',
     );

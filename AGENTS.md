@@ -69,13 +69,13 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - The adaptive root handles clear bounded work directly, assesses scope,
   clarity, and risk, and recommends direct, accelerated, or full SDD. The user
   selects the route; an explicitly selected route wins.
-- Use roles intentionally: `explorer` discovers, `librarian` researches docs,
-  `oracle` owns user-selected plan review and every independent verification,
-  `designer` owns UI/UX, `quick` makes mechanical changes, and `deep` handles
-  correctness risk. Root owns sequential SDD coordination and loads bundled
-  phase contracts on demand.
-- Delegate only for net gain, keep maximum depth 1, and use one writer per
-  mutable surface.
+- SDD routes govern artifacts/gates, not implementation ownership; root or a
+  writer may implement in any route. Delegate only for net gain.
+- After root decides delegation creates net gain, use `designer` for UI/UX,
+  `quick` for known narrow low-risk work, and `deep` for coupled/high-risk work.
+  Keep depth 1, one writer per surface, and non-overlapping parallel writes.
+- `explorer` discovers, `librarian` researches, `oracle` reviews; root
+  coordinates SDD and loads phase contracts on demand.
 - `simplify`, `tdd`, `progressive-context-router`, and
   `architectural-grilling` are mandatory external skills for OpenCode, Codex,
   and Claude. The installer obtains them from their canonical repositories with
@@ -89,7 +89,6 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   approval never replaces mandatory final Oracle verification.
 - `plan-reviewer` is a thoth-owned bundled skill; its OpenSpec artifact remains
   root-written and is never mirrored into provider memory.
-- All visual or UX work goes through `designer`, not ad hoc editing.
 - `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem
   is an independent provider; follow its installed guidance for memory and
   persistence mechanics.

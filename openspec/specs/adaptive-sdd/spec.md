@@ -292,3 +292,43 @@ The bundled `thoth-init` operation MUST idempotently ensure `openspec/changes/ar
 - **GIVEN** a required OpenSpec directory path is occupied by a file
 - **WHEN** initialization runs
 - **THEN** it fails before writing any managed OpenSpec asset
+
+### Requirement: Select specialist writers deterministically
+
+When the root decides implementation delegation creates a net gain, it MUST select `designer` for user-facing visual/UX work, `quick` for known narrow low-risk work, and `deep` for coupled multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk work; route alone MUST NOT select, require, or forbid any implementation owner, and one writer MUST own each mutable surface.
+
+#### Scenario: US2 - Delegate specialists only for demonstrated net gain 1
+
+- **GIVEN** an independent bounded surface with a strong specialist fit
+- **WHEN** its context can be isolated without overlapping writes
+- **THEN** the root selects the matching specialist regardless of SDD route
+
+#### Scenario: US2 - Delegate specialists only for demonstrated net gain 2
+
+- **GIVEN** a short task, a single ordered reasoning chain, frequent shared-state writes, or significant already-loaded root context
+- **WHEN** delegation adds more overhead than benefit
+- **THEN** root remains the implementation owner regardless of SDD route
+
+#### Scenario: US2 - Delegate specialists only for demonstrated net gain 3
+
+- **GIVEN** explicit user direction to use or avoid an implementation subagent
+- **WHEN** that direction is safe and compatible with mandatory independent verification
+- **THEN** the root treats it as an ownership input rather than inferring it from Direct, Accelerated, or Full
+
+#### Scenario: US3 - Preserve deterministic specialist selection after delegation 1
+
+- **GIVEN** the root has decided to delegate implementation
+- **WHEN** the surface is user-facing UI/UX or visual-quality work
+- **THEN** `designer` owns that surface
+
+#### Scenario: US3 - Preserve deterministic specialist selection after delegation 2
+
+- **GIVEN** the root has decided to delegate implementation
+- **WHEN** the surface is known, narrow, mechanical, and low risk
+- **THEN** `quick` owns it
+
+#### Scenario: US3 - Preserve deterministic specialist selection after delegation 3
+
+- **GIVEN** the root has decided to delegate implementation
+- **WHEN** the surface is coupled, multi-file, migration-heavy, concurrent, edge-case-heavy, or high risk
+- **THEN** `deep` owns it

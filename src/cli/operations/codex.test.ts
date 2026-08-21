@@ -626,7 +626,7 @@ describe('Codex operations adapter', () => {
       const quickAfter = readFileSync(quickPath, 'utf8');
       expect(roleModel(quickAfter)).toBe('gpt-5.4-mini');
       expect(quickAfter).toContain('sandbox_mode = "read-only"');
-      expect(quickAfter).toContain('model_reasoning_effort = "xhigh"');
+      expect(quickAfter).toContain('model_reasoning_effort = "low"');
       expect(quickAfter).not.toContain('toggle');
       expect(quickAfter).not.toContain('budget_tokens');
 

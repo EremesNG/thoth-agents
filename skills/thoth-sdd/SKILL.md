@@ -31,7 +31,19 @@ Accelerated the minimum recommendation but does not force it.
 
 - Root owns sequential coordination artifacts, gate execution, and archive.
 - Explorer owns Full-route repository discovery.
-- Designer, quick, deep, or root may implement according to scope.
+- SDD routes govern artifacts and gates, not implementation ownership. Root,
+  `designer`, `quick`, or `deep` may implement in Direct, Accelerated, or Full.
+- Root decides ownership from explicit safe user direction and demonstrated net
+  gain. Delegation benefits include specialization, context isolation,
+  independent bounded work, quality, latency, or total cost; root continuity
+  benefits include short or sequential work, shared mutable state, accumulated
+  context, rediscovery, and coordination overhead. Route, file count, or cheaper
+  model price alone never selects an owner.
+- Only after deciding to delegate implementation, select `designer` for UI/UX,
+  `quick` for known narrow low-risk work, or `deep` for coupled, edge-case-heavy,
+  migration, concurrency, shared-contract, or high-risk work.
+- Each mutable surface has one writer; independent non-overlapping surfaces may
+  split, while coupled surfaces use one `deep` writer and ordered handoffs.
 - Oracle owns `plan-review` when the user selects it and **every** `verify`. The
   implementation writer never approves its own work.
 

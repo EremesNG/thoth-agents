@@ -43,3 +43,28 @@ entire repository.
 - [`testing.md`](testing.md)
 - [`task-template.md`](task-template.md)
 - [`routing-cases.json`](routing-cases.json)
+
+## Context budget evidence
+
+The 2026-08-21 specialist-writer refresh used the documented `characters / 4`
+estimate (not billing or model token measurement). Always-loaded context remained
+at 8,465 characters / ~2,117 estimated tokens before and after. Generated Claude
+specialists all decreased from their Git HEAD baselines:
+
+| Role | Before chars / estimate | After chars / estimate |
+| --- | ---: | ---: |
+| explorer | 5,199 / ~1,300 | 3,435 / ~859 |
+| librarian | 5,238 / ~1,310 | 3,412 / ~853 |
+| oracle | 5,863 / ~1,466 | 3,910 / ~978 |
+| designer | 5,092 / ~1,273 | 3,417 / ~855 |
+| quick | 5,090 / ~1,273 | 3,375 / ~844 |
+| deep | 5,222 / ~1,306 | 3,463 / ~866 |
+
+The progressive-context validator reported zero errors and zero warnings.
+
+The 2026-08-21 route-independent ownership refresh also held always-loaded
+context at 8,465 characters / ~2,117 estimated tokens before and after. Current
+rendered root packages measure 8,499 / ~2,125 for OpenCode, 9,855 / ~2,464 for
+Codex, and 9,340 / ~2,335 for Claude Code. These harness-specific roots are
+routed outputs, not additional always-loaded repository files. Strict validation
+again reported zero errors and zero warnings.

@@ -55,3 +55,31 @@ The system MUST preserve supported manual model definitions and their explicitly
 - **GIVEN** a valid manual model definition is absent from the dynamic catalog
 - **WHEN** the effective catalog is assembled
 - **THEN** the system MUST preserve that manual-only model and its declared effort options
+
+### Requirement: Apply proportionate specialist effort
+
+The built-in role defaults MUST keep the root at the highest reasoning effort and set bounded specialists proportionally (`explorer`/`quick`: low, `designer`/`deep`: medium, `librarian`/`oracle`: high), while preserving valid operator overrides and rendering effort metadata in every harness that supports it.
+
+#### Scenario: US2 - Receive consistent routing across harnesses 1
+
+- **GIVEN** a harness exposes an explicit role selector
+- **WHEN** the root delegates
+- **THEN** its instructions require that selector and the selected canonical role
+
+#### Scenario: US2 - Receive consistent routing across harnesses 2
+
+- **GIVEN** a Codex host does not expose an explicit custom-role selector
+- **WHEN** delegation is still available
+- **THEN** the generated guidance uses a bounded
+
+#### Scenario: US3 - Spend specialist effort proportionally 1
+
+- **GIVEN** the built-in OpenAI preset
+- **WHEN** default roles are resolved
+- **THEN** root remains the highest-effort coordinator while `explorer` and `quick` use low,
+
+#### Scenario: US3 - Spend specialist effort proportionally 2
+
+- **GIVEN** an operator configures a supported model or effort override
+- **WHEN** artifacts are generated
+- **THEN** the override wins without weakening role

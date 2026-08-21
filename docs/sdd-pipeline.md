@@ -5,6 +5,10 @@ requirement deltas. The adaptive root recommends the lightest safe route, the
 user selects Direct, Accelerated, or Full, and root loads only the current phase
 contract.
 
+Routes govern artifacts and gates, not implementation ownership. Root or a
+specialist may implement under any route according to explicit safe user
+direction and demonstrated net gain.
+
 ## Routes
 
 ```text
@@ -40,13 +44,23 @@ Full by itself does not activate it.
 | `checklist` | root | Conditional `checklists/requirements.md` |
 | `tasks` | root | `tasks.md` |
 | `plan-review` | `oracle` | Optional read-only findings when the user selects review after `ready` |
-| `implement` | root, `designer`, `quick`, or `deep` | One writer per mutable surface |
+| `implement` | adaptive root, `designer`, `quick`, or `deep`; route-independent task-shape/net-gain decision | One writer per mutable surface |
 | `verify` | `oracle` | Always read-only and independent |
 | `converge` | root | Append-only remediation in `tasks.md` |
 | `archive` | root | Transactional spec sync, audit report, and dated move |
 
 The writer never substitutes for oracle. Oracle owns every final verification
 and each user-selected pre-implementation plan review.
+
+In Direct, Accelerated, and Full, root first balances specialization, context
+isolation, independent work, quality, latency, and total cost against sequential
+dependency, shared mutable state, accumulated context, rediscovery, and
+coordination overhead. Route, file count, or cheaper model price alone does not
+select an owner. Only after deciding delegation creates net gain, use `designer`
+for UI/UX and visual quality, `quick` for known narrow low-risk work, and `deep`
+for coupled, shared-contract, migration, concurrency, edge-case-heavy, or
+high-risk work. Independent surfaces may split only with non-overlapping
+ownership; coupled surfaces use one `deep` writer and ordered handoffs.
 
 ## Fast-forward versus gated planning
 

@@ -9,6 +9,10 @@ import {
   type PluginConfig,
   SUBAGENT_NAMES,
 } from '../config';
+import {
+  getAgentRole,
+  renderAgentRoutingDescription,
+} from '../harness/core/agent-pack';
 import { createDeepAgent } from './deep';
 import { createDesignerAgent } from './designer';
 import { createExplorerAgent } from './explorer';
@@ -292,6 +296,7 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
       (DEFAULT_MODELS[name] as string);
 
     const agent = factory(model, prompts.prompt, prompts.appendPrompt);
+    agent.description = renderAgentRoutingDescription(getAgentRole(name));
     agent.config.variant = CONFIRMED_OPENAI_SUBAGENT_PRESET[name].effort;
     return agent;
   });

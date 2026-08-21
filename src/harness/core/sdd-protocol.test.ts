@@ -71,7 +71,7 @@ describe('SDD phase protocols', () => {
     expect(checklist).toMatch(/revalidation/i);
   });
 
-  test('keeps implementation task state root-owned and evidence-driven', () => {
+  test('keeps implementation ownership adaptive and task state root-owned', () => {
     const protocol = getSddPhaseProtocol('implement');
     const serialized = JSON.stringify(protocol);
 
@@ -80,6 +80,21 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(/child writers must not edit/i);
     expect(serialized).toMatch(/test-first|TDD/i);
     expect(serialized).toMatch(/assigned.*surface/i);
+    expect(serialized).toMatch(/owner decision/i);
+    expect(serialized).toMatch(/root owns implementation.*no child dispatch/i);
+    expect(serialized).toMatch(
+      /specialist owns implementation.*bounded dispatch/i,
+    );
+    expect(serialized).toMatch(/route.*not.*implementation ownership/i);
+    expect(serialized).toMatch(/Direct.*no-artifact.*no task state/i);
+    expect(serialized).toMatch(/fresh Oracle/i);
+    expect(serialized).toMatch(/designer.*UI\/UX/i);
+    expect(serialized).toMatch(/quick.*narrow.*low-risk/i);
+    expect(serialized).toMatch(/deep.*coupled.*multi-file/i);
+    expect(serialized).toMatch(/requirement anchors/i);
+    expect(serialized).toMatch(/non-overlapping/i);
+    expect(serialized).toMatch(/escalate/i);
+    expect(serialized).not.toMatch(/Direct root work is limited/i);
   });
 
   test('allows same-intent artifact refinement without restarting the SDD', () => {

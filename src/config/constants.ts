@@ -48,10 +48,10 @@ export const SUBAGENT_DELEGATION_RULES: Record<AgentName, readonly string[]> = {
 
 export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
   explorer: { model: 'gpt-5.6-luna', effort: 'low' },
-  librarian: { model: 'gpt-5.6-luna', effort: 'xhigh' },
-  oracle: { model: 'gpt-5.6-sol', effort: 'xhigh' },
+  librarian: { model: 'gpt-5.6-luna', effort: 'high' },
+  oracle: { model: 'gpt-5.6-sol', effort: 'high' },
   designer: { model: 'gpt-5.6-sol', effort: 'medium' },
-  quick: { model: 'gpt-5.6-luna', effort: 'xhigh' },
+  quick: { model: 'gpt-5.6-luna', effort: 'low' },
   deep: { model: 'gpt-5.6-sol', effort: 'medium' },
 } as const satisfies Record<
   Exclude<BuiltinAgentName, 'orchestrator'>,

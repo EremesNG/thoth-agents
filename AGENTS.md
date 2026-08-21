@@ -13,7 +13,8 @@ Keep `docs/agent/` documents on demand at startup.
 ## Progressive context protocol
 
 1. Classify the task by behavior and domain.
-2. Consult the router before opening broad repository areas.
+2. Consult the router before any CodeGraph fallback or before opening broad
+   repository areas.
 3. Search cited names, paths, symbols, imports, registrations, and tests first.
 4. Read the smallest entrypoints and tests that answer the current question.
 5. Add another route or overlay only to resolve a concrete question.
@@ -21,12 +22,26 @@ Keep `docs/agent/` documents on demand at startup.
    third-party code unless the task names them or evidence requires it.
 7. Subagents must return summarized evidence, not full files or logs.
 
-## Preferred navigation tool
+## Preferred navigation tools
 
-Prefer `webstorm-index` MCP tools for all project file navigation tasks, including text search, file search, file reading, and refactoring. This rule applies to the root agent and every delegated sub-agent. If `webstorm-index` is unavailable, returns errors, lacks the required capability, produces incomplete results, or otherwise blocks progress, the agent may use other available tools as a fallback. When doing so, it should use the least invasive suitable tool and resume using `webstorm-index` once it becomes practical.
-
-Use `webstorm-index` only for this `thoth-agents` repository. Never use it to
-navigate or modify any other project.
+- When `.codegraph/` exists, every agent must use CodeGraph before
+  `webstorm-index`, native search or file reads, or delegating source-code
+  discovery. Prefer the `codegraph_explore` MCP tool; if it is not exposed, use
+  `codegraph explore "<question or symbol names>"` from the repository root.
+- Ask CodeGraph about the behavior, flow, file, or symbols in one focused query.
+  Treat returned source as already read and current: do not re-read it or verify
+  it with grep. If source was deferred, query again with the named file or symbol.
+- CodeGraph auto-syncs. Follow any staleness banner after edits; use direct reads
+  only for the files it identifies instead of manually re-checking all results.
+- Fall back only when CodeGraph is unavailable, errors, lacks the required
+  capability or file type, or returns incomplete evidence after a focused retry.
+  Before using any fallback, consult [`docs/agent/index.md`](docs/agent/index.md)
+  and load the smallest matching route or overlay.
+- After routing, use `webstorm-index` when it is available and suitable;
+  otherwise use the least invasive native tool such as `rg`, `rg --files`, or a
+  targeted file read. Never turn a fallback into broad repository exploration.
+- Use `webstorm-index` only for this `thoth-agents` repository. Never use it to
+  navigate or modify any other project.
 
 ## High-level map
 

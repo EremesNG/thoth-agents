@@ -84,6 +84,17 @@ const DURABLE_DELTA_SPEC = `# Feature Specification: Durable example
 - **SC-001** \`[buildable]\`: All durable contract checks pass.
 `;
 
+const MULTILINE_DURABLE_DELTA_SPEC = DURABLE_DELTA_SPEC.replace(
+  '1. **Given** a valid request, **When** the example runs, **Then** the durable result is visible.',
+  `1. **Given** a valid request with wrapped
+   context, **When** the example runs across a wrapped
+   execution path, **Then** the complete durable
+   result is visible.
+2. **Given** a second valid request,
+   **When** another execution path runs,
+   **Then** the second durable result is visible.`,
+);
+
 const EXISTING_CANONICAL_SPEC = `# Example Specification
 
 ## Purpose
@@ -481,6 +492,44 @@ describe('SDD archive transition', () => {
       expect(canonical).not.toContain('### Requirement: Old name');
       expect(canonical).toContain('### Requirement: New name');
       expect(canonical).toContain('#### Scenario: US1 - Durable delivery 1');
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test('preserves every multiline acceptance scenario in canonical deltas', () => {
+    const fixture = createChange();
+    try {
+      const capabilityDir = join(fixture.specs, 'example');
+      mkdirSync(capabilityDir, { recursive: true });
+      writeFileSync(join(capabilityDir, 'spec.md'), EXISTING_CANONICAL_SPEC);
+      writeFileSync(
+        join(fixture.change, 'spec.md'),
+        MULTILINE_DURABLE_DELTA_SPEC,
+      );
+      writeFileSync(
+        join(fixture.change, 'verify-report.md'),
+        DURABLE_VERIFY_REPORT,
+      );
+
+      const result = archive(fixture.change);
+      const canonical = readFileSync(join(capabilityDir, 'spec.md'), 'utf8');
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(canonical).toContain(
+        '- **GIVEN** a valid request with wrapped context',
+      );
+      expect(canonical).toContain(
+        '- **WHEN** the example runs across a wrapped execution path',
+      );
+      expect(canonical).toContain(
+        '- **THEN** the complete durable result is visible',
+      );
+      expect(canonical).toContain('#### Scenario: US1 - Durable delivery 2');
+      expect(canonical).toContain('- **GIVEN** a second valid request');
+      expect(canonical).toContain(
+        '- **THEN** the second durable result is visible',
+      );
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

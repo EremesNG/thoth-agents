@@ -300,16 +300,36 @@ function parseStoryScenarios(spec) {
     const covers =
       /^\*\*Covers\*\*:\s*(.+)$/im.exec(story)?.[1].match(/\bFR-\d{3}\b/g) ??
       [];
-    const scenarios = [
-      ...story.matchAll(
-        /^\d+\.\s+\*\*Given\*\*\s+(.+?),\s+\*\*When\*\*\s+(.+?),\s+\*\*Then\*\*\s+(.+?)\.?\s*$/gim,
-      ),
-    ].map((scenario, scenarioIndex) => ({
-      title: `US${storyMatch[1]} - ${storyMatch[2].trim()} ${scenarioIndex + 1}`,
-      given: scenario[1].trim(),
-      when: scenario[2].trim(),
-      result: scenario[3].trim(),
-    }));
+    const acceptanceMarker = /^\*\*Acceptance scenarios\*\*:\s*$/im.exec(story);
+    const acceptance = acceptanceMarker
+      ? story.slice((acceptanceMarker.index ?? 0) + acceptanceMarker[0].length)
+      : '';
+    const scenarioStarts = [
+      ...acceptance.matchAll(/^\d+\.\s+\*\*Given\*\*/gim),
+    ];
+    const scenarios = scenarioStarts.map((scenarioStart, scenarioIndex) => {
+      const start = scenarioStart.index ?? 0;
+      const end = scenarioStarts[scenarioIndex + 1]?.index ?? acceptance.length;
+      const normalized = acceptance
+        .slice(start, end)
+        .replace(/\s+/g, ' ')
+        .trim();
+      const scenario =
+        /^\d+\.\s+\*\*Given\*\*\s+(.+?),\s+\*\*When\*\*\s+(.+?),\s+\*\*Then\*\*\s+(.+?)\.?\s*$/i.exec(
+          normalized,
+        );
+      if (!scenario) {
+        throw new Error(
+          `US${storyMatch[1]} acceptance scenario ${scenarioIndex + 1} must use Given, When, and Then`,
+        );
+      }
+      return {
+        title: `US${storyMatch[1]} - ${storyMatch[2].trim()} ${scenarioIndex + 1}`,
+        given: scenario[1].trim(),
+        when: scenario[2].trim(),
+        result: scenario[3].trim(),
+      };
+    });
 
     for (const requirementId of covers) {
       const current = scenariosByRequirement.get(requirementId) ?? [];

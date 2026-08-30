@@ -32,7 +32,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | --- | --- | --- |
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository to initialize `openspec/` |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
-| Claude Code | Add marketplace and install `thoth-agents@thoth-agents` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
+| Claude Code | Add marketplace and install `thoth-agents@thoth-agents-claude` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
 
 ## Common CLI options
 
@@ -78,7 +78,8 @@ npx thoth-agents@latest install --agent=codex
 ```
 
 The CLI inspects Codex's JSON manager state, registers `EremesNG/thoth-agents`
-when absent, and installs or enables `thoth-agents@thoth-agents` with `codex
+as `thoth-agents-codex` when absent, and installs or enables
+`thoth-agents@thoth-agents-codex` with `codex
 plugin add`. It fails closed for an unreadable manager state or a marketplace
 with the same name from another source, and verifies the enabled plugin after
 mutation. The repository catalog `.agents/plugins/marketplace.json` points to
@@ -113,8 +114,8 @@ and organization controls.
 Run both native commands in a terminal:
 
 ```bash
-claude plugin marketplace add EremesNG/thoth-agents --scope user
-claude plugin install thoth-agents@thoth-agents --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user
+claude plugin install thoth-agents@thoth-agents-claude --scope user
 ```
 
 Only after those native steps, run:
@@ -223,6 +224,15 @@ first completes installation or applied Update under this contract. Status
 reports that harness's record as missing rather than inferring it from OpenCode
 package state or a Codex/Claude marketplace. Rerun the latest installer or apply
 Update once per harness to establish its record.
+
+Existing native installations may still contain the legacy `thoth-agents`
+marketplace and `thoth-agents@thoth-agents` plugin. The GitHub source remains
+the same, but native managers key marketplace/plugin state by the catalog name,
+so a repository refresh does not turn that legacy identity into
+`thoth-agents-codex` or `thoth-agents-claude`. Rerunning the latest installer
+adds the host-specific identity from an explicit `master` reference and
+preserves the legacy entry; it performs no automatic update, remove, uninstall,
+or direct cache rewrite against the legacy identity.
 
 The CLI commits the selected harness record last using temporary-file
 replacement. A preview, dry-run, cancellation, or failed native, managed,

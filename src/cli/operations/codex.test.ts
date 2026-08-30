@@ -80,7 +80,7 @@ const installedCodexManagerExecutor: CodexCommandExecutor = (
       exitCode: 0,
       stdout: JSON.stringify({
         marketplaces: [
-          { name: 'thoth-agents', source: 'EremesNG/thoth-agents' },
+          { name: 'thoth-agents-codex', source: 'EremesNG/thoth-agents' },
         ],
       }),
       stderr: '',
@@ -90,7 +90,12 @@ const installedCodexManagerExecutor: CodexCommandExecutor = (
     return {
       exitCode: 0,
       stdout: JSON.stringify({
-        installed: [{ pluginId: 'thoth-agents@thoth-agents', enabled: true }],
+        installed: [
+          {
+            pluginId: 'thoth-agents@thoth-agents-codex',
+            enabled: true,
+          },
+        ],
       }),
       stderr: '',
     };
@@ -172,7 +177,7 @@ describe('Codex operations adapter', () => {
               marketplaces: marketplace
                 ? [
                     {
-                      name: 'thoth-agents',
+                      name: 'thoth-agents-codex',
                       source: 'EremesNG/thoth-agents',
                     },
                   ]
@@ -188,7 +193,7 @@ describe('Codex operations adapter', () => {
               installed: plugin
                 ? [
                     {
-                      pluginId: 'thoth-agents@thoth-agents',
+                      pluginId: 'thoth-agents@thoth-agents-codex',
                       enabled: true,
                     },
                   ]

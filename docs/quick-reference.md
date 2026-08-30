@@ -26,8 +26,8 @@ $thoth-init
 
 ```bash
 # Claude Code, in a terminal
-claude plugin marketplace add EremesNG/thoth-agents --scope user
-claude plugin install thoth-agents@thoth-agents --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user
+claude plugin install thoth-agents@thoth-agents-claude --scope user
 npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```

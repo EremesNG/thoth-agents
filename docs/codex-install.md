@@ -18,16 +18,24 @@ The CLI inspects `codex plugin marketplace list --json` and `codex plugin list
 --available --json`. When needed, it runs the native unattended commands:
 
 ```bash
-codex plugin marketplace add EremesNG/thoth-agents --json
-codex plugin add thoth-agents@thoth-agents --json
+codex plugin marketplace add EremesNG/thoth-agents --ref master --json
+codex plugin add thoth-agents@thoth-agents-codex --json
 ```
 
 It does not write Codex marketplace or plugin-cache files directly. A
 same-named marketplace from another source, unreadable manager state, command
 failure, or failed post-install verification stops setup before the global
 files are changed. Dry-run prints the native plan without running either
-mutation. The catalog is `.agents/plugins/marketplace.json`; it resolves to the
-versioned shared `plugin/` bundle.
+mutation. The catalog is `.agents/plugins/marketplace.json`; its marketplace
+name is `thoth-agents-codex` and it resolves to the versioned shared `plugin/`
+bundle.
+
+An existing marketplace named `thoth-agents` still points to the same GitHub
+repository, but Codex keeps that manager identity separate. Rerunning the
+current installer registers `thoth-agents-codex` from an explicit `master`
+reference, installs the host-specific plugin ID, and preserves the legacy
+marketplace/plugin state. It never upgrades, removes, or directly rewrites the
+manager-owned legacy cache.
 
 The plugin contains the five thoth-owned workflow skills, including
 `plan-reviewer`, and packaged MCP configuration. External execution skills are deliberately not

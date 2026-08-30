@@ -71,7 +71,7 @@ describe('generateIntegrationPackages', () => {
         ]),
       );
       expect(codexMarketplace).toMatchObject({
-        name: 'thoth-agents',
+        name: 'thoth-agents-codex',
         plugins: [
           {
             name: 'thoth-agents',
@@ -86,7 +86,7 @@ describe('generateIntegrationPackages', () => {
       });
       expect(claudeMarketplace).toMatchObject({
         $schema: 'https://anthropic.com/claude-code/marketplace.schema.json',
-        name: 'thoth-agents',
+        name: 'thoth-agents-claude',
         plugins: [
           {
             name: 'thoth-agents',

@@ -1,5 +1,5 @@
 {
-  "name": "thoth-agents",
+  "name": "thoth-agents-codex",
   "interface": {
     "displayName": "thoth-agents Adaptive Orchestration"
   },

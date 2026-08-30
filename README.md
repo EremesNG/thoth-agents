@@ -86,7 +86,8 @@ npx thoth-agents@latest install --agent=codex
 ```
 
 The CLI first uses Codex's native manager to register `EremesNG/thoth-agents`
-and install or enable `thoth-agents@thoth-agents`. It then writes the
+as `thoth-agents-codex` and install or enable
+`thoth-agents@thoth-agents-codex`. It then writes the
 orchestrator block to `~/.codex/AGENTS.md`, creates six custom-agent TOMLs under
 `~/.codex/agents/`, merges the managed feature into `~/.codex/config.toml`,
 installs the external skills, and invokes provider-owned thoth-mem setup.
@@ -110,9 +111,15 @@ Claude requires its two native marketplace steps before the plugin can expose
 agents or skills:
 
 ```bash
-claude plugin marketplace add EremesNG/thoth-agents --scope user
-claude plugin install thoth-agents@thoth-agents --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user
+claude plugin install thoth-agents@thoth-agents-claude --scope user
 ```
+
+The Claude catalog name is `thoth-agents-claude`. Existing
+`thoth-agents@thoth-agents` installations remain manager-owned and are not
+removed automatically; rerunning the current installer adds the host-specific
+identity from the same GitHub repository with an explicit `master` reference
+and preserves the legacy entry without updating or uninstalling it.
 
 Then install the mandatory external skills and invoke provider-owned thoth-mem
 setup:

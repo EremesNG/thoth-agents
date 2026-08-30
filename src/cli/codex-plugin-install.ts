@@ -1,10 +1,14 @@
 import { spawnSync } from 'node:child_process';
 
-const MARKETPLACE_NAME = 'thoth-agents';
+const PLUGIN_NAME = 'thoth-agents';
+const MARKETPLACE_NAME = `${PLUGIN_NAME}-codex`;
 const MARKETPLACE_SOURCE = 'EremesNG/thoth-agents';
-const PLUGIN_ID = 'thoth-agents@thoth-agents';
-const MARKETPLACE_TARGET = 'codex://marketplaces/thoth-agents';
-const PLUGIN_TARGET = 'codex://plugins/thoth-agents@thoth-agents';
+const MARKETPLACE_REF = 'master';
+const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
+const LEGACY_MARKETPLACE_NAME = PLUGIN_NAME;
+const LEGACY_PLUGIN_ID = `${PLUGIN_NAME}@${LEGACY_MARKETPLACE_NAME}`;
+const MARKETPLACE_TARGET = `codex://marketplaces/${MARKETPLACE_NAME}`;
+const PLUGIN_TARGET = `codex://plugins/${PLUGIN_ID}`;
 
 export type CodexPluginSetupAction = 'register-marketplace' | 'install-plugin';
 
@@ -147,7 +151,14 @@ function marketplaceSources(entry: Record<string, unknown>): string[] {
 }
 
 function isCanonicalMarketplace(entry: Record<string, unknown>): boolean {
-  if (entry.name !== MARKETPLACE_NAME) return false;
+  return isMarketplaceIdentity(entry, MARKETPLACE_NAME);
+}
+
+function isMarketplaceIdentity(
+  entry: Record<string, unknown>,
+  name: string,
+): boolean {
+  if (entry.name !== name) return false;
   const canonical = MARKETPLACE_SOURCE.toLowerCase();
   return marketplaceSources(entry).some(
     (source) => normalizeMarketplaceSource(source) === canonical,
@@ -202,6 +213,18 @@ function inspectCodexManager(
     };
   }
 
+  const legacyMarketplace = marketplaces.some((entry) =>
+    isMarketplaceIdentity(entry, LEGACY_MARKETPLACE_NAME),
+  );
+  const hasLegacyState =
+    legacyMarketplace ||
+    installedPlugins.some((entry) => entry.pluginId === LEGACY_PLUGIN_ID);
+  if (hasLegacyState) {
+    diagnostics.push(
+      'Legacy Codex thoth-agents marketplace or plugin state was detected and preserved; the host-specific identity will be managed independently.',
+    );
+  }
+
   const namedMarketplaces = marketplaces.filter(
     (entry) => entry.name === MARKETPLACE_NAME,
   );
@@ -213,7 +236,7 @@ function inspectCodexManager(
   }
   if (marketplace === 'conflict') {
     diagnostics.push(
-      'A Codex marketplace named thoth-agents is registered from a different source; resolve it through Codex before retrying.',
+      'A Codex marketplace named thoth-agents-codex is registered from a different source; resolve it through Codex before retrying.',
     );
   }
 
@@ -246,7 +269,15 @@ function commandItem(
       description: 'Register the package-owned thoth-agents Codex marketplace.',
       command: {
         executable: 'codex',
-        args: ['plugin', 'marketplace', 'add', MARKETPLACE_SOURCE, '--json'],
+        args: [
+          'plugin',
+          'marketplace',
+          'add',
+          MARKETPLACE_SOURCE,
+          '--ref',
+          MARKETPLACE_REF,
+          '--json',
+        ],
         cwd: projectRoot,
       },
     };

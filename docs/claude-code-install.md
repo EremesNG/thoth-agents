@@ -19,21 +19,28 @@ during SDD phases.
 Run in a terminal:
 
 ```bash
-claude plugin marketplace add EremesNG/thoth-agents --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user
 ```
 
-The marketplace name is `thoth-agents`; its catalog is
+The marketplace name is `thoth-agents-claude`; its catalog is
 `.claude-plugin/marketplace.json`.
 
 ## 2. Install the plugin
 
 ```bash
-claude plugin install thoth-agents@thoth-agents --scope user
+claude plugin install thoth-agents@thoth-agents-claude --scope user
 ```
 
 Claude copies the shared `plugin/` bundle into its manager-owned cache.
 Codex resolves to the same source through its own marketplace. thoth-agents
 never edits either manager cache directly.
+
+An existing `thoth-agents` marketplace and
+`thoth-agents@thoth-agents` plugin remain separate legacy identities even
+though they reference this same GitHub repository. Rerun the marketplace add
+and current installer to create `thoth-agents-claude` from the explicit
+`master` reference. The installer preserves the legacy entry without updating,
+uninstalling, or directly rewriting its cache.
 
 ## 3. Install the external skills and thoth-mem
 
@@ -87,7 +94,7 @@ claude plugin list --json
 ```
 
 Inside Claude Code, inspect `/plugin`. A healthy install shows the canonical
-marketplace, an enabled `thoth-agents@thoth-agents` plugin, and all mandatory
+marketplace, an enabled `thoth-agents@thoth-agents-claude` plugin, and all mandatory
 external skills reported by the CLI:
 
 ```bash

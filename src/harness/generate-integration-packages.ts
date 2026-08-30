@@ -32,7 +32,7 @@ function stableJson(value: unknown): string {
 
 function codexMarketplaceContent(): string {
   return stableJson({
-    name: 'thoth-agents',
+    name: 'thoth-agents-codex',
     interface: { displayName: 'thoth-agents Adaptive Orchestration' },
     plugins: [
       {
@@ -54,7 +54,7 @@ function codexMarketplaceContent(): string {
 function claudeMarketplaceContent(version: string): string {
   return stableJson({
     $schema: 'https://anthropic.com/claude-code/marketplace.schema.json',
-    name: 'thoth-agents',
+    name: 'thoth-agents-claude',
     description:
       'Adaptive orchestration with seven roles and runtime-autonomous direct, accelerated, and full Spec Kit-compatible SDD routes.',
     owner: { name: 'thoth-agents maintainers' },

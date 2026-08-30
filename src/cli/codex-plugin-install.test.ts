@@ -11,6 +11,7 @@ interface ManagerState {
   marketplace: boolean;
   plugin: boolean;
   enabled: boolean;
+  legacy?: boolean;
   mutations: string[];
 }
 
@@ -21,31 +22,52 @@ function executor(state: ManagerState): CodexCommandExecutor {
       return {
         exitCode: 0,
         stdout: JSON.stringify({
-          marketplaces: state.marketplace
-            ? [
-                {
-                  name: 'thoth-agents',
-                  marketplaceSource: {
-                    sourceType: 'git',
-                    source: 'https://github.com/EremesNG/thoth-agents.git',
+          marketplaces: [
+            ...(state.marketplace
+              ? [
+                  {
+                    name: 'thoth-agents-codex',
+                    marketplaceSource: {
+                      sourceType: 'git',
+                      source: 'https://github.com/EremesNG/thoth-agents.git',
+                    },
                   },
-                },
-              ]
-            : [],
+                ]
+              : []),
+            ...(state.legacy
+              ? [
+                  {
+                    name: 'thoth-agents',
+                    marketplaceSource: {
+                      sourceType: 'git',
+                      source: 'https://github.com/EremesNG/thoth-agents.git',
+                    },
+                  },
+                ]
+              : []),
+          ],
         }),
         stderr: '',
       };
     }
     if (key === 'plugin list --available --json') {
       const plugin = {
-        pluginId: 'thoth-agents@thoth-agents',
+        pluginId: 'thoth-agents@thoth-agents-codex',
         installed: state.plugin,
         enabled: state.enabled,
+      };
+      const legacyPlugin = {
+        pluginId: 'thoth-agents@thoth-agents',
+        installed: true,
+        enabled: true,
       };
       return {
         exitCode: 0,
         stdout: JSON.stringify({
-          installed: state.plugin ? [plugin] : [],
+          installed: [
+            ...(state.plugin ? [plugin] : []),
+            ...(state.legacy ? [legacyPlugin] : []),
+          ],
           available: state.plugin ? [] : [plugin],
         }),
         stderr: '',
@@ -53,10 +75,12 @@ function executor(state: ManagerState): CodexCommandExecutor {
     }
 
     state.mutations.push(key);
-    if (key === 'plugin marketplace add EremesNG/thoth-agents --json') {
+    if (
+      key === 'plugin marketplace add EremesNG/thoth-agents --ref master --json'
+    ) {
       state.marketplace = true;
     }
-    if (key === 'plugin add thoth-agents@thoth-agents --json') {
+    if (key === 'plugin add thoth-agents@thoth-agents-codex --json') {
       state.plugin = true;
       state.enabled = true;
     }
@@ -103,13 +127,13 @@ describe('Codex native plugin installation', () => {
     expect(first).toMatchObject({
       success: true,
       changed: [
-        'codex://marketplaces/thoth-agents',
-        'codex://plugins/thoth-agents@thoth-agents',
+        'codex://marketplaces/thoth-agents-codex',
+        'codex://plugins/thoth-agents@thoth-agents-codex',
       ],
     });
     expect(state.mutations).toEqual([
-      'plugin marketplace add EremesNG/thoth-agents --json',
-      'plugin add thoth-agents@thoth-agents --json',
+      'plugin marketplace add EremesNG/thoth-agents --ref master --json',
+      'plugin add thoth-agents@thoth-agents-codex --json',
     ]);
 
     state.mutations.length = 0;
@@ -140,7 +164,7 @@ describe('Codex native plugin installation', () => {
       'install-plugin',
     ]);
     expect(formatCodexPluginSetupPlan(plan)).toContain(
-      'codex plugin add thoth-agents@thoth-agents --json',
+      'codex plugin add thoth-agents@thoth-agents-codex --json',
     );
     expect(applyCodexPluginSetup(plan)).toMatchObject({
       success: true,
@@ -160,8 +184,9 @@ describe('Codex native plugin installation', () => {
     const commandExecutor: CodexCommandExecutor = (command, args, options) => {
       const key = args.join(' ');
       if (
-        key === 'plugin marketplace add EremesNG/thoth-agents --json' ||
-        key === 'plugin add thoth-agents@thoth-agents --json'
+        key ===
+          'plugin marketplace add EremesNG/thoth-agents --ref master --json' ||
+        key === 'plugin add thoth-agents@thoth-agents-codex --json'
       ) {
         state.mutations.push(key);
         return { exitCode: 0, stdout: '{}', stderr: '' };
@@ -181,8 +206,8 @@ describe('Codex native plugin installation', () => {
       'did not verify the expected marketplace and enabled plugin',
     );
     expect(state.mutations).toEqual([
-      'plugin marketplace add EremesNG/thoth-agents --json',
-      'plugin add thoth-agents@thoth-agents --json',
+      'plugin marketplace add EremesNG/thoth-agents --ref master --json',
+      'plugin add thoth-agents@thoth-agents-codex --json',
     ]);
   });
 
@@ -201,8 +226,37 @@ describe('Codex native plugin installation', () => {
     expect(plan.items.map((item) => item.action)).toEqual(['install-plugin']);
     expect(applyCodexPluginSetup(plan).success).toBe(true);
     expect(state.mutations).toEqual([
-      'plugin add thoth-agents@thoth-agents --json',
+      'plugin add thoth-agents@thoth-agents-codex --json',
     ]);
+  });
+
+  test('installs the host-specific identity while preserving legacy manager state', () => {
+    const state: ManagerState = {
+      marketplace: false,
+      plugin: false,
+      enabled: false,
+      legacy: true,
+      mutations: [],
+    };
+
+    const result = applyCodexPluginSetup(
+      buildCodexPluginSetupPlan({
+        projectRoot: process.cwd(),
+        commandExecutor: executor(state),
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.diagnostics.join('\n')).toContain('Legacy Codex');
+    expect(state.mutations).toEqual([
+      'plugin marketplace add EremesNG/thoth-agents --ref master --json',
+      'plugin add thoth-agents@thoth-agents-codex --json',
+    ]);
+    expect(
+      state.mutations.some((mutation) =>
+        /\b(?:remove|uninstall)\b/u.test(mutation),
+      ),
+    ).toBe(false);
   });
 
   test('fails closed when the marketplace name belongs to another source', () => {
@@ -215,7 +269,7 @@ describe('Codex native plugin installation', () => {
           stdout: JSON.stringify({
             marketplaces: [
               {
-                name: 'thoth-agents',
+                name: 'thoth-agents-codex',
                 marketplaceSource: {
                   sourceType: 'git',
                   source: 'https://github.com/example/not-thoth-agents.git',
@@ -285,7 +339,8 @@ describe('Codex native plugin installation', () => {
     const baseExecutor = executor(state);
     const commandExecutor: CodexCommandExecutor = (command, args, options) => {
       if (
-        args.join(' ') === 'plugin marketplace add EremesNG/thoth-agents --json'
+        args.join(' ') ===
+        'plugin marketplace add EremesNG/thoth-agents --ref master --json'
       ) {
         return {
           exitCode: 17,

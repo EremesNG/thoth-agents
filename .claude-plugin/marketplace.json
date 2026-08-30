@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "thoth-agents",
+  "name": "thoth-agents-claude",
   "description": "Adaptive orchestration with seven roles and runtime-autonomous direct, accelerated, and full Spec Kit-compatible SDD routes.",
   "owner": {
     "name": "thoth-agents maintainers"

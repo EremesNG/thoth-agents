@@ -26,8 +26,8 @@ $thoth-init
 
 ```bash
 # Claude Code, in a terminal
-claude plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user
-claude plugin install thoth-agents@thoth-agents-claude --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user
+claude plugin install thoth-agents@thoth-plugins --scope user
 npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```
@@ -128,8 +128,11 @@ invalidate package state, or install the newer release.
   config; `$thoth-init` creates project SDD governance only.
 - Claude requires both native marketplace commands before its namespaced skill
   exists.
-- Codex and Claude native managers own plugin versions and caches; the CLI
-  ledger is the authority only for the separate complete CLI-managed setup.
+- Codex and Claude native managers own plugin versions and normal cache
+  lifecycle; the CLI ledger is the authority only for the separate complete
+  CLI-managed setup. With Codex closed, installation removes only the selected
+  product's fixed legacy IDs and preflight-approved orphan roots after verifying
+  its central plugin. Claude legacy state remains preserved.
 - thoth-mem owns its hooks, MCP, skill, lifecycle, persistence, receipts, and
   recovery. thoth-agents only invokes its public setup during installation.
 - Runtime memory authorization is `none`, `recall`, or `observe` and does not

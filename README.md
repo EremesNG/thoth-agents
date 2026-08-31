@@ -41,8 +41,9 @@ before the CLI installs external skills and requests provider-owned thoth-mem
 setup.
 
 Runtime guarantees still differ by harness. OpenCode is the default and most
-integrated path; Codex and Claude preserve their own trust, policy, plugin-cache,
-and permission semantics.
+integrated path; Codex and Claude preserve their own trust, policy, normal
+plugin-cache, and permission semantics. Codex installation has one bounded
+legacy-cache cleanup contract described below; Claude does not.
 
 ## Install
 
@@ -78,16 +79,23 @@ directly from the globally installed `thoth-sdd` skill; any legacy project
 
 ### Codex
 
-Preview, then run the combined native-plugin and global-layer installer:
+Close Codex, preview, then run the combined native-plugin and global-layer
+installer:
 
 ```bash
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
-The CLI first uses Codex's native manager to register `EremesNG/thoth-agents`
-as `thoth-agents-codex` and install or enable
-`thoth-agents@thoth-agents-codex`. It then writes the
+The CLI first uses Codex's native manager to register
+`https://github.com/EremesNG/thoth-plugins.git` as `thoth-plugins` and install
+or enable the executing version of `thoth-agents@thoth-plugins`. After that
+verification it removes only registered legacy IDs
+`thoth-agents@thoth-agents` and `thoth-agents@thoth-agents-codex`, their two
+marketplaces, and any still-orphaned exact thoth-agents roots that pass bounded
+path/provenance checks. It never deletes sibling or discovered paths. A lock or
+race retains the central plugin and asks you to keep Codex closed and retry;
+restart activates state but does not garbage-collect caches. The CLI then writes the
 orchestrator block to `~/.codex/AGENTS.md`, creates six custom-agent TOMLs under
 `~/.codex/agents/`, merges the managed feature into `~/.codex/config.toml`,
 installs the external skills, and invokes provider-owned thoth-mem setup.
@@ -105,21 +113,60 @@ into the repository.
 Review `/plugins` and `/hooks` after installation. Codex trust and
 higher-precedence instructions remain in force.
 
+#### Local Codex development
+
+Keep a personal marketplace entry in `~/.agents/plugins/marketplace.json`
+pointed at `./plugins/thoth-agents` relative to the home marketplace root:
+
+```json
+{
+  "name": "personal",
+  "plugins": [
+    {
+      "name": "thoth-agents",
+      "source": {
+        "source": "local",
+        "path": "./plugins/thoth-agents"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
+```
+
+Then build and synchronize both required Codex layers from this checkout:
+
+```bash
+pnpm run setup:codex:local
+```
+
+The command replaces `~/plugins/thoth-agents` through a staged local copy,
+cache-busts the copied Codex and Claude manifest versions, and refreshes the
+managed global Codex root block, six standalone role TOMLs, model state, and
+feature configuration. It preserves the marketplace file and user model
+overrides. It does not install or remove plugins, install external skills, or
+invoke thoth-mem setup. Select the personal plugin in Codex and restart it after
+each synchronization. The command rejects a state where both
+`thoth-agents@thoth-plugins` and `thoth-agents@personal` are enabled.
+
 ### Claude Code
 
 Claude requires its two native marketplace steps before the plugin can expose
 agents or skills:
 
 ```bash
-claude plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user
-claude plugin install thoth-agents@thoth-agents-claude --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user
+claude plugin install thoth-agents@thoth-plugins --scope user
 ```
 
-The Claude catalog name is `thoth-agents-claude`. Existing
-`thoth-agents@thoth-agents` installations remain manager-owned and are not
-removed automatically; rerunning the current installer adds the host-specific
-identity from the same GitHub repository with an explicit `master` reference
-and preserves the legacy entry without updating or uninstalling it.
+The shared catalog name is `thoth-plugins`. Existing bare or host-specific
+thoth-agents marketplace identities remain manager-owned and are not removed
+automatically; rerunning the current installer adds the central identity and
+preserves legacy entries without updating or uninstalling them.
 
 Then install the mandatory external skills and invoke provider-owned thoth-mem
 setup:
@@ -369,10 +416,11 @@ diagnostics, manual actions, and receipt paths remain visible for recovery.
 | Codex | The CLI installs the native plugin and manages global `AGENTS.md`, six agent TOMLs, config, external skills, and thoth-mem setup; `$thoth-init` only initializes per-repository SDD governance. Runtime role matching and some permissions remain instruction-level. |
 | Claude Code | Run both native marketplace commands before the CLI installs external skills and requests thoth-mem setup. The native manager owns cache files; fine-grained path restrictions remain instruction-level. |
 
-Codex and Claude marketplace manifests are versioned in
-`.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`. The
-two catalogs resolve to the same generated `plugin/` bundle. Build and npm
-version lifecycle commands keep that shared bundle synchronized.
+Codex and Claude marketplace manifests are versioned in the separate
+`EremesNG/thoth-plugins` repository. Both central entries resolve to this
+repository's generated `plugin/` bundle at an immutable version tag. Build and
+npm version lifecycle commands keep that bundle synchronized; release commands
+publish only the new thoth-agents pin after the product tag is visible remotely.
 
 ## Models and provider boundaries
 
@@ -436,8 +484,10 @@ edit, preview and apply remain limited to the dirty roles. In OpenCode, both
 `Apply` and `Apply changes` materialize the complete effective roster and
 activate the named `agents` preset.
 
-It does not bypass native marketplace trust or edit manager-owned caches
-directly; Codex and Claude own their native manager mutations.
+It does not bypass native marketplace trust. Codex and Claude own normal native
+manager mutations; the Codex installer additionally owns only the fixed,
+twice-validated thoth-agents legacy-root fallback. Claude cache state is never
+edited directly.
 
 ## Documentation
 

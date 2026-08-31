@@ -14,28 +14,41 @@ npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
-The CLI inspects `codex plugin marketplace list --json` and `codex plugin list
---available --json`. When needed, it runs the native unattended commands:
+Close every Codex process before applying the installer. The CLI inspects
+`codex plugin marketplace list --json` and `codex plugin list --available
+--json`. When needed, it runs the native unattended commands:
 
 ```bash
-codex plugin marketplace add EremesNG/thoth-agents --ref master --json
-codex plugin add thoth-agents@thoth-agents-codex --json
+codex plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --json
+codex plugin add thoth-agents@thoth-plugins --json
 ```
 
-It does not write Codex marketplace or plugin-cache files directly. A
-same-named marketplace from another source, unreadable manager state, command
-failure, or failed post-install verification stops setup before the global
-files are changed. Dry-run prints the native plan without running either
-mutation. The catalog is `.agents/plugins/marketplace.json`; its marketplace
-name is `thoth-agents-codex` and it resolves to the versioned shared `plugin/`
-bundle.
+A same-named marketplace from another source, unreadable manager state,
+command failure, or failed post-install verification stops setup before the
+global files are changed. Dry-run prints the complete native and fixed-root
+cleanup plan without mutation. The separate `EremesNG/thoth-plugins`
+repository owns the catalog; its marketplace name is `thoth-plugins` and its
+pinned entry resolves to the executing version of the shared `plugin/` bundle.
 
-An existing marketplace named `thoth-agents` still points to the same GitHub
-repository, but Codex keeps that manager identity separate. Rerunning the
-current installer registers `thoth-agents-codex` from an explicit `master`
-reference, installs the host-specific plugin ID, and preserves the legacy
-marketplace/plugin state. It never upgrades, removes, or directly rewrites the
-manager-owned legacy cache.
+Only after that central plugin is installed, enabled, and version-exact does the
+installer retire owned Codex legacy state. It removes
+`thoth-agents@thoth-agents` and `thoth-agents@thoth-agents-codex` first, then
+marketplaces `thoth-agents` and `thoth-agents-codex`, using official manager
+commands. It may then delete only these still-orphaned roots below the resolved
+`CODEX_HOME`:
+
+- `plugins/cache/thoth-agents`
+- `plugins/cache/thoth-agents-codex`
+- `.tmp/marketplaces/thoth-agents`
+- `.tmp/marketplaces/thoth-agents-codex`
+
+Every existing root must be a non-link directory whose nominal and real paths
+remain under `CODEX_HOME`; its manifests must identify thoth-agents and the
+expected repository. The same checks run again immediately before deletion.
+Sibling and unrelated state is preserved. A conflict, race, or lock keeps the
+central plugin installed and returns close-Codex-and-retry guidance. No
+cross-platform process-name check is claimed, and a restart activates the new
+state but does not garbage-collect orphan caches.
 
 The plugin contains the five thoth-owned workflow skills, including
 `plan-reviewer`, and packaged MCP configuration. External execution skills are deliberately not
@@ -59,10 +72,11 @@ User-scope setup manages:
 
 The ambient session is the orchestrator, so no orchestrator child TOML is
 generated. The CLI obtains external skills from their canonical repositories;
-Codex remains the owner of its marketplace snapshot and plugin cache. Dry-run
-delegates to thoth-mem's `--plan` mode. A partial or user-action result keeps the
-combined installation incomplete and prints provider diagnostics, actions, and
-receipt.
+Codex remains the owner of current marketplace snapshots and normal plugin
+cache lifecycle; the fixed legacy cleanup above is the only filesystem
+exception. Dry-run delegates to thoth-mem's `--plan` mode. A partial or
+user-action result keeps the combined installation incomplete and prints
+provider diagnostics, actions, and receipt.
 
 ## 3. Restart and initialize each repository
 
@@ -106,8 +120,9 @@ runtime. An implementation writer cannot substitute for oracle verification.
 - Profile, CLI, system, managed, and organization configuration retains its
   documented precedence.
 - Project `.codex/` surfaces load only in trusted repositories.
-- `--reset` repairs managed blocks/files only; it does not delete plugin caches,
-  marketplaces, unrelated agents, skills, or provider configuration.
+- `--reset` repairs managed blocks/files only; it does not broaden or trigger
+  plugin cleanup. Only the verified install/update migration may retire the
+  four fixed thoth-agents legacy roots and manager identities described above.
 
 ## Provider boundary
 

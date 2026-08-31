@@ -1,8 +1,9 @@
 # Claude Code Plugin Packaging
 
-Claude Code consumes the shared distribution generated at `plugin/`, published
-through `.claude-plugin/marketplace.json`. Codex resolves to this same bundle;
-each harness reads its own manifest and MCP surface.
+Claude Code consumes the shared distribution generated at `plugin/`. The
+separate `EremesNG/thoth-plugins` repository publishes its central marketplace
+entry; Codex resolves to this same bundle, and each harness reads its own
+manifest and MCP surface.
 
 ## Generated layout
 
@@ -34,7 +35,8 @@ plugin/
 Every agent Markdown file is generated from the canonical `src/agents/` prompt
 contract. The five owned skills are copied once from the canonical root
 `skills/` tree. Codex-only assets are inert for Claude. Both plugin manifests
-and marketplace entries equal the root package version.
+equal the root package version. The central catalog independently pins that
+version and its immutable product tag.
 
 ## Runtime behavior
 
@@ -54,11 +56,13 @@ bundle.
 
 ## Generation lifecycle
 
-`pnpm run integration:sync` regenerates both manifests and marketplaces, Claude
-agent files/settings, both MCP surfaces, both asset inventories, and one copy of
-the five thoth-owned skills. External skills remain CLI-installed from their
-canonical repositories. Build and npm version lifecycle commands run this
-synchronization, keeping release versions and shared bundle contents aligned.
+`pnpm run integration:sync` regenerates both manifests, Claude agent
+files/settings, both MCP surfaces, both asset inventories, and one copy of the
+five thoth-owned skills. It does not generate a marketplace catalog. External
+skills remain CLI-installed from their canonical repositories. Build and npm
+version lifecycle commands run this synchronization, keeping release versions
+and shared bundle contents aligned; release then publishes only the
+thoth-agents pin to the central catalog.
 
 ## Ownership and limitations
 

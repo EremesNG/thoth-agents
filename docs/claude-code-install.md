@@ -1,7 +1,7 @@
 # Claude Code Install
 
 Claude Code receives a native plugin containing the orchestrator, six namespaced
-specialists, MCP configuration, and the four workflow skills owned by
+specialists, MCP configuration, and the five workflow skills owned by
 thoth-agents. The CLI remains a required installation step for the four external
 skills and provider-owned thoth-mem setup, but agents do not consume either CLI
 during SDD phases.
@@ -10,7 +10,7 @@ during SDD phases.
 
 - Node.js `>=22.13` for bundled scripts
 - Claude Code with native plugin marketplace commands
-- Permission to add and trust `EremesNG/thoth-agents`
+- Permission to add and trust `EremesNG/thoth-plugins`
 - Network access during installation for the external skill repositories and
   thoth-mem setup package
 
@@ -19,28 +19,27 @@ during SDD phases.
 Run in a terminal:
 
 ```bash
-claude plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user
 ```
 
-The marketplace name is `thoth-agents-claude`; its catalog is
-`.claude-plugin/marketplace.json`.
+The marketplace name is `thoth-plugins`. Its catalog lives in the separate
+central marketplace repository and pins this product's `plugin/` subdirectory
+to an immutable release tag.
 
 ## 2. Install the plugin
 
 ```bash
-claude plugin install thoth-agents@thoth-agents-claude --scope user
+claude plugin install thoth-agents@thoth-plugins --scope user
 ```
 
 Claude copies the shared `plugin/` bundle into its manager-owned cache.
 Codex resolves to the same source through its own marketplace. thoth-agents
 never edits either manager cache directly.
 
-An existing `thoth-agents` marketplace and
-`thoth-agents@thoth-agents` plugin remain separate legacy identities even
-though they reference this same GitHub repository. Rerun the marketplace add
-and current installer to create `thoth-agents-claude` from the explicit
-`master` reference. The installer preserves the legacy entry without updating,
-uninstalling, or directly rewriting its cache.
+Existing bare or host-specific thoth-agents marketplace/plugin records remain
+separate legacy identities. Rerun the marketplace add and current installer to
+create the central `thoth-plugins` identity. The installer preserves every
+legacy entry without updating, uninstalling, or directly rewriting its cache.
 
 ## 3. Install the external skills and thoth-mem
 
@@ -94,7 +93,7 @@ claude plugin list --json
 ```
 
 Inside Claude Code, inspect `/plugin`. A healthy install shows the canonical
-marketplace, an enabled `thoth-agents@thoth-agents-claude` plugin, and all mandatory
+marketplace, an enabled `thoth-agents@thoth-plugins` plugin, and all mandatory
 external skills reported by the CLI:
 
 ```bash

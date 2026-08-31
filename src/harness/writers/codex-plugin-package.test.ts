@@ -117,7 +117,7 @@ describe('Codex plugin package writer', () => {
               handler: { type: 'command', command: 'bun run session-start' },
             },
             {
-              event: 'PreCompact',
+              event: 'UnknownEvent',
               handler: { type: 'command', command: 'bun run compact' },
             },
             {
@@ -156,11 +156,18 @@ describe('Codex plugin package writer', () => {
 
     expect(String(hookArtifact?.content)).toBe(
       '{\n' +
-        '  "SessionStart": [\n' +
-        '    {\n' +
-        '      "command": "bun run session-start"\n' +
-        '    }\n' +
-        '  ]\n' +
+        '  "hooks": {\n' +
+        '    "SessionStart": [\n' +
+        '      {\n' +
+        '        "hooks": [\n' +
+        '          {\n' +
+        '            "command": "bun run session-start",\n' +
+        '            "type": "command"\n' +
+        '          }\n' +
+        '        ]\n' +
+        '      }\n' +
+        '    ]\n' +
+        '  }\n' +
         '}\n',
     );
     expect(String(pluginManifest?.content)).toContain(
@@ -193,7 +200,7 @@ describe('Codex plugin package writer', () => {
           path: '.codex-plugin/hooks/hooks.json',
           hookDefinitions: [
             {
-              event: 'PreCompact',
+              event: 'UnknownEvent',
               handler: { type: 'agent', command: 'ignored' },
             },
           ],
@@ -241,7 +248,7 @@ describe('Codex plugin package writer', () => {
           manifestField: 'hooks',
           path: '.codex-plugin/hooks/hooks.json',
           content:
-            '{\n  "SessionStart": [\n    {\n      "command": "pnpm run codex:session-start"\n    }\n  ]\n}\n',
+            '{\n  "hooks": {\n    "SessionStart": [\n      {\n        "hooks": [\n          {\n            "type": "command",\n            "command": "pnpm run codex:session-start"\n          }\n        ]\n      }\n    ]\n  }\n}\n',
         },
       ],
     });
@@ -256,14 +263,51 @@ describe('Codex plugin package writer', () => {
     expect(byPath.get('.codex-plugin/plugin.json')).toBe(
       fs.readFileSync(path.join(fixtureRoot, 'plugin.json'), 'utf8'),
     );
-    expect(byPath.get('.codex-plugin/.thoth-agents-plugin-assets.json')).toBe(
-      fs.readFileSync(
-        path.join(fixtureRoot, 'plugin-skill-provenance.json'),
-        'utf8',
+    expect(
+      JSON.parse(
+        byPath.get('.codex-plugin/.thoth-agents-plugin-assets.json') ?? '{}',
       ),
-    );
-    expect(byPath.get('.codex-plugin/hooks/hooks.json')).toBe(
-      fs.readFileSync(path.join(fixtureRoot, 'plugin-hooks.json'), 'utf8'),
+    ).toMatchObject({ generatedBy: 'thoth-agents', assets: expect.any(Array) });
+    expect(
+      JSON.parse(byPath.get('.codex-plugin/hooks/hooks.json') ?? '{}'),
+    ).toEqual({
+      hooks: {
+        SessionStart: [
+          {
+            hooks: [
+              {
+                command: 'pnpm run codex:session-start',
+                type: 'command',
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  test('rejects legacy flat raw hook content instead of presenting it as current', () => {
+    const result = renderCodexPluginPackage({
+      manifest: { name: 'pkg', version: '0.0.0' },
+      assets: [
+        {
+          surfaceId: 'plugin-hooks-json',
+          manifestField: 'hooks',
+          path: '.codex-plugin/hooks/hooks.json',
+          content: '{"SessionStart":[{"command":"node legacy-hook.js"}]}',
+        },
+      ],
+    });
+
+    expect(
+      result.artifacts.some(
+        (artifact) => artifact.path === '.codex-plugin/hooks/hooks.json',
+      ),
+    ).toBe(false);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'codex.plugin.hooks.invalid_shape' }),
+      ]),
     );
   });
 

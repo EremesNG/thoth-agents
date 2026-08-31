@@ -19,6 +19,7 @@ export interface CodexPluginPackageAsset {
 }
 
 export interface CodexPluginHookDefinition extends CodexHookValidationInput {
+  matcher?: string;
   handler: CodexHookValidationInput['handler'] & { command?: unknown };
 }
 
@@ -137,9 +138,7 @@ function normalizeHookDefinition(
 ): Record<string, unknown> {
   return {
     command: hook.handler.command,
-    ...(hook.outputFields?.length
-      ? { output: [...hook.outputFields].sort() }
-      : {}),
+    type: 'command',
   };
 }
 
@@ -157,7 +156,10 @@ function renderHookDefinitions(
     }
 
     const eventHooks = hooksByEvent.get(validation.event) ?? [];
-    eventHooks.push(normalizeHookDefinition(hook));
+    eventHooks.push({
+      ...(hook.matcher !== undefined ? { matcher: hook.matcher } : {}),
+      hooks: [normalizeHookDefinition(hook)],
+    });
     hooksByEvent.set(validation.event, eventHooks);
   }
 
@@ -172,13 +174,13 @@ function renderHookDefinitions(
     return { diagnostics };
   }
 
-  const content = stableJson(
-    Object.fromEntries(
+  const content = stableJson({
+    hooks: Object.fromEntries(
       [...hooksByEvent.entries()]
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([event, hooks]) => [event, hooks.map(stableValue)]),
     ),
-  );
+  });
 
   return { content, diagnostics };
 }
@@ -217,42 +219,74 @@ function parseRawHookContent(content: string): {
     };
   }
 
-  for (const [event, definitions] of Object.entries(parsed)) {
+  if (!isRecord(parsed.hooks)) {
+    return {
+      hookDefinitions,
+      diagnostics: [
+        codexHookPackageDiagnostic(
+          'codex.plugin.hooks.invalid_shape',
+          'Skipping Codex plugin hooks asset because hooks.json must contain a nested "hooks" object.',
+        ),
+      ],
+    };
+  }
+
+  for (const [event, definitions] of Object.entries(parsed.hooks)) {
     if (!Array.isArray(definitions)) {
       diagnostics.push(
         codexHookPackageDiagnostic(
           'codex.plugin.hooks.invalid_shape',
-          `Skipping Codex plugin hook event "${event}" because its value is not an array of command handlers.`,
+          `Skipping Codex plugin hook event "${event}" because its value is not an array of matcher groups.`,
         ),
       );
       continue;
     }
 
-    for (const definition of definitions) {
-      if (!isRecord(definition)) {
+    for (const group of definitions) {
+      if (!isRecord(group) || !Array.isArray(group.hooks)) {
         diagnostics.push(
           codexHookPackageDiagnostic(
             'codex.plugin.hooks.invalid_shape',
-            `Skipping Codex plugin hook event "${event}" entry because it is not an object.`,
+            `Skipping Codex plugin hook event "${event}" entry because it is not a matcher group with a hooks array.`,
           ),
         );
         continue;
       }
 
-      const output = definition.output;
-      hookDefinitions.push({
-        event,
-        handler: {
-          type:
-            typeof definition.type === 'string' ? definition.type : 'command',
-          command: definition.command,
-          async: definition.async,
-        },
-        outputFields: Array.isArray(output)
-          ? output.filter((field): field is string => typeof field === 'string')
-          : undefined,
-        interceptsToolExecution: definition.interceptsToolExecution === true,
-      });
+      if (group.matcher !== undefined && typeof group.matcher !== 'string') {
+        diagnostics.push(
+          codexHookPackageDiagnostic(
+            'codex.plugin.hooks.invalid_shape',
+            `Skipping Codex plugin hook event "${event}" matcher group because matcher is not a string.`,
+          ),
+        );
+        continue;
+      }
+
+      for (const definition of group.hooks) {
+        if (!isRecord(definition)) {
+          diagnostics.push(
+            codexHookPackageDiagnostic(
+              'codex.plugin.hooks.invalid_shape',
+              `Skipping Codex plugin hook event "${event}" handler because it is not an object.`,
+            ),
+          );
+          continue;
+        }
+
+        hookDefinitions.push({
+          event,
+          ...(typeof group.matcher === 'string'
+            ? { matcher: group.matcher }
+            : {}),
+          handler: {
+            type:
+              typeof definition.type === 'string' ? definition.type : 'command',
+            command: definition.command,
+            async: definition.async,
+          },
+        });
+      }
     }
   }
 

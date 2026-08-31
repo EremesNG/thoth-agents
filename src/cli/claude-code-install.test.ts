@@ -36,16 +36,18 @@ function executor(state: ManagerState): ClaudeCommandExecutor {
           ...(state.marketplace
             ? [
                 {
-                  name: 'thoth-agents-claude',
+                  name: 'thoth-plugins',
                   source: 'github',
-                  repo: state.source ?? 'EremesNG/thoth-agents',
+                  repo:
+                    state.source ??
+                    'https://github.com/EremesNG/thoth-plugins.git',
                 },
               ]
             : []),
           ...(state.legacy
             ? [
                 {
-                  name: 'thoth-agents',
+                  name: 'thoth-agents-claude',
                   source: 'github',
                   repo: 'EremesNG/thoth-agents',
                 },
@@ -65,7 +67,7 @@ function executor(state: ManagerState): ClaudeCommandExecutor {
           ...(state.plugin
             ? [
                 {
-                  id: 'thoth-agents@thoth-agents-claude',
+                  id: 'thoth-agents@thoth-plugins',
                   scope: 'user',
                   enabled: state.enabled,
                 },
@@ -74,7 +76,7 @@ function executor(state: ManagerState): ClaudeCommandExecutor {
           ...(state.legacy
             ? [
                 {
-                  id: 'thoth-agents@thoth-agents',
+                  id: 'thoth-agents@thoth-agents-claude',
                   scope: 'user',
                   enabled: true,
                 },
@@ -94,7 +96,7 @@ function executor(state: ManagerState): ClaudeCommandExecutor {
     }
     if (key.startsWith('plugin marketplace add ')) {
       state.marketplace = true;
-      state.source = 'https://github.com/EremesNG/thoth-agents.git#master';
+      state.source = 'https://github.com/EremesNG/thoth-plugins.git';
     }
     if (key.startsWith('plugin install ')) {
       state.plugin = true;
@@ -166,13 +168,13 @@ describe('claude-code-install', () => {
     expect(first).toMatchObject({
       success: true,
       changed: [
-        'claude://marketplaces/thoth-agents-claude',
-        'claude://plugins/thoth-agents@thoth-agents-claude',
+        'claude://marketplaces/thoth-plugins',
+        'claude://plugins/thoth-agents@thoth-plugins',
       ],
     });
     expect(state.mutations).toEqual([
-      'plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user',
-      'plugin install thoth-agents@thoth-agents-claude --scope user',
+      'plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user',
+      'plugin install thoth-agents@thoth-plugins --scope user',
     ]);
     expect(existsSync(join(projectRoot, '.claude', 'skills'))).toBe(false);
 
@@ -198,7 +200,7 @@ describe('claude-code-install', () => {
     expect(plan.items.map((item) => item.action)).toEqual(['enable-plugin']);
     expect(applyClaudeCodeSetup(plan).success).toBe(true);
     expect(state.mutations).toEqual([
-      'plugin enable thoth-agents@thoth-agents-claude --scope user',
+      'plugin enable thoth-agents@thoth-plugins --scope user',
     ]);
   });
 
@@ -214,11 +216,11 @@ describe('claude-code-install', () => {
     expect(plan.items.map((item) => item.action)).toEqual(['update-plugin']);
     expect(applyClaudeCodeSetup(plan).success).toBe(true);
     expect(state.mutations).toEqual([
-      'plugin update thoth-agents@thoth-agents-claude --scope user',
+      'plugin update thoth-agents@thoth-plugins --scope user',
     ]);
   });
 
-  test('installs the host-specific identity while preserving legacy manager state', () => {
+  test('installs the central identity while preserving host-specific legacy manager state', () => {
     const state: ManagerState = {
       marketplace: false,
       plugin: false,
@@ -234,8 +236,8 @@ describe('claude-code-install', () => {
     expect(result.success).toBe(true);
     expect(result.diagnostics.join('\n')).toContain('Legacy Claude');
     expect(state.mutations).toEqual([
-      'plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user',
-      'plugin install thoth-agents@thoth-agents-claude --scope user',
+      'plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user',
+      'plugin install thoth-agents@thoth-plugins --scope user',
     ]);
     expect(
       state.mutations.some((mutation) =>

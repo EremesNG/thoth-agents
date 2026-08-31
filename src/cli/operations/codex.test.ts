@@ -34,6 +34,10 @@ vi.mock('../skills', async (importOriginal) => {
 });
 
 const PACKAGE_ROOT = process.cwd();
+const PACKAGE_VERSION_RESULT = resolveExecutingPackageVersion();
+const PACKAGE_VERSION = PACKAGE_VERSION_RESULT.ok
+  ? PACKAGE_VERSION_RESULT.version
+  : '0.0.0';
 
 function requiredSkillPath(home: string, name: string): string {
   return join(home, '.agents', 'skills', name, 'SKILL.md');
@@ -80,7 +84,10 @@ const installedCodexManagerExecutor: CodexCommandExecutor = (
       exitCode: 0,
       stdout: JSON.stringify({
         marketplaces: [
-          { name: 'thoth-agents-codex', source: 'EremesNG/thoth-agents' },
+          {
+            name: 'thoth-plugins',
+            source: 'https://github.com/EremesNG/thoth-plugins.git',
+          },
         ],
       }),
       stderr: '',
@@ -92,8 +99,9 @@ const installedCodexManagerExecutor: CodexCommandExecutor = (
       stdout: JSON.stringify({
         installed: [
           {
-            pluginId: 'thoth-agents@thoth-agents-codex',
+            pluginId: 'thoth-agents@thoth-plugins',
             enabled: true,
+            version: PACKAGE_VERSION,
           },
         ],
       }),
@@ -177,8 +185,8 @@ describe('Codex operations adapter', () => {
               marketplaces: marketplace
                 ? [
                     {
-                      name: 'thoth-agents-codex',
-                      source: 'EremesNG/thoth-agents',
+                      name: 'thoth-plugins',
+                      source: 'https://github.com/EremesNG/thoth-plugins.git',
                     },
                   ]
                 : [],
@@ -193,8 +201,9 @@ describe('Codex operations adapter', () => {
               installed: plugin
                 ? [
                     {
-                      pluginId: 'thoth-agents@thoth-agents-codex',
+                      pluginId: 'thoth-agents@thoth-plugins',
                       enabled: true,
+                      version: '0.4.8',
                     },
                   ]
                 : [],

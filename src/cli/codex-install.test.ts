@@ -156,7 +156,7 @@ describe('Codex install setup plan', () => {
           plan.items.some((item) => item.targetPath.includes('.codex/plugins')),
         ).toBe(false);
         expect(plan.diagnostics.join('\n')).toContain(
-          'codex plugin marketplace add EremesNG/thoth-agents --ref master',
+          'codex plugin marketplace add https://github.com/EremesNG/thoth-plugins.git',
         );
       } finally {
         process.chdir(previousCwd);
@@ -207,7 +207,7 @@ describe('Codex install setup plan', () => {
       ).toBe(true);
       expect(plan.diagnostics.join('\n')).toContain('/plugins');
       expect(plan.diagnostics.join('\n')).toContain(
-        'codex plugin marketplace add EremesNG/thoth-agents --ref master',
+        'codex plugin marketplace add https://github.com/EremesNG/thoth-plugins.git',
       );
       expect(plan.diagnostics.join('\n')).toContain('/hooks');
       expect(plan.diagnostics.join('\n')).toContain(

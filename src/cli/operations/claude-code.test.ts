@@ -79,9 +79,9 @@ function commandExecutor(state: ManagerState): ClaudeCommandExecutor {
           state.marketplace
             ? [
                 {
-                  name: 'thoth-agents-claude',
+                  name: 'thoth-plugins',
                   source: 'github',
-                  repo: 'EremesNG/thoth-agents',
+                  repo: 'https://github.com/EremesNG/thoth-plugins.git',
                 },
               ]
             : [],
@@ -99,7 +99,7 @@ function commandExecutor(state: ManagerState): ClaudeCommandExecutor {
           state.plugin
             ? [
                 {
-                  id: 'thoth-agents@thoth-agents-claude',
+                  id: 'thoth-agents@thoth-plugins',
                   scope: 'user',
                   enabled: state.enabled,
                 },
@@ -223,8 +223,8 @@ describe('claudeCodeOperationAdapter', () => {
 
     expect(result.applied).toBe(true);
     expect(effects).toEqual([
-      'native:plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user',
-      'native:plugin install thoth-agents@thoth-agents-claude --scope user',
+      'native:plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user',
+      'native:plugin install thoth-agents@thoth-plugins --scope user',
       ...[
         'simplify',
         'tdd',
@@ -352,9 +352,9 @@ describe('claudeCodeOperationAdapter', () => {
     expect(plan.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          title: 'Register the package-owned thoth-agents Claude marketplace.',
+          title: 'Register the central Thoth Claude marketplace.',
           preview:
-            'claude plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user',
+            'claude plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user',
         }),
         expect.objectContaining({
           title: 'Install required external skills for Claude Code',
@@ -365,8 +365,8 @@ describe('claudeCodeOperationAdapter', () => {
 
     expect(result.applied).toBe(true);
     expect(manager.mutations).toEqual([
-      'plugin marketplace add https://github.com/EremesNG/thoth-agents.git#master --scope user',
-      'plugin install thoth-agents@thoth-agents-claude --scope user',
+      'plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user',
+      'plugin install thoth-agents@thoth-plugins --scope user',
     ]);
     expect(installRequiredSkillMock).toHaveBeenCalledTimes(4);
     expect(getClaudeCodeStatus(context()).state).toBe('installed');
@@ -394,14 +394,14 @@ describe('claudeCodeOperationAdapter', () => {
       expect.arrayContaining([
         expect.objectContaining({
           preview:
-            'claude plugin update thoth-agents@thoth-agents-claude --scope user',
+            'claude plugin update thoth-agents@thoth-plugins --scope user',
         }),
       ]),
     );
 
     expect(applyClaudeCodePlan(plan).applied).toBe(true);
     expect(manager.mutations).toContain(
-      'plugin update thoth-agents@thoth-agents-claude --scope user',
+      'plugin update thoth-agents@thoth-plugins --scope user',
     );
   });
 

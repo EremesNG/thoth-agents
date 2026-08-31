@@ -5,13 +5,16 @@ import type { ClaudeCodeInstallScope } from './claude-code-paths';
 export { CLAUDE_CODE_ROLE_NAMES } from './claude-code-paths';
 
 const PLUGIN_NAME = 'thoth-agents';
-const MARKETPLACE_NAME = `${PLUGIN_NAME}-claude`;
-const MARKETPLACE_SOURCE = 'EremesNG/thoth-agents';
-const MARKETPLACE_REF = 'master';
-const MARKETPLACE_INSTALL_SOURCE = `https://github.com/${MARKETPLACE_SOURCE}.git#${MARKETPLACE_REF}`;
+const MARKETPLACE_NAME = 'thoth-plugins';
+const MARKETPLACE_SOURCE = 'https://github.com/EremesNG/thoth-plugins.git';
+const MARKETPLACE_INSTALL_SOURCE = MARKETPLACE_SOURCE;
 const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
-const LEGACY_MARKETPLACE_NAME = PLUGIN_NAME;
-const LEGACY_PLUGIN_ID = `${PLUGIN_NAME}@${LEGACY_MARKETPLACE_NAME}`;
+const LEGACY_MARKETPLACE_SOURCE =
+  'https://github.com/EremesNG/thoth-agents.git';
+const LEGACY_MARKETPLACE_NAMES = [PLUGIN_NAME, `${PLUGIN_NAME}-claude`];
+const LEGACY_PLUGIN_IDS = LEGACY_MARKETPLACE_NAMES.map(
+  (name) => `${PLUGIN_NAME}@${name}`,
+);
 const MARKETPLACE_TARGET = `claude://marketplaces/${MARKETPLACE_NAME}`;
 const PLUGIN_TARGET = `claude://plugins/${PLUGIN_ID}`;
 
@@ -152,9 +155,10 @@ function marketplaceSources(entry: Record<string, unknown>): string[] {
 function isMarketplaceIdentity(
   entry: Record<string, unknown>,
   name: string,
+  source = MARKETPLACE_SOURCE,
 ): boolean {
   if (entry.name !== name) return false;
-  const canonical = MARKETPLACE_SOURCE.toLowerCase();
+  const canonical = normalizeMarketplaceSource(source);
   return marketplaceSources(entry).some(
     (source) => normalizeMarketplaceSource(source) === canonical,
   );
@@ -201,11 +205,17 @@ function inspectClaudeManager(
     };
   }
 
-  const legacyMarketplace = marketplaces.some((entry) =>
-    isMarketplaceIdentity(entry, LEGACY_MARKETPLACE_NAME),
+  const legacyMarketplace = LEGACY_MARKETPLACE_NAMES.some((name) =>
+    marketplaces.some((entry) =>
+      isMarketplaceIdentity(entry, name, LEGACY_MARKETPLACE_SOURCE),
+    ),
   );
   const hasLegacyState =
-    legacyMarketplace || plugins.some((entry) => entry.id === LEGACY_PLUGIN_ID);
+    legacyMarketplace ||
+    plugins.some(
+      (entry) =>
+        typeof entry.id === 'string' && LEGACY_PLUGIN_IDS.includes(entry.id),
+    );
   if (hasLegacyState) {
     diagnostics.push(
       'Legacy Claude thoth-agents marketplace or plugin state was detected and preserved; the host-specific identity will be managed independently.',
@@ -223,7 +233,7 @@ function inspectClaudeManager(
   }
   if (marketplace === 'conflict') {
     diagnostics.push(
-      'A Claude marketplace named thoth-agents-claude is registered from a different source; resolve it through Claude Code before retrying.',
+      'A Claude marketplace named thoth-plugins is registered from a different source; resolve it through Claude Code before retrying.',
     );
   }
 
@@ -255,8 +265,7 @@ function commandItem(
       kind: 'native-marketplace',
       action,
       targetPath: MARKETPLACE_TARGET,
-      description:
-        'Register the package-owned thoth-agents Claude marketplace.',
+      description: 'Register the central Thoth Claude marketplace.',
       requiresBackup: false,
       command: {
         executable: 'claude',
@@ -346,7 +355,7 @@ export function buildClaudeCodeSetupPlan(
     commandExecutor,
     diagnostics: [
       ...inspection.diagnostics,
-      'Claude Code installs thoth-agents from EremesNG/thoth-agents through its native marketplace and owns the cached plugin files.',
+      'Claude Code installs thoth-agents from the central thoth-plugins marketplace, while the thoth-agents repository remains the pinned plugin source.',
       'Restart Claude Code or run /reload-plugins after installation; use /plugin to inspect marketplace and plugin state.',
       'Provider capability is owned by the external provider and is not established by this thoth-agents setup plan.',
     ],

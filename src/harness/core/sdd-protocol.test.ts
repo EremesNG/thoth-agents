@@ -87,7 +87,8 @@ describe('SDD phase protocols', () => {
     );
     expect(serialized).toMatch(/route.*not.*implementation ownership/i);
     expect(serialized).toMatch(/Direct.*no-artifact.*no task state/i);
-    expect(serialized).toMatch(/fresh Oracle/i);
+    expect(serialized).toMatch(/route-.*risk-aware final-verification/i);
+    expect(serialized).not.toMatch(/fresh Oracle for independent verify/i);
     expect(serialized).toMatch(/designer.*UI\/UX/i);
     expect(serialized).toMatch(/quick.*narrow.*low-risk/i);
     expect(serialized).toMatch(/deep.*coupled.*multi-file/i);
@@ -165,7 +166,7 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(/openspec\/specs/i);
   });
 
-  test('keeps root coordination separate from independent oracle review', () => {
+  test('keeps verification eligibility route- and risk-aware', () => {
     expect(getSddPhaseProtocolsForRole('oracle').map(({ id }) => id)).toEqual([
       'plan-review',
       'verify',
@@ -179,6 +180,7 @@ describe('SDD phase protocols', () => {
       'checklist',
       'tasks',
       'implement',
+      'verify',
       'converge',
       'archive',
     ]);

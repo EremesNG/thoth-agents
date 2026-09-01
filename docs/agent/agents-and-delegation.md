@@ -18,6 +18,15 @@ definitions and applies overrides; harness adapters translate the same intent.
   implement in Direct, Accelerated, or Full.
 - Delegate only for demonstrated net gain; depth is one and each mutable surface
   has one writer. Treat explicit safe user direction as an ownership input.
+- Before substantive execution, shape the work into bounded units: record exact
+  output dependencies, mutable ownership, specialist fit, and verification inputs.
+  A dependency means a lane needs a concrete upstream artifact or decision; mere
+  preference for an order is not a dependency.
+- Mark lanes ready only when their inputs are available and blocked when they need
+  a nonterminal upstream result. Dispatch every ready, conflict-free lane in the
+  current native wave before waiting; apply bounded native capacity in later waves.
+  Join only terminal native results, reconcile them against intent and ownership,
+  then release dependent lanes.
 - Prefer delegation for specialization, focused context, independent bounded
   work, safe parallelism, or demonstrated quality, latency, or total-cost gain.
   Prefer root continuity for short work, one ordered reasoning chain, frequent
@@ -28,9 +37,10 @@ definitions and applies overrides; harness adapters translate the same intent.
 - Every dispatch carries bounded thoth-mem `none|recall|observe` authorization
   independently of workspace mode. `observe` may permit a durable provider
   observation, but root lifecycle and real-user intent never transfer.
-- Oracle owns each user-selected plan review and every final verification. An
-  implementer cannot approve its own result, and plan approval never replaces
-  verification.
+- Every route verifies. Trivial deterministic Direct work may use focused root
+  checks; materially risky Direct work and every Accelerated or Full final verify
+  use a fresh read-only Oracle. An implementer cannot approve its own result, and
+  optional plan approval never replaces final verification.
 - Only after root decides delegation creates net gain, select the specialist:
 
   | Signal | Writer | Escalation boundary |
@@ -48,6 +58,33 @@ definitions and applies overrides; harness adapters translate the same intent.
 - Children return conclusion, evidence, verification, risks, open questions,
   and next action rather than raw dumps.
 - Instruction-only harness gaps must never be described as hard enforcement.
+
+## Behavioral task shaping
+
+Use semantic triggers, not role-name presence, to select the smallest diverse set
+that can change the result:
+
+- `explorer` handles broad or uncertain local repository discovery and stays
+  read-only.
+- `librarian` handles current, unfamiliar, version-sensitive, or externally
+  sourced facts—for example, checking the current official API contract; stable
+  facts already established locally do not trigger it.
+- `oracle` handles independent judgment for material architecture, security,
+  contradictory evidence, persistent diagnosis, high failure cost, and required
+  final verification.
+- `designer` owns material user-facing UI/UX, interaction, accessibility, or
+  visual-quality work—for example, implementing and visually checking a new
+  responsive settings panel.
+- `quick` owns a known narrow, clear, low-risk isolated edit—for example, a
+  bounded mechanical rename in one assigned file; expansion or uncertainty
+  escalates to `deep`.
+- `deep` owns coupled contracts, shared state, migrations, concurrency,
+  edge-case-heavy, or high-risk implementation.
+
+Native harness execution and lifecycle are the sole authority for role selection,
+fan-out, status/wait, steering, cancellation, and terminal results. If a native
+primitive is unavailable or unproven, report the degradation and use a truthful
+sequential fallback; do not emulate another runtime.
 
 ## Subagent session lifecycle
 

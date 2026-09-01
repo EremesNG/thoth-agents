@@ -33,7 +33,14 @@ changes MUST use test-first execution at an agreed public seam when practical.
 
 ### IV. Independent assurance
 
-The implementation writer cannot approve its own work. Pre-implementation plan review is optional and user-selected. When selected, it uses an independent read-only reviewer. Every final verify MUST use an independent read-only reviewer.
+Every route MUST include verification proportional to the changed behavior and
+risk. The implementation writer cannot approve its own work. Trivial
+deterministic Direct work MAY be verified by Root when the decision is bounded
+and independent of the implementation writer. Materially risky Direct work and
+every Accelerated or Full final verify MUST use a fresh independent read-only
+reviewer. Pre-implementation plan review is optional and user-selected; when
+selected, it uses an independent read-only reviewer and never substitutes for
+final verification.
 
 ### V. Traceable delivery
 

@@ -43,7 +43,21 @@ version and its immutable product tag.
 `settings.json` activates the orchestrator in the main thread. Specialist
 delegation uses the `thoth-agents:<role>` namespace. Explorer, librarian, and
 oracle deny write/edit tools; implementation roles retain bounded write access.
-Oracle owns user-selected plan review and every final verify.
+The root shapes dependencies, ready/blocked lanes, and one-writer ownership.
+Claude's native `Agent` calls fan out every ready conflict-free lane before
+waiting and fan in only terminal native results. User-selected plan review is
+optional; trivial deterministic Direct work may use focused root checks, while
+materially risky Direct work and every Accelerated or Full final verify use a
+fresh read-only Oracle.
+
+Semantic triggers keep the complete roster actionable: `librarian` handles
+current or external facts, `designer` handles material UI/UX, interaction,
+accessibility, or visual quality, and `quick` handles known narrow low-risk
+isolated edits. `deep` handles coupled or high-risk work. Native Claude
+execution and lifecycle are authoritative for dispatch, status/wait,
+steering, cancellation, and terminal results; unavailable primitives receive a
+truthful sequential fallback. No additional thoth coordination mechanism is
+involved.
 
 Claude discovers plugin skills automatically. The namespaced
 `/thoth-agents:thoth-init` skill only synchronizes minimum project `openspec/`

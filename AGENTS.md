@@ -86,11 +86,24 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   selects the route; an explicitly selected route wins.
 - SDD routes govern artifacts/gates, not implementation ownership; root or a
   writer may implement in any route. Delegate only for net gain.
-- After root decides delegation creates net gain, use `designer` for UI/UX,
-  `quick` for known narrow low-risk work, and `deep` for coupled/high-risk work.
-  Keep depth 1, one writer per surface, and non-overlapping parallel writes.
-- `explorer` discovers, `librarian` researches, `oracle` reviews; root
-  coordinates SDD and loads phase contracts on demand.
+- Before retaining or delegating work, root identifies bounded outputs, records
+  information dependencies and mutable ownership, separates ready lanes from
+  blocked synthesis, and evaluates every specialist semantically. It dispatches
+  all valuable conflict-free ready lanes through the active harness's native
+  primitives before waiting, respects the proven native width, accepts only
+  terminal native results, and fans them in against intent, dependencies,
+  ownership, conflicts, and verification. Mere list order is not a dependency.
+- Keep delegation depth 1, one writer per mutable surface, and serialize
+  overlapping ownership. The specialist directory has equal routing salience:
+  `explorer` for broad uncertain local discovery; `librarian` for current
+  authoritative external evidence; `oracle` for independent read-only judgment;
+  `designer` for material UI/UX, interaction, accessibility, or visual quality;
+  `quick` for exact bounded low-risk implementation; and `deep` for coupled,
+  edge-case-heavy, migration, concurrency, or high-risk implementation.
+- Harness-native dispatch, status, wait, steering, cancellation, and terminal
+  results are authoritative. thoth-agents supplies decision policy and prompts,
+  never an executor, scheduler, job board, lifecycle shadow, or tracing runtime;
+  unavailable native capabilities must be reported as degraded.
 - `simplify`, `tdd`, `progressive-context-router`, and
   `architectural-grilling` are mandatory external skills for OpenCode, Codex,
   and Claude. The installer obtains them from their canonical repositories with
@@ -101,7 +114,10 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   alone does not activate it.
 - After `ready` on Accelerated or Full, recommend the optional read-only Oracle
   plan review and let the user choose review or proceeding without it. Plan
-  approval never replaces mandatory final Oracle verification.
+  approval never replaces mandatory final verification. Trivial deterministic
+  Direct work may be root-verified without implementer self-approval; materially
+  risky Direct work and every Accelerated or Full final verification use a fresh
+  read-only Oracle.
 - `plan-reviewer` is a thoth-owned bundled skill; its OpenSpec artifact remains
   root-written and is never mirrored into provider memory.
 - `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem

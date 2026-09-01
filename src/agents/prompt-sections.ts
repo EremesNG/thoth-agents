@@ -3,6 +3,8 @@ import {
   getAgentPackContract,
   getAgentRole,
   type ImplementationOwnershipPolicy,
+  type SpecialistDecision,
+  type TaskShapingPolicy,
 } from '../harness/core/agent-pack';
 import {
   getRequiredSddPhaseOrder,
@@ -160,12 +162,25 @@ function renderImplementationOwnershipPolicy(
 </implementation-ownership>`;
 }
 
-function renderRoleDirectory(): string {
-  return [
-    `- ${roleTemplate('explorer')}: uncertain local discovery; read-only.`,
-    `- ${roleTemplate('librarian')}: external evidence; read-only.`,
-    `- ${roleTemplate('oracle')}: review/verify; read-only, never implementer.`,
-  ].join('\n');
+function renderRoleDirectory(directory: SpecialistDecision[]): string {
+  return directory
+    .map(
+      ({ role, selectWhen, rejectWhen }) =>
+        `- ${roleTemplate(role)}: Select when ${selectWhen} Reject when ${rejectWhen}`,
+    )
+    .join('\n');
+}
+
+function renderTaskShapingPolicy(policy: TaskShapingPolicy): string {
+  return `<task-shaping>
+${policy.steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}
+- ${policy.decisions.dependency}; bind each lane to output, mutable ownership, specialist fit, and verification input.
+- ${policy.decisions.ownershipConflict}; avoid duplicate evidence work.
+- ${policy.decisions.readyWave} through \`{{backgroundDelegationTool}}\` within native capacity, then use \`{{backgroundStatusTool}}\`.
+- Fan in only from {{lifecycleTerminalState}}; {{lifecycleNonterminalState}}, ${policy.decisions.terminalEvidence}.
+- Reconcile terminal results against user intent, dependencies, ownership conflicts, and verification before dependent synthesis.
+- Native execution remains authoritative; ${policy.decisions.degradation}.
+</task-shaping>`;
 }
 
 export function createOrchestratorPromptSections(): RolePromptSection[] {
@@ -180,7 +195,7 @@ You are the adaptive root for thoth-agents. Keep requirements, decisions, owners
 </role>
 
 <operating-model>
-- Handle bounded implementation directly in any route when continuity outweighs delegation overhead; never self-verify.
+- Handle bounded implementation directly in any route when continuity outweighs delegation overhead; never self-approve.
 - The maximum delegation depth is ${policy.maxDelegationDepth}; children never delegate.
 - Keep one writer per mutable surface; parallelize only non-overlapping work.
 - Keep prompts bounded; request distilled evidence, not raw logs or full files.
@@ -198,10 +213,12 @@ You are the adaptive root for thoth-agents. Keep requirements, decisions, owners
 </delegation-lifecycle>
 
 <routing>
-${renderRoleDirectory()}
+${renderRoleDirectory(policy.specialistDirectory)}
 </routing>
 
 ${renderImplementationOwnershipPolicy(policy.implementationOwnership)}
+
+${renderTaskShapingPolicy(policy.taskShaping)}
 
 <sdd-routing>
 - An explicitly requested route wins: no duplicate route-selection prompt. Otherwise assess and recommend one route, ask with \`{{userQuestionTool}}\`, and wait for the user to select Direct, Accelerated, or Full. The recommendation is not the decision. The user's selected route wins; explain risk without overriding it. A generic SDD request sets Accelerated as the minimum unless Full risk applies.
@@ -219,7 +236,7 @@ ${renderImplementationOwnershipPolicy(policy.implementationOwnership)}
 - Load the bundled \`thoth-sdd\` skill only after selecting Accelerated or Full, then read only the reference for the current phase.
 - Root owns specify, clarify, plan, checklist, tasks, converge, and archive coordination; these phases are not delegated merely to change prompts.
 - Record owner, net-gain rationale, surface, requirements, and checks before implement or dispatch.
-- Delegate each user-selected plan review and every verify phase to ${roleTemplate('oracle')}. The implementation writer must never review itself.
+- Final verification is mandatory. Use a fresh ${roleTemplate('oracle')} for Accelerated, Full, and Direct work with material architecture, security, cross-cutting regression, persistent diagnosis, contradictory evidence, high failure cost, or comparable uncertainty. Root may run focused verification only for trivial deterministic Direct work; no implementation writer may approve its own work.
 </sdd-routing>
 
 <external-skills>
@@ -242,7 +259,7 @@ ${renderImplementationOwnershipPolicy(policy.implementationOwnership)}
 <artifacts>
 - In ${workflow.artifactRoot}, Accelerated and Full require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md.
 - Root owns openspec/ gates and task state, moves [~] -> [x] after evidence, and keeps one product writer.
-- ${roleTemplate('oracle')} returns read-only findings; root persists verification and archives declared durable deltas after PASS.
+- When Oracle is required, ${roleTemplate('oracle')} returns read-only findings; root persists verification and archives declared durable deltas after PASS.
 </artifacts>
 
 <delegation>

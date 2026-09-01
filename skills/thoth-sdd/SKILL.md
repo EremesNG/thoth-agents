@@ -1,6 +1,6 @@
 ---
 name: thoth-sdd
-description: Run thoth-agents Direct, Accelerated, or Full specification-driven development with Spec Kit-grade artifacts, OpenSpec-style durable deltas, fast-forward planning, and oracle-only analysis and verification.
+description: Run thoth-agents Direct, Accelerated, or Full specification-driven development with Spec Kit-grade artifacts, OpenSpec-style durable deltas, fast-forward planning, and proportional independent verification.
 ---
 
 # Thoth SDD
@@ -44,7 +44,11 @@ Accelerated the minimum recommendation but does not force it.
   migration, concurrency, shared-contract, or high-risk work.
 - Each mutable surface has one writer; independent non-overlapping surfaces may
   split, while coupled surfaces use one `deep` writer and ordered handoffs.
-- Oracle owns `plan-review` when the user selects it and **every** `verify`. The
+- Oracle owns `plan-review` when the user selects it. Every route requires
+  mandatory verification, but final-verification ownership is proportional:
+  trivial deterministic Direct work may be verified by Root when Root is not
+  self-approving its own implementation; materially risky Direct work and every
+  Accelerated or Full final verify require a fresh read-only Oracle. The
   implementation writer never approves its own work.
 
 ## Progressive loading

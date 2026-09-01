@@ -70,7 +70,11 @@ describe('constitution lifecycle validator', () => {
       'utf8',
     );
 
-    expect(repositoryConstitution).toContain('**Version**: 5.0.0');
+    expect(repositoryConstitution).toContain('**Version**: 6.0.0');
+    expect(repositoryConstitution).toContain(
+      '- Version change: 5.0.0 -> 6.0.0',
+    );
+    expect(repositoryConstitution).toContain('**Last amended**: 2026-08-31');
     expect(repositoryConstitution).toContain(
       'The root recommends a route; the user selects Direct, Accelerated, or Full',
     );
@@ -78,6 +82,12 @@ describe('constitution lifecycle validator', () => {
       'Pre-implementation plan review is optional and user-selected',
     );
     expect(repositoryConstitution).toContain(
+      'Trivial deterministic Direct work MAY be verified by Root',
+    );
+    expect(repositoryConstitution).toContain(
+      'materially risky Direct work and every Accelerated or Full final verify MUST use a fresh read-only Oracle',
+    );
+    expect(repositoryConstitution).not.toContain(
       'Every final verify remains mandatory and oracle-owned',
     );
     expect(repositoryConstitution).not.toContain(
@@ -89,7 +99,13 @@ describe('constitution lifecycle validator', () => {
     expect(initializedConstitution).toContain(
       'Pre-implementation plan review is optional and user-selected',
     );
-    expect(initializedConstitution).toContain(
+    expect(initializedConstitution).toMatch(
+      /Trivial\s+deterministic Direct work MAY be verified by Root/,
+    );
+    expect(initializedConstitution).toMatch(
+      /every Accelerated or Full final verify MUST use a fresh independent read-only/,
+    );
+    expect(initializedConstitution).not.toContain(
       'Every final verify MUST use an independent read-only reviewer',
     );
   });

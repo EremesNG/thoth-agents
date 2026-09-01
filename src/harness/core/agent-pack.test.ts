@@ -112,6 +112,72 @@ describe('agent-pack contract', () => {
     );
   });
 
+  test('shapes substantive work into dependency-aware native waves before fan-in', () => {
+    const policy = getAgentPackContract().orchestrationPolicy.taskShaping;
+
+    expect(policy.steps).toEqual([
+      'bound-work',
+      'map-dependencies',
+      'assign-ownership',
+      'select-specialists',
+      'mark-ready-and-blocked',
+      'dispatch-ready-wave',
+      'wait-for-terminal-evidence',
+      'reconcile-and-verify',
+    ]);
+    expect(policy.decisions).toMatchObject({
+      dependency: 'block a lane until every concrete upstream output exists',
+      ownershipConflict:
+        'serialize overlapping mutable surfaces or assign one writer',
+      readyWave:
+        'dispatch all independent conflict-free ready lanes before waiting',
+      terminalEvidence:
+        'silence, timeout, and malformed status remain nonterminal',
+      degradation:
+        'report an unavailable native primitive and use a truthful sequential fallback',
+    });
+    expect(policy.nativeAuthority).toBe(true);
+    expect(policy.boundedWidth).toBe(true);
+  });
+
+  test('considers every specialist through equally structured semantic decisions', () => {
+    const directory =
+      getAgentPackContract().orchestrationPolicy.specialistDirectory;
+
+    expect(directory.map(({ role }) => role)).toEqual([
+      'explorer',
+      'librarian',
+      'oracle',
+      'designer',
+      'quick',
+      'deep',
+    ]);
+    for (const decision of directory) {
+      expect(decision.selectWhen.length, decision.role).toBeGreaterThan(20);
+      expect(decision.rejectWhen.length, decision.role).toBeGreaterThan(20);
+    }
+  });
+
+  test('defines orchestration as immutable policy without runtime lifecycle state', () => {
+    const serialized = JSON.stringify(
+      getAgentPackContract().orchestrationPolicy,
+    );
+
+    for (const forbidden of [
+      'executor',
+      'jobBoard',
+      'projection',
+      'telemetry',
+      'observer',
+      'wakeLoop',
+      'assignmentStatus',
+      'terminalResults',
+      'runtimeState',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
   test('keeps discovery and judgment read-only', () => {
     for (const name of ['explorer', 'librarian', 'oracle'] as const) {
       expect(getAgentRole(name)).toMatchObject({
@@ -141,16 +207,20 @@ describe('agent-pack contract', () => {
     }
   });
 
-  test('reserves selected plan review and every verification for oracle', () => {
+  test('reserves selected plan review and proportionate independent verification for oracle', () => {
     const role = getAgentRole('oracle');
 
     expect(role.scope).toMatch(/optional plan review/i);
     expect(role.responsibility).toMatch(/review plans.*user requests/i);
-    expect(role.responsibility).toMatch(
-      /every.*verification|verification.*every/i,
-    );
+    expect(role.responsibility).toMatch(/independent judgment/i);
     expect(role.toolGovernance.join('\n')).toMatch(
       /never.*implementer|independent/i,
+    );
+    expect(getAgentRole('orchestrator').verification.join('\n')).toContain(
+      'trivial deterministic Direct',
+    );
+    expect(getAgentRole('orchestrator').verification.join('\n')).toContain(
+      'Accelerated, Full, and material-risk Direct',
     );
   });
 

@@ -41,7 +41,12 @@ describe('OpenCode harness adapter v0.3', () => {
     expect(root).toContain('adaptive root');
     expect(root).toContain('Accelerated SDD');
     expect(root).toContain('bundled `thoth-sdd` skill');
-    expect(root).toContain('every verify phase to @oracle');
+    expect(root).toContain(
+      'Use a fresh @oracle for Accelerated, Full, and Direct work with material architecture',
+    );
+    expect(root).toContain(
+      'Root may run focused verification only for trivial deterministic Direct work',
+    );
     expect(root).not.toMatch(/@sdd-(?:specify|plan|tasks)/);
     expect(root).toContain('`task`');
     expect(root).toContain('`question`');

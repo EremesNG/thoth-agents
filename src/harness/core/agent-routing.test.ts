@@ -94,7 +94,8 @@ const ROUTING_CASES: RoutingCase[] = [
     id: 'read-oracle-verification',
     expectedOwner: 'oracle',
     forbiddenOwners: ['orchestrator', 'designer', 'quick'],
-    ownerTrigger: /selected plan review, diagnosis, or final verification/i,
+    ownerTrigger:
+      /selected plan review, persistent diagnosis, material architecture or security risk/i,
     route: 'full',
     phase: 'verify',
     phaseOwner: 'oracle',
@@ -116,6 +117,13 @@ const ROUTING_FIXTURE = JSON.parse(
     forbidden_owners?: AgentRoleName[];
     delegation_net_gain?: boolean;
     ownership_rationale?: string;
+    decision?: {
+      kind: 'role-selection' | 'direct-retention' | 'task-shaping';
+      expected: string;
+      ready?: string[];
+      blocked?: string[];
+    };
+    notes?: string;
   }>;
 };
 
@@ -168,7 +176,7 @@ function renderRoutingSurfaces(): RenderedSurface[] {
 describe('canonical agent routing', () => {
   test.each(
     ROUTING_CASES,
-  )('$id selects one exact owner and rejects forbidden alternatives across shared and generated surfaces', (routingCase) => {
+  )('$id selects one exact owner from semantic decisions rather than route or name presence', (routingCase) => {
     const documentedCase = ROUTING_FIXTURE.cases.find(
       ({ id }) => id === routingCase.id,
     );
@@ -176,12 +184,23 @@ describe('canonical agent routing', () => {
     const candidates = contract.roles.filter((role) =>
       routingCase.ownerTrigger.test(role.useWhen.join(' ')),
     );
+    const specialistDecision =
+      contract.orchestrationPolicy.specialistDirectory.find(
+        ({ role }) => role === routingCase.expectedOwner,
+      );
 
     expect(documentedCase).toMatchObject({
       ...(routingCase.route ? { route: routingCase.route } : {}),
       ...(routingCase.phase ? { phase: routingCase.phase } : {}),
       expected_owner: routingCase.expectedOwner,
       forbidden_owners: routingCase.forbiddenOwners,
+      decision: {
+        kind:
+          routingCase.expectedOwner === 'orchestrator'
+            ? 'direct-retention'
+            : 'role-selection',
+        expected: routingCase.expectedOwner,
+      },
     });
     expect(candidates.map(({ name }) => name)).toEqual([
       routingCase.expectedOwner,
@@ -197,30 +216,18 @@ describe('canonical agent routing', () => {
       );
     }
 
-    const expectedDescription = renderAgentRoutingDescription(
-      getAgentRole(routingCase.expectedOwner),
-    );
-    expect(expectedDescription).toContain('Use when:');
-    expect(expectedDescription).toContain('Do not use when:');
+    if (routingCase.expectedOwner !== 'orchestrator') {
+      expect(specialistDecision).toEqual({
+        role: routingCase.expectedOwner,
+        selectWhen: getAgentRole(routingCase.expectedOwner).useWhen.join(' '),
+        rejectWhen: getAgentRole(routingCase.expectedOwner).doNotUseWhen.join(
+          ' ',
+        ),
+      });
+    }
     expect(documentedCase?.task.length).toBeGreaterThan(30);
 
     for (const surface of renderRoutingSurfaces()) {
-      const ownerArtifact = surface.role(routingCase.expectedOwner);
-      if (routingCase.expectedOwner === 'orchestrator') {
-        expect(surface.root, `${routingCase.id}:${surface.harness}`).toContain(
-          'Handle bounded implementation directly in any route when continuity outweighs delegation overhead; never self-verify.',
-        );
-      } else {
-        expect(ownerArtifact, `${routingCase.id}:${surface.harness}`).toContain(
-          'Use when:',
-        );
-        expect(ownerArtifact, `${routingCase.id}:${surface.harness}`).toContain(
-          routingCase.expectedOwner,
-        );
-        expect(ownerArtifact, `${routingCase.id}:${surface.harness}`).toContain(
-          `Use when: ${getAgentRole(routingCase.expectedOwner).useWhen.join(' ')}`,
-        );
-      }
       expect(
         surface.root,
         `${routingCase.id}:${surface.harness}:root`,
@@ -241,33 +248,43 @@ describe('canonical agent routing', () => {
         expect(
           surface.root,
           `${routingCase.id}:${surface.harness}:root`,
-        ).toContain('implementation writer must never review itself');
+        ).toContain('no implementation writer may approve its own work');
       }
 
-      for (const forbidden of routingCase.forbiddenOwners) {
-        const forbiddenArtifact = surface.role(forbidden);
-        if (forbidden === 'orchestrator') {
-          expect(
-            surface.root,
-            `${routingCase.id}:${surface.harness}:${forbidden}`,
-          ).toContain('Only after deciding delegation creates net gain');
-        } else {
-          expect(
-            forbiddenArtifact,
-            `${routingCase.id}:${surface.harness}:${forbidden}`,
-          ).toContain('Do not use when:');
-          expect(
-            forbiddenArtifact,
-            `${routingCase.id}:${surface.harness}:${forbidden}`,
-          ).toContain(forbidden);
-          expect(
-            forbiddenArtifact,
-            `${routingCase.id}:${surface.harness}:${forbidden}`,
-          ).toContain(
-            `Do not use when: ${getAgentRole(forbidden).doNotUseWhen.join(' ')}`,
-          );
-        }
-      }
+      expect(surface.root).toContain('select-specialists');
+      expect(surface.root).toContain('mark-ready-and-blocked');
+    }
+  });
+
+  test('provides at least fifteen structured behavioral decisions with underused-role depth', () => {
+    const behavioral = ROUTING_FIXTURE.cases.filter(({ decision }) => decision);
+    const ownerCount = (owner: AgentRoleName) =>
+      behavioral.filter(({ expected_owner }) => expected_owner === owner)
+        .length;
+
+    expect(behavioral.length).toBeGreaterThanOrEqual(15);
+    expect(ownerCount('quick')).toBeGreaterThanOrEqual(2);
+    expect(ownerCount('librarian')).toBeGreaterThanOrEqual(2);
+    expect(ownerCount('designer')).toBeGreaterThanOrEqual(2);
+    expect(
+      behavioral
+        .filter(({ decision }) => decision?.kind === 'task-shaping')
+        .map(({ decision }) => decision?.expected),
+    ).toEqual(
+      expect.arrayContaining([
+        'parallel-wave',
+        'blocked-dependency',
+        'single-writer',
+        'bounded-native-wave',
+        'remain-nonterminal',
+        'sequential-fallback',
+      ]),
+    );
+    for (const fixture of behavioral.filter(
+      ({ decision }) => decision?.kind === 'task-shaping',
+    )) {
+      expect(fixture.decision?.ready).toBeDefined();
+      expect(fixture.decision?.blocked).toBeDefined();
     }
   });
 
@@ -294,6 +311,11 @@ describe('canonical agent routing', () => {
         expect.objectContaining({ expectedOwner: 'quick' }),
       ]),
     );
+    const notes = ROUTING_FIXTURE.cases
+      .map(({ notes }) => notes ?? '')
+      .join('\n');
+    expect(notes).not.toMatch(/fresh Oracle still verifies/i);
+    expect(notes).not.toMatch(/Every final verification uses/i);
   });
 
   test.each([
@@ -379,7 +401,10 @@ describe('canonical agent routing', () => {
       ({ path }) => path === 'AGENTS.md',
     )?.content;
     expect(rootInstructions).toMatch(
-      /after.*decid.*delegat.*net gain.*designer.*UI\/UX/is,
+      /before retaining or delegating.*ready lanes.*before waiting/is,
+    );
+    expect(rootInstructions).toMatch(
+      /librarian.*external evidence.*designer.*UI\/UX.*quick.*low-risk/is,
     );
   });
 });

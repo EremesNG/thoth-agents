@@ -104,12 +104,27 @@ The global root contract handles bounded work directly and delegates only for
 net gain. Children never delegate and each mutable surface has one writer.
 Root owns sequential SDD coordination through the bundled `thoth-sdd`
 contracts, recommends a route, and follows the user's selection. Explorer owns
-Full discovery; read-only Oracle owns user-selected plan review and every final
-verification, including Direct and Accelerated.
+Full discovery. Every route verifies: trivial deterministic Direct work may use
+focused root checks; materially risky Direct work and every Accelerated or Full
+final verify use a fresh read-only Oracle. User-selected plan review remains
+optional.
+
+Before dispatch, the root distinguishes concrete artifact/decision dependencies
+from mere ordering, marks input-ready lanes ready and dependent lanes blocked,
+and preserves one writer per mutable surface. It dispatches all ready,
+conflict-free lanes in a native wave before waiting, then joins only terminal
+native results before releasing dependents. Semantic triggers select `librarian`
+for current or external facts, `designer` for material UI/UX or accessibility,
+and `quick` for known narrow low-risk isolated edits; coupled or high-risk work
+uses `deep`. Codex native collaboration and lifecycle primitives are the sole
+authority for role selection, fan-out/fan-in, status/wait, steering,
+cancellation, and terminal results; unavailable primitives degrade truthfully to
+sequential work.
 
 Standalone TOMLs are native Codex configuration layers, but role selection and
 some permission constraints remain instruction-level in the collaboration
-runtime. An implementation writer cannot substitute for oracle verification.
+runtime. An implementation writer cannot substitute for required Oracle
+verification; Codex remains the sole collaboration authority.
 
 ## Trust and precedence
 

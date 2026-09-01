@@ -82,8 +82,21 @@ preserves existing constitutions, and leaves legacy project templates untouched.
 | `settings.json` | Activates the orchestrator as the main plugin agent |
 
 Namespaced delegation uses `thoth-agents:<role>`. Children never delegate.
-Read-only `oracle` owns user-selected plan review and every final verification,
+Every route verifies: trivial deterministic Direct work may use focused root
+checks; materially risky Direct work and every Accelerated or Full final verify
+use a fresh read-only `oracle`. User-selected plan review remains optional,
 regardless of who implemented the change.
+
+Before dispatch, the root distinguishes concrete artifact/decision dependencies
+from mere ordering, marks input-ready lanes ready and dependent lanes blocked,
+and keeps one writer per mutable surface. Claude's native `Agent` fan-out sends
+all ready conflict-free lanes before waiting; fan-in accepts only terminal
+native results before releasing dependents. Semantic triggers select `librarian`
+for current or external facts, `designer` for material UI/UX, interaction,
+accessibility, or visual quality, and `quick` for known narrow low-risk isolated
+edits; coupled or high-risk work uses `deep`. Native Agent, status/wait,
+steering, cancellation, and terminal-result behavior is authoritative; missing
+primitives degrade to a truthful sequential path.
 
 ## Verification
 

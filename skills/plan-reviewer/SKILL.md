@@ -22,7 +22,8 @@ Use this skill only after all of these conditions hold:
 
 Do not activate automatically, and do not use it for Direct work. The user may
 proceed without this review. Skipping it means there is no pre-implementation
-Oracle review; mandatory final Oracle verify still applies.
+Oracle review; mandatory final verification still applies under the selected
+route and its risk-aware ownership boundary.
 
 ## Ownership and inputs
 
@@ -88,8 +89,11 @@ After `[OKAY]`, Root summarizes the approved plan and must ask whether to implem
 Approval is not implementation authorization. Choosing
 `Proceed without review` at the earlier choice does authorize implementation.
 
-Plan review never replaces mandatory final Oracle verify. Every route still
-requires independent post-implementation verification by a non-writer.
+Plan review never replaces or substitutes for mandatory final verification.
+Every route still requires post-implementation verification, but ownership is
+proportional: trivial deterministic Direct work may be Root-verified when Root
+is not self-approving its own implementation; materially risky Direct work and
+every Accelerated or Full final verify require a fresh read-only Oracle.
 
 ## Output
 

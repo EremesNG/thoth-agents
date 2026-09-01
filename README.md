@@ -22,8 +22,10 @@ parallelism creates a net gain.
 
 The plugin ships the seven-role contract and thoth-owned SDD
 contracts that combine Spec Kit-grade traceability with OpenSpec-style durable
-deltas. Accelerated planning fast-forwards without routine pauses; structural
-`ready`/`closeout` gates and independent oracle review retain rigor. Root
+deltas. The root shapes substantive work into dependency-aware, conflict-free
+native waves and joins terminal native results before dependent synthesis.
+Accelerated planning fast-forwards without routine pauses; structural
+`ready`/`closeout` gates and proportional independent review retain rigor. Root
 recommends Direct, Accelerated, or Full and the user selects the route. After
 `ready`, artifact-backed routes offer optional Oracle plan review or proceeding
 without it; every final verification remains mandatory. During
@@ -247,7 +249,8 @@ correctness-critical work.
       <br>
       <i>Authoritative external research.</i>
       <br><br>
-      Gathers current authoritative external evidence and labels inference.
+      Gathers current, unfamiliar, version-sensitive, or externally sourced
+      evidence and labels inference; stable local facts do not trigger research.
       <br><br>
       <b>Mode:</b> <code>read-only</code>
     </td>
@@ -264,8 +267,8 @@ correctness-critical work.
       <br>
       <i>Independent analysis and verification.</i>
       <br><br>
-      Reviews plans when the user requests it and independently verifies every
-      implementation.
+      Reviews plans when the user requests it and independently verifies material
+      risk plus every Accelerated or Full final implementation.
       <br><br>
       <b>Mode:</b> <code>read-only</code>
     </td>
@@ -284,7 +287,8 @@ correctness-critical work.
       <br>
       <i>UI/UX ownership and visual quality.</i>
       <br><br>
-      Owns UI/UX choices, implementation, and visual verification.
+      Owns material UI/UX, interaction, accessibility, implementation, and visual
+      verification.
       <br><br>
       <b>Mode:</b> <code>write-capable</code>
     </td>
@@ -301,7 +305,8 @@ correctness-critical work.
       <br>
       <i>Fast bounded implementation.</i>
       <br><br>
-      Makes narrow, clear, low-risk edits within an explicit surface.
+      Makes known narrow, clear, low-risk edits within an isolated explicit
+      surface.
       <br><br>
       <b>Mode:</b> <code>write-capable</code>
     </td>
@@ -327,9 +332,13 @@ correctness-critical work.
 </table>
 
 Children do not delegate. Each mutable surface has one writer. Parallel work is
-limited to independent surfaces. The implementation writer never reviews or
-approves its own result: `oracle` owns every `verify`, including Direct and
-Accelerated work.
+limited to independent surfaces. The root marks input-ready lanes ready and
+upstream-dependent lanes blocked, dispatches every ready conflict-free lane in a
+native wave before waiting, and fans in only terminal native results. Every route
+verifies: trivial deterministic Direct work may use focused root checks; material
+risk in Direct and every Accelerated or Full final verify require a fresh
+read-only `oracle`. The implementation writer never reviews or approves its own
+result.
 
 ## SDD routes
 
@@ -341,14 +350,15 @@ Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archi
 
 | Route | Use when | Artifacts |
 | --- | --- | --- |
-| Direct | Clear, bounded, low-risk work, including multi-file documentation/mechanical edits | None; oracle returns its verdict in-session. |
+| Direct | Clear, bounded, low-risk work, including multi-file documentation/mechanical edits | None; focused root checks cover trivial deterministic work, while material risk requires a fresh Oracle. |
 | Accelerated | Generic SDD request, partial clarity, moderate risk, multi-surface behavior, or architecture | Canonical artifacts with fast-forward specification/planning/tasks. |
 | Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Accelerated artifacts plus exploration and separate planning gates. |
 
 The root loads only the current phase contract from the bundled `thoth-sdd`
 skill. It owns specification, clarification, planning, requirements checklists,
 task decomposition, convergence, report persistence, and archive. `explorer`
-owns Full discovery; `oracle` owns user-selected plan review and every `verify`.
+owns broad or uncertain Full discovery; `oracle` owns user-selected plan review
+and the final verification gates that require independent judgment.
 
 An explicitly named route is the user's selection and wins. Otherwise root
 recommends one of all three routes and waits for the user's choice. A generic
@@ -376,6 +386,16 @@ reports, and transactional synchronization of declared durable deltas at archive
 Handled failures roll back within the active process; forced process or OS
 termination is not crash-atomic. See
 [SDD Pipeline](docs/sdd-pipeline.md).
+
+The role decision is semantic and route-independent: `librarian` handles current
+or external facts (for example, checking the current official API), `designer`
+handles material user-facing UI/UX or accessibility, and `quick` handles a known
+narrow low-risk isolated edit. `deep` handles coupled or high-risk work, while
+`explorer` handles broad local uncertainty. Native harness execution and
+lifecycle are the sole authority for role selection, fan-out/fan-in,
+status/wait, steering, cancellation, and terminal results; an unavailable
+primitive is reported and followed by a truthful sequential fallback. No
+additional thoth coordination mechanism is involved.
 
 ## Skills
 

@@ -12,6 +12,23 @@ export type SddIntent =
 export type SddScope = 'local' | 'multi-file' | 'cross-cutting';
 export type SddClarity = 'clear' | 'partial' | 'uncertain';
 export type SddRisk = 'low' | 'medium' | 'high';
+export type SddFinalVerificationRisk =
+  | 'trivial-deterministic'
+  | 'architecture'
+  | 'security'
+  | 'cross-cutting-regression'
+  | 'persistent-diagnosis'
+  | 'contradictory-evidence'
+  | 'high-failure-cost'
+  | 'material-uncertainty';
+export type SddFinalVerificationOwner = 'orchestrator' | 'oracle';
+
+export interface SddFinalVerificationDecision {
+  verificationRequired: true;
+  owner: SddFinalVerificationOwner;
+  oracleRequired: boolean;
+  freshOracleRequired: boolean;
+}
 export type SddPlanningMode = 'none' | 'fast-forward' | 'gated';
 export type SddValidationGate =
   | 'specify'
@@ -54,7 +71,10 @@ export type SddPhaseId =
   | 'archive';
 
 export type SddPhaseActivation = 'required' | 'conditional';
-export type SddPhaseOwner = AgentRoleName | 'adaptive-implementation';
+export type SddPhaseOwner =
+  | AgentRoleName
+  | 'adaptive-implementation'
+  | 'adaptive-verification';
 
 export interface SddPhaseContract {
   id: SddPhaseId;
@@ -248,10 +268,10 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['implement'],
     producesArtifact: true,
-    defaultAgentRole: 'oracle',
-    eligibleAgentRoles: ['oracle'],
+    defaultAgentRole: 'adaptive-verification',
+    eligibleAgentRoles: ['orchestrator', 'oracle'],
     reason:
-      'Independently judge the result against requirements, contracts, and focused checks.',
+      'Keep verification mandatory while selecting root for trivial deterministic Direct checks and a fresh Oracle for material-risk Direct or artifact-backed judgment.',
   },
   {
     id: 'converge',
@@ -638,7 +658,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'A task needs scope expansion, a material unresolved decision, or fails repeatedly without a safe bounded recovery.',
     ],
     handoff: [
-      'Pass changed files, per-task evidence, deviations, and verification results to a fresh Oracle for independent verify.',
+      'Pass changed files, per-task evidence, deviations, and verification results into the route- and risk-aware final-verification decision.',
     ],
   },
   {
@@ -651,7 +671,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'Changed files and project verification commands',
     ],
     instructions: [
-      'Oracle must be independent from the implementation writer; self-review never satisfies this phase.',
+      'Trivial deterministic Direct work may use root-owned focused verification; materially risky Direct plus Accelerated and Full final verification use a fresh independent Oracle, and no implementation writer self-approves.',
       'Run or inspect the smallest sufficient executed checks; static confidence alone is not evidence.',
       'Judge completeness, correctness, and coherence independently so a passing test cannot hide missing or contradictory scope.',
       'Build a compliance matrix from every accepted requirement to code and executed checks.',
@@ -771,12 +791,12 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
     'Spec Kit artifact semantics are preserved inside the governed openspec store.',
     'Accelerated and full routes require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md.',
     'Research, data model, contracts, quickstart, requirements checklist, and plan-review.md are optional and created only when useful or selected.',
-    'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; Accelerated and Full implementation selects designer, quick, or deep, while Direct permits one isolated low-risk root micro-action.',
+    'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; every route selects root, designer, quick, or deep from task shape, explicit direction, and demonstrated net gain.',
     'After oracle PASS, archive transactionally synchronizes only explicitly declared durable ADDED, MODIFIED, REMOVED, and RENAMED requirement deltas into openspec/specs; INTERNAL requirements and undeclared prose never update permanent specifications.',
     'Archive stages and backs up writes so handled failures roll back within the active process; forced process or operating-system termination is not crash-atomic.',
   ],
   verificationRules: [
-    'Every route delegates focused verification to read-only oracle; the implementation writer never verifies its own work.',
+    'Every route requires final verification; trivial deterministic Direct checks are root-owned, while materially risky Direct and every Accelerated or Full final verification use a fresh read-only oracle, and no implementation writer self-approves.',
     'Accelerated and Full offer read-only oracle plan review after ready; it runs only when the user selects it and never replaces final verification.',
     'Accelerated and full verification persists verify-report.md with a pass or fail verdict and requirement compliance matrix.',
     'An artifact-backed fail verdict routes through append-only convergence, implementation, and verification again; direct work returns straight to implementation.',
@@ -1089,10 +1109,35 @@ context:
 <bounded recalled context or - none>`;
 }
 
+export function getSddFinalVerificationDecision({
+  route,
+  risk,
+}: {
+  route: SddRoute;
+  risk: SddFinalVerificationRisk;
+}): SddFinalVerificationDecision {
+  const oracleRequired = route !== 'direct' || risk !== 'trivial-deterministic';
+
+  return {
+    verificationRequired: true,
+    owner: oracleRequired ? 'oracle' : 'orchestrator',
+    oracleRequired,
+    freshOracleRequired: oracleRequired,
+  };
+}
+
 export function getSddPhaseOwner(
-  _route: SddRoute,
+  route: SddRoute,
   phaseId: SddPhaseId,
+  verificationRisk: SddFinalVerificationRisk = 'material-uncertainty',
 ): SddPhaseOwner {
+  if (phaseId === 'verify') {
+    return getSddFinalVerificationDecision({
+      route,
+      risk: verificationRisk,
+    }).owner;
+  }
+
   return getSddPhase(phaseId).defaultAgentRole;
 }
 

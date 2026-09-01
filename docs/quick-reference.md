@@ -51,10 +51,10 @@ custom agents or write `~/.codex/AGENTS.md`. SDD phases never call either CLI.
 | --- | --- | --- |
 | `orchestrator` | adaptive root | Direct work, route recommendation, SDD coordination, final synthesis |
 | `explorer` | read-only | Repository discovery for real uncertainty |
-| `librarian` | read-only | Current authoritative external research |
-| `oracle` | read-only | User-selected plan review and every independent final verification |
-| `designer` | writer | UI/UX implementation and visual quality |
-| `quick` | writer | Narrow mechanical work |
+| `librarian` | read-only | Current, unfamiliar, version-sensitive, or external facts |
+| `oracle` | read-only | User-selected plan review and independent judgment when risk requires it |
+| `designer` | writer | Material UI/UX, interaction, accessibility, and visual quality |
+| `quick` | writer | Known narrow, clear, low-risk isolated edits |
 | `deep` | writer | Correctness-heavy or cross-cutting implementation |
 
 ## Routes
@@ -65,8 +65,10 @@ Accelerated: specify -> plan -> tasks -> implement -> verify -> archive
 Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archive
 ```
 
-Root owns the sequential artifact phases. Oracle owns selected `plan-review` and
-every `verify`. `clarify`, `checklist`, `plan-review`, and `converge` are conditional.
+Root owns the sequential artifact phases. Every route verifies: trivial
+deterministic Direct work may use focused root checks; materially risky Direct
+work and every Accelerated or Full final verify use a fresh read-only Oracle.
+`clarify`, `checklist`, `plan-review`, and `converge` are conditional.
 
 - Explicit route names are user selections and win. Otherwise root recommends
   one route and waits for the user's Direct, Accelerated, or Full choice;
@@ -77,6 +79,16 @@ every `verify`. `clarify`, `checklist`, `plan-review`, and `converge` are condit
 - After `ready`, Accelerated and Full offer optional Oracle plan review or
   proceeding without it; every final verify remains mandatory.
 - `ready` gates implementation; `closeout` gates transactional archive.
+
+Before implementation, root separates concrete artifact/decision dependencies
+from mere ordering preference, marks input-ready lanes ready and dependent lanes
+blocked, and preserves one writer per mutable surface. It dispatches all ready
+conflict-free lanes in each native wave before waiting, then fans in terminal
+native results before releasing dependents. Semantic triggers select `librarian`
+for current/external facts, `designer` for material user-facing experience, and
+`quick` for known narrow low-risk work; coupled or high-risk work uses `deep`.
+Native harness execution and lifecycle are authoritative for dispatch, status,
+wait, steering, cancellation, and terminal results.
 
 Artifact-backed specs use named normative FRs with INTERNAL or durable delta
 metadata and typed buildable/outcome SCs. Archive applies only declared durable

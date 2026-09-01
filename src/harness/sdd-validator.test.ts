@@ -1253,6 +1253,29 @@ describe('Spec Kit-compatible structural validator', () => {
     }
   });
 
+  test('rejects parallel rationale without path and dependency evidence', () => {
+    const { project, change } = createChange(
+      'thoth-hollow-parallel-rationale-',
+    );
+    try {
+      writeFixture(change, {
+        tasks: VALID_TASKS.replace(
+          '- Rationale: The lane path sets are disjoint and neither lane consumes peer output.',
+          '- Rationale: The lanes are independent.',
+        ),
+      });
+
+      const report = JSON.parse(validate(change, 'ready').stdout) as {
+        errors: Array<{ code: string }>;
+      };
+      expect(report.errors.map(({ code }) => code)).toContain(
+        'SDD-TASK-LANE-RATIONALE',
+      );
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   test.each([
     [
       'a non-sequential group ID',

@@ -818,6 +818,24 @@ function validateTasks(content, errors, spec) {
     }
 
     for (const group of groups) {
+      const rationale = group.rationale ?? '';
+      const hasPathIndependenceEvidence =
+        /\b(?:path|file|surface)s?\b/i.test(rationale) &&
+        /\b(?:disjoint|non[- ]?overlap(?:ping)?)\b/i.test(rationale);
+      const hasDependencyIndependenceEvidence =
+        /\b(?:dependenc(?:y|ies)|consum(?:e|es|ing)|peer output|data flow)\b/i.test(
+          rationale,
+        );
+      if (!hasPathIndependenceEvidence || !hasDependencyIndependenceEvidence) {
+        errors.push(
+          issue(
+            'SDD-TASK-LANE-RATIONALE',
+            artifact,
+            'Parallel rationale must state concrete path-disjointness and cross-lane dependency evidence for Oracle review.',
+          ),
+        );
+      }
+
       const memberIds = new Set(group.lanes.flatMap((lane) => lane.taskIds));
       const prerequisites = group.prerequisites ?? [];
       if (

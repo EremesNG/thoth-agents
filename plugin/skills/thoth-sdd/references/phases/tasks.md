@@ -40,6 +40,9 @@ Declare safe work with this exact grammar:
 
 Groups and lanes are sequential and unique. Every `[P]` task belongs to exactly one lane; non-`[P]` tasks do not. Lane surfaces are the union of exact task
 paths, and lanes in a group have disjoint surfaces and no cross-lane dependency.
+The `Rationale` must explicitly state path-disjointness and cross-lane dependency
+evidence so structural validation can gate the evidence shape and Oracle can
+judge whether the claim is true.
 Prerequisites name known tasks outside the group; the barrier is a downstream
 task or `Final verification` after all lane members. If no group exists, use
 only `- None: <evidence-backed reason>` and no task may use `[P]`.

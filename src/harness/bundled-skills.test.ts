@@ -90,6 +90,15 @@ describe('bundled thoth-init', () => {
       expect(initializedConstitution).toMatch(
         /\*\*Last amended\*\*: \d{4}-\d{2}-\d{2}/,
       );
+      expect(initializedConstitution).toContain(
+        'Every route MUST include verification proportional',
+      );
+      expect(initializedConstitution).toMatch(
+        /Trivial\s+deterministic Direct work MAY be verified by Root/i,
+      );
+      expect(initializedConstitution).toMatch(
+        /Materially risky Direct work and[\s\S]+Accelerated or Full final verify MUST use a fresh independent read-only/i,
+      );
       const constitutionValidator = spawnSync(
         process.execPath,
         [
@@ -412,13 +421,93 @@ describe('canonical SDD bundle contracts', () => {
     expect(skill).toMatch(/Oracle.*read-only/is);
     expect(skill).toMatch(/Root.*persists.*plan-review\.md/is);
     expect(skill).toContain('ask whether to implement or stop');
-    expect(skill).toContain('mandatory final Oracle verify');
+    expect(skill).toContain('mandatory final verification');
     expect(skill).toMatch(/do not mirror.*provider memory/is);
     expect(template).toContain('**Status**: [OKAY|REJECT]');
     expect(template).toContain('## Source SHA-256');
     expect(template).toContain('spec.md');
     expect(template).toContain('plan.md');
     expect(template).toContain('tasks.md');
+  });
+
+  test('keeps final verification mandatory with route- and risk-aware ownership', () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-verification-'));
+
+    try {
+      writeFileSync(
+        join(packageRoot, 'package.json'),
+        `${JSON.stringify({ name: 'thoth-agents', version: '0.3.0' })}\n`,
+      );
+      generateIntegrationPackages({ projectRoot: packageRoot });
+
+      for (const skillsRoot of [
+        join(process.cwd(), 'skills'),
+        join(packageRoot, 'plugin', 'skills'),
+      ]) {
+        const constitution = readFileSync(
+          join(
+            skillsRoot,
+            'thoth-constitution',
+            'templates',
+            'constitution.md',
+          ),
+          'utf8',
+        );
+        const sdd = readFileSync(
+          join(skillsRoot, 'thoth-sdd', 'SKILL.md'),
+          'utf8',
+        );
+        const implement = readFileSync(
+          join(skillsRoot, 'thoth-sdd', 'references', 'phases', 'implement.md'),
+          'utf8',
+        );
+        const verify = readFileSync(
+          join(skillsRoot, 'thoth-sdd', 'references', 'phases', 'verify.md'),
+          'utf8',
+        );
+        const planReview = readFileSync(
+          join(skillsRoot, 'plan-reviewer', 'SKILL.md'),
+          'utf8',
+        );
+        expect(constitution).toContain(
+          'Every route MUST include verification proportional',
+        );
+        expect(constitution).toMatch(
+          /trivial\s+deterministic Direct work MAY be verified by Root/i,
+        );
+        expect(constitution).toMatch(
+          /materially risky Direct work and\s+every Accelerated or Full final verify MUST use a fresh independent read-only\s+reviewer/i,
+        );
+        for (const routeContract of [sdd, implement, verify]) {
+          expect(routeContract).toMatch(
+            /every route requires[\s\S]+mandatory verification/i,
+          );
+          expect(routeContract).toMatch(
+            /trivial deterministic Direct[\s\S]+(?:verified by Root|Root[\s\S]+focused checks)/i,
+          );
+          expect(routeContract).toMatch(
+            /materially risky\s+Direct[\s\S]+Accelerated or Full[\s\S]+fresh read-only\s+Oracle/i,
+          );
+          expect(routeContract).toMatch(
+            /implementation\s+writer never approves/i,
+          );
+        }
+        expect(planReview).toMatch(
+          /Every route still requires post-implementation verification/i,
+        );
+        expect(planReview).toMatch(
+          /trivial deterministic Direct[\s\S]+Root-verified[\s\S]+materially risky Direct[\s\S]+Accelerated or Full[\s\S]+fresh read-only Oracle/i,
+        );
+        expect(planReview).toMatch(
+          /plan review[\s\S]+never (?:replaces|substitutes for)[\s\S]+final verification/i,
+        );
+        expect(planReview).not.toContain(
+          'Every route still requires independent post-implementation verification by a non-writer.',
+        );
+      }
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
   });
 
   test('teaches baseline-relative durable requirements and typed success criteria', () => {
@@ -467,6 +556,60 @@ describe('canonical SDD bundle contracts', () => {
     expect(checklist).toContain('**Activation reason**');
     expect(checklist).toContain('## Domain lenses');
     expect(checklist).toContain('Not required: [evidence-backed reason]');
+  });
+
+  test('defines native dispatch groups, lanes, and lifecycle barriers', () => {
+    const tasks = readFileSync(
+      join(process.cwd(), 'skills', 'thoth-sdd', 'templates', 'tasks.md'),
+      'utf8',
+    );
+    const phaseTasks = readFileSync(
+      join(
+        process.cwd(),
+        'skills',
+        'thoth-sdd',
+        'references',
+        'phases',
+        'tasks.md',
+      ),
+      'utf8',
+    );
+    const implement = readFileSync(
+      join(
+        process.cwd(),
+        'skills',
+        'thoth-sdd',
+        'references',
+        'phases',
+        'implement.md',
+      ),
+      'utf8',
+    );
+    for (const contract of [tasks, phaseTasks]) {
+      expect(contract).toContain('### Group P1');
+      expect(contract).toContain('Lane L1: T001 -> T002 | Owner: deep');
+      expect(contract).toContain('Prerequisites: None');
+      expect(contract).toContain('Barrier: Final verification');
+      expect(contract).toContain('Rationale:');
+      expect(contract).toMatch(
+        /Every `\[P\]` task belongs to exactly one lane/i,
+      );
+      expect(contract).toMatch(/cross-lane.*(?:disjoint|dependency)/i);
+      expect(contract).toContain('- None: <evidence-backed reason>');
+      expect(contract).not.toMatch(/concrete (?:task )?pairings?/i);
+    }
+    for (const assertion of [
+      'one fresh native specialist assignment per admitted lane',
+      'every dispatch in that native wave before any wait',
+      'dispatch the next undispatched ready lane before waiting again',
+      'root alone updates task state',
+      'terminal evidence per lane',
+      'only after every lane is terminal and reconciled',
+      'truthful sequential fallback',
+    ]) {
+      expect(implement.toLowerCase()).toContain(assertion.toLowerCase());
+    }
+    expect(implement).not.toMatch(/wait_all|fixed concurrency/i);
   });
 
   test('keeps plan and task scaffolds parser-inert until populated', () => {

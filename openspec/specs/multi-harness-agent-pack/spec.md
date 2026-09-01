@@ -30,43 +30,31 @@ roles.
 
 ### Requirement: Use adaptive-root delegation
 
-The root MUST evaluate implementation ownership independently from Direct, Accelerated, Full, or no-artifact execution; it MAY implement directly or delegate to a specialist in every route according to explicit user direction and demonstrated net gain from specialization, context isolation, independent parallelism, quality, latency, or total cost, balanced against sequential dependency, shared mutable state, accumulated context, rediscovery, and coordination overhead.
+Before substantive execution, the root MUST shape bounded ready and blocked lanes with exact dependencies, ownership, specialist fit, and verification inputs; for each declared ready parallel group it MUST create one fresh bounded native assignment per lane, dispatch every lane admitted by current native capacity before the first blocking wait or result collection, refill released capacity with remaining ready lanes before waiting again, accept only terminal native evidence for fan-in, and cross the declared barrier only after all lanes are reconciled, while preserving truthful sequential fallback when native concurrency is unavailable or unproven.
 
-#### Scenario: US1 - Choose ownership independently from SDD route 1
+#### Scenario: US3 - Execute native fan-out before fan-in 1
 
-- **GIVEN** a large user-facing change selected as Direct/no-artifact work
-- **WHEN** designer specialization and isolated context create a net gain
-- **THEN** the root may delegate the bounded UI surface to `designer`
+- **GIVEN** a declared group whose ready lanes fit current native capacity
+- **WHEN** implementation begins
+- **THEN** the root creates one fresh bounded specialist assignment per lane and issues all native dispatches before the first wait, status, result, or assigned-work implementation action
 
-#### Scenario: US1 - Choose ownership independently from SDD route 2
+#### Scenario: US3 - Execute native fan-out before fan-in 2
 
-- **GIVEN** a coupled correctness-heavy Direct/no-artifact change
-- **WHEN** a fresh bounded implementation context reduces interference and rediscovery is acceptable
-- **THEN** the root may delegate the surface to `deep`
+- **GIVEN** a declared group is wider than current native capacity
+- **WHEN** a terminal result releases capacity
+- **THEN** the root dispatches the next undispatched ready lane before waiting again and does not claim full-width concurrency
 
-#### Scenario: US1 - Choose ownership independently from SDD route 3
+#### Scenario: US3 - Execute native fan-out before fan-in 3
 
-- **GIVEN** an Accelerated or Full change with one sequential mutable surface whose planning and implementation share significant root context
-- **WHEN** delegation would add coordination or rediscovery cost without a quality or latency gain
-- **THEN** root may implement the accepted surface directly
+- **GIVEN** a harness lacks or does not prove the needed concurrent primitive
+- **WHEN** the group is reached
+- **THEN** the root reports the capability gap and uses a truthful sequential fallback without adding a Thoth executor
 
-#### Scenario: US2 - Delegate specialists only for demonstrated net gain 1
+#### Scenario: US3 - Execute native fan-out before fan-in 4
 
-- **GIVEN** an independent bounded surface with a strong specialist fit
-- **WHEN** its context can be isolated without overlapping writes
-- **THEN** the root selects the matching specialist regardless of SDD route
-
-#### Scenario: US2 - Delegate specialists only for demonstrated net gain 2
-
-- **GIVEN** a short task, a single ordered reasoning chain, frequent shared-state writes, or significant already-loaded root context
-- **WHEN** delegation adds more overhead than benefit
-- **THEN** root remains the implementation owner regardless of SDD route
-
-#### Scenario: US2 - Delegate specialists only for demonstrated net gain 3
-
-- **GIVEN** explicit user direction to use or avoid an implementation subagent
-- **WHEN** that direction is safe and compatible with mandatory independent verification
-- **THEN** the root treats it as an ownership input rather than inferring it from Direct, Accelerated, or Full
+- **GIVEN** some group lanes are nonterminal, timed out, silent, or malformed
+- **WHEN** fan-in is evaluated
+- **THEN** the root keeps the barrier closed until every lane has terminal validated evidence
 
 ### Requirement: Keep role permissions explicit
 
@@ -272,31 +260,43 @@ Each supported harness MUST render its native fresh and continuation mechanisms:
 
 ### Requirement: Expose routable role contracts
 
-Every canonical role description and generated specialist prompt MUST state positive routing triggers, negative routing triggers, allowed mutation scope, escalation conditions, verification duty, and compact return expectations, and the root prompt MUST use those contracts when choosing an owner.
+Every root MUST present the complete specialist roster with equally salient positive and negative semantic triggers, MUST consider all six specialists during task shaping, and MUST distinguish role existence from an actual dispatch decision.
 
-#### Scenario: US1 - Receive the right implementation specialist 1
+#### Scenario: US2 - Activate the complete specialist roster 1
 
-- **GIVEN** an Accelerated or Full change has passed its planning gates
-- **WHEN** implementation begins
-- **THEN** the root selects at least one bounded specialist
+- **GIVEN** broad or uncertain local repository discovery
+- **WHEN** the root selects a specialist
+- **THEN** it selects `explorer` and keeps the assignment read-only
 
-#### Scenario: US1 - Receive the right implementation specialist 2
+#### Scenario: US2 - Activate the complete specialist roster 2
 
-- **GIVEN** UI/UX or visual-quality work
-- **WHEN** the root selects the writer
-- **THEN** `designer` owns the bounded user-facing surface and its visual QA
+- **GIVEN** current, unfamiliar, version-sensitive, or externally sourced facts are required
+- **WHEN** the root selects a specialist
+- **THEN** it selects `librarian`; stable facts already established locally do not trigger it
 
-#### Scenario: US2 - Receive consistent routing across harnesses 1
+#### Scenario: US2 - Activate the complete specialist roster 3
 
-- **GIVEN** a harness exposes an explicit role selector
-- **WHEN** the root delegates
-- **THEN** its instructions require that selector and the selected canonical role
+- **GIVEN** material UI/UX, interaction, accessibility, or visual-quality work
+- **WHEN** the root selects a writer
+- **THEN** it selects `designer` with bounded user-facing ownership and visual verification
 
-#### Scenario: US2 - Receive consistent routing across harnesses 2
+#### Scenario: US2 - Activate the complete specialist roster 4
 
-- **GIVEN** a Codex host does not expose an explicit custom-role selector
-- **WHEN** delegation is still available
-- **THEN** the generated guidance uses a bounded
+- **GIVEN** a known, narrow, low-risk implementation lane inside a larger coordinated task
+- **WHEN** its context and writes can be isolated
+- **THEN** the root selects `quick` rather than consuming the root's coordination path
+
+#### Scenario: US2 - Activate the complete specialist roster 5
+
+- **GIVEN** coupled contracts, concurrency, migration, shared-state, edge-case-heavy, or high-risk implementation
+- **WHEN** the root selects a writer
+- **THEN** it selects `deep` instead of `quick`
+
+#### Scenario: US2 - Activate the complete specialist roster 6
+
+- **GIVEN** material architecture, security, persistent diagnosis, contradictory evidence, or high-cost uncertainty
+- **WHEN** independent judgment would change confidence or authorization
+- **THEN** the root selects a fresh read-only `oracle`
 
 ### Requirement: Use the strongest truthful native role selector
 

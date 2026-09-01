@@ -32,8 +32,11 @@ After deciding delegation creates net gain, select deterministically:
 Proven independent surfaces may use different writers only with non-overlapping
 ownership. Overlapping or compatibility-coupled work uses one `deep` writer and
 ordered handoffs. A writer escalates before expanding beyond its routing
-boundary. The implementation writer never performs final verification; root
-hands the unchanged candidate to a fresh Oracle.
+boundary. Every route requires mandatory verification, and the implementation
+writer never approves its own work. For trivial deterministic Direct work, Root
+may run the proportionate focused checks when Root is not self-approving its own
+implementation. For materially risky Direct work and every Accelerated or Full
+final verify, root hands the unchanged candidate to a fresh read-only Oracle.
 
 Implementation evidence may refine an artifact without restarting the workflow:
 
@@ -44,3 +47,11 @@ Implementation evidence may refine an artifact without restarting the workflow:
   silently expanding this one.
 
 Report files changed, checks executed, deviations, and remaining work.
+
+## Native dispatch groups and waves
+
+For each ready group, confirm prerequisites, ordered lane tasks, exact path
+union, owner, requirements, and checks. Select the capacity-bounded set of
+undispatched ready lanes and create one fresh native specialist assignment per admitted lane. Issue every dispatch in that native wave before any wait, status,
+result collection, or root implementation action. Retain handles; when terminal evidence frees capacity, dispatch the next undispatched ready lane before waiting again. Validate terminal evidence per lane, while root alone updates task state. Cross the declared barrier only after every lane is terminal and reconciled. Preserve truthful capability/capacity fallback: when native
+concurrency is unavailable or width is one, use a truthful sequential fallback.

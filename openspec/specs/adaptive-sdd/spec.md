@@ -64,25 +64,43 @@ Accelerated and Full specification authoring MUST inspect every affected canonic
 
 ### Requirement: Preserve executable planning and task semantics
 
-Plans MUST record evidence-backed pre/post Constitution checks using the same exact active principle headings and map technical decisions to requirements, exact paths/interfaces, risk, migration/rollback, and verification seams; optional research, data-model, contract, quickstart, or checklist artifacts MUST exist only for a concrete risk; tasks MUST use globally sequential `T### [P?] [US#?]` grammar starting at `T001`, identify an independent MVP, state dependencies, put behavior tests before implementation, include exactly one literal repository-relative path and a concrete `Verify` outcome, and cover every FR/buildable SC, while `[P]` MUST identify proven non-overlapping work or the artifact MUST record why no safe parallel work exists; automated contract tests MUST detect drift between bundled authoring guidance and the structural validator.
+Plans MUST map verification seams and exact ownership, while tasks MUST use globally sequential `T### [P?] [US#?]` grammar, exact repository-relative paths, concrete verification outcomes, and complete FR/buildable-SC coverage; every `[P]` task MUST belong to exactly one ordered lane inside one named parallel group, every group MUST declare at least two cross-lane-independent lanes, every lane MUST bind one or more ordered tasks and their exact path union to one eligible specialist owner, and every group MUST declare explicit external prerequisites, one downstream or final-verification barrier, and concrete independence evidence, while artifacts with no safe group MUST record one evidence-backed `None` reason.
 
-#### Scenario: US3 - Author artifacts that satisfy structural gates 1
+#### Scenario: US1 - Declare executable parallel groups 1
 
-- **GIVEN** active Constitution principles
-- **WHEN** the plan template is completed
-- **THEN** both checks contain the same exact principle headings with independent concrete pre-design and post-design evidence
+- **GIVEN** two or more lanes with disjoint exact path sets and no cross-lane dependency
+- **WHEN** tasks are authored
+- **THEN** every `[P]` task appears in exactly one ordered lane inside one named parallel group with a lane-level specialist owner, explicit group prerequisites, a barrier, and concrete independence rationale
 
-#### Scenario: US3 - Author artifacts that satisfy structural gates 2
+#### Scenario: US1 - Declare executable parallel groups 2
 
-- **GIVEN** a tasks artifact
-- **WHEN** the tasks template is completed
-- **THEN** every checkbox uses a sequential `T###`, optional tags in canonical order, exactly one literal repository-relative path, and an observable verification result
+- **GIVEN** two lanes select the same specialist role
+- **WHEN** implementation ownership is resolved
+- **THEN** each lane remains a distinct fresh assignment bounded to the union of its task paths instead of being aggregated into one role-wide handoff
 
-#### Scenario: US3 - Author artifacts that satisfy structural gates 3
+#### Scenario: US1 - Declare executable parallel groups 3
 
-- **GIVEN** any bundled SDD template or its authoring guidance changes
-- **WHEN** the template-contract tests run
-- **THEN** validator drift is detected before the bundle is released
+- **GIVEN** no safe multi-lane group exists
+- **WHEN** tasks are authored
+- **THEN** the artifact records one evidence-backed `None` reason and marks no task `[P]`
+
+#### Scenario: US2 - Preserve dependency and ownership safety 1
+
+- **GIVEN** one proposed lane consumes a task output from another lane in the same group
+- **WHEN** the tasks gate runs
+- **THEN** it rejects the cross-lane dependency while allowing ordered dependencies within a lane
+
+#### Scenario: US2 - Preserve dependency and ownership safety 2
+
+- **GIVEN** two proposed lanes own equal or ancestor-descendant task paths
+- **WHEN** the tasks gate runs
+- **THEN** it rejects the group as overlapping
+
+#### Scenario: US2 - Preserve dependency and ownership safety 3
+
+- **GIVEN** a `[P]` task is unknown, omitted, duplicated across lanes or groups, or its lane lacks an eligible specialist owner
+- **WHEN** the tasks gate runs
+- **THEN** it reports a stable structural diagnostic and blocks readiness
 
 ### Requirement: Keep requirement checklists conditional and structured
 
@@ -148,13 +166,31 @@ assumption. Selecting Full alone MUST NOT activate it.
 
 ### Requirement: Require independent oracle judgment
 
-Pre-implementation `plan-review` MUST be conditional on the user's choice and owned by read-only Oracle when selected. Every post-implementation `verify` MUST remain owned by read-only Oracle for Direct, Accelerated, and Full, and no implementation writer or plan-review approval MAY satisfy final verification.
+Pre-implementation plan review MUST remain optional and user-controlled for Accelerated and Full. Final Oracle verification MUST remain mandatory for Accelerated and Full and MUST be required for Direct only when material architecture, security, cross-cutting regression, persistent diagnosis, contradictory evidence, high failure cost, or comparable uncertainty requires independent judgment. A trivial deterministic Direct change MUST be eligible for root-run focused verification without Oracle, while every actual Oracle approval or PASS judgment MUST use a fresh read-only instance and MUST NOT be replaced by an implementation writer's self-approval.
 
-#### Scenario: US2 - Decide whether Oracle reviews the plan 1
+#### Scenario: US4 - Apply proportionate Oracle gates 1
 
-- **GIVEN** the user chooses review
-- **WHEN** Oracle applies `plan-reviewer`
-- **THEN** it returns `[OKAY]` or `[REJECT]`, reports no more than three true
+- **GIVEN** a trivial Direct change with deterministic focused checks and no material risk or ambiguity
+- **WHEN** implementation finishes
+- **THEN** the root runs proportionate checks and completes without spawning Oracle
+
+#### Scenario: US4 - Apply proportionate Oracle gates 2
+
+- **GIVEN** a Direct change with material security, architecture, cross-cutting regression, persistent diagnosis, or high-cost uncertainty
+- **WHEN** verification begins
+- **THEN** a fresh read-only Oracle performs the independent judgment
+
+#### Scenario: US4 - Apply proportionate Oracle gates 3
+
+- **GIVEN** an Accelerated or Full implementation
+- **WHEN** final verification begins
+- **THEN** a fresh read-only Oracle remains mandatory; optional pre-implementation plan review neither replaces nor duplicates that final judgment
+
+#### Scenario: US4 - Apply proportionate Oracle gates 4
+
+- **GIVEN** an Oracle or other specialist has completed a different objective
+- **WHEN** a new independent judgment begins
+- **THEN** the root creates a fresh instance rather than reusing a role pool
 
 ### Requirement: Revalidate proportionally when evidence refines artifacts
 
@@ -295,40 +331,40 @@ The bundled `thoth-init` operation MUST idempotently ensure `openspec/changes/ar
 
 ### Requirement: Select specialist writers deterministically
 
-When the root decides implementation delegation creates a net gain, it MUST select `designer` for user-facing visual/UX work, `quick` for known narrow low-risk work, and `deep` for coupled multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk work; route alone MUST NOT select, require, or forbid any implementation owner, and one writer MUST own each mutable surface.
+After task shaping establishes a delegation benefit, the root MUST select `designer` for material user-facing experience, `quick` for a known narrow low-risk isolated lane, and `deep` for coupled or high-risk work; it MUST evaluate these triggers independently of SDD route and MUST preserve one writer per mutable surface.
 
-#### Scenario: US2 - Delegate specialists only for demonstrated net gain 1
+#### Scenario: US2 - Activate the complete specialist roster 1
 
-- **GIVEN** an independent bounded surface with a strong specialist fit
-- **WHEN** its context can be isolated without overlapping writes
-- **THEN** the root selects the matching specialist regardless of SDD route
+- **GIVEN** broad or uncertain local repository discovery
+- **WHEN** the root selects a specialist
+- **THEN** it selects `explorer` and keeps the assignment read-only
 
-#### Scenario: US2 - Delegate specialists only for demonstrated net gain 2
+#### Scenario: US2 - Activate the complete specialist roster 2
 
-- **GIVEN** a short task, a single ordered reasoning chain, frequent shared-state writes, or significant already-loaded root context
-- **WHEN** delegation adds more overhead than benefit
-- **THEN** root remains the implementation owner regardless of SDD route
+- **GIVEN** current, unfamiliar, version-sensitive, or externally sourced facts are required
+- **WHEN** the root selects a specialist
+- **THEN** it selects `librarian`; stable facts already established locally do not trigger it
 
-#### Scenario: US2 - Delegate specialists only for demonstrated net gain 3
+#### Scenario: US2 - Activate the complete specialist roster 3
 
-- **GIVEN** explicit user direction to use or avoid an implementation subagent
-- **WHEN** that direction is safe and compatible with mandatory independent verification
-- **THEN** the root treats it as an ownership input rather than inferring it from Direct, Accelerated, or Full
+- **GIVEN** material UI/UX, interaction, accessibility, or visual-quality work
+- **WHEN** the root selects a writer
+- **THEN** it selects `designer` with bounded user-facing ownership and visual verification
 
-#### Scenario: US3 - Preserve deterministic specialist selection after delegation 1
+#### Scenario: US2 - Activate the complete specialist roster 4
 
-- **GIVEN** the root has decided to delegate implementation
-- **WHEN** the surface is user-facing UI/UX or visual-quality work
-- **THEN** `designer` owns that surface
+- **GIVEN** a known, narrow, low-risk implementation lane inside a larger coordinated task
+- **WHEN** its context and writes can be isolated
+- **THEN** the root selects `quick` rather than consuming the root's coordination path
 
-#### Scenario: US3 - Preserve deterministic specialist selection after delegation 2
+#### Scenario: US2 - Activate the complete specialist roster 5
 
-- **GIVEN** the root has decided to delegate implementation
-- **WHEN** the surface is known, narrow, mechanical, and low risk
-- **THEN** `quick` owns it
+- **GIVEN** coupled contracts, concurrency, migration, shared-state, edge-case-heavy, or high-risk implementation
+- **WHEN** the root selects a writer
+- **THEN** it selects `deep` instead of `quick`
 
-#### Scenario: US3 - Preserve deterministic specialist selection after delegation 3
+#### Scenario: US2 - Activate the complete specialist roster 6
 
-- **GIVEN** the root has decided to delegate implementation
-- **WHEN** the surface is coupled, multi-file, migration-heavy, concurrent, edge-case-heavy, or high risk
-- **THEN** `deep` owns it
+- **GIVEN** material architecture, security, persistent diagnosis, contradictory evidence, or high-cost uncertainty
+- **WHEN** independent judgment would change confidence or authorization
+- **THEN** the root selects a fresh read-only `oracle`

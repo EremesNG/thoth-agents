@@ -66,7 +66,9 @@ and the thoth-owned workflow bundle.
   disposition, and archive readiness.
 - After `ready`, both artifact-backed routes offer `Review plan with Oracle
   (Recommended)` or `Proceed without review`. Review is optional; final verify
-  remains mandatory.
+  remains mandatory. When parallel groups exist, the reviewer treats structural
+  validation as an input and independently judges semantic lane independence,
+  ownership, barriers, native-capacity waves, and truthful sequential fallback.
 - Same-intent corrections revalidate only affected downstream artifacts. New
   intent starts a new change.
 - Converge is append-only and uses the missing/partial/contradicts/unrequested

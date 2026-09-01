@@ -590,6 +590,7 @@ export const SDD_PHASE_PROTOCOLS = [
     instructions: [
       'Load the bundled plan-reviewer skill and review executability, completeness, correctness, and coherence without redesigning the plan.',
       'Require task coverage for every FR and buildable SC; assess outcome SC as measurable verification targets without manufacturing implementation tasks.',
+      'For every declared parallel group, independently assess semantic independence, each lane path union and owner, real cross-lane data flow, prerequisites and barrier, and whether native capacity supports dispatch-before-wait waves with refill; require a truthful sequential fallback when concurrency is unavailable or unproven.',
       'Return exact [OKAY] or [REJECT] semantics, default to [OKAY], and report at most three true blockers with the smallest fixes.',
       'Provide the reviewed artifact set so root can persist plan-review.md with SHA-256 freshness evidence; Oracle never writes it.',
       'Keep plan-review approval separate from implementation confirmation and mandatory final verify.',
@@ -602,6 +603,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'zero to three blocker findings with smallest fixes',
       'non-blocking cautions',
       'requirement coverage percentage',
+      'parallel executability disposition when tasks declare groups or an evidence-backed None reason',
       'constitution alignment',
       'reviewed artifact freshness manifest input',
     ],

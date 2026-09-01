@@ -62,6 +62,29 @@ Judge the artifact set on five dimensions:
 Respect TDD ordering and the repository constitution when they apply. Report
 non-blocking cautions separately so they do not become artificial gates.
 
+## Native parallel executability
+
+Structural ready validation proves that declared parallel metadata is
+well-formed; it does not prove semantic independence. When `tasks.md` declares
+parallel groups, Oracle must independently assess whether the plan can execute
+them safely:
+
+- Confirm each lane path union is genuinely disjoint from the other lanes and
+  its selected owner fits the bounded work.
+- Confirm cross-lane data flow does not hide a dependency and that the declared
+  prerequisites and barrier reflect the real execution order.
+- Confirm the handoff is sufficient for native capacity-bounded waves:
+  dispatch-before-wait for every admitted lane, refill before another wait, and
+  terminal reconciliation before releasing the barrier.
+- Require a truthful sequential fallback when native concurrency or capacity is
+  unavailable or unproven.
+
+For an evidence-backed `None` declaration, assess whether the claimed coupling
+really prevents a safe group. Treat a structural-but-semantically-unsafe group
+as a blocker only when the smallest repair is required before implementation;
+keep capacity uncertainty as a non-blocking caution when the declared fallback
+still makes the plan executable.
+
 ## Decision contract
 
 Default to `[OKAY]`. Return `[REJECT]` only when execution is genuinely blocked.

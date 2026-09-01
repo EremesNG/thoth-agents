@@ -40,6 +40,13 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(/coherence/i);
     expect(serialized).toMatch(/buildable/i);
     expect(serialized).toMatch(/outcome/i);
+    expect(serialized).toMatch(/parallel group/i);
+    expect(serialized).toMatch(/semantic independence/i);
+    expect(serialized).toMatch(/lane.*owner/i);
+    expect(serialized).toMatch(/prerequisite.*barrier/i);
+    expect(serialized).toMatch(/native capacity/i);
+    expect(serialized).toMatch(/dispatch-before-wait/i);
+    expect(serialized).toMatch(/sequential fallback/i);
     expect(serialized).toMatch(/final.*verify|verify.*final/i);
     expect(protocol.allowedWrites).toEqual([
       'None; Oracle is read-only. Root persists plan-review.md when review runs.',

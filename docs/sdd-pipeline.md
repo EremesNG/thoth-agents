@@ -256,12 +256,15 @@ implementation; it does not skip final verification.
 
 When selected, the bundled `plan-reviewer` asks read-only Oracle to judge
 completeness, correctness, cross-artifact coherence, buildability, and outcome
-coverage. Oracle returns exactly `[OKAY]` or `[REJECT]`; rejection identifies at
-most three actionable blockers. Root repairs canonical artifacts and offers the
-choice again. A fresh `[OKAY]` is persisted in `plan-review.md` with SHA-256
-digests, then root summarizes the approved plan and separately asks whether to
-implement or stop. The artifact stays in OpenSpec and is not mirrored into
-provider memory.
+coverage. For declared parallel groups, structural `ready` validation establishes
+the grammar and evidence shape, while Oracle independently judges semantic lane
+independence, path-union ownership, prerequisites, barriers, native-capacity
+dispatch-before-wait waves, and truthful sequential fallback. Oracle returns
+exactly `[OKAY]` or `[REJECT]`; rejection identifies at most three actionable
+blockers. Root repairs canonical artifacts and offers the choice again. A fresh
+`[OKAY]` is persisted in `plan-review.md` with SHA-256 digests, then root
+summarizes the approved plan and separately asks whether to implement or stop.
+The artifact stays in OpenSpec and is not mirrored into provider memory.
 
 Plan review is optional and never substitutes for mandatory final Oracle
 verification.

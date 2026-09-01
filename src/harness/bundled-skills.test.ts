@@ -423,6 +423,14 @@ describe('canonical SDD bundle contracts', () => {
     expect(skill).toContain('ask whether to implement or stop');
     expect(skill).toContain('mandatory final verification');
     expect(skill).toMatch(/do not mirror.*provider memory/is);
+    expect(skill).toContain('## Native parallel executability');
+    expect(skill).toMatch(
+      /structural ready validation.*semantic independence/is,
+    );
+    expect(skill).toMatch(/lane path union.*owner/is);
+    expect(skill).toMatch(/prerequisites.*barrier/is);
+    expect(skill).toMatch(/native capacity.*dispatch-before-wait/is);
+    expect(skill).toContain('truthful sequential fallback');
     expect(template).toContain('**Status**: [OKAY|REJECT]');
     expect(template).toContain('## Source SHA-256');
     expect(template).toContain('spec.md');
@@ -595,6 +603,9 @@ describe('canonical SDD bundle contracts', () => {
         /Every `\[P\]` task belongs to exactly one lane/i,
       );
       expect(contract).toMatch(/cross-lane.*(?:disjoint|dependency)/i);
+      expect(contract).toMatch(
+        /Rationale.*path-disjointness.*cross-lane dependency\s+evidence/is,
+      );
       expect(contract).toContain('- None: <evidence-backed reason>');
       expect(contract).not.toMatch(/concrete (?:task )?pairings?/i);
     }

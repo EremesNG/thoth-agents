@@ -70,16 +70,22 @@ describe('constitution lifecycle validator', () => {
       'utf8',
     );
 
-    expect(repositoryConstitution).toContain('**Version**: 6.0.0');
+    expect(repositoryConstitution).toContain('**Version**: 7.0.0');
     expect(repositoryConstitution).toContain(
-      '- Version change: 5.0.0 -> 6.0.0',
+      '- Version change: 6.0.0 -> 7.0.0',
     );
-    expect(repositoryConstitution).toContain('**Last amended**: 2026-08-31');
+    expect(repositoryConstitution).toContain('**Last amended**: 2026-09-02');
     expect(repositoryConstitution).toContain(
-      'The root recommends a route; the user selects Direct, Accelerated, or Full',
+      'Before asking for Direct, Accelerated, or Full, Root MUST summarize the relevant context',
     );
     expect(repositoryConstitution).toContain(
-      'Pre-implementation plan review is optional and user-selected',
+      'MUST treat the recommended route as selected after the third answerless result',
+    );
+    expect(repositoryConstitution).toContain(
+      '`Review plan with Oracle (Recommended)` counts as selected',
+    );
+    expect(repositoryConstitution).toContain(
+      'the third answerless result selects implementation',
     );
     expect(repositoryConstitution).toContain(
       'Trivial deterministic Direct work MAY be verified by Root',
@@ -94,10 +100,16 @@ describe('constitution lifecycle validator', () => {
       'Full SDD also adds oracle-owned pre-implementation analysis',
     );
     expect(initializedConstitution).toContain(
-      'SDD route selection MUST remain user-owned after an evidence-based recommendation',
+      'Before the SDD route question, Root MUST summarize relevant context',
+    );
+    expect(initializedConstitution).toMatch(
+      /the recommended route counts as\s+selected/,
+    );
+    expect(initializedConstitution).toMatch(
+      /`Review plan with Oracle \(Recommended\)` counts as selected/,
     );
     expect(initializedConstitution).toContain(
-      'Pre-implementation plan review is optional and user-selected',
+      'the third answerless result selects implementation',
     );
     expect(initializedConstitution).toMatch(
       /Trivial\s+deterministic Direct work MAY be verified by Root/,

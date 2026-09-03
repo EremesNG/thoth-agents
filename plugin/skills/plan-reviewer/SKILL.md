@@ -1,9 +1,11 @@
 ---
 name: plan-reviewer
-description: Review a ready Accelerated or Full SDD artifact set for execution blockers after the user chooses the optional Oracle plan review. Use only for the pre-implementation plan-review phase; return exact [OKAY] or [REJECT] semantics while keeping final verification separate.
+description: Review a ready Accelerated or Full SDD artifact set for execution blockers after Oracle review is explicitly or recommended-default selected. Use only for the pre-implementation plan-review phase; return exact [OKAY] or [REJECT] semantics while keeping final verification separate.
+license: MIT
+compatibility: Designed for thoth-agents Accelerated and Full SDD workflows.
 metadata:
   author: thoth-agents
-  version: '1.0'
+  version: "1.0"
 ---
 
 # Plan Reviewer
@@ -17,13 +19,16 @@ Use this skill only after all of these conditions hold:
 
 - The selected route is Accelerated or Full.
 - The route's `ready` validator gate has passed.
-- The user chose `Review plan with Oracle (Recommended)` instead of
-  `Proceed without review`.
+- `Review plan with Oracle (Recommended)` was explicitly selected or selected
+  by the bounded no-answer fallback.
 
-Do not activate automatically, and do not use it for Direct work. The user may
-proceed without this review. Skipping it means there is no pre-implementation
-Oracle review; mandatory final verification still applies under the selected
-route and its risk-aware ownership boundary.
+At the ready gate, any explicit `Proceed without review` answer wins. When the
+native question returns answerless, Root
+makes at most three total attempts; after the third answerless result, Root
+treats `Review plan with Oracle (Recommended)` as selected. This bounded
+fallback is the only automatic activation. Do not use this skill for Direct
+work. Explicitly proceeding without review means there is no pre-implementation
+Oracle review; mandatory final verification still applies.
 
 ## Ownership and inputs
 
@@ -92,8 +97,10 @@ A rejection contains at most 3 actionable blockers. For each blocker, state why
 it blocks execution and the smallest concrete repair. Preserve the exact
 `[OKAY]` and `[REJECT]` tokens across every harness.
 
-After `[REJECT]`, Root repairs the canonical artifacts and offers the user the
-review-or-proceed choice again. Do not silently approve a changed plan.
+After `[REJECT]`, Root repairs actionable same-intent planning artifacts,
+revalidates affected gates, and starts a fresh Oracle approval round until
+`[OKAY]`. A material human-owned blocker stops the loop for user input. Do not
+silently approve a changed plan or reuse an Oracle to issue a new approval.
 
 ## Freshness and persistence
 
@@ -108,9 +115,14 @@ digests. Oracle returns this payload; Root is the only writer that persists it.
 
 ## Handoff
 
-After `[OKAY]`, Root summarizes the approved plan and must ask whether to implement or stop.
-Approval is not implementation authorization. Choosing
-`Proceed without review` at the earlier choice does authorize implementation.
+After `[OKAY]`, Root summarizes the approved scope, approach, ownership,
+verification, and material risks before asking the native question:
+`Implement (Recommended)` or `Stop`. Any explicit `Stop` answer wins. If the
+implementation question returns answerless, Root makes at most three total
+attempts; after the third answerless result, Root treats implementation as
+selected. `[OKAY]` alone does not authorize implementation before that explicit
+choice or bounded fallback resolves. Choosing `Proceed without review` at the
+earlier choice does authorize implementation.
 
 Plan review never replaces or substitutes for mandatory final verification.
 Every route still requires post-implementation verification, but ownership is

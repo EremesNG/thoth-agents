@@ -47,10 +47,47 @@ describe('SDD phase protocols', () => {
     expect(serialized).toMatch(/native capacity/i);
     expect(serialized).toMatch(/dispatch-before-wait/i);
     expect(serialized).toMatch(/sequential fallback/i);
+    expect(serialized).toMatch(/three total attempts/i);
+    expect(serialized).toMatch(/third answerless.*Review plan with Oracle/i);
+    expect(serialized).toMatch(/explicit.*Proceed without review.*wins/i);
+    expect(serialized).toMatch(/repair.*planning artifacts/i);
+    expect(serialized).toMatch(/revalidate.*affected.*gate/i);
+    expect(serialized).toMatch(/fresh Oracle.*until.*\[OKAY\]/i);
+    expect(serialized).toMatch(/material human-owned blocker/i);
+    expect(serialized).toMatch(
+      /approved.*scope.*approach.*ownership.*verification.*risks/i,
+    );
+    expect(serialized).toMatch(/Implement \(Recommended\).*Stop/i);
+    expect(serialized).toMatch(/third answerless.*implementation.*selected/i);
+    expect(serialized).toMatch(/explicit.*Stop.*wins/i);
+    expect(serialized).toMatch(/\[OKAY\].*alone.*not.*authorize/i);
     expect(serialized).toMatch(/final.*verify|verify.*final/i);
     expect(protocol.allowedWrites).toEqual([
       'None; Oracle is read-only. Root persists plan-review.md when review runs.',
     ]);
+  });
+
+  test('activates plan review from an explicit answer or the bounded recommended fallback', () => {
+    const contract = getSddWorkflowContract();
+    const phase = contract.phases.find(({ id }) => id === 'plan-review');
+    const tasks = getSddPhaseProtocol('tasks');
+    const serialized = JSON.stringify({
+      phase,
+      tasks,
+      routingRules: contract.routingRules,
+      verificationRules: contract.verificationRules,
+    });
+
+    expect(phase?.reason).toMatch(/explicit.*bounded.*default/i);
+    expect(phase?.condition).toMatch(/explicit.*bounded.*default/i);
+    expect(serialized).toMatch(/third answerless/i);
+    expect(serialized).toMatch(
+      /third answerless route question.*selects.*recommendation/i,
+    );
+    expect(serialized).toMatch(/Review plan with Oracle.*selected/i);
+    expect(serialized).not.toMatch(/only when the user selects/i);
+    expect(serialized).not.toMatch(/user-selected plan-review path/i);
+    expect(serialized).not.toMatch(/explicit user decisions/i);
   });
 
   test('makes specification deltas, story coverage, and SC type explicit', () => {

@@ -26,8 +26,9 @@ deltas. The root shapes substantive work into dependency-aware, conflict-free
 native waves and joins terminal native results before dependent synthesis.
 Accelerated planning fast-forwards without routine pauses; structural
 `ready`/`closeout` gates and proportional independent review retain rigor. Root
-recommends Direct, Accelerated, or Full and the user selects the route. After
-`ready`, artifact-backed routes offer optional Oracle plan review or proceeding
+recommends Direct, Accelerated, or Full after summarizing context; explicit
+answers win and the third answerless route question selects the recommendation.
+After `ready`, artifact-backed routes offer optional Oracle plan review or proceeding
 without it; every final verification remains mandatory. During
 installation, the CLI obtains four mandatory external skills
 from their canonical repositories with `npx skills add` and invokes the official
@@ -267,7 +268,7 @@ correctness-critical work.
       <br>
       <i>Independent analysis and verification.</i>
       <br><br>
-      Reviews plans when the user requests it and independently verifies material
+      Reviews explicitly or bounded-default selected plans and independently verifies material
       risk plus every Accelerated or Full final implementation.
       <br><br>
       <b>Mode:</b> <code>read-only</code>
@@ -357,22 +358,30 @@ Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archi
 The root loads only the current phase contract from the bundled `thoth-sdd`
 skill. It owns specification, clarification, planning, requirements checklists,
 task decomposition, convergence, report persistence, and archive. `explorer`
-owns broad or uncertain Full discovery; `oracle` owns user-selected plan review
-and the final verification gates that require independent judgment.
+owns broad or uncertain Full discovery; `oracle` owns explicitly or
+bounded-default selected plan review, plus final
+verification gates that require independent judgment.
 
 An explicitly named route is the user's selection and wins. Otherwise root
-recommends one of all three routes and waits for the user's choice. A generic
-request to use SDD sets Accelerated as the minimum recommendation. Accelerated
-writes `spec.md -> plan.md -> tasks.md` in one uninterrupted root pass and does
-not pause for routine approval between those planning phases.
+summarizes the relevant context, scope, clarity, risk, and why one of the three
+routes is recommended before asking. Any explicit answer wins. After at most
+three total answerless native results, the third selects the recommended route.
+A generic request to use SDD sets Accelerated as the minimum recommendation.
+Accelerated writes `spec.md -> plan.md -> tasks.md` in one uninterrupted root
+pass and does not pause for routine approval between those planning phases.
 
 Conditional phases remain deliberately narrow:
 
 - `clarify` runs only for a material ambiguity and updates canonical `spec.md`;
 - `checklist` audits high-risk requirement quality with `CHK###` taxonomy and a
   separate revalidation pass;
-- `plan-review` is offered after `ready` on Accelerated and Full; the user chooses
-  `Review plan with Oracle (Recommended)` or `Proceed without review`;
+- `plan-review` is offered after `ready` on Accelerated and Full; any explicit
+  answer wins, while the third answerless result selects
+  `Review plan with Oracle (Recommended)`. Same-intent rejections are repaired
+  and revalidated before fresh Oracle rounds until approval or a material human
+  blocker. After approval, root summarizes the plan before asking
+  `Implement (Recommended)` or `Stop`; the third answerless result selects
+  implementation, while an explicit answer always wins;
 - `converge` appends tasks only after failed artifact-backed verification; and
 - `architectural-grilling` runs before specification only when explicitly
   requested or a material human-owned decision remains unresolved.

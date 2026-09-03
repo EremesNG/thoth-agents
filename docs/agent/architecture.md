@@ -44,14 +44,16 @@ persistence, receipts, state, and recovery remain outside this package.
 ## Invariants
 
 - OpenCode is default; harness guarantees differ.
-- Root recommends an SDD route; the user selects it. Root then coordinates SDD
-  and loads only the current contract.
+- Root summarizes context and recommends an SDD route; an explicit answer wins,
+  while the third answerless route question selects the recommendation. Root
+  then coordinates SDD and loads only the current contract.
 - The root shapes substantive work as dependency-aware bounded lanes: concrete
   artifact/decision dependencies block a lane, while mere ordering preference
   does not. Input-ready, conflict-free lanes form a native wave; root fans in
   only terminal native results before releasing dependents.
 - After `ready`, Accelerated and Full offer optional Oracle plan review or
-  proceeding without it. Every route verifies: trivial deterministic Direct work
+  proceeding without it; an explicit answer wins, while the third answerless
+  review question selects Oracle review. Every route verifies: trivial deterministic Direct work
   may use focused root checks, while materially risky Direct work and every
   Accelerated or Full final verify use a fresh read-only Oracle. Review approval
   never substitutes for verify.

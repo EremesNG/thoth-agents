@@ -134,19 +134,67 @@ mixed-provider mappings.
 
 ### Requirement: Bundle the plan reviewer
 
-The canonical thoth-owned skill bundle and every generated or initialized harness distribution MUST include `plan-reviewer`, while generated root prompts MUST express route selection and review selection through each harness's native blocking input surface.
+Canonical workflow skills and generated root prompts MUST express the three standard SDD decisions through each harness's native blocking input surface, MUST distinguish explicit answers from no-answer results, MUST limit unanswered retries to three total attempts, and MUST identify and apply the specified recommended fallback after the third unanswered attempt.
 
-#### Scenario: US3 - Receive the same choices in every harness 1
+#### Scenario: US1 - Continue with the recommended route after silence 1
 
-- **GIVEN** any supported harness
-- **WHEN** its root prompt is rendered
-- **THEN** it tells the root to recommend a route, wait for the user's choice, and offer
+- **GIVEN** the request does not name a route
+- **WHEN** the root is ready to ask Direct, Accelerated, or Full
+- **THEN** it first gives the user a concise evidence-based scope/risk/context summary and identifies its recommendation
 
-#### Scenario: US3 - Receive the same choices in every harness 2
+#### Scenario: US1 - Continue with the recommended route after silence 2
 
-- **GIVEN** Codex or Claude uses a harness-specific blocking input primitive
-- **WHEN** either user decision is requested
-- **THEN** the generated prompt names
+- **GIVEN** a recommended route and no user answer
+- **WHEN** the route prompt has completed unanswered three times
+- **THEN** the recommendation counts as the selected route
+
+#### Scenario: US1 - Continue with the recommended route after silence 3
+
+- **GIVEN** the user answers on any attempt
+- **WHEN** the route is selected
+- **THEN** that explicit selection wins and no fallback is applied
+
+#### Scenario: US2 - Default to Oracle review and converge to approval 1
+
+- **GIVEN** an Accelerated or Full change passed `ready`
+- **WHEN** the Oracle-review question completes unanswered three times
+- **THEN** `Review plan with Oracle (Recommended)` is treated as selected
+
+#### Scenario: US2 - Default to Oracle review and converge to approval 2
+
+- **GIVEN** Oracle returns `[REJECT]`
+- **WHEN** the blockers are actionable within the accepted intent
+- **THEN** root corrects the canonical planning artifacts, revalidates the affected gates, and starts a fresh Oracle plan-review round
+
+#### Scenario: US2 - Default to Oracle review and converge to approval 3
+
+- **GIVEN** repeated review rounds
+- **WHEN** Oracle returns `[OKAY]`
+- **THEN** plan review is approved and the workflow advances to the implementation decision
+
+#### Scenario: US2 - Default to Oracle review and converge to approval 4
+
+- **GIVEN** the user explicitly selects `Proceed without review`
+- **WHEN** the answer is received
+- **THEN** the review fallback is not applied and the existing no-review path remains available
+
+#### Scenario: US3 - Default to implementation after an approved-plan summary 1
+
+- **GIVEN** Oracle returned `[OKAY]`
+- **WHEN** root prepares the implementation question
+- **THEN** it first summarizes the approved scope, approach, ownership, verification, and material risks
+
+#### Scenario: US3 - Default to implementation after an approved-plan summary 2
+
+- **GIVEN** the approved-plan question completes unanswered three times
+- **WHEN** no explicit choice exists
+- **THEN** `Implement (Recommended)` is treated as selected
+
+#### Scenario: US3 - Default to implementation after an approved-plan summary 3
+
+- **GIVEN** the user selects stop on any attempt
+- **WHEN** the answer is received
+- **THEN** implementation does not start
 
 ### Requirement: Fresh delegation at work boundaries
 

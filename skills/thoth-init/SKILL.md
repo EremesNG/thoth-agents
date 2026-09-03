@@ -1,6 +1,11 @@
 ---
 name: thoth-init
 description: Initialize or synchronize the minimum project OpenSpec governance structure required by thoth-agents SDD flows.
+license: MIT
+compatibility: Requires Node.js >=22.13 and write access to the target project.
+metadata:
+  author: thoth-agents
+  version: "1.0"
 ---
 
 # Thoth Init

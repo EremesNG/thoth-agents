@@ -52,7 +52,7 @@ custom agents or write `~/.codex/AGENTS.md`. SDD phases never call either CLI.
 | `orchestrator` | adaptive root | Direct work, route recommendation, SDD coordination, final synthesis |
 | `explorer` | read-only | Repository discovery for real uncertainty |
 | `librarian` | read-only | Current, unfamiliar, version-sensitive, or external facts |
-| `oracle` | read-only | User-selected plan review and independent judgment when risk requires it |
+| `oracle` | read-only | Explicitly or bounded-default selected plan review and independent judgment when risk requires it |
 | `designer` | writer | Material UI/UX, interaction, accessibility, and visual quality |
 | `quick` | writer | Known narrow, clear, low-risk isolated edits |
 | `deep` | writer | Correctness-heavy or cross-cutting implementation |
@@ -70,14 +70,16 @@ deterministic Direct work may use focused root checks; materially risky Direct
 work and every Accelerated or Full final verify use a fresh read-only Oracle.
 `clarify`, `checklist`, `plan-review`, and `converge` are conditional.
 
-- Explicit route names are user selections and win. Otherwise root recommends
-  one route and waits for the user's Direct, Accelerated, or Full choice;
-  generic SDD makes Accelerated the minimum recommendation.
+- Explicit route names are user selections and win. Otherwise root summarizes
+  context and recommends one route; explicit answers win, while the third
+  answerless result selects that recommendation. Generic SDD makes Accelerated
+  the minimum recommendation.
 - Multi-file docs/mechanical work can remain Direct when clear and low-risk.
 - Accelerated fast-forwards `specify -> plan -> tasks` without routine pauses.
 - Full adds exploration and separate planning gates for uncertainty or high risk.
 - After `ready`, Accelerated and Full offer optional Oracle plan review or
-  proceeding without it; every final verify remains mandatory.
+  proceeding without it; explicit answers win and the third answerless result
+  selects Oracle review. Every final verify remains mandatory.
 - `ready` gates implementation; `closeout` gates transactional archive.
 
 Before implementation, root separates concrete artifact/decision dependencies

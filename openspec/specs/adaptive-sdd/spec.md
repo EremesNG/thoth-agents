@@ -4,13 +4,25 @@
 
 ### Requirement: Select the lightest safe route
 
-The system MUST assess intent, scope, clarity, contract risk, and failure cost, present an evidence-based Direct, Accelerated, or Full recommendation, and obtain the user's explicit route selection before route-specific execution unless the user already named a route; the user's selected route MUST win.
+The system MUST assess intent, scope, clarity, contract risk, and failure cost; present a concise evidence-based context summary before asking; recommend Direct, Accelerated, or Full; and obtain the user's route selection before route-specific execution unless the user already named a route. It MUST make no more than three total attempts when the native question returns without an answer, after which the displayed recommendation MUST count as the selection. Any explicit user selection MUST win.
 
-#### Scenario: US1 - Choose the SDD route 1
+#### Scenario: US1 - Continue with the recommended route after silence 1
 
-- **GIVEN** the original request already names Direct, Accelerated, or Full
-- **WHEN** routing starts
-- **THEN** that request counts as the user's choice and
+- **GIVEN** the request does not name a route
+- **WHEN** the root is ready to ask Direct, Accelerated, or Full
+- **THEN** it first gives the user a concise evidence-based scope/risk/context summary and identifies its recommendation
+
+#### Scenario: US1 - Continue with the recommended route after silence 2
+
+- **GIVEN** a recommended route and no user answer
+- **WHEN** the route prompt has completed unanswered three times
+- **THEN** the recommendation counts as the selected route
+
+#### Scenario: US1 - Continue with the recommended route after silence 3
+
+- **GIVEN** the user answers on any attempt
+- **WHEN** the route is selected
+- **THEN** that explicit selection wins and no fallback is applied
 
 ### Requirement: Load phase contracts on demand
 
@@ -231,23 +243,53 @@ Archive MUST use the same canonical parser and durable-delta preflight rules as 
 
 ### Requirement: Offer user-controlled plan review
 
-After an Accelerated or Full change passes the `ready` gate, the system MUST recommend Oracle plan review and MUST let the user choose that review or proceed without it before implementation; Direct MUST NOT activate this choice.
+After an Accelerated or Full change passes `ready`, the system MUST recommend Oracle plan review and let the user choose review or proceed without it before implementation; Direct MUST NOT activate this choice. It MUST make no more than three total attempts when the native question returns without an answer, after which `Review plan with Oracle (Recommended)` MUST count as selected. Once selected, actionable `[REJECT]` findings within the accepted intent MUST cause canonical planning-artifact correction, affected gate revalidation, and a fresh review round until `[OKAY]` or a material human-owned blocker is reached.
 
-#### Scenario: US2 - Decide whether Oracle reviews the plan 1
+#### Scenario: US2 - Default to Oracle review and converge to approval 1
 
-- **GIVEN** the user chooses review
-- **WHEN** Oracle applies `plan-reviewer`
-- **THEN** it returns `[OKAY]` or `[REJECT]`, reports no more than three true
+- **GIVEN** an Accelerated or Full change passed `ready`
+- **WHEN** the Oracle-review question completes unanswered three times
+- **THEN** `Review plan with Oracle (Recommended)` is treated as selected
+
+#### Scenario: US2 - Default to Oracle review and converge to approval 2
+
+- **GIVEN** Oracle returns `[REJECT]`
+- **WHEN** the blockers are actionable within the accepted intent
+- **THEN** root corrects the canonical planning artifacts, revalidates the affected gates, and starts a fresh Oracle plan-review round
+
+#### Scenario: US2 - Default to Oracle review and converge to approval 3
+
+- **GIVEN** repeated review rounds
+- **WHEN** Oracle returns `[OKAY]`
+- **THEN** plan review is approved and the workflow advances to the implementation decision
+
+#### Scenario: US2 - Default to Oracle review and converge to approval 4
+
+- **GIVEN** the user explicitly selects `Proceed without review`
+- **WHEN** the answer is received
+- **THEN** the review fallback is not applied and the existing no-review path remains available
 
 ### Requirement: Execute and persist selected plan review
 
-When the user selects review, the system MUST load the bundled `plan-reviewer` contract, delegate read-only review to Oracle, preserve exact `[OKAY]`/`[REJECT]` semantics with at most three blockers, and let the root persist `openspec/changes/<feature>/plan-review.md` with SHA-256 freshness data for the reviewed planning artifacts. A declined review MUST NOT block implementation, and `[OKAY]` MUST NOT itself authorize implementation.
+When review is explicitly or automatically selected, the system MUST load `plan-reviewer`, delegate each approval round to a fresh read-only Oracle, preserve exact `[OKAY]`/`[REJECT]` semantics with at most three blockers, and let root persist freshness evidence. After `[OKAY]`, root MUST present a concise approved-plan summary before asking whether to implement or stop, with `Implement (Recommended)` first. It MUST make no more than three total attempts when that native question returns without an answer, after which implementation MUST count as selected. `[OKAY]` alone MUST NOT authorize implementation before that explicit choice or fallback completes.
 
-#### Scenario: US2 - Decide whether Oracle reviews the plan 1
+#### Scenario: US3 - Default to implementation after an approved-plan summary 1
 
-- **GIVEN** the user chooses review
-- **WHEN** Oracle applies `plan-reviewer`
-- **THEN** it returns `[OKAY]` or `[REJECT]`, reports no more than three true
+- **GIVEN** Oracle returned `[OKAY]`
+- **WHEN** root prepares the implementation question
+- **THEN** it first summarizes the approved scope, approach, ownership, verification, and material risks
+
+#### Scenario: US3 - Default to implementation after an approved-plan summary 2
+
+- **GIVEN** the approved-plan question completes unanswered three times
+- **WHEN** no explicit choice exists
+- **THEN** `Implement (Recommended)` is treated as selected
+
+#### Scenario: US3 - Default to implementation after an approved-plan summary 3
+
+- **GIVEN** the user selects stop on any attempt
+- **WHEN** the answer is received
+- **THEN** implementation does not start
 
 ### Requirement: Limit thoth-init to project governance
 

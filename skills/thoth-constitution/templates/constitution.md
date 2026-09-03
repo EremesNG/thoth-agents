@@ -24,7 +24,11 @@ infrastructure without a current requirement is prohibited.
 
 Delivery MUST use the smallest coherent design that satisfies accepted
 requirements. Non-goals MUST be named, and scope cannot expand silently.
-SDD route selection MUST remain user-owned after an evidence-based recommendation.
+Before the SDD route question, Root MUST summarize relevant context, scope,
+clarity, risk, and its evidence-based recommendation. Any explicit answer wins.
+When the native question returns answerless, Root MUST make at most three total
+attempts; after the third answerless result, the recommended route counts as
+selected.
 
 ### III. Testable contracts
 
@@ -38,9 +42,15 @@ risk. The implementation writer cannot approve its own work. Trivial
 deterministic Direct work MAY be verified by Root when the decision is bounded
 and independent of the implementation writer. Materially risky Direct work and
 every Accelerated or Full final verify MUST use a fresh independent read-only
-reviewer. Pre-implementation plan review is optional and user-selected; when
-selected, it uses an independent read-only reviewer and never substitutes for
-final verification.
+reviewer. Pre-implementation plan review is optional and is selected explicitly
+or by the bounded recommended fallback; when offered, any explicit answer wins.
+After the third answerless result,
+`Review plan with Oracle (Recommended)` counts as selected. Actionable review
+rejections MUST be repaired and revalidated before a fresh reviewer round until
+approval or a material human-owned blocker. After approval, Root MUST give an
+approved plan summary before asking `Implement (Recommended)` or `Stop`; any
+explicit answer wins, while the third answerless result selects implementation.
+Plan review never substitutes for final verification.
 
 ### V. Traceable delivery
 

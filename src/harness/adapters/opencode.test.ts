@@ -42,7 +42,7 @@ describe('OpenCode harness adapter v0.3', () => {
     expect(root).toContain('Accelerated SDD');
     expect(root).toContain('bundled `thoth-sdd` skill');
     expect(root).toContain(
-      'Use a fresh @oracle for Accelerated, Full, and Direct work with material architecture',
+      'Use a fresh @oracle for Accelerated/Full and materially risky Direct work',
     );
     expect(root).toContain(
       'Root may run focused verification only for trivial deterministic Direct work',

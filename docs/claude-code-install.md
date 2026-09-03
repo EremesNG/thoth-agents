@@ -84,8 +84,8 @@ preserves existing constitutions, and leaves legacy project templates untouched.
 Namespaced delegation uses `thoth-agents:<role>`. Children never delegate.
 Every route verifies: trivial deterministic Direct work may use focused root
 checks; materially risky Direct work and every Accelerated or Full final verify
-use a fresh read-only `oracle`. User-selected plan review remains optional,
-regardless of who implemented the change.
+use a fresh read-only `oracle`. Explicitly or bounded-default selected plan
+review remains optional, regardless of who implemented the change.
 
 Before dispatch, the root distinguishes concrete artifact/decision dependencies
 from mere ordering, marks input-ready lanes ready and dependent lanes blocked,

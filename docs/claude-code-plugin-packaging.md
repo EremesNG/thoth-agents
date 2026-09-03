@@ -45,8 +45,8 @@ delegation uses the `thoth-agents:<role>` namespace. Explorer, librarian, and
 oracle deny write/edit tools; implementation roles retain bounded write access.
 The root shapes dependencies, ready/blocked lanes, and one-writer ownership.
 Claude's native `Agent` calls fan out every ready conflict-free lane before
-waiting and fan in only terminal native results. User-selected plan review is
-optional; trivial deterministic Direct work may use focused root checks, while
+waiting and fan in only terminal native results. Explicitly or bounded-default
+selected plan review is optional; trivial deterministic Direct work may use focused root checks, while
 materially risky Direct work and every Accelerated or Full final verify use a
 fresh read-only Oracle.
 

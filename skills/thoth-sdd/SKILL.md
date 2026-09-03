@@ -1,6 +1,11 @@
 ---
 name: thoth-sdd
 description: Run thoth-agents Direct, Accelerated, or Full specification-driven development with Spec Kit-grade artifacts, OpenSpec-style durable deltas, fast-forward planning, and proportional independent verification.
+license: MIT
+compatibility: Requires Node.js >=22.13 for bundled validation scripts.
+metadata:
+  author: thoth-agents
+  version: "1.0"
 ---
 
 # Thoth SDD
@@ -18,14 +23,29 @@ intent is clear and risk is low.
 
 Accelerated is a **fast-forward** route: root writes `spec.md`, `plan.md`, and
 `tasks.md` in one uninterrupted pass and creates optional artifacts only for a
-concrete risk. After `ready`, both artifact-backed routes pause once to offer
+concrete risk. After `ready`, both artifact-backed routes offer
 `Review plan with Oracle (Recommended)` or `Proceed without review`. Full uses
 separate planning gates because uncertainty or failure cost justifies them.
 
 An explicitly named route counts as the user's selection. Otherwise assess and
-recommend Direct, Accelerated, or Full, then wait for the user to choose; the
-recommendation is not the decision. A generic request to “use SDD” makes
-Accelerated the minimum recommendation but does not force it.
+recommend Direct, Accelerated, or Full, first summarize the relevant request
+context, scope, clarity, risk, and why the recommendation fits, then ask. When a
+native route question returns answerless, make at most three total attempts;
+after the third answerless result, treat the recommended route as selected. Any
+explicit answer wins. A generic request to “use SDD” makes Accelerated the
+minimum recommendation but does not force it.
+
+At the post-`ready` review choice, an explicit answer wins, including
+`Proceed without review`. When the native question returns answerless, make at
+most three total attempts; after the third answerless result, treat
+`Review plan with Oracle (Recommended)` as selected. Once review is selected,
+repair actionable same-intent planning blockers, revalidate affected gates, and
+use a fresh Oracle for every new approval round until `[OKAY]`; stop instead on
+a material human-owned blocker.
+
+These bounded fallbacks apply only to the route, plan-review, and implementation
+questions. Never apply them to secrets, destructive or security-sensitive
+actions, or material human-owned product or architecture decisions.
 
 ## Ownership
 
@@ -44,7 +64,8 @@ Accelerated the minimum recommendation but does not force it.
   migration, concurrency, shared-contract, or high-risk work.
 - Each mutable surface has one writer; independent non-overlapping surfaces may
   split, while coupled surfaces use one `deep` writer and ordered handoffs.
-- Oracle owns `plan-review` when the user selects it. Every route requires
+- Oracle owns `plan-review` when review is explicitly selected or chosen by the
+  bounded recommended fallback. Every route requires
   mandatory verification, but final-verification ownership is proportional:
   trivial deterministic Direct work may be verified by Root when Root is not
   self-approving its own implementation; materially risky Direct work and every
@@ -94,10 +115,10 @@ node "<skill-dir>/scripts/validate.mjs" --change openspec/changes/<feature> --ro
 - **Checklist**: run only when activated; the later `ready` gate includes it if
   present.
 
-`ready` validates the artifacts needed before the user chooses
-`Review plan with Oracle (Recommended)` or `Proceed without review`. Review
-approval remains separate from implementation confirmation and never satisfies
-final verification.
+`ready` validates the artifacts needed before the explicit or bounded-default
+`Review plan with Oracle (Recommended)` / `Proceed without review` choice.
+Review approval remains separate from implementation confirmation and never
+satisfies final verification.
 `closeout` additionally requires completed tasks, independent oracle PASS,
 complete FR/buildable-SC evidence, an observed PASS or explicit residual RISK
 for every outcome SC, and an archive report ready for the transactional archive

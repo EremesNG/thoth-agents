@@ -295,7 +295,7 @@ describe('v0.3 prompt rendering', () => {
     OPENCODE_PROMPT_DIALECT,
     CODEX_PROMPT_DIALECT,
     CLAUDE_CODE_PROMPT_DIALECT,
-  ])('keeps SDD route authority with the user in $harness', (dialect) => {
+  ])('summarizes and resolves unanswered SDD route choices in $harness', (dialect) => {
     const prompt = renderRolePrompt(
       createOrchestratorPromptSections(),
       dialect,
@@ -303,10 +303,13 @@ describe('v0.3 prompt rendering', () => {
 
     expect(prompt).toContain('assess and recommend one route');
     expect(prompt).toContain(
-      'wait for the user to select Direct, Accelerated, or Full',
+      'summarize the relevant request context, assessed scope, clarity, risk, and why the recommendation fits before asking',
     );
-    expect(prompt).toContain('The recommendation is not the decision');
-    expect(prompt).toContain("The user's selected route wins");
+    expect(prompt).toContain('at most three total attempts');
+    expect(prompt).toContain(
+      'After the third answerless result, treat the recommended route as selected',
+    );
+    expect(prompt).toContain('Any explicit user answer wins');
     expect(prompt).toContain('no duplicate route-selection prompt');
   });
 
@@ -314,7 +317,7 @@ describe('v0.3 prompt rendering', () => {
     OPENCODE_PROMPT_DIALECT,
     CODEX_PROMPT_DIALECT,
     CLAUDE_CODE_PROMPT_DIALECT,
-  ])('keeps pre-implementation review optional and final verification mandatory in $harness', (dialect) => {
+  ])('resolves unanswered review and implementation choices in $harness', (dialect) => {
     const prompt = renderRolePrompt(
       createOrchestratorPromptSections(),
       dialect,
@@ -326,12 +329,45 @@ describe('v0.3 prompt rendering', () => {
     expect(prompt).toContain('[OKAY]');
     expect(prompt).toContain('[REJECT]');
     expect(prompt).toContain('at most 3 actionable blockers');
-    expect(prompt).toContain('ask whether to implement or stop');
+    expect(prompt).toContain('review question returns answerless');
+    expect(prompt).toContain('at most three total attempts');
     expect(prompt).toContain(
-      'Skipping plan review means no pre-implementation Oracle review',
+      'After the third answerless result, treat `Review plan with Oracle (Recommended)` as selected',
+    );
+    expect(prompt).toContain(
+      'Any explicit `Proceed without review` answer wins',
+    );
+    expect(prompt).toContain(
+      'summarize the approved scope, approach, ownership, verification, and material risks before asking',
+    );
+    expect(prompt).toContain('`Implement (Recommended)` or `Stop`');
+    expect(prompt).toContain(
+      'After the third answerless result, treat implementation as selected',
+    );
+    expect(prompt).toContain('Any explicit `Stop` answer wins');
+    expect(prompt).toContain(
+      '`[OKAY]` alone does not authorize implementation',
     );
     expect(prompt).toContain(
       'Plan review never replaces mandatory final Oracle verify',
+    );
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('limits bounded SDD fallbacks to the three standard questions in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+
+    expect(prompt).toMatch(
+      /bounded fallbacks are only for route, plan-review, and implementation questions/i,
+    );
+    expect(prompt).toMatch(
+      /never for secrets, destructive\/security-sensitive actions, or material human-owned/i,
     );
   });
 

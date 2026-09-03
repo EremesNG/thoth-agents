@@ -103,11 +103,13 @@ are read there by phase contracts. Agent/global installation remains CLI-owned.
 The global root contract handles bounded work directly and delegates only for
 net gain. Children never delegate and each mutable surface has one writer.
 Root owns sequential SDD coordination through the bundled `thoth-sdd`
-contracts, recommends a route, and follows the user's selection. Explorer owns
-Full discovery. Every route verifies: trivial deterministic Direct work may use
+contracts. It summarizes the relevant request context, scope, clarity, risk, and
+recommendation before asking the route question. Any explicit answer wins; the
+third answerless route question selects the displayed recommendation. Explorer
+owns Full discovery. Every route verifies: trivial deterministic Direct work may use
 focused root checks; materially risky Direct work and every Accelerated or Full
-final verify use a fresh read-only Oracle. User-selected plan review remains
-optional.
+final verify use a fresh read-only Oracle. Explicitly or bounded-default selected
+plan review remains optional.
 
 Before dispatch, the root distinguishes concrete artifact/decision dependencies
 from mere ordering, marks input-ready lanes ready and dependent lanes blocked,

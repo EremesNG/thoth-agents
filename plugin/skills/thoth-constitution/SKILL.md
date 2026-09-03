@@ -1,6 +1,11 @@
 ---
 name: thoth-constitution
 description: Create or explicitly amend the project constitution, choose its governance SemVer bump, propagate its impact, and validate lifecycle metadata. Use only for constitution lifecycle work; routine SDD planning reads the constitution without activating this skill.
+license: MIT
+compatibility: Requires Node.js >=22.13 for bundled validation scripts.
+metadata:
+  author: thoth-agents
+  version: "1.0"
 ---
 
 # Thoth Constitution

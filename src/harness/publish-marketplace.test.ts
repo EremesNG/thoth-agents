@@ -8,11 +8,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { publishMarketplace } from '../../scripts/publish-marketplace.mjs';
 
-const CENTRAL_SOURCE = join(process.cwd(), '..', 'thoth-plugins');
+const CENTRAL_SOURCE = resolve(
+  process.env.THOTH_PLUGINS_ROOT ?? join(process.cwd(), '..', 'thoth-plugins'),
+);
 const temporaryRoots: string[] = [];
 
 function git(cwd: string, args: string[]): string {

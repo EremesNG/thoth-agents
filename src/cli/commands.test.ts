@@ -105,6 +105,11 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain(
       'That plugin entry does not create a global thoth-agents command.',
     );
+    expect(output).toContain('--local-package-root=PATH');
+    expect(output).toContain('thoth-mem is installed separately');
+    expect(output).toContain(
+      'node dist/cli/index.js install --agent=pi --local-package-root=',
+    );
     expect(output).toContain(
       'Run this CLI through a global install, npx, or pnpm dlx.',
     );

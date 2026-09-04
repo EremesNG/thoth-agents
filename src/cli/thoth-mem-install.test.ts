@@ -49,15 +49,7 @@ describe('thoth-mem setup adapter', () => {
       getThothMemSetupCommand(harness, false, { platform: 'linux' }),
     ).toEqual({
       command: 'npx',
-      args: [
-        '-y',
-        'thoth-mem@latest',
-        'setup',
-        providerHarness,
-        '--scope',
-        'global',
-        '--json',
-      ],
+      args: ['-y', 'thoth-mem@latest', 'setup', providerHarness, '--json'],
     });
   });
 
@@ -74,8 +66,6 @@ describe('thoth-mem setup adapter', () => {
       'thoth-mem@latest',
       'setup',
       'codex',
-      '--scope',
-      'global',
       '--plan',
       '--json',
     ]);
@@ -94,12 +84,7 @@ describe('thoth-mem setup adapter', () => {
       }),
     ).toEqual({
       command: commandShell,
-      args: [
-        '/d',
-        '/s',
-        '/c',
-        'npx -y thoth-mem@latest setup codex --scope global --json',
-      ],
+      args: ['/d', '/s', '/c', 'npx -y thoth-mem@latest setup codex --json'],
     });
   });
 

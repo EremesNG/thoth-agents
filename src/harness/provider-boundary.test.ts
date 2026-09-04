@@ -235,7 +235,7 @@ describe('provider boundary', () => {
     );
   });
 
-  test('orchestrates only the official provider setup surface for every harness', async () => {
+  test('orchestrates only the official provider setup surface for published installs', async () => {
     const targets = await readTargets();
     const setup = targets.find(
       ({ path }) => path === 'src/cli/thoth-mem-install.ts',
@@ -246,7 +246,8 @@ describe('provider boundary', () => {
     );
 
     expect(setup?.content).toMatch(/thoth-mem@latest[\s\S]*setup/);
-    expect(setup?.content).toMatch(/--scope[\s\S]*global[\s\S]*--json/);
+    expect(setup?.content).toContain("'--json'");
+    expect(setup?.content).not.toContain("'--scope'");
     expect(setup?.content).toContain('--plan');
     expect(setup?.content).not.toMatch(/--force|rollback/i);
     expect(setup?.content).not.toMatch(

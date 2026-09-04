@@ -212,8 +212,6 @@ export function getThothMemSetupCommand(
       'thoth-mem@latest',
       'setup',
       harness,
-      '--scope',
-      'global',
       ...(dryRun ? ['--plan'] : []),
       '--json',
     ],

@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { parseInstallArgs, parseOperationArgs } from './parser';
 
@@ -5,6 +6,48 @@ describe('operation role effort parsing', () => {
   test('accepts Pi explicitly for install and operation selection', () => {
     expect(parseInstallArgs(['--agent=pi']).agent).toBe('pi');
     expect(parseOperationArgs(['--harness=pi']).harness).toBe('pi');
+  });
+
+  test('accepts an explicit local package root for Pi installation', () => {
+    const localPackageRoot = resolve('fixtures/pi-local-package');
+
+    expect(
+      parseInstallArgs([
+        '--agent=pi',
+        '--local-package-root',
+        localPackageRoot,
+      ]),
+    ).toMatchObject({ agent: 'pi', localPackageRoot });
+    expect(
+      parseInstallArgs([
+        '--agent=pi',
+        `--local-package-root=${localPackageRoot}`,
+      ]),
+    ).toMatchObject({ agent: 'pi', localPackageRoot });
+  });
+
+  test('rejects invalid local package root usage', () => {
+    const localPackageRoot = resolve('fixtures/pi-local-package');
+
+    expect(() => parseInstallArgs(['--local-package-root'])).toThrow(
+      '--local-package-root requires a value.',
+    );
+    expect(() =>
+      parseInstallArgs(['--agent=pi', '--local-package-root=relative/path']),
+    ).toThrow('--local-package-root requires a normalized absolute path.');
+    expect(() =>
+      parseInstallArgs([
+        '--agent=codex',
+        `--local-package-root=${localPackageRoot}`,
+      ]),
+    ).toThrow('--local-package-root is supported only with --agent=pi.');
+    expect(() =>
+      parseInstallArgs([
+        '--agent=pi',
+        `--local-package-root=${localPackageRoot}`,
+        `--local-package-root=${localPackageRoot}`,
+      ]),
+    ).toThrow('--local-package-root cannot be repeated.');
   });
   test('merges repeatable role efforts with model input or an effort-only role', () => {
     const parsed = parseOperationArgs([

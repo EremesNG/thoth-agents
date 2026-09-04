@@ -4,6 +4,7 @@ export type InstallAgent = 'opencode' | 'codex' | 'claude' | 'pi';
 export interface InstallArgs {
   tui: boolean;
   agent?: InstallAgent;
+  localPackageRoot?: string;
   tmux?: BooleanArg;
   dryRun?: boolean;
   reset?: boolean;
@@ -57,6 +58,7 @@ export interface OpenCodeConfig {
 export interface InstallConfig {
   agent: InstallAgent;
   hasTmux: boolean;
+  localPackageRoot?: string;
   dryRun?: boolean;
   reset: boolean;
 }

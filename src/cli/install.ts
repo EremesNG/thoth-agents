@@ -29,6 +29,8 @@ import {
 import {
   finalizeHarnessInstall,
   type HarnessInstallCompletionResult,
+  type HarnessInstallLedgerCompletionResult,
+  recordHarnessInstallCompletion,
 } from './install-completion';
 import type { InstallLedgerOptions } from './install-ledger';
 import {
@@ -66,6 +68,7 @@ export interface InstallDependencies {
   resolveExecutingPackageVersion?: () => ExecutingPackageVersionResult;
   updateOpenCodeMainConfig?: typeof updateOpenCodeMainConfig;
   finalizeHarnessInstall?: typeof finalizeHarnessInstall;
+  recordHarnessInstallCompletion?: typeof recordHarnessInstallCompletion;
   installLedgerOptions?: InstallLedgerOptions;
   piCommandExecutor?: PiCommandExecutor;
   buildPiSetupPlan?: typeof buildPiSetupPlan;
@@ -292,6 +295,12 @@ function finalizeInstallForHarness(
   });
   const providerComplete = printThothMemSetupResult(result.provider, dryRun);
   if (!providerComplete) return false;
+  return printInstallLedgerResult(result);
+}
+
+function printInstallLedgerResult(
+  result: HarnessInstallLedgerCompletionResult,
+): boolean {
   if (!result.success) {
     printError(result.error ?? 'Failed to record the completed CLI install.');
     return false;
@@ -302,6 +311,32 @@ function finalizeInstallForHarness(
     printSuccess(`CLI-managed install version recorded: ${result.ledger.path}`);
   }
   return true;
+}
+
+function finalizeLocalPiInstall(
+  dryRun: boolean | undefined,
+  version: string,
+  dependencies: InstallDependencies,
+): boolean {
+  printWarning(
+    'Local thoth-agents install omits thoth-mem setup; install thoth-mem separately from its local checkout.',
+  );
+  printInfo(
+    'Separate command: node <thoth-mem-root>/dist/index.js setup pi --local-package-root "<absolute-thoth-mem-root>"',
+  );
+  const record =
+    dependencies.recordHarnessInstallCompletion ??
+    recordHarnessInstallCompletion;
+  return printInstallLedgerResult(
+    record({
+      harness: 'pi',
+      version,
+      dryRun,
+      ledgerOptions: dependencies.installLedgerOptions ?? {
+        homeDir: dependencies.homeDir ?? homedir(),
+      },
+    }),
+  );
 }
 
 async function runInstall(
@@ -440,6 +475,9 @@ async function runPiInstall(
     commandExecutor: dependencies.piCommandExecutor,
     expectedVersion: packageVersion,
     packageRoot: executingPackageRoot,
+    ...(config.localPackageRoot
+      ? { firstPartySource: config.localPackageRoot }
+      : {}),
     receiptOptions: dependencies.installLedgerOptions,
     verifyFirstParty: dependencies.verifyPiFirstParty,
   });
@@ -503,20 +541,21 @@ async function runPiInstall(
     }
   }
 
-  if (
-    !finalizeInstallForHarness(
-      'pi',
-      config.dryRun,
-      packageVersion,
-      dependencies,
-    )
-  ) {
+  const finalized = config.localPackageRoot
+    ? finalizeLocalPiInstall(config.dryRun, packageVersion, dependencies)
+    : finalizeInstallForHarness(
+        'pi',
+        config.dryRun,
+        packageVersion,
+        dependencies,
+      );
+  if (!finalized) {
     return 1;
   }
   printSuccess(
     config.dryRun
-      ? 'Pi dry-run complete; no packages, files, provider state, or ledger state changed'
-      : 'Complete Pi native package, agent, skill, research, provider, and ledger setup applied',
+      ? `Pi dry-run complete; no packages, files, provider state, or ledger state changed${config.localPackageRoot ? '; thoth-mem remains a separate local install' : ''}`
+      : `Complete Pi native package, agent, skill, research, and ledger setup applied${config.localPackageRoot ? '; thoth-mem remains a separate local install' : ', including provider setup'}`,
   );
   return 0;
 }
@@ -525,6 +564,9 @@ export function createInstallConfig(args: InstallArgs): InstallConfig {
   return {
     agent: args.agent ?? 'opencode',
     hasTmux: args.tmux === 'yes',
+    ...(args.localPackageRoot
+      ? { localPackageRoot: args.localPackageRoot }
+      : {}),
     dryRun: args.dryRun,
     reset: args.reset ?? false,
   };

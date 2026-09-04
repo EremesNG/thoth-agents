@@ -304,6 +304,8 @@ Options:
   --reset                Repair managed installer-owned targets
   --agent=opencode|codex|claude|pi
                          Select OpenCode plugin install (default), Codex/Claude setup, or complete Pi-native setup
+  --local-package-root=PATH
+                         Install local thoth-agents with --agent=pi; thoth-mem is installed separately
   --harness=...          Select harness for status/update/sync/model (opencode|codex|claude|pi)
   --role-effort=role=effort
                          Set a repeatable role effort; use inherit or default for no override
@@ -347,6 +349,7 @@ Examples:
   pnpm dlx thoth-agents@latest install --agent=claude
   pnpm dlx thoth-agents@latest install --agent=claude --dry-run
   pnpm dlx thoth-agents@latest install --agent=pi --dry-run
+  node dist/cli/index.js install --agent=pi --local-package-root="<absolute-path>"
   pnpm dlx thoth-agents install --no-tui --tmux=no
   pnpm dlx thoth-agents install --dry-run
   pnpm dlx thoth-agents install --reset

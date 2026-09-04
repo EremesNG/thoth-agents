@@ -2,11 +2,13 @@ import { describe, expect, test } from 'vitest';
 import { renderClaudeCodeRootInstructions } from '../harness/adapters/claude-code';
 import { renderCodexRootInstructions } from '../harness/adapters/codex';
 import { renderOpenCodeAgentConfigs } from '../harness/adapters/opencode';
+import { renderPiRootInstructions } from '../harness/adapters/pi';
 import type { AgentRoleName } from '../harness/core/agent-pack';
 import {
   CLAUDE_CODE_PROMPT_DIALECT,
   CODEX_PROMPT_DIALECT,
   OPENCODE_PROMPT_DIALECT,
+  PI_PROMPT_DIALECT,
 } from './prompt-dialects';
 import {
   createOrchestratorPromptSections,
@@ -175,6 +177,20 @@ describe('v0.3 prompt rendering', () => {
         harness,
       ).toBeLessThanOrEqual(2_500);
     }
+  });
+
+  test('renders Pi root and specialist routing through the native single-agent dialect', () => {
+    const root = renderPiRootInstructions();
+    const specialist = renderRolePrompt(
+      createWriteCapableSpecialistPromptSections('deep'),
+      PI_PROMPT_DIALECT,
+    );
+    expect(root).toContain('subagent_run');
+    expect(root).toContain('subagent_result');
+    expect(root).toContain('subagent_cancel');
+    expect(root).toContain('no orchestrator child definition');
+    expect(specialist).toContain('single-agent subagent_run');
+    expect(specialist).toContain('Do not delegate further');
   });
 
   test.each([

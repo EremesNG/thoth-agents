@@ -1,0 +1,51 @@
+import type { AgentRoleContract } from '../core/agent-pack';
+
+export const PI_MANAGED_OWNER = 'thoth-agents';
+export const PI_ROOT_START = '<!-- thoth-agents:pi-root:start -->';
+export const PI_ROOT_END = '<!-- thoth-agents:pi-root:end -->';
+
+export interface PiAgentDefinitionInput {
+  role: AgentRoleContract;
+  description: string;
+  instructions: string;
+  model?: string;
+  effort?: string;
+}
+
+const LIBRARIAN_RESEARCH_TOOLS = [
+  'resolve-library-id',
+  'query-docs',
+  'web_*_exa',
+  'exa_research_*',
+  'mcp',
+] as const;
+
+function yamlScalar(value: string): string {
+  return JSON.stringify(value);
+}
+
+export function renderPiAgentDefinition(input: PiAgentDefinitionInput): string {
+  const tools = [
+    'read',
+    'bash',
+    ...(input.role.canMutateWorkspace ? ['edit', 'write'] : []),
+    ...(input.role.name === 'librarian' ? LIBRARIAN_RESEARCH_TOOLS : []),
+  ].join(', ');
+  return [
+    '---',
+    `name: ${input.role.name}`,
+    `description: ${yamlScalar(input.description)}`,
+    `tools: ${yamlScalar(tools)}`,
+    ...(input.model ? [`model: ${yamlScalar(input.model)}`] : []),
+    ...(input.effort ? [`effort: ${yamlScalar(input.effort)}`] : []),
+    `managed-by: ${PI_MANAGED_OWNER}`,
+    '---',
+    '',
+    input.instructions.trim(),
+    '',
+  ].join('\n');
+}
+
+export function renderPiRootBlock(instructions: string): string {
+  return [PI_ROOT_START, instructions.trim(), PI_ROOT_END, ''].join('\n');
+}

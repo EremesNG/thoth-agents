@@ -31,9 +31,9 @@ import { parseCliArgs } from './parser';
 
 interface TestModelServices {
   operationContext(): OperationContext;
-  modelRoles(harness: 'codex' | 'opencode' | 'claude'): ModelRoleInput[];
+  modelRoles(harness: 'codex' | 'opencode' | 'claude' | 'pi'): ModelRoleInput[];
   modelOptions(
-    harness: 'codex' | 'opencode' | 'claude',
+    harness: 'codex' | 'opencode' | 'claude' | 'pi',
   ): Promise<ModelOption[]>;
   applyOperationPlan?(plan: OperationPlan): OperationApplyResult;
 }
@@ -263,7 +263,7 @@ describe('commands plain operation formatters', () => {
 
     expect(output).toContain('gemini [unavailable]');
     expect(output).toContain('Unsupported harness "gemini".');
-    expect(output).toContain('opencode, codex, claude');
+    expect(output).toContain('opencode, codex, claude, pi');
     expect(output).not.toMatch(/fallback|best effort/i);
   });
 
@@ -770,6 +770,51 @@ describe('explicit operation commands', () => {
     }
   });
 
+  test('Pi Update CLI surfaces configured-unowned ownership as a blocking manual action', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-cli-ownership-'));
+    const packageRoot = process.cwd();
+    const services: TestModelServices = {
+      operationContext: () =>
+        ({
+          cwd: homeDir,
+          homeDir,
+          packageRoot,
+          env: {},
+          piCommandExecutor: (command: string, args: readonly string[]) => {
+            if (command === 'node')
+              return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
+            if (args[0] === '--version')
+              return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+            return {
+              exitCode: 0,
+              stdout: `User packages:\n  npm:thoth-agents@0.3.12\n    ${packageRoot}`,
+              stderr: '',
+            };
+          },
+        }) as never,
+      modelRoles: () => [],
+      modelOptions: async () => [],
+    };
+
+    try {
+      const preview = await captureCommand(
+        ['update', '--harness=pi'],
+        services,
+      );
+      expect(preview.code).toBe(0);
+      expect(preview.output).toContain('Can apply: no');
+      expect(preview.output).toContain(
+        '[critical] [pi-first-party-configured-unowned]',
+      );
+      expect(preview.output).toContain(
+        'First-party Pi package ownership blocker',
+      );
+      expect(preview.output).toContain('remove the configured first-party');
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
   test('sync renders a dry-run plan for an explicit harness', async () => {
     const result = await captureCommand(['sync', '--harness=codex']);
 
@@ -805,5 +850,36 @@ describe('explicit operation commands', () => {
     expect(result.output).toContain('Action: model-config');
     expect(result.output).toContain('Set deep Codex subagent model line');
     expectNoPlaceholder(result.output);
+  });
+
+  test('Pi model apply rejects an unsupported effort even when catalog metadata exposes it', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-cli-effort-'));
+    const model = 'openai/gpt-5.6-sol';
+    try {
+      const result = await captureCommand(
+        ['model', '--harness=pi', '--role-effort=deep=ultra', '--apply'],
+        {
+          operationContext: () =>
+            ({ cwd: homeDir, homeDir }) as OperationContext,
+          modelRoles: () => [{ role: 'deep', model }],
+          modelOptions: async () => [
+            {
+              id: model,
+              catalogId: model,
+              label: model,
+              provider: 'openai',
+              efforts: ['ultra'],
+              source: 'remote',
+            },
+          ],
+        },
+      );
+
+      expect(result.code).toBe(1);
+      expect(result.output).toContain('Applied: no');
+      expect(result.output).toContain('pi-model-effort-unsupported');
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
   });
 });

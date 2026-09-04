@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import type { HarnessId } from '../../harness/types';
 import { loadModelsDevCatalog, type ModelOption } from '../model-catalog';
 import { resolveOpenCodeEffort } from '../opencode-effort';
+import { PI_EFFORT_VALUES } from '../pi-effort';
 
 const MODEL_CATALOG_TIMEOUT_MS = 5_000;
 const CODEX_DOCUMENTED_EFFORTS = new Set([
@@ -15,6 +16,7 @@ const CODEX_DOCUMENTED_EFFORTS = new Set([
   'ultra',
 ]);
 const CLAUDE_CODE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+const PI_EFFORTS = new Set<string>(PI_EFFORT_VALUES);
 
 export type { ModelOption } from '../model-catalog';
 
@@ -64,11 +66,17 @@ function writableEfforts(
       CODEX_DOCUMENTED_EFFORTS.has(effort),
     );
   }
+
   if (harness === 'claude') {
     return option.efforts.filter((effort) =>
       (CLAUDE_CODE_EFFORTS as readonly string[]).includes(effort),
     );
   }
+
+  if (harness === 'pi') {
+    return option.efforts.filter((effort) => PI_EFFORTS.has(effort));
+  }
+
   return option.efforts.filter(
     (effort) =>
       resolveOpenCodeEffort({
@@ -163,6 +171,13 @@ export async function getModelOptions(
         ...option,
         efforts: writableEfforts(harness, option),
       }));
+  }
+
+  if (harness === 'pi') {
+    return loaded.models.map((option) => ({
+      ...option,
+      efforts: writableEfforts(harness, option),
+    }));
   }
 
   const catalogById = new Map(

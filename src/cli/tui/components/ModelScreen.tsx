@@ -34,7 +34,9 @@ export function ModelScreen({
           ? 'Codex writes generated subagent model lines only.'
           : harness === 'claude'
             ? 'Claude Code writes subagent frontmatter model lines (sonnet, opus, haiku, inherit).'
-            : 'OpenCode writes role model overrides in thoth-agents config.'}
+            : harness === 'pi'
+              ? 'Pi writes model and effort only in thoth-agents-owned specialist frontmatter; the ambient root model remains Pi-owned.'
+              : 'OpenCode writes role model overrides in thoth-agents config.'}
       </Text>
       {harness === 'codex'
         ? CODEX_MODEL_CATALOG_NOTE.map((note) => (

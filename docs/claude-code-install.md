@@ -8,7 +8,7 @@ during SDD phases.
 
 ## Requirements
 
-- Node.js `>=22.13` for bundled scripts
+- Node.js `>=22.19` for bundled scripts
 - Claude Code with native plugin marketplace commands
 - Permission to add and trust `EremesNG/thoth-plugins`
 - Network access during installation for the external skill repositories and

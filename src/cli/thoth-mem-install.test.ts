@@ -9,7 +9,7 @@ import {
 
 function providerJson(
   status: ThothMemSetupStatus,
-  harness: 'opencode' | 'codex' | 'claude' = 'opencode',
+  harness: 'opencode' | 'codex' | 'claude' | 'pi' = 'opencode',
 ): string {
   return JSON.stringify({
     status,
@@ -43,6 +43,7 @@ describe('thoth-mem setup adapter', () => {
     ['opencode', 'opencode'],
     ['codex', 'codex'],
     ['claude', 'claude'],
+    ['pi', 'pi'],
   ] as const)('builds the official global setup command for %s', (harness, providerHarness) => {
     expect(
       getThothMemSetupCommand(harness, false, { platform: 'linux' }),

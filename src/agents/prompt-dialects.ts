@@ -79,6 +79,18 @@ export const CLAUDE_CODE_PROMPT_CAPABILITIES: HarnessCapabilities = {
   memoryGovernanceEnforcement: 'instruction-only',
 };
 
+export const PI_PROMPT_CAPABILITIES: HarnessCapabilities = {
+  agentDefinitions: 'supported',
+  delegatedExecution: 'supported',
+  parallelDelegation: 'supported',
+  runtimeHooks: 'conditional',
+  mcpConfiguration: 'adapter-backed',
+  skillPackaging: 'supported',
+  rolePermissions: 'supported',
+  parentContextInjection: 'supported',
+  memoryGovernanceEnforcement: 'instruction-only',
+};
+
 function supportedCapabilityProfile(
   capabilities: HarnessCapabilities,
 ): CapabilityProfile {
@@ -114,6 +126,14 @@ function claudeCodeCapabilityDisclosure(
   }
 
   return `${capability}: ${status} in Claude Code; installed provider guidance owns provider-dependent enforcement and mechanics.`;
+}
+
+function piCapabilityDisclosure(
+  capability: keyof HarnessCapabilities,
+): string | undefined {
+  const status = PI_PROMPT_CAPABILITIES[capability];
+  if (status === 'supported') return undefined;
+  return `${capability}: ${status} in Pi; Pi extensions run with the invoking user's system permissions, and child tool allowlists are role controls rather than an OS, filesystem, process, network, or credential sandbox.`;
 }
 
 export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
@@ -256,6 +276,54 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
   },
 };
 
+export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
+  harness: 'pi',
+  tools: {
+    delegationTool: 'subagent_run',
+    backgroundDelegationTool: 'subagent_run(background=true)',
+    backgroundStatusTool: 'subagent_status / subagent_result / subagent_list',
+    userQuestionTool: 'ask_user',
+    progressTool: 'subagent_status',
+    hostStatusSurface: 'subagent_list',
+    lifecycle: {
+      freshDelegation:
+        '`subagent_run` with one exact canonical `agent` and no deprecated batch input',
+      sameAssignmentContinuation:
+        '`subagent_status`, `subagent_result`, or `subagent_list`; use `subagent_send_message` only when the active SDK confirms live steering, and `subagent_continue` only when continuation is explicitly enabled',
+      independentContext:
+        'a new objective, phase, mutable surface, or independent judgment starts a fresh `subagent_run` task',
+      statusAction: 'inspect status, collect terminal results, or cancel',
+      terminalState: 'a terminal subagent_result outcome',
+      nonterminalState:
+        'running, queued, timed-out, malformed, or merely message-accepted state',
+      sameSessionProbe: 'subagent_status for the current parent-owned task ID',
+      enforcement: 'runtime-supported',
+    },
+    roleReference: (role) =>
+      role === 'orchestrator'
+        ? 'the ambient Pi root'
+        : `subagent_run(agent: "${role}")`,
+  },
+  capabilities: {
+    capabilities: PI_PROMPT_CAPABILITIES,
+    renderCapabilityDisclosure: piCapabilityDisclosure,
+  },
+  dispatchLabel(method) {
+    switch (method) {
+      case 'root-coordinator':
+        return 'ambient Pi root session coordinator';
+      case 'task':
+      case 'synchronous-task-only':
+        return 'single-agent subagent_run';
+    }
+  },
+  renderRoleInvocation(role) {
+    return role === 'orchestrator'
+      ? 'ambient Pi root'
+      : `subagent_run(agent: "${role}")`;
+  },
+};
+
 export function getPromptDialect(harness: HarnessId): HarnessPromptDialect;
 export function getPromptDialect(harness: string): HarnessPromptDialect;
 export function getPromptDialect(harness: string): HarnessPromptDialect {
@@ -269,6 +337,10 @@ export function getPromptDialect(harness: string): HarnessPromptDialect {
 
   if (harness === 'claude') {
     return CLAUDE_CODE_PROMPT_DIALECT;
+  }
+
+  if (harness === 'pi') {
+    return PI_PROMPT_DIALECT;
   }
 
   throw new Error(`Unsupported prompt dialect: ${harness}`);

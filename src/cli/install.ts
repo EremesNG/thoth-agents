@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { cwd } from 'node:process';
 import {
   applyClaudeCodeSetup,
@@ -30,12 +31,22 @@ import {
   type HarnessInstallCompletionResult,
 } from './install-completion';
 import type { InstallLedgerOptions } from './install-ledger';
-import { syncOpenCodeOwnedSkills } from './owned-skills';
+import {
+  inspectPiPackageSkills,
+  syncOpenCodeOwnedSkills,
+} from './owned-skills';
 import {
   type ExecutingPackageVersionResult,
   resolveExecutingPackageVersion,
 } from './package-version';
 import { getExistingLiteConfigPath } from './paths';
+import {
+  applyPiSetup,
+  buildPiSetupPlan,
+  formatPiSetupPlan,
+  type PiCommandExecutor,
+  type PiSetupOptions,
+} from './pi-install';
 import {
   getRequiredSkillInstallCommand,
   installRequiredSkill,
@@ -56,6 +67,12 @@ export interface InstallDependencies {
   updateOpenCodeMainConfig?: typeof updateOpenCodeMainConfig;
   finalizeHarnessInstall?: typeof finalizeHarnessInstall;
   installLedgerOptions?: InstallLedgerOptions;
+  piCommandExecutor?: PiCommandExecutor;
+  buildPiSetupPlan?: typeof buildPiSetupPlan;
+  applyPiSetup?: typeof applyPiSetup;
+  inspectPiPackageSkills?: typeof inspectPiPackageSkills;
+  verifyPiFirstParty?: PiSetupOptions['verifyFirstParty'];
+  installRequiredSkill?: typeof installRequiredSkill;
 }
 
 // Colors
@@ -408,6 +425,102 @@ async function runInstall(
   return 0;
 }
 
+async function runPiInstall(
+  config: InstallConfig,
+  dependencies: InstallDependencies,
+  packageVersion: string,
+  executingPackageRoot: string,
+): Promise<number> {
+  const buildPlan = dependencies.buildPiSetupPlan ?? buildPiSetupPlan;
+  const applyPlan = dependencies.applyPiSetup ?? applyPiSetup;
+  const plan = buildPlan({
+    dryRun: config.dryRun,
+    homeDir: dependencies.homeDir ?? homedir(),
+    cwd: cwd(),
+    commandExecutor: dependencies.piCommandExecutor,
+    expectedVersion: packageVersion,
+    packageRoot: executingPackageRoot,
+    receiptOptions: dependencies.installLedgerOptions,
+    verifyFirstParty: dependencies.verifyPiFirstParty,
+  });
+  console.log(formatPiSetupPlan(plan));
+  for (const diagnostic of [...plan.diagnostics, ...plan.disclaimers]) {
+    printInfo(diagnostic);
+  }
+  if (!plan.ready) {
+    for (const blocker of plan.blockers) printError(blocker);
+    return 1;
+  }
+  const applied = applyPlan(plan);
+  for (const diagnostic of applied.diagnostics) printInfo(diagnostic);
+  if (!applied.success) {
+    printError(
+      `Pi install failed after ${applied.installedPackages.length} package step(s): ${applied.error ?? 'unknown error'}`,
+    );
+    return 1;
+  }
+
+  if (config.dryRun) {
+    printInfo(
+      'Pi package-declared skills remain unavailable until the first-party package is receipt-validated.',
+    );
+  } else {
+    if (!applied.configuredPackageRoot) {
+      printError('Verified configured Pi package root is unavailable.');
+      return 1;
+    }
+    const packageSkills = (
+      dependencies.inspectPiPackageSkills ?? inspectPiPackageSkills
+    )({ packageRoot: applied.configuredPackageRoot });
+    for (const skill of packageSkills.skills)
+      printInfo(
+        `  - ${skill.name}: ${join(skill.destinationPath, 'SKILL.md')}`,
+      );
+    if (!packageSkills.success) {
+      printError(
+        `Failed to inspect package-declared Pi skills: ${packageSkills.error ?? 'unknown error'}`,
+      );
+      return 1;
+    }
+  }
+
+  if (config.dryRun) {
+    if (!installRequiredSkillsForHarness('pi', true, dependencies.homeDir)) {
+      return 1;
+    }
+  } else {
+    const installSkill =
+      dependencies.installRequiredSkill ?? installRequiredSkill;
+    for (const skill of REQUIRED_SKILLS) {
+      const result = installSkill(skill, 'pi', {
+        homeDir: dependencies.homeDir ?? homedir(),
+      });
+      if (result.status === 'failed') {
+        printError(`Failed to install required Pi skill: ${skill.name}`);
+        return 1;
+      }
+      printInfo(`  - ${skill.name}: ${result.skillPath}`);
+    }
+  }
+
+  if (
+    !finalizeInstallForHarness(
+      'pi',
+      config.dryRun,
+      packageVersion,
+      dependencies,
+    )
+  ) {
+    return 1;
+  }
+  printSuccess(
+    config.dryRun
+      ? 'Pi dry-run complete; no packages, files, provider state, or ledger state changed'
+      : 'Complete Pi native package, agent, skill, research, provider, and ledger setup applied',
+  );
+  return 0;
+}
+
 export function createInstallConfig(args: InstallArgs): InstallConfig {
   return {
     agent: args.agent ?? 'opencode',
@@ -526,6 +639,14 @@ export async function install(
         : 'Claude Code plugin installed as thoth-agents@thoth-plugins through the native manager (restart Claude Code or run /reload-plugins to activate)',
     );
     return 0;
+  }
+  if (config.agent === 'pi') {
+    return runPiInstall(
+      config,
+      dependencies,
+      packageVersion.version,
+      packageVersion.packageRoot,
+    );
   }
   return runInstall(config, dependencies, packageVersion.version);
 }

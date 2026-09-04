@@ -43,6 +43,15 @@ import {
   buildOpenCodeUpdatePlan,
   getOpenCodeStatus,
 } from '../operations/opencode';
+import {
+  applyPiPlan,
+  buildPiInstallPlan,
+  buildPiModelPlan,
+  buildPiSyncPlan,
+  buildPiUpdatePlan,
+  defaultPiModelRoles,
+  getPiStatus,
+} from '../operations/pi';
 import type {
   HarnessStatusReport,
   ModelRoleInput,
@@ -153,6 +162,10 @@ export function getClaudeCodeModelRoles(
   return defaultClaudeCodeModelRoles();
 }
 
+export function getPiModelRoles(): ModelRoleInput[] {
+  return defaultPiModelRoles(context);
+}
+
 function readRoleField(
   config: unknown,
   role: string,
@@ -234,6 +247,9 @@ function buildTuiModelPlan(
       claudeCodeContext,
     );
   }
+  if (harness === 'pi') {
+    return buildPiModelPlan({ harness, dryRun: true, roles }, context);
+  }
   return buildCodexModelPlan({ harness, dryRun: true, roles }, codexContext);
 }
 
@@ -243,6 +259,7 @@ export const defaultTuiOperations: TuiOperations = {
     if (harness === 'claude') {
       return getClaudeCodeStatus(claudeCodeContext, evidence);
     }
+    if (harness === 'pi') return getPiStatus(context, evidence);
     return getCodexStatus(codexContext, evidence);
   },
   modelRoles(harness) {
@@ -250,6 +267,7 @@ export const defaultTuiOperations: TuiOperations = {
     if (harness === 'claude') {
       return getClaudeCodeModelRoles(claudeCodeContext);
     }
+    if (harness === 'pi') return getPiModelRoles();
     return getCodexModelRoles(codexContext);
   },
   modelOptions(harness) {
@@ -277,6 +295,13 @@ export const defaultTuiOperations: TuiOperations = {
       );
     }
 
+    if (harness === 'pi') {
+      if (action === 'install') return buildPiInstallPlan(context);
+      if (action === 'update') return buildPiUpdatePlan(context);
+      if (action === 'sync') return buildPiSyncPlan(context);
+      return buildTuiModelPlan(harness, getPiModelRoles());
+    }
+
     if (action === 'install') return buildCodexInstallPlan(codexContext);
     if (action === 'update') return buildCodexUpdatePlan(codexContext);
     if (action === 'sync') return buildCodexSyncPlan(codexContext);
@@ -288,6 +313,7 @@ export const defaultTuiOperations: TuiOperations = {
   apply(plan) {
     if (plan.harness === 'opencode') return applyOpenCodePlan(plan);
     if (plan.harness === 'claude') return applyClaudeCodePlan(plan);
+    if (plan.harness === 'pi') return applyPiPlan(plan);
     return applyCodexPlan(plan);
   },
 };

@@ -7,16 +7,18 @@ import {
 } from './index';
 
 describe('operation registry', () => {
-  test('lists OpenCode, Codex, and Claude Code as supported harnesses', () => {
+  test('lists OpenCode, Codex, Claude Code, and Pi as supported harnesses', () => {
     expect(SUPPORTED_OPERATION_HARNESSES).toEqual([
       'opencode',
       'codex',
       'claude',
+      'pi',
     ]);
     expect(listOperationHarnesses().map((harness) => harness.id)).toEqual([
       'opencode',
       'codex',
       'claude',
+      'pi',
     ]);
     expect(listOperationHarnesses().every((harness) => harness.available)).toBe(
       true,
@@ -39,6 +41,11 @@ describe('operation registry', () => {
       displayName: 'Claude Code',
       available: true,
     });
+    expect(getOperationHarness('pi')).toMatchObject({
+      id: 'pi',
+      displayName: 'Pi',
+      available: true,
+    });
   });
 
   test('returns unavailable metadata for unsupported harness lookup', () => {
@@ -48,7 +55,7 @@ describe('operation registry', () => {
     expect(result.id).toBe('antigravity');
     expect(result.displayName).toBe('antigravity');
     expect(result.reason).toContain(
-      'Supported harnesses: opencode, codex, claude',
+      'Supported harnesses: opencode, codex, claude, pi',
     );
   });
 });

@@ -33,9 +33,14 @@ function parseBooleanArg(name: string, value: string): BooleanArg {
 }
 
 function parseOperationHarness(value: string): OperationHarnessArg {
-  if (value !== 'opencode' && value !== 'codex' && value !== 'claude') {
+  if (
+    value !== 'opencode' &&
+    value !== 'codex' &&
+    value !== 'claude' &&
+    value !== 'pi'
+  ) {
     throw new Error(
-      `Unsupported operation harness: ${value}. Supported harnesses: opencode, codex, claude.`,
+      `Unsupported operation harness: ${value}. Supported harnesses: opencode, codex, claude, pi.`,
     );
   }
   return value;
@@ -167,9 +172,14 @@ export function parseInstallArgs(args: string[]): InstallArgs {
       result.reset = true;
     } else if (arg.startsWith('--agent=')) {
       const agent = arg.split('=')[1];
-      if (agent !== 'opencode' && agent !== 'codex' && agent !== 'claude') {
+      if (
+        agent !== 'opencode' &&
+        agent !== 'codex' &&
+        agent !== 'claude' &&
+        agent !== 'pi'
+      ) {
         throw new Error(
-          `Unsupported install agent: ${agent}. Supported agents: opencode, codex, claude.`,
+          `Unsupported install agent: ${agent}. Supported agents: opencode, codex, claude, pi.`,
         );
       }
       result.agent = agent;

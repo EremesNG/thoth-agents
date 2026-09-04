@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,6 +12,8 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
 import {
+  getPiOwnedSkillEntries,
+  inspectPiPackageSkills,
   resolveOwnedSkillPackageRoot,
   syncOpenCodeOwnedSkills,
 } from './owned-skills';
@@ -166,5 +169,112 @@ describe('OpenCode owned skill synchronization', () => {
 
     expect(result).toMatchObject({ success: false, status: 'failed' });
     expect(existsSync(skillRoot)).toBe(true);
+  });
+
+  test('Pi discovers owned skills from the package manifest without global copies', () => {
+    const packageRoot = temporaryRoot('thoth-owned-package-');
+    writeCanonicalBundle(packageRoot);
+    const entries = getPiOwnedSkillEntries({ packageRoot });
+    expect(entries).toHaveLength(5);
+    expect(
+      entries.every((entry) => entry.destinationPath === entry.sourcePath),
+    ).toBe(true);
+    expect(inspectPiPackageSkills({ packageRoot })).toMatchObject({
+      success: true,
+      state: 'available',
+      skills: entries,
+    });
+  });
+
+  test('Pi package skill inspection rejects malformed and symlinked contracts', () => {
+    const malformedRoot = temporaryRoot('thoth-pi-skill-malformed-');
+    writeCanonicalBundle(malformedRoot);
+    writeFileSync(
+      join(malformedRoot, 'skills', 'thoth-sdd', 'SKILL.md'),
+      '# missing frontmatter\n',
+    );
+    expect(
+      inspectPiPackageSkills({ packageRoot: malformedRoot }),
+    ).toMatchObject({
+      success: false,
+      state: 'unavailable',
+      issues: [expect.objectContaining({ name: 'thoth-sdd', state: 'drift' })],
+    });
+
+    const symlinkRoot = temporaryRoot('thoth-pi-skill-symlink-');
+    const outside = temporaryRoot('thoth-pi-skill-outside-');
+    writeCanonicalBundle(symlinkRoot);
+    writeCanonicalBundle(outside);
+    const linkedSkill = join(symlinkRoot, 'skills', 'plan-reviewer');
+    rmSync(linkedSkill, { recursive: true, force: true });
+    symlinkSync(
+      join(outside, 'skills', 'plan-reviewer'),
+      linkedSkill,
+      'junction',
+    );
+    expect(inspectPiPackageSkills({ packageRoot: symlinkRoot })).toMatchObject({
+      success: false,
+      state: 'unavailable',
+      issues: [
+        expect.objectContaining({ name: 'plan-reviewer', state: 'drift' }),
+      ],
+    });
+  });
+
+  test.each([
+    {
+      case: 'body fields bait a wrong initial frontmatter block',
+      content:
+        '---\nname: wrong\ndescription: wrong\n---\nname: plan-reviewer\ndescription: body bait\n',
+    },
+    {
+      case: 'the initial frontmatter block is not closed',
+      content:
+        '---\nname: plan-reviewer\ndescription: valid\nname: plan-reviewer\ndescription: body bait\n',
+    },
+    {
+      case: 'description is empty inside frontmatter',
+      content:
+        '---\nname: plan-reviewer\ndescription:\n---\ndescription: body bait\n',
+    },
+    {
+      case: 'the expected name only appears in the body',
+      content:
+        '---\nname: wrong\ndescription: valid\n---\nname: plan-reviewer\n',
+    },
+    {
+      case: 'name is missing from frontmatter',
+      content: '---\ndescription: valid\n---\nname: plan-reviewer\n',
+    },
+  ])('rejects a Pi skill when $case', ({ content }) => {
+    const packageRoot = temporaryRoot('thoth-pi-skill-frontmatter-');
+    writeCanonicalBundle(packageRoot);
+    writeFileSync(
+      join(packageRoot, 'skills', 'plan-reviewer', 'SKILL.md'),
+      content,
+    );
+
+    expect(inspectPiPackageSkills({ packageRoot })).toMatchObject({
+      success: false,
+      state: 'unavailable',
+      issues: [
+        expect.objectContaining({ name: 'plan-reviewer', state: 'drift' }),
+      ],
+    });
+  });
+
+  test('ignores duplicate and misleading skill fields after closed frontmatter', () => {
+    const packageRoot = temporaryRoot('thoth-pi-skill-body-fields-');
+    writeCanonicalBundle(packageRoot);
+    writeFileSync(
+      join(packageRoot, 'skills', 'plan-reviewer', 'SKILL.md'),
+      '---\nname: plan-reviewer\ndescription: Valid metadata\n---\nname: wrong\ndescription:\n',
+    );
+
+    expect(inspectPiPackageSkills({ packageRoot })).toMatchObject({
+      success: true,
+      state: 'available',
+      issues: [],
+    });
   });
 });

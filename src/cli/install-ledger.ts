@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { isValidPackageVersion } from './package-version';
 
 export const INSTALL_LEDGER_SCHEMA_VERSION = 1 as const;
-export type InstallHarnessId = 'opencode' | 'codex' | 'claude';
+export type InstallHarnessId = 'opencode' | 'codex' | 'claude' | 'pi';
 
 export interface InstallLedger {
   schemaVersion: typeof INSTALL_LEDGER_SCHEMA_VERSION;
@@ -50,6 +50,7 @@ const INSTALL_HARNESSES = new Set<InstallHarnessId>([
   'opencode',
   'codex',
   'claude',
+  'pi',
 ]);
 
 function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -12,11 +13,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { claudeCodeAdapter } from './adapters/claude-code';
 import { codexAdapter } from './adapters/codex';
+import { piAdapter } from './adapters/pi';
 import { codexPluginRootArtifactPath } from './codex-plugin-paths';
 import { THOTH_OWNED_SKILL_NAMES } from './core/owned-skills';
 import type { HarnessArtifact, HarnessDiagnostic } from './types';
 
 const SHARED_PLUGIN_ROOT = 'plugin';
+const PI_ASSET_ROOT = 'pi';
 const LEGACY_INTEGRATIONS_ROOT = 'integrations';
 const LEGACY_INTEGRATION_ROOTS = [
   join(LEGACY_INTEGRATIONS_ROOT, 'codex'),
@@ -158,10 +161,12 @@ export function generateIntegrationPackages({
 }: GenerateIntegrationPackagesOptions): GenerateIntegrationPackagesResult {
   const codexRender = codexAdapter.render({ projectRoot });
   const claudeRender = claudeCodeAdapter.render({ projectRoot });
+  const piRender = piAdapter.render({ projectRoot });
   const written: string[] = [];
 
   for (const relativeRoot of [
     SHARED_PLUGIN_ROOT,
+    PI_ASSET_ROOT,
     ...LEGACY_INTEGRATION_ROOTS,
   ]) {
     rmSync(join(projectRoot, relativeRoot), { recursive: true, force: true });
@@ -199,9 +204,30 @@ export function generateIntegrationPackages({
     );
   }
 
+  const piFiles: Record<string, string> = {};
+  for (const artifact of piRender.artifacts) {
+    const content = String(artifact.content);
+    written.push(writeArtifact(projectRoot, PI_ASSET_ROOT, artifact));
+    piFiles[artifact.path.replaceAll('\\', '/')] = createHash('sha256')
+      .update(content)
+      .digest('hex');
+  }
+  const provenance: HarnessArtifact = {
+    harness: 'pi',
+    kind: 'harness-config',
+    path: '.thoth-agents-assets.json',
+    description: 'Deterministic package-owned Pi specialist provenance.',
+    content: `${JSON.stringify({ schemaVersion: 1, owner: 'thoth-agents', files: piFiles }, null, 2)}\n`,
+  };
+  written.push(writeArtifact(projectRoot, PI_ASSET_ROOT, provenance));
+
   return {
     written: [...new Set(written)],
-    diagnostics: [...codexRender.diagnostics, ...claudeRender.diagnostics],
+    diagnostics: [
+      ...codexRender.diagnostics,
+      ...claudeRender.diagnostics,
+      ...piRender.diagnostics,
+    ],
   };
 }
 

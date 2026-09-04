@@ -4,6 +4,7 @@ import {
   CODEX_PROMPT_DIALECT,
   getPromptDialect,
   OPENCODE_PROMPT_DIALECT,
+  PI_PROMPT_DIALECT,
 } from './prompt-dialects';
 
 describe('prompt dialects', () => {
@@ -199,10 +200,27 @@ describe('prompt dialects', () => {
     ).toContain('instruction-only in Claude Code');
   });
 
-  test('supports OpenCode, Codex, and Claude Code prompt dialect ids', () => {
+  test('renders Pi single-agent lifecycle without batch or false terminal claims', () => {
+    expect(PI_PROMPT_DIALECT.tools.delegationTool).toBe('subagent_run');
+    expect(PI_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
+      'subagent_run(agent: "deep")',
+    );
+    expect(PI_PROMPT_DIALECT.tools.lifecycle.freshDelegation).toContain(
+      'one exact canonical `agent`',
+    );
+    expect(
+      PI_PROMPT_DIALECT.tools.lifecycle.sameAssignmentContinuation,
+    ).toContain('subagent_send_message');
+    expect(PI_PROMPT_DIALECT.tools.lifecycle.nonterminalState).toContain(
+      'message-accepted',
+    );
+  });
+
+  test('supports OpenCode, Codex, Claude Code, and Pi prompt dialect ids', () => {
     expect(getPromptDialect('opencode')).toBe(OPENCODE_PROMPT_DIALECT);
     expect(getPromptDialect('codex')).toBe(CODEX_PROMPT_DIALECT);
     expect(getPromptDialect('claude')).toBe(CLAUDE_CODE_PROMPT_DIALECT);
+    expect(getPromptDialect('pi')).toBe(PI_PROMPT_DIALECT);
 
     for (const dialectId of [
       'unknown',

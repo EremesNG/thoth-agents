@@ -3,7 +3,7 @@
 ## Repository purpose
 
 **thoth-agents** is an adaptive multi-harness orchestration plugin. It provides
-seven roles, native OpenCode delegation, Codex and Claude Code surfaces,
+seven roles, native OpenCode and Pi delegation, Codex and Claude Code surfaces,
 provider-neutral memory boundaries, and direct/accelerated/full SDD routing.
 OpenCode is the stable default path; each harness has different guarantees.
 
@@ -60,7 +60,7 @@ Keep `docs/agent/` documents on demand at startup.
 
 ## Environment and verified commands
 
-- Runtime: Node `>=22.13`.
+- Runtime: Node `>=22.19`.
 - Package manager: `pnpm@11.2.2`.
 - Install: `pnpm install`.
 - Local development: `pnpm run dev`.
@@ -161,7 +161,7 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 
 The current `.github/workflows/ci.yml` installs with
 `pnpm install --frozen-lockfile` and runs `pnpm run check:ci`,
-`pnpm run typecheck`, and `pnpm test` on Node `22.13`/pnpm `11.2.2`; it does not
+`pnpm run typecheck`, and `pnpm test` on Node `22.19`/pnpm `11.2.2`; it does not
 run the build. The release workflow waits for that CI and then runs
 `pnpm run build` and the focused test for the built runtime. For large changes
 and before a PR, keep this applicable local pre-merge order:

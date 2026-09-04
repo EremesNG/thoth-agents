@@ -31,6 +31,16 @@ const PROVIDER_BOUNDARY_TARGETS = {
     'src/harness/__fixtures__/codex/agent-deep.toml',
     'src/harness/__fixtures__/codex/mcp.toml',
   ],
+  piPackageAssets: [
+    'src/pi.ts',
+    'pi/.thoth-agents-assets.json',
+    'pi/agents/deep.md',
+    'pi/agents/designer.md',
+    'pi/agents/explorer.md',
+    'pi/agents/librarian.md',
+    'pi/agents/oracle.md',
+    'pi/agents/quick.md',
+  ],
   consumerSurfaces: [
     'src/harness/registry.ts',
     'src/harness/core/memory-governance.ts',
@@ -103,6 +113,7 @@ const BUNDLED_PROVIDER_RULES: Array<{
       'documentationAndMetadata',
       'lifecycleFixtures',
       'consumerSurfaces',
+      'piPackageAssets',
     ],
     pattern:
       /bundled[^\n]{0,100}(?:thoth[-_]mem|thoth_mem|provider-owned|provider\s+(?:MCP|memory|server))/i,
@@ -117,6 +128,7 @@ const BUNDLED_PROVIDER_RULES: Array<{
       'documentationAndMetadata',
       'lifecycleFixtures',
       'consumerSurfaces',
+      'piPackageAssets',
     ],
     pattern: /skills[\\/]thoth-mem-agents/i,
   },
@@ -139,7 +151,7 @@ describe('provider boundary', () => {
 
   test('reads the complete closed manifest and rejects deleted paths, bundled assets, and consumer protocols', async () => {
     const targets = await readTargets();
-    expect(targets).toHaveLength(34);
+    expect(targets).toHaveLength(42);
     expect(
       targets.filter(({ group }) => group === 'documentationAndMetadata'),
     ).toHaveLength(19);
@@ -149,6 +161,9 @@ describe('provider boundary', () => {
     expect(
       targets.filter(({ group }) => group === 'consumerSurfaces'),
     ).toHaveLength(13);
+    expect(
+      targets.filter(({ group }) => group === 'piPackageAssets'),
+    ).toHaveLength(8);
 
     for (const target of targets) {
       for (const rule of DELETED_PATH_RULES) {
@@ -244,7 +259,7 @@ describe('provider boundary', () => {
     expect(sharedFinalizer).toBeDefined();
     if (!sharedFinalizer) return;
 
-    for (const harness of ['opencode', 'codex', 'claude']) {
+    for (const harness of ['opencode', 'codex', 'claude', 'pi']) {
       expect(install?.content).toMatch(
         new RegExp(`${sharedFinalizer}\\s*\\(\\s*['"]${harness}['"]`),
       );
@@ -287,7 +302,7 @@ describe('provider boundary', () => {
     }
 
     const installation = docs.get('docs/installation.md');
-    for (const harness of ['opencode', 'codex', 'claude']) {
+    for (const harness of ['opencode', 'codex', 'claude', 'pi']) {
       expect(installation).toContain(`setup ${harness}`);
     }
     expect(installation).toMatch(/partial[\s\S]*requires_user_action/i);
@@ -305,7 +320,7 @@ describe('provider boundary', () => {
       ({ path }) => path === 'docs/installation.md',
     );
     expect(installation).toBeDefined();
-    expect(SUPPORTED_HARNESSES).toEqual(['opencode', 'codex', 'claude']);
+    expect(SUPPORTED_HARNESSES).toEqual(['opencode', 'codex', 'claude', 'pi']);
 
     const documentedSelector = installation?.content
       .match(/`--agent=([^`]+)`\s*\|\s*Select the installation target\./)?.[1]

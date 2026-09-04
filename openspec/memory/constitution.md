@@ -1,17 +1,17 @@
 <!--
 Sync Impact Report
-- Version change: 6.0.0 -> 7.0.0
-- Modified principles: Adaptive-root orchestration (bounded recommended route fallback); Proportional Spec Kit-compatible SDD (bounded review and implementation defaults); Evidence-led completion (plan-review convergence to approval)
+- Version change: 7.0.0 -> 7.1.0
+- Modified principles: Truthful multi-harness contracts (Pi becomes a fourth first-class harness with native package/resource ownership and explicit capability limits)
 - Added sections: None
 - Removed sections: None
-- Templates: ✅ skills/thoth-sdd; ✅ skills/plan-reviewer; ✅ skills/thoth-constitution/templates; ✅ agent and SDD instructions; ✅ user documentation
+- Templates: ✅ no template semantic changes required; ✅ AGENTS.md; ✅ openspec/config.yaml; ✅ README.md; ✅ docs/installation.md; ✅ docs/skills-and-mcps.md; ✅ docs/agent/architecture.md; ✅ docs/agent/index.md
 - Follow-up TODOs: None
 -->
 # thoth-agents Project Constitution
 
-**Version**: 7.0.0<br>
+**Version**: 7.1.0<br>
 **Ratified**: 2026-06-16<br>
-**Last amended**: 2026-09-02
+**Last amended**: 2026-09-03
 
 This constitution governs active thoth-agents behavior. Spec Kit supplies SDD
 artifact semantics; thoth-agents stores them under `openspec/` and adds its
@@ -63,9 +63,13 @@ forced process or operating-system termination is not crash-atomic.
 
 ### 4. Truthful multi-harness contracts
 
-OpenCode, Codex, and Claude Code derive behavior from shared role and SDD
+OpenCode, Codex, Claude Code, and Pi derive behavior from shared role and SDD
 contracts, while adapters disclose enforcement gaps. OpenCode is the default and
-ships only the built-in OpenAI preset. `simplify`, `tdd`,
+ships only the built-in OpenAI preset. Pi MUST use its native package, resource,
+skill, and extension surfaces plus the selected external delegation runtime;
+thoth-agents MUST NOT duplicate Pi execution, scheduling, task/history storage,
+or lifecycle, and MUST disclose conditional capabilities, project trust, and the
+absence of an OS security sandbox. `simplify`, `tdd`,
 `progressive-context-router`, and `architectural-grilling` are mandatory external
 skills installed by the CLI from their canonical repositories for every
 harness; they are never vendored into this repository. Plugin bundles contain
@@ -105,6 +109,11 @@ canonical synchronization of declared durable deltas.
 
 ## Amendment history
 
+- 7.1.0 | minor: add Pi as a fourth first-class harness using Pi-native package,
+  resource, skill, and extension contracts; keep delegation-runtime ownership
+  external and require truthful conditional-capability and security reporting |
+  constitution, project instructions, SDD context, architecture and installation
+  documentation.
 - 7.0.0 | major: redefine the three standard SDD decision boundaries so an
   explicit answer always wins, while three total answerless native prompts
   select the displayed recommended route, Oracle review, or implementation;

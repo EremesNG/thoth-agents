@@ -6,8 +6,8 @@ import {
 } from './registry';
 
 describe('harness registry', () => {
-  test('keeps exactly the three accepted harnesses provider-asset free', () => {
-    expect(SUPPORTED_HARNESSES).toEqual(['opencode', 'codex', 'claude']);
+  test('keeps exactly the four accepted harnesses provider-asset free', () => {
+    expect(SUPPORTED_HARNESSES).toEqual(['opencode', 'codex', 'claude', 'pi']);
 
     for (const harness of SUPPORTED_HARNESSES) {
       const rendered = resolveHarness(harness);
@@ -25,6 +25,18 @@ describe('harness registry', () => {
       expect(serialized).not.toMatch(/skills[\\/]thoth-mem-agents/i);
       expect(serialized).not.toContain('bundled MCP server');
     }
+  });
+
+  test('resolves Pi without changing the OpenCode default', () => {
+    expect(resolveHarness('pi')).toMatchObject({
+      ok: true,
+      harness: 'pi',
+      adapter: { id: 'pi', displayName: 'Pi' },
+    });
+    expect(resolveHarness(undefined)).toMatchObject({
+      ok: true,
+      harness: 'opencode',
+    });
   });
 
   test('defaults to OpenCode with no generated artifacts', () => {

@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { parseOperationArgs } from './parser';
+import { parseInstallArgs, parseOperationArgs } from './parser';
 
 describe('operation role effort parsing', () => {
+  test('accepts Pi explicitly for install and operation selection', () => {
+    expect(parseInstallArgs(['--agent=pi']).agent).toBe('pi');
+    expect(parseOperationArgs(['--harness=pi']).harness).toBe('pi');
+  });
   test('merges repeatable role efforts with model input or an effort-only role', () => {
     const parsed = parseOperationArgs([
       '--harness=codex',

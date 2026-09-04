@@ -1,4 +1,4 @@
-export type HarnessId = 'opencode' | 'codex' | 'claude';
+export type HarnessId = 'opencode' | 'codex' | 'claude' | 'pi';
 
 export type HarnessArtifactKind =
   | 'agent-config'
@@ -20,6 +20,10 @@ export type HarnessDiagnosticCode =
 
 export type HarnessCapabilityStatus =
   | 'supported'
+  | 'conditional'
+  | 'adapter-backed'
+  | 'provider-dependent'
+  | 'degraded'
   | 'unsupported'
   | 'instruction-only'
   | 'unknown';

@@ -1,12 +1,12 @@
 <div align="center">
   <img src="img/thoth-agents-header.webp" alt="Seven human cyber-Egyptian thoth-agents roles, with Thoth as the Orchestrator centered between three read-only specialists and three implementation writers" width="100%">
   <h1>Thoth-Agents</h1>
-  <p><i>Adaptive orchestration for OpenCode, Codex, and Claude Code.</i></p>
+  <p><i>Adaptive orchestration for OpenCode, Codex, Claude Code, and Pi.</i></p>
   <p><b>Seven roles</b> · <b>Three SDD routes</b> · <b>Runtime-autonomous SDD</b></p>
   <p>
     <a href="https://www.npmjs.com/package/thoth-agents"><img src="https://img.shields.io/npm/v/thoth-agents?style=for-the-badge&amp;color=cb9b35&amp;label=npm" alt="npm version"></a>
     <a href="https://github.com/EremesNG/thoth-agents/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/EremesNG/thoth-agents/ci.yml?branch=master&amp;style=for-the-badge&amp;label=CI" alt="CI status"></a>
-    <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D22.13-43853d?style=for-the-badge&amp;logo=node.js&amp;logoColor=white" alt="Node 22.13 or newer"></a>
+    <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D22.19-43853d?style=for-the-badge&amp;logo=node.js&amp;logoColor=white" alt="Node 22.19 or newer"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1f6feb?style=for-the-badge" alt="MIT License"></a>
   </p>
 </div>
@@ -15,8 +15,8 @@
 
 ## What it does
 
-thoth-agents is a multi-harness orchestration plugin for OpenCode, Codex, and
-Claude Code. One adaptive root handles clear bounded work directly and delegates
+thoth-agents is a multi-harness orchestration plugin for OpenCode, Codex, Claude
+Code, and Pi. One adaptive root handles clear bounded work directly and delegates
 only when specialization, context isolation, independent review, or safe
 parallelism creates a net gain.
 
@@ -41,12 +41,14 @@ npm plugin, external skills, and thoth-mem. Codex needs both a native plugin and
 CLI-managed global layer because its manifest cannot install custom agents or
 global root instructions. Claude needs its two native marketplace commands
 before the CLI installs external skills and requests provider-owned thoth-mem
-setup.
+setup. Pi uses its native package and resource surfaces, with
+`pi-subagents-j0k3r` retaining delegation execution and task/history ownership.
 
 Runtime guarantees still differ by harness. OpenCode is the default and most
-integrated path; Codex and Claude preserve their own trust, policy, normal
-plugin-cache, and permission semantics. Codex installation has one bounded
-legacy-cache cleanup contract described below; Claude does not.
+integrated path; Codex, Claude, and Pi preserve their own trust, policy, package,
+and permission semantics. Pi extensions execute with the invoking user's system
+permissions, so child tool allowlists are not an OS sandbox. Codex installation
+has one bounded legacy-cache cleanup contract described below; Claude does not.
 
 ## Install
 
@@ -433,7 +435,7 @@ It invokes `npx skills add <repository> --skill <name> --global --agent
 QA executables such as Playwright remain project-owned.
 
 The same CLI installation then invokes `npx -y thoth-mem@latest setup
-<opencode|codex|claude> --scope global --json`; dry-run adds `--plan`. Only a
+<opencode|codex|claude|pi> --scope global --json`; dry-run adds `--plan`. Only a
 consistent provider `complete` result completes installation. Provider
 diagnostics, manual actions, and receipt paths remain visible for recovery.
 
@@ -444,6 +446,26 @@ diagnostics, manual actions, and receipt paths remain visible for recovery.
 | OpenCode | Strongest integrated path. The CLI installs the npm plugin configuration, global thoth-owned and external skills, and provider-owned thoth-mem setup; `/thoth-init` only initializes per-repository `openspec/` governance. Only the OpenAI built-in preset ships. |
 | Codex | The CLI installs the native plugin and manages global `AGENTS.md`, six agent TOMLs, config, external skills, and thoth-mem setup; `$thoth-init` only initializes per-repository SDD governance. Runtime role matching and some permissions remain instruction-level. |
 | Claude Code | Run both native marketplace commands before the CLI installs external skills and requests thoth-mem setup. The native manager owns cache files; fine-grained path restrictions remain instruction-level. |
+| Pi | The CLI installs the exact executing `thoth-agents` native package first, then `pi-subagents-j0k3r` and research dependencies; continuation and live steering remain conditional, extension code has invoking-user authority, and thoth-mem owns memory setup. |
+
+Pi's complete global setup first proves and receipts
+`npm:thoth-agents@<executing-version>`, then pins `pi-subagents-j0k3r@1.5.9`,
+`@upstash/context7-pi@0.1.2`, `@feniix/pi-exa@5.1.1`, and
+`pi-mcp-adapter@2.32.1`. Context7 and Exa stay native; the adapter exposes only
+the anonymous `https://mcp.grep.app` endpoint through an attributable global
+`mcpServers.grep` entry. Exa runtime calls use the operator-owned `EXA_API_KEY`.
+The initial release supports only the default `~/.pi/agent` global root and
+fails before mutation when `PI_CODING_AGENT_DIR` would make external skills
+undiscoverable. See [Installation](docs/installation.md#pi) for paths, security,
+shadowing, partial-state recovery, and lifecycle limitations.
+
+The first-party package declares one `./dist/pi.js` extension and the `./skills`
+root. `before_agent_start` contributes one bounded adaptive-root block and
+`session_start` converges exactly six package-owned specialists without an
+orchestrator child. Pi discovers the five Thoth workflow skills from the package
+instead of global copies. Direct package installation can therefore run in a
+truthfully degraded mode; use the CLI for the complete external-skill,
+research, provider, migration, receipt, and last-complete ledger flow.
 
 Codex and Claude marketplace manifests are versioned in the separate
 `EremesNG/thoth-plugins` repository. Both central entries resolve to this
@@ -482,6 +504,7 @@ npx thoth-agents@latest list
 npx thoth-agents@latest install --agent=opencode
 npx thoth-agents@latest install --agent=codex
 npx thoth-agents@latest install --agent=claude
+npx thoth-agents@latest install --agent=pi
 npx thoth-agents@latest update --harness=opencode
 npx thoth-agents@latest update --harness=opencode --apply
 npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
@@ -492,13 +515,14 @@ installation for the selected harness: OpenCode refreshes its exact plugin pin,
 managed configuration, owned skills, external skills, and provider setup;
 Codex runs native plugin setup before its global agent pack, external skills,
 and provider setup; Claude refreshes its native plugin before external skills
-and provider setup. Any required failure makes the operation fail rather than
-claiming a complete update.
+and provider setup; Pi re-proves its native first-party package, synchronizes
+specialist resources, refreshes external packages and skills, and runs provider setup. Any required failure makes the
+operation fail rather than claiming a complete update.
 
 After every required step succeeds, the CLI records that harness's executing
 version in
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. `status` shows
-the executing CLI version and this last complete CLI-managed version. The three
+the executing CLI version and this last complete CLI-managed version. The four
 harness records are independent: native Codex or Claude marketplace updates do
 not advance them and do not prove that CLI-managed agents, skills,
 configuration, or provider setup are current.
@@ -540,7 +564,7 @@ pnpm run build
 pnpm test
 ```
 
-Node.js `>=22.13` and `pnpm@11.2.2` are required. `pnpm run build` regenerates
+Node.js `>=22.19` and `pnpm@11.2.2` are required. `pnpm run build` regenerates
 both integration packages, compiles the runtime and declarations, and refreshes
 the JSON schema.
 

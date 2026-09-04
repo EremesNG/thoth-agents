@@ -46,7 +46,7 @@ describe('CLI harness surface', () => {
     expect(parseCliArgs(['install', '--agent=claude-code'])).toEqual({
       command: 'error',
       message:
-        'Unsupported install agent: claude-code. Supported agents: opencode, codex, claude.',
+        'Unsupported install agent: claude-code. Supported agents: opencode, codex, claude, pi.',
     });
   });
 

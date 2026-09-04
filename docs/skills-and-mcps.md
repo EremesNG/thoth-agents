@@ -55,8 +55,10 @@ truthful sequential fallback when a primitive is unavailable.
 | `architectural-grilling` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision before specification |
 
 Build copies only the five owned skills to the shared `plugin/skills` tree used
-by Codex and Claude. OpenCode's CLI installer copies those same packaged skills
-to `~/.config/opencode/skills/`, the native global discovery root. `/thoth-init`
+by Codex and Claude. The OpenCode CLI copies those packaged skills to its global
+discovery root. Pi discovers them directly through the installed
+`thoth-agents` package manifest and creates no new global skill copies; only
+byte-identical attributable legacy copies may be retired. `/thoth-init`
 only initializes or synchronizes the minimum project `openspec/` structure.
 Every SDD phase anchors its contract, template, and validator paths to the
 installed `thoth-sdd` skill; no project-local template directory is required.
@@ -106,6 +108,14 @@ The shared harness bundle may expose the research MCPs used by thoth-agents:
 
 Their exact configuration differs by harness. OpenCode composes them at runtime;
 Codex reads `plugin/codex.mcp.json`, while Claude reads `plugin/.mcp.json`.
+Pi uses a hybrid stack: `@upstash/context7-pi@0.1.2` and
+`@feniix/pi-exa@5.1.1` are native extensions, while
+`pi-mcp-adapter@2.32.1` exposes only the global `https://mcp.grep.app` server.
+The managed grep entry uses legacy protocol and lazy lifecycle, omits
+`directTools`, and requires no credentials. Exa reads the operator-owned
+`EXA_API_KEY`; thoth-agents never copies it. The alternative
+`@benvargas/pi-exa-mcp` is not installed alongside the selected Exa extension
+and remains only an operator-managed fallback.
 
 ## thoth-mem boundary
 
@@ -114,7 +124,7 @@ plugin/provider and owns its hooks, MCP setup, persistence, recovery, capability
 evidence, receipts, installed skill, and lifecycle behavior.
 
 `npx thoth-agents@latest install` invokes `npx -y thoth-mem@latest setup
-<opencode|codex|claude> --scope global --json` after thoth-agents-owned setup and
+<opencode|codex|claude|pi> --scope global --json` after thoth-agents-owned setup and
 mandatory skills. Dry-run adds thoth-mem's zero-write `--plan`; thoth-agents does
 not pass `--force`, edit provider files, or claim success unless status and exit
 evidence consistently report `complete`.

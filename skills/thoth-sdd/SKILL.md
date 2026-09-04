@@ -2,7 +2,7 @@
 name: thoth-sdd
 description: Run thoth-agents Direct, Accelerated, or Full specification-driven development with Spec Kit-grade artifacts, OpenSpec-style durable deltas, fast-forward planning, and proportional independent verification.
 license: MIT
-compatibility: Requires Node.js >=22.13 for bundled validation scripts.
+compatibility: Requires Node.js >=22.19 for bundled validation scripts.
 metadata:
   author: thoth-agents
   version: "1.0"

@@ -16,7 +16,7 @@ linked document.
 | Task signals | Read first | Code roots | Primary tests | Optional overlay |
 | --- | --- | --- | --- | --- |
 | roles, prompts, permissions, models, delegation, return contract | [`agents-and-delegation.md`](agents-and-delegation.md) | `src/agents/`, `src/config/`, `src/harness/core/agent-pack.ts` | agent/config and agent-pack tests | harness packaging |
-| adapters, writers, generated artifacts, Codex/Claude/OpenCode surfaces | [`harness-packaging.md`](harness-packaging.md) | `src/harness/`, `skills/` | `src/harness/**/*.test.ts` | CLI installation |
+| adapters, writers, generated artifacts, Pi/Codex/Claude/OpenCode surfaces | [`harness-packaging.md`](harness-packaging.md) | `src/harness/`, `skills/` | `src/harness/**/*.test.ts` | CLI installation |
 | OpenCode runtime, hooks, MCP, LSP, ast-grep, tmux, fallback | [`runtime-integrations.md`](runtime-integrations.md) | `src/index.ts`, `src/hooks/`, `src/mcp/`, `src/tools/` | colocated tests and `src/plugin-node-runtime.test.ts` | memory boundary |
 | parser, TUI, install, update, sync, status, required skills, provider setup invocation | [`cli-installation.md`](cli-installation.md) | `src/cli/` | `src/cli/**/*.test.ts`, `src/cli/**/*.test.tsx` | harness packaging |
 | direct/accelerated/full routing, fast-forward gates, phase contracts/envelopes, Spec Kit artifacts, durable deltas, verify/converge/archive | [`sdd-and-skills.md`](sdd-and-skills.md) | `src/harness/core/sdd.ts`, `skills/` | `src/harness/core/sdd.test.ts`, `sdd-protocol.test.ts`, prompt and skill tests | memory boundary |

@@ -1,6 +1,7 @@
 import { claudeCodeAdapter } from './adapters/claude-code';
 import { codexAdapter } from './adapters/codex';
 import { opencodeAdapter } from './adapters/opencode';
+import { piAdapter } from './adapters/pi';
 import type {
   HarnessAdapter,
   HarnessId,
@@ -11,6 +12,7 @@ const HARNESS_ADAPTERS = {
   opencode: opencodeAdapter,
   codex: codexAdapter,
   claude: claudeCodeAdapter,
+  pi: piAdapter,
 } as const satisfies Record<HarnessId, HarnessAdapter>;
 
 export const DEFAULT_HARNESS: HarnessId = 'opencode';

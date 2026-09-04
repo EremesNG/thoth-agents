@@ -11,7 +11,7 @@
   "license": "MIT",
   "packageManager": "pnpm@11.2.2",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.19"
   },
   "keywords": [
     "opencode",
@@ -22,7 +22,8 @@
     "llm",
     "claude",
     "gpt",
-    "sdd"
+    "sdd",
+    "pi-package"
   ],
   "repository": {
     "type": "git",
@@ -36,15 +37,25 @@
     "dist",
     "skills",
     "plugin",
+    "pi",
     "thoth-agents.schema.json",
     "README.md",
     "LICENSE"
   ],
+  "pi": {
+    "extensions": [
+      "./dist/pi.js"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
   "scripts": {
     "build": "pnpm run integration:sync && tsup && tsc --emitDeclarationOnly && pnpm run generate-schema",
     "generate-schema": "tsx scripts/generate-schema.ts",
     "integration:sync": "tsx src/harness/generate-integration-packages.ts",
     "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts src/harness/integration-lifecycle.test.ts",
+    "verify:pi-package": "node scripts/verify-pi-package.mjs",
     "setup:codex:local": "pnpm run build && tsx scripts/setup-codex-local.ts",
     "release:notes": "tsx scripts/generate-release-notes.ts",
     "typecheck": "tsc --noEmit",

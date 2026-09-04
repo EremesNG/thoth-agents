@@ -2,7 +2,7 @@
 name: thoth-archive
 description: Close a passing artifact-backed thoth-agents change by transactionally synchronizing explicitly declared durable requirement deltas and moving the complete audit trail to a dated archive.
 license: MIT
-compatibility: Requires Node.js >=22.13 and write access to the project OpenSpec tree.
+compatibility: Requires Node.js >=22.19 and write access to the project OpenSpec tree.
 metadata:
   author: thoth-agents
   version: "1.0"

@@ -176,6 +176,51 @@ describe('TUI model catalog', () => {
     expect(loadModelsDevCatalog).toHaveBeenCalledTimes(1);
   });
 
+  test('Pi exposes every provider while limiting effort to Pi-supported values', async () => {
+    loaded([
+      {
+        id: 'gpt-5.6-sol',
+        catalogId: 'openai/gpt-5.6-sol',
+        label: 'GPT 5.6 Sol',
+        provider: 'openai',
+        efforts: [
+          'off',
+          'minimal',
+          'low',
+          'medium',
+          'high',
+          'xhigh',
+          'max',
+          'ultra',
+        ],
+        source: 'remote',
+      },
+      {
+        id: 'claude-opus-4.6',
+        catalogId: 'anthropic/claude-opus-4.6',
+        label: 'Claude Opus 4.6',
+        provider: 'anthropic',
+        efforts: ['low', 'high'],
+        source: 'remote',
+      },
+    ]);
+
+    const options = await getModelOptions('pi');
+
+    expect(options.map((option) => option.provider)).toEqual([
+      'openai',
+      'anthropic',
+    ]);
+    expect(options[0]?.efforts).toEqual([
+      'off',
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ]);
+  });
+
   test('effort choices always include inherit without mutating catalog values', () => {
     const option = {
       id: 'gpt-5.6-sol',

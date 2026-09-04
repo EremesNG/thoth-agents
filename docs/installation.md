@@ -1,13 +1,13 @@
 # Installation
 
-thoth-agents supports OpenCode, Codex, and Claude Code. The distributions share
+thoth-agents supports OpenCode, Codex, Claude Code, and Pi. The distributions share
 one seven-role and Spec Kit-compatible SDD contract. Installation uses the CLI
 for every harness, while Codex additionally requires a CLI-managed global
 orchestration layer that its plugin manifest cannot provide.
 
 ## Requirements
 
-- Node.js `>=22.13`
+- Node.js `>=22.19`
 - One supported harness installed separately
 - Permission to install/trust the selected plugin
 - Network access during installation for the plugin, external skills, and
@@ -33,12 +33,13 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository to initialize `openspec/` |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `pi-subagents-j0k3r` and the research packages | The package injects one bounded adaptive-root block, synchronizes six specialists, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
 | Option | Meaning |
 | --- | --- |
-| `--agent=opencode\|codex\|claude` | Select the installation target. |
+| `--agent=opencode\|codex\|claude\|pi` | Select the installation target. |
 | `--dry-run` | Print native-manager and thoth-agents plans, then invoke thoth-mem with its zero-write `--plan` mode. |
 | `--reset` | Repair only thoth-agents-managed targets; it never becomes thoth-mem `--force`. |
 | `--no-tui` | Force the non-interactive path. |
@@ -149,6 +150,77 @@ thoth-mem's Claude setup. Init preflights and synchronizes only the minimum
 Claude owns marketplace snapshots, cache files, enablement, and packaged model
 defaults; thoth-agents never edits that cache.
 
+## Pi
+
+Pi requires `@earendil-works/pi-coding-agent` `0.84.4` or a compatible
+evidenced release and Node.js `>=22.19`. Preview the complete global setup
+before applying it:
+
+```bash
+npx thoth-agents@latest install --agent=pi --dry-run
+npx thoth-agents@latest install --agent=pi
+```
+
+The CLI installs and verifies these Pi packages in order:
+
+1. the exact executing `npm:thoth-agents@<version>` first-party package;
+2. `pi-subagents-j0k3r@1.5.9` for native single-specialist foreground and
+   background tasks;
+3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
+4. `@feniix/pi-exa@5.1.1` as a native Exa extension; and
+5. `pi-mcp-adapter@2.32.1` only for the anonymous grep.app MCP endpoint.
+
+Before external setup, the CLI rejects unowned or ambiguous first-party state,
+requires configured, loadable, and real-Pi observed evidence, and atomically
+commits `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/pi-package.json`. The native
+extension supplies one bounded root block per turn; it and the CLI share one
+safe synchronizer for exactly six definitions under `~/.pi/agent/agents/`.
+Pi discovers the five owned skills from the package manifest. The CLI installs
+only the four external skills with `--agent pi --global --yes --copy`. No
+orchestrator child is created. Status, previews, and applied results attribute
+the five package skills only to the receipt-validated root reported by Pi;
+Sync refuses to proceed without that evidence and never copies those skills to
+a global skill directory.
+
+Direct `pi install npm:thoth-agents@<version> --no-approve` activates the root
+and package skills but may remain degraded until delegation, research, external
+skills, and provider setup are completed. Applied Update reruns the complete
+first-party-first flow. Sync performs no network or package mutation. Legacy
+`APPEND_SYSTEM.md` and copied skill state is retired only when attributable;
+modified content remains with a manual action. A failed pre-commit replacement
+is compensated to the prior receipt-owned source (or removed if new); failed
+compensation prints the exact recovery command and never rewrites the receipt.
+
+Only grep.app uses the MCP adapter. The global
+`${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json` entry is
+`mcpServers.grep = {"url":"https://mcp.grep.app","protocolVersion":"legacy","lifecycle":"lazy"}`;
+`directTools` is omitted. Unrelated top-level fields and servers are preserved,
+while a different existing `grep` definition blocks the operation rather than
+being overwritten. Project `.mcp.json` or `.pi/mcp.json` files can shadow the
+global entry and are reported, never edited, by global setup.
+
+Exa runtime retrieval requires the operator-owned `EXA_API_KEY`; installation
+never solicits, copies, or writes that credential. Context7, Exa, and grep.app
+network/schema health is reported independently from package and managed-file
+health. Research output is untrusted data. Every Pi extension runs with the
+invoking user's system permissions and may access process credentials and the
+network; specialist tool allowlists are role controls, not a security sandbox.
+Project-local resources require an explicit Pi trust decision.
+
+The initial integration supports the default global Pi root only. If
+`PI_CODING_AGENT_DIR` redirects discovery away from `~/.pi/agent`, installation
+stops before mutation because the external skills CLI would copy to a different
+root. Remove the override or follow the printed manual action. If a native
+package succeeds and a later step fails, the ledger remains unchanged; resolve
+the reported blocker and rerun the idempotent complete flow. Do not delete
+unknown Pi packages or provider assets as a recovery shortcut.
+
+Fresh work uses `subagent_run` with one exact canonical `agent`. Status,
+result, list, message, cancellation, and optional continuation remain owned by
+`pi-subagents-j0k3r`; queued messages and nonterminal status never count as
+fan-in. Live steering depends on the active Pi SDK, and continuation stays
+disabled unless the operator enables it explicitly.
+
 ## Skill ownership
 
 All harness distributions carry only thoth-owned workflow skills: `thoth-init`,
@@ -173,6 +245,7 @@ documented administrative surface after the harness layer and mandatory skills:
 | OpenCode | `npx -y thoth-mem@latest setup opencode --scope global --json` |
 | Codex | `npx -y thoth-mem@latest setup codex --scope global --json` |
 | Claude Code | `npx -y thoth-mem@latest setup claude --scope global --json` |
+| Pi | `npx -y thoth-mem@latest setup pi --scope global --json` |
 
 With `--dry-run`, thoth-agents adds `--plan` before `--json`. It does not pass
 `--force`, even when thoth-agents itself receives `--reset`.
@@ -203,6 +276,7 @@ mirrored into thoth-mem.
 | OpenCode | CLI installation is required for global owned skills, external skills, and thoth-mem setup; npm plugins cannot declare package-relative native skill roots, and only the OpenAI built-in preset ships. |
 | Codex | Plugin manifests cannot install custom agents or write `~/.codex/AGENTS.md`; the CLI layer and provider setup are mandatory. Installed-role selection and some permissions remain instruction-level. |
 | Claude Code | Native marketplace/install steps must precede the CLI and provider setup. Native tool denials protect read-only roles, but fine-grained write-path restriction remains instruction-level. |
+| Pi | Pi extensions execute with the invoking user's system permissions; tool allowlists are not an OS sandbox, project-local resources require trust, and continuation/live steering depend on the installed delegation runtime. |
 
 No distribution bundles thoth-mem or project QA executables. thoth-mem remains
 an independently owned provider/plugin installed through its own public setup.
@@ -217,6 +291,7 @@ npx thoth-agents@latest update --harness=opencode
 npx thoth-agents@latest update --harness=opencode --apply
 npx thoth-agents@latest update --harness=codex --apply
 npx thoth-agents@latest update --harness=claude --apply
+npx thoth-agents@latest update --harness=pi --apply
 ```
 
 Applied Update is installation-equivalent for the selected harness:
@@ -226,10 +301,11 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, six specialist synchronization, four pinned native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps
-independent `opencode`, `codex`, and `claude` records. Each record is the version
+independent `opencode`, `codex`, `claude`, and `pi` records. Each record is the version
 of the CLI release that most recently completed every required step for that
 harness; it is not a native plugin version.
 

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "owner": "thoth-agents",
+  "files": {
+    "agents/explorer.md": "b0b6b379d90f82d8a5fe4aa60a64aad0dc18a4a5036cbb94c229be45e86ecceb",
+    "agents/librarian.md": "51760d84af9e09cb5bbc90a7bbaca4fe2d9844b2ae051a068523ece28bcf99ab",
+    "agents/oracle.md": "d7f35540bae8f541026781ce017911d5d4b8046f58ae461279d5ccdd57a5e85c",
+    "agents/designer.md": "2342fffa16a671dea51790e860199235f4e438027783954cc56ceded1a31b370",
+    "agents/quick.md": "4c74053c9a79115409aa6732002d05b53e8270a2ce6dd3f1ed4a805fe80a32e5",
+    "agents/deep.md": "481bb0322f524d59c8c592008b39634df153477993c44f89b30574e4f46d5f52"
+  }
+}

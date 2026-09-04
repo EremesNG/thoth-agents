@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -18,6 +19,46 @@ import { SUPPORTED_HARNESSES } from './harness/registry';
 const pluginSourcePath = fileURLToPath(new URL('./index.ts', import.meta.url));
 
 describe('plugin runtime compatibility', () => {
+  test('publishes one native Pi extension, one skill root, and six specialist assets', () => {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+    expect(packageJson.keywords).toContain('pi-package');
+    expect(packageJson.pi).toEqual({
+      extensions: ['./dist/pi.js'],
+      skills: ['./skills'],
+    });
+    expect(packageJson.files).toContain('pi');
+    expect(readFileSync('tsup.config.ts', 'utf8')).toContain("pi: 'src/pi.ts'");
+    expect(
+      readdirSync('pi/agents').filter((name) => name.endsWith('.md')),
+    ).toEqual([
+      'deep.md',
+      'designer.md',
+      'explorer.md',
+      'librarian.md',
+      'oracle.md',
+      'quick.md',
+    ]);
+  });
+  test.skipIf(!existsSync('dist/pi.js'))(
+    'loads the built Pi extension from an unrelated directory',
+    () => {
+      const root = mkdtempSync(join(tmpdir(), 'thoth-built-pi-'));
+      try {
+        const result = spawnSync(
+          process.execPath,
+          [
+            '--input-type=module',
+            '--eval',
+            `import(${JSON.stringify(new URL('../dist/pi.js', import.meta.url).href)}).then(m=>{if(typeof m.default!=="function")process.exit(2)})`,
+          ],
+          { cwd: root, encoding: 'utf8' },
+        );
+        expect(result.status, result.stderr).toBe(0);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
   test('does not compose a bundled provider lifecycle into the plugin runtime', () => {
     const source = readFileSync(pluginSourcePath, 'utf8');
 
@@ -27,7 +68,7 @@ describe('plugin runtime compatibility', () => {
     expect(source).not.toContain('including thoth_mem');
   });
 
-  test('keeps the runtime lean and exactly three harness registrations', () => {
+  test('keeps the runtime lean and exactly four harness registrations', () => {
     const source = readFileSync(pluginSourcePath, 'utf8');
 
     expect(source).not.toContain('createPhaseReminderHook');
@@ -38,7 +79,29 @@ describe('plugin runtime compatibility', () => {
       'claude',
       'codex',
       'opencode',
+      'pi',
     ]);
+  });
+
+  test('requires Node.js 22.19 across active package, workflow, and bundled skill declarations', () => {
+    const paths = [
+      'package.json',
+      '.github/workflows/ci.yml',
+      '.github/workflows/release.yml',
+      ...THOTH_OWNED_SKILL_NAMES.flatMap((name) => [
+        `skills/${name}/SKILL.md`,
+        `plugin/skills/${name}/SKILL.md`,
+      ]),
+    ].filter(existsSync);
+    const content = paths.map((path) => readFileSync(path, 'utf8')).join('\n');
+    expect(content).not.toContain('22.13');
+    expect(readFileSync('package.json', 'utf8')).toContain('"node": ">=22.19"');
+    expect(readFileSync('.github/workflows/ci.yml', 'utf8')).toContain(
+      'node-version: [22.19]',
+    );
+    expect(readFileSync('.github/workflows/release.yml', 'utf8')).toContain(
+      'node-version: 22.19',
+    );
   });
 
   test.skipIf(!existsSync('dist/index.js'))(

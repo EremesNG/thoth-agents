@@ -27,19 +27,21 @@ phase execution does not.
 - Install and applied Update share the complete selected-harness orchestration:
   OpenCode refreshes exact plugin/config plus owned skills; Codex performs
   native plugin setup before its global pack; Claude performs native plugin
-  refresh. Every harness then installs required external skills, requires
+  refresh; Pi installs the exact executing first-party package before four pinned
+  external packages and attributable resources. Every
+  harness then installs required external skills, requires
   provider-complete evidence, and records CLI completion last.
 - Update previews by default. Preview and dry-run write nothing; any required
   apply failure returns failure and does not claim or record completion. Reset
   touches only bounded managed targets.
 - `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json` is the
-  schema-versioned CLI-owned ledger. Its `opencode`, `codex`, and `claude`
+  schema-versioned CLI-owned ledger. Its `opencode`, `codex`, `claude`, and `pi`
   records advance independently and atomically only after complete success.
   Missing state remains missing; malformed state is backed up and repaired only
   when a successful operation is ready to commit its selected harness.
 - Status treats each ledger record as the official last complete CLI-managed
   version, exposes it beside the executing CLI version, and never infers or
-  advances it from OpenCode package state or native marketplace state.
+  advances it from OpenCode/Pi package state or native marketplace state.
 - Codex and Claude marketplace trust and normal cache lifecycle remain
   manager-owned. Installers use official native manager commands first. After
   the central Codex plugin is verified and with Codex closed, the Codex installer
@@ -54,6 +56,29 @@ phase execution does not.
 - Claude requires native marketplace add/install before its plugin surfaces
   exist; then the CLI installs external skills and requests provider setup
   without editing Claude's cache.
+- Pi first rejects unowned/conflicting first-party state, then installs
+  `npm:thoth-agents@<executing-version> --no-approve`, proves configured,
+  loadable, and receipt-bound observed state, and atomically commits
+  `pi-package.json`. The receipt keeps Pi's canonical configured `source`
+  separately from the command-safe `installSource`: npm values are identical,
+  while a packed absolute local input is matched through Pi's reported relative
+  source plus its exact resolved installed path. Rollback always uses the prior
+  `installSource` and verifies both prior source and path. Status classifies
+  missing, configured-unowned, owned-missing, owned-current, and conflicting
+  first-party state from the receipt plus Pi's configured source/resolved path;
+  it never attributes packaged skills to the executing CLI root. Update blocks
+  configured-unowned or conflicting state with a manual recovery action.
+  Operation previews and results inspect the five package-declared skills only
+  beneath that validated configured root; they are diagnostic evidence, not
+  globally synchronized or changed targets. Sync blocks when that root or any
+  declared skill is unavailable. Only
+  then may it migrate attributable legacy root/skill
+  copies, install delegation, Context7, Exa, and the grep-only MCP adapter,
+  synchronize six specialists, install four external skills, run provider
+  setup, and commit the unchanged last-complete ledger. A custom
+  `PI_CODING_AGENT_DIR`, unowned canonical agent, or conflicting global `grep`
+  entry blocks mutation; partial native package state remains visible and is
+  recovered by resolving the blocker and rerunning the complete flow.
 - OpenCode runtime update checks are notification-only. They do not rewrite
   config, invalidate package state, or run package installation; operators must
   rerun the latest CLI installer or apply Update explicitly.

@@ -27,6 +27,7 @@ const expectedPaths: Record<SkillInstallHarness, string[]> = {
   opencode: ['.config', 'opencode', 'skills'],
   codex: ['.agents', 'skills'],
   claude: ['.claude', 'skills'],
+  pi: ['.pi', 'agent', 'skills'],
 };
 
 describe('required skill install helper', () => {
@@ -114,6 +115,7 @@ describe('required skill install helper', () => {
     ['opencode', 'opencode'],
     ['codex', 'codex'],
     ['claude', 'claude-code'],
+    ['pi', 'pi'],
   ] as const)('targets %s explicitly through the skills CLI', (harness, cliAgent) => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-skill-home-'));
     vi.mocked(spawnSync).mockReturnValueOnce({
@@ -126,24 +128,26 @@ describe('required skill install helper', () => {
     });
 
     expect(result.status).toBe('failed');
+    const expectedArgs = [
+      '--yes',
+      'skills',
+      'add',
+      testSkill.repo,
+      '--skill',
+      testSkill.skillName,
+      '--global',
+      '--agent',
+      cliAgent,
+      '--yes',
+      ...(harness === 'pi' ? ['--copy'] : []),
+    ];
     expect(
       getRequiredSkillInstallCommand(testSkill, harness, {
         platform: 'linux',
       }),
     ).toEqual({
       command: 'npx',
-      args: [
-        '--yes',
-        'skills',
-        'add',
-        testSkill.repo,
-        '--skill',
-        testSkill.skillName,
-        '--global',
-        '--agent',
-        cliAgent,
-        '--yes',
-      ],
+      args: expectedArgs,
     });
     expect(spawnSync).toHaveBeenCalledWith(
       'npx',

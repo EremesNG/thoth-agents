@@ -22,4 +22,3 @@
 ## Follow-up
 
 - Publish a future package release through the existing release workflow; no additional implementation follow-up is required for this change.
-

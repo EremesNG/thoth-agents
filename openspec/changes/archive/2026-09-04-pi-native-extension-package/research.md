@@ -104,4 +104,3 @@ CLI/resource-only architecture is insufficient.
 - Exact self-package-first install/update ordering and fail-closed provenance.
 - Migration from CLI-copied root/skills without changing agent discovery.
 - Package-aware status, sync, ledger, documentation, and real Pi smoke.
-

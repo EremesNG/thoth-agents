@@ -60,4 +60,3 @@
 - Pi extensions execute with the invoking user's privileges; role tool controls are not an operating-system sandbox. This is explicitly disclosed in runtime and operator guidance.
 - The owned-skill frontmatter parser intentionally supports the repository's flat, unindented, one-line `name` and `description` contract rather than general YAML.
 - Registry publication remains release-time evidence; the required packed local-candidate installation and runtime path are verified with Pi 0.84.4.
-

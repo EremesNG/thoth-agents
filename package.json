@@ -36,8 +36,6 @@
     "dist",
     "skills",
     "plugin",
-    ".agents/plugins/marketplace.json",
-    ".claude-plugin/marketplace.json",
     "thoth-agents.schema.json",
     "README.md",
     "LICENSE"
@@ -47,6 +45,7 @@
     "generate-schema": "tsx scripts/generate-schema.ts",
     "integration:sync": "tsx src/harness/generate-integration-packages.ts",
     "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts src/harness/integration-lifecycle.test.ts",
+    "setup:codex:local": "pnpm run build && tsx scripts/setup-codex-local.ts",
     "release:notes": "tsx scripts/generate-release-notes.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -56,7 +55,8 @@
     "check:ci": "biome check .",
     "dev": "pnpm run build && opencode",
     "prepublishOnly": "pnpm run build && pnpm run integration:verify",
-    "version": "pnpm run integration:sync && pnpm run integration:verify && git add -- plugin .agents/plugins/marketplace.json .claude-plugin/marketplace.json",
+    "version": "pnpm run integration:sync && pnpm run integration:verify && git add -- plugin",
+    "release:marketplace": "node scripts/publish-marketplace.mjs",
     "release:patch": "npm version patch --ignore-scripts=false && git push --follow-tags",
     "release:minor": "npm version minor --ignore-scripts=false && git push --follow-tags",
     "release:major": "npm version major --ignore-scripts=false && git push --follow-tags"

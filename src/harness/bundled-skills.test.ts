@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { THOTH_OWNED_SKILL_NAMES } from './core/owned-skills';
 import { generateIntegrationPackages } from './generate-integration-packages';
 
 function runInit(
@@ -23,6 +24,27 @@ function runInit(
     [script, '--project', project, '--json', ...extraArguments],
     { encoding: 'utf8' },
   );
+}
+
+function readSkillFrontmatter(skillsRoot: string, skillName: string): string {
+  const content = readFileSync(join(skillsRoot, skillName, 'SKILL.md'), 'utf8');
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(
+    content,
+  )?.[1];
+  expect(frontmatter, `${skillName} frontmatter`).toBeDefined();
+  return frontmatter ?? '';
+}
+
+function frontmatterString(frontmatter: string, field: string): string {
+  const scalar = new RegExp(`^${field}:\\s*(.+?)\\s*$`, 'm')
+    .exec(frontmatter)?.[1]
+    .trim();
+  expect(scalar, `${field} field`).toBeDefined();
+  if (!scalar) return '';
+  const quote = scalar[0];
+  return (quote === '"' || quote === "'") && scalar.endsWith(quote)
+    ? scalar.slice(1, -1)
+    : scalar;
 }
 
 describe('bundled thoth-init', () => {
@@ -89,6 +111,15 @@ describe('bundled thoth-init', () => {
       );
       expect(initializedConstitution).toMatch(
         /\*\*Last amended\*\*: \d{4}-\d{2}-\d{2}/,
+      );
+      expect(initializedConstitution).toContain(
+        'Every route MUST include verification proportional',
+      );
+      expect(initializedConstitution).toMatch(
+        /Trivial\s+deterministic Direct work MAY be verified by Root/i,
+      );
+      expect(initializedConstitution).toMatch(
+        /Materially risky Direct work and[\s\S]+Accelerated or Full final verify MUST use a fresh independent read-only/i,
       );
       const constitutionValidator = spawnSync(
         process.execPath,
@@ -284,6 +315,43 @@ describe('bundled thoth-init', () => {
 });
 
 describe('canonical SDD bundle contracts', () => {
+  test('publishes Agent Skills-compliant metadata in canonical and generated skills', () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-skill-metadata-'));
+
+    try {
+      writeFileSync(
+        join(packageRoot, 'package.json'),
+        `${JSON.stringify({ name: 'thoth-agents', version: '0.3.0' })}\n`,
+      );
+      generateIntegrationPackages({ projectRoot: packageRoot });
+
+      for (const skillsRoot of [
+        join(process.cwd(), 'skills'),
+        join(packageRoot, 'plugin', 'skills'),
+      ]) {
+        for (const skillName of THOTH_OWNED_SKILL_NAMES) {
+          const frontmatter = readSkillFrontmatter(skillsRoot, skillName);
+          const name = frontmatterString(frontmatter, 'name');
+          const description = frontmatterString(frontmatter, 'description');
+          const compatibility = frontmatterString(frontmatter, 'compatibility');
+
+          expect(name).toBe(skillName);
+          expect(name).toMatch(/^(?!-)(?!.*--)[a-z0-9-]{1,64}(?<!-)$/);
+          expect(description.length).toBeGreaterThan(0);
+          expect(description.length).toBeLessThanOrEqual(1024);
+          expect(frontmatterString(frontmatter, 'license')).toBe('MIT');
+          expect(compatibility.length).toBeLessThanOrEqual(500);
+          expect(frontmatter).toMatch(
+            /^metadata:\r?\n {2}author: thoth-agents\r?\n {2}version: ["']1\.0["']$/m,
+          );
+          expect(frontmatter).not.toMatch(/^allowed-tools:/m);
+        }
+      }
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('resolves workflow assets from the installed skill bundle', () => {
     const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-contracts-'));
 
@@ -411,14 +479,237 @@ describe('canonical SDD bundle contracts', () => {
     expect(skill).toContain('SHA-256');
     expect(skill).toMatch(/Oracle.*read-only/is);
     expect(skill).toMatch(/Root.*persists.*plan-review\.md/is);
-    expect(skill).toContain('ask whether to implement or stop');
-    expect(skill).toContain('mandatory final Oracle verify');
+    expect(skill).toMatch(
+      /approved scope.*approach.*ownership.*verification.*risks/is,
+    );
+    expect(skill).toContain('`Implement (Recommended)` or `Stop`');
+    expect(skill).toMatch(
+      /implementation question.*three\s+total\s+attempts/is,
+    );
+    expect(skill).toMatch(/third answerless.*implementation.*selected/is);
+    expect(skill).toMatch(/explicit.*`Stop`.*wins/is);
+    expect(skill).toMatch(/\[OKAY\].*alone.*not.*authorize/is);
+    expect(skill).toContain('mandatory final verification');
     expect(skill).toMatch(/do not mirror.*provider memory/is);
+    expect(skill).toContain('## Native parallel executability');
+    expect(skill).toMatch(
+      /structural ready validation.*semantic independence/is,
+    );
+    expect(skill).toMatch(/lane path union.*owner/is);
+    expect(skill).toMatch(/prerequisites.*barrier/is);
+    expect(skill).toMatch(/native capacity.*dispatch-before-wait/is);
+    expect(skill).toContain('truthful sequential fallback');
     expect(template).toContain('**Status**: [OKAY|REJECT]');
     expect(template).toContain('## Source SHA-256');
     expect(template).toContain('spec.md');
     expect(template).toContain('plan.md');
     expect(template).toContain('tasks.md');
+  });
+
+  test('defines bounded recommended defaults for route and plan review choices', () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-sdd-defaults-'));
+
+    try {
+      writeFileSync(
+        join(packageRoot, 'package.json'),
+        `${JSON.stringify({ name: 'thoth-agents', version: '0.3.0' })}\n`,
+      );
+      generateIntegrationPackages({ projectRoot: packageRoot });
+
+      for (const skillsRoot of [
+        join(process.cwd(), 'skills'),
+        join(packageRoot, 'plugin', 'skills'),
+      ]) {
+        const sdd = readFileSync(
+          join(skillsRoot, 'thoth-sdd', 'SKILL.md'),
+          'utf8',
+        );
+        const planReview = readFileSync(
+          join(skillsRoot, 'plan-reviewer', 'SKILL.md'),
+          'utf8',
+        );
+
+        expect(sdd).toMatch(/three total attempts/i);
+        expect(sdd).toMatch(/third answerless.*recommended route.*selected/is);
+        expect(sdd).toMatch(
+          /third answerless.*Review plan with Oracle \(Recommended\).*selected/is,
+        );
+        expect(planReview).toMatch(/three total attempts/i);
+        expect(planReview).toMatch(
+          /third answerless.*Review plan with Oracle \(Recommended\).*selected/is,
+        );
+        expect(planReview).toMatch(/explicit.*Proceed without review.*wins/is);
+        expect(planReview).toMatch(/repair.*planning artifacts/is);
+        expect(planReview).toMatch(/revalidate.*affected.*gate/is);
+        expect(planReview).toMatch(/fresh Oracle.*until.*\[OKAY\]/is);
+        expect(planReview).toMatch(/material human-owned blocker/i);
+        expect(sdd).toMatch(
+          /bounded fallbacks apply only to the route, plan-review, and implementation\s+questions/is,
+        );
+        expect(sdd).toMatch(
+          /never.*secrets.*destructive.*security-sensitive.*material human-owned/is,
+        );
+      }
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the constitutional template aligned with bounded SDD defaults', () => {
+    const packageRoot = mkdtempSync(
+      join(tmpdir(), 'thoth-constitution-defaults-'),
+    );
+
+    try {
+      writeFileSync(
+        join(packageRoot, 'package.json'),
+        `${JSON.stringify({ name: 'thoth-agents', version: '0.3.0' })}\n`,
+      );
+      generateIntegrationPackages({ projectRoot: packageRoot });
+
+      for (const skillsRoot of [
+        join(process.cwd(), 'skills'),
+        join(packageRoot, 'plugin', 'skills'),
+      ]) {
+        const constitution = readFileSync(
+          join(
+            skillsRoot,
+            'thoth-constitution',
+            'templates',
+            'constitution.md',
+          ),
+          'utf8',
+        );
+
+        expect(constitution).toMatch(/three\s+total\s+attempts/i);
+        expect(constitution).toMatch(/recommended route.*selected/is);
+        expect(constitution).toMatch(
+          /Review plan with Oracle \(Recommended\).*selected/is,
+        );
+        expect(constitution).toMatch(
+          /approved plan.*summary.*Implement \(Recommended\)/is,
+        );
+        expect(constitution).toMatch(
+          /third answerless.*implementation.*selected/is,
+        );
+        expect(constitution).toMatch(/explicit.*answer.*wins/is);
+        expect(constitution).not.toMatch(
+          /plan review is optional and user-selected/i,
+        );
+      }
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps public SDD guidance free of explicit-user-only plan-review wording', () => {
+    for (const relativePath of [
+      'README.md',
+      'skills/README.md',
+      'docs/agent/architecture.md',
+      'docs/agent/sdd-and-skills.md',
+      'docs/claude-code-install.md',
+      'docs/claude-code-plugin-packaging.md',
+      'docs/codex-install.md',
+      'docs/quick-reference.md',
+      'docs/sdd-pipeline.md',
+      'docs/skills-and-mcps.md',
+    ]) {
+      const content = readFileSync(join(process.cwd(), relativePath), 'utf8');
+
+      expect(content, relativePath).not.toMatch(
+        /user-selected plan review|only after the user selects review|optional when the user selects Oracle review|oracle owns user-selected plan review/i,
+      );
+    }
+
+    const codexInstall = readFileSync(
+      join(process.cwd(), 'docs', 'codex-install.md'),
+      'utf8',
+    );
+    expect(codexInstall).toMatch(/summarizes.*context.*before.*route/is);
+    expect(codexInstall).toMatch(/explicit answer.*wins/is);
+    expect(codexInstall).toMatch(/third answerless.*selects.*recommendation/is);
+    expect(codexInstall).not.toMatch(/follows the user's selection/i);
+  });
+
+  test('keeps final verification mandatory with route- and risk-aware ownership', () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'thoth-verification-'));
+
+    try {
+      writeFileSync(
+        join(packageRoot, 'package.json'),
+        `${JSON.stringify({ name: 'thoth-agents', version: '0.3.0' })}\n`,
+      );
+      generateIntegrationPackages({ projectRoot: packageRoot });
+
+      for (const skillsRoot of [
+        join(process.cwd(), 'skills'),
+        join(packageRoot, 'plugin', 'skills'),
+      ]) {
+        const constitution = readFileSync(
+          join(
+            skillsRoot,
+            'thoth-constitution',
+            'templates',
+            'constitution.md',
+          ),
+          'utf8',
+        );
+        const sdd = readFileSync(
+          join(skillsRoot, 'thoth-sdd', 'SKILL.md'),
+          'utf8',
+        );
+        const implement = readFileSync(
+          join(skillsRoot, 'thoth-sdd', 'references', 'phases', 'implement.md'),
+          'utf8',
+        );
+        const verify = readFileSync(
+          join(skillsRoot, 'thoth-sdd', 'references', 'phases', 'verify.md'),
+          'utf8',
+        );
+        const planReview = readFileSync(
+          join(skillsRoot, 'plan-reviewer', 'SKILL.md'),
+          'utf8',
+        );
+        expect(constitution).toContain(
+          'Every route MUST include verification proportional',
+        );
+        expect(constitution).toMatch(
+          /trivial\s+deterministic Direct work MAY be verified by Root/i,
+        );
+        expect(constitution).toMatch(
+          /materially risky Direct work and\s+every Accelerated or Full final verify MUST use a fresh independent read-only\s+reviewer/i,
+        );
+        for (const routeContract of [sdd, implement, verify]) {
+          expect(routeContract).toMatch(
+            /every route requires[\s\S]+mandatory verification/i,
+          );
+          expect(routeContract).toMatch(
+            /trivial deterministic Direct[\s\S]+(?:verified by Root|Root[\s\S]+focused checks)/i,
+          );
+          expect(routeContract).toMatch(
+            /materially risky\s+Direct[\s\S]+Accelerated or Full[\s\S]+fresh read-only\s+Oracle/i,
+          );
+          expect(routeContract).toMatch(
+            /implementation\s+writer never approves/i,
+          );
+        }
+        expect(planReview).toMatch(
+          /Every route still requires post-implementation verification/i,
+        );
+        expect(planReview).toMatch(
+          /trivial deterministic Direct[\s\S]+Root-verified[\s\S]+materially risky Direct[\s\S]+Accelerated or Full[\s\S]+fresh read-only Oracle/i,
+        );
+        expect(planReview).toMatch(
+          /plan review[\s\S]+never (?:replaces|substitutes for)[\s\S]+final verification/i,
+        );
+        expect(planReview).not.toContain(
+          'Every route still requires independent post-implementation verification by a non-writer.',
+        );
+      }
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
   });
 
   test('teaches baseline-relative durable requirements and typed success criteria', () => {
@@ -467,6 +758,63 @@ describe('canonical SDD bundle contracts', () => {
     expect(checklist).toContain('**Activation reason**');
     expect(checklist).toContain('## Domain lenses');
     expect(checklist).toContain('Not required: [evidence-backed reason]');
+  });
+
+  test('defines native dispatch groups, lanes, and lifecycle barriers', () => {
+    const tasks = readFileSync(
+      join(process.cwd(), 'skills', 'thoth-sdd', 'templates', 'tasks.md'),
+      'utf8',
+    );
+    const phaseTasks = readFileSync(
+      join(
+        process.cwd(),
+        'skills',
+        'thoth-sdd',
+        'references',
+        'phases',
+        'tasks.md',
+      ),
+      'utf8',
+    );
+    const implement = readFileSync(
+      join(
+        process.cwd(),
+        'skills',
+        'thoth-sdd',
+        'references',
+        'phases',
+        'implement.md',
+      ),
+      'utf8',
+    );
+    for (const contract of [tasks, phaseTasks]) {
+      expect(contract).toContain('### Group P1');
+      expect(contract).toContain('Lane L1: T001 -> T002 | Owner: deep');
+      expect(contract).toContain('Prerequisites: None');
+      expect(contract).toContain('Barrier: Final verification');
+      expect(contract).toContain('Rationale:');
+      expect(contract).toMatch(
+        /Every `\[P\]` task belongs to exactly one lane/i,
+      );
+      expect(contract).toMatch(/cross-lane.*(?:disjoint|dependency)/i);
+      expect(contract).toMatch(
+        /Rationale.*path-disjointness.*cross-lane dependency\s+evidence/is,
+      );
+      expect(contract).toContain('- None: <evidence-backed reason>');
+      expect(contract).not.toMatch(/concrete (?:task )?pairings?/i);
+    }
+    for (const assertion of [
+      'one fresh native specialist assignment per admitted lane',
+      'every dispatch in that native wave before any wait',
+      'dispatch the next undispatched ready lane before waiting again',
+      'root alone updates task state',
+      'terminal evidence per lane',
+      'only after every lane is terminal and reconciled',
+      'truthful sequential fallback',
+    ]) {
+      expect(implement.toLowerCase()).toContain(assertion.toLowerCase());
+    }
+    expect(implement).not.toMatch(/wait_all|fixed concurrency/i);
   });
 
   test('keeps plan and task scaffolds parser-inert until populated', () => {

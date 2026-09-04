@@ -540,6 +540,97 @@ function exactTaskPath(line) {
   return normalized.toLowerCase();
 }
 
+function taskDependencyEdges(content) {
+  return [...content.matchAll(/\bT\d{3}(?:\s*->\s*T\d{3})+\b/g)].flatMap(
+    ([chain]) => {
+      const ids = chain.match(/\bT\d{3}\b/g) ?? [];
+      return ids.slice(1).map((target, index) => ({
+        source: ids[index],
+        target,
+      }));
+    },
+  );
+}
+
+function parseParallelGroups(content) {
+  const lines = content.split(/\r?\n/);
+  const headingIndexes = lines
+    .map((line, index) => (/^###\s+Group\s+P\d+\s*$/.test(line) ? index : -1))
+    .filter((index) => index >= 0);
+  const groups = [];
+  let valid = headingIndexes.length > 0;
+
+  if (
+    lines
+      .slice(0, headingIndexes[0] ?? lines.length)
+      .some((line) => line.trim())
+  ) {
+    valid = false;
+  }
+
+  for (const [groupIndex, start] of headingIndexes.entries()) {
+    const end = headingIndexes[groupIndex + 1] ?? lines.length;
+    const groupId = /^###\s+Group\s+P(\d+)\s*$/.exec(lines[start])?.[1];
+    const body = lines.slice(start + 1, end).filter((line) => line.trim());
+    const lanes = [];
+    let prerequisites;
+    let barrier;
+    let rationale;
+    for (const line of body) {
+      const lane =
+        /^- Lane L(\d+): (T\d{3}(?: -> T\d{3})*)(?: \| Owner: (\S+))?\s*$/.exec(
+          line,
+        );
+      if (lane) {
+        lanes.push({
+          number: Number.parseInt(lane[1], 10),
+          taskIds: lane[2].split(' -> '),
+          owner: lane[3],
+        });
+        continue;
+      }
+      const prerequisiteLine =
+        /^- Prerequisites: (None|T\d{3}(?:, T\d{3})*)\s*$/.exec(line);
+      if (prerequisiteLine && prerequisites === undefined) {
+        prerequisites =
+          prerequisiteLine[1] === 'None' ? [] : prerequisiteLine[1].split(', ');
+        continue;
+      }
+      const barrierLine = /^- Barrier: (Final verification|T\d{3})\s*$/.exec(
+        line,
+      );
+      if (barrierLine && barrier === undefined) {
+        barrier = barrierLine[1];
+        continue;
+      }
+      const rationaleLine = /^- Rationale: (\S.*)$/.exec(line);
+      if (rationaleLine && rationale === undefined) {
+        rationale = rationaleLine[1];
+        continue;
+      }
+      valid = false;
+    }
+    if (
+      groupId === undefined ||
+      lanes.length < 2 ||
+      rationale === undefined ||
+      !isConcreteEvidence(rationale) ||
+      lanes.some((lane, index) => lane.number !== index + 1)
+    ) {
+      valid = false;
+    }
+    groups.push({
+      number: Number.parseInt(groupId ?? '0', 10),
+      lanes,
+      prerequisites,
+      barrier,
+      rationale,
+    });
+  }
+  if (groups.some((group, index) => group.number !== index + 1)) valid = false;
+  return { groups, valid };
+}
+
 function validateTasks(content, errors, spec) {
   const artifact = 'tasks.md';
   const taskLines = content
@@ -644,12 +735,6 @@ function validateTasks(content, errors, spec) {
   }));
   const tasksById = new Map(taskRecords.map((task) => [task.id, task]));
   const hasParallelTask = taskRecords.some((task) => task.parallel);
-  const parallelLines = (parallelSection ?? '')
-    .split(/\r?\n/)
-    .map((line) => [line, [...new Set(line.match(/\bT\d{3}\b/g) ?? [])]])
-    .filter(([, ids]) => ids.length >= 2);
-  const referencedTaskIds = new Set(parallelLines.flatMap(([, ids]) => ids));
-  const hasParallelExample = parallelLines.length > 0;
   const noParallelMatch = /^-\s+None:\s*(\S.*)$/im.exec(parallelSection ?? '');
   const explainsNoParallelWork =
     noParallelMatch !== null && isConcreteEvidence(noParallelMatch[1]);
@@ -657,41 +742,189 @@ function validateTasks(content, errors, spec) {
     left === right ||
     left.startsWith(`${right}/`) ||
     right.startsWith(`${left}/`);
-  const unknownReferences = [...referencedTaskIds].filter(
-    (id) => !tasksById.has(id),
+  const noneOnly =
+    explainsNoParallelWork &&
+    parallelSection?.trim() === noParallelMatch?.[0].trim();
+  const { groups, valid: validGroupGrammar } = parseParallelGroups(
+    parallelSection ?? '',
   );
-  const omittedParallelTasks = taskRecords
-    .filter((task) => task.parallel && !referencedTaskIds.has(task.id))
-    .map((task) => task.id);
-  const examplesWithoutParallelTask = parallelLines.some(
-    ([, ids]) => !ids.some((id) => tasksById.get(id)?.parallel),
+  const declaredDependencies = taskDependencyEdges(
+    sectionContent(content, 'Dependencies') ?? '',
   );
-  const overlappingExamples = parallelLines.some(([, ids]) => {
-    const paths = ids.map((id) => tasksById.get(id)?.path);
-    if (paths.some((path) => path === undefined)) return true;
-    return paths.some((path, index) =>
-      paths.slice(index + 1).some((other) => pathsOverlap(path, other)),
-    );
-  });
+  const hasGroups = groups.length > 0;
   if (
     parallelSection === undefined ||
-    (explainsNoParallelWork && hasParallelExample) ||
-    (hasParallelTask &&
-      (!hasParallelExample ||
-        explainsNoParallelWork ||
-        unknownReferences.length > 0 ||
-        omittedParallelTasks.length > 0 ||
-        examplesWithoutParallelTask ||
-        overlappingExamples)) ||
-    (!hasParallelTask && !explainsNoParallelWork)
+    (hasParallelTask && (!hasGroups || explainsNoParallelWork)) ||
+    (!hasParallelTask && !noneOnly) ||
+    (explainsNoParallelWork && !noneOnly)
   ) {
     errors.push(
       issue(
         'SDD-TASK-PARALLEL',
         artifact,
-        'Document existing [P] tasks with non-overlapping paths, or explain why no safe parallel work exists.',
+        'Declare strict parallel groups for [P] tasks, or provide one exclusive evidence-backed None reason.',
       ),
     );
+  }
+  if (hasGroups && !validGroupGrammar) {
+    errors.push(
+      issue(
+        'SDD-TASK-LANE-GRAMMAR',
+        artifact,
+        'Groups and lanes must use unique sequential IDs, at least two lanes, and every required field.',
+      ),
+    );
+  }
+
+  if (hasGroups && validGroupGrammar) {
+    const memberships = groups.flatMap((group) =>
+      group.lanes.flatMap((lane) =>
+        lane.taskIds.map((taskId) => ({ group, lane, taskId })),
+      ),
+    );
+    const membershipCounts = new Map();
+    for (const { taskId } of memberships) {
+      membershipCounts.set(taskId, (membershipCounts.get(taskId) ?? 0) + 1);
+    }
+    const invalidMembership =
+      memberships.some(({ taskId }) => !tasksById.get(taskId)?.parallel) ||
+      taskRecords.some(
+        (task) => task.parallel && membershipCounts.get(task.id) !== 1,
+      );
+    if (invalidMembership) {
+      errors.push(
+        issue(
+          'SDD-TASK-LANE-MEMBERSHIP',
+          artifact,
+          'Every [P] task must belong to exactly one lane, and lane members must be known [P] tasks.',
+        ),
+      );
+    }
+
+    if (
+      groups.some((group) =>
+        group.lanes.some(
+          (lane) => !['designer', 'quick', 'deep'].includes(lane.owner),
+        ),
+      )
+    ) {
+      errors.push(
+        issue(
+          'SDD-TASK-LANE-OWNER',
+          artifact,
+          'Every lane owner must be designer, quick, or deep.',
+        ),
+      );
+    }
+
+    for (const group of groups) {
+      const rationale = group.rationale ?? '';
+      const hasPathIndependenceEvidence =
+        /\b(?:path|file|surface)s?\b/i.test(rationale) &&
+        /\b(?:disjoint|non[- ]?overlap(?:ping)?)\b/i.test(rationale);
+      const hasDependencyIndependenceEvidence =
+        /\b(?:dependenc(?:y|ies)|consum(?:e|es|ing)|peer output|data flow)\b/i.test(
+          rationale,
+        );
+      if (!hasPathIndependenceEvidence || !hasDependencyIndependenceEvidence) {
+        errors.push(
+          issue(
+            'SDD-TASK-LANE-RATIONALE',
+            artifact,
+            'Parallel rationale must state concrete path-disjointness and cross-lane dependency evidence for Oracle review.',
+          ),
+        );
+      }
+
+      const memberIds = new Set(group.lanes.flatMap((lane) => lane.taskIds));
+      const prerequisites = group.prerequisites ?? [];
+      if (
+        group.prerequisites === undefined ||
+        new Set(prerequisites).size !== prerequisites.length ||
+        prerequisites.some(
+          (taskId) => !tasksById.has(taskId) || memberIds.has(taskId),
+        )
+      ) {
+        errors.push(
+          issue(
+            'SDD-TASK-LANE-PREREQUISITE',
+            artifact,
+            'Prerequisites must be unique known tasks outside the group.',
+          ),
+        );
+      }
+
+      const memberNumbers = [...memberIds].map((id) =>
+        Number.parseInt(id.slice(1), 10),
+      );
+      const barrierNumber = /^T\d{3}$/.test(group.barrier ?? '')
+        ? Number.parseInt(group.barrier.slice(1), 10)
+        : undefined;
+      if (
+        group.barrier !== 'Final verification' &&
+        (barrierNumber === undefined ||
+          !tasksById.has(group.barrier) ||
+          memberIds.has(group.barrier) ||
+          prerequisites.includes(group.barrier) ||
+          memberNumbers.some((number) => barrierNumber <= number))
+      ) {
+        errors.push(
+          issue(
+            'SDD-TASK-LANE-BARRIER',
+            artifact,
+            'A task barrier must be a known downstream non-member task, or use exact Final verification.',
+          ),
+        );
+      }
+
+      const laneByTask = new Map(
+        group.lanes.flatMap((lane) =>
+          lane.taskIds.map((taskId) => [taskId, lane.number]),
+        ),
+      );
+      if (
+        declaredDependencies.some(
+          ({ source, target }) =>
+            laneByTask.has(source) &&
+            laneByTask.has(target) &&
+            laneByTask.get(source) !== laneByTask.get(target),
+        )
+      ) {
+        errors.push(
+          issue(
+            'SDD-TASK-LANE-DEPENDENCY',
+            artifact,
+            'Declared dependencies cannot connect different lanes in one group.',
+          ),
+        );
+      }
+
+      const lanePaths = group.lanes.map((lane) =>
+        lane.taskIds.map((taskId) => tasksById.get(taskId)?.path),
+      );
+      const overlaps = lanePaths.some((paths, index) =>
+        lanePaths
+          .slice(index + 1)
+          .some((otherPaths) =>
+            paths.some(
+              (path) =>
+                path !== undefined &&
+                otherPaths.some(
+                  (other) => other !== undefined && pathsOverlap(path, other),
+                ),
+            ),
+          ),
+      );
+      if (overlaps) {
+        errors.push(
+          issue(
+            'SDD-TASK-LANE-OVERLAP',
+            artifact,
+            'Mutable task paths cannot overlap across lanes in one group.',
+          ),
+        );
+      }
+    }
   }
 }
 

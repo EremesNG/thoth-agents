@@ -11,23 +11,39 @@ runtime download.
 | Skill | Contract |
 | --- | --- |
 | `thoth-init` | Offline, idempotent initialization and synchronization of minimum `openspec/` governance only |
-| `thoth-sdd` | Route recommendation and user selection, progressive phase references, templates, and structural validation |
+| `thoth-sdd` | Contextual route recommendation, explicit-or-bounded-default selection, progressive phase references, templates, and structural validation |
 | `thoth-constitution` | Constitution creation, amendment, and pre/post planning gates |
 | `thoth-archive` | Passing verification gate, audit report, and dated archive move |
-| `plan-reviewer` | Optional user-selected, blocker-focused Oracle plan review with SHA-256 freshness evidence |
+| `plan-reviewer` | Explicit-or-bounded-default, blocker-focused Oracle plan review with convergence and SHA-256 freshness evidence |
 
 The adaptive root loads only the current contract. It owns specify, clarify,
 plan, checklist, tasks, converge, report persistence, and archive. Explorer owns
-Full discovery. Oracle is always read-only and owns each user-selected plan
-review plus every final verification.
+Full discovery. Every route verifies: trivial deterministic Direct work may use
+focused root checks; materially risky Direct work and every Accelerated or Full
+final verify use a fresh read-only Oracle. Offered plan review remains read-only.
 
 After `ready` on Accelerated or Full, root offers `Review plan with Oracle
-(Recommended)` or `Proceed without review`. If review is selected,
-`plan-reviewer` returns exactly `[OKAY]` or `[REJECT]` and no more than three
-actionable blockers. Root alone persists `plan-review.md` under the active
-OpenSpec change with reviewed-source SHA-256 digests. It is never mirrored into
-provider memory. A fresh `[OKAY]` still requires separate implementation
-confirmation and never replaces mandatory final Oracle verification.
+(Recommended)` or `Proceed without review`. Any explicit answer wins; after
+three total answerless native results, review counts as selected. `plan-reviewer`
+returns exactly `[OKAY]` or `[REJECT]` and no more than three actionable
+blockers. Root repairs same-intent blockers, revalidates affected gates, and
+uses a fresh Oracle round until `[OKAY]` or a material human-owned blocker. Root
+alone persists `plan-review.md` with reviewed-source SHA-256 digests; it is never
+mirrored into provider memory. After `[OKAY]`, root summarizes the approved plan
+before asking `Implement (Recommended)` or `Stop`. Any explicit answer wins;
+after three total answerless results, implementation counts as selected.
+Approval alone never authorizes implementation or replaces mandatory final
+Oracle verification.
+
+Before implementation, root records concrete artifact/decision dependencies,
+ownership, specialist fit, and verification inputs. Input-complete lanes are
+ready; lanes waiting on upstream artifacts are blocked. All ready conflict-free
+lanes are dispatched in a native wave before waiting, and fan-in accepts only
+terminal native results. Semantic triggers route current or external facts to
+`librarian`, material user-facing UI/UX or accessibility to `designer`, and
+known narrow low-risk isolated edits to `quick`; coupled or high-risk work uses
+`deep`. Native harness execution and lifecycle remain authoritative, with
+truthful sequential fallback when a primitive is unavailable.
 
 ## Mandatory execution skills
 
@@ -65,9 +81,9 @@ the static agent prompts and loaded only after a route reaches that phase.
 | --- | --- |
 | `explore` | read-only `explorer` |
 | `specify`, `clarify`, `plan`, `checklist`, `tasks` | root |
-| `plan-review` | optional read-only `oracle`, only after the user selects review |
+| `plan-review` | optional read-only `oracle`, after explicit or bounded-default review selection |
 | `implement` | root or one bounded writer |
-| `verify` | read-only `oracle` for every route |
+| `verify` | root for trivial deterministic Direct; fresh read-only `oracle` for materially risky Direct and every Accelerated/Full final verify |
 | `converge`, report persistence, `archive` | root |
 
 Artifact-backed phases use canonical templates, FR/SC and US identifiers,

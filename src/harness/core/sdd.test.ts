@@ -4,7 +4,9 @@ import {
   classifySddRoute,
   getRequiredSddPhaseOrder,
   getSddArtifactGraph,
+  getSddFinalVerificationDecision,
   getSddPhaseOwner,
+  getSddPhaseProtocol,
   getSddRouteExecutionPolicy,
   getSddWorkflowContract,
 } from './sdd';
@@ -256,18 +258,44 @@ describe('Spec Kit workflow contract', () => {
     expect(ownerOf('checklist')).toBe('orchestrator');
     expect(ownerOf('tasks')).toBe('orchestrator');
     expect(ownerOf('plan-review')).toBe('oracle');
-    expect(ownerOf('verify')).toBe('oracle');
+    expect(ownerOf('verify')).toBe('adaptive-verification');
     expect(ownerOf('implement')).toBe('adaptive-implementation');
     expect(ownerOf('converge')).toBe('orchestrator');
     expect(ownerOf('archive')).toBe('orchestrator');
   });
 
-  test('assigns selected plan review and every verification to oracle', () => {
-    expect(getSddPhaseOwner('direct', 'verify')).toBe('oracle');
-    expect(getSddPhaseOwner('accelerated', 'verify')).toBe('oracle');
-    expect(getSddPhaseOwner('full', 'verify')).toBe('oracle');
+  test.each([
+    ['direct', 'trivial-deterministic', 'orchestrator', false],
+    ['direct', 'architecture', 'oracle', true],
+    ['direct', 'security', 'oracle', true],
+    ['direct', 'cross-cutting-regression', 'oracle', true],
+    ['direct', 'persistent-diagnosis', 'oracle', true],
+    ['direct', 'contradictory-evidence', 'oracle', true],
+    ['direct', 'high-failure-cost', 'oracle', true],
+    ['direct', 'material-uncertainty', 'oracle', true],
+    ['accelerated', 'trivial-deterministic', 'oracle', true],
+    ['accelerated', 'security', 'oracle', true],
+    ['full', 'trivial-deterministic', 'oracle', true],
+    ['full', 'material-uncertainty', 'oracle', true],
+  ] as const)('assigns %s final verification with %s risk to %s', (route, risk, owner, oracleRequired) => {
+    expect(getSddFinalVerificationDecision({ route, risk })).toEqual({
+      verificationRequired: true,
+      owner,
+      oracleRequired,
+      freshOracleRequired: oracleRequired,
+    });
+    expect(getSddPhaseOwner(route, 'verify', risk)).toBe(owner);
+  });
+
+  test('keeps selected plan review oracle-owned without substituting for final verification', () => {
     expect(getSddPhaseOwner('accelerated', 'plan-review')).toBe('oracle');
     expect(getSddPhaseOwner('full', 'plan-review')).toBe('oracle');
+    expect(
+      getSddFinalVerificationDecision({
+        route: 'accelerated',
+        risk: 'trivial-deterministic',
+      }).verificationRequired,
+    ).toBe(true);
   });
 
   test.each([
@@ -278,6 +306,37 @@ describe('Spec Kit workflow contract', () => {
     expect(getSddPhaseOwner(route, 'implement')).toBe(
       'adaptive-implementation',
     );
+  });
+
+  test('keeps canonical workflow prose route-independent and verification proportional', () => {
+    const workflow = getSddWorkflowContract();
+    const artifactRules = workflow.artifactRules.join('\n');
+    const verificationRules = workflow.verificationRules.join('\n');
+    const implementHandoff =
+      getSddPhaseProtocol('implement').handoff.join('\n');
+    const verifyInstructions =
+      getSddPhaseProtocol('verify').instructions.join('\n');
+
+    expect(artifactRules).toMatch(
+      /every route.*root, designer, quick, or deep/i,
+    );
+    expect(artifactRules).not.toMatch(
+      /Accelerated and Full implementation selects/i,
+    );
+    expect(verificationRules).toMatch(/trivial deterministic Direct.*root/i);
+    expect(verificationRules).toMatch(
+      /Accelerated (?:and|or) Full.*fresh.*oracle/i,
+    );
+    expect(verificationRules).not.toMatch(/Every route delegates.*oracle/i);
+    expect(implementHandoff).toMatch(/route.*risk.*verification/i);
+    expect(implementHandoff).not.toMatch(
+      /fresh Oracle for independent verify/i,
+    );
+    expect(verifyInstructions).toMatch(/trivial deterministic Direct.*root/i);
+    expect(verifyInstructions).toMatch(
+      /material.*Direct.*Accelerated and Full.*Oracle/i,
+    );
+    expect(verifyInstructions).not.toMatch(/Oracle must be independent/i);
   });
 
   test('allows review or skip after planning and still gates convergence and archive', () => {

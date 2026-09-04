@@ -44,11 +44,25 @@ persistence, receipts, state, and recovery remain outside this package.
 ## Invariants
 
 - OpenCode is default; harness guarantees differ.
-- Root recommends an SDD route; the user selects it. Root then coordinates SDD
-  and loads only the current contract.
+- Root summarizes context and recommends an SDD route; an explicit answer wins,
+  while the third answerless route question selects the recommendation. Root
+  then coordinates SDD and loads only the current contract.
+- The root shapes substantive work as dependency-aware bounded lanes: concrete
+  artifact/decision dependencies block a lane, while mere ordering preference
+  does not. Input-ready, conflict-free lanes form a native wave; root fans in
+  only terminal native results before releasing dependents.
 - After `ready`, Accelerated and Full offer optional Oracle plan review or
-  proceeding without it. Oracle owns selected plan review and every final
-  verify; review approval never substitutes for verify.
+  proceeding without it; an explicit answer wins, while the third answerless
+  review question selects Oracle review. Every route verifies: trivial deterministic Direct work
+  may use focused root checks, while materially risky Direct work and every
+  Accelerated or Full final verify use a fresh read-only Oracle. Review approval
+  never substitutes for verify.
+- Semantic role selection is route-independent: `librarian` handles current or
+  external facts, `designer` material user-facing UI/UX and accessibility,
+  `quick` known narrow low-risk isolated edits, `deep` coupled/high-risk work,
+  and `explorer` broad local uncertainty. Native harness execution and
+  lifecycle are the sole authority for fan-out/fan-in, status/wait, steering,
+  cancellation, and terminal results.
 - Delegation depth is one; one writer owns each mutable surface.
 - OpenCode ships only the OpenAI preset.
 - Owned SDD contracts are bundled; external skills come from canonical

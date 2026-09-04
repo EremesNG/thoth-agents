@@ -77,6 +77,14 @@ Implement FR-001 in \`src/example.ts\` and verify SC-001.
 - **Simplicity**: PASS — The implementation keeps the same bounded seam.
 `;
 
+const VALID_PARALLEL_GROUP = `### Group P1
+
+- Lane L1: T001 -> T002 | Owner: deep
+- Lane L2: T003 | Owner: quick
+- Prerequisites: None
+- Barrier: Final verification
+- Rationale: The lane path sets are disjoint and neither lane consumes peer output.`;
+
 const VALID_TASKS = `# Tasks: Example
 
 ## MVP scope
@@ -87,13 +95,13 @@ US1 is the independently testable MVP.
 
 T001 -> T002.
 
-- [ ] T001 [US1] Cover FR-001 and SC-001 with a failing example test in \`src/example.test.ts\` | Verify: the focused test fails for the expected missing behavior
-- [ ] T002 [US1] Implement FR-001 and SC-001 in \`src/example.ts\` | Verify: the focused test passes and reports the observable result
+- [ ] T001 [P] [US1] Cover FR-001 and SC-001 with a failing example test in \`src/example.test.ts\` | Verify: the focused test fails for the expected missing behavior
+- [ ] T002 [P] [US1] Implement FR-001 and SC-001 in \`src/example.ts\` | Verify: the focused test passes and reports the observable result
 - [ ] T003 [P] [US1] Document FR-001 and SC-001 in \`README.md\` | Verify: the documented example matches the tested public behavior
 
-## Parallel execution examples
+## Parallel execution
 
-T003 may run with T001 because the files do not overlap.
+${VALID_PARALLEL_GROUP}
 `;
 
 const VALID_COMPLETED_TASKS = VALID_TASKS.replaceAll('- [ ]', '- [x]');
@@ -225,20 +233,24 @@ function materializePlanningTemplates() {
     .replace(
       '`T001 -> T002`; [cross-story dependency notes, or None.]',
       '`T001 -> T002`; documentation can follow the failing test independently.',
+    )
+    .replace(
+      /## Parallel execution[\s\S]+?<!-- PARALLEL-EXECUTION-EVIDENCE -->/,
+      '## Parallel execution\n\n<!-- PARALLEL-EXECUTION-EVIDENCE -->',
     );
   tasks = replaceRequired(
     tasks,
     '<!-- STORY-US1-TASKS -->',
     [
-      '- [ ] T001 [US1] Cover FR-001 and SC-001 with a failing example test in `src/example.test.ts` | Verify: the focused test fails for the expected missing behavior',
-      '- [ ] T002 [US1] Implement FR-001 and SC-001 in `src/example.ts` | Verify: the focused test passes and reports the observable result',
+      '- [ ] T001 [P] [US1] Cover FR-001 and SC-001 with a failing example test in `src/example.test.ts` | Verify: the focused test fails for the expected missing behavior',
+      '- [ ] T002 [P] [US1] Implement FR-001 and SC-001 in `src/example.ts` | Verify: the focused test passes and reports the observable result',
       '- [ ] T003 [P] [US1] Document FR-001 and SC-001 in `README.md` | Verify: the documented example matches the tested public behavior',
     ].join('\n'),
   );
   tasks = replaceRequired(
     tasks,
     '<!-- PARALLEL-EXECUTION-EVIDENCE -->',
-    '- T003 may run with T001 because their literal task paths do not overlap.',
+    VALID_PARALLEL_GROUP,
   );
   tasks = replaceRequired(
     tasks,
@@ -787,7 +799,7 @@ describe('Spec Kit-compatible structural validator', () => {
       'a non-sequential task identifier',
       ({ plan, tasks }: { plan: string; tasks: string }) => ({
         plan,
-        tasks: tasks.replace('T002 [US1]', 'T005 [US1]'),
+        tasks: tasks.replace('T002 [P] [US1]', 'T005 [P] [US1]'),
       }),
       'SDD-TASK-SEQUENCE',
     ],
@@ -1187,9 +1199,9 @@ describe('Spec Kit-compatible structural validator', () => {
     const { project, change } = createChange('thoth-no-parallel-work-');
     try {
       writeFixture(change, {
-        tasks: VALID_TASKS.replace('T003 [P] [US1]', 'T003 [US1]').replace(
-          '## Parallel execution examples\n\nT003 may run with T001 because the files do not overlap.',
-          '## Parallel execution\n\n- None: all tasks share an ordered contract surface.',
+        tasks: VALID_TASKS.replaceAll(' [P]', '').replace(
+          VALID_PARALLEL_GROUP,
+          '- None: all tasks share an ordered contract surface.',
         ),
       });
 
@@ -1203,9 +1215,9 @@ describe('Spec Kit-compatible structural validator', () => {
     const { project, change } = createChange('thoth-placeholder-parallel-');
     try {
       writeFixture(change, {
-        tasks: VALID_TASKS.replace('T003 [P] [US1]', 'T003 [US1]').replace(
-          '## Parallel execution examples\n\nT003 may run with T001 because the files do not overlap.',
-          '## Parallel execution\n\n- None: [reason no tasks can safely overlap]',
+        tasks: VALID_TASKS.replaceAll(' [P]', '').replace(
+          VALID_PARALLEL_GROUP,
+          '- None: [reason no tasks can safely overlap]',
         ),
       });
 
@@ -1225,8 +1237,8 @@ describe('Spec Kit-compatible structural validator', () => {
     try {
       writeFixture(change, {
         tasks: VALID_TASKS.replace(
-          'T003 may run with T001 because the files do not overlap.',
-          'T003 may run with T001 because the files do not overlap.\n\n- None: all work is sequential.',
+          VALID_PARALLEL_GROUP,
+          `${VALID_PARALLEL_GROUP}\n\n- None: all work is sequential.`,
         ),
       });
 
@@ -1241,50 +1253,107 @@ describe('Spec Kit-compatible structural validator', () => {
     }
   });
 
+  test('rejects parallel rationale without path and dependency evidence', () => {
+    const { project, change } = createChange(
+      'thoth-hollow-parallel-rationale-',
+    );
+    try {
+      writeFixture(change, {
+        tasks: VALID_TASKS.replace(
+          '- Rationale: The lane path sets are disjoint and neither lane consumes peer output.',
+          '- Rationale: The lanes are independent.',
+        ),
+      });
+
+      const report = JSON.parse(validate(change, 'ready').stdout) as {
+        errors: Array<{ code: string }>;
+      };
+      expect(report.errors.map(({ code }) => code)).toContain(
+        'SDD-TASK-LANE-RATIONALE',
+      );
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   test.each([
     [
-      'an unknown task reference',
-      VALID_TASKS.replace(
-        'T003 may run with T001 because the files do not overlap.',
-        'T003 may run with T999 because the files do not overlap.',
-      ),
+      'a non-sequential group ID',
+      VALID_TASKS.replace('### Group P1', '### Group P2'),
+      'SDD-TASK-LANE-GRAMMAR',
     ],
     [
-      'a parallel task omitted from the execution example',
-      VALID_TASKS.replace(
-        'T003 may run with T001 because the files do not overlap.',
-        'T001 may run with T002 because the files do not overlap.',
-      ),
+      'a group with fewer than two lanes',
+      VALID_TASKS.replace('- Lane L2: T003 | Owner: quick\n', ''),
+      'SDD-TASK-LANE-GRAMMAR',
     ],
     [
-      'parallel tasks that write the same path',
+      'an unknown lane member',
+      VALID_TASKS.replace('Lane L2: T003', 'Lane L2: T999'),
+      'SDD-TASK-LANE-MEMBERSHIP',
+    ],
+    [
+      'a non-parallel lane member',
+      VALID_TASKS.replace('T003 [P] [US1]', 'T003 [US1]'),
+      'SDD-TASK-LANE-MEMBERSHIP',
+    ],
+    [
+      'a parallel task omitted from every lane',
+      VALID_TASKS.replace('Lane L1: T001 -> T002', 'Lane L1: T001'),
+      'SDD-TASK-LANE-MEMBERSHIP',
+    ],
+    [
+      'a task assigned to two lanes',
+      VALID_TASKS.replace(
+        'Lane L1: T001 -> T002',
+        'Lane L1: T001 -> T002 -> T003',
+      ),
+      'SDD-TASK-LANE-MEMBERSHIP',
+    ],
+    [
+      'an ineligible lane owner',
+      VALID_TASKS.replace('Owner: quick', 'Owner: worker'),
+      'SDD-TASK-LANE-OWNER',
+    ],
+    [
+      'a missing lane owner',
+      VALID_TASKS.replace(' | Owner: quick', ''),
+      'SDD-TASK-LANE-OWNER',
+    ],
+    [
+      'an unknown prerequisite',
+      VALID_TASKS.replace('Prerequisites: None', 'Prerequisites: T999'),
+      'SDD-TASK-LANE-PREREQUISITE',
+    ],
+    [
+      'a prerequisite inside the group',
+      VALID_TASKS.replace('Prerequisites: None', 'Prerequisites: T001'),
+      'SDD-TASK-LANE-PREREQUISITE',
+    ],
+    [
+      'a member task used as the barrier',
+      VALID_TASKS.replace('Barrier: Final verification', 'Barrier: T002'),
+      'SDD-TASK-LANE-BARRIER',
+    ],
+    [
+      'a missing barrier',
+      VALID_TASKS.replace('- Barrier: Final verification\n', ''),
+      'SDD-TASK-LANE-BARRIER',
+    ],
+    [
+      'a declared dependency across lanes',
+      VALID_TASKS.replace('T001 -> T002.', 'T001 -> T002; T002 -> T003.'),
+      'SDD-TASK-LANE-DEPENDENCY',
+    ],
+    [
+      'overlapping paths across lanes',
       VALID_TASKS.replace(
         'Document FR-001 and SC-001 in `README.md`',
         'Document FR-001 and SC-001 in `src/example.test.ts`',
       ),
+      'SDD-TASK-LANE-OVERLAP',
     ],
-    [
-      'parallel paths that overlap after dot-segment normalization',
-      VALID_TASKS.replace(
-        'Document FR-001 and SC-001 in `README.md`',
-        'Document FR-001 and SC-001 in `./src/a/../example.test.ts`',
-      ),
-    ],
-    [
-      'parallel paths with an ancestor relationship',
-      VALID_TASKS.replace('`src/example.test.ts`', '`src/example`').replace(
-        '`README.md`',
-        '`src/example/docs.md`',
-      ),
-    ],
-    [
-      'a no-parallel claim mixed with a task pairing',
-      VALID_TASKS.replace('T003 [P] [US1]', 'T003 [US1]').replace(
-        'T003 may run with T001 because the files do not overlap.',
-        'T003 may run with T001 because the files do not overlap.\n\n- None: all work is sequential.',
-      ),
-    ],
-  ])('rejects unsafe parallel metadata with %s', (_label, tasks) => {
+  ])('rejects canonical parallel metadata with %s', (_label, tasks, code) => {
     const { project, change } = createChange('thoth-unsafe-parallel-');
     try {
       writeFixture(change, { tasks });
@@ -1292,9 +1361,7 @@ describe('Spec Kit-compatible structural validator', () => {
       const report = JSON.parse(validate(change, 'tasks').stdout) as {
         errors: Array<{ code: string }>;
       };
-      expect(report.errors.map(({ code }) => code)).toContain(
-        'SDD-TASK-PARALLEL',
-      );
+      expect(report.errors.map((error) => error.code)).toContain(code);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

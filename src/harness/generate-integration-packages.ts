@@ -14,10 +14,6 @@ import { claudeCodeAdapter } from './adapters/claude-code';
 import { codexAdapter } from './adapters/codex';
 import { codexPluginRootArtifactPath } from './codex-plugin-paths';
 import { THOTH_OWNED_SKILL_NAMES } from './core/owned-skills';
-import {
-  findRootPackageJsonPath,
-  readPackageJsonVersion,
-} from './core/package-version';
 import type { HarnessArtifact, HarnessDiagnostic } from './types';
 
 const SHARED_PLUGIN_ROOT = 'plugin';
@@ -26,53 +22,6 @@ const LEGACY_INTEGRATION_ROOTS = [
   join(LEGACY_INTEGRATIONS_ROOT, 'codex'),
   join(LEGACY_INTEGRATIONS_ROOT, 'claude-code'),
 ] as const;
-function stableJson(value: unknown): string {
-  return `${JSON.stringify(value, null, 2)}\n`;
-}
-
-function codexMarketplaceContent(): string {
-  return stableJson({
-    name: 'thoth-agents',
-    interface: { displayName: 'thoth-agents Adaptive Orchestration' },
-    plugins: [
-      {
-        name: 'thoth-agents',
-        source: {
-          source: 'local',
-          path: './plugin',
-        },
-        policy: {
-          installation: 'AVAILABLE',
-          authentication: 'ON_INSTALL',
-        },
-        category: 'Productivity',
-      },
-    ],
-  });
-}
-
-function claudeMarketplaceContent(version: string): string {
-  return stableJson({
-    $schema: 'https://anthropic.com/claude-code/marketplace.schema.json',
-    name: 'thoth-agents',
-    description:
-      'Adaptive orchestration with seven roles and runtime-autonomous direct, accelerated, and full Spec Kit-compatible SDD routes.',
-    owner: { name: 'thoth-agents maintainers' },
-    plugins: [
-      {
-        name: 'thoth-agents',
-        description:
-          'Adaptive root orchestration, six specialist subagents, and a runtime-autonomous Spec Kit-compatible SDD bundle.',
-        version,
-        author: { name: 'thoth-agents maintainers' },
-        source: './plugin',
-        category: 'productivity',
-        homepage: 'https://github.com/EremesNG/thoth-agents',
-      },
-    ],
-  });
-}
-
 function writeArtifact(
   projectRoot: string,
   bundleRoot: string,
@@ -249,26 +198,6 @@ export function generateIntegrationPackages({
       written,
     );
   }
-
-  const version = readPackageJsonVersion(
-    findRootPackageJsonPath([projectRoot]),
-  );
-  const codexMarketplacePath = join(
-    projectRoot,
-    '.agents',
-    'plugins',
-    'marketplace.json',
-  );
-  const claudeMarketplacePath = join(
-    projectRoot,
-    '.claude-plugin',
-    'marketplace.json',
-  );
-  mkdirSync(dirname(codexMarketplacePath), { recursive: true });
-  mkdirSync(dirname(claudeMarketplacePath), { recursive: true });
-  writeFileSync(codexMarketplacePath, codexMarketplaceContent());
-  writeFileSync(claudeMarketplacePath, claudeMarketplaceContent(version));
-  written.push(codexMarketplacePath, claudeMarketplacePath);
 
   return {
     written: [...new Set(written)],

@@ -40,10 +40,13 @@ phase execution does not.
 - Status treats each ledger record as the official last complete CLI-managed
   version, exposes it beside the executing CLI version, and never infers or
   advances it from OpenCode package state or native marketplace state.
-- Codex and Claude marketplace trust, snapshots, and caches remain
-  manager-owned; installers may invoke their official native manager commands
-  but never edit those files directly. Native plugin updates do not prove that
-  CLI-managed agents, skills, configuration, or provider setup are aligned.
+- Codex and Claude marketplace trust and normal cache lifecycle remain
+  manager-owned. Installers use official native manager commands first. After
+  the central Codex plugin is verified and with Codex closed, the Codex installer
+  may additionally remove only its fixed, preflight-approved legacy
+  cache/snapshot roots; Claude caches are never edited. Native plugin updates do
+  not prove that CLI-managed agents, skills, configuration, or provider setup are
+  aligned.
 - Codex CLI installation is mandatory for global agents, root instructions,
   feature configuration, external global skills, and native plugin setup. It
   fails closed before global writes when Codex manager inspection or plugin

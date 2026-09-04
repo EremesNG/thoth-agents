@@ -2,8 +2,8 @@
 
 thoth-agents combines Spec Kit-grade artifact rigor with OpenSpec-style durable
 requirement deltas. The adaptive root recommends the lightest safe route, the
-user selects Direct, Accelerated, or Full, and root loads only the current phase
-contract.
+route resolves through an explicit answer or bounded recommended fallback, and
+root loads only the current phase contract.
 
 Routes govern artifacts and gates, not implementation ownership. Root or a
 specialist may implement under any route according to explicit safe user
@@ -19,15 +19,18 @@ Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archi
 
 | Route | Selection signal | Execution policy |
 | --- | --- | --- |
-| Direct | Clear, bounded, low-risk work—including multi-file documentation or mechanical edits | No SDD artifacts; oracle still verifies independently. |
+| Direct | Clear, bounded, low-risk work—including multi-file documentation or mechanical edits | No SDD artifacts; focused root verification is sufficient for trivial deterministic work, while material risk requires fresh Oracle judgment. |
 | Accelerated | Generic SDD request, partial clarity, moderate risk/cost, multi-surface behavior, or architecture work | Root fast-forwards specification, plan, and tasks without routine pauses. |
 | Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Adds focused exploration and separate phase gates. |
 
 An explicitly named route is the user's selection and wins. Otherwise root
-assesses the work, recommends one route, presents Direct, Accelerated, and Full,
-and waits for the user's choice. A generic “use SDD” request makes Accelerated
-the minimum recommendation, but does not choose on the user's behalf. The number
-of files alone does not raise documentation or mechanical work out of Direct.
+assesses the work and summarizes the relevant request context, scope, clarity,
+risk, and why its recommendation fits before presenting Direct, Accelerated,
+and Full. Any explicit answer wins. If the native question returns answerless,
+root makes at most three total attempts; after the third answerless result, the
+recommended route counts as selected. A generic “use SDD” request makes
+Accelerated the minimum recommendation. The number of files alone does not
+raise documentation or mechanical work out of Direct.
 
 `architectural-grilling` runs before specification only when explicitly
 requested or when a material product/architecture decision remains human-owned.
@@ -43,14 +46,17 @@ Full by itself does not activate it.
 | `plan` | root | `plan.md` and justified support artifacts |
 | `checklist` | root | Conditional `checklists/requirements.md` |
 | `tasks` | root | `tasks.md` |
-| `plan-review` | `oracle` | Optional read-only findings when the user selects review after `ready` |
+| `plan-review` | `oracle` | Read-only findings when review is explicit or bounded-default selected after `ready` |
 | `implement` | adaptive root, `designer`, `quick`, or `deep`; route-independent task-shape/net-gain decision | One writer per mutable surface |
-| `verify` | `oracle` | Always read-only and independent |
+| `verify` | Root for trivial deterministic Direct; fresh read-only `oracle` for materially risky Direct and every Accelerated/Full final verify | Mandatory, proportionate, and independent where Oracle is required |
 | `converge` | root | Append-only remediation in `tasks.md` |
 | `archive` | root | Transactional spec sync, audit report, and dated move |
 
-The writer never substitutes for oracle. Oracle owns every final verification
-and each user-selected pre-implementation plan review.
+The implementation writer never substitutes for required independent judgment.
+Every route verifies: trivial deterministic Direct work may use focused root
+checks, materially risky Direct work requires a fresh read-only Oracle, and every
+Accelerated or Full final verify requires a fresh read-only Oracle. Offered
+plan review never replaces final verification.
 
 In Direct, Accelerated, and Full, root first balances specialization, context
 isolation, independent work, quality, latency, and total cost against sequential
@@ -61,6 +67,56 @@ for UI/UX and visual quality, `quick` for known narrow low-risk work, and `deep`
 for coupled, shared-contract, migration, concurrency, edge-case-heavy, or
 high-risk work. Independent surfaces may split only with non-overlapping
 ownership; coupled surfaces use one `deep` writer and ordered handoffs.
+
+## Behavioral graph shaping
+
+Before implementation, root records bounded work units, exact outputs, mutable
+ownership, specialist fit, and verification inputs. A lane is blocked only when it
+needs a concrete artifact or decision from another lane; a preferred sequence
+alone is not a dependency. Input-complete lanes are ready. Root dispatches every
+ready, conflict-free lane admitted by current native capacity in the current
+native wave before waiting. It retains native handles and results, refills
+released capacity with undispatched ready lanes before waiting again, and
+performs fan-in only from terminal validated evidence before releasing the
+declared barrier. If capacity or a native capability is missing or unproven,
+the root reports truthful degradation and proceeds sequentially when appropriate.
+
+The three coordination levels are distinct: a granular `T###` task is one
+independently verifiable unit; an ordered writer-owned lane is a sequence of
+tasks sharing one bounded mutable surface; and an independent parallel group is
+two or more lanes whose dispatches may fan out before a shared terminal barrier.
+`[P]` marks group/lane eligibility only—it does not promise fixed width or
+cross-harness concurrency.
+
+Canonical authoring example:
+
+```markdown
+## Parallel execution
+
+### Group P1
+
+- Lane L1: T001 -> T002 | Owner: deep
+- Lane L2: T003 -> T004 | Owner: quick
+- Prerequisites: None
+- Barrier: T005
+- Rationale: Both lane path sets are disjoint and neither lane consumes peer output.
+```
+
+This is declarative SDD guidance. Harness-native dispatch, status/wait,
+capacity, terminal results, and lifecycle remain authoritative; Thoth does not
+provide a scheduler, queue, task database, universal worktree manager, or
+synthetic `wait_all` runtime.
+
+Semantic triggers keep the complete roster active: use `librarian` for current,
+unfamiliar, version-sensitive, or external facts (not stable local facts),
+`designer` for material UI/UX, interaction, accessibility, or visual-quality
+work, and `quick` for known narrow, clear, low-risk isolated edits. Use `deep`
+for coupled, shared-contract, migration, concurrency, edge-case-heavy, or
+high-risk implementation; use `explorer` for broad local uncertainty and
+`oracle` for independent judgment when risk or the verification gate warrants it.
+Native harness execution and lifecycle are the sole authority for role selection,
+fan-out/fan-in, status/wait, steering, cancellation, and terminal results. Report
+unavailable primitives and fall back sequentially without emulating a runtime.
 
 ## Fast-forward versus gated planning
 
@@ -120,7 +176,7 @@ research.md                  # optional when it resolves risk
 data-model.md                # optional
 contracts/                   # optional
 quickstart.md                # optional
-plan-review.md               # optional when the user selects Oracle review
+plan-review.md               # optional when Oracle review is explicit or bounded-default selected
 ```
 
 These files are the single SDD source of truth. thoth-mem may preserve durable
@@ -176,10 +232,11 @@ Tasks identify an independently testable MVP, dependencies, exact paths, and a
 verification outcome. They cover all FRs and buildable SCs. Behavior tests
 precede implementation.
 
-`[P]` is valid only for proven non-overlapping mutable paths and requires a
-concrete task pairing. If no safe parallel work exists, the artifact says
-`- None: <reason>`; it never invents parallelism to satisfy a template. Root
-alone moves task state from `[ ]` to `[~]` to `[x]` after evidence.
+`[P]` is valid only for proven non-overlapping mutable paths and requires
+membership in exactly one declared group and ordered lane. If no safe parallel
+group exists, the artifact says `- None: <reason>`; it never invents
+parallelism to satisfy a template. Root alone moves task state from `[ ]` to
+`[~]` to `[x]` after evidence.
 
 ### Requirements checklist
 
@@ -196,21 +253,34 @@ required` instead of ceremonial repetition.
 ## Plan review, verify, and converge
 
 After `ready` on Accelerated or Full, root recommends and presents two choices:
-`Review plan with Oracle (Recommended)` and `Proceed without review`. The user
-decides. Proceeding skips pre-implementation Oracle review and authorizes
-implementation; it does not skip final verification.
+`Review plan with Oracle (Recommended)` and `Proceed without review`. Any
+explicit answer wins. If the native question returns answerless, root makes at
+most three total attempts; after the third answerless result, Oracle review
+counts as selected. Explicitly proceeding skips pre-implementation review and
+authorizes implementation; it does not skip final verification.
 
 When selected, the bundled `plan-reviewer` asks read-only Oracle to judge
 completeness, correctness, cross-artifact coherence, buildability, and outcome
-coverage. Oracle returns exactly `[OKAY]` or `[REJECT]`; rejection identifies at
-most three actionable blockers. Root repairs canonical artifacts and offers the
-choice again. A fresh `[OKAY]` is persisted in `plan-review.md` with SHA-256
-digests, then root summarizes the approved plan and separately asks whether to
-implement or stop. The artifact stays in OpenSpec and is not mirrored into
-provider memory.
+coverage. For declared parallel groups, structural `ready` validation establishes
+the grammar and evidence shape, while Oracle independently judges semantic lane
+independence, path-union ownership, prerequisites, barriers, native-capacity
+dispatch-before-wait waves, and truthful sequential fallback. Oracle returns
+exactly `[OKAY]` or `[REJECT]`; rejection identifies at most three actionable
+blockers. Root repairs actionable same-intent planning artifacts, revalidates
+affected gates, and starts a fresh Oracle round until `[OKAY]` or a material
+human-owned blocker. A fresh `[OKAY]` is persisted in `plan-review.md` with
+SHA-256 digests. Root then summarizes approved scope, approach, ownership,
+verification, and material risks before asking `Implement (Recommended)` or
+`Stop`. Any explicit answer wins. After at most three total answerless attempts,
+the third answerless result selects implementation. `[OKAY]` alone is not
+implementation authorization before that decision resolves. The artifact stays
+in OpenSpec and is not mirrored into provider memory.
 
-Plan review is optional and never substitutes for mandatory final Oracle
-verification.
+These bounded defaults apply only to route, review, and implementation choices;
+secrets, destructive/security-sensitive actions, and material human-owned
+product or architecture decisions remain blocking. Enforcement is
+instruction-level when a harness exposes no programmable question primitive.
+Plan review never substitutes for mandatory final Oracle verification.
 
 Every `verify` uses the same three dimensions and maps each FR/buildable SC to
 implementation evidence and executed checks. Direct returns PASS/FAIL in-session.

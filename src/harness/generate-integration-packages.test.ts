@@ -33,7 +33,7 @@ describe('generateIntegrationPackages', () => {
     }
   ).version;
 
-  test('writes one shared native Codex and Claude marketplace bundle', () => {
+  test('writes one shared native Codex and Claude plugin bundle without package marketplaces', () => {
     const dir = mkdtempSync(join(tmpdir(), 'thoth-integration-packages-'));
     try {
       writeFileSync(
@@ -46,15 +46,6 @@ describe('generateIntegrationPackages', () => {
       const canonicalClaudeAgents = claudeCodeAdapter
         .render({ projectRoot: dir })
         .artifacts.filter((artifact) => artifact.path.startsWith('agents/'));
-      const codexMarketplace = JSON.parse(
-        readFileSync(
-          join(dir, '.agents', 'plugins', 'marketplace.json'),
-          'utf8',
-        ),
-      ) as Record<string, unknown>;
-      const claudeMarketplace = JSON.parse(
-        readFileSync(join(dir, '.claude-plugin', 'marketplace.json'), 'utf8'),
-      ) as Record<string, unknown>;
       const codexManifest = JSON.parse(
         readFileSync(join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'),
       ) as Record<string, unknown>;
@@ -64,38 +55,31 @@ describe('generateIntegrationPackages', () => {
 
       expect(result.written).toEqual(
         expect.arrayContaining([
-          join(dir, '.agents', 'plugins', 'marketplace.json'),
-          join(dir, '.claude-plugin', 'marketplace.json'),
           join(pluginRoot, '.codex-plugin', 'plugin.json'),
           join(pluginRoot, '.claude-plugin', 'plugin.json'),
         ]),
       );
-      expect(codexMarketplace).toMatchObject({
-        name: 'thoth-agents',
-        plugins: [
-          {
-            name: 'thoth-agents',
-            source: { source: 'local', path: './plugin' },
-            policy: {
-              installation: 'AVAILABLE',
-              authentication: 'ON_INSTALL',
-            },
-            category: 'Productivity',
-          },
-        ],
-      });
-      expect(claudeMarketplace).toMatchObject({
-        $schema: 'https://anthropic.com/claude-code/marketplace.schema.json',
-        name: 'thoth-agents',
-        plugins: [
-          {
-            name: 'thoth-agents',
-            version: packageVersion,
-            source: './plugin',
-            category: 'productivity',
-          },
-        ],
-      });
+      expect(result.written).not.toContain(
+        join(dir, '.agents', 'plugins', 'marketplace.json'),
+      );
+      expect(result.written).not.toContain(
+        join(dir, '.claude-plugin', 'marketplace.json'),
+      );
+      expect(
+        existsSync(join(dir, '.agents', 'plugins', 'marketplace.json')),
+      ).toBe(false);
+      expect(existsSync(join(dir, '.claude-plugin', 'marketplace.json'))).toBe(
+        false,
+      );
+      const packageFiles = (
+        JSON.parse(
+          readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
+        ) as {
+          files: string[];
+        }
+      ).files;
+      expect(packageFiles).not.toContain('.agents/plugins/marketplace.json');
+      expect(packageFiles).not.toContain('.claude-plugin/marketplace.json');
       expect(codexManifest).toMatchObject({
         name: 'thoth-agents',
         version: packageVersion,
@@ -248,14 +232,20 @@ describe('generateIntegrationPackages', () => {
       }
       expect(existsSync(join(process.cwd(), 'integrations'))).toBe(false);
 
-      for (const path of [
-        join('.agents', 'plugins', 'marketplace.json'),
-        join('.claude-plugin', 'marketplace.json'),
-      ]) {
-        expect(readFileSync(join(process.cwd(), path), 'utf8')).toBe(
-          readFileSync(join(dir, path), 'utf8'),
-        );
-      }
+      expect(
+        existsSync(
+          join(process.cwd(), '.agents', 'plugins', 'marketplace.json'),
+        ),
+      ).toBe(false);
+      expect(
+        existsSync(join(process.cwd(), '.claude-plugin', 'marketplace.json')),
+      ).toBe(false);
+      expect(
+        existsSync(join(dir, '.agents', 'plugins', 'marketplace.json')),
+      ).toBe(false);
+      expect(existsSync(join(dir, '.claude-plugin', 'marketplace.json'))).toBe(
+        false,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

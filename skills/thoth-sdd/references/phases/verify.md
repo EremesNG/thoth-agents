@@ -1,10 +1,12 @@
 # Verify contract
 
-**Owner**: oracle, always read-only and independent
+**Owner**: route- and risk-aware; Root for trivial deterministic Direct, otherwise a fresh read-only Oracle
 
-Oracle verifies Direct, Accelerated, and Full work. The root or writer that
-implemented the change cannot substitute for oracle. Inspect changed code and
-run or validate the smallest sufficient checks.
+Every route requires mandatory verification. Trivial deterministic Direct work
+may be verified by Root with focused deterministic checks. Materially risky
+Direct work and Accelerated or Full final verification use a fresh read-only
+Oracle. The implementation writer never approves its own work. Inspect changed
+code and run or validate the smallest sufficient checks.
 
 Judge three dimensions separately: **completeness** of accepted scope and
 coverage, **correctness** against behavioral contracts and executed evidence,
@@ -16,7 +18,7 @@ task.
 
 Return `pass` or `fail`, compliance matrix, commands/results, stable findings,
 critical issues, warnings, and remediation anchors. For Direct, return the
-verdict in-session. For Accelerated and Full, root persists oracle's exact result
+verdict in-session regardless of owner. For Accelerated and Full, root persists Oracle's exact result
 using `<skill-dir>/templates/verify-report.md`, where `<skill-dir>` is the
 directory containing the installed `thoth-sdd/SKILL.md`. Fail routes to converge
 (straight back to implement for Direct); PASS permits closeout and archive for

@@ -32,8 +32,24 @@ for them.
 
 ## Parallel execution
 
-[Replace the anchor with exactly one form: concrete task pairings covering every
-`[P]` task, or `- None: <evidence-backed reason>`. Never keep both forms.]
+Use this exact grammar when safe parallel work exists:
+
+### Group P1
+
+- Lane L1: T001 -> T002 | Owner: deep
+- Lane L2: T003 -> T004 | Owner: quick
+- Prerequisites: None
+- Barrier: Final verification
+- Rationale: Both lane path sets are disjoint and neither lane consumes peer output.
+
+Groups and lanes are sequential and unique. Every `[P]` task belongs to exactly one lane; non-`[P]` tasks do not. Lane surfaces are the union of exact task
+paths, and lanes in a group have disjoint surfaces and no cross-lane dependency.
+The `Rationale` must explicitly state path-disjointness and cross-lane dependency
+evidence so structural validation can gate the evidence shape and Oracle can
+judge whether the claim is true.
+Prerequisites name known tasks outside the group; the barrier is a downstream
+task or `Final verification` after all lane members. If no group exists, use
+only `- None: <evidence-backed reason>` and no task may use `[P]`.
 
 <!-- PARALLEL-EXECUTION-EVIDENCE -->
 

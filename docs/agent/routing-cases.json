@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "cases": [
     {
       "id": "single-domain-agent-permission",
@@ -84,6 +84,7 @@
       "forbidden_owners": ["orchestrator", "designer", "deep"],
       "delegation_net_gain": true,
       "ownership_rationale": "Broad uncertain discovery benefits from isolated read-only context before specification.",
+      "decision": { "kind": "role-selection", "expected": "explorer" },
       "notes": "Search relevant symbols, definitions, callers, and tests; return distilled evidence without loading every document or inventing ownership."
     },
     {
@@ -99,7 +100,8 @@
       "forbidden_owners": ["designer", "quick", "deep"],
       "delegation_net_gain": false,
       "ownership_rationale": "The root already has the complete context and delegation would cost more than the short ordered edit.",
-      "notes": "Direct controls governance only; root continuity justifies ownership here and a fresh Oracle still verifies."
+      "decision": { "kind": "direct-retention", "expected": "orchestrator" },
+      "notes": "Direct controls governance only; root continuity justifies ownership here and focused deterministic verification stays with root."
     },
     {
       "id": "root-accelerated-continuity",
@@ -114,6 +116,7 @@
       "forbidden_owners": ["designer", "quick", "deep"],
       "delegation_net_gain": false,
       "ownership_rationale": "Accumulated context and one compatibility-coupled reasoning chain outweigh delegation rediscovery and coordination overhead.",
+      "decision": { "kind": "direct-retention", "expected": "orchestrator" },
       "notes": "Accelerated adds artifacts and gates; it does not force a writer subagent when root continuity has the demonstrated net gain."
     },
     {
@@ -129,6 +132,7 @@
       "forbidden_owners": ["designer", "quick", "deep"],
       "delegation_net_gain": false,
       "ownership_rationale": "The accepted implementation is sequential, shares mutable state, and would require a child to rediscover the root's validated context.",
+      "decision": { "kind": "direct-retention", "expected": "orchestrator" },
       "notes": "Full governance remains intact while implementation ownership stays adaptive and final verification remains independent."
     },
     {
@@ -144,7 +148,8 @@
       "forbidden_owners": ["orchestrator", "quick", "deep"],
       "delegation_net_gain": true,
       "ownership_rationale": "The bounded user-facing surface benefits from designer specialization and isolated visual verification despite Direct governance.",
-      "notes": "After deciding delegation creates net gain, select designer; visual QA does not replace fresh Oracle verification."
+      "decision": { "kind": "role-selection", "expected": "designer" },
+      "notes": "After deciding delegation creates net gain, select designer; visual QA does not replace any independent verification required by material risk."
     },
     {
       "id": "writer-quick-known",
@@ -162,7 +167,8 @@
       "forbidden_owners": ["orchestrator", "designer", "deep"],
       "delegation_net_gain": true,
       "ownership_rationale": "The exact file and symbol are known, the edit is isolated, and quick avoids loading unrelated planning context.",
-      "notes": "After deciding delegation creates net gain, quick owns the bounded edit regardless of route; root coordinates and a fresh Oracle verifies it."
+      "decision": { "kind": "role-selection", "expected": "quick" },
+      "notes": "After deciding delegation creates net gain, quick owns the bounded edit regardless of route; root coordinates focused verification unless material risk requires a fresh Oracle."
     },
     {
       "id": "writer-deep-correctness",
@@ -177,6 +183,7 @@
       "forbidden_owners": ["orchestrator", "designer", "quick"],
       "delegation_net_gain": true,
       "ownership_rationale": "A fresh deep context improves correctness across the coupled contract and adapters even though the user selected Direct governance.",
+      "decision": { "kind": "role-selection", "expected": "deep" },
       "notes": "After deciding delegation creates net gain, select one deep writer because compatibility-coupled files cannot use overlapping writers."
     },
     {
@@ -190,6 +197,7 @@
       "forbidden_owners": ["orchestrator", "quick", "deep"],
       "delegation_net_gain": true,
       "ownership_rationale": "Current authoritative evidence is an isolated read-only research workstream.",
+      "decision": { "kind": "role-selection", "expected": "librarian" },
       "notes": "Use librarian for current authoritative external evidence, then confirm local adapter wording."
     },
     {
@@ -205,7 +213,8 @@
       "forbidden_owners": ["orchestrator", "designer", "quick"],
       "delegation_net_gain": true,
       "ownership_rationale": "Independent judgment requires a fresh read-only context that did not implement the candidate.",
-      "notes": "Every final verification uses a fresh read-only Oracle that did not implement the change."
+      "decision": { "kind": "role-selection", "expected": "oracle" },
+      "notes": "Artifact-backed final verification uses a fresh read-only Oracle that did not implement the change."
     },
     {
       "id": "fallback-unfamiliar-writer",
@@ -215,6 +224,138 @@
       "expected_overlays": ["agents-and-delegation"],
       "expected_code_roots": [],
       "notes": "Explorer first resolves ownership; root then selects quick or deep from evidence instead of guessing."
+    },
+    {
+      "id": "writer-designer-accessibility",
+      "task": "Own the keyboard focus order and contrast behavior of a bounded checkout dialog and visually verify each interaction state.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": [],
+      "expected_code_roots": ["src/agents/"],
+      "expected_owner": "designer",
+      "forbidden_owners": ["quick", "deep"],
+      "delegation_net_gain": true,
+      "decision": { "kind": "role-selection", "expected": "designer" },
+      "ownership_rationale": "Interaction and accessibility quality require the designer specialization even though the edit is mechanically small.",
+      "notes": "Visual and keyboard verification remain part of the bounded writer assignment."
+    },
+    {
+      "id": "writer-quick-config-default",
+      "task": "Change one already-located configuration default with a literal expected value and run its single focused unit test.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": [],
+      "expected_code_roots": ["src/config/"],
+      "expected_owner": "quick",
+      "forbidden_owners": ["designer", "deep"],
+      "delegation_net_gain": true,
+      "decision": { "kind": "role-selection", "expected": "quick" },
+      "ownership_rationale": "The exact target, expected value, and focused check make the lane isolated and low risk.",
+      "notes": "Escalate if the default affects a shared schema or migration."
+    },
+    {
+      "id": "read-librarian-version-policy",
+      "task": "Confirm the current official Node support policy before changing a version-sensitive installation statement.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": ["public-compatibility"],
+      "expected_code_roots": [],
+      "expected_owner": "librarian",
+      "forbidden_owners": ["explorer", "quick"],
+      "delegation_net_gain": true,
+      "decision": { "kind": "role-selection", "expected": "librarian" },
+      "ownership_rationale": "The decision depends on current authoritative external evidence rather than local repository discovery.",
+      "notes": "Return direct official sources and separate inference."
+    },
+    {
+      "id": "graph-independent-wave",
+      "task": "Research an external contract, inspect a disjoint local adapter, and update an isolated example before synthesizing the migration decision.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": ["harness-packaging"],
+      "expected_code_roots": ["src/harness/", "docs/"],
+      "decision": {
+        "kind": "task-shaping",
+        "expected": "parallel-wave",
+        "ready": ["external-contract", "local-adapter", "isolated-example"],
+        "blocked": ["migration-synthesis"]
+      },
+      "notes": "Dispatch every ready lane before waiting; synthesis depends on all three terminal results."
+    },
+    {
+      "id": "graph-true-dependency",
+      "task": "Generate a contract artifact and only then update the consumer whose exact shape depends on that artifact.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": [],
+      "expected_code_roots": ["src/harness/"],
+      "decision": {
+        "kind": "task-shaping",
+        "expected": "blocked-dependency",
+        "ready": ["produce-contract"],
+        "blocked": ["update-consumer"]
+      },
+      "notes": "The consumer is not ready until terminal evidence includes the concrete artifact."
+    },
+    {
+      "id": "graph-overlapping-writes",
+      "task": "Two proposed implementation lanes both need to edit the same prompt contract and generated root.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": ["harness-packaging"],
+      "expected_code_roots": ["src/agents/", "src/harness/"],
+      "decision": {
+        "kind": "task-shaping",
+        "expected": "single-writer",
+        "ready": ["combined-prompt-change"],
+        "blocked": ["second-overlapping-writer"]
+      },
+      "notes": "Serialize or combine overlapping mutable ownership instead of claiming parallelism."
+    },
+    {
+      "id": "graph-native-width",
+      "task": "Five independent read-only checks are ready but the native harness exposes only three execution slots.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": [],
+      "expected_code_roots": [],
+      "decision": {
+        "kind": "task-shaping",
+        "expected": "bounded-native-wave",
+        "ready": ["check-a", "check-b", "check-c"],
+        "blocked": ["check-d", "check-e"]
+      },
+      "notes": "Use current native capacity and dispatch the remaining ready work in a later wave."
+    },
+    {
+      "id": "graph-timeout-nonterminal",
+      "task": "A native wait times out while a dependent synthesis lane is still blocked on the specialist result.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": [],
+      "expected_code_roots": [],
+      "decision": {
+        "kind": "task-shaping",
+        "expected": "remain-nonterminal",
+        "ready": [],
+        "blocked": ["dependent-synthesis"]
+      },
+      "notes": "Timeout and silence are not terminal evidence."
+    },
+    {
+      "id": "graph-truthful-degradation",
+      "task": "The harness cannot prove background dispatch support for two otherwise independent lanes.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": [],
+      "expected_code_roots": [],
+      "decision": {
+        "kind": "task-shaping",
+        "expected": "sequential-fallback",
+        "ready": ["lane-a"],
+        "blocked": ["lane-b"]
+      },
+      "notes": "Report the native capability gap and proceed sequentially without emulating lifecycle state."
     }
   ]
 }

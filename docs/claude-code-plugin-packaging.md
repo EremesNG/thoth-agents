@@ -1,8 +1,9 @@
 # Claude Code Plugin Packaging
 
-Claude Code consumes the shared distribution generated at `plugin/`, published
-through `.claude-plugin/marketplace.json`. Codex resolves to this same bundle;
-each harness reads its own manifest and MCP surface.
+Claude Code consumes the shared distribution generated at `plugin/`. The
+separate `EremesNG/thoth-plugins` repository publishes its central marketplace
+entry; Codex resolves to this same bundle, and each harness reads its own
+manifest and MCP surface.
 
 ## Generated layout
 
@@ -34,14 +35,29 @@ plugin/
 Every agent Markdown file is generated from the canonical `src/agents/` prompt
 contract. The five owned skills are copied once from the canonical root
 `skills/` tree. Codex-only assets are inert for Claude. Both plugin manifests
-and marketplace entries equal the root package version.
+equal the root package version. The central catalog independently pins that
+version and its immutable product tag.
 
 ## Runtime behavior
 
 `settings.json` activates the orchestrator in the main thread. Specialist
 delegation uses the `thoth-agents:<role>` namespace. Explorer, librarian, and
 oracle deny write/edit tools; implementation roles retain bounded write access.
-Oracle owns user-selected plan review and every final verify.
+The root shapes dependencies, ready/blocked lanes, and one-writer ownership.
+Claude's native `Agent` calls fan out every ready conflict-free lane before
+waiting and fan in only terminal native results. Explicitly or bounded-default
+selected plan review is optional; trivial deterministic Direct work may use focused root checks, while
+materially risky Direct work and every Accelerated or Full final verify use a
+fresh read-only Oracle.
+
+Semantic triggers keep the complete roster actionable: `librarian` handles
+current or external facts, `designer` handles material UI/UX, interaction,
+accessibility, or visual quality, and `quick` handles known narrow low-risk
+isolated edits. `deep` handles coupled or high-risk work. Native Claude
+execution and lifecycle are authoritative for dispatch, status/wait,
+steering, cancellation, and terminal results; unavailable primitives receive a
+truthful sequential fallback. No additional thoth coordination mechanism is
+involved.
 
 Claude discovers plugin skills automatically. The namespaced
 `/thoth-agents:thoth-init` skill only synchronizes minimum project `openspec/`
@@ -54,11 +70,13 @@ bundle.
 
 ## Generation lifecycle
 
-`pnpm run integration:sync` regenerates both manifests and marketplaces, Claude
-agent files/settings, both MCP surfaces, both asset inventories, and one copy of
-the five thoth-owned skills. External skills remain CLI-installed from their
-canonical repositories. Build and npm version lifecycle commands run this
-synchronization, keeping release versions and shared bundle contents aligned.
+`pnpm run integration:sync` regenerates both manifests, Claude agent
+files/settings, both MCP surfaces, both asset inventories, and one copy of the
+five thoth-owned skills. It does not generate a marketplace catalog. External
+skills remain CLI-installed from their canonical repositories. Build and npm
+version lifecycle commands run this synchronization, keeping release versions
+and shared bundle contents aligned; release then publishes only the
+thoth-agents pin to the central catalog.
 
 ## Ownership and limitations
 

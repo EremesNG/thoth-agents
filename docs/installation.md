@@ -32,7 +32,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | --- | --- | --- |
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository to initialize `openspec/` |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
-| Claude Code | Add marketplace and install `thoth-agents@thoth-agents` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
+| Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
 
 ## Common CLI options
 
@@ -70,19 +70,33 @@ untouched. No Kimi, Copilot, ZAI/GLM, or mixed-provider preset is generated.
 
 ## Codex
 
-Preview, then run the combined native-plugin and global-orchestration setup:
+Close Codex, preview, then run the combined native-plugin and
+global-orchestration setup:
 
 ```bash
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
-The CLI inspects Codex's JSON manager state, registers `EremesNG/thoth-agents`
-when absent, and installs or enables `thoth-agents@thoth-agents` with `codex
-plugin add`. It fails closed for an unreadable manager state or a marketplace
-with the same name from another source, and verifies the enabled plugin after
-mutation. The repository catalog `.agents/plugins/marketplace.json` points to
-the shared `plugin/` bundle.
+The CLI inspects Codex's JSON manager state, registers
+`https://github.com/EremesNG/thoth-plugins.git` as `thoth-plugins` when absent,
+and installs or enables `thoth-agents@thoth-plugins` with `codex plugin add`.
+It fails closed for an unreadable manager state or a marketplace with the same
+name from another source, and verifies the enabled plugin after mutation. The
+central catalog pins the shared `plugin/` bundle to an immutable product tag.
+Only after verifying the executing-version central plugin does it remove the
+registered legacy plugin IDs `thoth-agents@thoth-agents` and
+`thoth-agents@thoth-agents-codex`, followed by marketplaces `thoth-agents` and
+`thoth-agents-codex`, through official manager commands.
+
+If an orphan remains, the only eligible paths are
+`plugins/cache/{thoth-agents,thoth-agents-codex}` and
+`.tmp/marketplaces/{thoth-agents,thoth-agents-codex}` below the resolved
+`CODEX_HOME`. They must pass product-manifest, provenance, real-descendant,
+directory, and non-link validation before mutation and again before deletion.
+Sibling and unrelated paths remain untouched. A race or lock retains the
+central plugin and asks the operator to keep Codex closed and retry. Restart is
+needed for activation, not for cache garbage collection.
 
 The remaining CLI setup manages:
 
@@ -97,7 +111,8 @@ setup and preserves its diagnostics, manual actions, and receipt path.
 
 The ambient Codex session is root, so no orchestrator child TOML exists. The CLI
 does not copy a plugin into a personal manager cache or bypass Codex trust; it
-delegates marketplace and plugin mutations to the native manager.
+delegates normal marketplace and plugin mutations to the native manager and
+owns only the bounded legacy-root fallback above.
 
 Restart Codex after the CLI step. In every target repository invoke
 `$thoth-init`; this preflights and synchronizes only the minimum `openspec/`
@@ -113,8 +128,8 @@ and organization controls.
 Run both native commands in a terminal:
 
 ```bash
-claude plugin marketplace add EremesNG/thoth-agents --scope user
-claude plugin install thoth-agents@thoth-agents --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user
+claude plugin install thoth-agents@thoth-plugins --scope user
 ```
 
 Only after those native steps, run:
@@ -224,6 +239,13 @@ reports that harness's record as missing rather than inferring it from OpenCode
 package state or a Codex/Claude marketplace. Rerun the latest installer or apply
 Update once per harness to establish its record.
 
+Existing native installations may still contain the bare `thoth-agents`
+identity or the former `thoth-agents-codex` and `thoth-agents-claude`
+identities. Native managers key marketplace/plugin state by catalog name, so
+the current Codex installer verifies `thoth-agents@thoth-plugins` first and then
+retires only its two documented Codex identities and four exact safe roots.
+Claude installation continues to preserve its legacy entries and cache.
+
 The CLI commits the selected harness record last using temporary-file
 replacement. A preview, dry-run, cancellation, or failed native, managed,
 required-skill, provider, or ledger step does not advance the record; the
@@ -233,10 +255,12 @@ record success, the CLI preserves the malformed file as `install-state.json.bak`
 and replaces it with valid schema-v1 state.
 
 Codex and Claude marketplace managers continue to own native plugin versions,
-trust, snapshots, and caches. A native marketplace update neither changes this
-ledger nor proves that the CLI-managed global agents, skills, configuration, or
-provider setup were refreshed. Use `status` to compare the executing CLI version
-with the recorded complete-install version.
+trust, snapshots, and normal cache lifecycle. The bounded Codex legacy cleanup
+does not change the ledger until every later CLI/provider step also succeeds. A
+native marketplace update neither changes this ledger nor proves that the
+CLI-managed global agents, skills, configuration, or provider setup were
+refreshed. Use `status` to compare the executing CLI version with the recorded
+complete-install version.
 
 OpenCode runtime checks only notify when a newer release exists. They do not
 rewrite the exact plugin entry, invalidate package state, or install packages in

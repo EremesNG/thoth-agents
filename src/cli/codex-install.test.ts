@@ -156,7 +156,7 @@ describe('Codex install setup plan', () => {
           plan.items.some((item) => item.targetPath.includes('.codex/plugins')),
         ).toBe(false);
         expect(plan.diagnostics.join('\n')).toContain(
-          'codex plugin marketplace add EremesNG/thoth-agents',
+          'codex plugin marketplace add https://github.com/EremesNG/thoth-plugins.git',
         );
       } finally {
         process.chdir(previousCwd);
@@ -207,7 +207,7 @@ describe('Codex install setup plan', () => {
       ).toBe(true);
       expect(plan.diagnostics.join('\n')).toContain('/plugins');
       expect(plan.diagnostics.join('\n')).toContain(
-        'codex plugin marketplace add EremesNG/thoth-agents',
+        'codex plugin marketplace add https://github.com/EremesNG/thoth-plugins.git',
       );
       expect(plan.diagnostics.join('\n')).toContain('/hooks');
       expect(plan.diagnostics.join('\n')).toContain(
@@ -309,7 +309,12 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('Accelerated SDD');
       expect(root).toContain('maximum delegation depth is 1');
       expect(root).toContain('bundled `thoth-sdd` skill');
-      expect(root).toContain('every verify phase to oracle subagent');
+      expect(root).toContain(
+        'Use a fresh oracle subagent for Accelerated/Full and materially risky Direct work',
+      );
+      expect(root).toContain(
+        'Root may run focused verification only for trivial deterministic Direct work',
+      );
       expect(root).not.toMatch(/sdd-(?:specify|plan|tasks) subagent/);
       expect(root).toContain('request_user_input');
       expect(root).toContain('omit `autoResolutionMs` entirely');

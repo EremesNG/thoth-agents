@@ -22,10 +22,13 @@ parallelism creates a net gain.
 
 The plugin ships the seven-role contract and thoth-owned SDD
 contracts that combine Spec Kit-grade traceability with OpenSpec-style durable
-deltas. Accelerated planning fast-forwards without routine pauses; structural
-`ready`/`closeout` gates and independent oracle review retain rigor. Root
-recommends Direct, Accelerated, or Full and the user selects the route. After
-`ready`, artifact-backed routes offer optional Oracle plan review or proceeding
+deltas. The root shapes substantive work into dependency-aware, conflict-free
+native waves and joins terminal native results before dependent synthesis.
+Accelerated planning fast-forwards without routine pauses; structural
+`ready`/`closeout` gates and proportional independent review retain rigor. Root
+recommends Direct, Accelerated, or Full after summarizing context; explicit
+answers win and the third answerless route question selects the recommendation.
+After `ready`, artifact-backed routes offer optional Oracle plan review or proceeding
 without it; every final verification remains mandatory. During
 installation, the CLI obtains four mandatory external skills
 from their canonical repositories with `npx skills add` and invokes the official
@@ -41,8 +44,9 @@ before the CLI installs external skills and requests provider-owned thoth-mem
 setup.
 
 Runtime guarantees still differ by harness. OpenCode is the default and most
-integrated path; Codex and Claude preserve their own trust, policy, plugin-cache,
-and permission semantics.
+integrated path; Codex and Claude preserve their own trust, policy, normal
+plugin-cache, and permission semantics. Codex installation has one bounded
+legacy-cache cleanup contract described below; Claude does not.
 
 ## Install
 
@@ -78,15 +82,23 @@ directly from the globally installed `thoth-sdd` skill; any legacy project
 
 ### Codex
 
-Preview, then run the combined native-plugin and global-layer installer:
+Close Codex, preview, then run the combined native-plugin and global-layer
+installer:
 
 ```bash
 npx thoth-agents@latest install --agent=codex --dry-run
 npx thoth-agents@latest install --agent=codex
 ```
 
-The CLI first uses Codex's native manager to register `EremesNG/thoth-agents`
-and install or enable `thoth-agents@thoth-agents`. It then writes the
+The CLI first uses Codex's native manager to register
+`https://github.com/EremesNG/thoth-plugins.git` as `thoth-plugins` and install
+or enable the executing version of `thoth-agents@thoth-plugins`. After that
+verification it removes only registered legacy IDs
+`thoth-agents@thoth-agents` and `thoth-agents@thoth-agents-codex`, their two
+marketplaces, and any still-orphaned exact thoth-agents roots that pass bounded
+path/provenance checks. It never deletes sibling or discovered paths. A lock or
+race retains the central plugin and asks you to keep Codex closed and retry;
+restart activates state but does not garbage-collect caches. The CLI then writes the
 orchestrator block to `~/.codex/AGENTS.md`, creates six custom-agent TOMLs under
 `~/.codex/agents/`, merges the managed feature into `~/.codex/config.toml`,
 installs the external skills, and invokes provider-owned thoth-mem setup.
@@ -104,15 +116,60 @@ into the repository.
 Review `/plugins` and `/hooks` after installation. Codex trust and
 higher-precedence instructions remain in force.
 
+#### Local Codex development
+
+Keep a personal marketplace entry in `~/.agents/plugins/marketplace.json`
+pointed at `./plugins/thoth-agents` relative to the home marketplace root:
+
+```json
+{
+  "name": "personal",
+  "plugins": [
+    {
+      "name": "thoth-agents",
+      "source": {
+        "source": "local",
+        "path": "./plugins/thoth-agents"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
+```
+
+Then build and synchronize both required Codex layers from this checkout:
+
+```bash
+pnpm run setup:codex:local
+```
+
+The command replaces `~/plugins/thoth-agents` through a staged local copy,
+cache-busts the copied Codex and Claude manifest versions, and refreshes the
+managed global Codex root block, six standalone role TOMLs, model state, and
+feature configuration. It preserves the marketplace file and user model
+overrides. It does not install or remove plugins, install external skills, or
+invoke thoth-mem setup. Select the personal plugin in Codex and restart it after
+each synchronization. The command rejects a state where both
+`thoth-agents@thoth-plugins` and `thoth-agents@personal` are enabled.
+
 ### Claude Code
 
 Claude requires its two native marketplace steps before the plugin can expose
 agents or skills:
 
 ```bash
-claude plugin marketplace add EremesNG/thoth-agents --scope user
-claude plugin install thoth-agents@thoth-agents --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user
+claude plugin install thoth-agents@thoth-plugins --scope user
 ```
+
+The shared catalog name is `thoth-plugins`. Existing bare or host-specific
+thoth-agents marketplace identities remain manager-owned and are not removed
+automatically; rerunning the current installer adds the central identity and
+preserves legacy entries without updating or uninstalling them.
 
 Then install the mandatory external skills and invoke provider-owned thoth-mem
 setup:
@@ -193,7 +250,8 @@ correctness-critical work.
       <br>
       <i>Authoritative external research.</i>
       <br><br>
-      Gathers current authoritative external evidence and labels inference.
+      Gathers current, unfamiliar, version-sensitive, or externally sourced
+      evidence and labels inference; stable local facts do not trigger research.
       <br><br>
       <b>Mode:</b> <code>read-only</code>
     </td>
@@ -210,8 +268,8 @@ correctness-critical work.
       <br>
       <i>Independent analysis and verification.</i>
       <br><br>
-      Reviews plans when the user requests it and independently verifies every
-      implementation.
+      Reviews explicitly or bounded-default selected plans and independently verifies material
+      risk plus every Accelerated or Full final implementation.
       <br><br>
       <b>Mode:</b> <code>read-only</code>
     </td>
@@ -230,7 +288,8 @@ correctness-critical work.
       <br>
       <i>UI/UX ownership and visual quality.</i>
       <br><br>
-      Owns UI/UX choices, implementation, and visual verification.
+      Owns material UI/UX, interaction, accessibility, implementation, and visual
+      verification.
       <br><br>
       <b>Mode:</b> <code>write-capable</code>
     </td>
@@ -247,7 +306,8 @@ correctness-critical work.
       <br>
       <i>Fast bounded implementation.</i>
       <br><br>
-      Makes narrow, clear, low-risk edits within an explicit surface.
+      Makes known narrow, clear, low-risk edits within an isolated explicit
+      surface.
       <br><br>
       <b>Mode:</b> <code>write-capable</code>
     </td>
@@ -273,9 +333,13 @@ correctness-critical work.
 </table>
 
 Children do not delegate. Each mutable surface has one writer. Parallel work is
-limited to independent surfaces. The implementation writer never reviews or
-approves its own result: `oracle` owns every `verify`, including Direct and
-Accelerated work.
+limited to independent surfaces. The root marks input-ready lanes ready and
+upstream-dependent lanes blocked, dispatches every ready conflict-free lane in a
+native wave before waiting, and fans in only terminal native results. Every route
+verifies: trivial deterministic Direct work may use focused root checks; material
+risk in Direct and every Accelerated or Full final verify require a fresh
+read-only `oracle`. The implementation writer never reviews or approves its own
+result.
 
 ## SDD routes
 
@@ -287,28 +351,37 @@ Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archi
 
 | Route | Use when | Artifacts |
 | --- | --- | --- |
-| Direct | Clear, bounded, low-risk work, including multi-file documentation/mechanical edits | None; oracle returns its verdict in-session. |
+| Direct | Clear, bounded, low-risk work, including multi-file documentation/mechanical edits | None; focused root checks cover trivial deterministic work, while material risk requires a fresh Oracle. |
 | Accelerated | Generic SDD request, partial clarity, moderate risk, multi-surface behavior, or architecture | Canonical artifacts with fast-forward specification/planning/tasks. |
 | Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Accelerated artifacts plus exploration and separate planning gates. |
 
 The root loads only the current phase contract from the bundled `thoth-sdd`
 skill. It owns specification, clarification, planning, requirements checklists,
 task decomposition, convergence, report persistence, and archive. `explorer`
-owns Full discovery; `oracle` owns user-selected plan review and every `verify`.
+owns broad or uncertain Full discovery; `oracle` owns explicitly or
+bounded-default selected plan review, plus final
+verification gates that require independent judgment.
 
 An explicitly named route is the user's selection and wins. Otherwise root
-recommends one of all three routes and waits for the user's choice. A generic
-request to use SDD sets Accelerated as the minimum recommendation. Accelerated
-writes `spec.md -> plan.md -> tasks.md` in one uninterrupted root pass and does
-not pause for routine approval between those planning phases.
+summarizes the relevant context, scope, clarity, risk, and why one of the three
+routes is recommended before asking. Any explicit answer wins. After at most
+three total answerless native results, the third selects the recommended route.
+A generic request to use SDD sets Accelerated as the minimum recommendation.
+Accelerated writes `spec.md -> plan.md -> tasks.md` in one uninterrupted root
+pass and does not pause for routine approval between those planning phases.
 
 Conditional phases remain deliberately narrow:
 
 - `clarify` runs only for a material ambiguity and updates canonical `spec.md`;
 - `checklist` audits high-risk requirement quality with `CHK###` taxonomy and a
   separate revalidation pass;
-- `plan-review` is offered after `ready` on Accelerated and Full; the user chooses
-  `Review plan with Oracle (Recommended)` or `Proceed without review`;
+- `plan-review` is offered after `ready` on Accelerated and Full; any explicit
+  answer wins, while the third answerless result selects
+  `Review plan with Oracle (Recommended)`. Same-intent rejections are repaired
+  and revalidated before fresh Oracle rounds until approval or a material human
+  blocker. After approval, root summarizes the plan before asking
+  `Implement (Recommended)` or `Stop`; the third answerless result selects
+  implementation, while an explicit answer always wins;
 - `converge` appends tasks only after failed artifact-backed verification; and
 - `architectural-grilling` runs before specification only when explicitly
   requested or a material human-owned decision remains unresolved.
@@ -322,6 +395,16 @@ reports, and transactional synchronization of declared durable deltas at archive
 Handled failures roll back within the active process; forced process or OS
 termination is not crash-atomic. See
 [SDD Pipeline](docs/sdd-pipeline.md).
+
+The role decision is semantic and route-independent: `librarian` handles current
+or external facts (for example, checking the current official API), `designer`
+handles material user-facing UI/UX or accessibility, and `quick` handles a known
+narrow low-risk isolated edit. `deep` handles coupled or high-risk work, while
+`explorer` handles broad local uncertainty. Native harness execution and
+lifecycle are the sole authority for role selection, fan-out/fan-in,
+status/wait, steering, cancellation, and terminal results; an unavailable
+primitive is reported and followed by a truthful sequential fallback. No
+additional thoth coordination mechanism is involved.
 
 ## Skills
 
@@ -362,10 +445,11 @@ diagnostics, manual actions, and receipt paths remain visible for recovery.
 | Codex | The CLI installs the native plugin and manages global `AGENTS.md`, six agent TOMLs, config, external skills, and thoth-mem setup; `$thoth-init` only initializes per-repository SDD governance. Runtime role matching and some permissions remain instruction-level. |
 | Claude Code | Run both native marketplace commands before the CLI installs external skills and requests thoth-mem setup. The native manager owns cache files; fine-grained path restrictions remain instruction-level. |
 
-Codex and Claude marketplace manifests are versioned in
-`.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`. The
-two catalogs resolve to the same generated `plugin/` bundle. Build and npm
-version lifecycle commands keep that shared bundle synchronized.
+Codex and Claude marketplace manifests are versioned in the separate
+`EremesNG/thoth-plugins` repository. Both central entries resolve to this
+repository's generated `plugin/` bundle at an immutable version tag. Build and
+npm version lifecycle commands keep that bundle synchronized; release commands
+publish only the new thoth-agents pin after the product tag is visible remotely.
 
 ## Models and provider boundaries
 
@@ -429,8 +513,10 @@ edit, preview and apply remain limited to the dirty roles. In OpenCode, both
 `Apply` and `Apply changes` materialize the complete effective roster and
 activate the named `agents` preset.
 
-It does not bypass native marketplace trust or edit manager-owned caches
-directly; Codex and Claude own their native manager mutations.
+It does not bypass native marketplace trust. Codex and Claude own normal native
+manager mutations; the Codex installer additionally owns only the fixed,
+twice-validated thoth-agents legacy-root fallback. Claude cache state is never
+edited directly.
 
 ## Documentation
 

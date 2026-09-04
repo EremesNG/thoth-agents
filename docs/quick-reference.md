@@ -26,8 +26,8 @@ $thoth-init
 
 ```bash
 # Claude Code, in a terminal
-claude plugin marketplace add EremesNG/thoth-agents --scope user
-claude plugin install thoth-agents@thoth-agents --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user
+claude plugin install thoth-agents@thoth-plugins --scope user
 npx thoth-agents@latest install --agent=claude --dry-run
 npx thoth-agents@latest install --agent=claude
 ```
@@ -51,10 +51,10 @@ custom agents or write `~/.codex/AGENTS.md`. SDD phases never call either CLI.
 | --- | --- | --- |
 | `orchestrator` | adaptive root | Direct work, route recommendation, SDD coordination, final synthesis |
 | `explorer` | read-only | Repository discovery for real uncertainty |
-| `librarian` | read-only | Current authoritative external research |
-| `oracle` | read-only | User-selected plan review and every independent final verification |
-| `designer` | writer | UI/UX implementation and visual quality |
-| `quick` | writer | Narrow mechanical work |
+| `librarian` | read-only | Current, unfamiliar, version-sensitive, or external facts |
+| `oracle` | read-only | Explicitly or bounded-default selected plan review and independent judgment when risk requires it |
+| `designer` | writer | Material UI/UX, interaction, accessibility, and visual quality |
+| `quick` | writer | Known narrow, clear, low-risk isolated edits |
 | `deep` | writer | Correctness-heavy or cross-cutting implementation |
 
 ## Routes
@@ -65,18 +65,32 @@ Accelerated: specify -> plan -> tasks -> implement -> verify -> archive
 Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archive
 ```
 
-Root owns the sequential artifact phases. Oracle owns selected `plan-review` and
-every `verify`. `clarify`, `checklist`, `plan-review`, and `converge` are conditional.
+Root owns the sequential artifact phases. Every route verifies: trivial
+deterministic Direct work may use focused root checks; materially risky Direct
+work and every Accelerated or Full final verify use a fresh read-only Oracle.
+`clarify`, `checklist`, `plan-review`, and `converge` are conditional.
 
-- Explicit route names are user selections and win. Otherwise root recommends
-  one route and waits for the user's Direct, Accelerated, or Full choice;
-  generic SDD makes Accelerated the minimum recommendation.
+- Explicit route names are user selections and win. Otherwise root summarizes
+  context and recommends one route; explicit answers win, while the third
+  answerless result selects that recommendation. Generic SDD makes Accelerated
+  the minimum recommendation.
 - Multi-file docs/mechanical work can remain Direct when clear and low-risk.
 - Accelerated fast-forwards `specify -> plan -> tasks` without routine pauses.
 - Full adds exploration and separate planning gates for uncertainty or high risk.
 - After `ready`, Accelerated and Full offer optional Oracle plan review or
-  proceeding without it; every final verify remains mandatory.
+  proceeding without it; explicit answers win and the third answerless result
+  selects Oracle review. Every final verify remains mandatory.
 - `ready` gates implementation; `closeout` gates transactional archive.
+
+Before implementation, root separates concrete artifact/decision dependencies
+from mere ordering preference, marks input-ready lanes ready and dependent lanes
+blocked, and preserves one writer per mutable surface. It dispatches all ready
+conflict-free lanes in each native wave before waiting, then fans in terminal
+native results before releasing dependents. Semantic triggers select `librarian`
+for current/external facts, `designer` for material user-facing experience, and
+`quick` for known narrow low-risk work; coupled or high-risk work uses `deep`.
+Native harness execution and lifecycle are authoritative for dispatch, status,
+wait, steering, cancellation, and terminal results.
 
 Artifact-backed specs use named normative FRs with INTERNAL or durable delta
 metadata and typed buildable/outcome SCs. Archive applies only declared durable
@@ -128,8 +142,11 @@ invalidate package state, or install the newer release.
   config; `$thoth-init` creates project SDD governance only.
 - Claude requires both native marketplace commands before its namespaced skill
   exists.
-- Codex and Claude native managers own plugin versions and caches; the CLI
-  ledger is the authority only for the separate complete CLI-managed setup.
+- Codex and Claude native managers own plugin versions and normal cache
+  lifecycle; the CLI ledger is the authority only for the separate complete
+  CLI-managed setup. With Codex closed, installation removes only the selected
+  product's fixed legacy IDs and preflight-approved orphan roots after verifying
+  its central plugin. Claude legacy state remains preserved.
 - thoth-mem owns its hooks, MCP, skill, lifecycle, persistence, receipts, and
   recovery. thoth-agents only invokes its public setup during installation.
 - Runtime memory authorization is `none`, `recall`, or `observe` and does not

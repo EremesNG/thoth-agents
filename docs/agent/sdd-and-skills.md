@@ -23,20 +23,43 @@ and the thoth-owned workflow bundle.
 ## Invariants
 
 - An explicit route request is the user's selection and wins. Otherwise root
-  recommends Direct, Accelerated, or Full and waits for the user's choice;
-  generic SDD makes Accelerated the minimum recommendation.
+  summarizes the relevant request context, scope, clarity, risk, and why its
+  Direct, Accelerated, or Full recommendation fits before asking. Any explicit
+  answer wins. After three total answerless native results, the recommendation
+  counts as selected; generic SDD makes Accelerated the minimum recommendation.
 - Clear low-risk documentation/mechanical work may stay Direct across files.
 - Accelerated fast-forwards specify/plan/tasks without routine pauses; Full uses
   phase gates for material uncertainty/risk.
 - Root owns sequential coordination and loads only the current phase reference.
-- Explorer owns Full discovery; oracle owns user-selected plan review and every
-  final verify.
+- Every route verifies. Trivial deterministic Direct work uses focused root
+  checks; materially risky Direct work and every Accelerated or Full final verify
+  use a fresh read-only Oracle. Explorer owns broad or uncertain Full discovery,
+  while explicitly or bounded-default selected plan review remains optional.
+- Task shaping precedes implementation: distinguish a concrete artifact/decision
+  dependency from mere ordering preference, mark input-ready lanes ready and
+  upstream-dependent lanes blocked, and preserve one writer per mutable surface.
+  Dispatch all ready conflict-free lanes in a native wave before waiting; join
+  only terminal native results, then release dependent lanes.
+- Semantic routing keeps the complete roster usable: `librarian` researches
+  current or externally sourced facts, `designer` owns material UI/UX,
+  interaction, accessibility, or visual quality, and `quick` owns known narrow
+  low-risk isolated edits. Escalate coupled or high-risk work to `deep`; stable
+  local facts do not trigger `librarian`.
 - Specifications record Why/Impact/capabilities, story-to-FR/SC coverage, named
   normative FRs with delta metadata, and buildable/outcome SC types.
 - Routine plans read the constitution and record evidence; only explicit
   constitution amendments activate SemVer lifecycle validation.
 - Tasks cover FRs and buildable SCs, use honest `[P]` evidence or an explicit
   no-parallel reason, and never manufacture work for outcome SCs.
+- SDD parallelism has three coordination levels: a granular `T###` task is one
+  independently verifiable unit; an ordered writer-owned lane is a bounded
+  sequence of tasks and their exact path union; and an independent parallel
+  group is two or more lanes that can fan out before a shared barrier.
+- `[P]` marks group/lane eligibility, not a universal concurrency guarantee.
+  The root admits lanes only while native capacity and capability permit it,
+  dispatches every admitted lane before waiting, refills released capacity
+  before another wait, and releases the declared barrier only after terminal,
+  validated evidence from every lane.
 - Conditional checklists record activation, the five base quality dimensions,
   applicable domain lenses, coverage, and checked or evidence-backed no-op
   revalidation.
@@ -44,8 +67,16 @@ and the thoth-owned workflow bundle.
   independent oracle PASS, FR/buildable-SC evidence, explicit outcome-SC
   disposition, and archive readiness.
 - After `ready`, both artifact-backed routes offer `Review plan with Oracle
-  (Recommended)` or `Proceed without review`. Review is optional; final verify
-  remains mandatory.
+  (Recommended)` or `Proceed without review`. Any explicit answer wins. After
+  three total answerless results, Oracle review counts as selected. Actionable
+  same-intent `[REJECT]` findings are repaired and affected gates revalidated
+  before a fresh Oracle round, repeating until `[OKAY]` or a material human-owned
+  blocker. After `[OKAY]`, root summarizes the approved plan before asking
+  `Implement (Recommended)` or `Stop`; an explicit answer wins, while the third
+  answerless result selects implementation. Final verify remains mandatory.
+  When parallel groups exist, the reviewer treats structural validation as an
+  input and independently judges semantic lane independence, ownership,
+  barriers, native-capacity waves, and truthful sequential fallback.
 - Same-intent corrections revalidate only affected downstream artifacts. New
   intent starts a new change.
 - Converge is append-only and uses the missing/partial/contradicts/unrequested
@@ -63,6 +94,16 @@ and the thoth-owned workflow bundle.
 - Delegated envelopes carry a MEMORY block with provider/project/session
   identity, `none|recall|observe`, and bounded context. This does not alter
   workspace mode or delegate root lifecycle.
+
+Native harness execution and lifecycle remain authoritative for dispatch,
+capacity, status/wait, steering, cancellation, and terminal results. A missing
+or unproven native primitive is reported and handled with a truthful sequential
+fallback; capacity/capability gaps are reported truthfully. Native handles and
+results are retained as provided. There is no Thoth scheduler, queue, database,
+universal worktree, synthetic wait API, or portable `wait_all` runtime.
+Question retries and fallbacks are instruction-level where the harness exposes
+no programmable primitive; thoth-agents does not supply timers or a question
+runtime.
 
 Provider persistence is an overlay only. Follow the installed thoth-mem skill
 for durable lessons and continuity, while `openspec/` stays canonical and phase

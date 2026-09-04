@@ -436,7 +436,7 @@ export function buildCodexSetupPlan(
     configPath: targets.configPath,
     pluginId: config.pluginId,
     diagnostics: [
-      'The combined install flow runs `codex plugin marketplace add EremesNG/thoth-agents` and `codex plugin add thoth-agents@thoth-agents` through the native manager; restart Codex, then use /plugins to review its state.',
+      'The combined install flow runs `codex plugin marketplace add https://github.com/EremesNG/thoth-plugins.git` and `codex plugin add thoth-agents@thoth-plugins` through the native manager; restart Codex, then use /plugins to review its state.',
       'The CLI does not copy a plugin into ~/.codex/plugins or merge ~/.agents/plugins/marketplace.json directly; Codex owns marketplace snapshots and installed plugin cache state.',
       'The /hooks surface may show hooks from independently installed plugins; this thoth-agents setup plan does not install provider hooks.',
       'Codex Default mode user-input requests require features.default_mode_request_user_input = true and use the request_user_input tool; other modes may not expose it.',

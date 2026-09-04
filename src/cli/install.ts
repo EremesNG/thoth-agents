@@ -437,6 +437,8 @@ export async function install(
     const projectRoot = cwd();
     const pluginPlan = buildCodexPluginSetupPlan({
       dryRun: config.dryRun,
+      expectedVersion: packageVersion.version,
+      homeDir: dependencies.homeDir,
       projectRoot,
     });
     console.log(formatCodexPluginSetupPlan(pluginPlan));
@@ -482,7 +484,7 @@ export async function install(
     printSuccess(
       config.dryRun
         ? 'Codex dry-run complete; no files written'
-        : 'Codex plugin installed as thoth-agents@thoth-agents and agent-pack setup complete (restart Codex to activate)',
+        : 'Codex plugin installed as thoth-agents@thoth-plugins and agent-pack setup complete (restart Codex to activate)',
     );
     return 0;
   }
@@ -521,7 +523,7 @@ export async function install(
     printSuccess(
       config.dryRun
         ? 'Claude Code dry-run complete; no files written'
-        : 'Claude Code plugin installed as thoth-agents@thoth-agents through the native manager (restart Claude Code or run /reload-plugins to activate)',
+        : 'Claude Code plugin installed as thoth-agents@thoth-plugins through the native manager (restart Claude Code or run /reload-plugins to activate)',
     );
     return 0;
   }

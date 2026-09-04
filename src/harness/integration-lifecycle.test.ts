@@ -38,7 +38,7 @@ describe('shared plugin lifecycle', () => {
     expect(versionSteps).toEqual([
       'pnpm run integration:sync',
       'pnpm run integration:verify',
-      'git add -- plugin .agents/plugins/marketplace.json .claude-plugin/marketplace.json',
+      'git add -- plugin',
     ]);
     expect(scripts['integration:verify']).toContain(
       'src/harness/integration-lifecycle.test.ts',
@@ -66,15 +66,7 @@ describe('shared plugin lifecycle', () => {
     const claudeManifest = readJson<{ version: string }>(
       join(root, 'plugin', '.claude-plugin', 'plugin.json'),
     );
-    const claudeMarketplace = readJson<{
-      plugins: Array<{ name: string; version: string }>;
-    }>(join(root, '.claude-plugin', 'marketplace.json'));
-    const claudeEntry = claudeMarketplace.plugins.find(
-      (plugin) => plugin.name === 'thoth-agents',
-    );
-
     expect(codexManifest.version).toBe(version);
     expect(claudeManifest.version).toBe(version);
-    expect(claudeEntry?.version).toBe(version);
   });
 });

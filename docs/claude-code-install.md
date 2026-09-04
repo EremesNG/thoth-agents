@@ -1,7 +1,7 @@
 # Claude Code Install
 
 Claude Code receives a native plugin containing the orchestrator, six namespaced
-specialists, MCP configuration, and the four workflow skills owned by
+specialists, MCP configuration, and the five workflow skills owned by
 thoth-agents. The CLI remains a required installation step for the four external
 skills and provider-owned thoth-mem setup, but agents do not consume either CLI
 during SDD phases.
@@ -10,7 +10,7 @@ during SDD phases.
 
 - Node.js `>=22.13` for bundled scripts
 - Claude Code with native plugin marketplace commands
-- Permission to add and trust `EremesNG/thoth-agents`
+- Permission to add and trust `EremesNG/thoth-plugins`
 - Network access during installation for the external skill repositories and
   thoth-mem setup package
 
@@ -19,21 +19,27 @@ during SDD phases.
 Run in a terminal:
 
 ```bash
-claude plugin marketplace add EremesNG/thoth-agents --scope user
+claude plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user
 ```
 
-The marketplace name is `thoth-agents`; its catalog is
-`.claude-plugin/marketplace.json`.
+The marketplace name is `thoth-plugins`. Its catalog lives in the separate
+central marketplace repository and pins this product's `plugin/` subdirectory
+to an immutable release tag.
 
 ## 2. Install the plugin
 
 ```bash
-claude plugin install thoth-agents@thoth-agents --scope user
+claude plugin install thoth-agents@thoth-plugins --scope user
 ```
 
 Claude copies the shared `plugin/` bundle into its manager-owned cache.
 Codex resolves to the same source through its own marketplace. thoth-agents
 never edits either manager cache directly.
+
+Existing bare or host-specific thoth-agents marketplace/plugin records remain
+separate legacy identities. Rerun the marketplace add and current installer to
+create the central `thoth-plugins` identity. The installer preserves every
+legacy entry without updating, uninstalling, or directly rewriting its cache.
 
 ## 3. Install the external skills and thoth-mem
 
@@ -76,8 +82,21 @@ preserves existing constitutions, and leaves legacy project templates untouched.
 | `settings.json` | Activates the orchestrator as the main plugin agent |
 
 Namespaced delegation uses `thoth-agents:<role>`. Children never delegate.
-Read-only `oracle` owns user-selected plan review and every final verification,
-regardless of who implemented the change.
+Every route verifies: trivial deterministic Direct work may use focused root
+checks; materially risky Direct work and every Accelerated or Full final verify
+use a fresh read-only `oracle`. Explicitly or bounded-default selected plan
+review remains optional, regardless of who implemented the change.
+
+Before dispatch, the root distinguishes concrete artifact/decision dependencies
+from mere ordering, marks input-ready lanes ready and dependent lanes blocked,
+and keeps one writer per mutable surface. Claude's native `Agent` fan-out sends
+all ready conflict-free lanes before waiting; fan-in accepts only terminal
+native results before releasing dependents. Semantic triggers select `librarian`
+for current or external facts, `designer` for material UI/UX, interaction,
+accessibility, or visual quality, and `quick` for known narrow low-risk isolated
+edits; coupled or high-risk work uses `deep`. Native Agent, status/wait,
+steering, cancellation, and terminal-result behavior is authoritative; missing
+primitives degrade to a truthful sequential path.
 
 ## Verification
 
@@ -87,7 +106,7 @@ claude plugin list --json
 ```
 
 Inside Claude Code, inspect `/plugin`. A healthy install shows the canonical
-marketplace, an enabled `thoth-agents@thoth-agents` plugin, and all mandatory
+marketplace, an enabled `thoth-agents@thoth-plugins` plugin, and all mandatory
 external skills reported by the CLI:
 
 ```bash

@@ -12,6 +12,23 @@ export type SddIntent =
 export type SddScope = 'local' | 'multi-file' | 'cross-cutting';
 export type SddClarity = 'clear' | 'partial' | 'uncertain';
 export type SddRisk = 'low' | 'medium' | 'high';
+export type SddFinalVerificationRisk =
+  | 'trivial-deterministic'
+  | 'architecture'
+  | 'security'
+  | 'cross-cutting-regression'
+  | 'persistent-diagnosis'
+  | 'contradictory-evidence'
+  | 'high-failure-cost'
+  | 'material-uncertainty';
+export type SddFinalVerificationOwner = 'orchestrator' | 'oracle';
+
+export interface SddFinalVerificationDecision {
+  verificationRequired: true;
+  owner: SddFinalVerificationOwner;
+  oracleRequired: boolean;
+  freshOracleRequired: boolean;
+}
 export type SddPlanningMode = 'none' | 'fast-forward' | 'gated';
 export type SddValidationGate =
   | 'specify'
@@ -54,7 +71,10 @@ export type SddPhaseId =
   | 'archive';
 
 export type SddPhaseActivation = 'required' | 'conditional';
-export type SddPhaseOwner = AgentRoleName | 'adaptive-implementation';
+export type SddPhaseOwner =
+  | AgentRoleName
+  | 'adaptive-implementation'
+  | 'adaptive-verification';
 
 export interface SddPhaseContract {
   id: SddPhaseId;
@@ -223,9 +243,9 @@ export const SDD_PHASES = [
     defaultAgentRole: 'oracle',
     eligibleAgentRoles: ['oracle'],
     reason:
-      'Offer independent blocker-only plan review when the user selects it after planning passes ready.',
+      'Offer independent blocker-only plan review after explicit or bounded recommended-default selection once planning passes ready.',
     condition:
-      'Activate only after ready when the user chooses Review plan with Oracle (Recommended).',
+      'Activate after ready when review is selected explicitly or by the bounded recommended default after three answerless attempts.',
   },
   {
     id: 'implement',
@@ -248,10 +268,10 @@ export const SDD_PHASES = [
     activation: 'required',
     prerequisites: ['implement'],
     producesArtifact: true,
-    defaultAgentRole: 'oracle',
-    eligibleAgentRoles: ['oracle'],
+    defaultAgentRole: 'adaptive-verification',
+    eligibleAgentRoles: ['orchestrator', 'oracle'],
     reason:
-      'Independently judge the result against requirements, contracts, and focused checks.',
+      'Keep verification mandatory while selecting root for trivial deterministic Direct checks and a fresh Oracle for material-risk Direct or artifact-backed judgment.',
   },
   {
     id: 'converge',
@@ -552,25 +572,28 @@ export const SDD_PHASE_PROTOCOLS = [
       'A task requires an unresolved requirement, architecture choice, or hidden prerequisite.',
     ],
     handoff: [
-      'After ready, pass spec.md, plan.md, tasks.md, dependencies, and verification commands to the user-selected plan-review path or implement.',
+      'After ready, pass spec.md, plan.md, tasks.md, dependencies, and verification commands to the explicitly or bounded-default selected plan-review path, or implement when the user explicitly proceeds without review.',
     ],
   },
   {
     id: 'plan-review',
     objective:
-      'Perform the user-selected read-only blocker review before Accelerated or Full implementation.',
+      'Perform the explicitly or recommended-default selected read-only blocker review before Accelerated or Full implementation.',
     requiredInputs: [
       'spec.md',
       'plan.md',
       'tasks.md',
       'Optional active requirements checklist',
       'Project constitution',
-      'Explicit user choice to review after the ready gate',
+      'Review selection after the ready gate, from an explicit answer or the bounded recommended fallback',
     ],
     instructions: [
+      'At the ready gate, make at most three total attempts when the native review question returns answerless; after the third answerless result, treat Review plan with Oracle (Recommended) as selected, while any explicit Proceed without review answer wins.',
       'Load the bundled plan-reviewer skill and review executability, completeness, correctness, and coherence without redesigning the plan.',
       'Require task coverage for every FR and buildable SC; assess outcome SC as measurable verification targets without manufacturing implementation tasks.',
+      'For every declared parallel group, independently assess semantic independence, each lane path union and owner, real cross-lane data flow, prerequisites and barrier, and whether native capacity supports dispatch-before-wait waves with refill; require a truthful sequential fallback when concurrency is unavailable or unproven.',
       'Return exact [OKAY] or [REJECT] semantics, default to [OKAY], and report at most three true blockers with the smallest fixes.',
+      'After [REJECT], root must repair actionable same-intent planning artifacts, revalidate affected gates, and start a fresh Oracle approval round until [OKAY]; stop instead on a material human-owned blocker.',
       'Provide the reviewed artifact set so root can persist plan-review.md with SHA-256 freshness evidence; Oracle never writes it.',
       'Keep plan-review approval separate from implementation confirmation and mandatory final verify.',
     ],
@@ -582,6 +605,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'zero to three blocker findings with smallest fixes',
       'non-blocking cautions',
       'requirement coverage percentage',
+      'parallel executability disposition when tasks declare groups or an evidence-backed None reason',
       'constitution alignment',
       'reviewed artifact freshness manifest input',
     ],
@@ -592,7 +616,9 @@ export const SDD_PHASE_PROTOCOLS = [
       '[REJECT] blocks the review path until root repairs planning blockers, the user explicitly proceeds without review, or an explicit override is recorded.',
     ],
     handoff: [
-      'On [OKAY], root persists review evidence, presents the approved-plan overview, and asks whether to implement or stop.',
+      'On [OKAY], root persists review evidence and summarizes the approved scope, approach, ownership, verification, and material risks before asking Implement (Recommended) or Stop.',
+      'For an answerless implementation question, root makes at most three total attempts; after the third answerless result, implementation counts as selected, while any explicit Stop answer wins.',
+      '[OKAY] alone does not authorize implementation before that explicit choice or bounded fallback resolves.',
       'A plan-review result never satisfies mandatory final verify.',
     ],
   },
@@ -638,7 +664,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'A task needs scope expansion, a material unresolved decision, or fails repeatedly without a safe bounded recovery.',
     ],
     handoff: [
-      'Pass changed files, per-task evidence, deviations, and verification results to a fresh Oracle for independent verify.',
+      'Pass changed files, per-task evidence, deviations, and verification results into the route- and risk-aware final-verification decision.',
     ],
   },
   {
@@ -651,7 +677,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'Changed files and project verification commands',
     ],
     instructions: [
-      'Oracle must be independent from the implementation writer; self-review never satisfies this phase.',
+      'Trivial deterministic Direct work may use root-owned focused verification; materially risky Direct plus Accelerated and Full final verification use a fresh independent Oracle, and no implementation writer self-approves.',
       'Run or inspect the smallest sufficient executed checks; static confidence alone is not evidence.',
       'Judge completeness, correctness, and coherence independently so a passing test cannot hide missing or contradictory scope.',
       'Build a compliance matrix from every accepted requirement to code and executed checks.',
@@ -759,25 +785,25 @@ export const SDD_WORKFLOW_CONTRACT: SddWorkflowContract = {
     validationGates: [...policy.validationGates],
   })),
   routingRules: [
-    'The root recommends direct, accelerated, or full from risk evidence, but the user selects the route; an explicitly requested route already counts as selection.',
+    'The root summarizes context and recommends direct, accelerated, or full from risk evidence; an explicit answer wins, while the third answerless route question selects the displayed recommendation, and an explicitly requested route already counts as selection.',
     'Direct work is the default for clear, bounded, low-risk changes; documentation and mechanical work may remain direct across multiple files.',
     'Accelerated SDD is used for multi-surface behavior, architecture, partial clarity, moderate risk, or broad non-behavioral coordination.',
-    'Accelerated planning fast-forwards specify, plan, and tasks without pauses between those artifacts, then offers the user optional oracle plan review after ready.',
+    'Accelerated planning fast-forwards specify, plan, and tasks without pauses between those artifacts, then offers optional oracle plan review after ready; an explicit answer wins and the third answerless review question selects Review plan with Oracle (Recommended).',
     'Full SDD is used for unresolved scope, cross-cutting behavior or architecture, high contract risk, or high failure cost.',
     'Use architectural-grilling before specification only when the user explicitly requests it or material product or architecture decisions remain human-owned and unresolved; never require it merely because the route is Full.',
-    'Route selection and the post-ready plan-review choice are explicit user decisions; other input is requested only when a material unresolved decision changes the result.',
+    'Route selection and the post-ready plan-review choice resolve through an explicit answer or their bounded recommended fallback; other input is requested only when a material unresolved decision changes the result.',
   ],
   artifactRules: [
     'Spec Kit artifact semantics are preserved inside the governed openspec store.',
     'Accelerated and full routes require spec.md, plan.md, tasks.md, verify-report.md, and archive-report.md.',
     'Research, data model, contracts, quickstart, requirements checklist, and plan-review.md are optional and created only when useful or selected.',
-    'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; Accelerated and Full implementation selects designer, quick, or deep, while Direct permits one isolated low-risk root micro-action.',
+    'The adaptive root writes coordination artifacts after loading the matching bundled phase contract; every route selects root, designer, quick, or deep from task shape, explicit direction, and demonstrated net gain.',
     'After oracle PASS, archive transactionally synchronizes only explicitly declared durable ADDED, MODIFIED, REMOVED, and RENAMED requirement deltas into openspec/specs; INTERNAL requirements and undeclared prose never update permanent specifications.',
     'Archive stages and backs up writes so handled failures roll back within the active process; forced process or operating-system termination is not crash-atomic.',
   ],
   verificationRules: [
-    'Every route delegates focused verification to read-only oracle; the implementation writer never verifies its own work.',
-    'Accelerated and Full offer read-only oracle plan review after ready; it runs only when the user selects it and never replaces final verification.',
+    'Every route requires final verification; trivial deterministic Direct checks are root-owned, while materially risky Direct and every Accelerated or Full final verification use a fresh read-only oracle, and no implementation writer self-approves.',
+    'Accelerated and Full offer read-only oracle plan review after ready; it runs when selected explicitly or by the bounded recommended fallback and never replaces final verification.',
     'Accelerated and full verification persists verify-report.md with a pass or fail verdict and requirement compliance matrix.',
     'An artifact-backed fail verdict routes through append-only convergence, implementation, and verification again; direct work returns straight to implementation.',
     'A pass verdict is required before accelerated or full work can archive.',
@@ -1089,10 +1115,35 @@ context:
 <bounded recalled context or - none>`;
 }
 
+export function getSddFinalVerificationDecision({
+  route,
+  risk,
+}: {
+  route: SddRoute;
+  risk: SddFinalVerificationRisk;
+}): SddFinalVerificationDecision {
+  const oracleRequired = route !== 'direct' || risk !== 'trivial-deterministic';
+
+  return {
+    verificationRequired: true,
+    owner: oracleRequired ? 'oracle' : 'orchestrator',
+    oracleRequired,
+    freshOracleRequired: oracleRequired,
+  };
+}
+
 export function getSddPhaseOwner(
-  _route: SddRoute,
+  route: SddRoute,
   phaseId: SddPhaseId,
+  verificationRisk: SddFinalVerificationRisk = 'material-uncertainty',
 ): SddPhaseOwner {
+  if (phaseId === 'verify') {
+    return getSddFinalVerificationDecision({
+      route,
+      risk: verificationRisk,
+    }).owner;
+  }
+
   return getSddPhase(phaseId).defaultAgentRole;
 }
 

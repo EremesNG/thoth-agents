@@ -82,15 +82,31 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - Preserve others' work: never revert or discard changes you did not make.
 - Run the nearest focused validation first; expand only according to risk.
 - The adaptive root handles clear bounded work directly, assesses scope,
-  clarity, and risk, and recommends direct, accelerated, or full SDD. The user
-  selects the route; an explicitly selected route wins.
+  clarity, and risk, and recommends direct, accelerated, or full SDD. Before
+  asking, it summarizes the relevant request context and why the recommendation
+  fits. Any explicit route answer wins. If the native question returns without
+  an answer, ask at most three total times; after the third answerless result,
+  the recommended route counts as selected.
 - SDD routes govern artifacts/gates, not implementation ownership; root or a
   writer may implement in any route. Delegate only for net gain.
-- After root decides delegation creates net gain, use `designer` for UI/UX,
-  `quick` for known narrow low-risk work, and `deep` for coupled/high-risk work.
-  Keep depth 1, one writer per surface, and non-overlapping parallel writes.
-- `explorer` discovers, `librarian` researches, `oracle` reviews; root
-  coordinates SDD and loads phase contracts on demand.
+- Before retaining or delegating work, root identifies bounded outputs, records
+  information dependencies and mutable ownership, separates ready lanes from
+  blocked synthesis, and evaluates every specialist semantically. It dispatches
+  all valuable conflict-free ready lanes through the active harness's native
+  primitives before waiting, respects the proven native width, accepts only
+  terminal native results, and fans them in against intent, dependencies,
+  ownership, conflicts, and verification. Mere list order is not a dependency.
+- Keep delegation depth 1, one writer per mutable surface, and serialize
+  overlapping ownership. The specialist directory has equal routing salience:
+  `explorer` for broad uncertain local discovery; `librarian` for current
+  authoritative external evidence; `oracle` for independent read-only judgment;
+  `designer` for material UI/UX, interaction, accessibility, or visual quality;
+  `quick` for exact bounded low-risk implementation; and `deep` for coupled,
+  edge-case-heavy, migration, concurrency, or high-risk implementation.
+- Harness-native dispatch, status, wait, steering, cancellation, and terminal
+  results are authoritative. thoth-agents supplies decision policy and prompts,
+  never an executor, scheduler, job board, lifecycle shadow, or tracing runtime;
+  unavailable native capabilities must be reported as degraded.
 - `simplify`, `tdd`, `progressive-context-router`, and
   `architectural-grilling` are mandatory external skills for OpenCode, Codex,
   and Claude. The installer obtains them from their canonical repositories with
@@ -100,8 +116,18 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   unresolved material human-owned product/architecture decisions. Full SDD
   alone does not activate it.
 - After `ready` on Accelerated or Full, recommend the optional read-only Oracle
-  plan review and let the user choose review or proceeding without it. Plan
-  approval never replaces mandatory final Oracle verification.
+  plan review and let the user choose review or proceeding without it. Any
+  explicit answer wins. Ask at most three total times after answerless native
+  results; after the third, `Review plan with Oracle (Recommended)` counts as
+  selected. Repair actionable same-intent `[REJECT]` findings, revalidate
+  affected gates, and use a fresh Oracle approval round until `[OKAY]` or a
+  material human-owned blocker. After `[OKAY]`, summarize the approved plan
+  before asking `Implement (Recommended)` or `Stop`; any explicit answer wins,
+  while the third answerless result selects implementation. Plan approval never
+  replaces mandatory final verification. Trivial deterministic Direct work may
+  be root-verified without implementer self-approval; materially risky Direct
+  work and every Accelerated or Full final verification use a fresh read-only
+  Oracle.
 - `plan-reviewer` is a thoth-owned bundled skill; its OpenSpec artifact remains
   root-written and is never mirrored into provider memory.
 - `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem
@@ -116,13 +142,17 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   stays canonical and phase artifacts are not mirrored into thoth-mem.
 - Every `request_user_input` call MUST omit `autoResolutionMs` entirely, including
   `null` or `undefined`, so the question does not expire.
+- The bounded SDD fallbacks apply only to route, plan-review, and implementation
+  questions; never apply them to secrets, destructive or security-sensitive
+  actions, or material human-owned decisions.
 - Some governance rules are instruction-only when a harness lacks enforcement;
   that limitation does not authorize ignoring them.
 - Do not consider backward compatibility. Ignore legacy code/ libraries.
 
 ## Change and verification flow
 
-1. Confirm scope, recommend a primary route, and obtain the user's selection.
+1. Confirm scope, summarize context, recommend a primary route, and resolve the
+   selection through an explicit answer or the bounded recommended fallback.
 2. Review public contracts and existing tests before editing.
 3. Implement without silently expanding scope.
 4. Run focused tests, then checks proportional to risk.

@@ -14,6 +14,7 @@ interface ManagerState {
   marketplace: boolean;
   plugin: boolean;
   enabled: boolean;
+  legacy?: boolean;
   source?: string;
   failMutation?: boolean;
   failInspection?: boolean;
@@ -31,17 +32,28 @@ function executor(state: ManagerState): ClaudeCommandExecutor {
       }
       return {
         exitCode: 0,
-        stdout: JSON.stringify(
-          state.marketplace
+        stdout: JSON.stringify([
+          ...(state.marketplace
             ? [
                 {
-                  name: 'thoth-agents',
+                  name: 'thoth-plugins',
                   source: 'github',
-                  repo: state.source ?? 'EremesNG/thoth-agents',
+                  repo:
+                    state.source ??
+                    'https://github.com/EremesNG/thoth-plugins.git',
                 },
               ]
-            : [],
-        ),
+            : []),
+          ...(state.legacy
+            ? [
+                {
+                  name: 'thoth-agents-claude',
+                  source: 'github',
+                  repo: 'EremesNG/thoth-agents',
+                },
+              ]
+            : []),
+        ]),
         stderr: '',
       };
     }
@@ -51,17 +63,26 @@ function executor(state: ManagerState): ClaudeCommandExecutor {
       }
       return {
         exitCode: 0,
-        stdout: JSON.stringify(
-          state.plugin
+        stdout: JSON.stringify([
+          ...(state.plugin
             ? [
                 {
-                  id: 'thoth-agents@thoth-agents',
+                  id: 'thoth-agents@thoth-plugins',
                   scope: 'user',
                   enabled: state.enabled,
                 },
               ]
-            : [],
-        ),
+            : []),
+          ...(state.legacy
+            ? [
+                {
+                  id: 'thoth-agents@thoth-agents-claude',
+                  scope: 'user',
+                  enabled: true,
+                },
+              ]
+            : []),
+        ]),
         stderr: '',
       };
     }
@@ -73,7 +94,10 @@ function executor(state: ManagerState): ClaudeCommandExecutor {
         stderr: `native mutation failed for ${key}`,
       };
     }
-    if (key.startsWith('plugin marketplace add ')) state.marketplace = true;
+    if (key.startsWith('plugin marketplace add ')) {
+      state.marketplace = true;
+      state.source = 'https://github.com/EremesNG/thoth-plugins.git';
+    }
     if (key.startsWith('plugin install ')) {
       state.plugin = true;
       state.enabled = true;
@@ -144,13 +168,13 @@ describe('claude-code-install', () => {
     expect(first).toMatchObject({
       success: true,
       changed: [
-        'claude://marketplaces/thoth-agents',
-        'claude://plugins/thoth-agents@thoth-agents',
+        'claude://marketplaces/thoth-plugins',
+        'claude://plugins/thoth-agents@thoth-plugins',
       ],
     });
     expect(state.mutations).toEqual([
-      'plugin marketplace add EremesNG/thoth-agents --scope user',
-      'plugin install thoth-agents@thoth-agents --scope user',
+      'plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user',
+      'plugin install thoth-agents@thoth-plugins --scope user',
     ]);
     expect(existsSync(join(projectRoot, '.claude', 'skills'))).toBe(false);
 
@@ -176,7 +200,7 @@ describe('claude-code-install', () => {
     expect(plan.items.map((item) => item.action)).toEqual(['enable-plugin']);
     expect(applyClaudeCodeSetup(plan).success).toBe(true);
     expect(state.mutations).toEqual([
-      'plugin enable thoth-agents@thoth-agents --scope user',
+      'plugin enable thoth-agents@thoth-plugins --scope user',
     ]);
   });
 
@@ -192,8 +216,34 @@ describe('claude-code-install', () => {
     expect(plan.items.map((item) => item.action)).toEqual(['update-plugin']);
     expect(applyClaudeCodeSetup(plan).success).toBe(true);
     expect(state.mutations).toEqual([
-      'plugin update thoth-agents@thoth-agents --scope user',
+      'plugin update thoth-agents@thoth-plugins --scope user',
     ]);
+  });
+
+  test('installs the central identity while preserving host-specific legacy manager state', () => {
+    const state: ManagerState = {
+      marketplace: false,
+      plugin: false,
+      enabled: false,
+      legacy: true,
+      mutations: [],
+    };
+
+    const result = applyClaudeCodeSetup(
+      buildClaudeCodeSetupPlan(config(state)),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.diagnostics.join('\n')).toContain('Legacy Claude');
+    expect(state.mutations).toEqual([
+      'plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user',
+      'plugin install thoth-agents@thoth-plugins --scope user',
+    ]);
+    expect(
+      state.mutations.some((mutation) =>
+        /\b(?:remove|uninstall)\b/u.test(mutation),
+      ),
+    ).toBe(false);
   });
 
   test('fails closed for unreadable or conflicting marketplace state', () => {

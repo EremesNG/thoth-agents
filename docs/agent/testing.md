@@ -43,7 +43,15 @@ build step.
 
 `.github/workflows/release.yml` waits for successful CI for the commit, installs
 again, runs `pnpm run build`, then
-`pnpm exec vitest run src/plugin-node-runtime.test.ts` before publishing.
+`pnpm exec vitest run src/plugin-node-runtime.test.ts`, publishes npm, and
+creates the GitHub release. Only after those steps succeed, it mints an
+ephemeral `thoth-plugins-release-bot` token scoped to `thoth-plugins` with
+`contents: write` and runs `pnpm run release:marketplace`.
+
+The marketplace integration suite consumes the canonical `thoth-plugins`
+checkout through `THOTH_PLUGINS_ROOT`; it validates the publisher locally but
+does not claim that the live GitHub App installation or cross-repository push
+has succeeded. That outcome is established by a real tag release.
 
 For large changes and before a PR, the preserved local pre-merge order is:
 

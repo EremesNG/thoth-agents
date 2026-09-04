@@ -7,7 +7,8 @@ the same packaged skill trees globally under `~/.config/opencode/skills/`.
 
 Owned workflow skills are `thoth-init`, `thoth-sdd`, `thoth-constitution`,
 `thoth-archive`, and `plan-reviewer`. The last one implements the optional,
-user-selected, read-only Oracle review before implementation. Mandatory external
+explicitly or bounded-default selected, read-only Oracle review before
+implementation. Mandatory external
 skills (`simplify`, `tdd`,
 `progressive-context-router`, and `architectural-grilling`) are not copied here:
 the thoth-agents installer invokes `npx skills add` against their canonical

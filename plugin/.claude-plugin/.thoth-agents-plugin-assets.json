@@ -29,12 +29,12 @@
     {
       "path": "agents/oracle.md",
       "kind": "agent-config",
-      "sha256": "sha256:ce0cabf80941271f9125c4164ddb01250bfff4c96b8432ddebb0b85be725d0a8"
+      "sha256": "sha256:212c8598b510200386c133e37fdc5a6caf9156d89f70dbf4e4a2cb68653cf93f"
     },
     {
       "path": "agents/orchestrator.md",
       "kind": "agent-config",
-      "sha256": "sha256:f66650aa018f4cc0d39468eaf2c0ae35e14f7bbdc5eda99cf6a0dc38761961ee"
+      "sha256": "sha256:fe44e6849122ceb54a4e31962ce9e48db1b3f36ff5302b4a317695e12a2099ba"
     },
     {
       "path": "agents/quick.md",

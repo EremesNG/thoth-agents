@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'vitest';
+import { renderClaudeCodeRootInstructions } from '../harness/adapters/claude-code';
+import { renderCodexRootInstructions } from '../harness/adapters/codex';
+import { renderOpenCodeAgentConfigs } from '../harness/adapters/opencode';
 import type { AgentRoleName } from '../harness/core/agent-pack';
 import {
   CLAUDE_CODE_PROMPT_DIALECT,
@@ -50,10 +53,10 @@ describe('v0.3 prompt rendering', () => {
       dialect,
     );
 
-    expect(prompt.length).toBeLessThan(9_000);
+    expect(prompt.length).toBeLessThan(11_500);
     expect(prompt).toContain('adaptive root');
     expect(prompt).toContain(
-      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead; never self-verify.',
+      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead; never self-approve.',
     );
     expect(prompt).not.toContain(
       'Keep bounded direct work to one isolated low-risk Direct micro-action',
@@ -86,7 +89,7 @@ describe('v0.3 prompt rendering', () => {
     expect(prompt).toContain('UI/UX');
     expect(prompt).toContain('known narrow low-risk work');
     expect(prompt).toContain('coupled or high-risk work');
-    expect(prompt).toContain('never implementer');
+    expect(prompt).toContain('no implementation writer may approve');
     expect(prompt).not.toMatch(/Direct micro-action/i);
     expect(prompt).not.toMatch(/Artifact-backed implement follows/i);
     expect(prompt).not.toMatch(/Accelerated[^\n]*selected writer/i);
@@ -100,6 +103,77 @@ describe('v0.3 prompt rendering', () => {
       'executing-plans',
     ]) {
       expect(prompt).not.toContain(legacy);
+    }
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('renders one ordered task-shaping procedure before terminal fan-in in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+    const ordered = [
+      'bound-work',
+      'map-dependencies',
+      'assign-ownership',
+      'select-specialists',
+      'mark-ready-and-blocked',
+      'dispatch-ready-wave',
+      'wait-for-terminal-evidence',
+      'reconcile-and-verify',
+    ];
+
+    expect(prompt.match(/<task-shaping>/g)).toHaveLength(1);
+    expect(ordered.map((step) => prompt.indexOf(step))).toEqual(
+      [...ordered]
+        .map((step) => prompt.indexOf(step))
+        .sort((left, right) => left - right),
+    );
+    expect(prompt).toContain(dialect.tools.backgroundDelegationTool);
+    expect(prompt).toContain(dialect.tools.backgroundStatusTool);
+    expect(prompt).toContain(dialect.tools.lifecycle.terminalState);
+    expect(prompt).toContain(dialect.tools.lifecycle.nonterminalState);
+    expect(prompt).toContain(
+      'dispatch all independent conflict-free ready lanes before waiting',
+    );
+    expect(prompt).toContain('truthful sequential fallback');
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('renders the complete specialist directory with equal positive and negative salience in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+
+    for (const role of [...READ_ONLY_ROLES, ...WRITER_ROLES]) {
+      const marker = `- ${dialect.renderRoleInvocation(role)}: Select when `;
+      const line = prompt
+        .split('\n')
+        .find((candidate) => candidate.startsWith(marker));
+      expect(line, role).toContain(' Reject when ');
+    }
+  });
+
+  test('keeps generated root growth within the 2,500 character compatibility budget', () => {
+    const roots = {
+      opencode: String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''),
+      codex: renderCodexRootInstructions(),
+      claude: renderClaudeCodeRootInstructions(),
+    };
+    const baselines = { opencode: 8_499, codex: 9_855, claude: 9_340 };
+
+    for (const harness of Object.keys(roots) as Array<keyof typeof roots>) {
+      expect(
+        roots[harness].length - baselines[harness],
+        harness,
+      ).toBeLessThanOrEqual(2_500);
     }
   });
 
@@ -179,8 +253,9 @@ describe('v0.3 prompt rendering', () => {
     expect(prompt).toContain(
       'Root owns specify, clarify, plan, checklist, tasks',
     );
+    expect(prompt).toContain('Final verification is mandatory');
     expect(prompt).toContain(
-      'Delegate each user-selected plan review and every verify phase to @oracle',
+      'Root may run focused verification only for trivial deterministic Direct work',
     );
     expect(prompt).toContain('bundled `thoth-sdd` skill');
     expect(prompt).toContain('spec.md');
@@ -220,7 +295,7 @@ describe('v0.3 prompt rendering', () => {
     OPENCODE_PROMPT_DIALECT,
     CODEX_PROMPT_DIALECT,
     CLAUDE_CODE_PROMPT_DIALECT,
-  ])('keeps SDD route authority with the user in $harness', (dialect) => {
+  ])('summarizes and resolves unanswered SDD route choices in $harness', (dialect) => {
     const prompt = renderRolePrompt(
       createOrchestratorPromptSections(),
       dialect,
@@ -228,10 +303,13 @@ describe('v0.3 prompt rendering', () => {
 
     expect(prompt).toContain('assess and recommend one route');
     expect(prompt).toContain(
-      'wait for the user to select Direct, Accelerated, or Full',
+      'summarize the relevant request context, assessed scope, clarity, risk, and why the recommendation fits before asking',
     );
-    expect(prompt).toContain('The recommendation is not the decision');
-    expect(prompt).toContain("The user's selected route wins");
+    expect(prompt).toContain('at most three total attempts');
+    expect(prompt).toContain(
+      'After the third answerless result, treat the recommended route as selected',
+    );
+    expect(prompt).toContain('Any explicit user answer wins');
     expect(prompt).toContain('no duplicate route-selection prompt');
   });
 
@@ -239,7 +317,7 @@ describe('v0.3 prompt rendering', () => {
     OPENCODE_PROMPT_DIALECT,
     CODEX_PROMPT_DIALECT,
     CLAUDE_CODE_PROMPT_DIALECT,
-  ])('keeps pre-implementation review optional and final verification mandatory in $harness', (dialect) => {
+  ])('resolves unanswered review and implementation choices in $harness', (dialect) => {
     const prompt = renderRolePrompt(
       createOrchestratorPromptSections(),
       dialect,
@@ -251,12 +329,45 @@ describe('v0.3 prompt rendering', () => {
     expect(prompt).toContain('[OKAY]');
     expect(prompt).toContain('[REJECT]');
     expect(prompt).toContain('at most 3 actionable blockers');
-    expect(prompt).toContain('ask whether to implement or stop');
+    expect(prompt).toContain('review question returns answerless');
+    expect(prompt).toContain('at most three total attempts');
     expect(prompt).toContain(
-      'Skipping plan review means no pre-implementation Oracle review',
+      'After the third answerless result, treat `Review plan with Oracle (Recommended)` as selected',
+    );
+    expect(prompt).toContain(
+      'Any explicit `Proceed without review` answer wins',
+    );
+    expect(prompt).toContain(
+      'summarize the approved scope, approach, ownership, verification, and material risks before asking',
+    );
+    expect(prompt).toContain('`Implement (Recommended)` or `Stop`');
+    expect(prompt).toContain(
+      'After the third answerless result, treat implementation as selected',
+    );
+    expect(prompt).toContain('Any explicit `Stop` answer wins');
+    expect(prompt).toContain(
+      '`[OKAY]` alone does not authorize implementation',
     );
     expect(prompt).toContain(
       'Plan review never replaces mandatory final Oracle verify',
+    );
+  });
+
+  test.each([
+    OPENCODE_PROMPT_DIALECT,
+    CODEX_PROMPT_DIALECT,
+    CLAUDE_CODE_PROMPT_DIALECT,
+  ])('limits bounded SDD fallbacks to the three standard questions in $harness', (dialect) => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      dialect,
+    );
+
+    expect(prompt).toMatch(
+      /bounded fallbacks are only for route, plan-review, and implementation questions/i,
+    );
+    expect(prompt).toMatch(
+      /never for secrets, destructive\/security-sensitive actions, or material human-owned/i,
     );
   });
 

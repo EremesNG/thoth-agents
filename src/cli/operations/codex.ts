@@ -507,7 +507,9 @@ function planItemFromPluginSetup(
       path: item.targetPath,
       label: 'Codex native plugin manager target',
     },
-    preview: `${item.command.executable} ${item.command.args.join(' ')}`,
+    preview: item.command
+      ? `${item.command.executable} ${item.command.args.join(' ')}`
+      : `Remove exact preflight-approved Codex root ${item.cleanupRoot?.relativePath ?? item.targetPath}`,
     backup: { required: false, strategy: 'external' },
   };
 }
@@ -643,7 +645,10 @@ function buildCompleteCodexPlan(
   const buildPlugin =
     context.buildCodexPluginSetupPlan ?? buildCodexPluginSetupPlan;
   const pluginPlan = buildPlugin({
+    codexHome: context.codexHome,
     dryRun: true,
+    expectedVersion: packageVersion.ok ? packageVersion.version : '0.0.0',
+    homeDir: context.homeDir,
     projectRoot: context.cwd,
     commandExecutor: context.codexPluginCommandExecutor,
   });

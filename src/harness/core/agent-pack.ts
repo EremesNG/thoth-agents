@@ -33,7 +33,38 @@ export interface OrchestrationPolicy {
   maxDelegationDepth: number;
   singleWriter: boolean;
   implementationOwnership: ImplementationOwnershipPolicy;
+  taskShaping: TaskShapingPolicy;
+  specialistDirectory: SpecialistDecision[];
   rules: string[];
+}
+
+export type TaskShapingStep =
+  | 'bound-work'
+  | 'map-dependencies'
+  | 'assign-ownership'
+  | 'select-specialists'
+  | 'mark-ready-and-blocked'
+  | 'dispatch-ready-wave'
+  | 'wait-for-terminal-evidence'
+  | 'reconcile-and-verify';
+
+export interface TaskShapingPolicy {
+  steps: TaskShapingStep[];
+  nativeAuthority: boolean;
+  boundedWidth: boolean;
+  decisions: {
+    dependency: string;
+    ownershipConflict: string;
+    readyWave: string;
+    terminalEvidence: string;
+    degradation: string;
+  };
+}
+
+export interface SpecialistDecision {
+  role: Exclude<AgentRoleName, 'orchestrator'>;
+  selectWhen: string;
+  rejectWhen: string;
 }
 
 export type ImplementationOwner =
@@ -77,24 +108,27 @@ export const AGENT_ROLES = [
     scope:
       'requirements, SDD coordination, routing, bounded implementation, decisions, and synthesis',
     responsibility:
-      'Keep requirements, decisions, sequential SDD coordination, and final synthesis in the root thread; evaluate implementation ownership independently in every route and implement directly or delegate according to explicit user direction and demonstrated net gain.',
+      'Keep requirements, decisions, sequential SDD coordination, and final synthesis in the root thread; evaluate implementation ownership independently in every route, implement directly or delegate by demonstrated net gain, and run focused verification for trivial deterministic Direct work.',
     useWhen: [
       'Coordinate requirements, governed artifacts, routing, and synthesis.',
       'Implement an accepted mutable surface in any route when accumulated context and continuity outweigh delegation overhead.',
     ],
-    doNotUseWhen: ['Not for independent plan review or final verification.'],
+    doNotUseWhen: [
+      'Not for independent plan review or Oracle-required final verification.',
+    ],
     escalateWhen: [
       'Delegate implementation when specialization, context isolation, or independent bounded work creates a demonstrated net gain; then select designer, quick, or deep by task shape.',
     ],
     toolGovernance: [
-      'may inspect and edit the accepted bounded implementation surface in every route, but every verification is delegated to oracle',
+      'may inspect and edit the accepted bounded implementation surface in every route and may verify trivial deterministic Direct work without self-approval',
       'loads the matching thoth-sdd phase contract on demand instead of carrying every phase protocol in its prompt',
       'owns governed coordination writes under openspec/ and uses append-only tasks.md updates during convergence',
       'delegates independent or specialist work only when it produces a net gain',
       'keeps requirements, decisions, and final synthesis in the root thread',
     ],
     verification: [
-      'delegates selected plan-review and every verify phase to oracle; plan review stays optional and final verification stays mandatory',
+      'runs focused checks for trivial deterministic Direct work while final verification remains mandatory',
+      'delegates selected plan review plus Accelerated, Full, and material-risk Direct final verification to a fresh oracle',
       'consolidates summarized evidence returned by child agents',
     ],
   },
@@ -143,9 +177,9 @@ export const AGENT_ROLES = [
     scope:
       'diagnosis, architecture, optional plan review, and independent verification',
     responsibility:
-      'Independently review plans when the user requests it and perform every implementation verification, exposing correctness risks and judging whether results satisfy their contracts.',
+      'Independently review plans when the user requests it and provide independent judgment for artifact-backed or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
     useWhen: [
-      'Selected plan review, diagnosis, or final verification needs independent judgment.',
+      'Selected plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or artifact-backed final verification needs independent judgment.',
     ],
     doNotUseWhen: [
       'Not for implementation, mutation, persistence, or self-review.',
@@ -252,6 +286,42 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
       'cheaper model price without end-to-end evidence',
     ],
   },
+  taskShaping: {
+    steps: [
+      'bound-work',
+      'map-dependencies',
+      'assign-ownership',
+      'select-specialists',
+      'mark-ready-and-blocked',
+      'dispatch-ready-wave',
+      'wait-for-terminal-evidence',
+      'reconcile-and-verify',
+    ],
+    nativeAuthority: true,
+    boundedWidth: true,
+    decisions: {
+      dependency: 'block a lane until every concrete upstream output exists',
+      ownershipConflict:
+        'serialize overlapping mutable surfaces or assign one writer',
+      readyWave:
+        'dispatch all independent conflict-free ready lanes before waiting',
+      terminalEvidence:
+        'silence, timeout, and malformed status remain nonterminal',
+      degradation:
+        'report an unavailable native primitive and use a truthful sequential fallback',
+    },
+  },
+  specialistDirectory: AGENT_ROLES.filter(
+    (
+      role,
+    ): role is (typeof AGENT_ROLES)[number] & {
+      name: Exclude<AgentRoleName, 'orchestrator'>;
+    } => role.name !== 'orchestrator',
+  ).map((role) => ({
+    role: role.name,
+    selectWhen: role.useWhen.join(' '),
+    rejectWhen: role.doNotUseWhen.join(' '),
+  })),
   rules: [
     'Direct, Accelerated, Full, and no-artifact execution govern artifacts and gates, not implementation ownership.',
     'Root or a specialist may implement in every route; delegate only when specialization, context isolation, independent bounded work, or safe parallelism creates a demonstrated quality, latency, or total-cost net gain.',
@@ -262,6 +332,7 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     'A fresh subagent instance is the default when the objective, SDD phase, mutable surface, or independent judgment changes.',
     'Continue an existing subagent only to steer, complete, or clarify the same bounded assignment; completed agents are not a reusable role pool.',
     'Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance; reuse is limited to clarifying current findings.',
+    'Final verification is mandatory: root owns trivial deterministic Direct checks; a fresh Oracle owns Accelerated, Full, and material-risk Direct judgment.',
     'Wait and status operations collect only the active nonterminal assignment and do not authorize later reuse.',
     'Child agents return distilled evidence instead of raw logs or file dumps.',
   ],
@@ -346,6 +417,17 @@ export function getAgentPackContract(): AgentPackContract {
             .insufficientSignals,
         ],
       },
+      taskShaping: {
+        ...AGENT_PACK_CONTRACT.orchestrationPolicy.taskShaping,
+        steps: [...AGENT_PACK_CONTRACT.orchestrationPolicy.taskShaping.steps],
+        decisions: {
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.taskShaping.decisions,
+        },
+      },
+      specialistDirectory:
+        AGENT_PACK_CONTRACT.orchestrationPolicy.specialistDirectory.map(
+          (decision) => ({ ...decision }),
+        ),
       rules: [...AGENT_PACK_CONTRACT.orchestrationPolicy.rules],
     },
     returnContract: [...AGENT_PACK_CONTRACT.returnContract],

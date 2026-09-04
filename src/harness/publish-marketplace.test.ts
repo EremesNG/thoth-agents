@@ -25,6 +25,10 @@ function git(cwd: string, args: string[]): string {
   }).trim();
 }
 
+function workflowExpression(value: string): string {
+  return ['$', '{{ ', value, ' }}'].join('');
+}
+
 function initializeWorkingRepository(root: string): void {
   git(root, ['init', '-b', 'main']);
   git(root, ['config', 'user.name', 'Marketplace Test']);
@@ -131,7 +135,47 @@ afterEach(() => {
 });
 
 describe('thoth-agents marketplace publication', () => {
-  test('wires catalog publication after the existing version tag push', () => {
+  test('publishes from the release workflow with a scoped GitHub App token', () => {
+    const workflow = readFileSync(
+      join(process.cwd(), '.github', 'workflows', 'release.yml'),
+      'utf8',
+    ).replaceAll('\r\n', '\n');
+    const createRelease = workflow.indexOf('- name: Create GitHub release');
+    const createToken = workflow.indexOf('- name: Create marketplace token');
+    const publishMarketplace = workflow.indexOf(
+      '- name: Publish marketplace version',
+    );
+
+    expect(createRelease).toBeGreaterThan(-1);
+    expect(createToken).toBeGreaterThan(createRelease);
+    expect(publishMarketplace).toBeGreaterThan(createToken);
+
+    const tokenStep = workflow.slice(createToken, publishMarketplace);
+    expect(tokenStep).toContain('uses: actions/create-github-app-token@v3');
+    expect(tokenStep).toContain(
+      `client-id: ${workflowExpression('secrets.THOTH_RELEASE_APP_CLIENT_ID')}`,
+    );
+    expect(tokenStep).toContain(
+      `private-key: ${workflowExpression('secrets.THOTH_RELEASE_APP_PRIVATE_KEY')}`,
+    );
+    expect(tokenStep).toContain(
+      `owner: ${workflowExpression('github.repository_owner')}`,
+    );
+    expect(tokenStep).toContain('repositories: thoth-plugins');
+    expect(tokenStep).toContain('permission-contents: write');
+
+    const publicationStep = workflow.slice(publishMarketplace);
+    expect(publicationStep).toContain(
+      `GH_TOKEN: ${workflowExpression('steps.marketplace-token.outputs.token')}`,
+    );
+    expect(publicationStep).toContain('gh auth setup-git');
+    expect(publicationStep).toContain('pnpm run release:marketplace');
+    expect(publicationStep).not.toContain(
+      `GH_TOKEN: ${workflowExpression('github.token')}`,
+    );
+  });
+
+  test('keeps manual publication separate from the version tag push', () => {
     const manifest = JSON.parse(
       readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
     ) as { scripts: Record<string, string> };
@@ -140,7 +184,7 @@ describe('thoth-agents marketplace publication', () => {
     );
     for (const level of ['patch', 'minor', 'major']) {
       expect(manifest.scripts[`release:${level}`]).toBe(
-        `npm version ${level} --ignore-scripts=false && git push --follow-tags && pnpm run release:marketplace`,
+        `npm version ${level} --ignore-scripts=false && git push --follow-tags`,
       );
     }
   });

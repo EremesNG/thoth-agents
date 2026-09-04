@@ -139,3 +139,20 @@ jobs:
           --verify-tag
           --title "${GITHUB_REF_NAME}"
           --notes-file release-notes.md
+
+      - name: Create marketplace token
+        id: marketplace-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.THOTH_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.THOTH_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: thoth-plugins
+          permission-contents: write
+
+      - name: Publish marketplace version
+        env:
+          GH_TOKEN: ${{ steps.marketplace-token.outputs.token }}
+        run: |
+          gh auth setup-git
+          pnpm run release:marketplace

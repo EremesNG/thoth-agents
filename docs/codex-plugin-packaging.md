@@ -52,13 +52,17 @@ Claude agents/settings, and one copy of the five thoth-owned skills. It does not
 render or package a marketplace catalog. External skills remain CLI-installed from their canonical
 repositories. `pnpm run build` synchronizes before compilation. The npm version
 lifecycle used by `release:patch`, `release:minor`, and `release:major` keeps
-both plugin manifests aligned with the root version, pushes the product commit
-and tag, and then publishes only the `thoth-agents` pin to the central catalog.
+both plugin manifests aligned with the root version and pushes the product
+commit and tag. That tag starts the release workflow, which waits for CI,
+publishes npm, creates the GitHub release, and then uses the scoped
+`thoth-plugins-release-bot` App to publish only the `thoth-agents` pin to the
+central catalog. CI is the sole automatic marketplace publisher.
 
-If the product tag is already pushed but catalog publication fails, run `pnpm
-run release:marketplace`. This retry is idempotent and does not create another
-package version. A concurrent update to central `main` rejects the normal push;
-rerun the catalog-only command and never force-push the marketplace.
+If the product release exists but its catalog publication fails, run `pnpm run
+release:marketplace` with credentials that can write `thoth-plugins`. This
+manual retry is idempotent and does not create another package version. A
+concurrent update to central `main` rejects the normal push; rerun the
+catalog-only command and never force-push the marketplace.
 
 ## Local development synchronization
 

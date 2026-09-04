@@ -53,7 +53,7 @@ describe('shared plugin lifecycle', () => {
     const { scripts } = readPackageMetadata();
 
     expect(scripts[`release:${level}`]).toBe(
-      `npm version ${level} --ignore-scripts=false && git push --follow-tags && pnpm run release:marketplace`,
+      `npm version ${level} --ignore-scripts=false && git push --follow-tags`,
     );
   });
 

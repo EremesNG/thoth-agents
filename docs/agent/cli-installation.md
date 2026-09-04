@@ -18,9 +18,11 @@ phase execution does not.
   `/thoth-init` owns only project `openspec/` governance.
 - Mandatory external skills are installed from canonical repositories through
   `npx skills add`; this repository must not vendor their source.
-- After owned setup and external skills, every harness invokes the official
-  global `thoth-mem setup` command. Dry-run uses provider `--plan`; only
-  consistent `complete` evidence completes installation.
+- After owned setup and external skills, published harness installs invoke the
+  official global `thoth-mem setup` command. Dry-run uses provider `--plan`;
+  only consistent `complete` evidence completes installation. Explicit local
+  Pi package installs omit provider setup, record thoth-agents completion, and
+  direct the operator to install thoth-mem separately from its local checkout.
 - Provider diagnostics, manual actions, and receipt are surfaced. Consumer
   reset never becomes provider `--force`, rollback, removal, or file repair.
 - Browser and QA executables remain project-owned.
@@ -28,9 +30,10 @@ phase execution does not.
   OpenCode refreshes exact plugin/config plus owned skills; Codex performs
   native plugin setup before its global pack; Claude performs native plugin
   refresh; Pi installs the exact executing first-party package before four pinned
-  external packages and attributable resources. Every
-  harness then installs required external skills, requires
-  provider-complete evidence, and records CLI completion last.
+  external packages and attributable resources. Every harness then installs
+  required external skills. Published installs require provider-complete
+  evidence before recording CLI completion last; an explicit local Pi package
+  install omits provider setup and records only thoth-agents completion.
 - Update previews by default. Preview and dry-run write nothing; any required
   apply failure returns failure and does not claim or record completion. Reset
   touches only bounded managed targets.
@@ -56,8 +59,9 @@ phase execution does not.
 - Claude requires native marketplace add/install before its plugin surfaces
   exist; then the CLI installs external skills and requests provider setup
   without editing Claude's cache.
-- Pi first rejects unowned/conflicting first-party state, then installs
-  `npm:thoth-agents@<executing-version> --no-approve`, proves configured,
+- Pi first rejects unowned/conflicting first-party state, then installs either
+  `npm:thoth-agents@<executing-version> --no-approve` or an explicit normalized
+  absolute `--local-package-root` with `--agent=pi`, proves configured,
   loadable, and receipt-bound observed state, and atomically commits
   `pi-package.json`. The receipt keeps Pi's canonical configured `source`
   separately from the command-safe `installSource`: npm values are identical,

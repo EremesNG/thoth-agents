@@ -30,9 +30,10 @@ recommends Direct, Accelerated, or Full after summarizing context; explicit
 answers win and the third answerless route question selects the recommendation.
 After `ready`, artifact-backed routes offer optional Oracle plan review or proceeding
 without it; every final verification remains mandatory. During
-installation, the CLI obtains four mandatory external skills
-from their canonical repositories with `npx skills add` and invokes the official
-provider-owned thoth-mem setup for the selected harness. During an SDD, agents
+installation, the CLI obtains four mandatory external skills from their
+canonical repositories with `npx skills add`; published installs then invoke
+the official provider-owned thoth-mem setup for the selected harness. An
+explicit local Pi package install omits that provider step. During an SDD, agents
 load local contracts and the installed thoth-mem guidance; they never need to
 invoke either CLI or download a phase contract.
 
@@ -434,8 +435,8 @@ It invokes `npx skills add <repository> --skill <name> --global --agent
 <harness> --yes`; missing external skills make installation unhealthy. Project
 QA executables such as Playwright remain project-owned.
 
-The same CLI installation then invokes `npx -y thoth-mem@latest setup
-<opencode|codex|claude|pi> --scope global --json`; dry-run adds `--plan`. Only a
+The same published CLI installation then invokes `npx -y thoth-mem@latest setup
+<opencode|codex|claude|pi> --json`; dry-run adds `--plan`. Only a
 consistent provider `complete` result completes installation. Provider
 diagnostics, manual actions, and receipt paths remain visible for recovery.
 
@@ -481,10 +482,12 @@ per-role model overrides remain available. Applying model configuration creates
 a complete seven-role `agents` preset from the effective values and activates
 it with `preset: agents`; unrelated presets and configuration remain intact.
 
-thoth-mem is an independent plugin/provider. `thoth-agents install` orchestrates
-its public setup command, but thoth-mem owns the resulting hooks, MCP, skill,
-session lifecycle, persistence, receipts, and recovery. thoth-agents does not
-copy, edit, force, roll back, or emulate those mechanics.
+thoth-mem is an independent plugin/provider. Published `thoth-agents install`
+orchestrates its public setup command, but an explicit local Pi package install
+omits it and requires thoth-mem to be installed separately from its own local
+checkout. thoth-mem owns the resulting hooks, MCP, skill, session lifecycle,
+persistence, receipts, and recovery. thoth-agents does not copy, edit, force,
+roll back, or emulate those mechanics.
 
 At runtime the root loads the installed `thoth-mem` skill for prior-work recall,
 durable decisions/root causes/conventions/discoveries, verified compaction, and
@@ -505,10 +508,16 @@ npx thoth-agents@latest install --agent=opencode
 npx thoth-agents@latest install --agent=codex
 npx thoth-agents@latest install --agent=claude
 npx thoth-agents@latest install --agent=pi
+node dist/cli/index.js install --agent=pi --local-package-root="<absolute-path-to-checkout>"
 npx thoth-agents@latest update --harness=opencode
 npx thoth-agents@latest update --harness=opencode --apply
 npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ```
+
+The local Pi command installs only the local thoth-agents package and its
+thoth-agents dependencies. Install a local thoth-mem checkout separately with
+its own `node dist/index.js setup pi --local-package-root "<absolute-thoth-mem-root>"`
+command.
 
 `update` previews by default. Applying it performs the same complete refresh as
 installation for the selected harness: OpenCode refreshes its exact plugin pin,

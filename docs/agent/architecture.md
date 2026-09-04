@@ -32,8 +32,10 @@ persistence, receipts, state, and recovery remain outside this package.
    `before_agent_start` hook contributes the bounded ambient root and
    `session_start` safely synchronizes six package-owned specialists. Pi loads
    the five owned skills from the package manifest. The CLI then installs the
-   four external packages, four external skills, and provider-owned thoth-mem;
-   Pi and `pi-subagents-j0k3r` retain execution and lifecycle ownership.
+   four external packages and four external skills. Published installs also
+   invoke provider-owned thoth-mem; an explicit local Pi package install leaves
+   thoth-mem to its separate local installer. Pi and `pi-subagents-j0k3r` retain
+   execution and lifecycle ownership.
 
 ## Boundaries
 
@@ -76,8 +78,9 @@ persistence, receipts, state, and recovery remain outside this package.
   repositories during installation and are never fetched during an SDD.
   OpenCode's CLI materializes the packaged owned contracts in its global native
   skill root because npm plugins do not expose package-relative skill roots.
-- Every harness install requires consistent thoth-mem `complete` evidence;
-  provider assets and recovery remain independently owned.
+- Every published harness install requires consistent thoth-mem `complete`
+  evidence. An explicit local Pi package install records thoth-agents without
+  provider setup; provider assets and recovery remain independently owned.
 - Dispatch memory authorization is `none`, `recall`, or `observe`, independent
   of workspace mode; root lifecycle never transfers and `openspec/` remains canonical.
 - Both marketplaces resolve to the shared `plugin/` bundle; harness-specific

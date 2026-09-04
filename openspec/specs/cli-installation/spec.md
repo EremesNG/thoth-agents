@@ -6,9 +6,9 @@ Durable behavioral contract for `cli-installation`.
 
 ## Requirements
 
-### Requirement: Mandatory provider setup
+### Requirement: Provider setup policy
 
-The installer MUST invoke `npx -y thoth-mem@latest setup <opencode|codex|claude|pi> --scope global --json` after thoth-agents-owned setup and mandatory external skills, adding `--plan` only for dry-run and accepting only internally consistent `complete` evidence.
+Published installers MUST invoke `npx -y thoth-mem@latest setup <opencode|codex|claude|pi> --json` after thoth-agents-owned setup and mandatory external skills, adding `--plan` only for dry-run and accepting only internally consistent `complete` evidence. Provider setup is globally scoped by thoth-mem and the consumer MUST NOT pass the rejected `--scope` option. An explicit Pi `--local-package-root` install MUST omit provider setup, record only thoth-agents completion, and direct the operator to install thoth-mem separately from its own local checkout.
 
 #### Scenario: US1 - Install the complete Pi agent pack 1
 
@@ -34,7 +34,7 @@ The installer MUST parse the documented thoth-mem JSON result, accept only inter
 
 #### Scenario: US1 - Complete harness installation 1
 
-- **GIVEN** any supported harness
+- **GIVEN** any supported harness using its published install source
 - **WHEN** its thoth-agents installation reaches provider setup
 - **THEN** it invokes the official global thoth-mem setup command after thoth-agents-owned setup and required skills
 
@@ -254,7 +254,7 @@ Applying Update for Pi MUST perform the same exact first-party-package-first, ex
 
 ### Requirement: Preserve complete per-harness setup
 
-`install --agent=pi` MUST preflight Node.js and Pi; capture and validate the receipt-owned prior first-party state; install and verify the exact first-party native package before any external package; atomically commit its ownership receipt only after configured, loadable, and observed evidence passes; and compensate a failed replacement by restoring and verifying the prior owned source or removing a new source while leaving the prior receipt unchanged. Only then MAY setup install delegation and research packages, merge the attributable grep.app entry, synchronize only package-owned specialist resources, install mandatory external skills, invoke provider-owned setup, and record the last-complete Pi ledger after every required step succeeds. Dry-run MUST describe the complete order without mutation, and a first-party failure MUST prevent all downstream mutation.
+`install --agent=pi` MUST preflight Node.js and Pi; capture and validate the receipt-owned prior first-party state; install and verify the exact first-party native package before any external package; atomically commit its ownership receipt only after configured, loadable, and observed evidence passes; and compensate a failed replacement by restoring and verifying the prior owned source or removing a new source while leaving the prior receipt unchanged. Only then MAY setup install delegation and research packages, merge the attributable grep.app entry, synchronize only package-owned specialist resources, install mandatory external skills, invoke provider-owned setup for a published install, and record the last-complete Pi ledger after every required in-scope step succeeds. An explicit local package install MUST omit provider setup while keeping the ledger commit. Dry-run MUST describe the complete in-scope order without mutation, and a first-party failure MUST prevent all downstream mutation.
 
 #### Scenario: US1 - Install thoth-agents as the first native Pi package 1
 
@@ -467,6 +467,12 @@ CLI and TUI status, install, Update, Sync, and specialist model/effort operation
 - **GIVEN** a receipt-owned prior source
 - **WHEN** replacement, native-load observation, or receipt commit fails
 - **THEN** setup restores and verifies the prior source, leaves the prior receipt authoritative, and blocks every downstream dependency; a failed compensation is reported explicitly
+
+#### Scenario: US1 - Install thoth-agents from a local package root
+
+- **GIVEN** a built local thoth-agents package whose normalized absolute root matches the executing package identity and version
+- **WHEN** `thoth-agents install --agent=pi --local-package-root <root>` is applied
+- **THEN** `pi install <root> --no-approve` replaces only the public first-party source, is receipt-verified through Pi's canonical source and exact resolved path, completes the downstream package, skill, and ledger flow, omits thoth-mem setup, and prints the separate local provider-install command
 
 #### Scenario: US3 - Update, migrate, and diagnose native package state 1
 

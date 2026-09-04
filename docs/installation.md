@@ -17,7 +17,8 @@ The five thoth-owned workflow skills are packaged. Codex and Claude discover
 them through their native plugin managers; the OpenCode installer synchronizes
 them into `~/.config/opencode/skills/`. The installer obtains the four mandatory
 external skills from their canonical repositories with `npx skills add`, then
-invokes thoth-mem's public setup command. Once installed, SDD phases load local
+published installs invoke thoth-mem's public setup command. An explicit local Pi
+package install omits that provider step. Once installed, SDD phases load local
 contracts and provider guidance without consuming either CLI or the network.
 
 Nested package installation is non-interactive: the CLI confirms both `npx`
@@ -40,7 +41,8 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | Option | Meaning |
 | --- | --- |
 | `--agent=opencode\|codex\|claude\|pi` | Select the installation target. |
-| `--dry-run` | Print native-manager and thoth-agents plans, then invoke thoth-mem with its zero-write `--plan` mode. |
+| `--local-package-root=PATH` | Install a built local package root for Pi; the normalized path must be absolute, requires `--agent=pi`, and omits thoth-mem setup. |
+| `--dry-run` | Print native-manager and thoth-agents plans; published installs also invoke thoth-mem with its zero-write `--plan` mode. |
 | `--reset` | Repair only thoth-agents-managed targets; it never becomes thoth-mem `--force`. |
 | `--no-tui` | Force the non-interactive path. |
 | `--tmux=yes\|no` | Configure OpenCode tmux integration; it does not apply to Codex or Claude. |
@@ -161,9 +163,27 @@ npx thoth-agents@latest install --agent=pi --dry-run
 npx thoth-agents@latest install --agent=pi
 ```
 
+For local development, build the checkout and pass its normalized absolute root:
+
+```bash
+pnpm run build
+node dist/cli/index.js install --agent=pi --local-package-root="<absolute-path-to-checkout>"
+```
+
+The local form replaces only the first source with
+`pi install <absolute-path-to-checkout> --no-approve`. It performs the same
+receipt verification, external package and skill installation, and final ledger
+commit as the public npm form, but deliberately omits thoth-mem setup. Install
+thoth-mem from its own local checkout as a separate command:
+
+```bash
+node <absolute-thoth-mem-root>/dist/index.js setup pi --local-package-root="<absolute-thoth-mem-root>"
+```
+
 The CLI installs and verifies these Pi packages in order:
 
-1. the exact executing `npm:thoth-agents@<version>` first-party package;
+1. the exact executing `npm:thoth-agents@<version>` first-party package, or the
+   explicit local package root selected by `--local-package-root`;
 2. `pi-subagents-j0k3r@1.5.9` for native single-specialist foreground and
    background tasks;
 3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
@@ -237,18 +257,23 @@ end-to-end QA executables remain project-owned.
 
 ## thoth-mem companion setup
 
-`npx thoth-agents@latest install` delegates provider mutation to thoth-mem's
-documented administrative surface after the harness layer and mandatory skills:
+Published `npx thoth-agents@latest install` delegates provider mutation to
+thoth-mem's documented administrative surface after the harness layer and
+mandatory skills:
 
 | Harness | Provider command invoked by thoth-agents |
 | --- | --- |
-| OpenCode | `npx -y thoth-mem@latest setup opencode --scope global --json` |
-| Codex | `npx -y thoth-mem@latest setup codex --scope global --json` |
-| Claude Code | `npx -y thoth-mem@latest setup claude --scope global --json` |
-| Pi | `npx -y thoth-mem@latest setup pi --scope global --json` |
+| OpenCode | `npx -y thoth-mem@latest setup opencode --json` |
+| Codex | `npx -y thoth-mem@latest setup codex --json` |
+| Claude Code | `npx -y thoth-mem@latest setup claude --json` |
+| Pi | `npx -y thoth-mem@latest setup pi --json` |
 
 With `--dry-run`, thoth-agents adds `--plan` before `--json`. It does not pass
 `--force`, even when thoth-agents itself receives `--reset`.
+
+The explicit Pi `--local-package-root` flow is the exception: it never invokes
+thoth-mem, prints the separate local provider command, and records only the
+completed thoth-agents installation in its CLI ledger.
 
 The provider result is authoritative:
 

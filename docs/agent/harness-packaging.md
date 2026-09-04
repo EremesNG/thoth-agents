@@ -32,8 +32,10 @@
   five canonical thoth-owned skills, including `plan-reviewer`.
   Harness-specific manifests and MCP files
   coexist in that bundle. External skills are installed from their source
-  repositories by the mandatory CLI flow; the same flow invokes thoth-mem's
-  public setup without copying provider assets into the bundle.
+  repositories by the mandatory CLI flow; published installs then invoke
+  thoth-mem's public setup without copying provider assets into the bundle.
+  Explicit local Pi package installs leave thoth-mem to its separate local
+  installer.
 - Native managers own marketplace snapshots, normal cache lifecycle,
   enablement, and trust. The Codex CLI migration has one bounded exception: only
   fixed product-owned legacy roots may be removed after central verification and

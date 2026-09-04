@@ -1,10 +1,11 @@
 # Memory provider boundary
 
-thoth-mem is an independently installed provider/plugin. thoth-agents invokes
-its public setup command during every harness installation; thoth-mem remains
-authoritative for all resulting mutations, hooks, MCP, installed skill, session
-lifecycle, prompt capture, compaction, receipts, recovery, runtime state,
-persistence protocol, and storage.
+thoth-mem is an independently installed provider/plugin. Published
+thoth-agents installations invoke its public setup command; an explicit local
+Pi package install omits that step and requires a separate local thoth-mem
+install. thoth-mem remains authoritative for all resulting mutations, hooks,
+MCP, installed skill, session lifecycle, prompt capture, compaction, receipts,
+recovery, runtime state, persistence protocol, and storage.
 
 thoth-agents owns only provider-neutral orchestration outcomes:
 

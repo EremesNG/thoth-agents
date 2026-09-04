@@ -69,10 +69,11 @@ selector. There are no vendored copies of these external skills in this
 repository or the generated plugin packages. A failed mandatory skill install
 fails the overall installation.
 
-After the external skills, the same installation command invokes thoth-mem's
-public setup for the selected harness. This administrative call is installation
-orchestration, not a bundled provider implementation; SDD phases never invoke
-either CLI.
+After the external skills, the published installation command invokes
+thoth-mem's public setup for the selected harness. An explicit local Pi package
+install omits that call and requires a separate local thoth-mem installation.
+This administrative call is installation orchestration, not a bundled provider
+implementation; SDD phases never invoke either CLI.
 
 ## SDD contract loading
 
@@ -123,11 +124,13 @@ thoth-mem is not a bundled skill or MCP. It is an independently installed
 plugin/provider and owns its hooks, MCP setup, persistence, recovery, capability
 evidence, receipts, installed skill, and lifecycle behavior.
 
-`npx thoth-agents@latest install` invokes `npx -y thoth-mem@latest setup
-<opencode|codex|claude|pi> --scope global --json` after thoth-agents-owned setup and
+Published `npx thoth-agents@latest install` invokes `npx -y thoth-mem@latest
+setup <opencode|codex|claude|pi> --json` after thoth-agents-owned setup and
 mandatory skills. Dry-run adds thoth-mem's zero-write `--plan`; thoth-agents does
 not pass `--force`, edit provider files, or claim success unless status and exit
-evidence consistently report `complete`.
+evidence consistently report `complete`. An explicit local Pi package install
+omits provider setup and requires thoth-mem to be installed separately from its
+own local checkout.
 
 At runtime, root and children load the installed `thoth-mem` skill only for an
 authorized memory outcome. Root owns stable session identity, real-user intent,

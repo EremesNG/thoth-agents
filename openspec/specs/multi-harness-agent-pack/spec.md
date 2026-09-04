@@ -154,6 +154,12 @@ The published `thoth-agents` npm artifact MUST identify as a Pi package, MUST de
 - **WHEN** replacement, native-load observation, or receipt commit fails
 - **THEN** setup restores and verifies the prior source, leaves the prior receipt authoritative, and blocks every downstream dependency; a failed compensation is reported explicitly
 
+#### Scenario: US1 - Install thoth-agents from a local package root
+
+- **GIVEN** a built local thoth-agents package whose normalized absolute root matches the executing package identity and version
+- **WHEN** `thoth-agents install --agent=pi --local-package-root <root>` is applied
+- **THEN** `pi install <root> --no-approve` replaces only the public first-party source, is receipt-verified through Pi's canonical source and exact resolved path, completes the downstream package, skill, and ledger flow, omits thoth-mem setup, and prints the separate local provider-install command
+
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 1
 
 - **GIVEN** the native package is installed

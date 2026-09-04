@@ -133,10 +133,12 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem
   is an independent provider; follow its installed guidance for memory and
   persistence mechanics.
-- Every harness install invokes thoth-mem's public global setup after
+- Published harness installs invoke thoth-mem's public global setup after
   thoth-agents-owned setup and mandatory skills. Only consistent `complete`
   evidence succeeds; never translate reset into provider force, rollback, or
-  asset mutation.
+  asset mutation. An explicit local Pi package install omits provider setup,
+  records only thoth-agents completion, and requires thoth-mem to be installed
+  separately from its own local checkout.
 - Runtime memory authorization is `none`, `recall`, or `observe`, independent of
   workspace mode. Root owns session lifecycle and real-user intent; `openspec/`
   stays canonical and phase artifacts are not mirrored into thoth-mem.

@@ -1,595 +1,255 @@
 <div align="center">
-  <img src="img/thoth-agents-header.webp" alt="Seven human cyber-Egyptian thoth-agents roles, with Thoth as the Orchestrator centered between three read-only specialists and three implementation writers" width="100%">
+  <img src="img/thoth-agents-header.webp" alt="Seven cyber-Egyptian specialists led by Thoth, the Orchestrator" width="100%">
   <h1>Thoth-Agents</h1>
-  <p><i>Adaptive orchestration for OpenCode, Codex, Claude Code, and Pi.</i></p>
-  <p><b>Seven roles</b> · <b>Three SDD routes</b> · <b>Runtime-autonomous SDD</b></p>
+  <p><b>One conversation. The right specialists. A workflow that fits the task.</b></p>
+  <p>Adaptive agent orchestration for OpenCode, Codex, Claude Code, and Pi.</p>
   <p>
-    <a href="https://www.npmjs.com/package/thoth-agents"><img src="https://img.shields.io/npm/v/thoth-agents?style=for-the-badge&amp;color=cb9b35&amp;label=npm" alt="npm version"></a>
-    <a href="https://github.com/EremesNG/thoth-agents/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/EremesNG/thoth-agents/ci.yml?branch=master&amp;style=for-the-badge&amp;label=CI" alt="CI status"></a>
-    <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D22.19-43853d?style=for-the-badge&amp;logo=node.js&amp;logoColor=white" alt="Node 22.19 or newer"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1f6feb?style=for-the-badge" alt="MIT License"></a>
+    <a href="https://www.npmjs.com/package/thoth-agents"><img src="https://img.shields.io/npm/v/thoth-agents?style=flat-square&amp;color=cb9b35&amp;label=npm" alt="npm version"></a>
+    <a href="https://github.com/EremesNG/thoth-agents/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/EremesNG/thoth-agents/ci.yml?branch=master&amp;style=flat-square&amp;label=CI" alt="CI status"></a>
+    <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D22.19-43853d?style=flat-square&amp;logo=node.js&amp;logoColor=white" alt="Node 22.19 or newer"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1f6feb?style=flat-square" alt="MIT License"></a>
+  </p>
+  <p>
+    <a href="#why-thoth-agents">Overview</a> ·
+    <a href="#install">Install</a> ·
+    <a href="#get-started">Get started</a> ·
+    <a href="#meet-the-team">The team</a> ·
+    <a href="#choose-your-workflow">Workflows</a> ·
+    <a href="#documentation">Documentation</a>
   </p>
 </div>
 
 ---
 
-## What it does
+## Why thoth-agents
 
-thoth-agents is a multi-harness orchestration plugin for OpenCode, Codex, Claude
-Code, and Pi. One adaptive root handles clear bounded work directly and delegates
-only when specialization, context isolation, independent review, or safe
-parallelism creates a net gain.
+Describe what you want to build or fix. Thoth keeps the conversation together,
+handles straightforward work directly, and brings in specialists when research,
+design, implementation, or an independent review would help.
 
-The plugin ships the seven-role contract and thoth-owned SDD
-contracts that combine Spec Kit-grade traceability with OpenSpec-style durable
-deltas. The root shapes substantive work into dependency-aware, conflict-free
-native waves and joins terminal native results before dependent synthesis.
-Accelerated planning fast-forwards without routine pauses; structural
-`ready`/`closeout` gates and proportional independent review retain rigor. Root
-recommends Direct, Accelerated, or Full after summarizing context; explicit
-answers win and the third answerless route question selects the recommendation.
-After `ready`, artifact-backed routes offer optional Oracle plan review or proceeding
-without it; every final verification remains mandatory. During
-installation, the CLI obtains four mandatory external skills from their
-canonical repositories with `npx skills add`; published installs then invoke
-the official provider-owned thoth-mem setup for the selected harness. An
-explicit local Pi package install omits that provider step. During an SDD, agents
-load local contracts and the installed thoth-mem guidance; they never need to
-invoke either CLI or download a phase contract.
+Small changes stay small. Larger changes get a specification, a plan, and
+verification you can follow—without manually coordinating every agent.
 
-Delivery is intentionally asymmetric. OpenCode uses the CLI to configure the
-npm plugin, external skills, and thoth-mem. Codex needs both a native plugin and a mandatory
-CLI-managed global layer because its manifest cannot install custom agents or
-global root instructions. Claude needs its two native marketplace commands
-before the CLI installs external skills and requests provider-owned thoth-mem
-setup. Pi uses its native package and resource surfaces, with
-`pi-subagents-j0k3r` retaining delegation execution and task/history ownership.
+- **A team, not seven conversations.** One adaptive Orchestrator coordinates six
+  specialists and brings their results back to you.
+- **The right amount of process.** Choose a quick Direct path or a structured
+  specification-driven development (SDD) workflow for more involved work.
+- **Specialists where they add value.** Repository discovery, current documentation,
+  UI/UX, focused edits, complex implementation, and independent review have distinct roles.
+- **Models you can tune.** Configure models per role to suit your workflow and
+  the providers available in your harness.
+- **Continuity between sessions.** Published installs include setup of
+  [thoth-mem](https://github.com/EremesNG/thoth-mem), the independent memory
+  companion for reusable decisions and project knowledge.
 
-Runtime guarantees still differ by harness. OpenCode is the default and most
-integrated path; Codex, Claude, and Pi preserve their own trust, policy, package,
-and permission semantics. Pi extensions execute with the invoking user's system
-permissions, so child tool allowlists are not an OS sandbox. Codex installation
-has one bounded legacy-cache cleanup contract described below; Claude does not.
+> [!NOTE]
+> OpenCode is the default and most integrated path. All four harnesses share the
+> workflow and role design, but their permissions, delegation, and runtime
+> capabilities are not identical. Your harness's trust and approval rules still apply.
 
 ## Install
 
-### OpenCode
+You need **Node.js `>=22.19`**, a supported harness already installed, and network
+access for setup. Authenticate your model providers in that harness separately.
+The commands below install at **global/user scope**.
 
-Install the plugin configuration, five thoth-owned skills, four external
-skills, and the thoth-mem companion globally:
+| Harness | What you get | Install command |
+| --- | --- | --- |
+| <a href="https://github.com/anomalyco/opencode"><picture><source media="(prefers-color-scheme: dark)" srcset="https://svgl.app/library/opencode-dark.svg"><img src="https://svgl.app/library/opencode.svg" alt="OpenCode logo" width="48" height="48"></picture></a><br>**OpenCode** | Native plugin, agent team, workflow skills, and memory setup. **Recommended starting point.** | `npx thoth-agents@latest install --agent=opencode` |
+| <a href="https://github.com/openai/codex"><img src="https://github.com/openai.png?size=120" alt="OpenAI logo — Codex" width="48" height="48"></a><br>**Codex** | Native plugin plus the required global agent and instruction setup. **Close Codex first.** | `npx thoth-agents@latest install --agent=codex` |
+| <a href="https://claude.com/product/claude-code"><img src="https://github.com/anthropics.png?size=120" alt="Anthropic logo — Claude Code" width="48" height="48"></a><br>**Claude Code** | Marketplace agents and skills, completed by the CLI's external skills and memory setup. **Run the prerequisites below first.** | `npx thoth-agents@latest install --agent=claude` |
+| <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, six specialists, delegation and research extensions, workflow skills, and memory setup. | `npx thoth-agents@latest install --agent=pi` |
 
-```bash
-npx thoth-agents@latest install --agent=opencode --dry-run
-npx thoth-agents@latest install --agent=opencode
-```
+### Claude Code prerequisites
 
-Here, `@latest` selects which CLI release runs. That CLI writes the exact
-executing release to OpenCode configuration, for example
-`plugin: ["thoth-agents@0.4.8"]`; it never writes a `latest` plugin entry or
-falls back to one when package identity cannot be verified.
-
-Restart OpenCode and initialize the current repository:
-
-```text
-/thoth-init
-```
-
-The installer materializes the five packaged thoth-owned workflow skills under
-`~/.config/opencode/skills/`; external skills are installed globally from their
-canonical repositories, and thoth-mem completes its own provider setup. The
-`/thoth-init` command only initializes or synchronizes the minimum `openspec/`
-governance structure. It never installs skills, agents, plugins, harness
-configuration, dependencies, or workflow templates. SDD phases read templates
-directly from the globally installed `thoth-sdd` skill; any legacy project
-`openspec/templates/` tree remains untouched.
-
-### Codex
-
-Close Codex, preview, then run the combined native-plugin and global-layer
-installer:
-
-```bash
-npx thoth-agents@latest install --agent=codex --dry-run
-npx thoth-agents@latest install --agent=codex
-```
-
-The CLI first uses Codex's native manager to register
-`https://github.com/EremesNG/thoth-plugins.git` as `thoth-plugins` and install
-or enable the executing version of `thoth-agents@thoth-plugins`. After that
-verification it removes only registered legacy IDs
-`thoth-agents@thoth-agents` and `thoth-agents@thoth-agents-codex`, their two
-marketplaces, and any still-orphaned exact thoth-agents roots that pass bounded
-path/provenance checks. It never deletes sibling or discovered paths. A lock or
-race retains the central plugin and asks you to keep Codex closed and retry;
-restart activates state but does not garbage-collect caches. The CLI then writes the
-orchestrator block to `~/.codex/AGENTS.md`, creates six custom-agent TOMLs under
-`~/.codex/agents/`, merges the managed feature into `~/.codex/config.toml`,
-installs the external skills, and invokes provider-owned thoth-mem setup.
-Restart Codex, then initialize each target repository's SDD governance:
-
-```text
-$thoth-init
-```
-
-The plugin contributes skills, their workflow templates, and MCP configuration.
-`$thoth-init` creates only missing `openspec/` governance files; SDD phases read
-templates from the plugin's installed `thoth-sdd` skill instead of copying them
-into the repository.
-
-Review `/plugins` and `/hooks` after installation. Codex trust and
-higher-precedence instructions remain in force.
-
-#### Local Codex development
-
-Keep a personal marketplace entry in `~/.agents/plugins/marketplace.json`
-pointed at `./plugins/thoth-agents` relative to the home marketplace root:
-
-```json
-{
-  "name": "personal",
-  "plugins": [
-    {
-      "name": "thoth-agents",
-      "source": {
-        "source": "local",
-        "path": "./plugins/thoth-agents"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Productivity"
-    }
-  ]
-}
-```
-
-Then build and synchronize both required Codex layers from this checkout:
-
-```bash
-pnpm run setup:codex:local
-```
-
-The command replaces `~/plugins/thoth-agents` through a staged local copy,
-cache-busts the copied Codex and Claude manifest versions, and refreshes the
-managed global Codex root block, six standalone role TOMLs, model state, and
-feature configuration. It preserves the marketplace file and user model
-overrides. It does not install or remove plugins, install external skills, or
-invoke thoth-mem setup. Select the personal plugin in Codex and restart it after
-each synchronization. The command rejects a state where both
-`thoth-agents@thoth-plugins` and `thoth-agents@personal` are enabled.
-
-### Claude Code
-
-Claude requires its two native marketplace steps before the plugin can expose
-agents or skills:
+Run these two commands **before** the Claude CLI install command in the table:
 
 ```bash
 claude plugin marketplace add https://github.com/EremesNG/thoth-plugins.git --scope user
 claude plugin install thoth-agents@thoth-plugins --scope user
 ```
 
-The shared catalog name is `thoth-plugins`. Existing bare or host-specific
-thoth-agents marketplace identities remain manager-owned and are not removed
-automatically; rerunning the current installer adds the central identity and
-preserves legacy entries without updating or uninstalling them.
+> [!TIP]
+> Add `--dry-run` to any `npx thoth-agents ... install` command to preview setup
+> without writing changes. After installation, restart your harness; Claude Code
+> also supports `/reload-plugins`.
 
-Then install the mandatory external skills and invoke provider-owned thoth-mem
-setup:
+Pi setup currently supports the default `~/.pi/agent` root. See the
+[Pi installation guide](docs/installation.md#pi) for runtime requirements,
+existing-package conflicts, and recovery. Pi extensions run with your user's
+system permissions; agent tool allowlists are not an OS sandbox.
 
-```bash
-npx thoth-agents@latest install --agent=claude --dry-run
-npx thoth-agents@latest install --agent=claude
-```
+For scopes, troubleshooting, or local checkout installation, see the
+[installation guide](docs/installation.md). Local Pi checkout installs keep
+thoth-mem setup separate.
 
-Restart Claude Code or run `/reload-plugins`, then initialize the repository:
+## Get started
 
-```text
-/thoth-agents:thoth-init
-```
+### 1. Check your installation
 
-Claude discovers the packaged orchestrator, six namespaced subagents, and five
-thoth-owned skills from the plugin. The CLI installs the external skills into
-Claude's global skill root and requires thoth-mem's own setup result to be
-complete. Init creates only the missing project governance files; it never edits
-Claude's manager-owned plugin cache or copies workflow templates out of it.
-
-See [Installation](docs/installation.md), [Codex Install](docs/codex-install.md),
-and [Claude Code Install](docs/claude-code-install.md) for scopes, verification,
-and limitations.
-
-## Seven roles
-
-One adaptive root and six specialists cover repository discovery, authoritative
-research, independent verification, UI/UX, narrow implementation, and
-correctness-critical work.
-
-### Adaptive root
-
-<table width="100%">
-  <tr>
-    <td width="34%" align="center" valign="top">
-      <img src="img/agents/orchestrator.webp" width="240" alt="Human cyber-Egyptian interpretation of Thoth coordinating the team as Orchestrator">
-    </td>
-    <td width="66%" valign="top">
-      <b>Orchestrator</b>
-      <br>
-      <i>Adaptive root and final synthesis.</i>
-      <br><br>
-      Keeps task ownership and synthesis, recommends a route for the user's
-      selection, coordinates SDD artifacts, and implements bounded work directly.
-      <br><br>
-      <b>Mode:</b> <code>adaptive-root</code>
-    </td>
-  </tr>
-</table>
-
-### Read-only specialists
-
-<table width="100%">
-  <tr>
-    <td width="34%" align="center" valign="top">
-      <img src="img/agents/explorer.webp" width="240" alt="Human cyber-Egyptian interpretation of Anubis tracing repository paths as Explorer">
-    </td>
-    <td width="66%" valign="top">
-      <b>Explorer</b>
-      <br>
-      <i>Decision-ready local discovery.</i>
-      <br><br>
-      Resolves repository uncertainty and returns decision-ready local evidence.
-      <br><br>
-      <b>Mode:</b> <code>read-only</code>
-    </td>
-  </tr>
-</table>
-
-<table width="100%">
-  <tr>
-    <td width="34%" align="center" valign="top">
-      <img src="img/agents/librarian.webp" width="240" alt="Human cyber-Egyptian interpretation of Seshat consulting an authoritative scroll as Librarian">
-    </td>
-    <td width="66%" valign="top">
-      <b>Librarian</b>
-      <br>
-      <i>Authoritative external research.</i>
-      <br><br>
-      Gathers current, unfamiliar, version-sensitive, or externally sourced
-      evidence and labels inference; stable local facts do not trigger research.
-      <br><br>
-      <b>Mode:</b> <code>read-only</code>
-    </td>
-  </tr>
-</table>
-
-<table width="100%">
-  <tr>
-    <td width="34%" align="center" valign="top">
-      <img src="img/agents/oracle.webp" width="240" alt="Human cyber-Egyptian interpretation of Ma'at weighing independent evidence as Oracle">
-    </td>
-    <td width="66%" valign="top">
-      <b>Oracle</b>
-      <br>
-      <i>Independent analysis and verification.</i>
-      <br><br>
-      Reviews explicitly or bounded-default selected plans and independently verifies material
-      risk plus every Accelerated or Full final implementation.
-      <br><br>
-      <b>Mode:</b> <code>read-only</code>
-    </td>
-  </tr>
-</table>
-
-### Implementation writers
-
-<table width="100%">
-  <tr>
-    <td width="34%" align="center" valign="top">
-      <img src="img/agents/designer.webp" width="240" alt="Human cyber-Egyptian interpretation of Hathor shaping interface geometry as Designer">
-    </td>
-    <td width="66%" valign="top">
-      <b>Designer</b>
-      <br>
-      <i>UI/UX ownership and visual quality.</i>
-      <br><br>
-      Owns material UI/UX, interaction, accessibility, implementation, and visual
-      verification.
-      <br><br>
-      <b>Mode:</b> <code>write-capable</code>
-    </td>
-  </tr>
-</table>
-
-<table width="100%">
-  <tr>
-    <td width="34%" align="center" valign="top">
-      <img src="img/agents/quick.webp" width="240" alt="Human cyber-Egyptian interpretation of Horus placing a precise component as Quick">
-    </td>
-    <td width="66%" valign="top">
-      <b>Quick</b>
-      <br>
-      <i>Fast bounded implementation.</i>
-      <br><br>
-      Makes known narrow, clear, low-risk edits within an isolated explicit
-      surface.
-      <br><br>
-      <b>Mode:</b> <code>write-capable</code>
-    </td>
-  </tr>
-</table>
-
-<table width="100%">
-  <tr>
-    <td width="34%" align="center" valign="top">
-      <img src="img/agents/deep.webp" width="240" alt="Human cyber-Egyptian interpretation of Sobek examining a complex mechanism as Deep">
-    </td>
-    <td width="66%" valign="top">
-      <b>Deep</b>
-      <br>
-      <i>Correctness-critical implementation.</i>
-      <br><br>
-      Handles multi-file, edge-case-heavy, or correctness-critical
-      implementation.
-      <br><br>
-      <b>Mode:</b> <code>write-capable</code>
-    </td>
-  </tr>
-</table>
-
-Children do not delegate. Each mutable surface has one writer. Parallel work is
-limited to independent surfaces. The root marks input-ready lanes ready and
-upstream-dependent lanes blocked, dispatches every ready conflict-free lane in a
-native wave before waiting, and fans in only terminal native results. Every route
-verifies: trivial deterministic Direct work may use focused root checks; material
-risk in Direct and every Accelerated or Full final verify require a fresh
-read-only `oracle`. The implementation writer never reviews or approves its own
-result.
-
-## SDD routes
-
-```text
-Direct:      implement -> verify
-Accelerated: specify -> plan -> tasks -> implement -> verify -> archive
-Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archive
-```
-
-| Route | Use when | Artifacts |
-| --- | --- | --- |
-| Direct | Clear, bounded, low-risk work, including multi-file documentation/mechanical edits | None; focused root checks cover trivial deterministic work, while material risk requires a fresh Oracle. |
-| Accelerated | Generic SDD request, partial clarity, moderate risk, multi-surface behavior, or architecture | Canonical artifacts with fast-forward specification/planning/tasks. |
-| Full | Material uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost | Accelerated artifacts plus exploration and separate planning gates. |
-
-The root loads only the current phase contract from the bundled `thoth-sdd`
-skill. It owns specification, clarification, planning, requirements checklists,
-task decomposition, convergence, report persistence, and archive. `explorer`
-owns broad or uncertain Full discovery; `oracle` owns explicitly or
-bounded-default selected plan review, plus final
-verification gates that require independent judgment.
-
-An explicitly named route is the user's selection and wins. Otherwise root
-summarizes the relevant context, scope, clarity, risk, and why one of the three
-routes is recommended before asking. Any explicit answer wins. After at most
-three total answerless native results, the third selects the recommended route.
-A generic request to use SDD sets Accelerated as the minimum recommendation.
-Accelerated writes `spec.md -> plan.md -> tasks.md` in one uninterrupted root
-pass and does not pause for routine approval between those planning phases.
-
-Conditional phases remain deliberately narrow:
-
-- `clarify` runs only for a material ambiguity and updates canonical `spec.md`;
-- `checklist` audits high-risk requirement quality with `CHK###` taxonomy and a
-  separate revalidation pass;
-- `plan-review` is offered after `ready` on Accelerated and Full; any explicit
-  answer wins, while the third answerless result selects
-  `Review plan with Oracle (Recommended)`. Same-intent rejections are repaired
-  and revalidated before fresh Oracle rounds until approval or a material human
-  blocker. After approval, root summarizes the plan before asking
-  `Implement (Recommended)` or `Stop`; the third answerless result selects
-  implementation, while an explicit answer always wins;
-- `converge` appends tasks only after failed artifact-backed verification; and
-- `architectural-grilling` runs before specification only when explicitly
-  requested or a material human-owned decision remains unresolved.
-
-Accelerated and Full use Spec Kit-grade formats: independent prioritized `US#`
-stories with explicit FR/SC coverage, Given/When/Then scenarios, named normative
-FRs with durable/internal delta metadata, buildable/outcome SC types,
-Constitution checks, `T### [P?] [US#?]` task grammar, honest parallel-or-none
-evidence, risk-driven checklist lenses, `ready`/`closeout` validation, compliance
-reports, and transactional synchronization of declared durable deltas at archive.
-Handled failures roll back within the active process; forced process or OS
-termination is not crash-atomic. See
-[SDD Pipeline](docs/sdd-pipeline.md).
-
-The role decision is semantic and route-independent: `librarian` handles current
-or external facts (for example, checking the current official API), `designer`
-handles material user-facing UI/UX or accessibility, and `quick` handles a known
-narrow low-risk isolated edit. `deep` handles coupled or high-risk work, while
-`explorer` handles broad local uncertainty. Native harness execution and
-lifecycle are the sole authority for role selection, fan-out/fan-in,
-status/wait, steering, cancellation, and terminal results; an unavailable
-primitive is reported and followed by a truthful sequential fallback. No
-additional thoth coordination mechanism is involved.
-
-## Skills
-
-Every harness package includes the workflow contracts owned by thoth-agents:
-
-| Skill | Purpose |
-| --- | --- |
-| `thoth-init` | Offline, idempotent initialization and synchronization of minimum `openspec/` governance only. |
-| `thoth-sdd` | Route rules, phase contracts, templates, and structural validator. |
-| `thoth-constitution` | Explicit governance SemVer lifecycle; routine plans only read principles. |
-| `thoth-archive` | Passing closeout, transactional durable-spec sync, audit report, and dated move. |
-| `plan-reviewer` | Optional read-only Oracle plan review with exact `[OKAY]`/`[REJECT]` results and freshness evidence. |
-
-The installer obtains these mandatory external skills from their single source
-of truth:
-
-| Skill | Canonical repository |
-| --- | --- |
-| `simplify` | `https://github.com/EremesNG/skills` |
-| `tdd` | `https://github.com/mattpocock/skills` |
-| `progressive-context-router` | `https://github.com/EremesNG/skills` |
-| `architectural-grilling` | `https://github.com/EremesNG/skills` |
-
-It invokes `npx skills add <repository> --skill <name> --global --agent
-<harness> --yes`; missing external skills make installation unhealthy. Project
-QA executables such as Playwright remain project-owned.
-
-The same published CLI installation then invokes `npx -y thoth-mem@latest setup
-<opencode|codex|claude|pi> --json`; dry-run adds `--plan`. Only a
-consistent provider `complete` result completes installation. Provider
-diagnostics, manual actions, and receipt paths remain visible for recovery.
-
-## Harness limitations
-
-| Harness | Important limitation |
-| --- | --- |
-| OpenCode | Strongest integrated path. The CLI installs the npm plugin configuration, global thoth-owned and external skills, and provider-owned thoth-mem setup; `/thoth-init` only initializes per-repository `openspec/` governance. Only the OpenAI built-in preset ships. |
-| Codex | The CLI installs the native plugin and manages global `AGENTS.md`, six agent TOMLs, config, external skills, and thoth-mem setup; `$thoth-init` only initializes per-repository SDD governance. Runtime role matching and some permissions remain instruction-level. |
-| Claude Code | Run both native marketplace commands before the CLI installs external skills and requests thoth-mem setup. The native manager owns cache files; fine-grained path restrictions remain instruction-level. |
-| Pi | The CLI installs the exact executing `thoth-agents` native package first, then `pi-subagents-j0k3r` and research dependencies; continuation and live steering remain conditional, extension code has invoking-user authority, and thoth-mem owns memory setup. |
-
-Pi's complete global setup first proves and receipts
-`npm:thoth-agents@<executing-version>`, then pins `pi-subagents-j0k3r@1.5.9`,
-`@upstash/context7-pi@0.1.2`, `pi-web-access@0.27.0`, and
-`pi-mcp-adapter@2.32.1`, followed by
-`@juicesharp/rpiv-ask-user-question@2.9.0`,
-and `@juicesharp/rpiv-todo@2.9.0`. The root owns interactive questions and
-session-local progress; root and librarian can use pi-web-access's default
-`web_search`, `fetch_content`, `get_search_content`, and `source_check` tools.
-Exa is one supported upstream provider, including keyless access, but this does
-not retain the dedicated pi-exa answer, similarity, or research-planner tools.
-Package presence is reported separately from observed live provider success.
-Context7 and web access stay native; the adapter exposes only the anonymous
-`https://mcp.grep.app` endpoint through an attributable global `mcpServers.grep`
-entry. Provider configuration and credentials remain operator-owned.
-The initial release supports only the default `~/.pi/agent` global root and
-fails before mutation when `PI_CODING_AGENT_DIR` would make external skills
-undiscoverable. See [Installation](docs/installation.md#pi) for paths, security,
-shadowing, partial-state recovery, and lifecycle limitations.
-
-The first-party package declares one `./dist/pi.js` extension and the `./skills`
-root. `before_agent_start` contributes one bounded adaptive-root block and
-`session_start` converges exactly six package-owned specialists without an
-orchestrator child. Pi discovers the five Thoth workflow skills from the package
-instead of global copies. Direct package installation can therefore run in a
-truthfully degraded mode; use the CLI for the complete external-skill,
-research, provider, migration, receipt, and last-complete ledger flow.
-
-Pi specialist names and files use the `thoth-` prefix, for example
-`thoth-explorer` in `~/.pi/agent/agents/thoth-explorer.md`, so generic names
-from other extensions can coexist. The CLI keeps conceptual role names such as
-`explorer` when configuring their models.
-
-Codex and Claude marketplace manifests are versioned in the separate
-`EremesNG/thoth-plugins` repository. Both central entries resolve to this
-repository's generated `plugin/` bundle at an immutable version tag. Build and
-npm version lifecycle commands keep that bundle synchronized; release commands
-publish only the new thoth-agents pin after the product tag is visible remotely.
-
-## Models and provider boundaries
-
-OpenCode install and sync ship and select only the `openai` preset. Kimi,
-GitHub Copilot, ZAI/GLM, and mixed-provider mappings are not built in. Explicit
-per-role model overrides remain available. Applying model configuration creates
-a complete seven-role `agents` preset from the effective values and activates
-it with `preset: agents`; unrelated presets and configuration remain intact.
-
-thoth-mem is an independent plugin/provider. Published `thoth-agents install`
-orchestrates its public setup command, but an explicit local Pi package install
-omits it and requires thoth-mem to be installed separately from its own local
-checkout. thoth-mem owns the resulting hooks, MCP, skill, session lifecycle,
-persistence, receipts, and recovery. thoth-agents does not copy, edit, force,
-roll back, or emulate those mechanics.
-
-At runtime the root loads the installed `thoth-mem` skill for prior-work recall,
-durable decisions/root causes/conventions/discoveries, verified compaction, and
-meaningful semantic completion. Delegates receive bounded `none`, `recall`, or
-`observe` authorization separately from workspace write permission; root
-lifecycle never transfers. `openspec/` remains canonical, so SDD phase artifacts
-are not mirrored into memory.
-
-## CLI operations
-
-The npm CLI is part of installation for every harness and remains available for
-status, repair, and model/configuration operations:
+After setup completes, inspect the installed state:
 
 ```bash
 npx thoth-agents@latest status
-npx thoth-agents@latest list
-npx thoth-agents@latest install --agent=opencode
-npx thoth-agents@latest install --agent=codex
-npx thoth-agents@latest install --agent=claude
-npx thoth-agents@latest install --agent=pi
-node dist/cli/index.js install --agent=pi --local-package-root="<absolute-path-to-checkout>"
-npx thoth-agents@latest update --harness=opencode
-npx thoth-agents@latest update --harness=opencode --apply
-npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
 ```
 
-The local Pi command installs only the local thoth-agents package and its
-thoth-agents dependencies. Install a local thoth-mem checkout separately with
-its own `node dist/index.js setup pi --local-package-root "<absolute-thoth-mem-root>"`
-command.
+If setup reports a missing dependency or a manual action, resolve it before
+continuing. Package installation alone does not prove provider authentication
+or a successful live model request.
 
-`update` previews by default. Applying it performs the same complete refresh as
-installation for the selected harness: OpenCode refreshes its exact plugin pin,
-managed configuration, owned skills, external skills, and provider setup;
-Codex runs native plugin setup before its global agent pack, external skills,
-and provider setup; Claude refreshes its native plugin before external skills
-and provider setup; Pi re-proves its native first-party package, synchronizes
-specialist resources, refreshes external packages and skills, and runs provider setup. Any required failure makes the
-operation fail rather than claiming a complete update.
+### 2. Initialize your project
 
-After every required step succeeds, the CLI records that harness's executing
-version in
-`${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. `status` shows
-the executing CLI version and this last complete CLI-managed version. The four
-harness records are independent: native Codex or Claude marketplace updates do
-not advance them and do not prove that CLI-managed agents, skills,
-configuration, or provider setup are current.
+Open your repository in the harness and invoke the installed `thoth-init` skill:
 
-OpenCode's runtime release check is notification-only. It does not rewrite the
-exact plugin pin, invalidate package state, or run a package manager. Follow the
-notification by rerunning the latest CLI installer or applying CLI Update.
+| Harness | In your agent conversation |
+| --- | --- |
+| OpenCode | `/thoth-init` |
+| Codex | `$thoth-init` |
+| Claude Code | `/thoth-agents:thoth-init` |
+| Pi | Ask: `Use the thoth-init skill to initialize this repository.` |
 
-In the interactive `Configure models` flow, `Apply` is always available. When
-no role is dirty, it reapplies every currently displayed role value; after an
-edit, preview and apply remain limited to the dirty roles. In OpenCode, both
-`Apply` and `Apply changes` materialize the complete effective roster and
-activate the named `agents` preset.
+This prepares the repository's `openspec/` governance for structured workflows.
+It does not install plugins or dependencies, and it preserves existing
+constitutions.
 
-It does not bypass native marketplace trust. Codex and Claude own normal native
-manager mutations; the Codex installer additionally owns only the fixed,
-twice-validated thoth-agents legacy-root fallback. Claude cache state is never
-edited directly.
+### 3. Give Thoth a task
+
+Start with a goal, not a list of agents to manage. For example:
+
+```text
+Fix the broken documentation link using the Direct route.
+```
+
+```text
+Add CSV export to the reports page using Accelerated SDD.
+Keep the existing filters and include tests for empty results.
+```
+
+```text
+Use Full SDD to plan a migration from our current authentication system.
+Explore the risks before proposing changes.
+```
+
+You can name a route explicitly or let Thoth recommend one. Describe your
+constraints and expected outcome; the Orchestrator decides whether to handle
+work directly or bring in a specialist.
+
+## Meet the team
+
+### One coordinator
+
+<table>
+  <tr>
+    <td width="25%" align="center"><img src="img/agents/orchestrator.webp" width="160" alt="Thoth as the Orchestrator"></td>
+    <td><b>Orchestrator · Keeps the work moving</b><br><br>Your main point of contact. Understands the goal, recommends a workflow, handles bounded work, and coordinates specialists without handing you the management overhead.</td>
+  </tr>
+</table>
+
+### Research and review
+
+| Explorer | Librarian | Oracle |
+| :---: | :---: | :---: |
+| <img src="img/agents/explorer.webp" width="150" alt="Anubis as the Explorer"> | <img src="img/agents/librarian.webp" width="150" alt="Seshat as the Librarian"> | <img src="img/agents/oracle.webp" width="150" alt="Ma'at as the Oracle"> |
+| **Finds the relevant code.** Maps unfamiliar repository behavior before changes begin. | **Checks current sources.** Looks up authoritative documentation and external evidence. | **Challenges the result.** Independently reviews plans and verifies changes when the workflow or risk requires it. |
+
+### Design and implementation
+
+| Designer | Quick | Deep |
+| :---: | :---: | :---: |
+| <img src="img/agents/designer.webp" width="150" alt="Hathor as the Designer"> | <img src="img/agents/quick.webp" width="150" alt="Horus as Quick"> | <img src="img/agents/deep.webp" width="150" alt="Sobek as Deep"> |
+| **Makes interfaces work well.** Owns UI/UX, accessibility, implementation, and visual quality. | **Makes focused changes.** Handles clear, narrow, low-risk implementation tasks. | **Handles complex changes.** Works through coupled behavior, edge cases, and correctness-critical implementation. |
+
+Research and review specialists are read-only. Implementation work has one
+writer per area; independent areas can proceed in parallel when the harness
+supports it. You do not need to summon every role for every task.
+
+## Choose your workflow
+
+SDD means **specification-driven development**: agree on the intended result,
+plan the work, implement it, and check it against that intent.
+
+| Route | Best for | What to expect |
+| --- | --- | --- |
+| **Direct** | Clear, bounded, low-risk fixes and documentation changes. | Implement → verify. No planning artifacts required. |
+| **Accelerated** | Features spanning several areas, moderate risk, or a request to use SDD. | Specify → plan → tasks → implement → verify → archive. Planning runs in one pass unless a material decision needs you. |
+| **Full** | Uncertain requirements, architectural changes, or high-cost failures. | Explore first, then follow the structured workflow with separate planning checkpoints. |
+
+For Accelerated and Full, the specification, plan, tasks, and verification
+reports live under `openspec/`, so you can inspect what was agreed and what
+was checked. You can choose an optional Oracle plan review before implementation;
+final verification is required either way. These routes and materially risky
+Direct work use an independent Oracle for final verification.
+
+> [!TIP]
+> You stay in control of the route. Say “Use Direct,” “Use Accelerated SDD,” or
+> “Use Full SDD” when you already know how much structure you want.
+
+The installed skills cover project initialization, SDD, project principles,
+plan review, and archiving. External skills add test-driven development,
+behavior-preserving simplification, focused repository context, and architectural
+questioning when needed. See [Skills and MCPs](docs/skills-and-mcps.md) and the
+[SDD workflow guide](docs/sdd-pipeline.md) for details.
+
+## Configure and update
+
+### Tune the team
+
+Use the interactive CLI to inspect setup and configure role models:
+
+```bash
+npx thoth-agents@latest
+```
+
+Choose models your harness and provider account can access. OpenCode ships the
+**OpenAI preset**; per-role overrides let you customize it. Other harnesses use
+their own model configuration and capability rules.
+
+See [Provider Configuration](docs/provider-configurations.md) and
+[Codex Model Customization](docs/codex-model-customization.md).
+
+### Keep the complete installation current
+
+Preview an update, then apply it explicitly:
+
+```bash
+npx thoth-agents@latest update --harness=opencode
+npx thoth-agents@latest update --harness=opencode --apply
+```
+
+Replace `opencode` with `codex`, `claude`, or `pi` for your harness. Close Codex
+before applying its update, and restart the selected harness afterward.
+
+An applied update refreshes the complete CLI-managed setup, including required
+skills and provider setup—not just the plugin. Native marketplace updates alone
+do not prove those other pieces are current. Use `status` to inspect the last
+complete CLI-managed installation and follow any reported recovery actions.
 
 ## Documentation
 
-- [Installation](docs/installation.md)
-- [Quick Reference](docs/quick-reference.md)
-- [SDD Pipeline](docs/sdd-pipeline.md)
-- [Skills and MCPs](docs/skills-and-mcps.md)
-- [Codex Install](docs/codex-install.md)
-- [Claude Code Install](docs/claude-code-install.md)
-- [Codex Plugin Packaging](docs/codex-plugin-packaging.md)
-- [Claude Code Plugin Packaging](docs/claude-code-plugin-packaging.md)
-- [Provider Configuration](docs/provider-configurations.md)
+### User guides
 
-## Development
+| Guide | Use it to… |
+| --- | --- |
+| [Installation](docs/installation.md) | Check prerequisites, preview setup, troubleshoot, and repair an installation. |
+| [Quick Reference](docs/quick-reference.md) | Find commands, roles, skills, and workflow reminders. |
+| [SDD Pipeline](docs/sdd-pipeline.md) | Understand planning, review, verification, and archiving. |
+| [Skills and MCPs](docs/skills-and-mcps.md) | See the included workflows, research tools, and memory boundaries. |
+| [Provider Configuration](docs/provider-configurations.md) | Configure models and providers. |
+| [Codex Install](docs/codex-install.md) | Follow Codex-specific setup, activation, and trust requirements. |
+| [Codex Model Customization](docs/codex-model-customization.md) | Adjust Codex specialist models. |
+| [Claude Code Install](docs/claude-code-install.md) | Follow marketplace setup and activation. |
+| [Pi Setup](docs/installation.md#pi) | Check Pi dependencies, permissions, and recovery steps. |
+| [Tmux Integration](docs/tmux-integration.md) | Configure OpenCode's optional terminal-pane integration. |
 
-```bash
-pnpm install
-pnpm run check:ci
-pnpm run typecheck
-pnpm run build
-pnpm test
-```
+### Technical guides
 
-Node.js `>=22.19` and `pnpm@11.2.2` are required. `pnpm run build` regenerates
-both integration packages, compiles the runtime and declarations, and refreshes
-the JSON schema.
+Working on thoth-agents itself? Start here rather than in the user setup above.
 
-## License
-
-[MIT](LICENSE)
+| Guide | What it covers |
+| --- | --- |
+| [Development](docs/development.md) | Local build, verification, and harness development setup. |
+| [Architecture](docs/agent/architecture.md) | Repository structure and component responsibilities. |
+| [Codex Plugin Packaging](docs/codex-plugin-packaging.md) | Plugin contents, the global layer, and local synchronization. |
+| [Claude Code Plugin Packaging](docs/claude-code-plugin-packaging.md) | Native discovery, packaging, and ownership boundaries. |
+| [Codex Surface Validation](docs/codex-surface-validation.md) | Harness-specific validation evidence and limitations. |
+| [Agent Context Index](docs/agent/index.md) | Task-specific engineering and testing guidance. |

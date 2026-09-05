@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { claudeCodeAdapter } from './adapters/claude-code';
 import { piAdapter } from './adapters/pi';
@@ -23,7 +23,9 @@ import {
 function listFiles(root: string, current = root): string[] {
   return readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
     const path = join(current, entry.name);
-    return entry.isDirectory() ? listFiles(root, path) : [relative(root, path)];
+    return entry.isDirectory()
+      ? listFiles(root, path)
+      : [relative(root, path).split(sep).join('/')];
   });
 }
 
@@ -48,7 +50,7 @@ describe('generateIntegrationPackages', () => {
       expect(listFiles(piRoot).sort()).toEqual(
         [
           '.thoth-agents-assets.json',
-          ...piAgents.map((artifact) => artifact.path.replaceAll('/', '\\')),
+          ...piAgents.map((artifact) => artifact.path),
         ].sort(),
       );
       const provenance = JSON.parse(

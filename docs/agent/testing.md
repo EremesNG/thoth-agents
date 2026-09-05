@@ -21,6 +21,7 @@ snapshot does not run by itself.
 | Biome CI check | `pnpm run check:ci` | root | `package.json`, `ci.yml` |
 | typecheck | `pnpm run typecheck` | root | `package.json`, `ci.yml` |
 | build | `pnpm run build` | root | `package.json`, `release.yml` |
+| packed Pi package | `pnpm run verify:pi-package` | root after build | real-Pi local install/list normalization, five attributable runtime-discovered skills, one `session_start` materializing six specialists without an orchestrator child, unrelated-directory import, and isolated provider observation |
 
 Replace `path/to/test` with a real test; do not literally run the placeholder.
 
@@ -37,7 +38,7 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 
 ## CI, release, and pre-merge
 
-`.github/workflows/ci.yml` uses Node `22.13`, pnpm `11.2.2`, frozen installation,
+`.github/workflows/ci.yml` uses Node `22.19`, pnpm `11.2.2`, frozen installation,
 `pnpm run check:ci`, `pnpm run typecheck`, and `pnpm test`. It currently has no
 build step.
 
@@ -62,6 +63,12 @@ For large changes and before a PR, the preserved local pre-merge order is:
 
 Use the combination applicable to the scope; the absence of build in `ci.yml`
 does not remove the human obligation to validate the build when appropriate.
+Every real Pi observation must set `PI_CODING_AGENT_DIR` to a disposable
+directory and use `--no-extensions` plus the installed and observer extensions
+explicitly. Never aim a package smoke at the operator's real Pi home.
+For packed local candidates, also record the relative configured source returned
+by `pi list --no-approve` and its resolved absolute path; byte-equality with the
+absolute install command is not valid Pi 0.84.4 evidence.
 
 ## Common failures
 

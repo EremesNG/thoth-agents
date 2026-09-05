@@ -159,6 +159,13 @@ function buildHarnessItems(): HarnessMenuItem[] {
   ];
 }
 
+function harnessDisplayName(harness: HarnessId): string {
+  if (harness === 'codex') return 'Codex';
+  if (harness === 'claude') return 'Claude Code';
+  if (harness === 'pi') return 'Pi';
+  return 'OpenCode';
+}
+
 function moveSelection(
   current: number,
   direction: 1 | -1,
@@ -852,7 +859,7 @@ export function App({
     return (
       <Box flexDirection="column">
         <Header
-          title={`${modelHarness === 'codex' ? 'Codex' : modelHarness === 'claude' ? 'Claude Code' : 'OpenCode'} Models`}
+          title={`${harnessDisplayName(modelHarness)} Models`}
           subtitle="Enter edits a role. Dirty rows are marked with *."
         />
         <ModelScreen

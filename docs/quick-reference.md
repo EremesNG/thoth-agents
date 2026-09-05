@@ -38,10 +38,12 @@ npx thoth-agents@latest install --agent=claude
 ```
 
 Every installation uses the thoth-agents CLI to install external skills through
-`npx skills add`, then invoke provider-owned thoth-mem setup. For OpenCode it
-also synchronizes the five packaged owned skills globally under
+`npx skills add`; published installs then invoke provider-owned thoth-mem setup.
+An explicit local Pi package install omits the provider step and directs the
+operator to install local thoth-mem separately. For OpenCode the CLI also
+synchronizes the five packaged owned skills globally under
 `~/.config/opencode/skills/`. Only a consistent thoth-mem `complete` result
-completes installation; printed manual actions and receipts remain
+completes a published installation; printed manual actions and receipts remain
 provider-owned. Codex also needs the CLI because its plugin cannot install
 custom agents or write `~/.codex/AGENTS.md`. SDD phases never call either CLI.
 

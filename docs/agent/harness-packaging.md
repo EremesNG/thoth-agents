@@ -22,12 +22,20 @@
   Its plugin manifest carries skills/MCP but cannot install custom agents or
   `~/.codex/AGENTS.md`; `$thoth-init` creates project governance only.
 - Claude packages root plus six generated namespaced subagents.
+- Pi is published from the same `thoth-agents` npm artifact with exactly
+  `./dist/pi.js` and `./skills` in `package.json#pi`. Generation writes six
+  package-owned `pi/agents/*.md` assets plus `.thoth-agents-assets.json`; no
+  orchestrator child or external implementation tree is packaged. Pi discovers
+  the five owned skills from the manifest, while the shared synchronizer
+  materializes the six specialists globally for `pi-subagents-j0k3r`.
 - Both central catalog entries resolve to one `plugin/` bundle containing one copy of the
   five canonical thoth-owned skills, including `plan-reviewer`.
   Harness-specific manifests and MCP files
   coexist in that bundle. External skills are installed from their source
-  repositories by the mandatory CLI flow; the same flow invokes thoth-mem's
-  public setup without copying provider assets into the bundle.
+  repositories by the mandatory CLI flow; published installs then invoke
+  thoth-mem's public setup without copying provider assets into the bundle.
+  Explicit local Pi package installs leave thoth-mem to its separate local
+  installer.
 - Native managers own marketplace snapshots, normal cache lifecycle,
   enablement, and trust. The Codex CLI migration has one bounded exception: only
   fixed product-owned legacy roots may be removed after central verification and
@@ -40,9 +48,16 @@
   catalog pin.
 - No adapter bundles thoth-mem hooks, MCP, skill, lifecycle behavior, or project
   QA executables.
+- Pi's Context7 and web-access integrations are native extensions. Only grep.app
+  uses `pi-mcp-adapter`, through the exact attributable global server entry.
+- Pi's pinned RPIV extensions expose root-owned `ask_user_question` and `todo`;
+  only root and librarian receive `web_search`, `fetch_content`,
+  `get_search_content`, and `source_check` guidance, and package presence remains
+  distinct from live UI/provider availability.
 
 ## Verification
 
 Run focused adapter/generator tests, `pnpm run integration:sync`, and
-`pnpm run integration:verify`. Use `pnpm run build` for the full generated and
-compiled contract.
+`pnpm run integration:verify`. Use `pnpm run build` followed by
+`pnpm run verify:pi-package` for the packed manifest, inventory, and
+unrelated-directory extension-load contract.

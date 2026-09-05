@@ -44,6 +44,24 @@ function commitAll(root: string, message: string): void {
   git(root, ['commit', '-m', message]);
 }
 
+function setCatalogBaseline(root: string, publishedVersion: string): void {
+  const registryPath = join(root, 'catalog', 'plugins.json');
+  const registry = JSON.parse(readFileSync(registryPath, 'utf8')) as {
+    plugins: Array<{ name: string; version: string; ref: string }>;
+  };
+  const plugin = registry.plugins.find(({ name }) => name === 'thoth-agents');
+  if (!plugin) throw new Error('Central fixture is missing thoth-agents');
+
+  const baselineVersion = publishedVersion === '0.0.0' ? '0.0.1' : '0.0.0';
+  plugin.version = baselineVersion;
+  plugin.ref = `v${baselineVersion}`;
+  writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
+  execFileSync(process.execPath, ['scripts/render.mjs'], {
+    cwd: root,
+    windowsHide: true,
+  });
+}
+
 interface Fixture {
   root: string;
   centralRemote: string;
@@ -63,6 +81,7 @@ function createFixture(version = '0.3.12', createTag = true): Fixture {
     recursive: true,
     filter: (source) => !['.git', 'node_modules'].includes(basename(source)),
   });
+  setCatalogBaseline(centralWork, version);
   initializeWorkingRepository(centralWork);
   commitAll(centralWork, 'central fixture');
   const centralRemote = join(root, 'central.git');

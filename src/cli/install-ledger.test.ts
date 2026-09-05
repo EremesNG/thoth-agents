@@ -110,6 +110,13 @@ describe('install ledger', () => {
         ...options,
       }).success,
     ).toBe(true);
+    expect(
+      recordCompletedInstall({
+        harness: 'pi',
+        version: '0.6.0',
+        ...options,
+      }).success,
+    ).toBe(true);
 
     const ledgerPath = getInstallLedgerPath(options);
     expect(JSON.parse(readFileSync(ledgerPath, 'utf8'))).toEqual({
@@ -118,9 +125,10 @@ describe('install ledger', () => {
         opencode: { version: '0.4.8' },
         codex: { version: '0.4.8-beta.1' },
         claude: { version: '0.5.0' },
+        pi: { version: '0.6.0' },
       },
     });
-    expect(renames).toHaveLength(3);
+    expect(renames).toHaveLength(4);
     expect(renames.at(-1)).toEqual([`${ledgerPath}.tmp`, ledgerPath]);
     expect(existsSync(`${ledgerPath}.tmp`)).toBe(false);
   });

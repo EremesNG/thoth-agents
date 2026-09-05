@@ -2,7 +2,10 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { finalizeHarnessInstall } from './install-completion';
+import {
+  finalizeHarnessInstall,
+  recordHarnessInstallCompletion,
+} from './install-completion';
 import {
   getInstallLedgerPath,
   readInstallLedger,
@@ -102,6 +105,28 @@ describe('finalizeHarnessInstall', () => {
     });
     expect(recordInstall).not.toHaveBeenCalled();
     expect(existsSync(getInstallLedgerPath({ configRoot }))).toBe(false);
+  });
+
+  test('records a local harness install without invoking provider setup', () => {
+    const recordInstall = vi.fn(recordCompletedInstall);
+
+    const result = recordHarnessInstallCompletion({
+      harness: 'pi',
+      version: '0.6.0',
+      dryRun: false,
+      recordCompletedInstall: recordInstall,
+      ledgerOptions: { configRoot },
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      ledger: { status: 'recorded' },
+    });
+    expect(recordInstall).toHaveBeenCalledOnce();
+    expect(readInstallLedger({ configRoot })).toMatchObject({
+      status: 'valid',
+      ledger: { harnesses: { pi: { version: '0.6.0' } } },
+    });
   });
 
   test.each([

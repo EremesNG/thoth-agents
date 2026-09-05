@@ -67,8 +67,8 @@ User-scope setup manages:
 - a backed-up merge in `~/.codex/config.toml` for the managed feature; and
 - mandatory external skills in Codex's user skill root, `~/.agents/skills/`,
   via `npx skills add`;
-- provider-owned thoth-mem setup through `npx -y thoth-mem@latest setup codex
-  --scope global --json`.
+- provider-owned thoth-mem setup through
+  `npx -y thoth-mem@latest setup codex --json`.
 
 The ambient session is the orchestrator, so no orchestrator child TOML is
 generated. The CLI obtains external skills from their canonical repositories;

@@ -122,7 +122,7 @@ export function renderMemoryGovernanceInstructions(
   const harnessRules = dialect
     ? [
         `- Harness wording: use ${dialect.renderRoleInvocation('orchestrator')} as the memory owner and \`${dialect.tools.userQuestionTool}\` for blocking memory-context questions.`,
-        `- Progress ownership remains with the coordinator; report memory-governance verification for tracking in ${dialect.tools.progressTool}.`,
+        `- Progress ownership remains with the coordinator; report memory-governance verification for tracking in ${dialect.tools.progressTool ?? 'written progress notes'}.`,
       ]
     : [];
 

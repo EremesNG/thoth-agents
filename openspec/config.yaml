@@ -3,7 +3,7 @@ project: thoth-agents
 stack: TypeScript, Node.js, pnpm, Biome, OpenCode Plugin SDK
 
 context: |
-  thoth-agents is an adaptive orchestration plugin for OpenCode, Codex, and Claude Code.
+  thoth-agents is an adaptive orchestration plugin for OpenCode, Codex, Claude Code, and Pi.
   It provides seven roles and direct, accelerated, and full Spec Kit-compatible SDD routes.
   thoth-mem is an independent provider plugin and owns its own installation and lifecycle.
 

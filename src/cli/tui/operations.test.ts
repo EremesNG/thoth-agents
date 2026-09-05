@@ -19,9 +19,12 @@ const operationDispatchSpies = vi.hoisted(() => ({
   opencodeUpdate: vi.fn(),
   codexUpdate: vi.fn(),
   claudeUpdate: vi.fn(),
+  piInstall: vi.fn(),
+  piUpdate: vi.fn(),
   opencodeApply: vi.fn(),
   codexApply: vi.fn(),
   claudeApply: vi.fn(),
+  piApply: vi.fn(),
 }));
 
 vi.mock('../operations/opencode', async (importOriginal) => {
@@ -84,6 +87,28 @@ vi.mock('../operations/claude-code', async (importOriginal) => {
   };
 });
 
+vi.mock('../operations/pi', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../operations/pi')>();
+  return {
+    ...original,
+    buildPiInstallPlan: () => {
+      operationDispatchSpies.piInstall();
+      return completeDispatchPlan('pi', 'install');
+    },
+    buildPiUpdatePlan: () => {
+      operationDispatchSpies.piUpdate();
+      return completeDispatchPlan('pi');
+    },
+    applyPiPlan: (plan: Parameters<typeof original.applyPiPlan>[0]) => {
+      operationDispatchSpies.piApply(plan);
+      if (plan.id === 'tui-dispatch-test') {
+        return dispatchApplyResult('pi', 'Pi');
+      }
+      return original.applyPiPlan(plan);
+    },
+  };
+});
+
 vi.mock('../paths', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../paths')>()),
   getExistingLiteConfigPath: vi.fn(() => 'managed-thoth-agents.json'),
@@ -98,12 +123,15 @@ vi.mock('../model-catalog', () => ({
   loadModelsDevCatalog: vi.fn(),
 }));
 
-function completeDispatchPlan(harness: HarnessId): OperationPlan {
+function completeDispatchPlan(
+  harness: HarnessId,
+  action: 'install' | 'update' = 'update',
+): OperationPlan {
   return {
-    id: `${harness}-complete-update`,
+    id: `${harness}-complete-${action}`,
     harness,
-    action: 'update',
-    title: `Update complete ${harness} setup`,
+    action,
+    title: `${action === 'install' ? 'Install' : 'Update'} complete ${harness} setup`,
     summary: 'Preview the complete shared operation update.',
     dryRun: true,
     canApply: true,
@@ -509,6 +537,7 @@ describe('TUI operations', () => {
     ['opencode', 'opencodeUpdate', 'opencodeApply'],
     ['codex', 'codexUpdate', 'codexApply'],
     ['claude', 'claudeUpdate', 'claudeApply'],
+    ['pi', 'piUpdate', 'piApply'],
   ] as const)('routes %s Update planning and apply through its complete shared operation service', async (harness, planSpy, applySpy) => {
     const { defaultTuiOperations } = await import('./operations');
 
@@ -534,6 +563,21 @@ describe('TUI operations', () => {
     const result = defaultTuiOperations.apply(dispatchPlan);
     expect(operationDispatchSpies[applySpy]).toHaveBeenCalledWith(dispatchPlan);
     expect(result.summary).toContain('shared apply boundary reached');
+  });
+
+  test('routes Pi Install planning and apply through Pi instead of Codex', async () => {
+    const { defaultTuiOperations } = await import('./operations');
+
+    const installPlan = defaultTuiOperations.plan('pi', 'install');
+    expect(operationDispatchSpies.piInstall).toHaveBeenCalledTimes(1);
+    expect(operationDispatchSpies.codexUpdate).not.toHaveBeenCalled();
+    expect(installPlan).toMatchObject({ harness: 'pi', action: 'install' });
+
+    const dispatchPlan = { ...installPlan, id: 'tui-dispatch-test' };
+    const result = defaultTuiOperations.apply(dispatchPlan);
+    expect(operationDispatchSpies.piApply).toHaveBeenCalledWith(dispatchPlan);
+    expect(operationDispatchSpies.codexApply).not.toHaveBeenCalled();
+    expect(result.summary).toContain('Pi shared apply boundary reached');
   });
 
   test.each([

@@ -382,6 +382,19 @@ async function openClaudeModels(stdin: { write(input: string): void }) {
   await press(stdin, '\r');
 }
 
+async function openPiModels(stdin: { write(input: string): void }) {
+  await press(stdin, 'j');
+  await press(stdin, '\r');
+  await press(stdin, 'j');
+  await press(stdin, 'j');
+  await press(stdin, 'j');
+  await press(stdin, '\r');
+  await press(stdin, 'j');
+  await press(stdin, 'j');
+  await press(stdin, 'j');
+  await press(stdin, '\r');
+}
+
 async function dirtyExplorer(stdin: { write(input: string): void }) {
   await openCodexModels(stdin);
   await press(stdin, '\r');
@@ -977,6 +990,47 @@ describe('interactive TUI', () => {
     );
   });
 
+  test('TUI renders Pi configured-unowned ownership as a blocked manual action', async () => {
+    const ownershipBlocker: OperationPlan['targets'][number] = {
+      kind: 'surface',
+      label: 'First-party Pi package ownership blocker',
+      state: 'drift',
+      observed:
+        'configured-unowned; remove the configured first-party package manually',
+    };
+    const blockedPlan: OperationPlan = {
+      ...plan('update'),
+      harness: 'pi',
+      title: 'Update Pi',
+      canApply: false,
+      targets: [ownershipBlocker],
+      blockerTargets: [ownershipBlocker],
+      warnings: [
+        {
+          severity: 'critical',
+          code: 'pi-first-party-configured-unowned',
+          message:
+            'Configured first-party Pi package has no ownership receipt.',
+        },
+      ],
+    };
+    const ops = {
+      ...operations(),
+      plan: () => blockedPlan,
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openUpdatePreview(stdin);
+
+    expect(lastFrame()).toContain('First-party Pi package ownership blocker');
+    expect(lastFrame()).toContain('configured-unowned');
+    expect(lastFrame()).toContain(
+      '[critical] [pi-first-party-configured-unowned]',
+    );
+  });
+
   test('TUI blocker targets render only targets explicitly marked as blockers', async () => {
     const managedBlocker: OperationPlan['targets'][number] = {
       kind: 'config',
@@ -1226,6 +1280,38 @@ describe('interactive TUI', () => {
     await press(stdin, '\r');
     expect(lastFrame()).toContain('Model: haiku');
     expect(lastFrame()).toContain('medium');
+  });
+
+  test('Pi appears as a fourth harness with its own model screen', async () => {
+    const base = operations();
+    const ops: TuiOperations = {
+      ...base,
+      status(harness) {
+        if (harness !== 'pi') return base.status(harness);
+        return {
+          ...status('Pi ready'),
+          harness: 'pi',
+          displayName: 'Pi',
+        };
+      },
+      modelOptions(harness) {
+        if (harness !== 'pi') return base.modelOptions(harness);
+        return Promise.resolve([modelOption('provider/pi-model', ['high'])]);
+      },
+      modelRoles(harness) {
+        if (harness !== 'pi') return base.modelRoles(harness);
+        return [{ role: 'deep', model: 'provider/pi-model' }];
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+
+    await openPiModels(stdin);
+    await flushInk();
+
+    expect(lastFrame()).toContain('Pi Models');
+    expect(lastFrame()).toContain('deep: provider/pi-model');
   });
 
   test('current model absent from the catalog is preserved with inherit only', async () => {

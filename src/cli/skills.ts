@@ -8,7 +8,7 @@ import {
   type NpxCommandOptions,
 } from './npx-command';
 
-export type SkillInstallHarness = 'opencode' | 'codex' | 'claude';
+export type SkillInstallHarness = 'opencode' | 'codex' | 'claude' | 'pi';
 
 /** An external skill required by every supported thoth-agents harness. */
 export interface RequiredSkill {
@@ -39,6 +39,7 @@ const SKILLS_CLI_AGENT: Record<SkillInstallHarness, string> = {
   opencode: 'opencode',
   codex: 'codex',
   claude: 'claude-code',
+  pi: 'pi',
 };
 
 const GLOBAL_SKILL_ROOTS: Record<
@@ -51,6 +52,7 @@ const GLOBAL_SKILL_ROOTS: Record<
   ],
   codex: [['.agents', 'skills']],
   claude: [['.claude', 'skills']],
+  pi: [['.pi', 'agent', 'skills']],
 };
 
 export const REQUIRED_SKILLS: readonly RequiredSkill[] = [
@@ -139,6 +141,7 @@ export function getRequiredSkillInstallCommand(
       '--agent',
       SKILLS_CLI_AGENT[harness],
       '--yes',
+      ...(harness === 'pi' ? ['--copy'] : []),
     ],
     options,
   );

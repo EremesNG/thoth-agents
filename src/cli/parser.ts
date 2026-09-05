@@ -1,3 +1,4 @@
+import { isAbsolute, resolve } from 'node:path';
 import { normalizeEffortSelection } from './model-effort';
 import { isInteractiveRuntime, type RuntimeContext } from './runtime';
 import type {
@@ -33,9 +34,14 @@ function parseBooleanArg(name: string, value: string): BooleanArg {
 }
 
 function parseOperationHarness(value: string): OperationHarnessArg {
-  if (value !== 'opencode' && value !== 'codex' && value !== 'claude') {
+  if (
+    value !== 'opencode' &&
+    value !== 'codex' &&
+    value !== 'claude' &&
+    value !== 'pi'
+  ) {
     throw new Error(
-      `Unsupported operation harness: ${value}. Supported harnesses: opencode, codex, claude.`,
+      `Unsupported operation harness: ${value}. Supported harnesses: opencode, codex, claude, pi.`,
     );
   }
   return value;
@@ -156,7 +162,9 @@ export function parseInstallArgs(args: string[]): InstallArgs {
     agent: 'opencode',
   };
 
-  for (const arg of args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === undefined) break;
     if (arg === '--no-tui') {
       result.tui = false;
     } else if (arg.startsWith('--tmux=')) {
@@ -167,17 +175,52 @@ export function parseInstallArgs(args: string[]): InstallArgs {
       result.reset = true;
     } else if (arg.startsWith('--agent=')) {
       const agent = arg.split('=')[1];
-      if (agent !== 'opencode' && agent !== 'codex' && agent !== 'claude') {
+      if (
+        agent !== 'opencode' &&
+        agent !== 'codex' &&
+        agent !== 'claude' &&
+        agent !== 'pi'
+      ) {
         throw new Error(
-          `Unsupported install agent: ${agent}. Supported agents: opencode, codex, claude.`,
+          `Unsupported install agent: ${agent}. Supported agents: opencode, codex, claude, pi.`,
         );
       }
       result.agent = agent;
+    } else if (
+      arg === '--local-package-root' ||
+      arg.startsWith('--local-package-root=')
+    ) {
+      if (result.localPackageRoot !== undefined) {
+        throw new Error('--local-package-root cannot be repeated.');
+      }
+      let localPackageRoot: string | undefined;
+      if (arg === '--local-package-root') {
+        index += 1;
+        localPackageRoot = args[index];
+      } else {
+        localPackageRoot = arg.slice('--local-package-root='.length);
+      }
+      if (!localPackageRoot || localPackageRoot.startsWith('--')) {
+        throw new Error('--local-package-root requires a value.');
+      }
+      if (
+        !isAbsolute(localPackageRoot) ||
+        resolve(localPackageRoot) !== localPackageRoot
+      ) {
+        throw new Error(
+          '--local-package-root requires a normalized absolute path.',
+        );
+      }
+      result.localPackageRoot = localPackageRoot;
     } else if (arg === '-h' || arg === '--help') {
       throw new Error('help');
     } else {
       throw new Error(`Unsupported install option: ${arg}`);
     }
+  }
+
+  if (result.localPackageRoot !== undefined && result.agent !== 'pi') {
+    throw new Error('--local-package-root is supported only with --agent=pi.');
   }
 
   return result;

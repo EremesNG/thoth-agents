@@ -70,11 +70,14 @@ describe('constitution lifecycle validator', () => {
       'utf8',
     );
 
-    expect(repositoryConstitution).toContain('**Version**: 7.0.0');
+    expect(repositoryConstitution).toContain('**Version**: 7.1.0');
     expect(repositoryConstitution).toContain(
-      '- Version change: 6.0.0 -> 7.0.0',
+      '- Version change: 7.0.0 -> 7.1.0',
     );
-    expect(repositoryConstitution).toContain('**Last amended**: 2026-09-02');
+    expect(repositoryConstitution).toContain('**Last amended**: 2026-09-03');
+    expect(repositoryConstitution).toContain(
+      'OpenCode, Codex, Claude Code, and Pi derive behavior',
+    );
     expect(repositoryConstitution).toContain(
       'Before asking for Direct, Accelerated, or Full, Root MUST summarize the relevant context',
     );

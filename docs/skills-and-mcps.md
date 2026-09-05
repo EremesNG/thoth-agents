@@ -55,8 +55,10 @@ truthful sequential fallback when a primitive is unavailable.
 | `architectural-grilling` | `EremesNG/skills` | Explicit interview or unresolved material human-owned decision before specification |
 
 Build copies only the five owned skills to the shared `plugin/skills` tree used
-by Codex and Claude. OpenCode's CLI installer copies those same packaged skills
-to `~/.config/opencode/skills/`, the native global discovery root. `/thoth-init`
+by Codex and Claude. The OpenCode CLI copies those packaged skills to its global
+discovery root. Pi discovers them directly through the installed
+`thoth-agents` package manifest and creates no new global skill copies; only
+byte-identical attributable legacy copies may be retired. `/thoth-init`
 only initializes or synchronizes the minimum project `openspec/` structure.
 Every SDD phase anchors its contract, template, and validator paths to the
 installed `thoth-sdd` skill; no project-local template directory is required.
@@ -67,10 +69,11 @@ selector. There are no vendored copies of these external skills in this
 repository or the generated plugin packages. A failed mandatory skill install
 fails the overall installation.
 
-After the external skills, the same installation command invokes thoth-mem's
-public setup for the selected harness. This administrative call is installation
-orchestration, not a bundled provider implementation; SDD phases never invoke
-either CLI.
+After the external skills, the published installation command invokes
+thoth-mem's public setup for the selected harness. An explicit local Pi package
+install omits that call and requires a separate local thoth-mem installation.
+This administrative call is installation orchestration, not a bundled provider
+implementation; SDD phases never invoke either CLI.
 
 ## SDD contract loading
 
@@ -106,6 +109,26 @@ The shared harness bundle may expose the research MCPs used by thoth-agents:
 
 Their exact configuration differs by harness. OpenCode composes them at runtime;
 Codex reads `plugin/codex.mcp.json`, while Claude reads `plugin/.mcp.json`.
+Pi uses a hybrid stack: `@upstash/context7-pi@0.1.2` and
+`pi-web-access@0.27.0` are native extensions, while
+`pi-mcp-adapter@2.32.1` exposes only the global `https://mcp.grep.app` server.
+The managed grep entry uses legacy protocol and lazy lifecycle, omits
+`directTools`, and requires no credentials. pi-web-access supports Exa, including
+its keyless public MCP path, and other configured providers. Provider settings,
+tool aliases, disabled tools, and credentials remain operator-owned;
+thoth-agents never copies or rewrites them.
+
+The default pi-web-access tools are `web_search`, `fetch_content`,
+`get_search_content`, and `source_check`; only the root and librarian receive
+the corresponding guidance/allowlist. Delegated research uses `workflow: "none"`
+to avoid the interactive curator. The package does not retain dedicated pi-exa
+answer, similarity, or research-planner tools. Package presence is unverified
+runtime evidence rather than proof of a successful provider request. Failures
+are reported explicitly, and fetched or searched content remains untrusted.
+Fetches may create extension-owned caches or clones outside the workspace even
+for a read-only role. The separate `rpiv-ask-user-question` and `rpiv-todo`
+packages expose root-owned interaction and session-local progress rather than
+child coordination state.
 
 ## thoth-mem boundary
 
@@ -113,11 +136,13 @@ thoth-mem is not a bundled skill or MCP. It is an independently installed
 plugin/provider and owns its hooks, MCP setup, persistence, recovery, capability
 evidence, receipts, installed skill, and lifecycle behavior.
 
-`npx thoth-agents@latest install` invokes `npx -y thoth-mem@latest setup
-<opencode|codex|claude> --scope global --json` after thoth-agents-owned setup and
+Published `npx thoth-agents@latest install` invokes `npx -y thoth-mem@latest
+setup <opencode|codex|claude|pi> --json` after thoth-agents-owned setup and
 mandatory skills. Dry-run adds thoth-mem's zero-write `--plan`; thoth-agents does
 not pass `--force`, edit provider files, or claim success unless status and exit
-evidence consistently report `complete`.
+evidence consistently report `complete`. An explicit local Pi package install
+omits provider setup and requires thoth-mem to be installed separately from its
+own local checkout.
 
 At runtime, root and children load the installed `thoth-mem` skill only for an
 authorized memory outcome. Root owns stable session identity, real-user intent,

@@ -8,7 +8,7 @@ during SDD phases.
 
 ## Requirements
 
-- Node.js `>=22.13` for bundled scripts
+- Node.js `>=22.19` for bundled scripts
 - Claude Code with native plugin marketplace commands
 - Permission to add and trust `EremesNG/thoth-plugins`
 - Network access during installation for the external skill repositories and
@@ -52,8 +52,9 @@ npx thoth-agents@latest install --agent=claude
 
 The installer invokes `npx skills add` for `simplify`, `tdd`,
 `progressive-context-router`, and `architectural-grilling`, targeting the global
-Claude skill root. It then invokes `npx -y thoth-mem@latest setup claude --scope
-global --json`; dry-run adds provider `--plan`. A missing skill or any thoth-mem
+Claude skill root. It then invokes
+`npx -y thoth-mem@latest setup claude --json`; dry-run adds provider `--plan`.
+A missing skill or any thoth-mem
 result other than consistent `complete` evidence makes installation incomplete.
 Provider manual actions and receipt remain visible for recovery.
 

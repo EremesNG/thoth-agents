@@ -33,6 +33,14 @@ import {
   buildOpenCodeUpdatePlan,
   getOpenCodeStatus,
 } from './operations/opencode';
+import {
+  applyPiPlan,
+  buildPiModelPlan,
+  buildPiSyncPlan,
+  buildPiUpdatePlan,
+  defaultPiModelRoles,
+  getPiStatus,
+} from './operations/pi';
 import type {
   BackupExpectation,
   HarnessStatusReport,
@@ -52,6 +60,7 @@ import {
   getClaudeCodeModelRoles,
   getCodexModelRoles,
   getOpenCodeModelRoles,
+  getPiModelRoles,
 } from './tui/operations';
 import type {
   CliModelRoleArg,
@@ -279,7 +288,7 @@ Usage: thoth-agents [COMMAND] [OPTIONS]
 
 Commands:
   (no command)          Open the interactive TUI in a TTY; fall back to OpenCode install in CI/non-TTY
-  install               Install OpenCode, Codex, or Claude Code agent assets
+  install               Install OpenCode, Codex, Claude Code, or Pi agent assets
   generate              Generate harness-specific artifacts
   status                Show official CLI-managed versions and managed install status
   list                  List managed surfaces and actions
@@ -293,9 +302,11 @@ Options:
   --dry-run              Simulate install without writing files
   --apply                Apply a reviewed update, sync, or model plan
   --reset                Repair managed installer-owned targets
-  --agent=opencode|codex|claude
-                         Select OpenCode plugin install (default), Codex agent-pack, or Claude Code plugin setup
-  --harness=...          Select harness for status/update/sync/model (opencode|codex|claude)
+  --agent=opencode|codex|claude|pi
+                         Select OpenCode plugin install (default), Codex/Claude setup, or complete Pi-native setup
+  --local-package-root=PATH
+                         Install local thoth-agents with --agent=pi; thoth-mem is installed separately
+  --harness=...          Select harness for status/update/sync/model (opencode|codex|claude|pi)
   --role-effort=role=effort
                          Set a repeatable role effort; use inherit or default for no override
   -h, --help             Show this help message
@@ -337,6 +348,8 @@ Examples:
   pnpm dlx thoth-agents@latest install --agent=codex --dry-run
   pnpm dlx thoth-agents@latest install --agent=claude
   pnpm dlx thoth-agents@latest install --agent=claude --dry-run
+  pnpm dlx thoth-agents@latest install --agent=pi --dry-run
+  node dist/cli/index.js install --agent=pi --local-package-root="<absolute-path>"
   pnpm dlx thoth-agents install --no-tui --tmux=no
   pnpm dlx thoth-agents install --dry-run
   pnpm dlx thoth-agents install --reset
@@ -365,6 +378,7 @@ function statusReports(
   return harnesses.map((harness) => {
     if (harness === 'opencode') return getOpenCodeStatus(context);
     if (harness === 'claude') return getClaudeCodeStatus(context);
+    if (harness === 'pi') return getPiStatus(context);
     return getCodexStatus(context);
   });
 }
@@ -385,6 +399,11 @@ function buildOperationPlan(
       ? buildClaudeCodeUpdatePlan(context)
       : buildClaudeCodeSyncPlan(context);
   }
+  if (harness === 'pi') {
+    return command === 'update'
+      ? buildPiUpdatePlan(context)
+      : buildPiSyncPlan(context);
+  }
   return command === 'update'
     ? buildCodexUpdatePlan(context)
     : buildCodexSyncPlan(context);
@@ -401,6 +420,8 @@ function defaultModelRoles(harness: OperationHarnessArg): ModelRoleInput[] {
   if (harness === 'claude') {
     return defaultClaudeCodeModelRoles();
   }
+
+  if (harness === 'pi') return defaultPiModelRoles();
 
   return ALL_AGENT_NAMES.map((role) => ({
     role,
@@ -463,6 +484,7 @@ const defaultModelCommandServices: CliModelCommandServices = {
   modelRoles(harness) {
     if (harness === 'opencode') return getOpenCodeModelRoles();
     if (harness === 'claude') return getClaudeCodeModelRoles();
+    if (harness === 'pi') return getPiModelRoles();
     return getCodexModelRoles();
   },
   modelOptions: getModelOptions,
@@ -500,12 +522,14 @@ async function buildModelPlan(
   };
   if (harness === 'opencode') return buildOpenCodeModelPlan(input, context);
   if (harness === 'claude') return buildClaudeCodeModelPlan(input, context);
+  if (harness === 'pi') return buildPiModelPlan(input, context);
   return buildCodexModelPlan(input, context);
 }
 
 function applyOperationPlan(plan: OperationPlan): OperationApplyResult {
   if (plan.harness === 'opencode') return applyOpenCodePlan(plan);
   if (plan.harness === 'claude') return applyClaudeCodePlan(plan);
+  if (plan.harness === 'pi') return applyPiPlan(plan);
   return applyCodexPlan(plan);
 }
 

@@ -4,11 +4,25 @@
 
 ### Requirement: Require the same four execution skills everywhere
 
-OpenCode, Codex, and Claude installations MUST provide `simplify`, `tdd`,
-`progressive-context-router`, and `architectural-grilling`. Simplify,
-progressive-context-router, and architectural-grilling MUST be sourced from
-`https://github.com/EremesNG/skills`; TDD MUST be sourced from
-`https://github.com/mattpocock/skills`.
+Pi installations MUST provide `simplify`, `tdd`, `progressive-context-router`, and `architectural-grilling` from the same canonical repositories required by OpenCode, Codex, and Claude.
+
+#### Scenario: US1 - Install the complete Pi agent pack 1
+
+- **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
+- **WHEN** `thoth-agents install --agent=pi` is applied
+- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+
+#### Scenario: US1 - Install the complete Pi agent pack 2
+
+- **GIVEN** the same environment
+- **WHEN** the installation is run with `--dry-run`
+- **THEN** every intended command and managed target is reported and no Pi package, file, skill, provider, or ledger state is changed
+
+#### Scenario: US1 - Install the complete Pi agent pack 3
+
+- **GIVEN** any mandatory Pi-owned, thoth-agents-owned, external-skill, or provider step fails
+- **WHEN** installation finishes
+- **THEN** it reports bounded partial-state diagnostics and does not record complete installation
 
 ### Requirement: Preserve one canonical source
 
@@ -18,45 +32,111 @@ source of truth so a skill update does not require synchronized copies here.
 
 ### Requirement: Install through the skills CLI
 
-The thoth-agents installer MUST invoke `npx skills add <repo> --skill <name>
---global --agent <harness> --yes` for every missing external skill. It MUST use
-the concrete selectors `opencode`, `codex`, and `claude-code`. A failed required
-skill installation MUST fail the overall operation.
+For Pi, the installer MUST invoke the canonical `skills` CLI with the concrete `pi` selector, global scope, explicit skill name, noninteractive confirmation, and copied materialization into Pi's native global skill root; failure or a detected `PI_CODING_AGENT_DIR` destination mismatch MUST fail or return an explicit manual action rather than claim discovery.
+
+#### Scenario: US1 - Install the complete Pi agent pack 1
+
+- **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
+- **WHEN** `thoth-agents install --agent=pi` is applied
+- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+
+#### Scenario: US1 - Install the complete Pi agent pack 2
+
+- **GIVEN** the same environment
+- **WHEN** the installation is run with `--dry-run`
+- **THEN** every intended command and managed target is reported and no Pi package, file, skill, provider, or ledger state is changed
+
+#### Scenario: US1 - Install the complete Pi agent pack 3
+
+- **GIVEN** any mandatory Pi-owned, thoth-agents-owned, external-skill, or provider step fails
+- **WHEN** installation finishes
+- **THEN** it reports bounded partial-state diagnostics and does not record complete installation
 
 ### Requirement: Keep SDD runtime independent of the CLI
 
-Installation MAY require network access and the CLI. After installation, no SDD
-phase may invoke the thoth-agents CLI, `npx skills add`, or fetch phase contracts
-from a repository. Owned SDD contracts MUST be available from the installed
-plugin/project bundle.
+Installation MAY invoke Pi, npm, the skills CLI, and provider setup, but after installation the native Pi package MUST supply its extension and thoth-owned SDD contracts without invoking the thoth-agents CLI, `npx skills add`, or a network fetch during an SDD phase.
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 1
+
+- **GIVEN** the native package is installed
+- **WHEN** Pi begins an agent turn
+- **THEN** its extension injects exactly one current adaptive-root contract through the supported native lifecycle without persisting a duplicate `APPEND_SYSTEM.md` block
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 2
+
+- **GIVEN** Pi loads package resources
+- **WHEN** skills are enumerated
+- **THEN** the five thoth-owned workflow skills resolve from the native package manifest without copied global duplicates
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 3
+
+- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **WHEN** the package synchronizer runs
+- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 1
+
+- **GIVEN** the native Pi package
+- **WHEN** its packed contents are inspected
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 2
+
+- **GIVEN** OpenCode, Codex, or Claude Code installation and runtime flows
+- **WHEN** the Pi package change is present
+- **THEN** their current behavior and generated artifacts remain unchanged except for shared truthful documentation
 
 ### Requirement: Preserve harness-native discovery
 
-The system MUST install external skills through their canonical repositories and MUST materialize packaged thoth-owned OpenCode workflow skills in OpenCode's global native skill root; SDD availability MUST NOT depend on `thoth-init` copying skills into a project.
+Pi MUST discover the five thoth-owned workflow skills directly from the installed `thoth-agents` package manifest and MUST discover exactly six package-owned specialist definitions from Pi's global agent directory; setup MUST remove only provably attributable legacy copied skill duplicates, MUST install the four external skills from their canonical repositories, and MUST remain independent of CLI/network access during SDD execution.
 
-#### Scenario: US1 - Complete the global OpenCode installation 1
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 1
 
-- **GIVEN** a complete published thoth-agents package
-- **WHEN** `install --agent=opencode` runs
-- **THEN** `thoth-init`, `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer` are synchronized under `~/.config/opencode/skills/` before installation can report success
+- **GIVEN** the native package is installed
+- **WHEN** Pi begins an agent turn
+- **THEN** its extension injects exactly one current adaptive-root contract through the supported native lifecycle without persisting a duplicate `APPEND_SYSTEM.md` block
 
-#### Scenario: US1 - Complete the global OpenCode installation 2
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 2
 
-- **GIVEN** an existing stale copy of a thoth-owned OpenCode skill
-- **WHEN** installation runs again
-- **THEN** the global owned copy matches the canonical packaged skill rather than remaining stale
+- **GIVEN** Pi loads package resources
+- **WHEN** skills are enumerated
+- **THEN** the five thoth-owned workflow skills resolve from the native package manifest without copied global duplicates
 
-#### Scenario: US1 - Complete the global OpenCode installation 3
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 3
 
-- **GIVEN** dry-run installation
-- **WHEN** owned skill installation is planned
-- **THEN** the destination and five owned skills are reported without writing them
+- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **WHEN** the package synchronizer runs
+- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
-#### Scenario: US1 - Complete the global OpenCode installation 4
+#### Scenario: US3 - Update, migrate, and diagnose native package state 1
 
-- **GIVEN** an incomplete canonical bundle or a failed global skill synchronization
-- **WHEN** OpenCode installation runs
-- **THEN** the overall installation fails and does not claim provider or combined installation completion
+- **GIVEN** a legacy complete Pi setup from the prior release
+- **WHEN** Update succeeds
+- **THEN** the exact native package is installed, the attributable legacy root block and duplicate owned-skill copies are removed, specialist discovery is preserved, and unrelated operator content is unchanged
+
+#### Scenario: US3 - Update, migrate, and diagnose native package state 2
+
+- **GIVEN** any installed first-party or external package/source/version, resource, provider, or remote-state mismatch
+- **WHEN** status is requested
+- **THEN** each layer is reported independently without advancing or inferring the last-complete ledger
+
+#### Scenario: US3 - Update, migrate, and diagnose native package state 3
+
+- **GIVEN** native package state is incomplete or conflicting
+- **WHEN** Sync or Update is planned
+- **THEN** it returns a bounded repair or manual action and never falls through to another harness
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 1
+
+- **GIVEN** the native Pi package
+- **WHEN** its packed contents are inspected
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 2
+
+- **GIVEN** OpenCode, Codex, or Claude Code installation and runtime flows
+- **WHEN** the Pi package change is present
+- **THEN** their current behavior and generated artifacts remain unchanged except for shared truthful documentation
 
 ### Requirement: Leave QA tooling to the project
 

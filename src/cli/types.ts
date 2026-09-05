@@ -1,9 +1,10 @@
 export type BooleanArg = 'yes' | 'no';
-export type InstallAgent = 'opencode' | 'codex' | 'claude';
+export type InstallAgent = 'opencode' | 'codex' | 'claude' | 'pi';
 
 export interface InstallArgs {
   tui: boolean;
   agent?: InstallAgent;
+  localPackageRoot?: string;
   tmux?: BooleanArg;
   dryRun?: boolean;
   reset?: boolean;
@@ -15,7 +16,7 @@ export interface GenerateArgs {
   outputRoot?: string;
 }
 
-export type OperationHarnessArg = 'opencode' | 'codex' | 'claude';
+export type OperationHarnessArg = 'opencode' | 'codex' | 'claude' | 'pi';
 
 export interface CliModelRoleArg {
   role: string;
@@ -57,6 +58,7 @@ export interface OpenCodeConfig {
 export interface InstallConfig {
   agent: InstallAgent;
   hasTmux: boolean;
+  localPackageRoot?: string;
   dryRun?: boolean;
   reset: boolean;
 }

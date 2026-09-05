@@ -2,31 +2,61 @@
 
 ## Requirements
 
-### Requirement: Support exactly three harnesses
+### Requirement: Support exactly four harnesses
 
-The system MUST support OpenCode, Codex, and Claude Code. OpenCode MUST remain
-the default when no harness is selected. Unsupported harnesses MUST fail
-explicitly without generating fallback artifacts.
+The system MUST support OpenCode, Codex, Claude Code, and Pi; OpenCode MUST remain the default when no harness is selected, and unsupported harnesses MUST fail explicitly without fallback artifacts or dispatch.
+
+#### Scenario: US1 - Install the complete Pi agent pack 1
+
+- **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
+- **WHEN** `thoth-agents install --agent=pi` is applied
+- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+
+#### Scenario: US1 - Install the complete Pi agent pack 2
+
+- **GIVEN** the same environment
+- **WHEN** the installation is run with `--dry-run`
+- **THEN** every intended command and managed target is reported and no Pi package, file, skill, provider, or ledger state is changed
+
+#### Scenario: US1 - Install the complete Pi agent pack 3
+
+- **GIVEN** any mandatory Pi-owned, thoth-agents-owned, external-skill, or provider step fails
+- **WHEN** installation finishes
+- **THEN** it reports bounded partial-state diagnostics and does not record complete installation
+
+#### Scenario: US4 - Preserve existing harnesses while raising the runtime floor 1
+
+- **GIVEN** an existing OpenCode, Codex, or Claude workflow
+- **WHEN** the Pi integration is present
+- **THEN** its existing adapter, installation, delegation, provider, and generated-package behavior is unchanged
+
+#### Scenario: US4 - Preserve existing harnesses while raising the runtime floor 2
+
+- **GIVEN** active package, CI, skill, and documentation surfaces
+- **WHEN** runtime requirements are evaluated
+- **THEN** they consistently require Node.js `>=22.19`
 
 ### Requirement: Preserve the seven-role contract
 
-Every harness MUST derive behavior from `orchestrator`, `explorer`, `librarian`,
-`oracle`, `designer`, `quick`, and `deep`. No active registration, schema key,
-model mapping, generated agent, or prompt contract may expose phase-only SDD
-roles.
+The native Pi package MUST derive one ambient `orchestrator` root and the six `explorer`, `librarian`, `oracle`, `designer`, `quick`, and `deep` specialists from the canonical role contracts, MUST NOT create an orchestrator child definition, and MUST preserve role prompts, model/effort metadata where Pi supports them, memory envelopes, ownership, and return contracts.
 
-#### Scenario: Codex specialist materialization
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 1
 
-- **WHEN** mandatory Codex CLI installation runs with the native manager available
-- **THEN** the ambient session remains root and six global specialist TOMLs are written
-- **AND** the orchestrator contract is merged into `~/.codex/AGENTS.md`
-- **AND** no orchestrator child TOML is created.
+- **GIVEN** the native package is installed
+- **WHEN** Pi begins an agent turn
+- **THEN** its extension injects exactly one current adaptive-root contract through the supported native lifecycle without persisting a duplicate `APPEND_SYSTEM.md` block
 
-#### Scenario: Claude package materialization
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 2
 
-- **WHEN** the Claude package is generated
-- **THEN** it contains the orchestrator main-thread agent and six specialist
-  agents derived from `src/agents/`.
+- **GIVEN** Pi loads package resources
+- **WHEN** skills are enumerated
+- **THEN** the five thoth-owned workflow skills resolve from the native package manifest without copied global duplicates
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 3
+
+- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **WHEN** the package synchronizer runs
+- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
 ### Requirement: Use adaptive-root delegation
 
@@ -58,28 +88,95 @@ Before substantive execution, the root MUST shape bounded ready and blocked lane
 
 ### Requirement: Keep role permissions explicit
 
-Explorer, librarian, and oracle MUST remain read-only. Implementation writers
-MUST remain scoped to assigned surfaces. Adapters MUST disclose any
-instruction-only enforcement gap; a missing harness permission primitive MUST
-NOT be represented as equivalent enforcement.
+The Pi extension and specialist definitions MUST apply the strongest native root and child tool controls available while stating that extension execution, root injection, resource materialization, process credentials, filesystem, and network access remain within the invoking user's privileges and are not an OS sandbox.
 
-### Requirement: Distribute runtime-autonomous assets with explicit bootstrap
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 1
 
-The shared Codex and Claude plugin bundle MUST include one copy of the canonical
-owned workflow skills and MUST NOT vendor mandatory external execution skills.
-Installation for every harness MUST use the thoth-agents CLI as the authority
-and invoke `npx skills add` against each missing external skill's canonical
-repository. During SDD execution, no agent may invoke the CLI or download a
-phase contract.
+- **GIVEN** the native package is installed
+- **WHEN** Pi begins an agent turn
+- **THEN** its extension injects exactly one current adaptive-root contract through the supported native lifecycle without persisting a duplicate `APPEND_SYSTEM.md` block
 
-OpenCode MUST expose `/thoth-init`, Codex MUST expose `$thoth-init`, and Claude
-MUST expose its namespaced `thoth-init` skill. Initialization MUST be offline,
-idempotent, project-scoped, and preserve project-owned files.
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 2
 
-Codex MUST NOT be described as a zero-step or agent-bearing plugin. Its manifest
-cannot declare custom agents or global instructions; mandatory CLI setup MUST
-materialize six standalone global TOMLs and the required root/config surfaces.
-`$thoth-init` MUST create project governance only.
+- **GIVEN** Pi loads package resources
+- **WHEN** skills are enumerated
+- **THEN** the five thoth-owned workflow skills resolve from the native package manifest without copied global duplicates
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 3
+
+- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **WHEN** the package synchronizer runs
+- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 1
+
+- **GIVEN** the native Pi package
+- **WHEN** its packed contents are inspected
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 2
+
+- **GIVEN** OpenCode, Codex, or Claude Code installation and runtime flows
+- **WHEN** the Pi package change is present
+- **THEN** their current behavior and generated artifacts remain unchanged except for shared truthful documentation
+
+### Requirement: Publish a native Pi package with runtime-autonomous assets
+
+The published `thoth-agents` npm artifact MUST identify as a Pi package, MUST declare exactly one compiled native extension and the five packaged thoth-owned workflow skills through supported Pi manifest fields, MUST ship the six canonical specialist resources, and MUST remain usable from its installed package root without invoking the thoth-agents CLI or network during ordinary Pi runtime.
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 1
+
+- **GIVEN** Pi `0.84.4`, Node.js `>=22.19`, an executing thoth-agents version, and an empty isolated Pi home
+- **WHEN** Pi installation is applied
+- **THEN** `pi install npm:thoth-agents@<exact-version> --no-approve` completes and is verified before delegation, research, skills, provider, or ledger steps
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 2
+
+- **GIVEN** the same environment
+- **WHEN** installation is previewed
+- **THEN** the first-party and external package commands plus every migration and setup target are reported with zero mutation
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 3
+
+- **GIVEN** first-party package installation or verification fails
+- **WHEN** setup exits
+- **THEN** no external dependency is installed and no complete ledger record is written
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 4
+
+- **GIVEN** an existing global `thoth-agents` Pi source
+- **WHEN** no valid thoth-agents ownership receipt matches that exact source
+- **THEN** setup reports an unowned conflict before invoking any mutating Pi command
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 5
+
+- **GIVEN** a receipt-owned prior source
+- **WHEN** replacement, native-load observation, or receipt commit fails
+- **THEN** setup restores and verifies the prior source, leaves the prior receipt authoritative, and blocks every downstream dependency; a failed compensation is reported explicitly
+
+#### Scenario: US1 - Install thoth-agents from a local package root
+
+- **GIVEN** a built local thoth-agents package whose normalized absolute root matches the executing package identity and version
+- **WHEN** `thoth-agents install --agent=pi --local-package-root <root>` is applied
+- **THEN** `pi install <root> --no-approve` replaces only the public first-party source, is receipt-verified through Pi's canonical source and exact resolved path, completes the downstream package, skill, and ledger flow, omits thoth-mem setup, and prints the separate local provider-install command
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 1
+
+- **GIVEN** the native package is installed
+- **WHEN** Pi begins an agent turn
+- **THEN** its extension injects exactly one current adaptive-root contract through the supported native lifecycle without persisting a duplicate `APPEND_SYSTEM.md` block
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 2
+
+- **GIVEN** Pi loads package resources
+- **WHEN** skills are enumerated
+- **THEN** the five thoth-owned workflow skills resolve from the native package manifest without copied global duplicates
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 3
+
+- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **WHEN** the package synchronizer runs
+- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
 ### Requirement: Publish repository-native marketplaces
 
@@ -109,16 +206,101 @@ generated shared plugin output.
 
 ### Requirement: Preserve native plugin-manager ownership
 
-thoth-agents MUST NOT copy or merge the plugin bundle into personal Codex or
-Claude manager directories. Marketplace registration, enablement, trust, and
-installed caches remain harness-owned. Project initialization may write only
-the documented project surfaces required by the workflow.
+Pi installation MUST install and verify the exact executing `thoth-agents` package through `pi install` before installing the selected compatible `pi-subagents-j0k3r` and research packages; MUST treat one schema-validated thoth-agents Pi-package receipt as the sole authority for replacing or removing an existing global first-party source; MUST reject an unowned, ambiguous, project-local, or receipt-inconsistent first-party source before mutation; and MUST use external packages' public native surfaces without vendoring, patching, copying their internals, or reimplementing execution, concurrency, task/history, research, or provider lifecycle.
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 1
+
+- **GIVEN** Pi `0.84.4`, Node.js `>=22.19`, an executing thoth-agents version, and an empty isolated Pi home
+- **WHEN** Pi installation is applied
+- **THEN** `pi install npm:thoth-agents@<exact-version> --no-approve` completes and is verified before delegation, research, skills, provider, or ledger steps
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 2
+
+- **GIVEN** the same environment
+- **WHEN** installation is previewed
+- **THEN** the first-party and external package commands plus every migration and setup target are reported with zero mutation
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 3
+
+- **GIVEN** first-party package installation or verification fails
+- **WHEN** setup exits
+- **THEN** no external dependency is installed and no complete ledger record is written
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 4
+
+- **GIVEN** an existing global `thoth-agents` Pi source
+- **WHEN** no valid thoth-agents ownership receipt matches that exact source
+- **THEN** setup reports an unowned conflict before invoking any mutating Pi command
+
+#### Scenario: US1 - Install thoth-agents as the first native Pi package 5
+
+- **GIVEN** a receipt-owned prior source
+- **WHEN** replacement, native-load observation, or receipt commit fails
+- **THEN** setup restores and verifies the prior source, leaves the prior receipt authoritative, and blocks every downstream dependency; a failed compensation is reported explicitly
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 1
+
+- **GIVEN** the native Pi package
+- **WHEN** its packed contents are inspected
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 2
+
+- **GIVEN** OpenCode, Codex, or Claude Code installation and runtime flows
+- **WHEN** the Pi package change is present
+- **THEN** their current behavior and generated artifacts remain unchanged except for shared truthful documentation
 
 ### Requirement: Distinguish capability gaps from generation failure
 
-Generation MUST deduplicate diagnostics by code. Instruction-only or
-diagnostic-only fallbacks MUST be reported as non-fatal capability gaps. A
-required outcome with no recoverable fallback MUST make generation fail.
+Pi capability reporting MUST independently identify first-party package state as missing, conflicting, configured, loadable, observed-at-install, unobserved, or unavailable; MUST reserve `observed-at-install` for a real Pi subprocess whose final provider request contains exactly one current root marker for the receipt's exact source and manifest/extension digests; and MUST independently report packaged-skill discovery, specialist materialization, delegation, research, external credentials, provider setup, and unsupported security or lifecycle guarantees. Direct native-package activation with missing external dependencies MUST degrade truthfully without crashing or claiming complete installation.
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 1
+
+- **GIVEN** the native package is installed
+- **WHEN** Pi begins an agent turn
+- **THEN** its extension injects exactly one current adaptive-root contract through the supported native lifecycle without persisting a duplicate `APPEND_SYSTEM.md` block
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 2
+
+- **GIVEN** Pi loads package resources
+- **WHEN** skills are enumerated
+- **THEN** the five thoth-owned workflow skills resolve from the native package manifest without copied global duplicates
+
+#### Scenario: US2 - Run Thoth from its Pi extension boundary 3
+
+- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **WHEN** the package synchronizer runs
+- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
+
+#### Scenario: US3 - Update, migrate, and diagnose native package state 1
+
+- **GIVEN** a legacy complete Pi setup from the prior release
+- **WHEN** Update succeeds
+- **THEN** the exact native package is installed, the attributable legacy root block and duplicate owned-skill copies are removed, specialist discovery is preserved, and unrelated operator content is unchanged
+
+#### Scenario: US3 - Update, migrate, and diagnose native package state 2
+
+- **GIVEN** any installed first-party or external package/source/version, resource, provider, or remote-state mismatch
+- **WHEN** status is requested
+- **THEN** each layer is reported independently without advancing or inferring the last-complete ledger
+
+#### Scenario: US3 - Update, migrate, and diagnose native package state 3
+
+- **GIVEN** native package state is incomplete or conflicting
+- **WHEN** Sync or Update is planned
+- **THEN** it returns a bounded repair or manual action and never falls through to another harness
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 1
+
+- **GIVEN** the native Pi package
+- **WHEN** its packed contents are inspected
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
+
+#### Scenario: US4 - Preserve external ownership and existing harnesses 2
+
+- **GIVEN** OpenCode, Codex, or Claude Code installation and runtime flows
+- **WHEN** the Pi package change is present
+- **THEN** their current behavior and generated artifacts remain unchanged except for shared truthful documentation
 
 ### Requirement: Preserve provider ownership
 
@@ -286,25 +468,31 @@ Native wait and status operations MUST remain scoped to collecting a nonterminal
 
 ### Requirement: Native lifecycle translation
 
-Each supported harness MUST render its native fresh and continuation mechanisms: Codex `spawn_agent` with `fork_turns="none"` versus `followup_task`, OpenCode `task` without `task_id` versus the prior `task_id`, and Claude Code normal `Agent` versus `SendMessage`, while avoiding inherited/forked context for independent work.
+Pi root guidance MUST translate fresh work to a new single-agent `subagent_run`, same-assignment collection to status/result/list, running-task correction to `subagent_send_message` only when supported, cancellation to `subagent_cancel`, and completed-task continuation to `subagent_continue` only when explicitly enabled; new objectives, phases, mutable surfaces, and independent judgments MUST receive fresh tasks.
 
-#### Scenario: US3 - Apply native lifecycle operations consistently 1
+#### Scenario: US2 - Delegate through Pi-native subagents 1
 
-- **GIVEN** Codex requires fresh delegation
-- **WHEN** its root prompt is rendered
-- **THEN** it names `collaboration.spawn_agent` with `fork_turns="none"`; continuation names `collaboration.followup_task`
+- **GIVEN** a fresh bounded assignment and an explicit canonical specialist
+- **WHEN** the Pi root delegates
+- **THEN** it invokes `subagent_run` with one canonical `agent`, task, and bounded context and receives either the terminal task result or a background task identifier
 
-#### Scenario: US3 - Apply native lifecycle operations consistently 2
+#### Scenario: US2 - Delegate through Pi-native subagents 2
 
-- **GIVEN** OpenCode requires fresh delegation
-- **WHEN** its root prompt is rendered
-- **THEN** it names `task` without `task_id`; continuation allows the prior `task_id` only for the same assignment
+- **GIVEN** a running background assignment owned by the current parent session
+- **WHEN** the root needs progress, correction, result, or cancellation
+- **THEN** it uses the package's status, send-message, result, list, or cancel surface without treating collection as permission to reuse the specialist
 
-#### Scenario: US3 - Apply native lifecycle operations consistently 3
+#### Scenario: US2 - Delegate through Pi-native subagents 3
 
-- **GIVEN** Claude Code requires fresh delegation
-- **WHEN** its root prompt is rendered
-- **THEN** it names a normal `Agent` invocation; continuation names `SendMessage` to the prior agent ID and independent work forbids forked context inheritance
+- **GIVEN** a completed assignment and continuation is disabled
+- **WHEN** the root reaches a new work boundary
+- **THEN** it creates a fresh task rather than claiming continuation support
+
+#### Scenario: US2 - Delegate through Pi-native subagents 4
+
+- **GIVEN** live steering is unavailable, a queued message is not confirmed as delivered, or a task is nonterminal
+- **WHEN** fan-in is evaluated
+- **THEN** the root keeps the barrier closed and reports the actual capability state
 
 ### Requirement: Expose routable role contracts
 
@@ -348,16 +536,112 @@ Every root MUST present the complete specialist roster with equally salient posi
 
 ### Requirement: Use the strongest truthful native role selector
 
-Each harness adapter MUST instruct the root to use an explicit canonical-role selector when the native runtime exposes one and MUST provide a bounded instruction-level fallback otherwise; capability metadata MUST NOT claim structural enforcement that the generated package cannot guarantee.
+The Pi adapter MUST require the public `agent` field with one exact canonical specialist name for delegation and MUST NOT use deprecated batch input, implicit role inference, or a different harness's selector as evidence of native support.
 
-#### Scenario: US2 - Receive consistent routing across harnesses 1
+#### Scenario: US2 - Delegate through Pi-native subagents 1
 
-- **GIVEN** a harness exposes an explicit role selector
-- **WHEN** the root delegates
-- **THEN** its instructions require that selector and the selected canonical role
+- **GIVEN** a fresh bounded assignment and an explicit canonical specialist
+- **WHEN** the Pi root delegates
+- **THEN** it invokes `subagent_run` with one canonical `agent`, task, and bounded context and receives either the terminal task result or a background task identifier
 
-#### Scenario: US2 - Receive consistent routing across harnesses 2
+#### Scenario: US2 - Delegate through Pi-native subagents 2
 
-- **GIVEN** a Codex host does not expose an explicit custom-role selector
-- **WHEN** delegation is still available
-- **THEN** the generated guidance uses a bounded
+- **GIVEN** a running background assignment owned by the current parent session
+- **WHEN** the root needs progress, correction, result, or cancellation
+- **THEN** it uses the package's status, send-message, result, list, or cancel surface without treating collection as permission to reuse the specialist
+
+#### Scenario: US2 - Delegate through Pi-native subagents 3
+
+- **GIVEN** a completed assignment and continuation is disabled
+- **WHEN** the root reaches a new work boundary
+- **THEN** it creates a fresh task rather than claiming continuation support
+
+#### Scenario: US2 - Delegate through Pi-native subagents 4
+
+- **GIVEN** live steering is unavailable, a queued message is not confirmed as delivered, or a task is nonterminal
+- **WHEN** fan-in is evaluated
+- **THEN** the root keeps the barrier closed and reports the actual capability state
+
+### Requirement: Use Pi interactive questions truthfully
+
+Pi root instructions MUST use ask_user_question for material user choices, follow its supported question schema, handle unavailable UI and partial/cancelled answers truthfully, and MUST NOT infer approval from cancellation or absent answers. Pi children MUST escalate user questions to the root and MUST NOT receive the interactive question tool in their allowlists.
+
+#### Scenario: US2 - Ask the user and show progress 1
+
+- **GIVEN** a compatible interactive host and a material choice
+- **WHEN** the root asks
+- **THEN** it uses ask_user_question with a supported question/options payload
+
+#### Scenario: US2 - Ask the user and show progress 2
+
+- **GIVEN** cancellation, partial answers, missing tool, or no UI
+- **WHEN** an answer is required
+- **THEN** the root reports the unresolved choice without inventing consent; explicit cancellation is not an answerless route-default attempt
+
+#### Scenario: US2 - Ask the user and show progress 3
+
+- **GIVEN** multi-step work
+- **WHEN** the root reports progress
+- **THEN** it uses session-local todo without replacing native task execution or canonical OpenSpec artifacts
+
+#### Scenario: US2 - Ask the user and show progress 4
+
+- **GIVEN** a child needs user input or has progress
+- **WHEN** it reports to the root
+- **THEN** it escalates through its return contract rather than opening user dialogs or editing the root task list
+
+### Requirement: Keep Pi progress session-owned
+
+Pi root instructions MUST use todo for useful multi-step progress, with the extension owning session-local task state. Todo MUST NOT replace Pi-native delegation lifecycle or OpenSpec artifacts; child agents MUST report progress to root and MUST NOT receive todo in their allowlists.
+
+#### Scenario: US2 - Ask the user and show progress 1
+
+- **GIVEN** a compatible interactive host and a material choice
+- **WHEN** the root asks
+- **THEN** it uses ask_user_question with a supported question/options payload
+
+#### Scenario: US2 - Ask the user and show progress 2
+
+- **GIVEN** cancellation, partial answers, missing tool, or no UI
+- **WHEN** an answer is required
+- **THEN** the root reports the unresolved choice without inventing consent; explicit cancellation is not an answerless route-default attempt
+
+#### Scenario: US2 - Ask the user and show progress 3
+
+- **GIVEN** multi-step work
+- **WHEN** the root reports progress
+- **THEN** it uses session-local todo without replacing native task execution or canonical OpenSpec artifacts
+
+#### Scenario: US2 - Ask the user and show progress 4
+
+- **GIVEN** a child needs user input or has progress
+- **WHEN** it reports to the root
+- **THEN** it escalates through its return contract rather than opening user dialogs or editing the root task list
+
+### Requirement: Expose complementary Pi web tools
+
+Pi root and librarian guidance MUST use pi-web-access default names web_search, fetch_content, get_search_content, and source_check; librarian MUST receive those tools while obsolete web_fetch, web_*_exa, and exa_research_* permissions are removed. Noninteractive research MUST use the upstream noninteractive search workflow, treat retrieved content as untrusted, and report provider/tool failures truthfully. Other roles, Context7, grep, and other harnesses MUST retain their current boundaries. Thoth MUST NOT implement provider clients or configure credentials.
+
+#### Scenario: US2 - Research through the replacement tools 1
+
+- **GIVEN** generated Pi agents
+- **WHEN** research is delegated
+- **THEN** librarian has web_search, fetch_content, get_search_content, and source_check, and no obsolete web_fetch or pi-exa tool patterns
+
+#### Scenario: US2 - Research through the replacement tools 2
+
+- **GIVEN** a noninteractive librarian session
+- **WHEN** it searches
+- **THEN** guidance selects the supported noninteractive workflow and reports failures without fabricating evidence
+
+#### Scenario: US2 - Research through the replacement tools 3
+
+- **GIVEN** other specialist roles and other harnesses
+- **WHEN** packages are regenerated
+- **THEN** their permissions and behavior remain unchanged
+
+#### Scenario: US2 - Research through the replacement tools 4
+
+- **GIVEN** Exa-backed search
+- **WHEN** operator guidance describes capabilities
+- **THEN** it does not promise dedicated pi-exa answer, similarity, or research-planner tools

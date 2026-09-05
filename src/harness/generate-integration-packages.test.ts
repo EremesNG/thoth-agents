@@ -8,9 +8,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { claudeCodeAdapter } from './adapters/claude-code';
+import { piAdapter } from './adapters/pi';
 import { THOTH_OWNED_SKILL_NAMES } from './core/owned-skills';
 import {
   formatIntegrationDiagnostic,
@@ -22,7 +23,9 @@ import {
 function listFiles(root: string, current = root): string[] {
   return readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
     const path = join(current, entry.name);
-    return entry.isDirectory() ? listFiles(root, path) : [relative(root, path)];
+    return entry.isDirectory()
+      ? listFiles(root, path)
+      : [relative(root, path).split(sep).join('/')];
   });
 }
 
@@ -42,6 +45,24 @@ describe('generateIntegrationPackages', () => {
       );
 
       const result = generateIntegrationPackages({ projectRoot: dir });
+      const piRoot = join(dir, 'pi');
+      const piAgents = piAdapter.render({ projectRoot: dir }).artifacts;
+      expect(listFiles(piRoot).sort()).toEqual(
+        [
+          '.thoth-agents-assets.json',
+          ...piAgents.map((artifact) => artifact.path),
+        ].sort(),
+      );
+      const provenance = JSON.parse(
+        readFileSync(join(piRoot, '.thoth-agents-assets.json'), 'utf8'),
+      );
+      expect(provenance).toMatchObject({
+        schemaVersion: 1,
+        owner: 'thoth-agents',
+      });
+      expect(Object.keys(provenance.files).sort()).toEqual(
+        piAgents.map((artifact) => artifact.path).sort(),
+      );
       const pluginRoot = join(dir, 'plugin');
       const canonicalClaudeAgents = claudeCodeAdapter
         .render({ projectRoot: dir })

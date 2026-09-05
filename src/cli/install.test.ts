@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
 import { applyClaudeCodeSetup } from './claude-code-install';
 import { buildCodexSetupPlan } from './codex-install';
 import {
@@ -21,6 +22,8 @@ import {
   readInstallLedger,
   recordCompletedInstall,
 } from './install-ledger';
+import { PI_PACKAGE_SPECS } from './pi-install';
+import { resolvePiPaths } from './pi-paths';
 import type { ThothMemSetupResult } from './thoth-mem-install';
 
 const installRequiredSkillMock = vi.hoisted(() =>
@@ -93,7 +96,7 @@ function providerExitCode(
 }
 
 function providerResult(
-  harness: 'opencode' | 'codex' | 'claude',
+  harness: 'opencode' | 'codex' | 'claude' | 'pi',
   status: ThothMemSetupResult['status'] = 'complete',
 ): ThothMemSetupResult {
   return {
@@ -109,22 +112,300 @@ function providerResult(
       status === 'complete' ? [] : ['Review provider-owned setup state.'],
     receipt: status === 'partial' ? 'C:/receipts/provider-partial.json' : null,
     command: 'npx',
-    args: [
-      '-y',
-      'thoth-mem@latest',
-      'setup',
-      harness,
-      '--scope',
-      'global',
-      '--plan',
-      '--json',
-    ],
+    args: ['-y', 'thoth-mem@latest', 'setup', harness, '--plan', '--json'],
     exitCode: providerExitCode(status),
     ...(status === 'invalid' ? { error: 'invalid provider evidence' } : {}),
   };
 }
 
 describe('install', () => {
+  test('routes Pi through package-declared skills, external skills, provider, and ledger last', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-top-install-'));
+    const events: string[] = [];
+    let firstPartyInstalled = false;
+    const result = await install(
+      { tui: false, agent: 'pi' },
+      {
+        homeDir,
+        resolveExecutingPackageVersion: () => ({
+          ok: true,
+          version: '0.6.0',
+          packageRoot: process.cwd(),
+        }),
+        verifyPiFirstParty: ({ source, version }) => ({
+          success: true,
+          receipt: {
+            schemaVersion: 1,
+            owner: 'thoth-agents',
+            scope: 'user',
+            packageName: 'thoth-agents',
+            source,
+            installSource: source,
+            version,
+            manifestSha256: 'a'.repeat(64),
+            extensionSha256: 'b'.repeat(64),
+          },
+        }),
+        piCommandExecutor: (command, args) => {
+          if (command === 'node')
+            return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+          if (args[0] === '--version')
+            return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          if (args[0] === 'list')
+            return {
+              exitCode: 0,
+              stdout: `${firstPartyInstalled ? `npm:thoth-agents@0.6.0\n    ${process.cwd()}\n` : ''}${PI_PACKAGE_SPECS.map(({ source }) => source).join('\n')}`,
+              stderr: '',
+            };
+          events.push(`package:${args[1]}`);
+          if (args[1] === 'npm:thoth-agents@0.6.0') firstPartyInstalled = true;
+          return { exitCode: 0, stdout: 'installed', stderr: '' };
+        },
+        installRequiredSkill: (skill, harness) => {
+          events.push(`external:${skill.name}`);
+          return {
+            skill,
+            harness,
+            status: 'installed',
+            skillPath: join(
+              homeDir,
+              '.pi',
+              'agent',
+              'skills',
+              skill.name,
+              'SKILL.md',
+            ),
+          };
+        },
+        runThothMemSetup: ({ harness }) => {
+          events.push('provider');
+          return providerResult(harness);
+        },
+        installLedgerOptions: { configRoot: join(homeDir, '.config') },
+      },
+    );
+
+    expect(result).toBe(0);
+    expect(events).toEqual([
+      'package:npm:thoth-agents@0.6.0',
+      'package:npm:pi-subagents-j0k3r@1.5.9',
+      'package:npm:@upstash/context7-pi@0.1.2',
+      'package:npm:pi-web-access@0.27.0',
+      'package:npm:pi-mcp-adapter@2.32.1',
+      'package:npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+      'package:npm:@juicesharp/rpiv-todo@2.9.0',
+      'external:simplify',
+      'external:tdd',
+      'external:progressive-context-router',
+      'external:architectural-grilling',
+      'provider',
+    ]);
+    expect(
+      readInstallLedger({ configRoot: join(homeDir, '.config') }),
+    ).toMatchObject({
+      status: 'valid',
+      ledger: { harnesses: { pi: { version: '0.6.0' } } },
+    });
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  test('Pi install inspects package-declared skills from the verified configured root instead of the executing root', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-install-roots-'));
+    const executingRoot = process.cwd();
+    const configuredRoot = join(homeDir, 'pi-installed', 'thoth-agents');
+    let inspectedRoot = '';
+    try {
+      const result = await install(
+        { tui: false, agent: 'pi' },
+        {
+          homeDir,
+          resolveExecutingPackageVersion: () => ({
+            ok: true,
+            version: '0.6.0',
+            packageRoot: executingRoot,
+          }),
+          applyPiSetup: () => ({
+            success: true,
+            changed: [],
+            diagnostics: [],
+            installedPackages: ['npm:thoth-agents@0.6.0'],
+            receiptCommitted: true,
+            configuredPackageRoot: configuredRoot,
+          }),
+          inspectPiPackageSkills: ({ packageRoot }) => {
+            inspectedRoot = packageRoot;
+            return {
+              success: true,
+              state: 'available',
+              issues: [],
+              skills: THOTH_OWNED_SKILL_NAMES.map((name) => ({
+                name,
+                sourcePath: join(packageRoot, 'skills', name),
+                destinationPath: join(packageRoot, 'skills', name),
+              })),
+            };
+          },
+          installRequiredSkill: (skill, harness) => ({
+            skill,
+            harness,
+            status: 'installed',
+            skillPath: join(homeDir, '.pi', 'agent', 'skills', skill.name),
+          }),
+          runThothMemSetup: ({ harness }) => providerResult(harness),
+          installLedgerOptions: { configRoot: join(homeDir, '.config') },
+        },
+      );
+
+      expect(result).toBe(0);
+      expect(inspectedRoot).toBe(configuredRoot);
+      expect(inspectedRoot).not.toBe(executingRoot);
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  test('Pi dry-run previews the full pipeline with no command, file, provider, or ledger mutation', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-top-dry-'));
+    let piCommands = 0;
+    const result = await install(
+      { tui: false, agent: 'pi', dryRun: true },
+      {
+        homeDir,
+        resolveExecutingPackageVersion: () => ({ ok: true, version: '0.6.0' }),
+        piCommandExecutor: () => {
+          piCommands += 1;
+          return { exitCode: 0, stdout: '', stderr: '' };
+        },
+        runThothMemSetup: ({ harness }) => providerResult(harness),
+        installLedgerOptions: { configRoot: join(homeDir, '.config') },
+      },
+    );
+    expect(result).toBe(0);
+    expect(piCommands).toBe(0);
+    expect(
+      readInstallLedger({ configRoot: join(homeDir, '.config') }).status,
+    ).toBe('missing');
+    expect(existsSync(join(homeDir, '.pi'))).toBe(false);
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  test('Pi dry-run plans the explicit local package root', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-local-plan-'));
+    const localPackageRoot = process.cwd();
+    const runProvider = vi.fn(({ harness }) => providerResult(harness));
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (message?: unknown) => lines.push(String(message));
+    try {
+      const result = await install(
+        {
+          tui: false,
+          agent: 'pi',
+          dryRun: true,
+          localPackageRoot,
+        },
+        {
+          homeDir,
+          resolveExecutingPackageVersion: () => ({
+            ok: true,
+            version: '0.6.0',
+            packageRoot: process.cwd(),
+          }),
+          runThothMemSetup: runProvider,
+          installLedgerOptions: { configRoot: join(homeDir, '.config') },
+        },
+      );
+
+      expect(result).toBe(0);
+      expect(lines.join('\n')).toContain(
+        `pi install ${localPackageRoot} --no-approve`,
+      );
+      expect(lines.join('\n')).toContain(
+        'Local thoth-agents install omits thoth-mem setup',
+      );
+      expect(lines.join('\n')).toContain(
+        'node <thoth-mem-root>/dist/index.js setup pi --local-package-root "<absolute-thoth-mem-root>"',
+      );
+      expect(runProvider).not.toHaveBeenCalled();
+      expect(
+        readInstallLedger({ configRoot: join(homeDir, '.config') }).status,
+      ).toBe('missing');
+    } finally {
+      console.log = originalLog;
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  test('Pi local install skips provider setup and records completion', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-local-apply-'));
+    const configRoot = join(homeDir, '.config');
+    const localPackageRoot = process.cwd();
+    const runProvider = vi.fn(({ harness }) => providerResult(harness));
+    let plannedFirstPartySource: string | undefined;
+    try {
+      const result = await install(
+        {
+          tui: false,
+          agent: 'pi',
+          localPackageRoot,
+        },
+        {
+          homeDir,
+          resolveExecutingPackageVersion: () => ({
+            ok: true,
+            version: '0.6.0',
+            packageRoot: localPackageRoot,
+          }),
+          buildPiSetupPlan: (options) => {
+            plannedFirstPartySource = options.firstPartySource;
+            return {
+              dryRun: false,
+              ready: true,
+              paths: resolvePiPaths({ homeDir, cwd: process.cwd() }),
+              items: [],
+              blockers: [],
+              diagnostics: [],
+              disclaimers: [],
+              options,
+            };
+          },
+          applyPiSetup: () => ({
+            success: true,
+            changed: [],
+            diagnostics: [],
+            installedPackages: [localPackageRoot],
+            receiptCommitted: true,
+            configuredPackageRoot: localPackageRoot,
+          }),
+          inspectPiPackageSkills: () => ({
+            success: true,
+            state: 'available',
+            issues: [],
+            skills: [],
+          }),
+          installRequiredSkill: (skill, harness) => ({
+            skill,
+            harness,
+            status: 'installed',
+            skillPath: join(homeDir, '.pi', 'agent', 'skills', skill.name),
+          }),
+          runThothMemSetup: runProvider,
+          installLedgerOptions: { configRoot },
+        },
+      );
+
+      expect(result).toBe(0);
+      expect(plannedFirstPartySource).toBe(localPackageRoot);
+      expect(runProvider).not.toHaveBeenCalled();
+      expect(readInstallLedger({ configRoot })).toMatchObject({
+        status: 'valid',
+        ledger: { harnesses: { pi: { version: '0.6.0' } } },
+      });
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
   test('createInstallConfig has no optional skill switch', () => {
     const config = createInstallConfig({
       tui: false,

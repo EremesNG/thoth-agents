@@ -29,6 +29,22 @@ export interface HarnessInstallCompletionResult {
   error?: string;
 }
 
+export interface HarnessInstallLedgerCompletionResult {
+  success: boolean;
+  ledger: InstallCompletionLedgerResult;
+  error?: string;
+}
+
+export interface RecordHarnessInstallCompletionOptions {
+  harness: InstallHarnessId;
+  version: string;
+  dryRun?: boolean;
+  recordCompletedInstall?: (
+    options: Parameters<typeof recordCompletedInstall>[0],
+  ) => RecordCompletedInstallResult;
+  ledgerOptions?: InstallLedgerOptions;
+}
+
 export interface FinalizeHarnessInstallOptions {
   harness: InstallHarnessId;
   version: string;
@@ -54,6 +70,46 @@ function isConsistentProviderSuccess(
   );
 }
 
+export function recordHarnessInstallCompletion(
+  options: RecordHarnessInstallCompletionOptions,
+): HarnessInstallLedgerCompletionResult {
+  const ledgerPath = getInstallLedgerPath(options.ledgerOptions);
+  if (options.dryRun) {
+    return {
+      success: true,
+      ledger: { status: 'planned', path: ledgerPath },
+    };
+  }
+
+  const record = options.recordCompletedInstall ?? recordCompletedInstall;
+  const ledger = record({
+    ...options.ledgerOptions,
+    harness: options.harness,
+    version: options.version,
+  });
+  if (!ledger.success) {
+    return {
+      success: false,
+      ledger: {
+        status: 'failed',
+        path: ledger.path,
+        error: ledger.error,
+      },
+      error: ledger.error,
+    };
+  }
+
+  return {
+    success: true,
+    ledger: {
+      status: 'recorded',
+      path: ledger.path,
+      repairedInvalidState: ledger.repairedInvalidState,
+      ...(ledger.backupPath ? { backupPath: ledger.backupPath } : {}),
+    },
+  };
+}
+
 export function finalizeHarnessInstall(
   options: FinalizeHarnessInstallOptions,
 ): HarnessInstallCompletionResult {
@@ -76,41 +132,15 @@ export function finalizeHarnessInstall(
     };
   }
 
-  if (options.dryRun) {
-    return {
-      success: true,
-      provider,
-      ledger: { status: 'planned', path: ledgerPath },
-    };
-  }
-
-  const record = options.recordCompletedInstall ?? recordCompletedInstall;
-  const ledger = record({
-    ...options.ledgerOptions,
+  const completion = recordHarnessInstallCompletion({
     harness: options.harness,
     version: options.version,
+    dryRun: options.dryRun,
+    recordCompletedInstall: options.recordCompletedInstall,
+    ledgerOptions: options.ledgerOptions,
   });
-  if (!ledger.success) {
-    return {
-      success: false,
-      provider,
-      ledger: {
-        status: 'failed',
-        path: ledger.path,
-        error: ledger.error,
-      },
-      error: ledger.error,
-    };
-  }
-
   return {
-    success: true,
     provider,
-    ledger: {
-      status: 'recorded',
-      path: ledger.path,
-      repairedInvalidState: ledger.repairedInvalidState,
-      ...(ledger.backupPath ? { backupPath: ledger.backupPath } : {}),
-    },
+    ...completion,
   };
 }

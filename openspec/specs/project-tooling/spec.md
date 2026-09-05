@@ -23,27 +23,38 @@ NOT be used as authoritative dependency state for active workflows.
   treat a Bun lockfile as current dependency truth
 
 ### Requirement: Pin or Document Corepack Package Manager Behavior
-The project MUST pin or document pnpm 11 package-manager behavior through
-supported package metadata and active setup guidance. Active developer and CI
-surfaces MUST require the Node 22+ runtime/tooling floor needed by pnpm 11,
-with Node `>=22.13` as the baseline unless a selected dependency requires a
-higher version.
 
-#### Scenario: Package manager metadata is explicit
-- GIVEN a developer or CI runner reads the package metadata
-- WHEN the project declares package-manager expectations
-- THEN the metadata SHOULD identify the expected pnpm 11 package manager and
-  version
-- AND the metadata MUST declare a Node 22+ engine floor compatible with the
-  selected pnpm 11 version
-- AND any setup documentation MUST remain consistent with that declaration
+Active package metadata, CI, release, bundled-skill compatibility declarations, generated guidance, and user documentation MUST require Node.js `>=22.19` consistently while preserving pnpm `11.2.2` as the authoritative package manager.
 
-#### Scenario: Corepack setup is discoverable
-- GIVEN a supported Node environment needs Corepack to provide pnpm
-- WHEN a developer follows active setup documentation
-- THEN the documentation MUST explain the required Node 22+ and Corepack or
-  pnpm 11 activation step
-- AND the documented step MUST match the commands used by CI
+#### Scenario: US1 - Install the complete Pi agent pack 1
+
+- **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
+- **WHEN** `thoth-agents install --agent=pi` is applied
+- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+
+#### Scenario: US1 - Install the complete Pi agent pack 2
+
+- **GIVEN** the same environment
+- **WHEN** the installation is run with `--dry-run`
+- **THEN** every intended command and managed target is reported and no Pi package, file, skill, provider, or ledger state is changed
+
+#### Scenario: US1 - Install the complete Pi agent pack 3
+
+- **GIVEN** any mandatory Pi-owned, thoth-agents-owned, external-skill, or provider step fails
+- **WHEN** installation finishes
+- **THEN** it reports bounded partial-state diagnostics and does not record complete installation
+
+#### Scenario: US4 - Preserve existing harnesses while raising the runtime floor 1
+
+- **GIVEN** an existing OpenCode, Codex, or Claude workflow
+- **WHEN** the Pi integration is present
+- **THEN** its existing adapter, installation, delegation, provider, and generated-package behavior is unchanged
+
+#### Scenario: US4 - Preserve existing harnesses while raising the runtime floor 2
+
+- **GIVEN** active package, CI, skill, and documentation surfaces
+- **WHEN** runtime requirements are evaluated
+- **THEN** they consistently require Node.js `>=22.19`
 
 ### Requirement: Run CI with pnpm Semantics
 Continuous integration MUST install dependencies and execute project checks with

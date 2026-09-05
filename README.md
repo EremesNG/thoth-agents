@@ -40,7 +40,8 @@ verification you can follow—without manually coordinating every agent.
   the providers available in your harness.
 - **Continuity between sessions.** Published installs include setup of
   [thoth-mem](https://github.com/EremesNG/thoth-mem), the independent memory
-  companion for reusable decisions and project knowledge.
+  companion for reusable decisions and project knowledge. thoth-mem owns its own
+  memory lifecycle, persistence, and storage; thoth-agents only invokes its setup.
 
 > [!NOTE]
 > OpenCode is the default and most integrated path. All four harnesses share the

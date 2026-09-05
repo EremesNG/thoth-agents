@@ -34,15 +34,23 @@ describe('Pi agent writer', () => {
     const librarian = agents.find(
       (artifact) => artifact.path === 'agents/thoth-librarian.md',
     );
-    expect(librarian?.content).toContain('resolve-library-id');
-    expect(librarian?.content).toContain('query-docs');
-    expect(librarian?.content).toContain('web_*_exa');
-    expect(librarian?.content).toContain('exa_research_*');
-    expect(librarian?.content).toContain('mcp');
-    expect(librarian?.content).toContain('web_search');
-    expect(librarian?.content).toContain('web_fetch');
+    expect(librarian?.content).toContain(
+      'tools: "read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check"',
+    );
+    expect(librarian?.content).not.toMatch(
+      /tools:.*(?:web_fetch|web_\*_exa|exa_research_\*)/,
+    );
     for (const agent of agents.filter((artifact) => artifact !== librarian)) {
-      expect(agent.content).not.toMatch(/tools:.*\bweb_(?:search|fetch)\b/);
+      expect(agent.content).toContain(
+        ['designer', 'quick', 'deep'].some((role) =>
+          agent.path.endsWith(`thoth-${role}.md`),
+        )
+          ? 'tools: "read, bash, edit, write"'
+          : 'tools: "read, bash"',
+      );
+      expect(agent.content).not.toMatch(
+        /tools:.*\b(?:web_search|fetch_content|get_search_content|source_check)\b/,
+      );
       expect(agent.content).not.toMatch(
         /tools:.*\b(?:ask_user_question|todo)\b/,
       );

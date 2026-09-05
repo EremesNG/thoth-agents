@@ -494,68 +494,56 @@ CLI and TUI status, install, Update, Sync, and specialist model/effort operation
 
 ### Requirement: Provide a bounded hybrid research stack
 
-A complete Pi installation MUST install and verify `@upstash/context7-pi@0.1.2` and `@feniix/pi-exa@5.1.1` as Pi-native extensions, MUST install and verify `pi-mcp-adapter@2.32.1` solely to expose a managed global `mcpServers.grep` entry with URL `https://mcp.grep.app`, `protocolVersion: "legacy"`, and `lifecycle: "lazy"`, and MUST NOT route Context7 or Exa through that adapter. The grep.app server MUST remain proxy-only unless a future explicit contract selects direct tools. The installer MUST pin all three package versions, preserve unrelated top-level and server entries, treat a different unowned `grep` definition as a blocking conflict, never add grep.app credentials or copy or solicit an Exa credential, and report each research provider independently as ready, credential-required, unreachable, drifted, or failed.
+Complete Pi setup MUST install and verify pinned Context7, pi-web-access, and the grep-only pi-mcp-adapter. Context7 and web research MUST remain native extensions; the managed global grep entry MUST retain https://mcp.grep.app, legacy protocol, lazy lifecycle, and proxy-only tools. Unrelated MCP configuration and operator credentials MUST remain untouched. Status MUST distinguish Context7, web access, and grep evidence independently, MUST NOT require EXA_API_KEY merely for web package availability, and MUST NOT infer live provider success from package presence.
 
-#### Scenario: US1 - Install the complete Pi agent pack 1
+#### Scenario: US1 - Install one web extension 1
 
-- **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
-- **WHEN** `thoth-agents install --agent=pi` is applied
-- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+- **GIVEN** valid first-party setup
+- **WHEN** Install or applied Update runs
+- **THEN** the exact selected pi-web-access pin is required and neither replaced package is requested
 
-#### Scenario: US1 - Install the complete Pi agent pack 2
+#### Scenario: US1 - Install one web extension 2
 
-- **GIVEN** the same environment
-- **WHEN** the installation is run with `--dry-run`
-- **THEN** every intended command and managed target is reported and no Pi package, file, skill, provider, or ledger state is changed
+- **GIVEN** a web package failure or dry-run
+- **WHEN** setup executes
+- **THEN** failure prevents completion recording and dry-run writes nothing
 
-#### Scenario: US1 - Install the complete Pi agent pack 3
+#### Scenario: US1 - Install one web extension 3
 
-- **GIVEN** any mandatory Pi-owned, thoth-agents-owned, external-skill, or provider step fails
-- **WHEN** installation finishes
-- **THEN** it reports bounded partial-state diagnostics and does not record complete installation
+- **GIVEN** a configured alternative web provider without EXA_API_KEY
+- **WHEN** status runs
+- **THEN** it does not declare missing Exa credentials and distinguishes installed evidence from unobserved live availability
 
-#### Scenario: US2 - Delegate through Pi-native subagents 1
+#### Scenario: US1 - Install one web extension 4
 
-- **GIVEN** a fresh bounded assignment and an explicit canonical specialist
-- **WHEN** the Pi root delegates
-- **THEN** it invokes `subagent_run` with one canonical `agent`, task, and bounded context and receives either the terminal task result or a background task identifier
-
-#### Scenario: US2 - Delegate through Pi-native subagents 2
-
-- **GIVEN** a running background assignment owned by the current parent session
-- **WHEN** the root needs progress, correction, result, or cancellation
-- **THEN** it uses the package's status, send-message, result, list, or cancel surface without treating collection as permission to reuse the specialist
-
-#### Scenario: US2 - Delegate through Pi-native subagents 3
-
-- **GIVEN** a completed assignment and continuation is disabled
-- **WHEN** the root reaches a new work boundary
-- **THEN** it creates a fresh task rather than claiming continuation support
-
-#### Scenario: US2 - Delegate through Pi-native subagents 4
-
-- **GIVEN** live steering is unavailable, a queued message is not confirmed as delivered, or a task is nonterminal
-- **WHEN** fan-in is evaluated
-- **THEN** the root keeps the barrier closed and reports the actual capability state
+- **GIVEN** an installation containing the replaced web package
+- **WHEN** the operator follows the documented transition
+- **THEN** native Pi removal of the conflicting package precedes installation; unrelated packages and credentials are preserved
 
 ### Requirement: Install pinned Pi interaction and web extensions
 
-Complete Pi installation and applied Update MUST install and individually verify @juicesharp/rpiv-ask-user-question@2.9.0, @juicesharp/rpiv-todo@2.9.0, and @juicesharp/rpiv-web-tools@2.9.0 as required native Pi packages after first-party verification; dry-run MUST remain mutation-free and any required dependency failure MUST prevent completion recording. These packages MUST remain external and not be vendored.
+Complete Pi installation and applied Update MUST install and individually verify the selected exact pi-web-access version plus @juicesharp/rpiv-ask-user-question@2.9.0 and @juicesharp/rpiv-todo@2.9.0 after first-party verification. Neither @juicesharp/rpiv-web-tools nor @feniix/pi-exa MUST be required or installed by the selected dependency inventory. Dry-run MUST remain mutation-free; required dependency failure MUST prevent completion recording; external implementations MUST NOT be vendored.
 
-#### Scenario: US1 - Install the additional Pi extensions 1
+#### Scenario: US1 - Install one web extension 1
 
-- **GIVEN** a valid first-party installation
-- **WHEN** complete Install or Update runs
-- **THEN** all three versioned packages are installed and individually verified before completion
+- **GIVEN** valid first-party setup
+- **WHEN** Install or applied Update runs
+- **THEN** the exact selected pi-web-access pin is required and neither replaced package is requested
 
-#### Scenario: US1 - Install the additional Pi extensions 2
+#### Scenario: US1 - Install one web extension 2
 
-- **GIVEN** dry-run or a failed new dependency
-- **WHEN** setup runs
-- **THEN** dry-run writes nothing and a dependency failure cannot advance the completion ledger
+- **GIVEN** a web package failure or dry-run
+- **WHEN** setup executes
+- **THEN** failure prevents completion recording and dry-run writes nothing
 
-#### Scenario: US1 - Install the additional Pi extensions 3
+#### Scenario: US1 - Install one web extension 3
 
-- **GIVEN** a missing or mismatched dependency
+- **GIVEN** a configured alternative web provider without EXA_API_KEY
 - **WHEN** status runs
-- **THEN** the affected package is reported without claiming live tool availability
+- **THEN** it does not declare missing Exa credentials and distinguishes installed evidence from unobserved live availability
+
+#### Scenario: US1 - Install one web extension 4
+
+- **GIVEN** an installation containing the replaced web package
+- **WHEN** the operator follows the documented transition
+- **THEN** native Pi removal of the conflicting package precedes installation; unrelated packages and credentials are preserved

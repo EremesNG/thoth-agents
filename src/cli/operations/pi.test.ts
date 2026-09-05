@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { piAdapter } from '../../harness/adapters/pi';
 import { THOTH_OWNED_SKILL_NAMES } from '../../harness/core/owned-skills';
@@ -78,8 +78,13 @@ function seedPiPackage(root: string, missingSkill?: string): void {
     );
 }
 
+function localSource(from: string, to: string): string {
+  const path = relative(from, to);
+  return path.startsWith('.') ? path : `.${sep}${path}`;
+}
+
 function writeLocalPiReceipt(homeDir: string, packageRoot: string): string {
-  const source = '..\\pi-packages\\thoth-agents';
+  const source = localSource(homeDir, packageRoot);
   const sha256 = (path: string) =>
     createHash('sha256').update(readFileSync(path)).digest('hex');
   expect(
@@ -95,7 +100,7 @@ function writeLocalPiReceipt(homeDir: string, packageRoot: string): string {
         manifestSha256: sha256(join(packageRoot, 'package.json')),
         extensionSha256: sha256(join(packageRoot, 'dist', 'pi.js')),
       },
-      { homeDir },
+      { homeDir, env: {} },
     ).success,
   ).toBe(true);
   return source;
@@ -117,7 +122,7 @@ describe('Pi operations', () => {
   test('keeps install and update complete while sync excludes packages/provider/ledger', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-op-'));
     roots.push(homeDir);
-    const context = { cwd: join(homeDir, 'project'), homeDir };
+    const context = { cwd: join(homeDir, 'project'), homeDir, env: {} };
     const install = buildPiInstallPlan(context);
     const update = buildPiUpdatePlan(context);
     const sync = buildPiSyncPlan(context);
@@ -159,7 +164,7 @@ describe('Pi operations', () => {
     );
   });
 
-  test('reports provider evidence and Exa credential state independently', () => {
+  test('reports provider evidence without treating an absent Exa key as a web failure', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-status-'));
     roots.push(homeDir);
     const report = getPiStatus(
@@ -173,11 +178,9 @@ describe('Pi operations', () => {
       },
     );
     expect(report.providerCapability?.state).toBe('degraded');
-    expect(
-      report.diagnostics.some(
-        ({ code }) => code === 'pi-exa-credential-required',
-      ),
-    ).toBe(true);
+    expect(report.diagnostics.map(({ code }) => code).join('\n')).not.toContain(
+      'exa-credential-required',
+    );
   });
 
   test('reports each RPIV package source independently without claiming live tools', () => {
@@ -205,11 +208,7 @@ describe('Pi operations', () => {
     const rpiv = report.targets.filter(({ path }) =>
       path?.includes('@juicesharp/rpiv-'),
     );
-    expect(rpiv.map(({ state }) => state)).toEqual([
-      'installed',
-      'drift',
-      'missing',
-    ]);
+    expect(rpiv.map(({ state }) => state)).toEqual(['installed', 'drift']);
     expect(
       rpiv.every(({ description }) =>
         description?.includes('does not prove live tool availability'),
@@ -217,7 +216,7 @@ describe('Pi operations', () => {
     ).toBe(true);
   });
 
-  test('reports independent managed-ready and credential-required research runtime states', () => {
+  test('reports installed web access as unverified without live runtime evidence', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-research-ready-'));
     roots.push(homeDir);
     seedManagedGrepConfig(homeDir);
@@ -234,9 +233,25 @@ describe('Pi operations', () => {
         .map(({ label, observed }) => ({ label, observed })),
     ).toEqual([
       { label: 'Context7 runtime availability', observed: 'ready' },
-      { label: 'Exa runtime availability', observed: 'credential-required' },
+      { label: 'Web access runtime availability', observed: 'unverified' },
       { label: 'grep.app runtime availability', observed: 'ready' },
     ]);
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Web access runtime availability',
+          state: 'unknown',
+        }),
+      ]),
+    );
+    expect(report.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'pi-web-access-runtime-unverified',
+          severity: 'minor',
+        }),
+      ]),
+    );
   });
 
   test('keeps injected remote and schema outcomes separate from managed install health', () => {
@@ -247,16 +262,16 @@ describe('Pi operations', () => {
       {
         cwd: homeDir,
         homeDir,
-        env: { EXA_API_KEY: 'operator-owned' },
+        env: {},
         piCommandExecutor: installedRuntime,
       },
       {
         research: {
           context7: { state: 'unreachable', basis: ['timeout'] },
-          exa: { state: 'failed', basis: ['provider error'] },
+          'web-access': { state: 'failed', basis: ['provider error'] },
           grep: { state: 'drifted', basis: ['searchGitHub schema changed'] },
         },
-      } as never,
+      },
     );
 
     expect(report.state).toBe('missing');
@@ -268,10 +283,51 @@ describe('Pi operations', () => {
     expect(report.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: 'pi-context7-runtime-unreachable' }),
-        expect.objectContaining({ code: 'pi-exa-runtime-failed' }),
+        expect.objectContaining({ code: 'pi-web-access-runtime-failed' }),
         expect.objectContaining({ code: 'pi-grep-runtime-drifted' }),
       ]),
     );
+  });
+
+  test('honors explicit ready web evidence and reports a missing package as drifted', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-web-evidence-'));
+    roots.push(homeDir);
+    const missing = getPiStatus({
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command, args) => {
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+    expect(
+      missing.targets.find(
+        ({ label }) => label === 'Web access runtime availability',
+      )?.observed,
+    ).toBe('drifted');
+
+    const observed = getPiStatus(
+      {
+        cwd: homeDir,
+        homeDir,
+        env: {},
+        piCommandExecutor: installedRuntime,
+      },
+      {
+        research: {
+          'web-access': { state: 'ready', basis: ['observed live request'] },
+        },
+      },
+    );
+    expect(
+      observed.targets.find(
+        ({ label }) => label === 'Web access runtime availability',
+      ),
+    ).toMatchObject({ state: 'installed', observed: 'ready' });
   });
 
   test('reports incompatible Node and Pi versions as drift', () => {
@@ -321,7 +377,7 @@ describe('Pi operations', () => {
           manifestSha256: sha256(manifestPath),
           extensionSha256: sha256(extensionPath),
         },
-        { homeDir },
+        { homeDir, env: {} },
       ).success,
     ).toBe(true);
     writeFileSync(manifestPath, '{"name":"thoth-agents","version":"1.0.1"}');
@@ -362,7 +418,7 @@ describe('Pi operations', () => {
     writeFileSync(manifestPath, '{"name":"thoth-agents","version":"1.0.0"}');
     const sha256 = (path: string) =>
       createHash('sha256').update(readFileSync(path)).digest('hex');
-    const canonicalSource = '..\\packages\\candidate';
+    const canonicalSource = localSource(homeDir, installedRoot);
     expect(
       writePiPackageReceipt(
         {
@@ -376,7 +432,7 @@ describe('Pi operations', () => {
           manifestSha256: sha256(manifestPath),
           extensionSha256: sha256(extensionPath),
         },
-        { homeDir },
+        { homeDir, env: {} },
       ).success,
     ).toBe(true);
     const report = getPiStatus({
@@ -504,16 +560,16 @@ describe('Pi operations', () => {
     expect(ownership('No packages installed.')).toBe('missing');
     expect(
       ownership(
-        `User packages:\n  ..\\packages\\candidate\n    ${installedRoot}`,
+        `User packages:\n  ${localSource(homeDir, installedRoot)}\n    ${installedRoot}`,
       ),
     ).toBe('configured-unowned');
 
-    const receiptPath = getPiPackageReceiptPath({ homeDir });
+    const receiptPath = getPiPackageReceiptPath({ homeDir, env: {} });
     mkdirSync(dirname(receiptPath), { recursive: true });
     writeFileSync(receiptPath, '{');
     expect(
       ownership(
-        `User packages:\n  ..\\packages\\candidate\n    ${installedRoot}`,
+        `User packages:\n  ${localSource(homeDir, installedRoot)}\n    ${installedRoot}`,
       ),
     ).toBe('conflicting');
 
@@ -530,7 +586,7 @@ describe('Pi operations', () => {
           manifestSha256: sha256(manifestPath),
           extensionSha256: sha256(extensionPath),
         },
-        { homeDir },
+        { homeDir, env: {} },
       ).success,
     ).toBe(true);
     expect(ownership('No packages installed.')).toBe('owned-missing');
@@ -583,7 +639,7 @@ describe('Pi operations', () => {
     }
     const sha256 = (path: string) =>
       createHash('sha256').update(readFileSync(path)).digest('hex');
-    const source = '..\\pi-packages\\thoth-agents';
+    const source = localSource(homeDir, configuredRoot);
     expect(
       writePiPackageReceipt(
         {
@@ -597,7 +653,7 @@ describe('Pi operations', () => {
           manifestSha256: sha256(join(configuredRoot, 'package.json')),
           extensionSha256: sha256(join(configuredRoot, 'dist', 'pi.js')),
         },
-        { homeDir },
+        { homeDir, env: {} },
       ).success,
     ).toBe(true);
     const plan = buildPiSyncPlan({
@@ -767,7 +823,9 @@ describe('Pi operations', () => {
     expect(applied).toMatchObject({ applied: false, changedTargets: [] });
     expect(existsSync(join(homeDir, '.config', 'mcp', 'mcp.json'))).toBe(false);
     expect(existsSync(join(homeDir, '.pi', 'agent', 'agents'))).toBe(false);
-    expect(existsSync(getPiPackageReceiptPath({ homeDir }))).toBe(true);
+    expect(existsSync(getPiPackageReceiptPath({ homeDir, env: {} }))).toBe(
+      true,
+    );
   });
 
   test('reports MCP mutation when a later specialist sync fails', () => {
@@ -814,7 +872,7 @@ describe('Pi operations', () => {
           dryRun: true,
           roles: [{ role: 'orchestrator', model: 'x' }],
         },
-        { cwd: homeDir, homeDir },
+        { cwd: homeDir, homeDir, env: {} },
       ).canApply,
     ).toBe(false);
     expect(
@@ -824,7 +882,7 @@ describe('Pi operations', () => {
           dryRun: true,
           roles: [{ role: 'deep', model: 'provider/model' }],
         },
-        { cwd: homeDir, homeDir },
+        { cwd: homeDir, homeDir, env: {} },
       ).canApply,
     ).toBe(true);
   });
@@ -845,7 +903,7 @@ describe('Pi operations', () => {
           },
         ],
       },
-      { cwd: homeDir, homeDir },
+      { cwd: homeDir, homeDir, env: {} },
     );
     const unavailable = buildPiModelPlan(
       {
@@ -860,7 +918,7 @@ describe('Pi operations', () => {
           },
         ],
       },
-      { cwd: homeDir, homeDir },
+      { cwd: homeDir, homeDir, env: {} },
     );
 
     for (const plan of [unsupported, unavailable]) {
@@ -893,7 +951,7 @@ describe('Pi operations', () => {
           },
         ],
       },
-      { cwd: homeDir, homeDir },
+      { cwd: homeDir, homeDir, env: {} },
     );
     expect(applyPiPlan(plan).applied).toBe(true);
     const content = readFileSync(agentPath, 'utf8');

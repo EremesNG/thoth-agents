@@ -451,15 +451,18 @@ diagnostics, manual actions, and receipt paths remain visible for recovery.
 
 Pi's complete global setup first proves and receipts
 `npm:thoth-agents@<executing-version>`, then pins `pi-subagents-j0k3r@1.5.9`,
-`@upstash/context7-pi@0.1.2`, `@feniix/pi-exa@5.1.1`, and
+`@upstash/context7-pi@0.1.2`, `pi-web-access@0.27.0`, and
 `pi-mcp-adapter@2.32.1`, followed by
 `@juicesharp/rpiv-ask-user-question@2.9.0`,
-`@juicesharp/rpiv-todo@2.9.0`, and
-`@juicesharp/rpiv-web-tools@2.9.0`. The root owns interactive questions and
-session-local progress; root and librarian can use `web_search` and `web_fetch`
-when their provider prerequisites are available. Context7 and Exa stay native; the adapter exposes only
-the anonymous `https://mcp.grep.app` endpoint through an attributable global
-`mcpServers.grep` entry. Exa runtime calls use the operator-owned `EXA_API_KEY`.
+and `@juicesharp/rpiv-todo@2.9.0`. The root owns interactive questions and
+session-local progress; root and librarian can use pi-web-access's default
+`web_search`, `fetch_content`, `get_search_content`, and `source_check` tools.
+Exa is one supported upstream provider, including keyless access, but this does
+not retain the dedicated pi-exa answer, similarity, or research-planner tools.
+Package presence is reported separately from observed live provider success.
+Context7 and web access stay native; the adapter exposes only the anonymous
+`https://mcp.grep.app` endpoint through an attributable global `mcpServers.grep`
+entry. Provider configuration and credentials remain operator-owned.
 The initial release supports only the default `~/.pi/agent` global root and
 fails before mutation when `PI_CODING_AGENT_DIR` would make external skills
 undiscoverable. See [Installation](docs/installation.md#pi) for paths, security,

@@ -48,11 +48,12 @@
   catalog pin.
 - No adapter bundles thoth-mem hooks, MCP, skill, lifecycle behavior, or project
   QA executables.
-- Pi's Context7 and Exa integrations are native extensions. Only grep.app uses
-  `pi-mcp-adapter`, through the exact attributable global server entry.
+- Pi's Context7 and web-access integrations are native extensions. Only grep.app
+  uses `pi-mcp-adapter`, through the exact attributable global server entry.
 - Pi's pinned RPIV extensions expose root-owned `ask_user_question` and `todo`;
-  only root and librarian receive `web_search`/`web_fetch` guidance, and package
-  presence remains distinct from live UI/provider availability.
+  only root and librarian receive `web_search`, `fetch_content`,
+  `get_search_content`, and `source_check` guidance, and package presence remains
+  distinct from live UI/provider availability.
 
 ## Verification
 

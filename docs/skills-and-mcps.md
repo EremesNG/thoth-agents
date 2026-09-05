@@ -110,20 +110,25 @@ The shared harness bundle may expose the research MCPs used by thoth-agents:
 Their exact configuration differs by harness. OpenCode composes them at runtime;
 Codex reads `plugin/codex.mcp.json`, while Claude reads `plugin/.mcp.json`.
 Pi uses a hybrid stack: `@upstash/context7-pi@0.1.2` and
-`@feniix/pi-exa@5.1.1` are native extensions, while
+`pi-web-access@0.27.0` are native extensions, while
 `pi-mcp-adapter@2.32.1` exposes only the global `https://mcp.grep.app` server.
 The managed grep entry uses legacy protocol and lazy lifecycle, omits
-`directTools`, and requires no credentials. Exa reads the operator-owned
-`EXA_API_KEY`; thoth-agents never copies it. The alternative
-`@benvargas/pi-exa-mcp` is not installed alongside the selected Exa extension
-and remains only an operator-managed fallback.
+`directTools`, and requires no credentials. pi-web-access supports Exa, including
+its keyless public MCP path, and other configured providers. Provider settings,
+tool aliases, disabled tools, and credentials remain operator-owned;
+thoth-agents never copies or rewrites them.
 
-Pi also pins `@juicesharp/rpiv-web-tools@2.9.0`. Its exact tools are
-`web_search` and `web_fetch`; only the root and librarian receive the corresponding
-guidance/allowlist. Search requires an operator-configured provider, failures are
-reported explicitly, and fetched or searched content remains untrusted. The
-separate `rpiv-ask-user-question` and `rpiv-todo` packages expose root-owned
-interaction and session-local progress rather than child coordination state.
+The default pi-web-access tools are `web_search`, `fetch_content`,
+`get_search_content`, and `source_check`; only the root and librarian receive
+the corresponding guidance/allowlist. Delegated research uses `workflow: "none"`
+to avoid the interactive curator. The package does not retain dedicated pi-exa
+answer, similarity, or research-planner tools. Package presence is unverified
+runtime evidence rather than proof of a successful provider request. Failures
+are reported explicitly, and fetched or searched content remains untrusted.
+Fetches may create extension-owned caches or clones outside the workspace even
+for a read-only role. The separate `rpiv-ask-user-question` and `rpiv-todo`
+packages expose root-owned interaction and session-local progress rather than
+child coordination state.
 
 ## thoth-mem boundary
 

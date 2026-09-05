@@ -55,10 +55,10 @@ export const PI_PACKAGE_SPECS = [
     version: '0.1.2',
   },
   {
-    id: 'exa',
-    source: 'npm:@feniix/pi-exa@5.1.1',
-    packageName: '@feniix/pi-exa',
-    version: '5.1.1',
+    id: 'web-access',
+    source: 'npm:pi-web-access@0.27.0',
+    packageName: 'pi-web-access',
+    version: '0.27.0',
   },
   {
     id: 'grep-adapter',
@@ -76,12 +76,6 @@ export const PI_PACKAGE_SPECS = [
     id: 'todo',
     source: 'npm:@juicesharp/rpiv-todo@2.9.0',
     packageName: '@juicesharp/rpiv-todo',
-    version: '2.9.0',
-  },
-  {
-    id: 'web-tools',
-    source: 'npm:@juicesharp/rpiv-web-tools@2.9.0',
-    packageName: '@juicesharp/rpiv-web-tools',
     version: '2.9.0',
   },
 ] as const;
@@ -493,7 +487,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
     diagnostics,
     disclaimers: [
       "Pi extensions execute with the invoking user's system permissions; package pins and tool allowlists are not a security sandbox.",
-      'Context7 and Exa are native Pi extensions; only grep.app uses pi-mcp-adapter and directTools is intentionally omitted.',
+      'Context7 and web access are native Pi extensions; only grep.app uses pi-mcp-adapter and directTools is intentionally omitted.',
       'Project-local resources require Pi trust and may shadow global resources.',
     ],
     options: { ...options, expectedVersion, packageRoot, firstPartySource },

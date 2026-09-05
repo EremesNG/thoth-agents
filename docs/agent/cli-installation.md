@@ -29,7 +29,7 @@ phase execution does not.
 - Install and applied Update share the complete selected-harness orchestration:
   OpenCode refreshes exact plugin/config plus owned skills; Codex performs
   native plugin setup before its global pack; Claude performs native plugin
-  refresh; Pi installs the exact executing first-party package before seven pinned
+  refresh; Pi installs the exact executing first-party package before six pinned
   external packages and attributable resources. Every harness then installs
   required external skills. Published installs require provider-complete
   evidence before recording CLI completion last; an explicit local Pi package
@@ -77,8 +77,8 @@ phase execution does not.
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
   then may it migrate attributable legacy root/skill
-  copies, install delegation, Context7, Exa, the grep-only MCP adapter, and the
-  RPIV question, todo, and web extensions,
+  copies, install delegation, Context7, pi-web-access, the grep-only MCP adapter,
+  and the RPIV question and todo extensions,
   synchronize six specialists, install four external skills, run provider
   setup, and commit the unchanged last-complete ledger. A custom
   `PI_CODING_AGENT_DIR`, unowned canonical agent, or conflicting global `grep`

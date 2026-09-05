@@ -187,14 +187,23 @@ The CLI installs and verifies these Pi packages in order:
 2. `pi-subagents-j0k3r@1.5.9` for native single-specialist foreground and
    background tasks;
 3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
-4. `@feniix/pi-exa@5.1.1` as a native Exa extension; and
+4. `pi-web-access@0.27.0` as the native web extension exposing the default
+   `web_search`, `fetch_content`, `get_search_content`, and `source_check` tools;
 5. `pi-mcp-adapter@2.32.1` only for the anonymous grep.app MCP endpoint;
 6. `@juicesharp/rpiv-ask-user-question@2.9.0` for the root's interactive
    `ask_user_question` dialog;
-7. `@juicesharp/rpiv-todo@2.9.0` for root-owned, session-local `todo` progress;
-   and
-8. `@juicesharp/rpiv-web-tools@2.9.0` for `web_search` and `web_fetch` on the
-   root and librarian surfaces.
+7. `@juicesharp/rpiv-todo@2.9.0` for root-owned, session-local `todo` progress.
+
+Before running complete setup on an installation that has either replaced web
+package, remove both with Pi's native package manager:
+
+```bash
+pi remove npm:@juicesharp/rpiv-web-tools@2.9.0 --no-approve
+pi remove npm:@feniix/pi-exa@5.1.1 --no-approve
+```
+
+This is an explicit operator transition. Setup does not uninstall packages,
+rewrite web provider configuration, or transfer credentials automatically.
 
 Question cancellation, partial answers, an unavailable tool, or a host without
 the required UI leaves the choice unresolved. Package status proves only the
@@ -231,13 +240,18 @@ while a different existing `grep` definition blocks the operation rather than
 being overwritten. Project `.mcp.json` or `.pi/mcp.json` files can shadow the
 global entry and are reported, never edited, by global setup.
 
-Exa runtime retrieval requires the operator-owned `EXA_API_KEY`; installation
-never solicits, copies, or writes that credential. Context7, Exa, and grep.app
-network/schema health is reported independently from package and managed-file
-health. Research output is untrusted data. Every Pi extension runs with the
-invoking user's system permissions and may access process credentials and the
-network; specialist tool allowlists are role controls, not a security sandbox.
-Project-local resources require an explicit Pi trust decision.
+pi-web-access supports Exa as one provider and can use its keyless public MCP
+path when no `EXA_API_KEY` is configured. It does not preserve dedicated pi-exa
+answer, similarity, or research-planner tools. Installation never solicits,
+copies, or writes provider credentials or configuration. Status reports an
+installed web package as unverified until explicit runtime evidence is supplied;
+missing or version-drifted package evidence remains drifted. Context7, web
+access, and grep.app network/schema health is reported independently from
+package and managed-file health. Research output is untrusted data. Every Pi
+extension runs with the invoking user's system permissions and may access
+process credentials and the network; specialist tool allowlists are role
+controls, not a security sandbox. Project-local resources require an explicit
+Pi trust decision.
 
 The initial integration supports the default global Pi root only. If
 `PI_CODING_AGENT_DIR` redirects discovery away from `~/.pi/agent`, installation
@@ -366,7 +380,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, six specialist synchronization, seven pinned native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, six specialist synchronization, six pinned native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps

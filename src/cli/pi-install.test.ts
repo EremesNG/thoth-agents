@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   applyPiSetup,
@@ -30,6 +30,11 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
+function localSource(from: string, to: string): string {
+  const path = relative(from, to);
+  return path.startsWith('.') ? path : `.${sep}${path}`;
+}
+
 function fixture() {
   const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-install-'));
   roots.push(homeDir);
@@ -38,6 +43,7 @@ function fixture() {
   return {
     homeDir,
     cwd: join(homeDir, 'project'),
+    env: {},
     packageRoot: process.cwd(),
     expectedVersion: version,
     receiptOptions: { configRoot: join(homeDir, '.config') },
@@ -115,7 +121,7 @@ describe('Pi setup', () => {
   test('commits Pi canonical local source with its absolute command-safe install source', () => {
     const paths = fixture();
     const installedRoot = join(paths.homeDir, 'unpacked', 'package');
-    const canonicalSource = '..\\unpacked\\package';
+    const canonicalSource = localSource(paths.cwd, installedRoot);
     mkdirSync(installedRoot, { recursive: true });
     writeFileSync(
       join(installedRoot, 'package.json'),
@@ -191,7 +197,7 @@ describe('Pi setup', () => {
       JSON.stringify({ schemaVersion: 1, owner: 'thoth-agents', files }),
     );
     const input = {
-      source: '..\\candidate',
+      source: localSource(dirname(root), root),
       installSource: root,
       version: '0.3.12',
       packageRoot: root,
@@ -238,15 +244,20 @@ describe('Pi setup', () => {
       'npm:thoth-agents@0.3.12',
       'npm:pi-subagents-j0k3r@1.5.9',
       'npm:@upstash/context7-pi@0.1.2',
-      'npm:@feniix/pi-exa@5.1.1',
+      'npm:pi-web-access@0.27.0',
       'npm:pi-mcp-adapter@2.32.1',
       'npm:@juicesharp/rpiv-ask-user-question@2.9.0',
       'npm:@juicesharp/rpiv-todo@2.9.0',
-      'npm:@juicesharp/rpiv-web-tools@2.9.0',
     ]);
+    expect(PI_PACKAGE_SPECS).toHaveLength(6);
+    expect(PI_PACKAGE_SPECS.map(({ source }) => source)).not.toEqual(
+      expect.arrayContaining([
+        'npm:@feniix/pi-exa@5.1.1',
+        'npm:@juicesharp/rpiv-web-tools@2.9.0',
+      ]),
+    );
     expect(plan.items.map(({ kind }) => kind)).toEqual([
       'preflight',
-      'package',
       'package',
       'package',
       'package',
@@ -357,10 +368,10 @@ describe('Pi setup', () => {
     expect(existsSync(plan.paths.appendSystemPath)).toBe(false);
   });
 
-  test('stops before managed resources when the final RPIV package cannot be verified', () => {
+  test('stops before managed resources when web access cannot be verified', () => {
     const paths = fixture();
     let firstPartyInstalled = false;
-    const failedSource = 'npm:@juicesharp/rpiv-web-tools@2.9.0';
+    const failedSource = 'npm:pi-web-access@0.27.0';
     const plan = buildPiSetupPlan({
       ...paths,
       commandExecutor: (command, args) => {
@@ -393,7 +404,8 @@ describe('Pi setup', () => {
       error: expect.stringContaining(failedSource),
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        ...PI_PACKAGE_SPECS.slice(0, -1).map(({ source }) => source),
+        'npm:pi-subagents-j0k3r@1.5.9',
+        'npm:@upstash/context7-pi@0.1.2',
       ],
     });
     expect(existsSync(plan.paths.mcpConfigPath)).toBe(false);
@@ -576,7 +588,7 @@ describe('Pi setup', () => {
       owner: 'thoth-agents' as const,
       scope: 'user' as const,
       packageName: 'thoth-agents' as const,
-      source: '..\\prior\\package',
+      source: localSource(paths.cwd, priorInstallSource),
       installSource: priorInstallSource,
       version: '0.3.11',
       manifestSha256: 'c'.repeat(64),

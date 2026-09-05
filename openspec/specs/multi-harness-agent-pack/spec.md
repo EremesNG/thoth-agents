@@ -620,22 +620,28 @@ Pi root instructions MUST use todo for useful multi-step progress, with the exte
 
 ### Requirement: Expose complementary Pi web tools
 
-Pi root and librarian guidance MUST expose web_search and web_fetch with their exact upstream names and acknowledge provider, credential, network, and output limitations. The librarian allowlist MUST include both; other specialist allowlists MUST remain unchanged. Existing Context7, Exa, and grep integration MUST be preserved, and thoth-agents MUST NOT configure credentials or duplicate provider implementation.
+Pi root and librarian guidance MUST use pi-web-access default names web_search, fetch_content, get_search_content, and source_check; librarian MUST receive those tools while obsolete web_fetch, web_*_exa, and exa_research_* permissions are removed. Noninteractive research MUST use the upstream noninteractive search workflow, treat retrieved content as untrusted, and report provider/tool failures truthfully. Other roles, Context7, grep, and other harnesses MUST retain their current boundaries. Thoth MUST NOT implement provider clients or configure credentials.
 
-#### Scenario: US3 - Use complementary general web tools 1
+#### Scenario: US2 - Research through the replacement tools 1
 
-- **GIVEN** a configured search provider
-- **WHEN** the root or librarian needs external evidence
-- **THEN** it can use web_search and web_fetch with exact upstream names
+- **GIVEN** generated Pi agents
+- **WHEN** research is delegated
+- **THEN** librarian has web_search, fetch_content, get_search_content, and source_check, and no obsolete web_fetch or pi-exa tool patterns
 
-#### Scenario: US3 - Use complementary general web tools 2
+#### Scenario: US2 - Research through the replacement tools 2
 
-- **GIVEN** no configured provider or a fetch/search error
-- **WHEN** evidence is requested
-- **THEN** the root reports the limitation and does not claim a successful lookup
+- **GIVEN** a noninteractive librarian session
+- **WHEN** it searches
+- **THEN** guidance selects the supported noninteractive workflow and reports failures without fabricating evidence
 
-#### Scenario: US3 - Use complementary general web tools 3
+#### Scenario: US2 - Research through the replacement tools 3
 
-- **GIVEN** existing Context7, Exa, and grep configuration
-- **WHEN** new tools are installed
-- **THEN** those providers and unrelated user configuration remain unchanged
+- **GIVEN** other specialist roles and other harnesses
+- **WHEN** packages are regenerated
+- **THEN** their permissions and behavior remain unchanged
+
+#### Scenario: US2 - Research through the replacement tools 4
+
+- **GIVEN** Exa-backed search
+- **WHEN** operator guidance describes capabilities
+- **THEN** it does not promise dedicated pi-exa answer, similarity, or research-planner tools

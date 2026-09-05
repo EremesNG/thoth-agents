@@ -66,18 +66,32 @@ describe('Pi adapter', () => {
     }
   });
 
-  test('documents general web tool prerequisites and truthful failures', () => {
+  test('documents noninteractive web access tools and truthful failures', () => {
     const root = renderPiRootInstructions();
-    expect(root).toContain('web_search');
-    expect(root).toContain('web_fetch');
-    expect(root).toContain('configured search provider');
+    for (const tool of [
+      'web_search',
+      'fetch_content',
+      'get_search_content',
+      'source_check',
+    ])
+      expect(root).toContain(tool);
+    expect(root).toContain('workflow: "none"');
+    expect(root).toContain('default tool names');
     expect(root).toContain('untrusted data');
     expect(root).toContain('report the limitation');
+    expect(root).not.toMatch(/web_fetch|pi-exa|web_\*_exa|exa_research/);
     const librarian = piAdapter
       .render({ projectRoot: process.cwd() })
       .artifacts.find(({ path }) => path === 'agents/thoth-librarian.md');
-    expect(librarian?.content).toContain('web_search');
-    expect(librarian?.content).toContain('web_fetch');
+    for (const tool of [
+      'web_search',
+      'fetch_content',
+      'get_search_content',
+      'source_check',
+    ])
+      expect(librarian?.content).toContain(tool);
+    expect(librarian?.content).toContain('workflow: "none"');
+    expect(librarian?.content).toContain('default tool names');
   });
 
   test('waits for automatic terminal notifications instead of polling background tasks', () => {

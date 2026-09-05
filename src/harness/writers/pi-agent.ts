@@ -16,11 +16,11 @@ export interface PiAgentDefinitionInput {
 const LIBRARIAN_RESEARCH_TOOLS = [
   'resolve-library-id',
   'query-docs',
-  'web_*_exa',
-  'exa_research_*',
   'mcp',
   'web_search',
-  'web_fetch',
+  'fetch_content',
+  'get_search_content',
+  'source_check',
 ] as const;
 
 function yamlScalar(value: string): string {

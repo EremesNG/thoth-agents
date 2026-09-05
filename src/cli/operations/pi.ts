@@ -90,9 +90,10 @@ export interface PiOperationContext extends OperationContext {
   runThothMemSetup?: FinalizeHarnessInstallOptions['runThothMemSetup'];
 }
 
-export type PiResearchProviderId = 'context7' | 'exa' | 'grep';
+export type PiResearchProviderId = 'context7' | 'web-access' | 'grep';
 export type PiResearchRuntimeState =
   | 'ready'
+  | 'unverified'
   | 'credential-required'
   | 'unreachable'
   | 'drifted'
@@ -195,7 +196,7 @@ function disclaimers() {
     {
       code: 'pi-research-independent',
       message:
-        'Context7, Exa, and grep.app availability is reported independently; Exa credentials remain operator-owned.',
+        'Context7, web access, and grep.app availability is reported independently; provider configuration and credentials remain operator-owned.',
     },
     { code: 'pi-root-model-owned', message: MODEL_ROOT_LIMITATION },
   ];
@@ -211,25 +212,17 @@ function warning(
 
 const RESEARCH_PROVIDER_LABEL: Record<PiResearchProviderId, string> = {
   context7: 'Context7',
-  exa: 'Exa',
+  'web-access': 'Web access',
   grep: 'grep.app',
 };
 
 function researchRuntimeState(
   provider: PiResearchProviderId,
   targets: readonly ManagedTarget[],
-  env: Readonly<Record<string, string | undefined>>,
   evidence: PiStatusEvidence,
 ): PiResearchRuntimeEvidence {
   const observed = evidence.research?.[provider];
   if (observed) return observed;
-
-  if (provider === 'exa' && !env.EXA_API_KEY) {
-    return {
-      state: 'credential-required',
-      basis: ['EXA_API_KEY is not present in the inspected environment'],
-    };
-  }
 
   const packageId = provider === 'grep' ? 'grep-adapter' : provider;
   const packageSource = PI_PACKAGE_SPECS.find(
@@ -247,17 +240,24 @@ function researchRuntimeState(
         state === 'installed',
     );
 
-  return packageReady && configReady
+  if (!packageReady || !configReady)
+    return {
+      state: 'drifted',
+      basis: [
+        'managed package or configuration preconditions are not satisfied',
+      ],
+    };
+  return provider === 'web-access'
     ? {
-        state: 'ready',
+        state: 'unverified',
         basis: [
-          'managed package and configuration preconditions are satisfied; no live probe was requested',
+          'exact package is installed; no live provider request was observed',
         ],
       }
     : {
-        state: 'drifted',
+        state: 'ready',
         basis: [
-          'managed package or configuration preconditions are not satisfied',
+          'managed package and configuration preconditions are satisfied; no live probe was requested',
         ],
       };
 }
@@ -289,14 +289,12 @@ function runtimeDiagnostic(
   evidence: PiResearchRuntimeEvidence,
 ): OperationWarning | undefined {
   if (evidence.state === 'ready') return undefined;
-  const code =
-    provider === 'exa' && evidence.state === 'credential-required'
-      ? 'pi-exa-credential-required'
-      : `pi-${provider}-runtime-${evidence.state}`;
+  const code = `pi-${provider}-runtime-${evidence.state}`;
   const severity: OperationWarning['severity'] =
     evidence.state === 'failed'
       ? 'critical'
-      : evidence.state === 'credential-required'
+      : evidence.state === 'credential-required' ||
+          evidence.state === 'unverified'
         ? 'minor'
         : 'important';
   return warning(
@@ -573,15 +571,10 @@ function statusFromPlan(
         : fileStates.includes('unknown')
           ? 'unknown'
           : 'installed';
-  const runtimeEvidence = (['context7', 'exa', 'grep'] as const).map(
+  const runtimeEvidence = (['context7', 'web-access', 'grep'] as const).map(
     (provider) => ({
       provider,
-      evidence: researchRuntimeState(
-        provider,
-        targets,
-        context.env ?? process.env,
-        evidence,
-      ),
+      evidence: researchRuntimeState(provider, targets, evidence),
     }),
   );
   targets.push(

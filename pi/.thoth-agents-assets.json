@@ -3,7 +3,7 @@
   "owner": "thoth-agents",
   "files": {
     "agents/thoth-explorer.md": "80076b28e05c56182f00d4bb4e3dc7ec5246283d6e6ac8f3c93c61bdd6cb2756",
-    "agents/thoth-librarian.md": "e52b1d0b7863363a0b05994af724c0d6f7411c604b83c17dc2b2218334939999",
+    "agents/thoth-librarian.md": "0981d5ecf6b7969df274c094573eb16a14536fc34a2d74515e609b186710b086",
     "agents/thoth-oracle.md": "17f877dbca22818f1025743d8bd01910d71c7fd73fe9c5889763400baaba28bf",
     "agents/thoth-designer.md": "34cdd42f3c8acbd4be733fd661163646f50182726d7afcee79d7a1d0090e64c8",
     "agents/thoth-quick.md": "d6d2b0fd0d2974707210f541e2fdcf30983fa5a2ea9ce5ba7e9186d9aace248d",

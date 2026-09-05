@@ -34,12 +34,12 @@ const PROVIDER_BOUNDARY_TARGETS = {
   piPackageAssets: [
     'src/pi.ts',
     'pi/.thoth-agents-assets.json',
-    'pi/agents/deep.md',
-    'pi/agents/designer.md',
-    'pi/agents/explorer.md',
-    'pi/agents/librarian.md',
-    'pi/agents/oracle.md',
-    'pi/agents/quick.md',
+    'pi/agents/thoth-deep.md',
+    'pi/agents/thoth-designer.md',
+    'pi/agents/thoth-explorer.md',
+    'pi/agents/thoth-librarian.md',
+    'pi/agents/thoth-oracle.md',
+    'pi/agents/thoth-quick.md',
   ],
   consumerSurfaces: [
     'src/harness/registry.ts',

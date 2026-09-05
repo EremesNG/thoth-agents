@@ -468,6 +468,11 @@ instead of global copies. Direct package installation can therefore run in a
 truthfully degraded mode; use the CLI for the complete external-skill,
 research, provider, migration, receipt, and last-complete ledger flow.
 
+Pi specialist names and files use the `thoth-` prefix, for example
+`thoth-explorer` in `~/.pi/agent/agents/thoth-explorer.md`, so generic names
+from other extensions can coexist. The CLI keeps conceptual role names such as
+`explorer` when configuring their models.
+
 Codex and Claude marketplace manifests are versioned in the separate
 `EremesNG/thoth-plugins` repository. Both central entries resolve to this
 repository's generated `plugin/` bundle at an immutable version tag. Build and

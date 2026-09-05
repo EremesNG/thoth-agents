@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "owner": "thoth-agents",
   "files": {
-    "agents/explorer.md": "47ee638d318281810e135b0e921e04c149d07bc283e247f6a02cfa7f7765697d",
-    "agents/librarian.md": "b202ca1ff93467c1736950175c0262313cf75108cea59847b28b59fdc1179aec",
-    "agents/oracle.md": "92bc022ee3c641b3c13fa9d9a992443b62f1678fb99fa0946ded2d92cd32bb1f",
-    "agents/designer.md": "81efa839099c2c576fc258c8ce3b68faf3f0876fd1e766fb0d76716a5faa18bd",
-    "agents/quick.md": "736b838247a92a8b12ea868365daff2fee21dabd8fbb93780a864530caa4c09c",
-    "agents/deep.md": "9169d02bbe7769a92adf048f9169c26b5d475c75d7b4295b2042007a82363737"
+    "agents/thoth-explorer.md": "7ae9739ced578942bde3d1cb84e9e9461502fcdf004d8a63631bc9fc2e0461cd",
+    "agents/thoth-librarian.md": "7174406bb9db456b51a50284ebb39d17382ab2fd356a88ba73827b9e4b326f0f",
+    "agents/thoth-oracle.md": "9f0cba86cff3ea2a34bafdf24f8ad53e555f4258ca82197d6c4d9651e04e06c2",
+    "agents/thoth-designer.md": "b1c3f81dc0d8a2b2e2101f15557a8a13dbd8e8a2b8d995bd49f9442c5d7b6745",
+    "agents/thoth-quick.md": "0420308f2c0de4d7820fb7a42ffefac95e2c0f21fb668d213f4e51c38845aad9",
+    "agents/thoth-deep.md": "8a5e6fa4d65d0f6f6221e06d6741498b9045c92df504af84a8335ae7bc1cfc8c"
   }
 }

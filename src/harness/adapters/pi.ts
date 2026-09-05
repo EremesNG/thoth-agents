@@ -12,6 +12,11 @@ import {
   getAgentPackContract,
   renderAgentRoutingDescription,
 } from '../core/agent-pack';
+import {
+  isPiSpecialistRole,
+  PI_SPECIALIST_ROLES,
+  piSpecialistName,
+} from '../pi-specialists';
 import type {
   HarnessAdapter,
   HarnessArtifact,
@@ -32,10 +37,12 @@ export interface PiRenderContext extends HarnessRenderContext {
 export const PI_CAPABILITIES: HarnessCapabilities = PI_PROMPT_CAPABILITIES;
 
 function piRuntimeGuidance(): string {
+  const specialists = PI_SPECIALIST_ROLES.map(piSpecialistName);
+  const specialistList = `${specialists.slice(0, -1).join(', ')}, or ${specialists.at(-1)}`;
   return [
     '<pi-runtime>',
     '- You are the ambient Pi adaptive root; no orchestrator child definition is installed.',
-    '- Delegate fresh bounded work with `subagent_run` and exactly one canonical `agent`: explorer, librarian, oracle, designer, quick, or deep. Never use deprecated batch input or implicit role inference.',
+    `- Delegate fresh bounded work with \`subagent_run\` and exactly one canonical \`agent\`: ${specialistList}. Never use deprecated batch input or implicit role inference.`,
     '- Omit `mode` unless the user explicitly requests task or background execution; explicit overrides use `mode="task"` or `mode="background"`.',
     '- Use status/result/list only to collect the current parent-owned assignment. A queued message or nonterminal state never opens the fan-in barrier.',
     '- Use `subagent_send_message` only when the active Pi SDK confirms live steering; use `subagent_continue` only when continuation is explicitly enabled. Cancel with `subagent_cancel`.',
@@ -61,7 +68,8 @@ export function renderPiRootInstructions(config?: PluginConfig): string {
 
 function roleArtifacts(config?: PluginConfig): HarnessArtifact[] {
   return getAgentPackContract().roles.flatMap((role) => {
-    if (role.name === 'orchestrator') return [];
+    if (!isPiSpecialistRole(role.name)) return [];
+    const specialist = piSpecialistName(role.name);
     const preset = CONFIRMED_OPENAI_SUBAGENT_PRESET[role.name];
     const override = getPrimaryModelId(config?.agents?.[role.name]?.model);
     const model =
@@ -72,10 +80,10 @@ function roleArtifacts(config?: PluginConfig): HarnessArtifact[] {
       {
         harness: 'pi' as const,
         kind: 'agent-config' as const,
-        path: `agents/${role.name}.md`,
-        description: `Pi subagent definition for ${role.name}.`,
+        path: `agents/${specialist}.md`,
+        description: `Pi subagent definition for ${specialist}.`,
         content: renderPiAgentDefinition({
-          role,
+          role: { ...role, name: role.name },
           model,
           effort: override ? 'default' : preset.effort,
           description: renderAgentRoutingDescription(role),

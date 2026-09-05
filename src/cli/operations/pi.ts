@@ -1,9 +1,17 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
-import { getAgentPackContract } from '../../harness/core/agent-pack';
+import { basename, isAbsolute, join } from 'node:path';
+import {
+  type AgentRoleContract,
+  getAgentPackContract,
+} from '../../harness/core/agent-pack';
 import { THOTH_OWNED_SKILL_NAMES } from '../../harness/core/owned-skills';
+import {
+  isPiSpecialistRole,
+  type PiSpecialistRole,
+  piSpecialistName,
+} from '../../harness/pi-specialists';
 import type { ProviderEvidenceInput } from '../../harness/types';
 import {
   type FinalizeHarnessInstallOptions,
@@ -877,11 +885,15 @@ export function defaultPiModelRoles(
 ): ModelRoleInput[] {
   const plan = contextPlan(context);
   return getAgentPackContract()
-    .roles.filter((role) => role.name !== 'orchestrator')
+    .roles.filter(
+      (role): role is AgentRoleContract & { name: PiSpecialistRole } =>
+        isPiSpecialistRole(role.name),
+    )
     .map((role) => {
       const path = plan.items.find(
         (item) =>
-          item.kind === 'agent' && item.target.endsWith(`${role.name}.md`),
+          item.kind === 'agent' &&
+          basename(item.target) === `${piSpecialistName(role.name)}.md`,
       )?.target;
       const content =
         path && existsSync(path) ? readFileSync(path, 'utf8') : '';
@@ -917,18 +929,29 @@ export function buildPiModelPlan(
   const effortErrors = input.roles
     .map((role) => ({ role: role.role, resolution: resolvePiEffort(role) }))
     .filter(({ resolution }) => !resolution.ok);
-  const items: OperationPlanItem[] = input.roles.map((role) => ({
-    title: `Configure Pi specialist ${role.role}`,
-    target: {
-      kind: 'file',
-      path: setup.items.find(
-        (item) =>
-          item.kind === 'agent' && item.target.endsWith(`${role.role}.md`),
-      )?.target,
-      label: `Pi ${role.role} specialist`,
-    },
-    preview: JSON.stringify({ model: role.model, effort: role.effort ?? null }),
-  }));
+  const items: OperationPlanItem[] = input.roles.map((role) => {
+    const specialist = isPiSpecialistRole(role.role)
+      ? piSpecialistName(role.role)
+      : undefined;
+    return {
+      title: `Configure Pi specialist ${role.role}`,
+      target: {
+        kind: 'file',
+        path: specialist
+          ? setup.items.find(
+              (item) =>
+                item.kind === 'agent' &&
+                basename(item.target) === `${specialist}.md`,
+            )?.target
+          : undefined,
+        label: `Pi ${role.role} specialist`,
+      },
+      preview: JSON.stringify({
+        model: role.model,
+        effort: role.effort ?? null,
+      }),
+    };
+  });
   const plan: OperationPlan = {
     id: 'pi-model-config-preview',
     harness: 'pi',

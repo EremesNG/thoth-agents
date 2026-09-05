@@ -14,8 +14,11 @@ import {
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { piAdapter } from '../harness/adapters/pi';
-import { AGENT_ROLE_NAMES } from '../harness/core/agent-pack';
 import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
+import {
+  PI_SPECIALIST_ROLES,
+  piSpecialistName,
+} from '../harness/pi-specialists';
 import {
   PI_MANAGED_OWNER,
   PI_ROOT_END,
@@ -199,9 +202,9 @@ export function verifyPiFirstPartyPackage(input: {
       owner?: unknown;
       files?: unknown;
     };
-    const expectedAgentPaths = AGENT_ROLE_NAMES.filter(
-      (role) => role !== 'orchestrator',
-    ).map((role) => `agents/${role}.md`);
+    const expectedAgentPaths = PI_SPECIALIST_ROLES.map(
+      (role) => `agents/${piSpecialistName(role)}.md`,
+    );
     if (
       assets.schemaVersion !== 1 ||
       assets.owner !== 'thoth-agents' ||
@@ -350,9 +353,7 @@ function frontmatterValue(content: string, field: string): string | undefined {
 }
 
 function findAgentConflicts(paths: PiPaths): string[] {
-  const canonical = new Set(
-    AGENT_ROLE_NAMES.filter((role) => role !== 'orchestrator'),
-  );
+  const canonical = new Set(PI_SPECIALIST_ROLES.map(piSpecialistName));
   const conflicts: string[] = [];
   for (const root of [paths.agentsRoot, paths.alternateAgentsRoot]) {
     if (!existsSync(root)) continue;

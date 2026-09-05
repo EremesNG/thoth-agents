@@ -14,12 +14,12 @@ describe('Pi agent writer', () => {
       (artifact) => artifact.kind === 'agent-config',
     );
     expect(agents.map((artifact) => artifact.path)).toEqual([
-      'agents/explorer.md',
-      'agents/librarian.md',
-      'agents/oracle.md',
-      'agents/designer.md',
-      'agents/quick.md',
-      'agents/deep.md',
+      'agents/thoth-explorer.md',
+      'agents/thoth-librarian.md',
+      'agents/thoth-oracle.md',
+      'agents/thoth-designer.md',
+      'agents/thoth-quick.md',
+      'agents/thoth-deep.md',
     ]);
     expect(
       agents.some((artifact) => artifact.path.includes('orchestrator')),
@@ -27,9 +27,12 @@ describe('Pi agent writer', () => {
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');
       expect(artifact.content).toContain('tools:');
+      expect(artifact.content).toContain(
+        `name: ${artifact.path.slice('agents/'.length, -'.md'.length)}`,
+      );
     }
     const librarian = agents.find(
-      (artifact) => artifact.path === 'agents/librarian.md',
+      (artifact) => artifact.path === 'agents/thoth-librarian.md',
     );
     expect(librarian?.content).toContain('resolve-library-id');
     expect(librarian?.content).toContain('query-docs');

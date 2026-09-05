@@ -235,7 +235,15 @@ package succeeds and a later step fails, the ledger remains unchanged; resolve
 the reported blocker and rerun the idempotent complete flow. Do not delete
 unknown Pi packages or provider assets as a recovery shortcut.
 
-Fresh work uses `subagent_run` with one exact canonical `agent`. Status,
+The six specialist definitions use `thoth-` names in both filenames and
+frontmatter: `thoth-explorer`, `thoth-librarian`, `thoth-oracle`,
+`thoth-designer`, `thoth-quick`, and `thoth-deep`. For example,
+`~/.pi/agent/agents/thoth-explorer.md` declares `name: thoth-explorer`.
+Generic definitions such as `explorer.md` can coexist; an unowned definition
+using a reserved `thoth-` specialist name blocks installation.
+
+Fresh work uses `subagent_run` with one exact namespaced `agent`, for example
+`agent: "thoth-explorer"`. Status,
 result, list, message, cancellation, and optional continuation remain owned by
 `pi-subagents-j0k3r`; queued messages and nonterminal status never count as
 fan-in. Live steering depends on the active Pi SDK, and continuation stays

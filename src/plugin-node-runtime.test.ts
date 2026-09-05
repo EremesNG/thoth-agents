@@ -31,12 +31,12 @@ describe('plugin runtime compatibility', () => {
     expect(
       readdirSync('pi/agents').filter((name) => name.endsWith('.md')),
     ).toEqual([
-      'deep.md',
-      'designer.md',
-      'explorer.md',
-      'librarian.md',
-      'oracle.md',
-      'quick.md',
+      'thoth-deep.md',
+      'thoth-designer.md',
+      'thoth-explorer.md',
+      'thoth-librarian.md',
+      'thoth-oracle.md',
+      'thoth-quick.md',
     ]);
   });
   test.skipIf(!existsSync('dist/pi.js'))(

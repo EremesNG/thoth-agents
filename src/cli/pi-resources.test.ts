@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { piAdapter } from '../harness/adapters/pi';
-import { syncPiSpecialists } from './pi-resources';
+import { PI_SPECIALIST_NAMES, syncPiSpecialists } from './pi-resources';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -22,17 +22,10 @@ function fixture() {
   const packageRoot = join(root, 'package');
   const piRoot = join(root, 'home');
   mkdirSync(join(packageRoot, 'pi', 'agents'), { recursive: true });
-  for (const role of [
-    'explorer',
-    'librarian',
-    'oracle',
-    'designer',
-    'quick',
-    'deep',
-  ])
+  for (const name of PI_SPECIALIST_NAMES)
     writeFileSync(
-      join(packageRoot, 'pi', 'agents', `${role}.md`),
-      `---\nname: ${role}\nmanaged-by: thoth-agents\n---\n${role}\n`,
+      join(packageRoot, 'pi', 'agents', `${name}.md`),
+      `---\nname: ${name}\nmanaged-by: thoth-agents\n---\n${name}\n`,
     );
   return { packageRoot, piRoot };
 }
@@ -47,11 +40,11 @@ describe('Pi specialist synchronization', () => {
         String(artifact.content),
       );
     }
-    const target = join(options.piRoot, 'agents', 'deep.md');
+    const target = join(options.piRoot, 'agents', 'thoth-deep.md');
     mkdirSync(join(options.piRoot, 'agents'), { recursive: true });
     writeFileSync(
       target,
-      '---\nname: deep\nmanaged-by: thoth-agents\n---\nExample:\nmodel: example/model\neffort: high\n',
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\n---\nExample:\nmodel: example/model\neffort: high\n',
     );
     expect(syncPiSpecialists(options).success).toBe(true);
     const content = readFileSync(target, 'utf8');
@@ -74,14 +67,14 @@ describe('Pi specialist synchronization', () => {
   test('preserves supported model and effort state on attributable updates', () => {
     const options = fixture();
     writeFileSync(
-      join(options.packageRoot, 'pi', 'agents', 'deep.md'),
-      '---\nname: deep\nmanaged-by: thoth-agents\nmodel: "openai-codex/gpt-5.6-sol"\neffort: "medium"\n---\nfresh\n',
+      join(options.packageRoot, 'pi', 'agents', 'thoth-deep.md'),
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: "openai-codex/gpt-5.6-sol"\neffort: "medium"\n---\nfresh\n',
     );
-    const target = join(options.piRoot, 'agents', 'deep.md');
+    const target = join(options.piRoot, 'agents', 'thoth-deep.md');
     mkdirSync(join(options.piRoot, 'agents'), { recursive: true });
     writeFileSync(
       target,
-      '---\nname: deep\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: high\n---\nstale\n',
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: high\n---\nstale\n',
     );
     expect(syncPiSpecialists(options).success).toBe(true);
     expect(readFileSync(target, 'utf8')).toContain('model: custom/model');
@@ -89,7 +82,7 @@ describe('Pi specialist synchronization', () => {
   });
   test('never overwrites an unowned canonical target', () => {
     const options = fixture();
-    const target = join(options.piRoot, 'agents', 'oracle.md');
+    const target = join(options.piRoot, 'agents', 'thoth-oracle.md');
     mkdirSync(join(options.piRoot, 'agents'), { recursive: true });
     writeFileSync(target, 'user');
     expect(syncPiSpecialists(options)).toMatchObject({
@@ -97,5 +90,21 @@ describe('Pi specialist synchronization', () => {
       conflicts: [target],
     });
     expect(readFileSync(target, 'utf8')).toBe('user');
+  });
+
+  test('coexists with an unowned generic specialist definition', () => {
+    const options = fixture();
+    const generic = join(options.piRoot, 'agents', 'explorer.md');
+    mkdirSync(join(options.piRoot, 'agents'), { recursive: true });
+    writeFileSync(generic, '---\nname: explorer\n---\nuser definition\n');
+
+    expect(syncPiSpecialists(options)).toMatchObject({
+      success: true,
+      conflicts: [],
+    });
+    expect(readFileSync(generic, 'utf8')).toContain('user definition');
+    expect(
+      readFileSync(join(options.piRoot, 'agents', 'thoth-explorer.md'), 'utf8'),
+    ).toContain('name: thoth-explorer');
   });
 });

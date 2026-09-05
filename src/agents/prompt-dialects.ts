@@ -2,6 +2,7 @@ import type {
   AgentDispatchMethod,
   AgentRoleName,
 } from '../harness/core/agent-pack';
+import { piSpecialistName } from '../harness/pi-specialists';
 import type { HarnessCapabilities, HarnessId } from '../harness/types';
 
 export type AgentPromptRole = AgentRoleName;
@@ -306,7 +307,7 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
     roleReference: (role) =>
       role === 'orchestrator'
         ? 'the ambient Pi root'
-        : `subagent_run(agent: "${role}")`,
+        : `subagent_run(agent: "${piSpecialistName(role)}")`,
   },
   capabilities: {
     capabilities: PI_PROMPT_CAPABILITIES,
@@ -324,7 +325,7 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
   renderRoleInvocation(role) {
     return role === 'orchestrator'
       ? 'ambient Pi root'
-      : `subagent_run(agent: "${role}")`;
+      : `subagent_run(agent: "${piSpecialistName(role)}")`;
   },
 };
 

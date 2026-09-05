@@ -7,15 +7,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import {
+  PI_SPECIALIST_ROLES,
+  piSpecialistName,
+} from '../harness/pi-specialists';
 
-export const PI_SPECIALIST_NAMES = [
-  'explorer',
-  'librarian',
-  'oracle',
-  'designer',
-  'quick',
-  'deep',
-] as const;
+export const PI_SPECIALIST_NAMES = PI_SPECIALIST_ROLES.map(piSpecialistName);
 export interface PiSpecialistSyncOptions {
   packageRoot: string;
   piRoot: string;

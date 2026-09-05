@@ -16,7 +16,7 @@ describe('Pi adapter', () => {
       config: { agents: { deep: { model } } } as PluginConfig,
     });
     const deep = rendered.artifacts.find(
-      ({ path }) => path === 'agents/deep.md',
+      ({ path }) => path === 'agents/thoth-deep.md',
     );
     expect(deep?.content).toContain(`model: "${expected}"`);
     expect(deep?.content).toContain('effort: "default"');
@@ -34,7 +34,7 @@ describe('Pi adapter', () => {
     const rendered = piAdapter.render({ projectRoot: process.cwd() });
     for (const [role, [model, effort]] of Object.entries(expected)) {
       const artifact = rendered.artifacts.find(
-        ({ path }) => path === `agents/${role}.md`,
+        ({ path }) => path === `agents/thoth-${role}.md`,
       );
       expect(artifact?.content).toContain(`model: "openai-codex/${model}"`);
       expect(artifact?.content).toContain(`effort: "${effort}"`);
@@ -72,6 +72,16 @@ describe('Pi adapter', () => {
     expect(root).toContain('subagent_list_tasks');
     expect(root).not.toContain('background=true');
     expect(root).not.toMatch(/\bsubagent_list\b/);
+  });
+
+  test('lists only namespaced specialist identities in runtime delegation guidance', () => {
+    const root = renderPiRootInstructions();
+    expect(root).toContain(
+      'thoth-explorer, thoth-librarian, thoth-oracle, thoth-designer, thoth-quick, or thoth-deep',
+    );
+    expect(root).not.toContain(
+      'agent`: explorer, librarian, oracle, designer, quick, or deep',
+    );
   });
 
   test('reports native, adapter-backed, conditional, and instruction-only capability states', () => {

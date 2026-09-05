@@ -1,11 +1,12 @@
 import type { AgentRoleContract } from '../core/agent-pack';
+import { type PiSpecialistRole, piSpecialistName } from '../pi-specialists';
 
 export const PI_MANAGED_OWNER = 'thoth-agents';
 export const PI_ROOT_START = '<!-- thoth-agents:pi-root:start -->';
 export const PI_ROOT_END = '<!-- thoth-agents:pi-root:end -->';
 
 export interface PiAgentDefinitionInput {
-  role: AgentRoleContract;
+  role: AgentRoleContract & { name: PiSpecialistRole };
   description: string;
   instructions: string;
   model?: string;
@@ -33,7 +34,7 @@ export function renderPiAgentDefinition(input: PiAgentDefinitionInput): string {
   ].join(', ');
   return [
     '---',
-    `name: ${input.role.name}`,
+    `name: ${piSpecialistName(input.role.name)}`,
     `description: ${yamlScalar(input.description)}`,
     `tools: ${yamlScalar(tools)}`,
     ...(input.model ? [`model: ${yamlScalar(input.model)}`] : []),

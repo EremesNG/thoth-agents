@@ -738,7 +738,7 @@ describe('Pi operations', () => {
     roots.push(homeDir);
     const configuredRoot = join(homeDir, 'pi-packages', 'thoth-agents');
     seedPiPackage(configuredRoot);
-    rmSync(join(configuredRoot, 'pi', 'agents', 'deep.md'));
+    rmSync(join(configuredRoot, 'pi', 'agents', 'thoth-deep.md'));
     const source = writeLocalPiReceipt(homeDir, configuredRoot);
     const plan = buildPiSyncPlan({
       cwd: homeDir,
@@ -838,11 +838,11 @@ describe('Pi operations', () => {
   test('updates model fields only inside owned specialist frontmatter', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-model-apply-'));
     roots.push(homeDir);
-    const agentPath = join(homeDir, '.pi', 'agent', 'agents', 'deep.md');
+    const agentPath = join(homeDir, '.pi', 'agent', 'agents', 'thoth-deep.md');
     mkdirSync(dirname(agentPath), { recursive: true });
     writeFileSync(
       agentPath,
-      '---\nname: deep\nmanaged-by: thoth-agents\n---\nExample:\nmodel: keep-this-body-text\n',
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\n---\nExample:\nmodel: keep-this-body-text\n',
     );
     const plan = buildPiModelPlan(
       {
@@ -897,7 +897,7 @@ describe('Pi operations', () => {
       effort: { kind: 'inherit' },
     });
     const content = readFileSync(
-      join(syncOptions.piRoot, 'agents', 'deep.md'),
+      join(syncOptions.piRoot, 'agents', 'thoth-deep.md'),
       'utf8',
     );
     expect(content).toContain('model: "default"');

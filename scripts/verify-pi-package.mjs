@@ -131,12 +131,12 @@ try {
   if (
     JSON.stringify(agents) !==
     JSON.stringify([
-      'deep.md',
-      'designer.md',
-      'explorer.md',
-      'librarian.md',
-      'oracle.md',
-      'quick.md',
+      'thoth-deep.md',
+      'thoth-designer.md',
+      'thoth-explorer.md',
+      'thoth-librarian.md',
+      'thoth-oracle.md',
+      'thoth-quick.md',
     ])
   )
     throw new Error(

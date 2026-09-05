@@ -22,6 +22,7 @@ import {
   readPiPackageReceipt,
   writePiPackageReceipt,
 } from './pi-package-receipt';
+import { PI_SPECIALIST_NAMES } from './pi-resources';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -180,14 +181,7 @@ describe('Pi setup', () => {
         pi: { extensions: ['./dist/pi.js'], skills: ['./skills'] },
       }),
     );
-    const roles = [
-      'explorer',
-      'librarian',
-      'oracle',
-      'designer',
-      'quick',
-      'deep',
-    ];
+    const roles = PI_SPECIALIST_NAMES;
     const files = Object.fromEntries(
       roles.map((role) => [`agents/${role}.md`, '0'.repeat(64)]),
     );
@@ -419,7 +413,7 @@ describe('Pi setup', () => {
     expect(buildPiSetupPlan(paths).ready).toBe(true);
   });
 
-  test('requires the ownership marker in frontmatter for canonical agents', () => {
+  test('allows an unowned generic agent identity to coexist', () => {
     const paths = fixture();
     const agentsRoot = join(paths.homeDir, '.pi', 'agent', 'agents');
     mkdirSync(agentsRoot, { recursive: true });
@@ -428,27 +422,23 @@ describe('Pi setup', () => {
       '---\nname: explorer\n---\nmanaged-by: thoth-agents\n',
     );
     const plan = buildPiSetupPlan(paths);
-    expect(plan.ready).toBe(false);
-    expect(plan.blockers).toEqual([
-      expect.stringContaining(
-        'defines canonical specialist explorer without thoth-agents ownership',
-      ),
-    ]);
+    expect(plan.ready).toBe(true);
+    expect(plan.blockers).toEqual([]);
   });
 
-  test('does not overwrite an unowned canonical target filename', () => {
+  test('rejects an unowned namespaced specialist identity', () => {
     const paths = fixture();
     const agentsRoot = join(paths.homeDir, '.pi', 'agent', 'agents');
     mkdirSync(agentsRoot, { recursive: true });
     writeFileSync(
-      join(agentsRoot, 'deep.md'),
-      '---\ndescription: "user-owned definition"\n---\n',
+      join(agentsRoot, 'thoth-deep.md'),
+      '---\nname: thoth-deep\ndescription: "user-owned definition"\n---\n',
     );
     const plan = buildPiSetupPlan(paths);
     expect(plan.ready).toBe(false);
     expect(plan.blockers).toEqual([
       expect.stringContaining(
-        'defines canonical specialist deep without thoth-agents ownership',
+        'defines canonical specialist thoth-deep without thoth-agents ownership',
       ),
     ]);
   });

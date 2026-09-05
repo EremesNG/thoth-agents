@@ -203,7 +203,7 @@ describe('prompt dialects', () => {
   test('renders Pi single-agent lifecycle without batch or false terminal claims', () => {
     expect(PI_PROMPT_DIALECT.tools.delegationTool).toBe('subagent_run');
     expect(PI_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
-      'subagent_run(agent: "deep")',
+      'subagent_run(agent: "thoth-deep")',
     );
     expect(PI_PROMPT_DIALECT.tools.lifecycle.freshDelegation).toContain(
       'one exact canonical `agent`',

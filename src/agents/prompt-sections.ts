@@ -176,7 +176,7 @@ function renderTaskShapingPolicy(policy: TaskShapingPolicy): string {
 ${policy.steps.join(' -> ')}
 - ${policy.decisions.dependency}; bind each lane to output, mutable ownership, specialist fit, and verification input.
 - ${policy.decisions.ownershipConflict}; avoid duplicate evidence work.
-- ${policy.decisions.readyWave} through \`{{backgroundDelegationTool}}\` within native capacity, then use \`{{backgroundStatusTool}}\`.
+- ${policy.decisions.readyWave} through \`{{backgroundDelegationTool}}\` within native capacity{{backgroundWaitInstruction}}
 - Fan in only from {{lifecycleTerminalState}}; {{lifecycleNonterminalState}}, ${policy.decisions.terminalEvidence}.
 - Reconcile against intent, dependencies, ownership, conflicts, and verification before synthesis; native execution remains authoritative; ${policy.decisions.degradation}.
 </task-shaping>`;
@@ -200,7 +200,7 @@ You are the adaptive root for thoth-agents. Keep requirements, decisions, owners
 - Keep prompts bounded; request distilled evidence, not raw logs or full files.
 - Preserve unrelated changes; report changed files, evidence, risks, and capability gaps.
 - Use \`{{userQuestionTool}}\` only when a material unresolved choice changes the result. Continue all safe non-blocked work first.
-- Use \`{{progressTool}}\` only when the work genuinely has multiple dependent steps.
+- {{progressInstruction}}
 </operating-model>
 
 <delegation-lifecycle>
@@ -405,7 +405,9 @@ function renderSubagentRules(
   dialect: HarnessPromptDialect,
 ): string {
   const rules = [
-    `- Do not delegate further or call \`${dialect.tools.progressTool}\`; root owns progress.`,
+    dialect.tools.progressTool
+      ? `- Do not delegate further or call \`${dialect.tools.progressTool}\`; root owns progress.`
+      : '- Do not delegate further; root owns progress.',
     '- Use terminating checks; avoid watch processes and indefinite waits.',
     '- Never discard or overwrite unrelated working-tree changes.',
   ];
@@ -477,6 +479,12 @@ function renderRoleText(
   dialect: HarnessPromptDialect,
 ): string {
   return section.template
+    .replaceAll(
+      '{{backgroundWaitInstruction}}',
+      dialect.tools.backgroundWaitInstruction
+        ? `. ${dialect.tools.backgroundWaitInstruction}`
+        : ', then use `{{backgroundStatusTool}}`.',
+    )
     .replaceAll('{{delegationTool}}', dialect.tools.delegationTool)
     .replaceAll(
       '{{backgroundDelegationTool}}',
@@ -489,7 +497,12 @@ function renderRoleText(
         '',
     )
     .replaceAll('{{userQuestionTool}}', dialect.tools.userQuestionTool)
-    .replaceAll('{{progressTool}}', dialect.tools.progressTool)
+    .replaceAll(
+      '{{progressInstruction}}',
+      dialect.tools.progressTool
+        ? `Use \`${dialect.tools.progressTool}\` only when the work genuinely has multiple dependent steps.`
+        : 'Keep written progress notes when the work genuinely has multiple dependent steps; no native planning tool is configured.',
+    )
     .replaceAll(
       '{{lifecycleStatusAction}}',
       dialect.tools.lifecycle.statusAction,

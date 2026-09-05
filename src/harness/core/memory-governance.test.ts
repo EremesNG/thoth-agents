@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   CODEX_PROMPT_DIALECT,
   OPENCODE_PROMPT_DIALECT,
+  PI_PROMPT_DIALECT,
 } from '../../agents/prompt-dialects';
 import { getAgentPackContract, getAgentRole } from './agent-pack';
 import {
@@ -15,6 +16,16 @@ const PROVIDER_OPERATION_PATTERN =
   /mem_(?:save|recall|get|context|project|session)\s*\(/;
 
 describe('memory governance contract', () => {
+  test('uses written progress notes when Pi has no native planning tool', () => {
+    const prompt = renderMemoryGovernanceInstructions(
+      getAgentRole('deep'),
+      PI_PROMPT_DIALECT,
+    );
+    expect(prompt).toContain('tracking in written progress notes');
+    expect(prompt).not.toContain('undefined');
+    expect(prompt).not.toContain('tracking in subagent_status');
+  });
+
   test('exposes only the provider-neutral orchestration outcomes owned by thoth-agents', () => {
     const contract = getMemoryGovernanceContract(getAgentPackContract().roles);
 

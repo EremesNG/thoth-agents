@@ -10,19 +10,21 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { piAdapter } from '../../harness/adapters/pi';
 import { THOTH_OWNED_SKILL_NAMES } from '../../harness/core/owned-skills';
 import { PI_PACKAGE_SPECS } from '../pi-install';
 import {
   getPiPackageReceiptPath,
   writePiPackageReceipt,
 } from '../pi-package-receipt';
-import { PI_SPECIALIST_NAMES } from '../pi-resources';
+import { PI_SPECIALIST_NAMES, syncPiSpecialists } from '../pi-resources';
 import {
   applyPiPlan,
   buildPiInstallPlan,
   buildPiModelPlan,
   buildPiSyncPlan,
   buildPiUpdatePlan,
+  defaultPiModelRoles,
   getPiStatus,
 } from './pi';
 
@@ -861,5 +863,44 @@ describe('Pi operations', () => {
     expect(content).toContain('model: "provider/model"');
     expect(content).toContain('effort: "high"');
     expect(content).toContain('model: keep-this-body-text');
+  });
+
+  test('preserves explicit inheritance through subsequent default synchronization', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-model-inherit-'));
+    roots.push(homeDir);
+    const packageRoot = join(homeDir, 'package');
+    for (const artifact of piAdapter.render({ projectRoot: homeDir })
+      .artifacts) {
+      const target = join(packageRoot, 'pi', artifact.path);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, String(artifact.content));
+    }
+    const syncOptions = { packageRoot, piRoot: join(homeDir, '.pi', 'agent') };
+    expect(syncPiSpecialists(syncOptions).success).toBe(true);
+    const context = { cwd: homeDir, homeDir, env: {} };
+    const plan = buildPiModelPlan(
+      {
+        harness: 'pi',
+        dryRun: false,
+        roles: [
+          { role: 'deep', model: 'inherit', effort: { kind: 'inherit' } },
+        ],
+      },
+      context,
+    );
+    expect(applyPiPlan(plan).applied).toBe(true);
+    expect(syncPiSpecialists(syncOptions).success).toBe(true);
+    expect(
+      defaultPiModelRoles(context).find(({ role }) => role === 'deep'),
+    ).toMatchObject({
+      model: 'inherit',
+      effort: { kind: 'inherit' },
+    });
+    const content = readFileSync(
+      join(syncOptions.piRoot, 'agents', 'deep.md'),
+      'utf8',
+    );
+    expect(content).toContain('model: "default"');
+    expect(content).toContain('effort: "default"');
   });
 });

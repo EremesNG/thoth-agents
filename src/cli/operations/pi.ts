@@ -885,16 +885,15 @@ export function defaultPiModelRoles(
       )?.target;
       const content =
         path && existsSync(path) ? readFileSync(path, 'utf8') : '';
+      const model = /^model:\s*["']?([^"'\r\n]+)/m.exec(content)?.[1]?.trim();
       return {
         role: role.name,
-        model:
-          /^model:\s*["']?([^"'\r\n]+)/m.exec(content)?.[1]?.trim() ??
-          'inherit',
+        model: model && model !== 'default' ? model : 'inherit',
         effort: (() => {
           const value = /^effort:\s*["']?([^"'\r\n]+)/m
             .exec(content)?.[1]
             ?.trim();
-          return value
+          return value && value !== 'default' && value !== 'inherit'
             ? { kind: 'effort' as const, value }
             : { kind: 'inherit' as const };
         })(),
@@ -987,13 +986,11 @@ function replaceFrontmatterField(
     .slice(1, end)
     .findIndex((line) => line.startsWith(prefix));
   const absoluteIndex = index === -1 ? -1 : index + 1;
-  if (value === undefined || value === 'inherit') {
-    if (absoluteIndex !== -1) lines.splice(absoluteIndex, 1);
-  } else {
-    const replacement = `${field}: ${JSON.stringify(value)}`;
-    if (absoluteIndex === -1) lines.splice(1, 0, replacement);
-    else lines[absoluteIndex] = replacement;
-  }
+  const nativeValue =
+    value === undefined || value === 'inherit' ? 'default' : value;
+  const replacement = `${field}: ${JSON.stringify(nativeValue)}`;
+  if (absoluteIndex === -1) lines.splice(1, 0, replacement);
+  else lines[absoluteIndex] = replacement;
   return lines.join(newline);
 }
 

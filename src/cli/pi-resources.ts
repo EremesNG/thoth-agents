@@ -31,7 +31,10 @@ export interface PiSpecialistSyncResult {
 }
 
 function field(content: string, name: string): string | undefined {
-  const match = content.match(new RegExp(`^${name}:\\s*(.+)$`, 'm'));
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(
+    content,
+  )?.[1];
+  const match = frontmatter?.match(new RegExp(`^${name}:[\\t ]*(.+)$`, 'm'));
   return match?.[1]?.trim();
 }
 function preserveOverrides(next: string, current: string): string {

@@ -241,6 +241,26 @@ result, list, message, cancellation, and optional continuation remain owned by
 fan-in. Live steering depends on the active Pi SDK, and continuation stays
 disabled unless the operator enables it explicitly.
 
+Pi specialists use the shared OpenAI role preset through the `openai-codex`
+provider. The ambient root retains Pi's selected model and thinking level:
+
+| Specialist | Model | Effort |
+| --- | --- | --- |
+| explorer, quick | `openai-codex/gpt-5.6-luna` | `low` |
+| librarian | `openai-codex/gpt-5.6-luna` | `high` |
+| oracle | `openai-codex/gpt-5.6-sol` | `high` |
+| designer, deep | `openai-codex/gpt-5.6-sol` | `medium` |
+
+Synchronization fills missing model/effort fields in older managed definitions
+and preserves explicit frontmatter values. Model configuration stores an explicit
+inherit choice as Pi's native `default` value so later synchronization does not
+restore the packaged preset. Pi resolves model and effort independently: a
+configured role profile takes precedence over the definition, followed by global
+defaults and then the root. An explicit model override supplied to the adapter
+keeps its provider-qualified ID and inherits effort instead of imposing the
+OpenAI preset's effort. Use a provider/model available in the local Pi catalog;
+installation does not authenticate providers or silently substitute models.
+
 ## Skill ownership
 
 All harness distributions carry only thoth-owned workflow skills: `thoth-init`,

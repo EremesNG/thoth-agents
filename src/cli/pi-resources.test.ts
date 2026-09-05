@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { piAdapter } from '../harness/adapters/pi';
 import { syncPiSpecialists } from './pi-resources';
 
 const roots: string[] = [];
@@ -37,6 +38,28 @@ function fixture() {
 }
 
 describe('Pi specialist synchronization', () => {
+  test('adds packaged defaults to old definitions without treating body examples as overrides', () => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    const target = join(options.piRoot, 'agents', 'deep.md');
+    mkdirSync(join(options.piRoot, 'agents'), { recursive: true });
+    writeFileSync(
+      target,
+      '---\nname: deep\nmanaged-by: thoth-agents\n---\nExample:\nmodel: example/model\neffort: high\n',
+    );
+    expect(syncPiSpecialists(options).success).toBe(true);
+    const content = readFileSync(target, 'utf8');
+    expect(content).toContain('model: "openai-codex/gpt-5.6-sol"');
+    expect(content).toContain('effort: "medium"');
+    expect(syncPiSpecialists(options).changed).toEqual([]);
+  });
+
   test('materializes exactly six package-owned specialists idempotently', () => {
     const options = fixture();
     expect(syncPiSpecialists(options)).toMatchObject({
@@ -50,6 +73,10 @@ describe('Pi specialist synchronization', () => {
   });
   test('preserves supported model and effort state on attributable updates', () => {
     const options = fixture();
+    writeFileSync(
+      join(options.packageRoot, 'pi', 'agents', 'deep.md'),
+      '---\nname: deep\nmanaged-by: thoth-agents\nmodel: "openai-codex/gpt-5.6-sol"\neffort: "medium"\n---\nfresh\n',
+    );
     const target = join(options.piRoot, 'agents', 'deep.md');
     mkdirSync(join(options.piRoot, 'agents'), { recursive: true });
     writeFileSync(

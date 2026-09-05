@@ -21,8 +21,9 @@ export interface ToolNomenclature {
   delegationTool: string;
   backgroundDelegationTool?: string;
   backgroundStatusTool?: string;
+  backgroundWaitInstruction?: string;
   userQuestionTool: string;
-  progressTool: string;
+  progressTool?: string;
   hostStatusSurface?: string;
   lifecycle: LifecycleNomenclature;
   roleReference(role: AgentPromptRole): string;
@@ -280,20 +281,23 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'pi',
   tools: {
     delegationTool: 'subagent_run',
-    backgroundDelegationTool: 'subagent_run(background=true)',
-    backgroundStatusTool: 'subagent_status / subagent_result / subagent_list',
+    backgroundDelegationTool: 'subagent_run',
+    backgroundStatusTool:
+      'subagent_status / subagent_result / subagent_list_tasks',
+    backgroundWaitInstruction:
+      'For background tasks, respond and wait for the automatic completion notification. Do not sleep, poll status, or fetch results merely to wait; use `subagent_status`, `subagent_result`, or `subagent_list_tasks` only for an explicitly needed intermediate status or stored result.',
     userQuestionTool: 'ask_user',
-    progressTool: 'subagent_status',
-    hostStatusSurface: 'subagent_list',
+    hostStatusSurface: 'subagent_list_tasks',
     lifecycle: {
       freshDelegation:
         '`subagent_run` with one exact canonical `agent` and no deprecated batch input',
       sameAssignmentContinuation:
-        '`subagent_status`, `subagent_result`, or `subagent_list`; use `subagent_send_message` only when the active SDK confirms live steering, and `subagent_continue` only when continuation is explicitly enabled',
+        '`subagent_status`, `subagent_result`, or `subagent_list_tasks`; use `subagent_send_message` only when the active SDK confirms live steering, and `subagent_continue` only when continuation is explicitly enabled',
       independentContext:
         'a new objective, phase, mutable surface, or independent judgment starts a fresh `subagent_run` task',
       statusAction: 'inspect status, collect terminal results, or cancel',
-      terminalState: 'a terminal subagent_result outcome',
+      terminalState:
+        'a terminal completion notification or terminal subagent_result outcome',
       nonterminalState:
         'running, queued, timed-out, malformed, or merely message-accepted state',
       sameSessionProbe: 'subagent_status for the current parent-owned task ID',

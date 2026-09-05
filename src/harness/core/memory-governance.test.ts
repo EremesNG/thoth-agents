@@ -16,12 +16,13 @@ const PROVIDER_OPERATION_PATTERN =
   /mem_(?:save|recall|get|context|project|session)\s*\(/;
 
 describe('memory governance contract', () => {
-  test('uses written progress notes when Pi has no native planning tool', () => {
+  test('uses the installed Pi question and progress tool names', () => {
     const prompt = renderMemoryGovernanceInstructions(
       getAgentRole('deep'),
       PI_PROMPT_DIALECT,
     );
-    expect(prompt).toContain('tracking in written progress notes');
+    expect(prompt).toContain('`ask_user_question`');
+    expect(prompt).toContain('tracking in todo');
     expect(prompt).not.toContain('undefined');
     expect(prompt).not.toContain('tracking in subagent_status');
   });

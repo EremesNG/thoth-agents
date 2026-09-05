@@ -19,6 +19,8 @@ const LIBRARIAN_RESEARCH_TOOLS = [
   'web_*_exa',
   'exa_research_*',
   'mcp',
+  'web_search',
+  'web_fetch',
 ] as const;
 
 function yamlScalar(value: string): string {

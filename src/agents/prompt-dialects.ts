@@ -287,7 +287,8 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       'subagent_status / subagent_result / subagent_list_tasks',
     backgroundWaitInstruction:
       'For background tasks, respond and wait for the automatic completion notification. Do not sleep, poll status, or fetch results merely to wait; use `subagent_status`, `subagent_result`, or `subagent_list_tasks` only for an explicitly needed intermediate status or stored result.',
-    userQuestionTool: 'ask_user',
+    userQuestionTool: 'ask_user_question',
+    progressTool: 'todo',
     hostStatusSurface: 'subagent_list_tasks',
     lifecycle: {
       freshDelegation:

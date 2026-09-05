@@ -537,3 +537,25 @@ A complete Pi installation MUST install and verify `@upstash/context7-pi@0.1.2` 
 - **GIVEN** live steering is unavailable, a queued message is not confirmed as delivered, or a task is nonterminal
 - **WHEN** fan-in is evaluated
 - **THEN** the root keeps the barrier closed and reports the actual capability state
+
+### Requirement: Install pinned Pi interaction and web extensions
+
+Complete Pi installation and applied Update MUST install and individually verify @juicesharp/rpiv-ask-user-question@2.9.0, @juicesharp/rpiv-todo@2.9.0, and @juicesharp/rpiv-web-tools@2.9.0 as required native Pi packages after first-party verification; dry-run MUST remain mutation-free and any required dependency failure MUST prevent completion recording. These packages MUST remain external and not be vendored.
+
+#### Scenario: US1 - Install the additional Pi extensions 1
+
+- **GIVEN** a valid first-party installation
+- **WHEN** complete Install or Update runs
+- **THEN** all three versioned packages are installed and individually verified before completion
+
+#### Scenario: US1 - Install the additional Pi extensions 2
+
+- **GIVEN** dry-run or a failed new dependency
+- **WHEN** setup runs
+- **THEN** dry-run writes nothing and a dependency failure cannot advance the completion ledger
+
+#### Scenario: US1 - Install the additional Pi extensions 3
+
+- **GIVEN** a missing or mismatched dependency
+- **WHEN** status runs
+- **THEN** the affected package is reported without claiming live tool availability

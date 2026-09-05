@@ -335,6 +335,10 @@ function statusFromPlan(
             : 'missing',
       expected:
         item.kind === 'package' ? item.target : 'attributable managed content',
+      description:
+        item.kind === 'package'
+          ? 'Exact installed-package evidence; this does not prove live tool availability.'
+          : undefined,
     }));
   const execute: PiCommandExecutor =
     context.piCommandExecutor ??

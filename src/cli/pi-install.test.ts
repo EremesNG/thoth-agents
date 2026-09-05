@@ -236,10 +236,19 @@ describe('Pi setup', () => {
         .map(({ target }) => target),
     ).toEqual([
       'npm:thoth-agents@0.3.12',
-      ...PI_PACKAGE_SPECS.map(({ source }) => source),
+      'npm:pi-subagents-j0k3r@1.5.9',
+      'npm:@upstash/context7-pi@0.1.2',
+      'npm:@feniix/pi-exa@5.1.1',
+      'npm:pi-mcp-adapter@2.32.1',
+      'npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+      'npm:@juicesharp/rpiv-todo@2.9.0',
+      'npm:@juicesharp/rpiv-web-tools@2.9.0',
     ]);
     expect(plan.items.map(({ kind }) => kind)).toEqual([
       'preflight',
+      'package',
+      'package',
+      'package',
       'package',
       'package',
       'package',
@@ -346,6 +355,53 @@ describe('Pi setup', () => {
       error: expect.stringContaining(PI_PACKAGE_SPECS[0].source),
     });
     expect(existsSync(plan.paths.appendSystemPath)).toBe(false);
+  });
+
+  test('stops before managed resources when the final RPIV package cannot be verified', () => {
+    const paths = fixture();
+    let firstPartyInstalled = false;
+    const failedSource = 'npm:@juicesharp/rpiv-web-tools@2.9.0';
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: [
+              ...(firstPartyInstalled
+                ? ['npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
+                : []),
+              ...PI_PACKAGE_SPECS.map(({ source, packageName }) =>
+                source === failedSource ? `npm:${packageName}@0.0.1` : source,
+              ),
+            ].join('\n'),
+            stderr: '',
+          };
+        if (args[0] === 'install' && args[1] === 'npm:thoth-agents@0.3.12')
+          firstPartyInstalled = true;
+        return { exitCode: 0, stdout: 'installed', stderr: '' };
+      },
+    });
+
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      failedStep: 'package',
+      error: expect.stringContaining(failedSource),
+      installedPackages: [
+        'npm:thoth-agents@0.3.12',
+        ...PI_PACKAGE_SPECS.slice(0, -1).map(({ source }) => source),
+      ],
+    });
+    expect(existsSync(plan.paths.mcpConfigPath)).toBe(false);
+    expect(
+      plan.items
+        .filter(({ kind }) => kind === 'agent')
+        .every(({ target }) => !existsSync(target)),
+    ).toBe(true);
   });
 
   test('rejects malformed list output that only embeds the pinned source', () => {

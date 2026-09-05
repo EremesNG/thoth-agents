@@ -25,6 +25,7 @@ export type WriteCapableAgentRole = 'designer' | 'quick' | 'deep';
 export interface QuestionProtocolSection {
   kind: 'question-protocol';
   toolConcept: 'userQuestion';
+  audience: 'root' | 'child';
 }
 
 export interface SubagentRulesSection {
@@ -73,8 +74,10 @@ export interface PromptSectionRenderer<TSection extends PromptSection> {
   render(section: TSection, dialect: HarnessPromptDialect): string;
 }
 
-export function createQuestionProtocolSection(): QuestionProtocolSection {
-  return { kind: 'question-protocol', toolConcept: 'userQuestion' };
+export function createQuestionProtocolSection(
+  audience: 'root' | 'child' = 'root',
+): QuestionProtocolSection {
+  return { kind: 'question-protocol', toolConcept: 'userQuestion', audience };
 }
 
 export function createSubagentRulesSection(
@@ -346,7 +349,7 @@ ${role.responsibility}
 - ${ROLE_SPECIFIC_RULES[roleName].join('\n- ')}
 </rules>`),
     createSubagentRulesSection(),
-    createQuestionProtocolSection(),
+    createQuestionProtocolSection('child'),
     roleText(`<return-contract>
 Return a compact result with these fields:
 - conclusion
@@ -392,9 +395,14 @@ export function createRolePromptSections(
 }
 
 function renderQuestionProtocol(
-  _section: QuestionProtocolSection,
+  section: QuestionProtocolSection,
   dialect: HarnessPromptDialect,
 ): string {
+  if (section.audience === 'child' && dialect.harness === 'pi') {
+    return `<questions>
+Do not open a user dialog. Continue safe non-blocked work, then escalate the unresolved question to the root through openQuestions with the material choices and a recommended default.
+</questions>`;
+  }
   return `<questions>
 Use \`${dialect.tools.userQuestionTool}\` only for a blocking material choice, destructive or security-sensitive action, or missing secret. Do safe non-blocked work first and ask one targeted question with a recommended default.
 </questions>`;

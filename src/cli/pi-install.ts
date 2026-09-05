@@ -66,6 +66,24 @@ export const PI_PACKAGE_SPECS = [
     packageName: 'pi-mcp-adapter',
     version: '2.32.1',
   },
+  {
+    id: 'ask-user-question',
+    source: 'npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+    packageName: '@juicesharp/rpiv-ask-user-question',
+    version: '2.9.0',
+  },
+  {
+    id: 'todo',
+    source: 'npm:@juicesharp/rpiv-todo@2.9.0',
+    packageName: '@juicesharp/rpiv-todo',
+    version: '2.9.0',
+  },
+  {
+    id: 'web-tools',
+    source: 'npm:@juicesharp/rpiv-web-tools@2.9.0',
+    packageName: '@juicesharp/rpiv-web-tools',
+    version: '2.9.0',
+  },
 ] as const;
 
 export const PI_GREP_MCP_ENTRY = {

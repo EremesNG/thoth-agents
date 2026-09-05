@@ -118,6 +118,13 @@ The managed grep entry uses legacy protocol and lazy lifecycle, omits
 `@benvargas/pi-exa-mcp` is not installed alongside the selected Exa extension
 and remains only an operator-managed fallback.
 
+Pi also pins `@juicesharp/rpiv-web-tools@2.9.0`. Its exact tools are
+`web_search` and `web_fetch`; only the root and librarian receive the corresponding
+guidance/allowlist. Search requires an operator-configured provider, failures are
+reported explicitly, and fetched or searched content remains untrusted. The
+separate `rpiv-ask-user-question` and `rpiv-todo` packages expose root-owned
+interaction and session-local progress rather than child coordination state.
+
 ## thoth-mem boundary
 
 thoth-mem is not a bundled skill or MCP. It is an independently installed

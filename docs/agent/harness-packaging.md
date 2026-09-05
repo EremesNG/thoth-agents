@@ -50,6 +50,9 @@
   QA executables.
 - Pi's Context7 and Exa integrations are native extensions. Only grep.app uses
   `pi-mcp-adapter`, through the exact attributable global server entry.
+- Pi's pinned RPIV extensions expose root-owned `ask_user_question` and `todo`;
+  only root and librarian receive `web_search`/`web_fetch` guidance, and package
+  presence remains distinct from live UI/provider availability.
 
 ## Verification
 

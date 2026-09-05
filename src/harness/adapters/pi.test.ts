@@ -41,17 +41,43 @@ describe('Pi adapter', () => {
     }
   });
 
-  test('keeps root progress in written notes without inventing a planning tool', () => {
+  test('keeps question dialogs and session progress root-owned', () => {
     const root = renderPiRootInstructions();
-    expect(root).toContain('Keep written progress notes');
+    expect(root).toContain(
+      'Use `todo` only when the work genuinely has multiple dependent steps.',
+    );
+    expect(root).toContain('ask_user_question');
+    expect(root).toContain('one to four questions');
+    expect(root).toContain('two to four options');
+    expect(root).toContain(
+      'Cancellation, partial answers, a missing tool, or no UI',
+    );
     expect(root).not.toContain('Use `subagent_status` only when the work');
     const children = piAdapter.render({ projectRoot: process.cwd() }).artifacts;
     for (const child of children) {
       expect(child.content).toContain(
-        'Do not delegate further; root owns progress.',
+        'Do not delegate further or call `todo`; root owns progress.',
       );
+      expect(child.content).toContain(
+        'escalate the unresolved question to the root',
+      );
+      expect(child.content).not.toContain('Use `ask_user_question`');
       expect(child.content).not.toContain('`undefined`');
     }
+  });
+
+  test('documents general web tool prerequisites and truthful failures', () => {
+    const root = renderPiRootInstructions();
+    expect(root).toContain('web_search');
+    expect(root).toContain('web_fetch');
+    expect(root).toContain('configured search provider');
+    expect(root).toContain('untrusted data');
+    expect(root).toContain('report the limitation');
+    const librarian = piAdapter
+      .render({ projectRoot: process.cwd() })
+      .artifacts.find(({ path }) => path === 'agents/thoth-librarian.md');
+    expect(librarian?.content).toContain('web_search');
+    expect(librarian?.content).toContain('web_fetch');
   });
 
   test('waits for automatic terminal notifications instead of polling background tasks', () => {

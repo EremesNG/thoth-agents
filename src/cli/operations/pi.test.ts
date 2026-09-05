@@ -180,6 +180,43 @@ describe('Pi operations', () => {
     ).toBe(true);
   });
 
+  test('reports each RPIV package source independently without claiming live tools', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-rpiv-status-'));
+    roots.push(homeDir);
+    const report = getPiStatus({
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command, args) => {
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+        return {
+          exitCode: 0,
+          stdout: [
+            'npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+            'npm:@juicesharp/rpiv-todo@0.0.1',
+          ].join('\n'),
+          stderr: '',
+        };
+      },
+    });
+    const rpiv = report.targets.filter(({ path }) =>
+      path?.includes('@juicesharp/rpiv-'),
+    );
+    expect(rpiv.map(({ state }) => state)).toEqual([
+      'installed',
+      'drift',
+      'missing',
+    ]);
+    expect(
+      rpiv.every(({ description }) =>
+        description?.includes('does not prove live tool availability'),
+      ),
+    ).toBe(true);
+  });
+
   test('reports independent managed-ready and credential-required research runtime states', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-research-ready-'));
     roots.push(homeDir);

@@ -561,3 +561,81 @@ The Pi adapter MUST require the public `agent` field with one exact canonical sp
 - **GIVEN** live steering is unavailable, a queued message is not confirmed as delivered, or a task is nonterminal
 - **WHEN** fan-in is evaluated
 - **THEN** the root keeps the barrier closed and reports the actual capability state
+
+### Requirement: Use Pi interactive questions truthfully
+
+Pi root instructions MUST use ask_user_question for material user choices, follow its supported question schema, handle unavailable UI and partial/cancelled answers truthfully, and MUST NOT infer approval from cancellation or absent answers. Pi children MUST escalate user questions to the root and MUST NOT receive the interactive question tool in their allowlists.
+
+#### Scenario: US2 - Ask the user and show progress 1
+
+- **GIVEN** a compatible interactive host and a material choice
+- **WHEN** the root asks
+- **THEN** it uses ask_user_question with a supported question/options payload
+
+#### Scenario: US2 - Ask the user and show progress 2
+
+- **GIVEN** cancellation, partial answers, missing tool, or no UI
+- **WHEN** an answer is required
+- **THEN** the root reports the unresolved choice without inventing consent; explicit cancellation is not an answerless route-default attempt
+
+#### Scenario: US2 - Ask the user and show progress 3
+
+- **GIVEN** multi-step work
+- **WHEN** the root reports progress
+- **THEN** it uses session-local todo without replacing native task execution or canonical OpenSpec artifacts
+
+#### Scenario: US2 - Ask the user and show progress 4
+
+- **GIVEN** a child needs user input or has progress
+- **WHEN** it reports to the root
+- **THEN** it escalates through its return contract rather than opening user dialogs or editing the root task list
+
+### Requirement: Keep Pi progress session-owned
+
+Pi root instructions MUST use todo for useful multi-step progress, with the extension owning session-local task state. Todo MUST NOT replace Pi-native delegation lifecycle or OpenSpec artifacts; child agents MUST report progress to root and MUST NOT receive todo in their allowlists.
+
+#### Scenario: US2 - Ask the user and show progress 1
+
+- **GIVEN** a compatible interactive host and a material choice
+- **WHEN** the root asks
+- **THEN** it uses ask_user_question with a supported question/options payload
+
+#### Scenario: US2 - Ask the user and show progress 2
+
+- **GIVEN** cancellation, partial answers, missing tool, or no UI
+- **WHEN** an answer is required
+- **THEN** the root reports the unresolved choice without inventing consent; explicit cancellation is not an answerless route-default attempt
+
+#### Scenario: US2 - Ask the user and show progress 3
+
+- **GIVEN** multi-step work
+- **WHEN** the root reports progress
+- **THEN** it uses session-local todo without replacing native task execution or canonical OpenSpec artifacts
+
+#### Scenario: US2 - Ask the user and show progress 4
+
+- **GIVEN** a child needs user input or has progress
+- **WHEN** it reports to the root
+- **THEN** it escalates through its return contract rather than opening user dialogs or editing the root task list
+
+### Requirement: Expose complementary Pi web tools
+
+Pi root and librarian guidance MUST expose web_search and web_fetch with their exact upstream names and acknowledge provider, credential, network, and output limitations. The librarian allowlist MUST include both; other specialist allowlists MUST remain unchanged. Existing Context7, Exa, and grep integration MUST be preserved, and thoth-agents MUST NOT configure credentials or duplicate provider implementation.
+
+#### Scenario: US3 - Use complementary general web tools 1
+
+- **GIVEN** a configured search provider
+- **WHEN** the root or librarian needs external evidence
+- **THEN** it can use web_search and web_fetch with exact upstream names
+
+#### Scenario: US3 - Use complementary general web tools 2
+
+- **GIVEN** no configured provider or a fetch/search error
+- **WHEN** evidence is requested
+- **THEN** the root reports the limitation and does not claim a successful lookup
+
+#### Scenario: US3 - Use complementary general web tools 3
+
+- **GIVEN** existing Context7, Exa, and grep configuration
+- **WHEN** new tools are installed
+- **THEN** those providers and unrelated user configuration remain unchanged

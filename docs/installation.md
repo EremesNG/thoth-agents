@@ -188,7 +188,19 @@ The CLI installs and verifies these Pi packages in order:
    background tasks;
 3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
 4. `@feniix/pi-exa@5.1.1` as a native Exa extension; and
-5. `pi-mcp-adapter@2.32.1` only for the anonymous grep.app MCP endpoint.
+5. `pi-mcp-adapter@2.32.1` only for the anonymous grep.app MCP endpoint;
+6. `@juicesharp/rpiv-ask-user-question@2.9.0` for the root's interactive
+   `ask_user_question` dialog;
+7. `@juicesharp/rpiv-todo@2.9.0` for root-owned, session-local `todo` progress;
+   and
+8. `@juicesharp/rpiv-web-tools@2.9.0` for `web_search` and `web_fetch` on the
+   root and librarian surfaces.
+
+Question cancellation, partial answers, an unavailable tool, or a host without
+the required UI leaves the choice unresolved. Package status proves only the
+exact installed source; it does not prove interactive UI support, configured
+search providers, or successful remote requests. Children report questions and
+progress to the root instead of opening dialogs or maintaining the root task list.
 
 Before external setup, the CLI rejects unowned or ambiguous first-party state,
 requires configured, loadable, and real-Pi observed evidence, and atomically
@@ -354,7 +366,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, six specialist synchronization, four pinned native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, six specialist synchronization, seven pinned native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps

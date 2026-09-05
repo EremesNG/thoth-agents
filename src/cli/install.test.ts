@@ -22,6 +22,7 @@ import {
   readInstallLedger,
   recordCompletedInstall,
 } from './install-ledger';
+import { PI_PACKAGE_SPECS } from './pi-install';
 import { resolvePiPaths } from './pi-paths';
 import type { ThothMemSetupResult } from './thoth-mem-install';
 
@@ -153,7 +154,7 @@ describe('install', () => {
           if (args[0] === 'list')
             return {
               exitCode: 0,
-              stdout: `${firstPartyInstalled ? `npm:thoth-agents@0.6.0\n    ${process.cwd()}\n` : ''}npm:pi-subagents-j0k3r@1.5.9\nnpm:@upstash/context7-pi@0.1.2\nnpm:@feniix/pi-exa@5.1.1\nnpm:pi-mcp-adapter@2.32.1`,
+              stdout: `${firstPartyInstalled ? `npm:thoth-agents@0.6.0\n    ${process.cwd()}\n` : ''}${PI_PACKAGE_SPECS.map(({ source }) => source).join('\n')}`,
               stderr: '',
             };
           events.push(`package:${args[1]}`);
@@ -191,6 +192,9 @@ describe('install', () => {
       'package:npm:@upstash/context7-pi@0.1.2',
       'package:npm:@feniix/pi-exa@5.1.1',
       'package:npm:pi-mcp-adapter@2.32.1',
+      'package:npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+      'package:npm:@juicesharp/rpiv-todo@2.9.0',
+      'package:npm:@juicesharp/rpiv-web-tools@2.9.0',
       'external:simplify',
       'external:tdd',
       'external:progressive-context-router',

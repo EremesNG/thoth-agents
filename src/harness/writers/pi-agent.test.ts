@@ -39,6 +39,14 @@ describe('Pi agent writer', () => {
     expect(librarian?.content).toContain('web_*_exa');
     expect(librarian?.content).toContain('exa_research_*');
     expect(librarian?.content).toContain('mcp');
+    expect(librarian?.content).toContain('web_search');
+    expect(librarian?.content).toContain('web_fetch');
+    for (const agent of agents.filter((artifact) => artifact !== librarian)) {
+      expect(agent.content).not.toMatch(/tools:.*\bweb_(?:search|fetch)\b/);
+      expect(agent.content).not.toMatch(
+        /tools:.*\b(?:ask_user_question|todo)\b/,
+      );
+    }
     expect(
       first.artifacts.some((artifact) =>
         String(artifact.content).includes(PI_ROOT_START),

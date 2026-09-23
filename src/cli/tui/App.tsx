@@ -282,6 +282,7 @@ export function App({
   const providerEvidenceRequest = useRef(0);
   const [plan, setPlan] = useState<OperationPlan | undefined>();
   const [result, setResult] = useState<OperationApplyResult | undefined>();
+  const [restoringDefaults, setRestoringDefaults] = useState(false);
   const [previewAction, setPreviewAction] = useState<'apply' | 'cancel'>(
     'cancel',
   );
@@ -386,8 +387,8 @@ export function App({
     dirtyRoles.length > 0 ? dirtyRoles : rolesForModelPlan(modelRows, true);
   const modelActions =
     dirtyRoles.length > 0
-      ? ['Preview changes', 'Apply', 'Back']
-      : ['Apply', 'Back'];
+      ? ['Preview changes', 'Apply', 'Restore defaults', 'Back']
+      : ['Apply', 'Restore defaults', 'Back'];
   const modelMenuItems: MenuItem[] = [
     ...modelRows.map((role) => ({
       id: role.role,
@@ -439,6 +440,7 @@ export function App({
     backView: PreviewBackView = 'harness',
   ): void {
     setActiveHarness(harness);
+    setRestoringDefaults(false);
     setPlan(operations.plan(harness, action));
     setResult(undefined);
     setPreviewAction('cancel');
@@ -501,6 +503,7 @@ export function App({
   }
 
   function previewModelChanges(applyImmediately: boolean): void {
+    setRestoringDefaults(false);
     const nextPlan = operations.modelPlan(modelHarness, rolesToApply);
     setPlan(nextPlan);
     setPreviewAction(applyImmediately ? 'apply' : 'cancel');
@@ -533,6 +536,28 @@ export function App({
     }
     setResult(undefined);
     setView('preview');
+  }
+
+  function previewDefaultModels(): void {
+    setPlan(operations.restoreModelPlan(modelHarness, modelOptions));
+    setRestoringDefaults(true);
+    setResult(undefined);
+    setPreviewAction('cancel');
+    setPreviewBackView('modelRoles');
+    setView('preview');
+  }
+
+  function applyPreview(): void {
+    if (!plan?.canApply || (restoringDefaults && result?.applied)) return;
+    const applied = operations.apply(plan);
+    setResult(applied);
+    if (restoringDefaults && applied.applied) {
+      setModelRoles(operations.modelRoles(modelHarness));
+      setEditedModels({});
+      setEditedEfforts({});
+      setModelResult(undefined);
+      setModelSelected(0);
+    }
   }
 
   useInput((input, key) => {
@@ -768,6 +793,7 @@ export function App({
         if (action === 'Back') setView('manageHarness');
         if (action === 'Preview changes') previewModelChanges(false);
         if (action === 'Apply') previewModelChanges(true);
+        if (action === 'Restore defaults') previewDefaultModels();
       }
       return;
     }
@@ -785,14 +811,14 @@ export function App({
       }
       if (input === 'a' && plan?.canApply) {
         setPreviewAction('apply');
-        setResult(operations.apply(plan));
+        applyPreview();
       }
       if (input === 'c') goBack();
       if (key.return && plan) {
         if (previewAction === 'cancel' || !plan.canApply) {
           goBack();
         } else {
-          setResult(operations.apply(plan));
+          applyPreview();
         }
       }
     }
@@ -958,9 +984,16 @@ export function App({
     return (
       <Box flexDirection="column">
         <Header
-          title={plan.title}
+          title={restoringDefaults ? 'Restore default models' : plan.title}
           subtitle="Enter selects. Escape or c returns one level."
         />
+        {restoringDefaults ? (
+          <Text color={theme.warning}>
+            Replace all managed role models and reasoning efforts with this
+            package's defaults. Review the values and targets below. Apply
+            writes changes; Cancel keeps your current settings.
+          </Text>
+        ) : null}
         <PlanPreview
           plan={plan}
           selectedAction={previewAction}

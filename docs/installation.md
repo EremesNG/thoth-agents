@@ -440,3 +440,36 @@ Install is required for every harness; the other operations are optional
 conveniences. `--reset` affects only bounded thoth-agents-managed targets; it
 does not rewrite marketplace snapshots, plugin caches, unrelated skills, or
 provider state.
+
+
+## Restore model defaults
+
+In the interactive CLI, open a harness, choose **Configure models**, then
+**Restore defaults**. The preview lists every managed role's model and reasoning
+effort from the package you are running. Choose **Apply** to replace existing
+values. **Cancel** is selected initially; returning to the editor preserves any
+unapplied manual edits. A successful restore reloads saved values and clears
+those edits.
+
+OpenCode restores seven roles, including its orchestrator. Codex and Pi restore
+six specialists; their ambient root model remains host-owned. Other settings,
+prompts and permissions are preserved. Catalog and runtime validation still
+apply: resolve any reported blocker before applying.
+
+Claude Code also exposes the preview, but application remains blocked because
+its plugin cache and packaged defaults belong to the native plugin manager.
+
+Update and Sync preserve explicit model choices; they do not adopt new defaults.
+Restoration saves the current package's recommendations as explicit values and
+does not enable automatic adoption of future defaults.
+
+For a local checkout, build the current source before opening its CLI:
+
+```powershell
+pnpm run build
+node .\dist\cli\index.js
+```
+
+Then use **Configure models → Restore defaults → Apply** for the intended
+harness. Check the target paths in the preview; an environment override such as
+`CODEX_HOME` can redirect where the CLI writes.

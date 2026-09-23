@@ -11,11 +11,11 @@ import type {
 } from '../../harness/types';
 import {
   buildCodexSetupPlan,
-  CODEX_ROLE_NAMES,
   parseRoleTomlEffort,
   parseRoleTomlModel,
 } from '../codex-install';
 import { parseConfig } from '../config-io';
+import { getShippedModelRoles } from '../model-defaults';
 import {
   applyClaudeCodePlan,
   buildClaudeCodeInstallPlan,
@@ -83,6 +83,10 @@ export interface TuiOperations {
     action: Exclude<TuiAction, 'status' | 'list'>,
   ): OperationPlan;
   modelPlan(harness: HarnessId, roles: ModelRoleInput[]): OperationPlan;
+  restoreModelPlan(
+    harness: HarnessId,
+    options: readonly ModelOption[],
+  ): OperationPlan;
   apply(plan: OperationPlan): OperationApplyResult;
 }
 
@@ -101,16 +105,7 @@ export const opencodeModelRoles: ModelRoleInput[] = ALL_AGENT_NAMES.map(
   }),
 );
 
-export const codexModelRoles: ModelRoleInput[] = CODEX_ROLE_NAMES.map(
-  (role) => ({
-    role,
-    model: 'gpt-5.4-mini',
-  }),
-);
-
-const codexDefaultModels = new Map<string, string>(
-  codexModelRoles.map((role) => [role.role, role.model]),
-);
+export const codexModelRoles = getShippedModelRoles('codex');
 
 function codexInstallConfig(source: CodexOperationContext, dryRun: boolean) {
   return {
@@ -130,29 +125,29 @@ export function getCodexModelRoles(
 ): ModelRoleInput[] {
   try {
     const plan = buildCodexSetupPlan(codexInstallConfig(source, true));
-    return CODEX_ROLE_NAMES.map((role) => {
-      const item = plan.items.find(
-        (candidate) =>
-          candidate.action === 'write-role-toml' && candidate.role === role,
-      );
-      const content =
-        item && existsSync(item.targetPath)
-          ? readFileSync(item.targetPath, 'utf8')
-          : item?.content;
-      const effort = content ? parseRoleTomlEffort(content) : undefined;
-      return {
-        role,
-        model:
-          (content ? parseRoleTomlModel(content) : undefined) ??
-          codexDefaultModels.get(role) ??
-          'gpt-5.4-mini',
-        effort: effort
-          ? { kind: 'effort' as const, value: effort }
-          : { kind: 'inherit' as const },
-      };
-    });
+    return getShippedModelRoles('codex').map(
+      ({ role, model: defaultModel }) => {
+        const item = plan.items.find(
+          (candidate) =>
+            candidate.action === 'write-role-toml' && candidate.role === role,
+        );
+        const content =
+          item && existsSync(item.targetPath)
+            ? readFileSync(item.targetPath, 'utf8')
+            : item?.content;
+        const effort = content ? parseRoleTomlEffort(content) : undefined;
+        return {
+          role,
+          model:
+            (content ? parseRoleTomlModel(content) : undefined) ?? defaultModel,
+          effort: effort
+            ? { kind: 'effort' as const, value: effort }
+            : { kind: 'inherit' as const },
+        };
+      },
+    );
   } catch {
-    return codexModelRoles.map((role) => ({ ...role }));
+    return getShippedModelRoles('codex');
   }
 }
 
@@ -237,20 +232,48 @@ export function getOpenCodeModelRoles(): ModelRoleInput[] {
 function buildTuiModelPlan(
   harness: HarnessId,
   roles: ModelRoleInput[],
+  source: OperationContext = context,
 ): OperationPlan {
   if (harness === 'opencode') {
-    return buildOpenCodeModelPlan({ harness, dryRun: true, roles }, context);
+    return buildOpenCodeModelPlan({ harness, dryRun: true, roles }, source);
   }
   if (harness === 'claude') {
-    return buildClaudeCodeModelPlan(
-      { harness, dryRun: true, roles },
-      claudeCodeContext,
-    );
+    return buildClaudeCodeModelPlan({ harness, dryRun: true, roles }, source);
   }
   if (harness === 'pi') {
-    return buildPiModelPlan({ harness, dryRun: true, roles }, context);
+    return buildPiModelPlan({ harness, dryRun: true, roles }, source);
   }
-  return buildCodexModelPlan({ harness, dryRun: true, roles }, codexContext);
+  return buildCodexModelPlan({ harness, dryRun: true, roles }, source);
+}
+
+export function buildRestoreModelPlan(
+  harness: HarnessId,
+  options: readonly ModelOption[],
+  source: OperationContext = context,
+): OperationPlan {
+  const roles = getShippedModelRoles(harness).map((role) => {
+    const catalogId =
+      harness === 'codex'
+        ? `openai/${role.model}`
+        : harness === 'pi'
+          ? role.model.replace(/^openai-codex\//, 'openai/')
+          : role.model;
+    const option =
+      options.find((candidate) => candidate.id === role.model) ??
+      options.find((candidate) => candidate.catalogId === catalogId);
+    return {
+      ...role,
+      ...(option
+        ? {
+            provider: option.provider,
+            catalogId: option.catalogId,
+            availableEfforts: [...option.efforts],
+          }
+        : {}),
+    };
+  });
+  // Preserve the issued plan's identity and contents for native apply validation.
+  return buildTuiModelPlan(harness, roles, source);
 }
 
 export const defaultTuiOperations: TuiOperations = {
@@ -309,6 +332,9 @@ export const defaultTuiOperations: TuiOperations = {
   },
   modelPlan(harness, roles) {
     return buildTuiModelPlan(harness, roles);
+  },
+  restoreModelPlan(harness, options) {
+    return buildRestoreModelPlan(harness, options);
   },
   apply(plan) {
     if (plan.harness === 'opencode') return applyOpenCodePlan(plan);

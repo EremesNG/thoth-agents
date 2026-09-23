@@ -14,7 +14,9 @@ import { applyCodexSetup, buildCodexSetupPlan } from '../codex-install';
 import type { CodexCommandExecutor } from '../codex-plugin-install';
 import { finalizeHarnessInstall } from '../install-completion';
 import { readInstallLedger, recordCompletedInstall } from '../install-ledger';
+import { getShippedModelRoles } from '../model-defaults';
 import { resolveExecutingPackageVersion } from '../package-version';
+import { buildRestoreModelPlan } from '../tui/operations';
 import {
   applyCodexPlan,
   buildCodexInstallPlan,
@@ -680,4 +682,65 @@ describe('Codex operations adapter', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+test('restores Codex defaults without replacing unrelated TOML settings', () => {
+  const home = mkdtempSync(join(tmpdir(), 'codex-restore-'));
+  try {
+    setup(home, home);
+    const defaults = getShippedModelRoles('codex');
+    const before = defaults.map((role) => {
+      const path = rolePath(home, role.role);
+      const content = readFileSync(path, 'utf8')
+        .replace(/^model = .*$/m, 'model = "custom-model"')
+        .replace(
+          /^model_reasoning_effort = .*$/m,
+          'model_reasoning_effort = "high"',
+        );
+      writeFileSync(path, content);
+      return content;
+    });
+    const configPath = join(home, '.codex', 'config.toml');
+    const configBefore = readFileSync(configPath, 'utf8');
+    const plan = buildRestoreModelPlan(
+      'codex',
+      ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra'].map((model) => ({
+        id: `openai/${model}`,
+        catalogId: `openai/${model}`,
+        label: model,
+        provider: 'openai',
+        source: 'remote' as const,
+        efforts: ['low', 'medium', 'high', 'xhigh'],
+      })),
+      {
+        ...context(home, home),
+        codexHome: join(home, '.codex'),
+      },
+    );
+    expect(plan.canApply).toBe(true);
+    defaults.forEach((role, index) => {
+      expect(readFileSync(rolePath(home, role.role), 'utf8')).toBe(
+        before[index],
+      );
+    });
+    expect(applyCodexPlan(plan).applied).toBe(true);
+    defaults.forEach((role, index) => {
+      const after = readFileSync(rolePath(home, role.role), 'utf8');
+      expect(roleModel(after)).toBe(role.model);
+      expect(after).toContain(
+        `model_reasoning_effort = "${role.effort?.kind === 'effort' ? role.effort.value : ''}"`,
+      );
+      const unrelated = (text: string) =>
+        text.replace(/^model(?:_reasoning_effort)? = .*$/gm, '');
+      expect(unrelated(after)).toBe(unrelated(before[index] ?? ''));
+    });
+    expect(readFileSync(configPath, 'utf8')).toBe(configBefore);
+    setup(home, home);
+    for (const role of defaults)
+      expect(roleModel(readFileSync(rolePath(home, role.role), 'utf8'))).toBe(
+        role.model,
+      );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });

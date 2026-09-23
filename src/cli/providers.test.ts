@@ -22,14 +22,14 @@ describe('providers', () => {
     expect(config.preset).toBe('openai');
     const agents = (config.presets as any).openai;
     expect(agents).toBeDefined();
-    expect(agents.orchestrator.model).toBe('openai/gpt-5.6-sol');
+    expect(agents.orchestrator.model).toBe('openai/gpt-6-sol');
     expect(agents.orchestrator.variant).toBe('xhigh');
     expect(agents.quick).toEqual({
-      model: 'openai/gpt-5.6-luna',
-      variant: 'low',
+      model: 'openai/gpt-6-luna',
+      variant: 'medium',
     });
     expect(agents.deep).toEqual({
-      model: 'openai/gpt-5.6-sol',
+      model: 'openai/gpt-6-sol',
       variant: 'medium',
     });
   });
@@ -45,27 +45,27 @@ describe('providers', () => {
       MODEL_MAPPINGS.openai.orchestrator.model,
     );
     expect(agents.oracle).toEqual({
-      model: 'openai/gpt-5.6-sol',
-      variant: 'high',
+      model: 'openai/gpt-6-astra',
+      variant: 'medium',
     });
     expect(agents.librarian).toEqual({
-      model: 'openai/gpt-5.6-luna',
+      model: 'openai/gpt-6-luna',
       variant: 'high',
     });
     expect(agents.explorer).toEqual({
-      model: 'openai/gpt-5.6-luna',
+      model: 'openai/gpt-6-luna',
       variant: 'low',
     });
     expect(agents.designer).toEqual({
-      model: 'openai/gpt-5.6-sol',
+      model: 'openai/gpt-6-sol',
       variant: 'medium',
     });
     expect(agents.quick).toEqual({
-      model: 'openai/gpt-5.6-luna',
-      variant: 'low',
+      model: 'openai/gpt-6-luna',
+      variant: 'medium',
     });
     expect(agents.deep).toEqual({
-      model: 'openai/gpt-5.6-sol',
+      model: 'openai/gpt-6-sol',
       variant: 'medium',
     });
   });

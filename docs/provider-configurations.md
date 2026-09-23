@@ -7,13 +7,13 @@ ZAI/GLM, and mixed-provider mappings are intentionally absent.
 
 | Role | Model | Effort/variant |
 | --- | --- | --- |
-| `orchestrator` | `openai/gpt-5.6-sol` | `xhigh` |
-| `explorer` | `openai/gpt-5.6-luna` | `low` |
-| `librarian` | `openai/gpt-5.6-luna` | `high` |
-| `oracle` | `openai/gpt-5.6-sol` | `high` |
-| `designer` | `openai/gpt-5.6-sol` | `medium` |
-| `quick` | `openai/gpt-5.6-luna` | `low` |
-| `deep` | `openai/gpt-5.6-sol` | `medium` |
+| `orchestrator` | `openai/gpt-6-sol` | `xhigh` |
+| `explorer` | `openai/gpt-6-luna` | `low` |
+| `librarian` | `openai/gpt-6-luna` | `high` |
+| `oracle` | `openai/gpt-6-astra` | `medium` |
+| `designer` | `openai/gpt-6-sol` | `medium` |
+| `quick` | `openai/gpt-6-luna` | `medium` |
+| `deep` | `openai/gpt-6-sol` | `medium` |
 
 Model IDs and supported variants remain subject to the active harness catalog.
 Users may override individual roles in `thoth-agents.json`; an explicit override

@@ -110,12 +110,12 @@ describe('Codex install setup plan', () => {
         packageRoot: PACKAGE_ROOT,
       });
       const expected = {
-        oracle: { model: 'gpt-5.6-sol', effort: 'high' },
-        librarian: { model: 'gpt-5.6-luna', effort: 'high' },
-        explorer: { model: 'gpt-5.6-luna', effort: 'low' },
-        designer: { model: 'gpt-5.6-sol', effort: 'medium' },
-        quick: { model: 'gpt-5.6-luna', effort: 'low' },
-        deep: { model: 'gpt-5.6-sol', effort: 'medium' },
+        oracle: { model: 'gpt-6-astra', effort: 'medium' },
+        librarian: { model: 'gpt-6-luna', effort: 'high' },
+        explorer: { model: 'gpt-6-luna', effort: 'low' },
+        designer: { model: 'gpt-6-sol', effort: 'medium' },
+        quick: { model: 'gpt-6-luna', effort: 'medium' },
+        deep: { model: 'gpt-6-sol', effort: 'medium' },
       } as const;
 
       for (const [role, defaults] of Object.entries(expected)) {
@@ -571,7 +571,7 @@ describe('Codex install setup plan', () => {
         .toBe('gpt-5.3-codex-spark');
       expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBe('high');
       const state = readManagedModelState(home);
-      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-sol');
+      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-6-sol');
       expect
         .soft(state.configuredModels?.['thoth-agents-deep.toml'])
         .toBe('gpt-5.3-codex-spark');
@@ -611,7 +611,7 @@ describe('Codex install setup plan', () => {
       );
 
       const before = readManagedModelState(home);
-      expect(before.models['thoth-agents-deep.toml']).toBe('gpt-5.6-sol');
+      expect(before.models['thoth-agents-deep.toml']).toBe('gpt-6-sol');
       expect(
         applyCodexManagedModelOverrides(
           {
@@ -630,7 +630,7 @@ describe('Codex install setup plan', () => {
       expect(roleModel(readFileSync(target, 'utf8'))).toBe(
         'gpt-5.3-codex-spark',
       );
-      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-5.6-sol');
+      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-6-sol');
       expect(state.configuredModels?.['thoth-agents-deep.toml']).toBe(
         'gpt-5.3-codex-spark',
       );

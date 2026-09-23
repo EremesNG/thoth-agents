@@ -47,19 +47,19 @@ export const SUBAGENT_DELEGATION_RULES: Record<AgentName, readonly string[]> = {
 };
 
 export const CONFIRMED_OPENAI_SUBAGENT_PRESET = {
-  explorer: { model: 'gpt-5.6-luna', effort: 'low' },
-  librarian: { model: 'gpt-5.6-luna', effort: 'high' },
-  oracle: { model: 'gpt-5.6-sol', effort: 'high' },
-  designer: { model: 'gpt-5.6-sol', effort: 'medium' },
-  quick: { model: 'gpt-5.6-luna', effort: 'low' },
-  deep: { model: 'gpt-5.6-sol', effort: 'medium' },
+  explorer: { model: 'gpt-6-luna', effort: 'low' },
+  librarian: { model: 'gpt-6-luna', effort: 'high' },
+  oracle: { model: 'gpt-6-astra', effort: 'medium' },
+  designer: { model: 'gpt-6-sol', effort: 'medium' },
+  quick: { model: 'gpt-6-luna', effort: 'medium' },
+  deep: { model: 'gpt-6-sol', effort: 'medium' },
 } as const satisfies Record<
   Exclude<BuiltinAgentName, 'orchestrator'>,
   { model: string; effort: string }
 >;
 
 export const OPENCODE_OPENAI_ORCHESTRATOR_PRESET = {
-  model: 'gpt-5.6-sol',
+  model: 'gpt-6-sol',
   effort: 'xhigh',
 } as const;
 

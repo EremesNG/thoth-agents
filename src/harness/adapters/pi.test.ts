@@ -24,12 +24,12 @@ describe('Pi adapter', () => {
 
   test('assigns the shared specialist model and effort preset through the Pi provider', () => {
     const expected = {
-      explorer: ['gpt-5.6-luna', 'low'],
-      librarian: ['gpt-5.6-luna', 'high'],
-      oracle: ['gpt-5.6-sol', 'high'],
-      designer: ['gpt-5.6-sol', 'medium'],
-      quick: ['gpt-5.6-luna', 'low'],
-      deep: ['gpt-5.6-sol', 'medium'],
+      explorer: ['gpt-6-luna', 'low'],
+      librarian: ['gpt-6-luna', 'high'],
+      oracle: ['gpt-6-astra', 'medium'],
+      designer: ['gpt-6-sol', 'medium'],
+      quick: ['gpt-6-luna', 'medium'],
+      deep: ['gpt-6-sol', 'medium'],
     };
     const rendered = piAdapter.render({ projectRoot: process.cwd() });
     for (const [role, [model, effort]] of Object.entries(expected)) {

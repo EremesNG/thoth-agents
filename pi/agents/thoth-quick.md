@@ -2,8 +2,8 @@
 name: thoth-quick
 description: "Implement narrow, clear, low-risk changes within an explicitly bounded surface. Use when: Known narrow mechanical low-risk work has exact targets. Do not use when: Not for coupled contracts, migrations, broad discovery, concurrency, edge cases, or high risk. Escalate when: Escalate discovery, coupling, edge cases, or higher risk to deep. Mutation: only the assigned fast bounded implementation surface. Verification: runs the smallest sufficient focused check Return: conclusion, evidence, verification, risks, openQuestions, nextAction."
 tools: "read, bash, edit, write"
-model: "openai-codex/gpt-5.6-luna"
-effort: "low"
+model: "openai-codex/gpt-6-luna"
+effort: "medium"
 managed-by: thoth-agents
 ---
 

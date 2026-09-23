@@ -492,7 +492,7 @@ describe('explicit operation commands', () => {
     ).toEqual([
       {
         role: 'orchestrator',
-        model: 'openai/gpt-5.6-sol',
+        model: 'openai/gpt-6-sol',
         effort: { kind: 'effort', value: 'custom-variant' },
       },
     ]);

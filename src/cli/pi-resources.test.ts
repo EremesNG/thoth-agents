@@ -48,7 +48,7 @@ describe('Pi specialist synchronization', () => {
     );
     expect(syncPiSpecialists(options).success).toBe(true);
     const content = readFileSync(target, 'utf8');
-    expect(content).toContain('model: "openai-codex/gpt-5.6-sol"');
+    expect(content).toContain('model: "openai-codex/gpt-6-sol"');
     expect(content).toContain('effort: "medium"');
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });

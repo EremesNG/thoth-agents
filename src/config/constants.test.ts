@@ -8,18 +8,18 @@ import {
 describe('OpenAI default model projection', () => {
   test('defines the exact canonical model and effort for all six specialists', () => {
     expect(CONFIRMED_OPENAI_SUBAGENT_PRESET).toEqual({
-      explorer: { model: 'gpt-5.6-luna', effort: 'low' },
-      librarian: { model: 'gpt-5.6-luna', effort: 'high' },
-      oracle: { model: 'gpt-5.6-sol', effort: 'high' },
-      designer: { model: 'gpt-5.6-sol', effort: 'medium' },
-      quick: { model: 'gpt-5.6-luna', effort: 'low' },
-      deep: { model: 'gpt-5.6-sol', effort: 'medium' },
+      explorer: { model: 'gpt-6-luna', effort: 'low' },
+      librarian: { model: 'gpt-6-luna', effort: 'high' },
+      oracle: { model: 'gpt-6-astra', effort: 'medium' },
+      designer: { model: 'gpt-6-sol', effort: 'medium' },
+      quick: { model: 'gpt-6-luna', effort: 'medium' },
+      deep: { model: 'gpt-6-sol', effort: 'medium' },
     });
   });
 
   test('defines a separate providerless OpenCode orchestrator preset', () => {
     expect(OPENCODE_OPENAI_ORCHESTRATOR_PRESET).toEqual({
-      model: 'gpt-5.6-sol',
+      model: 'gpt-6-sol',
       effort: 'xhigh',
     });
   });

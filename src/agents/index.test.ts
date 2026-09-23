@@ -89,13 +89,13 @@ describe('OpenCode v0.3 agent roster', () => {
 describe('OpenCode v0.3 defaults', () => {
   test('preserves the established specialist and root defaults', () => {
     expect(getAgentConfigs()).toMatchObject({
-      orchestrator: { model: 'openai/gpt-5.6-sol', variant: 'xhigh' },
-      explorer: { model: 'openai/gpt-5.6-luna', variant: 'low' },
-      librarian: { model: 'openai/gpt-5.6-luna', variant: 'high' },
-      oracle: { model: 'openai/gpt-5.6-sol', variant: 'high' },
-      designer: { model: 'openai/gpt-5.6-sol', variant: 'medium' },
-      quick: { model: 'openai/gpt-5.6-luna', variant: 'low' },
-      deep: { model: 'openai/gpt-5.6-sol', variant: 'medium' },
+      orchestrator: { model: 'openai/gpt-6-sol', variant: 'xhigh' },
+      explorer: { model: 'openai/gpt-6-luna', variant: 'low' },
+      librarian: { model: 'openai/gpt-6-luna', variant: 'high' },
+      oracle: { model: 'openai/gpt-6-astra', variant: 'medium' },
+      designer: { model: 'openai/gpt-6-sol', variant: 'medium' },
+      quick: { model: 'openai/gpt-6-luna', variant: 'medium' },
+      deep: { model: 'openai/gpt-6-sol', variant: 'medium' },
     });
   });
 

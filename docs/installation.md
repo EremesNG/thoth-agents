@@ -280,10 +280,12 @@ provider. The ambient root retains Pi's selected model and thinking level:
 
 | Specialist | Model | Effort |
 | --- | --- | --- |
-| explorer, quick | `openai-codex/gpt-5.6-luna` | `low` |
-| librarian | `openai-codex/gpt-5.6-luna` | `high` |
-| oracle | `openai-codex/gpt-5.6-sol` | `high` |
-| designer, deep | `openai-codex/gpt-5.6-sol` | `medium` |
+| explorer | `openai-codex/gpt-6-luna` | `low` |
+| librarian | `openai-codex/gpt-6-luna` | `high` |
+| oracle | `openai-codex/gpt-6-astra` | `medium` |
+| designer | `openai-codex/gpt-6-sol` | `medium` |
+| quick | `openai-codex/gpt-6-luna` | `medium` |
+| deep | `openai-codex/gpt-6-sol` | `medium` |
 
 Synchronization fills missing model/effort fields in older managed definitions
 and preserves explicit frontmatter values. Model configuration stores an explicit

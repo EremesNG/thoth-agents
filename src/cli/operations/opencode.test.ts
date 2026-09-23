@@ -632,7 +632,7 @@ describe('OpenCode operations adapter v0.3', () => {
     expect(written.preset).toBe('agents');
     expect(Object.keys(written.presets.agents ?? {})).toEqual(ALL_AGENT_NAMES);
     expect(written.presets.agents?.explorer).toEqual({
-      model: 'openai/gpt-5.6-luna',
+      model: 'openai/gpt-6-luna',
       variant: 'root-explorer',
       temperature: 0.25,
     });

@@ -242,7 +242,7 @@ describe('TUI operations', () => {
       getOpenCodeModelRoles().find(({ role }) => role === 'orchestrator'),
     ).toEqual({
       role: 'orchestrator',
-      model: 'openai/gpt-5.6-sol',
+      model: 'openai/gpt-6-sol',
       effort: { kind: 'effort', value: 'xhigh' },
     });
   });
@@ -368,7 +368,7 @@ describe('TUI operations', () => {
     });
     expect(roles.find(({ role }) => role === 'deep')).toEqual({
       role: 'deep',
-      model: 'openai/gpt-5.6-sol',
+      model: 'openai/gpt-6-sol',
       effort: { kind: 'effort', value: 'medium' },
     });
   });
@@ -485,7 +485,7 @@ describe('TUI operations', () => {
       });
 
       expect(codex.find((role) => role.role === 'deep')).toMatchObject({
-        model: 'gpt-5.6-sol',
+        model: 'gpt-6-sol',
         effort: { kind: 'effort', value: 'medium' },
       });
       expect(claude.find((role) => role.role === 'deep')).toMatchObject({

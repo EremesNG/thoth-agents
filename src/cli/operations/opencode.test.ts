@@ -17,9 +17,13 @@ import {
   readInstallLedger,
   recordCompletedInstall,
 } from '../install-ledger';
+import { getShippedModelRoles } from '../model-defaults';
 import { resolveExecutingPackageVersion } from '../package-version';
 import { generateLiteConfig } from '../providers';
-import { getOpenCodeModelRoles } from '../tui/operations';
+import {
+  buildRestoreModelPlan,
+  getOpenCodeModelRoles,
+} from '../tui/operations';
 
 const installRequiredSkillMock = vi.hoisted(() =>
   vi.fn(() => ({ status: 'installed' as const })),
@@ -160,6 +164,46 @@ describe('OpenCode operations adapter v0.3', () => {
       writeRequiredSkill(skillName);
     }
   }
+
+  test('restores OpenCode defaults while preserving unrelated configuration', () => {
+    writeManagedConfig();
+    writeAllRequiredSkills();
+    const custom = JSON.parse(readFileSync(liteConfigPath(), 'utf8'));
+    custom.agents = {
+      explorer: { model: 'custom/model', variant: 'high', temperature: 0.3 },
+    };
+    custom.tmux = { enabled: true };
+    writeJson(liteConfigPath(), custom);
+    const before = readFileSync(liteConfigPath(), 'utf8');
+    const mainBefore = readFileSync(mainConfigPath(), 'utf8');
+    const plan = buildRestoreModelPlan(
+      'opencode',
+      ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra'].map((model) => ({
+        id: `openai/${model}`,
+        catalogId: `openai/${model}`,
+        label: model,
+        provider: 'openai',
+        source: 'remote' as const,
+        efforts: ['low', 'medium', 'high', 'xhigh'],
+      })),
+      context(),
+    );
+    expect(plan.canApply).toBe(true);
+    expect(readFileSync(liteConfigPath(), 'utf8')).toBe(before);
+    const result = applyOpenCodePlan(plan);
+    expect(result.applied, JSON.stringify(result.warnings)).toBe(true);
+    expect(
+      getOpenCodeModelRoles().map(({ role, model, effort }) => ({
+        role,
+        model,
+        effort,
+      })),
+    ).toEqual(getShippedModelRoles('opencode'));
+    const after = JSON.parse(readFileSync(liteConfigPath(), 'utf8'));
+    expect(after.agents.explorer.temperature).toBe(0.3);
+    expect(after.tmux).toEqual({ enabled: true });
+    expect(readFileSync(mainConfigPath(), 'utf8')).toBe(mainBefore);
+  });
 
   function cataloguedOpenCodeRoles() {
     return getOpenCodeModelRoles().map((role) =>

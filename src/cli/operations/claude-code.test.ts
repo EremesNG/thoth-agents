@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -17,6 +18,7 @@ import {
   recordCompletedInstall,
 } from '../install-ledger';
 import { resolveExecutingPackageVersion } from '../package-version';
+import { buildRestoreModelPlan } from '../tui/operations';
 import {
   applyClaudeCodePlan,
   buildClaudeCodeInstallPlan,
@@ -515,4 +517,37 @@ describe('claudeCodeOperationAdapter', () => {
     });
     expect(result.applied).toBe(false);
   });
+});
+
+test('restoration cannot mutate the Claude manager-owned cache', () => {
+  const cache = join(
+    home,
+    '.claude',
+    'plugins',
+    'cache',
+    'thoth-plugins',
+    'thoth-agents',
+    '0.4.1',
+    'agents',
+  );
+  mkdirSync(cache, { recursive: true });
+  const path = join(cache, 'explorer.md');
+  const content = `---
+model: custom
+effort: high
+---
+Keep cache content.
+`;
+  writeFileSync(path, content);
+  const plan = buildRestoreModelPlan('claude', [], context());
+  expect(plan.items).toHaveLength(6);
+  expect(plan.canApply).toBe(false);
+  expect(
+    plan.warnings.some(
+      (warning) => warning.code === 'claude-code-model-cache-owned',
+    ),
+  ).toBe(true);
+  expect(applyClaudeCodePlan(plan).applied).toBe(false);
+  expect(readFileSync(path, 'utf8')).toBe(content);
+  expect(manager.mutations).toEqual([]);
 });

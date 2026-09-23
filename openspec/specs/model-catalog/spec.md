@@ -83,3 +83,87 @@ The built-in role defaults MUST keep the root at the highest reasoning effort an
 - **GIVEN** an operator configures a supported model or effort override
 - **WHEN** artifacts are generated
 - **THEN** the override wins without weakening role
+
+### Requirement: Preview shipped model defaults
+
+The model configuration menu MUST offer Restore defaults for each harness, opening a write-free preview of all managed roles using package-defined models and efforts independently of installed customizations and manual drafts.
+
+#### Scenario: US1 - Restore shipped role defaults 1
+
+- **GIVEN** customized roles in OpenCode, Codex or Pi
+- **WHEN** restore is selected
+- **THEN** the preview contains every managed role's shipped model and effort, with no writes
+
+#### Scenario: US1 - Restore shipped role defaults 2
+
+- **GIVEN** a restoration preview
+- **WHEN** Back is chosen
+- **THEN** installed values remain unchanged
+
+#### Scenario: US1 - Restore shipped role defaults 3
+
+- **GIVEN** an applyable restoration preview
+- **WHEN** Apply is chosen
+- **THEN** supported managed model and effort fields are replaced with shipped defaults while unrelated fields remain intact
+
+#### Scenario: US1 - Restore shipped role defaults 4
+
+- **GIVEN** Claude Code's manager-owned package
+- **WHEN** restore is selected
+- **THEN** its own model/effort defaults are displayed with the existing blocking explanation and no cache writes
+
+### Requirement: Apply model defaults explicitly
+
+The restore workflow MUST require explicit Apply, preserve unrelated configuration and existing ownership checks, replace both managed model and effort values, and leave ambient root models unchanged except for OpenCode's managed orchestrator.
+
+#### Scenario: US1 - Restore shipped role defaults 1
+
+- **GIVEN** customized roles in OpenCode, Codex or Pi
+- **WHEN** restore is selected
+- **THEN** the preview contains every managed role's shipped model and effort, with no writes
+
+#### Scenario: US1 - Restore shipped role defaults 2
+
+- **GIVEN** a restoration preview
+- **WHEN** Back is chosen
+- **THEN** installed values remain unchanged
+
+#### Scenario: US1 - Restore shipped role defaults 3
+
+- **GIVEN** an applyable restoration preview
+- **WHEN** Apply is chosen
+- **THEN** supported managed model and effort fields are replaced with shipped defaults while unrelated fields remain intact
+
+#### Scenario: US1 - Restore shipped role defaults 4
+
+- **GIVEN** Claude Code's manager-owned package
+- **WHEN** restore is selected
+- **THEN** its own model/effort defaults are displayed with the existing blocking explanation and no cache writes
+
+### Requirement: Report restore capability limits
+
+Restoration MUST retain catalog/runtime validation and native cache ownership restrictions, block unsupported plans with actionable explanations, and never report unapplied values as restored.
+
+#### Scenario: US1 - Restore shipped role defaults 1
+
+- **GIVEN** customized roles in OpenCode, Codex or Pi
+- **WHEN** restore is selected
+- **THEN** the preview contains every managed role's shipped model and effort, with no writes
+
+#### Scenario: US1 - Restore shipped role defaults 2
+
+- **GIVEN** a restoration preview
+- **WHEN** Back is chosen
+- **THEN** installed values remain unchanged
+
+#### Scenario: US1 - Restore shipped role defaults 3
+
+- **GIVEN** an applyable restoration preview
+- **WHEN** Apply is chosen
+- **THEN** supported managed model and effort fields are replaced with shipped defaults while unrelated fields remain intact
+
+#### Scenario: US1 - Restore shipped role defaults 4
+
+- **GIVEN** Claude Code's manager-owned package
+- **WHEN** restore is selected
+- **THEN** its own model/effort defaults are displayed with the existing blocking explanation and no cache writes

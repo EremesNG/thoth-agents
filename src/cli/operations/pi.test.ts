@@ -12,12 +12,14 @@ import { dirname, join, relative, sep } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { piAdapter } from '../../harness/adapters/pi';
 import { THOTH_OWNED_SKILL_NAMES } from '../../harness/core/owned-skills';
+import { getShippedModelRoles } from '../model-defaults';
 import { PI_PACKAGE_SPECS } from '../pi-install';
 import {
   getPiPackageReceiptPath,
   writePiPackageReceipt,
 } from '../pi-package-receipt';
 import { PI_SPECIALIST_NAMES, syncPiSpecialists } from '../pi-resources';
+import { buildRestoreModelPlan } from '../tui/operations';
 import {
   applyPiPlan,
   buildPiInstallPlan,
@@ -998,4 +1000,49 @@ describe('Pi operations', () => {
     expect(content).toContain('model: "default"');
     expect(content).toContain('effort: "default"');
   });
+});
+
+test('restores Pi defaults while preserving specialist bodies and ambient root', () => {
+  const homeDir = mkdtempSync(join(tmpdir(), 'pi-restore-'));
+  roots.push(homeDir);
+  const defaults = getShippedModelRoles('pi');
+  const paths = defaults.map((role) =>
+    join(homeDir, '.pi', 'agent', 'agents', `thoth-${role.role}.md`),
+  );
+  for (const [index, path] of paths.entries()) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(
+      path,
+      `---
+name: thoth-${defaults[index]?.role}
+managed-by: thoth-agents
+model: custom/model
+effort: high
+tools: read
+---
+Keep this body.
+`,
+    );
+  }
+  const rootPath = join(homeDir, '.pi', 'agent', 'settings.json');
+  writeFileSync(rootPath, '{"defaultModel":"custom-root"}');
+  const before = paths.map((path) => readFileSync(path, 'utf8'));
+  const plan = buildRestoreModelPlan('pi', [], {
+    cwd: homeDir,
+    homeDir,
+    env: {},
+  });
+  expect(plan.canApply).toBe(true);
+  expect(paths.map((path) => readFileSync(path, 'utf8'))).toEqual(before);
+  expect(applyPiPlan(plan).applied).toBe(true);
+  defaults.forEach((role, index) => {
+    const content = readFileSync(paths[index] ?? '', 'utf8');
+    expect(content).toContain(`model: "${role.model}"`);
+    expect(content).toContain(
+      `effort: "${role.effort?.kind === 'effort' ? role.effort.value : ''}"`,
+    );
+    expect(content).toContain('tools: read');
+    expect(content).toContain('Keep this body.');
+  });
+  expect(readFileSync(rootPath, 'utf8')).toBe('{"defaultModel":"custom-root"}');
 });

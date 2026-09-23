@@ -1,6 +1,7 @@
 import { render } from 'ink-testing-library';
 import { describe, expect, test } from 'vitest';
 import type { ProviderCapabilityEvidence } from '../../harness/types';
+import { getShippedModelRoles } from '../model-defaults';
 import type {
   HarnessStatusReport,
   ModelRoleInput,
@@ -265,6 +266,15 @@ function operations(
     modelPlan(_harness, roles) {
       modelPlanRoles.push([...roles]);
       return plan('model', roles);
+    },
+    restoreModelPlan(harness) {
+      const roles = getShippedModelRoles(harness);
+      modelPlanRoles.push(roles);
+      return {
+        ...plan('model', roles),
+        harness,
+        canApply: harness !== 'claude',
+      };
     },
     apply(operationPlan): OperationApplyResult {
       applied.push(operationPlan);
@@ -1707,5 +1717,108 @@ describe('interactive TUI', () => {
 
     expect(lastFrame()).not.toContain('C:\\Users\\EremesNG');
     expect(lastFrame()).toContain('OpenCode Config: [installed]');
+  });
+});
+
+async function chooseRestore(
+  stdin: { write(input: string): void },
+  lastFrame: () => string | undefined,
+) {
+  for (
+    let steps = 0;
+    steps < 12 && !lastFrame()?.includes('> Restore defaults');
+    steps++
+  ) {
+    await press(stdin, 'j');
+  }
+  expect(lastFrame()).toContain('> Restore defaults');
+  await press(stdin, '\r');
+}
+
+describe('restore defaults menu', () => {
+  test.each([
+    ['opencode', openOpenCodeModels],
+    ['codex', openCodexModels],
+    ['claude', openClaudeModels],
+    ['pi', openPiModels],
+  ] as const)('%s previews all shipped roles and cancellation writes nothing', async (harness, openModels) => {
+    const ops = operations();
+    const { stdin, lastFrame } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+    await openModels(stdin);
+    await chooseRestore(stdin, lastFrame);
+    expect(lastFrame()).toContain('Restore default models');
+    expect(lastFrame()).toContain('models and reasoning efforts');
+    expect(ops.modelPlanRoles.at(-1)).toEqual(getShippedModelRoles(harness));
+    expect(ops.applied).toEqual([]);
+    await press(stdin, '\r');
+    expect(lastFrame()).toContain('Restore defaults');
+    expect(ops.applied).toEqual([]);
+  });
+
+  test('restore cancellation preserves the pending manual model draft', async () => {
+    const ops = operations();
+    const { stdin, lastFrame } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+    await dirtyExplorer(stdin);
+    expect(lastFrame()).toContain('*explorer');
+    await chooseRestore(stdin, lastFrame);
+    await press(stdin, 'c');
+    expect(lastFrame()).toContain('*explorer');
+    expect(ops.applied).toEqual([]);
+  });
+
+  test('restore applies only explicitly and reloads installed rows afterward', async () => {
+    const ops = operations();
+    const currentRoles = ops.modelRoles;
+    ops.modelRoles = (harness) =>
+      ops.applied.length > 0
+        ? getShippedModelRoles(harness)
+        : currentRoles(harness);
+    const { stdin, lastFrame } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+    await openCodexModels(stdin);
+    await chooseRestore(stdin, lastFrame);
+    expect(ops.applied).toEqual([]);
+    await press(stdin, 'a');
+    expect(ops.applied).toHaveLength(1);
+    expect(ops.applied[0]?.items).toHaveLength(6);
+    await press(stdin, 'c');
+    expect(lastFrame()).toContain('oracle: gpt-6-astra');
+    expect(lastFrame()).not.toContain('*oracle');
+  });
+
+  test('failed restoration keeps the draft and does not report defaults as saved', async () => {
+    const ops = operations();
+    const apply = ops.apply;
+    ops.apply = (operationPlan) => ({
+      ...apply(operationPlan),
+      applied: false,
+      summary: 'Restore failed',
+    });
+    const { stdin, lastFrame } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+    await dirtyExplorer(stdin);
+    await chooseRestore(stdin, lastFrame);
+    await press(stdin, 'a');
+    expect(lastFrame()).toContain('Restore failed');
+    await press(stdin, 'c');
+    expect(lastFrame()).toContain('*explorer');
+    expect(lastFrame()).not.toContain('oracle: gpt-6-astra');
+  });
+
+  test('blocked Claude restore never applies', async () => {
+    const ops = operations();
+    const { stdin, lastFrame } = render(
+      <App operations={ops} exitOnQuit={false} />,
+    );
+    await openClaudeModels(stdin);
+    await chooseRestore(stdin, lastFrame);
+    await press(stdin, 'a');
+    expect(ops.applied).toEqual([]);
   });
 });

@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -628,4 +634,111 @@ describe('TUI operations', () => {
     });
     expect(report.state).not.toBe('unknown');
   });
+});
+
+describe('shipped model restoration', () => {
+  test('projects exact defaults for each harness independently of installed roles', async () => {
+    const { getShippedModelRoles } = await import('../model-defaults');
+    const expected = [
+      ['explorer', 'gpt-6-luna', 'low'],
+      ['librarian', 'gpt-6-luna', 'high'],
+      ['oracle', 'gpt-6-astra', 'medium'],
+      ['designer', 'gpt-6-sol', 'medium'],
+      ['quick', 'gpt-6-luna', 'medium'],
+      ['deep', 'gpt-6-sol', 'medium'],
+    ];
+    const compact = (harness: HarnessId) =>
+      getShippedModelRoles(harness).map(({ role, model, effort }) => [
+        role,
+        model,
+        effort?.kind === 'effort' ? effort.value : 'inherit',
+      ]);
+    expect(compact('codex')).toEqual(expected);
+    expect(compact('pi')).toEqual(
+      expected.map(([role, model, effort]) => [
+        role,
+        `openai-codex/${model}`,
+        effort,
+      ]),
+    );
+    expect(compact('opencode')).toEqual([
+      ['orchestrator', 'openai/gpt-6-sol', 'xhigh'],
+      ...expected.map(([role, model, effort]) => [
+        role,
+        `openai/${model}`,
+        effort,
+      ]),
+    ]);
+    expect(compact('claude')).toEqual([
+      ['explorer', 'haiku', 'low'],
+      ['librarian', 'sonnet', 'high'],
+      ['oracle', 'opus', 'high'],
+      ['designer', 'sonnet', 'medium'],
+      ['quick', 'haiku', 'low'],
+      ['deep', 'sonnet', 'medium'],
+    ]);
+    const mutated = getShippedModelRoles('codex');
+    const first = mutated[0];
+    if (!first) throw new Error('Missing first default role');
+    first.model = 'custom';
+    if (first.effort?.kind === 'effort') first.effort.value = 'max';
+    expect(compact('codex')).toEqual(expected);
+  });
+});
+
+test('restore plans retain missing or unsupported Codex effort diagnostics', async () => {
+  const { buildRestoreModelPlan } = await import('./operations');
+  const root = mkdtempSync(join(tmpdir(), 'restore-model-plan-'));
+  try {
+    const source = {
+      cwd: root,
+      homeDir: root,
+      codexHome: join(root, '.codex'),
+      packageRoot: process.cwd(),
+    };
+    const missing = buildRestoreModelPlan('codex', [], source);
+    expect(missing.canApply).toBe(false);
+    expect(
+      missing.warnings.some(
+        ({ code }) => code === 'codex-effort-model-unsupported',
+      ),
+    ).toBe(true);
+    const catalog = ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra'].map((model) => ({
+      id: model,
+      catalogId: `openai/${model}`,
+      label: model,
+      provider: 'openai',
+      efforts: ['low', 'medium', 'high', 'xhigh'],
+      source: 'remote' as const,
+    }));
+    const ready = buildRestoreModelPlan('codex', catalog, source);
+    expect(ready.canApply).toBe(true);
+    expect(
+      ready.items.map(({ preview }) => JSON.parse(preview ?? '{}')),
+    ).toEqual([
+      { role: 'explorer', model: 'gpt-6-luna', effort: 'low' },
+      { role: 'librarian', model: 'gpt-6-luna', effort: 'high' },
+      { role: 'oracle', model: 'gpt-6-astra', effort: 'medium' },
+      { role: 'designer', model: 'gpt-6-sol', effort: 'medium' },
+      { role: 'quick', model: 'gpt-6-luna', effort: 'medium' },
+      { role: 'deep', model: 'gpt-6-sol', effort: 'medium' },
+    ]);
+    expect(existsSync(join(root, '.codex'))).toBe(false);
+    const unsupported = buildRestoreModelPlan(
+      'codex',
+      catalog.map((option) => ({ ...option, efforts: ['low'] })),
+      source,
+    );
+    expect(unsupported.canApply).toBe(false);
+    const claude = buildRestoreModelPlan('claude', [], source);
+    expect(claude.canApply).toBe(false);
+    expect(claude.items).toHaveLength(6);
+    expect(
+      claude.warnings.some(
+        ({ code }) => code === 'claude-code-model-cache-owned',
+      ),
+    ).toBe(true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

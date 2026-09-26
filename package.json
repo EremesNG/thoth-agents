@@ -57,6 +57,7 @@
     "integration:verify": "vitest run src/harness/generate-integration-packages.test.ts src/harness/integration-lifecycle.test.ts",
     "verify:pi-package": "node scripts/verify-pi-package.mjs",
     "setup:codex:local": "pnpm run build && tsx scripts/setup-codex-local.ts",
+    "setup:pi:local": "pnpm run build && node scripts/setup-pi-local.mjs",
     "release:notes": "tsx scripts/generate-release-notes.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

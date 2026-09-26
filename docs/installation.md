@@ -163,7 +163,23 @@ npx thoth-agents@latest install --agent=pi --dry-run
 npx thoth-agents@latest install --agent=pi
 ```
 
-For local development, build the checkout and pass its normalized absolute root:
+For local development, install checkout dependencies with `pnpm install`, then
+run this command from the checkout (the Pi equivalent of `setup:codex:local`):
+
+```bash
+pnpm run setup:pi:local
+```
+
+It builds first, then runs the built CLI with `--agent=pi` and the checkout's
+absolute `--local-package-root`, including paths with spaces. Installer failures
+propagate to the command. Restart Pi and open a new session after successful setup.
+
+To preview installation, use `pnpm run setup:pi:local --dry-run`. This still
+builds local artifacts, but the installer does not change global Pi state.
+Existing package conflicts still require explicit manual recovery; this shortcut
+does not remove packages or install thoth-mem.
+
+The equivalent explicit commands remain available:
 
 ```bash
 pnpm run build

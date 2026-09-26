@@ -27,7 +27,9 @@
   package-owned `pi/agents/*.md` assets plus `.thoth-agents-assets.json`; no
   orchestrator child or external implementation tree is packaged. Pi discovers
   the five owned skills from the manifest, while the shared synchronizer
-  materializes the six specialists globally for `pi-subagents-j0k3r`.
+  materializes the six specialists globally for `pi-subagents@0.71.0`.
+  The generated definitions use native `model`/`thinking`, fresh context,
+  depth one, and a background librarian; no builtin pi-subagents agents are used.
 - Both central catalog entries resolve to one `plugin/` bundle containing one copy of the
   five canonical thoth-owned skills, including `plan-reviewer`.
   Harness-specific manifests and MCP files
@@ -50,8 +52,16 @@
   skill against the release tag before any push.
 - No adapter bundles thoth-mem hooks, MCP, skill, lifecycle behavior, or project
   QA executables.
+- Pi background children load ambient extensions. The Thoth extension stays
+  inert when native `PI_SUBAGENT_CHILD=1` is present: no adaptive-root injection
+  and no global specialist synchronization. Automatic missions and scheduled
+  runs are disabled so Thoth retains work/acceptance ownership.
 - Pi's Context7 and web-access integrations are native extensions. Only grep.app
   uses `pi-mcp-adapter`, through the exact attributable global server entry.
+- Pi safely merges `subagents.disableBuiltins: true` into user settings and
+  writes fresh/depth-one extension configuration without replacing unrelated
+  keys. A detected legacy `pi-subagents-j0k3r` package blocks before mutation
+  with manual recovery instead of creating a dual runtime.
 - Pi's pinned RPIV extensions expose root-owned `ask_user_question` and `todo`;
   only root and librarian receive `web_search`, `fetch_content`,
   `get_search_content`, and `source_check` guidance, and package presence remains

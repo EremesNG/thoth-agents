@@ -9,8 +9,8 @@ describe('Pi adapter', () => {
       [{ id: 'provider/first-model' }, 'provider/fallback-model'],
       'provider/first-model',
     ],
-    ['inherit', 'default'],
-  ])('preserves explicit model configuration %j without imposing preset effort', (model, expected) => {
+    ['inherit', 'inherit'],
+  ])('maps explicit models without inventing a thinking inheritance sentinel', (model, expected) => {
     const rendered = piAdapter.render({
       projectRoot: process.cwd(),
       config: { agents: { deep: { model } } } as PluginConfig,
@@ -19,7 +19,8 @@ describe('Pi adapter', () => {
       ({ path }) => path === 'agents/thoth-deep.md',
     );
     expect(deep?.content).toContain(`model: "${expected}"`);
-    expect(deep?.content).toContain('effort: "default"');
+    expect(deep?.content).not.toContain('\nthinking:');
+    expect(deep?.content).not.toContain('\neffort:');
   });
 
   test('assigns the shared specialist model and effort preset through the Pi provider', () => {
@@ -37,7 +38,8 @@ describe('Pi adapter', () => {
         ({ path }) => path === `agents/thoth-${role}.md`,
       );
       expect(artifact?.content).toContain(`model: "openai-codex/${model}"`);
-      expect(artifact?.content).toContain(`effort: "${effort}"`);
+      expect(artifact?.content).toContain(`thinking: "${effort}"`);
+      expect(artifact?.content).not.toContain('\neffort:');
     }
   });
 
@@ -94,24 +96,45 @@ describe('Pi adapter', () => {
     expect(librarian?.content).toContain('default tool names');
   });
 
-  test('waits for automatic terminal notifications instead of polling background tasks', () => {
+  test('activates delegation lazily and uses native single/background lifecycle vocabulary', () => {
+    const root = renderPiRootInstructions();
+    expect(root).toContain('subagents_enable({})');
+    expect(root).toContain('next model request');
+    expect(root).toContain('subagent({ agent, task');
+    expect(root).toContain('context: "fresh"');
+    expect(root).toContain('"profile"');
+    expect(root).toContain('async: true');
+    expect(root).toContain('async: false');
+    expect(root).toContain('workflowScript');
+    expect(root).toContain('runs.all');
+    expect(root).toContain('bg_wait({ id })');
+    expect(root).toContain('action: "status"');
+    expect(root).toContain('action: "stop"');
+    expect(root).toContain('action: "steer"');
+    expect(root).toContain('mode: "steer" | "follow_up" | "auto"');
+    expect(root).not.toMatch(
+      /subagent_(?:run|status|result|cancel|list_tasks)/,
+    );
+    expect(root).not.toContain('parallel/chain/tasks');
+  });
+
+  test('waits for native terminal notifications instead of polling background tasks', () => {
     const root = renderPiRootInstructions();
     const shaping = root.match(/<task-shaping>([\s\S]*?)<\/task-shaping>/)?.[1];
-    expect(shaping).toContain('automatic completion notification');
-    expect(shaping).toContain(
-      'Do not sleep, poll status, or fetch results merely to wait',
-    );
+    expect(shaping).toContain('notify the parent on completion');
+    expect(shaping).toContain('Do not sleep or poll status merely to wait');
     expect(shaping).not.toContain('then use `subagent_status');
     expect(shaping).toContain('terminal completion notification');
   });
 
-  test('uses the installed single-agent tool names and explicit background mode', () => {
+  test('makes background mode explicit when required and keeps simple jobs simple', () => {
     const root = renderPiRootInstructions();
-    expect(root).toContain('mode="background"');
-    expect(root).toContain('Omit `mode` unless the user explicitly requests');
-    expect(root).toContain('subagent_list_tasks');
+    expect(root).toContain('overridable `asyncByDefault`');
+    expect(root).toContain('do not assume background execution');
+    expect(root).toContain('especially for librarian/MCP-backed work');
+    expect(root).toContain('simple single-agent jobs');
+    expect(root).not.toContain('mode="background"');
     expect(root).not.toContain('background=true');
-    expect(root).not.toMatch(/\bsubagent_list\b/);
   });
 
   test('lists only namespaced specialist identities in runtime delegation guidance', () => {
@@ -143,8 +166,8 @@ describe('Pi adapter', () => {
       .map(({ content }) => String(content))
       .join('\n');
     const root = renderPiRootInstructions();
-    expect(root).toContain('subagent_run');
-    expect(root).toContain('subagent_cancel');
+    expect(root).toContain('subagent({ agent, task');
+    expect(root).toContain('action: "stop"');
     expect(serialized).not.toContain('batch input:');
     expect(serialized).not.toContain('task store implementation');
   });

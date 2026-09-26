@@ -275,34 +275,34 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
 export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'pi',
   tools: {
-    delegationTool: 'subagent_run',
-    backgroundDelegationTool: 'subagent_run',
-    backgroundStatusTool:
-      'subagent_status / subagent_result / subagent_list_tasks',
+    delegationTool: 'subagent',
+    backgroundDelegationTool: 'subagent',
+    backgroundStatusTool: 'subagent({ action: "status", id })',
     backgroundWaitInstruction:
-      'For background tasks, respond and wait for the automatic completion notification. Do not sleep, poll status, or fetch results merely to wait; use `subagent_status`, `subagent_result`, or `subagent_list_tasks` only for an explicitly needed intermediate status or stored result.',
+      'Background runs notify the parent on completion. Do not sleep or poll status merely to wait; use `bg_wait({ id })` only when a blocking wait is needed and enabled.',
     userQuestionTool: 'ask_user_question',
     progressTool: 'todo',
-    hostStatusSurface: 'subagent_list_tasks',
+    hostStatusSurface: 'subagent({ action: "status" })',
     lifecycle: {
       freshDelegation:
-        '`subagent_run` with one exact canonical `agent` and no deprecated batch input',
+        '`subagent` with one exact canonical `agent` and `task`, plus `context: "fresh"`',
       sameAssignmentContinuation:
-        '`subagent_status`, `subagent_result`, or `subagent_list_tasks`; use `subagent_send_message` only when the active SDK confirms live steering, and `subagent_continue` only when continuation is explicitly enabled',
+        '`subagent({ action: "steer", id, message, mode: "steer" | "follow_up" | "auto" })` for a live run or an explicit `resume` action for retained work',
       independentContext:
-        'a new objective, phase, mutable surface, or independent judgment starts a fresh `subagent_run` task',
-      statusAction: 'inspect status, collect terminal results, or cancel',
+        'a new objective, phase, mutable surface, or independent judgment starts a fresh `subagent` run with the bounded envelope in `task`',
+      statusAction: 'inspect status, stop, steer, or resume by run id',
       terminalState:
-        'a terminal completion notification or terminal subagent_result outcome',
+        'a terminal completion notification or terminal status outcome',
       nonterminalState:
         'running, queued, timed-out, malformed, or merely message-accepted state',
-      sameSessionProbe: 'subagent_status for the current parent-owned task ID',
+      sameSessionProbe:
+        '`subagent({ action: "status", id })` for the current parent-owned run',
       enforcement: 'runtime-supported',
     },
     roleReference: (role) =>
       role === 'orchestrator'
         ? 'the ambient Pi root'
-        : `subagent_run(agent: "${piSpecialistName(role)}")`,
+        : `subagent({ agent: "${piSpecialistName(role)}", task: "…", context: "fresh"${role === 'librarian' ? ', async: true' : ''} })`,
   },
   capabilities: {
     capabilities: PI_PROMPT_CAPABILITIES,
@@ -313,13 +313,13 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       case 'root-coordinator':
         return 'ambient Pi root session coordinator';
       case 'task':
-        return 'single-agent subagent_run';
+        return 'single-agent subagent';
     }
   },
   renderRoleInvocation(role) {
     return role === 'orchestrator'
       ? 'ambient Pi root'
-      : `subagent_run(agent: "${piSpecialistName(role)}")`;
+      : `subagent({ agent: "${piSpecialistName(role)}", task: "…", context: "fresh"${role === 'librarian' ? ', async: true' : ''} })`;
   },
 };
 

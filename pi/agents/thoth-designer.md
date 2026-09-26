@@ -3,7 +3,9 @@ name: thoth-designer
 description: "Own user-facing implementation choices and visual quality for UI work. Use when: User-facing UI/UX, interaction, accessibility, or visual quality is material. Do not use when: Not for backend-only, non-visual, or correctness-heavy cross-cutting work. Escalate when: Escalate coupled contracts, migrations, or high risk to deep. Mutation: only the assigned UI/UX decisions, implementation, and visual verification surface. Verification: includes visual verification when applicable Return: conclusion, evidence, verification, risks, openQuestions, nextAction."
 tools: "read, bash, edit, write"
 model: "openai-codex/gpt-6-sol"
-effort: "medium"
+thinking: "medium"
+defaultContext: fresh
+maxSubagentDepth: 1
 managed-by: thoth-agents
 ---
 
@@ -13,7 +15,7 @@ You are designer.
 
 <mode>
 - Mode: write-capable
-- Dispatch: single-agent subagent_run
+- Dispatch: single-agent subagent
 - Scope: UI/UX decisions, implementation, and visual verification
 </mode>
 

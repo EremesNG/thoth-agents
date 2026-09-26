@@ -113,7 +113,7 @@ describe('Pi operations', () => {
     if (command === 'node')
       return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
     if (args[0] === '--version')
-      return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+      return { exitCode: 0, stdout: '0.86.1', stderr: '' };
     return {
       exitCode: 0,
       stdout: PI_PACKAGE_SPECS.map(({ source }) => source).join('\n'),
@@ -133,7 +133,7 @@ describe('Pi operations', () => {
     );
     expect(
       install.items.some(({ preview }) =>
-        preview?.includes('pi-subagents-j0k3r@1.5.9'),
+        preview?.includes('pi-subagents@0.71.0'),
       ),
     ).toBe(true);
     expect(
@@ -196,7 +196,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         return {
           exitCode: 0,
           stdout: [
@@ -302,7 +302,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         return { exitCode: 0, stdout: '', stderr: '' };
       },
     });
@@ -667,7 +667,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -713,7 +713,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         return {
           exitCode: 0,
           stdout: configured
@@ -748,7 +748,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -800,7 +800,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -846,7 +846,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -958,7 +958,7 @@ describe('Pi operations', () => {
     expect(applyPiPlan(plan).applied).toBe(true);
     const content = readFileSync(agentPath, 'utf8');
     expect(content).toContain('model: "provider/model"');
-    expect(content).toContain('effort: "high"');
+    expect(content).toContain('thinking: "high"');
     expect(content).toContain('model: keep-this-body-text');
   });
 
@@ -986,6 +986,13 @@ describe('Pi operations', () => {
       context,
     );
     expect(applyPiPlan(plan).applied).toBe(true);
+    const inherited = readFileSync(
+      join(syncOptions.piRoot, 'agents', 'thoth-deep.md'),
+      'utf8',
+    );
+    expect(inherited).toContain('model: "inherit"');
+    expect(inherited).not.toContain('thoth-model-inherit');
+    expect(inherited).not.toContain('thoth-thinking-inherit');
     expect(syncPiSpecialists(syncOptions).success).toBe(true);
     expect(
       defaultPiModelRoles(context).find(({ role }) => role === 'deep'),
@@ -997,8 +1004,8 @@ describe('Pi operations', () => {
       join(syncOptions.piRoot, 'agents', 'thoth-deep.md'),
       'utf8',
     );
-    expect(content).toContain('model: "default"');
-    expect(content).toContain('effort: "default"');
+    expect(content).toContain('model: "inherit"');
+    expect(content).not.toMatch(/^thinking:/m);
   });
 });
 
@@ -1017,7 +1024,7 @@ test('restores Pi defaults while preserving specialist bodies and ambient root',
 name: thoth-${defaults[index]?.role}
 managed-by: thoth-agents
 model: custom/model
-effort: high
+thinking: high
 tools: read
 ---
 Keep this body.
@@ -1039,7 +1046,7 @@ Keep this body.
     const content = readFileSync(paths[index] ?? '', 'utf8');
     expect(content).toContain(`model: "${role.model}"`);
     expect(content).toContain(
-      `effort: "${role.effort?.kind === 'effort' ? role.effort.value : ''}"`,
+      `thinking: "${role.effort?.kind === 'effort' ? role.effort.value : ''}"`,
     );
     expect(content).toContain('tools: read');
     expect(content).toContain('Keep this body.');

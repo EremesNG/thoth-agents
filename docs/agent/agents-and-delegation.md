@@ -78,6 +78,14 @@ that can change the result:
 - `deep` owns coupled contracts, shared state, migrations, concurrency,
   edge-case-heavy, or high-risk implementation.
 
+For Pi, keep simple work as one direct `subagent` launch. Use
+`workflowScript`/`runs.all` only for real parallel fan-out, not as a scheduler for
+ordinary jobs. Librarian launches explicitly request `async: true` because the
+frontmatter and `asyncByDefault` values are overridable and foreground children
+do not load ambient extensions. Tool allowlists do not load research providers;
+provider and required-tool registration must be verified before claiming
+evidence.
+
 Native harness execution and lifecycle are the sole authority for role selection,
 fan-out, status/wait, steering, cancellation, and terminal results. If a native
 primitive is unavailable or unproven, report the degradation and use a truthful
@@ -100,6 +108,7 @@ clarify its current findings without issuing a new judgment.
 | OpenCode | Call `task` without `task_id`. | Pass the prior `task_id`. |
 | Codex | Call `collaboration.spawn_agent` with `fork_turns="none"`; set `agent_type` when the active schema exposes it, otherwise use a role-prefixed bounded fallback and report instruction-only selection. | Call `collaboration.followup_task` for the existing agent. |
 | Claude Code | Use a normal `Agent` invocation and do not use `fork` for independent work. | Use `SendMessage` with the prior agent ID. |
+| Pi | Call `subagents_enable({})`, then on the next request call `subagent` with one canonical `agent` and a bounded `task`. Thoth normally requests `context: "fresh"`; native `fork` and `profile` remain available when policy intentionally selects them. `async` follows the overridable runtime default, so pass `async: true` whenever background execution is required, especially for librarian/MCP work. | Use native `subagent` actions with the known run `id`: `status`, `stop`, or `steer` (`mode: steer|follow_up|auto`). |
 
 ## Entrypoints and tests
 

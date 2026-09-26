@@ -77,12 +77,15 @@ execution does not.
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
   then may it migrate attributable legacy root/skill
-  copies, install delegation, Context7, pi-web-access, the grep-only MCP adapter,
+  copies, install pinned `pi-subagents@0.71.0`, Context7, pi-web-access, the grep-only MCP adapter,
   and the RPIV question and todo extensions,
-  synchronize six specialists, install four external skills, run provider
+  merge builtin-disablement and fresh depth-one delegation settings without
+  replacing unrelated user keys, synchronize six specialists, install four external skills, run provider
   setup, and commit the unchanged last-complete ledger. A custom
   `PI_CODING_AGENT_DIR`, unowned canonical agent, or conflicting global `grep`
-  entry blocks mutation; partial native package state remains visible and is
+  entry blocks mutation. A configured legacy `pi-subagents-j0k3r` runtime also
+  blocks before mutation and returns manual removal guidance; setup never
+  deletes it or loads both delegation runtimes. Partial native package state remains visible and is
   recovered by resolving the blocker and rerunning the complete flow.
 - OpenCode runtime update checks are notification-only. They do not rewrite
   config, invalidate package state, or run package installation; operators must

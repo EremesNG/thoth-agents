@@ -899,7 +899,7 @@ export function defaultPiModelRoles(
         role: role.name,
         model: model && model !== 'default' ? model : 'inherit',
         effort: (() => {
-          const value = /^effort:\s*["']?([^"'\r\n]+)/m
+          const value = /^thinking:\s*["']?([^"'\r\n]+)/m
             .exec(content)?.[1]
             ?.trim();
           return value && value !== 'default' && value !== 'inherit'
@@ -1006,9 +1006,11 @@ function replaceFrontmatterField(
     .slice(1, end)
     .findIndex((line) => line.startsWith(prefix));
   const absoluteIndex = index === -1 ? -1 : index + 1;
-  const nativeValue =
-    value === undefined || value === 'inherit' ? 'default' : value;
-  const replacement = `${field}: ${JSON.stringify(nativeValue)}`;
+  if (value === undefined) {
+    if (absoluteIndex !== -1) lines.splice(absoluteIndex, 1);
+    return lines.join(newline);
+  }
+  const replacement = `${field}: ${JSON.stringify(value)}`;
   if (absoluteIndex === -1) lines.splice(1, 0, replacement);
   else lines[absoluteIndex] = replacement;
   return lines.join(newline);
@@ -1051,8 +1053,21 @@ export function applyPiPlan(plan: OperationPlan): OperationApplyResult {
       content = replaceFrontmatterField(content, 'model', role.model);
       content = replaceFrontmatterField(
         content,
-        'effort',
+        'thinking',
         role.effort?.kind === 'effort' ? role.effort.value : undefined,
+      );
+      // Remove transitional private markers written by prerelease migration
+      // builds. Native model inheritance is explicit; thinking inheritance is
+      // represented by omission according to the pinned runtime parser.
+      content = replaceFrontmatterField(
+        content,
+        'thoth-model-inherit',
+        undefined,
+      );
+      content = replaceFrontmatterField(
+        content,
+        'thoth-thinking-inherit',
+        undefined,
       );
       writePiManagedText(target, content);
       changedTargets.push({

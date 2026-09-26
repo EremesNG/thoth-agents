@@ -3,11 +3,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, test } from 'vitest';
 import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
 import { PI_ROOT_END, PI_ROOT_START } from '../harness/writers/pi-agent';
@@ -59,6 +61,67 @@ describe('Pi native root probe', () => {
     expect(observedArgs.filter((arg) => arg === '--extension')).toHaveLength(2);
     expect(observedHome).not.toContain('.pi\\agent');
     expect(existsSync(observedHome)).toBe(false);
+  });
+  test('observes the generated provider through transcript system messages', () => {
+    const prompt = `${PI_ROOT_START}\nroot\n${PI_ROOT_END}`;
+    const messages = [{ role: 'system', content: prompt }];
+    const result = observePiNativeRoot({
+      extensionPath: '/unused/pi.js',
+      manifestSha256: 'a'.repeat(64),
+      extensionSha256: 'b'.repeat(64),
+      commandExecutor: (_command, args) => {
+        const observerPath = args[args.lastIndexOf('--extension') + 1];
+        const source = readFileSync(observerPath, 'utf8')
+          .replace(/^import .*;$/gm, '')
+          .replace('export default function observer', 'function observer');
+        let stdout = '';
+        const handlers = new Map<string, (event: unknown) => void>();
+        const pi = {
+          on: (name: string, handler: (event: unknown) => void) =>
+            handlers.set(name, handler),
+          registerProvider: (
+            _name: string,
+            provider: {
+              streamSimple: (
+                model: unknown,
+                context: unknown,
+                options: unknown,
+              ) => void;
+            },
+          ) => {
+            provider.streamSimple(
+              {},
+              { messages },
+              {
+                onPayload: (payload: unknown) =>
+                  handlers.get('before_provider_request')?.({ payload }),
+              },
+            );
+          },
+        };
+        runInNewContext(`${source}\nobserver(pi);`, {
+          pi,
+          process: {
+            stdout: {
+              write: (value: string) => {
+                stdout += value;
+              },
+            },
+          },
+          queueMicrotask: (callback: () => void) => callback(),
+          createAssistantMessageEventStream: () => ({
+            push: () => {},
+            end: () => {},
+          }),
+          getCurrentSystemPrompt: (actual: unknown) => {
+            expect(actual).toBe(messages);
+            return prompt;
+          },
+        });
+        return { exitCode: 0, stdout, stderr: '' };
+      },
+    });
+    expect(result.state).toBe('observed-at-install');
   });
   test('accepts the final provider observation from stderr', () => {
     const root = mkdtempSync(join(tmpdir(), 'thoth-pi-probe-'));

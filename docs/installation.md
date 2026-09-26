@@ -34,7 +34,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository to initialize `.thoth/` |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `pi-subagents-j0k3r` and the research packages | The package injects one bounded adaptive-root block, synchronizes six specialists, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `pi-subagents@0.71.0` and the research packages | The package injects one bounded adaptive-root block, configures fresh depth-one delegation, synchronizes six specialists, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -154,7 +154,7 @@ defaults; thoth-agents never edits that cache.
 
 ## Pi
 
-Pi requires `@earendil-works/pi-coding-agent` `0.84.4` or a compatible
+Pi requires `@earendil-works/pi-coding-agent` `0.86.1` or a compatible
 evidenced release and Node.js `>=22.19`. Preview the complete global setup
 before applying it:
 
@@ -184,8 +184,8 @@ The CLI installs and verifies these Pi packages in order:
 
 1. the exact executing `npm:thoth-agents@<version>` first-party package, or the
    explicit local package root selected by `--local-package-root`;
-2. `pi-subagents-j0k3r@1.5.9` for native single-specialist foreground and
-   background tasks;
+2. `pi-subagents@0.71.0` for native single-specialist and scripted workflow
+   execution;
 3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
 4. `pi-web-access@0.27.0` as the native web extension exposing the default
    `web_search`, `fetch_content`, `get_search_content`, and `source_check` tools;
@@ -193,6 +193,11 @@ The CLI installs and verifies these Pi packages in order:
 6. `@juicesharp/rpiv-ask-user-question@2.9.0` for the root's interactive
    `ask_user_question` dialog;
 7. `@juicesharp/rpiv-todo@2.9.0` for root-owned, session-local `todo` progress.
+
+The old `pi-subagents-j0k3r` runtime is not supported beside `pi-subagents`.
+When setup detects it, setup stops before mutation and prints a manual `pi remove`
+recovery command; it never deletes a user package or silently loads both runtimes.
+Review ownership, remove the old runtime explicitly, and rerun setup.
 
 Before running complete setup on an installation that has either replaced web
 package, remove both with Pi's native package manager:
@@ -261,6 +266,18 @@ package succeeds and a later step fails, the ledger remains unchanged; resolve
 the reported blocker and rerun the idempotent complete flow. Do not delete
 unknown Pi packages or provider assets as a recovery shortcut.
 
+Setup safely merges `subagents.disableBuiltins: true` into Pi's user
+`settings.json` and writes `defaultSubagentContext: "fresh"` plus
+`maxSubagentDepth: 1`, `missions.enabled: false`, and
+`scheduledRuns.enabled: false` under
+`<agent-dir>/extensions/subagent/config.json`, preserving unrelated settings.
+Every specialist also declares fresh context and depth one. The librarian is
+background-default because research providers and MCP tools must be loaded in
+its child runtime. That frontmatter default is overridable, so root guidance
+also passes `async:true` for librarian calls regardless of `asyncByDefault`.
+Its tool allowlist does not load providers, so it verifies provider/tool
+registration before claiming evidence.
+
 The six specialist definitions use `thoth-` names in both filenames and
 frontmatter: `thoth-explorer`, `thoth-librarian`, `thoth-oracle`,
 `thoth-designer`, `thoth-quick`, and `thoth-deep`. For example,
@@ -268,17 +285,27 @@ frontmatter: `thoth-explorer`, `thoth-librarian`, `thoth-oracle`,
 Generic definitions such as `explorer.md` can coexist; an unowned definition
 using a reserved `thoth-` specialist name blocks installation.
 
-Fresh work uses `subagent_run` with one exact namespaced `agent`, for example
-`agent: "thoth-explorer"`. Status,
-result, list, message, cancellation, and optional continuation remain owned by
-`pi-subagents-j0k3r`; queued messages and nonterminal status never count as
-fan-in. Live steering depends on the active Pi SDK, and continuation stays
-disabled unless the operator enables it explicitly.
+Delegation is lazily activated with `subagents_enable({})`; `subagent` becomes
+available on the next model request. Thoth normally starts fresh work with
+`subagent({agent:"thoth-explorer", task:"...", context:"fresh", async:true})`.
+Put the bounded Thoth envelope in `task`. Native context also supports `fork`
+and `profile`; Thoth policy chooses `fresh` unless inherited context is
+intentional. `async` follows the operator's overridable `asyncByDefault`, so
+callers pass `async:true` whenever background execution is required, especially
+for librarian/MCP work. Use `async:false` only for an intentional foreground
+run. Foreground children do not load ambient parent extensions.
+
+Use direct single-agent calls for simple work. Genuine parallel fan-out may use
+`workflowScript` with `runs.all`; the old `parallel`, `chain`, and `tasks` inputs
+are unsupported. Native lifecycle actions are
+`subagent({action:"status"|"stop"|"steer", id, ...})`; steering mode is
+`steer|follow_up|auto`. When enabled, `bg_wait({id})` provides a blocking wait.
+Queued messages and nonterminal status never count as fan-in.
 
 Pi specialists use the shared OpenAI role preset through the `openai-codex`
 provider. The ambient root retains Pi's selected model and thinking level:
 
-| Specialist | Model | Effort |
+| Specialist | Model | Thinking |
 | --- | --- | --- |
 | explorer | `openai-codex/gpt-6-luna` | `low` |
 | librarian | `openai-codex/gpt-6-luna` | `high` |
@@ -287,15 +314,16 @@ provider. The ambient root retains Pi's selected model and thinking level:
 | quick | `openai-codex/gpt-6-luna` | `medium` |
 | deep | `openai-codex/gpt-6-sol` | `medium` |
 
-Synchronization fills missing model/effort fields in older managed definitions
-and preserves explicit frontmatter values. Model configuration stores an explicit
-inherit choice as Pi's native `default` value so later synchronization does not
-restore the packaged preset. Pi resolves model and effort independently: a
-configured role profile takes precedence over the definition, followed by global
-defaults and then the root. An explicit model override supplied to the adapter
-keeps its provider-qualified ID and inherits effort instead of imposing the
-OpenAI preset's effort. Use a provider/model available in the local Pi catalog;
-installation does not authenticate providers or silently substitute models.
+Definitions use pi-subagents' `model` and `thinking` fields. Synchronization
+translates old managed `model: default` to native `model: inherit`, translates
+old `effort` values to `thinking`, and preserves explicit frontmatter values.
+Native model inheritance is explicit so `subagents.defaultModel` cannot intercept
+it. Thinking remains independent: an inherit choice omits `thinking`, matching
+the pinned runtime parser rather than inventing a sentinel. An explicit model
+override keeps its provider-qualified ID and omits `thinking`, so the runtime
+selects thinking independently instead of imposing the OpenAI preset. Use a
+provider/model available in the local Pi catalog; installation does not
+authenticate providers or silently substitute models.
 
 ## Skill ownership
 

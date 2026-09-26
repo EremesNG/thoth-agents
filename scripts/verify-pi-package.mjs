@@ -125,9 +125,15 @@ try {
       JSON.stringify({ extensions: ['./dist/pi.js'], skills: ['./skills'] })
   )
     throw new Error('Packed Pi manifest is invalid.');
+  const agentContents = new Map();
   const agents = readdirSync(join(candidate, 'pi', 'agents'))
     .filter((name) => name.endsWith('.md'))
     .sort();
+  for (const agent of agents)
+    agentContents.set(
+      agent,
+      readFileSync(join(candidate, 'pi', 'agents', agent), 'utf8'),
+    );
   if (
     JSON.stringify(agents) !==
     JSON.stringify([
@@ -142,6 +148,16 @@ try {
     throw new Error(
       `Packed specialist inventory is invalid: ${agents.join(', ')}`,
     );
+  for (const [agent, content] of agentContents) {
+    if (
+      !content.includes('defaultContext: fresh') ||
+      !content.includes('maxSubagentDepth: 1') ||
+      content.includes('\neffort:')
+    )
+      throw new Error(`Packed specialist contract is stale: ${agent}`);
+  }
+  if (!agentContents.get('thoth-librarian.md')?.includes('async: true'))
+    throw new Error('Packed librarian must run in background.');
   const skills = readdirSync(join(candidate, 'skills'), { withFileTypes: true })
     .filter(
       (entry) =>
@@ -156,6 +172,7 @@ try {
     );
   for (const forbidden of [
     'thoth-mem',
+    'pi-subagents',
     'pi-subagents-j0k3r',
     'pi-mcp-adapter',
     'context7',

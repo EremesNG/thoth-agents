@@ -1,16 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import {
-  copyFileSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { piAdapter } from '../harness/adapters/pi';
@@ -25,6 +15,10 @@ import {
   PI_ROOT_START,
 } from '../harness/writers/pi-agent';
 import { findPackageRoot } from './package-root';
+import {
+  assertSafePiManagedPath,
+  writePiManagedText,
+} from './pi-managed-write';
 import { migrateLegacyPiResources } from './pi-migration';
 import { observePiNativeRoot } from './pi-native-probe';
 import {
@@ -38,15 +32,15 @@ import {
 import { type PiPathOptions, type PiPaths, resolvePiPaths } from './pi-paths';
 import { syncPiSpecialists } from './pi-resources';
 
-export const PI_MINIMUM_VERSION = '0.84.4';
+export const PI_MINIMUM_VERSION = '0.86.1';
 export const PI_NODE_MINIMUM = '22.19.0';
 export const PI_COMMAND_TIMEOUT_MS = 120_000;
 export const PI_PACKAGE_SPECS = [
   {
     id: 'delegation',
-    source: 'npm:pi-subagents-j0k3r@1.5.9',
-    packageName: 'pi-subagents-j0k3r',
-    version: '1.5.9',
+    source: 'npm:pi-subagents@0.71.0',
+    packageName: 'pi-subagents',
+    version: '0.71.0',
   },
   {
     id: 'context7',
@@ -116,7 +110,7 @@ export interface PiSetupOptions extends PiPathOptions {
 }
 
 export interface PiSetupPlanItem {
-  kind: 'preflight' | 'package' | 'root' | 'agent' | 'mcp';
+  kind: 'preflight' | 'package' | 'root' | 'agent' | 'settings' | 'mcp';
   description: string;
   target: string;
   command?: { command: string; args: string[] };
@@ -291,10 +285,67 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readJsonObject(path: string): Record<string, unknown> {
+  assertSafePiManagedPath(path);
   if (!existsSync(path)) return {};
   const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
   if (!isRecord(parsed)) throw new Error(`${path} must contain a JSON object.`);
   return parsed;
+}
+
+export function mergePiUserSettings(
+  current: Record<string, unknown>,
+): Record<string, unknown> {
+  if (current.subagents !== undefined && !isRecord(current.subagents))
+    throw new Error('Pi settings subagents must be a JSON object.');
+  return {
+    ...current,
+    subagents: {
+      ...(isRecord(current.subagents) ? current.subagents : {}),
+      disableBuiltins: true,
+    },
+  };
+}
+
+function isLegacyDelegationSource(source: string): boolean {
+  return /^npm:pi-subagents-j0k3r(?:@|$)/.test(source);
+}
+
+function configuredLegacyDelegationSource(
+  settings: Record<string, unknown>,
+): string | undefined {
+  if (!Array.isArray(settings.packages)) return undefined;
+  for (const entry of settings.packages) {
+    const source =
+      typeof entry === 'string'
+        ? entry
+        : isRecord(entry) && typeof entry.source === 'string'
+          ? entry.source
+          : undefined;
+    if (source && isLegacyDelegationSource(source)) return source;
+  }
+  return undefined;
+}
+
+export function mergePiSubagentConfig(
+  current: Record<string, unknown>,
+): Record<string, unknown> {
+  for (const key of ['missions', 'scheduledRuns']) {
+    if (current[key] !== undefined && !isRecord(current[key]))
+      throw new Error(`Pi subagent config ${key} must be a JSON object.`);
+  }
+  return {
+    ...current,
+    defaultSubagentContext: 'fresh',
+    maxSubagentDepth: 1,
+    missions: {
+      ...(isRecord(current.missions) ? current.missions : {}),
+      enabled: false,
+    },
+    scheduledRuns: {
+      ...(isRecord(current.scheduledRuns) ? current.scheduledRuns : {}),
+      enabled: false,
+    },
+  };
 }
 
 export function mergePiGrepMcpConfig(
@@ -413,8 +464,26 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
     );
   }
   blockers.push(...findAgentConflicts(paths));
+  let settingsContent: string | undefined;
+  let subagentConfigContent: string | undefined;
   let mcpContent: string | undefined;
   try {
+    const userSettings = readJsonObject(paths.settingsPath);
+    const legacySource = configuredLegacyDelegationSource(userSettings);
+    if (legacySource)
+      throw new Error(
+        `Legacy delegation runtime ${legacySource} is configured in ${paths.settingsPath}. Review its ownership, then run: pi remove ${legacySource} --no-approve. Rerun setup before installing pi-subagents@0.71.0.`,
+      );
+    settingsContent = `${JSON.stringify(
+      mergePiUserSettings(userSettings),
+      null,
+      2,
+    )}\n`;
+    subagentConfigContent = `${JSON.stringify(
+      mergePiSubagentConfig(readJsonObject(paths.subagentConfigPath)),
+      null,
+      2,
+    )}\n`;
     mcpContent = `${JSON.stringify(
       mergePiGrepMcpConfig(readJsonObject(paths.mcpConfigPath)),
       null,
@@ -441,7 +510,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
   const items: PiSetupPlanItem[] = [
     {
       kind: 'preflight',
-      description: 'Verify Node.js >=22.19 and Pi >=0.84.4 before mutation',
+      description: 'Verify Node.js >=22.19 and Pi >=0.86.1 before mutation',
       target: 'node/pi runtime',
     },
     {
@@ -459,6 +528,22 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
       target: pkg.source,
       command: { command: 'pi', args: ['install', pkg.source, '--no-approve'] },
     })),
+    ...(settingsContent === undefined || subagentConfigContent === undefined
+      ? []
+      : [
+          {
+            kind: 'settings' as const,
+            description: 'Disable pi-subagents bundled agent definitions',
+            target: paths.settingsPath,
+            content: settingsContent,
+          },
+          {
+            kind: 'settings' as const,
+            description: 'Configure fresh depth-one pi-subagents execution',
+            target: paths.subagentConfigPath,
+            content: subagentConfigContent,
+          },
+        ]),
     ...(mcpContent === undefined
       ? []
       : [
@@ -661,21 +746,7 @@ function defaultCommandExecutor(
   };
 }
 
-export function writePiManagedText(path: string, content: string): boolean {
-  if (existsSync(path) && readFileSync(path, 'utf8') === content) return false;
-  mkdirSync(dirname(path), { recursive: true });
-  const temporaryPath = `${path}.tmp`;
-  const backupPath = `${path}.bak`;
-  writeFileSync(temporaryPath, content);
-  try {
-    if (existsSync(path)) copyFileSync(path, backupPath);
-    renameSync(temporaryPath, path);
-  } catch (error) {
-    rmSync(temporaryPath, { force: true });
-    throw error;
-  }
-  return true;
-}
+export { writePiManagedText } from './pi-managed-write';
 
 export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
   const diagnostics = [...plan.diagnostics];
@@ -696,6 +767,15 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
   let receiptCommitted = false;
   let configuredPackageRoot: string | undefined;
   try {
+    // Validate every shared configuration surface before package commands mutate
+    // the installation. The writer repeats these checks to narrow TOCTOU races.
+    for (const path of [
+      plan.paths.settingsPath,
+      plan.paths.subagentConfigPath,
+      plan.paths.mcpConfigPath,
+    ])
+      assertSafePiManagedPath(path);
+
     const node = execute('node', ['--version']);
     if (
       node.exitCode !== 0 ||
@@ -728,6 +808,19 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
     };
     const receipt = readPiPackageReceipt(receiptOptions);
     const configuredBefore = parsePiPackageList(before.stdout);
+    const legacyDelegation = configuredBefore.find((candidate) =>
+      isLegacyDelegationSource(candidate.source),
+    );
+    if (legacyDelegation)
+      return {
+        success: false,
+        changed,
+        diagnostics,
+        error: `Legacy delegation runtime ${legacyDelegation.source} is still configured. Loading it beside npm:pi-subagents@0.71.0 is unsupported.`,
+        failedStep: 'preflight',
+        installedPackages,
+        manualRecovery: `Review the legacy package ownership, then run: pi remove ${legacyDelegation.source} --no-approve`,
+      };
     const knownReceiptSource =
       receipt.status === 'valid' ? receipt.receipt.source : undefined;
     const firstPartyBefore = getPiFirstPartyPackages(
@@ -908,10 +1001,18 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
     }
     for (const item of plan.items.filter(
       (candidate) =>
-        candidate.content !== undefined && candidate.kind === 'mcp',
+        candidate.content !== undefined &&
+        (candidate.kind === 'settings' || candidate.kind === 'mcp'),
     )) {
-      if (writePiManagedText(item.target, item.content ?? ''))
-        changed.push(item.target);
+      const content =
+        item.target === plan.paths.settingsPath
+          ? `${JSON.stringify(mergePiUserSettings(readJsonObject(item.target)), null, 2)}\n`
+          : item.target === plan.paths.subagentConfigPath
+            ? `${JSON.stringify(mergePiSubagentConfig(readJsonObject(item.target)), null, 2)}\n`
+            : item.target === plan.paths.mcpConfigPath
+              ? `${JSON.stringify(mergePiGrepMcpConfig(readJsonObject(item.target)), null, 2)}\n`
+              : (item.content ?? '');
+      if (writePiManagedText(item.target, content)) changed.push(item.target);
     }
     const resources = syncPiSpecialists({
       packageRoot: configuredPackageRoot,

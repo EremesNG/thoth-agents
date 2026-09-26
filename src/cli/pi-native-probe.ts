@@ -97,7 +97,7 @@ export function observePiNativeRoot(
       observerPath,
       `import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
+import { createAssistantMessageEventStream, getCurrentSystemPrompt } from '@earendil-works/pi-ai';
 const manifestSha256=${JSON.stringify(options.manifestSha256)};
 const extensionSha256=${JSON.stringify(options.extensionSha256)};
 const packageRoot=${JSON.stringify(options.packageRoot)};
@@ -142,12 +142,16 @@ export default function observer(pi) {
       const stream=createAssistantMessageEventStream();
       queueMicrotask(async () => {
         try {
-          skills=discoveredSkills(context.systemPrompt);
-          const raw={systemPrompt:context.systemPrompt,messages:context.messages};
+          const systemPrompt=getCurrentSystemPrompt(context.messages);
+          skills=discoveredSkills(systemPrompt);
+          const raw={systemPrompt};
           if (streamOptions?.onPayload) await streamOptions.onPayload(raw);
           const message={role:'assistant',content:[{type:'text',text:'probe'}],api:model.api,provider:model.provider,model:model.id,usage:{input:0,output:1,cacheRead:0,cacheWrite:0,totalTokens:1,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},stopReason:'stop',timestamp:Date.now()};
-          stream.push({type:'done',message});
-        } catch (error) { stream.push({type:'error',error}); }
+          stream.push({type:'start',partial:message});
+          stream.push({type:'done',reason:'stop',message});
+        } catch (error) {
+          stream.push({type:'error',reason:'error',error:{role:'assistant',content:[],api:model.api,provider:model.provider,model:model.id,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}},stopReason:'error',errorMessage:String(error),timestamp:Date.now()}});
+        } finally { stream.end(); }
       });
       return stream;
     }

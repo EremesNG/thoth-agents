@@ -150,7 +150,7 @@ describe('install', () => {
           if (command === 'node')
             return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
           if (args[0] === '--version')
-            return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+            return { exitCode: 0, stdout: '0.86.1', stderr: '' };
           if (args[0] === 'list')
             return {
               exitCode: 0,
@@ -188,7 +188,7 @@ describe('install', () => {
     expect(result).toBe(0);
     expect(events).toEqual([
       'package:npm:thoth-agents@0.6.0',
-      'package:npm:pi-subagents-j0k3r@1.5.9',
+      'package:npm:pi-subagents@0.71.0',
       'package:npm:@upstash/context7-pi@0.1.2',
       'package:npm:pi-web-access@0.27.0',
       'package:npm:pi-mcp-adapter@2.32.1',

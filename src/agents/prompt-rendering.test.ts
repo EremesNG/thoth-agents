@@ -208,8 +208,12 @@ describe('AI-first prompt rendering', () => {
     expect(claude).toContain('Agent(run_in_background=true)');
     expect(claude).toContain('TaskOutput');
     expect(opencode).toContain('task_status');
-    expect(pi).toContain('subagent_run');
-    expect(pi).toContain('subagent_result');
+    expect(pi).toContain('subagents_enable({})');
+    expect(pi).toContain('subagent({ agent, task');
+    expect(pi).toContain('action: "status"');
+    expect(pi).toContain('action: "stop"');
+    expect(pi).not.toContain('subagent_run');
+    expect(pi).not.toContain('subagent_result');
   });
 
   test('keeps child memory authorization and compact return fields', () => {

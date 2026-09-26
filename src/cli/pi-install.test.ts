@@ -3,8 +3,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,9 +16,13 @@ import {
   applyPiSetup,
   buildPiSetupPlan,
   mergePiGrepMcpConfig,
+  mergePiSubagentConfig,
+  mergePiUserSettings,
+  PI_MINIMUM_VERSION,
   PI_PACKAGE_SPECS,
   parsePiPackageList,
   verifyPiFirstPartyPackage,
+  writePiManagedText,
 } from './pi-install';
 import {
   readPiPackageReceipt,
@@ -100,7 +106,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         if (args[0] === 'install') installed = true;
         if (args[0] === 'list')
           return {
@@ -149,7 +155,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         if (args[0] === 'install') installed = true;
         if (args[0] === 'list')
           return {
@@ -242,13 +248,14 @@ describe('Pi setup', () => {
         .map(({ target }) => target),
     ).toEqual([
       'npm:thoth-agents@0.3.12',
-      'npm:pi-subagents-j0k3r@1.5.9',
+      'npm:pi-subagents@0.71.0',
       'npm:@upstash/context7-pi@0.1.2',
       'npm:pi-web-access@0.27.0',
       'npm:pi-mcp-adapter@2.32.1',
       'npm:@juicesharp/rpiv-ask-user-question@2.9.0',
       'npm:@juicesharp/rpiv-todo@2.9.0',
     ]);
+    expect(PI_MINIMUM_VERSION).toBe('0.86.1');
     expect(PI_PACKAGE_SPECS).toHaveLength(6);
     expect(PI_PACKAGE_SPECS.map(({ source }) => source)).not.toEqual(
       expect.arrayContaining([
@@ -265,6 +272,8 @@ describe('Pi setup', () => {
       'package',
       'package',
       'package',
+      'settings',
+      'settings',
       'mcp',
       'agent',
       'agent',
@@ -282,8 +291,49 @@ describe('Pi setup', () => {
     expect(existsSync(plan.paths.piRoot)).toBe(false);
   });
 
+  test('rejects Pi hosts below the upstream 0.86.1 minimum before installation', () => {
+    const paths = fixture();
+    const calls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        calls.push(`${command} ${args.join(' ')}`);
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '0.86.0', stderr: '' };
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      error: expect.stringContaining('Pi >=0.86.1 is required'),
+      installedPackages: [],
+    });
+    expect(calls.some((call) => call.includes('pi install'))).toBe(false);
+  });
+
   test('applies packages, one root, six specialists, and exact proxy-only grep configuration', () => {
     const paths = fixture();
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const subagentConfigPath = join(
+      paths.homeDir,
+      '.pi',
+      'agent',
+      'extensions',
+      'subagent',
+      'config.json',
+    );
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    mkdirSync(dirname(subagentConfigPath), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ theme: 'dark', packages: ['npm:unrelated@1.0.0'] }),
+    );
+    writeFileSync(
+      subagentConfigPath,
+      JSON.stringify({ inlineToolDisplay: 'summary' }),
+    );
     let firstPartyInstalled = false;
     const plan = buildPiSetupPlan({
       ...paths,
@@ -291,7 +341,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         if (args[0] === 'list')
           return {
             exitCode: 0,
@@ -305,6 +355,22 @@ describe('Pi setup', () => {
           };
         if (args[0] === 'install' && args[1] === 'npm:thoth-agents@0.3.12')
           firstPartyInstalled = true;
+        if (
+          args[0] === 'install' &&
+          args[1] === 'npm:@juicesharp/rpiv-todo@2.9.0'
+        ) {
+          const changedMcpPath = join(
+            paths.homeDir,
+            '.config',
+            'mcp',
+            'mcp.json',
+          );
+          mkdirSync(dirname(changedMcpPath), { recursive: true });
+          writeFileSync(
+            changedMcpPath,
+            JSON.stringify({ imports: ['added-after-plan.json'] }),
+          );
+        }
         return { exitCode: 0, stdout: 'installed', stderr: '' };
       },
     });
@@ -321,7 +387,22 @@ describe('Pi setup', () => {
         .filter(({ kind }) => kind === 'agent')
         .every(({ target }) => existsSync(target)),
     ).toBe(true);
+    const settings = JSON.parse(readFileSync(plan.paths.settingsPath, 'utf8'));
+    const subagentConfig = JSON.parse(
+      readFileSync(plan.paths.subagentConfigPath, 'utf8'),
+    );
+    expect(settings).toMatchObject({
+      theme: 'dark',
+      packages: ['npm:unrelated@1.0.0'],
+      subagents: { disableBuiltins: true },
+    });
+    expect(subagentConfig).toMatchObject({
+      inlineToolDisplay: 'summary',
+      defaultSubagentContext: 'fresh',
+      maxSubagentDepth: 1,
+    });
     const mcp = JSON.parse(readFileSync(plan.paths.mcpConfigPath, 'utf8'));
+    expect(mcp.imports).toEqual(['added-after-plan.json']);
     expect(mcp.mcpServers.grep).toEqual({
       url: 'https://mcp.grep.app',
       protocolVersion: 'legacy',
@@ -339,7 +420,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         if (args[0] === 'list')
           return {
             exitCode: 0,
@@ -378,7 +459,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         if (args[0] === 'list')
           return {
             exitCode: 0,
@@ -404,7 +485,7 @@ describe('Pi setup', () => {
       error: expect.stringContaining(failedSource),
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:pi-subagents-j0k3r@1.5.9',
+        'npm:pi-subagents@0.71.0',
         'npm:@upstash/context7-pi@0.1.2',
       ],
     });
@@ -424,7 +505,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         if (args[0] === 'list')
           return {
             exitCode: 0,
@@ -440,6 +521,151 @@ describe('Pi setup', () => {
       failedStep: 'package',
       installedPackages: ['npm:thoth-agents@0.3.12'],
     });
+  });
+
+  test('merges required delegation settings without overwriting unrelated user settings', () => {
+    expect(
+      mergePiUserSettings({ theme: 'dark', subagents: { fleetView: false } }),
+    ).toEqual({
+      theme: 'dark',
+      subagents: { fleetView: false, disableBuiltins: true },
+    });
+    expect(
+      mergePiSubagentConfig({
+        inlineToolDisplay: 'summary',
+        waitTool: false,
+        missions: { enabled: true, directory: '/custom/missions' },
+        scheduledRuns: { enabled: true, maxPending: 7 },
+      }),
+    ).toEqual({
+      inlineToolDisplay: 'summary',
+      waitTool: false,
+      missions: { enabled: false, directory: '/custom/missions' },
+      scheduledRuns: { enabled: false, maxPending: 7 },
+      defaultSubagentContext: 'fresh',
+      maxSubagentDepth: 1,
+    });
+    expect(() => mergePiUserSettings({ subagents: 'invalid' })).toThrow(
+      'subagents must be a JSON object',
+    );
+  });
+
+  test('blocks a legacy delegation declaration during dry-run without deleting user settings', () => {
+    const paths = fixture();
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = {
+      theme: 'dark',
+      packages: [{ source: 'npm:pi-subagents-j0k3r@1.5.9', skills: [] }],
+    };
+    writeFileSync(settingsPath, JSON.stringify(settings));
+    const plan = buildPiSetupPlan({ ...paths, dryRun: true });
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers).toEqual([
+      expect.stringContaining('pi-subagents-j0k3r@1.5.9'),
+    ]);
+    expect(applyPiSetup(plan).success).toBe(false);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual(settings);
+  });
+
+  test('reports manual recovery instead of loading the legacy delegation runtime beside the new runtime', () => {
+    const paths = fixture();
+    const calls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        calls.push(`${command} ${args.join(' ')}`);
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: 'User packages:\n  npm:pi-subagents-j0k3r@1.5.9',
+            stderr: '',
+          };
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      failedStep: 'preflight',
+      error: expect.stringContaining('pi-subagents-j0k3r'),
+      manualRecovery: expect.stringContaining('pi remove'),
+    });
+    expect(calls.some((call) => call.includes('pi install'))).toBe(false);
+  });
+
+  test('rejects symlinked managed settings before package mutation', () => {
+    const paths = fixture();
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const external = join(paths.homeDir, 'external-settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(external, JSON.stringify({ theme: 'untouched' }));
+    symlinkSync(external, settingsPath, 'file');
+    const calls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        calls.push(`${command} ${args.join(' ')}`);
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toMatch(/symlink/i);
+    expect(applyPiSetup(plan).success).toBe(false);
+    expect(calls).toEqual([]);
+    expect(JSON.parse(readFileSync(external, 'utf8'))).toEqual({
+      theme: 'untouched',
+    });
+  });
+
+  test('rejects a symlinked managed parent before package mutation', () => {
+    const paths = fixture();
+    const piRoot = join(paths.homeDir, '.pi', 'agent');
+    const external = join(paths.homeDir, 'external-agent-root');
+    mkdirSync(join(paths.homeDir, '.pi'), { recursive: true });
+    mkdirSync(external);
+    symlinkSync(external, piRoot, 'junction');
+    const calls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        calls.push(`${command} ${args.join(' ')}`);
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toMatch(/symlink/i);
+    expect(applyPiSetup(plan).success).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  test('rejects dangling symlink targets without creating their referents', () => {
+    const paths = fixture();
+    const target = join(paths.homeDir, 'managed.json');
+    const missing = join(paths.homeDir, 'missing.json');
+    symlinkSync(missing, target, 'file');
+    expect(() => writePiManagedText(target, 'unsafe')).toThrow(/symlink/i);
+    expect(existsSync(missing)).toBe(false);
+  });
+
+  test('uses exclusive unique sidecars and preserves unrelated fixed sidecars', () => {
+    const paths = fixture();
+    const target = join(paths.homeDir, 'managed.json');
+    writeFileSync(target, 'before');
+    writeFileSync(`${target}.tmp`, 'unrelated temp');
+    writeFileSync(`${target}.bak`, 'unrelated backup');
+    expect(writePiManagedText(target, 'after')).toBe(true);
+    expect(readFileSync(target, 'utf8')).toBe('after');
+    expect(readFileSync(`${target}.tmp`, 'utf8')).toBe('unrelated temp');
+    expect(readFileSync(`${target}.bak`, 'utf8')).toBe('unrelated backup');
+    expect(
+      readdirSync(dirname(target)).some((name) =>
+        name.startsWith('managed.json.bak-'),
+      ),
+    ).toBe(true);
   });
 
   test('fails before package mutation on an unowned grep conflict and preserves unrelated config', () => {
@@ -545,7 +771,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         if (args[0] === 'install') {
           installed = true;
           return { exitCode: 0, stdout: '', stderr: '' };
@@ -570,9 +796,7 @@ describe('Pi setup', () => {
       receiptCommitted: false,
     });
     expect(calls).toContain('pi remove npm:thoth-agents@0.3.12 --no-approve');
-    expect(calls.some((call) => call.includes('pi-subagents-j0k3r'))).toBe(
-      false,
-    );
+    expect(calls.some((call) => call.includes('pi-subagents@'))).toBe(false);
   });
 
   test('restores and verifies the exact prior receipt-owned source after replacement failure', () => {
@@ -607,7 +831,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         if (args[0] === 'install')
           configured =
             args[1] === previous.installSource
@@ -642,7 +866,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.84.4', stderr: '' };
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
         if (args[0] === 'install') {
           installed = true;
           return { exitCode: 0, stdout: '', stderr: '' };

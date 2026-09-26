@@ -6,6 +6,16 @@ import { PI_ROOT_END, PI_ROOT_START } from './harness/writers/pi-agent';
 import piExtension from './pi';
 
 describe('native Pi extension', () => {
+  test('does not inject root authority or synchronize resources in a native child', () => {
+    vi.stubEnv('PI_SUBAGENT_CHILD', '1');
+    try {
+      const on = vi.fn();
+      piExtension({ on });
+      expect(on).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   test('registers one bounded adaptive-root block per turn without import side effects', async () => {
     const handlers = new Map<string, (event: unknown) => unknown>();
     const api = {

@@ -32,6 +32,9 @@ export default function thothAgentsPiExtension(
   pi: PiExtensionApi,
   options: PiExtensionOptions = {},
 ): void {
+  // pi-subagents loads ambient extensions in child processes; root authority
+  // and global resource synchronization must stay in the parent.
+  if (process.env.PI_SUBAGENT_CHILD === '1') return;
   pi.on('before_agent_start', (event) => ({
     systemPrompt: injectPiRoot(
       typeof event.systemPrompt === 'string' ? event.systemPrompt : '',

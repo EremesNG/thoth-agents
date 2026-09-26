@@ -6,7 +6,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { piAdapter } from '../harness/adapters/pi';
 import { PI_SPECIALIST_NAMES, syncPiSpecialists } from './pi-resources';
@@ -44,12 +44,12 @@ describe('Pi specialist synchronization', () => {
     mkdirSync(join(options.piRoot, 'agents'), { recursive: true });
     writeFileSync(
       target,
-      '---\nname: thoth-deep\nmanaged-by: thoth-agents\n---\nExample:\nmodel: example/model\neffort: high\n',
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\n---\nExample:\nmodel: example/model\nthinking: high\n',
     );
     expect(syncPiSpecialists(options).success).toBe(true);
     const content = readFileSync(target, 'utf8');
     expect(content).toContain('model: "openai-codex/gpt-6-sol"');
-    expect(content).toContain('effort: "medium"');
+    expect(content).toContain('thinking: "medium"');
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
@@ -64,21 +64,80 @@ describe('Pi specialist synchronization', () => {
       changed: [],
     });
   });
-  test('preserves supported model and effort state on attributable updates', () => {
+  test('preserves supported model and thinking state on attributable updates', () => {
     const options = fixture();
     writeFileSync(
       join(options.packageRoot, 'pi', 'agents', 'thoth-deep.md'),
-      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: "openai-codex/gpt-5.6-sol"\neffort: "medium"\n---\nfresh\n',
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: "openai-codex/gpt-5.6-sol"\nthinking: "medium"\n---\nfresh\n',
     );
     const target = join(options.piRoot, 'agents', 'thoth-deep.md');
     mkdirSync(join(options.piRoot, 'agents'), { recursive: true });
     writeFileSync(
       target,
-      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: high\n---\nstale\n',
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: custom/model\nthinking: high\n---\nstale\n',
     );
     expect(syncPiSpecialists(options).success).toBe(true);
     expect(readFileSync(target, 'utf8')).toContain('model: custom/model');
-    expect(readFileSync(target, 'utf8')).toContain('effort: high');
+    expect(readFileSync(target, 'utf8')).toContain('thinking: high');
+  });
+
+  test('transitions old managed defaults and effort without losing user intent', () => {
+    const options = fixture();
+    writeFileSync(
+      join(options.packageRoot, 'pi', 'agents', 'thoth-deep.md'),
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: "new/default"\nthinking: "medium"\ndefaultContext: fresh\n---\nfresh\n',
+    );
+    const target = join(options.piRoot, 'agents', 'thoth-deep.md');
+    mkdirSync(dirname(target), { recursive: true });
+
+    writeFileSync(
+      target,
+      "---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: 'default'\neffort: 'default'\n---\nold\n",
+    );
+    expect(syncPiSpecialists(options).success).toBe(true);
+    let content = readFileSync(target, 'utf8');
+    expect(content).toContain('model: "inherit"');
+    expect(content).not.toMatch(/^(?:thinking|effort):/m);
+
+    writeFileSync(
+      target,
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: high\n---\nold\n',
+    );
+    expect(syncPiSpecialists(options).success).toBe(true);
+    content = readFileSync(target, 'utf8');
+    expect(content).toContain('model: custom/model');
+    expect(content).toContain('thinking: high');
+    expect(content).not.toMatch(/^effort:/m);
+  });
+
+  test('preserves native model inheritance and independent thinking omission', () => {
+    const options = fixture();
+    writeFileSync(
+      join(options.packageRoot, 'pi', 'agents', 'thoth-deep.md'),
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: "new/default"\nthinking: "medium"\ndefaultContext: fresh\n---\nfresh\n',
+    );
+    const target = join(options.piRoot, 'agents', 'thoth-deep.md');
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(
+      target,
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: "inherit"\ndefaultContext: fresh\n---\ncurrent\n',
+    );
+    expect(syncPiSpecialists(options).success).toBe(true);
+    const content = readFileSync(target, 'utf8');
+    expect(content).toContain('model: "inherit"');
+    expect(content).not.toMatch(/^thinking:/m);
+    expect(content).not.toContain('thoth-model-inherit');
+
+    writeFileSync(
+      target,
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: custom/model\nthinking: high\nthoth-model-inherit: "true"\nthoth-thinking-inherit: "true"\ndefaultContext: fresh\n---\ntransitional\n',
+    );
+    expect(syncPiSpecialists(options).success).toBe(true);
+    const transitioned = readFileSync(target, 'utf8');
+    expect(transitioned).toContain('model: custom/model');
+    expect(transitioned).toContain('thinking: high');
+    expect(transitioned).not.toContain('thoth-model-inherit');
+    expect(transitioned).not.toContain('thoth-thinking-inherit');
   });
   test('never overwrites an unowned canonical target', () => {
     const options = fixture();

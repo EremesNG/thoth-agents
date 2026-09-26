@@ -25,6 +25,12 @@ describe('Pi paths', () => {
       join(homeDir, '.pi', 'agent', 'subagents'),
     );
     expect(paths.ownedSkillsRoot).toBe(join(homeDir, '.pi', 'agent', 'skills'));
+    expect(paths.settingsPath).toBe(
+      join(homeDir, '.pi', 'agent', 'settings.json'),
+    );
+    expect(paths.subagentConfigPath).toBe(
+      join(homeDir, '.pi', 'agent', 'extensions', 'subagent', 'config.json'),
+    );
     expect(paths.mcpConfigPath).toBe(join(homeDir, 'xdg', 'mcp', 'mcp.json'));
     expect(paths.projectAgentRoots).toEqual([
       join(homeDir, 'project', '.pi', 'agents'),

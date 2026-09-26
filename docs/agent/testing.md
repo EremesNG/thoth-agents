@@ -68,7 +68,7 @@ directory and use `--no-extensions` plus the installed and observer extensions
 explicitly. Never aim a package smoke at the operator's real Pi home.
 For packed local candidates, also record the relative configured source returned
 by `pi list --no-approve` and its resolved absolute path; byte-equality with the
-absolute install command is not valid Pi 0.84.4 evidence.
+absolute install command is not valid Pi 0.86.1 evidence.
 
 ## Common failures
 

@@ -199,18 +199,21 @@ describe('prompt dialects', () => {
   });
 
   test('renders Pi single-agent lifecycle without batch or false terminal claims', () => {
-    expect(PI_PROMPT_DIALECT.tools.delegationTool).toBe('subagent_run');
+    expect(PI_PROMPT_DIALECT.tools.delegationTool).toBe('subagent');
     expect(PI_PROMPT_DIALECT.tools.userQuestionTool).toBe('ask_user_question');
     expect(PI_PROMPT_DIALECT.tools.progressTool).toBe('todo');
     expect(PI_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
-      'subagent_run(agent: "thoth-deep")',
+      'subagent({ agent: "thoth-deep", task: "…", context: "fresh" })',
+    );
+    expect(PI_PROMPT_DIALECT.tools.roleReference('librarian')).toBe(
+      'subagent({ agent: "thoth-librarian", task: "…", context: "fresh", async: true })',
     );
     expect(PI_PROMPT_DIALECT.tools.lifecycle.freshDelegation).toContain(
-      'one exact canonical `agent`',
+      'one exact canonical `agent` and `task`',
     );
     expect(
       PI_PROMPT_DIALECT.tools.lifecycle.sameAssignmentContinuation,
-    ).toContain('subagent_send_message');
+    ).toContain('action: "steer"');
     expect(PI_PROMPT_DIALECT.tools.lifecycle.nonterminalState).toContain(
       'message-accepted',
     );

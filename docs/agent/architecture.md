@@ -34,7 +34,7 @@ persistence, receipts, state, and recovery remain outside this package.
    the five owned skills from the package manifest. The CLI then installs the
    six external packages and four external skills. Published installs also
    invoke provider-owned thoth-mem; an explicit local Pi package install leaves
-   thoth-mem to its separate local installer. Pi and `pi-subagents-j0k3r` retain
+   thoth-mem to its separate local installer. Pi and `pi-subagents@0.71.0` retain
    execution and lifecycle ownership.
 
 ## Boundaries

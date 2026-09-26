@@ -10,7 +10,8 @@ export interface PiAgentDefinitionInput {
   description: string;
   instructions: string;
   model?: string;
-  effort?: string;
+  thinking?: string;
+  async?: boolean;
 }
 
 const LIBRARIAN_RESEARCH_TOOLS = [
@@ -40,7 +41,10 @@ export function renderPiAgentDefinition(input: PiAgentDefinitionInput): string {
     `description: ${yamlScalar(input.description)}`,
     `tools: ${yamlScalar(tools)}`,
     ...(input.model ? [`model: ${yamlScalar(input.model)}`] : []),
-    ...(input.effort ? [`effort: ${yamlScalar(input.effort)}`] : []),
+    ...(input.thinking ? [`thinking: ${yamlScalar(input.thinking)}`] : []),
+    ...(input.async === undefined ? [] : [`async: ${input.async}`]),
+    'defaultContext: fresh',
+    'maxSubagentDepth: 1',
     `managed-by: ${PI_MANAGED_OWNER}`,
     '---',
     '',

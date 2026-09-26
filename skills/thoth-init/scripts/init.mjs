@@ -13,12 +13,11 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SKILL_ROOT = dirname(dirname(SCRIPT_PATH));
 const BUNDLE_ROOT = dirname(SKILL_ROOT);
-const OPEN_SPEC_DIRECTORIES = [
-  'openspec',
-  join('openspec', 'changes'),
-  join('openspec', 'changes', 'archive'),
-  join('openspec', 'specs'),
-  join('openspec', 'memory'),
+const THOTH_DIRECTORIES = [
+  '.thoth',
+  join('.thoth', 'changes'),
+  join('.thoth', 'changes', 'archive'),
+  join('.thoth', 'specs'),
 ];
 
 function parseArgs(argv) {
@@ -70,19 +69,14 @@ function preflight(project) {
     );
   }
 
-  for (const directory of OPEN_SPEC_DIRECTORIES) {
-    assertDirectory(join(project, directory), 'OpenSpec path');
+  for (const directory of THOTH_DIRECTORIES) {
+    assertDirectory(join(project, directory), 'Thoth path');
   }
 
-  const constitutionTarget = join(
-    project,
-    'openspec',
-    'memory',
-    'constitution.md',
-  );
-  const manifestTarget = join(project, 'openspec', '.thoth-agents.json');
-  assertRegularFile(constitutionTarget, 'OpenSpec constitution path');
-  assertRegularFile(manifestTarget, 'OpenSpec manifest path');
+  const constitutionTarget = join(project, '.thoth', 'constitution.md');
+  const manifestTarget = join(project, '.thoth', '.thoth-agents.json');
+  assertRegularFile(constitutionTarget, 'Thoth constitution path');
+  assertRegularFile(manifestTarget, 'Thoth manifest path');
 
   return {
     constitutionSource,
@@ -120,8 +114,8 @@ function synchronizeManagedFile(target, content, report) {
   report.managed.push(target);
 }
 
-function synchronizeOpenSpec(project, assets, report) {
-  for (const directory of OPEN_SPEC_DIRECTORIES) {
+function synchronizeThoth(project, assets, report) {
+  for (const directory of THOTH_DIRECTORIES) {
     createDirectory(join(project, directory), report);
   }
 
@@ -136,7 +130,15 @@ function synchronizeOpenSpec(project, assets, report) {
   );
   synchronizeManagedFile(
     assets.manifestTarget,
-    `${JSON.stringify({ version: 1, initializedBy: 'thoth-agents' }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        initializedBy: 'thoth-agents',
+        workflow: 'thoth-work',
+      },
+      null,
+      2,
+    )}\n`,
     report,
   );
 }
@@ -153,11 +155,11 @@ try {
     preserved: [],
   };
 
-  synchronizeOpenSpec(project, assets, report);
+  synchronizeThoth(project, assets, report);
 
   const output = options.json
     ? JSON.stringify(report)
-    : `thoth-agents synchronized OpenSpec governance in ${project}`;
+    : `thoth-agents synchronized .thoth governance in ${project}`;
   process.stdout.write(`${output}\n`);
 } catch (error) {
   process.stderr.write(

@@ -39,13 +39,13 @@ describe('OpenCode harness adapter v0.3', () => {
     const oracle = configs.oracle.prompt ?? '';
 
     expect(root).toContain('adaptive root');
-    expect(root).toContain('Accelerated SDD');
-    expect(root).toContain('bundled `thoth-sdd` skill');
+    expect(root).toContain('.thoth/changes/<id>/work.yaml');
+    expect(root).toContain('bundled `thoth-work` skill');
     expect(root).toContain(
-      'Use a fresh @oracle for Accelerated/Full and materially risky Direct work',
+      'Use a fresh @oracle for persisted work and materially risky direct work',
     );
     expect(root).toContain(
-      'Root may run focused verification only for trivial deterministic Direct work',
+      'focused root checks suffice only for trivial deterministic work',
     );
     expect(root).not.toMatch(/@sdd-(?:specify|plan|tasks)/);
     expect(root).toContain('`task`');
@@ -53,7 +53,7 @@ describe('OpenCode harness adapter v0.3', () => {
     expect(root).not.toContain('collaboration.spawn_agent');
     expect(root).not.toContain('requirements-interview');
 
-    expect(oracle).toContain('matching bundled thoth-sdd reference');
+    expect(oracle).toContain('matching bundled thoth-work guidance');
     expect(oracle).toContain('Reject self-review');
     expect(oracle).toContain('Do not mutate the workspace');
   });

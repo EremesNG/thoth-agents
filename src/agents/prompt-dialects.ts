@@ -167,8 +167,6 @@ export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
         return 'root coordinator';
       case 'task':
         return 'task';
-      case 'synchronous-task-only':
-        return 'synchronous task only';
     }
   },
   renderRoleInvocation(role) {
@@ -209,8 +207,6 @@ export const CODEX_PROMPT_DIALECT: HarnessPromptDialect = {
         return 'ambient Codex root session coordinator';
       case 'task':
         return 'collaboration.spawn_agent';
-      case 'synchronous-task-only':
-        return 'synchronous collaboration.spawn_agent only';
     }
   },
   renderRoleInvocation(role) {
@@ -265,8 +261,6 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
         return 'main-session coordinator';
       case 'task':
         return 'Agent tool';
-      case 'synchronous-task-only':
-        return 'synchronous Agent only';
     }
   },
   renderRoleInvocation(role) {
@@ -319,7 +313,6 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       case 'root-coordinator':
         return 'ambient Pi root session coordinator';
       case 'task':
-      case 'synchronous-task-only':
         return 'single-agent subagent_run';
     }
   },

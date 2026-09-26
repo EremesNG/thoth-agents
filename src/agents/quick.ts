@@ -32,7 +32,7 @@ export function createQuickAgent(
   return {
     name: 'quick',
     description:
-      'Synchronous write-capable implementation agent optimized for fast, mechanical, well-bounded changes — including uniform patterns across multiple files.',
+      'Write-capable implementation agent optimized for fast, mechanical, well-bounded changes — including uniform patterns across multiple files.',
     config: {
       model,
       temperature: 0.2,

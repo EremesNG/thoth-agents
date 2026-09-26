@@ -43,15 +43,15 @@
     {
       "id": "cross-cutting-sdd-required-skill",
       "task": "Change the architectural-grilling activation gate and its required-skill health rule.",
-      "expected_primary": "sdd-and-skills",
-      "expected_first_read": "docs/agent/sdd-and-skills.md",
+      "expected_primary": "workflow-and-skills",
+      "expected_first_read": "docs/agent/workflow-and-skills.md",
       "expected_overlays": ["cli-installation"],
       "expected_code_roots": [
-        "src/harness/core/sdd.ts",
+        "src/harness/core/workflow.ts",
         "src/agents/",
         "src/cli/skills.ts"
       ],
-      "notes": "SDD owns the conditional pre-specification gate; the CLI owns installation and health of mandatory external skills."
+      "notes": "The workflow owns any material unresolved product or architecture decision; the CLI owns installation and health of mandatory external skills."
     },
     {
       "id": "explicit-path-ambiguous-vocabulary",
@@ -73,19 +73,21 @@
     },
     {
       "id": "read-explorer-discovery",
-      "task": "Explore uncertain repository ownership and behavior before a Full SDD can be specified.",
+      "task": "Explore uncertain repository ownership and behavior before a persisted work can be specified.",
       "expected_primary": "fallback",
       "expected_first_read": "docs/agent/index.md",
       "expected_overlays": [],
       "expected_code_roots": [],
-      "route": "full",
-      "phase": "explore",
       "expected_owner": "explorer",
       "forbidden_owners": ["orchestrator", "designer", "deep"],
       "delegation_net_gain": true,
       "ownership_rationale": "Broad uncertain discovery benefits from isolated read-only context before specification.",
-      "decision": { "kind": "role-selection", "expected": "explorer" },
-      "notes": "Search relevant symbols, definitions, callers, and tests; return distilled evidence without loading every document or inventing ownership."
+      "decision": {
+        "kind": "role-selection",
+        "expected": "explorer"
+      },
+      "notes": "Search relevant symbols, definitions, callers, and tests; return distilled evidence without loading every document or inventing ownership.",
+      "workflow": "persisted"
     },
     {
       "id": "direct-root-continuity",
@@ -94,46 +96,55 @@
       "expected_first_read": "docs/agent/index.md",
       "expected_overlays": ["public-compatibility"],
       "expected_code_roots": [],
-      "route": "direct",
-      "phase": "implement",
+      "phase": "execute",
       "expected_owner": "orchestrator",
       "forbidden_owners": ["designer", "quick", "deep"],
       "delegation_net_gain": false,
       "ownership_rationale": "The root already has the complete context and delegation would cost more than the short ordered edit.",
-      "decision": { "kind": "direct-retention", "expected": "orchestrator" },
-      "notes": "Direct controls governance only; root continuity justifies ownership here and focused deterministic verification stays with root."
+      "decision": {
+        "kind": "direct-retention",
+        "expected": "orchestrator"
+      },
+      "notes": "The direct workflow keeps governance with root; continuity justifies ownership here and focused deterministic verification stays with root.",
+      "workflow": "direct"
     },
     {
       "id": "root-accelerated-continuity",
-      "task": "Implement an approved Accelerated prompt-contract change whose specification, tests, source, and generated output form one ordered mutable chain already loaded by root.",
+      "task": "Implement an approved approved prompt-contract change whose specification, tests, source, and generated output form one ordered mutable chain already loaded by root.",
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
-      "expected_overlays": ["sdd-and-skills", "harness-packaging"],
+      "expected_overlays": ["workflow-and-skills", "harness-packaging"],
       "expected_code_roots": ["src/agents/", "src/harness/", "skills/"],
-      "route": "accelerated",
-      "phase": "implement",
+      "phase": "execute",
       "expected_owner": "orchestrator",
       "forbidden_owners": ["designer", "quick", "deep"],
       "delegation_net_gain": false,
       "ownership_rationale": "Accumulated context and one compatibility-coupled reasoning chain outweigh delegation rediscovery and coordination overhead.",
-      "decision": { "kind": "direct-retention", "expected": "orchestrator" },
-      "notes": "Accelerated adds artifacts and gates; it does not force a writer subagent when root continuity has the demonstrated net gain."
+      "decision": {
+        "kind": "direct-retention",
+        "expected": "orchestrator"
+      },
+      "notes": "Persistence records the agreement and acceptance; it does not force a writer subagent when root continuity has the demonstrated net gain.",
+      "workflow": "persisted"
     },
     {
       "id": "root-full-continuity",
-      "task": "Implement a fully specified Full SDD correction where exploration resolved uncertainty and the remaining accepted surface is one sequential shared-state chain held by root.",
+      "task": "Implement a fully specified persisted work correction where exploration resolved uncertainty and the remaining accepted surface is one sequential shared-state chain held by root.",
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
-      "expected_overlays": ["sdd-and-skills"],
+      "expected_overlays": ["workflow-and-skills"],
       "expected_code_roots": ["src/harness/core/", "skills/"],
-      "route": "full",
-      "phase": "implement",
+      "phase": "execute",
       "expected_owner": "orchestrator",
       "forbidden_owners": ["designer", "quick", "deep"],
       "delegation_net_gain": false,
       "ownership_rationale": "The accepted implementation is sequential, shares mutable state, and would require a child to rediscover the root's validated context.",
-      "decision": { "kind": "direct-retention", "expected": "orchestrator" },
-      "notes": "Full governance remains intact while implementation ownership stays adaptive and final verification remains independent."
+      "decision": {
+        "kind": "direct-retention",
+        "expected": "orchestrator"
+      },
+      "notes": "Persisted governance remains intact while implementation ownership stays adaptive and final verification remains independent.",
+      "workflow": "persisted"
     },
     {
       "id": "writer-designer-ui",
@@ -142,14 +153,17 @@
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": ["public-compatibility"],
       "expected_code_roots": ["src/agents/"],
-      "route": "direct",
-      "phase": "implement",
+      "phase": "execute",
       "expected_owner": "designer",
       "forbidden_owners": ["orchestrator", "quick", "deep"],
       "delegation_net_gain": true,
-      "ownership_rationale": "The bounded user-facing surface benefits from designer specialization and isolated visual verification despite Direct governance.",
-      "decision": { "kind": "role-selection", "expected": "designer" },
-      "notes": "After deciding delegation creates net gain, select designer; visual QA does not replace any independent verification required by material risk."
+      "ownership_rationale": "The bounded user-facing surface benefits from designer specialization and isolated visual verification within direct work.",
+      "decision": {
+        "kind": "role-selection",
+        "expected": "designer"
+      },
+      "notes": "After deciding delegation creates net gain, select designer; visual QA does not replace any independent verification required by material risk.",
+      "workflow": "direct"
     },
     {
       "id": "writer-quick-known",
@@ -161,14 +175,17 @@
         "src/agents/prompt-sections.ts",
         "src/agents/prompt-rendering.test.ts"
       ],
-      "route": "accelerated",
-      "phase": "implement",
+      "phase": "execute",
       "expected_owner": "quick",
       "forbidden_owners": ["orchestrator", "designer", "deep"],
       "delegation_net_gain": true,
       "ownership_rationale": "The exact file and symbol are known, the edit is isolated, and quick avoids loading unrelated planning context.",
-      "decision": { "kind": "role-selection", "expected": "quick" },
-      "notes": "After deciding delegation creates net gain, quick owns the bounded edit regardless of route; root coordinates focused verification unless material risk requires a fresh Oracle."
+      "decision": {
+        "kind": "role-selection",
+        "expected": "quick"
+      },
+      "notes": "After deciding delegation creates net gain, quick owns the bounded edit regardless of route; root coordinates focused verification unless material risk requires a fresh Oracle.",
+      "workflow": "persisted"
     },
     {
       "id": "writer-deep-correctness",
@@ -177,14 +194,17 @@
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": ["harness-packaging", "public-compatibility"],
       "expected_code_roots": ["src/agents/", "src/config/", "src/harness/"],
-      "route": "direct",
-      "phase": "implement",
+      "phase": "execute",
       "expected_owner": "deep",
       "forbidden_owners": ["orchestrator", "designer", "quick"],
       "delegation_net_gain": true,
-      "ownership_rationale": "A fresh deep context improves correctness across the coupled contract and adapters even though the user selected Direct governance.",
-      "decision": { "kind": "role-selection", "expected": "deep" },
-      "notes": "After deciding delegation creates net gain, select one deep writer because compatibility-coupled files cannot use overlapping writers."
+      "ownership_rationale": "A fresh deep context improves correctness across the coupled contract and adapters even though the work does not need persistence.",
+      "decision": {
+        "kind": "role-selection",
+        "expected": "deep"
+      },
+      "notes": "After deciding delegation creates net gain, select one deep writer because compatibility-coupled files cannot use overlapping writers.",
+      "workflow": "direct"
     },
     {
       "id": "read-librarian-external",
@@ -197,24 +217,30 @@
       "forbidden_owners": ["orchestrator", "quick", "deep"],
       "delegation_net_gain": true,
       "ownership_rationale": "Current authoritative evidence is an isolated read-only research workstream.",
-      "decision": { "kind": "role-selection", "expected": "librarian" },
+      "decision": {
+        "kind": "role-selection",
+        "expected": "librarian"
+      },
       "notes": "Use librarian for current authoritative external evidence, then confirm local adapter wording."
     },
     {
       "id": "read-oracle-verification",
-      "task": "Independently verify a completed artifact-backed implementation against its accepted FR and SC contracts.",
-      "expected_primary": "sdd-and-skills",
-      "expected_first_read": "docs/agent/sdd-and-skills.md",
+      "task": "Independently verify a completed artifact-backed implementation against its accepted acceptance criteria.",
+      "expected_primary": "workflow-and-skills",
+      "expected_first_read": "docs/agent/workflow-and-skills.md",
       "expected_overlays": ["agents-and-delegation"],
-      "expected_code_roots": ["src/harness/core/sdd.ts", "skills/"],
-      "route": "full",
+      "expected_code_roots": ["src/harness/core/workflow.ts", "skills/"],
       "phase": "verify",
       "expected_owner": "oracle",
       "forbidden_owners": ["orchestrator", "designer", "quick"],
       "delegation_net_gain": true,
       "ownership_rationale": "Independent judgment requires a fresh read-only context that did not implement the candidate.",
-      "decision": { "kind": "role-selection", "expected": "oracle" },
-      "notes": "Artifact-backed final verification uses a fresh read-only Oracle that did not implement the change."
+      "decision": {
+        "kind": "role-selection",
+        "expected": "oracle"
+      },
+      "notes": "Artifact-backed final verification uses a fresh read-only Oracle that did not implement the change.",
+      "workflow": "persisted"
     },
     {
       "id": "fallback-unfamiliar-writer",
@@ -235,7 +261,10 @@
       "expected_owner": "designer",
       "forbidden_owners": ["quick", "deep"],
       "delegation_net_gain": true,
-      "decision": { "kind": "role-selection", "expected": "designer" },
+      "decision": {
+        "kind": "role-selection",
+        "expected": "designer"
+      },
       "ownership_rationale": "Interaction and accessibility quality require the designer specialization even though the edit is mechanically small.",
       "notes": "Visual and keyboard verification remain part of the bounded writer assignment."
     },
@@ -249,7 +278,10 @@
       "expected_owner": "quick",
       "forbidden_owners": ["designer", "deep"],
       "delegation_net_gain": true,
-      "decision": { "kind": "role-selection", "expected": "quick" },
+      "decision": {
+        "kind": "role-selection",
+        "expected": "quick"
+      },
       "ownership_rationale": "The exact target, expected value, and focused check make the lane isolated and low risk.",
       "notes": "Escalate if the default affects a shared schema or migration."
     },
@@ -263,7 +295,10 @@
       "expected_owner": "librarian",
       "forbidden_owners": ["explorer", "quick"],
       "delegation_net_gain": true,
-      "decision": { "kind": "role-selection", "expected": "librarian" },
+      "decision": {
+        "kind": "role-selection",
+        "expected": "librarian"
+      },
       "ownership_rationale": "The decision depends on current authoritative external evidence rather than local repository discovery.",
       "notes": "Return direct official sources and separate inference."
     },
@@ -276,7 +311,7 @@
       "expected_code_roots": ["src/harness/", "docs/"],
       "decision": {
         "kind": "task-shaping",
-        "expected": "parallel-wave",
+        "expected": "continuous-ready-dispatch",
         "ready": ["external-contract", "local-adapter", "isolated-example"],
         "blocked": ["migration-synthesis"]
       },
@@ -321,11 +356,11 @@
       "expected_code_roots": [],
       "decision": {
         "kind": "task-shaping",
-        "expected": "bounded-native-wave",
+        "expected": "native-capacity",
         "ready": ["check-a", "check-b", "check-c"],
         "blocked": ["check-d", "check-e"]
       },
-      "notes": "Use current native capacity and dispatch the remaining ready work in a later wave."
+      "notes": "Fill current native capacity; refill a freed slot before another wait instead of waiting for the entire set."
     },
     {
       "id": "graph-timeout-nonterminal",

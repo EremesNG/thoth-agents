@@ -302,19 +302,15 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('thoth-agents:codex-root:start -->\n<role>');
       expect(root).toContain('adaptive root');
       expect(root).toContain('<implementation-ownership>');
-      expect(root).toContain(
-        'SDD routes govern artifacts and gates, not implementation ownership.',
-      );
+      expect(root).toContain('work.yaml');
       expect(root).toContain('net gain');
-      expect(root).toContain('Accelerated SDD');
+      expect(root).toContain('checkpoint');
       expect(root).toContain('maximum delegation depth is 1');
-      expect(root).toContain('bundled `thoth-sdd` skill');
-      expect(root).toContain(
-        'Use a fresh oracle subagent for Accelerated/Full and materially risky Direct work',
+      expect(root).toContain('bundled `thoth-work` skill');
+      expect(root).toMatch(
+        /fresh.*oracle.*persisted|persisted.*fresh.*oracle/i,
       );
-      expect(root).toContain(
-        'Root may run focused verification only for trivial deterministic Direct work',
-      );
+      expect(root).toContain('Handle trivial bounded work directly');
       expect(root).not.toMatch(/sdd-(?:specify|plan|tasks) subagent/);
       expect(root).toContain('request_user_input');
       expect(root).toContain('omit `autoResolutionMs` entirely');

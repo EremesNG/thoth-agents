@@ -1,6 +1,6 @@
 export const THOTH_OWNED_SKILL_NAMES = [
   'thoth-init',
-  'thoth-sdd',
+  'thoth-work',
   'thoth-constitution',
   'thoth-archive',
   'plan-reviewer',

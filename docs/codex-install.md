@@ -94,34 +94,24 @@ $thoth-init
 ```
 
 This final skill step is offline and idempotent. It creates only the minimum
-OpenSpec directories, a missing project constitution, and init metadata under
-`openspec/`. SDD templates stay in the installed `thoth-sdd` plugin skill and
-are read there by phase contracts. Agent/global installation remains CLI-owned.
+work directories, a missing project constitution, and init metadata under
+`.thoth/`. Work-contract examples and helpers stay in the installed
+`thoth-work` plugin skill. Agent/global installation remains CLI-owned.
 
-## Delegation and SDD
+## Delegation and work contracts
 
-The global root contract handles bounded work directly and delegates only for
-net gain. Children never delegate and each mutable surface has one writer.
-Root owns sequential SDD coordination through the bundled `thoth-sdd`
-contracts. It summarizes the relevant request context, scope, clarity, risk, and
-recommendation before asking the route question. Any explicit answer wins; the
-third answerless route question selects the displayed recommendation. Explorer
-owns Full discovery. Every route verifies: trivial deterministic Direct work may use
-focused root checks; materially risky Direct work and every Accelerated or Full
-final verify use a fresh read-only Oracle. Explicitly or bounded-default selected
-plan review remains optional.
+The root handles bounded work directly and delegates only for net gain. Children
+never delegate and each mutable surface has one writer. The bundled
+`thoth-work` skill keeps agreed scope, acceptance and units under `.thoth/`.
+Human approval during planning authorizes execution within the recorded bounds;
+no routine route or repeated implementation question is required.
 
-Before dispatch, the root distinguishes concrete artifact/decision dependencies
-from mere ordering, marks input-ready lanes ready and dependent lanes blocked,
-and preserves one writer per mutable surface. It dispatches all ready,
-conflict-free lanes in a native wave before waiting, then joins only terminal
-native results before releasing dependents. Semantic triggers select `librarian`
-for current or external facts, `designer` for material UI/UX or accessibility,
-and `quick` for known narrow low-risk isolated edits; coupled or high-risk work
-uses `deep`. Codex native collaboration and lifecycle primitives are the sole
-authority for role selection, fan-out/fan-in, status/wait, steering,
-cancellation, and terminal results; unavailable primitives degrade truthfully to
-sequential work.
+Codex native collaboration owns dispatch, status, wait, cancellation and terminal
+results. Root dispatches all admitted independent ready units before waiting,
+refills freed capacity and accepts fresh upstream outputs before consumers start.
+Resume reads relevant checkpoints and current owned files, and reconciles native
+liveness before assigning another writer. A fresh read-only Oracle verifies
+persisted work; see [workflow](workflow.md) for evidence and recovery limits.
 
 Standalone TOMLs are native Codex configuration layers, but role selection and
 some permission constraints remain instruction-level in the collaboration
@@ -151,7 +141,7 @@ provider targets, or emulates provider mechanics.
 During runtime the root follows the installed thoth-mem skill for recall,
 durable lessons, compaction, and semantic completion. Delegated `none`, `recall`,
 or `observe` authorization is independent from Codex workspace permissions and
-never transfers root lifecycle. `openspec/` remains the canonical SDD store.
+never transfers root lifecycle. `.thoth/` remains the canonical project-work store.
 
 ## Upstream references
 

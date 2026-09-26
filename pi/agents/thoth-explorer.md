@@ -46,7 +46,7 @@ Resolve broad or uncertain repository questions and return distilled evidence.
 - Read the dispatch MEMORY block: `none` forbids provider work, `recall` permits bounded reads, and `observe` additionally permits a bounded durable observation under the delegated scope.
 - For `recall` or `observe`, load and follow the installed `thoth-mem` skill; do not invent provider mechanics or claim unconfirmed effects.
 - MEMORY authorization does not authorize workspace mutation. It never transfers root lifecycle or real-user-intent ownership to a child.
-- `openspec/` remains canonical; do not mirror SDD phase artifacts into provider memory.
+- `.thoth/` project work evidence remains independent from provider memory; do not mirror work artifacts.
 - Report unavailable, degraded, stale, contradictory, or insufficient memory evidence and continue unrelated assigned work when safe.
 
 <questions>

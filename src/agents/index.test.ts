@@ -154,24 +154,24 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     expect(prompt.length - 8_499).toBeLessThanOrEqual(2_500);
     expect(prompt).toContain('adaptive root');
     expect(prompt).toContain(
-      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead',
+      'Handle trivial bounded work directly when continuity outweighs delegation overhead',
     );
     expect(prompt).toContain('net gain');
     expect(prompt).toContain('<implementation-ownership>');
     expect(prompt).toContain(
-      'SDD routes govern artifacts and gates, not implementation ownership.',
+      'Persistence and planning choices do not determine implementation ownership.',
     );
     expect(prompt).toContain(
       'Explicit safe user direction is an ownership input.',
     );
     expect(prompt).not.toMatch(/Direct micro-action/i);
     expect(prompt).not.toMatch(/Artifact-backed implement follows/i);
-    expect(prompt).toContain('Accelerated SDD');
-    expect(prompt).toContain('thoth-sdd');
+    expect(prompt).toContain('.thoth/changes/<id>/work.yaml');
+    expect(prompt).toContain('thoth-work');
     expect(prompt).toContain('oracle');
     expect(prompt).toContain('Final verification is mandatory.');
     expect(prompt).toContain(
-      'Root may run focused verification only for trivial deterministic Direct work',
+      'focused root checks suffice only for trivial deterministic work',
     );
     expect(prompt).not.toContain('delegate-first');
     expect(prompt).not.toContain('requirements-interview');

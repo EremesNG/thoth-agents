@@ -35,8 +35,8 @@ describe('memory governance contract', () => {
         provider: 'thoth-mem',
         providerOwnership: 'external',
         installedGuidance: 'thoth-mem skill',
-        canonicalSddStore: 'openspec/',
-        prohibitsSddArtifactMirroring: true,
+        canonicalWorkStore: '.thoth/',
+        prohibitsWorkArtifactMirroring: true,
         requiresParentAuthorization: true,
         rootLifecycleOwner: 'orchestrator',
         handoffOutcome: 'bounded-memory-contract',
@@ -62,7 +62,7 @@ describe('memory governance contract', () => {
       'accepted scope, decisions, permissions, and artifacts',
     );
     expect(prompt).toContain('root lifecycle');
-    expect(prompt).toContain('openspec/');
+    expect(prompt).toContain('.thoth/');
     expect(prompt).toMatch(/do not mirror/i);
     expect(prompt).toContain('degraded or unsupported');
     expect(prompt).not.toMatch(PROVIDER_OPERATION_PATTERN);
@@ -114,7 +114,7 @@ describe('memory governance contract', () => {
     for (const prompt of [openCode, codex]) {
       expect(prompt).toContain('parent-scoped authorization');
       expect(prompt).toContain('provider-confirmed semantic summary');
-      expect(prompt).toContain('openspec/');
+      expect(prompt).toContain('.thoth/');
       expect(prompt).not.toMatch(PROVIDER_OPERATION_PATTERN);
     }
 

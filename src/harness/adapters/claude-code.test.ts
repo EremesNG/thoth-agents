@@ -120,25 +120,25 @@ describe('Claude Code adapter v0.3', () => {
     expect(instructions).toContain('adaptive root');
     expect(instructions).toContain('<implementation-ownership>');
     expect(instructions).toContain(
-      'SDD routes govern artifacts and gates, not implementation ownership.',
+      'Persistence and planning choices do not determine implementation ownership.',
     );
     expect(instructions).toContain(
-      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead',
+      'Handle trivial bounded work directly when continuity outweighs delegation overhead',
     );
     expect(instructions).toContain(
       'Only after deciding delegation creates net gain',
     );
     expect(instructions).not.toMatch(/Direct micro-action/i);
     expect(instructions).not.toMatch(/Artifact-backed implement follows/i);
-    expect(instructions).toContain('Accelerated SDD');
+    expect(instructions).toContain('.thoth/changes/<id>/work.yaml');
     expect(instructions).toContain('Agent');
     expect(instructions).toContain('AskUserQuestion');
     expect(instructions).toContain('TodoWrite');
-    expect(instructions).toContain('thoth-sdd');
+    expect(instructions).toContain('thoth-work');
     expect(instructions).toContain('thoth-agents:oracle');
     expect(instructions).toContain('Final verification is mandatory.');
     expect(instructions).toContain(
-      'Root may run focused verification only for trivial deterministic Direct work',
+      'focused root checks suffice only for trivial deterministic work',
     );
     expect(instructions).not.toContain('delegate-first');
     expect(instructions).not.toContain('requirements-interview');

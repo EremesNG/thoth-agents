@@ -13,20 +13,18 @@ definitions and applies overrides; harness adapters translate the same intent.
 
 ## Invariants
 
-- Root owns sequential SDD coordination. SDD routes govern artifacts and gates,
-  not implementation ownership: root, `designer`, `quick`, or `deep` may
-  implement in Direct, Accelerated, or Full.
+- Root owns agreement and acceptance. Root, designer, quick or deep may implement
+  bounded work according to net gain, independently of persistence mode.
 - Delegate only for demonstrated net gain; depth is one and each mutable surface
   has one writer. Treat explicit safe user direction as an ownership input.
 - Before substantive execution, shape the work into bounded units: record exact
   output dependencies, mutable ownership, specialist fit, and verification inputs.
   A dependency means a lane needs a concrete upstream artifact or decision; mere
   preference for an order is not a dependency.
-- Mark lanes ready only when their inputs are available and blocked when they need
-  a nonterminal upstream result. Dispatch every ready, conflict-free lane in the
-  current native wave before waiting; apply bounded native capacity in later waves.
-  Join only terminal native results, reconcile them against intent and ownership,
-  then release dependent lanes.
+- Dispatch all admitted independent ready units before waiting; refill freed
+  native capacity before another wait. Accept terminal fresh outputs before
+  releasing each dependent consumer, without a global wave barrier. Compatibility
+  includes read assumptions, interfaces and shared resources, not only filenames.
 - Prefer delegation for specialization, focused context, independent bounded
   work, safe parallelism, or demonstrated quality, latency, or total-cost gain.
   Prefer root continuity for short work, one ordered reasoning chain, frequent
@@ -37,10 +35,9 @@ definitions and applies overrides; harness adapters translate the same intent.
 - Every dispatch carries bounded thoth-mem `none|recall|observe` authorization
   independently of workspace mode. `observe` may permit a durable provider
   observation, but root lifecycle and real-user intent never transfer.
-- Every route verifies. Trivial deterministic Direct work may use focused root
-  checks; materially risky Direct work and every Accelerated or Full final verify
-  use a fresh read-only Oracle. An implementer cannot approve its own result, and
-  optional plan approval never replaces final verification.
+- Every change verifies. Persisted or materially risky work requires a fresh
+  read-only Oracle. A writer cannot approve its result; optional plan review
+  never substitutes for final verification.
 - Only after root decides delegation creates net gain, select the specialist:
 
   | Signal | Writer | Escalation boundary |
@@ -52,8 +49,8 @@ definitions and applies overrides; harness adapters translate the same intent.
   Proven independent surfaces may use separate writers with non-overlapping
   files. Overlapping or compatibility-coupled work stays with one `deep` writer
   and ordered handoffs. When delegation has no demonstrated net gain, root may
-  retain the accepted surface under any route.
-- Root loads detailed phase contracts from bundled skills on demand instead of
+  retain the accepted surface under either workflow.
+- Root loads only the current work operation from bundled skills instead of
   delegating merely to change prompts.
 - Children return conclusion, evidence, verification, risks, open questions,
   and next action rather than raw dumps.
@@ -88,7 +85,7 @@ sequential fallback; do not emulate another runtime.
 
 ## Subagent session lifecycle
 
-A new objective, SDD phase, mutable surface, or independent judgment is a work
+A new objective, work phase, mutable surface, or independent judgment is a work
 boundary and defaults to a fresh subagent instance. A completed agent with the
 desired role is not a reusable role pool. Continue an existing session only to
 steer, complete, or clarify the exact same bounded assignment; wait and status
@@ -109,6 +106,6 @@ clarify its current findings without issuing a new judgment.
 - `src/harness/core/agent-pack.ts` and `.test.ts`
 - `src/agents/index.ts` and `src/agents/index.test.ts`
 - `src/agents/prompt-sections.ts` and prompt-rendering tests
-- `src/harness/core/memory-governance.ts` and `sdd-protocol.test.ts`
+- `src/harness/core/memory-governance.ts` and `workflow.test.ts`
 - `src/config/constants.ts`, `schema.ts`, and config tests
 - adapter tests for serialized harness output

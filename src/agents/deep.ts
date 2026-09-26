@@ -32,7 +32,7 @@ export function createDeepAgent(
   return {
     name: 'deep',
     description:
-      'Synchronous write-capable implementation agent optimized for thorough context analysis, edge cases, and correctness — not for bulk mechanical changes.',
+      'Write-capable implementation agent optimized for thorough context analysis, edge cases, and correctness — not for bulk mechanical changes.',
     config: {
       model,
       temperature: 0.1,

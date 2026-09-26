@@ -3,8 +3,8 @@
 ## Responsibility
 
 `src/cli/` owns installation, parsing, help, TUI, status, repair, model
-configuration, and managed I/O. Installation depends on the CLI; normal SDD
-phase execution does not.
+configuration, and managed I/O. Installation depends on the CLI; normal work
+execution does not.
 
 ## Invariants
 
@@ -15,7 +15,7 @@ phase execution does not.
   back to a `latest` plugin entry.
 - OpenCode installation synchronizes all five packaged thoth-owned skills into
   `~/.config/opencode/skills/`; status, install, and sync share that inventory.
-  `/thoth-init` owns only project `openspec/` governance.
+  `/thoth-init` owns only project `.thoth/` governance.
 - Mandatory external skills are installed from canonical repositories through
   `npx skills add`; this repository must not vendor their source.
 - After owned setup and external skills, published harness installs invoke the
@@ -55,7 +55,7 @@ phase execution does not.
 - Codex CLI installation is mandatory for global agents, root instructions,
   feature configuration, external global skills, and native plugin setup. It
   fails closed before global writes when Codex manager inspection or plugin
-  verification fails. `$thoth-init` creates project SDD governance only.
+  verification fails. `$thoth-init` creates project work governance only.
 - Claude requires native marketplace add/install before its plugin surfaces
   exist; then the CLI installs external skills and requests provider setup
   without editing Claude's cache.

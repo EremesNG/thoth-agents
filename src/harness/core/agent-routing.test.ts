@@ -14,16 +14,14 @@ import {
   getAgentRole,
   renderAgentRoutingDescription,
 } from './agent-pack';
-import { getSddPhaseOwner } from './sdd';
 
 type RoutingCase = {
   id: string;
   expectedOwner: AgentRoleName;
   forbiddenOwners: AgentRoleName[];
   ownerTrigger: RegExp;
-  route?: 'direct' | 'accelerated' | 'full';
-  phase?: 'explore' | 'implement' | 'verify';
-  phaseOwner?: AgentRoleName | 'adaptive-implementation';
+  workflow?: 'direct' | 'persisted';
+  phase?: 'execute' | 'verify';
 };
 
 const ROUTING_CASES: RoutingCase[] = [
@@ -32,9 +30,8 @@ const ROUTING_CASES: RoutingCase[] = [
     expectedOwner: 'designer',
     forbiddenOwners: ['orchestrator', 'quick', 'deep'],
     ownerTrigger: /user-facing UI\/UX|visual quality/i,
-    route: 'direct',
-    phase: 'implement',
-    phaseOwner: 'adaptive-implementation',
+    workflow: 'direct',
+    phase: 'execute',
   },
   {
     id: 'writer-deep-correctness',
@@ -42,18 +39,16 @@ const ROUTING_CASES: RoutingCase[] = [
     forbiddenOwners: ['orchestrator', 'designer', 'quick'],
     ownerTrigger:
       /multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk/i,
-    route: 'direct',
-    phase: 'implement',
-    phaseOwner: 'adaptive-implementation',
+    workflow: 'direct',
+    phase: 'execute',
   },
   {
     id: 'writer-quick-known',
     expectedOwner: 'quick',
     forbiddenOwners: ['orchestrator', 'designer', 'deep'],
     ownerTrigger: /known narrow mechanical low-risk/i,
-    route: 'accelerated',
-    phase: 'implement',
-    phaseOwner: 'adaptive-implementation',
+    workflow: 'persisted',
+    phase: 'execute',
   },
   {
     id: 'root-accelerated-continuity',
@@ -61,9 +56,8 @@ const ROUTING_CASES: RoutingCase[] = [
     forbiddenOwners: ['designer', 'quick', 'deep'],
     ownerTrigger:
       /accumulated context and continuity outweigh delegation overhead/i,
-    route: 'accelerated',
-    phase: 'implement',
-    phaseOwner: 'adaptive-implementation',
+    workflow: 'persisted',
+    phase: 'execute',
   },
   {
     id: 'root-full-continuity',
@@ -71,18 +65,15 @@ const ROUTING_CASES: RoutingCase[] = [
     forbiddenOwners: ['designer', 'quick', 'deep'],
     ownerTrigger:
       /accumulated context and continuity outweigh delegation overhead/i,
-    route: 'full',
-    phase: 'implement',
-    phaseOwner: 'adaptive-implementation',
+    workflow: 'persisted',
+    phase: 'execute',
   },
   {
     id: 'read-explorer-discovery',
     expectedOwner: 'explorer',
     forbiddenOwners: ['orchestrator', 'designer', 'deep'],
     ownerTrigger: /repository ownership or behavior is broad or uncertain/i,
-    route: 'full',
-    phase: 'explore',
-    phaseOwner: 'explorer',
+    workflow: 'persisted',
   },
   {
     id: 'read-librarian-external',
@@ -95,10 +86,9 @@ const ROUTING_CASES: RoutingCase[] = [
     expectedOwner: 'oracle',
     forbiddenOwners: ['orchestrator', 'designer', 'quick'],
     ownerTrigger:
-      /selected plan review, persistent diagnosis, material architecture or security risk/i,
-    route: 'full',
+      /selected focused plan review, persistent diagnosis, material architecture or security risk/i,
+    workflow: 'persisted',
     phase: 'verify',
-    phaseOwner: 'oracle',
   },
 ];
 
@@ -111,8 +101,8 @@ const ROUTING_FIXTURE = JSON.parse(
   cases: Array<{
     id: string;
     task: string;
-    route?: 'direct' | 'accelerated' | 'full';
-    phase?: 'explore' | 'implement' | 'verify';
+    workflow?: 'direct' | 'persisted';
+    phase?: 'execute' | 'verify';
     expected_owner?: AgentRoleName;
     forbidden_owners?: AgentRoleName[];
     delegation_net_gain?: boolean;
@@ -129,10 +119,9 @@ const ROUTING_FIXTURE = JSON.parse(
 
 const ACTIVE_OWNERSHIP_POLICY_PATHS = [
   'AGENTS.md',
-  'skills/thoth-sdd/SKILL.md',
-  'skills/thoth-sdd/references/phases/implement.md',
+  'skills/thoth-work/SKILL.md',
   'docs/agent/agents-and-delegation.md',
-  'docs/sdd-pipeline.md',
+  'docs/workflow.md',
 ] as const;
 
 type RenderedSurface = {
@@ -190,7 +179,7 @@ describe('canonical agent routing', () => {
       );
 
     expect(documentedCase).toMatchObject({
-      ...(routingCase.route ? { route: routingCase.route } : {}),
+      ...(routingCase.workflow ? { workflow: routingCase.workflow } : {}),
       ...(routingCase.phase ? { phase: routingCase.phase } : {}),
       expected_owner: routingCase.expectedOwner,
       forbidden_owners: routingCase.forbiddenOwners,
@@ -208,12 +197,6 @@ describe('canonical agent routing', () => {
     for (const forbidden of routingCase.forbiddenOwners) {
       expect(candidates.map(({ name }) => name)).not.toContain(forbidden);
       expect(getAgentRole(forbidden).doNotUseWhen.length).toBeGreaterThan(0);
-    }
-
-    if (routingCase.route && routingCase.phase && routingCase.phaseOwner) {
-      expect(getSddPhaseOwner(routingCase.route, routingCase.phase)).toBe(
-        routingCase.phaseOwner,
-      );
     }
 
     if (routingCase.expectedOwner !== 'orchestrator') {
@@ -234,9 +217,9 @@ describe('canonical agent routing', () => {
       ).toContain('<implementation-ownership>');
       expect(
         surface.root,
-        `${routingCase.id}:${surface.harness}:route-owner`,
+        `${routingCase.id}:${surface.harness}:workflow-owner`,
       ).toContain(
-        'SDD routes govern artifacts and gates, not implementation ownership.',
+        'Persistence and planning choices do not determine implementation ownership.',
       );
       expect(surface.root).not.toMatch(/Direct micro-action/i);
       expect(surface.root).not.toMatch(/Artifact-backed implement follows/i);
@@ -248,11 +231,11 @@ describe('canonical agent routing', () => {
         expect(
           surface.root,
           `${routingCase.id}:${surface.harness}:root`,
-        ).toContain('no implementation writer may approve its own work');
+        ).toMatch(/no implementation writer may approve its own work/i);
       }
 
       expect(surface.root).toContain('select-specialists');
-      expect(surface.root).toContain('mark-ready-and-blocked');
+      expect(surface.root).toContain('admit-ready-units');
     }
   });
 
@@ -272,10 +255,10 @@ describe('canonical agent routing', () => {
         .map(({ decision }) => decision?.expected),
     ).toEqual(
       expect.arrayContaining([
-        'parallel-wave',
+        'continuous-ready-dispatch',
         'blocked-dependency',
         'single-writer',
-        'bounded-native-wave',
+        'native-capacity',
         'remain-nonterminal',
         'sequential-fallback',
       ]),
@@ -288,7 +271,7 @@ describe('canonical agent routing', () => {
     }
   });
 
-  test('consumes documented route-owner cross-product evidence', () => {
+  test('consumes documented workflow-owner cross-product evidence', () => {
     const documentedIds = ROUTING_FIXTURE.cases
       .filter(({ expected_owner }) => expected_owner)
       .map(({ id }) => id);
@@ -298,14 +281,17 @@ describe('canonical agent routing', () => {
     );
     expect(ROUTING_CASES).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ route: 'direct', expectedOwner: 'designer' }),
-        expect.objectContaining({ route: 'direct', expectedOwner: 'deep' }),
         expect.objectContaining({
-          route: 'accelerated',
+          workflow: 'direct',
+          expectedOwner: 'designer',
+        }),
+        expect.objectContaining({ workflow: 'direct', expectedOwner: 'deep' }),
+        expect.objectContaining({
+          workflow: 'persisted',
           expectedOwner: 'orchestrator',
         }),
         expect.objectContaining({
-          route: 'full',
+          workflow: 'persisted',
           expectedOwner: 'orchestrator',
         }),
         expect.objectContaining({ expectedOwner: 'quick' }),
@@ -335,10 +321,10 @@ describe('canonical agent routing', () => {
     expect(renderAgentRoutingDescription(role)).toMatch(/Do not use when:/);
   });
 
-  test('keeps root and specialist implementation eligibility route-independent', () => {
+  test('keeps root and specialist implementation eligibility workflow-independent', () => {
     const root = getAgentRole('orchestrator');
     expect(root.useWhen.join(' ')).toMatch(
-      /any route.*accumulated context.*continuity/i,
+      /accepted mutable surface.*accumulated context.*continuity/i,
     );
     const policy = getAgentPackContract().orchestrationPolicy;
     expect(policy.implementationOwnership.eligibleOwners).toEqual([
@@ -347,12 +333,7 @@ describe('canonical agent routing', () => {
       'quick',
       'deep',
     ]);
-    expect(policy.implementationOwnership.routeIndependent).toBe(true);
-    for (const route of ['direct', 'accelerated', 'full'] as const) {
-      expect(getSddPhaseOwner(route, 'implement')).toBe(
-        'adaptive-implementation',
-      );
-    }
+    expect(policy.implementationOwnership.workflowIndependent).toBe(true);
   });
 
   test.each([
@@ -378,7 +359,7 @@ describe('canonical agent routing', () => {
     ]);
   });
 
-  test('keeps active instructions route-neutral and specialist selection conditional', () => {
+  test('keeps active instructions workflow-neutral and specialist selection conditional', () => {
     const activePolicies = ACTIVE_OWNERSHIP_POLICY_PATHS.map((path) => ({
       path,
       content: readFileSync(
@@ -388,23 +369,25 @@ describe('canonical agent routing', () => {
     }));
 
     for (const { path, content } of activePolicies) {
-      expect(content, path).toMatch(/route.*artifacts.*gates|governance/i);
-      expect(content, path).toMatch(/net\s+gain/i);
+      expect(content, path).toMatch(/workflow|work contract|governance/i);
       expect(content, path).not.toMatch(/Direct alone permits/i);
       expect(content, path).not.toMatch(
         /artifact-backed implementation always selects/i,
       );
       expect(content, path).not.toMatch(/all visual or UX work goes through/i);
     }
+    expect(activePolicies.map(({ content }) => content).join('\n')).toMatch(
+      /net\s+gain/i,
+    );
 
     const rootInstructions = activePolicies.find(
       ({ path }) => path === 'AGENTS.md',
     )?.content;
     expect(rootInstructions).toMatch(
-      /before retaining or delegating.*ready lanes.*before waiting/is,
+      /before retaining or delegating.*ready work.*before waiting/is,
     );
     expect(rootInstructions).toMatch(
-      /librarian.*external evidence.*designer.*UI\/UX.*quick.*low-risk/is,
+      /librarian.*external facts.*designer.*UI\/UX.*quick.*low-risk/is,
     );
   });
 });

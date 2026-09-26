@@ -1,722 +1,317 @@
 #!/usr/bin/env node
-
+import { createHash } from 'node:crypto';
 import {
   existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
 import {
-  CAPABILITY_PATTERN,
-  parseCanonicalSpec,
-  parseRequirementDelta as parseSharedRequirementDelta,
-  preflightRequirementDeltas,
-} from '../../thoth-sdd/scripts/durable-deltas.mjs';
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { validateWork } from '../../thoth-work/scripts/work.mjs';
 
-const TEST_FAULTS = new Set(
-  (process.env.THOTH_ARCHIVE_TEST_FAULT ?? '')
-    .split(',')
-    .map((fault) => fault.trim())
-    .filter(Boolean),
-);
+const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-function injectFault(stage) {
-  if (TEST_FAULTS.has(stage)) {
-    throw new Error(`Injected archive fault: ${stage}`);
+// Archive is a bounded filesystem transaction, never an agent lifecycle owner.
+function localPath(root, path) {
+  const absolute = resolve(root, path);
+  const rel = relative(root, absolute);
+  if (!rel || rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel)) {
+    throw new Error(`Path escapes project: ${path}`);
   }
-}
-
-function errorMessage(error) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function attemptRecovery(errors, label, operation) {
-  try {
-    operation();
-  } catch (error) {
-    errors.push(`${label}: ${errorMessage(error)}`);
-  }
-}
-
-function parseArgs(argv) {
-  const options = { json: false };
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
-    if (argument === '--json') options.json = true;
-    else if (argument === '--change') options.change = argv[++index];
-    else if (argument === '--date') options.date = argv[++index];
-    else throw new Error(`Unknown argument: ${argument}`);
-  }
-  if (!options.change) throw new Error('--change is required');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(options.date ?? '')) {
-    throw new Error('--date must use YYYY-MM-DD');
-  }
-  return options;
-}
-
-function sectionContent(content, heading) {
-  const expression = new RegExp(`^##\\s+${heading}\\s*$`, 'im');
-  const match = expression.exec(content);
-  if (!match || match.index === undefined) return undefined;
-  const start = match.index + match[0].length;
-  const remainder = content.slice(start);
-  const nextHeading = /^##\s+/m.exec(remainder);
-  return remainder.slice(0, nextHeading?.index ?? remainder.length).trim();
-}
-
-function contractCandidateLines(content, prefix) {
-  const pattern = new RegExp(`^\\s*-\\s+(?:\\*\\*)?${prefix}\\b`, 'i');
-  return content.split(/\r?\n/).filter((line) => pattern.test(line));
-}
-
-function assertSequentialContractIds(ids, prefix) {
-  const valid =
-    new Set(ids).size === ids.length &&
-    ids.every(
-      (id, index) => id === `${prefix}-${String(index + 1).padStart(3, '0')}`,
-    );
-  if (!valid) {
-    throw new Error(`${prefix}-### identifiers must be unique and sequential`);
-  }
-}
-
-function parseComplianceMatrix(content) {
-  const matrix = sectionContent(content, 'Compliance matrix') ?? '';
-  const candidates = matrix
-    .split(/\r?\n/)
-    .filter((line) => /^\s*\|\s*(?:FR|SC)-/i.test(line));
-  const entries = [
-    ...matrix.matchAll(
-      /^\|\s*((?:FR|SC)-\d{3})(?:\s+`?\[(?:buildable|outcome)\]`?)?\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(PASS|RISK|FAIL)\s*\|\s*$/gim,
-    ),
-  ].map((match) => ({
-    id: match[1].toUpperCase(),
-    evidence: match[2],
-    check: match[3],
-    result: match[4].toUpperCase(),
-  }));
-  return { entries, malformed: candidates.length !== entries.length };
-}
-
-function isConcreteEvidence(value) {
-  const normalized = value.replaceAll('`', '').trim();
-  return (
-    normalized.length > 0 &&
-    !/^\[.*\]$/.test(normalized) &&
-    !/^(?:N\/?A|NONE|PENDING|TBD|NOT YET|-)[.!]?$/i.test(normalized)
-  );
-}
-
-function hasExplicitResidualRisk(content, id) {
-  const residualRisks = sectionContent(content, 'Residual risks') ?? '';
-  const match = new RegExp(`^-\\s+${id}\\s*:\\s*(\\S.*)$`, 'im').exec(
-    residualRisks,
-  );
-  return match !== null && isConcreteEvidence(match[1]);
-}
-
-function hasBlockingCriticalFinding(content) {
-  const findings = sectionContent(content, 'Findings') ?? '';
-  return findings.split(/\r?\n/).some((line) => {
-    if (!/\bCRITICAL\b/i.test(line)) return false;
-    if (/\bRESOLVED\b/i.test(line)) return false;
-    return !/\b(?:NO|ZERO)\s+(?:OPEN\s+)?CRITICAL\b/i.test(line);
-  });
-}
-
-function hasConcreteReviewDimensions(content) {
-  const dimensions = sectionContent(content, 'Review dimensions') ?? '';
-  return ['Completeness', 'Correctness', 'Coherence'].every((dimension) => {
-    const match = new RegExp(
-      `^-\\s*\\*\\*${dimension}\\*\\*:\\s*(\\S.*)$`,
-      'im',
-    ).exec(dimensions);
-    return match !== null && isConcreteEvidence(match[1]);
-  });
-}
-
-function assertVerifyCloseout(verify, contract) {
-  if (
-    !/^\*\*Reviewer\*\*:\s*oracle(?:<br>)?\s*$/im.test(verify) ||
-    !/^\*\*Independent from implementer\*\*:\s*Yes(?:<br>)?\s*$/im.test(verify)
-  ) {
-    throw new Error(
-      'verify-report.md requires an independent oracle reviewer before archive',
-    );
-  }
-  if (!/^\*\*Verdict\*\*:\s*PASS\s*$/im.test(verify)) {
-    throw new Error('verify-report.md must record PASS before archive');
-  }
-  if (hasBlockingCriticalFinding(verify)) {
-    throw new Error('Unresolved CRITICAL verification findings block archive');
-  }
-
-  if (!hasConcreteReviewDimensions(verify)) {
-    throw new Error(
-      'verify-report.md must record completeness, correctness, and coherence review dimensions',
-    );
-  }
-
-  const matrix = parseComplianceMatrix(verify);
-  const knownIds = new Set([
-    ...contract.frIds,
-    ...contract.buildableScIds,
-    ...contract.outcomeScIds,
-  ]);
-  const rowIds = matrix.entries.map(({ id }) => id);
-  const duplicateIds = rowIds.filter(
-    (id, index) => rowIds.indexOf(id) !== index,
-  );
-  const unknownIds = rowIds.filter((id) => !knownIds.has(id));
-  const failedIds = matrix.entries
-    .filter(({ result }) => result === 'FAIL')
-    .map(({ id }) => id);
-  if (
-    matrix.malformed ||
-    duplicateIds.length > 0 ||
-    unknownIds.length > 0 ||
-    failedIds.length > 0
-  ) {
-    throw new Error(
-      'Compliance matrix must contain canonical rows with unique known requirement IDs and no FAIL results',
-    );
-  }
-  const rows = new Map(matrix.entries.map((entry) => [entry.id, entry]));
-  const missingEvidence = [
-    ...contract.frIds,
-    ...contract.buildableScIds,
-  ].filter((id) => {
-    const row = rows.get(id);
-    return (
-      row?.result !== 'PASS' ||
-      !isConcreteEvidence(row.evidence) ||
-      !isConcreteEvidence(row.check)
-    );
-  });
-  if (missingEvidence.length > 0) {
-    throw new Error(
-      `Verification evidence is missing for: ${missingEvidence.join(', ')}`,
-    );
-  }
-
-  const unresolvedOutcomes = contract.outcomeScIds.filter((id) => {
-    const row = rows.get(id);
-    if (!row) return true;
-    if (row.result === 'PASS') {
-      return (
-        !isConcreteEvidence(row.evidence) || !isConcreteEvidence(row.check)
-      );
-    }
-    return row.result !== 'RISK' || !hasExplicitResidualRisk(verify, id);
-  });
-  if (unresolvedOutcomes.length > 0) {
-    throw new Error(
-      `Outcome verification disposition is missing for: ${unresolvedOutcomes.join(', ')}`,
-    );
-  }
-}
-
-function assertArchivable(change, contract) {
-  for (const file of [
-    'spec.md',
-    'plan.md',
-    'tasks.md',
-    'verify-report.md',
-    'archive-report.md',
-  ]) {
-    if (!existsSync(join(change, file))) {
-      throw new Error(`${file} is required before archive`);
-    }
-  }
-
-  const tasks = readFileSync(join(change, 'tasks.md'), 'utf8');
-  if (/^- \[(?: |~)\] T\d{3}\b/m.test(tasks)) {
-    throw new Error('All tasks must be complete before archive');
-  }
-
-  const verify = readFileSync(join(change, 'verify-report.md'), 'utf8');
-  assertVerifyCloseout(verify, contract);
-
-  const report = readFileSync(join(change, 'archive-report.md'), 'utf8');
-  if (!/^\*\*Status\*\*:\s*READY(?:<br>)?\s*$/im.test(report)) {
-    throw new Error('archive-report.md must record READY before archive');
-  }
-  if (!/^\*\*Oracle verdict\*\*:\s*PASS(?:<br>)?\s*$/im.test(report)) {
-    throw new Error('archive-report.md must record oracle PASS before archive');
-  }
-  if (
-    !/^\*\*Archive path\*\*:\s*`openspec\/changes\/archive\/YYYY-MM-DD-\[feature\]\/`(?:<br>)?\s*$/im.test(
-      report,
-    )
-  ) {
-    throw new Error('archive-report.md must retain the dated archive target');
-  }
-  if (
-    !/verify-report\.md/i.test(
-      sectionContent(report, 'Verification lineage') ?? '',
-    )
-  ) {
-    throw new Error('archive-report.md must retain verification lineage');
-  }
-  if (
-    !/^- Pending: archive applies declared durable deltas transactionally\.\s*$/im.test(
-      sectionContent(report, 'Canonical specification sync') ?? '',
-    )
-  ) {
-    throw new Error(
-      'archive-report.md must include the pending canonical specification sync',
-    );
-  }
-  return report;
-}
-
-function parseDeltaMetadata(metadata) {
-  const delta = parseSharedRequirementDelta(metadata);
-  if (delta) return delta;
-  throw new Error(`Invalid requirement delta metadata: [${metadata}]`);
-}
-
-function parseStoryScenarios(spec) {
-  const userStories = sectionContent(spec, 'User stories');
-  if (userStories === undefined) {
-    throw new Error('spec.md must contain a canonical User stories section');
-  }
-  const stories = [
-    ...userStories.matchAll(
-      /^###\s+US(\d+)\s+-\s+(.+?)\s+\(Priority:\s*P\d+\)\s*$/gim,
-    ),
-  ];
-  const scenariosByRequirement = new Map();
-
-  for (const [index, storyMatch] of stories.entries()) {
-    const start = storyMatch.index ?? 0;
-    const nextStory = stories[index + 1]?.index;
-    const end = nextStory ?? userStories.length;
-    const story = userStories.slice(start, end);
-    const covers =
-      /^\*\*Covers\*\*:\s*(.+)$/im.exec(story)?.[1].match(/\bFR-\d{3}\b/g) ??
-      [];
-    const acceptanceMarker = /^\*\*Acceptance scenarios\*\*:\s*$/im.exec(story);
-    const acceptance = acceptanceMarker
-      ? story.slice((acceptanceMarker.index ?? 0) + acceptanceMarker[0].length)
-      : '';
-    const scenarioStarts = [
-      ...acceptance.matchAll(/^\d+\.\s+\*\*Given\*\*/gim),
-    ];
-    const scenarios = scenarioStarts.map((scenarioStart, scenarioIndex) => {
-      const start = scenarioStart.index ?? 0;
-      const end = scenarioStarts[scenarioIndex + 1]?.index ?? acceptance.length;
-      const normalized = acceptance
-        .slice(start, end)
-        .replace(/\s+/g, ' ')
-        .trim();
-      const scenario =
-        /^\d+\.\s+\*\*Given\*\*\s+(.+?),\s+\*\*When\*\*\s+(.+?),\s+\*\*Then\*\*\s+(.+?)\.?\s*$/i.exec(
-          normalized,
-        );
-      if (!scenario) {
-        throw new Error(
-          `US${storyMatch[1]} acceptance scenario ${scenarioIndex + 1} must use Given, When, and Then`,
-        );
-      }
-      return {
-        title: `US${storyMatch[1]} - ${storyMatch[2].trim()} ${scenarioIndex + 1}`,
-        given: scenario[1].trim(),
-        when: scenario[2].trim(),
-        result: scenario[3].trim(),
-      };
-    });
-
-    for (const requirementId of covers) {
-      const current = scenariosByRequirement.get(requirementId) ?? [];
-      current.push(...scenarios);
-      scenariosByRequirement.set(requirementId, current);
-    }
-  }
-
-  return scenariosByRequirement;
-}
-
-function parseChangeSpec(spec) {
-  const scenariosByRequirement = parseStoryScenarios(spec);
-  const functionalRequirementsSection = sectionContent(
-    spec,
-    'Functional requirements',
-  );
-  const successCriteriaSection = sectionContent(spec, 'Success criteria');
-  if (functionalRequirementsSection === undefined) {
-    throw new Error(
-      'spec.md must contain a canonical Functional requirements section',
-    );
-  }
-  if (successCriteriaSection === undefined) {
-    throw new Error(
-      'spec.md must contain a canonical Success criteria section',
-    );
-  }
-  const functionalRequirements = [
-    ...functionalRequirementsSection.matchAll(
-      /^- \*\*(FR-\d{3})\s+—\s+(.+?)\*\*:\s*`\[(.+?)\]`\s+(\S.+)$/gim,
-    ),
-  ];
-  const rawFrCandidates = contractCandidateLines(spec, 'FR');
-  if (
-    functionalRequirements.length === 0 ||
-    rawFrCandidates.length !== functionalRequirements.length
-  ) {
-    throw new Error(
-      'Every FR-### must use the canonical named requirement, delta metadata, and normative statement format',
-    );
-  }
-  assertSequentialContractIds(
-    functionalRequirements.map((match) => match[1]),
-    'FR',
-  );
-
-  const successCriteria = [
-    ...successCriteriaSection.matchAll(
-      /^- \*\*(SC-\d{3})\*\*\s+`\[(buildable|outcome)\]`:\s*(\S.+)$/gim,
-    ),
-  ];
-  const rawScCandidates = contractCandidateLines(spec, 'SC');
-  if (
-    successCriteria.length === 0 ||
-    rawScCandidates.length !== successCriteria.length
-  ) {
-    throw new Error(
-      'Every SC-### must be classified as buildable or outcome before archive',
-    );
-  }
-  assertSequentialContractIds(
-    successCriteria.map((match) => match[1]),
-    'SC',
-  );
-
-  const deltas = [];
-  for (const match of functionalRequirements) {
-    const metadata = parseDeltaMetadata(match[3]);
-    if (metadata.operation === 'INTERNAL') continue;
-    const scenarios = scenariosByRequirement.get(match[1]) ?? [];
-    if (scenarios.length === 0) {
-      throw new Error(
-        `${match[1]} must map to at least one acceptance scenario before archive`,
-      );
-    }
-    deltas.push({
-      title: match[2].trim(),
-      statement: match[4].trim(),
-      scenarios,
-      ...metadata,
-    });
-  }
-  return {
-    deltas,
-    frIds: functionalRequirements.map((match) => match[1]),
-    buildableScIds: successCriteria
-      .filter((match) => match[2].toLowerCase() === 'buildable')
-      .map((match) => match[1]),
-    outcomeScIds: successCriteria
-      .filter((match) => match[2].toLowerCase() === 'outcome')
-      .map((match) => match[1]),
-  };
-}
-
-function newCanonicalSpec(capability) {
-  const title = capability
-    .split('-')
-    .map((part) => part[0].toUpperCase() + part.slice(1))
-    .join(' ');
-  return parseCanonicalSpec(
-    `# ${title} Specification\n\n## Purpose\n\nDurable behavioral contract for \`${capability}\`.\n\n## Requirements\n`,
-  );
-}
-
-function renderRequirement(delta) {
-  const scenarios = delta.scenarios
-    .map(
-      (scenario) =>
-        `#### Scenario: ${scenario.title}\n\n- **GIVEN** ${scenario.given}\n- **WHEN** ${scenario.when}\n- **THEN** ${scenario.result}`,
-    )
-    .join('\n\n');
-  return `### Requirement: ${delta.title}\n\n${delta.statement}\n\n${scenarios}`;
-}
-
-function renderCanonicalSpec(canonical) {
-  const requirements = [...canonical.requirements.values()];
-  return `${canonical.prefix}${requirements.length > 0 ? `\n\n${requirements.join('\n\n')}` : ''}\n`;
-}
-
-function planCanonicalUpdates(specRoot, deltas) {
-  const byCapability = new Map();
-  for (const delta of deltas) {
-    const capability = delta.capability;
-    if (!CAPABILITY_PATTERN.test(capability)) {
-      throw new Error(`Invalid capability: ${capability}`);
-    }
-    const current = byCapability.get(capability) ?? [];
-    current.push(delta);
-    byCapability.set(capability, current);
-  }
-
-  const updates = [];
-  for (const [capability, capabilityDeltas] of byCapability) {
-    const path = join(specRoot, capability, 'spec.md');
-    const present = existsSync(path);
-    let canonical;
+  let cursor = root;
+  for (const part of rel.split(sep)) {
+    cursor = join(cursor, part);
     try {
-      canonical = present
-        ? parseCanonicalSpec(readFileSync(path, 'utf8'))
-        : newCanonicalSpec(capability);
+      if (lstatSync(cursor).isSymbolicLink())
+        throw new Error(`Symlink is not allowed: ${cursor}`);
     } catch (error) {
-      throw new Error(
-        `SDD-SPEC-DELTA-BASELINE: ${capability} canonical baseline is invalid: ${errorMessage(error)}`,
-      );
+      if (error.code !== 'ENOENT') throw error;
     }
-    const preflight = preflightRequirementDeltas({
-      capability,
-      present,
-      requirements: canonical.requirements,
-      deltas: capabilityDeltas,
-    });
-    if (preflight.errors.length > 0) {
-      const [first] = preflight.errors;
-      throw new Error(`${first.code}: ${first.message}`);
+  }
+  return absolute;
+}
+
+function existingBytes(path) {
+  if (!existsSync(path)) return null;
+  if (!lstatSync(path).isFile())
+    throw new Error(`Expected a regular file: ${path}`);
+  return readFileSync(path);
+}
+
+function planUpdates(projectRoot, updates) {
+  const planned = new Map();
+  const specification = (capability) => {
+    if (
+      typeof capability !== 'string' ||
+      !/^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\/[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)*$/.test(
+        capability,
+      )
+    )
+      throw new Error('Invalid capability');
+    return localPath(projectRoot, `.thoth/specs/${capability}/spec.md`);
+  };
+  const add = (path, before, after) => {
+    if (planned.has(path))
+      throw new Error(`Overlapping durable update: ${path}`);
+    planned.set(path, { path, before, after });
+  };
+  for (const update of updates) {
+    const path = specification(update.capability);
+    const before = existingBytes(path);
+    if (update.operation === 'add') {
+      if (before !== null)
+        throw new Error(`Addition already exists: ${update.capability}`);
+    } else if (before === null || digest(before) !== update.expectedDigest) {
+      throw new Error(`Durable baseline changed: ${update.capability}`);
     }
-
-    for (const delta of capabilityDeltas) {
-      if (delta.operation === 'ADDED') {
-        canonical.requirements.set(delta.title, renderRequirement(delta));
-        continue;
-      }
-
-      if (delta.operation === 'RENAMED') {
-        const entries = [...canonical.requirements.entries()];
-        canonical.requirements = new Map(
-          entries.map(([title, block]) =>
-            title === delta.previousTitle
-              ? [delta.title, renderRequirement(delta)]
-              : [title, block],
-          ),
+    let content;
+    if (update.source) {
+      content = existingBytes(localPath(projectRoot, update.source));
+      if (content === null || digest(content) !== update.sourceDigest)
+        throw new Error(`Durable source changed: ${update.source}`);
+    }
+    if (update.operation === 'add' || update.operation === 'replace') {
+      if (!content)
+        throw new Error(
+          'Addition/replacement requires reviewed source content',
         );
-        continue;
-      }
-
-      if (delta.operation === 'MODIFIED') {
-        canonical.requirements.set(delta.title, renderRequirement(delta));
-      } else if (delta.operation === 'REMOVED') {
-        canonical.requirements.delete(delta.title);
-      }
-    }
-
-    updates.push({ path, content: renderCanonicalSpec(canonical), capability });
+      add(path, before, content);
+    } else if (update.operation === 'remove') {
+      add(path, before, null);
+    } else if (update.operation === 'rename') {
+      const target = specification(update.target);
+      if (existingBytes(target) !== null)
+        throw new Error(`Rename target already exists: ${update.target}`);
+      add(path, before, null);
+      add(target, null, content ?? before);
+    } else throw new Error(`Unknown durable operation: ${update.operation}`);
   }
-  return updates;
+  return [...planned.values()];
 }
 
-function stageCanonicalUpdates(updates) {
-  const transactionId = `${process.pid}-${Date.now()}`;
-  const staged = [];
+export function archiveWork({ projectRoot, changeRoot, date }) {
+  projectRoot = resolve(projectRoot);
+  if (
+    !existsSync(projectRoot) ||
+    !lstatSync(projectRoot).isDirectory() ||
+    lstatSync(projectRoot).isSymbolicLink()
+  )
+    throw new Error('Project must be a real directory');
+  changeRoot = localPath(projectRoot, changeRoot);
+  if (dirname(changeRoot) !== join(projectRoot, '.thoth', 'changes'))
+    throw new Error('Change must be an immediate child of .thoth/changes');
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date
+  )
+    throw new Error('Date must be a real ISO date');
+  const archive = localPath(
+    projectRoot,
+    `.thoth/changes/archive/${date}-${basename(changeRoot)}`,
+  );
+  if (existsSync(archive))
+    throw new Error('Archive destination already exists');
+  const thoth = join(projectRoot, '.thoth');
+  if (readdirSync(thoth).some((name) => name.startsWith('.archive-')))
+    throw new Error(
+      'An unfinished archive transaction requires inspection before retry',
+    );
+  const transaction = localPath(projectRoot, '.thoth/.archive-transaction');
+  let updates = [];
   const createdDirectories = [];
-  try {
-    for (const update of updates) {
-      const directory = dirname(update.path);
-      if (!existsSync(directory)) {
-        mkdirSync(directory, { recursive: true });
-        createdDirectories.push(directory);
-      }
-      const stagePath = join(
-        directory,
-        `.spec.md.thoth-stage-${transactionId}`,
-      );
-      writeFileSync(stagePath, update.content);
-      staged.push({ ...update, stagePath });
+  const makeParents = (path) => {
+    if (existsSync(path)) {
+      if (!lstatSync(path).isDirectory())
+        throw new Error(`Expected directory: ${path}`);
+      return;
     }
-    return { staged, createdDirectories, transactionId };
-  } catch (error) {
-    try {
-      rollbackCanonicalUpdates({ staged, createdDirectories, applied: [] });
-    } catch (recoveryError) {
-      throw new Error(
-        `${errorMessage(error)}; staging recovery failed: ${errorMessage(recoveryError)}`,
-      );
-    }
-    throw error;
-  }
-}
-
-function applyCanonicalUpdates(transaction) {
+    makeParents(dirname(path));
+    mkdirSync(path);
+    createdDirectories.push(path);
+  };
+  // Acquire first: another completed archive may have changed reviewed inputs.
+  mkdirSync(transaction);
   const applied = [];
   try {
-    for (const item of transaction.staged) {
-      const backupPath = `${item.path}.thoth-backup-${transaction.transactionId}`;
-      const hadOriginal = existsSync(item.path);
-      if (hadOriginal) {
-        renameSync(item.path, backupPath);
-      }
-      applied.push({ ...item, backupPath, hadOriginal });
-      if (hadOriginal) injectFault('after-original-backup');
-      renameSync(item.stagePath, item.path);
-      if (applied.length === 1) injectFault('after-first-canonical-write');
-    }
-    return { ...transaction, applied };
-  } catch (error) {
-    try {
-      rollbackCanonicalUpdates({ ...transaction, applied });
-    } catch (recoveryError) {
+    const result = validateWork({
+      projectRoot,
+      changeRoot,
+      through: 'closeout',
+    });
+    if (!result.ok)
       throw new Error(
-        `${errorMessage(error)}; canonical recovery failed: ${errorMessage(recoveryError)}`,
+        `Closeout rejected: ${result.errors.map((error) => `${error.code}: ${error.message}`).join('; ')}`,
       );
+    if (existsSync(archive))
+      throw new Error('Archive destination already exists');
+    updates = planUpdates(projectRoot, result.work.durableUpdates ?? []);
+    // Preflight destination topology before any durable target changes.
+    for (const path of [
+      dirname(archive),
+      ...updates.map((item) => dirname(item.path)),
+    ]) {
+      let cursor = path;
+      while (!existsSync(cursor)) cursor = dirname(cursor);
+      if (!lstatSync(cursor).isDirectory())
+        throw new Error(`Expected directory: ${cursor}`);
     }
-    throw error;
-  }
-}
-
-function rollbackCanonicalUpdates(transaction) {
-  const recoveryErrors = [];
-  for (const item of [...(transaction.applied ?? [])].reverse()) {
-    attemptRecovery(recoveryErrors, `remove ${item.path}`, () =>
-      rmSync(item.path, { force: true }),
+    writeFileSync(
+      join(transaction, 'recovery.json'),
+      `${JSON.stringify(
+        {
+          changeRoot,
+          archive,
+          updates: updates.map(({ path, before, after }, index) => ({
+            backup: before === null ? null : `original-${index}`,
+            path: relative(projectRoot, path),
+            before: before?.toString('base64') ?? null,
+            after: after?.toString('base64') ?? null,
+          })),
+        },
+        null,
+        2,
+      )}\n`,
+      { flag: 'wx' },
     );
-    if (item.hadOriginal) {
-      if (existsSync(item.backupPath)) {
-        attemptRecovery(recoveryErrors, `restore ${item.path}`, () =>
-          renameSync(item.backupPath, item.path),
-        );
-      } else {
-        recoveryErrors.push(`restore ${item.path}: backup is missing`);
+    for (const [index, update] of updates.entries()) {
+      localPath(projectRoot, update.path);
+      makeParents(dirname(update.path));
+      const record = {
+        ...update,
+        backup: join(transaction, `original-${index}`),
+        captured: false,
+        installed: false,
+      };
+      applied.push(record);
+      if (update.before !== null) {
+        // Capture the actual object before comparing: a prior check is not CAS.
+        renameSync(update.path, record.backup);
+        record.captured = true;
+        if (!readFileSync(record.backup).equals(update.before))
+          throw new Error(
+            'Durable baseline changed during archive; displaced content preserved',
+          );
+      }
+      if (update.after !== null) {
+        const staged = join(transaction, `next-${index}`);
+        writeFileSync(staged, update.after, { flag: 'wx' });
+        // link fails if another writer created the destination; never clobber it.
+        linkSync(staged, localPath(projectRoot, update.path));
+        record.installed = true;
       }
     }
-  }
-  for (const item of transaction.staged ?? []) {
-    attemptRecovery(recoveryErrors, `remove ${item.stagePath}`, () =>
-      rmSync(item.stagePath, { force: true }),
-    );
-  }
-  for (const directory of [
-    ...(transaction.createdDirectories ?? []),
-  ].reverse()) {
-    if (existsSync(directory)) {
-      attemptRecovery(recoveryErrors, `remove ${directory}`, () =>
-        rmdirSync(directory),
-      );
+    if (process.env.THOTH_ARCHIVE_TEST_FAULT === 'after-updates')
+      throw new Error('Injected archive fault: after-updates');
+    for (const record of applied) {
+      const current = existingBytes(record.path);
+      if (
+        (current === null) !== (record.after === null) ||
+        (current && !current.equals(record.after))
+      )
+        throw new Error(
+          'Concurrent durable edit detected; transaction retained',
+        );
+      if (record.captured && !readFileSync(record.backup).equals(record.before))
+        throw new Error('Displaced original changed; transaction retained');
     }
-  }
-  if (recoveryErrors.length > 0) {
-    throw new Error(recoveryErrors.join('; '));
-  }
-}
-
-function finalizeCanonicalUpdates(transaction) {
-  const warnings = [];
-  for (const item of transaction.applied ?? []) {
-    if (!item.hadOriginal) continue;
-    try {
-      rmSync(item.backupPath, { force: true });
-    } catch (error) {
-      warnings.push(
-        `Archived successfully but could not remove backup ${item.backupPath}: ${errorMessage(error)}`,
-      );
-    }
-  }
-  return warnings;
-}
-
-function archivedReport(report, options, changeName, updatedCapabilities) {
-  const sync =
-    updatedCapabilities.length === 0
-      ? '- None: no durable behavior delta.'
-      : `- Updated: ${updatedCapabilities.map((item) => `\`${item}\``).join(', ')}.`;
-  return report
-    .replace(/^\*\*Status\*\*:\s*READY\b/im, '**Status**: ARCHIVED')
-    .replaceAll(
-      'openspec/changes/archive/YYYY-MM-DD-[feature]/',
-      `openspec/changes/archive/${options.date}-${changeName}/`,
-    )
-    .replace(
-      /^- Pending: archive applies declared durable deltas transactionally\.\s*$/im,
-      sync,
-    );
-}
-
-function recoverArchiveFailure(reportPath, originalReport, transaction) {
-  const recoveryErrors = [];
-  attemptRecovery(recoveryErrors, 'report recovery failed', () => {
-    injectFault('report-restore');
-    writeFileSync(reportPath, originalReport);
-  });
-  attemptRecovery(recoveryErrors, 'canonical recovery failed', () =>
-    rollbackCanonicalUpdates(transaction),
-  );
-  return recoveryErrors;
-}
-
-try {
-  const options = parseArgs(process.argv.slice(2));
-  const change = resolve(options.change);
-  const changesRoot = dirname(change);
-  if (basename(changesRoot) !== 'changes') {
-    throw new Error(
-      'Change must be an immediate child of an openspec/changes directory',
-    );
-  }
-  if (!existsSync(join(change, 'spec.md'))) {
-    throw new Error('spec.md is required before archive');
-  }
-  const contract = parseChangeSpec(
-    readFileSync(join(change, 'spec.md'), 'utf8'),
-  );
-  const originalReport = assertArchivable(change, contract);
-
-  const archiveRoot = join(changesRoot, 'archive');
-  const changeName = basename(change);
-  const target = join(archiveRoot, `${options.date}-${changeName}`);
-  if (existsSync(target)) {
-    throw new Error(`Archive target already exists: ${target}`);
-  }
-
-  const specRoot = join(dirname(changesRoot), 'specs');
-  const updates = planCanonicalUpdates(specRoot, contract.deltas);
-  const updatedCapabilities = updates
-    .map((update) => update.capability)
-    .sort((left, right) => left.localeCompare(right));
-  const reportPath = join(change, 'archive-report.md');
-  const transaction = applyCanonicalUpdates(stageCanonicalUpdates(updates));
-
-  try {
-    writeFileSync(
-      reportPath,
-      archivedReport(originalReport, options, changeName, updatedCapabilities),
-    );
-    injectFault('after-report-write');
-    mkdirSync(archiveRoot, { recursive: true });
-    injectFault('before-change-move');
-    renameSync(change, target);
+    makeParents(dirname(archive));
+    renameSync(changeRoot, archive);
   } catch (error) {
-    const recoveryErrors = recoverArchiveFailure(
-      reportPath,
-      originalReport,
-      transaction,
-    );
-    if (recoveryErrors.length > 0) {
-      const cause = errorMessage(error);
-      throw new Error(`${cause}; ${recoveryErrors.join('; ')}`);
+    const recoveryErrors = [];
+    for (const [index, record] of [...applied].reverse().entries()) {
+      try {
+        if (record.installed) {
+          const displaced = join(transaction, `rollback-${index}`);
+          renameSync(localPath(projectRoot, record.path), displaced);
+          if (!readFileSync(displaced).equals(record.after)) {
+            linkSync(displaced, localPath(projectRoot, record.path));
+            throw new Error(`Concurrent edit preserved at ${record.path}`);
+          }
+        }
+        if (record.captured)
+          linkSync(record.backup, localPath(projectRoot, record.path));
+      } catch (recoveryError) {
+        recoveryErrors.push(recoveryError.message);
+      }
     }
-    throw error;
+    for (const directory of createdDirectories.reverse()) {
+      try {
+        rmdirSync(directory);
+      } catch (recoveryError) {
+        if (recoveryError.code !== 'ENOTEMPTY')
+          recoveryErrors.push(recoveryError.message);
+      }
+    }
+    if (recoveryErrors.length === 0) rmSync(transaction, { recursive: true });
+    throw new Error(
+      error.message +
+        (recoveryErrors.length
+          ? '; recovery retained at ' +
+            transaction +
+            ': ' +
+            recoveryErrors.join('; ')
+          : ''),
+    );
   }
-  const warnings = finalizeCanonicalUpdates(transaction);
-
-  const result = {
+  const warnings = [];
+  try {
+    rmSync(transaction, { recursive: true });
+  } catch {
+    warnings.push(
+      `Archive complete; inspect retained transaction: ${transaction}`,
+    );
+  }
+  return {
     status: 'archived',
-    archivePath: target,
-    specsUpdated: updatedCapabilities,
+    archive,
+    originalChangeRoot: changeRoot,
+    updated: updates.map(({ path }) =>
+      relative(projectRoot, path).replaceAll('\\', '/'),
+    ),
     warnings,
   };
-  process.stdout.write(`${options.json ? JSON.stringify(result) : target}\n`);
-} catch (error) {
-  process.stderr.write(`${errorMessage(error)}\n`);
-  process.exitCode = 1;
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
+  try {
+    const options = {};
+    for (let index = 2; index < process.argv.length; index++) {
+      const argument = process.argv[index];
+      if (argument === '--json') options.json = true;
+      else if (['--project', '--change', '--date'].includes(argument))
+        options[argument.slice(2)] = process.argv[++index];
+      else throw new Error(`Unknown argument: ${argument}`);
+    }
+    if (!options.project || !options.change || !options.date)
+      throw new Error('--project, --change and --date are required');
+    const result = archiveWork({
+      projectRoot: options.project,
+      changeRoot: options.change,
+      date: options.date,
+    });
+    process.stdout.write(
+      `${options.json ? JSON.stringify(result) : result.archive}\n`,
+    );
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  }
 }

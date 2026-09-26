@@ -45,63 +45,37 @@ synchronizes the five packaged owned skills globally under
 `~/.config/opencode/skills/`. Only a consistent thoth-mem `complete` result
 completes a published installation; printed manual actions and receipts remain
 provider-owned. Codex also needs the CLI because its plugin cannot install
-custom agents or write `~/.codex/AGENTS.md`. SDD phases never call either CLI.
+custom agents or write `~/.codex/AGENTS.md`. Work execution never calls either CLI.
 
 ## Roles
 
 | Role | Mode | Use |
 | --- | --- | --- |
-| `orchestrator` | adaptive root | Direct work, route recommendation, SDD coordination, final synthesis |
+| `orchestrator` | adaptive root | Agreement, dependency shaping, acceptance, recovery and final synthesis |
 | `explorer` | read-only | Repository discovery for real uncertainty |
 | `librarian` | read-only | Current, unfamiliar, version-sensitive, or external facts |
-| `oracle` | read-only | Explicitly or bounded-default selected plan review and independent judgment when risk requires it |
+| `oracle` | read-only | Optional plan review and fresh independent final judgment when risk or persistence requires it |
 | `designer` | writer | Material UI/UX, interaction, accessibility, and visual quality |
 | `quick` | writer | Known narrow, clear, low-risk isolated edits |
 | `deep` | writer | Correctness-heavy or cross-cutting implementation |
 
-## Routes
+## Workflow
 
-```text
-Direct:      implement -> verify
-Accelerated: specify -> plan -> tasks -> implement -> verify -> archive
-Full:        explore -> specify -> plan -> tasks -> implement -> verify -> archive
-```
+Small bounded work: implement → verify.
+Persisted work: agree → execute units → independently verify → close.
 
-Root owns the sequential artifact phases. Every route verifies: trivial
-deterministic Direct work may use focused root checks; materially risky Direct
-work and every Accelerated or Full final verify use a fresh read-only Oracle.
-`clarify`, `checklist`, `plan-review`, and `converge` are conditional.
+Use `.thoth/changes/<id>/work.yaml` for the agreement, acceptance and units.
+Context files, external units and evidence are added only when useful. Root
+owns acceptance, specialists their assigned surfaces and checkpoints.
 
-- Explicit route names are user selections and win. Otherwise root summarizes
-  context and recommends one route; explicit answers win, while the third
-  answerless result selects that recommendation. Generic SDD makes Accelerated
-  the minimum recommendation.
-- Multi-file docs/mechanical work can remain Direct when clear and low-risk.
-- Accelerated fast-forwards `specify -> plan -> tasks` without routine pauses.
-- Full adds exploration and separate planning gates for uncertainty or high risk.
-- After `ready`, Accelerated and Full offer optional Oracle plan review or
-  proceeding without it; explicit answers win and the third answerless result
-  selects Oracle review. Every final verify remains mandatory.
-- `ready` gates implementation; `closeout` gates transactional archive.
-
-Before implementation, root separates concrete artifact/decision dependencies
-from mere ordering preference, marks input-ready lanes ready and dependent lanes
-blocked, and preserves one writer per mutable surface. It dispatches all ready
-conflict-free lanes in each native wave before waiting, then fans in terminal
-native results before releasing dependents. Semantic triggers select `librarian`
-for current/external facts, `designer` for material user-facing experience, and
-`quick` for known narrow low-risk work; coupled or high-risk work uses `deep`.
-Native harness execution and lifecycle are authoritative for dispatch, status,
-wait, steering, cancellation, and terminal results.
-
-Artifact-backed specs use named normative FRs with INTERNAL or durable delta
-metadata and typed buildable/outcome SCs. Archive applies only declared durable
-deltas to `openspec/specs/`; handled failures roll the sync back within the
-active process, but forced process or OS termination is not crash-atomic.
+Dispatch all independent admitted units before waiting, refill freed capacity,
+and release consumers after their own dependencies are accepted and fresh.
+Native liveness governs recovery; a checkpoint or timeout never permits a
+duplicate writer. Existing human authorization is reused. See [workflow](workflow.md).
 
 ## Skills
 
-`thoth-init`, `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and
+`thoth-init`, `thoth-work`, `thoth-constitution`, `thoth-archive`, and
 `plan-reviewer` ship in
 every harness bundle. The installer obtains `simplify`, `tdd`,
 `progressive-context-router`, and `architectural-grilling` from their canonical
@@ -138,10 +112,10 @@ invalidate package state, or install the newer release.
 
 - OpenCode ships only the OpenAI built-in preset.
 - Every `thoth-init` surface only initializes or synchronizes minimum
-  `openspec/` governance; installation owns skills, agents, plugins, harness
+  `.thoth/` governance; installation owns skills, agents, plugins, harness
   configuration, and dependencies.
 - Codex requires the CLI for global agents, `~/.codex/AGENTS.md`, and managed
-  config; `$thoth-init` creates project SDD governance only.
+  config; `$thoth-init` creates project work governance only.
 - Claude requires both native marketplace commands before its namespaced skill
   exists.
 - Codex and Claude native managers own plugin versions and normal cache
@@ -153,5 +127,5 @@ invalidate package state, or install the newer release.
   recovery. thoth-agents only invokes its public setup during installation.
 - Runtime memory authorization is `none`, `recall`, or `observe` and does not
   alter workspace write permission. Root lifecycle never transfers.
-- `openspec/` remains canonical; SDD artifacts are not mirrored into thoth-mem.
+- `.thoth/` remains canonical; work contracts and checkpoints are not mirrored into thoth-mem.
 - QA executables remain separate and project-owned.

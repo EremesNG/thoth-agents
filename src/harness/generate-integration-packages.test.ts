@@ -172,7 +172,7 @@ describe('generateIntegrationPackages', () => {
         join(pluginRoot, 'skills', 'thoth-init', 'scripts', 'init.mjs'),
         'utf8',
       );
-      expect(initContract).toContain('Every write stays\ninside `openspec/`');
+      expect(initContract).toContain('`.thoth/`');
       expect(initContract).not.toContain('--harness');
       expect(initScript).not.toContain("'.agents'");
       expect(initScript).not.toContain('OWNED_SKILL_NAMES');

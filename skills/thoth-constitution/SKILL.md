@@ -10,18 +10,17 @@ metadata:
 
 # Thoth Constitution
 
-The canonical project constitution is `openspec/memory/constitution.md`.
+The canonical project constitution is `.thoth/constitution.md`.
 Resolve `<skill-dir>` as the directory containing this `SKILL.md`. Every bundled
 validator or template path below is anchored to that installed skill root rather
 than the project or current working directory.
 
-## Routine SDD
+## Routine workflow use
 
-- Read every active principle before planning.
-- Record concrete pre-design and post-design Constitution Check evidence in
-  `plan.md`.
+- Read only the active principles relevant to the current work and its risks.
+- Record concrete acceptance evidence in `work.yaml` when the work is persisted.
 - Do not amend the constitution, bump its version, or run lifecycle validation
-  for an ordinary feature change.
+  for ordinary work.
 
 ## Explicit amendment
 
@@ -45,7 +44,7 @@ a confirmed durable governance change.
 
 ```bash
 node "<skill-dir>/scripts/validate.mjs" \
-  --constitution openspec/memory/constitution.md --json
+  --constitution .thoth/constitution.md --json
 ```
 
 Initialization copies `<skill-dir>/templates/constitution.md` only when the

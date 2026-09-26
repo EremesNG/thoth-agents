@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -112,6 +112,28 @@ async function changedPaths(checkoutRoot) {
     .sort();
 }
 
+async function synchronizeRequiredSkills(
+  checkoutRoot,
+  projectRoot,
+  pluginName,
+) {
+  const skillsRoot = join(projectRoot, 'plugin', 'skills');
+  const skills = (await readdir(skillsRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  if (skills.length === 0) throw new Error('Packaged skill inventory is empty');
+  for (const skill of skills)
+    await readFile(join(skillsRoot, skill, 'SKILL.md'));
+  const registryPath = join(checkoutRoot, 'catalog', 'plugins.json');
+  const registry = JSON.parse(await readFile(registryPath, 'utf8'));
+  const plugin = registry.plugins.find((entry) => entry.name === pluginName);
+  if (!plugin) throw new Error(`Central catalog is missing ${pluginName}`);
+  plugin.requiredSkills = skills;
+  // The central updater still validates every required skill against the tag.
+  await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
+}
+
 export async function publishMarketplace(options = {}) {
   const projectRoot = resolve(
     options.projectRoot ?? resolve(import.meta.dirname, '..'),
@@ -148,6 +170,7 @@ export async function publishMarketplace(options = {}) {
       ],
       { cwd: temporaryRoot },
     );
+    await synchronizeRequiredSkills(checkoutRoot, projectRoot, pluginName);
     await run(
       process.execPath,
       [

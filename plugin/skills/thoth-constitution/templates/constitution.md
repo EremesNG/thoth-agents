@@ -15,57 +15,56 @@ Sync Impact Report
 
 ## Principles
 
-### I. User-value first
+### I. Native runtime authority
 
-Every change MUST map to an observable user or operator outcome. Speculative
-infrastructure without a current requirement is prohibited.
+The active harness owns dispatch, capacity, status, wait, steering,
+cancellation, and terminal results. Project workflow guidance MUST NOT implement
+a scheduler, queue, execution database, or memory provider. Capability gaps
+MUST remain explicit and use a truthful sequential fallback.
 
-### II. Simplicity and bounded scope
+### II. Bounded ownership and human authority
 
-Delivery MUST use the smallest coherent design that satisfies accepted
-requirements. Non-goals MUST be named, and scope cannot expand silently.
-Before the SDD route question, Root MUST summarize relevant context, scope,
-clarity, risk, and its evidence-based recommendation. Any explicit answer wins.
-When the native question returns answerless, Root MUST make at most three total
-attempts; after the third answerless result, the recommended route counts as
-selected.
+Delegation depth is one. Each mutable surface has one writer, and each new
+objective or independent judgment uses a fresh fitting specialist. Human
+approval governs material product, architecture, security, and destructive
+decisions. For a ready persisted plan, root MUST offer Oracle review (recommended)
+or direct implementation. After Oracle [OKAY], root MUST offer implementation
+(recommended) or stopping with the approved plan, even when the objective was
+authorized. Each choice defaults to its recommendation only after three confirmed
+unanswered native returns; explicit answers and Stop always win. Pending questions,
+unavailable UI/tools, failures and interruption MUST NOT count. These defaults
+MUST NOT resolve other human-owned decisions or override native restrictions.
+Root MUST preserve choices and remaining budgets across recovery without repeating
+settled choices or asking the user to choose a pipeline.
 
-### III. Testable contracts
+### III. Persisted work is the recoverable agreement
 
-Behavioral requirements MUST have observable acceptance evidence. Behavior
-changes MUST use test-first execution at an agreed public seam when practical.
+Nontrivial or resumable work MUST use `.thoth/changes/<id>/work.yaml` as its
+canonical agreement. Per-topic context, external-unit records, and evidence MAY
+be added only when useful. `.thoth/` is canonical project state; provider memory
+is independent and MUST NOT mirror the work contract. Recovery MUST reconcile
+projected state with native liveness before redispatching work.
 
-### IV. Independent assurance
+### IV. Evidence-based acceptance
 
-Every route MUST include verification proportional to the changed behavior and
-risk. The implementation writer cannot approve its own work. Trivial
-deterministic Direct work MAY be verified by Root when the decision is bounded
-and independent of the implementation writer. Materially risky Direct work and
-every Accelerated or Full final verify MUST use a fresh independent read-only
-reviewer. Pre-implementation plan review is optional and is selected explicitly
-or by the bounded recommended fallback; when offered, any explicit answer wins.
-After the third answerless result,
-`Review plan with Oracle (Recommended)` counts as selected. Actionable review
-rejections MUST be repaired and revalidated before a fresh reviewer round until
-approval or a material human-owned blocker. After approval, Root MUST give an
-approved plan summary before asking `Implement (Recommended)` or `Stop`; any
-explicit answer wins, while the third answerless result selects implementation.
-Plan review never substitutes for final verification.
+Root MUST accept each dependency from terminal native evidence before releasing
+its consumers. Native execution SHOULD fan out every ready, conflict-free unit,
+then refill released capacity as dependencies are accepted; it MUST NOT impose a
+global wave barrier. Persisted work requires an independent fresh Oracle final
+judgment, and no implementation writer may approve its own work.
 
-### V. Traceable delivery
+### V. Minimal mechanism
 
-Specifications, plans, tasks, implementation evidence, verification verdicts,
-and archive reports MUST remain traceable without relying on chat history.
+Use the smallest explicit workflow that preserves user intent, ownership,
+dependencies, recovery, and verification. Worktrees remain a deferred runtime
+concern until a concrete requirement authorizes them.
 
 ## Governance
 
-- Planning MUST record evidence-backed Constitution Check results before and
-  after design; routine feature work reads the principles but does not amend or
-  revalidate constitution lifecycle metadata.
-- Exceptions MUST identify the principle, reason, risk, owner, and removal
-  condition.
-- Amendments require explicit user direction, an updated Sync Impact Report,
-  and propagation to affected templates, instructions, and documentation.
-- MAJOR versions remove or redefine governance compatibility.
+- Amendments require explicit user direction, a refreshed Sync Impact Report,
+  and propagation to affected templates, instructions, and durable documents.
+- Routine work reads only the active principles relevant to its decisions and
+  risks; it does not repeat plan narratives or amend lifecycle metadata.
+- MAJOR versions remove or redefine a principle or compatibility boundary.
 - MINOR versions add a principle or materially expand guidance.
-- PATCH versions clarify wording without changing its meaning.
+- PATCH versions clarify wording without changing semantic behavior.

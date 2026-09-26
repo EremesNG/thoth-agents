@@ -4,7 +4,7 @@
 
 - `src/harness/registry.ts`: supported/default harnesses
 - `src/harness/core/agent-pack.ts`: seven-role contract
-- `src/harness/core/sdd.ts`: route and ownership contract
+- `src/harness/core/workflow.ts`: route and ownership contract
 - `src/harness/adapters/`: native translation
 - `src/harness/generate-integration-packages.ts`: shared Codex/Claude plugin
 - `plugin/`: generated shared distribution bundle
@@ -45,7 +45,9 @@
   generation errors exit nonzero.
 - Build and npm version lifecycle synchronize both plugin manifests and the
   generated shared bundle; release then publishes only this product's central
-  catalog pin.
+  catalog pin and required owned-skill inventory. The publisher reads the built
+  `plugin/skills/` inventory; the central validator verifies every required
+  skill against the release tag before any push.
 - No adapter bundles thoth-mem hooks, MCP, skill, lifecycle behavior, or project
   QA executables.
 - Pi's Context7 and web-access integrations are native extensions. Only grep.app

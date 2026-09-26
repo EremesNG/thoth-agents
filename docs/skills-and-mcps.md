@@ -1,49 +1,29 @@
 # Skills and MCPs
 
-thoth-agents 0.3.0 separates compact role prompts from detailed, on-demand
-workflow contracts. The thoth-owned phase contracts ship inside the plugin
+thoth-agents separates compact role prompts from detailed, on-demand
+workflow contracts. The thoth-owned work contracts ship inside the plugin
 bundle, while mandatory external skills are installed from their canonical
-repositories during setup. SDD execution itself requires neither the CLI nor a
+repositories during setup. Work execution itself requires neither the CLI nor a
 runtime download.
 
 ## Owned workflow skills
 
 | Skill | Contract |
 | --- | --- |
-| `thoth-init` | Offline, idempotent initialization and synchronization of minimum `openspec/` governance only |
-| `thoth-sdd` | Contextual route recommendation, explicit-or-bounded-default selection, progressive phase references, templates, and structural validation |
-| `thoth-constitution` | Constitution creation, amendment, and pre/post planning gates |
-| `thoth-archive` | Passing verification gate, audit report, and dated archive move |
-| `plan-reviewer` | Explicit-or-bounded-default, blocker-focused Oracle plan review with convergence and SHA-256 freshness evidence |
+| `thoth-init` | Offline, idempotent minimum `.thoth/` governance |
+| `thoth-work` | Compact agreement, selective units/context, validation and recovery checkpoints |
+| `thoth-constitution` | Explicit versioned project-principle amendments |
+| `thoth-archive` | Fresh independent PASS, declared durable updates and dated archive |
+| `plan-reviewer` | Optional blocker-focused independent review |
 
-The adaptive root loads only the current contract. It owns specify, clarify,
-plan, checklist, tasks, converge, report persistence, and archive. Explorer owns
-Full discovery. Every route verifies: trivial deterministic Direct work may use
-focused root checks; materially risky Direct work and every Accelerated or Full
-final verify use a fresh read-only Oracle. Offered plan review remains read-only.
-
-After `ready` on Accelerated or Full, root offers `Review plan with Oracle
-(Recommended)` or `Proceed without review`. Any explicit answer wins; after
-three total answerless native results, review counts as selected. `plan-reviewer`
-returns exactly `[OKAY]` or `[REJECT]` and no more than three actionable
-blockers. Root repairs same-intent blockers, revalidates affected gates, and
-uses a fresh Oracle round until `[OKAY]` or a material human-owned blocker. Root
-alone persists `plan-review.md` with reviewed-source SHA-256 digests; it is never
-mirrored into provider memory. After `[OKAY]`, root summarizes the approved plan
-before asking `Implement (Recommended)` or `Stop`. Any explicit answer wins;
-after three total answerless results, implementation counts as selected.
-Approval alone never authorizes implementation or replaces mandatory final
-Oracle verification.
-
-Before implementation, root records concrete artifact/decision dependencies,
-ownership, specialist fit, and verification inputs. Input-complete lanes are
-ready; lanes waiting on upstream artifacts are blocked. All ready conflict-free
-lanes are dispatched in a native wave before waiting, and fan-in accepts only
-terminal native results. Semantic triggers route current or external facts to
-`librarian`, material user-facing UI/UX or accessibility to `designer`, and
-known narrow low-risk isolated edits to `quick`; coupled or high-risk work uses
-`deep`. Native harness execution and lifecycle remain authoritative, with
-truthful sequential fallback when a primitive is unavailable.
+Root loads the current operation only. It owns the agreement and acceptance.
+Specialists receive bounded inputs and one mutable surface; independent units
+fill native capacity before waiting, with refill and per-consumer release.
+Root offers optional Oracle plan review; after [OKAY], it offers implementation
+or stopping. Each choice has its own three-unanswered-return default and compact
+recovery evidence. Explicit answers win, and unsupported or open questions never
+count. Resolved choices persist. A fresh Oracle still verifies all persisted work
+before archive. See the [workflow guide](workflow.md) for the scope and exclusions.
 
 ## Mandatory execution skills
 
@@ -59,9 +39,9 @@ by Codex and Claude. The OpenCode CLI copies those packaged skills to its global
 discovery root. Pi discovers them directly through the installed
 `thoth-agents` package manifest and creates no new global skill copies; only
 byte-identical attributable legacy copies may be retired. `/thoth-init`
-only initializes or synchronizes the minimum project `openspec/` structure.
-Every SDD phase anchors its contract, template, and validator paths to the
-installed `thoth-sdd` skill; no project-local template directory is required.
+only initializes or synchronizes the minimum project `.thoth/` structure.
+Persisted workflow operations resolve their examples, references, and helpers
+from the installed `thoth-work` skill; no project-local template directory is required.
 
 For every harness, the thoth-agents installer invokes `npx skills add` with the
 canonical repository, exact skill name, global scope, and concrete harness
@@ -73,29 +53,15 @@ After the external skills, the published installation command invokes
 thoth-mem's public setup for the selected harness. An explicit local Pi package
 install omits that call and requires a separate local thoth-mem installation.
 This administrative call is installation orchestration, not a bundled provider
-implementation; SDD phases never invoke either CLI.
+implementation; work execution never invokes either CLI.
 
-## SDD contract loading
+## Work contract loading
 
-`thoth-sdd` contains one reference per phase. Detailed contracts are absent from
-the static agent prompts and loaded only after a route reaches that phase.
-
-| Phase | Owner |
-| --- | --- |
-| `explore` | read-only `explorer` |
-| `specify`, `clarify`, `plan`, `checklist`, `tasks` | root |
-| `plan-review` | optional read-only `oracle`, after explicit or bounded-default review selection |
-| `implement` | root or one bounded writer |
-| `verify` | root for trivial deterministic Direct; fresh read-only `oracle` for materially risky Direct and every Accelerated/Full final verify |
-| `converge`, report persistence, `archive` | root |
-
-Artifact-backed phases use canonical templates, FR/SC and US identifiers,
-Constitution checks, exact task grammar, checklist taxonomy/revalidation, and an
-offline structural validator. Plans reuse the same exact active Constitution
-principle names before and after design. Task IDs start at `T001`, remain global
-and sequential, and each task carries exactly one literal repository-relative
-path before its verification outcome. Oracle semantic review remains a separate
-gate.
+The installed `thoth-work` skill supplies offline helpers and on-demand
+references for planning, execution, resume and verification. Root owns planning,
+reconciliation and closeout; root or one bounded specialist owns implementation.
+Supporting documents are optional. See [workflow](workflow.md) for the file
+contract, stale-evidence rules, native liveness and independent review.
 
 ## thoth-agents MCPs
 
@@ -148,8 +114,8 @@ At runtime, root and children load the installed `thoth-mem` skill only for an
 authorized memory outcome. Root owns stable session identity, real-user intent,
 and lifecycle. A child receives `none`, `recall`, or `observe` separately from
 its workspace permissions; `observe` can authorize a durable provider
-observation without allowing file edits or root lifecycle. `openspec/` remains
-canonical, and phase artifacts are not mirrored into provider memory.
+observation without allowing file edits or root lifecycle. `.thoth/` remains
+canonical, and work contracts or checkpoints are not mirrored into provider memory.
 
 ## QA boundary
 

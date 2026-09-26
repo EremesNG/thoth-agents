@@ -19,7 +19,7 @@ plugin/
 ├── settings.json
 └── skills/
     ├── thoth-init/
-    ├── thoth-sdd/
+    ├── thoth-work/
     ├── thoth-constitution/
     ├── thoth-archive/
     └── plan-reviewer/
@@ -41,9 +41,9 @@ It also installs the four external skills from their canonical repositories.
 The plugin package cannot perform those global writes.
 
 `$thoth-init` remains a bundled project-governance skill. It preflights and
-synchronizes only minimum `openspec/` directories, constitution, and metadata;
+synchronizes only minimum `.thoth/` directories, constitution, and metadata;
 it is not an agent or template installer. Phase contracts resolve templates
-directly from the sibling installed `thoth-sdd` skill.
+directly from the sibling installed `thoth-work` skill.
 
 ## Generation lifecycle
 

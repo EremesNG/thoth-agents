@@ -31,16 +31,16 @@ export function createOpenCodeInitCommand({
   const contract = readFileSync(skillPath, 'utf8');
 
   return {
-    description: 'Initialize thoth-agents project SDD governance',
+    description: 'Initialize thoth-agents project workflow governance',
     agent: 'orchestrator',
     subtask: false,
     template: `Initialize this project now using the bundled thoth-init skill.
 
-The operation must stay scoped to openspec/, idempotent, and offline. Run:
+The operation must stay scoped to .thoth/, idempotent, and offline. Run:
 
 node "${scriptPath}" --project "${projectRoot}" --json
 
-Inspect the JSON result and report created, managed, and preserved OpenSpec
+Inspect the JSON result and report created, managed, and preserved .thoth
 assets. Do not install skills or agents, download dependencies, modify harness
 configuration, or invoke the thoth-agents CLI.
 

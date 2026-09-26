@@ -4,7 +4,7 @@
 
 **thoth-agents** is an adaptive multi-harness orchestration plugin. It provides
 seven roles, native OpenCode and Pi delegation, Codex and Claude Code surfaces,
-provider-neutral memory boundaries, and direct/accelerated/full SDD routing.
+provider-neutral memory boundaries, and AI-first work contracts.
 OpenCode is the stable default path; each harness has different guarantees.
 
 For task-specific knowledge, start with [`docs/agent/index.md`](docs/agent/index.md).
@@ -51,7 +51,7 @@ Keep `docs/agent/` documents on demand at startup.
 - `src/cli/`: parser, commands, installation, configuration, and TUI.
 - `src/hooks/`, `src/mcp/`, `src/tools/`: runtime integrations. Provider-owned
   memory setup and lifecycle are external and are not bundled here.
-- `src/harness/core/sdd.ts`: SDD route, phase, and artifact governance.
+- `src/harness/core/workflow.ts`: work agreement, phase, and delegation contracts.
 - `skills/`: canonical thoth-owned workflow skills for every harness.
 - `src/cli/skills.ts`: mandatory external-skill installation via `npx skills add`.
 - `src/cli/thoth-mem-install.ts`: bounded invocation and evidence parsing for
@@ -78,88 +78,72 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 ## Global constraints
 
 - Use TypeScript and modern Node patterns consistent with the existing code.
-- Keep changes small, explicit, and limited to the requested behavior.
-- Preserve others' work: never revert or discard changes you did not make.
-- Run the nearest focused validation first; expand only according to risk.
-- The adaptive root handles clear bounded work directly, assesses scope,
-  clarity, and risk, and recommends direct, accelerated, or full SDD. Before
-  asking, it summarizes the relevant request context and why the recommendation
-  fits. Any explicit route answer wins. If the native question returns without
-  an answer, ask at most three total times; after the third answerless result,
-  the recommended route counts as selected.
-- SDD routes govern artifacts/gates, not implementation ownership; root or a
-  writer may implement in any route. Delegate only for net gain.
-- Before retaining or delegating work, root identifies bounded outputs, records
-  information dependencies and mutable ownership, separates ready lanes from
-  blocked synthesis, and evaluates every specialist semantically. It dispatches
-  all valuable conflict-free ready lanes through the active harness's native
-  primitives before waiting, respects the proven native width, accepts only
-  terminal native results, and fans them in against intent, dependencies,
-  ownership, conflicts, and verification. Mere list order is not a dependency.
-- Keep delegation depth 1, one writer per mutable surface, and serialize
-  overlapping ownership. The specialist directory has equal routing salience:
-  `explorer` for broad uncertain local discovery; `librarian` for current
-  authoritative external evidence; `oracle` for independent read-only judgment;
-  `designer` for material UI/UX, interaction, accessibility, or visual quality;
-  `quick` for exact bounded low-risk implementation; and `deep` for coupled,
-  edge-case-heavy, migration, concurrency, or high-risk implementation.
-- Harness-native dispatch, status, wait, steering, cancellation, and terminal
-  results are authoritative. thoth-agents supplies decision policy and prompts,
-  never an executor, scheduler, job board, lifecycle shadow, or tracing runtime;
-  unavailable native capabilities must be reported as degraded.
-- `simplify`, `tdd`, `progressive-context-router`, and
-  `architectural-grilling` are mandatory external skills for OpenCode, Codex,
-  and Claude. The installer obtains them from their canonical repositories with
-  `npx skills add`; SDD phases never invoke the CLI or download contracts. QA
-  executables remain project-owned.
-- Use `architectural-grilling` before specification only on explicit request or
-  unresolved material human-owned product/architecture decisions. Full SDD
-  alone does not activate it.
-- After `ready` on Accelerated or Full, recommend the optional read-only Oracle
-  plan review and let the user choose review or proceeding without it. Any
-  explicit answer wins. Ask at most three total times after answerless native
-  results; after the third, `Review plan with Oracle (Recommended)` counts as
-  selected. Repair actionable same-intent `[REJECT]` findings, revalidate
-  affected gates, and use a fresh Oracle approval round until `[OKAY]` or a
-  material human-owned blocker. After `[OKAY]`, summarize the approved plan
-  before asking `Implement (Recommended)` or `Stop`; any explicit answer wins,
-  while the third answerless result selects implementation. Plan approval never
-  replaces mandatory final verification. Trivial deterministic Direct work may
-  be root-verified without implementer self-approval; materially risky Direct
-  work and every Accelerated or Full final verification use a fresh read-only
-  Oracle.
-- `plan-reviewer` is a thoth-owned bundled skill; its OpenSpec artifact remains
-  root-written and is never mirrored into provider memory.
-- `openspec/` is the Spec Kit-compatible governed coordination surface. thoth-mem
-  is an independent provider; follow its installed guidance for memory and
-  persistence mechanics.
-- Published harness installs invoke thoth-mem's public global setup after
-  thoth-agents-owned setup and mandatory skills. Only consistent `complete`
-  evidence succeeds; never translate reset into provider force, rollback, or
-  asset mutation. An explicit local Pi package install omits provider setup,
-  records only thoth-agents completion, and requires thoth-mem to be installed
-  separately from its own local checkout.
-- Runtime memory authorization is `none`, `recall`, or `observe`, independent of
-  workspace mode. Root owns session lifecycle and real-user intent; `openspec/`
-  stays canonical and phase artifacts are not mirrored into thoth-mem.
-- Every `request_user_input` call MUST omit `autoResolutionMs` entirely, including
-  `null` or `undefined`, so the question does not expire.
-- The bounded SDD fallbacks apply only to route, plan-review, and implementation
-  questions; never apply them to secrets, destructive or security-sensitive
-  actions, or material human-owned decisions.
-- Some governance rules are instruction-only when a harness lacks enforcement;
-  that limitation does not authorize ignoring them.
-- Do not consider backward compatibility. Ignore legacy code/ libraries.
+- Keep changes explicit and limited to the requested behavior. Preserve unrelated
+  edits; never revert work you did not make. Ignore backward compatibility.
+- Small bounded low-risk work can proceed directly to implementation and checks.
+  For substantive or resumable work, persist the approved agreement in
+  `.thoth/changes/<id>/work.yaml`. Root owns the agreement, units and acceptance;
+  optional context, external units and evidence exist only when useful.
+- Honor authorization and resolved choices. For a ready persisted plan, offer
+  Oracle review (recommended) or direct implementation; after [OKAY], offer
+  implementation (recommended) or stopping. Each choice has at most three native
+  unanswered returns before its default applies. Explicit answers and Stop win;
+  pending/unavailable/failed questions do not count. Preserve choices and budgets
+  on resume. See the [workflow route](docs/agent/workflow-and-skills.md).
+  Do not ask for a pipeline or apply these defaults to other unresolved decisions,
+  secrets or sensitive actions.
+- Before retaining or delegating work, map concrete output dependencies, owned
+  writes, read assumptions, shared resources and verification. List order is not
+  a dependency. Dispatch all independent admitted ready work before waiting,
+  refill native capacity and release each consumer after its own fresh accepted
+  dependencies; avoid global wave barriers.
+- Delegate only for net gain. Root, designer, quick or deep may implement.
+  Prefer root continuity for short work or one ordered reasoning chain with
+  accumulated context. Choose explorer for uncertain local discovery, librarian
+  for authoritative external facts, oracle for independent judgment, designer
+  for material UI/UX, quick for exact low-risk edits, deep for coupled/high-risk
+  implementation. Route name and file count do not determine ownership.
+- Keep delegation depth one, one writer per mutable surface, and fresh specialist
+  sessions at work boundaries. Children never delegate. New Oracle judgments
+  always use a fresh read-only reviewer. A writer never approves its own work.
+- Native harness tools own dispatch, status, wait, cancellation, terminal results
+  and capacity. Thoth supplies policies and bounded evidence, never a scheduler,
+  job database, lifecycle mirror or tracing runtime. Report unavailable native
+  capabilities truthfully. Worktree automation remains outside this workflow.
+- For resume, load the contract and relevant checkpoint, inspect current owned
+  files and changed dependencies, and reconcile native liveness before another
+  writer starts. Preserve useful partial/preexisting edits. A checkpoint, timeout
+  or silence never proves termination. Unknown liveness blocks only conflicts.
+- Use installed TDD for behavior changes and simplify after implementation. Use
+  progressive-context-router for repository instruction work; architectural-
+  grilling only for explicit interviews or unresolved material human decisions.
+  Workflow execution uses local installed contracts, never CLI installation or
+  downloads. QA executables remain project-owned.
+- Final verification is mandatory. Persisted or materially risky work needs a
+  fresh read-only Oracle against agreement, actual diff and evidence. Optional
+  plan review never substitutes for final verification. Root records results and
+  archives only fresh passing work and explicitly declared durable updates.
+- `.thoth/constitution.md` contains project principles; `.thoth/specs/` contains
+  durable product contracts. Historical OpenSpec records are not active context.
+- thoth-mem independently owns provider persistence, hooks, MCP and lifecycle.
+  Follow its installed guidance; never mirror work contracts/checkpoints. Root
+  owns verified identity, lifecycle and real-user intent. Delegated authorization
+  is none, recall or observe, independent of workspace permission.
+- Published installs require consistent provider complete evidence. Never turn
+  reset into provider force/rollback. Local Pi installation leaves thoth-mem to
+  its separate installer. Preserve unrelated provider assets.
+- Omit autoResolutionMs entirely from request_user_input. Some harness controls
+  are instruction-only; do not claim enforcement or ignore those boundaries.
 
 ## Change and verification flow
 
-1. Confirm scope, summarize context, recommend a primary route, and resolve the
-   selection through an explicit answer or the bounded recommended fallback.
-2. Review public contracts and existing tests before editing.
-3. Implement without silently expanding scope.
-4. Run focused tests, then checks proportional to risk.
-5. Review the diff for others' changes, generated output, and accidental secrets.
-6. Update routed documentation only when a durable, non-obvious fact changed.
+1. Confirm the agreement and reuse existing authorization.
+2. Read public contracts and relevant tests before editing; select bounded units.
+3. Resolve the two applicable planning choices, then implement within ownership,
+   keeping useful checkpoints for recovery.
+4. Run focused checks, then verification proportional to risk.
+5. Review the diff for unrelated changes, generated drift and accidental secrets.
+6. Update routed documentation for durable facts and independently verify.
 
 The current `.github/workflows/ci.yml` installs with
 `pnpm install --frozen-lockfile` and runs `pnpm run check:ci`,
@@ -177,7 +161,7 @@ and before a PR, keep this applicable local pre-merge order:
 - Codex installation remains subject to native trust and policy. The CLI invokes
   the official marketplace/plugin manager commands, then manages
   `~/.codex/agents/`, `~/.codex/AGENTS.md`, and global config because the plugin
-  manifest cannot install those surfaces. `$thoth-init` initializes project SDD
+  manifest cannot install those surfaces. `$thoth-init` initializes project work
   governance only.
 - Do not assume capability or enforcement equivalence across harnesses.
 
@@ -191,6 +175,6 @@ whole files, or unfiltered search transcripts.
 
 - The requested result is complete and in scope.
 - Relevant checks pass or their failures are reported with evidence.
-- Public contracts, SDD/memory governance, and harness differences are preserved.
+- Public contracts, work/memory governance, and harness differences are preserved.
 - The diff contains no unrelated, generated, or secret changes.
 - Any unrun validation and remaining uncertainty are declared.

@@ -21,9 +21,7 @@ describe('prompt dialects', () => {
     expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('root-coordinator')).toBe(
       'root coordinator',
     );
-    expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('synchronous-task-only')).toBe(
-      'synchronous task only',
-    );
+    expect(OPENCODE_PROMPT_DIALECT.dispatchLabel('task')).toBe('task');
     expect(OPENCODE_PROMPT_DIALECT.tools.hostStatusSurface).toBe('task_status');
   });
 
@@ -41,8 +39,8 @@ describe('prompt dialects', () => {
     expect(CODEX_PROMPT_DIALECT.renderRoleInvocation('deep')).toBe(
       'deep subagent',
     );
-    expect(CODEX_PROMPT_DIALECT.dispatchLabel('synchronous-task-only')).toBe(
-      'synchronous collaboration.spawn_agent only',
+    expect(CODEX_PROMPT_DIALECT.dispatchLabel('task')).toBe(
+      'collaboration.spawn_agent',
     );
     expect(CODEX_PROMPT_DIALECT.tools.backgroundStatusTool).toBe(
       'collaboration.wait_agent',

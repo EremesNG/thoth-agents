@@ -60,25 +60,25 @@ describe('Codex adapter v0.3', () => {
     expect(root.length - 9_855).toBeLessThanOrEqual(2_500);
     expect(root).toContain('adaptive root');
     expect(root).toContain(
-      'Handle bounded implementation directly in any route when continuity outweighs delegation overhead',
+      'Handle trivial bounded work directly when continuity outweighs delegation overhead',
     );
     expect(root).toContain('net gain');
     expect(root).toContain('<implementation-ownership>');
     expect(root).toContain(
-      'SDD routes govern artifacts and gates, not implementation ownership.',
+      'Persistence and planning choices do not determine implementation ownership.',
     );
     expect(root).toContain(
       'Explicit safe user direction is an ownership input.',
     );
     expect(root).not.toMatch(/Direct micro-action/i);
     expect(root).not.toMatch(/Artifact-backed implement follows/i);
-    expect(root).toContain('Accelerated SDD');
+    expect(root).toContain('.thoth/changes/<id>/work.yaml');
     expect(root).toContain('collaboration.spawn_agent');
     expect(root).toContain('request_user_input');
-    expect(root).toContain('thoth-sdd');
+    expect(root).toContain('thoth-work');
     expect(root).toContain('Final verification is mandatory.');
     expect(root).toContain(
-      'Root may run focused verification only for trivial deterministic Direct work',
+      'focused root checks suffice only for trivial deterministic work',
     );
     expect(root).toContain('oracle');
     expect(root).not.toContain('delegate-first');

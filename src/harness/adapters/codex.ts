@@ -61,7 +61,7 @@ function createCodexPluginPackageManifest(context: HarnessRenderContext): {
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Bundled Spec Kit-compatible SDD skills and MCP configuration; the seven-role global Codex layer requires thoth-agents CLI setup.',
+      'Bundled AI-first work skills and MCP configuration; the seven-role global Codex layer requires thoth-agents CLI setup.',
   };
 }
 

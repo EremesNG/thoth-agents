@@ -1,65 +1,15 @@
----
-schema: thoth-agents/sdd-plan-review/v1
-artifact: plan-review
-change: <change-name>
-gate: oracle-review
-status: "[OKAY|REJECT]"
-reviewer_role: oracle
-reviewed_at: <ISO-8601 timestamp>
-pipeline: <accelerated|full>
-persistence_mode: openspec
-override:
-  occurred: false
-  at: null
-  surface: null
-  context: null
-reviewed_artifacts:
-  - role: spec
-    path: openspec/changes/<change-name>/spec.md
-    required: true
-    sha256: sha256:<digest>
-  - role: plan
-    path: openspec/changes/<change-name>/plan.md
-    required: true
-    sha256: sha256:<digest>
-  - role: tasks
-    path: openspec/changes/<change-name>/tasks.md
-    required: true
-    sha256: sha256:<digest>
----
+# Optional work review
 
-# Plan Review: <change title>
+- Verdict: [OKAY] or [REJECT]
+- Reviewer: fresh read-only Oracle; native result reference
+- Agreement fingerprint: SHA-256
+- Technical plan fingerprint: SHA-256
+- Planning choices and attempt evidence: evidence/planning.json (root-owned)
+- Reviewed inputs: repository-relative paths and SHA-256 digests
+- Evidence: bounded completeness, executability, independence, and recovery findings
+- Blockers: at most three, each with the smallest repair
+- Cautions: nonblocking uncertainties, if any
 
-**Status**: [OKAY|REJECT]
-
-## Oracle Result
-
-<[OKAY] or [REJECT]>
-
-## Comments
-
-- <coverage and executability evidence>
-
-## Non-Blocking Notes
-
-- None.
-
-## Blockers
-
-- None, or at most 3 actionable blockers with the smallest repair.
-
-## User Override Context
-
-None.
-
-## Source SHA-256
-
-- `openspec/changes/<change-name>/spec.md`: `sha256:<digest>`
-- `openspec/changes/<change-name>/plan.md`: `sha256:<digest>`
-- `openspec/changes/<change-name>/tasks.md`: `sha256:<digest>`
-- Add every active checklist and constitution source reviewed by Oracle.
-
-## Recovery Decision
-
-This result satisfies only optional plan review while all source digests remain
-unchanged. It does not authorize implementation or satisfy final Oracle verify.
+After [OKAY], root offers Implement (Recommended) or Stop with approved plan,
+following the bounded planning-choice policy. This review is evidence about the
+recorded plan; it neither authorizes execution alone nor satisfies final verification.

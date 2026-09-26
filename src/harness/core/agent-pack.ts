@@ -9,10 +9,7 @@ export type AgentRoleName =
 
 export type AgentMutationMode = 'adaptive-root' | 'read-only' | 'write-capable';
 
-export type AgentDispatchMethod =
-  | 'root-coordinator'
-  | 'task'
-  | 'synchronous-task-only';
+export type AgentDispatchMethod = 'root-coordinator' | 'task';
 
 export interface AgentRoleContract {
   name: AgentRoleName;
@@ -39,14 +36,15 @@ export interface OrchestrationPolicy {
 }
 
 export type TaskShapingStep =
-  | 'bound-work'
-  | 'map-dependencies'
+  | 'bound-units'
+  | 'map-output-dependencies'
   | 'assign-ownership'
   | 'select-specialists'
-  | 'mark-ready-and-blocked'
-  | 'dispatch-ready-wave'
-  | 'wait-for-terminal-evidence'
-  | 'reconcile-and-verify';
+  | 'admit-ready-units'
+  | 'dispatch-to-native-capacity'
+  | 'wait-for-native-terminal-event'
+  | 'accept-results'
+  | 'refill-capacity';
 
 export interface TaskShapingPolicy {
   steps: TaskShapingStep[];
@@ -55,7 +53,8 @@ export interface TaskShapingPolicy {
   decisions: {
     dependency: string;
     ownershipConflict: string;
-    readyWave: string;
+    readyDispatch: string;
+    refill: string;
     terminalEvidence: string;
     degradation: string;
   };
@@ -75,7 +74,7 @@ export type ImplementationOwner =
 
 export interface ImplementationOwnershipPolicy {
   eligibleOwners: ImplementationOwner[];
-  routeIndependent: boolean;
+  workflowIndependent: boolean;
   delegationBenefits: string[];
   rootContinuityBenefits: string[];
   userDirection: string;
@@ -106,12 +105,12 @@ export const AGENT_ROLES = [
     dispatch: 'root-coordinator',
     canMutateWorkspace: true,
     scope:
-      'requirements, SDD coordination, routing, bounded implementation, decisions, and synthesis',
+      'human agreement, persisted work coordination, bounded implementation, decisions, and synthesis',
     responsibility:
-      'Keep requirements, decisions, sequential SDD coordination, and final synthesis in the root thread; evaluate implementation ownership independently in every route, implement directly or delegate by demonstrated net gain, and run focused verification for trivial deterministic Direct work.',
+      'Keep human agreement, work-unit coordination, acceptance, and final synthesis in the root thread; evaluate implementation ownership independently for every change, implement directly or delegate by demonstrated net gain, and run focused verification for trivial deterministic work.',
     useWhen: [
       'Coordinate requirements, governed artifacts, routing, and synthesis.',
-      'Implement an accepted mutable surface in any route when accumulated context and continuity outweigh delegation overhead.',
+      'Implement an accepted mutable surface when accumulated context and continuity outweigh delegation overhead.',
     ],
     doNotUseWhen: [
       'Not for independent plan review or Oracle-required final verification.',
@@ -120,15 +119,15 @@ export const AGENT_ROLES = [
       'Delegate implementation when specialization, context isolation, or independent bounded work creates a demonstrated net gain; then select designer, quick, or deep by task shape.',
     ],
     toolGovernance: [
-      'may inspect and edit the accepted bounded implementation surface in every route and may verify trivial deterministic Direct work without self-approval',
-      'loads the matching thoth-sdd phase contract on demand instead of carrying every phase protocol in its prompt',
-      'owns governed coordination writes under openspec/ and uses append-only tasks.md updates during convergence',
+      'may inspect and edit the accepted bounded implementation surface and may verify trivial deterministic work without self-approval',
+      'loads the matching thoth-work guidance on demand instead of carrying every workflow detail in its prompt',
+      'owns agreement, work-unit state, semantic acceptance, and project work evidence under .thoth/changes/',
       'delegates independent or specialist work only when it produces a net gain',
       'keeps requirements, decisions, and final synthesis in the root thread',
     ],
     verification: [
-      'runs focused checks for trivial deterministic Direct work while final verification remains mandatory',
-      'delegates selected plan review plus Accelerated, Full, and material-risk Direct final verification to a fresh oracle',
+      'runs focused checks for trivial deterministic work while final verification remains mandatory',
+      'delegates selected focused plan review plus persisted-work and material-risk final verification to a fresh oracle',
       'consolidates summarized evidence returned by child agents',
     ],
   },
@@ -172,14 +171,14 @@ export const AGENT_ROLES = [
   {
     name: 'oracle',
     mode: 'read-only',
-    dispatch: 'synchronous-task-only',
+    dispatch: 'task',
     canMutateWorkspace: false,
     scope:
-      'diagnosis, architecture, optional plan review, and independent verification',
+      'diagnosis, architecture, optional focused plan review, and independent verification',
     responsibility:
-      'Independently review plans when the user requests it and provide independent judgment for artifact-backed or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
+      'Independently review plans when selected and provide independent judgment for persisted-work or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
     useWhen: [
-      'Selected plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or artifact-backed final verification needs independent judgment.',
+      'Selected focused plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or persisted-work final verification needs independent judgment.',
     ],
     doNotUseWhen: [
       'Not for implementation, mutation, persistence, or self-review.',
@@ -194,7 +193,7 @@ export const AGENT_ROLES = [
   {
     name: 'designer',
     mode: 'write-capable',
-    dispatch: 'synchronous-task-only',
+    dispatch: 'task',
     canMutateWorkspace: true,
     scope: 'UI/UX decisions, implementation, and visual verification',
     responsibility:
@@ -218,7 +217,7 @@ export const AGENT_ROLES = [
   {
     name: 'quick',
     mode: 'write-capable',
-    dispatch: 'synchronous-task-only',
+    dispatch: 'task',
     canMutateWorkspace: true,
     scope: 'fast bounded implementation',
     responsibility:
@@ -240,7 +239,7 @@ export const AGENT_ROLES = [
   {
     name: 'deep',
     mode: 'write-capable',
-    dispatch: 'synchronous-task-only',
+    dispatch: 'task',
     canMutateWorkspace: true,
     scope: 'correctness-critical implementation and verification',
     responsibility:
@@ -264,7 +263,7 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
   singleWriter: true,
   implementationOwnership: {
     eligibleOwners: ['orchestrator', 'designer', 'quick', 'deep'],
-    routeIndependent: true,
+    workflowIndependent: true,
     delegationBenefits: [
       'specialization',
       'context isolation',
@@ -281,30 +280,34 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     ],
     userDirection: 'explicit safe user direction is an ownership input',
     insufficientSignals: [
-      'SDD route name',
+      'workflow persistence choice',
       'file count alone',
       'cheaper model price without end-to-end evidence',
     ],
   },
   taskShaping: {
     steps: [
-      'bound-work',
-      'map-dependencies',
+      'bound-units',
+      'map-output-dependencies',
       'assign-ownership',
       'select-specialists',
-      'mark-ready-and-blocked',
-      'dispatch-ready-wave',
-      'wait-for-terminal-evidence',
-      'reconcile-and-verify',
+      'admit-ready-units',
+      'dispatch-to-native-capacity',
+      'wait-for-native-terminal-event',
+      'accept-results',
+      'refill-capacity',
     ],
     nativeAuthority: true,
     boundedWidth: true,
     decisions: {
-      dependency: 'block a lane until every concrete upstream output exists',
+      dependency:
+        'block a unit until every concrete upstream output is terminal, root-accepted, and fresh',
       ownershipConflict:
         'serialize overlapping mutable surfaces or assign one writer',
-      readyWave:
-        'dispatch all independent conflict-free ready lanes before waiting',
+      readyDispatch:
+        'dispatch every admitted conflict-free ready unit before waiting within proven native capacity',
+      refill:
+        'refill freed capacity with newly ready consumers before another wait',
       terminalEvidence:
         'silence, timeout, and malformed status remain nonterminal',
       degradation:
@@ -323,16 +326,16 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     rejectWhen: role.doNotUseWhen.join(' '),
   })),
   rules: [
-    'Direct, Accelerated, Full, and no-artifact execution govern artifacts and gates, not implementation ownership.',
-    'Root or a specialist may implement in every route; delegate only when specialization, context isolation, independent bounded work, or safe parallelism creates a demonstrated quality, latency, or total-cost net gain.',
+    'Persistence and planning choices do not determine implementation ownership.',
+    'Root or a specialist may implement accepted work; delegate only when specialization, context isolation, independent bounded work, or safe parallelism creates a demonstrated quality, latency, or total-cost net gain.',
     'Keep implementation in root when short work, one ordered reasoning chain, frequent shared-state writes, already-loaded context, rediscovery, or coordination cost outweigh delegation benefit.',
-    'Treat explicit safe user direction as an ownership input; route name, file count alone, or cheaper model price without end-to-end evidence cannot choose an owner.',
+    'Treat explicit safe user direction as an ownership input; persistence choice, file count alone, or cheaper model price without end-to-end evidence cannot choose an owner.',
     'After deciding to delegate implementation, select designer for UI/UX, quick for known narrow low-risk work, and deep for coupled or high-risk work.',
     'Use one writer for each mutable surface and never parallelize overlapping writes.',
-    'A fresh subagent instance is the default when the objective, SDD phase, mutable surface, or independent judgment changes.',
+    'A fresh subagent instance is the default when the objective, work unit, mutable surface, or independent judgment changes.',
     'Continue an existing subagent only to steer, complete, or clarify the same bounded assignment; completed agents are not a reusable role pool.',
     'Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance; reuse is limited to clarifying current findings.',
-    'Final verification is mandatory: root owns trivial deterministic Direct checks; a fresh Oracle owns Accelerated, Full, and material-risk Direct judgment.',
+    'Final verification is mandatory: root owns trivial deterministic checks; a fresh Oracle owns persisted-work and material-risk judgment.',
     'Wait and status operations collect only the active nonterminal assignment and do not authorize later reuse.',
     'Child agents return distilled evidence instead of raw logs or file dumps.',
   ],

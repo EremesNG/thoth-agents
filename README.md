@@ -32,8 +32,8 @@ verification you can follow—without manually coordinating every agent.
 
 - **A team, not seven conversations.** One adaptive Orchestrator coordinates six
   specialists and brings their results back to you.
-- **The right amount of process.** Choose a quick Direct path or a structured
-  specification-driven development (SDD) workflow for more involved work.
+- **The right amount of process.** Use a direct implementation path for small
+  work or a persisted AI-first work contract for involved or resumable work.
 - **Specialists where they add value.** Repository discovery, current documentation,
   UI/UX, focused edits, complex implementation, and independent review have distinct roles.
 - **Models you can tune.** Configure models per role to suit your workflow and
@@ -109,7 +109,7 @@ Open your repository in the harness and invoke the installed `thoth-init` skill:
 | Claude Code | `/thoth-agents:thoth-init` |
 | Pi | Ask: `Use the thoth-init skill to initialize this repository.` |
 
-This prepares the repository's `openspec/` governance for structured workflows.
+This prepares the repository's `.thoth/` governance for structured workflows.
 It does not install plugins or dependencies, and it preserves existing
 constitutions.
 
@@ -118,16 +118,16 @@ constitutions.
 Start with a goal, not a list of agents to manage. For example:
 
 ```text
-Fix the broken documentation link using the Direct route.
+Fix the broken documentation link with the smallest sufficient workflow.
 ```
 
 ```text
-Add CSV export to the reports page using Accelerated SDD.
+Add CSV export to the reports page. Agree on a work contract, then implement it.
 Keep the existing filters and include tests for empty results.
 ```
 
 ```text
-Use Full SDD to plan a migration from our current authentication system.
+Plan a migration from our current authentication system and record the agreement.
 Explore the risks before proposing changes.
 ```
 
@@ -164,32 +164,27 @@ Research and review specialists are read-only. Implementation work has one
 writer per area; independent areas can proceed in parallel when the harness
 supports it. You do not need to summon every role for every task.
 
-## Choose your workflow
+## Plan once, execute with focused context
 
-SDD means **specification-driven development**: agree on the intended result,
-plan the work, implement it, and check it against that intent.
+For substantive work, agree on the goal, acceptance criteria and autonomy bounds
+with the root. It records the agreement in `.thoth/changes/<id>/work.yaml`,
+then executes bounded units using only the context they need. Small, clear fixes
+can proceed directly to implementation and verification.
 
-| Route | Best for | What to expect |
-| --- | --- | --- |
-| **Direct** | Clear, bounded, low-risk fixes and documentation changes. | Implement → verify. No planning artifacts required. |
-| **Accelerated** | Features spanning several areas, moderate risk, or a request to use SDD. | Specify → plan → tasks → implement → verify → archive. Planning runs in one pass unless a material decision needs you. |
-| **Full** | Uncertain requirements, architectural changes, or high-cost failures. | Explore first, then follow the structured workflow with separate planning checkpoints. |
+Independent units run in parallel through the native harness. Per-unit
+checkpoints support resuming interrupted work after reconciling the actual
+files and native agent status. Supporting context and external unit files are
+optional. Once the plan is ready, choose Oracle review (recommended) or direct
+implementation. After Oracle approval, choose implementation (recommended) or
+stopping with the approved plan. Each question uses its recommendation after
+three confirmed unanswered native returns; explicit answers win. Choices and
+remaining attempts survive interruption. Other material decisions and sensitive
+actions still require their own authorization.
 
-For Accelerated and Full, the specification, plan, tasks, and verification
-reports live under `openspec/`, so you can inspect what was agreed and what
-was checked. You can choose an optional Oracle plan review before implementation;
-final verification is required either way. These routes and materially risky
-Direct work use an independent Oracle for final verification.
-
-> [!TIP]
-> You stay in control of the route. Say “Use Direct,” “Use Accelerated SDD,” or
-> “Use Full SDD” when you already know how much structure you want.
-
-The installed skills cover project initialization, SDD, project principles,
-plan review, and archiving. External skills add test-driven development,
-behavior-preserving simplification, focused repository context, and architectural
-questioning when needed. See [Skills and MCPs](docs/skills-and-mcps.md) and the
-[SDD workflow guide](docs/sdd-pipeline.md) for details.
+A fresh Oracle independently verifies persisted work before closeout. Accepted
+durable behavior lives in `.thoth/specs/`; provider memory stays separate.
+Worktree management is deferred. See the [workflow guide](docs/workflow.md)
+and [Skills and MCPs](docs/skills-and-mcps.md) for the contract and its limits.
 
 ## Configure and update
 
@@ -233,7 +228,7 @@ complete CLI-managed installation and follow any reported recovery actions.
 | --- | --- |
 | [Installation](docs/installation.md) | Check prerequisites, preview setup, troubleshoot, and repair an installation. |
 | [Quick Reference](docs/quick-reference.md) | Find commands, roles, skills, and workflow reminders. |
-| [SDD Pipeline](docs/sdd-pipeline.md) | Understand planning, review, verification, and archiving. |
+| [Work workflow](docs/workflow.md) | Understand planning, review, verification, and archiving. |
 | [Skills and MCPs](docs/skills-and-mcps.md) | See the included workflows, research tools, and memory boundaries. |
 | [Provider Configuration](docs/provider-configurations.md) | Configure models and providers. |
 | [Codex Install](docs/codex-install.md) | Follow Codex-specific setup, activation, and trust requirements. |

@@ -7,12 +7,10 @@ import {
   type TaskShapingPolicy,
 } from '../harness/core/agent-pack';
 import {
-  getRequiredSddPhaseOrder,
-  getSddRouteExecutionPolicy,
-  getSddWorkflowContract,
-  renderSddPhaseDispatchTemplate,
-  type SddRoute,
-} from '../harness/core/sdd';
+  getExecutionCoordinationPolicy,
+  getWorkWorkflowContract,
+  renderWorkUnitDispatchTemplate,
+} from '../harness/core/workflow';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
 import type { ModelEntry } from './prompt-utils';
 
@@ -145,22 +143,18 @@ function roleTemplate(role: AgentPromptRole): string {
   return `{{role.${role}}}`;
 }
 
-function renderSddRoute(route: SddRoute): string {
-  return getRequiredSddPhaseOrder(route).join(' -> ');
-}
-
 function renderImplementationOwnershipPolicy(
   policy: ImplementationOwnershipPolicy,
 ): string {
   return `<implementation-ownership>
-- SDD routes govern artifacts and gates, not implementation ownership.
-- Eligible owners in every route: ${policy.eligibleOwners
+- Persistence and planning choices do not determine implementation ownership.
+- Eligible owners for accepted work: ${policy.eligibleOwners
     .map((owner) => roleTemplate(owner))
     .join(', ')}.
 - Delegation benefits: ${policy.delegationBenefits.join('; ')}.
 - Root continuity benefits: ${policy.rootContinuityBenefits.join('; ')}.
 - Explicit safe user direction is an ownership input.
-- Insufficient signals: ${policy.insufficientSignals.join('; ')}.
+- Insufficient ownership signals: ${policy.insufficientSignals.join('; ')}.
 - Only after deciding delegation creates net gain: use ${roleTemplate('designer')} for UI/UX, ${roleTemplate('quick')} for known narrow low-risk work, and ${roleTemplate('deep')} for coupled or high-risk work.
 </implementation-ownership>`;
 }
@@ -175,21 +169,22 @@ function renderRoleDirectory(directory: SpecialistDecision[]): string {
 }
 
 function renderTaskShapingPolicy(policy: TaskShapingPolicy): string {
+  const execution = getExecutionCoordinationPolicy();
   return `<task-shaping>
 ${policy.steps.join(' -> ')}
-- ${policy.decisions.dependency}; bind each lane to output, mutable ownership, specialist fit, and verification input.
-- ${policy.decisions.ownershipConflict}; avoid duplicate evidence work.
-- ${policy.decisions.readyWave} through \`{{backgroundDelegationTool}}\` within native capacity{{backgroundWaitInstruction}}
-- Fan in only from {{lifecycleTerminalState}}; {{lifecycleNonterminalState}}, ${policy.decisions.terminalEvidence}.
-- Reconcile against intent, dependencies, ownership, conflicts, and verification before synthesis; native execution remains authoritative; ${policy.decisions.degradation}.
+- ${policy.decisions.dependency}; bind each unit to output, mutable ownership, specialist fit, checks, and acceptance.
+- ${policy.decisions.ownershipConflict}; require compatible reads, writes, interfaces, and resources.
+- ${policy.decisions.readyDispatch} through \`{{backgroundDelegationTool}}\`{{backgroundWaitInstruction}}
+- ${policy.decisions.refill}; release each consumer when its own dependencies qualify, with no global wave barrier.
+- Accept only {{lifecycleTerminalState}} after reconciling intent, checks, and freshness. {{lifecycleNonterminalState}}, ${policy.decisions.terminalEvidence}.
+- ${execution.completion[0]} ${policy.decisions.degradation}.
+- Thoth defines policy and project evidence only; never invent an executor, queue, scheduler, portable wait API, or lifecycle mirror.
 </task-shaping>`;
 }
 
 export function createOrchestratorPromptSections(): RolePromptSection[] {
-  const workflow = getSddWorkflowContract();
+  const workflow = getWorkWorkflowContract();
   const policy = getAgentPackContract().orchestrationPolicy;
-  const accelerated = getSddRouteExecutionPolicy('accelerated');
-  const full = getSddRouteExecutionPolicy('full');
 
   return [
     roleText(`<role>
@@ -197,21 +192,20 @@ You are the adaptive root for thoth-agents. Keep requirements, decisions, owners
 </role>
 
 <operating-model>
-- Handle bounded implementation directly in any route when continuity outweighs delegation overhead; never self-approve.
+- Handle trivial bounded work directly when continuity outweighs delegation overhead; never self-approve.
 - The maximum delegation depth is ${policy.maxDelegationDepth}; children never delegate.
 - Keep one writer per mutable surface; parallelize only non-overlapping work.
 - Keep prompts bounded; request distilled evidence, not raw logs or full files.
 - Preserve unrelated changes; report changed files, evidence, risks, and capability gaps.
-- Use \`{{userQuestionTool}}\` only when a material unresolved choice changes the result. Continue all safe non-blocked work first.
 - {{progressInstruction}}
 </operating-model>
 
 <delegation-lifecycle>
-- A new objective, SDD phase, mutable surface, or independent judgment is a work boundary: start a fresh specialist using {{lifecycleFreshDelegation}}. Never treat completed agents as a reusable role pool.
+- A new objective, work unit, mutable surface, or independent judgment is a work boundary: start a fresh specialist using {{lifecycleFreshDelegation}}. Never treat completed agents as a reusable role pool.
 - Independent context: {{lifecycleIndependentContext}}.
 - Continue with {{lifecycleSameAssignmentContinuation}} only to steer, complete, or clarify the same bounded assignment; never to cross a work boundary.
 - {{lifecycleSameSessionProbe}} only collects the active nonterminal assignment and does not authorize later reuse.
-- Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance. An existing Oracle session may only clarify its current findings.
+- Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance. An existing Oracle session may only clarify its current findings.
 </delegation-lifecycle>
 
 <routing>
@@ -222,46 +216,43 @@ ${renderImplementationOwnershipPolicy(policy.implementationOwnership)}
 
 ${renderTaskShapingPolicy(policy.taskShaping)}
 
-<sdd-routing>
-- An explicitly requested route wins: no duplicate route-selection prompt. Otherwise assess and recommend one route; summarize the relevant request context, assessed scope, clarity, risk, and why the recommendation fits before asking with \`{{userQuestionTool}}\` for Direct, Accelerated, or Full. On an answerless result, make at most three total attempts. After the third answerless result, treat the recommended route as selected. Any explicit user answer wins. A generic SDD request sets Accelerated as the minimum unless Full risk applies.
-- Direct is clear, bounded, low-risk: ${renderSddRoute('direct')}. Documentation or mechanical work may remain Direct across multiple files when clear and low risk.
-- Accelerated SDD covers multi-surface behavior, architecture, partial clarity, or moderate risk: ${renderSddRoute('accelerated')}; run specify -> plan -> tasks in one uninterrupted root pass. Do not pause between those planning artifacts except for a material unresolved decision. Gates: ${accelerated.validationGates.join(' -> ')}.
-- Full SDD covers uncertainty, cross-cutting behavior/architecture, high contract risk, or high failure cost: ${renderSddRoute('full')}. Gates: ${full.validationGates.join(' -> ')}; checklist conditional.
-- After \`ready\` on Accelerated/Full, ask with \`{{userQuestionTool}}\`: \`Review plan with Oracle (Recommended)\` or \`Proceed without review\`. Any explicit \`Proceed without review\` answer wins. If the review question returns answerless, retry to that limit. After the third answerless result, treat \`Review plan with Oracle (Recommended)\` as selected. For review, load \`plan-reviewer\`; accept only \`[OKAY]\`/\`[REJECT]\` with at most 3 actionable blockers. On \`[REJECT]\`, repair same-intent planning artifacts, revalidate affected gates, and use fresh Oracle rounds until \`[OKAY]\` or a human-owned blocker. On \`[OKAY]\`, summarize the approved scope, approach, ownership, verification, and material risks before asking with \`{{userQuestionTool}}\`: \`Implement (Recommended)\` or \`Stop\`. Reuse the answerless limit. After the third answerless result, treat implementation as selected. Any explicit \`Stop\` answer wins; \`[OKAY]\` alone does not authorize implementation. Plan review never replaces mandatory final Oracle verify.
-- Bounded fallbacks are only for route, plan-review, and implementation questions; never for secrets, destructive/security-sensitive actions, or material human-owned decisions.
-- Happy path: verify -> archive. Artifact-backed failure loop: verify fail -> converge -> implement -> verify. Direct failure loop: verify fail -> implement -> verify.
-- Same-intent discoveries update the artifact and revalidate only affected downstream artifacts; new intent starts a change.
-- After Accelerated/Full selection, load the bundled \`thoth-sdd\` skill and read only the reference for the current phase. Run thoth-sdd validator. Root owns specify, clarify, plan, checklist, tasks, converge, and archive; do not delegate just to change prompts. Record owner, rationale, surface, requirements, and checks before implementation.
-- Final verification is mandatory. Use a fresh ${roleTemplate('oracle')} for Accelerated/Full and materially risky Direct work. Root may run focused verification only for trivial deterministic Direct work; no implementation writer may approve its own work.
-</sdd-routing>
+<work-workflow>
+- Trivial bounded work may follow ${workflow.directPath} without creating a project artifact.
+- Persist nontrivial or recoverable work at ${workflow.persistedWorkPath}; use phases ${workflow.phases.map(({ id }) => id).join(' -> ')} as needed. Root selects artifacts without a pipeline question.
+- Root owns agreement, units, acceptance and closeout; thoth-work defines the contract.
+${workflow.authorizationRules.map((rule) => `- ${rule}`).join('\n')}
+- Final verification is mandatory. Use a fresh ${roleTemplate('oracle')} for persisted work and materially risky direct work; focused root checks suffice only for trivial deterministic work. No implementation writer may approve its own work.
+- Checkpoints are supporting evidence at ${workflow.checkpointPath}; they never establish native liveness or terminal execution.
+- Resume from work.yaml, the pending checkpoint, relevant diff and dirty files, and dependency fingerprints. Preserve partial and preexisting work; reconcile external effects before replay; unknown native liveness blocks only the conflicting surface.
+</work-workflow>
 
 <external-skills>
-- Use bundled \`thoth-constitution\` for constitution lifecycle and \`thoth-archive\` for verified artifact-backed closeout.
+- Use the bundled \`thoth-work\` skill for persisted work and its validator, and \`thoth-constitution\` only for constitution lifecycle.
 - Use the installed mandatory \`tdd\` skill for behavior changes and \`simplify\` after implementation without changing behavior.
-- During SDD, never invoke the thoth-agents CLI, \`npx skills add\`, or network; a missing contract means incomplete installation.
+- During persisted work, never invoke the thoth-agents CLI, \`npx skills add\`, or network to obtain a missing contract; report an incomplete installation.
 - Use progressive-context-router only for repository instruction or context-router work.
-- Use architectural-grilling before specification only when the user explicitly asks to be grilled or material human-owned product or architecture decisions remain unresolved.
-- Do not invoke it merely because the route is Full; while grilling, ask one material question per turn.
-- Feed decisions forward; spec.md and plan.md remain canonical, without a duplicate blueprint by default.
+- Use architectural-grilling only when the user explicitly asks to be grilled or a material human-owned product or architecture decision remains unresolved; ask one material question per turn.
+- Feed accepted decisions into work.yaml without duplicating a second planning narrative.
 </external-skills>
 
 <memory>
 - For resume/prior work, load the installed \`thoth-mem\` skill; never invent its protocol.
 - Preserve only a reusable decision, root cause, convention, or discovery. Root owns the stable root session ID, project, lifecycle, real-user intent, and authorization.
 - Follow it at verified compaction or a meaningful semantic boundary; children get bounded MEMORY, never root lifecycle.
-- \`openspec/\` remains canonical; do not mirror SDD artifacts. A memory failure does not block unrelated work.
+- \`.thoth/\` is project work evidence and remains independent from provider memory; do not mirror work artifacts. A memory failure does not block unrelated work.
 </memory>
 
 <artifacts>
-- Accelerated/Full require ${workflow.artifactRoot}{spec.md,plan.md,tasks.md,verify-report.md,archive-report.md}.
-- Root owns gates/task state, moves [~] -> [x] on evidence, and keeps one product writer. ${roleTemplate('oracle')} returns read-only findings; root persists verification and archives declared deltas after PASS.
+- The persisted contract is ${workflow.persistedWorkPath}; supporting context and external unit files are optional, so units may stay inline or move to focused external files.
+- Root owns semantic pending or accepted state. Native execution state stays with the harness. ${roleTemplate('oracle')} returns read-only findings; root records accepted verification evidence and closes only after PASS.
+- Worktree automation is deferred; do not assume it exists.
 </artifacts>
 
 <delegation>
-- Use this envelope for all \`{{delegationTool}}\` delegation; parallelize only independent work and await results.
+- Use this envelope for all \`{{delegationTool}}\` delegation. Dispatch every admitted conflict-free ready unit before waiting, then refill native capacity before the next wait.
 - Child return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
 
-${renderSddPhaseDispatchTemplate()}
+${renderWorkUnitDispatchTemplate()}
 </delegation>`),
     createQuestionProtocolSection(),
   ];
@@ -282,7 +273,7 @@ const ROLE_SPECIFIC_RULES: Record<
   oracle: [
     'Separate observations, risks, and recommendations.',
     'Review against stated requirements and contracts; do not invent implementation scope.',
-    'For plan-review, load the bundled plan-reviewer skill; for verify, load the matching bundled thoth-sdd reference and remain read-only.',
+    'For selected focused plan review or final verify, load the matching bundled thoth-work guidance and remain read-only.',
     'Reject self-review: the implementing root or writer cannot substitute for independent oracle judgment.',
   ],
   designer: [
@@ -303,10 +294,7 @@ function childSections(
   roleName: ReadOnlyAgentRole | WriteCapableAgentRole,
 ): RolePromptSection[] {
   const role = getAgentRole(roleName);
-  const dispatch =
-    role.dispatch === 'synchronous-task-only'
-      ? '{{dispatch.synchronous-task-only}}'
-      : '{{dispatch.task}}';
+  const dispatch = '{{dispatch.task}}';
   const writeScope = role.writeScope?.length
     ? `\n- Write scope: ${role.writeScope.join(', ')}`
     : '';
@@ -318,7 +306,7 @@ function childSections(
           'Do not create coordination artifacts.',
         ]
       : [
-          'Edit only the assigned phase surface.',
+          'Edit only the assigned work-unit surface.',
           'Preserve unrelated working-tree changes and never use destructive Git cleanup.',
         ];
 
@@ -403,6 +391,11 @@ function renderQuestionProtocol(
 Do not open a user dialog. Continue safe non-blocked work, then escalate the unresolved question to the root through openQuestions with the material choices and a recommended default.
 </questions>`;
   }
+  if (section.audience === 'root') {
+    return `<questions>
+Use \`${dialect.tools.userQuestionTool}\` for planning choices or a blocking decision, sensitive action, or missing secret. Ask one targeted question with a recommended default.
+</questions>`;
+  }
   return `<questions>
 Use \`${dialect.tools.userQuestionTool}\` only for a blocking material choice, destructive or security-sensitive action, or missing secret. Do safe non-blocked work first and ask one targeted question with a recommended default.
 </questions>`;
@@ -425,7 +418,7 @@ function renderSubagentRules(
       '- Read the dispatch MEMORY block: `none` forbids provider work, `recall` permits bounded reads, and `observe` additionally permits a bounded durable observation under the delegated scope.',
       '- For `recall` or `observe`, load and follow the installed `thoth-mem` skill; do not invent provider mechanics or claim unconfirmed effects.',
       '- MEMORY authorization does not authorize workspace mutation. It never transfers root lifecycle or real-user-intent ownership to a child.',
-      '- `openspec/` remains canonical; do not mirror SDD phase artifacts into provider memory.',
+      '- `.thoth/` project work evidence remains independent from provider memory; do not mirror work artifacts.',
       '- Report unavailable, degraded, stale, contradictory, or insufficient memory evidence and continue unrelated assigned work when safe.',
     );
   }
@@ -540,10 +533,6 @@ function renderRoleText(
       dialect.tools.lifecycle.sameSessionProbe,
     )
     .replaceAll('{{dispatch.task}}', dialect.dispatchLabel('task'))
-    .replaceAll(
-      '{{dispatch.synchronous-task-only}}',
-      dialect.dispatchLabel('synchronous-task-only'),
-    )
     .replace(/{{role\.([\w-]+)}}/g, (_match, role: AgentPromptRole) =>
       dialect.renderRoleInvocation(role),
     );

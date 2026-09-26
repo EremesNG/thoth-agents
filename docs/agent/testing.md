@@ -30,7 +30,7 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 - Start with tests colocated with the changed behavior.
 - Add harness/writer tests when generated output or public compatibility changes.
 - Add CLI and harness tests together when installation consumes a changed artifact.
-- Add `src/harness/core/sdd.test.ts` when route, phase, or artifact ownership changes.
+- Add `src/harness/core/workflow.test.ts` when route, phase, or artifact ownership changes.
 - Add memory-governance/provider-boundary tests when provider ownership or
   evidence reporting changes.
 - Do not report a command as successful if it was not run.

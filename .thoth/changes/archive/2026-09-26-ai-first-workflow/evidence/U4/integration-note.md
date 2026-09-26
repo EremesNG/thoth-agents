@@ -1,0 +1,3 @@
+Observed integration checkpoint (not native lifecycle state).
+
+Initial branch new-gsd was clean except preexisting staged-add/worktree-delete benchmarks/.promptfoo database trio. Native independent U1/U2/U3 lanes were dispatched before waiting; U5 documentation started when U3 terminated. U1 schema interface exists; root archive public test went RED on old --project handling then GREEN. 4 archive tests cover fresh PASS, stale baseline, rollback and interrupted-transaction refusal. Baseline for this bootstrap contract is marked unknown honestly; ownership comes from bounded native dispatch envelopes. Pending: final schema integration, package sync, full validation, fresh independent Oracle, declared durable updates and closeout.

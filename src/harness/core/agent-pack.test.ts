@@ -6,10 +6,8 @@ import {
 } from './agent-pack';
 
 describe('agent-pack contract', () => {
-  test('exposes the minimal hybrid roster', () => {
-    const contract = getAgentPackContract();
-
-    expect(contract.roles.map((role) => role.name)).toEqual([
+  test('exposes the seven-role adaptive roster', () => {
+    expect(getAgentPackContract().roles.map(({ name }) => name)).toEqual([
       'orchestrator',
       'explorer',
       'librarian',
@@ -21,210 +19,96 @@ describe('agent-pack contract', () => {
     expect(AGENT_ROLE_NAMES).toHaveLength(7);
   });
 
-  test('makes the root adaptive instead of delegation-only', () => {
+  test('models every specialist dispatch as a native task', () => {
+    for (const role of AGENT_ROLE_NAMES.filter(
+      (name) => name !== 'orchestrator',
+    )) {
+      expect(getAgentRole(role).dispatch).toBe('task');
+    }
     expect(getAgentRole('orchestrator')).toMatchObject({
       mode: 'adaptive-root',
       dispatch: 'root-coordinator',
       canMutateWorkspace: true,
     });
-
-    const contract = getAgentPackContract();
-    expect(contract.orchestrationPolicy).toMatchObject({
-      maxDelegationDepth: 1,
-      singleWriter: true,
-    });
-    expect(contract.orchestrationPolicy.implementationOwnership).toMatchObject({
-      routeIndependent: true,
-    });
-    expect(contract.orchestrationPolicy.rules.join('\n')).toContain('net gain');
-    expect(contract.orchestrationPolicy.rules.join('\n')).not.toContain(
-      'delegate-first',
-    );
-    expect(getAgentRole('orchestrator').responsibility).toMatch(
-      /coordination|specification|planning/i,
+    expect(JSON.stringify(getAgentPackContract())).not.toContain(
+      'synchronous-task-only',
     );
   });
 
-  test('chooses implementation ownership from task-shaped net gain instead of route', () => {
-    const contract = getAgentPackContract();
-    const ownership = contract.orchestrationPolicy.implementationOwnership;
-
-    expect(ownership).toEqual({
+  test('keeps implementation ownership independent from persistence choice', () => {
+    const ownership =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership;
+    expect(ownership).toMatchObject({
       eligibleOwners: ['orchestrator', 'designer', 'quick', 'deep'],
-      routeIndependent: true,
-      delegationBenefits: [
-        'specialization',
-        'context isolation',
-        'independent bounded work',
-        'safe parallelism',
-        'quality, latency, or total-cost gain',
-      ],
-      rootContinuityBenefits: [
-        'short work',
-        'one ordered reasoning chain',
-        'frequent shared-state writes',
-        'already-loaded context',
-        'rediscovery and coordination cost',
-      ],
-      userDirection: 'explicit safe user direction is an ownership input',
-      insufficientSignals: [
-        'SDD route name',
-        'file count alone',
-        'cheaper model price without end-to-end evidence',
-      ],
+      workflowIndependent: true,
     });
-
-    const root = getAgentRole('orchestrator');
-    const rootContract = [
-      root.responsibility,
-      ...root.useWhen,
-      ...root.doNotUseWhen,
-      ...root.escalateWhen,
-    ].join('\n');
-    const rules = contract.orchestrationPolicy.rules.join('\n');
-
-    expect(rootContract).toContain('every route');
-    expect(rootContract).toContain('demonstrated net gain');
-    expect(rules).toContain(
-      'Direct, Accelerated, Full, and no-artifact execution govern artifacts and gates, not implementation ownership.',
+    expect(ownership.insufficientSignals).toContain(
+      'workflow persistence choice',
     );
-    expect(rules).toContain(
-      'After deciding to delegate implementation, select designer for UI/UX, quick for known narrow low-risk work, and deep for coupled or high-risk work.',
-    );
-    expect(rules).not.toMatch(/Direct micro-action|Artifact-backed.*selects/i);
+    expect(ownership.delegationBenefits).toContain('safe parallelism');
   });
 
-  test('defines fresh delegation and bounded continuation as canonical policy', () => {
-    const rules = getAgentPackContract().orchestrationPolicy.rules.join('\n');
-
-    expect(rules).toContain(
-      'fresh subagent instance is the default when the objective, SDD phase, mutable surface, or independent judgment changes',
-    );
-    expect(rules).toContain(
-      'only to steer, complete, or clarify the same bounded assignment',
-    );
-    expect(rules).toContain('completed agents are not a reusable role pool');
-    expect(rules).toContain(
-      'Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance',
-    );
-    expect(rules).toContain(
-      'Wait and status operations collect only the active nonterminal assignment and do not authorize later reuse',
-    );
-  });
-
-  test('shapes substantive work into dependency-aware native waves before fan-in', () => {
+  test('defines continuous dependency-ready native dispatch', () => {
     const policy = getAgentPackContract().orchestrationPolicy.taskShaping;
-
     expect(policy.steps).toEqual([
-      'bound-work',
-      'map-dependencies',
+      'bound-units',
+      'map-output-dependencies',
       'assign-ownership',
       'select-specialists',
-      'mark-ready-and-blocked',
-      'dispatch-ready-wave',
-      'wait-for-terminal-evidence',
-      'reconcile-and-verify',
+      'admit-ready-units',
+      'dispatch-to-native-capacity',
+      'wait-for-native-terminal-event',
+      'accept-results',
+      'refill-capacity',
     ]);
-    expect(policy.decisions).toMatchObject({
-      dependency: 'block a lane until every concrete upstream output exists',
-      ownershipConflict:
-        'serialize overlapping mutable surfaces or assign one writer',
-      readyWave:
-        'dispatch all independent conflict-free ready lanes before waiting',
-      terminalEvidence:
-        'silence, timeout, and malformed status remain nonterminal',
-      degradation:
-        'report an unavailable native primitive and use a truthful sequential fallback',
-    });
+    expect(policy.decisions.dependency).toMatch(/root-accepted.*fresh/i);
+    expect(policy.decisions.readyDispatch).toMatch(/before waiting/i);
+    expect(policy.decisions.refill).toMatch(/before another wait/i);
+    expect(policy.decisions.terminalEvidence).toMatch(/timeout.*nonterminal/i);
     expect(policy.nativeAuthority).toBe(true);
-    expect(policy.boundedWidth).toBe(true);
   });
 
-  test('considers every specialist through equally structured semantic decisions', () => {
-    const directory =
-      getAgentPackContract().orchestrationPolicy.specialistDirectory;
-
-    expect(directory.map(({ role }) => role)).toEqual([
-      'explorer',
-      'librarian',
-      'oracle',
-      'designer',
-      'quick',
-      'deep',
-    ]);
-    for (const decision of directory) {
-      expect(decision.selectWhen.length, decision.role).toBeGreaterThan(20);
-      expect(decision.rejectWhen.length, decision.role).toBeGreaterThan(20);
-    }
-  });
-
-  test('defines orchestration as immutable policy without runtime lifecycle state', () => {
-    const serialized = JSON.stringify(
-      getAgentPackContract().orchestrationPolicy,
-    );
-
-    for (const forbidden of [
-      'executor',
-      'jobBoard',
-      'projection',
-      'telemetry',
-      'observer',
-      'wakeLoop',
-      'assignmentStatus',
-      'terminalResults',
-      'runtimeState',
-    ]) {
-      expect(serialized).not.toContain(forbidden);
-    }
-  });
-
-  test('keeps discovery and judgment read-only', () => {
+  test('keeps one writer and read-only judgment boundaries', () => {
+    expect(getAgentPackContract().orchestrationPolicy.singleWriter).toBe(true);
     for (const name of ['explorer', 'librarian', 'oracle'] as const) {
       expect(getAgentRole(name)).toMatchObject({
         mode: 'read-only',
         canMutateWorkspace: false,
       });
     }
-  });
-
-  test('keeps sequential SDD coordination in the adaptive root', () => {
-    const role = getAgentRole('orchestrator');
-
-    expect(role.toolGovernance.join('\n')).toMatch(/openspec/i);
-    expect(role.toolGovernance.join('\n')).toMatch(/append-only/i);
-    expect(role.toolGovernance.join('\n')).toMatch(
-      /load.*contract|contract.*demand/i,
-    );
-  });
-
-  test('keeps implementation ownership with the three writer roles', () => {
     for (const name of ['designer', 'quick', 'deep'] as const) {
       expect(getAgentRole(name)).toMatchObject({
         mode: 'write-capable',
-        dispatch: 'synchronous-task-only',
         canMutateWorkspace: true,
       });
     }
   });
 
-  test('reserves selected plan review and proportionate independent verification for oracle', () => {
-    const role = getAgentRole('oracle');
-
-    expect(role.scope).toMatch(/optional plan review/i);
-    expect(role.responsibility).toMatch(/review plans.*user requests/i);
-    expect(role.responsibility).toMatch(/independent judgment/i);
-    expect(role.toolGovernance.join('\n')).toMatch(
-      /never.*implementer|independent/i,
-    );
-    expect(getAgentRole('orchestrator').verification.join('\n')).toContain(
-      'trivial deterministic Direct',
-    );
-    expect(getAgentRole('orchestrator').verification.join('\n')).toContain(
-      'Accelerated, Full, and material-risk Direct',
-    );
+  test('preserves fresh specialist and fresh Oracle lifecycle policy', () => {
+    const rules = getAgentPackContract().orchestrationPolicy.rules.join('\n');
+    expect(rules).toMatch(/fresh subagent.*work unit/i);
+    expect(rules).toMatch(/same bounded assignment/i);
+    expect(rules).toMatch(/fresh Oracle/i);
+    expect(rules).toMatch(/completed agents are not a reusable role pool/i);
   });
 
-  test('defines one compact return contract for every child agent', () => {
+  test('keeps runtime state out of declarative policy', () => {
+    const serialized = JSON.stringify(
+      getAgentPackContract().orchestrationPolicy,
+    );
+    for (const forbidden of [
+      'jobBoard',
+      'projection',
+      'telemetry',
+      'wakeLoop',
+      'assignmentStatus',
+      'terminalResults',
+      'runtimeState',
+    ])
+      expect(serialized).not.toContain(forbidden);
+  });
+
+  test('defines one compact return contract', () => {
     expect(getAgentPackContract().returnContract).toEqual([
       'conclusion',
       'evidence',

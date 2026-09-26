@@ -15,17 +15,17 @@ const VALIDATE_SCRIPT = join(
 const VALID_CONSTITUTION = `<!--
 Sync Impact Report
 - Version change: 1.1.0 -> 2.0.0
-- Modified principles: Traceable delivery (archive semantics redefined)
+- Modified principles: Traceable delivery
 - Added sections: None
 - Removed sections: None
-- Templates: ✅ skills/thoth-archive/SKILL.md
+- Templates: ✅ workflow template
 - Follow-up TODOs: None
 -->
 # Example Constitution
 
 **Version**: 2.0.0<br>
 **Ratified**: 2026-06-20<br>
-**Last amended**: 2026-07-19
+**Last amended**: 2026-09-26
 
 ## Principles
 
@@ -54,12 +54,12 @@ function validate(content: string) {
 }
 
 describe('constitution lifecycle validator', () => {
-  test('keeps route selection user-owned and separates optional plan review from final verify', () => {
-    const repositoryConstitution = readFileSync(
-      join(process.cwd(), 'openspec', 'memory', 'constitution.md'),
+  test('keeps repository and initialization governance aligned to the AI-first agreement', () => {
+    const repository = readFileSync(
+      join(process.cwd(), '.thoth', 'constitution.md'),
       'utf8',
     );
-    const initializedConstitution = readFileSync(
+    const template = readFileSync(
       join(
         process.cwd(),
         'skills',
@@ -70,59 +70,34 @@ describe('constitution lifecycle validator', () => {
       'utf8',
     );
 
-    expect(repositoryConstitution).toContain('**Version**: 7.1.0');
-    expect(repositoryConstitution).toContain(
-      '- Version change: 7.0.0 -> 7.1.0',
-    );
-    expect(repositoryConstitution).toContain('**Last amended**: 2026-09-03');
-    expect(repositoryConstitution).toContain(
-      'OpenCode, Codex, Claude Code, and Pi derive behavior',
-    );
-    expect(repositoryConstitution).toContain(
-      'Before asking for Direct, Accelerated, or Full, Root MUST summarize the relevant context',
-    );
-    expect(repositoryConstitution).toContain(
-      'MUST treat the recommended route as selected after the third answerless result',
-    );
-    expect(repositoryConstitution).toContain(
-      '`Review plan with Oracle (Recommended)` counts as selected',
-    );
-    expect(repositoryConstitution).toContain(
-      'the third answerless result selects implementation',
-    );
-    expect(repositoryConstitution).toContain(
-      'Trivial deterministic Direct work MAY be verified by Root',
-    );
-    expect(repositoryConstitution).toContain(
-      'materially risky Direct work and every Accelerated or Full final verify MUST use a fresh read-only Oracle',
-    );
-    expect(repositoryConstitution).not.toContain(
-      'Every final verify remains mandatory and oracle-owned',
-    );
-    expect(repositoryConstitution).not.toContain(
-      'Full SDD also adds oracle-owned pre-implementation analysis',
-    );
-    expect(initializedConstitution).toContain(
-      'Before the SDD route question, Root MUST summarize relevant context',
-    );
-    expect(initializedConstitution).toMatch(
-      /the recommended route counts as\s+selected/,
-    );
-    expect(initializedConstitution).toMatch(
-      /`Review plan with Oracle \(Recommended\)` counts as selected/,
-    );
-    expect(initializedConstitution).toContain(
-      'the third answerless result selects implementation',
-    );
-    expect(initializedConstitution).toMatch(
-      /Trivial\s+deterministic Direct work MAY be verified by Root/,
-    );
-    expect(initializedConstitution).toMatch(
-      /every Accelerated or Full final verify MUST use a fresh independent read-only/,
-    );
-    expect(initializedConstitution).not.toContain(
-      'Every final verify MUST use an independent read-only reviewer',
-    );
+    expect(repository).toContain('**Version**: 9.0.0');
+    expect(repository).toContain('- Version change: 8.0.0 -> 9.0.0');
+    expect(repository).toContain('**Ratified**: 2026-06-16');
+    expect(repository).toContain('**Last amended**: 2026-09-26');
+    const normalizedRepository = repository.replace(/\s+/g, ' ').toLowerCase();
+    const normalizedTemplate = template.replace(/\s+/g, ' ').toLowerCase();
+    for (const policy of [
+      'native runtime authority',
+      'root must offer oracle review',
+      'after oracle [okay]',
+      'three confirmed unanswered native returns',
+      'explicit answers and stop always win',
+      'delegation depth is one',
+      'each mutable surface has one writer',
+      '`.thoth/changes/<id>/work.yaml`',
+      'provider memory is independent',
+      'reconcile projected state with native liveness',
+      'fan out every ready, conflict-free unit',
+      'must not impose a global wave barrier',
+      'independent fresh oracle final judgment',
+      'no implementation writer may approve its own work',
+      'worktrees remain a deferred runtime concern',
+    ]) {
+      expect(normalizedRepository, policy).toContain(policy);
+      expect(normalizedTemplate, policy).toContain(policy);
+    }
+    expect(repository).not.toMatch(/Direct|Accelerated|Full|route question/);
+    expect(template).not.toMatch(/Direct|Accelerated|Full|route question/);
   });
 
   test('keeps the repository constitution lifecycle valid', () => {
@@ -131,71 +106,60 @@ describe('constitution lifecycle validator', () => {
       [
         VALIDATE_SCRIPT,
         '--constitution',
-        join(process.cwd(), 'openspec', 'memory', 'constitution.md'),
+        join(process.cwd(), '.thoth', 'constitution.md'),
         '--json',
       ],
       { encoding: 'utf8' },
     );
 
     expect(result.status, result.stderr).toBe(0);
-  });
-
-  test('accepts a complete SemVer amendment and sync-impact report', () => {
-    const result = validate(VALID_CONSTITUTION);
-
-    expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
       valid: true,
-      version: '2.0.0',
+      version: '9.0.0',
     });
   });
 
-  test('rejects unresolved placeholders and invalid lifecycle metadata', () => {
-    const result = validate(
+  test('accepts complete amendment metadata and rejects incomplete lifecycle data', () => {
+    const valid = validate(VALID_CONSTITUTION);
+    expect(valid.status, valid.stderr).toBe(0);
+
+    const invalid = validate(
       VALID_CONSTITUTION.replaceAll('2.0.0', 'next')
         .replace('2026-06-20', 'YYYY-MM-DD')
         .replace('Traceable delivery', '[PRINCIPLE_NAME]'),
     );
-
-    expect(result.status).toBe(1);
-    const output = JSON.parse(result.stdout);
-    expect(output.errors.map((error: { code: string }) => error.code)).toEqual(
+    expect(invalid.status).toBe(1);
+    expect(JSON.parse(invalid.stdout).errors).toEqual(
       expect.arrayContaining([
-        'CONSTITUTION-PLACEHOLDER',
-        'CONSTITUTION-VERSION',
-        'CONSTITUTION-DATE',
+        expect.objectContaining({ code: 'CONSTITUTION-PLACEHOLDER' }),
+        expect.objectContaining({ code: 'CONSTITUTION-VERSION' }),
+        expect.objectContaining({ code: 'CONSTITUTION-DATE' }),
       ]),
     );
   });
 
-  test('requires a sync-impact report whose version matches the constitution', () => {
-    const missing = validate(
+  test('requires a matching sync report and explicit SemVer policy', () => {
+    const missingReport = validate(
       VALID_CONSTITUTION.replace(/<!--[\s\S]+?-->\n/, ''),
     );
-    expect(missing.status).toBe(1);
-    expect(JSON.parse(missing.stdout).errors).toContainEqual(
+    expect(JSON.parse(missingReport.stdout).errors).toContainEqual(
       expect.objectContaining({ code: 'CONSTITUTION-SYNC-IMPACT' }),
     );
 
-    const mismatched = validate(
+    const mismatchedVersion = validate(
       VALID_CONSTITUTION.replace('1.1.0 -> 2.0.0', '1.1.0 -> 1.2.0'),
     );
-    expect(mismatched.status).toBe(1);
-    expect(JSON.parse(mismatched.stdout).errors).toContainEqual(
+    expect(JSON.parse(mismatchedVersion.stdout).errors).toContainEqual(
       expect.objectContaining({ code: 'CONSTITUTION-SYNC-VERSION' }),
     );
-  });
 
-  test('requires explicit MAJOR, MINOR, and PATCH governance semantics', () => {
-    const result = validate(
+    const missingSemver = validate(
       VALID_CONSTITUTION.replace(
         /- MAJOR[\s\S]+?- PATCH[^\n]+\n/,
         '- Amendments use an appropriate version.\n',
       ),
     );
-
-    expect(result.status).toBe(1);
-    expect(JSON.parse(result.stdout).errors).toContainEqual(
+    expect(JSON.parse(missingSemver.stdout).errors).toContainEqual(
       expect.objectContaining({ code: 'CONSTITUTION-SEMVER-POLICY' }),
     );
   });

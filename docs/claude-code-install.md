@@ -4,7 +4,7 @@ Claude Code receives a native plugin containing the orchestrator, six namespaced
 specialists, MCP configuration, and the five workflow skills owned by
 thoth-agents. The CLI remains a required installation step for the four external
 skills and provider-owned thoth-mem setup, but agents do not consume either CLI
-during SDD phases.
+during work execution.
 
 ## Requirements
 
@@ -67,9 +67,9 @@ invoke:
 /thoth-agents:thoth-init
 ```
 
-Init preflights and synchronizes the minimum `openspec/` directories, a missing
-constitution, and initialization metadata. Claude discovers agents, phase
-contracts, and SDD templates from the plugin; external execution skills come
+Init preflights and synchronizes the minimum `.thoth/` directories, a missing
+constitution, and initialization metadata. Claude discovers agents and work
+contracts from the plugin; external execution skills come
 from the preceding CLI step. Project initialization is offline and idempotent,
 preserves existing constitutions, and leaves legacy project templates untouched.
 
@@ -83,10 +83,8 @@ preserves existing constitutions, and leaves legacy project templates untouched.
 | `settings.json` | Activates the orchestrator as the main plugin agent |
 
 Namespaced delegation uses `thoth-agents:<role>`. Children never delegate.
-Every route verifies: trivial deterministic Direct work may use focused root
-checks; materially risky Direct work and every Accelerated or Full final verify
-use a fresh read-only `oracle`. Explicitly or bounded-default selected plan
-review remains optional, regardless of who implemented the change.
+Every change verifies. Persisted or materially risky work requires a fresh
+read-only Oracle. Optional plan review never substitutes for final verification.
 
 Before dispatch, the root distinguishes concrete artifact/decision dependencies
 from mere ordering, marks input-ready lanes ready and dependent lanes blocked,
@@ -119,7 +117,7 @@ npx thoth-agents@latest status --harness=claude
 - Claude owns marketplace snapshots, cache files, and packaged model defaults;
   publish a new plugin version to change them.
 - Explorer, librarian, and oracle deny `Write` and `Edit`. Fine-grained
-  `openspec/` path restrictions are instruction-level because Claude's plugin
+  `.thoth/` path restrictions are instruction-level because Claude's plugin
   permission map is not a path-pattern sandbox.
 - Background agents cannot surface interactive permission or clarification
   prompts like the foreground session.
@@ -133,7 +131,7 @@ npx thoth-agents@latest status --harness=claude
 
 At runtime, agents follow the installed thoth-mem skill. Root owns stable session
 identity and lifecycle; a child receives bounded `none`, `recall`, or `observe`
-authorization without gaining workspace writes. `openspec/` remains canonical.
+authorization without gaining workspace writes. `.thoth/` remains canonical.
 
 ## Troubleshooting
 

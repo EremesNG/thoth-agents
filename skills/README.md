@@ -5,13 +5,12 @@ thoth-agents. `pnpm run integration:sync` copies those skills into the Codex and
 Claude Code plugins; `npx thoth-agents install --agent=opencode` materializes
 the same packaged skill trees globally under `~/.config/opencode/skills/`.
 
-Owned workflow skills are `thoth-init`, `thoth-sdd`, `thoth-constitution`,
-`thoth-archive`, and `plan-reviewer`. The last one implements the optional,
-explicitly or bounded-default selected, read-only Oracle review before
-implementation. Mandatory external
+Owned workflow skills are `thoth-init`, `thoth-work`, `thoth-constitution`,
+`thoth-archive`, and `plan-reviewer`. The last one implements optional,
+read-only Oracle review when independent plan judgment adds value. Mandatory external
 skills (`simplify`, `tdd`,
 `progressive-context-router`, and `architectural-grilling`) are not copied here:
 the thoth-agents installer invokes `npx skills add` against their canonical
 repositories so they retain a single source of truth. `thoth-init` only
-initializes or synchronizes minimum project `openspec/` governance and never
+initializes or synchronizes minimum project `.thoth/` governance and never
 installs skills.

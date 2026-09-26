@@ -220,7 +220,7 @@ function createPluginManifest(
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Adaptive multi-harness agent pack with seven roles and a runtime-autonomous Spec Kit-compatible SDD bundle for Claude Code.',
+      'Adaptive multi-harness agent pack with seven roles and an AI-first persisted-work bundle for Claude Code.',
     author: { name: 'thoth-agents' },
   };
 }
@@ -232,7 +232,7 @@ function renderSubagentArtifacts(config?: PluginConfig): HarnessArtifact[] {
     (candidate) => candidate.name !== 'orchestrator',
   )) {
     // A denylist preserves inherited MCP tools while enforcing read-only roles.
-    // Coordination agents need Edit/Write, so their openspec/ path scope remains
+    // Coordination agents need Edit/Write, so their .thoth/ path scope remains
     // instruction-level.
     const content = renderClaudeCodeSubagent({
       name: role.name,
@@ -268,7 +268,7 @@ function renderOrchestratorArtifact(config?: PluginConfig): HarnessArtifact {
     name: 'orchestrator',
     description:
       orchestrator?.responsibility ??
-      'Adaptive root coordinator for direct work, SDD routing, and specialist dispatch.',
+      'Adaptive root coordinator for human agreement, persisted work, and specialist dispatch.',
     model: 'inherit',
     instructions: renderClaudeCodeRootInstructions(config),
   });

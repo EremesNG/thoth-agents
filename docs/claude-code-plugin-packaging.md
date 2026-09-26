@@ -26,7 +26,7 @@ plugin/
 │   └── deep.md
 └── skills/
     ├── thoth-init/
-    ├── thoth-sdd/
+    ├── thoth-work/
     ├── thoth-constitution/
     ├── thoth-archive/
     └── plan-reviewer/
@@ -44,10 +44,10 @@ version and its immutable product tag.
 delegation uses the `thoth-agents:<role>` namespace. Explorer, librarian, and
 oracle deny write/edit tools; implementation roles retain bounded write access.
 The root shapes dependencies, ready/blocked lanes, and one-writer ownership.
-Claude's native `Agent` calls fan out every ready conflict-free lane before
-waiting and fan in only terminal native results. Explicitly or bounded-default
-selected plan review is optional; trivial deterministic Direct work may use focused root checks, while
-materially risky Direct work and every Accelerated or Full final verify use a
+Claude's native `Agent` calls fill available capacity with admitted independent
+units before waiting, refill capacity as units complete, and fan in only terminal
+native results. Plan review is optional; trivial deterministic direct work may
+use focused root checks, while materially risky direct work and persisted work use a
 fresh read-only Oracle.
 
 Semantic triggers keep the complete roster actionable: `librarian` handles
@@ -60,10 +60,10 @@ truthful sequential fallback. No additional thoth coordination mechanism is
 involved.
 
 Claude discovers plugin skills automatically. The namespaced
-`/thoth-agents:thoth-init` skill only synchronizes minimum project `openspec/`
+`/thoth-agents:thoth-init` skill only synchronizes minimum project `.thoth/`
 governance because agents and owned skills already reside in the manager-owned
-cache. Phase contracts consume SDD templates directly from that installed skill
-tree rather than copying them into the project. Mandatory external skills reside
+cache. Work contracts consume examples and helpers directly from that installed
+skill tree rather than copying them into the project. Mandatory external skills reside
 in Claude's global skill root after CLI installation. That CLI also invokes
 thoth-mem's public provider setup; no thoth-mem asset is copied into this shared
 bundle.

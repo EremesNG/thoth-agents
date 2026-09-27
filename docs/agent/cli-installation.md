@@ -94,7 +94,7 @@ execution does not.
   on an isolated native package-manager probe: it parses `>=` as an unpinned
   valid range and preserves object-form filters while replacing a source.
   Setup then merges builtin-disablement and fresh depth-one delegation settings
-  without replacing unrelated user keys, synchronizes six specialists, installs
+  without replacing unrelated user keys, synchronizes five specialists, installs
   four external skills, runs provider setup, and commits the unchanged
   last-complete ledger. A custom
   `PI_CODING_AGENT_DIR`, unowned canonical agent, or conflicting global `grep`

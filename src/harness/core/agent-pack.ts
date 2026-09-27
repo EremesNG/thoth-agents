@@ -4,8 +4,7 @@ export type AgentRoleName =
   | 'librarian'
   | 'oracle'
   | 'designer'
-  | 'quick'
-  | 'deep';
+  | 'worker';
 
 export type AgentMutationMode = 'adaptive-root' | 'read-only' | 'write-capable';
 
@@ -66,11 +65,7 @@ export interface SpecialistDecision {
   rejectWhen: string;
 }
 
-export type ImplementationOwner =
-  | 'orchestrator'
-  | 'designer'
-  | 'quick'
-  | 'deep';
+export type ImplementationOwner = 'orchestrator' | 'designer' | 'worker';
 
 export interface ImplementationOwnershipPolicy {
   eligibleOwners: ImplementationOwner[];
@@ -94,8 +89,7 @@ export const AGENT_ROLE_NAMES = [
   'librarian',
   'oracle',
   'designer',
-  'quick',
-  'deep',
+  'worker',
 ] as const satisfies readonly AgentRoleName[];
 
 export const AGENT_ROLES = [
@@ -116,7 +110,7 @@ export const AGENT_ROLES = [
       'Not for independent plan review or Oracle-required final verification.',
     ],
     escalateWhen: [
-      'Delegate implementation when specialization, context isolation, or independent bounded work creates a demonstrated net gain; then select designer, quick, or deep by task shape.',
+      'Delegate implementation when specialization, context isolation, or independent bounded work creates a demonstrated net gain; then select designer or worker by task shape.',
     ],
     toolGovernance: [
       'may inspect and edit the accepted bounded implementation surface and may verify trivial deterministic work without self-approval',
@@ -205,7 +199,7 @@ export const AGENT_ROLES = [
       'Not for backend-only, non-visual, or correctness-heavy cross-cutting work.',
     ],
     escalateWhen: [
-      'Escalate coupled contracts, migrations, or high risk to deep.',
+      'Escalate coupled contracts, migrations, or high risk to worker.',
     ],
     toolGovernance: [
       'may edit focused UI/UX files',
@@ -215,39 +209,18 @@ export const AGENT_ROLES = [
     verification: ['includes visual verification when applicable'],
   },
   {
-    name: 'quick',
+    name: 'worker',
     mode: 'write-capable',
     dispatch: 'task',
     canMutateWorkspace: true,
-    scope: 'fast bounded implementation',
+    scope: 'bounded nonvisual implementation and verification',
     responsibility:
-      'Implement narrow, clear, low-risk changes within an explicitly bounded surface.',
-    useWhen: ['Known narrow mechanical low-risk work has exact targets.'],
-    doNotUseWhen: [
-      'Not for coupled contracts, migrations, broad discovery, concurrency, edge cases, or high risk.',
-    ],
-    escalateWhen: [
-      'Escalate discovery, coupling, edge cases, or higher risk to deep.',
-    ],
-    toolGovernance: [
-      'edits only bounded targets',
-      'escalates when discovery or correctness risk exceeds the assignment',
-      'does not delegate further',
-    ],
-    verification: ['runs the smallest sufficient focused check'],
-  },
-  {
-    name: 'deep',
-    mode: 'write-capable',
-    dispatch: 'task',
-    canMutateWorkspace: true,
-    scope: 'correctness-critical implementation and verification',
-    responsibility:
-      'Handle multi-file, edge-case-heavy, or high-risk implementation with full local context.',
+      'Handle bounded nonvisual implementation with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work.',
     useWhen: [
-      'Implementation is multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk.',
+      'Delegated implementation is nonvisual and bounded, regardless of complexity; this includes low-risk or mechanical edits while delegation must still provide net gain over direct root work.',
+      'Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk.',
     ],
-    doNotUseWhen: ['Not for visual-only work or narrow known low-risk edits.'],
+    doNotUseWhen: ['Not for visual-only work.'],
     escalateWhen: ['Return product or architecture choices to root.'],
     toolGovernance: [
       'may edit implementation and tests within the assigned surface',
@@ -262,7 +235,7 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
   maxDelegationDepth: 1,
   singleWriter: true,
   implementationOwnership: {
-    eligibleOwners: ['orchestrator', 'designer', 'quick', 'deep'],
+    eligibleOwners: ['orchestrator', 'designer', 'worker'],
     workflowIndependent: true,
     delegationBenefits: [
       'specialization',
@@ -330,7 +303,7 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     'Root or a specialist may implement accepted work; delegate only when specialization, context isolation, independent bounded work, or safe parallelism creates a demonstrated quality, latency, or total-cost net gain.',
     'Keep implementation in root when short work, one ordered reasoning chain, frequent shared-state writes, already-loaded context, rediscovery, or coordination cost outweigh delegation benefit.',
     'Treat explicit safe user direction as an ownership input; persistence choice, file count alone, or cheaper model price without end-to-end evidence cannot choose an owner.',
-    'After deciding to delegate implementation, select designer for UI/UX, quick for known narrow low-risk work, and deep for coupled or high-risk work.',
+    'After deciding to delegate implementation, select designer for UI/UX and worker for all non-visual implementation work.',
     'Use one writer for each mutable surface and never parallelize overlapping writes.',
     'A fresh subagent instance is the default when the objective, work unit, mutable surface, or independent judgment changes.',
     'Continue an existing subagent only to steer, complete, or clarify the same bounded assignment; completed agents are not a reusable role pool.',

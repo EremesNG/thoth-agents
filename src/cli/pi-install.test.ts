@@ -370,7 +370,6 @@ describe('Pi setup', () => {
       'agent',
       'agent',
       'agent',
-      'agent',
     ]);
     expect(applyPiSetup(plan)).toMatchObject({
       success: true,
@@ -965,14 +964,14 @@ describe('Pi setup', () => {
     const agentsRoot = join(paths.homeDir, '.pi', 'agent', 'agents');
     mkdirSync(agentsRoot, { recursive: true });
     writeFileSync(
-      join(agentsRoot, 'thoth-deep.md'),
-      '---\nname: thoth-deep\ndescription: "user-owned definition"\n---\n',
+      join(agentsRoot, 'thoth-worker.md'),
+      '---\nname: thoth-worker\ndescription: "user-owned definition"\n---\n',
     );
     const plan = buildPiSetupPlan(paths);
     expect(plan.ready).toBe(false);
     expect(plan.blockers).toEqual([
       expect.stringContaining(
-        'defines canonical specialist thoth-deep without thoth-agents ownership',
+        'defines canonical specialist thoth-worker without thoth-agents ownership',
       ),
     ]);
   });

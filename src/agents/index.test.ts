@@ -15,12 +15,11 @@ const ROLE_NAMES = [
   'librarian',
   'oracle',
   'designer',
-  'quick',
-  'deep',
+  'worker',
 ] as const;
 
 const READ_ONLY_ROLES = ['explorer', 'librarian', 'oracle'] as const;
-const WRITER_ROLES = ['designer', 'quick', 'deep'] as const;
+const WRITER_ROLES = ['designer', 'worker'] as const;
 
 function getAgent(name: string, config?: PluginConfig) {
   return createAgents(config).find((agent) => agent.name === name);
@@ -34,7 +33,7 @@ function permission(name: string, config?: PluginConfig): PermissionRecord {
 }
 
 describe('OpenCode v0.3 agent roster', () => {
-  test('creates the seven-role adaptive roster', () => {
+  test('creates the six-role adaptive roster', () => {
     expect(createAgents().map((agent) => agent.name)).toEqual(ROLE_NAMES);
     expect(SUBAGENT_NAMES).toEqual(ROLE_NAMES.slice(1));
   });
@@ -94,15 +93,14 @@ describe('OpenCode v0.3 defaults', () => {
       librarian: { model: 'openai/gpt-6-luna', variant: 'high' },
       oracle: { model: 'openai/gpt-6-astra', variant: 'medium' },
       designer: { model: 'openai/gpt-6-sol', variant: 'medium' },
-      quick: { model: 'openai/gpt-6-luna', variant: 'medium' },
-      deep: { model: 'openai/gpt-6-sol', variant: 'medium' },
+      worker: { model: 'openai/gpt-6-luna', variant: 'max' },
     });
   });
 
   test('applies explicit model, effort, temperature, and step overrides', () => {
     const config: PluginConfig = {
       agents: {
-        deep: {
+        worker: {
           model: 'custom/planner',
           variant: 'low',
           temperature: 0.25,
@@ -111,7 +109,7 @@ describe('OpenCode v0.3 defaults', () => {
       },
     };
 
-    expect(getAgentConfigs(config).deep).toMatchObject({
+    expect(getAgentConfigs(config).worker).toMatchObject({
       model: 'custom/planner',
       variant: 'low',
       temperature: 0.25,
@@ -137,10 +135,10 @@ describe('OpenCode v0.3 defaults', () => {
   test('adds bounded-step guidance when steps are configured', () => {
     const config: PluginConfig = {
       agents: {
-        quick: { steps: 35 },
+        worker: { steps: 35 },
       },
     };
-    const prompt = getAgent('quick', config)?.config.prompt ?? '';
+    const prompt = getAgent('worker', config)?.config.prompt ?? '';
 
     expect(prompt).toContain('<step-budget>');
     expect(prompt).toContain('Execution budget: 35 steps');

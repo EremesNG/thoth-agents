@@ -330,7 +330,7 @@ Codex and Claude marketplace versions remain native-manager-owned and do not pro
 that CLI-managed agents, skills, configuration, or provider setup are aligned.
 Runtime release checks notify only; use the latest CLI install or interactive CLI Update.
 
-OpenCode install configures the adaptive seven-role roster and native task delegation.
+OpenCode install configures the adaptive six-role roster and native task delegation.
 Provider capability is external and reported only from caller-supplied evidence.
 
 External required skills are installed for every harness:
@@ -495,8 +495,8 @@ function printModelGuidance(): number {
     [
       'Model command requires explicit model input.',
       'Examples:',
-      '  thoth-agents model --harness=codex --role=deep --model=openai/gpt-5.4-mini',
-      '  thoth-agents model --harness=opencode --role-model=deep=openai/gpt-5.4',
+      '  thoth-agents model --harness=codex --role=worker --model=openai/gpt-5.4-mini',
+      '  thoth-agents model --harness=opencode --role-model=worker=openai/gpt-5.4',
       'Preview is the default. Add --apply only after reviewing the plan.',
     ].join('\n'),
   );

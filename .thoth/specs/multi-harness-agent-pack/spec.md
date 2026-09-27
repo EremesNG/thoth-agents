@@ -10,7 +10,7 @@ The system MUST support OpenCode, Codex, Claude Code, and Pi; OpenCode MUST rema
 
 - **GIVEN** Pi `0.86.1` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
 - **WHEN** `thoth-agents install --agent=pi` is applied
-- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, five canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
 
 #### Scenario: US1 - Install the complete Pi agent pack 2
 
@@ -36,9 +36,14 @@ The system MUST support OpenCode, Codex, Claude Code, and Pi; OpenCode MUST rema
 - **WHEN** runtime requirements are evaluated
 - **THEN** they consistently require Node.js `>=22.19`
 
-### Requirement: Preserve the seven-role contract
+### Requirement: Preserve the six-role contract
 
-The native Pi package MUST derive one ambient `orchestrator` root and the six `explorer`, `librarian`, `oracle`, `designer`, `quick`, and `deep` specialists from the canonical role contracts, MUST NOT create an orchestrator child definition, and MUST preserve role prompts, model/effort metadata where Pi supports them, memory envelopes, ownership, and return contracts.
+The native Pi package MUST derive one ambient `orchestrator` root and the five
+`explorer`, `librarian`, `oracle`, `designer`, and `worker` specialists from the
+canonical role contracts, MUST NOT create an orchestrator child definition, and
+MUST preserve role prompts, model/effort metadata where Pi supports them, memory
+envelopes, ownership, and return contracts. `quick` and `deep` MUST NOT remain
+supported roles or aliases.
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 1
 
@@ -56,7 +61,7 @@ The native Pi package MUST derive one ambient `orchestrator` root and the six `e
 
 - **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
 - **WHEN** the package synchronizer runs
-- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
+- **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
 ### Requirement: Use adaptive-root delegation
 
@@ -106,7 +111,7 @@ The Pi extension and specialist definitions MUST apply the strongest native root
 
 - **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
 - **WHEN** the package synchronizer runs
-- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
+- **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
 #### Scenario: US4 - Preserve external ownership and existing harnesses 1
 
@@ -122,7 +127,7 @@ The Pi extension and specialist definitions MUST apply the strongest native root
 
 ### Requirement: Publish a native Pi package with runtime-autonomous assets
 
-The published `thoth-agents` npm artifact MUST identify as a Pi package, MUST declare exactly one compiled native extension and the five packaged thoth-owned workflow skills through supported Pi manifest fields, MUST ship the six canonical specialist resources, and MUST remain usable from its installed package root without invoking the thoth-agents CLI or network during ordinary Pi runtime.
+The published `thoth-agents` npm artifact MUST identify as a Pi package, MUST declare exactly one compiled native extension and the five packaged thoth-owned workflow skills through supported Pi manifest fields, MUST ship the five canonical specialist resources, and MUST remain usable from its installed package root without invoking the thoth-agents CLI or network during ordinary Pi runtime.
 
 #### Scenario: US1 - Install thoth-agents as the first native Pi package 1
 
@@ -176,7 +181,7 @@ The published `thoth-agents` npm artifact MUST identify as a Pi package, MUST de
 
 - **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
 - **WHEN** the package synchronizer runs
-- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
+- **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
 ### Requirement: Publish repository-native marketplaces
 
@@ -270,7 +275,7 @@ Pi capability reporting MUST independently identify first-party package state as
 
 - **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
 - **WHEN** the package synchronizer runs
-- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
+- **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
 #### Scenario: US3 - Update, migrate, and diagnose native package state 1
 
@@ -311,7 +316,7 @@ evidence as supported, degraded, or unsupported.
 ### Requirement: Use OpenAI as the only OpenCode built-in preset
 
 Generated OpenCode configuration MUST contain only the `openai` built-in preset
-for the seven-role roster. It MUST NOT generate Kimi, Copilot, ZAI/GLM, or
+for the six-role roster. It MUST NOT generate Kimi, Copilot, ZAI/GLM, or
 mixed-provider mappings.
 
 ### Requirement: Bundle the AI-first work workflow
@@ -463,7 +468,7 @@ Pi root guidance MUST translate fresh work to a new single-agent `subagent_run`,
 
 ### Requirement: Expose routable role contracts
 
-Every root MUST present the complete specialist roster with equally salient positive and negative semantic triggers, MUST consider all six specialists during task shaping, and MUST distinguish role existence from an actual dispatch decision.
+Every root MUST present the complete specialist roster with equally salient positive and negative semantic triggers, MUST consider all five specialists during task shaping, and MUST distinguish role existence from an actual dispatch decision.
 
 #### Scenario: US2 - Activate the complete specialist roster 1
 
@@ -485,15 +490,15 @@ Every root MUST present the complete specialist roster with equally salient posi
 
 #### Scenario: US2 - Activate the complete specialist roster 4
 
-- **GIVEN** a known, narrow, low-risk implementation lane inside a larger coordinated task
-- **WHEN** its context and writes can be isolated
-- **THEN** the root selects `quick` rather than consuming the root's coordination path
+- **GIVEN** an implementation lane for which delegation has demonstrated net gain
+- **WHEN** the root selects a non-design writer
+- **THEN** it selects `worker` without a separate narrow-versus-complex writer tier
 
 #### Scenario: US2 - Activate the complete specialist roster 5
 
-- **GIVEN** coupled contracts, concurrency, migration, shared-state, edge-case-heavy, or high-risk implementation
-- **WHEN** the root selects a writer
-- **THEN** it selects `deep` instead of `quick`
+- **GIVEN** a known narrow low-risk implementation lane
+- **WHEN** root continuity outweighs delegation overhead
+- **THEN** root may retain the work instead of dispatching Worker
 
 #### Scenario: US2 - Activate the complete specialist roster 6
 

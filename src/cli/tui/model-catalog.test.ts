@@ -96,7 +96,7 @@ describe('TUI model catalog', () => {
       expect.objectContaining({
         id: 'openai/gpt-5.6-sol',
         catalogId: 'openai/gpt-5.6-sol',
-        efforts: ['none', 'high', 'xhigh'],
+        efforts: ['none', 'high', 'xhigh', 'max'],
       }),
       expect.objectContaining({
         id: 'anthropic/claude-sonnet-4-5',

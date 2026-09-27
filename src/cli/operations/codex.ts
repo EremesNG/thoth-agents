@@ -341,6 +341,14 @@ function classifyItem(item: CodexSetupPlanItem): {
   if (item.action === 'write-managed-model-state') {
     return managedModelState(item);
   }
+  if (item.action === 'write-install-recovery') {
+    if (!existsSync(item.targetPath))
+      return { state: 'installed', observed: 'no interrupted install' };
+    return {
+      state: 'drift',
+      observed: 'recoverable interrupted install journal present',
+    };
+  }
   if (item.action === 'merge-toml') return userConfigState(item);
   return contentState(item);
 }
@@ -465,6 +473,18 @@ export function getCodexStatus(
     code: 'codex-diagnostic',
   }));
   diagnostics.push(...requiredSkills.diagnostics);
+  if (
+    classified.some(
+      ({ item, state }) =>
+        item.action === 'write-install-recovery' && state === 'drift',
+    )
+  )
+    diagnostics.push({
+      severity: 'important',
+      code: 'codex-interrupted-install-recoverable',
+      message:
+        'An exact thoth-agents recovery journal indicates an interrupted Codex install; run sync or update to resume safely.',
+    });
 
   return {
     harness: 'codex',

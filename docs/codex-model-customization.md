@@ -1,6 +1,6 @@
 # Codex Model Customization
 
-The mandatory Codex CLI setup creates six user custom-agent TOMLs under
+The mandatory Codex CLI setup creates five user custom-agent TOMLs under
 `~/.codex/agents/`. Their generated defaults are:
 
 | Role | Model | Reasoning effort |
@@ -9,8 +9,7 @@ The mandatory Codex CLI setup creates six user custom-agent TOMLs under
 | `librarian` | `gpt-6-luna` | `high` |
 | `oracle` | `gpt-6-astra` | `medium` |
 | `designer` | `gpt-6-sol` | `medium` |
-| `quick` | `gpt-6-luna` | `medium` |
-| `deep` | `gpt-6-sol` | `medium` |
+| `worker` | `gpt-6-luna` | `max` |
 
 The ambient Codex session is root and has no child TOML.
 
@@ -26,7 +25,7 @@ Use its model operation to change or refresh managed defaults deliberately.
 The optional CLI can plan and apply model changes:
 
 ```bash
-npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol --effort=xhigh
+npx thoth-agents@latest model --harness=codex --role=worker --model=gpt-6-luna --effort=max
 ```
 
 Codex ultimately validates model availability and reasoning effort. More

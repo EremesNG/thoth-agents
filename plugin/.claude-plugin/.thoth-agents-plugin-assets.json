@@ -7,14 +7,9 @@
       "sha256": "sha256:fb7f49a386b6a88e5ead1134a8c57401751610ce9c4d078c7d76364c5225fbd2"
     },
     {
-      "path": "agents/deep.md",
-      "kind": "agent-config",
-      "sha256": "sha256:6cc0a2e25867a064822a1acc3101fcc0f2824906ac750090b0f0b03f63288846"
-    },
-    {
       "path": "agents/designer.md",
       "kind": "agent-config",
-      "sha256": "sha256:cfb15c03876713507168f90a721b6a90ea3b032f9ea13cc5f8ffeab4a60bc4fc"
+      "sha256": "sha256:0fc2ec9cee200221ab0ac29cbd587dedaba0ac9fd872d76e9ff69c7504590061"
     },
     {
       "path": "agents/explorer.md",
@@ -34,12 +29,12 @@
     {
       "path": "agents/orchestrator.md",
       "kind": "agent-config",
-      "sha256": "sha256:9dc95cde94c9609dbebcca678631dec6c56fffec2d942975b8a2c121e98c3280"
+      "sha256": "sha256:55222c3f694436b64edabbaa96fb1e6e41b7f426bc9e8096561be5bd9f4e63db"
     },
     {
-      "path": "agents/quick.md",
+      "path": "agents/worker.md",
       "kind": "agent-config",
-      "sha256": "sha256:d1dec1f94e4060cc63332fc8403bc0b2817a54f79a3a91b23f30f77cd689733a"
+      "sha256": "sha256:42b8aac4cd672bc1bd101b8c485b213d9703e78d2b39994715d859c92c8b3c8d"
     },
     {
       "path": "settings.json",

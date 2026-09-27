@@ -30,7 +30,7 @@ Active package metadata, CI, release, bundled-skill compatibility declarations, 
 
 - **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
 - **WHEN** `thoth-agents install --agent=pi` is applied
-- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, five canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
 
 #### Scenario: US1 - Install the complete Pi agent pack 2
 

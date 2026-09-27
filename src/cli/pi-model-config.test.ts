@@ -37,8 +37,8 @@ test('rejects malformed frontmatter and unsafe directory links, and no-op saves 
   const piRoot = fixture();
   const snapshot = readPiModelConfig(piRoot);
   expect(savePiModelConfig(snapshot, snapshot.roles).changedRoles).toEqual([]);
-  expect(readdirSync(join(piRoot, 'agents'))).toHaveLength(6);
-  const path = join(piRoot, 'agents', 'thoth-deep.md');
+  expect(readdirSync(join(piRoot, 'agents'))).toHaveLength(5);
+  const path = join(piRoot, 'agents', 'thoth-worker.md');
   writeFileSync(
     path,
     readFileSync(path, 'utf8').replace(
@@ -75,7 +75,7 @@ test('reports partial writes and returns a retry snapshot without losing the dra
   spy.mockRestore();
   const retry = savePiModelConfig(result.snapshot, draft);
   expect(retry.success).toBe(true);
-  expect(retry.changedRoles).toHaveLength(5);
+  expect(retry.changedRoles).toHaveLength(4);
   expect(
     readPiModelConfig(piRoot).roles.every(
       ({ model }) => model === 'provider/new',
@@ -90,7 +90,7 @@ test('validates the full draft and supports native max and explicit inheritance'
   expect(
     savePiModelConfig(snapshot, [
       {
-        role: 'deep',
+        role: 'worker',
         model: 'new/model',
         effort: { kind: 'effort', value: 'ultra' },
       },
@@ -99,7 +99,7 @@ test('validates the full draft and supports native max and explicit inheritance'
   expect(
     savePiModelConfig(snapshot, [
       {
-        role: 'deep',
+        role: 'worker',
         model: 'new/model',
         availableEfforts: ['low'],
         effort: { kind: 'effort', value: 'high' },
@@ -107,18 +107,18 @@ test('validates the full draft and supports native max and explicit inheritance'
     ]).success,
   ).toBe(false);
   expect(
-    savePiModelConfig(snapshot, [{ role: 'deep', model: '' }]).success,
+    savePiModelConfig(snapshot, [{ role: 'worker', model: '' }]).success,
   ).toBe(false);
   expect(
     savePiModelConfig(snapshot, [
-      { role: 'deep', model: 'a' },
-      { role: 'deep', model: 'b' },
+      { role: 'worker', model: 'a' },
+      { role: 'worker', model: 'b' },
     ]).success,
   ).toBe(false);
   expect(
     savePiModelConfig(snapshot, [
       {
-        role: 'deep',
+        role: 'worker',
         model: 'new/model',
         availableEfforts: ['max'],
         effort: { kind: 'effort', value: 'max' },
@@ -128,24 +128,24 @@ test('validates the full draft and supports native max and explicit inheritance'
   const next = readPiModelConfig(piRoot);
   expect(
     savePiModelConfig(next, [
-      { role: 'deep', model: 'inherit', effort: { kind: 'inherit' } },
+      { role: 'worker', model: 'inherit', effort: { kind: 'inherit' } },
     ]).success,
   ).toBe(true);
   expect(
-    readPiModelConfig(piRoot).roles.find(({ role }) => role === 'deep'),
+    readPiModelConfig(piRoot).roles.find(({ role }) => role === 'worker'),
   ).toMatchObject({ model: 'inherit', effort: { kind: 'inherit' } });
   expect(
-    readFileSync(join(piRoot, 'agents', 'thoth-deep.md'), 'utf8'),
+    readFileSync(join(piRoot, 'agents', 'thoth-worker.md'), 'utf8'),
   ).not.toContain('thinking:');
 });
 
 test('rejects stale or unowned definitions before writing any role', () => {
   const piRoot = fixture();
   const snapshot = readPiModelConfig(piRoot);
-  const path = join(piRoot, 'agents', 'thoth-deep.md');
+  const path = join(piRoot, 'agents', 'thoth-worker.md');
   writeFileSync(
     path,
-    (snapshot.contents.deep ?? '').replace(
+    (snapshot.contents.worker ?? '').replace(
       'managed-by: thoth-agents',
       'managed-by: someone-else',
     ),
@@ -165,13 +165,13 @@ test('rejects stale or unowned definitions before writing any role', () => {
 test('reads and saves global specialist choices without changing prompt content', () => {
   const piRoot = fixture();
   const snapshot = readPiModelConfig(piRoot);
-  expect(snapshot.roles).toHaveLength(6);
-  expect(snapshot.roles.find(({ role }) => role === 'deep')).toMatchObject({
+  expect(snapshot.roles).toHaveLength(5);
+  expect(snapshot.roles.find(({ role }) => role === 'worker')).toMatchObject({
     model: 'provider/old',
     effort: { kind: 'effort', value: 'low' },
   });
   const roles = snapshot.roles.map((role) =>
-    role.role === 'deep'
+    role.role === 'worker'
       ? {
           ...role,
           model: 'provider/new',
@@ -181,10 +181,11 @@ test('reads and saves global specialist choices without changing prompt content'
   );
   const result = savePiModelConfig(snapshot, roles);
   expect(result.success).toBe(true);
-  expect(result.changedRoles).toEqual(['deep']);
+  expect(result.changedRoles).toEqual(['worker']);
   expect(
-    readPiModelConfig(piRoot).roles.find(({ role }) => role === 'deep')?.model,
+    readPiModelConfig(piRoot).roles.find(({ role }) => role === 'worker')
+      ?.model,
   ).toBe('provider/new');
-  const text = readFileSync(join(piRoot, 'agents', 'thoth-deep.md'), 'utf8');
+  const text = readFileSync(join(piRoot, 'agents', 'thoth-worker.md'), 'utf8');
   expect(text).toContain('tools: read\n---\nmodel: body-example\n');
 });

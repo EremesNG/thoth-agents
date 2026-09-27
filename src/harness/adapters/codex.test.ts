@@ -39,7 +39,7 @@ describe('Codex adapter v0.3', () => {
     });
   });
 
-  test('renders the canonical six specialist TOML files', () => {
+  test('renders the canonical five specialist TOML files', () => {
     const paths = render()
       .artifacts.filter((entry) => entry.kind === 'agent-config')
       .map((entry) => entry.path);
@@ -49,8 +49,7 @@ describe('Codex adapter v0.3', () => {
       '.codex/agents/thoth-agents-librarian.toml',
       '.codex/agents/thoth-agents-oracle.toml',
       '.codex/agents/thoth-agents-designer.toml',
-      '.codex/agents/thoth-agents-quick.toml',
-      '.codex/agents/thoth-agents-deep.toml',
+      '.codex/agents/thoth-agents-worker.toml',
     ]);
   });
 
@@ -117,8 +116,7 @@ describe('Codex adapter v0.3', () => {
       'librarian',
       'oracle',
       'designer',
-      'quick',
-      'deep',
+      'worker',
     ]) {
       const content = agentContent(name);
       expect(content, name).toContain('Use when:');
@@ -130,12 +128,12 @@ describe('Codex adapter v0.3', () => {
 
   test('renders read-only and writer sandbox boundaries', () => {
     const explorer = agentContent('explorer');
-    const deep = agentContent('deep');
+    const worker = agentContent('worker');
 
     expect(explorer).toContain('sandbox_mode = "read-only"');
     expect(explorer).toContain('Mode: read-only');
-    expect(deep).toContain('sandbox_mode = "workspace-write"');
-    expect(deep).toContain('write-capable');
+    expect(worker).toContain('sandbox_mode = "workspace-write"');
+    expect(worker).toContain('write-capable');
   });
 
   test('does not bundle a memory provider MCP', () => {

@@ -22,8 +22,7 @@ plugin/
 │   ├── librarian.md
 │   ├── oracle.md
 │   ├── designer.md
-│   ├── quick.md
-│   └── deep.md
+│   └── worker.md
 └── skills/
     ├── thoth-init/
     ├── thoth-work/
@@ -52,10 +51,11 @@ fresh read-only Oracle.
 
 Semantic triggers keep the complete roster actionable: `librarian` handles
 current or external facts, `designer` handles material UI/UX, interaction,
-accessibility, or visual quality, and `quick` handles known narrow low-risk
-isolated edits. `deep` handles coupled or high-risk work. Native Claude
-execution and lifecycle are authoritative for dispatch, status/wait,
-steering, cancellation, and terminal results; unavailable primitives receive a
+accessibility, or visual quality, and `worker` handles delegated implementation,
+including coupled or high-risk work. Root may retain narrow low-risk work when
+continuity outweighs delegation overhead. Native Claude execution and lifecycle
+are authoritative for dispatch, status/wait, steering, cancellation, and
+terminal results; unavailable primitives receive a
 truthful sequential fallback. No additional thoth coordination mechanism is
 involved.
 

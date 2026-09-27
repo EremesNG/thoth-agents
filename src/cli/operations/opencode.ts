@@ -388,7 +388,7 @@ function targetForLiteConfig(state?: ManagedState): ManagedTarget {
     path: getExistingLiteConfigPath(),
     label: 'thoth-agents config',
     ...(state ? { state } : {}),
-    expected: `seven-role ${OPENAI_PRESET} roster`,
+    expected: `six-role ${OPENAI_PRESET} roster`,
   };
 }
 
@@ -1029,8 +1029,8 @@ function getOpenCodeManagedStatus(
       displayName: 'OpenCode',
       state: 'drift',
       summary: selectedNamedPreset
-        ? 'A valid named OpenCode preset is active outside the managed seven-role roster.'
-        : 'thoth-agents config does not match the expected seven-role roster.',
+        ? 'A valid named OpenCode preset is active outside the managed six-role roster.'
+        : 'thoth-agents config does not match the expected six-role roster.',
       targets: [
         { ...mainTarget, state: 'installed' },
         { ...liteTarget, state: 'drift' },
@@ -1281,7 +1281,7 @@ function buildOpenCodeCompletePlan(
         backup: defaultBackup(getExistingConfigPath()),
       },
       {
-        title: 'Write thoth-agents seven-role config',
+        title: 'Write thoth-agents six-role config',
         target: targetForLiteConfig(),
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(getExistingLiteConfigPath()),
@@ -1389,7 +1389,7 @@ export function buildOpenCodeSyncPlan(
         backup: defaultBackup(getExistingConfigPath()),
       },
       {
-        title: 'Write thoth-agents seven-role config',
+        title: 'Write thoth-agents six-role config',
         target: targetForLiteConfig(),
         preview: JSON.stringify(generatedConfig, null, 2),
         backup: defaultBackup(litePath),
@@ -2012,7 +2012,7 @@ export function applyOpenCodePlan(plan: OperationPlan): OperationApplyResult {
   }
   changedTargets.push({
     ...targetForLiteConfig('installed'),
-    observed: 'seven-role roster written',
+    observed: 'six-role roster written',
   });
   if (existsSync(`${liteResult.configPath}.bak`)) {
     backups.push({

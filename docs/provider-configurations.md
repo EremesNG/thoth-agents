@@ -12,16 +12,17 @@ ZAI/GLM, and mixed-provider mappings are intentionally absent.
 | `librarian` | `openai/gpt-6-luna` | `high` |
 | `oracle` | `openai/gpt-6-astra` | `medium` |
 | `designer` | `openai/gpt-6-sol` | `medium` |
-| `quick` | `openai/gpt-6-luna` | `medium` |
-| `deep` | `openai/gpt-6-sol` | `medium` |
+| `worker` | `openai/gpt-6-luna` | `max` |
 
 Model IDs and supported variants remain subject to the active harness catalog.
-Users may override individual roles in `thoth-agents.json`; an explicit override
-is not a built-in provider preset.
+The shipped OpenCode validation accepts the `max` variant used by the Worker
+mapping. Users may override individual roles in `thoth-agents.json`; an explicit
+override is not a built-in provider preset.
 
 These are reasoning-effort defaults, not measured task price, latency, token, or
 quality guarantees. Valid explicit role variants win; model-only Codex overrides
-do not invent an effort for an unknown custom model.
+do not invent an effort for an unknown custom model. `quick` and `deep` are not
+accepted aliases, and their prior overrides are not migrated to Worker.
 
 ## Policy
 
@@ -34,8 +35,8 @@ do not invent an effort for an unknown custom model.
 ## Optional CLI customization
 
 ```bash
-npx thoth-agents@latest model --harness=opencode --role=deep --model=openai/gpt-5.6-sol
-npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
+npx thoth-agents@latest model --harness=opencode --role=worker --model=openai/gpt-6-luna --effort=max
+npx thoth-agents@latest model --harness=codex --role=worker --model=gpt-6-luna --effort=max
 ```
 
 The CLI is a convenience; native or project configuration can be edited through

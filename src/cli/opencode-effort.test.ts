@@ -20,7 +20,7 @@ describe('OpenCode writable effort resolution', () => {
         ...base,
         effort: { kind: 'effort', value: 'max' },
       }),
-    ).toMatchObject({ ok: false, code: 'opencode-effort-runtime-unconfirmed' });
+    ).toEqual({ ok: true, variant: 'max' });
     expect(
       resolveOpenCodeEffort({
         ...base,

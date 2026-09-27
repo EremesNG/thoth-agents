@@ -175,7 +175,7 @@ trust_level = "trusted"
         configPath,
         'approval_policy = "on-request"\n' +
           'sandbox_mode = "workspace-write"\n' +
-          'agents = ["orchestrator", "explorer", "librarian", "oracle", "designer", "quick", "deep"]\n\n' +
+          'agents = ["orchestrator", "explorer", "librarian", "oracle", "designer", "worker"]\n\n' +
           '[[skills.config]]\n' +
           'enabled = true\n' +
           'sources = ["repo"]\n',

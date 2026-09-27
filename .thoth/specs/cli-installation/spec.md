@@ -14,7 +14,7 @@ Published installers MUST invoke `npx -y thoth-mem@latest setup <opencode|codex|
 
 - **GIVEN** Pi `0.86.1` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
 - **WHEN** `thoth-agents install --agent=pi` is applied
-- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, five canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
 
 #### Scenario: US1 - Install the complete Pi agent pack 2
 
@@ -108,7 +108,7 @@ Applying any valid OpenCode model configuration plan MUST persist `preset: agent
 
 ### Requirement: Materialize the complete effective roster
 
-Before activation, the system MUST derive all seven effective role configurations from the selected preset, root overrides, and canonical defaults using field-level precedence, apply the requested role changes, and preserve unrelated presets and configuration keys.
+Before activation, the system MUST derive all six effective role configurations (root plus five specialists) from the selected preset, root overrides, and canonical defaults using field-level precedence, apply the requested role changes, and preserve unrelated presets and configuration keys.
 
 #### Scenario: US1 - Activate applied model assignments 1
 
@@ -315,6 +315,28 @@ Applying Update for Pi MUST perform the same exact first-party-package-first, ex
 - **GIVEN** OpenCode, Codex, or Claude Code installation and runtime flows
 - **WHEN** the Pi package change is present
 - **THEN** their current behavior and generated artifacts remain unchanged except for shared truthful documentation
+
+### Requirement: Reconcile consolidated Worker resources safely
+
+Explicit setup and synchronization MUST materialize exactly the five current
+specialists and MAY retire obsolete Quick or Deep resources only after proving
+thoth-agents ownership, safe canonical paths, and unchanged apply-time content.
+An unowned Worker collision or unowned obsolete resource MUST block mutation and
+remain preserved with diagnostics. Worker MUST receive shipped defaults rather
+than migrated Quick or Deep model/effort customizations, and repeated recovery
+runs MUST remain idempotent.
+
+#### Scenario: Retire only attributable obsolete roles
+
+- **GIVEN** owned obsolete Quick or Deep resources and no current-role collision
+- **WHEN** explicit setup or synchronization applies the current roster
+- **THEN** current resources are written before the obsolete resources are retired, and an interrupted run can be retried safely
+
+#### Scenario: Preserve unowned collisions
+
+- **GIVEN** an unowned Worker target or unowned obsolete Quick or Deep resource
+- **WHEN** setup or synchronization preflights the transition
+- **THEN** it reports the conflict before roster mutation and neither overwrites nor deletes the resource
 
 ### Requirement: Record the last complete CLI-managed version
 

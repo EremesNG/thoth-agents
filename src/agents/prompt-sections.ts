@@ -18,7 +18,7 @@ type ModelFamily = 'openai';
 
 export type SemanticMemoryAccess = 'dispatch-scoped';
 export type ReadOnlyAgentRole = 'explorer' | 'librarian' | 'oracle';
-export type WriteCapableAgentRole = 'designer' | 'quick' | 'deep';
+export type WriteCapableAgentRole = 'designer' | 'worker';
 
 export interface QuestionProtocolSection {
   kind: 'question-protocol';
@@ -155,7 +155,7 @@ function renderImplementationOwnershipPolicy(
 - Root continuity benefits: ${policy.rootContinuityBenefits.join('; ')}.
 - Explicit safe user direction is an ownership input.
 - Insufficient ownership signals: ${policy.insufficientSignals.join('; ')}.
-- Only after deciding delegation creates net gain: use ${roleTemplate('designer')} for UI/UX, ${roleTemplate('quick')} for known narrow low-risk work, and ${roleTemplate('deep')} for coupled or high-risk work.
+- Only after deciding delegation creates net gain: use ${roleTemplate('designer')} for UI/UX and ${roleTemplate('worker')} for non-visual implementation work.
 </implementation-ownership>`;
 }
 
@@ -280,11 +280,7 @@ const ROLE_SPECIFIC_RULES: Record<
     'Own user-facing choices, implementation, and visual verification.',
     'Check relevant responsive and interaction states when feasible.',
   ],
-  quick: [
-    'Make the smallest complete edit and stop after focused verification.',
-    'Escalate instead of expanding a bounded assignment into broad discovery.',
-  ],
-  deep: [
+  worker: [
     'Build the necessary local mental model and use tests first for behavior changes.',
     'Verify related call sites, edge cases, and shared contracts before completion.',
   ],
@@ -456,9 +452,7 @@ function getRoleModelProfile(role: AgentPromptRole): string {
       return 'Challenge assumptions and return evidence-backed judgment.';
     case 'designer':
       return 'Make concrete UX choices and verify the visible result.';
-    case 'quick':
-      return 'Favor the smallest complete edit and focused verification.';
-    case 'deep':
+    case 'worker':
       return 'Trace shared behavior, test assumptions, and verify edge cases.';
   }
 }

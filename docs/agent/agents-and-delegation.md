@@ -2,18 +2,18 @@
 
 ## Canonical roster
 
-The contract has seven roles:
+The contract has six roles:
 
 - adaptive root: `orchestrator`;
 - read-only specialists: `explorer`, `librarian`, `oracle`; and
-- implementation writers: `designer`, `quick`, `deep`.
+- implementation writers: `designer`, `worker`.
 
 `src/harness/core/agent-pack.ts` is canonical. `src/agents/index.ts` builds role
 definitions and applies overrides; harness adapters translate the same intent.
 
 ## Invariants
 
-- Root owns agreement and acceptance. Root, designer, quick or deep may implement
+- Root owns agreement and acceptance. Root, designer, or worker may implement
   bounded work according to net gain, independently of persistence mode.
 - Delegate only for demonstrated net gain; depth is one and each mutable surface
   has one writer. Treat explicit safe user direction as an ownership input.
@@ -42,14 +42,14 @@ definitions and applies overrides; harness adapters translate the same intent.
 
   | Signal | Writer | Escalation boundary |
   | --- | --- | --- |
-  | User-facing UI/UX or visual quality | `designer` | Coupled backend contracts or high risk move to `deep`. |
-  | Known narrow mechanical low-risk surface | `quick` | Discovery, coupling, migrations, edge cases, or higher failure cost move to `deep`. |
-  | Coupled multi-file, shared contracts, migrations, concurrency, edge cases, or high risk | `deep` | Material product/architecture choices return to root. |
+  | Material user-facing UI/UX, interaction, accessibility, or visual quality | `designer` | Coupled backend contracts or non-visual correctness work move to `worker`. |
+  | Multi-file, shared-contract, migration, concurrency, edge-case-heavy, or high-risk implementation | `worker` | Material product/architecture choices return to root. |
 
   Proven independent surfaces may use separate writers with non-overlapping
-  files. Overlapping or compatibility-coupled work stays with one `deep` writer
-  and ordered handoffs. When delegation has no demonstrated net gain, root may
-  retain the accepted surface under either workflow.
+  files. Overlapping or compatibility-coupled work stays with one `worker`
+  and ordered handoffs. For narrow low-risk work, root may retain the accepted
+  surface when delegation has no demonstrated net gain; otherwise `worker` owns
+  implementation without a separate quick/deep tier.
 - Root loads only the current work operation from bundled skills instead of
   delegating merely to change prompts.
 - Children return conclusion, evidence, verification, risks, open questions,
@@ -72,11 +72,9 @@ that can change the result:
 - `designer` owns material user-facing UI/UX, interaction, accessibility, or
   visual-quality work—for example, implementing and visually checking a new
   responsive settings panel.
-- `quick` owns a known narrow, clear, low-risk isolated edit—for example, a
-  bounded mechanical rename in one assigned file; expansion or uncertainty
-  escalates to `deep`.
-- `deep` owns coupled contracts, shared state, migrations, concurrency,
-  edge-case-heavy, or high-risk implementation.
+- `worker` owns implementation when delegation provides net gain, including
+  coupled contracts, shared state, migrations, concurrency, edge cases, and
+  high-risk work. Narrow low-risk work no longer has a separate writer tier.
 
 For Pi, keep simple work as one direct `subagent` launch. Use
 `workflowScript`/`runs.all` only for real parallel fan-out, not as a scheduler for

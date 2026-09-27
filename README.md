@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="img/thoth-agents-header.webp" alt="Seven cyber-Egyptian specialists led by Thoth, the Orchestrator" width="100%">
+  <img src="img/thoth-agents-header.webp" alt="Five cyber-Egyptian specialists led by Thoth, the Orchestrator" width="100%">
   <h1>Thoth-Agents</h1>
   <p><b>One conversation. The right specialists. A workflow that fits the task.</b></p>
   <p>Adaptive agent orchestration for OpenCode, Codex, Claude Code, and Pi.</p>
@@ -30,12 +30,12 @@ design, implementation, or an independent review would help.
 Small changes stay small. Larger changes get a specification, a plan, and
 verification you can follow—without manually coordinating every agent.
 
-- **A team, not seven conversations.** One adaptive Orchestrator coordinates six
+- **A team, not six conversations.** One adaptive Orchestrator coordinates five
   specialists and brings their results back to you.
 - **The right amount of process.** Use a direct implementation path for small
   work or a persisted AI-first work contract for involved or resumable work.
 - **Specialists where they add value.** Repository discovery, current documentation,
-  UI/UX, focused edits, complex implementation, and independent review have distinct roles.
+  UI/UX, implementation, and independent review have distinct roles.
 - **Models you can tune.** Configure models per role to suit your workflow and
   the providers available in your harness.
 - **Continuity between sessions.** Published installs include setup of
@@ -59,7 +59,7 @@ The commands below install at **global/user scope**.
 | <a href="https://github.com/anomalyco/opencode"><picture><source media="(prefers-color-scheme: dark)" srcset="https://svgl.app/library/opencode-dark.svg"><img src="https://svgl.app/library/opencode.svg" alt="OpenCode logo" width="48" height="48"></picture></a><br>**OpenCode** | Native plugin, agent team, workflow skills, and memory setup. **Recommended starting point.** | `npx thoth-agents@latest install --agent=opencode` |
 | <a href="https://github.com/openai/codex"><img src="https://github.com/openai.png?size=120" alt="OpenAI logo — Codex" width="48" height="48"></a><br>**Codex** | Native plugin plus the required global agent and instruction setup. **Close Codex first.** | `npx thoth-agents@latest install --agent=codex` |
 | <a href="https://claude.com/product/claude-code"><img src="https://github.com/anthropics.png?size=120" alt="Anthropic logo — Claude Code" width="48" height="48"></a><br>**Claude Code** | Marketplace agents and skills, completed by the CLI's external skills and memory setup. **Run the prerequisites below first.** | `npx thoth-agents@latest install --agent=claude` |
-| <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, six specialists, delegation and research extensions, workflow skills, and memory setup. | `npx thoth-agents@latest install --agent=pi` |
+| <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, five specialists, delegation and research extensions, workflow skills, and memory setup. | `npx thoth-agents@latest install --agent=pi` |
 
 ### Claude Code prerequisites
 
@@ -75,7 +75,7 @@ claude plugin install thoth-agents@thoth-plugins --scope user
 > without writing changes. After installation, restart your harness; Claude Code
 > also supports `/reload-plugins`.
 
-Inside Pi, use `/thoth-agents:models` to edit the six specialists' global models
+Inside Pi, use `/thoth-agents:models` to edit the five specialists' global models
 and thinking levels without leaving the session. Changes remain a draft until
 saved; the parent model is unchanged. See [panel controls and precedence](docs/installation.md#configure-specialist-models-inside-pi).
 
@@ -159,10 +159,9 @@ work directly or bring in a specialist.
 
 ### Design and implementation
 
-| Designer | Quick | Deep |
-| :---: | :---: | :---: |
-| <img src="img/agents/designer.webp" width="150" alt="Hathor as the Designer"> | <img src="img/agents/quick.webp" width="150" alt="Horus as Quick"> | <img src="img/agents/deep.webp" width="150" alt="Sobek as Deep"> |
-| **Makes interfaces work well.** Owns UI/UX, accessibility, implementation, and visual quality. | **Makes focused changes.** Handles clear, narrow, low-risk implementation tasks. | **Handles complex changes.** Works through coupled behavior, edge cases, and correctness-critical implementation. |
+| Designer | Worker |
+| :---: | :---: |
+| **Makes interfaces work well.** Owns material UI/UX, accessibility, interaction, and visual quality. | **Implements changes.** Owns delegated implementation, including coupled behavior, edge cases, migrations, and correctness-critical work. |
 
 Research and review specialists are read-only. Implementation work has one
 writer per area; independent areas can proceed in parallel when the harness

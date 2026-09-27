@@ -115,7 +115,7 @@ function fixture(input = 'input.txt') {
         reads: [input],
         writes: ['output.txt'],
         resources: [],
-        owner: { role: 'deep' },
+        owner: { role: 'worker' },
         checks: [{ id: 'C1', criterion: 'Public behavior passes' }],
         acceptance: ['A1'],
         baseline: { status: 'unknown' },

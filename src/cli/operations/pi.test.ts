@@ -862,7 +862,7 @@ describe('Pi operations', () => {
     roots.push(homeDir);
     const configuredRoot = join(homeDir, 'pi-packages', 'thoth-agents');
     seedPiPackage(configuredRoot);
-    rmSync(join(configuredRoot, 'pi', 'agents', 'thoth-deep.md'));
+    rmSync(join(configuredRoot, 'pi', 'agents', 'thoth-worker.md'));
     const source = writeLocalPiReceipt(homeDir, configuredRoot);
     const plan = buildPiSyncPlan({
       cwd: homeDir,
@@ -909,7 +909,7 @@ describe('Pi operations', () => {
         {
           harness: 'pi',
           dryRun: true,
-          roles: [{ role: 'deep', model: 'provider/model' }],
+          roles: [{ role: 'worker', model: 'provider/model' }],
         },
         { cwd: homeDir, homeDir, env: {} },
       ).canApply,
@@ -925,7 +925,7 @@ describe('Pi operations', () => {
         dryRun: false,
         roles: [
           {
-            role: 'deep',
+            role: 'worker',
             model: 'provider/model',
             availableEfforts: ['ultra'],
             effort: { kind: 'effort', value: 'ultra' },
@@ -940,7 +940,7 @@ describe('Pi operations', () => {
         dryRun: false,
         roles: [
           {
-            role: 'deep',
+            role: 'worker',
             model: 'provider/model',
             availableEfforts: ['low'],
             effort: { kind: 'effort', value: 'high' },
@@ -962,19 +962,25 @@ describe('Pi operations', () => {
   test('rejects CLI model saves when owned definitions changed after preview', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-stale-'));
     roots.push(homeDir);
-    const agentPath = join(homeDir, '.pi', 'agent', 'agents', 'thoth-deep.md');
+    const agentPath = join(
+      homeDir,
+      '.pi',
+      'agent',
+      'agents',
+      'thoth-worker.md',
+    );
     mkdirSync(dirname(agentPath), { recursive: true });
     writeFileSync(
       agentPath,
-      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: old/model\n---\nOriginal\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: old/model\n---\nOriginal\n',
     );
     const plan = buildPiModelPlan(
-      { harness: 'pi', roles: [{ role: 'deep', model: 'new/model' }] },
+      { harness: 'pi', roles: [{ role: 'worker', model: 'new/model' }] },
       { cwd: homeDir, homeDir, env: {} },
     );
     writeFileSync(
       agentPath,
-      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: external/change\n---\nEdited externally\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: external/change\n---\nEdited externally\n',
     );
     const result = applyPiPlan(plan);
     expect(result.applied).toBe(false);
@@ -984,11 +990,17 @@ describe('Pi operations', () => {
   test('updates model fields only inside owned specialist frontmatter', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-model-apply-'));
     roots.push(homeDir);
-    const agentPath = join(homeDir, '.pi', 'agent', 'agents', 'thoth-deep.md');
+    const agentPath = join(
+      homeDir,
+      '.pi',
+      'agent',
+      'agents',
+      'thoth-worker.md',
+    );
     mkdirSync(dirname(agentPath), { recursive: true });
     writeFileSync(
       agentPath,
-      '---\nname: thoth-deep\nmanaged-by: thoth-agents\n---\nExample:\nmodel: keep-this-body-text\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\n---\nExample:\nmodel: keep-this-body-text\n',
     );
     const plan = buildPiModelPlan(
       {
@@ -996,7 +1008,7 @@ describe('Pi operations', () => {
         dryRun: false,
         roles: [
           {
-            role: 'deep',
+            role: 'worker',
             model: 'provider/model',
             effort: { kind: 'effort', value: 'high' },
           },
@@ -1029,14 +1041,14 @@ describe('Pi operations', () => {
         harness: 'pi',
         dryRun: false,
         roles: [
-          { role: 'deep', model: 'inherit', effort: { kind: 'inherit' } },
+          { role: 'worker', model: 'inherit', effort: { kind: 'inherit' } },
         ],
       },
       context,
     );
     expect(applyPiPlan(plan).applied).toBe(true);
     const inherited = readFileSync(
-      join(syncOptions.piRoot, 'agents', 'thoth-deep.md'),
+      join(syncOptions.piRoot, 'agents', 'thoth-worker.md'),
       'utf8',
     );
     expect(inherited).toContain('model: "inherit"');
@@ -1044,13 +1056,13 @@ describe('Pi operations', () => {
     expect(inherited).not.toContain('thoth-thinking-inherit');
     expect(syncPiSpecialists(syncOptions).success).toBe(true);
     expect(
-      defaultPiModelRoles(context).find(({ role }) => role === 'deep'),
+      defaultPiModelRoles(context).find(({ role }) => role === 'worker'),
     ).toMatchObject({
       model: 'inherit',
       effort: { kind: 'inherit' },
     });
     const content = readFileSync(
-      join(syncOptions.piRoot, 'agents', 'thoth-deep.md'),
+      join(syncOptions.piRoot, 'agents', 'thoth-worker.md'),
       'utf8',
     );
     expect(content).toContain('model: "inherit"');

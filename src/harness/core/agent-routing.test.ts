@@ -28,32 +28,24 @@ const ROUTING_CASES: RoutingCase[] = [
   {
     id: 'writer-designer-ui',
     expectedOwner: 'designer',
-    forbiddenOwners: ['orchestrator', 'quick', 'deep'],
+    forbiddenOwners: ['orchestrator', 'worker'],
     ownerTrigger: /user-facing UI\/UX|visual quality/i,
     workflow: 'direct',
     phase: 'execute',
   },
   {
-    id: 'writer-deep-correctness',
-    expectedOwner: 'deep',
-    forbiddenOwners: ['orchestrator', 'designer', 'quick'],
+    id: 'writer-worker-correctness',
+    expectedOwner: 'worker',
+    forbiddenOwners: ['orchestrator', 'designer'],
     ownerTrigger:
       /multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk/i,
     workflow: 'direct',
     phase: 'execute',
   },
   {
-    id: 'writer-quick-known',
-    expectedOwner: 'quick',
-    forbiddenOwners: ['orchestrator', 'designer', 'deep'],
-    ownerTrigger: /known narrow mechanical low-risk/i,
-    workflow: 'persisted',
-    phase: 'execute',
-  },
-  {
     id: 'root-accelerated-continuity',
     expectedOwner: 'orchestrator',
-    forbiddenOwners: ['designer', 'quick', 'deep'],
+    forbiddenOwners: ['designer', 'worker'],
     ownerTrigger:
       /accumulated context and continuity outweigh delegation overhead/i,
     workflow: 'persisted',
@@ -62,7 +54,7 @@ const ROUTING_CASES: RoutingCase[] = [
   {
     id: 'root-full-continuity',
     expectedOwner: 'orchestrator',
-    forbiddenOwners: ['designer', 'quick', 'deep'],
+    forbiddenOwners: ['designer', 'worker'],
     ownerTrigger:
       /accumulated context and continuity outweigh delegation overhead/i,
     workflow: 'persisted',
@@ -71,20 +63,20 @@ const ROUTING_CASES: RoutingCase[] = [
   {
     id: 'read-explorer-discovery',
     expectedOwner: 'explorer',
-    forbiddenOwners: ['orchestrator', 'designer', 'deep'],
+    forbiddenOwners: ['orchestrator', 'designer', 'worker'],
     ownerTrigger: /repository ownership or behavior is broad or uncertain/i,
     workflow: 'persisted',
   },
   {
     id: 'read-librarian-external',
     expectedOwner: 'librarian',
-    forbiddenOwners: ['orchestrator', 'quick', 'deep'],
+    forbiddenOwners: ['orchestrator', 'worker'],
     ownerTrigger: /current authoritative external evidence is required/i,
   },
   {
     id: 'read-oracle-verification',
     expectedOwner: 'oracle',
-    forbiddenOwners: ['orchestrator', 'designer', 'quick'],
+    forbiddenOwners: ['orchestrator', 'designer'],
     ownerTrigger:
       /selected focused plan review, persistent diagnosis, material architecture or security risk/i,
     workflow: 'persisted',
@@ -246,7 +238,6 @@ describe('canonical agent routing', () => {
         .length;
 
     expect(behavioral.length).toBeGreaterThanOrEqual(15);
-    expect(ownerCount('quick')).toBeGreaterThanOrEqual(2);
     expect(ownerCount('librarian')).toBeGreaterThanOrEqual(2);
     expect(ownerCount('designer')).toBeGreaterThanOrEqual(2);
     expect(
@@ -285,16 +276,18 @@ describe('canonical agent routing', () => {
           workflow: 'direct',
           expectedOwner: 'designer',
         }),
-        expect.objectContaining({ workflow: 'direct', expectedOwner: 'deep' }),
         expect.objectContaining({
-          workflow: 'persisted',
-          expectedOwner: 'orchestrator',
+          workflow: 'direct',
+          expectedOwner: 'worker',
         }),
         expect.objectContaining({
           workflow: 'persisted',
           expectedOwner: 'orchestrator',
         }),
-        expect.objectContaining({ expectedOwner: 'quick' }),
+        expect.objectContaining({
+          workflow: 'persisted',
+          expectedOwner: 'orchestrator',
+        }),
       ]),
     );
     const notes = ROUTING_FIXTURE.cases
@@ -306,9 +299,8 @@ describe('canonical agent routing', () => {
 
   test.each([
     ['designer', /user-facing|UI\/UX|visual/i, /backend-only|non-visual/i],
-    ['quick', /narrow|mechanical|low-risk/i, /coupled|migration|high-risk/i],
     [
-      'deep',
+      'worker',
       /multi-file|edge-case|high-risk/i,
       /visual.*only|narrow.*low-risk/i,
     ],
@@ -330,8 +322,7 @@ describe('canonical agent routing', () => {
     expect(policy.implementationOwnership.eligibleOwners).toEqual([
       'orchestrator',
       'designer',
-      'quick',
-      'deep',
+      'worker',
     ]);
     expect(policy.implementationOwnership.workflowIndependent).toBe(true);
   });
@@ -387,7 +378,7 @@ describe('canonical agent routing', () => {
       /before retaining or delegating.*ready work.*before waiting/is,
     );
     expect(rootInstructions).toMatch(
-      /librarian.*external facts.*designer.*UI\/UX.*quick.*low-risk/is,
+      /librarian.*external facts.*designer.*UI\/UX.*worker.*(?:implementation|high-risk)/is,
     );
   });
 });

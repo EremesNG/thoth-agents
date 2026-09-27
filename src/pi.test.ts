@@ -86,14 +86,7 @@ describe('native Pi extension', () => {
       string,
       (args: string | undefined, context: any) => unknown
     >();
-    const roles = [
-      'explorer',
-      'librarian',
-      'oracle',
-      'designer',
-      'quick',
-      'deep',
-    ];
+    const roles = ['explorer', 'librarian', 'oracle', 'designer', 'worker'];
     const snapshot = {
       piRoot: '/global/pi',
       roles: roles.map((role) => ({
@@ -187,8 +180,7 @@ describe('native Pi extension', () => {
         'librarian',
         'oracle',
         'designer',
-        'quick',
-        'deep',
+        'worker',
       ])
         writeFileSync(
           join(packageRoot, 'pi', 'agents', `${role}.md`),

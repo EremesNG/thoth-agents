@@ -54,8 +54,7 @@ export const CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS = {
   librarian: 'sonnet',
   oracle: 'opus',
   designer: 'sonnet',
-  quick: 'haiku',
-  deep: 'sonnet',
+  worker: 'sonnet',
 } as const satisfies Record<
   Exclude<AgentRoleName, 'orchestrator'>,
   ClaudeCodeModel
@@ -65,9 +64,8 @@ type ClaudeCodeSubagentName = keyof typeof CLAUDE_CODE_SUBAGENT_DEFAULT_MODELS;
 
 export const CLAUDE_CODE_SUBAGENT_DEFAULT_EFFORTS = {
   explorer: 'low',
-  quick: 'low',
   designer: 'medium',
-  deep: 'medium',
+  worker: 'medium',
   librarian: 'high',
   oracle: 'high',
 } as const satisfies Record<ClaudeCodeSubagentName, string>;
@@ -220,7 +218,7 @@ function createPluginManifest(
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Adaptive multi-harness agent pack with seven roles and an AI-first persisted-work bundle for Claude Code.',
+      'Adaptive multi-harness agent pack with six roles and an AI-first persisted-work bundle for Claude Code.',
     author: { name: 'thoth-agents' },
   };
 }

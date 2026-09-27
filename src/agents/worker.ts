@@ -10,35 +10,35 @@ import {
   getModelFamilyPromptSection,
 } from './prompt-utils';
 
-const QUICK_PROMPT = renderRolePrompt(
-  createWriteCapableSpecialistPromptSections('quick'),
+const WORKER_PROMPT = renderRolePrompt(
+  createWriteCapableSpecialistPromptSections('worker'),
   OPENCODE_PROMPT_DIALECT,
 );
 
-export function createQuickAgent(
+export function createWorkerAgent(
   model: string,
   customPrompt?: string,
   customAppendPrompt?: string,
 ): AgentDefinition {
   const prompt = composeAgentPrompt({
-    basePrompt: QUICK_PROMPT,
+    basePrompt: WORKER_PROMPT,
     customPrompt,
     customAppendPrompt: appendPromptSections(
-      getModelFamilyPromptSection('quick', model),
+      getModelFamilyPromptSection('worker', model),
       customAppendPrompt,
     ),
   });
 
   return {
-    name: 'quick',
+    name: 'worker',
     description:
-      'Write-capable implementation agent optimized for fast, mechanical, well-bounded changes — including uniform patterns across multiple files.',
+      'Write-capable agent for bounded nonvisual implementation regardless of complexity, with thorough context analysis, edge-case handling, and correctness verification.',
     config: {
       model,
-      temperature: 0.2,
+      temperature: 0.1,
       prompt,
-      color: 'success',
-      // steps: 30,
+      color: 'secondary',
+      // steps: 80,
     },
   };
 }

@@ -59,27 +59,27 @@ describe('renderClaudeCodeSubagent', () => {
 
   test('keeps simple names unquoted', () => {
     const output = renderClaudeCodeSubagent({
-      name: 'quick',
+      name: 'worker',
       description: 'desc',
       tools: 'Read, Edit, Write, Bash, Grep, Glob',
       model: 'inherit',
       instructions: 'body',
     });
 
-    expect(output).toContain('name: quick');
+    expect(output).toContain('name: worker');
     expect(output).toContain('model: inherit');
   });
 
   test('renders effort only when explicitly configured', () => {
     const explicit = renderClaudeCodeSubagent({
-      name: 'deep',
+      name: 'worker',
       description: 'desc',
       model: 'opus',
       effort: 'max',
       instructions: 'body',
     });
     const inherited = renderClaudeCodeSubagent({
-      name: 'deep',
+      name: 'worker',
       description: 'desc',
       model: 'opus',
       instructions: 'body',

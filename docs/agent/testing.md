@@ -21,7 +21,7 @@ snapshot does not run by itself.
 | Biome CI check | `pnpm run check:ci` | root | `package.json`, `ci.yml` |
 | typecheck | `pnpm run typecheck` | root | `package.json`, `ci.yml` |
 | build | `pnpm run build` | root | `package.json`, `release.yml` |
-| packed Pi package | `pnpm run verify:pi-package` | root after build | real-Pi local install/list normalization, five attributable runtime-discovered skills, one `session_start` materializing six specialists without an orchestrator child, unrelated-directory import, and isolated provider observation |
+| packed Pi package | `pnpm run verify:pi-package` | root after build | real-Pi local install/list normalization, five attributable runtime-discovered skills, one `session_start` materializing five specialists without an orchestrator child, unrelated-directory import, and isolated provider observation |
 
 Replace `path/to/test` with a real test; do not literally run the placeholder.
 

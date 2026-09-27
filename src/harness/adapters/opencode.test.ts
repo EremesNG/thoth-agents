@@ -4,7 +4,7 @@ import { type PluginConfig, SUBAGENT_NAMES } from '../../config';
 import { opencodeAdapter, renderOpenCodeAgentConfigs } from './opencode';
 
 describe('OpenCode harness adapter v0.3', () => {
-  test('renders the canonical seven-role roster without adaptation drift', () => {
+  test('renders the canonical six-role roster without adaptation drift', () => {
     const rendered = renderOpenCodeAgentConfigs();
 
     expect(Object.keys(rendered)).toEqual(['orchestrator', ...SUBAGENT_NAMES]);
@@ -15,22 +15,15 @@ describe('OpenCode harness adapter v0.3', () => {
     const config: PluginConfig = {
       agents: {
         orchestrator: { model: 'test/orchestrator', temperature: 0.2 },
-        deep: { model: 'test/deep', steps: 12 },
-        quick: {
-          permission: { read: 'allow', edit: 'deny' },
-        },
+        worker: { model: 'test/worker', steps: 12 },
       },
     };
     const rendered = renderOpenCodeAgentConfigs(config);
 
     expect(rendered).toEqual(getAgentConfigs(config));
     expect(rendered.orchestrator.mode).toBe('primary');
-    expect(rendered.deep.mode).toBe('subagent');
-    expect(rendered.deep.model).toBe('test/deep');
-    expect(rendered.quick.permission).toEqual({
-      read: 'allow',
-      edit: 'deny',
-    });
+    expect(rendered.worker.mode).toBe('subagent');
+    expect(rendered.worker.model).toBe('test/worker');
   });
 
   test('keeps adaptive routing and independent review in native wording', () => {

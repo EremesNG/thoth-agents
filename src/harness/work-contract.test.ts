@@ -33,7 +33,7 @@ const VALID_UNIT = `units:
       - src/output.ts
     resources: []
     owner:
-      role: deep
+      role: worker
     checks:
       - id: focused-test
         criterion: Focused behavior passes
@@ -188,7 +188,7 @@ describe('persisted work contract', () => {
       - src/second.ts
     resources: []
     owner:
-      role: quick
+      role: worker
     checks:
       - id: second-check
         criterion: Second behavior passes

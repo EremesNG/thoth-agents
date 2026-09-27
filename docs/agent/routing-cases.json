@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "cases": [
     {
       "id": "single-domain-agent-permission",
@@ -79,7 +79,7 @@
       "expected_overlays": [],
       "expected_code_roots": [],
       "expected_owner": "explorer",
-      "forbidden_owners": ["orchestrator", "designer", "deep"],
+      "forbidden_owners": ["orchestrator", "designer", "worker"],
       "delegation_net_gain": true,
       "ownership_rationale": "Broad uncertain discovery benefits from isolated read-only context before specification.",
       "decision": {
@@ -98,7 +98,7 @@
       "expected_code_roots": [],
       "phase": "execute",
       "expected_owner": "orchestrator",
-      "forbidden_owners": ["designer", "quick", "deep"],
+      "forbidden_owners": ["designer", "worker"],
       "delegation_net_gain": false,
       "ownership_rationale": "The root already has the complete context and delegation would cost more than the short ordered edit.",
       "decision": {
@@ -117,7 +117,7 @@
       "expected_code_roots": ["src/agents/", "src/harness/", "skills/"],
       "phase": "execute",
       "expected_owner": "orchestrator",
-      "forbidden_owners": ["designer", "quick", "deep"],
+      "forbidden_owners": ["designer", "worker"],
       "delegation_net_gain": false,
       "ownership_rationale": "Accumulated context and one compatibility-coupled reasoning chain outweigh delegation rediscovery and coordination overhead.",
       "decision": {
@@ -136,7 +136,7 @@
       "expected_code_roots": ["src/harness/core/", "skills/"],
       "phase": "execute",
       "expected_owner": "orchestrator",
-      "forbidden_owners": ["designer", "quick", "deep"],
+      "forbidden_owners": ["designer", "worker"],
       "delegation_net_gain": false,
       "ownership_rationale": "The accepted implementation is sequential, shares mutable state, and would require a child to rediscover the root's validated context.",
       "decision": {
@@ -155,7 +155,7 @@
       "expected_code_roots": ["src/agents/"],
       "phase": "execute",
       "expected_owner": "designer",
-      "forbidden_owners": ["orchestrator", "quick", "deep"],
+      "forbidden_owners": ["orchestrator", "worker"],
       "delegation_net_gain": true,
       "ownership_rationale": "The bounded user-facing surface benefits from designer specialization and isolated visual verification within direct work.",
       "decision": {
@@ -166,7 +166,7 @@
       "workflow": "direct"
     },
     {
-      "id": "writer-quick-known",
+      "id": "writer-worker-known",
       "task": "Rename the already-identified export in src/agents/prompt-sections.ts and run its focused prompt-rendering test; do not change routing behavior.",
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
@@ -176,34 +176,34 @@
         "src/agents/prompt-rendering.test.ts"
       ],
       "phase": "execute",
-      "expected_owner": "quick",
-      "forbidden_owners": ["orchestrator", "designer", "deep"],
+      "expected_owner": "worker",
+      "forbidden_owners": ["orchestrator", "designer"],
       "delegation_net_gain": true,
-      "ownership_rationale": "The exact file and symbol are known, the edit is isolated, and quick avoids loading unrelated planning context.",
+      "ownership_rationale": "The exact file and symbol are known, and a fresh Worker context provides demonstrated net gain without creating a separate low-risk writer tier.",
       "decision": {
         "kind": "role-selection",
-        "expected": "quick"
+        "expected": "worker"
       },
-      "notes": "After deciding delegation creates net gain, quick owns the bounded edit regardless of route; root coordinates focused verification unless material risk requires a fresh Oracle.",
+      "notes": "After deciding delegation creates net gain, Worker owns the bounded edit regardless of route; root coordinates focused verification unless material risk requires a fresh Oracle.",
       "workflow": "persisted"
     },
     {
-      "id": "writer-deep-correctness",
+      "id": "writer-worker-correctness",
       "task": "Change a shared multi-harness routing contract with edge cases across adapters and installers.",
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": ["harness-packaging", "public-compatibility"],
       "expected_code_roots": ["src/agents/", "src/config/", "src/harness/"],
       "phase": "execute",
-      "expected_owner": "deep",
-      "forbidden_owners": ["orchestrator", "designer", "quick"],
+      "expected_owner": "worker",
+      "forbidden_owners": ["orchestrator", "designer"],
       "delegation_net_gain": true,
-      "ownership_rationale": "A fresh deep context improves correctness across the coupled contract and adapters even though the work does not need persistence.",
+      "ownership_rationale": "A fresh Worker context improves correctness across the coupled contract and adapters even though the work does not need persistence.",
       "decision": {
         "kind": "role-selection",
-        "expected": "deep"
+        "expected": "worker"
       },
-      "notes": "After deciding delegation creates net gain, select one deep writer because compatibility-coupled files cannot use overlapping writers.",
+      "notes": "After deciding delegation creates net gain, select one Worker because compatibility-coupled files cannot use overlapping writers.",
       "workflow": "direct"
     },
     {
@@ -214,7 +214,7 @@
       "expected_overlays": ["harness-packaging", "public-compatibility"],
       "expected_code_roots": ["src/harness/"],
       "expected_owner": "librarian",
-      "forbidden_owners": ["orchestrator", "quick", "deep"],
+      "forbidden_owners": ["orchestrator", "worker"],
       "delegation_net_gain": true,
       "ownership_rationale": "Current authoritative evidence is an isolated read-only research workstream.",
       "decision": {
@@ -232,7 +232,7 @@
       "expected_code_roots": ["src/harness/core/workflow.ts", "skills/"],
       "phase": "verify",
       "expected_owner": "oracle",
-      "forbidden_owners": ["orchestrator", "designer", "quick"],
+      "forbidden_owners": ["orchestrator", "designer"],
       "delegation_net_gain": true,
       "ownership_rationale": "Independent judgment requires a fresh read-only context that did not implement the candidate.",
       "decision": {
@@ -249,7 +249,7 @@
       "expected_first_read": "docs/agent/index.md",
       "expected_overlays": ["agents-and-delegation"],
       "expected_code_roots": [],
-      "notes": "Explorer first resolves ownership; root then selects quick or deep from evidence instead of guessing."
+      "notes": "Explorer first resolves ownership; root then chooses continuity or Worker from evidence instead of guessing."
     },
     {
       "id": "writer-designer-accessibility",
@@ -259,7 +259,7 @@
       "expected_overlays": [],
       "expected_code_roots": ["src/agents/"],
       "expected_owner": "designer",
-      "forbidden_owners": ["quick", "deep"],
+      "forbidden_owners": ["worker"],
       "delegation_net_gain": true,
       "decision": {
         "kind": "role-selection",
@@ -269,21 +269,21 @@
       "notes": "Visual and keyboard verification remain part of the bounded writer assignment."
     },
     {
-      "id": "writer-quick-config-default",
+      "id": "writer-worker-config-default",
       "task": "Change one already-located configuration default with a literal expected value and run its single focused unit test.",
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": [],
       "expected_code_roots": ["src/config/"],
-      "expected_owner": "quick",
-      "forbidden_owners": ["designer", "deep"],
+      "expected_owner": "worker",
+      "forbidden_owners": ["designer"],
       "delegation_net_gain": true,
       "decision": {
         "kind": "role-selection",
-        "expected": "quick"
+        "expected": "worker"
       },
-      "ownership_rationale": "The exact target, expected value, and focused check make the lane isolated and low risk.",
-      "notes": "Escalate if the default affects a shared schema or migration."
+      "ownership_rationale": "The exact target, expected value, and focused check make the lane bounded; Worker owns it only because delegation has demonstrated net gain.",
+      "notes": "Escalate material product or architecture choices to root."
     },
     {
       "id": "read-librarian-version-policy",
@@ -293,7 +293,7 @@
       "expected_overlays": ["public-compatibility"],
       "expected_code_roots": [],
       "expected_owner": "librarian",
-      "forbidden_owners": ["explorer", "quick"],
+      "forbidden_owners": ["explorer", "worker"],
       "delegation_net_gain": true,
       "decision": {
         "kind": "role-selection",

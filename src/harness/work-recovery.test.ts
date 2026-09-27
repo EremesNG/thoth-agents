@@ -539,7 +539,7 @@ units:
     reads: [input.txt]
     writes: [output.txt]
     resources: []
-    owner: { role: deep }
+    owner: { role: worker }
     checks:
       - id: compare
         criterion: Output is current
@@ -589,7 +589,7 @@ units:
     reads: [input.txt]
     writes: [output.txt]
     resources: []
-    owner: { role: deep }
+    owner: { role: worker }
     checks:
       - id: compare
         criterion: Output is current

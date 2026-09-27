@@ -189,13 +189,7 @@ describe('loadPluginConfig', () => {
             fallback2: 'chutes/kimi-k2.5',
             fallback3: 'opencode/gpt-5-nano',
           },
-          quick: {
-            primary: 'openai/gpt-5.4-mini',
-            fallback1: 'anthropic/claude-sonnet-4.6',
-            fallback2: 'chutes/kimi-k2.5',
-            fallback3: 'opencode/gpt-5-nano',
-          },
-          deep: {
+          worker: {
             primary: 'openai/gpt-5.4',
             fallback1: 'anthropic/claude-opus-4-6',
             fallback2: 'chutes/kimi-k2.5',
@@ -209,8 +203,7 @@ describe('loadPluginConfig', () => {
     expect(config.manualPlan?.oracle?.fallback2).toBe(
       'chutes/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8-TEE',
     );
-    expect(config.manualPlan?.quick?.primary).toBe('openai/gpt-5.4-mini');
-    expect(config.manualPlan?.deep?.fallback1).toBe(
+    expect(config.manualPlan?.worker?.fallback1).toBe(
       'anthropic/claude-opus-4-6',
     );
   });
@@ -1115,15 +1108,15 @@ describe('loadAgentPrompt', () => {
     const promptsDir = path.join(tempDir, 'opencode', 'thoth-agents');
     fs.mkdirSync(promptsDir, { recursive: true });
     fs.writeFileSync(
-      path.join(promptsDir, 'deep.md'),
+      path.join(promptsDir, 'worker.md'),
       'replacement {{role}} {{model}}',
     );
     fs.writeFileSync(
-      path.join(promptsDir, 'deep_append.md'),
+      path.join(promptsDir, 'worker_append.md'),
       'append {{role}} {{model}}',
     );
 
-    const result = loadAgentPrompt('deep');
+    const result = loadAgentPrompt('worker');
 
     expect(result).toEqual({
       prompt: 'replacement {{role}} {{model}}',

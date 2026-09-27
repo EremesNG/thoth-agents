@@ -56,9 +56,14 @@ The system MUST preserve supported manual model definitions and their explicitly
 - **WHEN** the effective catalog is assembled
 - **THEN** the system MUST preserve that manual-only model and its declared effort options
 
-### Requirement: Apply proportionate specialist effort
+### Requirement: Apply role-specific specialist effort
 
-The built-in role defaults MUST keep the root at the highest reasoning effort and set bounded specialists proportionally (`explorer`/`quick`: low, `designer`/`deep`: medium, `librarian`/`oracle`: high), while preserving valid operator overrides and rendering effort metadata in every harness that supports it.
+The built-in OpenAI defaults MUST preserve the existing root setting and set
+`explorer` to low, `librarian` to high, `oracle` and `designer` to medium, and
+`worker` to max with `gpt-6-luna` (provider-qualified where required). Claude
+MUST set Worker to `sonnet` with medium effort. Valid operator overrides MUST be
+preserved, and every harness that supports effort metadata MUST render it
+without silently downgrading `max`.
 
 #### Scenario: US2 - Receive consistent routing across harnesses 1
 
@@ -76,7 +81,7 @@ The built-in role defaults MUST keep the root at the highest reasoning effort an
 
 - **GIVEN** the built-in OpenAI preset
 - **WHEN** default roles are resolved
-- **THEN** root remains the highest-effort coordinator while `explorer` and `quick` use low,
+- **THEN** existing root defaults remain unchanged and Worker resolves to `gpt-6-luna` with `max` effort without fallback
 
 #### Scenario: US3 - Spend specialist effort proportionally 2
 

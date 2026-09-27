@@ -114,7 +114,7 @@ describe('generateIntegrationPackages', () => {
       expect(existsSync(join(pluginRoot, 'agents', 'orchestrator.md'))).toBe(
         true,
       );
-      expect(canonicalClaudeAgents).toHaveLength(7);
+      expect(canonicalClaudeAgents).toHaveLength(6);
       for (const artifact of canonicalClaudeAgents) {
         expect(readFileSync(join(pluginRoot, artifact.path), 'utf8')).toBe(
           artifact.content,

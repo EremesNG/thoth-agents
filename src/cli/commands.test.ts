@@ -113,7 +113,7 @@ describe('commands plain operation formatters', () => {
     expect(output).toContain(
       'Run this CLI through a global install, npx, or pnpm dlx.',
     );
-    expect(output).toContain('seven-role roster');
+    expect(output).toContain('six-role roster');
     expect(output).toContain(
       'simplify, tdd, progressive-context-router, and architectural-grilling',
     );
@@ -360,7 +360,7 @@ describe('commands plain operation formatters', () => {
         expect(output).toContain(backupPath);
         expect(output.split(backupPath)).toHaveLength(2);
       }
-      expect(output).toContain('Write thoth-agents seven-role config');
+      expect(output).toContain('Write thoth-agents six-role config');
       expect(output).not.toContain(
         'Refresh bundled thoth-agents OpenCode skills',
       );
@@ -505,7 +505,7 @@ describe('explicit operation commands', () => {
   ] as const)('effort-only %s command preserves current model and attaches exact catalog metadata', async (harness, model, catalogId) => {
     const services: TestModelServices = {
       operationContext: () => ({ cwd: process.cwd() }),
-      modelRoles: () => [{ role: 'deep', model }],
+      modelRoles: () => [{ role: 'worker', model }],
       modelOptions: async () => [
         {
           id: model,
@@ -521,7 +521,7 @@ describe('explicit operation commands', () => {
     expect(
       resolveCliModelRoles(
         harness,
-        [{ role: 'deep', effort: { kind: 'effort', value: 'high' } }],
+        [{ role: 'worker', effort: { kind: 'effort', value: 'high' } }],
         {
           currentRoles: services.modelRoles(harness),
           modelOptions: await services.modelOptions(harness),
@@ -529,7 +529,7 @@ describe('explicit operation commands', () => {
       ),
     ).toEqual([
       {
-        role: 'deep',
+        role: 'worker',
         model,
         provider: catalogId.split('/')[0],
         catalogId,
@@ -551,7 +551,7 @@ describe('explicit operation commands', () => {
       }
 
       const result = await captureCommand(
-        ['model', `--harness=${harness}`, '--role-effort=deep=high'],
+        ['model', `--harness=${harness}`, '--role-effort=worker=high'],
         services,
       );
       expect(result.code).toBe(0);
@@ -586,9 +586,9 @@ describe('explicit operation commands', () => {
     try {
       const roles = resolveCliModelRoles(
         'claude',
-        [{ role: 'deep', effort: { kind: 'effort', value: 'high' } }],
+        [{ role: 'worker', effort: { kind: 'effort', value: 'high' } }],
         {
-          currentRoles: [{ role: 'deep', model }],
+          currentRoles: [{ role: 'worker', model }],
           modelOptions: [
             {
               id: model,
@@ -609,7 +609,14 @@ describe('explicit operation commands', () => {
       expect(applyClaudeCodePlan(plan).applied).toBe(false);
       expect(
         existsSync(
-          join(home, '.claude', 'skills', 'thoth-agents', 'agents', 'deep.md'),
+          join(
+            home,
+            '.claude',
+            'skills',
+            'thoth-agents',
+            'agents',
+            'worker.md',
+          ),
         ),
       ).toBe(false);
     } finally {
@@ -846,14 +853,14 @@ describe('explicit operation commands', () => {
     const result = await captureCommand([
       'model',
       '--harness=codex',
-      '--role=deep',
+      '--role=worker',
       '--model=openai/gpt-5.4-mini',
     ]);
 
     expect(result.code).toBe(0);
     expect(result.output).toContain('Target harness: Codex (codex)');
     expect(result.output).toContain('Action: model-config');
-    expect(result.output).toContain('Set deep Codex subagent model line');
+    expect(result.output).toContain('Set worker Codex subagent model line');
     expectNoPlaceholder(result.output);
   });
 
@@ -862,11 +869,11 @@ describe('explicit operation commands', () => {
     const model = 'openai/gpt-5.6-sol';
     try {
       const result = await captureCommand(
-        ['model', '--harness=pi', '--role-effort=deep=ultra', '--apply'],
+        ['model', '--harness=pi', '--role-effort=worker=ultra', '--apply'],
         {
           operationContext: () =>
             ({ cwd: homeDir, homeDir }) as OperationContext,
-          modelRoles: () => [{ role: 'deep', model }],
+          modelRoles: () => [{ role: 'worker', model }],
           modelOptions: async () => [
             {
               id: model,

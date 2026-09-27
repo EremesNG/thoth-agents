@@ -56,8 +56,7 @@ custom agents or write `~/.codex/AGENTS.md`. Work execution never calls either C
 | `librarian` | read-only | Current, unfamiliar, version-sensitive, or external facts |
 | `oracle` | read-only | Optional plan review and fresh independent final judgment when risk or persistence requires it |
 | `designer` | writer | Material UI/UX, interaction, accessibility, and visual quality |
-| `quick` | writer | Known narrow, clear, low-risk isolated edits |
-| `deep` | writer | Correctness-heavy or cross-cutting implementation |
+| `worker` | writer | Delegated implementation, including coupled, edge-case-heavy, or high-risk changes |
 
 ## Workflow
 
@@ -90,7 +89,7 @@ npx thoth-agents@latest update --harness=opencode
 npx thoth-agents@latest update --harness=opencode --apply
 npx thoth-agents@latest update --harness=codex --apply
 npx thoth-agents@latest update --harness=claude --apply
-npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
+npx thoth-agents@latest model --harness=codex --role=worker --model=gpt-6-luna --effort=max
 ```
 
 `@latest` selects the CLI release. OpenCode is configured with that release's

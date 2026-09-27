@@ -7,16 +7,14 @@ export type CodexRoleName =
   | 'librarian'
   | 'oracle'
   | 'designer'
-  | 'quick'
-  | 'deep';
+  | 'worker';
 
 export const CODEX_ROLE_NAMES = [
   'explorer',
   'librarian',
   'oracle',
   'designer',
-  'quick',
-  'deep',
+  'worker',
 ] as const satisfies readonly CodexRoleName[];
 
 export interface CodexTargetResolverOptions {

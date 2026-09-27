@@ -5,14 +5,12 @@ export type ClaudeCodeRoleName =
   | 'librarian'
   | 'oracle'
   | 'designer'
-  | 'quick'
-  | 'deep';
+  | 'worker';
 
 export const CLAUDE_CODE_ROLE_NAMES = [
   'explorer',
   'librarian',
   'oracle',
   'designer',
-  'quick',
-  'deep',
+  'worker',
 ] as const satisfies readonly ClaudeCodeRoleName[];

@@ -61,14 +61,20 @@ User-scope setup manages:
 
 - `~/.codex/AGENTS.md`: one bounded `thoth-agents:codex-root` orchestrator
   section while preserving unrelated global instructions;
-- six `~/.codex/agents/thoth-agents-<role>.toml` files for `explorer`,
-  `librarian`, `oracle`, `designer`, `quick`, and `deep`;
+- five `~/.codex/agents/thoth-agents-<role>.toml` files for `explorer`,
+  `librarian`, `oracle`, `designer`, and `worker`;
 - `~/.codex/agents/.thoth-agents-managed-models.json`;
 - a backed-up merge in `~/.codex/config.toml` for the managed feature; and
 - mandatory external skills in Codex's user skill root, `~/.agents/skills/`,
   via `npx skills add`;
 - provider-owned thoth-mem setup through
   `npx -y thoth-mem@latest setup codex --json`.
+
+The role transition is preflighted before global writes. An existing Worker TOML
+without thoth-agents model-ownership state blocks setup and is preserved.
+Obsolete Quick or Deep TOMLs are retired only when that ownership state proves
+they are managed; their model and effort customizations are not copied to
+Worker.
 
 The ambient session is the orchestrator, so no orchestrator child TOML is
 generated. The CLI obtains external skills from their canonical repositories;

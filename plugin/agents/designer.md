@@ -1,6 +1,6 @@
 ---
 name: designer
-description: "Own user-facing implementation choices and visual quality for UI work. Use when: User-facing UI/UX, interaction, accessibility, or visual quality is material. Do not use when: Not for backend-only, non-visual, or correctness-heavy cross-cutting work. Escalate when: Escalate coupled contracts, migrations, or high risk to deep. Mutation: only the assigned UI/UX decisions, implementation, and visual verification surface. Verification: includes visual verification when applicable Return: conclusion, evidence, verification, risks, openQuestions, nextAction."
+description: "Own user-facing implementation choices and visual quality for UI work. Use when: User-facing UI/UX, interaction, accessibility, or visual quality is material. Do not use when: Not for backend-only, non-visual, or correctness-heavy cross-cutting work. Escalate when: Escalate coupled contracts, migrations, or high risk to worker. Mutation: only the assigned UI/UX decisions, implementation, and visual verification surface. Verification: includes visual verification when applicable Return: conclusion, evidence, verification, risks, openQuestions, nextAction."
 model: sonnet
 effort: medium
 ---
@@ -22,7 +22,7 @@ Own user-facing implementation choices and visual quality for UI work.
 <routing-contract>
 - Use when: User-facing UI/UX, interaction, accessibility, or visual quality is material.
 - Do not use when: Not for backend-only, non-visual, or correctness-heavy cross-cutting work.
-- Escalate when: Escalate coupled contracts, migrations, or high risk to deep.
+- Escalate when: Escalate coupled contracts, migrations, or high risk to worker.
 - Verification: includes visual verification when applicable
 </routing-contract>
 

@@ -24,13 +24,9 @@ describe('providers', () => {
     expect(agents).toBeDefined();
     expect(agents.orchestrator.model).toBe('openai/gpt-6-sol');
     expect(agents.orchestrator.variant).toBe('xhigh');
-    expect(agents.quick).toEqual({
+    expect(agents.worker).toEqual({
       model: 'openai/gpt-6-luna',
-      variant: 'medium',
-    });
-    expect(agents.deep).toEqual({
-      model: 'openai/gpt-6-sol',
-      variant: 'medium',
+      variant: 'max',
     });
   });
 
@@ -60,13 +56,9 @@ describe('providers', () => {
       model: 'openai/gpt-6-sol',
       variant: 'medium',
     });
-    expect(agents.quick).toEqual({
+    expect(agents.worker).toEqual({
       model: 'openai/gpt-6-luna',
-      variant: 'medium',
-    });
-    expect(agents.deep).toEqual({
-      model: 'openai/gpt-6-sol',
-      variant: 'medium',
+      variant: 'max',
     });
   });
 
@@ -94,7 +86,7 @@ describe('providers', () => {
     expect(agents.librarian.mcps).toBeUndefined();
   });
 
-  test('generateLiteConfig includes the canonical seven-role roster', () => {
+  test('generateLiteConfig includes the canonical six-role roster', () => {
     const config = generateLiteConfig({
       hasTmux: false,
       reset: false,
@@ -102,13 +94,12 @@ describe('providers', () => {
 
     const agents = Object.keys((config.presets as any).openai).sort();
     expect(agents).toEqual([
-      'deep',
       'designer',
       'explorer',
       'librarian',
       'oracle',
       'orchestrator',
-      'quick',
+      'worker',
     ]);
   });
 
@@ -118,14 +109,13 @@ describe('providers', () => {
     }
   });
 
-  test('quick and deep presets remain lean model-only configs', () => {
+  test('worker preset remains a lean model-only config', () => {
     const config = generateLiteConfig({
       hasTmux: false,
       reset: false,
     });
 
     const agents = (config.presets as any).openai;
-    expect(Object.keys(agents.quick).sort()).toEqual(['model', 'variant']);
-    expect(Object.keys(agents.deep).sort()).toEqual(['model', 'variant']);
+    expect(Object.keys(agents.worker).sort()).toEqual(['model', 'variant']);
   });
 });

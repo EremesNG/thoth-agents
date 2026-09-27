@@ -245,8 +245,7 @@ function operations(
           { role: 'librarian', model: 'gpt-5.4-mini' },
           { role: 'oracle', model: 'gpt-5.5' },
           { role: 'designer', model: 'gpt-5.4-mini' },
-          { role: 'quick', model: 'gpt-5.4-mini' },
-          { role: 'deep', model: 'gpt-5.5' },
+          { role: 'worker', model: 'gpt-5.5' },
         ];
       }
       return [
@@ -255,8 +254,7 @@ function operations(
         { role: 'librarian', model: 'openai/gpt-5.4-mini' },
         { role: 'oracle', model: 'openai/gpt-5.4' },
         { role: 'designer', model: 'openai/gpt-5.4-mini' },
-        { role: 'quick', model: 'openai/gpt-5.4-mini' },
-        { role: 'deep', model: 'openai/gpt-5.4' },
+        { role: 'worker', model: 'openai/gpt-5.4' },
       ];
     },
     plan(_harness, action) {
@@ -1172,7 +1170,7 @@ describe('interactive TUI', () => {
       expect(lastFrame()).toContain(note);
     }
     expect(lastFrame()).toContain('explorer: gpt-5.3-codex-spark');
-    expect(lastFrame()).toContain('deep: gpt-5.5');
+    expect(lastFrame()).toContain('worker: gpt-5.5');
   });
 
   test('model Apply is always available and reapplies every current role when unchanged', async () => {
@@ -1186,8 +1184,8 @@ describe('interactive TUI', () => {
         availableEfforts: ['high'],
       },
       {
-        role: 'deep',
-        model: 'gpt-deep',
+        role: 'worker',
+        model: 'gpt-worker',
         effort: { kind: 'inherit' },
       },
     ];
@@ -1310,7 +1308,7 @@ describe('interactive TUI', () => {
       },
       modelRoles(harness) {
         if (harness !== 'pi') return base.modelRoles(harness);
-        return [{ role: 'deep', model: 'provider/pi-model' }];
+        return [{ role: 'worker', model: 'provider/pi-model' }];
       },
     };
     const { lastFrame, stdin } = render(
@@ -1321,7 +1319,7 @@ describe('interactive TUI', () => {
     await flushInk();
 
     expect(lastFrame()).toContain('Pi Models');
-    expect(lastFrame()).toContain('deep: provider/pi-model');
+    expect(lastFrame()).toContain('worker: provider/pi-model');
   });
 
   test('current model absent from the catalog is preserved with inherit only', async () => {
@@ -1667,7 +1665,7 @@ describe('interactive TUI', () => {
     );
 
     await dirtyExplorer(stdin);
-    for (let index = 0; index < 6; index += 1) await press(stdin, 'j');
+    for (let index = 0; index < 5; index += 1) await press(stdin, 'j');
     await press(stdin, '\r');
 
     expect(ops.modelPlanRoles.at(-1)).toEqual([
@@ -1682,7 +1680,7 @@ describe('interactive TUI', () => {
     const { stdin } = render(<App operations={ops} exitOnQuit={false} />);
 
     await dirtyExplorer(stdin);
-    for (let index = 0; index < 7; index += 1) await press(stdin, 'j');
+    for (let index = 0; index < 6; index += 1) await press(stdin, 'j');
     await press(stdin, '\r');
 
     expect(ops.modelPlanRoles.at(-1)).toEqual([
@@ -1785,7 +1783,7 @@ describe('restore defaults menu', () => {
     expect(ops.applied).toEqual([]);
     await press(stdin, 'a');
     expect(ops.applied).toHaveLength(1);
-    expect(ops.applied[0]?.items).toHaveLength(6);
+    expect(ops.applied[0]?.items).toHaveLength(5);
     await press(stdin, 'c');
     expect(lastFrame()).toContain('oracle: gpt-6-astra');
     expect(lastFrame()).not.toContain('*oracle');

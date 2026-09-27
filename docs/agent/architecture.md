@@ -3,7 +3,7 @@
 ## System shape
 
 `src/index.ts` composes the OpenCode plugin. `src/harness/` owns the canonical
-seven-role and work contracts plus OpenCode, Codex, Claude, and Pi adapters. `skills/`
+six-role and work contracts plus OpenCode, Codex, Claude, and Pi adapters. `skills/`
 is the canonical thoth-owned workflow bundle. `src/cli/` owns installation plus
 status, repair, model, and TUI operations.
 
@@ -30,7 +30,7 @@ persistence, receipts, state, and recovery remain outside this package.
    setup, while namespaced init creates project governance only.
 5. Pi CLI setup first installs the exact executing `thoth-agents` package. Its
    `before_agent_start` hook contributes the bounded ambient root and
-   `session_start` safely synchronizes six package-owned specialists. Pi loads
+   `session_start` safely synchronizes five package-owned specialists. Pi loads
    the five owned skills from the package manifest. The CLI then installs the
    six external packages and four external skills. Published installs also
    invoke provider-owned thoth-mem; an explicit local Pi package install leaves
@@ -63,10 +63,11 @@ persistence, receipts, state, and recovery remain outside this package.
   before closeout. Optional plan review does not replace final verification.
 - Semantic role selection is route-independent: `librarian` handles current or
   external facts, `designer` material user-facing UI/UX and accessibility,
-  `quick` known narrow low-risk isolated edits, `deep` coupled/high-risk work,
-  and `explorer` broad local uncertainty. Native harness execution and
-  lifecycle are the sole authority for fan-out/fan-in, status/wait, steering,
-  cancellation, and terminal results.
+  `worker` implementation when delegation provides net gain, and `explorer`
+  broad local uncertainty. Root may retain narrow low-risk work when continuity
+  outweighs delegation overhead. Native harness execution and lifecycle are the
+  sole authority for fan-out/fan-in, status/wait, steering, cancellation, and
+  terminal results.
 - Delegation depth is one; one writer owns each mutable surface.
 - OpenCode ships only the OpenAI preset.
 - Owned workflow contracts are bundled; external skills come from canonical

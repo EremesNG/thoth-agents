@@ -110,8 +110,7 @@ describe('AI-first work workflow', () => {
     expect(getWorkPhase('execute').eligibleAgentRoles).toEqual([
       'orchestrator',
       'designer',
-      'quick',
-      'deep',
+      'worker',
     ]);
   });
 
@@ -163,6 +162,6 @@ describe('AI-first work workflow', () => {
     expect(() => getWorkPhase('unknown' as 'plan')).toThrow(
       'Unknown work phase: unknown',
     );
-    expect(getAgentRole('deep').dispatch).toBe('task');
+    expect(getAgentRole('worker').dispatch).toBe('task');
   });
 });

@@ -194,11 +194,13 @@ execution context under `.thoth/history/openspec/`.
 ### Requirement: Select specialists for demonstrated benefit
 
 After dependency shaping establishes a delegation benefit, root MUST select
-designer for material user-facing experience, quick for exact narrow low-risk
-work, and deep for coupled or high-risk implementation. Explorer and librarian
-MUST remain read-only evidence roles and Oracle MUST remain read-only. A new
-objective, mutable surface, or independent judgment MUST receive a fresh
-specialist; continuation is limited to the same bounded assignment.
+designer for material user-facing experience and worker for implementation,
+including coupled or high-risk work. Root MAY retain narrow low-risk work when
+continuity outweighs delegation overhead; there is no separate low-risk versus
+complex writer tier. Explorer and librarian MUST remain read-only evidence roles
+and Oracle MUST remain read-only. A new objective, mutable surface, or
+independent judgment MUST receive a fresh specialist; continuation is limited
+to the same bounded assignment.
 
 ### Requirement: Gate architectural grilling on a material decision
 

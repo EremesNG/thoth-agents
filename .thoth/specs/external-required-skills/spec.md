@@ -10,7 +10,7 @@ Pi installations MUST provide `simplify`, `tdd`, `progressive-context-router`, a
 
 - **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
 - **WHEN** `thoth-agents install --agent=pi` is applied
-- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, five canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
 
 #### Scenario: US1 - Install the complete Pi agent pack 2
 
@@ -38,7 +38,7 @@ For Pi, the installer MUST invoke the canonical `skills` CLI with the concrete `
 
 - **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
 - **WHEN** `thoth-agents install --agent=pi` is applied
-- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, six canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
+- **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, five canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
 
 #### Scenario: US1 - Install the complete Pi agent pack 2
 
@@ -72,7 +72,7 @@ Installation MAY invoke Pi, npm, the skills CLI, and provider setup, but after i
 
 - **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
 - **WHEN** the package synchronizer runs
-- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
+- **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
 #### Scenario: US4 - Preserve external ownership and existing harnesses 1
 
@@ -88,7 +88,7 @@ Installation MAY invoke Pi, npm, the skills CLI, and provider setup, but after i
 
 ### Requirement: Preserve harness-native discovery
 
-Pi MUST discover the five thoth-owned workflow skills directly from the installed `thoth-agents` package manifest and MUST discover exactly six package-owned specialist definitions from Pi's global agent directory; setup MUST remove only provably attributable legacy copied skill duplicates, MUST install the four external skills from their canonical repositories, and MUST remain independent of CLI/network access during work execution.
+Pi MUST discover the five thoth-owned workflow skills directly from the installed `thoth-agents` package manifest and MUST discover exactly five package-owned specialist definitions from Pi's global agent directory; setup MUST remove only provably attributable legacy copied skill duplicates, MUST install the four external skills from their canonical repositories, and MUST remain independent of CLI/network access during work execution.
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 1
 
@@ -106,7 +106,7 @@ Pi MUST discover the five thoth-owned workflow skills directly from the installe
 
 - **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
 - **WHEN** the package synchronizer runs
-- **THEN** exactly six attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
+- **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
 #### Scenario: US3 - Update, migrate, and diagnose native package state 1
 

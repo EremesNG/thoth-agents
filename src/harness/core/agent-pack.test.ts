@@ -6,17 +6,16 @@ import {
 } from './agent-pack';
 
 describe('agent-pack contract', () => {
-  test('exposes the seven-role adaptive roster', () => {
+  test('exposes the six-role adaptive roster', () => {
     expect(getAgentPackContract().roles.map(({ name }) => name)).toEqual([
       'orchestrator',
       'explorer',
       'librarian',
       'oracle',
       'designer',
-      'quick',
-      'deep',
+      'worker',
     ]);
-    expect(AGENT_ROLE_NAMES).toHaveLength(7);
+    expect(AGENT_ROLE_NAMES).toHaveLength(6);
   });
 
   test('models every specialist dispatch as a native task', () => {
@@ -39,7 +38,7 @@ describe('agent-pack contract', () => {
     const ownership =
       getAgentPackContract().orchestrationPolicy.implementationOwnership;
     expect(ownership).toMatchObject({
-      eligibleOwners: ['orchestrator', 'designer', 'quick', 'deep'],
+      eligibleOwners: ['orchestrator', 'designer', 'worker'],
       workflowIndependent: true,
     });
     expect(ownership.insufficientSignals).toContain(
@@ -68,6 +67,16 @@ describe('agent-pack contract', () => {
     expect(policy.nativeAuthority).toBe(true);
   });
 
+  test('routes bounded nonvisual implementation to Worker regardless of complexity', () => {
+    const worker = getAgentRole('worker');
+    const contract = JSON.stringify(worker);
+    expect(contract).toContain('regardless of complexity');
+    expect(contract).toContain('net gain');
+    expect(contract).not.toContain('narrow known low-risk edits');
+    expect(contract).not.toContain('bulk mechanical changes');
+    expect(getAgentRole('designer').scope).toContain('UI/UX');
+  });
+
   test('keeps one writer and read-only judgment boundaries', () => {
     expect(getAgentPackContract().orchestrationPolicy.singleWriter).toBe(true);
     for (const name of ['explorer', 'librarian', 'oracle'] as const) {
@@ -76,7 +85,7 @@ describe('agent-pack contract', () => {
         canMutateWorkspace: false,
       });
     }
-    for (const name of ['designer', 'quick', 'deep'] as const) {
+    for (const name of ['designer', 'worker'] as const) {
       expect(getAgentRole(name)).toMatchObject({
         mode: 'write-capable',
         canMutateWorkspace: true,

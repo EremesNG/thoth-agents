@@ -172,7 +172,7 @@ dependsOn: []
 reads: []
 writes: [dependency.txt]
 resources: []
-owner: { role: deep }
+owner: { role: worker }
 checks:
   - id: dependency-check
     criterion: Dependency exists
@@ -197,7 +197,7 @@ dependsOn: [dependency]
 reads: [dependency.txt]
 writes: [consumer.txt]
 resources: []
-owner: { role: deep }
+owner: { role: worker }
 checks:
   - id: consumer-check
     criterion: Consumer works
@@ -239,7 +239,7 @@ units:
     reads: []
     writes: [src/output.ts]
     resources: []
-    owner: { role: deep }
+    owner: { role: worker }
     checks:
       - id: test
         criterion: Focused test passes
@@ -252,7 +252,7 @@ units:
     reads: [src/output.ts]
     writes: [release.txt]
     resources: [release]
-    owner: { role: quick }
+    owner: { role: worker }
     checks:
       - id: release-check
         criterion: Release verified
@@ -282,7 +282,7 @@ units:
     reads: [input.txt]
     writes: [output.txt]
     resources: []
-    owner: { role: deep }
+    owner: { role: worker }
     checks:
       - id: compare
         criterion: Output matches

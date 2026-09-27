@@ -13,7 +13,6 @@ import {
   getAgentRole,
   renderAgentRoutingDescription,
 } from '../harness/core/agent-pack';
-import { createDeepAgent } from './deep';
 import { createDesignerAgent } from './designer';
 import { createExplorerAgent } from './explorer';
 import { createLibrarianAgent } from './librarian';
@@ -23,7 +22,7 @@ import {
   appendPromptSections,
   getStepBudgetPromptSection,
 } from './prompt-utils';
-import { createQuickAgent } from './quick';
+import { createWorkerAgent } from './worker';
 
 export type { AgentDefinition } from './orchestrator';
 
@@ -46,8 +45,7 @@ type BuiltinPermissionPresetName =
   | 'librarian'
   | 'oracle'
   | 'designer'
-  | 'quick'
-  | 'deep';
+  | 'worker';
 
 type AgentOverrideWithPermission = AgentOverrideConfig & {
   permission?: SDKAgentConfig['permission'];
@@ -136,24 +134,7 @@ const BUILTIN_PERMISSION_PRESETS = {
       '~/.config/opencode/skills/**': 'allow',
     },
   },
-  quick: {
-    read: 'allow',
-    edit: 'allow',
-    glob: 'allow',
-    grep: 'allow',
-    list: 'allow',
-    bash: 'allow',
-    question: 'allow',
-    codesearch: 'allow',
-    lsp: 'allow',
-    skill: 'allow',
-    todowrite: 'deny',
-    task: 'deny',
-    external_directory: {
-      '~/.config/opencode/skills/**': 'allow',
-    },
-  },
-  deep: {
+  worker: {
     read: 'allow',
     edit: 'allow',
     glob: 'allow',
@@ -278,8 +259,7 @@ const SUBAGENT_FACTORIES: Record<CanonicalOpenAISubagentName, AgentFactory> = {
   librarian: createLibrarianAgent,
   oracle: createOracleAgent,
   designer: createDesignerAgent,
-  quick: createQuickAgent,
-  deep: createDeepAgent,
+  worker: createWorkerAgent,
 };
 
 export function createAgents(config?: PluginConfig): AgentDefinition[] {

@@ -3,7 +3,7 @@
 ## Repository purpose
 
 **thoth-agents** is an adaptive multi-harness orchestration plugin. It provides
-seven roles, native OpenCode and Pi delegation, Codex and Claude Code surfaces,
+six roles, native OpenCode and Pi delegation, Codex and Claude Code surfaces,
 provider-neutral memory boundaries, and AI-first work contracts.
 OpenCode is the stable default path; each harness has different guarantees.
 
@@ -97,12 +97,12 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   a dependency. Dispatch all independent admitted ready work before waiting,
   refill native capacity and release each consumer after its own fresh accepted
   dependencies; avoid global wave barriers.
-- Delegate only for net gain. Root, designer, quick or deep may implement.
+- Delegate only for net gain. Root, designer or worker may implement.
   Prefer root continuity for short work or one ordered reasoning chain with
   accumulated context. Choose explorer for uncertain local discovery, librarian
   for authoritative external facts, oracle for independent judgment, designer
-  for material UI/UX, quick for exact low-risk edits, deep for coupled/high-risk
-  implementation. Route name and file count do not determine ownership.
+  for material UI/UX, and worker for implementation, including coupled/high-risk
+  work. Route name and file count do not determine ownership.
 - Keep delegation depth one, one writer per mutable surface, and fresh specialist
   sessions at work boundaries. Children never delegate. New Oracle judgments
   always use a fresh read-only reviewer. A writer never approves its own work.

@@ -3,7 +3,7 @@
 ## Entrypoints
 
 - `src/harness/registry.ts`: supported/default harnesses
-- `src/harness/core/agent-pack.ts`: seven-role contract
+- `src/harness/core/agent-pack.ts`: six-role contract
 - `src/harness/core/workflow.ts`: route and ownership contract
 - `src/harness/adapters/`: native translation
 - `src/harness/generate-integration-packages.ts`: shared Codex/Claude plugin
@@ -18,16 +18,16 @@
 - OpenCode npm plugin loading does not expose package-relative native skills;
   the CLI synchronizes the five canonical owned skill trees into
   `~/.config/opencode/skills/`. Init never creates project-local skill copies.
-- Codex uses ambient root plus six global TOMLs created by the mandatory CLI.
+- Codex uses ambient root plus five global TOMLs created by the mandatory CLI.
   Its plugin manifest carries skills/MCP but cannot install custom agents or
   `~/.codex/AGENTS.md`; `$thoth-init` creates project governance only.
-- Claude packages root plus six generated namespaced subagents.
+- Claude packages root plus five generated namespaced subagents.
 - Pi is published from the same `thoth-agents` npm artifact with exactly
-  `./dist/pi.js` and `./skills` in `package.json#pi`. Generation writes six
+  `./dist/pi.js` and `./skills` in `package.json#pi`. Generation writes five
   package-owned `pi/agents/*.md` assets plus `.thoth-agents-assets.json`; no
   orchestrator child or external implementation tree is packaged. Pi discovers
   the five owned skills from the manifest, while the shared synchronizer
-  materializes the six specialists globally for `pi-subagents@0.71.0`.
+  materializes the five specialists globally for `pi-subagents@0.71.0`.
   The generated definitions use native `model`/`thinking`, fresh context,
   depth one, and a background librarian; no builtin pi-subagents agents are used.
   `/thoth-agents:models` exposes global specialist configuration through a native

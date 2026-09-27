@@ -1,6 +1,6 @@
 # Claude Code Install
 
-Claude Code receives a native plugin containing the orchestrator, six namespaced
+Claude Code receives a native plugin containing the orchestrator, five namespaced
 specialists, MCP configuration, and the five workflow skills owned by
 thoth-agents. The CLI remains a required installation step for the four external
 skills and provider-owned thoth-mem setup, but agents do not consume either CLI
@@ -77,13 +77,14 @@ preserves existing constitutions, and leaves legacy project templates untouched.
 
 | Surface | Contents |
 | --- | --- |
-| `agents/` | Main `orchestrator` plus `explorer`, `librarian`, `oracle`, `designer`, `quick`, and `deep` generated from canonical source |
+| `agents/` | Main `orchestrator` plus `explorer`, `librarian`, `oracle`, `designer`, and `worker` generated from canonical source |
 | `skills/` | Five owned workflow skills, including `plan-reviewer` |
 | `.mcp.json` | Packaged thoth-agents research MCP configuration |
 | `settings.json` | Activates the orchestrator as the main plugin agent |
 
-Namespaced delegation uses `thoth-agents:<role>`. Children never delegate.
-Every change verifies. Persisted or materially risky work requires a fresh
+Namespaced delegation uses `thoth-agents:<role>`. Worker defaults to Claude's
+`sonnet` model with medium effort; the other Claude role defaults remain
+unchanged. Children never delegate. Every change verifies. Persisted or materially risky work requires a fresh
 read-only Oracle. Optional plan review never substitutes for final verification.
 
 Before dispatch, the root distinguishes concrete artifact/decision dependencies
@@ -92,9 +93,10 @@ and keeps one writer per mutable surface. Claude's native `Agent` fan-out sends
 all ready conflict-free lanes before waiting; fan-in accepts only terminal
 native results before releasing dependents. Semantic triggers select `librarian`
 for current or external facts, `designer` for material UI/UX, interaction,
-accessibility, or visual quality, and `quick` for known narrow low-risk isolated
-edits; coupled or high-risk work uses `deep`. Native Agent, status/wait,
-steering, cancellation, and terminal-result behavior is authoritative; missing
+accessibility, or visual quality, and `worker` for delegated implementation,
+including coupled or high-risk work. Narrow low-risk work may remain with root
+when delegation has no net gain. Native Agent, status/wait, steering,
+cancellation, and terminal-result behavior is authoritative; missing
 primitives degrade to a truthful sequential path.
 
 ## Verification

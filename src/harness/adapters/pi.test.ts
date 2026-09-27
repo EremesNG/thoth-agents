@@ -13,14 +13,14 @@ describe('Pi adapter', () => {
   ])('maps explicit models without inventing a thinking inheritance sentinel', (model, expected) => {
     const rendered = piAdapter.render({
       projectRoot: process.cwd(),
-      config: { agents: { deep: { model } } } as PluginConfig,
+      config: { agents: { worker: { model } } } as PluginConfig,
     });
-    const deep = rendered.artifacts.find(
-      ({ path }) => path === 'agents/thoth-deep.md',
+    const worker = rendered.artifacts.find(
+      ({ path }) => path === 'agents/thoth-worker.md',
     );
-    expect(deep?.content).toContain(`model: "${expected}"`);
-    expect(deep?.content).not.toContain('\nthinking:');
-    expect(deep?.content).not.toContain('\neffort:');
+    expect(worker?.content).toContain(`model: "${expected}"`);
+    expect(worker?.content).not.toContain('\nthinking:');
+    expect(worker?.content).not.toContain('\neffort:');
   });
 
   test('assigns the shared specialist model and effort preset through the Pi provider', () => {
@@ -29,8 +29,7 @@ describe('Pi adapter', () => {
       librarian: ['gpt-6-luna', 'high'],
       oracle: ['gpt-6-astra', 'medium'],
       designer: ['gpt-6-sol', 'medium'],
-      quick: ['gpt-6-luna', 'medium'],
-      deep: ['gpt-6-sol', 'medium'],
+      worker: ['gpt-6-luna', 'max'],
     };
     const rendered = piAdapter.render({ projectRoot: process.cwd() });
     for (const [role, [model, effort]] of Object.entries(expected)) {
@@ -144,10 +143,10 @@ describe('Pi adapter', () => {
   test('lists only namespaced specialist identities in runtime delegation guidance', () => {
     const root = renderPiRootInstructions();
     expect(root).toContain(
-      'thoth-explorer, thoth-librarian, thoth-oracle, thoth-designer, thoth-quick, or thoth-deep',
+      'thoth-explorer, thoth-librarian, thoth-oracle, thoth-designer, or thoth-worker',
     );
     expect(root).not.toContain(
-      'agent`: explorer, librarian, oracle, designer, quick, or deep',
+      'agent`: explorer, librarian, oracle, designer, or worker',
     );
   });
 

@@ -38,19 +38,18 @@ describe('Claude Code adapter v0.3', () => {
     });
   });
 
-  test('renders six specialists plus the main-thread orchestrator', () => {
+  test('renders five specialists plus the main-thread orchestrator', () => {
     const paths = render()
       .artifacts.filter((entry) => entry.kind === 'agent-config')
       .map((entry) => entry.path);
 
     expect(paths).toEqual([
-      'agents/deep.md',
       'agents/designer.md',
       'agents/explorer.md',
       'agents/librarian.md',
       'agents/oracle.md',
       'agents/orchestrator.md',
-      'agents/quick.md',
+      'agents/worker.md',
     ]);
   });
 
@@ -62,8 +61,7 @@ describe('Claude Code adapter v0.3', () => {
       )?.[1];
 
     expect(modelOf('agents/oracle.md')).toBe('opus');
-    expect(modelOf('agents/quick.md')).toBe('haiku');
-    expect(modelOf('agents/deep.md')).toBe('sonnet');
+    expect(modelOf('agents/worker.md')).toBe('sonnet');
   });
 
   test('renders proportional effort frontmatter with valid override precedence', () => {
@@ -74,20 +72,22 @@ describe('Claude Code adapter v0.3', () => {
       )?.[1];
 
     expect(effortOf(defaults, 'agents/explorer.md')).toBe('low');
-    expect(effortOf(defaults, 'agents/quick.md')).toBe('low');
     expect(effortOf(defaults, 'agents/designer.md')).toBe('medium');
-    expect(effortOf(defaults, 'agents/deep.md')).toBe('medium');
+    expect(effortOf(defaults, 'agents/worker.md')).toBe('medium');
     expect(effortOf(defaults, 'agents/librarian.md')).toBe('high');
     expect(effortOf(defaults, 'agents/oracle.md')).toBe('high');
 
     const overridden = renderWithConfig({
       projectRoot: process.cwd(),
       config: {
-        agents: { quick: { variant: 'high' }, deep: { variant: 'invalid' } },
+        agents: {
+          designer: { variant: 'high' },
+          worker: { variant: 'invalid' },
+        },
       },
     }).artifacts;
-    expect(effortOf(overridden, 'agents/quick.md')).toBe('high');
-    expect(effortOf(overridden, 'agents/deep.md')).toBe('medium');
+    expect(effortOf(overridden, 'agents/designer.md')).toBe('high');
+    expect(effortOf(overridden, 'agents/worker.md')).toBe('medium');
   });
 
   test('renders namespaced explicit selection and canonical routing descriptions', () => {
@@ -101,8 +101,7 @@ describe('Claude Code adapter v0.3', () => {
       'librarian',
       'oracle',
       'designer',
-      'quick',
-      'deep',
+      'worker',
     ]) {
       const content = String(
         artifact(result.artifacts, `agents/${name}.md`)?.content,

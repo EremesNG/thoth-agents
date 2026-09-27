@@ -3,7 +3,7 @@ import { piAdapter } from '../adapters/pi';
 import { PI_ROOT_END, PI_ROOT_START } from './pi-agent';
 
 describe('Pi agent writer', () => {
-  test('renders one ambient root block and exactly six owned specialists deterministically', () => {
+  test('renders one ambient root block and exactly five owned specialists deterministically', () => {
     const first = piAdapter.render({ projectRoot: process.cwd() });
     const second = piAdapter.render({ projectRoot: process.cwd() });
     expect(second.artifacts).toEqual(first.artifacts);
@@ -18,8 +18,7 @@ describe('Pi agent writer', () => {
       'agents/thoth-librarian.md',
       'agents/thoth-oracle.md',
       'agents/thoth-designer.md',
-      'agents/thoth-quick.md',
-      'agents/thoth-deep.md',
+      'agents/thoth-worker.md',
     ]);
     expect(
       agents.some((artifact) => artifact.path.includes('orchestrator')),
@@ -48,7 +47,7 @@ describe('Pi agent writer', () => {
     );
     for (const agent of agents.filter((artifact) => artifact !== librarian)) {
       expect(agent.content).toContain(
-        ['designer', 'quick', 'deep'].some((role) =>
+        ['designer', 'worker'].some((role) =>
           agent.path.endsWith(`thoth-${role}.md`),
         )
           ? 'tools: "read, bash, edit, write"'

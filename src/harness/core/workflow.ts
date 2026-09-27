@@ -73,7 +73,7 @@ const WORK_PHASES: readonly WorkPhaseContract[] = [
     id: 'execute',
     objective:
       'Complete accepted work units through bounded owners and harness-native execution.',
-    eligibleAgentRoles: ['orchestrator', 'designer', 'quick', 'deep'],
+    eligibleAgentRoles: ['orchestrator', 'designer', 'worker'],
     inputs: ['accepted agreement', 'ready unit packet'],
     rules: [
       'Use TDD for behavior changes at public seams and preserve one writer per mutable surface.',

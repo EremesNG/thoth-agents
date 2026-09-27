@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { createHash } from 'node:crypto';
+import { existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
+import { basename, dirname, parse, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   codexAdapter,
@@ -24,6 +25,8 @@ export { CODEX_ROLE_NAMES } from './codex-paths';
 export type CodexSetupAction =
   | 'merge-managed-block'
   | 'write-role-toml'
+  | 'retire-obsolete-role-toml'
+  | 'write-install-recovery'
   | 'write-managed-model-state'
   | 'merge-toml'
   | 'diagnose-only';
@@ -32,6 +35,7 @@ export type CodexTargetKind =
   | 'root-instructions'
   | 'role-subagent-toml'
   | 'managed-model-state'
+  | 'install-recovery'
   | 'user-config'
   | 'diagnostic';
 
@@ -55,6 +59,9 @@ export interface CodexSetupPlanItem {
   content?: string;
   role?: CodexRoleName;
   renderedModel?: string;
+  /** Apply-time guard captured while planning. */
+  expectedContent?: string;
+  expectedAbsent?: boolean;
 }
 
 export interface CodexSetupPlan {
@@ -77,6 +84,113 @@ export interface CodexApplyResult {
 const ROOT_START = '<!-- thoth-agents:codex-root:start -->';
 const ROOT_END = '<!-- thoth-agents:codex-root:end -->';
 export const MANAGED_MODEL_STATE_VERSION = 1;
+const OBSOLETE_CODEX_ROLES = ['quick', 'deep'] as const;
+const RECOVERY_FILE = '.thoth-agents-install-recovery.json';
+
+function lstatIfPresent(path: string) {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+function fingerprint(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+function assertSafeCodexRolePath(path: string, agentsDir: string): void {
+  const absolute = resolve(path);
+  const expectedParent = resolve(agentsDir);
+  if (dirname(absolute) !== expectedParent)
+    throw new Error(
+      `Unsafe Codex role path outside managed agents directory: ${path}`,
+    );
+
+  const root = parse(absolute).root;
+  const ancestors: string[] = [];
+  let cursor = dirname(absolute);
+  while (cursor !== root) {
+    ancestors.push(cursor);
+    cursor = dirname(cursor);
+  }
+  ancestors.push(root);
+  for (const ancestor of ancestors.reverse()) {
+    const stat = lstatIfPresent(ancestor);
+    if (!stat) continue;
+    if (stat.isSymbolicLink())
+      throw new Error(
+        `Managed Codex role path has a symlinked parent: ${ancestor}`,
+      );
+    if (!stat.isDirectory())
+      throw new Error(
+        `Managed Codex role path parent is not a directory: ${ancestor}`,
+      );
+  }
+
+  const stat = lstatIfPresent(absolute);
+  if (!stat) return;
+  if (stat.isSymbolicLink())
+    throw new Error(`Managed Codex role target is a symlink: ${absolute}`);
+  if (!stat.isFile())
+    throw new Error(
+      `Managed Codex role target is not a regular file: ${absolute}`,
+    );
+}
+
+function addApplyGuard(item: CodexSetupPlanItem): CodexSetupPlanItem {
+  if (!lstatIfPresent(item.targetPath))
+    return { ...item, expectedAbsent: true };
+  return { ...item, expectedContent: readFileSync(item.targetPath, 'utf8') };
+}
+
+function assertApplyGuard(item: CodexSetupPlanItem): void {
+  if (item.expectedAbsent) {
+    if (lstatIfPresent(item.targetPath))
+      throw new Error(
+        `Managed Codex target appeared after planning: ${item.targetPath}`,
+      );
+    return;
+  }
+  if (item.expectedContent !== undefined) {
+    if (
+      !lstatIfPresent(item.targetPath) ||
+      readFileSync(item.targetPath, 'utf8') !== item.expectedContent
+    )
+      throw new Error(
+        `Managed Codex target changed after planning: ${item.targetPath}`,
+      );
+  }
+}
+
+interface InstallRecovery {
+  version: 1;
+  roles: Record<string, string>;
+}
+
+function readInstallRecovery(path: string): InstallRecovery | undefined {
+  if (!lstatIfPresent(path)) return undefined;
+  const raw: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+    throw new Error(`Corrupt Codex install recovery state: ${path}`);
+  const value = raw as { version?: unknown; roles?: unknown };
+  if (
+    value.version !== 1 ||
+    !value.roles ||
+    typeof value.roles !== 'object' ||
+    Array.isArray(value.roles)
+  )
+    throw new Error(`Corrupt Codex install recovery state: ${path}`);
+  const roles = Object.fromEntries(Object.entries(value.roles));
+  if (
+    Object.values(roles).some(
+      (hash) => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash),
+    )
+  )
+    throw new Error(`Corrupt Codex install recovery state: ${path}`);
+  return { version: 1, roles: roles as Record<string, string> };
+}
 
 function mergeManagedBlock(existing: string, managedBlock: string): string {
   const start = existing.indexOf(ROOT_START);
@@ -372,24 +486,26 @@ export function buildCodexSetupPlan(
     ...(packageRoot ? { packageRoot } : {}),
   });
   const rootBlock = renderCodexRootInstructions();
+  const agentsDir = dirname(
+    targets.roleAgentPaths[0]?.path ?? targets.managedModelsPath,
+  );
+  const recoveryPath = resolve(agentsDir, RECOVERY_FILE);
+  assertSafeCodexRolePath(targets.managedModelsPath, agentsDir);
+  assertSafeCodexRolePath(recoveryPath, agentsDir);
+  for (const target of targets.roleAgentPaths)
+    assertSafeCodexRolePath(target.path, agentsDir);
+
   const managedModelState = readManagedModelState(targets.managedModelsPath);
+  const recovery = readInstallRecovery(recoveryPath);
   const nextManagedModelState = emptyManagedModelState();
-  const items: CodexSetupPlanItem[] = [
-    {
-      kind: 'root-instructions',
-      action: 'merge-managed-block',
-      targetPath: targets.rootInstructionsPath,
-      description: `Merge managed Codex root instructions into ${targets.rootInstructionsPath}.`,
-      requiresBackup: true,
-      content: rootBlock,
-    },
-    ...targets.roleAgentPaths.map(
-      (target): CodexSetupPlanItem => ({
+  const roleItems = targets.roleAgentPaths.map(
+    (target): CodexSetupPlanItem =>
+      addApplyGuard({
         kind: 'role-subagent-toml',
         action: 'write-role-toml',
         targetPath: target.path,
         description: `Materialize Codex role subagent ${target.role}.`,
-        requiresBackup: existsSync(target.path),
+        requiresBackup: Boolean(lstatIfPresent(target.path)),
         role: target.role,
         renderedModel: parseRoleTomlModel(
           roleArtifactContent(target.role, render.artifacts),
@@ -402,8 +518,83 @@ export function buildCodexSetupPlan(
           reset: config.reset,
         }),
       }),
-    ),
+  );
+  const recoveryRoles = Object.fromEntries(
+    roleItems.map((item) => [
+      roleManagedModelStateKey(item.targetPath),
+      fingerprint(item.content ?? ''),
+    ]),
+  );
+
+  // An interrupted install is recoverable only when its durable journal and
+  // the exact generated role bytes agree. No model customization is inferred.
+  for (const item of roleItems) {
+    if (item.role !== 'worker' || !lstatIfPresent(item.targetPath)) continue;
+    const key = roleManagedModelStateKey(item.targetPath);
+    const ownedByLedger = key in managedModelState.models;
+    const contentHash = fingerprint(readFileSync(item.targetPath, 'utf8'));
+    const recoverable =
+      recovery?.roles[key] === contentHash &&
+      recoveryRoles[key] === contentHash;
+    if (!ownedByLedger && !recoverable)
+      throw new Error(
+        `Existing Worker Codex role lacks thoth-agents ownership state or a trustworthy recovery fingerprint: ${item.targetPath}. Move or remove it explicitly before retrying.`,
+      );
+  }
+  if (recovery) {
+    const expectedKeys = Object.keys(recoveryRoles).sort();
+    if (
+      JSON.stringify(Object.keys(recovery.roles).sort()) !==
+        JSON.stringify(expectedKeys) ||
+      expectedKeys.some((key) => recovery.roles[key] !== recoveryRoles[key])
+    )
+      throw new Error(
+        `Codex install recovery state does not match this package: ${recoveryPath}`,
+      );
+  }
+
+  const obsoleteItems: CodexSetupPlanItem[] = OBSOLETE_CODEX_ROLES.flatMap(
+    (role) => {
+      const targetPath = resolve(agentsDir, `thoth-agents-${role}.toml`);
+      assertSafeCodexRolePath(targetPath, agentsDir);
+      if (!lstatIfPresent(targetPath)) return [];
+      const key = roleManagedModelStateKey(targetPath);
+      if (!(key in managedModelState.models))
+        throw new Error(
+          `Obsolete Codex role lacks thoth-agents ownership state and was preserved: ${targetPath}. Remove it explicitly before retrying.`,
+        );
+      return [
+        addApplyGuard({
+          kind: 'role-subagent-toml' as const,
+          action: 'retire-obsolete-role-toml' as const,
+          targetPath,
+          description: `Retire attributable obsolete Codex role ${role}.`,
+          requiresBackup: false,
+        }),
+      ];
+    },
+  );
+  const items: CodexSetupPlanItem[] = [
     {
+      kind: 'root-instructions',
+      action: 'merge-managed-block',
+      targetPath: targets.rootInstructionsPath,
+      description: `Merge managed Codex root instructions into ${targets.rootInstructionsPath}.`,
+      requiresBackup: true,
+      content: rootBlock,
+    },
+    addApplyGuard({
+      kind: 'install-recovery',
+      action: 'write-install-recovery',
+      targetPath: recoveryPath,
+      description:
+        'Persist exact role fingerprints for interrupted-install recovery.',
+      requiresBackup: Boolean(lstatIfPresent(recoveryPath)),
+      content: stableJson({ version: 1, roles: recoveryRoles }),
+    }),
+    ...roleItems,
+    ...obsoleteItems,
+    addApplyGuard({
       kind: 'managed-model-state',
       action: 'write-managed-model-state',
       targetPath: targets.managedModelsPath,
@@ -411,7 +602,7 @@ export function buildCodexSetupPlan(
         'Record thoth-agents-managed Codex role model ownership state.',
       requiresBackup: existsSync(targets.managedModelsPath),
       content: stableJson(nextManagedModelState),
-    },
+    }),
     {
       kind: 'user-config',
       action: 'merge-toml',
@@ -467,8 +658,41 @@ export function applyCodexSetup(plan: CodexSetupPlan): CodexApplyResult {
   if (plan.dryRun) return { success: true, changed, diagnostics };
 
   try {
+    // Revalidate the complete ownership transition before its first mutation.
+    // This closes the plan-to-apply window for Worker collisions, obsolete-role
+    // ownership state, and replaced role files.
+    const stateItem = plan.items.find(
+      (item) => item.action === 'write-managed-model-state',
+    );
+    if (!stateItem)
+      throw new Error('Codex managed model state item is missing from plan.');
+    const agentsDir = dirname(stateItem.targetPath);
+    for (const item of plan.items) {
+      if (
+        item.action === 'write-role-toml' ||
+        item.action === 'retire-obsolete-role-toml' ||
+        item.action === 'write-install-recovery' ||
+        item.action === 'write-managed-model-state'
+      ) {
+        assertSafeCodexRolePath(item.targetPath, agentsDir);
+        assertApplyGuard(item);
+      }
+    }
+
     for (const item of plan.items) {
       if (item.action === 'diagnose-only') continue;
+      if (item.action === 'retire-obsolete-role-toml') {
+        const agentsDir = dirname(item.targetPath);
+        assertSafeCodexRolePath(item.targetPath, agentsDir);
+        assertApplyGuard(item);
+        assertSafeCodexRolePath(stateItem.targetPath, agentsDir);
+        assertApplyGuard(stateItem);
+        if (existsSync(item.targetPath)) {
+          rmSync(item.targetPath);
+          changed.push(item.targetPath);
+        }
+        continue;
+      }
       if (item.action === 'merge-toml') {
         const result = writeCodexConfigMerge({
           configPath: item.targetPath,
@@ -481,6 +705,14 @@ export function applyCodexSetup(plan: CodexSetupPlan): CodexApplyResult {
         continue;
       }
       if (item.content === undefined) continue;
+      if (
+        item.action === 'write-role-toml' ||
+        item.action === 'write-install-recovery' ||
+        item.action === 'write-managed-model-state'
+      ) {
+        assertSafeCodexRolePath(item.targetPath, agentsDir);
+        assertApplyGuard(item);
+      }
       const content =
         item.action === 'merge-managed-block'
           ? mergeManagedBlock(
@@ -492,6 +724,22 @@ export function applyCodexSetup(plan: CodexSetupPlan): CodexApplyResult {
           : item.content;
       if (writeTextWithBackup(item.targetPath, content))
         changed.push(item.targetPath);
+      if (item.action === 'write-managed-model-state') {
+        const recoveryItem = plan.items.find(
+          (candidate) => candidate.action === 'write-install-recovery',
+        );
+        if (!recoveryItem?.content)
+          throw new Error('Codex install recovery item is missing from plan.');
+        assertSafeCodexRolePath(recoveryItem.targetPath, agentsDir);
+        if (
+          !lstatIfPresent(recoveryItem.targetPath) ||
+          readFileSync(recoveryItem.targetPath, 'utf8') !== recoveryItem.content
+        )
+          throw new Error(
+            `Codex install recovery state changed before completion: ${recoveryItem.targetPath}`,
+          );
+        rmSync(recoveryItem.targetPath);
+      }
     }
     return { success: true, changed, diagnostics: uniqueMessages(diagnostics) };
   } catch (error) {

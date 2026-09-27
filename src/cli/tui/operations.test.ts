@@ -217,7 +217,7 @@ describe('TUI operations', () => {
       },
       presets: {
         openai: {
-          deep: { model: 'openai/current-deep' },
+          worker: { model: 'openai/current-worker' },
         },
       },
     });
@@ -234,8 +234,8 @@ describe('TUI operations', () => {
       effort: { kind: 'effort', value: 'high' },
     });
     expect(roles).toContainEqual({
-      role: 'deep',
-      model: 'openai/current-deep',
+      role: 'worker',
+      model: 'openai/current-worker',
       effort: { kind: 'inherit' },
     });
   });
@@ -258,7 +258,7 @@ describe('TUI operations', () => {
       preset: 'custom',
       agents: {
         explorer: { model: 'root/explorer' },
-        deep: { variant: 'root-deep-variant' },
+        worker: { variant: 'root-worker-variant' },
       },
       presets: {
         custom: {
@@ -266,7 +266,7 @@ describe('TUI operations', () => {
             model: 'custom/explorer',
             variant: 'custom-explorer-variant',
           },
-          deep: { model: 'custom/deep', variant: 'custom-deep-variant' },
+          worker: { model: 'custom/worker', variant: 'custom-worker-variant' },
           librarian: {
             model: 'custom/librarian',
             variant: 'custom-librarian-variant',
@@ -274,7 +274,7 @@ describe('TUI operations', () => {
         },
         openai: {
           explorer: { model: 'wrong/explorer', variant: 'wrong-explorer' },
-          deep: { model: 'wrong/deep', variant: 'wrong-deep' },
+          worker: { model: 'wrong/worker', variant: 'wrong-worker' },
           librarian: { model: 'wrong/librarian', variant: 'wrong-librarian' },
         },
       },
@@ -288,10 +288,10 @@ describe('TUI operations', () => {
       model: 'root/explorer',
       effort: { kind: 'effort', value: 'custom-explorer-variant' },
     });
-    expect(roles.find(({ role }) => role === 'deep')).toEqual({
-      role: 'deep',
-      model: 'custom/deep',
-      effort: { kind: 'effort', value: 'root-deep-variant' },
+    expect(roles.find(({ role }) => role === 'worker')).toEqual({
+      role: 'worker',
+      model: 'custom/worker',
+      effort: { kind: 'effort', value: 'root-worker-variant' },
     });
     expect(roles.find(({ role }) => role === 'librarian')).toEqual({
       role: 'librarian',
@@ -309,11 +309,11 @@ describe('TUI operations', () => {
       presets: {
         '': {
           explorer: { model: 'empty/explorer', variant: 'empty-variant' },
-          deep: { model: 'empty/deep', variant: 'empty-deep-variant' },
+          worker: { model: 'empty/worker', variant: 'empty-worker-variant' },
         },
         openai: {
           explorer: { model: 'wrong/explorer', variant: 'wrong-explorer' },
-          deep: { model: 'wrong/deep', variant: 'wrong-deep' },
+          worker: { model: 'wrong/worker', variant: 'wrong-worker' },
         },
       },
     });
@@ -326,10 +326,10 @@ describe('TUI operations', () => {
       model: 'root/explorer',
       effort: { kind: 'effort', value: 'empty-variant' },
     });
-    expect(roles.find(({ role }) => role === 'deep')).toEqual({
-      role: 'deep',
-      model: 'empty/deep',
-      effort: { kind: 'effort', value: 'empty-deep-variant' },
+    expect(roles.find(({ role }) => role === 'worker')).toEqual({
+      role: 'worker',
+      model: 'empty/worker',
+      effort: { kind: 'effort', value: 'empty-worker-variant' },
     });
   });
 
@@ -342,7 +342,7 @@ describe('TUI operations', () => {
         },
         presets: {
           openai: {
-            deep: { model: 'wrong/deep', variant: 'wrong-deep-variant' },
+            worker: { model: 'wrong/worker', variant: 'wrong-worker-variant' },
           },
         },
       },
@@ -356,7 +356,7 @@ describe('TUI operations', () => {
         },
         presets: {
           openai: {
-            deep: { model: 'wrong/deep', variant: 'wrong-deep-variant' },
+            worker: { model: 'wrong/worker', variant: 'wrong-worker-variant' },
           },
         },
       },
@@ -372,10 +372,10 @@ describe('TUI operations', () => {
       model: 'root/explorer',
       effort: { kind: 'effort', value: 'root-variant' },
     });
-    expect(roles.find(({ role }) => role === 'deep')).toEqual({
-      role: 'deep',
-      model: 'openai/gpt-6-sol',
-      effort: { kind: 'effort', value: 'medium' },
+    expect(roles.find(({ role }) => role === 'worker')).toEqual({
+      role: 'worker',
+      model: 'openai/gpt-6-luna',
+      effort: { kind: 'effort', value: 'max' },
     });
   });
 
@@ -386,8 +386,8 @@ describe('TUI operations', () => {
     try {
       mkdirSync(agents, { recursive: true });
       writeFileSync(
-        join(agents, 'thoth-agents-deep.toml'),
-        'name = "deep"\nmodel = "gpt-5.6-terra"\nmodel_reasoning_effort = "high"\n',
+        join(agents, 'thoth-agents-worker.toml'),
+        'name = "worker"\nmodel = "gpt-5.6-terra"\nmodel_reasoning_effort = "high"\n',
       );
       writeFileSync(
         join(agents, 'thoth-agents-explorer.toml'),
@@ -397,7 +397,7 @@ describe('TUI operations', () => {
         join(agents, '.thoth-agents-managed-models.json'),
         JSON.stringify({
           version: 1,
-          models: {},
+          models: { 'thoth-agents-worker.toml': 'gpt-6-luna' },
           configuredEfforts: {
             'thoth-agents-explorer.toml': 'high',
           },
@@ -412,7 +412,7 @@ describe('TUI operations', () => {
         scope: 'user',
       });
 
-      expect(roles.find((role) => role.role === 'deep')).toMatchObject({
+      expect(roles.find((role) => role.role === 'worker')).toMatchObject({
         model: 'gpt-5.6-terra',
         effort: { kind: 'effort', value: 'high' },
       });
@@ -433,8 +433,8 @@ describe('TUI operations', () => {
     try {
       mkdirSync(agents, { recursive: true });
       writeFileSync(
-        join(agents, 'deep.md'),
-        '---\nname: deep\nmodel: opus\neffort: high\n---\nbody\n',
+        join(agents, 'worker.md'),
+        '---\nname: worker\nmodel: opus\neffort: high\n---\nbody\n',
       );
       writeFileSync(
         join(agents, 'explorer.md'),
@@ -457,11 +457,11 @@ describe('TUI operations', () => {
         scope: 'user',
       });
 
-      expect(roles.find((role) => role.role === 'deep')).toMatchObject({
+      expect(roles.find((role) => role.role === 'worker')).toMatchObject({
         model: 'sonnet',
       });
       expect(
-        roles.find((role) => role.role === 'deep')?.effort,
+        roles.find((role) => role.role === 'worker')?.effort,
       ).toBeUndefined();
       expect(roles.find((role) => role.role === 'explorer')).toMatchObject({
         model: 'haiku',
@@ -490,15 +490,15 @@ describe('TUI operations', () => {
         scope: 'user',
       });
 
-      expect(codex.find((role) => role.role === 'deep')).toMatchObject({
-        model: 'gpt-6-sol',
-        effort: { kind: 'effort', value: 'medium' },
+      expect(codex.find((role) => role.role === 'worker')).toMatchObject({
+        model: 'gpt-6-luna',
+        effort: { kind: 'effort', value: 'max' },
       });
-      expect(claude.find((role) => role.role === 'deep')).toMatchObject({
+      expect(claude.find((role) => role.role === 'worker')).toMatchObject({
         model: 'sonnet',
       });
       expect(
-        claude.find((role) => role.role === 'deep')?.effort,
+        claude.find((role) => role.role === 'worker')?.effort,
       ).toBeUndefined();
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -520,8 +520,7 @@ describe('TUI operations', () => {
       'librarian',
       'oracle',
       'designer',
-      'quick',
-      'deep',
+      'worker',
     ]);
     for (const role of roles) {
       expect(['sonnet', 'opus', 'haiku', 'inherit']).toContain(role.model);
@@ -644,8 +643,7 @@ describe('shipped model restoration', () => {
       ['librarian', 'gpt-6-luna', 'high'],
       ['oracle', 'gpt-6-astra', 'medium'],
       ['designer', 'gpt-6-sol', 'medium'],
-      ['quick', 'gpt-6-luna', 'medium'],
-      ['deep', 'gpt-6-sol', 'medium'],
+      ['worker', 'gpt-6-luna', 'max'],
     ];
     const compact = (harness: HarnessId) =>
       getShippedModelRoles(harness).map(({ role, model, effort }) => [
@@ -674,8 +672,7 @@ describe('shipped model restoration', () => {
       ['librarian', 'sonnet', 'high'],
       ['oracle', 'opus', 'high'],
       ['designer', 'sonnet', 'medium'],
-      ['quick', 'haiku', 'low'],
-      ['deep', 'sonnet', 'medium'],
+      ['worker', 'sonnet', 'medium'],
     ]);
     const mutated = getShippedModelRoles('codex');
     const first = mutated[0];
@@ -708,7 +705,7 @@ test('restore plans retain missing or unsupported Codex effort diagnostics', asy
       catalogId: `openai/${model}`,
       label: model,
       provider: 'openai',
-      efforts: ['low', 'medium', 'high', 'xhigh'],
+      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
       source: 'remote' as const,
     }));
     const ready = buildRestoreModelPlan('codex', catalog, source);
@@ -720,8 +717,7 @@ test('restore plans retain missing or unsupported Codex effort diagnostics', asy
       { role: 'librarian', model: 'gpt-6-luna', effort: 'high' },
       { role: 'oracle', model: 'gpt-6-astra', effort: 'medium' },
       { role: 'designer', model: 'gpt-6-sol', effort: 'medium' },
-      { role: 'quick', model: 'gpt-6-luna', effort: 'medium' },
-      { role: 'deep', model: 'gpt-6-sol', effort: 'medium' },
+      { role: 'worker', model: 'gpt-6-luna', effort: 'max' },
     ]);
     expect(existsSync(join(root, '.codex'))).toBe(false);
     const unsupported = buildRestoreModelPlan(
@@ -732,7 +728,7 @@ test('restore plans retain missing or unsupported Codex effort diagnostics', asy
     expect(unsupported.canApply).toBe(false);
     const claude = buildRestoreModelPlan('claude', [], source);
     expect(claude.canApply).toBe(false);
-    expect(claude.items).toHaveLength(6);
+    expect(claude.items).toHaveLength(5);
     expect(
       claude.warnings.some(
         ({ code }) => code === 'claude-code-model-cache-owned',

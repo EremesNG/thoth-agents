@@ -1,7 +1,7 @@
 # Installation
 
 thoth-agents supports OpenCode, Codex, Claude Code, and Pi. The distributions share
-one seven-role and AI-first execution contract. Installation uses the CLI
+one six-role and AI-first execution contract. Installation uses the CLI
 for every harness, while Codex additionally requires a CLI-managed global
 orchestration layer that its plugin manifest cannot provide.
 
@@ -34,7 +34,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository to initialize `.thoth/` |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `pi-subagents@0.71.0` and the research packages | The package injects one bounded adaptive-root block, configures fresh depth-one delegation, synchronizes six specialists, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `pi-subagents@0.71.0` and the research packages | The package injects one bounded adaptive-root block, configures fresh depth-one delegation, synchronizes five specialists, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -61,7 +61,7 @@ older thoth-agents entries with one exact entry while preserving unrelated
 plugins. If package identity or version cannot be verified, installation fails
 before changing configuration and never substitutes `latest`.
 
-The CLI also writes the seven-role OpenAI preset, synchronizes all five packaged
+The CLI also writes the six-role OpenAI preset, synchronizes all five packaged
 thoth-owned skills into `~/.config/opencode/skills/`, and installs all four
 external skills with `npx skills add`. Status and repair verify the resulting
 global discovery targets. It then requires provider-owned thoth-mem setup to
@@ -104,7 +104,7 @@ needed for activation, not for cache garbage collection.
 The remaining CLI setup manages:
 
 - `~/.codex/AGENTS.md`: one bounded orchestrator block;
-- `~/.codex/agents/thoth-agents-{explorer,librarian,oracle,designer,quick,deep}.toml`;
+- `~/.codex/agents/thoth-agents-{explorer,librarian,oracle,designer,worker}.toml`;
 - `~/.codex/agents/.thoth-agents-managed-models.json`;
 - `~/.codex/config.toml`: the managed feature merge; and
 - mandatory external skills in the Codex global skill root via `npx skills add`.
@@ -144,7 +144,7 @@ npx thoth-agents@latest install --agent=claude
 
 Restart Claude Code or run `/reload-plugins`, then invoke
 `/thoth-agents:thoth-init` in each repository. Claude discovers the packaged
-orchestrator, six namespaced subagents, MCP configuration, and thoth-owned skill
+orchestrator, five namespaced subagents, MCP configuration, and thoth-owned skill
 tree natively. The CLI installs and verifies the external skills, then invokes
 thoth-mem's Claude setup. Init preflights and synchronizes only the minimum
 `.thoth/` governance; workflow templates remain in the installed plugin skill.
@@ -243,7 +243,7 @@ Before external setup, the CLI rejects unowned or ambiguous first-party state,
 requires configured, loadable, and real-Pi observed evidence, and atomically
 commits `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/pi-package.json`. The native
 extension supplies one bounded root block per turn; it and the CLI share one
-safe synchronizer for exactly six definitions under `~/.pi/agent/agents/`.
+safe synchronizer for exactly five definitions under `~/.pi/agent/agents/`.
 Pi discovers the five owned skills from the package manifest. The CLI installs
 only the four external skills with `--agent pi --global --yes --copy`. No
 orchestrator child is created. Status, previews, and applied results attribute
@@ -301,12 +301,16 @@ also passes `async:true` for librarian calls regardless of `asyncByDefault`.
 Its tool allowlist does not load providers, so it verifies provider/tool
 registration before claiming evidence.
 
-The six specialist definitions use `thoth-` names in both filenames and
+The five specialist definitions use `thoth-` names in both filenames and
 frontmatter: `thoth-explorer`, `thoth-librarian`, `thoth-oracle`,
-`thoth-designer`, `thoth-quick`, and `thoth-deep`. For example,
+`thoth-designer`, and `thoth-worker`. For example,
 `~/.pi/agent/agents/thoth-explorer.md` declares `name: thoth-explorer`.
 Generic definitions such as `explorer.md` can coexist; an unowned definition
-using a reserved `thoth-` specialist name blocks installation.
+using a reserved `thoth-` specialist name blocks installation. During explicit
+setup or synchronization, obsolete `thoth-quick` and `thoth-deep` definitions
+are retired only when their ownership and paths are proven safe. Unowned old
+role files and an unowned `thoth-worker` collision are preserved and reported;
+old role model or thinking customizations are not copied to Worker.
 
 Delegation is lazily activated with `subagents_enable({})`; `subagent` becomes
 available on the next model request. Thoth normally starts fresh work with
@@ -334,8 +338,7 @@ provider. The ambient root retains Pi's selected model and thinking level:
 | librarian | `openai-codex/gpt-6-luna` | `high` |
 | oracle | `openai-codex/gpt-6-astra` | `medium` |
 | designer | `openai-codex/gpt-6-sol` | `medium` |
-| quick | `openai-codex/gpt-6-luna` | `medium` |
-| deep | `openai-codex/gpt-6-sol` | `medium` |
+| worker | `openai-codex/gpt-6-luna` | `max` |
 
 Definitions use pi-subagents' `model` and `thinking` fields. Synchronization
 translates old managed `model: default` to native `model: inherit`, translates
@@ -351,7 +354,7 @@ authenticate providers or silently substitute models.
 ### Configure specialist models inside Pi
 
 Run `/thoth-agents:models` in Pi's interactive TUI. The panel edits the **global**
-six Thoth specialists, not the ambient root. It does not create profiles or
+five Thoth specialists, not the ambient root. It does not create profiles or
 project configuration, install packages, or authenticate providers.
 
 - Use ↑/↓ and Enter to select a role. Type to search Pi's current model catalog,
@@ -368,7 +371,7 @@ project configuration, install packages, or authenticate providers.
   values. Thinking inheritance is unpinned and may use `subagents.defaultThinking`.
 - If a definition changes externally while the panel is open, reopen it before
   saving. Missing/unowned definitions and unsafe paths are rejected. Writes are
-  atomic per file, not across all six files: a failure identifies roles already
+  atomic per file, not across all five files: a failure identifies roles already
   changed, retains the draft, and permits retry after resolving the error.
 
 Custom terminal UI is unavailable in RPC/JSON/print modes; invocation there makes
@@ -460,7 +463,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, six specialist synchronization, five minimum-constrained native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, five specialist synchronization, five minimum-constrained native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps
@@ -511,7 +514,7 @@ npx thoth-agents@latest status --harness=codex
 npx thoth-agents@latest update --harness=codex
 npx thoth-agents@latest update --harness=codex --apply
 npx thoth-agents@latest sync --harness=codex --apply
-npx thoth-agents@latest model --harness=codex --role=deep --model=gpt-5.6-sol
+npx thoth-agents@latest model --harness=codex --role=worker --model=gpt-6-luna --effort=max
 ```
 
 Install is required for every harness; the other operations are optional
@@ -529,8 +532,8 @@ values. **Cancel** is selected initially; returning to the editor preserves any
 unapplied manual edits. A successful restore reloads saved values and clears
 those edits.
 
-OpenCode restores seven roles, including its orchestrator. Codex and Pi restore
-six specialists; their ambient root model remains host-owned. Other settings,
+OpenCode restores six roles, including its orchestrator. Codex and Pi restore
+five specialists; their ambient root model remains host-owned. Other settings,
 prompts and permissions are preserved. Catalog and runtime validation still
 apply: resolve any reported blocker before applying.
 

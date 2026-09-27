@@ -118,8 +118,8 @@ describe('OperationPlan', () => {
       targets: [
         {
           kind: 'file',
-          path: 'C:\\Users\\Ada\\.codex\\agents\\deep.toml',
-          label: 'deep subagent TOML',
+          path: 'C:\\Users\\Ada\\.codex\\agents\\worker.toml',
+          label: 'worker subagent TOML',
           state: 'drift',
         },
       ],
@@ -135,17 +135,17 @@ describe('OperationPlan', () => {
         strategy: 'managed-backup-file',
         destinations: [
           {
-            path: 'C:\\Users\\Ada\\.codex\\agents\\deep.toml.bak',
-            label: 'deep TOML backup',
+            path: 'C:\\Users\\Ada\\.codex\\agents\\worker.toml.bak',
+            label: 'worker TOML backup',
           },
         ],
       },
       items: [
         {
-          title: 'Rewrite deep subagent model line',
+          title: 'Rewrite worker subagent model line',
           target: {
             kind: 'file',
-            path: 'C:\\Users\\Ada\\.codex\\agents\\deep.toml',
+            path: 'C:\\Users\\Ada\\.codex\\agents\\worker.toml',
           },
           state: 'drift',
           preview: 'model = "gpt-5.1"',

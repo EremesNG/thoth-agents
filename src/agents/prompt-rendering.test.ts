@@ -18,7 +18,7 @@ import {
 } from './prompt-sections';
 
 const READ_ONLY_ROLES = ['explorer', 'librarian', 'oracle'] as const;
-const WRITER_ROLES = ['designer', 'quick', 'deep'] as const;
+const WRITER_ROLES = ['designer', 'worker'] as const;
 const DIALECTS = [
   OPENCODE_PROMPT_DIALECT,
   CODEX_PROMPT_DIALECT,
@@ -172,13 +172,16 @@ describe('AI-first prompt rendering', () => {
       sectionsFor('explorer'),
       OPENCODE_PROMPT_DIALECT,
     );
-    const deep = renderRolePrompt(sectionsFor('deep'), OPENCODE_PROMPT_DIALECT);
+    const worker = renderRolePrompt(
+      sectionsFor('worker'),
+      OPENCODE_PROMPT_DIALECT,
+    );
     const oracle = renderRolePrompt(
       sectionsFor('oracle'),
       OPENCODE_PROMPT_DIALECT,
     );
     expect(explorer).toContain('Do not mutate the workspace');
-    expect(deep).toContain('Edit only the assigned work-unit surface');
+    expect(worker).toContain('Edit only the assigned work-unit surface');
     expect(oracle).toContain('independent judgment');
     expect(oracle).toContain('cannot substitute');
   });

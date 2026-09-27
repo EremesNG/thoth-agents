@@ -1,10 +1,15 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   PI_SPECIALIST_ROLES,
   piSpecialistName,
 } from '../harness/pi-specialists';
-import { writePiManagedText } from './pi-managed-write';
+import {
+  assertSafePiManagedPath,
+  writePiManagedText,
+} from './pi-managed-write';
+
+const OBSOLETE_PI_SPECIALIST_NAMES = ['thoth-quick', 'thoth-deep'] as const;
 
 export const PI_SPECIALIST_NAMES = PI_SPECIALIST_ROLES.map(piSpecialistName);
 export interface PiSpecialistSyncOptions {
@@ -12,6 +17,8 @@ export interface PiSpecialistSyncOptions {
   piRoot: string;
   dryRun?: boolean;
   projectRoots?: readonly string[];
+  /** Test-only seam for exercising replacement races before retirement. */
+  beforeRetireForTest?: () => void;
 }
 export interface PiSpecialistSyncResult {
   success: boolean;
@@ -108,6 +115,38 @@ export function syncPiSpecialists(
       );
   try {
     const prepared: Array<{ target: string; content: string }> = [];
+    const retired: Array<{ target: string; content: string }> = [];
+
+    // Preflight every write and retirement before mutating anything. A role
+    // filename alone is never ownership evidence.
+    for (const name of PI_SPECIALIST_NAMES) {
+      const target = join(options.piRoot, 'agents', `${name}.md`);
+      assertSafePiManagedPath(target);
+      if (existsSync(target)) {
+        const current = readFileSync(target, 'utf8');
+        if (field(current, 'managed-by') !== 'thoth-agents')
+          conflicts.push(target);
+      }
+    }
+    for (const name of OBSOLETE_PI_SPECIALIST_NAMES) {
+      const target = join(options.piRoot, 'agents', `${name}.md`);
+      assertSafePiManagedPath(target);
+      if (!existsSync(target)) continue;
+      const current = readFileSync(target, 'utf8');
+      if (field(current, 'managed-by') !== 'thoth-agents')
+        conflicts.push(target);
+      else retired.push({ target, content: current });
+    }
+    if (conflicts.length > 0)
+      return {
+        success: false,
+        changed,
+        conflicts,
+        diagnostics,
+        error:
+          'Unowned canonical or obsolete Pi specialist definitions block synchronization; remove or rename them explicitly before retrying.',
+      };
+
     for (const name of PI_SPECIALIST_NAMES) {
       const source = join(options.packageRoot, 'pi', 'agents', `${name}.md`);
       const target = join(options.piRoot, 'agents', `${name}.md`);
@@ -121,30 +160,40 @@ export function syncPiSpecialists(
         throw new Error(`Invalid package-owned Pi specialist asset: ${source}`);
       if (existsSync(target)) {
         const current = readFileSync(target, 'utf8');
-        if (field(current, 'managed-by') !== 'thoth-agents') {
-          conflicts.push(target);
-          continue;
-        }
         content = preserveOverrides(content, current);
         if (content === current) continue;
       }
       prepared.push({ target, content });
     }
-    if (conflicts.length > 0)
-      return {
-        success: false,
-        changed,
-        conflicts,
-        diagnostics,
-        error:
-          'Unowned canonical Pi specialist definitions block synchronization.',
-      };
-    if (!options.dryRun)
+    if (!options.dryRun) {
+      // Write the complete current roster before retiring obsolete assets so an
+      // interrupted run remains recoverable by an idempotent retry.
       for (const item of prepared) {
         writePiManagedText(item.target, item.content);
         changed.push(item.target);
       }
-    else changed.push(...prepared.map(({ target }) => target));
+      options.beforeRetireForTest?.();
+      for (const retiredItem of retired) {
+        const { target, content } = retiredItem;
+        assertSafePiManagedPath(target);
+        const current = existsSync(target)
+          ? readFileSync(target, 'utf8')
+          : undefined;
+        if (
+          current !== content ||
+          field(current ?? '', 'managed-by') !== 'thoth-agents'
+        )
+          throw new Error(
+            `Managed Pi obsolete role changed before retirement and was preserved: ${target}`,
+          );
+        rmSync(target);
+        changed.push(target);
+      }
+    } else
+      changed.push(
+        ...prepared.map(({ target }) => target),
+        ...retired.map(({ target }) => target),
+      );
     return { success: true, changed, conflicts, diagnostics };
   } catch (error) {
     return {

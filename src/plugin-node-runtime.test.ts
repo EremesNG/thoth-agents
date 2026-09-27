@@ -19,7 +19,7 @@ import { SUPPORTED_HARNESSES } from './harness/registry';
 const pluginSourcePath = fileURLToPath(new URL('./index.ts', import.meta.url));
 
 describe('plugin runtime compatibility', () => {
-  test('publishes one native Pi extension, one skill root, and six specialist assets', () => {
+  test('publishes one native Pi extension, one skill root, and five specialist assets', () => {
     const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
     expect(packageJson.keywords).toContain('pi-package');
     expect(packageJson.pi).toEqual({
@@ -31,12 +31,11 @@ describe('plugin runtime compatibility', () => {
     expect(
       readdirSync('pi/agents').filter((name) => name.endsWith('.md')),
     ).toEqual([
-      'thoth-deep.md',
       'thoth-designer.md',
       'thoth-explorer.md',
       'thoth-librarian.md',
       'thoth-oracle.md',
-      'thoth-quick.md',
+      'thoth-worker.md',
     ]);
   });
   test.skipIf(!existsSync('dist/pi.js'))(

@@ -4,11 +4,12 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { dirname, join } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
 import {
   applyCodexManagedModelOverrides,
   applyCodexSetup,
@@ -18,6 +19,7 @@ import {
   parseRoleTomlEffort,
   replaceRoleTomlEffort,
 } from './codex-install';
+import * as managedStateIo from './managed-state-io';
 
 const FORBIDDEN_CODEX_ADAPTATION_MARKERS = [
   '<codex-adaptation>',
@@ -114,8 +116,7 @@ describe('Codex install setup plan', () => {
         librarian: { model: 'gpt-6-luna', effort: 'high' },
         explorer: { model: 'gpt-6-luna', effort: 'low' },
         designer: { model: 'gpt-6-sol', effort: 'medium' },
-        quick: { model: 'gpt-6-luna', effort: 'medium' },
-        deep: { model: 'gpt-6-sol', effort: 'medium' },
+        worker: { model: 'gpt-6-luna', effort: 'max' },
       } as const;
 
       for (const [role, defaults] of Object.entries(expected)) {
@@ -241,7 +242,7 @@ describe('Codex install setup plan', () => {
 
       const formatted = formatCodexSetupPlan(plan);
       expect(formatted).toContain('- merge-managed-block:');
-      expect(formatted.match(/- write-role-toml:/g)).toHaveLength(6);
+      expect(formatted.match(/- write-role-toml:/g)).toHaveLength(5);
       expect(formatted).toContain('- merge-toml:');
       expect(formatted).not.toContain('.codex/plugins');
       expect(formatted).not.toContain('.agents/plugins/marketplace.json');
@@ -511,11 +512,11 @@ describe('Codex install setup plan', () => {
     try {
       const home = join(dir, 'home');
       applyFreshCodexSetup(dir, home);
-      const deep = rolePath(home, 'deep');
+      const worker = rolePath(home, 'worker');
       const explorer = rolePath(home, 'explorer');
       writeFileSync(
-        deep,
-        replaceRoleTomlEffort(readFileSync(deep, 'utf8'), 'high'),
+        worker,
+        replaceRoleTomlEffort(readFileSync(worker, 'utf8'), 'high'),
       );
       writeFileSync(
         explorer,
@@ -529,7 +530,7 @@ describe('Codex install setup plan', () => {
 
       applyFreshCodexSetup(dir, home);
 
-      expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBe('high');
+      expect(parseRoleTomlEffort(readFileSync(worker, 'utf8'))).toBe('high');
       expect(
         parseRoleTomlEffort(readFileSync(explorer, 'utf8')),
       ).toBeUndefined();
@@ -543,10 +544,10 @@ describe('Codex install setup plan', () => {
     try {
       const home = join(dir, 'home');
       applyFreshCodexSetup(dir, home);
-      const deep = rolePath(home, 'deep');
+      const worker = rolePath(home, 'worker');
       writeFileSync(
-        deep,
-        replaceRoleTomlEffort(readFileSync(deep, 'utf8'), 'high'),
+        worker,
+        replaceRoleTomlEffort(readFileSync(worker, 'utf8'), 'high'),
       );
 
       const installConfig = {
@@ -559,34 +560,34 @@ describe('Codex install setup plan', () => {
       };
       expect(
         applyCodexManagedModelOverrides(installConfig, [
-          { role: 'deep', model: 'openai/gpt-5.3-codex-spark' },
+          { role: 'worker', model: 'openai/gpt-5.3-codex-spark' },
         ]).success,
       ).toBe(true);
       expect
-        .soft(roleModel(readFileSync(deep, 'utf8')))
+        .soft(roleModel(readFileSync(worker, 'utf8')))
         .toBe('gpt-5.3-codex-spark');
-      expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBe('high');
+      expect(parseRoleTomlEffort(readFileSync(worker, 'utf8'))).toBe('high');
       const state = readManagedModelState(home);
-      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-6-sol');
+      expect(state.models['thoth-agents-worker.toml']).toBe('gpt-6-luna');
       expect
-        .soft(state.configuredModels?.['thoth-agents-deep.toml'])
+        .soft(state.configuredModels?.['thoth-agents-worker.toml'])
         .toBe('gpt-5.3-codex-spark');
-      expect(state.models['thoth-agents-deep.toml']).not.toBe(
-        state.configuredModels?.['thoth-agents-deep.toml'],
+      expect(state.models['thoth-agents-worker.toml']).not.toBe(
+        state.configuredModels?.['thoth-agents-worker.toml'],
       );
-      expect(existsSync(`${deep}.bak`)).toBe(true);
+      expect(existsSync(`${worker}.bak`)).toBe(true);
       expect(existsSync(`${managedModelsPath(home)}.bak`)).toBe(true);
 
       expect(
         applyCodexManagedModelOverrides(installConfig, [
           {
-            role: 'deep',
+            role: 'worker',
             model: 'openai/gpt-5.3-codex-spark',
             clearEffort: true,
           },
         ]).success,
       ).toBe(true);
-      expect(parseRoleTomlEffort(readFileSync(deep, 'utf8'))).toBeUndefined();
+      expect(parseRoleTomlEffort(readFileSync(worker, 'utf8'))).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -597,7 +598,7 @@ describe('Codex install setup plan', () => {
     try {
       const home = join(dir, 'home');
       applyFreshCodexSetup(dir, home);
-      const target = rolePath(home, 'deep');
+      const target = rolePath(home, 'worker');
       writeFileSync(
         target,
         replaceRoleModel(
@@ -607,7 +608,7 @@ describe('Codex install setup plan', () => {
       );
 
       const before = readManagedModelState(home);
-      expect(before.models['thoth-agents-deep.toml']).toBe('gpt-6-sol');
+      expect(before.models['thoth-agents-worker.toml']).toBe('gpt-6-luna');
       expect(
         applyCodexManagedModelOverrides(
           {
@@ -618,7 +619,7 @@ describe('Codex install setup plan', () => {
             homeDir: home,
             packageRoot: PACKAGE_ROOT,
           },
-          [{ role: 'deep', model: 'gpt-5.3-codex-spark' }],
+          [{ role: 'worker', model: 'gpt-5.3-codex-spark' }],
         ).success,
       ).toBe(true);
 
@@ -626,14 +627,14 @@ describe('Codex install setup plan', () => {
       expect(roleModel(readFileSync(target, 'utf8'))).toBe(
         'gpt-5.3-codex-spark',
       );
-      expect(state.models['thoth-agents-deep.toml']).toBe('gpt-6-sol');
-      expect(state.configuredModels?.['thoth-agents-deep.toml']).toBe(
+      expect(state.models['thoth-agents-worker.toml']).toBe('gpt-6-luna');
+      expect(state.configuredModels?.['thoth-agents-worker.toml']).toBe(
         'gpt-5.3-codex-spark',
       );
-      expect(state.models['thoth-agents-deep.toml']).not.toContain('openai/');
-      expect(state.configuredModels?.['thoth-agents-deep.toml']).not.toContain(
-        'openai/',
-      );
+      expect(state.models['thoth-agents-worker.toml']).not.toContain('openai/');
+      expect(
+        state.configuredModels?.['thoth-agents-worker.toml'],
+      ).not.toContain('openai/');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -643,7 +644,7 @@ describe('Codex install setup plan', () => {
     try {
       const home = join(dir, 'home');
       applyFreshCodexSetup(dir, home);
-      const target = rolePath(home, 'deep');
+      const target = rolePath(home, 'worker');
       const installed = readFileSync(target, 'utf8');
       writeFileSync(
         target,
@@ -657,11 +658,11 @@ describe('Codex install setup plan', () => {
 
       const updated = readFileSync(target, 'utf8');
       expect(roleModel(updated)).toBe('user-custom-model');
-      expect(parseRoleTomlEffort(updated)).toBe('medium');
+      expect(parseRoleTomlEffort(updated)).toBe('max');
       expect(updated).not.toContain('toggle');
       expect(updated).not.toContain('budget_tokens');
       expect(updated).toContain('sandbox_mode = "workspace-write"');
-      expect(readManagedModels(home)['thoth-agents-deep.toml']).toBe(
+      expect(readManagedModels(home)['thoth-agents-worker.toml']).toBe(
         roleModel(installed),
       );
     } finally {
@@ -669,7 +670,7 @@ describe('Codex install setup plan', () => {
     }
   });
 
-  test('updates managed Codex role model', () => {
+  test('retires only attributable obsolete Codex roles', () => {
     const dir = mkdtempSync(join(tmpdir(), 'codex-install-'));
     try {
       const home = join(dir, 'home');
@@ -693,11 +694,425 @@ describe('Codex install setup plan', () => {
 
       applyFreshCodexSetup(dir, home);
 
-      const updatedModel = roleModel(readFileSync(target, 'utf8'));
-      expect(updatedModel).not.toBe('old-managed-model');
-      expect(readManagedModels(home)['thoth-agents-quick.toml']).toBe(
-        updatedModel,
+      expect(existsSync(target)).toBe(false);
+      expect(
+        readManagedModels(home)['thoth-agents-quick.toml'],
+      ).toBeUndefined();
+      expect(existsSync(rolePath(home, 'worker'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('preserves an obsolete role replaced while current roles are being written', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-retire-race-'));
+    const originalWrite = managedStateIo.writeTextWithBackup;
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const home = join(dir, 'home');
+      const target = rolePath(home, 'deep');
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, 'model = "old-managed-model"\n');
+      writeFileSync(
+        managedModelsPath(home),
+        JSON.stringify({
+          version: 1,
+          models: { 'thoth-agents-deep.toml': 'old-managed-model' },
+        }),
       );
+      const plan = buildCodexSetupPlan({
+        dryRun: false,
+        reset: false,
+        scope: 'user',
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+      });
+      spy = vi
+        .spyOn(managedStateIo, 'writeTextWithBackup')
+        .mockImplementation((path, content) => {
+          const changed = originalWrite(path, content);
+          if (path === rolePath(home, 'worker'))
+            writeFileSync(target, 'model = "replacement-during-apply"\n');
+          return changed;
+        });
+      const result = applyCodexSetup(plan);
+      expect(result.success).toBe(false);
+      expect(result.changed).toContain(rolePath(home, 'worker'));
+      expect(readFileSync(target, 'utf8')).toContain(
+        'replacement-during-apply',
+      );
+    } finally {
+      spy?.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects plan-to-apply replacement and ownership loss before any mutation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-race-'));
+    try {
+      const home = join(dir, 'home');
+      const target = rolePath(home, 'deep');
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, 'model = "old-managed-model"\n');
+      writeFileSync(
+        managedModelsPath(home),
+        JSON.stringify({
+          version: 1,
+          models: { 'thoth-agents-deep.toml': 'old-managed-model' },
+        }),
+      );
+      const plan = buildCodexSetupPlan({
+        dryRun: false,
+        reset: false,
+        scope: 'user',
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+      });
+      writeFileSync(target, 'model = "user-replacement"\n');
+      writeFileSync(managedModelsPath(home), '{"version":1,"models":{}}\n');
+
+      const result = applyCodexSetup(plan);
+      expect(result).toMatchObject({
+        success: false,
+        changed: [],
+        error: expect.stringContaining('changed after planning'),
+      });
+      expect(readFileSync(target, 'utf8')).toContain('user-replacement');
+      expect(existsSync(rolePath(home, 'worker'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects obsolete-role ownership loss after planning before any mutation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-ownership-race-'));
+    try {
+      const home = join(dir, 'home');
+      const target = rolePath(home, 'quick');
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, 'model = "old-managed-model"\n');
+      writeFileSync(
+        managedModelsPath(home),
+        JSON.stringify({
+          version: 1,
+          models: { 'thoth-agents-quick.toml': 'old-managed-model' },
+        }),
+      );
+      const plan = buildCodexSetupPlan({
+        dryRun: false,
+        reset: false,
+        scope: 'user',
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+      });
+      writeFileSync(managedModelsPath(home), '{"version":1,"models":{}}\n');
+
+      const result = applyCodexSetup(plan);
+      expect(result).toMatchObject({
+        success: false,
+        changed: [],
+        error: expect.stringContaining('changed after planning'),
+      });
+      expect(existsSync(target)).toBe(true);
+      expect(existsSync(rolePath(home, 'worker'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects a Worker collision introduced after planning', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-worker-race-'));
+    try {
+      const home = join(dir, 'home');
+      const plan = buildCodexSetupPlan({
+        dryRun: false,
+        reset: false,
+        scope: 'user',
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+      });
+      const worker = rolePath(home, 'worker');
+      mkdirSync(dirname(worker), { recursive: true });
+      writeFileSync(worker, 'model = "user-owned"\n');
+
+      const result = applyCodexSetup(plan);
+      expect(result).toMatchObject({
+        success: false,
+        changed: [],
+        error: expect.stringContaining('appeared after planning'),
+      });
+      expect(readFileSync(worker, 'utf8')).toContain('user-owned');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    'journal',
+    'worker',
+    'ledger',
+  ] as const)('rejects a %s symlink introduced by an earlier apply write', (kind) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-apply-symlink-'));
+    const originalWrite = managedStateIo.writeTextWithBackup;
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const home = join(dir, 'home');
+      const obsolete = rolePath(home, 'deep');
+      const ledger = managedModelsPath(home);
+      mkdirSync(dirname(obsolete), { recursive: true });
+      writeFileSync(obsolete, 'model = "old-managed-model"\n');
+      const state = JSON.stringify({
+        version: 1,
+        models: { 'thoth-agents-deep.toml': 'old-managed-model' },
+      });
+      writeFileSync(ledger, state);
+      const plan = buildCodexSetupPlan({
+        dryRun: false,
+        reset: false,
+        scope: 'user',
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+      });
+      const target =
+        kind === 'journal'
+          ? plan.items.find((item) => item.action === 'write-install-recovery')
+              ?.targetPath
+          : kind === 'worker'
+            ? rolePath(home, 'worker')
+            : ledger;
+      if (!target) throw new Error('Missing planned recovery target');
+      const outside = join(dir, 'outside-managed-scope');
+      if (kind === 'ledger') writeFileSync(outside, state);
+      let replaced = false;
+      spy = vi
+        .spyOn(managedStateIo, 'writeTextWithBackup')
+        .mockImplementation((path, content) => {
+          const changed = originalWrite(path, content);
+          const trigger =
+            kind === 'ledger'
+              ? path === rolePath(home, 'worker')
+              : path === plan.items[0].targetPath;
+          if (trigger && !replaced) {
+            rmSync(target, { force: true });
+            symlinkSync(outside, target, 'file');
+            replaced = true;
+          }
+          return changed;
+        });
+      const result = applyCodexSetup(plan);
+      expect(replaced).toBe(true);
+      expect(result.success).toBe(false);
+      expect(result.changed.length).toBeGreaterThan(0);
+      expect(readFileSync(obsolete, 'utf8')).toContain('old-managed-model');
+      if (kind === 'ledger') expect(readFileSync(outside, 'utf8')).toBe(state);
+      else expect(existsSync(outside)).toBe(false);
+    } finally {
+      spy?.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('recovers an interrupted first install only from exact role fingerprints', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-recovery-'));
+    const originalWrite = managedStateIo.writeTextWithBackup;
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const home = join(dir, 'home');
+      const firstPlan = buildCodexSetupPlan({
+        dryRun: false,
+        reset: false,
+        scope: 'user',
+        projectRoot: dir,
+        homeDir: home,
+        packageRoot: PACKAGE_ROOT,
+      });
+      spy = vi
+        .spyOn(managedStateIo, 'writeTextWithBackup')
+        .mockImplementation((path, content) => {
+          if (path === managedModelsPath(home)) throw new Error('interrupted');
+          return originalWrite(path, content);
+        });
+      const interrupted = applyCodexSetup(firstPlan);
+      expect(interrupted.success).toBe(false);
+      expect(existsSync(rolePath(home, 'worker'))).toBe(true);
+      expect(existsSync(managedModelsPath(home))).toBe(false);
+      spy.mockRestore();
+      spy = undefined;
+
+      const retried = applyCodexSetup(
+        buildCodexSetupPlan({
+          dryRun: false,
+          reset: false,
+          scope: 'user',
+          projectRoot: dir,
+          homeDir: home,
+          packageRoot: PACKAGE_ROOT,
+        }),
+      );
+      expect(retried.success).toBe(true);
+      expect(readManagedModels(home)['thoth-agents-worker.toml']).toBe(
+        'gpt-6-luna',
+      );
+      expect(
+        existsSync(
+          join(home, '.codex', 'agents', '.thoth-agents-install-recovery.json'),
+        ),
+      ).toBe(false);
+    } finally {
+      spy?.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects replacement of an interrupted-install Worker', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-recovery-replace-'));
+    const originalWrite = managedStateIo.writeTextWithBackup;
+    let spy: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const home = join(dir, 'home');
+      spy = vi
+        .spyOn(managedStateIo, 'writeTextWithBackup')
+        .mockImplementation((path, content) => {
+          if (path === managedModelsPath(home)) throw new Error('interrupted');
+          return originalWrite(path, content);
+        });
+      applyCodexSetup(
+        buildCodexSetupPlan({
+          dryRun: false,
+          reset: false,
+          scope: 'user',
+          projectRoot: dir,
+          homeDir: home,
+          packageRoot: PACKAGE_ROOT,
+        }),
+      );
+      spy.mockRestore();
+      spy = undefined;
+      writeFileSync(
+        rolePath(home, 'worker'),
+        'model = "unowned-replacement"\n',
+      );
+
+      expect(() =>
+        buildCodexSetupPlan({
+          dryRun: false,
+          reset: false,
+          scope: 'user',
+          projectRoot: dir,
+          homeDir: home,
+          packageRoot: PACKAGE_ROOT,
+        }),
+      ).toThrow(/trustworthy recovery fingerprint/);
+      expect(readFileSync(rolePath(home, 'worker'), 'utf8')).toContain(
+        'unowned-replacement',
+      );
+    } finally {
+      spy?.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    'worker',
+    'deep',
+    'ledger',
+  ] as const)('rejects a dangling %s symlink before mutation', (kind) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-dangling-'));
+    try {
+      const home = join(dir, 'home');
+      const agents = join(home, '.codex', 'agents');
+      mkdirSync(agents, { recursive: true });
+      const target =
+        kind === 'ledger' ? managedModelsPath(home) : rolePath(home, kind);
+      symlinkSync(join(dir, `missing-${kind}`), target, 'file');
+      expect(() =>
+        buildCodexSetupPlan({
+          dryRun: false,
+          reset: false,
+          scope: 'user',
+          projectRoot: dir,
+          homeDir: home,
+          packageRoot: PACKAGE_ROOT,
+        }),
+      ).toThrow(/symlink/);
+      expect(existsSync(rolePath(home, 'explorer'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('fails closed on corrupt interrupted-install recovery state', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-recovery-corrupt-'));
+    try {
+      const home = join(dir, 'home');
+      const agents = join(home, '.codex', 'agents');
+      mkdirSync(agents, { recursive: true });
+      writeFileSync(join(agents, '.thoth-agents-install-recovery.json'), '{}');
+      expect(() =>
+        buildCodexSetupPlan({
+          dryRun: false,
+          reset: false,
+          scope: 'user',
+          projectRoot: dir,
+          homeDir: home,
+          packageRoot: PACKAGE_ROOT,
+        }),
+      ).toThrow(/Corrupt Codex install recovery state/);
+      expect(existsSync(rolePath(home, 'worker'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects a dangling symlinked Codex agents ancestor', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-dangling-parent-'));
+    try {
+      const home = join(dir, 'home');
+      mkdirSync(join(home, '.codex'), { recursive: true });
+      symlinkSync(
+        join(dir, 'missing-agents'),
+        join(home, '.codex', 'agents'),
+        'dir',
+      );
+      expect(() =>
+        buildCodexSetupPlan({
+          dryRun: false,
+          reset: false,
+          scope: 'user',
+          projectRoot: dir,
+          homeDir: home,
+          packageRoot: PACKAGE_ROOT,
+        }),
+      ).toThrow(/symlinked parent/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects a symlinked Codex agents directory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-link-'));
+    try {
+      const home = join(dir, 'home');
+      const realAgents = join(dir, 'real-agents');
+      mkdirSync(join(home, '.codex'), { recursive: true });
+      mkdirSync(realAgents, { recursive: true });
+      symlinkSync(realAgents, join(home, '.codex', 'agents'), 'junction');
+
+      expect(() =>
+        buildCodexSetupPlan({
+          dryRun: false,
+          reset: false,
+          scope: 'user',
+          projectRoot: dir,
+          homeDir: home,
+          packageRoot: PACKAGE_ROOT,
+        }),
+      ).toThrow(/symlinked parent/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -717,14 +1132,13 @@ describe('Codex install setup plan', () => {
       );
       rmSync(managedModelsPath(home), { force: true });
 
-      applyFreshCodexSetup(dir, home);
+      expect(() => applyFreshCodexSetup(dir, home)).toThrow(
+        /Worker Codex role lacks thoth-agents ownership state/,
+      );
 
       expect(roleModel(readFileSync(explorer, 'utf8'))).toBe(explorerDefault);
       expect(roleModel(readFileSync(librarian, 'utf8'))).toBe(
         'legacy-user-model',
-      );
-      expect(readManagedModels(home)['thoth-agents-librarian.toml']).toBe(
-        undefined,
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });

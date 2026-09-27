@@ -8,7 +8,7 @@ import {
   type ModelsPanelCatalogModel,
 } from './models-panel';
 
-const roles = ['explorer', 'librarian', 'oracle', 'designer', 'quick', 'deep'];
+const roles = ['explorer', 'librarian', 'oracle', 'designer', 'worker'];
 
 function snapshot(): PiModelSnapshot {
   return {

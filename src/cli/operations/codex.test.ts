@@ -386,7 +386,7 @@ describe('Codex operations adapter', () => {
 
   test('resolves only exact catalog efforts in the documented Codex surface', () => {
     const base = {
-      role: 'deep',
+      role: 'worker',
       model: 'gpt-5.6-sol',
       catalogId: 'openai/gpt-5.6-sol',
       availableEfforts: ['none', 'max', 'ultra', 'future-level'],
@@ -424,10 +424,10 @@ describe('Codex operations adapter', () => {
       expect(getCodexStatus(context(dir, home)).state).toBe('installed');
 
       writeFileSync(
-        rolePath(home, 'deep'),
-        readFileSync(rolePath(home, 'deep'), 'utf8').replace(
-          'name = "deep"',
-          'name = "deep-drift"',
+        rolePath(home, 'worker'),
+        readFileSync(rolePath(home, 'worker'), 'utf8').replace(
+          'name = "worker"',
+          'name = "worker-drift"',
         ),
       );
       expect(getCodexStatus(context(dir, home)).state).toBe('drift');
@@ -437,8 +437,8 @@ describe('Codex operations adapter', () => {
       const unknown = getCodexStatus(context(dir, home));
       expect(unknown.state).toBe('unknown');
       expect(
-        unknown.targets.some((target) =>
-          target.observed?.includes('unparseable managed model state'),
+        unknown.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes('ownership state'),
         ),
       ).toBe(true);
     } finally {
@@ -527,7 +527,7 @@ describe('Codex operations adapter', () => {
 
       const applied = applyCodexPlan(plan);
       expect(applied.applied).toBe(true);
-      expect(existsSync(rolePath(home, 'deep'))).toBe(true);
+      expect(existsSync(rolePath(home, 'worker'))).toBe(true);
       expect(installRequiredSkillMock).toHaveBeenCalledTimes(4);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -565,9 +565,9 @@ describe('Codex operations adapter', () => {
           harness: 'codex',
           dryRun: true,
           roles: [
-            { role: 'deep', model: 'openai/gpt-5.5' },
+            { role: 'worker', model: 'openai/gpt-5.5' },
             {
-              role: 'quick',
+              role: 'designer',
               provider: 'openai',
               model: 'gpt-5.4-mini',
               catalogId: 'openai/gpt-5.4-mini',
@@ -612,7 +612,7 @@ describe('Codex operations adapter', () => {
       const update = buildCodexUpdatePlan(context(dir, home));
       const applied = applyCodexPlan(update);
       expect(applied.applied).toBe(true);
-      expect(existsSync(rolePath(home, 'deep'))).toBe(true);
+      expect(existsSync(rolePath(home, 'worker'))).toBe(true);
       expect(
         applyCodexPlan({ ...buildCodexUpdatePlan(context(dir, home)) }).applied,
       ).toBe(false);
@@ -623,28 +623,28 @@ describe('Codex operations adapter', () => {
         }).applied,
       ).toBe(false);
 
-      const quickPath = rolePath(home, 'quick');
-      const quickBefore = readFileSync(quickPath, 'utf8').replace(
+      const workerPath = rolePath(home, 'worker');
+      const workerBefore = readFileSync(workerPath, 'utf8').replace(
         'sandbox_mode = "workspace-write"',
         'sandbox_mode = "read-only"',
       );
-      writeFileSync(quickPath, quickBefore);
+      writeFileSync(workerPath, workerBefore);
       const modelPlan = buildCodexModelPlan(
         {
           harness: 'codex',
           dryRun: true,
-          roles: [{ role: 'quick', model: 'openai/gpt-5.4-mini' }],
+          roles: [{ role: 'worker', model: 'openai/gpt-5.4-mini' }],
         },
         context(dir, home),
       );
       const modelApplied = applyCodexPlan(modelPlan);
       expect(modelApplied.applied).toBe(true);
-      const quickAfter = readFileSync(quickPath, 'utf8');
-      expect(roleModel(quickAfter)).toBe('gpt-5.4-mini');
-      expect(quickAfter).toContain('sandbox_mode = "read-only"');
-      expect(quickAfter).toContain('model_reasoning_effort = "medium"');
-      expect(quickAfter).not.toContain('toggle');
-      expect(quickAfter).not.toContain('budget_tokens');
+      const workerAfter = readFileSync(workerPath, 'utf8');
+      expect(roleModel(workerAfter)).toBe('gpt-5.4-mini');
+      expect(workerAfter).toContain('sandbox_mode = "read-only"');
+      expect(workerAfter).toContain('model_reasoning_effort = "max"');
+      expect(workerAfter).not.toContain('toggle');
+      expect(workerAfter).not.toContain('budget_tokens');
 
       const clearPlan = buildCodexModelPlan(
         {
@@ -652,7 +652,7 @@ describe('Codex operations adapter', () => {
           dryRun: true,
           roles: [
             {
-              role: 'quick',
+              role: 'worker',
               model: 'openai/gpt-5.4-mini',
               effort: { kind: 'inherit' },
             },
@@ -661,7 +661,7 @@ describe('Codex operations adapter', () => {
         context(dir, home),
       );
       expect(applyCodexPlan(clearPlan).applied).toBe(true);
-      expect(readFileSync(quickPath, 'utf8')).not.toContain(
+      expect(readFileSync(workerPath, 'utf8')).not.toContain(
         'model_reasoning_effort',
       );
       expect(readFileSync(managedModelsPath(home), 'utf8')).toContain(
@@ -673,8 +673,8 @@ describe('Codex operations adapter', () => {
       expect(getCodexStatus(context(dir, home)).state).toBe('drift');
 
       setup(dir, home);
-      expect(roleModel(readFileSync(quickPath, 'utf8'))).toBe('gpt-5.4-mini');
-      expect(readFileSync(quickPath, 'utf8')).not.toContain(
+      expect(roleModel(readFileSync(workerPath, 'utf8'))).toBe('gpt-5.4-mini');
+      expect(readFileSync(workerPath, 'utf8')).not.toContain(
         'model_reasoning_effort',
       );
       expect(getCodexStatus(context(dir, home)).state).toBe('installed');
@@ -710,7 +710,7 @@ test('restores Codex defaults without replacing unrelated TOML settings', () => 
         label: model,
         provider: 'openai',
         source: 'remote' as const,
-        efforts: ['low', 'medium', 'high', 'xhigh'],
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
       })),
       {
         ...context(home, home),

@@ -214,7 +214,6 @@ describe('install', () => {
       'package:npm:pi-web-access@>=0.27.0',
       'package:npm:pi-mcp-adapter@>=2.32.1',
       'package:npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
-      'package:npm:@juicesharp/rpiv-todo@>=2.9.0',
       'external:simplify',
       'external:tdd',
       'external:progressive-context-router',

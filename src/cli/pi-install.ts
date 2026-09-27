@@ -68,12 +68,6 @@ export const PI_PACKAGE_SPECS = [
     packageName: '@juicesharp/rpiv-ask-user-question',
     version: '2.9.0',
   },
-  {
-    id: 'todo',
-    source: 'npm:@juicesharp/rpiv-todo@>=2.9.0',
-    packageName: '@juicesharp/rpiv-todo',
-    version: '2.9.0',
-  },
 ] as const;
 
 export const PI_GREP_MCP_ENTRY = {

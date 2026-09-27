@@ -281,7 +281,6 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
     backgroundWaitInstruction:
       'Background runs notify the parent on completion. Do not sleep or poll status merely to wait; use `bg_wait({ id })` only when a blocking wait is needed and enabled.',
     userQuestionTool: 'ask_user_question',
-    progressTool: 'todo',
     hostStatusSurface: 'subagent({ action: "status" })',
     lifecycle: {
       freshDelegation:

@@ -46,8 +46,12 @@ describe('Pi adapter', () => {
   test('keeps question dialogs and session progress root-owned', () => {
     const root = renderPiRootInstructions();
     expect(root).toContain(
-      'Use `todo` only when the work genuinely has multiple dependent steps.',
+      'Use an available task/progress tool only when the work genuinely has multiple dependent steps.',
     );
+    expect(root).toContain('actual tool name and schema');
+    expect(root).toContain('lightweight written progress');
+    expect(root).not.toContain('`todo`');
+    expect(root).not.toContain('rpiv-todo');
     expect(root).toContain('ask_user_question');
     expect(root).toContain('one to four questions');
     expect(root).toContain('two to four options');
@@ -58,7 +62,7 @@ describe('Pi adapter', () => {
     const children = piAdapter.render({ projectRoot: process.cwd() }).artifacts;
     for (const child of children) {
       expect(child.content).toContain(
-        'Do not delegate further or call `todo`; root owns progress.',
+        'Do not delegate further; root owns progress.',
       );
       expect(child.content).toContain(
         'escalate the unresolved question to the root',

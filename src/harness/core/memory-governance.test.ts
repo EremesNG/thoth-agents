@@ -16,13 +16,14 @@ const PROVIDER_OPERATION_PATTERN =
   /mem_(?:save|recall|get|context|project|session)\s*\(/;
 
 describe('memory governance contract', () => {
-  test('uses the installed Pi question and progress tool names', () => {
+  test('uses the Pi question tool without requiring a progress tool', () => {
     const prompt = renderMemoryGovernanceInstructions(
       getAgentRole('deep'),
       PI_PROMPT_DIALECT,
     );
     expect(prompt).toContain('`ask_user_question`');
-    expect(prompt).toContain('tracking in todo');
+    expect(prompt).toContain('tracking in written progress notes');
+    expect(prompt).not.toContain('tracking in todo');
     expect(prompt).not.toContain('undefined');
     expect(prompt).not.toContain('tracking in subagent_status');
   });

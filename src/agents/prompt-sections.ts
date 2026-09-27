@@ -502,7 +502,9 @@ function renderRoleText(
       '{{progressInstruction}}',
       dialect.tools.progressTool
         ? `Use \`${dialect.tools.progressTool}\` only when the work genuinely has multiple dependent steps.`
-        : 'Keep written progress notes when the work genuinely has multiple dependent steps; no native planning tool is configured.',
+        : dialect.harness === 'pi'
+          ? 'Use an available task/progress tool only when the work genuinely has multiple dependent steps. Follow its actual tool name and schema; if none is available, keep lightweight written progress without blocking work.'
+          : 'Keep written progress notes when the work genuinely has multiple dependent steps; no native planning tool is configured.',
     )
     .replaceAll(
       '{{lifecycleStatusAction}}',

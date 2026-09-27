@@ -201,7 +201,7 @@ describe('prompt dialects', () => {
   test('renders Pi single-agent lifecycle without batch or false terminal claims', () => {
     expect(PI_PROMPT_DIALECT.tools.delegationTool).toBe('subagent');
     expect(PI_PROMPT_DIALECT.tools.userQuestionTool).toBe('ask_user_question');
-    expect(PI_PROMPT_DIALECT.tools.progressTool).toBe('todo');
+    expect(PI_PROMPT_DIALECT.tools.progressTool).toBeUndefined();
     expect(PI_PROMPT_DIALECT.tools.roleReference('deep')).toBe(
       'subagent({ agent: "thoth-deep", task: "…", context: "fresh" })',
     );

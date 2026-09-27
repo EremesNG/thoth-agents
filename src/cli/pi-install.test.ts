@@ -345,10 +345,9 @@ describe('Pi setup', () => {
       'npm:pi-web-access@>=0.27.0',
       'npm:pi-mcp-adapter@>=2.32.1',
       'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
-      'npm:@juicesharp/rpiv-todo@>=2.9.0',
     ]);
     expect(PI_MINIMUM_VERSION).toBe('0.86.1');
-    expect(PI_PACKAGE_SPECS).toHaveLength(6);
+    expect(PI_PACKAGE_SPECS).toHaveLength(5);
     expect(PI_PACKAGE_SPECS.map(({ source }) => source)).not.toEqual(
       expect.arrayContaining([
         'npm:@feniix/pi-exa@5.1.1',
@@ -357,7 +356,6 @@ describe('Pi setup', () => {
     );
     expect(plan.items.map(({ kind }) => kind)).toEqual([
       'preflight',
-      'package',
       'package',
       'package',
       'package',
@@ -405,8 +403,20 @@ describe('Pi setup', () => {
     expect(calls.some((call) => call.includes('pi install'))).toBe(false);
   });
 
-  test('applies packages, one root, six specialists, and exact proxy-only grep configuration', () => {
+  test.each([
+    { taskPackages: [] },
+    {
+      taskPackages: [
+        'npm:@juicesharp/rpiv-todo@0.0.1',
+        'npm:custom-task-extension@1.0.0',
+      ],
+    },
+  ])('applies setup without requiring or mutating optional task extensions: $taskPackages', ({
+    taskPackages,
+  }) => {
     const paths = fixture();
+    const commands: string[][] = [];
+    const packages = ['npm:unrelated@1.0.0', ...taskPackages];
     const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
     const subagentConfigPath = join(
       paths.homeDir,
@@ -418,10 +428,7 @@ describe('Pi setup', () => {
     );
     mkdirSync(dirname(settingsPath), { recursive: true });
     mkdirSync(dirname(subagentConfigPath), { recursive: true });
-    writeFileSync(
-      settingsPath,
-      JSON.stringify({ theme: 'dark', packages: ['npm:unrelated@1.0.0'] }),
-    );
+    writeFileSync(settingsPath, JSON.stringify({ theme: 'dark', packages }));
     writeFileSync(
       subagentConfigPath,
       JSON.stringify({ inlineToolDisplay: 'summary' }),
@@ -432,6 +439,7 @@ describe('Pi setup', () => {
     const plan = buildPiSetupPlan({
       ...paths,
       commandExecutor: (command, args) => {
+        commands.push([command, ...args]);
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
@@ -486,7 +494,7 @@ describe('Pi setup', () => {
     );
     expect(settings).toMatchObject({
       theme: 'dark',
-      packages: ['npm:unrelated@1.0.0'],
+      packages,
       subagents: { disableBuiltins: true },
     });
     expect(subagentConfig).toMatchObject({
@@ -502,6 +510,14 @@ describe('Pi setup', () => {
       lifecycle: 'lazy',
     });
     expect(mcp.mcpServers.grep).not.toHaveProperty('directTools');
+    const mutations = commands.filter(
+      ([, action]) => action === 'install' || action === 'remove',
+    );
+    expect(
+      mutations.some((args) =>
+        args.some((arg) => /rpiv-todo|custom-task-extension/.test(arg)),
+      ),
+    ).toBe(false);
   });
 
   test('migrates a legacy exact source through Pi while preserving object filters and unrelated settings', () => {

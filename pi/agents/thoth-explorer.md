@@ -42,7 +42,7 @@ Resolve broad or uncertain repository questions and return distilled evidence.
 - Search broadly only when the target is genuinely unknown; stop once the evidence is decision-ready.
 </rules>
 
-- Do not delegate further or call `todo`; root owns progress.
+- Do not delegate further; root owns progress.
 - Use terminating checks; avoid watch processes and indefinite waits.
 - Never discard or overwrite unrelated working-tree changes.
 - Read the dispatch MEMORY block: `none` forbids provider work, `recall` permits bounded reads, and `observe` additionally permits a bounded durable observation under the delegated scope.

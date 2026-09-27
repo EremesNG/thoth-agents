@@ -192,7 +192,7 @@ describe('Pi operations', () => {
     );
   });
 
-  test('reports each RPIV package source independently without claiming live tools', () => {
+  test('ignores an outdated user-owned todo extension while reporting question support', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-rpiv-status-'));
     roots.push(homeDir);
     const askPath = join(homeDir, 'ask');
@@ -234,7 +234,10 @@ describe('Pi operations', () => {
     const rpiv = report.targets.filter(({ path }) =>
       path?.includes('@juicesharp/rpiv-'),
     );
-    expect(rpiv.map(({ state }) => state)).toEqual(['installed', 'drift']);
+    expect(rpiv.map(({ state }) => state)).toEqual(['installed']);
+    expect(report.targets.some(({ path }) => path?.includes('rpiv-todo'))).toBe(
+      false,
+    );
     expect(
       rpiv.every(({ description }) =>
         description?.includes('does not prove live tool availability'),

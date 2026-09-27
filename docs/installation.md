@@ -208,7 +208,14 @@ The CLI installs and verifies these Pi packages in order:
 5. `pi-mcp-adapter@2.32.1` only for the anonymous grep.app MCP endpoint;
 6. `@juicesharp/rpiv-ask-user-question@2.9.0` for the root's interactive
    `ask_user_question` dialog;
-7. `@juicesharp/rpiv-todo@2.9.0` for root-owned, session-local `todo` progress.
+
+Task/progress extensions are optional and operator-owned. Thoth uses an available
+task tool according to its actual name and schema, or lightweight written progress
+if none is available; missing tooling never blocks the workflow. Setup and update
+do not install or remove task extensions, and status does not require them.
+Previously installed `@juicesharp/rpiv-todo` remains untouched; users decide whether
+to keep it. Progress tracking never replaces native delegation or `.thoth/` work
+contracts.
 
 The old `pi-subagents-j0k3r` runtime is not supported beside `pi-subagents`.
 When setup detects it, setup stops before mutation and prints a manual `pi remove`
@@ -426,7 +433,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, six specialist synchronization, six pinned native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, six specialist synchronization, five minimum-constrained native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps

@@ -92,9 +92,11 @@ answer, similarity, or research-planner tools. Package presence is unverified
 runtime evidence rather than proof of a successful provider request. Failures
 are reported explicitly, and fetched or searched content remains untrusted.
 Fetches may create extension-owned caches or clones outside the workspace even
-for a read-only role. The separate `rpiv-ask-user-question` and `rpiv-todo`
-packages expose root-owned interaction and session-local progress rather than
-child coordination state.
+for a read-only role. The separate `rpiv-ask-user-question` package exposes
+root-owned interaction. Progress tracking is optional and provider-neutral:
+use an available task tool according to its actual name and schema, or lightweight
+written progress if none is available. Thoth does not install or require a task
+extension, and never treats progress tracking as child coordination state.
 
 ## thoth-mem boundary
 

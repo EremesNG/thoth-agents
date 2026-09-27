@@ -62,8 +62,10 @@
   writes fresh/depth-one extension configuration without replacing unrelated
   keys. A detected legacy `pi-subagents-j0k3r` package blocks before mutation
   with manual recovery instead of creating a dual runtime.
-- Pi's pinned RPIV extensions expose root-owned `ask_user_question` and `todo`;
-  only root and librarian receive `web_search`, `fetch_content`,
+- Pi requires RPIV `ask_user_question` for root-owned interaction, but no task
+  extension. Progress instructions use any available task tool through its actual
+  contract, or written progress when unavailable; children report to root.
+  Only root and librarian receive `web_search`, `fetch_content`,
   `get_search_content`, and `source_check` guidance, and package presence remains
   distinct from live UI/provider availability.
 

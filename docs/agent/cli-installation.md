@@ -29,7 +29,7 @@ execution does not.
 - Install and applied Update share the complete selected-harness orchestration:
   OpenCode refreshes exact plugin/config plus owned skills; Codex performs
   native plugin setup before its global pack; Claude performs native plugin
-  refresh; Pi installs the exact executing first-party package before six
+  refresh; Pi installs the exact executing first-party package before five
   minimum-constrained external packages and attributable resources. Every
   harness then installs required external skills. Published installs require provider-complete
   evidence before recording CLI completion last; an explicit local Pi package
@@ -76,11 +76,12 @@ execution does not.
   beneath that validated configured root; they are diagnostic evidence, not
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
-  then may it migrate attributable legacy root/skill copies and install the six
+  then may it migrate attributable legacy root/skill copies and install the five
   external sources as `pi-subagents@>=0.71.0`, `@upstash/context7-pi@>=0.1.2`,
   `pi-web-access@>=0.27.0`, `pi-mcp-adapter@>=2.32.1`,
-  `@juicesharp/rpiv-ask-user-question@>=2.9.0`, and
-  `@juicesharp/rpiv-todo@>=2.9.0`. Pi's native manager owns installation and
+  and `@juicesharp/rpiv-ask-user-question@>=2.9.0`. Task/progress extensions are
+  optional and operator-owned; setup never installs or removes them and status
+  does not require them. Pi's native manager owns installation and
   subsequent independent updates within these open-ended stable ranges. Setup
   validates each resolved package manifest's exact name and SemVer floor,
   accepts newer stable versions, and does not reinstall an already satisfying

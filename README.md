@@ -221,7 +221,7 @@ do not prove those other pieces are current. Use `status` to inspect the last
 complete CLI-managed installation and follow any reported recovery actions.
 
 For Pi, the first-party `thoth-agents` package remains exact and receipt-verified.
-The six mandatory external extensions use stable minimum-only `>=` ranges, so
+The five mandatory external extensions use stable minimum-only `>=` ranges, so
 Pi's native package manager can update them independently without waiting for a
 Thoth release. Status validates each installed manifest's package name and
 SemVer floor; newer stable versions are healthy, while prerelease, malformed,

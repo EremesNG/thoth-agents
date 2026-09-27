@@ -1,0 +1,69 @@
+version: 1
+change:
+  id: pi-agnostic-progress
+  title: Make Pi progress tracking optional and provider-neutral
+agreement:
+  status: approved
+  source: user
+  ref: User approved removing rpiv-todo and using any available task tool through agnostic instructions
+  fingerprint: sha256:fa94dcb523fcd458f8b7fbce91a97d78894a85c4c9c739ce0187c37b47c53fb4
+goal: Stop requiring rpiv-todo in Pi and use an available progress tool according to its actual contract, without requiring any task extension.
+bounds:
+  include:
+    - Remove rpiv-todo from mandatory Pi installation, update and status inventory
+    - Make Pi root progress guidance optional and provider-neutral, preserving root ownership
+    - Update focused tests, public documentation, generated Pi specialists and the two affected durable specifications
+  exclude:
+    - Changing other harness progress tool contracts or ask-user-question
+    - Uninstalling existing user extensions or modifying global Pi configuration
+    - Adding an extension detector, compatibility adapter, scheduler or task store
+    - Editing historical archived changes
+autonomy:
+  allowed:
+    - Edit scoped source, tests and documentation and regenerate affected package artifacts
+    - Run repository checks and isolated tests without live installation
+    - Stage explicit reviewed durable specification replacements for archive
+  requiresApproval:
+    - Live global installation or removal of user packages
+  forbidden:
+    - Assume every task tool has the same name or arguments
+    - Make missing progress tooling block the workflow
+acceptance:
+  - id: optional-progress
+    criterion: Pi install/update/status no longer require rpiv-todo; existing user extensions remain untouched. Root guidance uses an available task tool according to its actual schema, otherwise lightweight written progress; no fixed tool name/API, no change to native lifecycle or canonical work artifacts. Specialists report progress to root. Other harness behavior is preserved.
+    inputs: [src/cli/pi-install.ts, src/agents/prompt-dialects.ts, src/agents/prompt-sections.ts, src/harness/adapters/pi.ts]
+    outputs: [src/cli/pi-install.ts, src/agents/prompt-dialects.ts, src/agents/prompt-sections.ts, src/harness/adapters/pi.ts, pi, docs/installation.md, docs/skills-and-mcps.md]
+    checks: [focused-tests, static-build-regression, independent-review]
+    result: {"status":"accepted","reviewedBy":"root","reviewedAt":"2026-09-27T01:17:11.537Z","evidence":[".thoth/changes/pi-agnostic-progress/evidence/verification.md",".thoth/changes/pi-agnostic-progress/evidence/oracle-final.md"],"evidenceFingerprint":"sha256:7589962d9001b9496052db3554501298fc2ce18f3929b8bed4096a6a65b122ec","inputFingerprint":"sha256:a43a2e01f85206b5e699c244b2afa8da44e2cb797406dc979cc21289eb966c31","outputFingerprint":"sha256:47d38d5693a1b9ead54ed1dd42145524d1afbc5566d9009f9dc7be4e50e8b8e3","definitionFingerprint":"sha256:de82ec9ce662435a2bddcad3666fed5d448b92a84db6b422ca27fa4966915af5"}
+durableUpdates:
+  - capability: cli-installation
+    operation: replace
+    expectedDigest: 37114e387f06afef8f35fe20f3c81f62e7b2d79c45400bd1a33e2b3b5d052bd7
+    source: .thoth/changes/pi-agnostic-progress/evidence/specs/cli-installation.md
+    sourceDigest: f5df52332d0e3abb357d2e4841423558943329fef9e199d1c09edc2c61231047
+  - capability: multi-harness-agent-pack
+    operation: replace
+    expectedDigest: ba715a45dc227eb891dda34b9e3496ca79747382452b8fba80c40082941a59a9
+    source: .thoth/changes/pi-agnostic-progress/evidence/specs/multi-harness-agent-pack.md
+    sourceDigest: a336d618f8e98f87edad255313cf1feb5c044cf575f10f9d3c5529fde52e64a0
+units:
+  - id: implementation
+    output: Consistent optional Pi progress behavior, isolated regression tests and reviewed documentation/specification replacements
+    dependsOn: []
+    reads: [src/cli/pi-external-package.ts, src/cli/operations/pi.ts, src/harness/writers/pi-agent.ts, src/harness/core/memory-governance.ts, .thoth/specs/cli-installation/spec.md, .thoth/specs/multi-harness-agent-pack/spec.md]
+    writes: [src/cli/pi-install.ts, src/cli/install.test.ts, src/cli/pi-install.test.ts, src/cli/operations/pi.test.ts, src/agents/prompt-dialects.ts, src/agents/prompt-dialects.test.ts, src/agents/prompt-sections.ts, src/harness/adapters/pi.ts, src/harness/adapters/pi.test.ts, src/harness/core/memory-governance.test.ts, src/harness/writers/pi-agent.test.ts, pi, README.md, docs/installation.md, docs/skills-and-mcps.md, docs/agent/cli-installation.md, docs/agent/harness-packaging.md]
+    resources: [pi-installation-and-prompts]
+    owner: { role: root }
+    checks:
+      - id: focused-tests
+        criterion: Isolated install/update/status tests show rpiv-todo is not required or removed; rendered root and specialist prompts remain provider-neutral and other dialects unchanged
+        command: pnpm exec vitest run src/cli/install.test.ts src/cli/pi-install.test.ts src/cli/operations/pi.test.ts src/agents/prompt-dialects.test.ts src/harness/adapters/pi.test.ts src/harness/core/memory-governance.test.ts src/harness/writers/pi-agent.test.ts
+      - id: static-build-regression
+        criterion: Formatting, types, build, integration artifacts and regression checks pass without unrelated generated drift
+        command: pnpm run check:ci && pnpm run typecheck && pnpm run build && pnpm test
+      - id: independent-review
+        criterion: Fresh read-only Oracle passes agreement, actual diff, durable replacements and verified evidence
+    acceptance: [optional-progress]
+    baseline: {"status":"captured","capturedAt":"2026-09-27T01:01:33.543Z","paths":[{"path":"src/cli/pi-install.ts","state":"preexisting","fingerprint":"sha256:df0799835095484e3e36b6af648c9667f53358474fc915eb4dbd909953a594b8"},{"path":"src/cli/install.test.ts","state":"preexisting","fingerprint":"sha256:9f3738a72ad9173ceced6c6e8dafb4ca4dbf12bed1ee957ed63cda7680d99138"},{"path":"src/cli/pi-install.test.ts","state":"preexisting","fingerprint":"sha256:abb19d7dd11999bfb2e902e31eb1d8da5d237209be6f378e720c20bd3531e860"},{"path":"src/cli/operations/pi.test.ts","state":"preexisting","fingerprint":"sha256:8fcfa0f5b3b303e165a7513a66c850ec006decc304e08377a6b5441b946dd488"},{"path":"src/agents/prompt-dialects.ts","state":"preexisting","fingerprint":"sha256:a286eb94d9d07ebaa5aa1632bd73a7c2e42fba606ecd71d8c4e8f51745af5c93"},{"path":"src/agents/prompt-dialects.test.ts","state":"preexisting","fingerprint":"sha256:5e48c0f1df2806d44368ac5ff8e96c9a99db54e26ff070dad29a54514ed97161"},{"path":"src/agents/prompt-sections.ts","state":"preexisting","fingerprint":"sha256:1cb5fb4f3578eaa49905ac3c5a316e723b23238feba358b1d6d4dab80564b714"},{"path":"src/harness/adapters/pi.ts","state":"preexisting","fingerprint":"sha256:0b8c7bd6a600ab164b346710162a4d48bc787ce5bffcd568eb67394d1b6c72f5"},{"path":"src/harness/adapters/pi.test.ts","state":"preexisting","fingerprint":"sha256:9778bb495792f04661ddcdd43d9bb887b0feb69db878545d8711542d88df1350"},{"path":"src/harness/core/memory-governance.test.ts","state":"preexisting","fingerprint":"sha256:4b45e64f5d2dbd4f4fef20c68d6490c0e33faac90fc2a83627dec6657342025e"},{"path":"src/harness/writers/pi-agent.test.ts","state":"preexisting","fingerprint":"sha256:ac92c65a5168e28160991d650a26a882cfa34c89821c3eac54977a40dfbbac21"},{"path":"pi","state":"preexisting","fingerprint":"sha256:12025186172031cda6ab36b049f993a1962de595b59bd0a902653d0d258e3fd6"},{"path":"docs/installation.md","state":"preexisting","fingerprint":"sha256:a1b8271ff44cee87ea1c646bae2b3199233b2593f80145f5156a466dc3016601"},{"path":"docs/skills-and-mcps.md","state":"preexisting","fingerprint":"sha256:c03d7d13720adc9c85c042aa2bf72d402161081fb291d49a40b9dcd84029e28a"},{"path":"docs/agent/cli-installation.md","state":"preexisting","fingerprint":"sha256:38e8a62948f54d98a56b2652cd792efc46ae15ff63c29d13c9ea939d7b6011a0"},{"path":"docs/agent/harness-packaging.md","state":"preexisting","fingerprint":"sha256:efcd49df02cdb73e21ccab9e8da26c45c75b4448853751116cdfc6db507fdd37"},{"path":"README.md","state":"preexisting","fingerprint":"sha256:0717f91f009a3aacb856a8704c513b974f81b628071db2418e2a63c6f68848aa"}]}
+    semantic: {"status":"accepted","result":{"status":"accepted","reviewedBy":"root","reviewedAt":"2026-09-27T01:17:11.537Z","evidence":[".thoth/changes/pi-agnostic-progress/evidence/verification.md",".thoth/changes/pi-agnostic-progress/evidence/oracle-final.md"],"evidenceFingerprint":"sha256:7589962d9001b9496052db3554501298fc2ce18f3929b8bed4096a6a65b122ec","inputFingerprint":"sha256:ab4eba83c515d41c73a7bad84f4e87cfd6c7d216e7d12a383d3df9aa3ba21e12","outputFingerprint":"sha256:92a527c9f07d4ea4ccbc79f13d0fc43bb31eb306c2e7bcb94f9cfd926d2c04d0","definitionFingerprint":"sha256:324ad5944f7f7140c16df74dfcb0bae6d032a00873aac53a24ede9aa3ef3b4ee"}}
+verification: {"reviewer":"oracle","verdict":"pass","evidence":[".thoth/changes/pi-agnostic-progress/evidence/verification.md",".thoth/changes/pi-agnostic-progress/evidence/oracle-final.md"],"evidenceFingerprint":"sha256:7589962d9001b9496052db3554501298fc2ce18f3929b8bed4096a6a65b122ec","inputFingerprint":"sha256:6007138aef2e4c12e9b7269579de65ae26c7c446762dc485de3e63a45adaff77","outputFingerprint":"sha256:9fb0c6d81f577ad1f3b2aca059b562fee494a878f8b81ec922ef5dc47b69eb40","agreementFingerprint":"sha256:fa94dcb523fcd458f8b7fbce91a97d78894a85c4c9c739ce0187c37b47c53fb4","technicalFingerprint":"sha256:d0723be854b0d343588b8566256995c34fa6a521357a622b1efe202b6479be03"}

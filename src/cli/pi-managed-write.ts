@@ -100,10 +100,33 @@ export function writePiManagedText(path: string, content: string): boolean {
     if (!snapshotsEqual(before, snapshot(path)))
       throw new Error(`Managed Pi target changed before replacement: ${path}`);
     if (before.exists) copyFileSync(path, backupPath, constants.COPYFILE_EXCL);
-    assertSafePiManagedPath(path);
-    if (!snapshotsEqual(before, snapshot(path)))
-      throw new Error(`Managed Pi target changed before replacement: ${path}`);
-    renameSync(temporaryPath, path);
+    // Windows readers can temporarily deny replacement without denying writes.
+    // Keep the original intact; never fall back to unlinking or truncating it.
+    const maxAttempts = process.platform === 'win32' ? 11 : 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      assertSafePiManagedPath(path);
+      if (!snapshotsEqual(before, snapshot(path)))
+        throw new Error(
+          `Managed Pi target changed before replacement: ${path}`,
+        );
+      try {
+        renameSync(temporaryPath, path);
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (
+          process.platform !== 'win32' ||
+          !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '')
+        )
+          throw error;
+        if (attempt === maxAttempts)
+          throw new Error(
+            `Cannot replace managed Pi file ${path} (${code}) after bounded retries. The original file was not replaced. Close applications holding this file, check its permissions, and rerun setup.`,
+            { cause: error },
+          );
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+      }
+    }
   } catch (error) {
     rmSync(temporaryPath, { force: true });
     throw error;

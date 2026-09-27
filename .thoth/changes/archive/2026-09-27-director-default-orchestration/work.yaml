@@ -1,0 +1,115 @@
+version: 1
+change:
+  id: director-default-orchestration
+agreement:
+  status: approved
+  fingerprint: sha256:55ab4734c7c017ce52c0bfd598a62a56076f601b37d5a73179667ba08c69f3ee
+  source: user explicitly requested implementation of the director-default recommendation
+goal: Make Thoth a director by default with specialist discovery and implementation and a bounded root-direct exception
+bounds:
+  include: [canonical ownership and discovery policy, root prompts across four harnesses, related skills and documentation, focused regression tests, generated integration assets, workflow durable specification]
+  exclude: [model configuration, numeric reading budgets, new scheduler or runtime enforcement, specialist role redesign, constitution amendments, deployment and publishing]
+autonomy:
+  allowed: [implement approved behavioral policy, update directly affected tests and guidance, regenerate integration assets, execute local validation, apply declared durable update after independent PASS]
+  requiresApproval: [material scope or architecture changes, destructive actions, external publishing]
+  forbidden: [hardcoded model assignments, undocumented execution fallback, weakening independent verification, unrelated cleanup]
+acceptance:
+  - id: AC-1
+    criterion: Root assigns unknown local discovery to Explorer before searching; direct known-source low-risk consultation or minimal change stops when discovery or another dependency is needed
+    inputs: [src/harness/core/agent-pack.ts]
+    outputs: [src/harness/core/agent-pack.ts, src/agents/prompt-sections.ts]
+    checks: [focused policy and routing regression tests]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: 2026-09-27T03:19:22.879Z
+      evidence: [.thoth/changes/director-default-orchestration/evidence/implementation.md, .thoth/changes/director-default-orchestration/evidence/repair.md, .thoth/changes/director-default-orchestration/evidence/final-review-2.md]
+      evidenceFingerprint: sha256:7b50e5b128ce214f2743e6a4c51c17b92e820c340915efae7f5bcfb9861c25bb
+      inputFingerprint: sha256:728f2fa6c11700a3dd787ffcb0e233dac1bd477b328f02925af6bd747da94cd0
+      outputFingerprint: sha256:7dd853e6ccac720ee4788ee62e8cdee859b9a1dd4be278ab09d2401aab2354f3
+      definitionFingerprint: sha256:fb3c859fd6feb2076380ee0fff20ca145578b8c2c541182c6c0fc7dfe7a7b90d
+  - id: AC-2
+    criterion: Known bounded implementation goes to the fitting writer by default without mandatory Explorer; root retains decisions and acceptance and requests targeted missing evidence without duplicate discovery
+    inputs: [src/harness/core/agent-pack.ts]
+    outputs: [src/agents/prompt-sections.ts, src/harness/core/workflow.ts]
+    checks: [focused rendering and routing regression tests]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: 2026-09-27T03:19:23.116Z
+      evidence: [.thoth/changes/director-default-orchestration/evidence/implementation.md, .thoth/changes/director-default-orchestration/evidence/repair.md, .thoth/changes/director-default-orchestration/evidence/final-review-2.md]
+      evidenceFingerprint: sha256:7b50e5b128ce214f2743e6a4c51c17b92e820c340915efae7f5bcfb9861c25bb
+      inputFingerprint: sha256:728f2fa6c11700a3dd787ffcb0e233dac1bd477b328f02925af6bd747da94cd0
+      outputFingerprint: sha256:2e05b6cf1c6d1961b2ef52854b4773b1d62115028228b827ce3e0d2a08f3be0b
+      definitionFingerprint: sha256:950289e64fad1c4c06029bb854ce8d263d81448fcdca0dd48099d037b26df046
+  - id: AC-3
+    criterion: Canonical and generated root instructions across OpenCode Codex Claude and Pi align without continuity or net-gain loopholes while native lifecycle memory authorization independent Oracle recovery and planning choices remain intact
+    inputs: [src/agents/prompt-sections.ts, skills/thoth-work/references/planning.md]
+    outputs: [plugin, docs/agent/agents-and-delegation.md, AGENTS.md]
+    checks: [adapter and integration tests, regenerated output diff inspection, independent Oracle review]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: 2026-09-27T03:19:23.344Z
+      evidence: [.thoth/changes/director-default-orchestration/evidence/implementation.md, .thoth/changes/director-default-orchestration/evidence/repair.md, .thoth/changes/director-default-orchestration/evidence/final-review-2.md]
+      evidenceFingerprint: sha256:7b50e5b128ce214f2743e6a4c51c17b92e820c340915efae7f5bcfb9861c25bb
+      inputFingerprint: sha256:89ff8fc2102ef1e8c0dbfd11087fb1f38875aaad0862bf3ba22266d3542eade7
+      outputFingerprint: sha256:a0b304473a10efc273718fa79f85e25e476142e243bb89232c90ca9612afd618
+      definitionFingerprint: sha256:1fa045c373a6e6bddb7ae5dbb120b491c0479a8bc3a33fdc16dcce5394d1ba6d
+  - id: AC-4
+    criterion: Policy documentation and durable update match the agreed behavior without model changes numeric caps runtime-enforcement claims or unmeasured savings claims
+    inputs: [.thoth/specs/workflow/spec.md]
+    outputs: [.thoth/changes/director-default-orchestration/durable/workflow-spec.md, docs/agent/routing-cases.json]
+    checks: [check ci, typecheck, build, full tests, context validation, independent Oracle review]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: 2026-09-27T03:19:24.685Z
+      evidence: [.thoth/changes/director-default-orchestration/evidence/implementation.md, .thoth/changes/director-default-orchestration/evidence/repair.md, .thoth/changes/director-default-orchestration/evidence/final-review-2.md]
+      evidenceFingerprint: sha256:7b50e5b128ce214f2743e6a4c51c17b92e820c340915efae7f5bcfb9861c25bb
+      inputFingerprint: sha256:4e695aee3d6c3ca8873b0cc5be25ff645c6b3289b5098ebf3fdd64d9b2804413
+      outputFingerprint: sha256:693091782f3054a4b9d348ffd3bc78ebfd247df653036ee6bd4dc5af12a22184
+      definitionFingerprint: sha256:8578fce06723cb77685e6dad512aa0790c9957fc1da216d79354435f60cee1de
+durableUpdates:
+  - operation: replace
+    capability: workflow
+    source: .thoth/changes/director-default-orchestration/durable/workflow-spec.md
+    expectedDigest: 8203fba004c3e0e916e57118f2040f4a8ca6580507be59721deb56d8734f72ee
+    sourceDigest: 9216cc7a544d5ad4faec17e34db5003185e94b6e9dad726826b6a2866a5b98d5
+units:
+  - id: policy
+    output: Coherent director-default canonical policy rendered into all harnesses with regression coverage and aligned guidance
+    dependsOn: []
+    reads: [src/harness/core/agent-pack.ts, src/agents/prompt-sections.ts, src/harness/core/workflow.ts, src/agents/prompt-dialects.ts, .thoth/specs/workflow/spec.md, .thoth/changes/director-default-orchestration/durable/workflow-spec.md]
+    writes: [src/harness/core/agent-pack.ts, src/harness/core/workflow.ts, src/agents/prompt-sections.ts, src/agents/orchestrator.ts, src/harness/core/agent-pack.test.ts, src/harness/core/agent-routing.test.ts, src/harness/core/workflow.test.ts, src/agents/index.test.ts, src/agents/prompt-rendering.test.ts, src/harness/adapters/claude-code.ts, src/harness/adapters/codex.ts, src/harness/adapters/opencode.ts, src/harness/adapters/pi.ts, src/harness/adapters/claude-code.test.ts, src/harness/adapters/codex.test.ts, src/harness/adapters/opencode.test.ts, src/harness/adapters/pi.test.ts, AGENTS.md, README.md, docs/agent/agents-and-delegation.md, docs/agent/workflow-and-skills.md, docs/agent/routing-cases.json, docs/workflow.md, skills/thoth-work/SKILL.md, skills/thoth-work/references/planning.md, plugin, pi/.thoth-agents-assets.json, pi/agents/thoth-explorer.md, src/cli/codex-install.test.ts]
+    resources: [repository validation and integration generation]
+    owner: { role: deep }
+    checks:
+      - id: focused
+        criterion: TDD regressions cover ownership discovery exception termination nonduplication and harness rendering
+        command: pnpm exec vitest run src/harness/core/agent-pack.test.ts src/harness/core/agent-routing.test.ts src/harness/core/workflow.test.ts src/agents/index.test.ts src/agents/prompt-rendering.test.ts src/harness/adapters
+      - id: ci
+        criterion: Formatting typechecking generation and full tests pass or failures are specifically diagnosed
+        command: pnpm run check:ci && pnpm run typecheck && pnpm run build && pnpm test
+    acceptance: [AC-1, AC-2, AC-3, AC-4]
+    baseline: { status: unknown }
+    semantic:
+      status: accepted
+      result:
+        status: accepted
+        reviewedBy: root
+        reviewedAt: 2026-09-27T03:19:24.898Z
+        evidence: [.thoth/changes/director-default-orchestration/evidence/implementation.md, .thoth/changes/director-default-orchestration/evidence/repair.md, .thoth/changes/director-default-orchestration/evidence/final-review-2.md]
+        evidenceFingerprint: sha256:7b50e5b128ce214f2743e6a4c51c17b92e820c340915efae7f5bcfb9861c25bb
+        inputFingerprint: sha256:54c75652558193d6e92532f323dea259b6c942f79112f3e9eba25094096377bd
+        outputFingerprint: sha256:3bc6437df4b32934b0258cb17f8c9b4eaf516d91b6abba5c1cefd7755fd80431
+        definitionFingerprint: sha256:2b1244f36c280a241142539e3c2f3ac1124dab0e3e817bec77809f1788443151
+verification:
+  reviewer: oracle
+  verdict: pass
+  evidence: [.thoth/changes/director-default-orchestration/evidence/implementation.md, .thoth/changes/director-default-orchestration/evidence/repair.md, .thoth/changes/director-default-orchestration/evidence/final-review-2.md]
+  evidenceFingerprint: sha256:7b50e5b128ce214f2743e6a4c51c17b92e820c340915efae7f5bcfb9861c25bb
+  inputFingerprint: sha256:e3d1f7ac4bc2b02e16c0683205d7ff30ba3267e338bc5601a491acf84a15bec2
+  outputFingerprint: sha256:b10d4f1e5a364255dd8eef723bbcd4b1ce00de654577b29bb0bfe188b848c76d
+  agreementFingerprint: sha256:55ab4734c7c017ce52c0bfd598a62a56076f601b37d5a73179667ba08c69f3ee
+  technicalFingerprint: sha256:ddd6747f50208a50a3ed2872837b15b480dcee180b5026377743ad94effeaf4c

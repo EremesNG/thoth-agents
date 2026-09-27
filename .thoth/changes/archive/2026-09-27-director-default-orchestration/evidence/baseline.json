@@ -1,0 +1,136 @@
+{
+  "status": "captured",
+  "capturedAt": "2026-09-27T02:44:58.855Z",
+  "paths": [
+    {
+      "path": "src/harness/core/agent-pack.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:c1289035ed4ae9f86bc1b4814a8d3931aa003d0e17ad32d69442a96380463330"
+    },
+    {
+      "path": "src/harness/core/workflow.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:1ebf88aa28b964f9ee18526b04afbd88f5e6bb39d5e3070aef4f80e2de34e31c"
+    },
+    {
+      "path": "src/agents/prompt-sections.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:ef174e8ec8f2003088457fae61aad75d7e6e982a7261efc2c138a885c9687a3a"
+    },
+    {
+      "path": "src/agents/orchestrator.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:b7b8340518f2da098050932c4d13f1c6a585c1843205fa7764727b4d2c0d9a89"
+    },
+    {
+      "path": "src/harness/core/agent-pack.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:1fad9490dd78dc1bfb4a88e105932000d5478febd30fa3f6f9782f780445df4a"
+    },
+    {
+      "path": "src/harness/core/agent-routing.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:f3e50a67510c02a994ea88cac82bc0a651ada3713caf51d5d32ebeed7fdbfce6"
+    },
+    {
+      "path": "src/harness/core/workflow.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:bb5b97bc8017e006d19fd9812d3a55f27c68366fd088c50deaa4e763ed755c0b"
+    },
+    {
+      "path": "src/agents/index.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:65cc62d465f3c82b96d2e5f67f0817aa599ed5e083cc5f450c2befc73027e062"
+    },
+    {
+      "path": "src/agents/prompt-rendering.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:e98551cda793dab63517ceeb01455cab9b030971dbbc2f258030d44c5e9b2177"
+    },
+    {
+      "path": "src/harness/adapters/claude-code.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:5f55d53aed00cb1b206421b5421571e24337d316d4ec137cf3b33361a21bcebb"
+    },
+    {
+      "path": "src/harness/adapters/codex.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:db4d7975a4dd4e142c2904275b0c1cdab91867e2ff1d2436cbfcfefbe1f8796e"
+    },
+    {
+      "path": "src/harness/adapters/opencode.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:67d21a06dcc22f8b1f6b7ee49f4d46c417b7f28e4c5220b41f9fbe2b5a31978f"
+    },
+    {
+      "path": "src/harness/adapters/pi.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:e3b394b4b3b5a4a498724200b3f8d7143d4a35b7ab71ab2e7684f3f2c13500e2"
+    },
+    {
+      "path": "src/harness/adapters/claude-code.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:1521c047922c6cdd4a8e24c840025ea9ed239b3d8d7511a3fd34f6ae573870fd"
+    },
+    {
+      "path": "src/harness/adapters/codex.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:1ed0ee02516270f55888fd7b7bbd3ab525737ecce6a9b98f552dbe46981d9821"
+    },
+    {
+      "path": "src/harness/adapters/opencode.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:95714408a71d073854aba7b74d960e0d10e26ee202e6f4edbb9be3133663c0d1"
+    },
+    {
+      "path": "src/harness/adapters/pi.test.ts",
+      "state": "preexisting",
+      "fingerprint": "sha256:71a297f0a84d28585e488d9c3f8da270520e3e3cc9be51225b53205ae77e6734"
+    },
+    {
+      "path": "AGENTS.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:89fe5e3ece95fb164f41a5abe32f7fc03bff3fcd230b3691d2908683b94d230e"
+    },
+    {
+      "path": "README.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:ce3f8434c4791bdb28f1531d2612d658d8fda218033678a3f7ebb7ccde851893"
+    },
+    {
+      "path": "docs/agent/agents-and-delegation.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:886b28b2ac5985179568f0131c9b8b03596cb814ab8f9da61e598422a70e62dd"
+    },
+    {
+      "path": "docs/agent/workflow-and-skills.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:f056a2be35fcf7b77e4a39f1121c27597c28251da45ba4683fc8d7cf6392609f"
+    },
+    {
+      "path": "docs/agent/routing-cases.json",
+      "state": "preexisting",
+      "fingerprint": "sha256:b4f6cd136d93dcc501288991399151bed295ebe7a5d9db610f3e02d5b77d3bff"
+    },
+    {
+      "path": "docs/workflow.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:caaa1b0ba05722634a149023956309e2b9721e5fface12fe57e344d722a45ff0"
+    },
+    {
+      "path": "skills/thoth-work/SKILL.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:1977bba459b5fe2e7ad755c6bf47e694004d53878e92072de48edfc178e14bcc"
+    },
+    {
+      "path": "skills/thoth-work/references/planning.md",
+      "state": "preexisting",
+      "fingerprint": "sha256:283481a4b7b360e03e89e9994493581abf12e6a571802967d94277c80919166c"
+    },
+    {
+      "path": "plugin",
+      "state": "preexisting",
+      "fingerprint": "sha256:dcb39f68b4430d550ea4ebaa13636f1ec991b2a687f128b1140c56252ac3f209"
+    }
+  ]
+}

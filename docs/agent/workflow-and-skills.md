@@ -16,6 +16,19 @@ operation, not every workflow document.
 
 ## Invariants
 
+- Classify questions, research and changes with bounded evidence before choosing
+  process. Clear bounded low-risk work may stay direct with useful delegation;
+  delegation and unit count alone never require planning artifacts. Reclassify
+  when material uncertainty, broader scope or risk emerges.
+- Before technical planning and persistence, explore current behavior/contracts,
+  specify desired behavior and acceptance, and clarify material human decisions.
+  Investigate repository facts; use grilling only when requested or needed for
+  a material decision. Iterate as evidence requires. Bounded technical unknowns
+  need a resolution strategy; material uncertainty blocks readiness.
+- Keep these guarantees in existing agreement fields and optional useful context,
+  not separate mandatory discovery/specification documents. Follow the
+  [planning reference](../../skills/thoth-work/references/planning.md) before
+  creating `work.yaml`; structural validation is not semantic readiness.
 - `.thoth/changes/<id>/work.yaml` is canonical. Supporting context, external
   unit definitions and evidence are conditional; do not duplicate requirements.
 - Human agreement settles product scope, acceptance and autonomy. Existing

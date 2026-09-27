@@ -1,0 +1,113 @@
+{
+  "directory": "C:\\Users\\EremesNG\\orca\\workspaces\\thoth-agents\\new-gsd\\.thoth\\changes\\pre-plan-guarantees\\evidence\\workflow-policy",
+  "path": "C:\\Users\\EremesNG\\orca\\workspaces\\thoth-agents\\new-gsd\\.thoth\\changes\\pre-plan-guarantees\\evidence\\workflow-policy\\checkpoint.json",
+  "previousPath": "C:\\Users\\EremesNG\\orca\\workspaces\\thoth-agents\\new-gsd\\.thoth\\changes\\pre-plan-guarantees\\evidence\\workflow-policy\\checkpoint.previous.json",
+  "checkpoint": {
+    "version": 1,
+    "changeId": "pre-plan-guarantees",
+    "unitId": "workflow-policy",
+    "writer": "root",
+    "createdAt": "2026-09-27T01:54:27.923Z",
+    "summary": "Implementation and tests complete; awaiting fresh independent verification",
+    "completed": [
+      "policy",
+      "prompts",
+      "skills",
+      "docs",
+      "tests",
+      "generated assets"
+    ],
+    "pending": ["Oracle verification", "root acceptance", "archive"],
+    "baseline": {
+      "status": "captured",
+      "capturedAt": "2026-09-27T01:39:17.045Z",
+      "paths": [
+        {
+          "path": "src/harness/core/workflow.ts",
+          "state": "preexisting",
+          "fingerprint": "sha256:43d94e12e154a99c9adaecf04e45e28dc9d1a62390ae7e6b8f64a6fa8a3293a6"
+        },
+        {
+          "path": "src/harness/core/workflow.test.ts",
+          "state": "preexisting",
+          "fingerprint": "sha256:872a43809af74380eb198d28cfa6cd58115eb91d3362c84edd3ba3f43a6324fa"
+        },
+        {
+          "path": "src/agents/prompt-sections.ts",
+          "state": "preexisting",
+          "fingerprint": "sha256:1cb5fb4f3578eaa49905ac3c5a316e723b23238feba358b1d6d4dab80564b714"
+        },
+        {
+          "path": "src/agents/prompt-rendering.test.ts",
+          "state": "preexisting",
+          "fingerprint": "sha256:9d9c6a9a8f0d8efcb6fb3a5e1e2d11f9b6cd6e49354cf1983b16e17f21f0e5f8"
+        },
+        {
+          "path": "src/harness/work-contract.test.ts",
+          "state": "preexisting",
+          "fingerprint": "sha256:685d17ae92202adac196e98425bc02a0c5dcc7f940354eb1a4c79698a0cec479"
+        },
+        {
+          "path": "skills/thoth-work/SKILL.md",
+          "state": "preexisting",
+          "fingerprint": "sha256:4e04d53f9690ed8d0603d2cd320f646e1fa283a9c88d5a7b5d04249869293120"
+        },
+        {
+          "path": "skills/thoth-work/references/planning.md",
+          "state": "preexisting",
+          "fingerprint": "sha256:8d00a9ccceff63e7e02d4d2f043c29915b48cc1b4f1bebe865b724c4222fb842"
+        },
+        {
+          "path": "skills/thoth-work/references/contract.md",
+          "state": "preexisting",
+          "fingerprint": "sha256:da20db29568724f61ac528c6fd451780954eb668d2a8004aba67b4a3fe536fad"
+        },
+        {
+          "path": "skills/plan-reviewer/SKILL.md",
+          "state": "preexisting",
+          "fingerprint": "sha256:87584a12cd6f570387c6ddcf0ee3100289a58576c236f2a75f903f2c5ecb4a05"
+        },
+        {
+          "path": "docs/workflow.md",
+          "state": "preexisting",
+          "fingerprint": "sha256:a2d2944e84a7422acf341198b6ea6681e7aa3bfa5ea5f8335b90d4d1e41219b6"
+        },
+        {
+          "path": "docs/agent/workflow-and-skills.md",
+          "state": "preexisting",
+          "fingerprint": "sha256:167dabb087464535a6f34df8542f0822642c99824e104ee062fe57f918ff596e"
+        },
+        {
+          "path": "AGENTS.md",
+          "state": "preexisting",
+          "fingerprint": "sha256:b5e6c100227f56856da95b604675928d3d4c4076cd059253fd30c91378f2fd09"
+        },
+        {
+          "path": "README.md",
+          "state": "preexisting",
+          "fingerprint": "sha256:8ecd0b55fe93a8f6adb77de69e70e7fff8ed3faf372ae91a27cb56bb82b58860"
+        },
+        {
+          "path": "plugin",
+          "state": "preexisting",
+          "fingerprint": "sha256:6ee8619cd5ec8345a1cf1951b4e51fe0ff58f8ed6ade416ec242d026bcbfc5d9"
+        },
+        {
+          "path": "pi",
+          "state": "preexisting",
+          "fingerprint": "sha256:5db8acfc49237bf99e0962236267c5f1eb2bdf5abe2500ed52e7eca50fa6e12a"
+        }
+      ]
+    },
+    "checks": [],
+    "nextAction": "Fresh read-only Oracle verifies actual diff and staged durable update",
+    "readRefs": [
+      "src/harness/core/workflow.ts",
+      "skills/thoth-work/references/planning.md"
+    ],
+    "agreementFingerprint": "sha256:b06e8de96cf37d7f4a9ca8dcae444a302cd309d8e71cf787e14148bf031ed72c",
+    "unitFingerprint": "sha256:d88cff4b1a7ff38786cdde6eb8c4ff77a9165d22adf869537282e3041dfcc85b",
+    "inputFingerprint": "sha256:d6bca3b503efe98f0a90686ab98fe8bafbaacfcac1ce5f9d8157f959e0e463e9",
+    "outputFingerprint": "sha256:47d6b809cd13636e88c4adb4594755f06b3c83c8c18cb382eee6d8285035f2fe"
+  }
+}

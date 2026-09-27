@@ -1,0 +1,185 @@
+version: 1
+change:
+  id: pre-plan-guarantees
+agreement:
+  status: approved
+  fingerprint: sha256:b06e8de96cf37d7f4a9ca8dcae444a302cd309d8e71cf787e14148bf031ed72c
+  source: User approved restoring pre-plan guarantees and artifact-free direct work and requested implementation in the current conversation.
+goal: Restore classification, exploration, specification and clarification before planning and persistence without restoring SDD document bundles.
+bounds:
+  include:
+    - src/harness/core/workflow.ts
+    - src/agents/prompt-sections.ts
+    - public workflow and rendered-root regression tests
+    - skills/thoth-work and skills/plan-reviewer instructions
+    - workflow documentation and AGENTS.md
+    - workflow durable specification through declared reviewed archive updates
+    - generated plugin and pi assets through the repository generator only
+  exclude:
+    - scheduler or automatic execution state machine
+    - new mandatory discovery or specification documents
+    - schema expansion or pretend semantic validation
+    - unrelated product behavior and historical OpenSpec records
+    - constitution lifecycle changes
+    - installations or live harness configuration changes
+autonomy:
+  allowed:
+    - Root implements the coupled contract and instruction changes with TDD at public workflow and rendered-root seams after the planning choice is resolved.
+    - Regenerate owned distribution outputs and run local project checks.
+    - Use fresh read-only Oracle for selected plan review and mandatory final verification.
+    - Prepare a workflow specification replacement and declare its digests before independent verification and archive.
+  requiresApproval:
+    - Applicable review and implementation planning choices.
+    - Material product decisions or expanded scope.
+  forbidden:
+    - Installing skills or dependencies to obtain workflow contracts.
+    - Editing unrelated user or provider assets.
+    - Treating delegation count as a persistence requirement.
+decisions:
+  - id: classification
+    statement: Distinguish questions and research from mutations; assess scope, uncertainty, risk, coordination and recovery with bounded inspection.
+    rationale: User requires proportional handling rather than a mandatory workflow for every request.
+  - id: direct-work
+    statement: Clear bounded low-risk changes may be implemented and verified without planning artifacts even with useful delegation; reclassify if new material risk or uncertainty appears.
+    rationale: Delegation is independent of persistence and does not itself require work.yaml.
+  - id: readiness
+    statement: Explore current behavior and constraints, specify desired behavior and acceptance, clarify material decisions, then plan before persisting work.yaml.
+    rationale: Preserve SDD reasoning guarantees without document bundles; current workflow.ts plan phase assumes rather than establishes the agreement.
+  - id: uncertainty
+    statement: Material uncertainty blocks readiness; bounded technical uncertainty needs an explicit resolution strategy and discovery may iterate.
+    rationale: Do not claim all uncertainty can be eliminated or silently convert assumptions into requirements.
+  - id: clarification
+    statement: Investigate repository facts; ask about human-owned decisions and use architectural-grilling only when needed or explicitly requested.
+    rationale: Avoid replacing exploration with unnecessary user interrogation.
+  - id: ownership
+    statement: Root owns the coupled implementation; fresh read-only Oracle verifies after completed implementation and fresh checks.
+    rationale: Shared policy, prompts and docs form one reasoning chain; no independent writer output needs parallel dispatch.
+  - id: limits
+    statement: Keep existing planning choices, authorization, native authority, recovery and independent final verification; readiness is instruction-level without schema expansion.
+    rationale: Rendered instructions and structural validation cannot authenticate semantic model compliance.
+durableUpdates:
+  - capability: workflow
+    operation: replace
+    expectedDigest: 25515a4187e863ea918200a2dd0bc2f5c152a7b41d8b278ce6c215b934660694
+    source: .thoth/changes/pre-plan-guarantees/evidence/durable/workflow-spec.md
+    sourceDigest: 8203fba004c3e0e916e57118f2040f4a8ca6580507be59721deb56d8734f72ee
+acceptance:
+  - id: AC-1
+    criterion: Public workflow and all four rendered roots classify work and allow bounded low-risk direct work with optional delegation and no mandatory planning artifact; newly discovered material risk triggers reclassification.
+    inputs: [src/harness/core/workflow.test.ts, src/agents/prompt-rendering.test.ts]
+    outputs: [src/harness/core/workflow.ts, src/agents/prompt-sections.ts]
+    checks: [Focused public contract and cross-harness root regression tests pass.]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T01:57:14.577Z'
+      evidence: [.thoth/changes/pre-plan-guarantees/evidence/implementation.md, .thoth/changes/pre-plan-guarantees/evidence/final-review.md]
+      evidenceFingerprint: sha256:c5966ea627a8d673710815e8d47248e338ae8bdf7d4fcc4bf51c77adeaa96f6a
+      inputFingerprint: sha256:c36d332c0cc42dcb02f0009320fbd00033bd61b5b8b88cad55f7844c2cb81307
+      outputFingerprint: sha256:3c7b1f412fe72e91ecc1e6a746a8476a54faa211e31ee08cdb86520fff809a3a
+      definitionFingerprint: sha256:a9945cbeed8d125686d26c2099f40e08e8bf62526ad1066edf783f31397ff6a4
+  - id: AC-2
+    criterion: Persisted planning instructions require evidence-based exploration, desired behavior and acceptance, material clarification and technical planning before persistence; grilling is conditional and no new document bundle is required.
+    inputs: [skills/thoth-work/references/planning.md, skills/plan-reviewer/SKILL.md]
+    outputs: [skills/thoth-work, skills/plan-reviewer, docs/workflow.md, docs/agent/workflow-and-skills.md, AGENTS.md, README.md]
+    checks: [Instruction integrity tests and fresh independent semantic review pass.]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T01:57:14.577Z'
+      evidence: [.thoth/changes/pre-plan-guarantees/evidence/implementation.md, .thoth/changes/pre-plan-guarantees/evidence/final-review.md]
+      evidenceFingerprint: sha256:c5966ea627a8d673710815e8d47248e338ae8bdf7d4fcc4bf51c77adeaa96f6a
+      inputFingerprint: sha256:7d3f740b32c620c0557d452eb8aba019dadab4d79c9fd7b4de61f8e879a2f5c1
+      outputFingerprint: sha256:400bee1baffa28867dded13a96e00cfac88072cff50e78742798ab988539a0db
+      definitionFingerprint: sha256:b5f0af8b7b5d4e9933b2f1fe738dbe339b199c609e846dc206e0cffdb385a2a0
+  - id: AC-3
+    criterion: Generated distribution instructions remain consistent and existing planning choices, recovery, native authority and verification contracts remain intact.
+    inputs: [src/harness/generate-integration-packages.test.ts]
+    outputs: [plugin, pi]
+    checks: [Repository checks, typecheck, build and tests pass or limitations are evidenced without claiming success.]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: '2026-09-27T01:57:14.577Z'
+      evidence: [.thoth/changes/pre-plan-guarantees/evidence/implementation.md, .thoth/changes/pre-plan-guarantees/evidence/final-review.md]
+      evidenceFingerprint: sha256:c5966ea627a8d673710815e8d47248e338ae8bdf7d4fcc4bf51c77adeaa96f6a
+      inputFingerprint: sha256:4f563ddaf43408358bbbd2d5fb7be1453db12db5edfe0a79ea9b255c359e6084
+      outputFingerprint: sha256:c8bde3fdbffec2dcd0cb4063a91f50717f938b2625ef908252b0cc50b5fc0bd8
+      definitionFingerprint: sha256:0c5814a964786a98de1bd4ce395bb66d910acf710e17d37a8e199c63f8e9b392
+units:
+  - id: workflow-policy
+    output: One coherent classified direct-or-persisted planning policy across canonical code, skills, docs and generated distributions with regression evidence.
+    dependsOn: []
+    reads:
+      - .thoth/constitution.md
+      - .thoth/specs/workflow/spec.md
+      - src/harness/core/workflow.ts
+      - src/agents/prompt-sections.ts
+      - skills/thoth-work
+      - skills/plan-reviewer
+      - docs/workflow.md
+    writes:
+      - src/harness/core/workflow.ts
+      - src/harness/core/workflow.test.ts
+      - src/agents/prompt-sections.ts
+      - src/agents/prompt-rendering.test.ts
+      - src/harness/work-contract.test.ts
+      - skills/thoth-work/SKILL.md
+      - skills/thoth-work/references/planning.md
+      - skills/thoth-work/references/contract.md
+      - skills/plan-reviewer/SKILL.md
+      - docs/workflow.md
+      - docs/agent/workflow-and-skills.md
+      - AGENTS.md
+      - README.md
+      - plugin
+      - pi
+    resources: [repository generated distributions]
+    owner: { role: orchestrator }
+    checks:
+      - id: focused
+        criterion: Public workflow, rendered-root, skill and distribution regression tests pass.
+        command: pnpm exec vitest run src/harness/core/workflow.test.ts src/agents/prompt-rendering.test.ts src/harness/work-contract.test.ts src/harness/generate-integration-packages.test.ts
+      - id: full
+        criterion: Formatting, typecheck, build and full tests pass with no unrelated diff.
+        command: pnpm run check:ci && pnpm run typecheck && pnpm run build && pnpm test
+    acceptance: [AC-1, AC-2, AC-3]
+    baseline:
+      status: captured
+      capturedAt: '2026-09-27T01:39:17.045Z'
+      paths:
+        - { path: src/harness/core/workflow.ts, state: preexisting, fingerprint: 'sha256:43d94e12e154a99c9adaecf04e45e28dc9d1a62390ae7e6b8f64a6fa8a3293a6' }
+        - { path: src/harness/core/workflow.test.ts, state: preexisting, fingerprint: 'sha256:872a43809af74380eb198d28cfa6cd58115eb91d3362c84edd3ba3f43a6324fa' }
+        - { path: src/agents/prompt-sections.ts, state: preexisting, fingerprint: 'sha256:1cb5fb4f3578eaa49905ac3c5a316e723b23238feba358b1d6d4dab80564b714' }
+        - { path: src/agents/prompt-rendering.test.ts, state: preexisting, fingerprint: 'sha256:9d9c6a9a8f0d8efcb6fb3a5e1e2d11f9b6cd6e49354cf1983b16e17f21f0e5f8' }
+        - { path: src/harness/work-contract.test.ts, state: preexisting, fingerprint: 'sha256:685d17ae92202adac196e98425bc02a0c5dcc7f940354eb1a4c79698a0cec479' }
+        - { path: skills/thoth-work/SKILL.md, state: preexisting, fingerprint: 'sha256:4e04d53f9690ed8d0603d2cd320f646e1fa283a9c88d5a7b5d04249869293120' }
+        - { path: skills/thoth-work/references/planning.md, state: preexisting, fingerprint: 'sha256:8d00a9ccceff63e7e02d4d2f043c29915b48cc1b4f1bebe865b724c4222fb842' }
+        - { path: skills/thoth-work/references/contract.md, state: preexisting, fingerprint: 'sha256:da20db29568724f61ac528c6fd451780954eb668d2a8004aba67b4a3fe536fad' }
+        - { path: skills/plan-reviewer/SKILL.md, state: preexisting, fingerprint: 'sha256:87584a12cd6f570387c6ddcf0ee3100289a58576c236f2a75f903f2c5ecb4a05' }
+        - { path: docs/workflow.md, state: preexisting, fingerprint: 'sha256:a2d2944e84a7422acf341198b6ea6681e7aa3bfa5ea5f8335b90d4d1e41219b6' }
+        - { path: docs/agent/workflow-and-skills.md, state: preexisting, fingerprint: 'sha256:167dabb087464535a6f34df8542f0822642c99824e104ee062fe57f918ff596e' }
+        - { path: AGENTS.md, state: preexisting, fingerprint: 'sha256:b5e6c100227f56856da95b604675928d3d4c4076cd059253fd30c91378f2fd09' }
+        - { path: README.md, state: preexisting, fingerprint: 'sha256:8ecd0b55fe93a8f6adb77de69e70e7fff8ed3faf372ae91a27cb56bb82b58860' }
+        - { path: plugin, state: preexisting, fingerprint: 'sha256:6ee8619cd5ec8345a1cf1951b4e51fe0ff58f8ed6ade416ec242d026bcbfc5d9' }
+        - { path: pi, state: preexisting, fingerprint: 'sha256:5db8acfc49237bf99e0962236267c5f1eb2bdf5abe2500ed52e7eca50fa6e12a' }
+    semantic:
+      status: accepted
+      result:
+        status: accepted
+        reviewedBy: root
+        reviewedAt: '2026-09-27T01:57:14.577Z'
+        evidence: [.thoth/changes/pre-plan-guarantees/evidence/implementation.md, .thoth/changes/pre-plan-guarantees/evidence/final-review.md]
+        evidenceFingerprint: sha256:c5966ea627a8d673710815e8d47248e338ae8bdf7d4fcc4bf51c77adeaa96f6a
+        inputFingerprint: sha256:d6bca3b503efe98f0a90686ab98fe8bafbaacfcac1ce5f9d8157f959e0e463e9
+        outputFingerprint: sha256:47d6b809cd13636e88c4adb4594755f06b3c83c8c18cb382eee6d8285035f2fe
+        definitionFingerprint: sha256:d88cff4b1a7ff38786cdde6eb8c4ff77a9165d22adf869537282e3041dfcc85b
+verification:
+  reviewer: oracle
+  verdict: pass
+  evidence: [.thoth/changes/pre-plan-guarantees/evidence/implementation.md, .thoth/changes/pre-plan-guarantees/evidence/final-review.md]
+  evidenceFingerprint: sha256:c5966ea627a8d673710815e8d47248e338ae8bdf7d4fcc4bf51c77adeaa96f6a
+  inputFingerprint: sha256:0fe008133f089a6ed835349e9c9bf719576fcb9063ac6cc9c7ea4caad092c7d5
+  outputFingerprint: sha256:6b645ffdd3a9f73438cc1001530f0b8e2e591adc0994afef1d61211af856f2ff
+  agreementFingerprint: sha256:b06e8de96cf37d7f4a9ca8dcae444a302cd309d8e71cf787e14148bf031ed72c
+  technicalFingerprint: sha256:a87347a3232117ce107be18271576f776d1fabd6fe60478845cad6a4b5953da6

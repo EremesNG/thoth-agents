@@ -1,0 +1,32 @@
+{
+  "changeId": "consolidate-worker-role",
+  "agreementFingerprint": "sha256:a64e9736dcc37a628c97362528f5cf74cc980120982f832a7b610004a3594e36",
+  "technicalFingerprint": "sha256:da7425e924308c26bbb363fd40b11ad6051e90cd3d8c184ca0bd5a008eed4ca8",
+  "reviewChoice": {
+    "choice": "oracle",
+    "resolution": "explicit",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "implementationChoice": {
+    "choice": "implement",
+    "resolution": "explicit",
+    "approvalRef": "663234ee-dc9f-42bb-a6ab-b8b1b046f884",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "review": {
+    "verdict": "OKAY",
+    "nativeReviewerRef": "663234ee-dc9f-42bb-a6ab-b8b1b046f884",
+    "agreementFingerprint": "sha256:a64e9736dcc37a628c97362528f5cf74cc980120982f832a7b610004a3594e36",
+    "technicalFingerprint": "sha256:da7425e924308c26bbb363fd40b11ad6051e90cd3d8c184ca0bd5a008eed4ca8",
+    "evidence": ".thoth/changes/consolidate-worker-role/evidence/plan-review.md"
+  },
+  "planningEvidence": {
+    "explorerRun": "e9227d31-fd0c-406c-9d60-27700078183c",
+    "librarianRun": "5cb9230b-8f79-4024-a497-1fd04e60c537",
+    "readyValidation": "Passed with zero errors and warnings. User defaults and OpenCode screenshot decisions recorded in planning-notes.md."
+  }
+}

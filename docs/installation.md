@@ -277,9 +277,9 @@ missing or version-drifted package evidence remains drifted. Context7, web
 access, and grep.app network/schema health is reported independently from
 package and managed-file health. Research output is untrusted data. Every Pi
 extension runs with the invoking user's system permissions and may access
-process credentials and the network; specialist tool allowlists are role
-controls, not a security sandbox. Project-local resources require an explicit
-Pi trust decision.
+process credentials and the network; specialists inherit Pi's available tools,
+which is not an OS or credential sandbox. Project-local resources require an
+explicit Pi trust decision.
 
 The initial integration supports the default global Pi root only. If
 `PI_CODING_AGENT_DIR` redirects discovery away from `~/.pi/agent`, installation
@@ -298,8 +298,9 @@ Every specialist also declares fresh context and depth one. The librarian is
 background-default because research providers and MCP tools must be loaded in
 its child runtime. That frontmatter default is overridable, so root guidance
 also passes `async:true` for librarian calls regardless of `asyncByDefault`.
-Its tool allowlist does not load providers, so it verifies provider/tool
-registration before claiming evidence.
+Foreground children do not load ambient parent extensions; before claiming
+evidence, it verifies that the relevant Context7, web-access, or MCP provider
+is loaded and every required tool is registered.
 
 The five specialist definitions use `thoth-` names in both filenames and
 frontmatter: `thoth-explorer`, `thoth-librarian`, `thoth-oracle`,

@@ -14,32 +14,15 @@ export interface PiAgentDefinitionInput {
   async?: boolean;
 }
 
-const LIBRARIAN_RESEARCH_TOOLS = [
-  'resolve-library-id',
-  'query-docs',
-  'mcp',
-  'web_search',
-  'fetch_content',
-  'get_search_content',
-  'source_check',
-] as const;
-
 function yamlScalar(value: string): string {
   return JSON.stringify(value);
 }
 
 export function renderPiAgentDefinition(input: PiAgentDefinitionInput): string {
-  const tools = [
-    'read',
-    'bash',
-    ...(input.role.canMutateWorkspace ? ['edit', 'write'] : []),
-    ...(input.role.name === 'librarian' ? LIBRARIAN_RESEARCH_TOOLS : []),
-  ].join(', ');
   return [
     '---',
     `name: ${piSpecialistName(input.role.name)}`,
     `description: ${yamlScalar(input.description)}`,
-    `tools: ${yamlScalar(tools)}`,
     ...(input.model ? [`model: ${yamlScalar(input.model)}`] : []),
     ...(input.thinking ? [`thinking: ${yamlScalar(input.thinking)}`] : []),
     ...(input.async === undefined ? [] : [`async: ${input.async}`]),

@@ -25,7 +25,7 @@ describe('Pi agent writer', () => {
     ).toBe(false);
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');
-      expect(artifact.content).toContain('tools:');
+      expect(artifact.content).not.toMatch(/^tools:/m);
       expect(artifact.content).toContain('defaultContext: fresh');
       expect(artifact.content).toContain('maxSubagentDepth: 1');
       expect(artifact.content).not.toContain('\neffort:');
@@ -36,30 +36,9 @@ describe('Pi agent writer', () => {
     const librarian = agents.find(
       (artifact) => artifact.path === 'agents/thoth-librarian.md',
     );
-    expect(librarian?.content).toContain(
-      'tools: "read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check"',
-    );
     expect(librarian?.content).toContain('async: true');
     expect(librarian?.content).toContain('provider is loaded');
-    expect(librarian?.content).toContain('tool allowlist does not load');
-    expect(librarian?.content).not.toMatch(
-      /tools:.*(?:web_fetch|web_\*_exa|exa_research_\*)/,
-    );
-    for (const agent of agents.filter((artifact) => artifact !== librarian)) {
-      expect(agent.content).toContain(
-        ['designer', 'worker'].some((role) =>
-          agent.path.endsWith(`thoth-${role}.md`),
-        )
-          ? 'tools: "read, bash, edit, write"'
-          : 'tools: "read, bash"',
-      );
-      expect(agent.content).not.toMatch(
-        /tools:.*\b(?:web_search|fetch_content|get_search_content|source_check)\b/,
-      );
-      expect(agent.content).not.toMatch(
-        /tools:.*\b(?:ask_user_question|todo)\b/,
-      );
-    }
+    expect(librarian?.content).not.toContain('tool allowlist');
     expect(
       first.artifacts.some((artifact) =>
         String(artifact.content).includes(PI_ROOT_START),

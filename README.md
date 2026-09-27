@@ -19,6 +19,11 @@
   </p>
 </div>
 
+> [!WARNING]
+> Thoth-Agents is under active development. Core concepts, workflows, and
+> specifications are still evolving, and significant breaking changes may occur
+> before a stable release.
+
 ---
 
 ## Why thoth-agents

@@ -39,6 +39,11 @@ describe('Pi agent writer', () => {
     expect(librarian?.content).toContain('async: true');
     expect(librarian?.content).toContain('provider is loaded');
     expect(librarian?.content).not.toContain('tool allowlist');
+    for (const artifact of agents.filter(
+      (artifact) => artifact.path !== 'agents/thoth-librarian.md',
+    )) {
+      expect(artifact.content).not.toContain('\nasync: true\n');
+    }
     expect(
       first.artifacts.some((artifact) =>
         String(artifact.content).includes(PI_ROOT_START),

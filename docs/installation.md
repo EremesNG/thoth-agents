@@ -200,8 +200,8 @@ The CLI installs and verifies these Pi packages in order:
 
 1. the exact executing `npm:thoth-agents@<version>` first-party package, or the
    explicit local package root selected by `--local-package-root`;
-2. `pi-subagents@0.71.0` for native single-specialist and scripted workflow
-   execution;
+2. `pi-subagents@0.71.0` for native direct specialist execution and
+   lifecycle control;
 3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
 4. `pi-web-access@0.27.0` as the native web extension exposing the default
    `web_search`, `fetch_content`, `get_search_content`, and `source_check` tools;
@@ -297,10 +297,11 @@ Setup safely merges `subagents.disableBuiltins: true` into Pi's user
 Every specialist also declares fresh context and depth one. The librarian is
 background-default because research providers and MCP tools must be loaded in
 its child runtime. That frontmatter default is overridable, so root guidance
-also passes `async:true` for librarian calls regardless of `asyncByDefault`.
-Foreground children do not load ambient parent extensions; before claiming
-evidence, it verifies that the relevant Context7, web-access, or MCP provider
-is loaded and every required tool is registered.
+explicitly passes `async:true` for librarian calls; every direct specialist
+launch supplies its own root-selected boolean rather than relying on that
+default. Foreground children do not load ambient parent extensions; before
+claiming evidence, it verifies that the relevant Context7, web-access, or MCP
+provider is loaded and every required tool is registered.
 
 The five specialist definitions use `thoth-` names in both filenames and
 frontmatter: `thoth-explorer`, `thoth-librarian`, `thoth-oracle`,
@@ -314,21 +315,28 @@ role files and an unowned `thoth-worker` collision are preserved and reported;
 old role model or thinking customizations are not copied to Worker.
 
 Delegation is lazily activated with `subagents_enable({})`; `subagent` becomes
-available on the next model request. Thoth normally starts fresh work with
-`subagent({agent:"thoth-explorer", task:"...", context:"fresh", async:true})`.
-Put the bounded Thoth envelope in `task`. Native context also supports `fork`
-and `profile`; Thoth policy chooses `fresh` unless inherited context is
-intentional. `async` follows the operator's overridable `asyncByDefault`, so
-callers pass `async:true` whenever background execution is required, especially
-for librarian/MCP work. Use `async:false` only for an intentional foreground
-run. Foreground children do not load ambient parent extensions.
+available on the next model request. Thoth starts each bounded specialist
+assignment with one direct call, for example
+`subagent({agent:"thoth-explorer", task:"...", context:"fresh", async:false})`
+for a suitable intentional foreground launch, and uses one call per specialist
+even when dispatching multiple specialists. Put the bounded Thoth envelope in
+`task`. Native context also supports `fork` and `profile`; Thoth policy chooses
+`fresh` unless inherited context is intentional. Root coordinates readiness,
+dependencies, and acceptance. Every direct specialist launch explicitly supplies
+an `async` boolean chosen by root: use `async:false` for suitable intentional
+foreground execution or `async:true` when background concurrency or provider
+loading is needed, especially for librarian/MCP work. Never omit `async` or rely
+on `asyncByDefault`. Foreground children do not load ambient parent extensions.
 
-Use direct single-agent calls for simple work. Genuine parallel fan-out may use
-`workflowScript` with `runs.all`; the old `parallel`, `chain`, and `tasks` inputs
-are unsupported. Native lifecycle actions are
-`subagent({action:"status"|"stop"|"steer", id, ...})`; steering mode is
-`steer|follow_up|auto`. When enabled, `bg_wait({id})` provides a blocking wait.
-Queued messages and nonterminal status never count as fan-in.
+Never use Pi subagent orchestration APIs such as `workflow`, `workflowScript`,
+`workflowScriptPath`, or `runs.*`, including for multiple specialists. This is
+instruction-level policy, not runtime enforcement; higher-priority Pi or
+extension instructions remain authoritative and conflicts must be reported.
+Native lifecycle actions are `subagent({action:"status"|"stop"|"steer", id, ...})`;
+steering mode is `steer|follow_up|auto`. Native completion notifications wake
+ordinary background work; return control instead of polling. When enabled,
+`bg_wait({id})` provides a blocking wait for detached/provider work that needs a
+same-turn result. Queued messages and nonterminal status never count as fan-in.
 
 Pi specialists use the shared OpenAI role preset through the `openai-codex`
 provider. The ambient root retains Pi's selected model and thinking level:

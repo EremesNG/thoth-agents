@@ -99,17 +99,37 @@ describe('Pi adapter', () => {
     expect(librarian?.content).toContain('default tool names');
   });
 
-  test('activates delegation lazily and uses native single/background lifecycle vocabulary', () => {
+  test('uses direct-only calls for individual and multiple specialist dispatch', () => {
+    const root = renderPiRootInstructions();
+    expect(root).toContain(
+      'subagent({ agent, task, context: "fresh", async: false })',
+    );
+    expect(root).toContain(
+      'one direct call per specialist even when dispatching multiple specialists',
+    );
+    expect(root).toContain(
+      'root coordinates readiness, dependencies, and acceptance',
+    );
+    expect(root).toContain(
+      'Never use Pi subagent orchestration APIs such as `workflow`, `workflowScript`, `workflowScriptPath`, or `runs.*`',
+    );
+    expect(root).toContain('instruction-level policy, not runtime enforcement');
+    expect(root).toContain(
+      'follow higher-priority Pi or extension instructions',
+    );
+    expect(root).toContain('report conflicts rather than claiming compliance');
+    expect(root).not.toMatch(
+      /(?:Use|May use|only for|may use)[^\n]*(?:workflowScript|workflowScriptPath|runs\.)/,
+    );
+  });
+
+  test('activates delegation lazily and preserves native lifecycle vocabulary', () => {
     const root = renderPiRootInstructions();
     expect(root).toContain('subagents_enable({})');
     expect(root).toContain('next model request');
     expect(root).toContain('subagent({ agent, task');
     expect(root).toContain('context: "fresh"');
     expect(root).toContain('"profile"');
-    expect(root).toContain('async: true');
-    expect(root).toContain('async: false');
-    expect(root).toContain('workflowScript');
-    expect(root).toContain('runs.all');
     expect(root).toContain('bg_wait({ id })');
     expect(root).toContain('action: "status"');
     expect(root).toContain('action: "stop"');
@@ -130,14 +150,36 @@ describe('Pi adapter', () => {
     expect(shaping).toContain('terminal completion notification');
   });
 
-  test('makes background mode explicit when required and keeps simple jobs simple', () => {
+  test('requires an explicit root async decision for every direct specialist launch', () => {
     const root = renderPiRootInstructions();
-    expect(root).toContain('overridable `asyncByDefault`');
-    expect(root).toContain('do not assume background execution');
-    expect(root).toContain('especially for librarian/MCP-backed work');
-    expect(root).toContain('simple single-agent jobs');
-    expect(root).not.toContain('mode="background"');
-    expect(root).not.toContain('background=true');
+    const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];
+    expect(runtime).toContain(
+      'subagent({ agent, task, context: "fresh", async: false })',
+    );
+    expect(runtime).toContain(
+      'subagent({ agent, task, context: "fresh", async: true })',
+    );
+    expect(runtime).toContain(
+      'Every direct specialist launch must set an explicit `async` boolean chosen by root',
+    );
+    expect(runtime).toContain(
+      "never omit it or rely on the operator's overridable `asyncByDefault`",
+    );
+    expect(runtime).toContain(
+      'async: false` for suitable intentional foreground execution',
+    );
+    expect(runtime).toContain(
+      'async: true` when background parallelism or provider loading is needed',
+    );
+    expect(runtime).toContain('especially for librarian/MCP-backed work');
+    expect(runtime).not.toContain(
+      'Omit `async` to honor the configured `asyncByDefault`',
+    );
+    expect(runtime).not.toContain(
+      'subagent({ agent, task, context: "fresh" })',
+    );
+    expect(runtime).not.toContain('mode="background"');
+    expect(runtime).not.toContain('background=true');
   });
 
   test('lists only namespaced specialist identities in runtime delegation guidance', () => {

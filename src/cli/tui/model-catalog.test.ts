@@ -218,6 +218,7 @@ describe('TUI model catalog', () => {
       'medium',
       'high',
       'xhigh',
+      'max',
     ]);
   });
 

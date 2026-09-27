@@ -7,6 +7,7 @@ export const PI_EFFORT_VALUES = [
   'medium',
   'high',
   'xhigh',
+  'max',
 ] as const;
 
 const PI_EFFORTS = new Set<string>(PI_EFFORT_VALUES);

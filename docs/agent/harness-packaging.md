@@ -30,6 +30,13 @@
   materializes the six specialists globally for `pi-subagents@0.71.0`.
   The generated definitions use native `model`/`thinking`, fresh context,
   depth one, and a background librarian; no builtin pi-subagents agents are used.
+  `/thoth-agents:models` exposes global specialist configuration through a native
+  TUI draft/save panel. CLI and extension share `src/cli/pi-model-config.ts` for
+  provenance/path checks, stale snapshots, and partial-write recovery. Native
+  TUI/AI modules are declared public peers and kept external in the build;
+  static imports let Pi's loader resolve its native aliases for compiled JS.
+  Lazy imports from a natively loaded compiled extension bypass those aliases.
+  Root model and external override precedence remain Pi-owned.
 - Both central catalog entries resolve to one `plugin/` bundle containing one copy of the
   five canonical thoth-owned skills, including `plan-reviewer`.
   Harness-specific manifests and MCP files

@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { basename, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import {
   type AgentRoleContract,
   getAgentPackContract,
@@ -43,6 +43,11 @@ import {
   writePiManagedText,
 } from '../pi-install';
 import { migrateLegacyPiResources } from '../pi-migration';
+import {
+  type PiModelSnapshot,
+  readPiModelConfig,
+  savePiModelConfig,
+} from '../pi-model-config';
 import {
   classifyPiPackageOwnership,
   getPiPackageReceiptPath,
@@ -677,6 +682,7 @@ const planSources = new WeakMap<
     version?: string;
     configuredPackageRoot?: string;
     model?: ModelConfigInput;
+    modelSnapshot?: PiModelSnapshot;
   }
 >();
 
@@ -906,20 +912,16 @@ export function defaultPiModelRoles(
           item.kind === 'agent' &&
           basename(item.target) === `${piSpecialistName(role.name)}.md`,
       )?.target;
-      const content =
-        path && existsSync(path) ? readFileSync(path, 'utf8') : '';
-      const model = /^model:\s*["']?([^"'\r\n]+)/m.exec(content)?.[1]?.trim();
+      if (path && existsSync(path)) {
+        const configured = readPiModelConfig(dirname(dirname(path)), [
+          role.name,
+        ]).roles[0];
+        if (configured) return configured;
+      }
       return {
         role: role.name,
-        model: model && model !== 'default' ? model : 'inherit',
-        effort: (() => {
-          const value = /^thinking:\s*["']?([^"'\r\n]+)/m
-            .exec(content)?.[1]
-            ?.trim();
-          return value && value !== 'default' && value !== 'inherit'
-            ? { kind: 'effort' as const, value }
-            : { kind: 'inherit' as const };
-        })(),
+        model: 'inherit',
+        effort: { kind: 'inherit' as const },
       };
     });
 }
@@ -999,35 +1001,37 @@ export function buildPiModelPlan(
     ],
     disclaimers: disclaimers(),
   };
-  planSources.set(plan, { setup, context, model: input });
-  return plan;
-}
-
-function replaceFrontmatterField(
-  content: string,
-  field: string,
-  value: string | undefined,
-): string {
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
-  if (lines[0]?.trim() !== '---') return content;
-  const end = lines.findIndex(
-    (line, index) => index > 0 && line.trim() === '---',
-  );
-  if (end === -1) return content;
-  const prefix = `${field}:`;
-  const index = lines
-    .slice(1, end)
-    .findIndex((line) => line.startsWith(prefix));
-  const absoluteIndex = index === -1 ? -1 : index + 1;
-  if (value === undefined) {
-    if (absoluteIndex !== -1) lines.splice(absoluteIndex, 1);
-    return lines.join(newline);
+  let modelSnapshot: PiModelSnapshot | undefined;
+  if (!invalid && input.roles.length > 0) {
+    const path = items[0]?.target.path;
+    if (
+      path &&
+      items.every((item) => item.target.path && existsSync(item.target.path))
+    ) {
+      try {
+        modelSnapshot = readPiModelConfig(
+          dirname(dirname(path)),
+          input.roles.map(({ role }) => role as PiSpecialistRole),
+        );
+      } catch (error) {
+        plan.canApply = false;
+        plan.warnings.push(
+          warning(
+            error instanceof Error ? error.message : String(error),
+            'pi-model-config-invalid',
+            'critical',
+          ),
+        );
+      }
+    }
   }
-  const replacement = `${field}: ${JSON.stringify(value)}`;
-  if (absoluteIndex === -1) lines.splice(1, 0, replacement);
-  else lines[absoluteIndex] = replacement;
-  return lines.join(newline);
+  planSources.set(plan, {
+    setup,
+    context,
+    model: structuredClone(input),
+    modelSnapshot,
+  });
+  return plan;
 }
 
 export function applyPiPlan(plan: OperationPlan): OperationApplyResult {
@@ -1055,42 +1059,23 @@ export function applyPiPlan(plan: OperationPlan): OperationApplyResult {
       'Pi operation plan is not applicable or was not built in this process.',
     );
   if (plan.action === 'model-config' && source.model) {
-    const changedTargets: ManagedTarget[] = [];
-    for (const role of source.model.roles) {
-      const target = plan.items.find((item) => item.title.endsWith(role.role))
-        ?.target.path;
-      if (!target || !existsSync(target))
-        return reject(
-          `Owned Pi specialist definition is missing: ${role.role}.`,
-        );
-      let content = readFileSync(target, 'utf8');
-      content = replaceFrontmatterField(content, 'model', role.model);
-      content = replaceFrontmatterField(
-        content,
-        'thinking',
-        role.effort?.kind === 'effort' ? role.effort.value : undefined,
+    if (!source.modelSnapshot)
+      return reject(
+        'Owned Pi specialist definitions were missing at preview. Reopen model configuration.',
       );
-      // Remove transitional private markers written by prerelease migration
-      // builds. Native model inheritance is explicit; thinking inheritance is
-      // represented by omission according to the pinned runtime parser.
-      content = replaceFrontmatterField(
-        content,
-        'thoth-model-inherit',
-        undefined,
+    const snapshot = source.modelSnapshot;
+    const result = savePiModelConfig(snapshot, source.model.roles);
+    const changedTargets = fileTargets(
+      result.changedRoles.map((role) =>
+        join(snapshot.piRoot, 'agents', `${piSpecialistName(role)}.md`),
+      ),
+    );
+    source.modelSnapshot = result.snapshot;
+    if (!result.success)
+      return reject(
+        result.error ?? 'Pi model configuration failed.',
+        changedTargets,
       );
-      content = replaceFrontmatterField(
-        content,
-        'thoth-thinking-inherit',
-        undefined,
-      );
-      writePiManagedText(target, content);
-      changedTargets.push({
-        kind: 'file',
-        path: target,
-        label: `Pi ${role.role} specialist`,
-        state: 'installed',
-      });
-    }
     return {
       harness: 'pi',
       action: plan.action,

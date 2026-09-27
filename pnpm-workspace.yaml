@@ -1,7 +1,9 @@
 allowBuilds:
   '@ast-grep/cli': true
+  '@google/genai': false
   esbuild: true
   msgpackr-extract: true
+  protobufjs: false
 
 overrides:
   hono: 4.12.19

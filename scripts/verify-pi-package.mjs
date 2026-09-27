@@ -182,15 +182,8 @@ try {
       throw new Error(`External implementation tree was packed: ${forbidden}`);
   const unrelated = join(tempRoot, 'unrelated');
   mkdirSync(unrelated);
-  run(
-    process.execPath,
-    [
-      '--input-type=module',
-      '--eval',
-      `import(${JSON.stringify(pathToFileURL(join(candidate, 'dist', 'pi.js')).href)}).then(m=>{if(typeof m.default!=="function")process.exit(2)})`,
-    ],
-    { cwd: unrelated },
-  );
+  // Native peers resolve through Pi's loader rather than a bare Node import.
+  // The real-Pi probe below verifies the packed entrypoint from an isolated home.
   const piHome = join(tempRoot, 'pi-home');
   mkdirSync(piHome);
   runPi(['install', candidate, '--no-approve'], piHome);

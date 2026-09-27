@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { lt } from 'semver';
 import { piAdapter } from '../harness/adapters/pi';
 import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
@@ -240,13 +240,9 @@ export function verifyPiFirstPartyPackage(input: {
     }
     const manifestSha256 = sha256(manifestPath);
     const extensionSha256 = sha256(extensionPath);
-    const load = defaultCommandExecutor('node', [
-      '--input-type=module',
-      '--eval',
-      `import(${JSON.stringify(pathToFileURL(extensionPath).href)}).then(m=>{if(typeof m.default!=="function")process.exit(2)})`,
-    ]);
-    if (load.exitCode !== 0)
-      throw new Error(`Compiled Pi extension is not loadable: ${load.stderr}`);
+    // Pi supplies native peer modules through its extension loader. A bare
+    // Node import is not a valid loadability check for a native extension;
+    // the receipt-bound real-Pi observation below must prove successful loading.
     const observation = observePiNativeRoot({
       extensionPath,
       manifestSha256,

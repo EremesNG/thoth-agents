@@ -348,6 +348,33 @@ selects thinking independently instead of imposing the OpenAI preset. Use a
 provider/model available in the local Pi catalog; installation does not
 authenticate providers or silently substitute models.
 
+### Configure specialist models inside Pi
+
+Run `/thoth-agents:models` in Pi's interactive TUI. The panel edits the **global**
+six Thoth specialists, not the ambient root. It does not create profiles or
+project configuration, install packages, or authenticate providers.
+
+- Use ↑/↓ and Enter to select a role. Type to search Pi's current model catalog,
+  select a model, then choose a supported thinking level (including `max` where
+  supported). `inherit` uses the native inheritance behavior described above.
+- Press `s` on the overview to save. Escape backs out or cancels; a dirty draft
+  requires explicit discard confirmation. Draft edits do not write files.
+- Saved overrides remain in `~/.pi/agent/agents/thoth-*.md` and survive specialist
+  synchronization. The panel uses Pi's configured agent directory when overridden.
+  CLI model configuration uses the same persistence service.
+- Changes are picked up on subsequent specialist discovery; already-running
+  children and the parent model are unchanged. Native settings, provider-specific
+  overrides, and project definitions can take precedence over these stored global
+  values. Thinking inheritance is unpinned and may use `subagents.defaultThinking`.
+- If a definition changes externally while the panel is open, reopen it before
+  saving. Missing/unowned definitions and unsafe paths are rejected. Writes are
+  atomic per file, not across all six files: a failure identifies roles already
+  changed, retains the draft, and permits retry after resolving the error.
+
+Custom terminal UI is unavailable in RPC/JSON/print modes; invocation there makes
+no configuration changes. After updating the extension, reload Pi to register the
+new command.
+
 ## Skill ownership
 
 All harness distributions carry only thoth-owned workflow skills: `thoth-init`,

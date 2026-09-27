@@ -959,6 +959,28 @@ describe('Pi operations', () => {
     }
   });
 
+  test('rejects CLI model saves when owned definitions changed after preview', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-stale-'));
+    roots.push(homeDir);
+    const agentPath = join(homeDir, '.pi', 'agent', 'agents', 'thoth-deep.md');
+    mkdirSync(dirname(agentPath), { recursive: true });
+    writeFileSync(
+      agentPath,
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: old/model\n---\nOriginal\n',
+    );
+    const plan = buildPiModelPlan(
+      { harness: 'pi', roles: [{ role: 'deep', model: 'new/model' }] },
+      { cwd: homeDir, homeDir, env: {} },
+    );
+    writeFileSync(
+      agentPath,
+      '---\nname: thoth-deep\nmanaged-by: thoth-agents\nmodel: external/change\n---\nEdited externally\n',
+    );
+    const result = applyPiPlan(plan);
+    expect(result.applied).toBe(false);
+    expect(readFileSync(agentPath, 'utf8')).toContain('external/change');
+  });
+
   test('updates model fields only inside owned specialist frontmatter', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-model-apply-'));
     roots.push(homeDir);

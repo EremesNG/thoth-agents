@@ -75,6 +75,10 @@ claude plugin install thoth-agents@thoth-plugins --scope user
 > without writing changes. After installation, restart your harness; Claude Code
 > also supports `/reload-plugins`.
 
+Inside Pi, use `/thoth-agents:models` to edit the six specialists' global models
+and thinking levels without leaving the session. Changes remain a draft until
+saved; the parent model is unchanged. See [panel controls and precedence](docs/installation.md#configure-specialist-models-inside-pi).
+
 Pi setup currently supports the default `~/.pi/agent` root. See the
 [Pi installation guide](docs/installation.md#pi) for runtime requirements,
 existing-package conflicts, and recovery. Pi extensions run with your user's

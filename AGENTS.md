@@ -80,10 +80,14 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - Use TypeScript and modern Node patterns consistent with the existing code.
 - Keep changes explicit and limited to the requested behavior. Preserve unrelated
   edits; never revert work you did not make. Ignore backward compatibility.
-- Small bounded low-risk work can proceed directly to implementation and checks.
-  For substantive or resumable work, persist the approved agreement in
-  `.thoth/changes/<id>/work.yaml`. Root owns the agreement, units and acceptance;
-  optional context, external units and evidence exist only when useful.
+- Classify requests using bounded evidence; questions and research do not authorize
+  changes. Clear bounded low-risk work may be direct, even with useful delegation,
+  without planning artifacts. Reclassify if material uncertainty, scope or risk grows.
+  For substantive or resumable work, explore, specify and clarify before technical
+  planning and persistence in `.thoth/changes/<id>/work.yaml`. Investigate facts;
+  resolve material human decisions and give bounded technical unknowns a resolution
+  strategy. See the [workflow route](docs/agent/workflow-and-skills.md); root owns
+  agreement and acceptance, with no separate mandatory discovery/spec documents.
 - Honor authorization and resolved choices. For a ready persisted plan, offer
   Oracle review (recommended) or direct implementation; after [OKAY], offer
   implementation (recommended) or stopping. Each choice has at most three native
@@ -137,8 +141,10 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 
 ## Change and verification flow
 
-1. Confirm the agreement and reuse existing authorization.
-2. Read public contracts and relevant tests before editing; select bounded units.
+1. Classify the request; reuse authorization and choose direct or persisted work.
+2. For persisted work, explore public contracts/tests, specify outcomes and clarify
+   material uncertainty before planning units and saving the agreement. For direct
+   work, inspect only what is needed; delegation alone does not require persistence.
 3. Resolve the two applicable planning choices, then implement within ownership,
    keeping useful checkpoints for recovery.
 4. Run focused checks, then verification proportional to risk.

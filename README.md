@@ -166,10 +166,14 @@ supports it. You do not need to summon every role for every task.
 
 ## Plan once, execute with focused context
 
-For substantive work, agree on the goal, acceptance criteria and autonomy bounds
-with the root. It records the agreement in `.thoth/changes/<id>/work.yaml`,
-then executes bounded units using only the context they need. Small, clear fixes
-can proceed directly to implementation and verification.
+The root first classifies the request. For substantive changes it explores current
+behavior, specifies the desired outcome and acceptance, and clarifies material
+uncertainty with you before planning and persisting `.thoth/changes/<id>/work.yaml`.
+Repository facts are investigated; grilling is used only when requested or needed
+for material human decisions. No separate discovery or specification documents
+are mandatory. Small, clear, bounded, low-risk fixes can proceed through focused
+inspection, implementation and verification without planning files, even with
+useful delegation. New material uncertainty or risk triggers reclassification.
 
 Independent units run in parallel through the native harness. Per-unit
 checkpoints support resuming interrupted work after reconciling the actual

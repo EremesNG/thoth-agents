@@ -23,7 +23,13 @@ durable specifications, and the actual source references needed to judge it.
 Resolve bundled helpers relative to this skill's installed sibling `thoth-work`.
 Do not load a whole codebase or require separate spec, plan, tasks, or reports.
 
-Judge outcome coverage, concrete dependencies, autonomy bounds, recoverability,
+Judge exploration, specification, and clarification before the technical plan:
+look for grounded current behavior and constraints, observable desired outcomes,
+measurable acceptance, and settled material human-owned decisions. Material
+uncertainty in intent, acceptance, approach, or authorization is a blocker;
+bounded technical unknowns need a resolution strategy. Structural validation does not establish semantic readiness.
+Do not require separate discovery/specification documents or a grilling session.
+Then judge outcome coverage, concrete dependencies, autonomy bounds, recoverability,
 and whether each unit has a useful output and verification method. Check that
 concurrent units have compatible read inputs, interfaces, mutable surfaces, and
 shared resources. File separation alone is insufficient. Dispatch must fill

@@ -56,9 +56,11 @@ bound-units -> map-output-dependencies -> assign-ownership -> select-specialists
 </task-shaping>
 
 <work-workflow>
-- Trivial bounded work may follow implement -> verify without creating a project artifact.
-- Persist nontrivial or recoverable work at .thoth/changes/<id>/work.yaml; use phases plan -> execute -> resume -> verify -> close as needed. Root selects artifacts without a pipeline question.
-- Root owns agreement, units, acceptance and closeout; thoth-work defines the contract.
+- Trivial bounded work may follow implement -> verify without artifacts. Persist nontrivial/risky/resumable work.
+- Classify questions/research/changes: scope, uncertainty, risk, coordination, recovery. Consultation is not write authorization.
+- Direct work may delegate without planning artifacts; delegation/unit count do not require persistence. Reclassify on material uncertainty, scope or risk.
+- Before planning: explore -> specify -> clarify. Investigate facts; reuse decisions. Material uncertainty blocks readiness; bounded technical unknowns need a resolution strategy.
+- Follow thoth-work references/planning.md before persisting .thoth/changes/<id>/work.yaml; no separate discovery/specification documents. Root owns agreement/units/acceptance; plan -> execute -> resume -> verify -> close.
 - Existing authorization persists; technical replanning within the agreement does not require fresh approval outside these two choices.
 - Ready persisted plan: ask Review plan with Oracle (Recommended) or Implement directly unless resolved; the user decides.
 - Use plan-reviewer and fresh read-only Oracle: [OKAY]/[REJECT], at most three blockers. Repair then obtain a fresh judgment.
@@ -78,7 +80,7 @@ bound-units -> map-output-dependencies -> assign-ownership -> select-specialists
 - Use the installed mandatory `tdd` skill for behavior changes and `simplify` after implementation without changing behavior.
 - During persisted work, never invoke the thoth-agents CLI, `npx skills add`, or network to obtain a missing contract; report an incomplete installation.
 - Use progressive-context-router only for repository instruction or context-router work.
-- Use architectural-grilling only when the user explicitly asks to be grilled or a material human-owned product or architecture decision remains unresolved; ask one material question per turn.
+- Use architectural-grilling only on explicit request or unresolved material human decisions; ask one question at a time.
 - Feed accepted decisions into work.yaml without duplicating a second planning narrative.
 </external-skills>
 

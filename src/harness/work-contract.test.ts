@@ -78,6 +78,35 @@ UNITS
 `;
 
 describe('persisted work contract', () => {
+  test('ships semantic readiness guidance without mandatory discovery artifacts', () => {
+    const planning = readFileSync(
+      'skills/thoth-work/references/planning.md',
+      'utf8',
+    );
+    const skill = readFileSync('skills/thoth-work/SKILL.md', 'utf8');
+    const reviewer = readFileSync('skills/plan-reviewer/SKILL.md', 'utf8');
+
+    for (const stage of [
+      'Classify',
+      'Explore',
+      'Specify',
+      'Clarify',
+      'Plan and persist',
+    ]) {
+      expect(planning).toContain(`### ${stage}`);
+    }
+    expect(planning).toMatch(/delegation.*does not.*persist/i);
+    expect(planning).toMatch(/material uncertainty.*blocks.*ready/i);
+    expect(planning).toMatch(/repository facts.*investigat/i);
+    expect(planning).toMatch(/architectural-grilling.*only/i);
+    expect(planning).toMatch(
+      /no separate.*discovery.*specification.*documents/i,
+    );
+    expect(skill).toMatch(/before.*creating.*work\.yaml/i);
+    expect(reviewer).toMatch(/exploration.*specification.*clarification/i);
+    expect(reviewer).toMatch(/structural validation.*not.*semantic/i);
+  });
+
   test('loads and validates an approved inline-unit contract at the ready gate', () => {
     const { projectRoot, changeRoot } = fixture();
     const result = validateWork({ projectRoot, changeRoot, through: 'ready' });

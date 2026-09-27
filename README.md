@@ -49,9 +49,10 @@ verification you can follow—without manually coordinating every agent.
   memory lifecycle, persistence, and storage; thoth-agents only invokes its setup.
 
 > [!NOTE]
-> OpenCode is the default and most integrated path. All four harnesses share the
-> workflow and role design, but their permissions, delegation, and runtime
-> capabilities are not identical. Your harness's trust and approval rules still apply.
+> Pi is the default harness and our recommendation for the best Thoth-Agents
+> experience. All four harnesses share the workflow and role design, but their
+> permissions, delegation, and runtime capabilities are not identical. Your
+> harness's trust and approval rules still apply.
 
 ## Install
 
@@ -61,10 +62,10 @@ The commands below install at **global/user scope**.
 
 | Harness | What you get | Install command |
 | --- | --- | --- |
-| <a href="https://github.com/anomalyco/opencode"><picture><source media="(prefers-color-scheme: dark)" srcset="https://svgl.app/library/opencode-dark.svg"><img src="https://svgl.app/library/opencode.svg" alt="OpenCode logo" width="48" height="48"></picture></a><br>**OpenCode** | Native plugin, agent team, workflow skills, and memory setup. **Recommended starting point.** | `npx thoth-agents@latest install --agent=opencode` |
+| <a href="https://github.com/anomalyco/opencode"><picture><source media="(prefers-color-scheme: dark)" srcset="https://svgl.app/library/opencode-dark.svg"><img src="https://svgl.app/library/opencode.svg" alt="OpenCode logo" width="48" height="48"></picture></a><br>**OpenCode** | Native plugin, agent team, workflow skills, and memory setup. | `npx thoth-agents@latest install --agent=opencode` |
 | <a href="https://github.com/openai/codex"><img src="https://github.com/openai.png?size=120" alt="OpenAI logo — Codex" width="48" height="48"></a><br>**Codex** | Native plugin plus the required global agent and instruction setup. **Close Codex first.** | `npx thoth-agents@latest install --agent=codex` |
 | <a href="https://claude.com/product/claude-code"><img src="https://github.com/anthropics.png?size=120" alt="Anthropic logo — Claude Code" width="48" height="48"></a><br>**Claude Code** | Marketplace agents and skills, completed by the CLI's external skills and memory setup. **Run the prerequisites below first.** | `npx thoth-agents@latest install --agent=claude` |
-| <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, five specialists, delegation and research extensions, workflow skills, and memory setup. | `npx thoth-agents@latest install --agent=pi` |
+| <a href="https://github.com/earendil-works/pi"><img src="https://raw.githubusercontent.com/EremesNG/thoth-mem/master/img/pi.svg" alt="Pi logo" width="48" height="48"></a><br>**Pi** | Native package, five specialists, delegation and research extensions, workflow skills, and memory setup. **Recommended for the best experience.** | `npx thoth-agents@latest install --agent=pi` |
 
 ### Claude Code prerequisites
 

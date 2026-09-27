@@ -1,0 +1,36 @@
+{
+  "status": "implemented",
+  "changedPaths": [
+    "README.md",
+    "docs/agent/cli-installation.md",
+    "package.json",
+    "pnpm-lock.yaml",
+    "src/cli/install.test.ts",
+    "src/cli/operations/pi.test.ts",
+    "src/cli/operations/pi.ts",
+    "src/cli/pi-external-package.ts",
+    "src/cli/pi-install.test.ts",
+    "src/cli/pi-install.ts"
+  ],
+  "behavior": [
+    "Six external Pi sources use minimum-only >= floors; first-party source and receipt remain exact.",
+    "Install and status share manifest name and stable SemVer-floor validation.",
+    "Satisfying managed ranges are not reinstalled; exact sources migrate through native Pi handling; detected downgrades are restored and rejected.",
+    "Object-form package filters, unrelated settings, scopes, provider ownership, and dry-run behavior are preserved."
+  ],
+  "verification": {
+    "red": "Minimum-only plan regression failed against the six exact pins before implementation.",
+    "focused": "pnpm exec vitest run src/cli/pi-install.test.ts src/cli/operations/pi.test.ts src/cli/install.test.ts: 72 passed.",
+    "typecheck": "pnpm run typecheck: passed.",
+    "build": "pnpm run build: passed.",
+    "fullTest": "pnpm test under ambient CODEX_HOME exposed 17 Codex path failures; env -u CODEX_HOME pnpm test passed all 977 tests across 96 files. The four affected Codex files also passed 54/54 with CODEX_HOME removed.",
+    "checkCi": "pnpm run check:ci: changed implementation files pass; command is blocked only by the pre-existing trailing space in evidence/planning.json, outside this unit's write boundary.",
+    "nativePi0861": "Disposable npm install of @earendil-works/pi-coding-agent@0.86.1 showed parseSource('npm:pi-subagents@>=0.71.0') => valid range, pinned false; addSourceToSettings replaced an exact object-form source while preserving extensions and skills filters. No global install was performed."
+  },
+  "recommendedSpecEdits": [
+    "Replace pinned/exact external-package requirements with the six mandatory stable >= floors and independent native-update semantics.",
+    "Require real installed manifest name/version validation and explicitly exclude prereleases from ordinary stable ranges.",
+    "Require native migration of legacy exact sources with filter preservation and anti-downgrade behavior while retaining exact first-party receipts.",
+    "Update Pi compatibility examples from 0.84.4 to the evidenced 0.86.1 minimum."
+  ]
+}

@@ -29,9 +29,9 @@ execution does not.
 - Install and applied Update share the complete selected-harness orchestration:
   OpenCode refreshes exact plugin/config plus owned skills; Codex performs
   native plugin setup before its global pack; Claude performs native plugin
-  refresh; Pi installs the exact executing first-party package before six pinned
-  external packages and attributable resources. Every harness then installs
-  required external skills. Published installs require provider-complete
+  refresh; Pi installs the exact executing first-party package before six
+  minimum-constrained external packages and attributable resources. Every
+  harness then installs required external skills. Published installs require provider-complete
   evidence before recording CLI completion last; an explicit local Pi package
   install omits provider setup and records only thoth-agents completion.
 - Update previews by default. Preview and dry-run write nothing; any required
@@ -76,12 +76,26 @@ execution does not.
   beneath that validated configured root; they are diagnostic evidence, not
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
-  then may it migrate attributable legacy root/skill
-  copies, install pinned `pi-subagents@0.71.0`, Context7, pi-web-access, the grep-only MCP adapter,
-  and the RPIV question and todo extensions,
-  merge builtin-disablement and fresh depth-one delegation settings without
-  replacing unrelated user keys, synchronize six specialists, install four external skills, run provider
-  setup, and commit the unchanged last-complete ledger. A custom
+  then may it migrate attributable legacy root/skill copies and install the six
+  external sources as `pi-subagents@>=0.71.0`, `@upstash/context7-pi@>=0.1.2`,
+  `pi-web-access@>=0.27.0`, `pi-mcp-adapter@>=2.32.1`,
+  `@juicesharp/rpiv-ask-user-question@>=2.9.0`, and
+  `@juicesharp/rpiv-todo@>=2.9.0`. Pi's native manager owns installation and
+  subsequent independent updates within these open-ended stable ranges. Setup
+  validates each resolved package manifest's exact name and SemVer floor,
+  accepts newer stable versions, and does not reinstall an already satisfying
+  managed range. Legacy exact sources are migrated through Pi's native install
+  command so object-form resource filters and unrelated settings survive; a
+  detected downgrade fails setup and triggers restoration, verified against a
+  fresh listing and manifest; unverifiable recovery exposes manual guidance.
+  The first-party thoth-agents
+  source and ownership receipt remain exact. Pi 0.86.1 compatibility is based
+  on an isolated native package-manager probe: it parses `>=` as an unpinned
+  valid range and preserves object-form filters while replacing a source.
+  Setup then merges builtin-disablement and fresh depth-one delegation settings
+  without replacing unrelated user keys, synchronizes six specialists, installs
+  four external skills, runs provider setup, and commits the unchanged
+  last-complete ledger. A custom
   `PI_CODING_AGENT_DIR`, unowned canonical agent, or conflicting global `grep`
   entry blocks mutation. A configured legacy `pi-subagents-j0k3r` runtime also
   blocks before mutation and returns manual removal guidance; setup never

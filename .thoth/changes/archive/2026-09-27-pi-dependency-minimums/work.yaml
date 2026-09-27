@@ -1,0 +1,119 @@
+version: 1
+change:
+  id: pi-dependency-minimums
+  title: Allow independent Pi dependency updates with minimum versions
+agreement:
+  status: approved
+  source: user
+  ref: "Implementa ese cambio: external Pi dependencies with minimum-only versions"
+  approvedBy: user
+  fingerprint: sha256:e6ce1467c108764eecc6e897fce1743692048301e7041febbf814f7b3c74630c
+goal: Keep all six external Pi extensions mandatory with minimum-only version constraints and allow independent native Pi updates without a Thoth release.
+bounds:
+  include:
+    - Six external Pi dependencies, native installation and migration, installed-version validation, status, tests and documentation
+    - Verify native range support at the declared minimum Pi version
+  exclude:
+    - First-party Thoth exact-version receipts and other harness behavior
+    - Global user installation changes, credentials, provider ownership and delegation-runtime replacement
+    - Custom update managers or upper version bounds
+autonomy:
+  allowed:
+    - Implement minimum-only ranges using existing versions as initial floors
+    - Run local tests and disposable isolated compatibility probes
+    - Preserve existing newer satisfying installations and unrelated settings and resource filters
+  requiresApproval:
+    - Changes to live user installation or unrelated product behavior
+  forbidden:
+    - Reintroduce exact pins or silently downgrade satisfying dependencies
+    - Claim compatibility with arbitrary future releases or unexecuted runtime checks
+acceptance:
+  - id: minimums
+    criterion: All six dependencies remain mandatory with native >= sources; equal and newer installed stable versions satisfy real manifest validation, while missing, invalid and older versions cannot claim readiness; update and status do not demand exact pins.
+    inputs: [src/cli/pi-install.ts, src/cli/operations/pi.ts]
+    outputs: [src/cli/pi-install.ts, src/cli/pi-install.test.ts, src/cli/operations/pi.ts, src/cli/operations/pi.test.ts]
+    checks: [focused-tests, static-checks, independent-review]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: "2026-09-27T00:19:20.153Z"
+      evidence: [.thoth/changes/pi-dependency-minimums/evidence/verification.md, .thoth/changes/pi-dependency-minimums/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:1c81fc7b57b1da6036014ceb9aa76f43b25c5df8eeba8e50341df986736a54bf
+      inputFingerprint: sha256:5ad3886405907fe015aba6df9fe2b1b80250487b2f0264895def42fd27a73f8b
+      outputFingerprint: sha256:21d07b99c3eadf37e6f5858b80afd9dc2db45cb094cb55154bc0bbfef72f2c30
+      definitionFingerprint: sha256:a060244315f7769f4a2c809c0d2bcaa9d933d265520bddce13125989b65536fc
+  - id: transition
+    criterion: Installation and Update migrate legacy managed pins without losing resource filters or unrelated settings, preserve first-party receipts and provider boundaries, avoid downgrades, and document minimum-only semantics and evidenced native Pi compatibility.
+    inputs: [src/cli, docs/agent/cli-installation.md, README.md]
+    outputs: [src/cli, README.md, docs/agent/cli-installation.md]
+    checks: [focused-tests, static-checks, native-compatibility, independent-review]
+    result:
+      status: accepted
+      reviewedBy: root
+      reviewedAt: "2026-09-27T00:19:20.354Z"
+      evidence: [.thoth/changes/pi-dependency-minimums/evidence/verification.md, .thoth/changes/pi-dependency-minimums/evidence/oracle-final.md]
+      evidenceFingerprint: sha256:1c81fc7b57b1da6036014ceb9aa76f43b25c5df8eeba8e50341df986736a54bf
+      inputFingerprint: sha256:5ca63f38738340fa86513dd65c936587a937d5596f1d032c50a3b27ec6501160
+      outputFingerprint: sha256:5ca63f38738340fa86513dd65c936587a937d5596f1d032c50a3b27ec6501160
+      definitionFingerprint: sha256:51750c350452785e15f7ecdb0b859c106e12ba278ac43a85453ae1fe3d3d279b
+durableUpdates:
+  - operation: replace
+    capability: cli-installation
+    source: .thoth/changes/pi-dependency-minimums/evidence/cli-installation-spec.md
+    expectedDigest: 96dfd1c2a00611b5a64b582dd7a192e88c166f5313d9a798ffce0a5f76c27fff
+    sourceDigest: 37114e387f06afef8f35fe20f3c81f62e7b2d79c45400bd1a33e2b3b5d052bd7
+  - operation: replace
+    capability: multi-harness-agent-pack
+    source: .thoth/changes/pi-dependency-minimums/evidence/multi-harness-agent-pack-spec.md
+    expectedDigest: fa8743886a7b3dd44e254a53be54435da4813f1f47d317b15aec1f3ded40fa3c
+    sourceDigest: ba715a45dc227eb891dda34b9e3496ca79747382452b8fba80c40082941a59a9
+units:
+  - id: implementation
+    output: Coherent minimum-only Pi dependency inventory, installation, status, migration, regression tests and operator documentation.
+    dependsOn: []
+    reads: [src/cli, package.json, pnpm-lock.yaml, README.md, docs/agent/cli-installation.md, .thoth/specs/cli-installation/spec.md]
+    writes: [src/cli, package.json, pnpm-lock.yaml, README.md, docs/agent/cli-installation.md]
+    resources: [repository-pi-dependencies]
+    owner:
+      role: deep
+    checks:
+      - id: focused-tests
+        criterion: Installer and operation regressions cover minimum, newer, old, invalid, missing, migration, filters, dry-run and first-party separation.
+        command: pnpm exec vitest run src/cli/pi-install.test.ts src/cli/operations/pi.test.ts src/cli/install.test.ts
+      - id: static-checks
+        criterion: Formatting, types, build and regression suite pass without unrelated changes.
+        command: pnpm run check:ci && pnpm run typecheck && pnpm run build && pnpm test
+      - id: native-compatibility
+        criterion: Evidence establishes range support at the declared Pi minimum or truthfully reports the compatibility gap before completion.
+      - id: independent-review
+        criterion: Fresh read-only Oracle verifies actual diff, agreement and check evidence.
+    acceptance: [minimums, transition]
+    baseline:
+      status: captured
+      capturedAt: "2026-09-26T23:52:27.334Z"
+      paths:
+        - {path: src/cli, state: preexisting, fingerprint: "sha256:b1119f7ee19b722d52482d96f021a2d3eaa48e4216657a54b3742fa8aa362d3a"}
+        - {path: package.json, state: preexisting, fingerprint: "sha256:bfe137bd81dfa4fe6c360e7b62365989d1f8dd98b223394a0fb3bdd82bdb7004"}
+        - {path: pnpm-lock.yaml, state: preexisting, fingerprint: "sha256:7fa3605526d78441872d9cc49af9c59469a9f178030ec310754da458bd9b4b3c"}
+        - {path: README.md, state: preexisting, fingerprint: "sha256:8ecd0b55fe93a8f6adb77de69e70e7fff8ed3faf372ae91a27cb56bb82b58860"}
+        - {path: docs/agent/cli-installation.md, state: preexisting, fingerprint: "sha256:2fe181df61f1f0c832f992f6b2ef40f0a3053f6ae04d16a7ea3bd64de41e4647"}
+    semantic:
+      status: accepted
+      result:
+        status: accepted
+        reviewedBy: root
+        reviewedAt: "2026-09-27T00:19:12.466Z"
+        evidence: [.thoth/changes/pi-dependency-minimums/evidence/verification.md, .thoth/changes/pi-dependency-minimums/evidence/oracle-final.md]
+        evidenceFingerprint: sha256:1c81fc7b57b1da6036014ceb9aa76f43b25c5df8eeba8e50341df986736a54bf
+        inputFingerprint: sha256:875ba1a0abaf4b668140b5855007584ce0921cdba18268e14c476ee8326fff46
+        outputFingerprint: sha256:ad3f99082e05e5ff35a3e55fce20ebb08b878338765d028c942ee936b70f68f5
+        definitionFingerprint: sha256:47574b8b45e18f1b6c0010dd85497b6b3cc84ba7a7dc557e96e70d129383d921
+verification:
+  reviewer: oracle
+  verdict: pass
+  evidence: [.thoth/changes/pi-dependency-minimums/evidence/verification.md, .thoth/changes/pi-dependency-minimums/evidence/oracle-final.md]
+  evidenceFingerprint: sha256:1c81fc7b57b1da6036014ceb9aa76f43b25c5df8eeba8e50341df986736a54bf
+  inputFingerprint: sha256:f5d5df1b93ca5a302dc6d1bfbb61c6b37e115ec4b8cf2fdfbb4f22b1c674365a
+  outputFingerprint: sha256:c8cf3517154f64fbb7774154cc56adf45f790946334191c4cf988e0f8afad87a
+  agreementFingerprint: sha256:e6ce1467c108764eecc6e897fce1743692048301e7041febbf814f7b3c74630c
+  technicalFingerprint: sha256:762b92f8769cff48b9e815f105ebbb7e4b56e28e6bce57b4321a79deb07e0057

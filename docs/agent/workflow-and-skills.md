@@ -16,6 +16,22 @@ operation, not every workflow document.
 
 ## Invariants
 
+- Classify questions, research and changes before choosing process. Clear bounded
+  low-risk work may stay artifact-free; delegation and unit count alone never
+  require planning artifacts. Specialists implement by default. Root direct work
+  is only the known-source minimal exception and stops at another search or
+  dependency. Reclassify when material uncertainty, broader scope or risk emerges.
+- Before technical planning and persistence, explore current behavior/contracts,
+  specify desired behavior and acceptance, and clarify material human decisions.
+  Unknown local source, flow or responsibility triggers Explorer before root
+  repository search; known bounded implementation goes directly to its writer.
+  Investigate repository facts; use grilling only when requested or needed for
+  a material decision. Iterate as evidence requires. Bounded technical unknowns
+  need a resolution strategy; material uncertainty blocks readiness.
+- Keep these guarantees in existing agreement fields and optional useful context,
+  not separate mandatory discovery/specification documents. Follow the
+  [planning reference](../../skills/thoth-work/references/planning.md) before
+  creating `work.yaml`; structural validation is not semantic readiness.
 - `.thoth/changes/<id>/work.yaml` is canonical. Supporting context, external
   unit definitions and evidence are conditional; do not duplicate requirements.
 - Human agreement settles product scope, acceptance and autonomy. Existing
@@ -28,8 +44,10 @@ operation, not every workflow document.
   Follow [planning choices and recovery](../../skills/thoth-work/references/planning.md)
   for native restrictions, compact evidence and exclusions. These defaults never
   select a pipeline or resolve other material decisions or sensitive permissions.
-- Root owns contract and accepted state. Specialists own one assigned mutable
-  product surface and their own per-unit checkpoint; read-only roles never write.
+- Root owns goals, constraints, decisions, contract, coordination, accepted state
+  and synthesis. Specialists own one assigned mutable product surface and their
+  own per-unit checkpoint; read-only roles never write. Root does not repeat
+  delegated discovery and requests targeted support for unsupported claims.
 - Validate concrete dependencies and acceptance coverage before dispatch.
   Dispatch all admitted independent ready work before waiting, refill capacity,
   and release each consumer after its own fresh accepted prerequisites.

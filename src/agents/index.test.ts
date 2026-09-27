@@ -152,16 +152,13 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     expect(prompt.length - 8_499).toBeLessThanOrEqual(2_500);
     expect(prompt).toContain('adaptive root');
     expect(prompt).toContain(
-      'Handle trivial bounded work directly when continuity outweighs delegation overhead',
+      'Direct consultation or implementation is only the bounded known-source exception',
     );
-    expect(prompt).toContain('net gain');
+    expect(prompt).toContain('Specialists execute');
+    expect(prompt).not.toContain('delegation creates net gain');
     expect(prompt).toContain('<implementation-ownership>');
-    expect(prompt).toContain(
-      'Persistence and planning choices do not determine implementation ownership.',
-    );
-    expect(prompt).toContain(
-      'Explicit safe user direction is an ownership input.',
-    );
+    expect(prompt).toMatch(/specialists execute by default.*root retains/is);
+    expect(prompt).toMatch(/another search or dependency ends it/i);
     expect(prompt).not.toMatch(/Direct micro-action/i);
     expect(prompt).not.toMatch(/Artifact-backed implement follows/i);
     expect(prompt).toContain('.thoth/changes/<id>/work.yaml');

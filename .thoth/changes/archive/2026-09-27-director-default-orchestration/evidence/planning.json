@@ -1,0 +1,39 @@
+{
+  "changeId": "director-default-orchestration",
+  "dispatchTechnicalFingerprint": "sha256:9767fa02c75caa918c78d784043e66b06f3b366033bc5b501b5def3ca0b970be",
+  "currentTechnicalFingerprint": "sha256:ddd6747f50208a50a3ed2872837b15b480dcee180b5026377743ad94effeaf4c",
+  "ownershipRefinement": ".thoth/changes/director-default-orchestration/evidence/ownership-refinement.md",
+  "baselineNote": "Required pre-dispatch baseline captured after approved plan; only baseline metadata changed the technical fingerprint. Scope, ownership, acceptance and reviewed approach unchanged.",
+  "agreementFingerprint": "sha256:55ab4734c7c017ce52c0bfd598a62a56076f601b37d5a73179667ba08c69f3ee",
+  "technicalFingerprint": "sha256:1887a8f2ac43e852ebded2dbf3d03cbd5a4712c214c775e8dda1e73b97813d25",
+  "reviewChoice": {
+    "value": "oracle",
+    "resolution": "explicit",
+    "answerEvidence": "Native ask_user_question returned Revisar con Oracle (Recommended) for the ready director-default-orchestration plan.",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "implementationChoice": {
+    "value": "implement",
+    "resolution": "explicit",
+    "answerEvidence": "Native ask_user_question returned Implementar (Recommended) after Oracle OKAY.",
+    "approvalRef": "2d8faba0-f5dc-4c42-b193-71605f8af110",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "review": {
+    "verdict": "OKAY",
+    "nativeReviewerRef": "2d8faba0-f5dc-4c42-b193-71605f8af110",
+    "agreementFingerprint": "sha256:55ab4734c7c017ce52c0bfd598a62a56076f601b37d5a73179667ba08c69f3ee",
+    "technicalFingerprint": "sha256:1887a8f2ac43e852ebded2dbf3d03cbd5a4712c214c775e8dda1e73b97813d25",
+    "evidence": ".thoth/changes/director-default-orchestration/evidence/plan-review.md",
+    "reviewedInputDigests": {
+      "work.yaml": "4231165f74eaeda87d643960b69a5f165009c74a677a2fa8404498b7c125f8f7",
+      "durable/workflow-spec.md": "9216cc7a544d5ad4faec17e34db5003185e94b6e9dad726826b6a2866a5b98d5",
+      ".thoth/specs/workflow/spec.md": "8203fba004c3e0e916e57118f2040f4a8ca6580507be59721deb56d8734f72ee",
+      ".thoth/constitution.md": "7ab247faa954bde42db005fd8e67cbee05db28e3f03a809a34388841176db743"
+    }
+  }
+}

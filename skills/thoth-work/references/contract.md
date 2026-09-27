@@ -1,5 +1,11 @@
 # Work contract
 
+Before creating a plan, apply the classification and semantic readiness gates in
+[planning.md](planning.md). Exploration, specification, and clarification precede
+technical planning and persistence. Reuse the existing fields below; no separate
+discovery artifact or additional schema is required. Structural validation cannot
+prove these reasoning obligations were satisfied.
+
 `work.yaml` uses restricted YAML: mappings, lists, and scalar values only.
 Duplicate or unknown keys, aliases, anchors, tags, merge keys, unsafe paths, and
 dependency cycles are errors. Unit and context references are repository-root

@@ -1,15 +1,25 @@
 # AI-first work workflow
 
-Thoth keeps the human agreement and the evidence needed to execute it in
-`.thoth/changes/<id>/work.yaml`. The human settles the goal, acceptance criteria,
-material decisions, and autonomy bounds during planning. The two planning choices
+Thoth classifies requests before choosing a process. Questions and research do
+not automatically authorize changes. For substantive changes, explore current
+behavior, specify the desired outcome, and clarify material uncertainty before
+technical planning. Only then persist the agreement and execution evidence in
+`.thoth/changes/<id>/work.yaml`. The human owns the goal, acceptance criteria,
+material decisions, and autonomy bounds. The two planning choices
 below control review and execution. Their resolved answers are reused during
 execution and recovery; other questions concern unresolved decisions outside
 that agreement. The two bounded defaults never resolve those other decisions.
 
-Small, clear, low-risk work can go directly from implementation to verification.
-Use a persisted work contract for coordinated, risky, or resumable work. There
-are no Direct/Accelerated/Full artifact bundles or mandatory prose reports.
+Small, clear, bounded, low-risk work can use focused implementation and
+proportional verification without planning files. Specialists implement by
+default; delegation or unit count alone does not require persistence. Root direct
+work is limited to consulting one known source or making a minimal authorized
+low-risk edit when source, scope and verification are known and no discovery or
+independent judgment is needed. Another search or dependency ends that exception.
+Use a work contract for nontrivial or risky changes, coordination needing a durable
+agreement, or resumable work. Reclassify before expanding work if material
+uncertainty, broader scope, or risk emerges; preserve useful progress. There are
+no Direct/Accelerated/Full artifact bundles or mandatory prose reports.
 
 ## What is persisted
 
@@ -31,10 +41,37 @@ The installed `thoth-work` skill supplies a minimal example, optional variants,
 an offline validator, and bounded context/fingerprint/checkpoint helpers. The
 helpers never execute commands declared in YAML and never schedule agents.
 
+## Before planning
+
+| Step | Required outcome |
+| --- | --- |
+| Classify | Identify request type, scope, uncertainty, risk, coordination and recovery needs with bounded inspection. |
+| Explore | Ground current behavior, relevant contracts, tests, interfaces and constraints in repository evidence; expose unknowns. |
+| Specify | Define desired observable behavior, inclusions/exclusions, measurable acceptance and autonomy, not implementation tasks. |
+| Clarify | Separate facts, assumptions and human-owned decisions; resolve material uncertainty rather than silently adopting guesses. |
+| Plan and persist | Shape outputs, dependencies, ownership, resources and checks, then save the agreed result in `work.yaml`. |
+
+Repository facts should be investigated rather than asked of the user. Unknown
+local source, flow or responsibility goes to Explorer before root repository
+search; its bounded assignment may name an unknown location and does not require
+exploratory pre-reading. Known bounded implementation goes straight to designer
+or worker without a mandatory Explorer stage. Use `architectural-grilling`
+only on explicit request or for unresolved material human-owned product or
+architecture decisions, not as a mandatory interview. Reuse settled decisions.
+Discovery can iterate: uncertainty affecting intent, acceptance, approach or
+authorization blocks readiness; bounded technical unknowns need an explicit
+resolution strategy and a stop/replan condition.
+
+These are semantic exit conditions, not new mandatory documents or an automatic
+state machine. Existing agreement fields, decisions, units and optional context
+hold only the findings consumers need. See [planning readiness and choices](../skills/thoth-work/references/planning.md)
+for the operational procedure. The structural validator cannot prove exploration
+or clarification actually happened.
+
 ## Planning and execution
 
-1. Root records the agreed goal, inclusions/exclusions, decisions, autonomy and
-   measurable acceptance. Current product contracts remain in `.thoth/specs/`;
+1. After the readiness conditions above hold, root records the agreed goal,
+   inclusions/exclusions, decisions, autonomy and measurable acceptance. Current product contracts remain in `.thoth/specs/`;
    project principles live in `.thoth/constitution.md`.
 2. Root shapes near-term work into units with an output, concrete dependencies,
    read inputs, owned write paths, shared resources, owner and checks. Later

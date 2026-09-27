@@ -30,6 +30,38 @@ describe('AI-first work workflow', () => {
     );
   });
 
+  test('classifies requests without making delegation a persistence trigger', () => {
+    const rules = getWorkWorkflowContract().rules.join('\n');
+
+    expect(rules).toMatch(/classify.*questions.*research.*changes/i);
+    expect(rules).toMatch(/scope.*uncertainty.*risk.*coordination.*recovery/i);
+    expect(rules).toMatch(
+      /direct work.*delegate.*without.*planning artifacts/i,
+    );
+    expect(rules).toMatch(/delegation.*unit count.*do not.*persistence/i);
+    expect(rules).toMatch(/reclassify.*material.*uncertainty.*risk/i);
+  });
+
+  test('requires discovery and clarification before planning and persistence', () => {
+    const rules = getWorkPhase('plan').rules.join('\n');
+
+    expect(rules).toMatch(
+      /explore.*current behavior.*contracts.*tests.*constraints/i,
+    );
+    expect(rules).toMatch(/specify.*desired behavior.*scope.*acceptance/i);
+    expect(rules).toMatch(
+      /clarify.*facts.*assumptions.*human-owned decisions/i,
+    );
+    expect(rules).toMatch(/investigate.*repository facts.*rather than.*user/i);
+    expect(rules).toMatch(/architectural-grilling.*only.*explicit.*material/i);
+    expect(rules).toMatch(/material uncertainty.*blocks.*ready/i);
+    expect(rules).toMatch(
+      /remaining technical uncertainty.*resolution strategy/i,
+    );
+    expect(rules).toMatch(/only then.*plan.*persist/i);
+    expect(rules).toMatch(/no separate.*discovery.*specification.*documents/i);
+  });
+
   test('treats prior human agreement as durable authorization', () => {
     const rules = getWorkWorkflowContract().authorizationRules.join('\n');
 

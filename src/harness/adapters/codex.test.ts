@@ -59,16 +59,13 @@ describe('Codex adapter v0.3', () => {
     expect(root.length - 9_855).toBeLessThanOrEqual(2_500);
     expect(root).toContain('adaptive root');
     expect(root).toContain(
-      'Handle trivial bounded work directly when continuity outweighs delegation overhead',
+      'Direct consultation or implementation is only the bounded known-source exception',
     );
-    expect(root).toContain('net gain');
+    expect(root).toContain('Specialists execute');
+    expect(root).not.toContain('delegation creates net gain');
     expect(root).toContain('<implementation-ownership>');
-    expect(root).toContain(
-      'Persistence and planning choices do not determine implementation ownership.',
-    );
-    expect(root).toContain(
-      'Explicit safe user direction is an ownership input.',
-    );
+    expect(root).toMatch(/specialists execute by default.*root retains/is);
+    expect(root).toMatch(/another search or dependency ends it/i);
     expect(root).not.toMatch(/Direct micro-action/i);
     expect(root).not.toMatch(/Artifact-backed implement follows/i);
     expect(root).toContain('.thoth/changes/<id>/work.yaml');

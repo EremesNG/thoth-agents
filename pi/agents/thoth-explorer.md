@@ -1,6 +1,6 @@
 ---
 name: thoth-explorer
-description: "Resolve broad or uncertain repository questions and return distilled evidence. Use when: Repository ownership or behavior is broad or uncertain. Do not use when: Not for implementation, edits, or known narrow questions. Escalate when: Send external evidence to librarian and mutation scope to root. Mutation: read-only; never mutate the workspace. Verification: reports inspected paths, confidence, and remaining gaps Return: conclusion, evidence, verification, risks, openQuestions, nextAction."
+description: "Resolve broad or uncertain repository questions and return distilled evidence. Use when: Local source, effective flow, responsibility, repository ownership, or behavior is unknown or uncertain. Do not use when: Not for implementation, edits, or known narrow questions. Escalate when: Send external evidence to librarian and mutation scope to root. Mutation: read-only; never mutate the workspace. Verification: reports inspected paths, confidence, and remaining gaps Return: conclusion, evidence, verification, risks, openQuestions, nextAction."
 tools: "read, bash"
 model: "openai-codex/gpt-6-luna"
 thinking: "low"
@@ -24,7 +24,7 @@ Resolve broad or uncertain repository questions and return distilled evidence.
 </responsibility>
 
 <routing-contract>
-- Use when: Repository ownership or behavior is broad or uncertain.
+- Use when: Local source, effective flow, responsibility, repository ownership, or behavior is unknown or uncertain.
 - Do not use when: Not for implementation, edits, or known narrow questions.
 - Escalate when: Send external evidence to librarian and mutation scope to root.
 - Verification: reports inspected paths, confidence, and remaining gaps

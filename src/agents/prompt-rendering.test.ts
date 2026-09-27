@@ -65,6 +65,61 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(/closes only after PASS/);
   });
 
+  test.each([
+    [
+      'OpenCode',
+      () => String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''),
+    ],
+    ['Codex', renderCodexRootInstructions],
+    ['Claude Code', renderClaudeCodeRootInstructions],
+    ['Pi', renderPiRootInstructions],
+  ] as const)('preserves pre-plan guarantees and artifact-free delegation in %s', (_harness, render) => {
+    const prompt = render();
+    expect(prompt).toMatch(/classify.*questions.*research.*changes/i);
+    expect(prompt).toMatch(
+      /direct work.*delegate.*without.*planning artifacts/i,
+    );
+    expect(prompt).toMatch(/delegation.*unit count.*do not.*persistence/i);
+    expect(prompt).toMatch(/reclassify.*material.*uncertainty.*risk/i);
+    expect(prompt).toMatch(/before planning: explore -> specify -> clarify/i);
+    expect(prompt).toMatch(/investigate facts.*reuse decisions/i);
+    expect(prompt).toMatch(/material uncertainty.*blocks.*readiness/i);
+    expect(prompt).toMatch(/bounded technical unknowns.*resolution strategy/i);
+    expect(prompt).toMatch(
+      /thoth-work references\/planning\.md before persisting/i,
+    );
+    expect(prompt).toMatch(/architectural-grilling.*only.*explicit.*material/i);
+    expect(prompt).toMatch(/no separate.*discovery.*specification.*documents/i);
+  });
+
+  test.each([
+    [
+      'OpenCode',
+      () => String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''),
+    ],
+    ['Codex', renderCodexRootInstructions],
+    ['Claude Code', renderClaudeCodeRootInstructions],
+    ['Pi', renderPiRootInstructions],
+  ] as const)(// These assertions prove rendered contract consistency, not real model compliance.
+  'renders director-default edge cases in %s', (_harness, render) => {
+    const prompt = render();
+    expect(prompt).toMatch(
+      /unknown local source, flow, or responsibility.*Explorer.*before root.*search/is,
+    );
+    expect(prompt).toMatch(/discovery assignment.*unknown location/is);
+    expect(prompt).toMatch(
+      /known.*bounded implementation.*directly.*designer.*worker.*without.*Explorer/is,
+    );
+    expect(prompt).toMatch(/another search or dependency ends it/i);
+    expect(prompt).toMatch(/must not repeat delegated discovery/i);
+    expect(prompt).toMatch(/missing support.*targeted evidence/i);
+    expect(prompt).toMatch(
+      /delegation failure.*truthful.*no unrestricted root/is,
+    );
+    expect(prompt).not.toMatch(/delegation creates net gain/i);
+    expect(prompt).not.toMatch(/root continuity benefits/i);
+  });
+
   test('special-cases only the built-in OpenAI model family', () => {
     expect(detectModelFamilyFromModel('openai/gpt-5.6-sol')).toBe('openai');
     expect(detectModelFamilyFromModel('kimi-for-coding/k2p5')).toBeUndefined();
@@ -247,6 +302,7 @@ describe('AI-first prompt rendering', () => {
       renderCodexRootInstructions(),
       renderClaudeCodeRootInstructions(),
     ];
-    for (const root of roots) expect(root.length).toBeLessThan(12_000);
+    // Keep the shared pre-plan guarantees bounded; detailed procedures stay routed.
+    for (const root of roots) expect(root.length).toBeLessThan(12_500);
   });
 });

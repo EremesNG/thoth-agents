@@ -24,10 +24,13 @@ Keep `docs/agent/` documents on demand at startup.
 
 ## Preferred navigation tools
 
-- When `.codegraph/` exists, every agent must use CodeGraph before
-  `webstorm-index`, native search or file reads, or delegating source-code
-  discovery. Prefer the `codegraph_explore` MCP tool; if it is not exposed, use
-  `codegraph explore "<question or symbol names>"` from the repository root.
+- Root may dispatch unknown local discovery to Explorer without preliminary
+  CodeGraph queries, native search, or file reads. This dispatch exemption does
+  not permit root discovery.
+- When `.codegraph/` exists, the assigned investigator must use CodeGraph before
+  source-code discovery through `webstorm-index`, native search, or file reads.
+  Prefer the `codegraph_explore` MCP tool; if it is not exposed, use `codegraph
+  explore "<question or symbol names>"` from the repository root.
 - Ask CodeGraph about the behavior, flow, file, or symbols in one focused query.
   Treat returned source as already read and current: do not re-read it or verify
   it with grep. If source was deferred, query again with the named file or symbol.
@@ -80,10 +83,14 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - Use TypeScript and modern Node patterns consistent with the existing code.
 - Keep changes explicit and limited to the requested behavior. Preserve unrelated
   edits; never revert work you did not make. Ignore backward compatibility.
-- Small bounded low-risk work can proceed directly to implementation and checks.
-  For substantive or resumable work, persist the approved agreement in
-  `.thoth/changes/<id>/work.yaml`. Root owns the agreement, units and acceptance;
-  optional context, external units and evidence exist only when useful.
+- Classify requests using bounded evidence; questions and research do not authorize
+  changes. Clear bounded low-risk work may be direct, even with useful delegation,
+  without planning artifacts. Reclassify if material uncertainty, scope or risk grows.
+  For substantive or resumable work, explore, specify and clarify before technical
+  planning and persistence in `.thoth/changes/<id>/work.yaml`. Investigate facts;
+  resolve material human decisions and give bounded technical unknowns a resolution
+  strategy. See the [workflow route](docs/agent/workflow-and-skills.md); root owns
+  agreement and acceptance, with no separate mandatory discovery/spec documents.
 - Honor authorization and resolved choices. For a ready persisted plan, offer
   Oracle review (recommended) or direct implementation; after [OKAY], offer
   implementation (recommended) or stopping. Each choice has at most three native
@@ -97,12 +104,23 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   a dependency. Dispatch all independent admitted ready work before waiting,
   refill native capacity and release each consumer after its own fresh accepted
   dependencies; avoid global wave barriers.
-- Delegate only for net gain. Root, designer or worker may implement.
-  Prefer root continuity for short work or one ordered reasoning chain with
-  accumulated context. Choose explorer for uncertain local discovery, librarian
-  for authoritative external facts, oracle for independent judgment, designer
-  for material UI/UX, and worker for implementation, including coupled/high-risk
-  work. Route name and file count do not determine ownership.
+- Direct specialists by default. Root retains goals, constraints, decisions,
+  coordination, semantic acceptance and synthesis. Unknown local source, flow or
+  responsibility goes to explorer before root repository search; do not pre-read
+  to prepare that dispatch. Known bounded implementation goes directly to
+  designer or worker without a mandatory explorer relay. Use librarian for
+  needed external evidence and oracle for independent judgment.
+- Root may consult one known source or make a minimal authorized low-risk edit
+  only when source, scope and verification are known and no discovery or
+  independent judgment is needed. Another search or dependency ends that
+  exception; file count, accumulated context and coordination overhead do not
+  extend it. Delegation failure is reported truthfully, never converted into
+  unrestricted root execution.
+- Do not duplicate delegated discovery. Request conclusions, localized evidence,
+  uncertainty and next action; target missing support instead of rereading every
+  file. Bounded evidence inspection for root decisions/recovery and mandatory
+  independent verification remain valid. Coordination artifacts must not hide
+  source or log dumps.
 - Keep delegation depth one, one writer per mutable surface, and fresh specialist
   sessions at work boundaries. Children never delegate. New Oracle judgments
   always use a fresh read-only reviewer. A writer never approves its own work.
@@ -137,8 +155,10 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 
 ## Change and verification flow
 
-1. Confirm the agreement and reuse existing authorization.
-2. Read public contracts and relevant tests before editing; select bounded units.
+1. Classify the request; reuse authorization and choose direct or persisted work.
+2. For persisted work, explore public contracts/tests, specify outcomes and clarify
+   material uncertainty before planning units and saving the agreement. For direct
+   work, inspect only what is needed; delegation alone does not require persistence.
 3. Resolve the two applicable planning choices, then implement within ownership,
    keeping useful checkpoints for recovery.
 4. Run focused checks, then verification proportional to risk.

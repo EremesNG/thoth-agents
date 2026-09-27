@@ -490,15 +490,15 @@ Every root MUST present the complete specialist roster with equally salient posi
 
 #### Scenario: US2 - Activate the complete specialist roster 4
 
-- **GIVEN** an implementation lane for which delegation has demonstrated net gain
-- **WHEN** the root selects a non-design writer
-- **THEN** it selects `worker` without a separate narrow-versus-complex writer tier
+- **GIVEN** a known bounded non-visual implementation lane
+- **WHEN** the root selects a writer under specialist-default execution
+- **THEN** it selects `worker` regardless of complexity and without a separate narrow-versus-complex writer tier
 
 #### Scenario: US2 - Activate the complete specialist roster 5
 
-- **GIVEN** a known narrow low-risk implementation lane
-- **WHEN** root continuity outweighs delegation overhead
-- **THEN** root may retain the work instead of dispatching Worker
+- **GIVEN** source, scope, and verification are known for a minimal authorized low-risk edit
+- **WHEN** no discovery or independent judgment is needed
+- **THEN** root may retain the work only under the bounded direct exception, which ends if another search or dependency appears
 
 #### Scenario: US2 - Activate the complete specialist roster 6
 

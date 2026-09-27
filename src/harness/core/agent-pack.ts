@@ -70,8 +70,13 @@ export type ImplementationOwner = 'orchestrator' | 'designer' | 'worker';
 export interface ImplementationOwnershipPolicy {
   eligibleOwners: ImplementationOwner[];
   workflowIndependent: boolean;
-  delegationBenefits: string[];
-  rootContinuityBenefits: string[];
+  defaultImplementationOwner: 'specialist';
+  rootResponsibilities: string[];
+  discovery: string[];
+  directException: string[];
+  writerRouting: string[];
+  evidenceHandling: string[];
+  delegationFailure: string[];
   userDirection: string;
   insufficientSignals: string[];
 }
@@ -99,24 +104,24 @@ export const AGENT_ROLES = [
     dispatch: 'root-coordinator',
     canMutateWorkspace: true,
     scope:
-      'human agreement, persisted work coordination, bounded implementation, decisions, and synthesis',
+      'human agreement, persisted work coordination, bounded direct exceptions, decisions, and synthesis',
     responsibility:
-      'Keep human agreement, work-unit coordination, acceptance, and final synthesis in the root thread; evaluate implementation ownership independently for every change, implement directly or delegate by demonstrated net gain, and run focused verification for trivial deterministic work.',
+      'Keep goals, constraints, decisions, work-unit coordination, semantic acceptance, and final synthesis in the root thread; direct discovery and implementation to specialists by default, use only the bounded direct exception, and run focused verification for trivial deterministic work.',
     useWhen: [
-      'Coordinate requirements, governed artifacts, routing, and synthesis.',
-      'Implement an accepted mutable surface when accumulated context and continuity outweigh delegation overhead.',
+      'Coordinate goals, constraints, decisions, governed artifacts, routing, acceptance, and synthesis.',
+      'Consult a known source for one bounded question or make a minimal authorized low-risk edit only when source, scope, and verification are known and no discovery or independent judgment is needed.',
     ],
     doNotUseWhen: [
       'Not for independent plan review or Oracle-required final verification.',
     ],
     escalateWhen: [
-      'Delegate implementation when specialization, context isolation, or independent bounded work creates a demonstrated net gain; then select designer or worker by task shape.',
+      'Stop the direct exception when another search or dependency appears; send unknown local discovery to explorer and implementation to designer or worker by task shape.',
     ],
     toolGovernance: [
       'may inspect and edit the accepted bounded implementation surface and may verify trivial deterministic work without self-approval',
       'loads the matching thoth-work guidance on demand instead of carrying every workflow detail in its prompt',
       'owns agreement, work-unit state, semantic acceptance, and project work evidence under .thoth/changes/',
-      'delegates independent or specialist work only when it produces a net gain',
+      'delegates discovery and implementation by default, with direct work limited to the explicit bounded exception',
       'keeps requirements, decisions, and final synthesis in the root thread',
     ],
     verification: [
@@ -133,7 +138,9 @@ export const AGENT_ROLES = [
     scope: 'local repository discovery',
     responsibility:
       'Resolve broad or uncertain repository questions and return distilled evidence.',
-    useWhen: ['Repository ownership or behavior is broad or uncertain.'],
+    useWhen: [
+      'Local source, effective flow, responsibility, repository ownership, or behavior is unknown or uncertain.',
+    ],
     doNotUseWhen: ['Not for implementation, edits, or known narrow questions.'],
     escalateWhen: [
       'Send external evidence to librarian and mutation scope to root.',
@@ -217,7 +224,7 @@ export const AGENT_ROLES = [
     responsibility:
       'Handle bounded nonvisual implementation with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work.',
     useWhen: [
-      'Delegated implementation is nonvisual and bounded, regardless of complexity; this includes low-risk or mechanical edits while delegation must still provide net gain over direct root work.',
+      'Known bounded nonvisual implementation is ready, regardless of complexity; this includes exact low-risk or mechanical edits.',
       'Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk.',
     ],
     doNotUseWhen: ['Not for visual-only work.'],
@@ -237,24 +244,35 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
   implementationOwnership: {
     eligibleOwners: ['orchestrator', 'designer', 'worker'],
     workflowIndependent: true,
-    delegationBenefits: [
-      'specialization',
-      'context isolation',
-      'independent bounded work',
-      'safe parallelism',
-      'quality, latency, or total-cost gain',
+    defaultImplementationOwner: 'specialist',
+    rootResponsibilities: [
+      'retain the goal, constraints, decisions, coordination, semantic acceptance, and synthesis',
     ],
-    rootContinuityBenefits: [
-      'short work',
-      'one ordered reasoning chain',
-      'frequent shared-state writes',
-      'already-loaded context',
-      'rediscovery and coordination cost',
+    discovery: [
+      'Unknown local source, flow, or responsibility triggers Explorer before root repository search or dependency traversal.',
+      'A bounded discovery assignment may state an unknown location; root must not perform exploratory pre-reading to prepare it.',
+      'The assigned investigator owns applicable discovery-tool fallback.',
+    ],
+    directException: [
+      'Root may consult a known source for one bounded question or make a minimal authorized low-risk edit only when source, scope, and verification are known and no discovery or independent judgment is needed.',
+      'Another search or dependency ends the direct exception.',
+    ],
+    writerRouting: [
+      'Known sufficiently bounded implementation goes directly to designer or worker by task shape without a mandatory Explorer stage.',
+      'Use librarian for needed external evidence and Oracle for independent judgment; never impose a mechanical all-role pipeline.',
+    ],
+    evidenceHandling: [
+      'Request conclusions, localized evidence, uncertainty, and next action instead of full files, source dumps, or logs.',
+      'Root must not repeat delegated discovery before, during, or after the assignment.',
+      'Missing support triggers a targeted evidence request or bounded inspection of identified evidence, while mandatory independent verification remains intact.',
+    ],
+    delegationFailure: [
+      'Report delegation failure truthfully; it does not authorize unrestricted root execution.',
     ],
     userDirection: 'explicit safe user direction is an ownership input',
     insufficientSignals: [
       'workflow persistence choice',
-      'file count alone',
+      'file count, accumulated context, or coordination overhead',
       'cheaper model price without end-to-end evidence',
     ],
   },
@@ -300,10 +318,14 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
   })),
   rules: [
     'Persistence and planning choices do not determine implementation ownership.',
-    'Root or a specialist may implement accepted work; delegate only when specialization, context isolation, independent bounded work, or safe parallelism creates a demonstrated quality, latency, or total-cost net gain.',
-    'Keep implementation in root when short work, one ordered reasoning chain, frequent shared-state writes, already-loaded context, rediscovery, or coordination cost outweigh delegation benefit.',
-    'Treat explicit safe user direction as an ownership input; persistence choice, file count alone, or cheaper model price without end-to-end evidence cannot choose an owner.',
-    'After deciding to delegate implementation, select designer for UI/UX and worker for all non-visual implementation work.',
+    'Specialists perform discovery, external research, and implementation by default; root retains goals, constraints, decisions, coordination, semantic acceptance, and synthesis.',
+    'Unknown local source, flow, or responsibility triggers Explorer before root repository search; no exploratory pre-reading is needed to prepare a bounded discovery assignment.',
+    'Root direct work is limited to a known-source bounded consultation or minimal authorized low-risk edit with known scope and verification and no discovery or independent judgment; another search or dependency ends it.',
+    'File count, accumulated context, and coordination overhead do not extend the direct exception.',
+    'Known sufficiently bounded implementation goes directly to designer or worker without a mandatory Explorer stage.',
+    'Do not duplicate delegated discovery; request targeted missing support and preserve bounded decision inspection plus mandatory independent verification.',
+    'Report delegation failure truthfully without unrestricted root fallback; discovery-tool fallback belongs to the assigned investigator.',
+    'Treat explicit safe user direction as an ownership input; persistence choice or cheaper model price without end-to-end evidence cannot choose an owner.',
     'Use one writer for each mutable surface and never parallelize overlapping writes.',
     'A fresh subagent instance is the default when the objective, work unit, mutable surface, or independent judgment changes.',
     'Continue an existing subagent only to steer, complete, or clarify the same bounded assignment; completed agents are not a reusable role pool.',
@@ -380,13 +402,29 @@ export function getAgentPackContract(): AgentPackContract {
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
             .eligibleOwners,
         ],
-        delegationBenefits: [
+        rootResponsibilities: [
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
-            .delegationBenefits,
+            .rootResponsibilities,
         ],
-        rootContinuityBenefits: [
+        discovery: [
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
-            .rootContinuityBenefits,
+            .discovery,
+        ],
+        directException: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .directException,
+        ],
+        writerRouting: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .writerRouting,
+        ],
+        evidenceHandling: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .evidenceHandling,
+        ],
+        delegationFailure: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .delegationFailure,
         ],
         insufficientSignals: [
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership

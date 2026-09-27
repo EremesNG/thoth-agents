@@ -9,9 +9,16 @@ through execution, recovery, independent verification, and closeout.
 
 ### Requirement: Select direct or persisted work without ceremony
 
-The root MUST implement and verify clear, bounded, low-risk work directly and
-MUST use `.thoth/changes/<id>/work.yaml` for nontrivial, multi-unit,
-interruptible, risky, or recoverable work. It MUST reuse authorization already
+The root MUST classify questions, research, and requested changes with bounded
+inspection of scope, uncertainty, risk, coordination, and recovery needs. A
+consultation MUST NOT be treated as authorization to mutate. Clear, bounded,
+low-risk work MUST remain eligible for focused inspection, implementation and
+proportional verification without planning artifacts, including useful specialist
+delegation. Delegation or unit count alone MUST NOT require persistence. Root
+MUST use `.thoth/changes/<id>/work.yaml` for nontrivial or risky changes,
+coordination needing a durable agreement, and resumable work. Newly discovered
+material uncertainty, broader scope, or risk MUST trigger reclassification before
+implementation expands, preserving useful work and resolving new bounds. It MUST reuse authorization already
 given, subject to the two bounded planning choices below. Other questions MUST
 be limited to material human-owned decisions, missing secrets, or destructive or
 security-sensitive actions outside that authorization. The fallback MUST NOT
@@ -22,6 +29,52 @@ resolve those other questions or override explicit user decisions.
 - **GIVEN** the user authorized an objective and its material bounds
 - **WHEN** implementation needs routine technical replanning inside those bounds
 - **THEN** work continues without another route question or repeating already resolved planning choices
+
+#### Scenario: Delegate a small direct change
+
+- **GIVEN** a clear, bounded, low-risk authorized change
+- **WHEN** implementation is sufficiently delimited
+- **THEN** root delegates to the fitting writer by default without creating planning files, retaining one writer per surface and proportional verification; only the bounded direct exception permits root implementation
+
+#### Scenario: Direct work exposes a material unknown
+
+- **GIVEN** work was classified as direct
+- **WHEN** inspection exposes uncertainty that changes acceptance, approach or authorization
+- **THEN** root preserves useful work and reclassifies before expanding implementation
+
+### Requirement: Establish semantic readiness before planning and persistence
+
+Root MUST establish current behavior, relevant contracts, tests, interfaces and
+constraints through delegated discovery when sources or behavior are unknown,
+then specify desired observable behavior, scope/exclusions,
+measurable acceptance and autonomy, and clarify material uncertainty before
+technical planning and persistence. Root MUST distinguish facts, assumptions and
+human-owned decisions, investigate repository facts rather than asking the user
+to discover them, and reuse settled answers. Architectural grilling remains
+conditional under the material-decision rule below, never a mandatory interview.
+
+These reasoning stages MAY iterate. Material uncertainty affecting intent,
+acceptance, approach or authorization MUST block readiness. Bounded remaining
+technical uncertainty MUST have an explicit resolution strategy and stop/replan
+condition; it MUST NOT disguise an unresolved human-owned decision. Only after
+these conditions hold may root shape outputs, dependencies, read/write ownership,
+shared resources and checks, and persist the agreed plan. Existing contract
+fields and optional useful context MUST carry needed findings without requiring
+separate discovery or specification documents. Structural validation MUST NOT be
+represented as proof of semantic readiness or actual model compliance. Selected
+Oracle plan review MUST independently assess these pre-plan guarantees.
+
+#### Scenario: Clarification requires more evidence
+
+- **GIVEN** a material question about existing behavior can be answered from repository evidence
+- **WHEN** planning reaches clarification
+- **THEN** root investigates that evidence before asking the user and revisits specification if the findings change it
+
+#### Scenario: A structurally valid plan still has an unresolved product decision
+
+- **GIVEN** work.yaml passes ready validation but acceptance depends on an unanswered human-owned decision
+- **WHEN** root or Oracle assesses readiness
+- **THEN** the plan remains semantically blocked until that decision is resolved
 
 ### Requirement: Preserve user choice before implementation
 
@@ -191,16 +244,69 @@ metadata. An explicit constitution amendment MUST use the constitution skill's
 versioned lifecycle. Historical OpenSpec records MUST remain outside active
 execution context under `.thoth/history/openspec/`.
 
-### Requirement: Select specialists for demonstrated benefit
+### Requirement: Direct work through specialists by default
 
-After dependency shaping establishes a delegation benefit, root MUST select
-designer for material user-facing experience and worker for implementation,
-including coupled or high-risk work. Root MAY retain narrow low-risk work when
-continuity outweighs delegation overhead; there is no separate low-risk versus
-complex writer tier. Explorer and librarian MUST remain read-only evidence roles
-and Oracle MUST remain read-only. A new objective, mutable surface, or
-independent judgment MUST receive a fresh specialist; continuation is limited
-to the same bounded assignment.
+Root MUST retain intent, constraints, decisions, ownership, coordination, semantic
+acceptance and synthesis. Specialists MUST perform discovery, external research
+and implementation by default. Root MUST decide who obtains evidence before
+obtaining it. Unknown local source, flow or responsibility MUST trigger Explorer
+before root searches or follows dependencies. A discovery assignment MAY name an
+unknown location and MUST state its question, read-only bounds and sufficient
+return evidence; root MUST NOT discover the answer to prepare that assignment.
+
+Root MAY consult a known source for a specific bounded question or perform a
+minimal authorized low-risk change only when source, scope and verification are
+already known and no discovery or independent judgment is needed. Encountering
+another search or dependency MUST end that direct exception. File count,
+accumulated context and coordination overhead MUST NOT extend it. Applicable
+instructions and coordination artifacts remain root responsibilities, not a
+loophole for source or log dumps. No fixed code-line budget or model assignment
+is imposed by this policy.
+
+Root MUST select designer for material user-facing experience and worker for
+all bounded non-visual implementation, from exact narrow low-risk work through
+coupled or high-risk work. Known,
+sufficiently bounded implementation MUST go directly to its writer without a
+mandatory Explorer stage. Librarian obtains necessary external evidence; Oracle
+provides independent judgment under the existing verification requirements.
+Explorer, librarian and Oracle MUST remain read-only. A new objective, mutable
+surface or independent judgment MUST receive a fresh specialist; continuation is
+limited to the same bounded assignment. Roles MUST NOT be invoked mechanically.
+
+Root MUST request conclusions, relevant paths/symbols, supporting evidence,
+uncertainties and next actions rather than full files or logs. Root MUST NOT
+repeat discovery before, during or after delegated work. Missing support MUST
+trigger a targeted evidence request or bounded inspection of identified evidence,
+not wholesale rediscovery. Independent verification MUST remain intact.
+Delegation failure MUST be reported and MUST NOT silently authorize unrestricted
+root execution. CodeGraph failure MAY use the applicable discovery fallback in
+the assigned specialist. Native lifecycle, recovery, planning choices and
+single-writer constraints remain unchanged. This is behavioral instruction, not
+a portable runtime restriction or proof of cost savings.
+
+#### Scenario: Unknown location triggers discovery before searching
+
+- **GIVEN** the requested behavior has no identified source or effective flow
+- **WHEN** root assigns evidence gathering
+- **THEN** Explorer receives a bounded discovery question before root searches the repository
+
+#### Scenario: A bounded consultation opens a dependency
+
+- **GIVEN** root consults a known source for a specific question
+- **WHEN** answering requires another search or following a dependency
+- **THEN** root stops the direct traversal and delegates the unresolved question
+
+#### Scenario: Known implementation needs no discovery relay
+
+- **GIVEN** scope, inputs, ownership and verification are sufficiently known
+- **WHEN** implementation is authorized
+- **THEN** root assigns the fitting writer without a compulsory Explorer stage
+
+#### Scenario: Evidence is incomplete
+
+- **GIVEN** a specialist returns a conclusion without sufficient support
+- **WHEN** root evaluates acceptance
+- **THEN** root requests the missing evidence specifically without accepting blindly or repeating the full discovery
 
 ### Requirement: Gate architectural grilling on a material decision
 

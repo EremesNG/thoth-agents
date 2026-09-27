@@ -58,14 +58,19 @@ const WORK_PHASES: readonly WorkPhaseContract[] = [
   {
     id: 'plan',
     objective:
-      'Turn the human-agreed goal, bounds, autonomy, and acceptance into bounded executable units.',
+      'Establish an evidence-based agreement through exploration, specification, and clarification before planning and persistence.',
     eligibleAgentRoles: ['orchestrator'],
-    inputs: ['human agreement', 'relevant repository evidence'],
+    inputs: [
+      'user intent and existing authorization',
+      'relevant repository evidence',
+    ],
     rules: [
-      'Root owns the agreement, unit graph, ownership, and acceptance criteria.',
-      'Persist nontrivial or recoverable work in .thoth/changes/<id>/work.yaml using work contract version 1.',
-      'Offer the user Oracle plan review or direct implementation once the persisted plan is ready; after Oracle [OKAY], resolve implementation or stop.',
-      'Use the two bounded planning choices in authorizationRules; do not ask the user to choose a pipeline.',
+      'Explore current behavior, contracts, tests, and constraints through focused evidence: when local source, flow, or responsibility is unknown, delegate to Explorer before root repository search; known bounded implementation needs no Explorer relay.',
+      'Specify desired behavior, scope, exclusions, measurable acceptance, and autonomy before implementation steps.',
+      'Clarify facts, assumptions, and human-owned decisions; investigate repository facts rather than asking the user. Reuse settled decisions.',
+      'Use architectural-grilling only on explicit request or unresolved material human-owned product/architecture decisions; ask one question at a time.',
+      'Material uncertainty in intent, acceptance, approach, or authorization blocks a ready plan. Iterate discovery; bounded remaining technical uncertainty needs a resolution strategy.',
+      'Only then plan outputs, dependencies, read/write ownership, resources, and checks; persist the agreement in .thoth/changes/<id>/work.yaml. No separate discovery or specification documents are required.',
     ],
     outputs: ['work.yaml or a bounded direct-work decision'],
   },
@@ -134,8 +139,10 @@ const WORKFLOW_CONTRACT: WorkWorkflowContract = {
   checkpointPath: '.thoth/changes/<id>/evidence/<unit-id>/checkpoint.json',
   phases: [...WORK_PHASES],
   rules: [
-    'Trivial bounded work may implement and verify directly.',
-    'Nontrivial, multi-unit, interruptible, or recoverable work uses the persisted work contract.',
+    'Classify questions, research, and changes by scope, uncertainty, risk, coordination, and recovery needs with bounded inspection; consultations do not authorize changes.',
+    'Clear, bounded, low-risk direct work may delegate without planning artifacts; specialists implement by default, while root direct work is limited to a known-source minimal exception with known scope and verification.',
+    'Delegation and unit count alone do not require persistence. Persist nontrivial, risky, resumable work or coordination needing a durable agreement.',
+    'Another search or dependency ends the root direct exception. Reclassify before proceeding on material uncertainty, broader scope, or risk; preserve useful work and resolve new bounds.',
     'Supporting context and external unit files are optional; units may remain inline in work.yaml.',
     'Project work evidence and provider memory are independent and must not be mirrored.',
   ],

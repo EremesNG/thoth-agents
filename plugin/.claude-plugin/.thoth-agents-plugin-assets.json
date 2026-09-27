@@ -14,7 +14,7 @@
     {
       "path": "agents/explorer.md",
       "kind": "agent-config",
-      "sha256": "sha256:8247d7722928590d6bd010027218982cf89afc83324530d74349483b3ff2274f"
+      "sha256": "sha256:eaf993a1a49820364fbced889a693800719d766f804aeb029ade43ddecef144b"
     },
     {
       "path": "agents/librarian.md",
@@ -29,12 +29,12 @@
     {
       "path": "agents/orchestrator.md",
       "kind": "agent-config",
-      "sha256": "sha256:55222c3f694436b64edabbaa96fb1e6e41b7f426bc9e8096561be5bd9f4e63db"
+      "sha256": "sha256:aee60deb0d3c8bf8eeccf98d950ad02f18fa007afde8acaa661c6b90552c6faa"
     },
     {
       "path": "agents/worker.md",
       "kind": "agent-config",
-      "sha256": "sha256:42b8aac4cd672bc1bd101b8c485b213d9703e78d2b39994715d859c92c8b3c8d"
+      "sha256": "sha256:6071731a8a19138a0827e146138de7c72ec214ece73681d939b27084cb12e73b"
     },
     {
       "path": "settings.json",

@@ -13,10 +13,11 @@ definitions and applies overrides; harness adapters translate the same intent.
 
 ## Invariants
 
-- Root owns agreement and acceptance. Root, designer, or worker may implement
-  bounded work according to net gain, independently of persistence mode.
-- Delegate only for demonstrated net gain; depth is one and each mutable surface
-  has one writer. Treat explicit safe user direction as an ownership input.
+- Root retains goals, constraints, decisions, coordination, semantic acceptance
+  and synthesis. Specialists perform discovery, external research and
+  implementation by default, independently of persistence mode.
+- Delegation depth is one and each mutable surface has one writer. Treat explicit
+  safe user direction as an ownership input.
 - Before substantive execution, shape the work into bounded units: record exact
   output dependencies, mutable ownership, specialist fit, and verification inputs.
   A dependency means a lane needs a concrete upstream artifact or decision; mere
@@ -25,12 +26,15 @@ definitions and applies overrides; harness adapters translate the same intent.
   native capacity before another wait. Accept terminal fresh outputs before
   releasing each dependent consumer, without a global wave barrier. Compatibility
   includes read assumptions, interfaces and shared resources, not only filenames.
-- Prefer delegation for specialization, focused context, independent bounded
-  work, safe parallelism, or demonstrated quality, latency, or total-cost gain.
-  Prefer root continuity for short work, one ordered reasoning chain, frequent
-  shared-state writes, accumulated context, rediscovery, or coordination cost.
-  Route name, file count alone, and cheaper model price without end-to-end
-  evidence are insufficient ownership signals.
+- Unknown local source, effective flow or responsibility triggers Explorer before
+  root repository search or dependency traversal. Its bounded assignment may
+  name an unknown location; root does not perform exploratory pre-reading to
+  prepare it. The assigned investigator owns applicable discovery-tool fallback.
+- Root may consult a known source for one bounded question or make a minimal
+  authorized low-risk edit only when source, scope and verification are known
+  and no discovery or independent judgment is needed. Another search or
+  dependency ends this exception. File count, accumulated context and
+  coordination overhead do not extend it.
 - Explorer, librarian, and oracle never mutate the workspace.
 - Every dispatch carries bounded thoth-mem `none|recall|observe` authorization
   independently of workspace mode. `observe` may permit a durable provider
@@ -38,22 +42,28 @@ definitions and applies overrides; harness adapters translate the same intent.
 - Every change verifies. Persisted or materially risky work requires a fresh
   read-only Oracle. A writer cannot approve its result; optional plan review
   never substitutes for final verification.
-- Only after root decides delegation creates net gain, select the specialist:
+- Route known sufficiently bounded implementation directly to its writer without
+  a mandatory Explorer stage:
 
   | Signal | Writer | Escalation boundary |
   | --- | --- | --- |
   | Material user-facing UI/UX, interaction, accessibility, or visual quality | `designer` | Coupled backend contracts or non-visual correctness work move to `worker`. |
-  | Multi-file, shared-contract, migration, concurrency, edge-case-heavy, or high-risk implementation | `worker` | Material product/architecture choices return to root. |
+  | Bounded non-visual implementation, from exact low-risk edits through multi-file, shared-contract, migration, concurrency, edge-case-heavy, or high-risk work | `worker` | Material product/architecture choices return to root. |
 
   Proven independent surfaces may use separate writers with non-overlapping
-  files. Overlapping or compatibility-coupled work stays with one `worker`
-  and ordered handoffs. For narrow low-risk work, root may retain the accepted
-  surface when delegation has no demonstrated net gain; otherwise `worker` owns
-  implementation without a separate quick/deep tier.
+  files. Overlapping or compatibility-coupled work stays with one `worker` writer
+  and ordered handoffs. Roles are selected as needed, never as a mechanical
+  Explorer-to-writer-to-Oracle pipeline.
 - Root loads only the current work operation from bundled skills instead of
   delegating merely to change prompts.
-- Children return conclusion, evidence, verification, risks, open questions,
-  and next action rather than raw dumps.
+- Children return conclusions, localized evidence, verification, uncertainty,
+  open questions and next action rather than raw dumps. Root does not duplicate
+  delegated discovery before, during or after the assignment; unsupported claims
+  receive targeted evidence requests or bounded inspection of identified
+  evidence. Mandatory independent verification remains intact.
+- Delegation failure is reported truthfully and never silently authorizes
+  unrestricted root execution. Instructions and coordination artifacts are not
+  a loophole for source or log dumps.
 - Instruction-only harness gaps must never be described as hard enforcement.
 
 ## Behavioral task shaping
@@ -61,8 +71,9 @@ definitions and applies overrides; harness adapters translate the same intent.
 Use semantic triggers, not role-name presence, to select the smallest diverse set
 that can change the result:
 
-- `explorer` handles broad or uncertain local repository discovery and stays
-  read-only.
+- `explorer` handles unknown or uncertain local source, effective flow,
+  responsibility or behavior and stays read-only. Known bounded implementation
+  does not require an Explorer relay.
 - `librarian` handles current, unfamiliar, version-sensitive, or externally
   sourced facts—for example, checking the current official API contract; stable
   facts already established locally do not trigger it.
@@ -72,9 +83,9 @@ that can change the result:
 - `designer` owns material user-facing UI/UX, interaction, accessibility, or
   visual-quality work—for example, implementing and visually checking a new
   responsive settings panel.
-- `worker` owns implementation when delegation provides net gain, including
-  coupled contracts, shared state, migrations, concurrency, edge cases, and
-  high-risk work. Narrow low-risk work no longer has a separate writer tier.
+- `worker` owns known bounded non-visual implementation regardless of complexity,
+  from exact low-risk edits through coupled contracts, shared state, migrations,
+  concurrency, edge cases, and high-risk work.
 
 For Pi, keep simple work as one direct `subagent` launch. Use
 `workflowScript`/`runs.all` only for real parallel fan-out, not as a scheduler for

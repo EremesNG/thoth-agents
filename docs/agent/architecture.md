@@ -63,11 +63,11 @@ persistence, receipts, state, and recovery remain outside this package.
   before closeout. Optional plan review does not replace final verification.
 - Semantic role selection is route-independent: `librarian` handles current or
   external facts, `designer` material user-facing UI/UX and accessibility,
-  `worker` implementation when delegation provides net gain, and `explorer`
-  broad local uncertainty. Root may retain narrow low-risk work when continuity
-  outweighs delegation overhead. Native harness execution and lifecycle are the
-  sole authority for fan-out/fan-in, status/wait, steering, cancellation, and
-  terminal results.
+  `worker` known bounded non-visual implementation regardless of complexity, and
+  `explorer` unknown local source, flow, or responsibility. Specialists execute
+  by default; root direct work is limited to the documented known-source bounded
+  exception. Native harness execution and lifecycle are the sole authority for
+  fan-out/fan-in, status/wait, steering, cancellation, and terminal results.
 - Delegation depth is one; one writer owns each mutable surface.
 - OpenCode ships only the OpenAI preset.
 - Owned workflow contracts are bundled; external skills come from canonical

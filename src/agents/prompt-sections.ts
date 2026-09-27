@@ -217,9 +217,11 @@ ${renderImplementationOwnershipPolicy(policy.implementationOwnership)}
 ${renderTaskShapingPolicy(policy.taskShaping)}
 
 <work-workflow>
-- Trivial bounded work may follow ${workflow.directPath} without creating a project artifact.
-- Persist nontrivial or recoverable work at ${workflow.persistedWorkPath}; use phases ${workflow.phases.map(({ id }) => id).join(' -> ')} as needed. Root selects artifacts without a pipeline question.
-- Root owns agreement, units, acceptance and closeout; thoth-work defines the contract.
+- Trivial bounded work may follow ${workflow.directPath} without artifacts. Persist nontrivial/risky/resumable work.
+- Classify questions/research/changes: scope, uncertainty, risk, coordination, recovery. Consultation is not write authorization.
+- Direct work may delegate without planning artifacts; delegation/unit count do not require persistence. Reclassify on material uncertainty, scope or risk.
+- Before planning: explore -> specify -> clarify. Investigate facts; reuse decisions. Material uncertainty blocks readiness; bounded technical unknowns need a resolution strategy.
+- Follow thoth-work references/planning.md before persisting ${workflow.persistedWorkPath}; no separate discovery/specification documents. Root owns agreement/units/acceptance; ${workflow.phases.map(({ id }) => id).join(' -> ')}.
 ${workflow.authorizationRules.map((rule) => `- ${rule}`).join('\n')}
 - Final verification is mandatory. Use a fresh ${roleTemplate('oracle')} for persisted work and materially risky direct work; focused root checks suffice only for trivial deterministic work. No implementation writer may approve its own work.
 - Checkpoints are supporting evidence at ${workflow.checkpointPath}; they never establish native liveness or terminal execution.
@@ -231,7 +233,7 @@ ${workflow.authorizationRules.map((rule) => `- ${rule}`).join('\n')}
 - Use the installed mandatory \`tdd\` skill for behavior changes and \`simplify\` after implementation without changing behavior.
 - During persisted work, never invoke the thoth-agents CLI, \`npx skills add\`, or network to obtain a missing contract; report an incomplete installation.
 - Use progressive-context-router only for repository instruction or context-router work.
-- Use architectural-grilling only when the user explicitly asks to be grilled or a material human-owned product or architecture decision remains unresolved; ask one material question per turn.
+- Use architectural-grilling only on explicit request or unresolved material human decisions; ask one question at a time.
 - Feed accepted decisions into work.yaml without duplicating a second planning narrative.
 </external-skills>
 

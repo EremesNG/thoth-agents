@@ -1,9 +1,77 @@
-# Planning choices and recovery
+# Planning readiness, choices and recovery
 
-Root selects the smallest useful artifacts after focused exploration; never ask
-for Direct/Accelerated/Full. Trivial bounded work may remain artifact-free.
-For a ready persisted plan, summarize scope, approach, ownership, checks and
-material risks, then ask through the harness's native question tool:
+## Before a plan exists
+
+Use the smallest process that preserves intent and verification; never ask the
+user to choose Direct/Accelerated/Full. These are reasoning obligations, not a
+new artifact bundle, runtime state machine, or requirement to interview everyone.
+
+### Classify
+
+Distinguish questions, research, and requested changes. A consultation does not
+authorize a mutation. Use bounded inspection to assess scope, uncertainty, risk,
+coordination, and recovery needs; do not create a plan merely to classify work.
+
+Clear, bounded, low-risk work may go through inspect -> implement -> verify
+without planning files. Useful delegation alone does not require persistence,
+nor does unit count. Root or a fitting specialist may implement; preserve one
+writer per surface, native lifecycle authority, and proportional verification.
+Nontrivial or risky changes, coordination needing a durable agreement, and work
+needing resumption require persisted planning. If direct work reveals material
+uncertainty, broader scope, or risk, stop expanding the implementation, preserve
+useful work, reclassify, and resolve the new bounds before proceeding.
+
+### Explore
+
+Inspect current behavior, relevant product contracts, tests, interfaces and
+constraints. Identify what is known, what evidence supports it, and what is still
+unknown. Search focused entrypoints; delegate discovery only for net gain. Exit
+when there is enough grounded understanding to specify the change and identify
+material uncertainty, not when the whole repository has been read.
+
+### Specify
+
+Describe desired observable behavior, inclusions and exclusions, measurable
+acceptance, and autonomy bounds independently of implementation steps. Reuse
+settled requirements and durable specifications. Exit when success and scope can
+be judged without silently substituting technical guesses for user intent.
+
+### Clarify
+
+Separate facts, assumptions, and human-owned decisions. Repository facts require investigation,
+not questions asking the user to explore for the agent. Ask only for unresolved
+material intent, priorities, trade-offs, permissions, or other necessary human
+input. Do not repeat settled decisions or treat silence as product approval.
+Use architectural-grilling only when explicitly requested or when a material
+human-owned product or architecture decision needs it; follow its one-material-
+question-at-a-time guidance. Grilling is not a mandatory planning interview.
+
+Material uncertainty affecting intent, acceptance, approach, or authorization blocks a ready plan.
+Iterate exploration, specification, and clarification when new evidence requires
+it. Bounded remaining technical uncertainty is allowed only with an explicit
+resolution strategy and a point at which an affected implementation must stop
+or be replanned. It must not hide an unresolved human-owned decision.
+
+### Plan and persist
+
+Only after those readiness conditions hold, shape technical outputs,
+dependencies, read/write ownership, shared resources, and verification. Then
+persist the agreed result in `work.yaml`, using existing goal, bounds, autonomy,
+acceptance, decisions, and unit fields. No separate discovery or specification documents are required.
+Keep useful findings or residual uncertainty in decision rationale, unit inputs
+and checks, or optional referenced context only when a consumer needs it; do not
+copy the whole conversation. A draft or checkpoint is not a ready plan.
+
+The `ready` validator checks structure, references, coverage and freshness, not
+whether exploration was adequate or human decisions were really settled. Root
+must assess these semantic exit conditions before calling the plan ready;
+selected Oracle review independently challenges them. Passing tests of these
+instructions does not prove harness/model compliance.
+
+## Choices for a ready persisted plan
+
+Summarize scope, approach, ownership, checks and material risks, then ask through
+the harness's native question tool:
 
 1. **Review plan with Oracle (Recommended)** or **Implement directly**. Offering
    this choice is mandatory unless already resolved explicitly or by the bounded

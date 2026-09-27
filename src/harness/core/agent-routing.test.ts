@@ -51,28 +51,20 @@ const ROUTING_CASES: RoutingCase[] = [
     phase: 'execute',
   },
   {
-    id: 'root-accelerated-continuity',
+    id: 'direct-root-known',
     expectedOwner: 'orchestrator',
     forbiddenOwners: ['designer', 'quick', 'deep'],
     ownerTrigger:
-      /accumulated context and continuity outweigh delegation overhead/i,
-    workflow: 'persisted',
-    phase: 'execute',
-  },
-  {
-    id: 'root-full-continuity',
-    expectedOwner: 'orchestrator',
-    forbiddenOwners: ['designer', 'quick', 'deep'],
-    ownerTrigger:
-      /accumulated context and continuity outweigh delegation overhead/i,
-    workflow: 'persisted',
+      /known source.*bounded question.*minimal authorized low-risk edit.*source, scope, and verification are known/i,
+    workflow: 'direct',
     phase: 'execute',
   },
   {
     id: 'read-explorer-discovery',
     expectedOwner: 'explorer',
     forbiddenOwners: ['orchestrator', 'designer', 'deep'],
-    ownerTrigger: /repository ownership or behavior is broad or uncertain/i,
+    ownerTrigger:
+      /source.*flow.*responsibility.*ownership.*behavior.*unknown or uncertain/i,
     workflow: 'persisted',
   },
   {
@@ -105,7 +97,6 @@ const ROUTING_FIXTURE = JSON.parse(
     phase?: 'execute' | 'verify';
     expected_owner?: AgentRoleName;
     forbidden_owners?: AgentRoleName[];
-    delegation_net_gain?: boolean;
     ownership_rationale?: string;
     decision?: {
       kind: 'role-selection' | 'direct-retention' | 'task-shaping';
@@ -218,9 +209,7 @@ describe('canonical agent routing', () => {
       expect(
         surface.root,
         `${routingCase.id}:${surface.harness}:workflow-owner`,
-      ).toContain(
-        'Persistence and planning choices do not determine implementation ownership.',
-      );
+      ).toMatch(/specialists execute by default.*root retains/is);
       expect(surface.root).not.toMatch(/Direct micro-action/i);
       expect(surface.root).not.toMatch(/Artifact-backed implement follows/i);
       if (routingCase.expectedOwner === 'oracle') {
@@ -287,11 +276,7 @@ describe('canonical agent routing', () => {
         }),
         expect.objectContaining({ workflow: 'direct', expectedOwner: 'deep' }),
         expect.objectContaining({
-          workflow: 'persisted',
-          expectedOwner: 'orchestrator',
-        }),
-        expect.objectContaining({
-          workflow: 'persisted',
+          workflow: 'direct',
           expectedOwner: 'orchestrator',
         }),
         expect.objectContaining({ expectedOwner: 'quick' }),
@@ -321,10 +306,10 @@ describe('canonical agent routing', () => {
     expect(renderAgentRoutingDescription(role)).toMatch(/Do not use when:/);
   });
 
-  test('keeps root and specialist implementation eligibility workflow-independent', () => {
+  test('keeps the bounded root exception and specialist implementation eligibility workflow-independent', () => {
     const root = getAgentRole('orchestrator');
     expect(root.useWhen.join(' ')).toMatch(
-      /accepted mutable surface.*accumulated context.*continuity/i,
+      /known source.*bounded question.*minimal authorized low-risk edit/i,
     );
     const policy = getAgentPackContract().orchestrationPolicy;
     expect(policy.implementationOwnership.eligibleOwners).toEqual([
@@ -359,7 +344,7 @@ describe('canonical agent routing', () => {
     ]);
   });
 
-  test('keeps active instructions workflow-neutral and specialist selection conditional', () => {
+  test('keeps active instructions workflow-neutral and director-default', () => {
     const activePolicies = ACTIVE_OWNERSHIP_POLICY_PATHS.map((path) => ({
       path,
       content: readFileSync(
@@ -376,9 +361,11 @@ describe('canonical agent routing', () => {
       );
       expect(content, path).not.toMatch(/all visual or UX work goes through/i);
     }
-    expect(activePolicies.map(({ content }) => content).join('\n')).toMatch(
-      /net\s+gain/i,
-    );
+    const combined = activePolicies.map(({ content }) => content).join('\n');
+    expect(combined).not.toMatch(/delegate only for net\s+gain/i);
+    expect(combined).not.toMatch(/prefer root continuity/i);
+    expect(combined).toMatch(/specialists?.*by default/i);
+    expect(combined).toMatch(/another search or dependency/i);
 
     const rootInstructions = activePolicies.find(
       ({ path }) => path === 'AGENTS.md',
@@ -386,8 +373,13 @@ describe('canonical agent routing', () => {
     expect(rootInstructions).toMatch(
       /before retaining or delegating.*ready work.*before waiting/is,
     );
+    expect(rootInstructions).toMatch(/designer.*quick.*deep/is);
+    expect(rootInstructions).toMatch(/librarian.*external evidence/is);
     expect(rootInstructions).toMatch(
-      /librarian.*external facts.*designer.*UI\/UX.*quick.*low-risk/is,
+      /root.*dispatch.*unknown local discovery.*Explorer.*without preliminary.*CodeGraph.*search.*file reads/is,
+    );
+    expect(rootInstructions).toMatch(
+      /assigned investigator.*must use CodeGraph.*before.*source-code discovery/is,
     );
   });
 });

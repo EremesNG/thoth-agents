@@ -11,7 +11,8 @@ metadata:
 
 Use this skill for non-trivial repository changes that benefit from durable
 agreement, ownership, context, evidence, and recovery. Classify work before creating `work.yaml`:
-clear, bounded, low-risk work stays artifact-free even with useful delegation.
+clear, bounded, low-risk work stays artifact-free while specialists implement by
+default. Root direct work is limited to the known-source minimal exception.
 Read [references/planning.md](references/planning.md) to explore, specify and
 clarify before planning and persisting. Read [references/contract.md](references/contract.md)
 for the canonical `.thoth/changes/<id>/work.yaml` format before writing it.

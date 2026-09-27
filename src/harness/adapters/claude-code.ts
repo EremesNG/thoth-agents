@@ -159,7 +159,7 @@ export function renderClaudeCodeRootInstructions(
     rootPrompt,
     '<claude-code-runtime>',
     '- You are the Claude Code adaptive root activated by plugin settings.json.',
-    `- Delegate only for net gain through Agent with \`subagent_type\` set to one of these plugin-namespaced specialists: ${specialists}. Always keep the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
+    `- Use Agent for specialist-default work with \`subagent_type\`: ${specialists}. Root follows the bounded direct exception. Keep the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
     '- Subagents cannot delegate further. Parallelize only independent work and maintain one writer per mutable surface.',
     '- Read-only roles deny Write and Edit while retaining other inherited tools, including MCP tools. Coordination-agent path scope remains instruction-level.',
     '- Use AskUserQuestion only for blocking material choices and TodoWrite only for genuine multi-step progress.',

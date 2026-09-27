@@ -119,15 +119,14 @@ describe('Claude Code adapter v0.3', () => {
     expect(instructions.length - 9_340).toBeLessThanOrEqual(2_500);
     expect(instructions).toContain('adaptive root');
     expect(instructions).toContain('<implementation-ownership>');
-    expect(instructions).toContain(
-      'Persistence and planning choices do not determine implementation ownership.',
+    expect(instructions).toMatch(
+      /specialists execute by default.*root retains/is,
     );
     expect(instructions).toContain(
-      'Handle trivial bounded work directly when continuity outweighs delegation overhead',
+      'Direct consultation or implementation is only the bounded known-source exception',
     );
-    expect(instructions).toContain(
-      'Only after deciding delegation creates net gain',
-    );
+    expect(instructions).toContain('Specialists execute');
+    expect(instructions).not.toContain('delegation creates net gain');
     expect(instructions).not.toMatch(/Direct micro-action/i);
     expect(instructions).not.toMatch(/Artifact-backed implement follows/i);
     expect(instructions).toContain('.thoth/changes/<id>/work.yaml');

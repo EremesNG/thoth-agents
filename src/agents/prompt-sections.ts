@@ -2,7 +2,6 @@ import {
   type AgentRoleName,
   getAgentPackContract,
   getAgentRole,
-  type ImplementationOwnershipPolicy,
   type SpecialistDecision,
   type TaskShapingPolicy,
 } from '../harness/core/agent-pack';
@@ -143,19 +142,14 @@ function roleTemplate(role: AgentPromptRole): string {
   return `{{role.${role}}}`;
 }
 
-function renderImplementationOwnershipPolicy(
-  policy: ImplementationOwnershipPolicy,
-): string {
+function renderImplementationOwnershipPolicy(): string {
   return `<implementation-ownership>
-- Persistence and planning choices do not determine implementation ownership.
-- Eligible owners for accepted work: ${policy.eligibleOwners
-    .map((owner) => roleTemplate(owner))
-    .join(', ')}.
-- Delegation benefits: ${policy.delegationBenefits.join('; ')}.
-- Root continuity benefits: ${policy.rootContinuityBenefits.join('; ')}.
-- Explicit safe user direction is an ownership input.
-- Insufficient ownership signals: ${policy.insufficientSignals.join('; ')}.
-- Only after deciding delegation creates net gain: use ${roleTemplate('designer')} for UI/UX, ${roleTemplate('quick')} for known narrow low-risk work, and ${roleTemplate('deep')} for coupled or high-risk work.
+- Specialists execute by default; root retains goals, constraints, decisions, coordination, acceptance, and synthesis.
+- Unknown local source, flow, or responsibility triggers Explorer before root search. A discovery assignment accepts an unknown location; no pre-reading.
+- Direct exception: authorized low-risk consult/edit; source, scope, and checks known; no discovery or judgment. Another search or dependency ends it; file count, context, and overhead do not extend it.
+- Known bounded implementation goes directly to designer, quick, or deep without Explorer. Use librarian for external evidence and Oracle for judgment; no all-role pipeline.
+- Request conclusions, localized evidence, uncertainty, and next action. Root must not repeat delegated discovery. Missing support gets targeted evidence. Independent verification remains mandatory.
+- Delegation failure is truthful and allows no unrestricted root execution; the investigator owns discovery fallback.
 </implementation-ownership>`;
 }
 
@@ -188,15 +182,14 @@ export function createOrchestratorPromptSections(): RolePromptSection[] {
 
   return [
     roleText(`<role>
-You are the adaptive root for thoth-agents. Keep requirements, decisions, ownership, and synthesis here.
+You are the adaptive root. Keep requirements, decisions, ownership, and synthesis here.
 </role>
 
 <operating-model>
-- Handle trivial bounded work directly when continuity outweighs delegation overhead; never self-approve.
+- Direct consultation or implementation is only the bounded known-source exception; no writer self-approves.
 - The maximum delegation depth is ${policy.maxDelegationDepth}; children never delegate.
 - Keep one writer per mutable surface; parallelize only non-overlapping work.
-- Keep prompts bounded; request distilled evidence, not raw logs or full files.
-- Preserve unrelated changes; report changed files, evidence, risks, and capability gaps.
+- Preserve unrelated changes; report evidence, risks, and capability gaps.
 - {{progressInstruction}}
 </operating-model>
 
@@ -212,7 +205,7 @@ You are the adaptive root for thoth-agents. Keep requirements, decisions, owners
 ${renderRoleDirectory(policy.specialistDirectory)}
 </routing>
 
-${renderImplementationOwnershipPolicy(policy.implementationOwnership)}
+${renderImplementationOwnershipPolicy()}
 
 ${renderTaskShapingPolicy(policy.taskShaping)}
 
@@ -449,7 +442,7 @@ function renderStepBudget(section: StepBudgetSection): string {
 function getRoleModelProfile(role: AgentPromptRole): string {
   switch (role) {
     case 'orchestrator':
-      return 'Act directly on bounded work; delegate only for net gain and synthesize all results.';
+      return 'Direct specialists.';
     case 'explorer':
       return 'Navigate from broad uncertainty to exact repository anchors.';
     case 'librarian':

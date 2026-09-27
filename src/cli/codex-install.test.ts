@@ -303,14 +303,18 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('adaptive root');
       expect(root).toContain('<implementation-ownership>');
       expect(root).toContain('work.yaml');
-      expect(root).toContain('net gain');
+      expect(root).toMatch(
+        /unknown local source, flow, or responsibility triggers Explorer before root search/i,
+      );
       expect(root).toContain('checkpoint');
       expect(root).toContain('maximum delegation depth is 1');
       expect(root).toContain('bundled `thoth-work` skill');
       expect(root).toMatch(
         /fresh.*oracle.*persisted|persisted.*fresh.*oracle/i,
       );
-      expect(root).toContain('Handle trivial bounded work directly');
+      expect(root).toMatch(
+        /Direct exception: authorized low-risk consult\/edit.*source, scope, and checks known/i,
+      );
       expect(root).not.toMatch(/sdd-(?:specify|plan|tasks) subagent/);
       expect(root).toContain('request_user_input');
       expect(root).toContain('omit `autoResolutionMs` entirely');

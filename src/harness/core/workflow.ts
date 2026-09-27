@@ -65,7 +65,7 @@ const WORK_PHASES: readonly WorkPhaseContract[] = [
       'relevant repository evidence',
     ],
     rules: [
-      'Explore current behavior, contracts, tests, constraints, and unknowns with focused evidence before designing changes.',
+      'Explore current behavior, contracts, tests, and constraints through focused evidence: when local source, flow, or responsibility is unknown, delegate to Explorer before root repository search; known bounded implementation needs no Explorer relay.',
       'Specify desired behavior, scope, exclusions, measurable acceptance, and autonomy before implementation steps.',
       'Clarify facts, assumptions, and human-owned decisions; investigate repository facts rather than asking the user. Reuse settled decisions.',
       'Use architectural-grilling only on explicit request or unresolved material human-owned product/architecture decisions; ask one question at a time.',
@@ -140,9 +140,9 @@ const WORKFLOW_CONTRACT: WorkWorkflowContract = {
   phases: [...WORK_PHASES],
   rules: [
     'Classify questions, research, and changes by scope, uncertainty, risk, coordination, and recovery needs with bounded inspection; consultations do not authorize changes.',
-    'Clear, bounded, low-risk direct work may delegate without planning artifacts; inspect, implement, and verify proportionally.',
+    'Clear, bounded, low-risk direct work may delegate without planning artifacts; specialists implement by default, while root direct work is limited to a known-source minimal exception with known scope and verification.',
     'Delegation and unit count alone do not require persistence. Persist nontrivial, risky, resumable work or coordination needing a durable agreement.',
-    'Reclassify before proceeding on material uncertainty, broader scope, or risk; preserve useful work and resolve new bounds.',
+    'Another search or dependency ends the root direct exception. Reclassify before proceeding on material uncertainty, broader scope, or risk; preserve useful work and resolve new bounds.',
     'Supporting context and external unit files are optional; units may remain inline in work.yaml.',
     'Project work evidence and provider memory are independent and must not be mirrored.',
   ],

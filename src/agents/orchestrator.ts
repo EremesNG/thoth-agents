@@ -40,7 +40,7 @@ export function createOrchestratorAgent(
   const definition: AgentDefinition = {
     name: 'orchestrator',
     description:
-      'Adaptive root coordinator that handles bounded work directly and delegates only for net gain.',
+      'Director root that retains decisions and acceptance while specialists discover and implement by default.',
     config: {
       temperature: 0.1,
       prompt,

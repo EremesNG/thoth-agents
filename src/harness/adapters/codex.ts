@@ -121,7 +121,7 @@ function codexRuntimeGuidance(): string {
   return [
     '<codex-runtime>',
     '- The ambient Codex session is the adaptive root; no orchestrator child TOML is generated.',
-    '- Delegate with `collaboration.spawn_agent` only when the root determines that specialization, context isolation, review, or independent parallel work creates a net gain.',
+    '- Use `collaboration.spawn_agent` for specialist-default work; root follows the bounded direct exception.',
     '- Collaboration tools are direct tools and must not be called from inside `functions.exec`.',
     '- When the active `collaboration.spawn_agent` schema exposes `agent_type`, set it to the selected canonical role. When it does not, use a role-prefixed `task_name` plus a self-contained bounded envelope; that fallback is instruction-only.',
     '- Keep maximum depth 1: children do not delegate. Use one writer per mutable surface and parallelize only independent work.',

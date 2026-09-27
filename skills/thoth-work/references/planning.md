@@ -14,8 +14,9 @@ coordination, and recovery needs; do not create a plan merely to classify work.
 
 Clear, bounded, low-risk work may go through inspect -> implement -> verify
 without planning files. Useful delegation alone does not require persistence,
-nor does unit count. Root or a fitting specialist may implement; preserve one
-writer per surface, native lifecycle authority, and proportional verification.
+nor does unit count. A fitting specialist implements by default; root uses only
+the known-source bounded exception. Preserve one writer per surface, native
+lifecycle authority, and proportional verification.
 Nontrivial or risky changes, coordination needing a durable agreement, and work
 needing resumption require persisted planning. If direct work reveals material
 uncertainty, broader scope, or risk, stop expanding the implementation, preserve
@@ -23,10 +24,13 @@ useful work, reclassify, and resolve the new bounds before proceeding.
 
 ### Explore
 
-Inspect current behavior, relevant product contracts, tests, interfaces and
-constraints. Identify what is known, what evidence supports it, and what is still
-unknown. Search focused entrypoints; delegate discovery only for net gain. Exit
-when there is enough grounded understanding to specify the change and identify
+Identify what is known, what evidence supports it, and what remains unknown.
+When local source, effective flow or responsibility is unknown, dispatch Explorer
+before root repository search or dependency traversal. The assignment may name
+an unknown location and needs a question, read-only bounds and sufficient return
+evidence; do not explore merely to prepare it. A known sufficiently bounded
+implementation goes directly to its writer without an Explorer relay. Exit when
+there is enough grounded understanding to specify the change and identify
 material uncertainty, not when the whole repository has been read.
 
 ### Specify

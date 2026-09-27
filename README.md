@@ -24,8 +24,8 @@
 ## Why thoth-agents
 
 Describe what you want to build or fix. Thoth keeps the conversation together,
-handles straightforward work directly, and brings in specialists when research,
-design, implementation, or an independent review would help.
+directs specialists to discover and implement by default, and retains your goals,
+constraints, decisions, acceptance, and final synthesis in one root thread.
 
 Small changes stay small. Larger changes get a specification, a plan, and
 verification you can follow—without manually coordinating every agent.
@@ -34,7 +34,7 @@ verification you can follow—without manually coordinating every agent.
   specialists and brings their results back to you.
 - **The right amount of process.** Use a direct implementation path for small
   work or a persisted AI-first work contract for involved or resumable work.
-- **Specialists where they add value.** Repository discovery, current documentation,
+- **Specialists execute by default.** Repository discovery, current documentation,
   UI/UX, focused edits, complex implementation, and independent review have distinct roles.
 - **Models you can tune.** Configure models per role to suit your workflow and
   the providers available in your harness.
@@ -132,8 +132,8 @@ Explore the risks before proposing changes.
 ```
 
 You can name a route explicitly or let Thoth recommend one. Describe your
-constraints and expected outcome; the Orchestrator decides whether to handle
-work directly or bring in a specialist.
+constraints and expected outcome; the Orchestrator selects the fitting specialist
+and retains coordination and acceptance.
 
 ## Meet the team
 
@@ -142,7 +142,7 @@ work directly or bring in a specialist.
 <table>
   <tr>
     <td width="25%" align="center"><img src="img/agents/orchestrator.webp" width="160" alt="Thoth as the Orchestrator"></td>
-    <td><b>Orchestrator · Keeps the work moving</b><br><br>Your main point of contact. Understands the goal, recommends a workflow, handles bounded work, and coordinates specialists without handing you the management overhead.</td>
+    <td><b>Orchestrator · Keeps the work moving</b><br><br>Your main point of contact. Retains goals, constraints, decisions and acceptance while directing specialists, with a bounded exception for known-source consultation or minimal low-risk edits.</td>
   </tr>
 </table>
 
@@ -169,11 +169,13 @@ supports it. You do not need to summon every role for every task.
 The root first classifies the request. For substantive changes it explores current
 behavior, specifies the desired outcome and acceptance, and clarifies material
 uncertainty with you before planning and persisting `.thoth/changes/<id>/work.yaml`.
-Repository facts are investigated; grilling is used only when requested or needed
-for material human decisions. No separate discovery or specification documents
-are mandatory. Small, clear, bounded, low-risk fixes can proceed through focused
-inspection, implementation and verification without planning files, even with
-useful delegation. New material uncertainty or risk triggers reclassification.
+Repository facts are investigated; when local source, flow or responsibility is
+unknown, Explorer runs before root repository search. Grilling is used only when
+requested or needed for material human decisions. No separate discovery or
+specification documents are mandatory. Small, clear, bounded, low-risk fixes can
+proceed without planning files while the fitting writer implements directly;
+known bounded work does not require an Explorer relay. New material uncertainty
+or risk triggers reclassification.
 
 Independent units run in parallel through the native harness. Per-unit
 checkpoints support resuming interrupted work after reconciling the actual

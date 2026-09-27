@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "cases": [
     {
       "id": "single-domain-agent-permission",
@@ -73,25 +73,24 @@
     },
     {
       "id": "read-explorer-discovery",
-      "task": "Explore uncertain repository ownership and behavior before a persisted work can be specified.",
+      "task": "Find where an unfamiliar requested behavior is implemented when its local source, effective flow, and responsible subsystem are unknown.",
       "expected_primary": "fallback",
       "expected_first_read": "docs/agent/index.md",
       "expected_overlays": [],
       "expected_code_roots": [],
       "expected_owner": "explorer",
       "forbidden_owners": ["orchestrator", "designer", "deep"],
-      "delegation_net_gain": true,
-      "ownership_rationale": "Broad uncertain discovery benefits from isolated read-only context before specification.",
+      "ownership_rationale": "Unknown local source, flow, or responsibility triggers Explorer before root repository search.",
       "decision": {
         "kind": "role-selection",
         "expected": "explorer"
       },
-      "notes": "Search relevant symbols, definitions, callers, and tests; return distilled evidence without loading every document or inventing ownership.",
+      "notes": "The discovery envelope may name an unknown location. Root supplies the question, read-only bounds, and sufficient return evidence without exploratory pre-reading.",
       "workflow": "persisted"
     },
     {
-      "id": "direct-root-continuity",
-      "task": "Correct one known typo in a single README sentence and verify the link remains valid.",
+      "id": "direct-root-known",
+      "task": "Correct one known typo in a specific README sentence and run the already-known focused link check.",
       "expected_primary": "fallback",
       "expected_first_read": "docs/agent/index.md",
       "expected_overlays": ["public-compatibility"],
@@ -99,51 +98,47 @@
       "phase": "execute",
       "expected_owner": "orchestrator",
       "forbidden_owners": ["designer", "quick", "deep"],
-      "delegation_net_gain": false,
-      "ownership_rationale": "The root already has the complete context and delegation would cost more than the short ordered edit.",
+      "ownership_rationale": "Source, scope, and verification are known; the authorized minimal low-risk edit requires no discovery or independent judgment.",
       "decision": {
         "kind": "direct-retention",
         "expected": "orchestrator"
       },
-      "notes": "The direct workflow keeps governance with root; continuity justifies ownership here and focused deterministic verification stays with root.",
+      "notes": "This is the bounded direct exception, not a continuity or file-count rule.",
       "workflow": "direct"
     },
     {
-      "id": "root-accelerated-continuity",
-      "task": "Implement an approved approved prompt-contract change whose specification, tests, source, and generated output form one ordered mutable chain already loaded by root.",
+      "id": "direct-exception-dependency-stop",
+      "task": "A root consultation starts at a known prompt contract, then answering it requires following an uninspected adapter dependency.",
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": ["workflow-and-skills", "harness-packaging"],
       "expected_code_roots": ["src/agents/", "src/harness/", "skills/"],
-      "phase": "execute",
-      "expected_owner": "orchestrator",
-      "forbidden_owners": ["designer", "quick", "deep"],
-      "delegation_net_gain": false,
-      "ownership_rationale": "Accumulated context and one compatibility-coupled reasoning chain outweigh delegation rediscovery and coordination overhead.",
       "decision": {
-        "kind": "direct-retention",
-        "expected": "orchestrator"
+        "kind": "task-shaping",
+        "expected": "end-direct-exception",
+        "ready": ["bounded delegation of the unresolved dependency"],
+        "blocked": ["continued root traversal"]
       },
-      "notes": "Persistence records the agreement and acceptance; it does not force a writer subagent when root continuity has the demonstrated net gain.",
-      "workflow": "persisted"
+      "notes": "Another search or dependency ends the direct exception; accumulated context, coordination overhead, and file count do not extend it.",
+      "workflow": "direct"
     },
     {
-      "id": "root-full-continuity",
-      "task": "Implement a fully specified persisted work correction where exploration resolved uncertainty and the remaining accepted surface is one sequential shared-state chain held by root.",
+      "id": "targeted-missing-support",
+      "task": "A specialist returns a useful conclusion with one unsupported compatibility claim after otherwise sufficient discovery.",
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": ["workflow-and-skills"],
       "expected_code_roots": ["src/harness/core/", "skills/"],
-      "phase": "execute",
-      "expected_owner": "orchestrator",
-      "forbidden_owners": ["designer", "quick", "deep"],
-      "delegation_net_gain": false,
-      "ownership_rationale": "The accepted implementation is sequential, shares mutable state, and would require a child to rediscover the root's validated context.",
       "decision": {
-        "kind": "direct-retention",
-        "expected": "orchestrator"
+        "kind": "task-shaping",
+        "expected": "targeted-evidence-request",
+        "ready": ["request support for the identified compatibility claim"],
+        "blocked": [
+          "accepting the unsupported claim",
+          "repeating full discovery"
+        ]
       },
-      "notes": "Persisted governance remains intact while implementation ownership stays adaptive and final verification remains independent.",
+      "notes": "Root targets only missing support or bounded identified evidence; it does not reread every file. Mandatory independent verification remains separate.",
       "workflow": "persisted"
     },
     {
@@ -156,13 +151,12 @@
       "phase": "execute",
       "expected_owner": "designer",
       "forbidden_owners": ["orchestrator", "quick", "deep"],
-      "delegation_net_gain": true,
       "ownership_rationale": "The bounded user-facing surface benefits from designer specialization and isolated visual verification within direct work.",
       "decision": {
         "kind": "role-selection",
         "expected": "designer"
       },
-      "notes": "After deciding delegation creates net gain, select designer; visual QA does not replace any independent verification required by material risk.",
+      "notes": "select designer; visual QA does not replace any independent verification required by material risk.",
       "workflow": "direct"
     },
     {
@@ -178,13 +172,12 @@
       "phase": "execute",
       "expected_owner": "quick",
       "forbidden_owners": ["orchestrator", "designer", "deep"],
-      "delegation_net_gain": true,
       "ownership_rationale": "The exact file and symbol are known, the edit is isolated, and quick avoids loading unrelated planning context.",
       "decision": {
         "kind": "role-selection",
         "expected": "quick"
       },
-      "notes": "After deciding delegation creates net gain, quick owns the bounded edit regardless of route; root coordinates focused verification unless material risk requires a fresh Oracle.",
+      "notes": "quick owns the bounded edit regardless of route; root coordinates focused verification unless material risk requires a fresh Oracle.",
       "workflow": "persisted"
     },
     {
@@ -197,13 +190,12 @@
       "phase": "execute",
       "expected_owner": "deep",
       "forbidden_owners": ["orchestrator", "designer", "quick"],
-      "delegation_net_gain": true,
       "ownership_rationale": "A fresh deep context improves correctness across the coupled contract and adapters even though the work does not need persistence.",
       "decision": {
         "kind": "role-selection",
         "expected": "deep"
       },
-      "notes": "After deciding delegation creates net gain, select one deep writer because compatibility-coupled files cannot use overlapping writers.",
+      "notes": "select one deep writer because compatibility-coupled files cannot use overlapping writers.",
       "workflow": "direct"
     },
     {
@@ -215,7 +207,6 @@
       "expected_code_roots": ["src/harness/"],
       "expected_owner": "librarian",
       "forbidden_owners": ["orchestrator", "quick", "deep"],
-      "delegation_net_gain": true,
       "ownership_rationale": "Current authoritative evidence is an isolated read-only research workstream.",
       "decision": {
         "kind": "role-selection",
@@ -233,7 +224,6 @@
       "phase": "verify",
       "expected_owner": "oracle",
       "forbidden_owners": ["orchestrator", "designer", "quick"],
-      "delegation_net_gain": true,
       "ownership_rationale": "Independent judgment requires a fresh read-only context that did not implement the candidate.",
       "decision": {
         "kind": "role-selection",
@@ -244,12 +234,12 @@
     },
     {
       "id": "fallback-unfamiliar-writer",
-      "task": "Implement a change around an unfamiliar ContextLeaseCoordinator symbol after determining its coupling and risk.",
+      "task": "Implement an unfamiliar local behavior when the source and owner are not yet known.",
       "expected_primary": "fallback",
       "expected_first_read": "docs/agent/index.md",
       "expected_overlays": ["agents-and-delegation"],
       "expected_code_roots": [],
-      "notes": "Explorer first resolves ownership; root then selects quick or deep from evidence instead of guessing."
+      "notes": "Explorer first resolves source and responsibility before root repository search; root then selects quick or deep from localized evidence rather than guessing."
     },
     {
       "id": "writer-designer-accessibility",
@@ -260,7 +250,6 @@
       "expected_code_roots": ["src/agents/"],
       "expected_owner": "designer",
       "forbidden_owners": ["quick", "deep"],
-      "delegation_net_gain": true,
       "decision": {
         "kind": "role-selection",
         "expected": "designer"
@@ -277,7 +266,6 @@
       "expected_code_roots": ["src/config/"],
       "expected_owner": "quick",
       "forbidden_owners": ["designer", "deep"],
-      "delegation_net_gain": true,
       "decision": {
         "kind": "role-selection",
         "expected": "quick"
@@ -294,13 +282,28 @@
       "expected_code_roots": [],
       "expected_owner": "librarian",
       "forbidden_owners": ["explorer", "quick"],
-      "delegation_net_gain": true,
       "decision": {
         "kind": "role-selection",
         "expected": "librarian"
       },
       "ownership_rationale": "The decision depends on current authoritative external evidence rather than local repository discovery.",
       "notes": "Return direct official sources and separate inference."
+    },
+    {
+      "id": "delegation-failure-bounded",
+      "task": "The selected specialist cannot start because the native delegation primitive is unavailable.",
+      "expected_primary": "agents-and-delegation",
+      "expected_first_read": "docs/agent/agents-and-delegation.md",
+      "expected_overlays": [],
+      "expected_code_roots": [],
+      "workflow": "direct",
+      "decision": {
+        "kind": "task-shaping",
+        "expected": "truthful-bounded-failure",
+        "ready": ["report the capability gap and preserve bounded work"],
+        "blocked": ["unrestricted root implementation fallback"]
+      },
+      "notes": "Delegation failure is reported truthfully and does not silently authorize unrestricted root execution; discovery-tool fallback belongs to the assigned investigator."
     },
     {
       "id": "graph-independent-wave",

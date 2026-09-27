@@ -24,10 +24,13 @@ Keep `docs/agent/` documents on demand at startup.
 
 ## Preferred navigation tools
 
-- When `.codegraph/` exists, every agent must use CodeGraph before
-  `webstorm-index`, native search or file reads, or delegating source-code
-  discovery. Prefer the `codegraph_explore` MCP tool; if it is not exposed, use
-  `codegraph explore "<question or symbol names>"` from the repository root.
+- Root may dispatch unknown local discovery to Explorer without preliminary
+  CodeGraph queries, native search, or file reads. This dispatch exemption does
+  not permit root discovery.
+- When `.codegraph/` exists, the assigned investigator must use CodeGraph before
+  source-code discovery through `webstorm-index`, native search, or file reads.
+  Prefer the `codegraph_explore` MCP tool; if it is not exposed, use `codegraph
+  explore "<question or symbol names>"` from the repository root.
 - Ask CodeGraph about the behavior, flow, file, or symbols in one focused query.
   Treat returned source as already read and current: do not re-read it or verify
   it with grep. If source was deferred, query again with the named file or symbol.
@@ -101,12 +104,23 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   a dependency. Dispatch all independent admitted ready work before waiting,
   refill native capacity and release each consumer after its own fresh accepted
   dependencies; avoid global wave barriers.
-- Delegate only for net gain. Root, designer, quick or deep may implement.
-  Prefer root continuity for short work or one ordered reasoning chain with
-  accumulated context. Choose explorer for uncertain local discovery, librarian
-  for authoritative external facts, oracle for independent judgment, designer
-  for material UI/UX, quick for exact low-risk edits, deep for coupled/high-risk
-  implementation. Route name and file count do not determine ownership.
+- Direct specialists by default. Root retains goals, constraints, decisions,
+  coordination, semantic acceptance and synthesis. Unknown local source, flow or
+  responsibility goes to explorer before root repository search; do not pre-read
+  to prepare that dispatch. Known bounded implementation goes directly to
+  designer, quick or deep without a mandatory explorer relay. Use librarian for
+  needed external evidence and oracle for independent judgment.
+- Root may consult one known source or make a minimal authorized low-risk edit
+  only when source, scope and verification are known and no discovery or
+  independent judgment is needed. Another search or dependency ends that
+  exception; file count, accumulated context and coordination overhead do not
+  extend it. Delegation failure is reported truthfully, never converted into
+  unrestricted root execution.
+- Do not duplicate delegated discovery. Request conclusions, localized evidence,
+  uncertainty and next action; target missing support instead of rereading every
+  file. Bounded evidence inspection for root decisions/recovery and mandatory
+  independent verification remain valid. Coordination artifacts must not hide
+  source or log dumps.
 - Keep delegation depth one, one writer per mutable surface, and fresh specialist
   sessions at work boundaries. Children never delegate. New Oracle judgments
   always use a fresh read-only reviewer. A writer never approves its own work.

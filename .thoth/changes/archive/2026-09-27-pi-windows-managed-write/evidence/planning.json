@@ -1,0 +1,22 @@
+{
+  "changeId": "pi-windows-managed-write",
+  "agreementFingerprint": "sha256:5122f0c62596d9c5ec2068f3e1514564aca5d7b2733c7e67f36110e8de55c28a",
+  "technicalFingerprint": "sha256:183eeeccd341eb33ff94055d91cd1cc000ceb2e4b04ce2cacb7901bc78812b73",
+  "planChoice": {
+    "choice": "direct",
+    "resolution": "explicit",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "implementationChoice": {
+    "choice": null,
+    "resolution": "pending",
+    "unansweredCount": 0,
+    "nativeReturnRefs": [],
+    "openQuestionRef": null
+  },
+  "review": null,
+  "explicitAnswer": "Implementar directamente",
+  "implementationChoiceApplicability": "Not required: direct implementation selected"
+}

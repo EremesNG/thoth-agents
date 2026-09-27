@@ -123,6 +123,7 @@ describe('native Pi extension', () => {
           },
           matchesKey: (data, key) => data === `<${key}>`,
           truncateToWidth: (text, width) => text.slice(0, width),
+          visibleWidth: (text) => text.length,
           getSupportedThinkingLevels: () => ['low', 'max'],
         }),
       },
@@ -135,7 +136,10 @@ describe('native Pi extension', () => {
           let result: unknown;
           const component = factory(
             { requestRender },
-            {},
+            {
+              fg: (_color: string, text: string) => text,
+              bg: (_color: string, text: string) => text,
+            },
             {},
             (value: unknown) => {
               result = value;

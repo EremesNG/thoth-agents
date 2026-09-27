@@ -15,6 +15,14 @@ export type ModelsPanelResult =
   | { kind: 'cancelled' }
   | { kind: 'saved'; changedRoles: string[] };
 
+export interface ModelsPanelTheme {
+  fg(
+    color: 'accent' | 'border' | 'muted' | 'dim' | 'text' | 'error' | 'warning',
+    text: string,
+  ): string;
+  bg(color: 'selectedBg', text: string): string;
+}
+
 export interface ModelsPanelOptions {
   snapshot: PiModelSnapshot;
   catalog: readonly ModelsPanelCatalogModel[];
@@ -28,6 +36,9 @@ export interface ModelsPanelOptions {
   matchesKey?: (data: string, key: PanelKey) => boolean;
   /** Runtime adapter should delegate to Pi TUI's truncateToWidth(). */
   truncate?: (text: string, width: number) => string;
+  /** Runtime adapter should delegate to Pi TUI's visibleWidth(). */
+  visibleWidth?: (text: string) => number;
+  theme?: ModelsPanelTheme;
 }
 
 export type PanelKey = 'up' | 'down' | 'enter' | 'escape' | 'backspace';
@@ -73,6 +84,10 @@ function defaultTruncate(text: string, width: number): string {
   if (chars.length <= width) return text;
   if (width === 1) return '…';
   return `${chars.slice(0, width - 1).join('')}…`;
+}
+
+function defaultVisibleWidth(text: string): number {
+  return [...text].length;
 }
 
 export function createModelsPanel(options: ModelsPanelOptions) {
@@ -241,7 +256,6 @@ export function createModelsPanel(options: ModelsPanelOptions) {
 
   const overviewLines = (width: number): string[] => {
     const lines = [
-      'Global specialist models',
       `Global directory: ${baseline.piRoot}`,
       'Ambient root model is unchanged.',
       'Native settings or project definitions may override these global definitions.',
@@ -293,7 +307,6 @@ export function createModelsPanel(options: ModelsPanelOptions) {
       ),
     );
     const lines = [
-      `Choose model · ${state.draft[state.selectedRole]?.role ?? ''}`,
       `Search: ${state.query || 'type provider or model name'}`,
       '',
       ...choices.slice(start, start + pageSize),
@@ -309,7 +322,6 @@ export function createModelsPanel(options: ModelsPanelOptions) {
 
   const effortLines = (): string[] => {
     const lines = [
-      `Choose thinking · ${pendingModel ? modelValue(pendingModel) : ''}`,
       'Inherit is native default/unpinned; it does not guarantee the parent effort.',
       '',
     ];
@@ -320,17 +332,66 @@ export function createModelsPanel(options: ModelsPanelOptions) {
   };
 
   const render = (width: number): string[] => {
+    let title: string;
     let lines: string[];
-    if (state.screen === 'overview') lines = overviewLines(width);
-    else if (state.screen === 'models') lines = modelLines();
-    else if (state.screen === 'effort') lines = effortLines();
-    else
-      lines = [
-        'Discard unsaved draft?',
-        'd discard and close · k or esc keep editing',
-      ];
+    if (state.screen === 'overview') {
+      title = 'Global specialist models';
+      lines = overviewLines(width);
+    } else if (state.screen === 'models') {
+      title = `Choose model · ${state.draft[state.selectedRole]?.role ?? ''}`;
+      lines = modelLines();
+    } else if (state.screen === 'effort') {
+      title = `Choose thinking · ${pendingModel ? modelValue(pendingModel) : ''}`;
+      lines = effortLines();
+    } else {
+      title = 'Discard unsaved draft?';
+      lines = ['d discard and close · k or esc keep editing'];
+    }
+
     const truncate = options.truncate ?? defaultTruncate;
-    return lines.map((line) => truncate(line, Math.max(1, width)));
+    const measure = options.visibleWidth ?? defaultVisibleWidth;
+    const fg = (
+      color: Parameters<ModelsPanelTheme['fg']>[0],
+      text: string,
+    ): string => options.theme?.fg(color, text) ?? text;
+    const panelWidth = Math.max(1, width);
+    if (panelWidth < 4) {
+      return [title, ...lines].map((line) => truncate(line, panelWidth));
+    }
+
+    const innerWidth = panelWidth - 4;
+    const horizontalCount = Math.max(0, panelWidth - measure(`╭─ ${title} ─╮`));
+    const top = fg('accent', `╭─ ${title} ${'─'.repeat(horizontalCount + 1)}╮`);
+    const bottom = fg('border', `╰${'─'.repeat(panelWidth - 2)}╯`);
+    const body = lines.map((line) => {
+      const selected = line.startsWith('› ');
+      let content = truncate(line, innerWidth);
+      if (selected) content = fg('accent', content);
+      else if (
+        line === '' ||
+        line.includes('navigate') ||
+        line.includes('enter edit') ||
+        line.startsWith('Global directory:') ||
+        line.startsWith('Ambient root') ||
+        line.startsWith('Native settings') ||
+        line.startsWith('Thinking “inherit”') ||
+        line.startsWith('Inherit is') ||
+        line.startsWith('  Showing')
+      )
+        content = fg('muted', content);
+      else if (line.startsWith('Save failed:')) content = fg('error', content);
+      else if (line.startsWith('Already changed:'))
+        content = fg('warning', content);
+      else if (line.startsWith('Search:')) content = fg('accent', content);
+
+      const padding = ' '.repeat(Math.max(0, innerWidth - measure(content)));
+      const row = `${content}${padding}`;
+      const filled = selected
+        ? (options.theme?.bg('selectedBg', row) ?? row)
+        : row;
+      return `${fg('border', '│')} ${filled} ${fg('border', '│')}`;
+    });
+    return [truncate(top, panelWidth), ...body, truncate(bottom, panelWidth)];
   };
 
   return {

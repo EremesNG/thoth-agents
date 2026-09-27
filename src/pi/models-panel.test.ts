@@ -1,3 +1,4 @@
+import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import { describe, expect, test, vi } from 'vitest';
 import type {
   PiModelSaveResult,
@@ -67,17 +68,62 @@ describe('global Pi models panel', () => {
     expect(text).toContain('unpins native thinking');
   });
 
-  test('keeps every rendered line within a narrow width', () => {
+  test('frames the panel and makes the selected role visually distinct', () => {
+    const theme = {
+      fg: (color: string, text: string) =>
+        `\x1b[3${color === 'accent' ? '6' : '7'}m${text}\x1b[39m`,
+      bg: (_color: string, text: string) => `\x1b[44m${text}\x1b[49m`,
+    };
     const panel = createModelsPanel({
       snapshot: snapshot(),
       catalog,
       save: vi.fn(),
       onDone: vi.fn(),
+      theme,
+      truncate: truncateToWidth,
+      visibleWidth,
+    });
+    const initial = panel.render(80);
+    expect(initial[0]).toContain('Global specialist models');
+    expect(initial[0]).toContain('╭');
+    expect(initial.at(-1)).toContain('╰');
+    expect(initial.find((line) => line.includes('explorer'))).toContain(
+      '\x1b[44m',
+    );
+
+    panel.handleInput('\x1b[B');
+    const moved = panel.render(80);
+    expect(moved.find((line) => line.includes('explorer'))).not.toContain(
+      '\x1b[44m',
+    );
+    expect(moved.find((line) => line.includes('librarian'))).toContain(
+      '\x1b[44m',
+    );
+  });
+
+  test('keeps ANSI-styled, wide-character and long-model lines within terminal columns', () => {
+    const wideSnapshot = snapshot();
+    wideSnapshot.roles[0] = {
+      role: 'explorer',
+      model: '提供者/模型-🚀-with-a-very-long-identifier',
+      effort: { kind: 'inherit' },
+    };
+    const panel = createModelsPanel({
+      snapshot: wideSnapshot,
+      catalog,
+      save: vi.fn(),
+      onDone: vi.fn(),
+      theme: {
+        fg: (_color, text) => `\x1b[36m${text}\x1b[39m`,
+        bg: (_color, text) => `\x1b[44m${text}\x1b[49m`,
+      },
+      truncate: truncateToWidth,
+      visibleWidth,
     });
     const lines = panel.render(28);
     expect(lines.length).toBeGreaterThan(6);
-    expect(lines.every((line) => [...line].length <= 28)).toBe(true);
-    expect(lines.join('\n')).toContain('thinking inherit');
+    expect(lines.every((line) => visibleWidth(line) <= 28)).toBe(true);
+    expect(lines.join('\n')).toContain('thinking');
   });
 
   test('searches the live catalog and assigns only supported thinking, including max', () => {

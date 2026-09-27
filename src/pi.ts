@@ -2,7 +2,12 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
-import { Key, matchesKey, truncateToWidth } from '@earendil-works/pi-tui';
+import {
+  Key,
+  matchesKey,
+  truncateToWidth,
+  visibleWidth,
+} from '@earendil-works/pi-tui';
 import { findPackageRoot } from './cli/package-root';
 import {
   type PiModelSaveResult,
@@ -16,6 +21,7 @@ import { PI_ROOT_END, PI_ROOT_START } from './harness/writers/pi-agent';
 import {
   createModelsPanel,
   type ModelsPanelCatalogModel,
+  type ModelsPanelTheme,
   type PanelKey,
 } from './pi/models-panel';
 
@@ -48,6 +54,7 @@ interface PiModelsCommandContext {
 interface PiNativeModules {
   matchesKey(data: string, key: string): boolean;
   truncateToWidth(text: string, width: number): string;
+  visibleWidth(text: string): number;
   keys: Record<PanelKey, string>;
   getSupportedThinkingLevels(model: PiModel): readonly string[];
 }
@@ -93,6 +100,7 @@ async function loadPiNativeModules(): Promise<PiNativeModules> {
     matchesKey: (data, key) =>
       matchesKey(data, key as Parameters<typeof matchesKey>[1]),
     truncateToWidth,
+    visibleWidth,
     keys: Key,
     getSupportedThinkingLevels: (model) =>
       getSupportedThinkingLevels(
@@ -145,7 +153,7 @@ export default function thothAgentsPiExtension(
           }));
         const result = await ctx.ui.custom<
           { kind: 'cancelled' } | { kind: 'saved'; changedRoles: string[] }
-        >((tui, _theme, _keybindings, done) =>
+        >((tui, theme, _keybindings, done) =>
           createModelsPanel({
             snapshot,
             catalog,
@@ -156,6 +164,8 @@ export default function thothAgentsPiExtension(
             matchesKey: (data, key) =>
               native.matchesKey(data, native.keys[key]),
             truncate: native.truncateToWidth,
+            visibleWidth: native.visibleWidth,
+            theme: theme as ModelsPanelTheme,
           }),
         );
         if (result.kind === 'saved') {

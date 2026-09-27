@@ -27,6 +27,7 @@ import {
 } from '../owned-skills';
 import { resolveExecutingPackageVersion } from '../package-version';
 import { resolvePiEffort } from '../pi-effort';
+import { inspectPiExternalPackage } from '../pi-external-package';
 import {
   applyPiSetup,
   buildPiSetupPlan,
@@ -335,7 +336,7 @@ function statusFromPlan(
         item.kind === 'package' ? item.target : 'attributable managed content',
       description:
         item.kind === 'package'
-          ? 'Exact installed-package evidence; this does not prove live tool availability.'
+          ? 'Validated installed-package manifest evidence; this does not prove live tool availability.'
           : undefined,
     }));
   const execute: PiCommandExecutor =
@@ -389,33 +390,46 @@ function statusFromPlan(
       observed: pi.stdout.trim() || pi.stderr.trim() || 'unavailable',
     },
   );
+  const configuredPackages =
+    packages.exitCode === 0 ? parsePiPackageList(packages.stdout) : [];
   for (const target of targets.filter(
     (candidate) =>
       candidate.kind === 'package' && candidate.path?.startsWith('npm:'),
   )) {
-    const packageName = target.path
-      ?.replace(/^npm:/, '')
-      .replace(/@[^@]+$/, '');
-    target.state =
-      packages.exitCode !== 0
-        ? 'unknown'
-        : hasExactInstalledPiPackage(packages.stdout, target.path ?? '')
-          ? 'installed'
-          : packageName && packages.stdout.includes(packageName)
-            ? 'drift'
-            : 'missing';
-    target.observed =
-      packages.exitCode === 0
-        ? target.state
-        : packages.stderr.trim() || 'pi list unavailable';
+    const externalSpec = PI_PACKAGE_SPECS.find(
+      ({ source }) => source === target.path,
+    );
+    if (packages.exitCode !== 0) {
+      target.state = 'unknown';
+      target.observed = packages.stderr.trim() || 'pi list unavailable';
+    } else if (externalSpec) {
+      const inspected = inspectPiExternalPackage(
+        configuredPackages,
+        externalSpec,
+      );
+      target.state = inspected.state;
+      target.observed =
+        inspected.state === 'installed' ? inspected.version : inspected.reason;
+    } else {
+      const packageName = target.path
+        ?.replace(/^npm:/, '')
+        .replace(/@[^@]+$/, '');
+      target.state = hasExactInstalledPiPackage(
+        packages.stdout,
+        target.path ?? '',
+      )
+        ? 'installed'
+        : packageName && packages.stdout.includes(packageName)
+          ? 'drift'
+          : 'missing';
+      target.observed = target.state;
+    }
   }
   const receiptOptions = context.installLedgerOptions ?? {
     env: context.env,
     homeDir: context.homeDir,
   };
   const receipt = readPiPackageReceipt(receiptOptions);
-  const configuredPackages =
-    packages.exitCode === 0 ? parsePiPackageList(packages.stdout) : [];
   const firstPartyPackages = getPiFirstPartyPackages(
     configuredPackages,
     receipt.status === 'valid' ? receipt.receipt.source : undefined,

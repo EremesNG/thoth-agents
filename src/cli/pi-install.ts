@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { lt } from 'semver';
 import { piAdapter } from '../harness/adapters/pi';
 import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
 import {
@@ -15,6 +16,7 @@ import {
   PI_ROOT_START,
 } from '../harness/writers/pi-agent';
 import { findPackageRoot } from './package-root';
+import { inspectPiExternalPackage } from './pi-external-package';
 import {
   assertSafePiManagedPath,
   writePiManagedText,
@@ -38,37 +40,37 @@ export const PI_COMMAND_TIMEOUT_MS = 120_000;
 export const PI_PACKAGE_SPECS = [
   {
     id: 'delegation',
-    source: 'npm:pi-subagents@0.71.0',
+    source: 'npm:pi-subagents@>=0.71.0',
     packageName: 'pi-subagents',
     version: '0.71.0',
   },
   {
     id: 'context7',
-    source: 'npm:@upstash/context7-pi@0.1.2',
+    source: 'npm:@upstash/context7-pi@>=0.1.2',
     packageName: '@upstash/context7-pi',
     version: '0.1.2',
   },
   {
     id: 'web-access',
-    source: 'npm:pi-web-access@0.27.0',
+    source: 'npm:pi-web-access@>=0.27.0',
     packageName: 'pi-web-access',
     version: '0.27.0',
   },
   {
     id: 'grep-adapter',
-    source: 'npm:pi-mcp-adapter@2.32.1',
+    source: 'npm:pi-mcp-adapter@>=2.32.1',
     packageName: 'pi-mcp-adapter',
     version: '2.32.1',
   },
   {
     id: 'ask-user-question',
-    source: 'npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+    source: 'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
     packageName: '@juicesharp/rpiv-ask-user-question',
     version: '2.9.0',
   },
   {
     id: 'todo',
-    source: 'npm:@juicesharp/rpiv-todo@2.9.0',
+    source: 'npm:@juicesharp/rpiv-todo@>=2.9.0',
     packageName: '@juicesharp/rpiv-todo',
     version: '2.9.0',
   },
@@ -571,7 +573,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
     blockers,
     diagnostics,
     disclaimers: [
-      "Pi extensions execute with the invoking user's system permissions; package pins and tool allowlists are not a security sandbox.",
+      "Pi extensions execute with the invoking user's system permissions; package minimums and tool allowlists are not a security sandbox.",
       'Context7 and web access are native Pi extensions; only grep.app uses pi-mcp-adapter and directTools is intentionally omitted.',
       'Project-local resources require Pi trust and may shadow global resources.',
     ],
@@ -766,6 +768,7 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
   const installedPackages: string[] = [];
   let receiptCommitted = false;
   let configuredPackageRoot: string | undefined;
+  let manualRecovery: string | undefined;
   try {
     // Validate every shared configuration surface before package commands mutate
     // the installation. The writer repeats these checks to narrow TOCTOU races.
@@ -816,7 +819,7 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
         success: false,
         changed,
         diagnostics,
-        error: `Legacy delegation runtime ${legacyDelegation.source} is still configured. Loading it beside npm:pi-subagents@0.71.0 is unsupported.`,
+        error: `Legacy delegation runtime ${legacyDelegation.source} is still configured. Loading it beside npm:pi-subagents@>=0.71.0 is unsupported.`,
         failedStep: 'preflight',
         installedPackages,
         manualRecovery: `Review the legacy package ownership, then run: pi remove ${legacyDelegation.source} --no-approve`,
@@ -983,20 +986,63 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
     changed.push(...migration.changed);
 
     for (const pkg of PI_PACKAGE_SPECS) {
-      const result = execute('pi', ['install', pkg.source, '--no-approve']);
-      if (result.exitCode !== 0)
+      const beforeInstall = execute('pi', ['list', '--no-approve']);
+      if (beforeInstall.exitCode !== 0)
         throw new Error(
-          `Failed to install ${pkg.source}: ${result.stderr.trim() || 'unknown Pi error'}`,
+          `Unable to inspect ${pkg.packageName} before installation: ${beforeInstall.stderr.trim() || 'pi list unavailable'}`,
         );
+      const prior = inspectPiExternalPackage(
+        parsePiPackageList(beforeInstall.stdout),
+        pkg,
+        false,
+      );
+      if (prior.state !== 'installed' || prior.source !== pkg.source) {
+        const result = execute('pi', ['install', pkg.source, '--no-approve']);
+        if (result.exitCode !== 0)
+          throw new Error(
+            `Failed to install ${pkg.source}: ${result.stderr.trim() || 'unknown Pi error'}`,
+          );
+      }
       const listed = execute('pi', ['list', '--no-approve']);
+      const verified =
+        listed.exitCode === 0
+          ? inspectPiExternalPackage(parsePiPackageList(listed.stdout), pkg)
+          : {
+              state: 'drift' as const,
+              version: undefined,
+              reason: listed.stderr.trim() || 'pi list unavailable',
+            };
       if (
-        listed.exitCode !== 0 ||
-        !hasExactInstalledPiPackage(listed.stdout, pkg.source)
+        prior.state === 'installed' &&
+        verified.version !== undefined &&
+        lt(verified.version, prior.version)
       ) {
+        const restoreSource = `npm:${pkg.packageName}@${prior.version}`;
+        const restored = execute('pi', [
+          'install',
+          restoreSource,
+          '--no-approve',
+        ]);
+        const restoredListing = execute('pi', ['list', '--no-approve']);
+        const restoredEvidence =
+          restored.exitCode === 0 && restoredListing.exitCode === 0
+            ? inspectPiExternalPackage(
+                parsePiPackageList(restoredListing.stdout),
+                pkg,
+                false,
+              )
+            : undefined;
+        const recoverySucceeded =
+          restoredEvidence?.state === 'installed' &&
+          restoredEvidence.version === prior.version;
+        const recoveryGuidance = `Manual recovery: run pi install ${restoreSource} --no-approve, then verify with pi list and the installed package manifest.`;
+        manualRecovery = recoveryGuidance;
         throw new Error(
-          `Pi did not verify the exact installed package source ${pkg.source}.`,
+          `Pi attempted to downgrade ${pkg.packageName} from ${prior.version} to ${verified.version}; exact-version recovery ${recoverySucceeded ? 'verified' : 'failed or unverifiable'}. ${recoveryGuidance}`,
         );
       }
+      if (verified.state !== 'installed')
+        throw new Error(`Pi did not verify ${pkg.source}: ${verified.reason}.`);
       installedPackages.push(pkg.source);
     }
     for (const item of plan.items.filter(
@@ -1046,6 +1092,7 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
           : 'managed-surface',
       installedPackages,
       receiptCommitted,
+      manualRecovery,
     };
   }
 }

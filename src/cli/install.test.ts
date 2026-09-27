@@ -123,6 +123,18 @@ describe('install', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-top-install-'));
     const events: string[] = [];
     let firstPartyInstalled = false;
+    const installedExternal = new Set<string>();
+    const externalPaths = new Map(
+      PI_PACKAGE_SPECS.map((spec) => {
+        const path = join(homeDir, 'external', spec.id);
+        mkdirSync(path, { recursive: true });
+        writeFileSync(
+          join(path, 'package.json'),
+          JSON.stringify({ name: spec.packageName, version: spec.version }),
+        );
+        return [spec.source, path] as const;
+      }),
+    );
     const result = await install(
       { tui: false, agent: 'pi' },
       {
@@ -154,11 +166,20 @@ describe('install', () => {
           if (args[0] === 'list')
             return {
               exitCode: 0,
-              stdout: `${firstPartyInstalled ? `npm:thoth-agents@0.6.0\n    ${process.cwd()}\n` : ''}${PI_PACKAGE_SPECS.map(({ source }) => source).join('\n')}`,
+              stdout: [
+                ...(firstPartyInstalled
+                  ? ['npm:thoth-agents@0.6.0', `    ${process.cwd()}`]
+                  : []),
+                ...[...installedExternal].flatMap((source) => [
+                  source,
+                  `    ${externalPaths.get(source)}`,
+                ]),
+              ].join('\n'),
               stderr: '',
             };
           events.push(`package:${args[1]}`);
           if (args[1] === 'npm:thoth-agents@0.6.0') firstPartyInstalled = true;
+          else if (args[1]) installedExternal.add(args[1]);
           return { exitCode: 0, stdout: 'installed', stderr: '' };
         },
         installRequiredSkill: (skill, harness) => {
@@ -188,12 +209,12 @@ describe('install', () => {
     expect(result).toBe(0);
     expect(events).toEqual([
       'package:npm:thoth-agents@0.6.0',
-      'package:npm:pi-subagents@0.71.0',
-      'package:npm:@upstash/context7-pi@0.1.2',
-      'package:npm:pi-web-access@0.27.0',
-      'package:npm:pi-mcp-adapter@2.32.1',
-      'package:npm:@juicesharp/rpiv-ask-user-question@2.9.0',
-      'package:npm:@juicesharp/rpiv-todo@2.9.0',
+      'package:npm:pi-subagents@>=0.71.0',
+      'package:npm:@upstash/context7-pi@>=0.1.2',
+      'package:npm:pi-web-access@>=0.27.0',
+      'package:npm:pi-mcp-adapter@>=2.32.1',
+      'package:npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+      'package:npm:@juicesharp/rpiv-todo@>=2.9.0',
       'external:simplify',
       'external:tdd',
       'external:progressive-context-router',

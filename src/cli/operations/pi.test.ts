@@ -109,15 +109,22 @@ function writeLocalPiReceipt(homeDir: string, packageRoot: string): string {
 }
 
 describe('Pi operations', () => {
-  const installedRuntime = (command: string, args: readonly string[]) => {
-    if (command === 'node')
-      return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
-    if (args[0] === '--version')
-      return { exitCode: 0, stdout: '0.86.1', stderr: '' };
-    return {
-      exitCode: 0,
-      stdout: PI_PACKAGE_SPECS.map(({ source }) => source).join('\n'),
-      stderr: '',
+  const installedRuntime = (homeDir: string) => {
+    const packageList = PI_PACKAGE_SPECS.flatMap((spec) => {
+      const installedPath = join(homeDir, 'external', spec.id);
+      mkdirSync(installedPath, { recursive: true });
+      writeFileSync(
+        join(installedPath, 'package.json'),
+        JSON.stringify({ name: spec.packageName, version: spec.version }),
+      );
+      return [`  ${spec.source}`, `    ${installedPath}`];
+    }).join('\n');
+    return (command: string, args: readonly string[]) => {
+      if (command === 'node')
+        return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
+      if (args[0] === '--version')
+        return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+      return { exitCode: 0, stdout: packageList, stderr: '' };
     };
   };
 
@@ -133,7 +140,7 @@ describe('Pi operations', () => {
     );
     expect(
       install.items.some(({ preview }) =>
-        preview?.includes('pi-subagents@0.71.0'),
+        preview?.includes('pi-subagents@>=0.71.0'),
       ),
     ).toBe(true);
     expect(
@@ -188,6 +195,21 @@ describe('Pi operations', () => {
   test('reports each RPIV package source independently without claiming live tools', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-rpiv-status-'));
     roots.push(homeDir);
+    const askPath = join(homeDir, 'ask');
+    const todoPath = join(homeDir, 'todo');
+    mkdirSync(askPath);
+    mkdirSync(todoPath);
+    writeFileSync(
+      join(askPath, 'package.json'),
+      JSON.stringify({
+        name: '@juicesharp/rpiv-ask-user-question',
+        version: '2.9.0',
+      }),
+    );
+    writeFileSync(
+      join(todoPath, 'package.json'),
+      JSON.stringify({ name: '@juicesharp/rpiv-todo', version: '0.0.1' }),
+    );
     const report = getPiStatus({
       cwd: homeDir,
       homeDir,
@@ -200,8 +222,10 @@ describe('Pi operations', () => {
         return {
           exitCode: 0,
           stdout: [
-            'npm:@juicesharp/rpiv-ask-user-question@2.9.0',
-            'npm:@juicesharp/rpiv-todo@0.0.1',
+            'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+            `    ${askPath}`,
+            'npm:@juicesharp/rpiv-todo@>=2.9.0',
+            `    ${todoPath}`,
           ].join('\n'),
           stderr: '',
         };
@@ -226,7 +250,7 @@ describe('Pi operations', () => {
       cwd: homeDir,
       homeDir,
       env: {},
-      piCommandExecutor: installedRuntime,
+      piCommandExecutor: installedRuntime(homeDir),
     });
 
     expect(
@@ -265,7 +289,7 @@ describe('Pi operations', () => {
         cwd: homeDir,
         homeDir,
         env: {},
-        piCommandExecutor: installedRuntime,
+        piCommandExecutor: installedRuntime(homeDir),
       },
       {
         research: {
@@ -317,7 +341,7 @@ describe('Pi operations', () => {
         cwd: homeDir,
         homeDir,
         env: {},
-        piCommandExecutor: installedRuntime,
+        piCommandExecutor: installedRuntime(homeDir),
       },
       {
         research: {
@@ -390,7 +414,7 @@ describe('Pi operations', () => {
       packageRoot,
       env: {},
       piCommandExecutor: (command, args) => {
-        const result = installedRuntime(command, args);
+        const result = installedRuntime(homeDir)(command, args);
         return args[0] === 'list'
           ? {
               ...result,
@@ -442,7 +466,7 @@ describe('Pi operations', () => {
       homeDir,
       env: {},
       piCommandExecutor: (command, args) => {
-        const result = installedRuntime(command, args);
+        const result = installedRuntime(homeDir)(command, args);
         return args[0] === 'list'
           ? {
               ...result,
@@ -483,7 +507,7 @@ describe('Pi operations', () => {
       packageRoot,
       env: {},
       piCommandExecutor: (command: string, args: readonly string[]) => {
-        const result = installedRuntime(command, args);
+        const result = installedRuntime(homeDir)(command, args);
         return args[0] === 'list'
           ? {
               ...result,
@@ -546,7 +570,7 @@ describe('Pi operations', () => {
       createHash('sha256').update(readFileSync(path)).digest('hex');
     const commandExecutor =
       (list: string) => (command: string, args: readonly string[]) => {
-        const result = installedRuntime(command, args);
+        const result = installedRuntime(homeDir)(command, args);
         return args[0] === 'list' ? { ...result, stdout: list } : result;
       };
     const ownership = (list: string) =>

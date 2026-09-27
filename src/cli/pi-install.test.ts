@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { inspectPiExternalPackage } from './pi-external-package';
 import {
   applyPiSetup,
   buildPiSetupPlan,
@@ -39,6 +40,53 @@ afterEach(() => {
 function localSource(from: string, to: string): string {
   const path = relative(from, to);
   return path.startsWith('.') ? path : `.${sep}${path}`;
+}
+
+function externalPackageFixture(
+  packageName: string,
+  version?: string,
+): {
+  installedPath: string;
+  candidate: { scope: 'user'; source: string; installedPath: string };
+} {
+  const installedPath = mkdtempSync(join(tmpdir(), 'thoth-pi-external-'));
+  roots.push(installedPath);
+  if (version !== undefined)
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({ name: packageName, version }),
+    );
+  return {
+    installedPath,
+    candidate: {
+      scope: 'user',
+      source: `npm:${packageName}@>=1.2.3`,
+      installedPath,
+    },
+  };
+}
+
+function externalPackageList(
+  homeDir: string,
+  versions: Partial<
+    Record<(typeof PI_PACKAGE_SPECS)[number]['id'], string>
+  > = {},
+  sources: Partial<
+    Record<(typeof PI_PACKAGE_SPECS)[number]['id'], string>
+  > = {},
+): string[] {
+  return PI_PACKAGE_SPECS.flatMap((spec) => {
+    const installedPath = join(homeDir, 'external', spec.id);
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({
+        name: spec.packageName,
+        version: versions[spec.id] ?? spec.version,
+      }),
+    );
+    return [`  ${sources[spec.id] ?? spec.source}`, `    ${installedPath}`];
+  });
 }
 
 function fixture() {
@@ -71,6 +119,50 @@ function fixture() {
 }
 
 describe('Pi setup', () => {
+  test('validates external package scope, identity, and stable minimum version from its manifest', () => {
+    const spec = {
+      source: 'npm:@scope/example@>=1.2.3',
+      packageName: '@scope/example',
+      version: '1.2.3',
+    };
+    const equal = externalPackageFixture(spec.packageName, '1.2.3');
+    equal.candidate.source = spec.source;
+    expect(inspectPiExternalPackage([equal.candidate], spec)).toMatchObject({
+      state: 'installed',
+      version: '1.2.3',
+    });
+
+    const newer = externalPackageFixture(spec.packageName, '2.0.0');
+    newer.candidate.source = spec.source;
+    expect(inspectPiExternalPackage([newer.candidate], spec)).toMatchObject({
+      state: 'installed',
+      version: '2.0.0',
+    });
+
+    for (const version of ['1.2.2', '2.0.0-beta.1', 'not-semver']) {
+      const invalid = externalPackageFixture(spec.packageName, version);
+      invalid.candidate.source = spec.source;
+      expect(inspectPiExternalPackage([invalid.candidate], spec).state).toBe(
+        'drift',
+      );
+    }
+    const missingVersion = externalPackageFixture(spec.packageName);
+    missingVersion.candidate.source = spec.source;
+    expect(
+      inspectPiExternalPackage([missingVersion.candidate], spec).state,
+    ).toBe('drift');
+
+    const wrongName = externalPackageFixture('@scope/example-extra', '9.0.0');
+    wrongName.candidate.source = 'npm:@scope/example-extra@>=1.2.3';
+    expect(inspectPiExternalPackage([wrongName.candidate], spec).state).toBe(
+      'missing',
+    );
+    expect(
+      inspectPiExternalPackage([{ ...equal.candidate, scope: 'project' }], spec)
+        .state,
+    ).toBe('drift');
+  });
+
   test('parses user and project sources with their resolved installed directories', () => {
     expect(
       parsePiPackageList(
@@ -231,7 +323,7 @@ describe('Pi setup', () => {
     });
   });
 
-  test('plans exact pinned packages in order and dry-run mutates nothing', () => {
+  test('plans minimum-only external packages in order and dry-run mutates nothing', () => {
     const paths = fixture();
     let calls = 0;
     const plan = buildPiSetupPlan({
@@ -248,12 +340,12 @@ describe('Pi setup', () => {
         .map(({ target }) => target),
     ).toEqual([
       'npm:thoth-agents@0.3.12',
-      'npm:pi-subagents@0.71.0',
-      'npm:@upstash/context7-pi@0.1.2',
-      'npm:pi-web-access@0.27.0',
-      'npm:pi-mcp-adapter@2.32.1',
-      'npm:@juicesharp/rpiv-ask-user-question@2.9.0',
-      'npm:@juicesharp/rpiv-todo@2.9.0',
+      'npm:pi-subagents@>=0.71.0',
+      'npm:@upstash/context7-pi@>=0.1.2',
+      'npm:pi-web-access@>=0.27.0',
+      'npm:pi-mcp-adapter@>=2.32.1',
+      'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+      'npm:@juicesharp/rpiv-todo@>=2.9.0',
     ]);
     expect(PI_MINIMUM_VERSION).toBe('0.86.1');
     expect(PI_PACKAGE_SPECS).toHaveLength(6);
@@ -335,6 +427,8 @@ describe('Pi setup', () => {
       JSON.stringify({ inlineToolDisplay: 'summary' }),
     );
     let firstPartyInstalled = false;
+    let listCalls = 0;
+    const externalPackages = externalPackageList(paths.homeDir);
     const plan = buildPiSetupPlan({
       ...paths,
       commandExecutor: (command, args) => {
@@ -342,35 +436,34 @@ describe('Pi setup', () => {
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
           return { exitCode: 0, stdout: '0.86.1', stderr: '' };
-        if (args[0] === 'list')
+        if (args[0] === 'list') {
+          listCalls += 1;
+          if (listCalls === 3) {
+            const changedMcpPath = join(
+              paths.homeDir,
+              '.config',
+              'mcp',
+              'mcp.json',
+            );
+            mkdirSync(dirname(changedMcpPath), { recursive: true });
+            writeFileSync(
+              changedMcpPath,
+              JSON.stringify({ imports: ['added-after-plan.json'] }),
+            );
+          }
           return {
             exitCode: 0,
             stdout: [
               ...(firstPartyInstalled
                 ? ['npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
                 : []),
-              ...PI_PACKAGE_SPECS.map(({ source }) => `  ${source}`),
+              ...externalPackages,
             ].join('\n'),
             stderr: '',
           };
+        }
         if (args[0] === 'install' && args[1] === 'npm:thoth-agents@0.3.12')
           firstPartyInstalled = true;
-        if (
-          args[0] === 'install' &&
-          args[1] === 'npm:@juicesharp/rpiv-todo@2.9.0'
-        ) {
-          const changedMcpPath = join(
-            paths.homeDir,
-            '.config',
-            'mcp',
-            'mcp.json',
-          );
-          mkdirSync(dirname(changedMcpPath), { recursive: true });
-          writeFileSync(
-            changedMcpPath,
-            JSON.stringify({ imports: ['added-after-plan.json'] }),
-          );
-        }
         return { exitCode: 0, stdout: 'installed', stderr: '' };
       },
     });
@@ -409,6 +502,136 @@ describe('Pi setup', () => {
       lifecycle: 'lazy',
     });
     expect(mcp.mcpServers.grep).not.toHaveProperty('directTools');
+  });
+
+  test('migrates a legacy exact source through Pi while preserving object filters and unrelated settings', () => {
+    const paths = fixture();
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = {
+      theme: 'dark',
+      packages: [
+        {
+          source: 'npm:pi-subagents@0.72.0',
+          extensions: ['extensions/index.js'],
+          skills: [],
+        },
+        'npm:operator-package@1.0.0',
+      ],
+    };
+    writeFileSync(settingsPath, JSON.stringify(settings));
+    const packageLines = externalPackageList(
+      paths.homeDir,
+      { delegation: '0.72.0' },
+      { delegation: 'npm:pi-subagents@0.72.0' },
+    );
+    let firstPartyInstalled = false;
+    const installCalls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+        if (args[0] === 'install') {
+          installCalls.push(args[1] ?? '');
+          if (args[1] === 'npm:thoth-agents@0.3.12') firstPartyInstalled = true;
+          if (args[1] === PI_PACKAGE_SPECS[0].source) {
+            packageLines[0] = `  ${PI_PACKAGE_SPECS[0].source} (filtered)`;
+            const current = JSON.parse(readFileSync(settingsPath, 'utf8'));
+            current.packages[0].source = PI_PACKAGE_SPECS[0].source;
+            writeFileSync(settingsPath, JSON.stringify(current));
+          }
+          return { exitCode: 0, stdout: 'installed', stderr: '' };
+        }
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: [
+              ...(firstPartyInstalled
+                ? ['npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
+                : []),
+              ...packageLines,
+            ].join('\n'),
+            stderr: '',
+          };
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    expect(applyPiSetup(plan).success).toBe(true);
+    expect(installCalls).toEqual([
+      'npm:thoth-agents@0.3.12',
+      PI_PACKAGE_SPECS[0].source,
+    ]);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toMatchObject({
+      theme: 'dark',
+      packages: [
+        {
+          source: PI_PACKAGE_SPECS[0].source,
+          extensions: ['extensions/index.js'],
+          skills: [],
+        },
+        'npm:operator-package@1.0.0',
+      ],
+      subagents: { disableBuiltins: true },
+    });
+  });
+
+  test('restores a satisfying newer package if native range installation would downgrade it', () => {
+    const paths = fixture();
+    const packageLines = externalPackageList(
+      paths.homeDir,
+      { delegation: '9.0.0' },
+      { delegation: 'npm:pi-subagents@9.0.0' },
+    );
+    const delegationPath = packageLines[1]?.trim() ?? '';
+    let firstPartyInstalled = false;
+    const installCalls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+        if (args[0] === 'install') {
+          installCalls.push(args[1] ?? '');
+          if (args[1] === 'npm:thoth-agents@0.3.12') firstPartyInstalled = true;
+          if (args[1] === PI_PACKAGE_SPECS[0].source) {
+            packageLines[0] = `  ${PI_PACKAGE_SPECS[0].source}`;
+            writeFileSync(
+              join(delegationPath, 'package.json'),
+              JSON.stringify({ name: 'pi-subagents', version: '0.1.0' }),
+            );
+          }
+          return { exitCode: 0, stdout: 'installed', stderr: '' };
+        }
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: [
+              ...(firstPartyInstalled
+                ? ['npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
+                : []),
+              ...packageLines,
+            ].join('\n'),
+            stderr: '',
+          };
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      error: expect.stringContaining(
+        'exact-version recovery failed or unverifiable',
+      ),
+      manualRecovery:
+        'Manual recovery: run pi install npm:pi-subagents@9.0.0 --no-approve, then verify with pi list and the installed package manifest.',
+    });
+    expect(installCalls).toContain('npm:pi-subagents@9.0.0');
   });
 
   test('rejects installed package evidence with the expected name at the wrong version', () => {
@@ -452,7 +675,10 @@ describe('Pi setup', () => {
   test('stops before managed resources when web access cannot be verified', () => {
     const paths = fixture();
     let firstPartyInstalled = false;
-    const failedSource = 'npm:pi-web-access@0.27.0';
+    const failedSource = 'npm:pi-web-access@>=0.27.0';
+    const externalPackages = externalPackageList(paths.homeDir, {
+      'web-access': '0.0.1',
+    });
     const plan = buildPiSetupPlan({
       ...paths,
       commandExecutor: (command, args) => {
@@ -467,9 +693,7 @@ describe('Pi setup', () => {
               ...(firstPartyInstalled
                 ? ['npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
                 : []),
-              ...PI_PACKAGE_SPECS.map(({ source, packageName }) =>
-                source === failedSource ? `npm:${packageName}@0.0.1` : source,
-              ),
+              ...externalPackages,
             ].join('\n'),
             stderr: '',
           };
@@ -485,8 +709,8 @@ describe('Pi setup', () => {
       error: expect.stringContaining(failedSource),
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:pi-subagents@0.71.0',
-        'npm:@upstash/context7-pi@0.1.2',
+        'npm:pi-subagents@>=0.71.0',
+        'npm:@upstash/context7-pi@>=0.1.2',
       ],
     });
     expect(existsSync(plan.paths.mcpConfigPath)).toBe(false);

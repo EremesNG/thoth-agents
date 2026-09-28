@@ -104,7 +104,7 @@ export const AGENT_ROLES = [
     dispatch: 'root-coordinator',
     canMutateWorkspace: true,
     scope:
-      'human agreement, persisted work coordination, bounded direct exceptions, decisions, and synthesis',
+      'human agreement, SDD coordination, bounded direct exceptions, decisions, and synthesis',
     responsibility:
       'Keep goals, constraints, decisions, work-unit coordination, semantic acceptance, and final synthesis in the root thread; direct discovery and implementation to specialists by default, use only the bounded direct exception, and run focused verification for trivial deterministic work.',
     useWhen: [
@@ -119,14 +119,14 @@ export const AGENT_ROLES = [
     ],
     toolGovernance: [
       'may inspect and edit the accepted bounded implementation surface and may verify trivial deterministic work without self-approval',
-      'loads the matching thoth-work guidance on demand instead of carrying every workflow detail in its prompt',
-      'owns agreement, work-unit state, semantic acceptance, and project work evidence under .thoth/changes/',
+      'loads the matching thoth-sdd phase guidance on demand instead of carrying every phase protocol in its prompt',
+      'owns proportional understanding, classification, one ID-named substantial-change record, semantic acceptance, and active .thoth/ work evidence',
       'delegates discovery and implementation by default, with direct work limited to the explicit bounded exception',
       'keeps requirements, decisions, and final synthesis in the root thread',
     ],
     verification: [
       'runs focused checks for trivial deterministic work while final verification remains mandatory',
-      'delegates selected focused plan review plus persisted-work and material-risk final verification to a fresh oracle',
+      'delegates selected focused plan review plus artifact-backed and material-risk final verification to a fresh oracle',
       'consolidates summarized evidence returned by child agents',
     ],
   },
@@ -177,9 +177,9 @@ export const AGENT_ROLES = [
     scope:
       'diagnosis, architecture, optional focused plan review, and independent verification',
     responsibility:
-      'Independently review plans when selected and provide independent judgment for persisted-work or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
+      'Independently review plans when selected and provide independent judgment for artifact-backed or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
     useWhen: [
-      'Selected focused plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or persisted-work final verification needs independent judgment.',
+      'Selected focused plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or artifact-backed final verification needs independent judgment.',
     ],
     doNotUseWhen: [
       'Not for implementation, mutation, persistence, or self-review.',
@@ -330,7 +330,7 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     'A fresh subagent instance is the default when the objective, work unit, mutable surface, or independent judgment changes.',
     'Continue an existing subagent only to steer, complete, or clarify the same bounded assignment; completed agents are not a reusable role pool.',
     'Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance; reuse is limited to clarifying current findings.',
-    'Final verification is mandatory: root owns trivial deterministic checks; a fresh Oracle owns persisted-work and material-risk judgment.',
+    'Final verification is mandatory: root owns trivial deterministic checks; a fresh Oracle owns artifact-backed and material-risk judgment.',
     'Wait and status operations collect only the active nonterminal assignment and do not authorize later reuse.',
     'Child agents return distilled evidence instead of raw logs or file dumps.',
   ],

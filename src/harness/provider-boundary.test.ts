@@ -12,7 +12,7 @@ const PROVIDER_BOUNDARY_TARGETS = {
     'AGENTS.md',
     'docs/installation.md',
     'docs/skills-and-mcps.md',
-    'docs/workflow.md',
+    'docs/sdd-pipeline.md',
     'docs/quick-reference.md',
     'docs/codex-install.md',
     'docs/claude-code-install.md',
@@ -24,7 +24,7 @@ const PROVIDER_BOUNDARY_TARGETS = {
     'docs/agent/harness-packaging.md',
     'docs/agent/runtime-integrations.md',
     'docs/agent/memory-governance.md',
-    'docs/agent/workflow-and-skills.md',
+    'docs/agent/sdd-and-skills.md',
     'docs/agent/agents-and-delegation.md',
   ],
   lifecycleFixtures: [
@@ -179,7 +179,7 @@ describe('provider boundary', () => {
     }
   });
 
-  test('preserves unrelated integrations, work contract semantics, and explicit external-provider references', async () => {
+  test('preserves unrelated integrations, SDD record semantics, and explicit external-provider references', async () => {
     const targets = await readTargets();
     const docs = targets.filter(
       ({ group }) => group === 'documentationAndMetadata',
@@ -191,7 +191,7 @@ describe('provider boundary', () => {
     expect(docs.some(({ content }) => /thoth-mem/i.test(content))).toBe(true);
     expect(
       docs.some(({ content }) =>
-        /\.thoth\/changes\/<id>\/work\.yaml/i.test(content),
+        /\.thoth\/changes\/<id>\/<id>\.md/i.test(content),
       ),
     ).toBe(true);
     expect(

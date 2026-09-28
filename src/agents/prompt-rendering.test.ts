@@ -49,20 +49,27 @@ describe('AI-first prompt rendering', () => {
   ] as const)('offers both planning choices with bounded defaults in %s', (_harness, render) => {
     const prompt = render();
     expect(prompt).toContain('Review plan with Oracle (Recommended)');
-    expect(prompt).toContain('Implement directly');
+    expect(prompt).toContain('Proceed without review');
+    expect(prompt).toMatch(/After \[OKAY\].*Implement \(Recommended\).*Stop/);
+    expect(prompt).toMatch(/\[OKAY\] alone is not authorization/);
     expect(prompt).toMatch(
-      /After.*\[OKAY\].*Implement \(Recommended\).*Stop with approved plan/,
+      /third confirmed answerless native return selects the recommendation/,
     );
-    expect(prompt).toMatch(/even when.*already authorized/);
-    expect(prompt).toMatch(/three total native attempts.*each question/);
     expect(prompt).toMatch(
-      /third confirmed unanswered return.*recommended option/,
+      /third confirmed answerless native return selects review/,
     );
-    expect(prompt).toMatch(/Explicit answers.*Stop.*always win/);
-    expect(prompt).toMatch(/pending.*unavailable.*failure.*never count/);
-    expect(prompt).toMatch(/never.*secrets.*destructive.*product decisions/);
+    expect(prompt).toMatch(
+      /separate third confirmed answerless return selects implementation/,
+    );
+    expect(prompt).toMatch(/explicit Stop wins/i);
+    expect(prompt).toMatch(
+      /Pending, unavailable or failed questions do not count/,
+    );
+    expect(prompt).toMatch(
+      /Ask human-owned material decisions; never default them/,
+    );
     expect(prompt).toMatch(/No implementation writer may approve/);
-    expect(prompt).toMatch(/closes only after PASS/);
+    expect(prompt).toMatch(/closes only after independent PASS/);
   });
 
   test.each([
@@ -85,9 +92,8 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(/investigate facts.*reuse decisions/i);
     expect(prompt).toMatch(/material uncertainty.*blocks.*readiness/i);
     expect(prompt).toMatch(/bounded technical unknowns.*resolution strategy/i);
-    expect(prompt).toMatch(
-      /thoth-work references\/planning\.md before persisting/i,
-    );
+    expect(prompt).toMatch(/thoth-sdd.*current phase.*change\.md/i);
+    expect(prompt).not.toMatch(/bundled `thoth-work` skill|work\.yaml/);
     expect(prompt).toMatch(/architectural-grilling.*only.*explicit.*material/i);
     expect(prompt).toMatch(/no separate.*discovery.*specification.*documents/i);
   });
@@ -125,24 +131,27 @@ describe('AI-first prompt rendering', () => {
     expect(detectModelFamilyFromModel('kimi-for-coding/k2p5')).toBeUndefined();
   });
 
-  test.each(DIALECTS)('renders the minimal workflow in $harness', (dialect) => {
+  test.each(
+    DIALECTS,
+  )('renders proportional SDD classification in $harness', (dialect) => {
     const prompt = renderRolePrompt(
       createOrchestratorPromptSections(),
       dialect,
     );
-    expect(prompt).toContain('.thoth/changes/<id>/work.yaml');
-    expect(prompt).toContain('plan -> execute -> resume -> verify -> close');
-    expect(prompt).toContain(
-      'Trivial bounded work may follow implement -> verify',
+    expect(prompt).toContain('explore -> specify -> clarify');
+    expect(prompt).toContain('.thoth/changes/<id>/<id>.md');
+    expect(prompt).toMatch(/file count alone does not increase scope/i);
+    expect(prompt).toMatch(
+      /material human-owned uncertainty blocks classification/i,
     );
-    expect(prompt).toContain('Existing authorization persists');
-    expect(prompt).toContain(
-      'technical replanning within the agreement does not require fresh approval',
+    expect(prompt).not.toMatch(
+      /\b(?:Accelerated|Full)\b|\bDirect:\s*implement|--route|route choice/i,
     );
     expect(prompt).toContain('Review plan with Oracle (Recommended)');
+    expect(prompt).toContain('Implement (Recommended)');
     expect(prompt).toContain('No implementation writer may approve');
-    expect(prompt).not.toMatch(/Accelerated SDD|Full SDD|route-selection/i);
-    expect(prompt).not.toMatch(/openspec\//i);
+    expect(prompt).toMatch(/no.*auxiliary process tools.*evidence generators/i);
+    expect(prompt).not.toMatch(/work\.yaml|thoth-work|verify-report\.md/i);
   });
 
   test.each(
@@ -173,18 +182,18 @@ describe('AI-first prompt rendering', () => {
       dialect,
     );
     expect(prompt).toContain(
-      'Harness-native spawn, status, wait, steering, cancellation, and terminal results are the sole authority',
+      'Native execution and terminal results are the sole authority',
     );
     expect(prompt).toContain(
       'never invent an executor, queue, scheduler, portable wait API, or lifecycle mirror',
     );
-    expect(prompt).toContain('never establish native liveness');
-    expect(prompt).toContain('pending checkpoint');
-    expect(prompt).toContain('relevant diff and dirty files');
-    expect(prompt).toContain('dependency fingerprints');
-    expect(prompt).toContain('reconcile external effects before replay');
+    expect(prompt).toContain('native execution state stays with the harness');
+    expect(prompt).toContain('single record, relevant diff and dirty files');
     expect(prompt).toContain(
-      'unknown native liveness blocks only the conflicting surface',
+      'inspect interrupted archive transactions before retry',
+    );
+    expect(prompt).toContain(
+      'Unknown native liveness blocks only the conflicting surface',
     );
     expect(prompt).toContain('Worktree automation is deferred');
   });
@@ -197,10 +206,10 @@ describe('AI-first prompt rendering', () => {
       dialect,
     );
     for (const heading of [
-      'PHASE / WORK',
-      'UNIT',
+      'PHASE',
+      'PHASE / CHANGE',
       'OBJECTIVE',
-      'INPUTS',
+      'INPUT ARTIFACTS',
       'REQUIREMENTS',
       'BOUNDARIES',
       'VERIFICATION',
@@ -248,7 +257,7 @@ describe('AI-first prompt rendering', () => {
         dialect,
       );
       expect(root).toContain('installed `thoth-mem` skill');
-      expect(root).toContain('`.thoth/` is project work evidence');
+      expect(root).toContain('`.thoth/` holds active project work');
       expect(root).toMatch(/do not mirror work artifacts/i);
       expect(root).not.toMatch(/mem_(?:save|recall|get|context)\s*\(/);
     }

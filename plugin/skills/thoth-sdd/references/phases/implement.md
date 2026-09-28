@@ -1,0 +1,3 @@
+# Implement
+
+Input is either the small, settled user request or an authorized substantial record, plus exact mutable bounds and checks. The root owns user decisions and semantic acceptance; choose an implementation owner from task shape and demonstrated net gain, without forcing a specialist. Use one writer per mutable surface. For behavior changes, observe failing tests before implementation, then verify call sites, edge cases, and shared contracts. Do not generate process tools, execution wrappers, evidence generators, reports, or temporary artifacts. The writer does not self-approve final verification.

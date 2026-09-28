@@ -12,279 +12,321 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { validateWork } from '../../thoth-work/scripts/work.mjs';
+import {
+  parseCanonicalSpec,
+  preflightRequirementDeltas,
+} from '../../thoth-sdd/scripts/durable-deltas.mjs';
+import {
+  assertNoSymlinkAncestors,
+  resolveSddChangeLocation,
+  validate,
+} from '../../thoth-sdd/scripts/validate.mjs';
 
-const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
-
-// Archive is a bounded filesystem transaction, never an agent lifecycle owner.
 function localPath(root, path) {
   const absolute = resolve(root, path);
   const rel = relative(root, absolute);
-  if (!rel || rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel)) {
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))
     throw new Error(`Path escapes project: ${path}`);
-  }
-  let cursor = root;
-  for (const part of rel.split(sep)) {
-    cursor = join(cursor, part);
-    try {
-      if (lstatSync(cursor).isSymbolicLink())
-        throw new Error(`Symlink is not allowed: ${cursor}`);
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-    }
-  }
+  assertNoSymlinkAncestors(absolute);
   return absolute;
 }
 
-function existingBytes(path) {
+function bytes(path) {
   if (!existsSync(path)) return null;
-  if (!lstatSync(path).isFile())
-    throw new Error(`Expected a regular file: ${path}`);
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink())
+    throw new Error(`Expected regular file: ${path}`);
   return readFileSync(path);
 }
 
-function planUpdates(projectRoot, updates) {
-  const planned = new Map();
-  const specification = (capability) => {
-    if (
-      typeof capability !== 'string' ||
-      !/^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\/[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)*$/.test(
-        capability,
-      )
-    )
-      throw new Error('Invalid capability');
-    return localPath(projectRoot, `.thoth/specs/${capability}/spec.md`);
-  };
-  const add = (path, before, after) => {
-    if (planned.has(path))
-      throw new Error(`Overlapping durable update: ${path}`);
-    planned.set(path, { path, before, after });
-  };
-  for (const update of updates) {
-    const path = specification(update.capability);
-    const before = existingBytes(path);
-    if (update.operation === 'add') {
-      if (before !== null)
-        throw new Error(`Addition already exists: ${update.capability}`);
-    } else if (before === null || digest(before) !== update.expectedDigest) {
-      throw new Error(`Durable baseline changed: ${update.capability}`);
-    }
-    let content;
-    if (update.source) {
-      content = existingBytes(localPath(projectRoot, update.source));
-      if (content === null || digest(content) !== update.sourceDigest)
-        throw new Error(`Durable source changed: ${update.source}`);
-    }
-    if (update.operation === 'add' || update.operation === 'replace') {
-      if (!content)
-        throw new Error(
-          'Addition/replacement requires reviewed source content',
-        );
-      add(path, before, content);
-    } else if (update.operation === 'remove') {
-      add(path, before, null);
-    } else if (update.operation === 'rename') {
-      const target = specification(update.target);
-      if (existingBytes(target) !== null)
-        throw new Error(`Rename target already exists: ${update.target}`);
-      add(path, before, null);
-      add(target, null, content ?? before);
-    } else throw new Error(`Unknown durable operation: ${update.operation}`);
-  }
-  return [...planned.values()];
+function sha(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
 }
 
-export function archiveWork({ projectRoot, changeRoot, date }) {
-  projectRoot = resolve(projectRoot);
-  if (
-    !existsSync(projectRoot) ||
-    !lstatSync(projectRoot).isDirectory() ||
-    lstatSync(projectRoot).isSymbolicLink()
-  )
-    throw new Error('Project must be a real directory');
-  changeRoot = localPath(projectRoot, changeRoot);
-  if (dirname(changeRoot) !== join(projectRoot, '.thoth', 'changes'))
-    throw new Error('Change must be an immediate child of .thoth/changes');
+function assertReviewedBaselines(root, updates, baselines) {
+  const reviewed = new Map(
+    baselines.map((baseline) => [baseline.path, baseline]),
+  );
+  for (const update of updates) {
+    const path = relative(root, update.path).replaceAll('\\', '/');
+    const baseline = reviewed.get(path);
+    if (!baseline)
+      throw new Error(`Missing reviewed canonical baseline: ${path}`);
+    if (
+      (baseline.state === 'absent' && update.before !== null) ||
+      (baseline.state === 'present' &&
+        (update.before === null || sha(update.before) !== baseline.sha256))
+    )
+      throw new Error(`Canonical plan differs from reviewed baseline: ${path}`);
+  }
+  if (reviewed.size !== updates.length)
+    throw new Error(
+      'Reviewed canonical baseline coverage does not match updates',
+    );
+}
+
+function render(delta) {
+  const [given, when, then] = delta.scenario;
+  return `### Requirement: ${delta.title}\n\n${delta.statement}\n\n#### Scenario: ${delta.title}\n\n- **GIVEN** ${given}\n- **WHEN** ${when}\n- **THEN** ${then}`;
+}
+
+function planUpdates(root, deltas) {
+  const groups = new Map();
+  for (const delta of deltas)
+    groups.set(delta.capability, [
+      ...(groups.get(delta.capability) ?? []),
+      delta,
+    ]);
+  return [...groups].map(([capability, changes]) => {
+    const path = localPath(root, `.thoth/specs/${capability}/spec.md`);
+    const before = bytes(path);
+    const title = capability
+      .split('-')
+      .map((part) => part[0].toUpperCase() + part.slice(1))
+      .join(' ');
+    const canonical = parseCanonicalSpec(
+      before?.toString('utf8') ??
+        `# ${title} Specification\n\n## Purpose\n\nDurable behavior for ${capability}.\n\n## Requirements\n`,
+    );
+    const checked = preflightRequirementDeltas({
+      capability,
+      present: before !== null,
+      requirements: canonical.requirements,
+      deltas: changes,
+    });
+    if (checked.errors.length)
+      throw new Error(
+        `${checked.errors[0].code}: ${checked.errors[0].message}`,
+      );
+    for (const delta of changes) {
+      if (delta.operation === 'ADDED' || delta.operation === 'MODIFIED')
+        canonical.requirements.set(delta.title, render(delta));
+      else if (delta.operation === 'REMOVED')
+        canonical.requirements.delete(delta.title);
+      else if (delta.operation === 'RENAMED') {
+        canonical.requirements = new Map(
+          [...canonical.requirements].map(([name, block]) =>
+            name === delta.previousTitle
+              ? [delta.title, render(delta)]
+              : [name, block],
+          ),
+        );
+      }
+    }
+    const requirements = [...canonical.requirements.values()];
+    const after = Buffer.from(
+      `${canonical.prefix}${requirements.length ? `\n\n${requirements.join('\n\n')}` : ''}\n`,
+    );
+    return { path, before, after, capability };
+  });
+}
+
+function existsNoFollow(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return false;
+    throw error;
+  }
+}
+
+export function archiveChange({ change, date, projectRoot }) {
+  const changeRoot =
+    projectRoot && !isAbsolute(change)
+      ? resolve(projectRoot, change)
+      : resolve(change);
+  const location = resolveSddChangeLocation(changeRoot);
+  if (location.archived)
+    throw new Error('Only an active change can be archived');
+  const { id, recordPath, projectRoot: locatedRoot } = location;
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
     new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date
   )
     throw new Error('Date must be a real ISO date');
-  const archive = localPath(
-    projectRoot,
-    `.thoth/changes/archive/${date}-${basename(changeRoot)}`,
-  );
-  if (existsSync(archive))
+  const root = locatedRoot;
+  if (projectRoot && resolve(projectRoot) !== root)
+    throw new Error('Project root does not match the change root');
+  const target = localPath(root, `.thoth/changes/archive/${date}-${id}`);
+  if (existsNoFollow(target))
     throw new Error('Archive destination already exists');
-  const thoth = join(projectRoot, '.thoth');
-  if (readdirSync(thoth).some((name) => name.startsWith('.archive-')))
+  if (
+    readdirSync(join(root, '.thoth')).some((name) =>
+      name.startsWith('.archive-'),
+    )
+  )
+    throw new Error('An unfinished archive transaction requires inspection');
+  const initial = validate({ change: changeRoot, through: 'closeout' });
+  if (!initial.valid)
     throw new Error(
-      'An unfinished archive transaction requires inspection before retry',
+      `Closeout rejected: ${initial.errors.map((error) => error.code).join(', ')}`,
     );
-  const transaction = localPath(projectRoot, '.thoth/.archive-transaction');
+  const transaction = localPath(root, '.thoth/.archive-transaction');
+  mkdirSync(transaction); // Exclusive lock, followed by fresh validation under the lock.
+  const applied = [];
+  const created = [];
   let updates = [];
-  const createdDirectories = [];
-  const makeParents = (path) => {
-    if (existsSync(path)) {
-      if (!lstatSync(path).isDirectory())
+  const parents = (path) => {
+    if (existsNoFollow(path)) {
+      const stat = lstatSync(path);
+      if (!stat.isDirectory() || stat.isSymbolicLink())
         throw new Error(`Expected directory: ${path}`);
       return;
     }
-    makeParents(dirname(path));
+    parents(dirname(path));
     mkdirSync(path);
-    createdDirectories.push(path);
+    created.push(path);
   };
-  // Acquire first: another completed archive may have changed reviewed inputs.
-  mkdirSync(transaction);
-  const applied = [];
   try {
-    const result = validateWork({
-      projectRoot,
-      changeRoot,
-      through: 'closeout',
-    });
-    if (!result.ok)
+    const result = validate({ change: changeRoot, through: 'closeout' });
+    if (!result.valid)
       throw new Error(
-        `Closeout rejected: ${result.errors.map((error) => `${error.code}: ${error.message}`).join('; ')}`,
+        `Closeout rejected: ${result.errors.map((error) => error.code).join(', ')}`,
       );
-    if (existsSync(archive))
-      throw new Error('Archive destination already exists');
-    updates = planUpdates(projectRoot, result.work.durableUpdates ?? []);
-    // Preflight destination topology before any durable target changes.
+    updates = planUpdates(root, result.deltas);
+    assertReviewedBaselines(root, updates, result.specBaselines ?? []);
     for (const path of [
-      dirname(archive),
+      dirname(target),
       ...updates.map((item) => dirname(item.path)),
     ]) {
       let cursor = path;
-      while (!existsSync(cursor)) cursor = dirname(cursor);
-      if (!lstatSync(cursor).isDirectory())
+      while (!existsNoFollow(cursor)) cursor = dirname(cursor);
+      const stat = lstatSync(cursor);
+      if (!stat.isDirectory() || stat.isSymbolicLink())
         throw new Error(`Expected directory: ${cursor}`);
     }
+    // A filesystem recovery journal, not a workflow report or agent state mirror.
     writeFileSync(
       join(transaction, 'recovery.json'),
-      `${JSON.stringify(
-        {
-          changeRoot,
-          archive,
-          updates: updates.map(({ path, before, after }, index) => ({
-            backup: before === null ? null : `original-${index}`,
-            path: relative(projectRoot, path),
-            before: before?.toString('base64') ?? null,
-            after: after?.toString('base64') ?? null,
-          })),
-        },
-        null,
-        2,
-      )}\n`,
+      JSON.stringify({
+        changeId: id,
+        changeRoot,
+        recordPath,
+        target,
+        originals: updates.map(({ path, before, after }) => ({
+          path: relative(root, path),
+          before: before?.toString('base64') ?? null,
+          after: after.toString('base64'),
+        })),
+      }),
       { flag: 'wx' },
     );
+    const latest = validate({ change: changeRoot, through: 'closeout' });
+    if (!latest.valid)
+      throw new Error(
+        `Closeout rejected before mutation: ${latest.errors.map((error) => error.code).join(', ')}`,
+      );
+    assertReviewedBaselines(root, updates, latest.specBaselines ?? []);
+    const reviewed = new Map(
+      (latest.specBaselines ?? []).map((baseline) => [baseline.path, baseline]),
+    );
     for (const [index, update] of updates.entries()) {
-      localPath(projectRoot, update.path);
-      makeParents(dirname(update.path));
-      const record = {
+      localPath(root, update.path);
+      parents(dirname(update.path));
+      const path = relative(root, update.path).replaceAll('\\', '/');
+      const baseline = reviewed.get(path);
+      const actual = bytes(update.path);
+      if (
+        !baseline ||
+        (baseline.state === 'absent' && actual !== null) ||
+        (baseline.state === 'present' &&
+          (actual === null || sha(actual) !== baseline.sha256))
+      )
+        throw new Error(`Reviewed canonical baseline changed: ${path}`);
+      const item = {
         ...update,
         backup: join(transaction, `original-${index}`),
-        captured: false,
         installed: false,
+        captured: false,
       };
-      applied.push(record);
+      applied.push(item);
       if (update.before !== null) {
-        // Capture the actual object before comparing: a prior check is not CAS.
-        renameSync(update.path, record.backup);
-        record.captured = true;
-        if (!readFileSync(record.backup).equals(update.before))
+        renameSync(update.path, item.backup);
+        item.captured = true;
+        if (!readFileSync(item.backup).equals(update.before))
           throw new Error(
-            'Durable baseline changed during archive; displaced content preserved',
+            'Durable baseline changed during archive; displaced original preserved',
           );
       }
-      if (update.after !== null) {
-        const staged = join(transaction, `next-${index}`);
-        writeFileSync(staged, update.after, { flag: 'wx' });
-        // link fails if another writer created the destination; never clobber it.
-        linkSync(staged, localPath(projectRoot, update.path));
-        record.installed = true;
-      }
-    }
-    if (process.env.THOTH_ARCHIVE_TEST_FAULT === 'after-updates')
-      throw new Error('Injected archive fault: after-updates');
-    for (const record of applied) {
-      const current = existingBytes(record.path);
+      const staged = join(transaction, `next-${index}`);
+      writeFileSync(staged, update.after, { flag: 'wx' });
+      linkSync(staged, localPath(root, update.path));
+      item.installed = true;
       if (
-        (current === null) !== (record.after === null) ||
-        (current && !current.equals(record.after))
+        process.env.THOTH_ARCHIVE_TEST_FAULT ===
+          'after-first-canonical-write' &&
+        index === 0
+      )
+        throw new Error('Injected archive fault');
+    }
+    for (const item of applied) {
+      if (
+        !bytes(item.path)?.equals(item.after) ||
+        (item.captured && !readFileSync(item.backup).equals(item.before))
       )
         throw new Error(
           'Concurrent durable edit detected; transaction retained',
         );
-      if (record.captured && !readFileSync(record.backup).equals(record.before))
-        throw new Error('Displaced original changed; transaction retained');
     }
-    makeParents(dirname(archive));
-    renameSync(changeRoot, archive);
+    parents(dirname(target));
+    // Location is the durable archive status; move the verified record unchanged.
+    renameSync(changeRoot, target);
   } catch (error) {
     const recoveryErrors = [];
-    for (const [index, record] of [...applied].reverse().entries()) {
+    for (const [index, item] of [...applied].reverse().entries()) {
       try {
-        if (record.installed) {
+        if (item.installed) {
           const displaced = join(transaction, `rollback-${index}`);
-          renameSync(localPath(projectRoot, record.path), displaced);
-          if (!readFileSync(displaced).equals(record.after)) {
-            linkSync(displaced, localPath(projectRoot, record.path));
-            throw new Error(`Concurrent edit preserved at ${record.path}`);
+          renameSync(item.path, displaced);
+          if (!readFileSync(displaced).equals(item.after)) {
+            linkSync(displaced, item.path);
+            throw new Error(`Concurrent edit preserved: ${item.path}`);
           }
         }
-        if (record.captured)
-          linkSync(record.backup, localPath(projectRoot, record.path));
-      } catch (recoveryError) {
-        recoveryErrors.push(recoveryError.message);
+        if (item.captured) linkSync(item.backup, item.path);
+      } catch (recovery) {
+        recoveryErrors.push(recovery.message);
       }
     }
-    for (const directory of createdDirectories.reverse()) {
+    for (const path of created.reverse())
       try {
-        rmdirSync(directory);
-      } catch (recoveryError) {
-        if (recoveryError.code !== 'ENOTEMPTY')
-          recoveryErrors.push(recoveryError.message);
+        rmdirSync(path);
+      } catch (recovery) {
+        if (recovery.code !== 'ENOTEMPTY')
+          recoveryErrors.push(recovery.message);
       }
-    }
-    if (recoveryErrors.length === 0) rmSync(transaction, { recursive: true });
+    if (!recoveryErrors.length) rmSync(transaction, { recursive: true });
     throw new Error(
-      error.message +
-        (recoveryErrors.length
-          ? '; recovery retained at ' +
-            transaction +
-            ': ' +
-            recoveryErrors.join('; ')
-          : ''),
+      `${error.message}${recoveryErrors.length ? `; recovery retained at ${transaction}: ${recoveryErrors.join('; ')}` : ''}`,
     );
   }
   const warnings = [];
   try {
     rmSync(transaction, { recursive: true });
   } catch {
-    warnings.push(
-      `Archive complete; inspect retained transaction: ${transaction}`,
-    );
+    warnings.push(`Inspect retained transaction: ${transaction}`);
   }
+  const archivedRecordPath = join(target, `${id}.md`);
   return {
     status: 'archived',
-    archive,
+    changeId: id,
+    archivePath: target,
+    recordPath: archivedRecordPath,
+    archive: target,
     originalChangeRoot: changeRoot,
-    updated: updates.map(({ path }) =>
-      relative(projectRoot, path).replaceAll('\\', '/'),
+    updated: updates.map((item) =>
+      relative(root, item.path).replaceAll('\\', '/'),
     ),
+    specsUpdated: updates.map((item) => item.capability),
     warnings,
   };
+}
+
+export function archiveWork({ projectRoot, changeRoot, date }) {
+  return archiveChange({ change: changeRoot, date, projectRoot });
 }
 
 if (
@@ -293,22 +335,18 @@ if (
 ) {
   try {
     const options = {};
-    for (let index = 2; index < process.argv.length; index++) {
-      const argument = process.argv[index];
-      if (argument === '--json') options.json = true;
-      else if (['--project', '--change', '--date'].includes(argument))
-        options[argument.slice(2)] = process.argv[++index];
-      else throw new Error(`Unknown argument: ${argument}`);
+    for (let i = 2; i < process.argv.length; i++) {
+      if (process.argv[i] === '--json') options.json = true;
+      else if (['--project', '--change', '--date'].includes(process.argv[i])) {
+        const key = process.argv[i].slice(2);
+        options[key === 'project' ? 'projectRoot' : key] = process.argv[++i];
+      } else throw new Error(`Unknown argument: ${process.argv[i]}`);
     }
-    if (!options.project || !options.change || !options.date)
-      throw new Error('--project, --change and --date are required');
-    const result = archiveWork({
-      projectRoot: options.project,
-      changeRoot: options.change,
-      date: options.date,
-    });
+    if (!options.change || !options.date)
+      throw new Error('--change and --date are required');
+    const result = archiveChange(options);
     process.stdout.write(
-      `${options.json ? JSON.stringify(result) : result.archive}\n`,
+      `${options.json ? JSON.stringify(result) : result.recordPath}\n`,
     );
   } catch (error) {
     process.stderr.write(`${error.message}\n`);

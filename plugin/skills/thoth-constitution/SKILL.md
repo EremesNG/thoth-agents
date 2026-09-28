@@ -1,52 +1,31 @@
 ---
 name: thoth-constitution
-description: Create or explicitly amend the project constitution, choose its governance SemVer bump, propagate its impact, and validate lifecycle metadata. Use only for constitution lifecycle work; routine SDD planning reads the constitution without activating this skill.
+description: Create or explicitly amend the active .thoth constitution with SemVer and sync-impact lifecycle validation.
 license: MIT
-compatibility: Requires Node.js >=22.19 for bundled validation scripts.
+compatibility: Requires Node.js >=22.19 for bundled validation.
 metadata:
   author: thoth-agents
-  version: "1.0"
+  version: "2.0"
 ---
 
 # Thoth Constitution
 
-The canonical project constitution is `.thoth/constitution.md`.
-Resolve `<skill-dir>` as the directory containing this `SKILL.md`. Every bundled
-validator or template path below is anchored to that installed skill root rather
-than the project or current working directory.
+Canonical active governance is `.thoth/constitution.md`; substantial change
+records and durable specifications live under `.thoth/`. Historical changes are
+preserved and are not an active workflow dependency. Routine SDD reads relevant
+principles but does not amend constitution metadata.
 
-## Routine workflow use
+Only explicit user direction or an accepted material governance change activates
+amendment. Preserve original ratification, set last-amended to the amendment
+date, choose MAJOR for redefinition/removal, MINOR for addition/material
+expansion, PATCH for clarification, and refresh the Sync Impact Report (old/new
+version, modified principles, added/removed sections, affected templates,
+follow-up). Propagate changes to affected instruction and template surfaces,
+then run:
 
-- Read only the active principles relevant to the current work and its risks.
-- Record concrete acceptance evidence in `work.yaml` when the work is persisted.
-- Do not amend the constitution, bump its version, or run lifecycle validation
-  for ordinary work.
-
-## Explicit amendment
-
-Activate this lifecycle only on explicit user direction or when the user accepts
-a confirmed durable governance change.
-
-1. Read the current constitution and every affected template, instruction, and
-   durable workflow document.
-2. Classify the governance version bump:
-   - **MAJOR** removes or redefines a principle or compatibility boundary.
-   - **MINOR** adds a principle/section or materially expands guidance.
-   - **PATCH** clarifies wording without semantic change.
-3. Preserve the original ratification date, set `Last amended` to today, and
-   update `Version` using complete `MAJOR.MINOR.PATCH` SemVer.
-4. Prepend or refresh the HTML-comment `Sync Impact Report`: old → new version,
-   modified principles, added/removed sections, affected templates with status,
-   and follow-up TODOs.
-5. Propagate the accepted rule to every affected template, instruction, and
-   documentation surface in the same change.
-6. Remove unexplained placeholders and deferred TODOs, then run:
-
-```bash
-node "<skill-dir>/scripts/validate.mjs" \
-  --constitution .thoth/constitution.md --json
+```text
+node "<skill-dir>/scripts/validate.mjs" --constitution .thoth/constitution.md --json
 ```
 
-Initialization copies `<skill-dir>/templates/constitution.md` only when the
-project has no constitution, resolves its date placeholders, and never
-overwrites a project-owned constitution.
+Initialization copies the bundled template only when the constitution is absent,
+replaces date placeholders, and never overwrites project-owned governance.

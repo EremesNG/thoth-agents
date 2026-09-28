@@ -131,6 +131,11 @@ describe('generateIntegrationPackages', () => {
       }
       expect(
         existsSync(
+          join(pluginRoot, 'skills', 'thoth-sdd', 'templates', 'change.md'),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
           join(
             pluginRoot,
             'skills',
@@ -139,7 +144,7 @@ describe('generateIntegrationPackages', () => {
             'plan-review.md',
           ),
         ),
-      ).toBe(true);
+      ).toBe(false);
       for (const skill of [
         'simplify',
         'tdd',
@@ -172,7 +177,9 @@ describe('generateIntegrationPackages', () => {
         join(pluginRoot, 'skills', 'thoth-init', 'scripts', 'init.mjs'),
         'utf8',
       );
-      expect(initContract).toContain('`.thoth/`');
+      expect(initContract).toContain('`.thoth/changes/archive/`');
+      expect(initContract).toContain('`.thoth/specs/`');
+      expect(initContract).toContain('`.thoth/constitution.md`');
       expect(initContract).not.toContain('--harness');
       expect(initScript).not.toContain("'.agents'");
       expect(initScript).not.toContain('OWNED_SKILL_NAMES');

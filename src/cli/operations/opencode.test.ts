@@ -255,9 +255,9 @@ describe('OpenCode operations adapter v0.3', () => {
         status: options.dryRun ? ('planned' as const) : ('installed' as const),
         skills: [
           {
-            name: 'thoth-work' as const,
-            sourcePath: 'C:/package/skills/thoth-work',
-            destinationPath: 'C:/home/skills/thoth-work',
+            name: 'thoth-sdd' as const,
+            sourcePath: 'C:/package/skills/thoth-sdd',
+            destinationPath: 'C:/home/skills/thoth-sdd',
           },
         ],
       };
@@ -487,7 +487,7 @@ describe('OpenCode operations adapter v0.3', () => {
       expect.arrayContaining([
         expect.objectContaining({ label: 'Simplify', state: 'installed' }),
         expect.objectContaining({ label: 'Tdd', state: 'missing' }),
-        expect.objectContaining({ label: 'Thoth-Work', state: 'missing' }),
+        expect.objectContaining({ label: 'Thoth-SDD', state: 'missing' }),
         expect.objectContaining({ label: 'Plan-Reviewer', state: 'missing' }),
       ]),
     );

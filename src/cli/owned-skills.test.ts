@@ -122,7 +122,7 @@ describe('OpenCode owned skill synchronization', () => {
       '.config',
       'opencode',
       'skills',
-      'thoth-work',
+      'thoth-sdd',
     );
     mkdirSync(staleRoot, { recursive: true });
     writeFileSync(join(staleRoot, 'SKILL.md'), 'stale\n');
@@ -132,7 +132,7 @@ describe('OpenCode owned skill synchronization', () => {
 
     expect(result.success).toBe(true);
     expect(existsSync(join(staleRoot, 'obsolete.txt'))).toBe(false);
-    expect(existsSync(join(staleRoot, 'references', 'contract.md'))).toBe(true);
+    expect(existsSync(join(staleRoot, 'SKILL.md'))).toBe(true);
   });
 
   test('rejects an incomplete canonical bundle before destination writes', () => {
@@ -190,7 +190,7 @@ describe('OpenCode owned skill synchronization', () => {
     const malformedRoot = temporaryRoot('thoth-pi-skill-malformed-');
     writeCanonicalBundle(malformedRoot);
     writeFileSync(
-      join(malformedRoot, 'skills', 'thoth-work', 'SKILL.md'),
+      join(malformedRoot, 'skills', 'thoth-sdd', 'SKILL.md'),
       '# missing frontmatter\n',
     );
     expect(
@@ -198,7 +198,7 @@ describe('OpenCode owned skill synchronization', () => {
     ).toMatchObject({
       success: false,
       state: 'unavailable',
-      issues: [expect.objectContaining({ name: 'thoth-work', state: 'drift' })],
+      issues: [expect.objectContaining({ name: 'thoth-sdd', state: 'drift' })],
     });
 
     const symlinkRoot = temporaryRoot('thoth-pi-skill-symlink-');

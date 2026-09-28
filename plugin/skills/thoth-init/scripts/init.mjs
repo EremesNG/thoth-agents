@@ -1,13 +1,6 @@
 #!/usr/bin/env node
-
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
@@ -18,6 +11,11 @@ const THOTH_DIRECTORIES = [
   join('.thoth', 'changes'),
   join('.thoth', 'changes', 'archive'),
   join('.thoth', 'specs'),
+];
+const LEGACY_ACTIVE_PATHS = [
+  join('openspec', 'changes'),
+  join('openspec', 'specs'),
+  join('openspec', 'memory', 'constitution.md'),
 ];
 
 function parseArgs(argv) {
@@ -32,25 +30,65 @@ function parseArgs(argv) {
   return options;
 }
 
+function lstatMaybe(path) {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return undefined;
+    throw error;
+  }
+}
+
+function assertNoSymlinkAncestors(path, label) {
+  const absolute = resolve(path);
+  const { root } = parse(absolute);
+  let cursor = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    cursor = join(cursor, part);
+    if (lstatMaybe(cursor)?.isSymbolicLink()) {
+      throw new Error(`${label} has a symlinked ancestor: ${cursor}`);
+    }
+  }
+}
+
 function assertDirectory(path, label) {
-  if (!existsSync(path)) return;
-  const stat = lstatSync(path);
-  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+  assertNoSymlinkAncestors(path, label);
+  const stat = lstatMaybe(path);
+  if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
     throw new Error(`${label} must be a directory: ${path}`);
   }
 }
 
 function assertRegularFile(path, label) {
-  if (!existsSync(path)) return;
-  const stat = lstatSync(path);
-  if (stat.isSymbolicLink() || !stat.isFile()) {
+  assertNoSymlinkAncestors(path, label);
+  const stat = lstatMaybe(path);
+  if (stat && (!stat.isFile() || stat.isSymbolicLink())) {
     throw new Error(`${label} must be a regular file: ${path}`);
   }
 }
 
+function assertNoLegacyActiveStore(project) {
+  const openspec = join(project, 'openspec');
+  assertDirectory(openspec, 'Legacy OpenSpec path');
+  for (const relativePath of LEGACY_ACTIVE_PATHS) {
+    const target = join(project, relativePath);
+    assertNoSymlinkAncestors(target, 'Legacy OpenSpec path');
+    if (lstatMaybe(target)) {
+      throw new Error(
+        `Active legacy OpenSpec content requires explicit migration before init: ${target}`,
+      );
+    }
+  }
+}
+
 function preflight(project) {
-  assertDirectory(project, 'Project root');
-  if (!existsSync(project)) {
+  assertNoSymlinkAncestors(project, 'Project root');
+  const projectStat = lstatMaybe(project);
+  if (
+    !projectStat ||
+    !projectStat.isDirectory() ||
+    projectStat.isSymbolicLink()
+  ) {
     throw new Error(
       `--project must reference an existing project directory: ${project}`,
     );
@@ -63,7 +101,7 @@ function preflight(project) {
     'constitution.md',
   );
   assertRegularFile(constitutionSource, 'Bundled constitution template');
-  if (!existsSync(constitutionSource)) {
+  if (!lstatMaybe(constitutionSource)) {
     throw new Error(
       `Bundled constitution template is missing: ${constitutionSource}`,
     );
@@ -74,47 +112,28 @@ function preflight(project) {
   }
 
   const constitutionTarget = join(project, '.thoth', 'constitution.md');
-  const manifestTarget = join(project, '.thoth', '.thoth-agents.json');
   assertRegularFile(constitutionTarget, 'Thoth constitution path');
-  assertRegularFile(manifestTarget, 'Thoth manifest path');
+  assertNoLegacyActiveStore(project);
 
-  return {
-    constitutionSource,
-    constitutionTarget,
-    manifestTarget,
-  };
+  return { constitutionSource, constitutionTarget };
 }
 
 function createDirectory(target, report) {
-  if (existsSync(target)) return;
+  if (lstatMaybe(target)) return;
   mkdirSync(target);
   report.created.push(target);
 }
 
 function writePreservingExisting(target, content, report) {
-  if (existsSync(target)) {
+  if (lstatMaybe(target)) {
     report.preserved.push(target);
     return;
   }
-  writeFileSync(target, content);
+  writeFileSync(target, content, { flag: 'wx' });
   report.created.push(target);
 }
 
-function synchronizeManagedFile(target, content, report) {
-  if (!existsSync(target)) {
-    writeFileSync(target, content);
-    report.created.push(target);
-    return;
-  }
-  if (readFileSync(target, 'utf8') === content) {
-    report.preserved.push(target);
-    return;
-  }
-  writeFileSync(target, content);
-  report.managed.push(target);
-}
-
-function synchronizeThoth(project, assets, report) {
+function initializeThoth(project, assets, report) {
   for (const directory of THOTH_DIRECTORIES) {
     createDirectory(join(project, directory), report);
   }
@@ -128,19 +147,6 @@ function synchronizeThoth(project, assets, report) {
     ),
     report,
   );
-  synchronizeManagedFile(
-    assets.manifestTarget,
-    `${JSON.stringify(
-      {
-        schemaVersion: 1,
-        initializedBy: 'thoth-agents',
-        workflow: 'thoth-work',
-      },
-      null,
-      2,
-    )}\n`,
-    report,
-  );
 }
 
 try {
@@ -151,15 +157,14 @@ try {
     status: 'ready',
     project,
     created: [],
-    managed: [],
     preserved: [],
   };
 
-  synchronizeThoth(project, assets, report);
+  initializeThoth(project, assets, report);
 
   const output = options.json
     ? JSON.stringify(report)
-    : `thoth-agents synchronized .thoth governance in ${project}`;
+    : `thoth-agents initialized .thoth governance in ${project}`;
   process.stdout.write(`${output}\n`);
 } catch (error) {
   process.stderr.write(

@@ -218,7 +218,7 @@ function createPluginManifest(
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Adaptive multi-harness agent pack with six roles and an AI-first persisted-work bundle for Claude Code.',
+      'Adaptive multi-harness agent pack with six roles and proportional SDD governance for Claude Code.',
     author: { name: 'thoth-agents' },
   };
 }
@@ -266,7 +266,7 @@ function renderOrchestratorArtifact(config?: PluginConfig): HarnessArtifact {
     name: 'orchestrator',
     description:
       orchestrator?.responsibility ??
-      'Adaptive root coordinator for human agreement, persisted work, and specialist dispatch.',
+      'Adaptive root coordinator for human agreement, SDD classification, and specialist dispatch.',
     model: 'inherit',
     instructions: renderClaudeCodeRootInstructions(config),
   });

@@ -1,7 +1,7 @@
 {
   "name": "thoth-agents",
   "version": "0.4.2",
-  "description": "Adaptive multi-harness agent pack with six roles and an AI-first persisted-work bundle for Claude Code.",
+  "description": "Adaptive multi-harness agent pack with six roles and proportional SDD governance for Claude Code.",
   "author": {
     "name": "thoth-agents"
   }

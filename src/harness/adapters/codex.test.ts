@@ -59,7 +59,7 @@ describe('Codex adapter v0.3', () => {
     expect(root.length - 9_855).toBeLessThanOrEqual(2_500);
     expect(root).toContain('adaptive root');
     expect(root).toContain(
-      'Direct consultation or implementation is only the bounded known-source exception',
+      'Bounded known-source consultation or implementation is the only root mutation exception',
     );
     expect(root).toContain('Specialists execute');
     expect(root).not.toContain('delegation creates net gain');
@@ -68,13 +68,13 @@ describe('Codex adapter v0.3', () => {
     expect(root).toMatch(/another search or dependency ends it/i);
     expect(root).not.toMatch(/Direct micro-action/i);
     expect(root).not.toMatch(/Artifact-backed implement follows/i);
-    expect(root).toContain('.thoth/changes/<id>/work.yaml');
+    expect(root).toContain('.thoth/changes/<id>/<id>.md');
     expect(root).toContain('collaboration.spawn_agent');
     expect(root).toContain('request_user_input');
-    expect(root).toContain('thoth-work');
+    expect(root).toContain('thoth-sdd');
     expect(root).toContain('Final verification is mandatory.');
     expect(root).toContain(
-      'focused root checks suffice only for trivial deterministic work',
+      'Trivial deterministic low-risk work may use focused root checks',
     );
     expect(root).toContain('oracle');
     expect(root).not.toContain('delegate-first');

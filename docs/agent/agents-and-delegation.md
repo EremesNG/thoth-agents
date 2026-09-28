@@ -15,7 +15,9 @@ definitions and applies overrides; harness adapters translate the same intent.
 
 - Root retains goals, constraints, decisions, coordination, semantic acceptance
   and synthesis. Specialists perform discovery, external research and
-  implementation by default, independently of persistence mode.
+  substantive implementation by default, independently of persistence mode.
+  Root retains known low-risk mechanical work (including reviewed commits).
+  Explicit direct-work or no-delegation instructions take precedence.
 - Delegation depth is one and each mutable surface has one writer. Treat explicit
   safe user direction as an ownership input.
 - Before substantive execution, shape the work into bounded units: record exact
@@ -27,14 +29,14 @@ definitions and applies overrides; harness adapters translate the same intent.
   releasing each dependent consumer, without a global wave barrier. Compatibility
   includes read assumptions, interfaces and shared resources, not only filenames.
 - Unknown local source, effective flow or responsibility triggers Explorer before
-  root repository search or dependency traversal. Its bounded assignment may
+  root repository search or dependency traversal unless the user requests direct
+  investigation. Its bounded assignment may
   name an unknown location; root does not perform exploratory pre-reading to
   prepare it. The assigned investigator owns applicable discovery-tool fallback.
-- Root may consult a known source for one bounded question or make a minimal
-  authorized low-risk edit only when source, scope and verification are known
-  and no discovery or independent judgment is needed. Another search or
-  dependency ends this exception. File count, accumulated context and
-  coordination overhead do not extend it.
+- Root may retain bounded known-source work with known scope and checks; another
+  targeted search or file count does not force delegation. Reassess only when
+  actual uncertainty, scope or risk increases. Do not restart discovery to commit
+  already reviewed changes. A fresh specialist must provide a concrete benefit.
 - Explorer, librarian, and oracle never mutate the workspace.
 - Every dispatch carries bounded thoth-mem `none|recall|observe` authorization
   independently of workspace mode. `observe` may permit a durable provider
@@ -65,6 +67,31 @@ definitions and applies overrides; harness adapters translate the same intent.
   unrestricted root execution. Instructions and coordination artifacts are not
   a loophole for source or log dumps.
 - Instruction-only harness gaps must never be described as hard enforcement.
+
+## Bounded execution and supervision
+
+- Preserve operator-selected model and effort, including max. Latency remediation
+  changes task shape and supervision, not operator configuration.
+- Each assignment has one independently checkable outcome, exact known entrypoints
+  and skill paths, owned writes, focused checks, and a return/stop condition. A
+  broad label such as “all integration” is not a bound. Split by useful outcomes;
+  coupled writes remain sequential, not artificial agents per file.
+- Root reacts to native attention or a missed agreed milestone by inspecting the
+  current result and steering, narrowing, or stopping safely. A timeout is only a
+  safety ceiling. Two consecutive attempts with no new evidence or progress
+  require a partial result and the smallest blocker, not another identical loop.
+- Native notifications/waits own liveness; no polling, timers or new supervision
+  machinery. If attention is unavailable, assign a smaller outcome that returns
+  at an agreed milestone. Never replace a writer until termination is reconciled.
+- Focused checks accompany edits; final validation waits for stable relevant
+  inputs. Reuse fresh evidence, rerun only invalidated checks, and consolidate
+  project-wide validation instead of running it for every child.
+- Reconcile owned background results before final return. A late event preserves
+  the substantive handoff instead of replacing it with an acknowledgment.
+- If the user forbids delegation, do the authorized work directly but disclose
+  unavailable independent review. Do not invent an Oracle PASS or archive.
+
+These are tested instruction contracts, not runtime enforcement or latency guarantees.
 
 ## Behavioral task shaping
 
@@ -131,6 +158,6 @@ clarify its current findings without issuing a new judgment.
 - `src/harness/core/agent-pack.ts` and `.test.ts`
 - `src/agents/index.ts` and `src/agents/index.test.ts`
 - `src/agents/prompt-sections.ts` and prompt-rendering tests
-- `src/harness/core/memory-governance.ts` and `workflow.test.ts`
+- `src/harness/core/memory-governance.ts` and `sdd-protocol.test.ts`
 - `src/config/constants.ts`, `schema.ts`, and config tests
 - adapter tests for serialized harness output

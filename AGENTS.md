@@ -54,7 +54,7 @@ Keep `docs/agent/` documents on demand at startup.
 - `src/cli/`: parser, commands, installation, configuration, and TUI.
 - `src/hooks/`, `src/mcp/`, `src/tools/`: runtime integrations. Provider-owned
   memory setup and lifecycle are external and are not bundled here.
-- `src/harness/core/sdd.ts`: adaptive routes, phases, and compact artifact contracts.
+- `src/harness/core/sdd.ts`: proportional classification, phases, and record contracts.
 - `skills/`: canonical thoth-owned workflow skills for every harness.
 - `src/cli/skills.ts`: mandatory external-skill installation via `npx skills add`.
 - `src/cli/thoth-mem-install.ts`: bounded invocation and evidence parsing for
@@ -112,18 +112,30 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   a dependency. Dispatch all independent admitted ready work before waiting,
   refill native capacity and release each consumer after its own fresh accepted
   dependencies; avoid global wave barriers.
-- Assign specialists by default. Root retains goals, constraints, decisions,
-  coordination, semantic acceptance and synthesis. Unknown local source, flow or
-  responsibility goes to explorer before root repository search; do not pre-read
-  to prepare that dispatch. Known bounded implementation goes directly to
-  designer or worker without a mandatory explorer relay. Use librarian for
-  needed external evidence and oracle for independent judgment.
-- Root may consult one known source or make a minimal authorized low-risk edit
-  only when source, scope and verification are known and no discovery or
-  independent judgment is needed. Another search or dependency ends that
-  exception; file count, accumulated context and coordination overhead do not
-  extend it. Delegation failure is reported truthfully, never converted into
-  unrestricted root execution.
+- Root retains known low-risk mechanical work, including reviewed commits,
+  without rediscovery or delegation. Explicit direct-work or no-delegation
+  instructions win. Otherwise use specialists by default for substantive work
+  with a concrete benefit; neither file count nor another targeted search forces
+  delegation. Unknown local discovery goes to explorer unless the user requests
+  root investigation. Known delegated implementation goes to designer or worker;
+  use librarian for external evidence and oracle for independent judgment.
+- Preserve operator-selected model and effort, including max. Fix scope and
+  supervision, not the operator's settings. Delegation failure is not permission
+  for unrestricted fallback. If independent review is prohibited, disclose that
+  limitation; do not claim independent PASS or archive.
+- Each assignment needs one independently checkable outcome, exact known source
+  and skill paths, owned writes, focused checks, and a return/stop condition.
+  Split broad integration by accepted outcomes, not one agent per file. On native
+  attention or a missed agreed milestone, inspect progress and steer, narrow,
+  or stop safely; timeout is a safety ceiling, not a progress plan. After two
+  consecutive attempts without new evidence or progress, return the smallest
+  blocker instead of looping. Long productive work is not failure by duration.
+- Use native notifications/waits without polling or custom timers. If native
+  attention is unavailable, use assignments that return at an agreed milestone.
+  Freeze relevant inputs before final validation; reuse fresh checks and rerun
+  only those invalidated by edits. Reconcile background commands before returning;
+  late notifications must preserve the substantive handoff. See the
+  [execution guidance](skills/thoth-sdd/references/phases/implement.md).
 - Do not duplicate delegated discovery. Request conclusions, localized evidence,
   uncertainty and next action; target missing support instead of rereading every
   file. Bounded evidence inspection for root decisions/recovery and mandatory

@@ -511,14 +511,32 @@ Every root MUST present the complete specialist roster with equally salient posi
 #### Scenario: US2 - Activate the complete specialist roster 4
 
 - **GIVEN** known bounded nonvisual implementation, regardless of complexity
-- **WHEN** the root selects a writer under specialist-default ownership
-- **THEN** it selects `worker` with one bounded mutable surface, not a narrow-versus-complex writer tier
+- **WHEN** delegation has a concrete benefit and is permitted by the user's ownership instruction
+- **THEN** it selects `worker` with one independently checkable outcome and bounded mutable surface, not a narrow-versus-complex writer tier
 
 #### Scenario: US2 - Activate the complete specialist roster 5
 
 - **GIVEN** source, scope and checks are known for a minimal authorized low-risk edit
 - **WHEN** no discovery or independent judgment is needed
-- **THEN** root may use only its bounded direct exception, which ends on another search or dependency
+- **THEN** root retains the bounded work, including commits of already reviewed changes; an additional targeted search or file count does not force delegation
+
+#### Scenario: Explicit direct ownership
+
+- **GIVEN** the user requests direct work without delegation
+- **WHEN** root executes the authorized scope
+- **THEN** it performs the work directly, preserves operator-selected model and effort, and reports any unavailable independent review without claiming independent PASS or archive
+
+#### Scenario: Bounded implementation supervision
+
+- **GIVEN** a delegated assignment with one checkable outcome, exact known entrypoints and skill paths, focused checks and a return/stop condition
+- **WHEN** native attention fires, an agreed milestone is missed, or two consecutive attempts make no evidential progress
+- **THEN** root inspects and steers, narrows, or safely stops the assignment instead of waiting for a generous timeout; native notifications/waits remain authoritative without polling or a custom scheduler
+
+#### Scenario: Stable validation and handoff
+
+- **GIVEN** relevant inputs are stable after implementation
+- **WHEN** the writer performs final validation and returns
+- **THEN** it reuses fresh evidence, reruns only checks invalidated by changes, reconciles background commands, and preserves the substantive handoff across late notifications
 
 #### Scenario: US2 - Activate the complete specialist roster 6
 

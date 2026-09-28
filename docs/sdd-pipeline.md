@@ -72,6 +72,25 @@ independent judgment. Keep one writer per mutable surface. Native harness
 lifecycle and terminal evidence remain authoritative; Thoth supplies no
 scheduler, lifecycle mirror, or per-change execution tooling.
 
+Root retains known low-risk mechanical work, including reviewed commits, without
+restarting discovery. Explicit direct-work or no-delegation instructions win;
+another search or file count does not force delegation. Preserve operator-selected
+model and effort, including max. If independent review is prohibited, disclose the
+limitation and do not claim independent PASS or archive.
+
+Each assignment needs one independently checkable outcome, exact known source and
+skill paths, focused checks, and a return/stop condition. Root responds to native
+attention or a missed agreed milestone by inspecting progress and steering,
+narrowing, or stopping safely. Two consecutive attempts without new evidence or
+progress require a partial result, not another loop. A timeout is not a progress
+plan. Use native notifications/waits, not polling or custom timers.
+
+Freeze relevant inputs before final validation, reuse fresh checks for unchanged
+inputs, and reconcile background commands before returning. Late notifications
+must preserve the substantive handoff. See the [implementation phase](../skills/thoth-sdd/references/phases/implement.md)
+for the bounded execution procedure. These safeguards are instructions, not a
+runtime guarantee of latency or model compliance.
+
 Use the installed bundled skills and existing project commands. Routine work
 reads `.thoth/constitution.md`; active durable specifications live under
 `.thoth/specs/`. `thoth-init` preserves existing governance and creates only

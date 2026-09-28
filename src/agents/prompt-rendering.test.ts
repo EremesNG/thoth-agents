@@ -116,14 +116,39 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(
       /known.*bounded implementation.*directly.*designer.*worker.*without.*Explorer/is,
     );
-    expect(prompt).toMatch(/another search or dependency ends it/i);
+    expect(prompt).not.toMatch(/another search or dependency ends it/i);
+    expect(prompt).toMatch(/root retains known low-risk mechanical work/i);
     expect(prompt).toMatch(/must not repeat delegated discovery/i);
     expect(prompt).toMatch(/missing support.*targeted evidence/i);
     expect(prompt).toMatch(
       /delegation failure.*truthful.*no unrestricted root/is,
     );
-    expect(prompt).not.toMatch(/delegation creates net gain/i);
-    expect(prompt).not.toMatch(/root continuity benefits/i);
+    expect(prompt).toMatch(/delegate for a concrete discovery/i);
+  });
+
+  test.each([
+    [
+      'OpenCode',
+      () => String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''),
+    ],
+    ['Codex', renderCodexRootInstructions],
+    ['Claude Code', renderClaudeCodeRootInstructions],
+    ['Pi', renderPiRootInstructions],
+  ] as const)('bounds execution without overriding operator effort in %s', (_harness, render) => {
+    const prompt = render();
+    // Rendered policy coverage, not proof of model compliance or runtime enforcement.
+    expect(prompt).toMatch(/root retains.*reviewed commits/i);
+    expect(prompt).toMatch(/explicit.*no.delegation.*wins/i);
+    expect(prompt).not.toMatch(
+      /another search or dependency ends|only root mutation exception/i,
+    );
+    expect(prompt).toMatch(/preserve operator-selected model and effort/i);
+    expect(prompt).toMatch(/one independently checkable outcome/i);
+    expect(prompt).toMatch(/exact known.*skill paths/i);
+    expect(prompt).toMatch(/two consecutive.*without new evidence/i);
+    expect(prompt).toMatch(/native attention.*inspect.*steer/i);
+    expect(prompt).toMatch(/timeout.*not.*progress/i);
+    expect(prompt).toMatch(/no polling/i);
   });
 
   test('special-cases only the built-in OpenAI model family', () => {
@@ -228,6 +253,15 @@ describe('AI-first prompt rendering', () => {
       expect(prompt).toContain(`Dispatch: ${dialect.dispatchLabel('task')}`);
       expect(prompt).toContain('Do not delegate further');
       expect(prompt).not.toContain('synchronous task only');
+      expect(prompt).toContain(
+        'Freeze relevant inputs before final validation',
+      );
+      expect(prompt).toContain('rerun only checks invalidated by later edits');
+      expect(prompt).toContain('no status/log polling merely to wait');
+      expect(prompt).toContain(
+        'late notification must preserve the substantive handoff',
+      );
+      expect(prompt).toContain('Use exact supplied skill paths');
     }
   });
 

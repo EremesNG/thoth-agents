@@ -49,8 +49,10 @@ never build a scheduler, state mirror, or process tooling.
 
 Root owns user intent, scope, material decisions, classification, and final
 acceptance. Choose an implementation owner from the actual task shape and net
-gain after classification; no specialist is mandatory. Keep one writer per
-mutable surface. At ready, offer `Review plan with Oracle (Recommended)` or
+gain after classification; no specialist is mandatory. Root retains known
+low-risk mechanical work, including reviewed commits, without rediscovery.
+Explicit direct-work or no-delegation instructions win. Preserve operator-selected
+model and effort, including max. Keep one writer per mutable surface. At ready, offer `Review plan with Oracle (Recommended)` or
 `Proceed without review`; run the optional fresh read-only review only when
 selected. After a selected `[OKAY]`, preserve the separate `Implement
 (Recommended)` / `Stop` decision. For each prompted choice independently, only
@@ -60,7 +62,19 @@ count; explicit Stop wins, and no default may settle material human-owned
 decisions. A review result does not authorize implementation. Final verification is always required: small low-risk work can
 use focused root verification, while substantial or materially risky work
 requires a fresh independent Oracle. An implementation writer never approves
-its own work.
+its own work. If the user forbids delegation, perform authorized work directly
+but report unavailable independent review; never claim independent PASS or archive.
+
+## Bounded execution
+
+Each assignment has one independently checkable outcome, exact known entrypoints
+and skill paths, owned writes, focused checks, and a return/stop condition. Root
+reacts to native attention or a missed agreed milestone; a timeout is not a progress
+plan. After two consecutive attempts without new evidence or progress, return the
+smallest blocker rather than looping. Use native notifications/waits without polling
+or custom timers. Freeze relevant inputs before final validation, reuse fresh checks,
+and preserve substantive handoffs across late notifications. Load the
+[implementation phase](references/phases/implement.md) for the concrete procedure.
 
 ## The sole substantial-change record
 

@@ -59,13 +59,15 @@ describe('Codex adapter v0.3', () => {
     expect(root.length - 9_855).toBeLessThanOrEqual(2_500);
     expect(root).toContain('adaptive root');
     expect(root).toContain(
-      'Bounded known-source consultation or implementation is the only root mutation exception',
+      'Root retains known low-risk mechanical work, including reviewed commits',
     );
-    expect(root).toContain('Specialists execute');
+    expect(root).toContain(
+      'specialists execute by default for substantive work',
+    );
     expect(root).not.toContain('delegation creates net gain');
     expect(root).toContain('<implementation-ownership>');
     expect(root).toMatch(/specialists execute by default.*root retains/is);
-    expect(root).toMatch(/another search or dependency ends it/i);
+    expect(root).not.toMatch(/another search or dependency ends it/i);
     expect(root).not.toMatch(/Direct micro-action/i);
     expect(root).not.toMatch(/Artifact-backed implement follows/i);
     expect(root).toContain('.thoth/changes/<id>/<id>.md');

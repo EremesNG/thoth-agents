@@ -122,9 +122,11 @@ describe('Claude Code adapter v0.3', () => {
       /specialists execute by default.*root retains/is,
     );
     expect(instructions).toContain(
-      'Bounded known-source consultation or implementation is the only root mutation exception',
+      'Root retains known low-risk mechanical work, including reviewed commits',
     );
-    expect(instructions).toContain('Specialists execute');
+    expect(instructions).toContain(
+      'specialists execute by default for substantive work',
+    );
     expect(instructions).not.toContain('delegation creates net gain');
     expect(instructions).not.toMatch(/Direct micro-action/i);
     expect(instructions).not.toMatch(/Artifact-backed implement follows/i);

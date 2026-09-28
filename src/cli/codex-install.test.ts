@@ -317,8 +317,12 @@ describe('Codex install setup plan', () => {
         'Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance.',
       );
       expect(root).toMatch(
-        /Bounded known-source exception: authorized low-risk consult\/edit.*source, scope, and checks are known/i,
+        /root retains known low-risk mechanical work, including reviewed commits/i,
       );
+      expect(root).toMatch(
+        /explicit direct-work or no-delegation instruction wins/i,
+      );
+      expect(root).not.toMatch(/another search or dependency ends it/i);
       expect(root).not.toMatch(/sdd-(?:specify|plan|tasks) subagent/);
       expect(root).toContain('request_user_input');
       expect(root).toContain('omit `autoResolutionMs` entirely');

@@ -27,6 +27,20 @@ type RoutingCase = {
 
 const ROUTING_CASES: RoutingCase[] = [
   {
+    id: 'direct-root-reviewed-commits',
+    expectedOwner: 'orchestrator',
+    forbiddenOwners: ['worker', 'explorer'],
+    ownerTrigger: /retain reviewed commits/i,
+    classification: 'small',
+    phase: 'implement',
+  },
+  {
+    id: 'direct-root-explicit-request',
+    expectedOwner: 'orchestrator',
+    forbiddenOwners: ['worker', 'explorer', 'oracle'],
+    ownerTrigger: /honor explicit direct-work or no-delegation instructions/i,
+  },
+  {
     id: 'writer-designer-ui',
     expectedOwner: 'designer',
     forbiddenOwners: ['orchestrator', 'worker'],
@@ -376,7 +390,9 @@ describe('canonical agent routing', () => {
     expect(combined).not.toMatch(/delegate only for net\s+gain/i);
     expect(combined).not.toMatch(/prefer root continuity/i);
     expect(combined).toMatch(/specialists?.*by default/i);
-    expect(combined).toMatch(/another search or dependency/i);
+    expect(combined).not.toMatch(/another search or dependency ends/i);
+    expect(combined).toMatch(/root retains known low-risk mechanical work/i);
+    expect(combined).toMatch(/preserve operator-selected model and effort/i);
 
     const rootInstructions = activePolicies.find(
       ({ path }) => path === 'AGENTS.md',

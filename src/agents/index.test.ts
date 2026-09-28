@@ -152,21 +152,23 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     expect(prompt.length - 8_499).toBeLessThanOrEqual(2_500);
     expect(prompt).toContain('adaptive root');
     expect(prompt).toContain(
-      'Direct consultation or implementation is only the bounded known-source exception',
+      'Root retains known low-risk mechanical work, including reviewed commits',
     );
-    expect(prompt).toContain('Specialists execute');
+    expect(prompt).toContain(
+      'specialists execute by default for substantive work',
+    );
     expect(prompt).not.toContain('delegation creates net gain');
     expect(prompt).toContain('<implementation-ownership>');
     expect(prompt).toMatch(/specialists execute by default.*root retains/is);
-    expect(prompt).toMatch(/another search or dependency ends it/i);
+    expect(prompt).not.toMatch(/another search or dependency ends it/i);
     expect(prompt).not.toMatch(/Direct micro-action/i);
     expect(prompt).not.toMatch(/Artifact-backed implement follows/i);
-    expect(prompt).toContain('.thoth/changes/<id>/work.yaml');
-    expect(prompt).toContain('thoth-work');
+    expect(prompt).toContain('.thoth/changes/<id>/<id>.md');
+    expect(prompt).toContain('thoth-sdd');
     expect(prompt).toContain('oracle');
     expect(prompt).toContain('Final verification is mandatory.');
     expect(prompt).toContain(
-      'focused root checks suffice only for trivial deterministic work',
+      'Trivial deterministic low-risk work may use focused root checks',
     );
     expect(prompt).not.toContain('delegate-first');
     expect(prompt).not.toContain('requirements-interview');

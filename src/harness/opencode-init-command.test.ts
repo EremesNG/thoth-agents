@@ -24,8 +24,7 @@ describe('OpenCode thoth-init command', () => {
     expect(command.template).toContain(join('C:', 'work', 'example'));
     expect(command.template).toContain('offline');
     expect(command.template).toContain('.thoth/');
-    expect(command.template).toContain('thoth-work');
-    expect(command.template).not.toContain('OpenSpec');
+    expect(command.template).not.toContain('create .thoth/');
     expect(command.template).not.toContain('download\nskills');
   });
 });

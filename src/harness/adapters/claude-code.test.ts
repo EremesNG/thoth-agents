@@ -122,21 +122,23 @@ describe('Claude Code adapter v0.3', () => {
       /specialists execute by default.*root retains/is,
     );
     expect(instructions).toContain(
-      'Direct consultation or implementation is only the bounded known-source exception',
+      'Root retains known low-risk mechanical work, including reviewed commits',
     );
-    expect(instructions).toContain('Specialists execute');
+    expect(instructions).toContain(
+      'specialists execute by default for substantive work',
+    );
     expect(instructions).not.toContain('delegation creates net gain');
     expect(instructions).not.toMatch(/Direct micro-action/i);
     expect(instructions).not.toMatch(/Artifact-backed implement follows/i);
-    expect(instructions).toContain('.thoth/changes/<id>/work.yaml');
+    expect(instructions).toContain('.thoth/changes/<id>/<id>.md');
     expect(instructions).toContain('Agent');
     expect(instructions).toContain('AskUserQuestion');
     expect(instructions).toContain('TodoWrite');
-    expect(instructions).toContain('thoth-work');
+    expect(instructions).toContain('thoth-sdd');
     expect(instructions).toContain('thoth-agents:oracle');
     expect(instructions).toContain('Final verification is mandatory.');
     expect(instructions).toContain(
-      'focused root checks suffice only for trivial deterministic work',
+      'Trivial deterministic low-risk work may use focused root checks',
     );
     expect(instructions).not.toContain('delegate-first');
     expect(instructions).not.toContain('requirements-interview');

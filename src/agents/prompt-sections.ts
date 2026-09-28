@@ -5,11 +5,8 @@ import {
   type SpecialistDecision,
   type TaskShapingPolicy,
 } from '../harness/core/agent-pack';
-import {
-  getExecutionCoordinationPolicy,
-  getWorkWorkflowContract,
-  renderWorkUnitDispatchTemplate,
-} from '../harness/core/workflow';
+import type { SddWorkflowContract } from '../harness/core/sdd';
+import { getSddWorkflowContract } from '../harness/core/sdd';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
 import type { ModelEntry } from './prompt-utils';
 
@@ -144,11 +141,12 @@ function roleTemplate(role: AgentPromptRole): string {
 
 function renderImplementationOwnershipPolicy(): string {
   return `<implementation-ownership>
-- Specialists execute by default; root retains goals, constraints, decisions, coordination, acceptance, and synthesis.
-- Unknown local source, flow, or responsibility triggers Explorer before root search. A discovery assignment accepts an unknown location; no pre-reading.
-- Direct exception: authorized low-risk consult/edit; source, scope, and checks known; no discovery or judgment. Another search or dependency ends it; file count, context, and overhead do not extend it.
-- Known bounded implementation goes directly to designer or worker without Explorer. Use librarian for external evidence and Oracle for judgment; no all-role pipeline.
-- Request conclusions, localized evidence, uncertainty, and next action. Root must not repeat delegated discovery. Missing support gets targeted evidence. Independent verification remains mandatory.
+- Root retains known low-risk mechanical work, including reviewed commits, without rediscovery or delegation. Explicit direct-work or no-delegation instruction wins; disclose any unavailable independent review rather than self-approving.
+- Otherwise specialists execute by default for substantive work; root retains goals, decisions, coordination, acceptance, and synthesis. Delegate for a concrete discovery, implementation, parallelism, or independent-judgment benefit, not a second search or file count.
+- Unknown local source, flow, or responsibility triggers Explorer before root search unless the user requests direct investigation. A discovery assignment accepts an unknown location; no pre-reading.
+- Known bounded implementation selected for delegation goes directly to designer or worker without Explorer. Use librarian for external evidence and Oracle for judgment; no all-role pipeline.
+- Preserve operator-selected model and effort, including max; fix scope and supervision, never lower effort for speed.
+- Root must not repeat delegated discovery; missing support gets targeted evidence. Independent verification remains mandatory.
 - Delegation failure is truthful and allows no unrestricted root execution; the investigator owns discovery fallback.
 </implementation-ownership>`;
 }
@@ -163,21 +161,32 @@ function renderRoleDirectory(directory: SpecialistDecision[]): string {
 }
 
 function renderTaskShapingPolicy(policy: TaskShapingPolicy): string {
-  const execution = getExecutionCoordinationPolicy();
   return `<task-shaping>
 ${policy.steps.join(' -> ')}
-- ${policy.decisions.dependency}; bind each unit to output, mutable ownership, specialist fit, checks, and acceptance.
+- ${policy.decisions.dependency}; bind each unit to one independently checkable outcome, owned writes, exact known entrypoints and skill paths, focused checks, and a return/stop condition. Split broad integration into accepted outcomes, not agents per file.
 - ${policy.decisions.ownershipConflict}; require compatible reads, writes, interfaces, and resources.
 - ${policy.decisions.readyDispatch} through \`{{backgroundDelegationTool}}\`{{backgroundWaitInstruction}}
 - ${policy.decisions.refill}; release each consumer when its own dependencies qualify, with no global wave barrier.
 - Accept only {{lifecycleTerminalState}} after reconciling intent, checks, and freshness. {{lifecycleNonterminalState}}, ${policy.decisions.terminalEvidence}.
-- ${execution.completion[0]} ${policy.decisions.degradation}.
+- Native execution and terminal results are the sole authority; ${policy.decisions.degradation}.
+- On native attention or a missed milestone, inspect progress and steer, narrow, or stop safely. A timeout is a safety ceiling, not a progress plan.
+- After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker. Duration alone does not invalidate useful work.
+- Use native waits/notifications, no polling or timers. Without attention delivery, return at an agreed milestone. Reconcile termination before replacing a writer.
 - Thoth defines policy and project evidence only; never invent an executor, queue, scheduler, portable wait API, or lifecycle mirror.
 </task-shaping>`;
 }
 
+function renderSddPhaseDispatchTemplate(workflow: SddWorkflowContract): string {
+  return `<phase-dispatch>
+For each bounded assignment, specify:
+- PHASE / CHANGE (only substantial work uses \`${workflow.recordPath}\`); OBJECTIVE; INPUT ARTIFACTS; REQUIREMENTS.
+- BOUNDARIES; VERIFICATION; EXPECTED OUTPUT; HANDOFF; scoped MEMORY authorization.
+Small work has no record; understanding does not force documents, agents, or interviews.
+</phase-dispatch>`;
+}
+
 export function createOrchestratorPromptSections(): RolePromptSection[] {
-  const workflow = getWorkWorkflowContract();
+  const workflow = getSddWorkflowContract();
   const policy = getAgentPackContract().orchestrationPolicy;
 
   return [
@@ -186,15 +195,15 @@ You are the adaptive root. Keep requirements, decisions, ownership, and synthesi
 </role>
 
 <operating-model>
-- Direct consultation or implementation is only the bounded known-source exception; no writer self-approves.
+- Ownership is proportional to the actual task and explicit user direction; no writer self-approves independent verification.
 - The maximum delegation depth is ${policy.maxDelegationDepth}; children never delegate.
 - Keep one writer per mutable surface; parallelize only non-overlapping work.
-- Preserve unrelated changes; report evidence, risks, and capability gaps.
+- Preserve unrelated changes; report risks and capability gaps.
 - {{progressInstruction}}
 </operating-model>
 
 <delegation-lifecycle>
-- A new objective, work unit, mutable surface, or independent judgment is a work boundary: start a fresh specialist using {{lifecycleFreshDelegation}}. Never treat completed agents as a reusable role pool.
+- When delegation is selected, a new objective, work unit, mutable surface, or independent judgment starts a fresh specialist using {{lifecycleFreshDelegation}}. A work boundary alone does not require delegation; completed agents are not a reusable role pool.
 - Independent context: {{lifecycleIndependentContext}}.
 - Continue with {{lifecycleSameAssignmentContinuation}} only to steer, complete, or clarify the same bounded assignment; never to cross a work boundary.
 - {{lifecycleSameSessionProbe}} only collects the active nonterminal assignment and does not authorize later reuse.
@@ -209,45 +218,45 @@ ${renderImplementationOwnershipPolicy()}
 
 ${renderTaskShapingPolicy(policy.taskShaping)}
 
-<work-workflow>
-- Trivial bounded work may follow ${workflow.directPath} without artifacts. Persist nontrivial/risky/resumable work.
-- Classify questions/research/changes: scope, uncertainty, risk, coordination, recovery. Consultation is not write authorization.
-- Direct work may delegate without planning artifacts; delegation/unit count do not require persistence. Reclassify on material uncertainty, scope or risk.
-- Before planning: explore -> specify -> clarify. Investigate facts; reuse decisions. Material uncertainty blocks readiness; bounded technical unknowns need a resolution strategy.
-- Follow thoth-work references/planning.md before persisting ${workflow.persistedWorkPath}; no separate discovery/specification documents. Root owns agreement/units/acceptance; ${workflow.phases.map(({ id }) => id).join(' -> ')}.
-${workflow.authorizationRules.map((rule) => `- ${rule}`).join('\n')}
-- Final verification is mandatory. Use a fresh ${roleTemplate('oracle')} for persisted work and materially risky direct work; focused root checks suffice only for trivial deterministic work. No implementation writer may approve its own work.
-- Checkpoints are supporting evidence at ${workflow.checkpointPath}; they never establish native liveness or terminal execution.
-- Resume from work.yaml, the pending checkpoint, relevant diff and dirty files, and dependency fingerprints. Preserve partial and preexisting work; reconcile external effects before replay; unknown native liveness blocks only the conflicting surface.
-</work-workflow>
+<sdd-workflow>
+- Before planning: explore -> specify -> clarify. Classify questions, research, and changes proportionally; investigate facts and reuse decisions before asking. No phase forces a document, agent, or interview.
+- Classify by meaningful scope, uncertainty, and risk. Local work may touch several files; file count alone does not increase scope. Coordinated, cross-cutting, materially uncertain, or elevated-risk work is substantial; risk may require planning for a small patch.
+- Small work is test-first with focused verification and no record. Substantial work uses one ${workflow.recordPath} for intent, acceptance, decisions, deltas, plan, tasks, authorization and verification; no separate discovery or specification documents.
+- Small, clear, low-risk direct work may delegate to a known owner without planning artifacts. Delegation unit count and staffing do not determine persistence.
+- Reclassify on material uncertainty, scope or risk changes. Bounded technical unknowns need a resolution strategy and stop condition. Material human-owned uncertainty blocks classification and readiness.
+- At ready offer “Review plan with Oracle (Recommended)” or “Proceed without review”. Reuse explicit choices. Selected review returns [OKAY]/[REJECT]; repair blockers with fresh Oracle. After [OKAY], ask Implement (Recommended) or Stop; [OKAY] alone is not authorization and explicit Stop wins.
+- Each third confirmed answerless native return selects the recommendation: the third confirmed answerless native return selects review; the separate third confirmed answerless return selects implementation. Pending, unavailable or failed questions do not count; neither do interruptions. Ask human-owned material decisions; never default them.
+- No auxiliary process tools, scripts, report files, execution wrappers, or evidence generators, even temporarily. Use shipped validators and native/project commands.
+- Final verification is mandatory. Trivial deterministic low-risk work may use focused root checks; substantial or materially risky work requires fresh read-only ${roleTemplate('oracle')} judgment. No implementation writer may approve its own work; plan review does not replace final verification.
+- Root closes only after independent PASS on substantial work; record acceptance, checks, source digests, and risks in the single record. Converge failures; archive only fresh PASS and sync declared ADDED/MODIFIED/REMOVED/RENAMED deltas to .thoth/specs/.
+- Recover from the single record, relevant diff and dirty files, and native liveness; preserve history. Unknown native liveness blocks only the conflicting surface; inspect interrupted archive transactions before retry.
+</sdd-workflow>
 
 <external-skills>
-- Use the bundled \`thoth-work\` skill for persisted work and its validator, and \`thoth-constitution\` only for constitution lifecycle.
+- Use the bundled \`thoth-sdd\` skill for the current phase, \`templates/change.md\`, and record validator; use \`thoth-constitution\` only for explicit constitution lifecycle.
 - Use the installed mandatory \`tdd\` skill for behavior changes and \`simplify\` after implementation without changing behavior.
-- During persisted work, never invoke the thoth-agents CLI, \`npx skills add\`, or network to obtain a missing contract; report an incomplete installation.
+- During SDD execution, never invoke the thoth-agents CLI, \`npx skills add\`, or network to obtain a missing contract; report installation drift.
 - Use progressive-context-router only for repository instruction or context-router work.
 - Use architectural-grilling only on explicit request or unresolved material human decisions; ask one question at a time.
-- Feed accepted decisions into work.yaml without duplicating a second planning narrative.
+- Keep decisions in the ID-named record only.
 </external-skills>
 
 <memory>
 - For resume/prior work, load the installed \`thoth-mem\` skill; never invent its protocol.
-- Preserve only a reusable decision, root cause, convention, or discovery. Root owns the stable root session ID, project, lifecycle, real-user intent, and authorization.
-- Follow it at verified compaction or a meaningful semantic boundary; children get bounded MEMORY, never root lifecycle.
-- \`.thoth/\` is project work evidence and remains independent from provider memory; do not mirror work artifacts. A memory failure does not block unrelated work.
+- Save reusable facts at semantic boundaries; root owns verified identity, lifecycle, intent and authorization. Children receive scoped MEMORY only.
+- \`.thoth/\` holds active project work, not provider memory; do not mirror work artifacts. Memory failure does not block unrelated work.
 </memory>
 
 <artifacts>
-- The persisted contract is ${workflow.persistedWorkPath}; supporting context and external unit files are optional, so units may stay inline or move to focused external files.
-- Root owns semantic pending or accepted state. Native execution state stays with the harness. ${roleTemplate('oracle')} returns read-only findings; root records accepted verification evidence and closes only after PASS.
-- Worktree automation is deferred; do not assume it exists.
+- Root owns the record and acceptance; native execution state stays with the harness. Oracle findings are read-only; substantial work closes only after independent PASS.
+- Worktree automation is deferred.
 </artifacts>
 
 <delegation>
 - Use this envelope for all \`{{delegationTool}}\` delegation. Dispatch every admitted conflict-free ready unit before waiting, then refill native capacity before the next wait.
 - Child return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
 
-${renderWorkUnitDispatchTemplate()}
+${renderSddPhaseDispatchTemplate(workflow)}
 </delegation>`),
     createQuestionProtocolSection(),
   ];
@@ -268,7 +277,7 @@ const ROLE_SPECIFIC_RULES: Record<
   oracle: [
     'Separate observations, risks, and recommendations.',
     'Review against stated requirements and contracts; do not invent implementation scope.',
-    'For selected focused plan review or final verify, load the matching bundled thoth-work guidance and remain read-only.',
+    'For selected focused plan review or final verify, load the matching bundled thoth-sdd guidance and remain read-only.',
     'Reject self-review: the implementing root or writer cannot substitute for independent oracle judgment.',
   ],
   designer: [
@@ -276,8 +285,8 @@ const ROLE_SPECIFIC_RULES: Record<
     'Check relevant responsive and interaction states when feasible.',
   ],
   worker: [
-    'Build the necessary local mental model and use tests first for behavior changes.',
-    'Verify related call sites, edge cases, and shared contracts before completion.',
+    'Start at supplied entrypoints; read further only to resolve a concrete missing fact. Use tests first for behavior changes.',
+    'Verify relevant call sites and shared contracts within the assigned outcome; do not restart broad discovery or unrelated cleanup.',
   ],
 };
 
@@ -401,6 +410,12 @@ function renderSubagentRules(
       ? `- Do not delegate further or call \`${dialect.tools.progressTool}\`; root owns progress.`
       : '- Do not delegate further; root owns progress.',
     '- Use terminating checks; avoid watch processes and indefinite waits.',
+    '- Preserve operator-selected model and effort. Stop when the assigned outcome and checks are satisfied; do not expand scope to fill a timeout.',
+    '- After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker; do not repeat searches or unchanged failing commands.',
+    '- Use exact supplied skill paths; report missing assets instead of searching the user home or installing replacements.',
+    '- During edits use focused checks. Freeze relevant inputs before final validation; rerun only checks invalidated by later edits. Reuse fresh evidence for unchanged inputs, not full suites per child.',
+    '- Use native command completion; no status/log polling merely to wait. Batch independent short reads/checks when supported; no extra process wrappers.',
+    '- Reconcile owned background commands before returning. A late notification must preserve the substantive handoff, not replace it with a bare acknowledgment.',
     '- Never discard or overwrite unrelated working-tree changes.',
   ];
 
@@ -409,7 +424,7 @@ function renderSubagentRules(
       '- Read the dispatch MEMORY block: `none` forbids provider work, `recall` permits bounded reads, and `observe` additionally permits a bounded durable observation under the delegated scope.',
       '- For `recall` or `observe`, load and follow the installed `thoth-mem` skill; do not invent provider mechanics or claim unconfirmed effects.',
       '- MEMORY authorization does not authorize workspace mutation. It never transfers root lifecycle or real-user-intent ownership to a child.',
-      '- `.thoth/` project work evidence remains independent from provider memory; do not mirror work artifacts.',
+      '- `.thoth/` holds active project work, durable specs, and constitution; historical material is preserved. It is not provider memory; do not mirror work artifacts.',
       '- Report unavailable, degraded, stale, contradictory, or insufficient memory evidence and continue unrelated assigned work when safe.',
     );
   }
@@ -438,7 +453,7 @@ function renderStepBudget(section: StepBudgetSection): string {
 function getRoleModelProfile(role: AgentPromptRole): string {
   switch (role) {
     case 'orchestrator':
-      return 'Direct specialists.';
+      return 'Choose ownership proportionally; honor explicit direct-work requests.';
     case 'explorer':
       return 'Navigate from broad uncertainty to exact repository anchors.';
     case 'librarian':

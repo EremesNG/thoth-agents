@@ -4,7 +4,7 @@
 
 **thoth-agents** is an adaptive multi-harness orchestration plugin. It provides
 six roles, native OpenCode and Pi delegation, Codex and Claude Code surfaces,
-provider-neutral memory boundaries, and AI-first work contracts.
+provider-neutral memory boundaries, and proportional AI-first SDD governance.
 OpenCode is the stable default path; each harness has different guarantees.
 
 For task-specific knowledge, start with [`docs/agent/index.md`](docs/agent/index.md).
@@ -54,7 +54,7 @@ Keep `docs/agent/` documents on demand at startup.
 - `src/cli/`: parser, commands, installation, configuration, and TUI.
 - `src/hooks/`, `src/mcp/`, `src/tools/`: runtime integrations. Provider-owned
   memory setup and lifecycle are external and are not bundled here.
-- `src/harness/core/workflow.ts`: work agreement, phase, and delegation contracts.
+- `src/harness/core/sdd.ts`: proportional classification, phases, and record contracts.
 - `skills/`: canonical thoth-owned workflow skills for every harness.
 - `src/cli/skills.ts`: mandatory external-skill installation via `npx skills add`.
 - `src/cli/thoth-mem-install.ts`: bounded invocation and evidence parsing for
@@ -83,39 +83,59 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - Use TypeScript and modern Node patterns consistent with the existing code.
 - Keep changes explicit and limited to the requested behavior. Preserve unrelated
   edits; never revert work you did not make. Ignore backward compatibility.
-- Classify requests using bounded evidence; questions and research do not authorize
-  changes. Clear bounded low-risk work may be direct, even with useful delegation,
-  without planning artifacts. Reclassify if material uncertainty, scope or risk grows.
-  For substantive or resumable work, explore, specify and clarify before technical
-  planning and persistence in `.thoth/changes/<id>/work.yaml`. Investigate facts;
-  resolve material human decisions and give bounded technical unknowns a resolution
-  strategy. See the [workflow route](docs/agent/workflow-and-skills.md); root owns
-  agreement and acceptance, with no separate mandatory discovery/spec documents.
-- Honor authorization and resolved choices. For a ready persisted plan, offer
-  Oracle review (recommended) or direct implementation; after [OKAY], offer
-  implementation (recommended) or stopping. Each choice has at most three native
-  unanswered returns before its default applies. Explicit answers and Stop win;
-  pending/unavailable/failed questions do not count. Preserve choices and budgets
-  on resume. See the [workflow route](docs/agent/workflow-and-skills.md).
-  Do not ask for a pipeline or apply these defaults to other unresolved decisions,
-  secrets or sensitive actions.
+- Every change completes proportional explore -> specify -> clarify before
+  classification; these steps do not force a document, specialist, or interview.
+  Investigate repository facts before asking, and leave unresolved material
+  human-owned choices blocked. Only then classify by meaningful coordination and
+  contract impact, uncertainty, and risk/failure cost. File count alone does not
+  increase scope: a clear, low-risk localized mechanical change may touch several
+  files and remain small. Increased scope or risk reopens understanding and
+  classification.
+- Small work uses test-first implementation and focused verification with no
+  persistent record. Substantial work plans in the sole
+  `.thoth/changes/<id>/<id>.md` record after classification; risk may require
+  planning even for a patch-sized change. No alias, duplicate record, report,
+  evidence directory, process tool, or execution wrapper is created. See the
+  [SDD guide](docs/agent/sdd-and-skills.md).
+- Preserve optional selected Oracle plan review and the separate post-review
+  Implement (Recommended) / Stop decision. Review does not authorize execution
+  or replace final verification; no fallback may resolve material decisions.
+- Honor authorization and resolved choices. After ready, offer Oracle review
+  (recommended) or proceed without review; after [OKAY], separately offer
+  implementation (recommended) or Stop. Each question has at most three confirmed
+  answerless native returns before its recommended default applies. Explicit
+  answers and Stop win; pending/unavailable/failed questions do not count.
+  Review alone does not authorize implementation or replace final verification.
+  Never default other unresolved material decisions, secrets or sensitive actions.
 - Before retaining or delegating work, map concrete output dependencies, owned
   writes, read assumptions, shared resources and verification. List order is not
   a dependency. Dispatch all independent admitted ready work before waiting,
   refill native capacity and release each consumer after its own fresh accepted
   dependencies; avoid global wave barriers.
-- Direct specialists by default. Root retains goals, constraints, decisions,
-  coordination, semantic acceptance and synthesis. Unknown local source, flow or
-  responsibility goes to explorer before root repository search; do not pre-read
-  to prepare that dispatch. Known bounded implementation goes directly to
-  designer or worker without a mandatory explorer relay. Use librarian for
-  needed external evidence and oracle for independent judgment.
-- Root may consult one known source or make a minimal authorized low-risk edit
-  only when source, scope and verification are known and no discovery or
-  independent judgment is needed. Another search or dependency ends that
-  exception; file count, accumulated context and coordination overhead do not
-  extend it. Delegation failure is reported truthfully, never converted into
-  unrestricted root execution.
+- Root retains known low-risk mechanical work, including reviewed commits,
+  without rediscovery or delegation. Explicit direct-work or no-delegation
+  instructions win. Otherwise use specialists by default for substantive work
+  with a concrete benefit; neither file count nor another targeted search forces
+  delegation. Unknown local discovery goes to explorer unless the user requests
+  root investigation. Known delegated implementation goes to designer or worker;
+  use librarian for external evidence and oracle for independent judgment.
+- Preserve operator-selected model and effort, including max. Fix scope and
+  supervision, not the operator's settings. Delegation failure is not permission
+  for unrestricted fallback. If independent review is prohibited, disclose that
+  limitation; do not claim independent PASS or archive.
+- Each assignment needs one independently checkable outcome, exact known source
+  and skill paths, owned writes, focused checks, and a return/stop condition.
+  Split broad integration by accepted outcomes, not one agent per file. On native
+  attention or a missed agreed milestone, inspect progress and steer, narrow,
+  or stop safely; timeout is a safety ceiling, not a progress plan. After two
+  consecutive attempts without new evidence or progress, return the smallest
+  blocker instead of looping. Long productive work is not failure by duration.
+- Use native notifications/waits without polling or custom timers. If native
+  attention is unavailable, use assignments that return at an agreed milestone.
+  Freeze relevant inputs before final validation; reuse fresh checks and rerun
+  only those invalidated by edits. Reconcile background commands before returning;
+  late notifications must preserve the substantive handoff. See the
+  [execution guidance](skills/thoth-sdd/references/phases/implement.md).
 - Do not duplicate delegated discovery. Request conclusions, localized evidence,
   uncertainty and next action; target missing support instead of rereading every
   file. Bounded evidence inspection for root decisions/recovery and mandatory
@@ -141,10 +161,12 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   fresh read-only Oracle against agreement, actual diff and evidence. Optional
   plan review never substitutes for final verification. Root records results and
   archives only fresh passing work and explicitly declared durable updates.
-- `.thoth/constitution.md` contains project principles; `.thoth/specs/` contains
-  durable product contracts. Historical OpenSpec records are not active context.
+- `.thoth/constitution.md` contains active project principles and
+  `.thoth/specs/` durable product contracts. Preserve historical material under
+  `.thoth/history/`; it is not active SDD context. No default evidence directory
+  or per-change process tools/scripts, wrappers, report files or evidence generators.
 - thoth-mem independently owns provider persistence, hooks, MCP and lifecycle.
-  Follow its installed guidance; never mirror work contracts/checkpoints. Root
+  Follow its installed guidance; never mirror project work records. Root
   owns verified identity, lifecycle and real-user intent. Delegated authorization
   is none, recall or observe, independent of workspace permission.
 - Published installs require consistent provider complete evidence. Never turn
@@ -155,10 +177,10 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 
 ## Change and verification flow
 
-1. Classify the request; reuse authorization and choose direct or persisted work.
-2. For persisted work, explore public contracts/tests, specify outcomes and clarify
-   material uncertainty before planning units and saving the agreement. For direct
-   work, inspect only what is needed; delegation alone does not require persistence.
+1. Explore, specify, and clarify proportionally; then classify by coordination,
+   uncertainty, and risk, reusing authorization already given.
+2. For substantial work, plan in the one ID-named record and shape units. Small
+   work stays artifact-free; delegation alone does not require persistence.
 3. Resolve the two applicable planning choices, then implement within ownership,
    keeping useful checkpoints for recovery.
 4. Run focused checks, then verification proportional to risk.

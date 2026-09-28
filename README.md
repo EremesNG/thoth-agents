@@ -37,8 +37,8 @@ verification you can follow—without manually coordinating every agent.
 
 - **A team, not six conversations.** One adaptive Orchestrator coordinates five
   specialists and brings their results back to you.
-- **The right amount of process.** Use a direct implementation path for small
-  work or a persisted AI-first work contract for involved or resumable work.
+- **Proportional process.** Small, clear, low-risk work stays artifact-free;
+  substantial work uses one ID-named record and proportionate verification.
 - **Specialists execute by default.** Repository discovery, current documentation,
   UI/UX, bounded implementation, and independent review have distinct roles.
 - **Models you can tune.** Configure models per role to suit your workflow and
@@ -119,9 +119,10 @@ Open your repository in the harness and invoke the installed `thoth-init` skill:
 | Claude Code | `/thoth-agents:thoth-init` |
 | Pi | Ask: `Use the thoth-init skill to initialize this repository.` |
 
-This prepares the repository's `.thoth/` governance for structured workflows.
-It does not install plugins or dependencies, and it preserves existing
-constitutions.
+This creates only missing minimum `.thoth/` governance, including
+`.thoth/constitution.md`, `.thoth/specs/`, and the change archive. It does not
+install plugins or dependencies and preserves existing project-owned governance
+and historical records.
 
 ### 3. Give Thoth a task
 
@@ -132,18 +133,16 @@ Fix the broken documentation link with the smallest sufficient workflow.
 ```
 
 ```text
-Add CSV export to the reports page. Agree on a work contract, then implement it.
-Keep the existing filters and include tests for empty results.
+Add CSV export to the reports page. Understand the existing filters, specify how empty results behave, and clarify any material decision before a test-first implementation. Keep the work proportional.
 ```
 
 ```text
-Plan a migration from our current authentication system and record the agreement.
-Explore the risks before proposing changes.
+Plan a migration from our current authentication system. Explore the risks, specify acceptance, and clarify material decisions before implementation. If classification is substantial, keep the plan and acceptance in one `.thoth/changes/<id>/<id>.md` record.
 ```
 
-You can name a route explicitly or let Thoth recommend one. Describe your
-constraints and expected outcome; the Orchestrator selects the fitting specialist
-and retains coordination and acceptance.
+Describe the desired outcome, constraints, and acceptance. The Orchestrator
+first builds proportional understanding, then classifies by coordination,
+uncertainty, and risk and selects the fitting specialist.
 
 ## Meet the team
 
@@ -173,33 +172,32 @@ Research and review specialists are read-only. Implementation work has one
 writer per area; independent areas can proceed in parallel when the harness
 supports it. You do not need to summon every role for every task.
 
-## Plan once, execute with focused context
+## Proportional SDD
 
-The root first classifies the request. For substantive changes it explores current
-behavior, specifies the desired outcome and acceptance, and clarifies material
-uncertainty with you before planning and persisting `.thoth/changes/<id>/work.yaml`.
-Repository facts are investigated; when local source, flow or responsibility is
-unknown, Explorer runs before root repository search. Grilling is used only when
-requested or needed for material human decisions. No separate discovery or
-specification documents are mandatory. Small, clear, bounded, low-risk fixes can
-proceed without planning files while the fitting writer implements directly;
-known bounded work does not require an Explorer relay. New material uncertainty
-or risk triggers reclassification.
+Every change completes explore, specify, and clarify in order, proportionally to
+its uncertainty and impact. These steps do not force a document, specialist, or
+interview. The Orchestrator resolves repository facts through evidence and asks
+only when a material human-owned decision cannot safely be inferred; unresolved
+material uncertainty blocks classification.
 
-Independent units run in parallel through the native harness. Per-unit
-checkpoints support resuming interrupted work after reconciling the actual
-files and native agent status. Supporting context and external unit files are
-optional. Once the plan is ready, choose Oracle review (recommended) or direct
-implementation. After Oracle approval, choose implementation (recommended) or
-stopping with the approved plan. Each question uses its recommendation after
-three confirmed unanswered native returns; explicit answers win. Choices and
-remaining attempts survive interruption. Other material decisions and sensitive
-actions still require their own authorization.
+Only after understanding does it classify by meaningful coordination and
+contract impact, uncertainty, and risk. File count alone does not increase scope:
+a clear, low-risk localized mechanical change may touch several files and remain
+small. Small work uses test-first implementation and focused verification with
+no record. Substantial or materially risky work plans in one
+`.thoth/changes/<id>/<id>.md` record after classification; risk may warrant
+planning even for a patch-sized change. No alias, duplicate record, report,
+evidence directory, or process tooling is created.
 
-A fresh Oracle independently verifies persisted work before closeout. Accepted
-durable behavior lives in `.thoth/specs/`; provider memory stays separate.
-Worktree management is deferred. See the [workflow guide](docs/workflow.md)
-and [Skills and MCPs](docs/skills-and-mcps.md) for the contract and its limits.
+For substantial work, optional fresh Oracle plan review runs only when selected.
+After a selected `[OKAY]`, root separately asks Implement (Recommended) or Stop;
+review alone never authorizes implementation or replaces final verification.
+Substantial and materially risky work receives a fresh read-only Oracle
+verification. Declared durable changes sync transactionally to
+`.thoth/specs/` after PASS. Active governance lives at `.thoth/constitution.md`;
+historical records remain preserved, and provider memory stays separate. Native
+harness execution and liveness remain authoritative. See the [SDD guide](docs/sdd-pipeline.md)
+and [Skills and MCPs](docs/skills-and-mcps.md) for limits.
 
 ## Configure and update
 
@@ -252,7 +250,7 @@ resource filters and unrelated settings.
 | --- | --- |
 | [Installation](docs/installation.md) | Check prerequisites, preview setup, troubleshoot, and repair an installation. |
 | [Quick Reference](docs/quick-reference.md) | Find commands, roles, skills, and workflow reminders. |
-| [Work workflow](docs/workflow.md) | Understand planning, review, verification, and archiving. |
+| [SDD pipeline](docs/sdd-pipeline.md) | Understand routes, planning, review, verification, and archiving. |
 | [Skills and MCPs](docs/skills-and-mcps.md) | See the included workflows, research tools, and memory boundaries. |
 | [Provider Configuration](docs/provider-configurations.md) | Configure models and providers. |
 | [Codex Install](docs/codex-install.md) | Follow Codex-specific setup, activation, and trust requirements. |

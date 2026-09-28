@@ -104,29 +104,30 @@ export const AGENT_ROLES = [
     dispatch: 'root-coordinator',
     canMutateWorkspace: true,
     scope:
-      'human agreement, persisted work coordination, bounded direct exceptions, decisions, and synthesis',
+      'human agreement, SDD coordination, bounded direct exceptions, decisions, and synthesis',
     responsibility:
-      'Keep goals, constraints, decisions, work-unit coordination, semantic acceptance, and final synthesis in the root thread; direct discovery and implementation to specialists by default, use only the bounded direct exception, and run focused verification for trivial deterministic work.',
+      'Keep goals, decisions, coordination, acceptance, and synthesis in the root; retain known low-risk mechanical work and explicit direct-work requests. Otherwise use specialists for substantive outcomes and independent judgment.',
     useWhen: [
       'Coordinate goals, constraints, decisions, governed artifacts, routing, acceptance, and synthesis.',
+      'Retain reviewed commits and known low-risk mechanical operations; honor explicit direct-work or no-delegation instructions.',
       'Consult a known source for one bounded question or make a minimal authorized low-risk edit only when source, scope, and verification are known and no discovery or independent judgment is needed.',
     ],
     doNotUseWhen: [
       'Not for independent plan review or Oracle-required final verification.',
     ],
     escalateWhen: [
-      'Stop the direct exception when another search or dependency appears; send unknown local discovery to explorer and implementation to designer or worker by task shape.',
+      'Reassess ownership when actual uncertainty, scope, or risk increases, not because another search is needed; never override explicit no-delegation instructions.',
     ],
     toolGovernance: [
       'may inspect and edit the accepted bounded implementation surface and may verify trivial deterministic work without self-approval',
-      'loads the matching thoth-work guidance on demand instead of carrying every workflow detail in its prompt',
-      'owns agreement, work-unit state, semantic acceptance, and project work evidence under .thoth/changes/',
-      'delegates discovery and implementation by default, with direct work limited to the explicit bounded exception',
+      'loads the matching thoth-sdd phase guidance on demand instead of carrying every phase protocol in its prompt',
+      'owns proportional understanding, classification, one ID-named substantial-change record, semantic acceptance, and active .thoth/ work evidence',
+      'retains reviewed commits and known low-risk mechanical work; otherwise delegates for a concrete benefit within user authorization',
       'keeps requirements, decisions, and final synthesis in the root thread',
     ],
     verification: [
       'runs focused checks for trivial deterministic work while final verification remains mandatory',
-      'delegates selected focused plan review plus persisted-work and material-risk final verification to a fresh oracle',
+      'delegates selected focused plan review plus artifact-backed and material-risk final verification to a fresh oracle',
       'consolidates summarized evidence returned by child agents',
     ],
   },
@@ -177,9 +178,9 @@ export const AGENT_ROLES = [
     scope:
       'diagnosis, architecture, optional focused plan review, and independent verification',
     responsibility:
-      'Independently review plans when selected and provide independent judgment for persisted-work or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
+      'Independently review plans when selected and provide independent judgment for artifact-backed or material-risk final verification, exposing correctness risks and judging whether results satisfy their contracts.',
     useWhen: [
-      'Selected focused plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or persisted-work final verification needs independent judgment.',
+      'Selected focused plan review, persistent diagnosis, material architecture or security risk, contradictory evidence, high failure cost, or artifact-backed final verification needs independent judgment.',
     ],
     doNotUseWhen: [
       'Not for implementation, mutation, persistence, or self-review.',
@@ -224,10 +225,12 @@ export const AGENT_ROLES = [
     responsibility:
       'Handle bounded nonvisual implementation with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work.',
     useWhen: [
-      'Known bounded nonvisual implementation is ready, regardless of complexity; this includes exact low-risk or mechanical edits.',
+      'Known bounded nonvisual implementation selected for delegation is ready, regardless of complexity; routine mechanical work stays with root unless explicitly delegated.',
       'Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk.',
     ],
-    doNotUseWhen: ['Not for visual-only work.'],
+    doNotUseWhen: [
+      'Not for visual-only work, reviewed commits, or work explicitly retained by the user in root.',
+    ],
     escalateWhen: ['Return product or architecture choices to root.'],
     toolGovernance: [
       'may edit implementation and tests within the assigned surface',
@@ -249,16 +252,16 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
       'retain the goal, constraints, decisions, coordination, semantic acceptance, and synthesis',
     ],
     discovery: [
-      'Unknown local source, flow, or responsibility triggers Explorer before root repository search or dependency traversal.',
+      'Unknown local source, flow, or responsibility triggers Explorer before root search unless the user explicitly requests direct investigation.',
       'A bounded discovery assignment may state an unknown location; root must not perform exploratory pre-reading to prepare it.',
       'The assigned investigator owns applicable discovery-tool fallback.',
     ],
     directException: [
       'Root may consult a known source for one bounded question or make a minimal authorized low-risk edit only when source, scope, and verification are known and no discovery or independent judgment is needed.',
-      'Another search or dependency ends the direct exception.',
+      'Root retains reviewed commits and other known low-risk mechanical work; another search alone does not force delegation. Explicit direct-work or no-delegation instructions take precedence.',
     ],
     writerRouting: [
-      'Known sufficiently bounded implementation goes directly to designer or worker by task shape without a mandatory Explorer stage.',
+      'Known sufficiently bounded implementation selected for delegation goes directly to designer or worker by task shape without a mandatory Explorer stage.',
       'Use librarian for needed external evidence and Oracle for independent judgment; never impose a mechanical all-role pipeline.',
     ],
     evidenceHandling: [
@@ -269,10 +272,11 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     delegationFailure: [
       'Report delegation failure truthfully; it does not authorize unrestricted root execution.',
     ],
-    userDirection: 'explicit safe user direction is an ownership input',
+    userDirection:
+      'explicit direct-work or no-delegation instruction wins; preserve operator-selected model and effort',
     insufficientSignals: [
       'workflow persistence choice',
-      'file count, accumulated context, or coordination overhead',
+      'file count or an additional targeted search alone',
       'cheaper model price without end-to-end evidence',
     ],
   },
@@ -318,19 +322,23 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
   })),
   rules: [
     'Persistence and planning choices do not determine implementation ownership.',
-    'Specialists perform discovery, external research, and implementation by default; root retains goals, constraints, decisions, coordination, semantic acceptance, and synthesis.',
-    'Unknown local source, flow, or responsibility triggers Explorer before root repository search; no exploratory pre-reading is needed to prepare a bounded discovery assignment.',
-    'Root direct work is limited to a known-source bounded consultation or minimal authorized low-risk edit with known scope and verification and no discovery or independent judgment; another search or dependency ends it.',
-    'File count, accumulated context, and coordination overhead do not extend the direct exception.',
-    'Known sufficiently bounded implementation goes directly to designer or worker without a mandatory Explorer stage.',
+    'Unless explicit ownership or known low-risk mechanical work stays with root, specialists perform substantive discovery, research, and implementation; root retains goals, decisions, coordination, acceptance, and synthesis.',
+    'Unknown local source, flow, or responsibility triggers Explorer before root search unless the user requests direct investigation; no preliminary discovery is needed to prepare that assignment.',
+    'Root retains known low-risk mechanical work including reviewed commits; explicit direct-work or no-delegation instruction wins. Do not reopen completed discovery for mechanical operations.',
+    'Additional searches or file count do not force delegation; preserve operator-selected model and effort, including max.',
+    'Known sufficiently bounded implementation selected for delegation goes directly to designer or worker without a mandatory Explorer stage.',
     'Do not duplicate delegated discovery; request targeted missing support and preserve bounded decision inspection plus mandatory independent verification.',
     'Report delegation failure truthfully without unrestricted root fallback; discovery-tool fallback belongs to the assigned investigator.',
-    'Treat explicit safe user direction as an ownership input; persistence choice or cheaper model price without end-to-end evidence cannot choose an owner.',
+    'Honor explicit user ownership; if independent review is prohibited, disclose the limitation and do not claim independent PASS or archive.',
+    'Each assignment has one independently checkable outcome, exact known entrypoints and skill paths, focused checks, and a return/stop condition; a broad integration label is not a bounded unit.',
+    'On native attention or a missed agreed milestone, root inspects progress and steers, narrows, or stops safely; timeout is a safety ceiling, not a progress plan.',
+    'After two consecutive attempts without new evidence or progress, return the smallest blocker instead of repeating. Use native notifications/waits without polling or custom timers.',
+    'Freeze relevant inputs before final validation; reuse fresh evidence and rerun only checks invalidated by later edits. Reconcile owned background results before the substantive handoff.',
     'Use one writer for each mutable surface and never parallelize overlapping writes.',
     'A fresh subagent instance is the default when the objective, work unit, mutable surface, or independent judgment changes.',
     'Continue an existing subagent only to steer, complete, or clarify the same bounded assignment; completed agents are not a reusable role pool.',
     'Every Oracle plan review, verification round, and approval or PASS judgment uses a fresh Oracle instance; reuse is limited to clarifying current findings.',
-    'Final verification is mandatory: root owns trivial deterministic checks; a fresh Oracle owns persisted-work and material-risk judgment.',
+    'Final verification is mandatory: root owns trivial deterministic checks; a fresh Oracle owns artifact-backed and material-risk judgment.',
     'Wait and status operations collect only the active nonterminal assignment and do not authorize later reuse.',
     'Child agents return distilled evidence instead of raw logs or file dumps.',
   ],

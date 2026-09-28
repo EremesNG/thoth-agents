@@ -115,7 +115,7 @@ function createFixture(version = '0.3.12', createTag = true): Fixture {
     'thoth-archive',
     'thoth-constitution',
     'thoth-init',
-    'thoth-work',
+    'thoth-sdd',
   ];
   for (const skill of requiredSkills) {
     mkdirSync(join(pluginWork, 'plugin', 'skills', skill), { recursive: true });
@@ -253,7 +253,7 @@ describe('thoth-agents marketplace publication', () => {
       'thoth-archive',
       'thoth-constitution',
       'thoth-init',
-      'thoth-work',
+      'thoth-sdd',
     ]);
     expect(
       registry.plugins.find(({ name }) => name === 'thoth-agents'),

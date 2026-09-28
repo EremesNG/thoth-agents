@@ -15,56 +15,53 @@ Sync Impact Report
 
 ## Principles
 
-### I. Native runtime authority
+### I. Native authority and human choice
 
-The active harness owns dispatch, capacity, status, wait, steering,
-cancellation, and terminal results. Project workflow guidance MUST NOT implement
-a scheduler, queue, execution database, or memory provider. Capability gaps
-MUST remain explicit and use a truthful sequential fallback.
+The active harness owns dispatch, status, wait, cancellation, and terminal
+results. Workflow guidance MUST NOT build a scheduler, state mirror, or process
+tools. Every change completes proportional explore, specify, and clarify
+reasoning before the orchestrator classifies by meaningful coordination and
+contract impact, uncertainty, and risk. File count alone does not increase scope:
+a clear, low-risk localized mechanical change may touch several files and remain
+small. Material product, architecture, security, and destructive decisions
+remain human-owned; unresolved material intent blocks classification and
+implementation.
 
-### II. Bounded ownership and human authority
+### II. Minimal recoverable SDD
 
-Delegation depth is one. Each mutable surface has one writer, and each new
-objective or independent judgment uses a fresh fitting specialist. Human
-approval governs material product, architecture, security, and destructive
-decisions. For a ready persisted plan, root MUST offer Oracle review (recommended)
-or direct implementation. After Oracle [OKAY], root MUST offer implementation
-(recommended) or stopping with the approved plan, even when the objective was
-authorized. Each choice defaults to its recommendation only after three confirmed
-unanswered native returns; explicit answers and Stop always win. Pending questions,
-unavailable UI/tools, failures and interruption MUST NOT count. These defaults
-MUST NOT resolve other human-owned decisions or override native restrictions.
-Root MUST preserve choices and remaining budgets across recovery without repeating
-settled choices or asking the user to choose a pipeline.
+Small, clear, low-risk work uses test-first implementation and focused
+verification without a persistent record. Substantial work uses one compact
+`.thoth/changes/<id>/<id>.md` record for grounded exploration, intent, acceptance,
+clarifications, decisions, plan, tasks, authorization, and verification. A
+patch-sized change can still require planning when coordination impact,
+uncertainty, or risk warrants it. Increased scope or risk reopens understanding
+and classification. Avoid mandatory sidecar reports, evidence directories,
+worker packets, or generated process tools. Historical changes remain untouched.
+Provider memory is independent of project records.
 
-### III. Persisted work is the recoverable agreement
+### III. Bounded ownership and verification
 
-Nontrivial or resumable work MUST use `.thoth/changes/<id>/work.yaml` as its
-canonical agreement. Per-topic context, external-unit records, and evidence MAY
-be added only when useful. `.thoth/` is canonical project state; provider memory
-is independent and MUST NOT mirror the work contract. Recovery MUST reconcile
-projected state with native liveness before redispatching work.
+Delegation depth is one and each mutable surface has one writer. Root accepts
+terminal dependency results before releasing consumers. A plan review is not
+implementation authorization or final verification. Every change is verified;
+substantial or materially risky work needs a fresh independent Oracle judgment,
+and no implementation writer approves their own work. Archive only after
+complete acceptance evidence and verification still match the actual record and
+sources.
 
-### IV. Evidence-based acceptance
+### IV. Durable governance
 
-Root MUST accept each dependency from terminal native evidence before releasing
-its consumers. Native execution SHOULD fan out every ready, conflict-free unit,
-then refill released capacity as dependencies are accepted; it MUST NOT impose a
-global wave barrier. Persisted work requires an independent fresh Oracle final
-judgment, and no implementation writer may approve its own work.
-
-### V. Minimal mechanism
-
-Use the smallest explicit workflow that preserves user intent, ownership,
-dependencies, recovery, and verification. Worktrees remain a deferred runtime
-concern until a concrete requirement authorizes them.
+Declare ADDED, MODIFIED, REMOVED, or RENAMED requirement deltas by capability and
+exact title against `.thoth/specs/`. Apply only reviewed deltas at transactional
+archive; preserve unaffected canonical requirements and historical changes.
+Recovery inspects retained transactions before retry and never blindly replays
+external effects.
 
 ## Governance
 
 - Amendments require explicit user direction, a refreshed Sync Impact Report,
-  and propagation to affected templates, instructions, and durable documents.
-- Routine work reads only the active principles relevant to its decisions and
-  risks; it does not repeat plan narratives or amend lifecycle metadata.
+  and propagation to affected templates and instructions.
+- Routine work reads relevant active principles; it does not amend lifecycle metadata.
 - MAJOR versions remove or redefine a principle or compatibility boundary.
-- MINOR versions add a principle or materially expand guidance.
+- MINOR versions add principles or materially expand guidance.
 - PATCH versions clarify wording without changing semantic behavior.

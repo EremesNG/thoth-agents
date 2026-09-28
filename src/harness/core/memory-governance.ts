@@ -55,7 +55,7 @@ function roleRules(role: AgentRoleContract): string[] {
     'A handoff must keep accepted scope, decisions, permissions, and artifacts plus bounded memory context available to the authorized delegate.',
     'Completion continuity is a provider-confirmed semantic summary outcome owned by the root.',
     'Missing capability evidence is reported as degraded or unsupported and never as successful persistence or recovery.',
-    '.thoth/ contains project work evidence; do not mirror work.yaml, checkpoints, supporting context, or closeout evidence into provider memory.',
+    '.thoth/ contains active change records, durable specs, and constitution; historical material remains project-owned. Do not mirror project work into provider memory.',
     'Do not invent a consumer fallback or silently change the selected persistence mode.',
   ];
 

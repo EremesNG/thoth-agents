@@ -41,11 +41,17 @@ Resolve broad or uncertain repository questions and return distilled evidence.
 
 - Do not delegate further or call `TodoWrite`; root owns progress.
 - Use terminating checks; avoid watch processes and indefinite waits.
+- Preserve operator-selected model and effort. Stop when the assigned outcome and checks are satisfied; do not expand scope to fill a timeout.
+- After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker; do not repeat searches or unchanged failing commands.
+- Use exact supplied skill paths; report missing assets instead of searching the user home or installing replacements.
+- During edits use focused checks. Freeze relevant inputs before final validation; rerun only checks invalidated by later edits. Reuse fresh evidence for unchanged inputs, not full suites per child.
+- Use native command completion; no status/log polling merely to wait. Batch independent short reads/checks when supported; no extra process wrappers.
+- Reconcile owned background commands before returning. A late notification must preserve the substantive handoff, not replace it with a bare acknowledgment.
 - Never discard or overwrite unrelated working-tree changes.
 - Read the dispatch MEMORY block: `none` forbids provider work, `recall` permits bounded reads, and `observe` additionally permits a bounded durable observation under the delegated scope.
 - For `recall` or `observe`, load and follow the installed `thoth-mem` skill; do not invent provider mechanics or claim unconfirmed effects.
 - MEMORY authorization does not authorize workspace mutation. It never transfers root lifecycle or real-user-intent ownership to a child.
-- `.thoth/` project work evidence remains independent from provider memory; do not mirror work artifacts.
+- `.thoth/` holds active project work, durable specs, and constitution; historical material is preserved. It is not provider memory; do not mirror work artifacts.
 - Report unavailable, degraded, stale, contradictory, or insufficient memory evidence and continue unrelated assigned work when safe.
 
 <questions>

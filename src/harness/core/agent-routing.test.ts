@@ -14,24 +14,39 @@ import {
   getAgentRole,
   renderAgentRoutingDescription,
 } from './agent-pack';
+import type { SddClassification, SddPhaseId } from './sdd';
 
 type RoutingCase = {
   id: string;
   expectedOwner: AgentRoleName;
   forbiddenOwners: AgentRoleName[];
   ownerTrigger: RegExp;
-  workflow?: 'direct' | 'persisted';
-  phase?: 'execute' | 'verify';
+  classification?: SddClassification;
+  phase?: SddPhaseId;
 };
 
 const ROUTING_CASES: RoutingCase[] = [
+  {
+    id: 'direct-root-reviewed-commits',
+    expectedOwner: 'orchestrator',
+    forbiddenOwners: ['worker', 'explorer'],
+    ownerTrigger: /retain reviewed commits/i,
+    classification: 'small',
+    phase: 'implement',
+  },
+  {
+    id: 'direct-root-explicit-request',
+    expectedOwner: 'orchestrator',
+    forbiddenOwners: ['worker', 'explorer', 'oracle'],
+    ownerTrigger: /honor explicit direct-work or no-delegation instructions/i,
+  },
   {
     id: 'writer-designer-ui',
     expectedOwner: 'designer',
     forbiddenOwners: ['orchestrator', 'worker'],
     ownerTrigger: /user-facing UI\/UX|visual quality/i,
-    workflow: 'direct',
-    phase: 'execute',
+    classification: 'small',
+    phase: 'implement',
   },
   {
     id: 'writer-worker-correctness',
@@ -39,8 +54,8 @@ const ROUTING_CASES: RoutingCase[] = [
     forbiddenOwners: ['orchestrator', 'designer'],
     ownerTrigger:
       /multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk/i,
-    workflow: 'direct',
-    phase: 'execute',
+    classification: 'substantial',
+    phase: 'implement',
   },
   {
     id: 'writer-worker-known',
@@ -48,8 +63,8 @@ const ROUTING_CASES: RoutingCase[] = [
     forbiddenOwners: ['orchestrator', 'designer'],
     ownerTrigger:
       /known bounded nonvisual implementation.*regardless of complexity/i,
-    workflow: 'persisted',
-    phase: 'execute',
+    classification: 'small',
+    phase: 'implement',
   },
   {
     id: 'direct-root-known',
@@ -57,8 +72,8 @@ const ROUTING_CASES: RoutingCase[] = [
     forbiddenOwners: ['designer', 'worker'],
     ownerTrigger:
       /known source.*bounded question.*minimal authorized low-risk edit.*source, scope, and verification are known/i,
-    workflow: 'direct',
-    phase: 'execute',
+    classification: 'small',
+    phase: 'implement',
   },
   {
     id: 'read-explorer-discovery',
@@ -66,7 +81,6 @@ const ROUTING_CASES: RoutingCase[] = [
     forbiddenOwners: ['orchestrator', 'designer', 'worker'],
     ownerTrigger:
       /source.*flow.*responsibility.*ownership.*behavior.*unknown or uncertain/i,
-    workflow: 'persisted',
   },
   {
     id: 'read-librarian-external',
@@ -80,7 +94,7 @@ const ROUTING_CASES: RoutingCase[] = [
     forbiddenOwners: ['orchestrator', 'designer', 'worker'],
     ownerTrigger:
       /selected focused plan review, persistent diagnosis, material architecture or security risk/i,
-    workflow: 'persisted',
+    classification: 'substantial',
     phase: 'verify',
   },
 ];
@@ -94,8 +108,8 @@ const ROUTING_FIXTURE = JSON.parse(
   cases: Array<{
     id: string;
     task: string;
-    workflow?: 'direct' | 'persisted';
-    phase?: 'execute' | 'verify';
+    classification?: SddClassification;
+    phase?: SddPhaseId;
     expected_owner?: AgentRoleName;
     forbidden_owners?: AgentRoleName[];
     ownership_rationale?: string;
@@ -111,9 +125,9 @@ const ROUTING_FIXTURE = JSON.parse(
 
 const ACTIVE_OWNERSHIP_POLICY_PATHS = [
   'AGENTS.md',
-  'skills/thoth-work/SKILL.md',
+  'skills/thoth-sdd/SKILL.md',
   'docs/agent/agents-and-delegation.md',
-  'docs/workflow.md',
+  'docs/sdd-pipeline.md',
 ] as const;
 
 type RenderedSurface = {
@@ -157,7 +171,7 @@ function renderRoutingSurfaces(): RenderedSurface[] {
 describe('canonical agent routing', () => {
   test.each(
     ROUTING_CASES,
-  )('$id selects one exact owner from semantic decisions rather than route or name presence', (routingCase) => {
+  )('$id selects one exact owner from semantic decisions rather than classification or name presence', (routingCase) => {
     const documentedCase = ROUTING_FIXTURE.cases.find(
       ({ id }) => id === routingCase.id,
     );
@@ -171,7 +185,9 @@ describe('canonical agent routing', () => {
       );
 
     expect(documentedCase).toMatchObject({
-      ...(routingCase.workflow ? { workflow: routingCase.workflow } : {}),
+      ...(routingCase.classification
+        ? { classification: routingCase.classification }
+        : {}),
       ...(routingCase.phase ? { phase: routingCase.phase } : {}),
       expected_owner: routingCase.expectedOwner,
       forbidden_owners: routingCase.forbiddenOwners,
@@ -260,7 +276,7 @@ describe('canonical agent routing', () => {
     }
   });
 
-  test('consumes documented workflow-owner cross-product evidence', () => {
+  test('consumes documented classification-independent owner cross-product evidence', () => {
     const documentedIds = ROUTING_FIXTURE.cases
       .filter(({ expected_owner }) => expected_owner)
       .map(({ id }) => id);
@@ -271,16 +287,25 @@ describe('canonical agent routing', () => {
     expect(ROUTING_CASES).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          workflow: 'direct',
+          classification: 'small',
           expectedOwner: 'designer',
         }),
         expect.objectContaining({
-          workflow: 'direct',
+          classification: 'substantial',
           expectedOwner: 'worker',
         }),
         expect.objectContaining({
-          workflow: 'direct',
+          classification: 'small',
           expectedOwner: 'orchestrator',
+        }),
+        expect.objectContaining({
+          classification: 'small',
+          expectedOwner: 'worker',
+        }),
+        expect.objectContaining({ expectedOwner: 'explorer' }),
+        expect.objectContaining({
+          classification: 'substantial',
+          expectedOwner: 'oracle',
         }),
       ]),
     );
@@ -354,7 +379,7 @@ describe('canonical agent routing', () => {
     }));
 
     for (const { path, content } of activePolicies) {
-      expect(content, path).toMatch(/workflow|work contract|governance/i);
+      expect(content, path).toMatch(/workflow|work contract|governance|SDD/i);
       expect(content, path).not.toMatch(/Direct alone permits/i);
       expect(content, path).not.toMatch(
         /artifact-backed implementation always selects/i,
@@ -365,7 +390,9 @@ describe('canonical agent routing', () => {
     expect(combined).not.toMatch(/delegate only for net\s+gain/i);
     expect(combined).not.toMatch(/prefer root continuity/i);
     expect(combined).toMatch(/specialists?.*by default/i);
-    expect(combined).toMatch(/another search or dependency/i);
+    expect(combined).not.toMatch(/another search or dependency ends/i);
+    expect(combined).toMatch(/root retains known low-risk mechanical work/i);
+    expect(combined).toMatch(/preserve operator-selected model and effort/i);
 
     const rootInstructions = activePolicies.find(
       ({ path }) => path === 'AGENTS.md',

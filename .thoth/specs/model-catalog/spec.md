@@ -58,12 +58,7 @@ The system MUST preserve supported manual model definitions and their explicitly
 
 ### Requirement: Apply role-specific specialist effort
 
-The built-in OpenAI defaults MUST preserve the existing root setting and set
-`explorer` to low, `librarian` to high, `oracle` and `designer` to medium, and
-`worker` to max with `gpt-6-luna` (provider-qualified where required). Claude
-MUST set Worker to `sonnet` with medium effort. Valid operator overrides MUST be
-preserved, and every harness that supports effort metadata MUST render it
-without silently downgrading `max`.
+The built-in OpenAI defaults MUST retain the root's configured `xhigh` effort and assign `explorer`: low, `librarian`: high, `oracle` and `designer`: medium, and `worker`: max using `gpt-6-luna` (provider-qualified where required). Valid operator overrides MUST remain effective and every harness that supports effort metadata MUST render it without silently downgrading `max`.
 
 #### Scenario: US2 - Receive consistent routing across harnesses 1
 
@@ -81,7 +76,7 @@ without silently downgrading `max`.
 
 - **GIVEN** the built-in OpenAI preset
 - **WHEN** default roles are resolved
-- **THEN** existing root defaults remain unchanged and Worker resolves to `gpt-6-luna` with `max` effort without fallback
+- **THEN** root retains its `xhigh` default while `worker` resolves to `gpt-6-luna` with `max` effort and no legacy quick/deep writer tier
 
 #### Scenario: US3 - Spend specialist effort proportionally 2
 

@@ -3,7 +3,7 @@
 ## System shape
 
 `src/index.ts` composes the OpenCode plugin. `src/harness/` owns the canonical
-six-role and work contracts plus OpenCode, Codex, Claude, and Pi adapters. `skills/`
+six-role and SDD contracts plus OpenCode, Codex, Claude, and Pi adapters. `skills/`
 is the canonical thoth-owned workflow bundle. `src/cli/` owns installation plus
 status, repair, model, and TUI operations.
 
@@ -16,7 +16,7 @@ persistence, receipts, state, and recovery remain outside this package.
 1. OpenCode CLI installation configures the plugin, materializes the five
    thoth-owned skills under `~/.config/opencode/skills/`, installs external
    skills, and registers `/thoth-init`; init itself only synchronizes project
-   `.thoth/` governance.
+   minimum `.thoth/` governance.
 2. Integration generation renders Claude agents from canonical prompt source and
    assembles one shared `plugin/` bundle with a single copy of the five
    thoth-owned skills.
@@ -44,7 +44,7 @@ persistence, receipts, state, and recovery remain outside this package.
 | OpenCode runtime | `src/index.ts`, hooks, MCPs, tools |
 | Pi delegation runtime | Pi plus the selected external delegation package; thoth-agents supplies only policy, prompts, managed resources, installation, and diagnostics |
 | Roles/prompts | `src/agents/`, `src/config/`, `src/harness/core/agent-pack.ts` |
-| Work agreement and execution policy | `src/harness/core/workflow.ts` |
+| Adaptive SDD route and phase policy | `src/harness/core/sdd.ts` |
 | Detailed work/init/archive contracts | `skills/` |
 | Generated shared plugin | `src/harness/generate-integration-packages.ts`, `plugin/` |
 | Installation and operations CLI | `src/cli/` |
@@ -53,12 +53,13 @@ persistence, receipts, state, and recovery remain outside this package.
 ## Invariants
 
 - OpenCode is default; OpenCode, Codex, Claude, and Pi guarantees differ.
-- Root records the approved work agreement under `.thoth/` and loads only
-  relevant operation/unit context. Existing authorization persists.
+- Every change completes proportional understanding before classification.
+  Small clear low-risk work is artifact-free; substantial work uses one
+  `.thoth/changes/<id>/<id>.md` record and loads only the current phase.
 - Native ready work fills capacity before waiting; freed slots are refilled and
   each consumer starts only after its own accepted fresh dependencies.
-- Recovery reconciles bounded checkpoints, owned code and native liveness;
-  checkpoints are not an execution lifecycle or proof of acceptance.
+- Recovery reconciles the single record, owned code and native liveness;
+  a file is not an execution lifecycle or proof of acceptance.
 - Persisted work and material risk require fresh independent Oracle verification
   before closeout. Optional plan review does not replace final verification.
 - Semantic role selection is route-independent: `librarian` handles current or
@@ -78,7 +79,8 @@ persistence, receipts, state, and recovery remain outside this package.
   evidence. An explicit local Pi package install records thoth-agents without
   provider setup; provider assets and recovery remain independently owned.
 - Dispatch memory authorization is `none`, `recall`, or `observe`, independent
-  of workspace mode; root lifecycle never transfers and `.thoth/` remains canonical.
+  of workspace mode; root lifecycle never transfers. `.thoth/` is active project
+  governance; historical material remains preserved.
 - Both marketplaces resolve to the shared `plugin/` bundle; harness-specific
   manifests and MCP surfaces coexist without duplicating canonical skills.
 - Build synchronizes the shared plugin before compilation and schema generation.

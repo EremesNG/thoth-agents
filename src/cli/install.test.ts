@@ -592,7 +592,7 @@ describe('install', () => {
       expect(output).toContain('progressive-context-router');
       expect(output).toContain('architectural-grilling');
       expect(output).toContain('thoth-init');
-      expect(output).toContain('thoth-work');
+      expect(output).toContain('thoth-sdd');
       expect(output).toContain('thoth-constitution');
       expect(output).toContain('thoth-archive');
       expect(output).toContain('plan-reviewer');

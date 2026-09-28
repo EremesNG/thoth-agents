@@ -172,7 +172,7 @@ function formatConfigSummary(dryRun: boolean | undefined): string {
   lines.push(`  ${SYMBOLS.check} Seven-role adaptive thoth-agents roster`);
   lines.push(`  ${SYMBOLS.check} OpenAI models by default`);
   lines.push(
-    `  ${SYMBOLS.check} AI-first work contracts and resumable execution`,
+    `  ${SYMBOLS.check} Proportional SDD and ID-named substantial-change records`,
   );
   lines.push(
     `  ${SYMBOLS.check} ${dryRun ? 'thoth-mem setup plan confirmed' : 'thoth-mem setup completed through its provider-owned installer'}`,
@@ -457,7 +457,7 @@ async function runInstall(
   const modelsInfo = 'Default configuration uses OpenAI models.';
   console.log(`${BOLD}${modelsInfo}${RESET}`);
   console.log(
-    `  ${DIM}Includes the seven-role adaptive roster, native parallel delegation, and AI-first work contracts.${RESET}`,
+    `  ${DIM}Includes the seven-role adaptive roster, native parallel delegation, and proportional SDD governance.${RESET}`,
   );
   return 0;
 }

@@ -49,10 +49,16 @@ describe('agent-pack contract', () => {
       /source.*scope.*verification.*known.*no discovery.*independent judgment/i,
     );
     expect(ownership.directException.join(' ')).toMatch(
+      /root retains reviewed commits/i,
+    );
+    expect(ownership.directException.join(' ')).not.toMatch(
       /another search or dependency.*ends/i,
     );
+    expect(ownership.userDirection).toMatch(
+      /no-delegation instruction wins.*preserve operator-selected model and effort/i,
+    );
     expect(ownership.insufficientSignals.join(' ')).toMatch(
-      /file count.*accumulated context.*coordination overhead/i,
+      /file count.*targeted search/i,
     );
   });
 

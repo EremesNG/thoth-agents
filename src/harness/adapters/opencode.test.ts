@@ -26,19 +26,19 @@ describe('OpenCode harness adapter v0.3', () => {
     expect(rendered.worker.model).toBe('test/worker');
   });
 
-  test('keeps adaptive routing and independent review in native wording', () => {
+  test('keeps proportional classification and independent review in native wording', () => {
     const configs = renderOpenCodeAgentConfigs();
     const root = configs.orchestrator.prompt ?? '';
     const oracle = configs.oracle.prompt ?? '';
 
     expect(root).toContain('adaptive root');
-    expect(root).toContain('.thoth/changes/<id>/work.yaml');
-    expect(root).toContain('bundled `thoth-work` skill');
+    expect(root).toContain('.thoth/changes/<id>/<id>.md');
+    expect(root).toContain('bundled `thoth-sdd` skill');
     expect(root).toContain(
-      'Use a fresh @oracle for persisted work and materially risky direct work',
+      'substantial or materially risky work requires fresh read-only @oracle judgment',
     );
     expect(root).toContain(
-      'focused root checks suffice only for trivial deterministic work',
+      'Trivial deterministic low-risk work may use focused root checks',
     );
     expect(root).not.toMatch(/@sdd-(?:specify|plan|tasks)/);
     expect(root).toContain('`task`');
@@ -46,7 +46,7 @@ describe('OpenCode harness adapter v0.3', () => {
     expect(root).not.toContain('collaboration.spawn_agent');
     expect(root).not.toContain('requirements-interview');
 
-    expect(oracle).toContain('matching bundled thoth-work guidance');
+    expect(oracle).toContain('matching bundled thoth-sdd guidance');
     expect(oracle).toContain('Reject self-review');
     expect(oracle).toContain('Do not mutate the workspace');
   });

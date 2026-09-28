@@ -8,7 +8,7 @@ Pi installations MUST provide `simplify`, `tdd`, `progressive-context-router`, a
 
 #### Scenario: US1 - Install the complete Pi agent pack 1
 
-- **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
+- **GIVEN** Pi `0.86.1` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
 - **WHEN** `thoth-agents install --agent=pi` is applied
 - **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, five canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
 
@@ -36,7 +36,7 @@ For Pi, the installer MUST invoke the canonical `skills` CLI with the concrete `
 
 #### Scenario: US1 - Install the complete Pi agent pack 1
 
-- **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
+- **GIVEN** Pi `0.86.1` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
 - **WHEN** `thoth-agents install --agent=pi` is applied
 - **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, five canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
 
@@ -52,9 +52,9 @@ For Pi, the installer MUST invoke the canonical `skills` CLI with the concrete `
 - **WHEN** installation finishes
 - **THEN** it reports bounded partial-state diagnostics and does not record complete installation
 
-### Requirement: Keep work execution independent of the CLI
+### Requirement: Keep SDD runtime independent of the CLI
 
-Installation MAY invoke Pi, npm, the skills CLI, and provider setup, but after installation the native Pi package MUST supply its extension and thoth-owned workflow contracts without invoking the thoth-agents CLI, `npx skills add`, or a network fetch during work execution.
+Installation MAY invoke Pi, npm, the skills CLI, and provider setup, but after installation the native Pi package MUST supply its extension and thoth-owned SDD contracts without invoking the thoth-agents CLI, `npx skills add`, or a network fetch during an SDD phase.
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 1
 
@@ -70,7 +70,7 @@ Installation MAY invoke Pi, npm, the skills CLI, and provider setup, but after i
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 3
 
-- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **GIVEN** `pi-subagents@0.71.0` requires filesystem definitions
 - **WHEN** the package synchronizer runs
 - **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
@@ -88,7 +88,7 @@ Installation MAY invoke Pi, npm, the skills CLI, and provider setup, but after i
 
 ### Requirement: Preserve harness-native discovery
 
-Pi MUST discover the five thoth-owned workflow skills directly from the installed `thoth-agents` package manifest and MUST discover exactly five package-owned specialist definitions from Pi's global agent directory; setup MUST remove only provably attributable legacy copied skill duplicates, MUST install the four external skills from their canonical repositories, and MUST remain independent of CLI/network access during work execution.
+Pi MUST discover the five thoth-owned workflow skills directly from the installed `thoth-agents` package manifest and MUST discover exactly five package-owned specialist definitions from Pi's global agent directory; setup MUST remove only provably attributable legacy copied skill duplicates, MUST install the four external skills from their canonical repositories, and MUST remain independent of CLI/network access during SDD execution.
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 1
 
@@ -104,7 +104,7 @@ Pi MUST discover the five thoth-owned workflow skills directly from the installe
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 3
 
-- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **GIVEN** `pi-subagents@0.71.0` requires filesystem definitions
 - **WHEN** the package synchronizer runs
 - **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 

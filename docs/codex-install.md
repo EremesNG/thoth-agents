@@ -99,25 +99,32 @@ In each target repository invoke:
 $thoth-init
 ```
 
-This final skill step is offline and idempotent. It creates only the minimum
-work directories, a missing project constitution, and init metadata under
-`.thoth/`. Work-contract examples and helpers stay in the installed
-`thoth-work` plugin skill. Agent/global installation remains CLI-owned.
+This final skill step is offline and idempotent. It creates only missing
+`.thoth/` governance, including `.thoth/constitution.md` and `.thoth/specs/`,
+preserving existing project-owned content. It refuses a legacy active OpenSpec
+tree rather than creating a duplicate store. Phase references and validators
+stay in the installed `thoth-sdd` plugin skill. Agent/global installation
+remains CLI-owned.
 
-## Delegation and work contracts
+## Delegation and proportional SDD
 
-The root handles bounded work directly and delegates only for net gain. Children
-never delegate and each mutable surface has one writer. The bundled
-`thoth-work` skill keeps agreed scope, acceptance and units under `.thoth/`.
-Human approval during planning authorizes execution within the recorded bounds;
-no routine route or repeated implementation question is required.
+Every change completes proportional explore, specify, and clarify before
+classification; no phase forces a document, agent, or interview. The root
+classifies by meaningful coordination, uncertainty, and risk. File count alone
+does not increase scope: clear low-risk localized mechanical work may touch
+several files and stay small. Small work uses test-first implementation and
+focused verification without a record. Substantial work uses one
+`.thoth/changes/<id>/<id>.md` record; no alias or sidecar report is permitted.
 
-Codex native collaboration owns dispatch, status, wait, cancellation and terminal
-results. Root dispatches all admitted independent ready units before waiting,
-refills freed capacity and accepts fresh upstream outputs before consumers start.
-Resume reads relevant checkpoints and current owned files, and reconciles native
-liveness before assigning another writer. A fresh read-only Oracle verifies
-persisted work; see [workflow](workflow.md) for evidence and recovery limits.
+Optional selected Oracle plan review remains separate from the post-review
+Implement (Recommended) / Stop decision; review never grants authorization or
+replaces final verification. Codex native collaboration owns dispatch, status,
+wait, cancellation, and terminal results. Root dispatches independent ready
+units before waiting, refills freed capacity, and accepts fresh upstream outputs
+before consumers start. Resume reads the compact record and current owned files,
+then reconciles native liveness before assigning another writer. A fresh
+read-only Oracle verifies substantial or materially risky work; see [SDD](sdd-pipeline.md)
+for evidence and limits.
 
 Standalone TOMLs are native Codex configuration layers, but role selection and
 some permission constraints remain instruction-level in the collaboration
@@ -147,7 +154,8 @@ provider targets, or emulates provider mechanics.
 During runtime the root follows the installed thoth-mem skill for recall,
 durable lessons, compaction, and semantic completion. Delegated `none`, `recall`,
 or `observe` authorization is independent from Codex workspace permissions and
-never transfers root lifecycle. `.thoth/` remains the canonical project-work store.
+never transfers root lifecycle. `.thoth/` holds active change records, durable
+specs, and constitution; historical material remains preserved.
 
 ## Upstream references
 

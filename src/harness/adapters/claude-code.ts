@@ -157,7 +157,7 @@ export function renderClaudeCodeRootInstructions(
     rootPrompt,
     '<claude-code-runtime>',
     '- You are the Claude Code adaptive root activated by plugin settings.json.',
-    `- Use Agent for specialist-default work with \`subagent_type\`: ${specialists}. Root follows the bounded direct exception. Keep the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
+    `- When delegation is selected, use Agent with \`subagent_type\`: ${specialists}. Honor shared ownership and explicit direct-work instructions. Keep the ${CLAUDE_CODE_SUBAGENT_NAMESPACE}: prefix.`,
     '- Subagents cannot delegate further. Parallelize only independent work and maintain one writer per mutable surface.',
     '- Read-only roles deny Write and Edit while retaining other inherited tools, including MCP tools. Coordination-agent path scope remains instruction-level.',
     '- Use AskUserQuestion only for blocking material choices and TodoWrite only for genuine multi-step progress.',
@@ -218,7 +218,7 @@ function createPluginManifest(
     name: 'thoth-agents',
     version: readRootPackageVersion(context),
     description:
-      'Adaptive multi-harness agent pack with six roles and an AI-first persisted-work bundle for Claude Code.',
+      'Adaptive multi-harness agent pack with six roles and proportional SDD governance for Claude Code.',
     author: { name: 'thoth-agents' },
   };
 }
@@ -266,7 +266,7 @@ function renderOrchestratorArtifact(config?: PluginConfig): HarnessArtifact {
     name: 'orchestrator',
     description:
       orchestrator?.responsibility ??
-      'Adaptive root coordinator for human agreement, persisted work, and specialist dispatch.',
+      'Adaptive root coordinator for human agreement, SDD classification, and specialist dispatch.',
     model: 'inherit',
     instructions: renderClaudeCodeRootInstructions(config),
   });

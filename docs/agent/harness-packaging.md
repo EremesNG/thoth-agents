@@ -4,7 +4,7 @@
 
 - `src/harness/registry.ts`: supported/default harnesses
 - `src/harness/core/agent-pack.ts`: six-role contract
-- `src/harness/core/workflow.ts`: route and ownership contract
+- `src/harness/core/sdd.ts`: route, phase and artifact contract
 - `src/harness/adapters/`: native translation
 - `src/harness/generate-integration-packages.ts`: shared Codex/Claude plugin
 - `plugin/`: generated shared distribution bundle
@@ -38,7 +38,7 @@
   Lazy imports from a natively loaded compiled extension bypass those aliases.
   Root model and external override precedence remain Pi-owned.
 - Both central catalog entries resolve to one `plugin/` bundle containing one copy of the
-  five canonical thoth-owned skills, including `plan-reviewer`.
+  five canonical thoth-owned skills, including `thoth-sdd` and `plan-reviewer`.
   Harness-specific manifests and MCP files
   coexist in that bundle. External skills are installed from their source
   repositories by the mandatory CLI flow; published installs then invoke

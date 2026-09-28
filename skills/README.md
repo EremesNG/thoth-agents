@@ -1,16 +1,15 @@
 # Bundled thoth-owned skills
 
-This directory is the canonical, versioned source for skills owned by
-thoth-agents. `pnpm run integration:sync` copies those skills into the Codex and
-Claude Code plugins; `npx thoth-agents install --agent=opencode` materializes
-the same packaged skill trees globally under `~/.config/opencode/skills/`.
+This directory is the canonical, versioned source for owned skills. The installer
+and `pnpm run integration:sync` expose the same bundle in supported harnesses.
 
-Owned workflow skills are `thoth-init`, `thoth-work`, `thoth-constitution`,
-`thoth-archive`, and `plan-reviewer`. The last one implements optional,
-read-only Oracle review when independent plan judgment adds value. Mandatory external
-skills (`simplify`, `tdd`,
-`progressive-context-router`, and `architectural-grilling`) are not copied here:
-the thoth-agents installer invokes `npx skills add` against their canonical
-repositories so they retain a single source of truth. `thoth-init` only
-initializes or synchronizes minimum project `.thoth/` governance and never
-installs skills.
+Owned workflow skills are `thoth-init`, `thoth-sdd`, `thoth-constitution`,
+`thoth-archive`, and `plan-reviewer`. `thoth-sdd` owns proportional
+understanding/classification, the single ID-named substantial-change record, and
+maintained validation. The optional plan reviewer is read-only; archive applies
+declared `.thoth/specs/` deltas transactionally.
+
+External skills (`simplify`, `tdd`, `progressive-context-router`, and
+`architectural-grilling`) are not copied here. Installation handles them; never
+fetch or install dependencies during an active SDD phase. `thoth-init` only
+initializes canonical `.thoth/` governance and preserves existing records.

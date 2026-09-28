@@ -60,12 +60,6 @@ describe('bundled thoth-init', () => {
         `${JSON.stringify({ name: 'thoth-agents', version: '0.3.0' })}\n`,
       );
       generateIntegrationPackages({ projectRoot: packageRoot });
-      mkdirSync(join(project, 'openspec', 'memory'), { recursive: true });
-      writeFileSync(
-        join(project, 'openspec', 'memory', 'constitution.md'),
-        '# Legacy governance remains untouched\n',
-      );
-
       const script = join(
         packageRoot,
         'plugin',
@@ -84,32 +78,21 @@ describe('bundled thoth-init', () => {
       });
       for (const reportedPath of [
         ...firstReport.created,
-        ...firstReport.managed,
         ...firstReport.preserved,
       ]) {
-        expect(reportedPath).toContain(join(project, '.thoth'));
+        expect(relative(project, reportedPath).split(/[\\/]/)[0]).toBe(
+          '.thoth',
+        );
       }
       for (const path of [
         join('.thoth', 'changes'),
         join('.thoth', 'changes', 'archive'),
         join('.thoth', 'specs'),
         join('.thoth', 'constitution.md'),
-        join('.thoth', '.thoth-agents.json'),
       ]) {
         expect(existsSync(join(project, path)), path).toBe(true);
       }
-      expect(
-        JSON.parse(
-          readFileSync(join(project, '.thoth', '.thoth-agents.json'), 'utf8'),
-        ),
-      ).toEqual({
-        schemaVersion: 1,
-        initializedBy: 'thoth-agents',
-        workflow: 'thoth-work',
-      });
-      expect(
-        readFileSync(join(project, '.thoth', 'constitution.md'), 'utf8'),
-      ).toContain('Native runtime authority');
+      expect(existsSync(join(project, 'openspec'))).toBe(false);
       const constitutionValidation = spawnSync(
         process.execPath,
         [
@@ -131,18 +114,14 @@ describe('bundled thoth-init', () => {
         0,
       );
       expect(
-        readFileSync(
-          join(project, 'openspec', 'memory', 'constitution.md'),
-          'utf8',
-        ),
-      ).toBe('# Legacy governance remains untouched\n');
+        readFileSync(join(project, '.thoth', 'constitution.md'), 'utf8'),
+      ).toContain('Native authority and human choice');
 
       const second = runInit(script, project, unrelatedCwd);
       expect(second.status, second.stderr).toBe(0);
       expect(JSON.parse(second.stdout)).toMatchObject({
         status: 'ready',
         created: [],
-        managed: [],
       });
     } finally {
       rmSync(packageRoot, { recursive: true, force: true });
@@ -163,7 +142,7 @@ describe('bundled thoth-init', () => {
     const constitutionPath = join(project, '.thoth', 'constitution.md');
 
     try {
-      mkdirSync(join(project, '.thoth'));
+      mkdirSync(join(project, '.thoth'), { recursive: true });
       writeFileSync(constitutionPath, '# Project-owned constitution\r\n');
       const result = runInit(script, project);
 
@@ -202,7 +181,7 @@ describe('bundled thoth-init', () => {
       symlinkSync(linkedTarget, join(linkedProject, '.thoth'), 'junction');
       const linked = runInit(script, linkedProject);
       expect(linked.status).not.toBe(0);
-      expect(linked.stderr).toContain('must be a directory');
+      expect(linked.stderr).toContain('symlinked ancestor');
       expect(readdirSync(linkedTarget)).toEqual([]);
     } finally {
       rmSync(collisionProject, { recursive: true, force: true });
@@ -224,7 +203,7 @@ describe('canonical workflow bundle contracts', () => {
       generateIntegrationPackages({ projectRoot: packageRoot });
       expect(THOTH_OWNED_SKILL_NAMES).toEqual([
         'thoth-init',
-        'thoth-work',
+        'thoth-sdd',
         'thoth-constitution',
         'thoth-archive',
         'plan-reviewer',
@@ -283,7 +262,7 @@ describe('canonical workflow bundle contracts', () => {
           'utf8',
         );
         const relativeAssets = [
-          ...skill.matchAll(/`<skill-dir>\/([^`]+)`/g),
+          ...skill.matchAll(/`<skill-dir>\/([^`{}]+)`/g),
           ...skill.matchAll(/\]\((?!https?:)([^)#]+)(?:#[^)]+)?\)/g),
         ].map((match) => match[1]);
         for (const asset of relativeAssets) {
@@ -297,12 +276,18 @@ describe('canonical workflow bundle contracts', () => {
       );
       expect(initSkill).toContain('node "<skill-dir>/scripts/init.mjs"');
       expect(initSkill).toContain('`.thoth/changes/archive/`');
-      expect(initSkill).toMatch(/Existing `openspec\/`.*remains\s+untouched/s);
-      const workSkill = readFileSync(
-        join(canonicalRoot, 'thoth-work', 'SKILL.md'),
+      expect(initSkill).toMatch(
+        /preserve an existing\s+constitution and all existing `\.thoth` change\/spec history byte-for-byte/i,
+      );
+      const sddSkill = readFileSync(
+        join(canonicalRoot, 'thoth-sdd', 'SKILL.md'),
         'utf8',
       );
-      expect(workSkill).toContain('`.thoth/changes/<id>/work.yaml`');
+      expect(sddSkill).toContain('`.thoth/changes/<id>/<id>.md`');
+      expect(sddSkill).toMatch(/file count alone never increases scope/i);
+      expect(sddSkill).not.toMatch(
+        /\b(?:Direct|Accelerated|Full)\s+(?:route|work|is)/i,
+      );
     } finally {
       rmSync(packageRoot, { recursive: true, force: true });
     }

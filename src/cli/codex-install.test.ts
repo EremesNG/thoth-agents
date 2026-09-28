@@ -303,19 +303,26 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('thoth-agents:codex-root:start -->\n<role>');
       expect(root).toContain('adaptive root');
       expect(root).toContain('<implementation-ownership>');
-      expect(root).toContain('work.yaml');
+      expect(root).toContain('.thoth/changes/<id>/<id>.md');
       expect(root).toMatch(
         /unknown local source, flow, or responsibility triggers Explorer before root search/i,
       );
-      expect(root).toContain('checkpoint');
+      expect(root).toContain('native liveness');
       expect(root).toContain('maximum delegation depth is 1');
-      expect(root).toContain('bundled `thoth-work` skill');
+      expect(root).toContain('bundled `thoth-sdd` skill');
       expect(root).toMatch(
-        /fresh.*oracle.*persisted|persisted.*fresh.*oracle/i,
+        /substantial or materially risky work requires fresh read-only [^\n]*oracle[^\n]* judgment/i,
+      );
+      expect(root).toContain(
+        'Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance.',
       );
       expect(root).toMatch(
-        /Direct exception: authorized low-risk consult\/edit.*source, scope, and checks known/i,
+        /root retains known low-risk mechanical work, including reviewed commits/i,
       );
+      expect(root).toMatch(
+        /explicit direct-work or no-delegation instruction wins/i,
+      );
+      expect(root).not.toMatch(/another search or dependency ends it/i);
       expect(root).not.toMatch(/sdd-(?:specify|plan|tasks) subagent/);
       expect(root).toContain('request_user_input');
       expect(root).toContain('omit `autoResolutionMs` entirely');

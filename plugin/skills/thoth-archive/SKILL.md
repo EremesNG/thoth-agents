@@ -1,8 +1,8 @@
 ---
 name: thoth-archive
-description: Close independently verified Thoth work by applying explicit reviewed durable updates and preserving the change in a dated archive.
+description: Transactionally apply declared .thoth/specs deltas and archive independently verified substantial SDD changes.
 license: MIT
-compatibility: Requires Node.js >=22.19 and the installed sibling thoth-work skill.
+compatibility: Requires Node.js >=22.19 and installed sibling thoth-sdd skill.
 metadata:
   author: thoth-agents
   version: "2.0"
@@ -10,49 +10,43 @@ metadata:
 
 # Thoth Archive
 
-Root closes a persisted change only after native writers have terminated, each
-unit and acceptance criterion has fresh accepted evidence, and a fresh read-only
-Oracle has returned PASS against the actual agreement, diff and checks. A
-structural validation result is not independent approval. Existing execution
-authorization includes routine closeout within the agreed scope.
+Root archives only after the implementation writer has terminated and a fresh
+independent Oracle PASS has covered the actual change, diff, checks, and risks.
+Structural closeout validation is not approval. The single record must have all
+tasks complete, explicit plan-review disposition and implementation authorization,
+every acceptance outcome's concrete PASS check/evidence, reviewed-record and
+source digests, reviewed canonical baselines for every affected capability, and
+`**Archive**: READY`. Each affected canonical spec is covered in that same record
+by its SHA-256 `Source` entry or an explicit `absent` entry. Missing or stale
+coverage blocks before canonical or archive changes. No verification or archive
+report is required or allowed.
 
-1. Record unit/acceptance results and independent verification in `work.yaml`.
-   Record definition and evidence fingerprints, relevant input/output digests,
-   and the agreement/technical fingerprints covered by final verification.
-2. Review `durableUpdates`: explicit capability additions, replacements, removals
-   or renames under `.thoth/specs/<capability>/spec.md`. For replacements preserve
-   unaffected requirements. Verify sources and raw-byte SHA-256 digests.
-3. Run the installed sibling `thoth-work/scripts/work.mjs` validator through
-   `closeout`. Fix stale or incomplete evidence; do not weaken acceptance.
-4. Resolve `<skill-dir>` to this installed skill's directory and run:
+Run the installed sibling validator at `--through closeout`, then:
 
 ```text
-node "<skill-dir>/scripts/archive.mjs" --project <repository-root> --change .thoth/changes/<id> --date YYYY-MM-DD --json
+node "<skill-dir>/scripts/archive.mjs" --change .thoth/changes/<id> --date YYYY-MM-DD --json
 ```
 
-Return the archive path and durable files updated. No separate archive report
-is required. The complete change directory moves to
-`.thoth/changes/archive/<date>-<id>/`. Historical references retain their original
-repository-relative basis; map the original change root to this archive when
-inspecting old evidence. Active resume operates on current changes only.
+The shipped `--project <repository-root>` option is also accepted and checked
+against the change location. JSON includes the stable change ID, archive path,
+record path, and updated capabilities.
 
-The script acquires a shared archive transaction with atomic directory creation,
-then revalidates closeout evidence and preflights all targets under that lock.
-It captures displaced originals and verifies their bytes, and installs new files
-exclusively without overwriting a concurrent creation. Additions never overwrite
-existing files; replacements, removals and
-renames require `expectedDigest`. Sources require `sourceDigest`. No undeclared
-specification changes are applied. Handled failures restore changed targets;
-concurrent edits are preserved and reported rather than overwritten by rollback.
+The script validates before creating the transaction, revalidates under its
+exclusive transaction, and checks actual reviewed baselines again immediately
+before mutation. It applies only declared ADDED/MODIFIED/REMOVED/RENAMED
+exact-title requirements to `.thoth/specs/<capability>/spec.md`, preserving
+unaffected requirements. It then moves the active
+`.thoth/changes/<id>/<id>.md` record to
+`.thoth/changes/archive/<date>-<id>/<id>.md`. The filename and identity remain
+unchanged; the date appears only in the archive directory. Historical changes
+are preserved.
 
-Forced process/OS termination is not crash-atomic. A retained
-`.thoth/.archive-transaction/recovery.json` holds bounded before/after content and paths.
-The helper refuses another archive while an unfinished transaction exists.
-Inspect actual durable files, the original and archive directories, and these
-backups before deciding to complete or restore it; never blindly replay a
-partially applied external effect. Unmanaged changes to directory topology during
-execution are outside this guarantee. This backup is a filesystem transaction aid,
-not an agent lifecycle, scheduler or event log.
-
-This operation is offline. Do not invoke installers, download skills, modify
-provider memory, or infer native completion from a checkpoint.
+It preflights canonical baselines and destination topology, captures displaced
+original bytes, installs exclusively without overwriting concurrent creation,
+verifies applied bytes, and rolls back handled failures. It rejects unsafe IDs,
+symlink escapes, archive collisions, and unfinished transactions. Forced
+termination is not crash-atomic; a retained
+`.thoth/.archive-transaction/recovery.json` is a filesystem recovery aid, not
+workflow state. Inspect real files, backups, and change/archive locations before
+recovery; never blindly replay external effects. No installer or network access
+is involved.

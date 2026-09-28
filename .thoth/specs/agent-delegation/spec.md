@@ -30,6 +30,6 @@ Every canonical dispatch MUST support `none`, `recall`, or `observe` authorizati
 
 #### Scenario: US2 - Bounded agent memory usage 4
 
-- **GIVEN** a project work contract or checkpoint
+- **GIVEN** a project change record, durable specification, or historical artifact
 - **WHEN** memory is used
-- **THEN** `.thoth/` remains canonical and thoth-mem is not used as a mirror of work contracts, checkpoints, or evidence
+- **THEN** `.thoth/` remains canonical and thoth-mem is not used as a mirror of project work

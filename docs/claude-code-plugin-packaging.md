@@ -25,7 +25,7 @@ plugin/
 │   └── worker.md
 └── skills/
     ├── thoth-init/
-    ├── thoth-work/
+    ├── thoth-sdd/
     ├── thoth-constitution/
     ├── thoth-archive/
     └── plan-reviewer/
@@ -45,8 +45,8 @@ oracle deny write/edit tools; implementation roles retain bounded write access.
 The root shapes dependencies, ready/blocked lanes, and one-writer ownership.
 Claude's native `Agent` calls fill available capacity with admitted independent
 units before waiting, refill capacity as units complete, and fan in only terminal
-native results. Plan review is optional; trivial deterministic direct work may
-use focused root checks, while materially risky direct work and persisted work use a
+native results. Plan review is optional; trivial deterministic low-risk work may
+use focused root checks, while materially risky or substantial work requires a
 fresh read-only Oracle.
 
 Semantic triggers keep the complete roster actionable: `librarian` handles
@@ -60,10 +60,11 @@ truthful sequential fallback. No additional thoth coordination mechanism is
 involved.
 
 Claude discovers plugin skills automatically. The namespaced
-`/thoth-agents:thoth-init` skill only synchronizes minimum project `.thoth/`
-governance because agents and owned skills already reside in the manager-owned
-cache. Work contracts consume examples and helpers directly from that installed
-skill tree rather than copying them into the project. Mandatory external skills reside
+`/thoth-agents:thoth-init` skill creates only missing `.thoth/` governance,
+including `.thoth/constitution.md` and `.thoth/specs/`, because agents and owned
+skills already reside in the manager-owned cache. It refuses a legacy active
+OpenSpec tree rather than creating a duplicate. SDD phase contracts consume
+references, templates, and validators directly from that installed skill tree. Mandatory external skills reside
 in Claude's global skill root after CLI installation. That CLI also invokes
 thoth-mem's public provider setup; no thoth-mem asset is copied into this shared
 bundle.

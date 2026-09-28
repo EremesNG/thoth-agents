@@ -43,11 +43,11 @@
     {
       "id": "cross-cutting-sdd-required-skill",
       "task": "Change the architectural-grilling activation gate and its required-skill health rule.",
-      "expected_primary": "workflow-and-skills",
-      "expected_first_read": "docs/agent/workflow-and-skills.md",
+      "expected_primary": "sdd-and-skills",
+      "expected_first_read": "docs/agent/sdd-and-skills.md",
       "expected_overlays": ["cli-installation"],
       "expected_code_roots": [
-        "src/harness/core/workflow.ts",
+        "src/harness/core/sdd.ts",
         "src/agents/",
         "src/cli/skills.ts"
       ],
@@ -85,8 +85,7 @@
         "kind": "role-selection",
         "expected": "explorer"
       },
-      "notes": "The discovery envelope may name an unknown location. Root supplies the question, read-only bounds, and sufficient return evidence without exploratory pre-reading.",
-      "workflow": "persisted"
+      "notes": "The discovery envelope may name an unknown location. Root supplies the question, read-only bounds, and sufficient return evidence without exploratory pre-reading."
     },
     {
       "id": "direct-root-known",
@@ -95,7 +94,7 @@
       "expected_first_read": "docs/agent/index.md",
       "expected_overlays": ["public-compatibility"],
       "expected_code_roots": [],
-      "phase": "execute",
+      "phase": "implement",
       "expected_owner": "orchestrator",
       "forbidden_owners": ["designer", "worker"],
       "ownership_rationale": "Source, scope, and verification are known; the authorized minimal low-risk edit requires no discovery or independent judgment.",
@@ -103,15 +102,15 @@
         "kind": "direct-retention",
         "expected": "orchestrator"
       },
-      "notes": "This is the bounded direct exception, not a continuity or file-count rule.",
-      "workflow": "direct"
+      "classification": "small",
+      "notes": "This is the bounded known-source exception, not a continuity or file-count rule."
     },
     {
       "id": "direct-exception-dependency-stop",
       "task": "A root consultation starts at a known prompt contract, then answering it requires following an uninspected adapter dependency.",
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
-      "expected_overlays": ["workflow-and-skills", "harness-packaging"],
+      "expected_overlays": ["sdd-and-skills", "harness-packaging"],
       "expected_code_roots": ["src/agents/", "src/harness/", "skills/"],
       "decision": {
         "kind": "task-shaping",
@@ -119,15 +118,14 @@
         "ready": ["bounded delegation of the unresolved dependency"],
         "blocked": ["continued root traversal"]
       },
-      "notes": "Another search or dependency ends the direct exception; accumulated context, coordination overhead, and file count do not extend it.",
-      "workflow": "direct"
+      "notes": "Another search or dependency ends the bounded known-source exception; accumulated context, coordination overhead, and file count do not extend it."
     },
     {
       "id": "targeted-missing-support",
       "task": "A specialist returns a useful conclusion with one unsupported compatibility claim after otherwise sufficient discovery.",
       "expected_primary": "agents-and-delegation",
       "expected_first_read": "docs/agent/agents-and-delegation.md",
-      "expected_overlays": ["workflow-and-skills"],
+      "expected_overlays": ["sdd-and-skills"],
       "expected_code_roots": ["src/harness/core/", "skills/"],
       "decision": {
         "kind": "task-shaping",
@@ -138,8 +136,7 @@
           "repeating full discovery"
         ]
       },
-      "notes": "Root targets only missing support or bounded identified evidence; it does not reread every file. Mandatory independent verification remains separate.",
-      "workflow": "persisted"
+      "notes": "Root targets only missing support or bounded identified evidence; it does not reread every file. Mandatory independent verification remains separate."
     },
     {
       "id": "writer-designer-ui",
@@ -148,7 +145,7 @@
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": ["public-compatibility"],
       "expected_code_roots": ["src/agents/"],
-      "phase": "execute",
+      "phase": "implement",
       "expected_owner": "designer",
       "forbidden_owners": ["orchestrator", "worker"],
       "ownership_rationale": "The bounded user-facing surface benefits from designer specialization and isolated visual verification within direct work.",
@@ -156,8 +153,8 @@
         "kind": "role-selection",
         "expected": "designer"
       },
-      "notes": "select designer; visual QA does not replace any independent verification required by material risk.",
-      "workflow": "direct"
+      "classification": "small",
+      "notes": "Select Designer; visual QA does not replace any independent verification required by material risk."
     },
     {
       "id": "writer-worker-known",
@@ -169,7 +166,7 @@
         "src/agents/prompt-sections.ts",
         "src/agents/prompt-rendering.test.ts"
       ],
-      "phase": "execute",
+      "phase": "implement",
       "expected_owner": "worker",
       "forbidden_owners": ["orchestrator", "designer"],
       "ownership_rationale": "The exact file and symbol are known, the edit is isolated, and Worker avoids loading unrelated planning context.",
@@ -177,8 +174,8 @@
         "kind": "role-selection",
         "expected": "worker"
       },
-      "notes": "Worker owns the bounded edit regardless of route; root coordinates focused verification unless material risk requires a fresh Oracle.",
-      "workflow": "persisted"
+      "classification": "small",
+      "notes": "Worker owns the bounded edit regardless of SDD classification; root coordinates focused verification unless material risk requires a fresh Oracle."
     },
     {
       "id": "writer-worker-correctness",
@@ -187,7 +184,7 @@
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": ["harness-packaging", "public-compatibility"],
       "expected_code_roots": ["src/agents/", "src/config/", "src/harness/"],
-      "phase": "execute",
+      "phase": "implement",
       "expected_owner": "worker",
       "forbidden_owners": ["orchestrator", "designer"],
       "ownership_rationale": "A fresh Worker context improves correctness across the coupled contract and adapters even though the work does not need persistence.",
@@ -195,8 +192,8 @@
         "kind": "role-selection",
         "expected": "worker"
       },
-      "notes": "select one Worker writer because compatibility-coupled files cannot use overlapping writers.",
-      "workflow": "direct"
+      "classification": "substantial",
+      "notes": "Select one Worker writer because compatibility-coupled files cannot use overlapping writers."
     },
     {
       "id": "read-librarian-external",
@@ -217,10 +214,10 @@
     {
       "id": "read-oracle-verification",
       "task": "Independently verify a completed artifact-backed implementation against its accepted acceptance criteria.",
-      "expected_primary": "workflow-and-skills",
-      "expected_first_read": "docs/agent/workflow-and-skills.md",
+      "expected_primary": "sdd-and-skills",
+      "expected_first_read": "docs/agent/sdd-and-skills.md",
       "expected_overlays": ["agents-and-delegation"],
-      "expected_code_roots": ["src/harness/core/workflow.ts", "skills/"],
+      "expected_code_roots": ["src/harness/core/sdd.ts", "skills/"],
       "phase": "verify",
       "expected_owner": "oracle",
       "forbidden_owners": ["orchestrator", "designer", "worker"],
@@ -229,8 +226,8 @@
         "kind": "role-selection",
         "expected": "oracle"
       },
-      "notes": "Artifact-backed final verification uses a fresh read-only Oracle that did not implement the change.",
-      "workflow": "persisted"
+      "classification": "substantial",
+      "notes": "Artifact-backed final verification uses a fresh read-only Oracle that did not implement the change."
     },
     {
       "id": "fallback-unfamiliar-writer",
@@ -296,7 +293,6 @@
       "expected_first_read": "docs/agent/agents-and-delegation.md",
       "expected_overlays": [],
       "expected_code_roots": [],
-      "workflow": "direct",
       "decision": {
         "kind": "task-shaping",
         "expected": "truthful-bounded-failure",

@@ -28,7 +28,7 @@ Active package metadata, CI, release, bundled-skill compatibility declarations, 
 
 #### Scenario: US1 - Install the complete Pi agent pack 1
 
-- **GIVEN** Pi `0.84.4` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
+- **GIVEN** Pi `0.86.1` or a compatible evidenced release, Node.js `>=22.19`, and an empty isolated Pi home
 - **WHEN** `thoth-agents install --agent=pi` is applied
 - **THEN** the native Pi delegation and research packages, managed grep.app MCP configuration, root instructions, five canonical specialist definitions, owned skills, required external skills, provider setup, and Pi ledger record are completed in order
 
@@ -164,7 +164,7 @@ project lockfile.
 
 ### Requirement: Preserve Product and Harness Semantics
 The migration MUST preserve current thoth-agents product behavior, package
-identity, supported harness semantics, workflow rules, memory governance, generated
+identity, supported harness semantics, SDD rules, memory governance, generated
 role behavior, and OpenCode/Codex adapter contracts except where a surface
 explicitly invokes package-manager or runtime tooling.
 
@@ -175,7 +175,7 @@ explicitly invokes package-manager or runtime tooling.
 - THEN the workflow MUST preserve its previous behavior and generated semantic
   contracts
 - AND the migration MUST NOT add, remove, rename, or weaken agent roles,
-  delegation rules, memory governance, or workflow rules
+  delegation rules, memory governance, or SDD phase rules
 
 #### Scenario: Package identity remains stable
 - GIVEN package metadata, generated manifests, installer output, or docs identify

@@ -67,11 +67,12 @@ invoke:
 /thoth-agents:thoth-init
 ```
 
-Init preflights and synchronizes the minimum `.thoth/` directories, a missing
-constitution, and initialization metadata. Claude discovers agents and work
-contracts from the plugin; external execution skills come
-from the preceding CLI step. Project initialization is offline and idempotent,
-preserves existing constitutions, and leaves legacy project templates untouched.
+Init preflights and creates only missing `.thoth/` governance, including
+`.thoth/constitution.md` and `.thoth/specs/`, preserving existing project-owned
+content. It refuses a legacy active OpenSpec tree rather than creating a
+duplicate store. Claude discovers agents and SDD phase contracts from the
+plugin; external execution skills come from the preceding CLI step. Project
+initialization is offline and idempotent and preserves existing constitutions.
 
 ## Packaged surfaces
 
@@ -119,7 +120,7 @@ npx thoth-agents@latest status --harness=claude
 - Claude owns marketplace snapshots, cache files, and packaged model defaults;
   publish a new plugin version to change them.
 - Explorer, librarian, and oracle deny `Write` and `Edit`. Fine-grained
-  `.thoth/` path restrictions are instruction-level because Claude's plugin
+  project path restrictions are instruction-level because Claude's plugin
   permission map is not a path-pattern sandbox.
 - Background agents cannot surface interactive permission or clarification
   prompts like the foreground session.
@@ -133,7 +134,8 @@ npx thoth-agents@latest status --harness=claude
 
 At runtime, agents follow the installed thoth-mem skill. Root owns stable session
 identity and lifecycle; a child receives bounded `none`, `recall`, or `observe`
-authorization without gaining workspace writes. `.thoth/` remains canonical.
+authorization without gaining workspace writes. `.thoth/` holds active work,
+durable contracts, and constitution; historical material remains preserved.
 
 ## Troubleshooting
 

@@ -19,7 +19,7 @@ linked document.
 | adapters, writers, generated artifacts, Pi/Codex/Claude/OpenCode surfaces | [`harness-packaging.md`](harness-packaging.md) | `src/harness/`, `skills/` | `src/harness/**/*.test.ts` | CLI installation |
 | OpenCode runtime, hooks, MCP, LSP, ast-grep, tmux, fallback | [`runtime-integrations.md`](runtime-integrations.md) | `src/index.ts`, `src/hooks/`, `src/mcp/`, `src/tools/` | colocated tests and `src/plugin-node-runtime.test.ts` | memory boundary |
 | parser, TUI, install, update, sync, status, required skills, provider setup invocation | [`cli-installation.md`](cli-installation.md) | `src/cli/` | `src/cli/**/*.test.ts`, `src/cli/**/*.test.tsx` | harness packaging |
-| work agreement, selective context, recovery checkpoints, durable contracts, parallel execution and closeout | [`workflow-and-skills.md`](workflow-and-skills.md) | `src/harness/core/workflow.ts`, `skills/` | `src/harness/core/workflow.test.ts`, `workflow.test.ts`, prompt and skill tests | memory boundary |
+| Proportional SDD understanding/classification, one ID-named record, authorization, durable deltas and closeout | [`sdd-and-skills.md`](sdd-and-skills.md) | `src/harness/core/sdd.ts`, `skills/` | SDD classification/protocol, prompt, skill and archive tests | memory boundary |
 | external provider ownership, memory authorization, continuity outcomes, truthful capability state | [`memory-governance.md`](memory-governance.md) | `src/harness/core/memory-governance.ts`, adapters | memory-governance/provider-boundary tests | work workflow |
 
 ## Cross-cutting overlays

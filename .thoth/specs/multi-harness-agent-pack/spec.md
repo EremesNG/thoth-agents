@@ -38,12 +38,7 @@ The system MUST support OpenCode, Codex, Claude Code, and Pi; OpenCode MUST rema
 
 ### Requirement: Preserve the six-role contract
 
-The native Pi package MUST derive one ambient `orchestrator` root and the five
-`explorer`, `librarian`, `oracle`, `designer`, and `worker` specialists from the
-canonical role contracts, MUST NOT create an orchestrator child definition, and
-MUST preserve role prompts, model/effort metadata where Pi supports them, memory
-envelopes, ownership, and return contracts. `quick` and `deep` MUST NOT remain
-supported roles or aliases.
+The native Pi package MUST derive one ambient `orchestrator` root and the five `explorer`, `librarian`, `oracle`, `designer`, and `worker` specialists from the canonical role contracts, MUST NOT create an orchestrator child definition, and MUST preserve role prompts, model/effort metadata where Pi supports them, memory envelopes, ownership, and return contracts. The retired quick/deep writer tier MUST NOT remain an active role or alias.
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 1
 
@@ -59,7 +54,7 @@ supported roles or aliases.
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 3
 
-- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **GIVEN** `pi-subagents@0.71.0` requires filesystem definitions
 - **WHEN** the package synchronizer runs
 - **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
@@ -109,7 +104,7 @@ The Pi extension and specialist definitions MUST apply the strongest native root
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 3
 
-- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **GIVEN** `pi-subagents@0.71.0` requires filesystem definitions
 - **WHEN** the package synchronizer runs
 - **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
@@ -117,7 +112,7 @@ The Pi extension and specialist definitions MUST apply the strongest native root
 
 - **GIVEN** the native Pi package
 - **WHEN** its packed contents are inspected
-- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by minimum-only package ranges
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
 
 #### Scenario: US4 - Preserve external ownership and existing harnesses 2
 
@@ -179,22 +174,23 @@ The published `thoth-agents` npm artifact MUST identify as a Pi package, MUST de
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 3
 
-- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **GIVEN** `pi-subagents@0.71.0` requires filesystem definitions
 - **WHEN** the package synchronizer runs
 - **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
-### Requirement: Publish repository-native marketplaces
+### Requirement: Publish shared plugin bundles
 
-The repository and npm package MUST include `.agents/plugins/marketplace.json`
-for Codex and `.claude-plugin/marketplace.json` for Claude. Their sources MUST
-resolve to the same versioned bundle under `plugin/`; generated plugin versions
-MUST equal the root package version.
+The repository and npm package MUST contain one versioned shared `plugin/` bundle
+with Codex and Claude manifests and one copy of the five canonical owned skills.
+Marketplace catalogs remain in the separately versioned `EremesNG/thoth-plugins`
+repository; this package MUST NOT generate project-local marketplace files.
+Generated plugin versions MUST equal the root package version.
 
 ### Requirement: Install the Codex plugin through its native manager
 
 The Codex installer MUST inspect JSON marketplace and plugin state, register
-`EremesNG/thoth-agents` when absent, and install or enable
-`thoth-agents@thoth-agents` through official `codex plugin` commands before
+`EremesNG/thoth-plugins` when absent, and install or enable
+`thoth-agents@thoth-plugins` through official `codex plugin` commands before
 writing global agent-pack files. It MUST fail closed on unreadable state, a
 same-named marketplace from another source, command failure, or failed
 post-install verification. Dry-run MUST plan these commands without mutating the
@@ -211,7 +207,7 @@ generated shared plugin output.
 
 ### Requirement: Preserve native plugin-manager ownership
 
-Pi installation MUST install and verify the exact executing `thoth-agents` package through `pi install` before installing the selected compatible `pi-subagents-j0k3r` and research packages; MUST treat one schema-validated thoth-agents Pi-package receipt as the sole authority for replacing or removing an existing global first-party source; MUST reject an unowned, ambiguous, project-local, or receipt-inconsistent first-party source before mutation; and MUST use external packages' public native surfaces without vendoring, patching, copying their internals, or reimplementing execution, concurrency, task/history, research, or provider lifecycle.
+Pi installation MUST install and verify the exact executing `thoth-agents` package through `pi install` before installing the selected compatible `pi-subagents@>=0.71.0` and research packages; MUST treat one schema-validated thoth-agents Pi-package receipt as the sole authority for replacing or removing an existing global first-party source; MUST reject an unowned, ambiguous, project-local, or receipt-inconsistent first-party source before mutation; and MUST use external packages' public native surfaces without vendoring, patching, copying their internals, or reimplementing execution, concurrency, task/history, research, or provider lifecycle.
 
 #### Scenario: US1 - Install thoth-agents as the first native Pi package 1
 
@@ -247,7 +243,7 @@ Pi installation MUST install and verify the exact executing `thoth-agents` packa
 
 - **GIVEN** the native Pi package
 - **WHEN** its packed contents are inspected
-- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by minimum-only package ranges
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
 
 #### Scenario: US4 - Preserve external ownership and existing harnesses 2
 
@@ -273,7 +269,7 @@ Pi capability reporting MUST independently identify first-party package state as
 
 #### Scenario: US2 - Run Thoth from its Pi extension boundary 3
 
-- **GIVEN** `pi-subagents-j0k3r` requires filesystem definitions
+- **GIVEN** `pi-subagents@0.71.0` requires filesystem definitions
 - **WHEN** the package synchronizer runs
 - **THEN** exactly five attributable canonical agent definitions are discoverable globally and an unowned canonical conflict is preserved and reported rather than overwritten
 
@@ -299,7 +295,7 @@ Pi capability reporting MUST independently identify first-party package state as
 
 - **GIVEN** the native Pi package
 - **WHEN** its packed contents are inspected
-- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by minimum-only package ranges
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
 
 #### Scenario: US4 - Preserve external ownership and existing harnesses 2
 
@@ -319,45 +315,69 @@ Generated OpenCode configuration MUST contain only the `openai` built-in preset
 for the six-role roster. It MUST NOT generate Kimi, Copilot, ZAI/GLM, or
 mixed-provider mappings.
 
-### Requirement: Bundle the AI-first work workflow
+### Requirement: Bundle the proportional SDD contract
 
-Canonical workflow skills and generated root prompts MUST support direct work
-and persisted `.thoth/changes/<id>/work.yaml` contracts without asking the user
-to choose a pipeline. They MUST offer Oracle plan review or direct implementation
-for a ready persisted plan, then offer implementation or stopping after Oracle
-`[OKAY]`. The bounded three-unanswered-return policy, explicit-answer priority,
-recovery evidence and exclusions in the workflow specification MUST apply to
-these two choices on every harness. Unsupported native questions MUST be
-reported; a pending dialog or unavailable UI MUST NOT manufacture attempts.
-Existing authorization and resolved choices otherwise persist. Plan review MUST
-NOT replace fresh final Oracle verification for persisted or materially risky work.
+Canonical workflow skills, generated root prompts, and owned-skill registries MUST
+require proportional explore, specify, and clarify before risk-aware
+classification. They MUST NOT force an understanding document, specialist, or
+interview. Classification MUST use meaningful coordination and contract impact,
+uncertainty, and risk; touched-file count alone MUST NOT require persistence.
+Small clear low-risk work MUST use test-first implementation and focused
+verification without a record. Substantial work MUST use one
+`.thoth/changes/<id>/<id>.md` record. Harness prompts and machine interfaces MUST
+NOT expose named SDD routes or route-choice selectors.
 
-#### Scenario: Continue within the accepted agreement
+The optional selected fresh Oracle plan review and separate post-review
+`Implement (Recommended)` / `Stop` decision MUST remain. A review MUST NOT
+authorize implementation or replace final verification. For each of those two
+choices separately, only the third confirmed answerless native return MAY select
+its recommendation; pending, unavailable, failed, or interrupted questions MUST
+NOT count. These defaults MUST NOT settle material human-owned decisions.
 
-- **GIVEN** the goal, bounds and applicable planning choices are already settled
-- **WHEN** root performs routine execution or recovery inside those bounds
-- **THEN** no pipeline question or repeated planning-choice question is required
+#### Scenario: Understand every change without forced ceremony
 
-#### Scenario: Keep other unanswered choices unresolved
+- **GIVEN** any requested change
+- **WHEN** the root prepares to classify it
+- **THEN** it completes proportional explore, specify, and clarify in order without requiring a document, specialist, or interview
 
-- **GIVEN** a material product decision or sensitive action remains unresolved
-- **WHEN** a question is cancelled, unavailable, partial, or unanswered
-- **THEN** root reports the unresolved choice without using the two planning defaults
+#### Scenario: Keep localized multi-file mechanical work small
 
-#### Scenario: Preserve independent final judgment
+- **GIVEN** a clear low-risk mechanical change touches several files in one area
+- **WHEN** its coordination and contract impact remain local
+- **THEN** it remains eligible for test-first implementation without a persistent record
 
-- **GIVEN** persisted work or materially risky direct work reaches verification
-- **WHEN** implementation evidence is complete
-- **THEN** a fresh read-only Oracle judges the agreement, actual diff, and evidence before closeout
+#### Scenario: Plan when uncertainty or risk warrants it
+
+- **GIVEN** coordinated, cross-cutting, materially uncertain, or elevated-risk work
+- **WHEN** understanding is complete
+- **THEN** it is classified substantial and tracked in one ID-named record
+
+#### Scenario: Clarification blocks unresolved material intent
+
+- **GIVEN** a material human-owned decision remains unresolved
+- **WHEN** clarification completes
+- **THEN** classification and implementation remain blocked
+
+#### Scenario: Keep plan review distinct from implementation authorization
+
+- **GIVEN** a selected plan review returns `[OKAY]`
+- **WHEN** implementation has not been separately selected
+- **THEN** the root asks `Implement (Recommended)` or `Stop`, and does not begin work
+
+#### Scenario: Preserve explicit Stop and bounded native choice handling
+
+- **GIVEN** a plan-choice question is pending, unavailable, or explicitly answered Stop
+- **WHEN** the harness reports its state
+- **THEN** pending or unavailable state does not count as an unanswered attempt and explicit Stop prevents implementation
 
 ### Requirement: Fresh delegation at work boundaries
 
-The canonical orchestration policy MUST make a fresh subagent instance the default whenever the objective, bounded assignment, mutable surface, or independent-judgment boundary changes.
+The canonical orchestration policy MUST make a fresh subagent instance the default whenever the objective, SDD phase, mutable surface, or independent-judgment boundary changes.
 
 #### Scenario: US1 - Receive fresh specialists at work boundaries 1
 
 - **GIVEN** a specialist completed one bounded assignment
-- **WHEN** the root delegates a different objective, bounded assignment, mutable surface, or independent judgment
+- **WHEN** the root delegates a different objective, SDD phase, mutable surface, or independent judgment
 - **THEN** the root creates a fresh native subagent instance
 
 #### Scenario: US1 - Receive fresh specialists at work boundaries 2
@@ -401,7 +421,7 @@ Every Oracle plan review, verification round, and PASS-producing judgment MUST u
 #### Scenario: US1 - Receive fresh specialists at work boundaries 1
 
 - **GIVEN** a specialist completed one bounded assignment
-- **WHEN** the root delegates a different objective, bounded assignment, mutable surface, or independent judgment
+- **WHEN** the root delegates a different objective, SDD phase, mutable surface, or independent judgment
 - **THEN** the root creates a fresh native subagent instance
 
 #### Scenario: US1 - Receive fresh specialists at work boundaries 2
@@ -440,19 +460,19 @@ Native wait and status operations MUST remain scoped to collecting a nonterminal
 
 ### Requirement: Native lifecycle translation
 
-Pi root guidance MUST translate fresh work to a new single-agent `subagent_run`, same-assignment collection to status/result/list, running-task correction to `subagent_send_message` only when supported, cancellation to `subagent_cancel`, and completed-task continuation to `subagent_continue` only when explicitly enabled; new objectives, bounded assignments, mutable surfaces, and independent judgments MUST receive fresh tasks.
+Pi root guidance MUST use one direct `subagent({ agent, task, context: "fresh", async })` per bounded assignment, use native status/stop/steer only with a known run ID, and treat queued delivery or nonterminal state as incomplete. New objectives, phases, mutable surfaces and independent judgments MUST receive fresh assignments; Thoth MUST NOT use Pi subagent orchestration APIs or claim instruction-only policy is runtime enforcement.
 
 #### Scenario: US2 - Delegate through Pi-native subagents 1
 
 - **GIVEN** a fresh bounded assignment and an explicit canonical specialist
 - **WHEN** the Pi root delegates
-- **THEN** it invokes `subagent_run` with one canonical `agent`, task, and bounded context and receives either the terminal task result or a background task identifier
+- **THEN** it invokes one direct `subagent` with canonical `agent`, bounded task, fresh context and explicit async choice
 
 #### Scenario: US2 - Delegate through Pi-native subagents 2
 
 - **GIVEN** a running background assignment owned by the current parent session
 - **WHEN** the root needs progress, correction, result, or cancellation
-- **THEN** it uses the package's status, send-message, result, list, or cancel surface without treating collection as permission to reuse the specialist
+- **THEN** it uses the native status, steer or stop action for the known run ID without treating collection as permission to reuse the specialist
 
 #### Scenario: US2 - Delegate through Pi-native subagents 3
 
@@ -490,15 +510,15 @@ Every root MUST present the complete specialist roster with equally salient posi
 
 #### Scenario: US2 - Activate the complete specialist roster 4
 
-- **GIVEN** a known bounded non-visual implementation lane
-- **WHEN** the root selects a writer under specialist-default execution
-- **THEN** it selects `worker` regardless of complexity and without a separate narrow-versus-complex writer tier
+- **GIVEN** known bounded nonvisual implementation, regardless of complexity
+- **WHEN** the root selects a writer under specialist-default ownership
+- **THEN** it selects `worker` with one bounded mutable surface, not a narrow-versus-complex writer tier
 
 #### Scenario: US2 - Activate the complete specialist roster 5
 
-- **GIVEN** source, scope, and verification are known for a minimal authorized low-risk edit
+- **GIVEN** source, scope and checks are known for a minimal authorized low-risk edit
 - **WHEN** no discovery or independent judgment is needed
-- **THEN** root may retain the work only under the bounded direct exception, which ends if another search or dependency appears
+- **THEN** root may use only its bounded direct exception, which ends on another search or dependency
 
 #### Scenario: US2 - Activate the complete specialist roster 6
 
@@ -508,19 +528,19 @@ Every root MUST present the complete specialist roster with equally salient posi
 
 ### Requirement: Use the strongest truthful native role selector
 
-The Pi adapter MUST require the public `agent` field with one exact canonical specialist name for delegation and MUST NOT use deprecated batch input, implicit role inference, or a different harness's selector as evidence of native support.
+The Pi adapter MUST require the public `agent` field with one exact canonical specialist name for delegation and MUST NOT use batch orchestration, implicit role inference, or a different harness's selector as evidence of native support.
 
 #### Scenario: US2 - Delegate through Pi-native subagents 1
 
 - **GIVEN** a fresh bounded assignment and an explicit canonical specialist
 - **WHEN** the Pi root delegates
-- **THEN** it invokes `subagent_run` with one canonical `agent`, task, and bounded context and receives either the terminal task result or a background task identifier
+- **THEN** it invokes one direct `subagent` with canonical `agent`, bounded task, fresh context and explicit async choice
 
 #### Scenario: US2 - Delegate through Pi-native subagents 2
 
 - **GIVEN** a running background assignment owned by the current parent session
 - **WHEN** the root needs progress, correction, result, or cancellation
-- **THEN** it uses the package's status, send-message, result, list, or cancel surface without treating collection as permission to reuse the specialist
+- **THEN** it uses the native status, steer or stop action for the known run ID without treating collection as permission to reuse the specialist
 
 #### Scenario: US2 - Delegate through Pi-native subagents 3
 
@@ -536,7 +556,7 @@ The Pi adapter MUST require the public `agent` field with one exact canonical sp
 
 ### Requirement: Use Pi interactive questions truthfully
 
-Pi root instructions MUST use ask_user_question for material user choices, follow its supported question schema, handle unavailable UI and partial/cancelled answers truthfully, and apply the workflow specification's bounded defaults only to the two planning choices after three confirmed unanswered native returns. Missing tools, unavailable UI and pending dialogs MUST NOT count as attempts; all other unresolved choices require a real answer. Pi children MUST escalate user questions to the root and MUST NOT receive the interactive question tool in their allowlists.
+Pi root instructions MUST use ask_user_question for material user choices, follow its supported question schema, handle unavailable UI and partial/cancelled answers truthfully, and MUST NOT infer approval from cancellation or absent answers. Pi children MUST escalate user questions to the root and MUST NOT receive the interactive question tool in their allowlists.
 
 #### Scenario: US2 - Ask the user and show progress 1
 
@@ -548,13 +568,13 @@ Pi root instructions MUST use ask_user_question for material user choices, follo
 
 - **GIVEN** cancellation, partial answers, missing tool, or no UI
 - **WHEN** an answer is required
-- **THEN** the root reports the unresolved choice without inventing consent
+- **THEN** the root reports the unresolved choice without inventing consent; explicit cancellation is not an answerless default attempt
 
 #### Scenario: US2 - Ask the user and show progress 3
 
 - **GIVEN** multi-step work
 - **WHEN** the root reports progress
-- **THEN** it uses an available task tool through its actual contract, or lightweight written progress if absent, without replacing native task execution or canonical `.thoth/` work artifacts
+- **THEN** it uses session-local todo without replacing native task execution or canonical `.thoth/` project artifacts
 
 #### Scenario: US2 - Ask the user and show progress 4
 
@@ -564,7 +584,7 @@ Pi root instructions MUST use ask_user_question for material user choices, follo
 
 ### Requirement: Keep Pi progress session-owned
 
-Pi root instructions MUST keep useful multi-step progress provider-neutral and optional. If a task/progress tool is available, the root SHOULD use its actual exposed name and schema without assuming a specific extension or API; otherwise it MUST use lightweight written progress without blocking work or installing a task extension. Progress tracking MUST NOT replace Pi-native delegation lifecycle or canonical `.thoth/` work artifacts; child agents MUST report progress to root and MUST NOT receive task/progress tools in their allowlists.
+Pi root instructions MUST use todo for useful multi-step progress, with the extension owning session-local task state. Todo MUST NOT replace Pi-native delegation lifecycle or canonical `.thoth/` project artifacts; child agents MUST report progress to root and MUST NOT receive todo in their allowlists.
 
 #### Scenario: US2 - Ask the user and show progress 1
 
@@ -576,13 +596,13 @@ Pi root instructions MUST keep useful multi-step progress provider-neutral and o
 
 - **GIVEN** cancellation, partial answers, missing tool, or no UI
 - **WHEN** an answer is required
-- **THEN** the root reports the unresolved choice without inventing consent
+- **THEN** the root reports the unresolved choice without inventing consent; explicit cancellation is not an answerless default attempt
 
 #### Scenario: US2 - Ask the user and show progress 3
 
 - **GIVEN** multi-step work
 - **WHEN** the root reports progress
-- **THEN** it uses an available task tool through its actual contract, or lightweight written progress if absent, without replacing native task execution or canonical `.thoth/` work artifacts
+- **THEN** it uses session-local todo without replacing native task execution or canonical `.thoth/` project artifacts
 
 #### Scenario: US2 - Ask the user and show progress 4
 

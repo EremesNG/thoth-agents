@@ -31,7 +31,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 
 | Harness | Native/plugin step | Required completion step |
 | --- | --- | --- |
-| OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository to initialize `.thoth/` |
+| OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
 | Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `pi-subagents@0.71.0` and the research packages | The package injects one bounded adaptive-root block, configures fresh depth-one delegation, synchronizes five specialists, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
@@ -66,10 +66,15 @@ thoth-owned skills into `~/.config/opencode/skills/`, and installs all four
 external skills with `npx skills add`. Status and repair verify the resulting
 global discovery targets. It then requires provider-owned thoth-mem setup to
 complete. Restart OpenCode and invoke `/thoth-init`; it only preflights and
-synchronizes the minimum `.thoth/` governance structure while preserving
-existing constitutions. Workflow operations resolve examples and helpers directly
-from the globally installed `thoth-work` skill; init leaves any legacy `openspec/templates/` tree
-untouched. No Kimi, Copilot, ZAI/GLM, or mixed-provider preset is generated.
+initializes missing `.thoth/` governance, including `.thoth/constitution.md`
+and `.thoth/specs/`, while preserving existing project-owned content. It refuses
+a legacy active OpenSpec tree rather than creating a duplicate store. SDD phases
+resolve references, templates and validators directly from the globally
+installed `thoth-sdd` skill.
+An older globally materialized `thoth-work` skill may remain after upgrade and
+may still appear in native discovery. Inspect it and explicitly retire it if
+appropriate; setup never deletes unknown or modified global content. No Kimi,
+Copilot, ZAI/GLM, or mixed-provider preset is generated.
 
 ## Codex
 
@@ -118,9 +123,10 @@ delegates normal marketplace and plugin mutations to the native manager and
 owns only the bounded legacy-root fallback above.
 
 Restart Codex after the CLI step. In every target repository invoke
-`$thoth-init`; this preflights and synchronizes only the minimum `.thoth/`
-governance. It does not install agents, global instructions, or project template
-copies; the plugin's installed `thoth-work` skill remains the template source.
+`$thoth-init`; this preflights and creates only missing `.thoth/` governance,
+preserving existing project-owned content. It does not install agents, global
+instructions, or project template copies; the installed `thoth-sdd` skill
+supplies the record template.
 
 Review `/plugins` and `/hooks`. Global instructions and configuration remain
 subject to more specific project/subtree instructions, profiles, managed policy,
@@ -147,7 +153,7 @@ Restart Claude Code or run `/reload-plugins`, then invoke
 orchestrator, five namespaced subagents, MCP configuration, and thoth-owned skill
 tree natively. The CLI installs and verifies the external skills, then invokes
 thoth-mem's Claude setup. Init preflights and synchronizes only the minimum
-`.thoth/` governance; workflow templates remain in the installed plugin skill.
+`.thoth/` governance; SDD templates remain in the installed plugin skill.
 
 Claude owns marketplace snapshots, cache files, enablement, and packaged model
 defaults; thoth-agents never edits that cache.
@@ -214,8 +220,8 @@ task tool according to its actual name and schema, or lightweight written progre
 if none is available; missing tooling never blocks the workflow. Setup and update
 do not install or remove task extensions, and status does not require them.
 Previously installed `@juicesharp/rpiv-todo` remains untouched; users decide whether
-to keep it. Progress tracking never replaces native delegation or `.thoth/` work
-contracts.
+to keep it. Progress tracking never replaces native delegation or `.thoth/`
+change records.
 
 The old `pi-subagents-j0k3r` runtime is not supported beside `pi-subagents`.
 When setup detects it, setup stops before mutation and prints a manual `pi remove`
@@ -390,7 +396,7 @@ new command.
 ## Skill ownership
 
 All harness distributions carry only thoth-owned workflow skills: `thoth-init`,
-`thoth-work`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer`.
+`thoth-sdd`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer`.
 OpenCode installation materializes these five under its global user skill root;
 `thoth-init` never installs them or copies their workflow templates into a
 project.
@@ -437,8 +443,8 @@ evidence; reset, sync, or removal never edits or removes provider-owned assets.
 During normal work, agents follow the installed thoth-mem skill. The root owns
 stable session identity and lifecycle. Delegates may receive bounded `none`,
 `recall`, or `observe` memory authorization independently of workspace write
-permission. `.thoth/` remains the canonical project-work store; work contracts
-and checkpoints are not mirrored into thoth-mem.
+permission. `.thoth/` holds active change records, durable contracts, and
+constitution; historical material remains preserved. Project work is not mirrored into thoth-mem.
 
 ## Limitations
 

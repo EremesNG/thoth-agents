@@ -76,7 +76,7 @@ README, CLI help/status, and routed installation documentation MUST distinguish 
 
 - **GIVEN** the native Pi package
 - **WHEN** its packed contents are inspected
-- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by minimum-only package ranges
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
 
 #### Scenario: US4 - Preserve external ownership and existing harnesses 2
 
@@ -108,7 +108,7 @@ Applying any valid OpenCode model configuration plan MUST persist `preset: agent
 
 ### Requirement: Materialize the complete effective roster
 
-Before activation, the system MUST derive all six effective role configurations (root plus five specialists) from the selected preset, root overrides, and canonical defaults using field-level precedence, apply the requested role changes, and preserve unrelated presets and configuration keys.
+Before activation, the system MUST derive all six effective role configurations from the selected preset, root overrides, and canonical defaults using field-level precedence, apply the requested role changes, and preserve unrelated presets and configuration keys.
 
 #### Scenario: US1 - Activate applied model assignments 1
 
@@ -158,7 +158,7 @@ The OpenCode installer MUST synchronize the five canonical thoth-owned workflow 
 
 - **GIVEN** a complete published thoth-agents package
 - **WHEN** `install --agent=opencode` runs
-- **THEN** `thoth-init`, `thoth-work`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer` are synchronized under `~/.config/opencode/skills/` before installation can report success
+- **THEN** `thoth-init`, `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and `plan-reviewer` are synchronized under `~/.config/opencode/skills/` before installation can report success
 
 #### Scenario: US1 - Complete the global OpenCode installation 2
 
@@ -308,35 +308,13 @@ Applying Update for Pi MUST perform the same exact first-party-package-first, ex
 
 - **GIVEN** the native Pi package
 - **WHEN** its packed contents are inspected
-- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by minimum-only package ranges
+- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
 
 #### Scenario: US4 - Preserve external ownership and existing harnesses 2
 
 - **GIVEN** OpenCode, Codex, or Claude Code installation and runtime flows
 - **WHEN** the Pi package change is present
 - **THEN** their current behavior and generated artifacts remain unchanged except for shared truthful documentation
-
-### Requirement: Reconcile consolidated Worker resources safely
-
-Explicit setup and synchronization MUST materialize exactly the five current
-specialists and MAY retire obsolete Quick or Deep resources only after proving
-thoth-agents ownership, safe canonical paths, and unchanged apply-time content.
-An unowned Worker collision or unowned obsolete resource MUST block mutation and
-remain preserved with diagnostics. Worker MUST receive shipped defaults rather
-than migrated Quick or Deep model/effort customizations, and repeated recovery
-runs MUST remain idempotent.
-
-#### Scenario: Retire only attributable obsolete roles
-
-- **GIVEN** owned obsolete Quick or Deep resources and no current-role collision
-- **WHEN** explicit setup or synchronization applies the current roster
-- **THEN** current resources are written before the obsolete resources are retired, and an interrupted run can be retried safely
-
-#### Scenario: Preserve unowned collisions
-
-- **GIVEN** an unowned Worker target or unowned obsolete Quick or Deep resource
-- **WHEN** setup or synchronization preflights the transition
-- **THEN** it reports the conflict before roster mutation and neither overwrites nor deletes the resource
 
 ### Requirement: Record the last complete CLI-managed version
 
@@ -516,13 +494,13 @@ CLI and TUI status, install, Update, Sync, and specialist model/effort operation
 
 ### Requirement: Provide a bounded hybrid research stack
 
-Complete Pi setup MUST install and verify minimum-constrained Context7, pi-web-access, and the grep-only pi-mcp-adapter. Context7 and web research MUST remain native extensions; the managed global grep entry MUST retain https://mcp.grep.app, legacy protocol, lazy lifecycle, and proxy-only tools. Unrelated MCP configuration and operator credentials MUST remain untouched. Status MUST distinguish Context7, web access, and grep evidence independently, MUST NOT require EXA_API_KEY merely for web package availability, and MUST NOT infer live provider success from package presence.
+Complete Pi setup MUST install and verify pinned Context7, pi-web-access, and the grep-only pi-mcp-adapter. Context7 and web research MUST remain native extensions; the managed global grep entry MUST retain https://mcp.grep.app, legacy protocol, lazy lifecycle, and proxy-only tools. Unrelated MCP configuration and operator credentials MUST remain untouched. Status MUST distinguish Context7, web access, and grep evidence independently, MUST NOT require EXA_API_KEY merely for web package availability, and MUST NOT infer live provider success from package presence.
 
 #### Scenario: US1 - Install one web extension 1
 
 - **GIVEN** valid first-party setup
 - **WHEN** Install or applied Update runs
-- **THEN** the selected minimum-only pi-web-access range is required and neither replaced package is requested
+- **THEN** the exact selected pi-web-access pin is required and neither replaced package is requested
 
 #### Scenario: US1 - Install one web extension 2
 
@@ -542,15 +520,15 @@ Complete Pi setup MUST install and verify minimum-constrained Context7, pi-web-a
 - **WHEN** the operator follows the documented transition
 - **THEN** native Pi removal of the conflicting package precedes installation; unrelated packages and credentials are preserved
 
-### Requirement: Install minimum-constrained Pi interaction and web extensions
+### Requirement: Install selected Pi interaction and web extensions
 
-Complete Pi installation and applied Update MUST install and individually verify pi-web-access@>=0.27.0 plus @juicesharp/rpiv-ask-user-question@>=2.9.0 after first-party verification. Task/progress extensions MUST remain optional and operator-owned: installation, applied Update and status MUST NOT require @juicesharp/rpiv-todo or any replacement task package, and MUST NOT install or remove such packages. Neither @juicesharp/rpiv-web-tools nor @feniix/pi-exa MUST be required or installed by the selected dependency inventory. Dry-run MUST remain mutation-free; required dependency failure MUST prevent completion recording; external implementations MUST NOT be vendored.
+Complete Pi installation and applied Update MUST install and individually verify the selected Pi-native delegation, Context7, web-access, grep-adapter and ask-user-question packages after first-party verification, using their configured minimum versions. `@juicesharp/rpiv-todo`, `@juicesharp/rpiv-web-tools` and `@feniix/pi-exa` MUST NOT be required or installed by the selected inventory. Dry-run MUST remain mutation-free; required dependency failure MUST prevent completion recording; external implementations MUST NOT be vendored.
 
 #### Scenario: US1 - Install one web extension 1
 
 - **GIVEN** valid first-party setup
 - **WHEN** Install or applied Update runs
-- **THEN** the selected minimum-only pi-web-access range is required and neither replaced package is requested
+- **THEN** the exact selected pi-web-access pin is required and neither replaced package is requested
 
 #### Scenario: US1 - Install one web extension 2
 
@@ -569,27 +547,3 @@ Complete Pi installation and applied Update MUST install and individually verify
 - **GIVEN** an installation containing the replaced web package
 - **WHEN** the operator follows the documented transition
 - **THEN** native Pi removal of the conflicting package precedes installation; unrelated packages and credentials are preserved
-
-### Requirement: Allow independent external Pi dependency updates
-
-The five mandatory external dependencies MUST use native minimum-only sources: pi-subagents@>=0.71.0, @upstash/context7-pi@>=0.1.2, pi-web-access@>=0.27.0, pi-mcp-adapter@>=2.32.1, and @juicesharp/rpiv-ask-user-question@>=2.9.0. Native Pi updates MUST NOT require a new Thoth release. First-party Thoth installation and receipts MUST retain their exact-version policy. These floors permit future stable major releases without asserting runtime compatibility with every future release.
-
-Installation and status MUST validate the resolved installed manifest's package name and stable SemVer floor, not infer the installed version from the configured source. Missing, malformed, older, prerelease, ambiguous, or project-shadowed package evidence MUST NOT claim global dependency readiness. Install and Update MUST migrate legacy exact sources through native Pi package handling, preserving object-form resource filters and unrelated settings. A satisfying installed managed range MUST NOT be reinstalled merely to enforce its minimum. If a native migration is observed to downgrade a previously satisfying installation, setup MUST fail and attempt restoration; successful restoration MUST be claimed only after fresh native listing and installed-manifest evidence confirms the prior version. Failed or unverifiable recovery MUST expose manual guidance and MUST NOT record complete installation.
-
-#### Scenario: Update an extension without a Thoth release
-
-- **GIVEN** the RPIV question dependency is configured as npm:@juicesharp/rpiv-ask-user-question@>=2.9.0
-- **WHEN** native Pi updates it to stable version 2.11.0
-- **THEN** Thoth status accepts its manifest version without requiring a Thoth release or replacing it with 2.9.0
-
-#### Scenario: Migrate a filtered legacy pin
-
-- **GIVEN** a global dependency has an exact source and resource filters
-- **WHEN** Install or applied Update migrates it to the managed minimum-only range
-- **THEN** resource filters and unrelated settings survive, and a previously satisfying newer version is not silently downgraded
-
-#### Scenario: Reject an unverified restore
-
-- **GIVEN** native migration downgraded a satisfying package and restoration exits successfully without restoring its prior manifest version
-- **WHEN** setup verifies recovery
-- **THEN** it reports failed or unverifiable recovery with manual guidance rather than claiming restoration succeeded

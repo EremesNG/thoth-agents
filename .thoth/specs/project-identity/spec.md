@@ -9,17 +9,17 @@ project-owned surfaces.
 
 #### Scenario: Active product identity is consistently renamed
 - GIVEN an active source file, manifest, fixture, documentation page, skill
-  artifact, test, or current `.thoth/` artifact describes the current project identity
+  artifact, test, or current project-work artifact describes the current project identity
 - WHEN the rename is implemented
 - THEN it MUST identify the project as `thoth-agents`
 - AND it MUST NOT identify the current project with the pre-rename package
   identity
 
 #### Scenario: Canonical role names remain stable
-- GIVEN the agent roster includes orchestrator, explorer, librarian, oracle,
-  designer, and worker
+- GIVEN the current agent roster includes orchestrator, explorer, librarian,
+  oracle, designer, and worker
 - WHEN canonical project identity is updated
-- THEN those role names MUST remain unchanged
+- THEN those current role names MUST remain unchanged
 - AND the rename MUST NOT introduce role-level rebranding unrelated to the
   project/package identity
 
@@ -69,7 +69,7 @@ or plugin as `thoth-agents`.
 
 ### Requirement: Prevent Mixed Active Identity in Tests, Docs, and Specs
 Active tests, fixtures, snapshots, documentation, generated examples, and current
-project-work artifacts MUST use one canonical current identity, `thoth-agents`, and
+`.thoth/` artifacts MUST use one canonical current identity, `thoth-agents`, and
 MUST NOT mix it with the pre-rename package identity except for explicitly scoped
 historical, archived, third-party, or migration-risk references.
 
@@ -84,7 +84,7 @@ historical, archived, third-party, or migration-risk references.
   text
 
 #### Scenario: Historical references are scoped and non-canonical
-- GIVEN an archived historical change, changelog, migration note, provenance note,
+- GIVEN an archived `.thoth/history/` record, changelog, migration note, provenance note,
   or third-party example mentions the pre-rename package identity
 - WHEN the rename is implemented
 - THEN the reference MAY remain only if its context makes clear that it is not

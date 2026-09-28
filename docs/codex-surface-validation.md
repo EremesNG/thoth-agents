@@ -6,11 +6,11 @@ layer, validate:
 | Surface | Expected state |
 | --- | --- |
 | `/plugins` | `thoth-agents` installed and enabled from `EremesNG/thoth-agents` |
-| Plugin skills | Work/init/constitution/archive and four mandatory execution skills discoverable |
+| Plugin skills | SDD/init/constitution/archive and four mandatory execution skills discoverable |
 | `~/.codex/AGENTS.md` | One bounded `thoth-agents:codex-root` block; unrelated global guidance preserved |
-| `~/.codex/agents/` | Six `thoth-agents-<role>.toml` files and managed model state; no orchestrator child |
+| `~/.codex/agents/` | Five `thoth-agents-<role>.toml` files and managed model state; no orchestrator child |
 | `~/.codex/config.toml` | Managed request-user-input feature merge present |
-| Project `.thoth/` | Minimum directory graph, constitution, and init metadata after `$thoth-init`; no template copies required |
+| Project `.thoth/` | Minimum changes/archive/specs and constitution paths after `$thoth-init`; existing governance and history preserved |
 
 Run:
 
@@ -21,7 +21,7 @@ npx thoth-agents@latest status --harness=codex
 Restart Codex after global setup. In each repository, `$thoth-init` should be
 idempotent and preserve project-owned governance. It does not create custom
 agents, alter global instructions, or copy templates from the installed
-`thoth-work` skill.
+`thoth-sdd` skill.
 
 ## Known enforcement gaps
 

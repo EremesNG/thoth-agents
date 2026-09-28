@@ -15,7 +15,7 @@ execution does not.
   back to a `latest` plugin entry.
 - OpenCode installation synchronizes all five packaged thoth-owned skills into
   `~/.config/opencode/skills/`; status, install, and sync share that inventory.
-  `/thoth-init` owns only project `.thoth/` governance.
+  `/thoth-init` creates only missing `.thoth/` governance, preserving existing content.
 - Mandatory external skills are installed from canonical repositories through
   `npx skills add`; this repository must not vendor their source.
 - After owned setup and external skills, published harness installs invoke the

@@ -60,21 +60,27 @@ custom agents or write `~/.codex/AGENTS.md`. Work execution never calls either C
 
 ## Workflow
 
-Small bounded work: implement → verify.
-Persisted work: agree → execute units → independently verify → close.
+Every change completes proportional explore → specify → clarify before
+classification, without forced documents, agents, or interviews. The root then
+classifies meaningful coordination and contract impact, uncertainty, and risk.
+File count alone does not increase scope; a low-risk localized mechanical change
+may span several files and remain small.
 
-Use `.thoth/changes/<id>/work.yaml` for the agreement, acceptance and units.
-Context files, external units and evidence are added only when useful. Root
-owns acceptance, specialists their assigned surfaces and checkpoints.
+Small work uses test-first implementation and focused verification without a
+record. Substantial work uses one `.thoth/changes/<id>/<id>.md` record for intent,
+acceptance, decisions, plan, tasks, authorization, and verification; no alias or
+sidecar report is created. Optional selected Oracle plan review remains separate
+from the post-review Implement (Recommended) / Stop choice. Root owns acceptance;
+specialists own assigned mutable surfaces.
 
-Dispatch all independent admitted units before waiting, refill freed capacity,
-and release consumers after their own dependencies are accepted and fresh.
-Native liveness governs recovery; a checkpoint or timeout never permits a
-duplicate writer. Existing human authorization is reused. See [workflow](workflow.md).
+Dispatch independent admitted units before waiting, refill freed capacity, and
+release consumers after their own dependencies are accepted and fresh. Native
+liveness governs recovery; a file or timeout never permits a duplicate writer.
+Material choices require human authority. See [SDD](sdd-pipeline.md).
 
 ## Skills
 
-`thoth-init`, `thoth-work`, `thoth-constitution`, `thoth-archive`, and
+`thoth-init`, `thoth-sdd`, `thoth-constitution`, `thoth-archive`, and
 `plan-reviewer` ship in
 every harness bundle. The installer obtains `simplify`, `tdd`,
 `progressive-context-router`, and `architectural-grilling` from their canonical
@@ -110,9 +116,9 @@ invalidate package state, or install the newer release.
 ## Boundaries
 
 - OpenCode ships only the OpenAI built-in preset.
-- Every `thoth-init` surface only initializes or synchronizes minimum
-  `.thoth/` governance; installation owns skills, agents, plugins, harness
-  configuration, and dependencies.
+- Every `thoth-init` surface only initializes or synchronizes minimum `.thoth/`
+  governance; installation owns skills, agents, plugins, harness configuration,
+  and dependencies.
 - Codex requires the CLI for global agents, `~/.codex/AGENTS.md`, and managed
   config; `$thoth-init` creates project work governance only.
 - Claude requires both native marketplace commands before its namespaced skill
@@ -126,5 +132,6 @@ invalidate package state, or install the newer release.
   recovery. thoth-agents only invokes its public setup during installation.
 - Runtime memory authorization is `none`, `recall`, or `observe` and does not
   alter workspace write permission. Root lifecycle never transfers.
-- `.thoth/` remains canonical; work contracts and checkpoints are not mirrored into thoth-mem.
+- `.thoth/` holds active change records, durable contracts, and constitution;
+  historical material remains preserved. Project work is not mirrored into thoth-mem.
 - QA executables remain separate and project-owned.

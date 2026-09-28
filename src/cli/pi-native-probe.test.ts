@@ -13,7 +13,10 @@ import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, test } from 'vitest';
 import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
 import { PI_ROOT_END, PI_ROOT_START } from '../harness/writers/pi-agent';
-import { observePiNativeRoot } from './pi-native-probe';
+import {
+  observePiNativeRoot,
+  resolvePiWindowsCliFromShim,
+} from './pi-native-probe';
 import { PI_SPECIALIST_NAMES } from './pi-resources';
 
 const roots: string[] = [];
@@ -22,6 +25,29 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 describe('Pi native root probe', () => {
+  test('resolves Pi from a pnpm Windows shim target under its global layout', () => {
+    const shimPath = String.raw`C:\Users\tester\AppData\Local\pnpm\bin\pi.CMD`;
+    const shim = String.raw`@SETLOCAL
+@IF EXIST "%~dp0\node.exe" (
+  "%~dp0\node.exe"  "%~dp0\..\global\v11\a244-1a0e497e5ca-76d1e8cd1a9b129f\node_modules\@earendil-works\pi-coding-agent\dist\bundle\cli.js" %*
+) ELSE (
+  node  "%~dp0\..\global\v11\a244-1a0e497e5ca-76d1e8cd1a9b129f\node_modules\@earendil-works\pi-coding-agent\dist\bundle\cli.js" %*
+)`;
+
+    expect(resolvePiWindowsCliFromShim(shimPath, shim)).toBe(
+      String.raw`C:\Users\tester\AppData\Local\pnpm\global\v11\a244-1a0e497e5ca-76d1e8cd1a9b129f\node_modules\@earendil-works\pi-coding-agent\dist\bundle\cli.js`,
+    );
+  });
+
+  test('ignores Windows shims for an unrelated JavaScript target', () => {
+    expect(
+      resolvePiWindowsCliFromShim(
+        String.raw`C:\Users\tester\AppData\Local\pnpm\bin\pi.CMD`,
+        String.raw`node "%~dp0\unrelated.js" %*`,
+      ),
+    ).toBeUndefined();
+  });
+
   test('uses an isolated Pi home and exact explicit-extension command shape', () => {
     const root = mkdtempSync(join(tmpdir(), 'thoth-pi-probe-'));
     roots.push(root);

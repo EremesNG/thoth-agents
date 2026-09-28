@@ -22,7 +22,7 @@ import {
   writePiManagedText,
 } from './pi-managed-write';
 import { migrateLegacyPiResources } from './pi-migration';
-import { observePiNativeRoot } from './pi-native-probe';
+import { findPiWindowsCli, observePiNativeRoot } from './pi-native-probe';
 import {
   classifyPiPackageOwnership,
   type PiPackageReceipt,
@@ -707,21 +707,8 @@ function defaultCommandExecutor(
   let executable = command;
   let executableArgs = [...args];
   if (process.platform === 'win32' && command === 'pi') {
-    const located = spawnSync('where.exe', ['pi.cmd'], { encoding: 'utf8' })
-      .stdout?.split(/\r?\n/)
-      .find(Boolean);
-    const cli = located
-      ? join(
-          dirname(located),
-          'node_modules',
-          '@earendil-works',
-          'pi-coding-agent',
-          'dist',
-          'bundle',
-          'cli.js',
-        )
-      : undefined;
-    if (cli && existsSync(cli)) {
+    const cli = findPiWindowsCli();
+    if (cli) {
       executable = process.execPath;
       executableArgs = [cli, ...args];
     }

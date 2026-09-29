@@ -139,14 +139,14 @@ function buildClaudeBackgroundWidgetEntries(
     const started = task.started_at ? Date.parse(task.started_at) : NaN;
     const metricParts = [
       `↻ turns ${finiteNonnegative(turns) ? turns : '?'}`,
-      `🛠 tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
-      `🪙 tokens ${finiteNonnegative(tokens) ? formatTokens(tokens) : '?'}`,
-      `⊞ context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
-      `⏱ elapsed ${Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '?'}`,
+      `⚙ tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
+      `◈ tokens ${finiteNonnegative(tokens) ? formatTokens(tokens) : '?'}`,
+      `▣ context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
+      `⧗ elapsed ${Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '?'}`,
     ];
     if (finiteNonnegative(metrics?.compactions) && metrics.compactions > 0)
       metricParts.push(
-        `🗜 ${metrics.compactions} compaction${metrics.compactions === 1 ? '' : 's'}`,
+        `≋ ${metrics.compactions} compaction${metrics.compactions === 1 ? '' : 's'}`,
       );
     entries.push({
       key: task.id,
@@ -716,7 +716,7 @@ export class ClaudeBackgroundWidget {
     const parts = text.split(' · ');
     const sep = themeDim(this.theme, ' · ');
     const decoratedParts = parts.map((part) => {
-      const match = part.match(/^([↻🛠🪙⊞⏱🗜])\s+(.+)$/u);
+      const match = part.match(/^([↻⚙◈▣⧗≋])\s+(.+)$/u);
       if (!match) return part;
       const icon = match[1]!;
       const rest = match[2]!;

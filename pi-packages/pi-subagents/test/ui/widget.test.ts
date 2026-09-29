@@ -301,7 +301,7 @@ describe('background widget', () => {
     expect(actions).toEqual([{ type: 'open-task', taskId: 'one' }]);
   });
 
-  it('shows real child metrics in an Agents tree without counting cache reads', () => {
+  it('shows minimalist child metrics with dim labels without counting cache reads', () => {
     const task = {
       id: 'metric-task',
       agent: 'worker',
@@ -336,10 +336,33 @@ describe('background widget', () => {
     expect(lines).toEqual([
       '● Agents  (↑↓ navigate · ↵ open)',
       '  ╭─ ⠋ worker [openai/gpt-6] · Review the migration',
-      '  │  ↻ turns 5 · 🛠 tools 5 · 🪙 tokens 33.8k · ⊞ context 62.0% · ⏱ elapsed 12.3s',
-      '  │  🗜 1 compaction',
+      '  │  ↻ turns 5 · ⚙ tools 5 · ◈ tokens 33.8k · ▣ context 62.0% · ⧗ elapsed 12.3s',
+      '  │  ≋ 1 compaction',
       '  ╰⎿ editing…',
     ]);
+
+    const widget = new ClaudeBackgroundWidget(
+      new ClaudeBackgroundWidgetState(() => [task]),
+      {
+        fg: (color: string, text: string) =>
+          color === 'dim' ? `\x1b[2m${text}\x1b[0m` : text,
+      },
+    );
+    const styled = widget.render(80).join('\n');
+    for (const metric of [
+      '↻ \x1b[2mturns\x1b[0m 5',
+      '⚙ \x1b[2mtools\x1b[0m 5',
+      '◈ \x1b[2mtokens\x1b[0m 33.8k',
+      '▣ \x1b[2mcontext\x1b[0m 62.0%',
+      '⧗ \x1b[2melapsed\x1b[0m ',
+      '≋ 1 \x1b[2mcompaction\x1b[0m',
+    ]) {
+      expect(styled).toContain(metric);
+    }
+    task.runtime_metrics.compactions = 2;
+    expect(widget.render(80).join('\n')).toContain(
+      '≋ 2 \x1b[2mcompactions\x1b[0m',
+    );
   });
 
   it('shows a queue without invented runtime values and clips narrow rows', () => {

@@ -1,7 +1,18 @@
-import { truncateToWidth, visibleWidth } from '../render/text-width.js';
+import {
+  truncateToWidth,
+  visibleWidth,
+  wrapLineToWidth,
+} from '../render/text-width.js';
 import { statusGlyph } from '../render/tools/progress.js';
 import type { SubagentTask } from '../types.js';
-import { ARCH_ICON, themeBold, themeWarning } from './theme.js';
+import {
+  ARCH_ICON,
+  themeAccent,
+  themeBold,
+  themeDim,
+  themeTitle,
+  themeWarning,
+} from './theme.js';
 
 type ClaudeBackgroundWidgetEntry = {
   key: string;
@@ -13,7 +24,8 @@ type ClaudeBackgroundWidgetEntry = {
 
 export type ClaudeBackgroundTerminalAction =
   | { type: 'focus-editor' }
-  | { type: 'open-task'; taskId: string };
+  | { type: 'open-task'; taskId: string }
+  | { type: 'open-history' };
 
 export type ClaudeBackgroundTerminalInputResult =
   | {
@@ -50,11 +62,52 @@ function normalize(text: string | undefined): string {
   return text ? text.replace(/\s+/g, ' ').trim() : '';
 }
 
+export function formatTaskSummary(task: SubagentTask, maxLen = 60): string {
+  const name = task.display_name?.trim();
+  if (name) return truncateToWidth(name, maxLen, '…');
+  const raw = task.task;
+  if (!raw) return '';
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const firstContent =
+    lines.find((l) => !/^#+\s*(?:delegated task|task)?$/i.test(l)) ??
+    lines[0] ??
+    '';
+  const clean = firstContent
+    .replace(/^#+\s*(?:delegated task:?|task:?)?\s*/i, '')
+    .trim();
+  const summary = normalize(clean || firstContent);
+  if (!summary) return '';
+  return truncateToWidth(summary, maxLen, '…');
+}
+
 function isActiveBackgroundTask(task: SubagentTask): boolean {
   return (
     task.mode === 'background' &&
     (task.status === 'queued' || task.status === 'running')
   );
+}
+
+export const MAX_VISIBLE_RUNNING_TASKS = 3;
+
+function headerKeyboardHints(width = 80, navigationActive = false): string {
+  if (navigationActive) {
+    if (width >= 55) return '  (↑↓ navigate · ↵ open · esc dismiss)';
+    if (width >= 38) return '  (↑↓ navigate · ↵ open)';
+    if (width >= 25) return '  (↑↓/↵)';
+    return '';
+  }
+  if (width >= 55) return '  (↑↓ navigate · ↵ open)';
+  if (width >= 38) return '  (↑↓ navigate)';
+  if (width >= 25) return '  (↑↓)';
+  return '';
+}
+
+function overflowKeyboardHint(width = 80): string {
+  if (width >= 45) return '  (↵ view all)';
+  return '';
 }
 
 function buildClaudeBackgroundWidgetEntries(
@@ -68,30 +121,36 @@ function buildClaudeBackgroundWidgetEntries(
   const entries: ClaudeBackgroundWidgetEntry[] = [
     { key: 'main', line: 'Agents' },
   ];
-  for (const [index, task] of running.entries()) {
+
+  const visibleRunning = running.slice(0, MAX_VISIBLE_RUNNING_TASKS);
+  const hiddenActiveCount = running.length - visibleRunning.length;
+  const hasOverflow = hiddenActiveCount > 0;
+  const hasQueued = queued.length > 0;
+
+  for (const task of visibleRunning) {
     const metrics = task.runtime_metrics;
+    const summary = formatTaskSummary(task);
     const description =
-      `${task.agent}${task.model ? ` [${task.model}]` : ''} ${normalize(task.task)}`.trim();
+      `${task.agent}${task.model ? ` [${task.model}]` : ''}${summary ? ` · ${summary}` : ''}`.trim();
     const turns = metrics?.turns ?? task.usage?.turns;
     const tokens = task.usage
       ? task.usage.input + task.usage.output + task.usage.cacheWrite
       : undefined;
     const started = task.started_at ? Date.parse(task.started_at) : NaN;
     const metricParts = [
-      `turns ${finiteNonnegative(turns) ? turns : '?'}`,
-      `tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
-      `tokens ${finiteNonnegative(tokens) ? formatTokens(tokens) : '?'}`,
-      `context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
-      `elapsed ${Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '?'}`,
+      `↻ turns ${finiteNonnegative(turns) ? turns : '?'}`,
+      `🛠 tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
+      `🪙 tokens ${finiteNonnegative(tokens) ? formatTokens(tokens) : '?'}`,
+      `⊞ context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
+      `⏱ elapsed ${Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '?'}`,
     ];
     if (finiteNonnegative(metrics?.compactions) && metrics.compactions > 0)
       metricParts.push(
-        `${metrics.compactions} compaction${metrics.compactions === 1 ? '' : 's'}`,
+        `🗜 ${metrics.compactions} compaction${metrics.compactions === 1 ? '' : 's'}`,
       );
-    const branch = index === running.length - 1 && !queued.length ? '└─' : '├─';
     entries.push({
       key: task.id,
-      line: `${branch} ${statusGlyph('running')} ${description}`,
+      line: description,
       status: task.status,
       metrics: metricParts,
       activity: normalize(
@@ -99,12 +158,23 @@ function buildClaudeBackgroundWidgetEntries(
       ),
     });
   }
-  if (queued.length)
+
+  if (hasOverflow) {
+    entries.push({
+      key: 'overflow',
+      line: `+${hiddenActiveCount} more active · /subagents`,
+      status: 'overflow',
+    });
+  }
+
+  if (hasQueued) {
     entries.push({
       key: queued[0]!.id,
-      line: `└─ ${statusGlyph('queued')} ${queued.length} queued`,
+      line: `○ ${queued.length} queued`,
       status: 'queued',
     });
+  }
+
   return entries;
 }
 
@@ -122,14 +192,23 @@ function formatDuration(milliseconds: number): string {
     : `${(milliseconds / 1000).toFixed(1)}s`;
 }
 
-function metricLines(parts: string[] = [], width = 80): string[] {
+function metricLines(
+  parts: string[] = [],
+  width = 80,
+  prefixWidth = 5,
+): string[] {
   const lines: string[] = [];
+  const effectiveWidth = Math.max(10, width - prefixWidth);
   for (const part of parts) {
     const previous = lines.at(-1);
-    const joined = previous ? `${previous} · ${part}` : `   ${part}`;
-    if (previous && visibleWidth(joined) > width) lines.push(`   ${part}`);
-    else if (previous) lines[lines.length - 1] = joined;
-    else lines.push(joined);
+    const joined = previous ? `${previous} · ${part}` : part;
+    if (previous && visibleWidth(joined) > effectiveWidth) {
+      lines.push(part);
+    } else if (previous) {
+      lines[lines.length - 1] = joined;
+    } else {
+      lines.push(part);
+    }
   }
   return lines;
 }
@@ -139,18 +218,26 @@ function entryRowCount(
   width: number,
 ): number {
   return (
-    1 + metricLines(entry.metrics, width).length + (entry.activity ? 1 : 0)
+    1 +
+    (entry.metrics ? metricLines(entry.metrics, width).length : 0) +
+    (entry.activity ? 1 : 0)
   );
 }
 
 function coerceClaudeBackgroundSelection(
   entries: ClaudeBackgroundWidgetEntry[],
   selectedKey: string | undefined,
+  preferredIndex?: number,
 ): string {
   if (!entries.length) return 'main';
-  return entries.some((entry) => entry.key === selectedKey)
-    ? selectedKey!
-    : entries[0]!.key;
+  if (selectedKey && entries.some((entry) => entry.key === selectedKey)) {
+    return selectedKey;
+  }
+  if (typeof preferredIndex === 'number' && preferredIndex >= 0) {
+    const clamped = Math.min(preferredIndex, entries.length - 1);
+    return entries[clamped]?.key ?? entries[0]!.key;
+  }
+  return entries[0]!.key;
 }
 
 export function moveClaudeBackgroundWidgetSelection(
@@ -178,6 +265,7 @@ export function renderClaudeBackgroundWidgetLines(
     frame?: number;
     now?: number;
     width?: number;
+    navigationActive?: boolean;
   } = {},
 ): string[] | undefined {
   const entries = buildClaudeBackgroundWidgetEntries(tasks, options.now);
@@ -187,34 +275,69 @@ export function renderClaudeBackgroundWidgetLines(
       ? undefined
       : coerceClaudeBackgroundSelection(entries, selectedKey);
   const useNeon = Boolean(options.archIndicator || options.neonRunning);
+  const width = options.width ?? 80;
+  const isNavActive = Boolean(
+    options.navigationActive || (selectedKey && selectedKey !== 'main'),
+  );
 
   return entries.flatMap((entry) => {
     const isSelected = entry.key === current;
-    const runningLine =
-      entry.status === 'running'
-        ? entry.line.replace(
-            statusGlyph('running'),
-            statusGlyph(
-              'running',
-              options.frame ?? Math.floor(Date.now() / 100),
-            ),
-          )
-        : entry.line;
 
-    const line =
-      entry.key === 'main'
-        ? `${isSelected && useNeon ? ARCH_ICON : '●'} ${entry.line}`
-        : `${isSelected ? '● ' : ''}${runningLine}`;
-    return [
-      line,
-      ...metricLines(entry.metrics, options.width),
-      ...(entry.activity ? [`   ⎿ ${entry.activity}`] : []),
-    ];
+    if (entry.key === 'main') {
+      const bullet = isSelected && useNeon ? ARCH_ICON : '●';
+      const hints = headerKeyboardHints(width, isNavActive);
+      return [`${bullet} ${entry.line}${hints}`];
+    }
+
+    if (entry.status === 'overflow') {
+      const prefix = isSelected ? '● ' : '  ';
+      const hint = overflowKeyboardHint(width);
+      return [`${prefix}${entry.line}${hint}`];
+    }
+
+    if (entry.status === 'queued') {
+      const prefix = isSelected ? '● ' : '  ';
+      return [`${prefix}${entry.line}`];
+    }
+
+    // Running card
+    const glyph = statusGlyph(
+      'running',
+      options.frame ?? Math.floor(Date.now() / 100),
+    );
+    const mLines = entry.metrics ? metricLines(entry.metrics, width) : [];
+    const hasActivity = Boolean(entry.activity);
+
+    const headerPrefix = isSelected ? '● ┏━ ' : '  ╭─ ';
+    const middlePrefix = isSelected ? '  ┃  ' : '  │  ';
+    const bottomPrefix = isSelected ? '  ┗━ ' : '  ╰─ ';
+    const activityPrefix = isSelected ? '  ┗⎿ ' : '  ╰⎿ ';
+
+    const headerLine = `${headerPrefix}${glyph} ${entry.line}`;
+
+    if (hasActivity) {
+      const metricRows = mLines.map((m) => `${middlePrefix}${m}`);
+      const activityRow = `${activityPrefix}${entry.activity}`;
+      return [headerLine, ...metricRows, activityRow];
+    }
+
+    if (mLines.length <= 1) {
+      const bottomRow =
+        mLines.length === 1 ? [`${bottomPrefix}${mLines[0]}`] : [];
+      return [headerLine, ...bottomRow];
+    }
+
+    const intermediateMetricRows = mLines
+      .slice(0, -1)
+      .map((m) => `${middlePrefix}${m}`);
+    const lastMetricRow = `${bottomPrefix}${mLines.at(-1)}`;
+    return [headerLine, ...intermediateMetricRows, lastMetricRow];
   });
 }
 
 export class ClaudeBackgroundWidgetState {
   private selectedKey = 'main';
+  private selectedIndex = 0;
   private navigationActive = false;
   private renderWidth = 80;
 
@@ -230,10 +353,28 @@ export class ClaudeBackgroundWidgetState {
   ) {}
 
   getSelectedKey(): string {
-    this.selectedKey = coerceClaudeBackgroundSelection(
-      buildClaudeBackgroundWidgetEntries(this.getTasks()),
-      this.selectedKey,
-    );
+    const entries = buildClaudeBackgroundWidgetEntries(this.getTasks());
+    if (this.navigationActive) {
+      this.selectedKey = coerceClaudeBackgroundSelection(
+        entries,
+        this.selectedKey,
+        this.selectedIndex,
+      );
+      this.selectedIndex = entries.findIndex(
+        (entry) => entry.key === this.selectedKey,
+      );
+      if (this.selectedKey === 'main' && entries.length <= 1) {
+        this.navigationActive = false;
+      }
+    } else {
+      this.selectedKey = coerceClaudeBackgroundSelection(
+        entries,
+        this.selectedKey,
+      );
+      this.selectedIndex = entries.findIndex(
+        (entry) => entry.key === this.selectedKey,
+      );
+    }
     return this.selectedKey;
   }
 
@@ -248,7 +389,11 @@ export class ClaudeBackgroundWidgetState {
       renderClaudeBackgroundWidgetLines(
         this.getTasks(),
         this.navigationActive ? this.getSelectedKey() : undefined,
-        options ?? this.options,
+        {
+          ...this.options,
+          ...options,
+          navigationActive: this.navigationActive,
+        },
       ) ?? []
     );
   }
@@ -302,12 +447,15 @@ export class ClaudeBackgroundWidgetState {
 
     this.navigationActive = false;
     this.selectedKey = targetKey;
+    this.selectedIndex = entries.findIndex((entry) => entry.key === targetKey);
     this.onChange?.();
 
     const action: ClaudeBackgroundTerminalAction =
       targetKey === 'main'
         ? { type: 'focus-editor' }
-        : { type: 'open-task', taskId: targetKey };
+        : targetKey === 'overflow'
+          ? { type: 'open-history' }
+          : { type: 'open-task', taskId: targetKey };
 
     this.onAction?.(action);
     return { consume: true, action };
@@ -326,6 +474,7 @@ export class ClaudeBackgroundWidgetState {
     if (!tasks.some(isActiveBackgroundTask)) {
       if (this.navigationActive || this.selectedKey !== 'main') {
         this.selectedKey = 'main';
+        this.selectedIndex = 0;
         this.navigationActive = false;
         this.onChange?.();
       }
@@ -343,6 +492,8 @@ export class ClaudeBackgroundWidgetState {
       );
       if (next !== this.selectedKey) {
         this.selectedKey = next;
+        const entries = buildClaudeBackgroundWidgetEntries(tasks);
+        this.selectedIndex = entries.findIndex((e) => e.key === next);
         this.onChange?.();
       }
       return { consume: true };
@@ -352,6 +503,7 @@ export class ClaudeBackgroundWidgetState {
       if (!this.navigationActive) return undefined;
       if (this.getSelectedKey() === 'main') {
         this.navigationActive = false;
+        this.selectedIndex = 0;
         this.onChange?.();
         return { consume: true };
       }
@@ -362,6 +514,8 @@ export class ClaudeBackgroundWidgetState {
       );
       if (next !== this.selectedKey) {
         this.selectedKey = next;
+        const entries = buildClaudeBackgroundWidgetEntries(tasks);
+        this.selectedIndex = entries.findIndex((e) => e.key === next);
         this.onChange?.();
       }
       return { consume: true };
@@ -374,7 +528,9 @@ export class ClaudeBackgroundWidgetState {
       const action: ClaudeBackgroundTerminalAction =
         selectedKey === 'main'
           ? { type: 'focus-editor' }
-          : { type: 'open-task', taskId: selectedKey };
+          : selectedKey === 'overflow'
+            ? { type: 'open-history' }
+            : { type: 'open-task', taskId: selectedKey };
       this.onAction?.(action);
       return { consume: true, action };
     }
@@ -458,10 +614,121 @@ export class ClaudeBackgroundWidget {
   }
 
   private decorate(line: string): string {
+    if (typeof this.theme?.fg !== 'function') {
+      return line;
+    }
+
     const isSelected =
-      (line.startsWith('● ') && line !== '● Agents') ||
+      (line.startsWith('● ') && !line.startsWith('● Agents')) ||
       line.startsWith(`${ARCH_ICON} `);
-    if (!isSelected) return line;
-    return themeWarning(this.theme, themeBold(this.theme, line));
+
+    if (line.includes('Agents')) {
+      return line
+        .replace(/^[●󰣇]/u, (m) => themeAccent(this.theme, m))
+        .replace(/\bAgents\b/, (m) => themeTitle(this.theme, m))
+        .replace(/\(.*?\)/, (m) => themeDim(this.theme, m));
+    }
+
+    if (line.includes('more active · /subagents')) {
+      if (isSelected) {
+        return themeWarning(this.theme, themeBold(this.theme, line));
+      }
+      return themeDim(this.theme, line);
+    }
+
+    if (line.includes('queued')) {
+      if (isSelected) {
+        return themeWarning(this.theme, themeBold(this.theme, line));
+      }
+      return themeDim(this.theme, line);
+    }
+
+    // Selected card rows
+    if (line.startsWith('● ┏━ ')) {
+      return themeWarning(this.theme, themeBold(this.theme, line));
+    }
+
+    if (line.startsWith('  ┃  ')) {
+      const rail = themeWarning(this.theme, '  ┃  ');
+      const rest = line.slice(5);
+      return `${rail}${themeWarning(this.theme, rest)}`;
+    }
+
+    if (line.startsWith('  ┗━ ')) {
+      const rail = themeWarning(this.theme, '  ┗━ ');
+      const rest = line.slice(5);
+      return `${rail}${themeWarning(this.theme, rest)}`;
+    }
+
+    if (line.startsWith('  ┗⎿ ')) {
+      const rail = themeWarning(this.theme, '  ┗⎿ ');
+      const rest = line.slice(5);
+      return `${rail}${themeWarning(this.theme, rest)}`;
+    }
+
+    if (isSelected) {
+      return themeWarning(this.theme, themeBold(this.theme, line));
+    }
+
+    // Unselected card rows: theme hierarchy (less flat)
+    if (line.startsWith('  ╭─ ')) {
+      const rail = themeDim(this.theme, '  ╭─ ');
+      const rest = line.slice(5);
+      const match = rest.match(
+        /^(\S+)\s+([^\s·\[]+)(?:\s+\[(.*?)\])?(?:\s+·\s+(.*))?$/,
+      );
+      if (match) {
+        const glyph = themeAccent(this.theme, match[1]!);
+        const agent = themeBold(this.theme, match[2]!);
+        const model = match[3]
+          ? ` ${themeDim(this.theme, `[${match[3]}]`)}`
+          : '';
+        const summary = match[4]
+          ? ` ${themeDim(this.theme, '·')} ${match[4]}`
+          : '';
+        return `${rail}${glyph} ${agent}${model}${summary}`;
+      }
+      return `${rail}${rest}`;
+    }
+
+    if (line.startsWith('  │  ')) {
+      const rail = themeDim(this.theme, '  │  ');
+      const rest = line.slice(5);
+      return `${rail}${this.decorateMetrics(rest)}`;
+    }
+
+    if (line.startsWith('  ╰⎿ ')) {
+      const rail = themeDim(this.theme, '  ╰⎿ ');
+      const rest = line.slice(5);
+      return `${rail}${themeDim(this.theme, rest)}`;
+    }
+
+    if (line.startsWith('  ╰─ ')) {
+      const rail = themeDim(this.theme, '  ╰─ ');
+      const rest = line.slice(5);
+      return `${rail}${this.decorateMetrics(rest)}`;
+    }
+
+    return line;
+  }
+
+  private decorateMetrics(text: string): string {
+    const parts = text.split(' · ');
+    const sep = themeDim(this.theme, ' · ');
+    const decoratedParts = parts.map((part) => {
+      const match = part.match(/^([↻🛠🪙⊞⏱🗜])\s+(.+)$/u);
+      if (!match) return part;
+      const icon = match[1]!;
+      const rest = match[2]!;
+      const tokens = rest.split(/\s+/);
+      if (tokens.length === 2) {
+        if (/^\d/.test(tokens[0]!)) {
+          return `${icon} ${tokens[0]} ${themeDim(this.theme, tokens[1]!)}`;
+        }
+        return `${icon} ${themeDim(this.theme, tokens[0]!)} ${tokens[1]}`;
+      }
+      return `${icon} ${themeDim(this.theme, rest)}`;
+    });
+    return decoratedParts.join(sep);
   }
 }

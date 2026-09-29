@@ -52,6 +52,7 @@ import {
   stageModelProfileEdit,
 } from '../../src/model-profiles-ui.js';
 import { resolveEffectiveSubagentProfile } from '../../src/profile-resolver.js';
+import { visibleWidth } from '../../src/render/text-width.js';
 import {
   createSubagentsRenderLogger,
   DEFAULT_RENDER_DEBUG_LOG_PATH,
@@ -72,6 +73,7 @@ import type {
   SubagentRunner,
   SubagentTask,
 } from '../../src/types.js';
+import { ARCH_ICON } from '../../src/ui/theme.js';
 import { SubagentsHistoryPanel } from '../../src/ui.js';
 
 const require = createRequire(import.meta.url);
@@ -215,7 +217,7 @@ describe('background widget', () => {
     );
     expect(first?.[1]).toContain('⠋ worker');
     expect(next?.[1]).toContain('⠙ worker');
-    expect(first?.at(-1)).toBe('└─ ○ 1 queued');
+    expect(first?.at(-1)).toBe('  ○ 1 queued');
   });
   it('keeps live metrics visible beside a long task at narrow widths and marks absent values', () => {
     const task = {
@@ -332,11 +334,11 @@ describe('background widget', () => {
       now: Date.parse('2026-01-01T00:00:12.300Z'),
     });
     expect(lines).toEqual([
-      '● Agents',
-      '└─ ⠋ worker [openai/gpt-6] Review the migration',
-      '   turns 5 · tools 5 · tokens 33.8k · context 62.0% · elapsed 12.3s',
-      '   1 compaction',
-      '   ⎿ editing…',
+      '● Agents  (↑↓ navigate · ↵ open)',
+      '  ╭─ ⠋ worker [openai/gpt-6] · Review the migration',
+      '  │  ↻ turns 5 · 🛠 tools 5 · 🪙 tokens 33.8k · ⊞ context 62.0% · ⏱ elapsed 12.3s',
+      '  │  🗜 1 compaction',
+      '  ╰⎿ editing…',
     ]);
   });
 
@@ -360,15 +362,15 @@ describe('background widget', () => {
       },
     ] as any;
     expect(renderClaudeBackgroundWidgetLines(tasks)).toEqual([
-      '● Agents',
-      '└─ ○ 2 queued',
+      '● Agents  (↑↓ navigate · ↵ open)',
+      '  ○ 2 queued',
     ]);
     const state = new ClaudeBackgroundWidgetState(() => tasks);
     const widget = new ClaudeBackgroundWidget(state, {
       fg: (_: string, text: string) => text,
       bold: (text: string) => text,
     });
-    expect(widget.render(8)).toEqual(['● Agents', '└─ ○ 2 …']);
+    expect(widget.render(8)).toEqual(['● Agents', '  ○ 2 q…']);
     expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
     expect(state.handleTerminalInput('\r')).toEqual({
       consume: true,
@@ -415,12 +417,12 @@ describe('background widget', () => {
     ] as any;
 
     const lines = renderClaudeBackgroundWidgetLines(tasks)!;
-    expect(lines[0]).toBe('● Agents');
-    expect(lines[1]).toContain('claude ping-pong loop command');
-    expect(lines[3]).toBe('   ⎿ Running ping-pong loop command.');
-    expect(lines[4]).toBe('└─ ○ 1 queued');
+    expect(lines[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
+    expect(lines[1]).toContain('claude · ping-pong loop command');
+    expect(lines[3]).toBe('  ╰⎿ Running ping-pong loop command.');
+    expect(lines[4]).toBe('  ○ 1 queued');
     expect(renderClaudeBackgroundWidgetLines(tasks, 'task-2')?.at(-1)).toBe(
-      '● └─ ○ 1 queued',
+      '● ○ 1 queued',
     );
     expect(moveClaudeBackgroundWidgetSelection(tasks, 'main', 'down')).toBe(
       'task-1',
@@ -477,36 +479,38 @@ describe('background widget', () => {
       bold: (text: string) => text,
     });
 
-    expect(widget.render(200)[0]).toBe('● Agents');
-    expect(widget.render(200).at(-1)).toBe('└─ ○ 1 queued');
+    expect(widget.render(200)[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
+    expect(widget.render(200).at(-1)).toBe('  ○ 1 queued');
 
     expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
     expect(requestRender).toHaveBeenCalledTimes(1);
     expect(widget.render(200)[1]).toMatch(
-      /● ├─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/,
+      /● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/,
     );
 
     expect(state.handleTerminalInput('q')).toEqual({ consume: true });
     expect(widget.render(200)[1]).toMatch(
-      /● ├─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/,
+      /● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/,
     );
 
     expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(widget.render(200).at(-1)).toBe('● └─ ○ 1 queued');
+    expect(widget.render(200).at(-1)).toBe('● ○ 1 queued');
 
     expect(state.handleTerminalInput('\u001b[A')).toEqual({ consume: true });
     expect(widget.render(200)[1]).toMatch(
-      /● ├─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/,
+      /● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/,
     );
 
     expect(state.handleTerminalInput('\u001b[A')).toEqual({ consume: true });
-    expect(widget.render(200)[0]).toBe('● Agents');
+    expect(widget.render(200)[0]).toBe(
+      '● Agents  (↑↓ navigate · ↵ open · esc dismiss)',
+    );
 
     expect(state.handleTerminalInput('\u001b[D')).toEqual({
       consume: true,
       action: { type: 'focus-editor' },
     });
-    expect(widget.render(200)[0]).toBe('● Agents');
+    expect(widget.render(200)[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
 
     expect(state.handleTerminalInput('\u001b[A')).toBeUndefined();
     expect(state.handleTerminalInput('x')).toBeUndefined();
@@ -539,11 +543,11 @@ describe('background widget', () => {
       state.handleTerminalInput('\u001b[B', { allowActivate: false }),
     ).toBeUndefined();
     expect(requestRender).not.toHaveBeenCalled();
-    expect(widget.render(200)[0]).toBe('● Agents');
+    expect(widget.render(200)[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
 
     expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
     expect(widget.render(200)[1]).toMatch(
-      /● └─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/,
+      /● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/,
     );
   });
 
@@ -575,10 +579,10 @@ describe('background widget', () => {
 
     expect(fg).toHaveBeenCalledWith(
       'warning',
-      expect.stringMatching(/● └─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/),
+      expect.stringMatching(/● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/),
     );
     expect(bold).toHaveBeenCalledWith(
-      expect.stringMatching(/● └─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/),
+      expect.stringMatching(/● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/),
     );
   });
 
@@ -665,5 +669,272 @@ describe('background widget', () => {
       consume: true,
       action: { type: 'focus-editor' },
     });
+  });
+
+  it('caps visible running cards at at most 3 when 10 tasks run, shows truthful overflow footer, and keeps grouped queue', () => {
+    const tasks = Array.from({ length: 10 }, (_, i) => ({
+      id: `task-${i + 1}`,
+      agent: `worker-${i + 1}`,
+      mode: 'background',
+      status: 'running',
+      task: `task ${i + 1}`,
+      created_at: new Date().toISOString(),
+    }));
+    const queuedTasks = [
+      {
+        id: 'q-1',
+        agent: 'worker',
+        mode: 'background',
+        status: 'queued',
+        task: 'q1',
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'q-2',
+        agent: 'worker',
+        mode: 'background',
+        status: 'queued',
+        task: 'q2',
+        created_at: new Date().toISOString(),
+      },
+    ];
+    const all = [...tasks, ...queuedTasks] as any;
+    const lines = renderClaudeBackgroundWidgetLines(all)!;
+    expect(lines[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
+    expect(lines.some((l) => l.includes('worker-1'))).toBe(true);
+    expect(lines.some((l) => l.includes('worker-2'))).toBe(true);
+    expect(lines.some((l) => l.includes('worker-3'))).toBe(true);
+    expect(lines.some((l) => l.includes('worker-4'))).toBe(false);
+    expect(lines.some((l) => l.includes('worker-10'))).toBe(false);
+    expect(lines.some((l) => l.includes('+7 more active · /subagents'))).toBe(
+      true,
+    );
+    expect(lines.at(-1)).toBe('  ○ 2 queued');
+  });
+
+  it('supports full keyboard navigation through visible cards, overflow footer, and queue with footer activation', () => {
+    const tasks = Array.from({ length: 5 }, (_, i) => ({
+      id: `task-${i + 1}`,
+      agent: `worker-${i + 1}`,
+      mode: 'background',
+      status: 'running',
+      task: `task ${i + 1}`,
+      created_at: new Date().toISOString(),
+    }));
+    const queued = [
+      {
+        id: 'q-1',
+        agent: 'worker',
+        mode: 'background',
+        status: 'queued',
+        task: 'q1',
+        created_at: new Date().toISOString(),
+      },
+    ];
+    const state = new ClaudeBackgroundWidgetState(
+      () => [...tasks, ...queued] as any,
+    );
+
+    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+    expect(state.getSelectedKey()).toBe('task-1');
+    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+    expect(state.getSelectedKey()).toBe('task-2');
+    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+    expect(state.getSelectedKey()).toBe('task-3');
+    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+    expect(state.getSelectedKey()).toBe('overflow');
+    expect(state.handleTerminalInput('\r')).toEqual({
+      consume: true,
+      action: { type: 'open-history' },
+    });
+
+    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+    expect(state.getSelectedKey()).toBe('q-1');
+    expect(state.handleTerminalInput('\r')).toEqual({
+      consume: true,
+      action: { type: 'open-task', taskId: 'q-1' },
+    });
+  });
+
+  it('maintains stable selected item when tasks finish during navigation', () => {
+    let currentTasks = [
+      {
+        id: 'task-1',
+        agent: 'w1',
+        mode: 'background',
+        status: 'running',
+        task: 't1',
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'task-2',
+        agent: 'w2',
+        mode: 'background',
+        status: 'running',
+        task: 't2',
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'task-3',
+        agent: 'w3',
+        mode: 'background',
+        status: 'running',
+        task: 't3',
+        created_at: new Date().toISOString(),
+      },
+    ] as any[];
+
+    const state = new ClaudeBackgroundWidgetState(() => currentTasks);
+    state.handleTerminalInput('\u001b[B');
+    state.handleTerminalInput('\u001b[B');
+    expect(state.getSelectedKey()).toBe('task-2');
+
+    currentTasks = [currentTasks[0], currentTasks[2]];
+    expect(state.getSelectedKey()).toBe('task-3');
+  });
+
+  it('bounds widget height for 10 running tasks at normal and narrow widths while preserving all telemetry', () => {
+    const tasks = Array.from({ length: 10 }, (_, i) => ({
+      id: `task-${i + 1}`,
+      agent: `worker-${i + 1}`,
+      mode: 'background',
+      status: 'running',
+      task: `task ${i + 1}`,
+      started_at: '2026-01-01T00:00:00Z',
+      runtime_metrics: {
+        turns: i + 1,
+        toolUses: i + 2,
+        contextPercent: 25.5,
+        compactions: i === 0 ? 1 : 0,
+      },
+      usage: {
+        input: 1000,
+        output: 500,
+        cacheWrite: 0,
+        cacheRead: 0,
+        turns: i + 1,
+      },
+      live_activity: { current: { label: `activity ${i + 1}` } },
+    })) as any;
+
+    const widget = new ClaudeBackgroundWidget(
+      new ClaudeBackgroundWidgetState(() => tasks),
+      {},
+    );
+    const normalLines = widget.render(100);
+    expect(normalLines.length).toBeLessThanOrEqual(14);
+    expect(normalLines.join(' ')).toContain('turns 1');
+    expect(normalLines.join(' ')).toContain('tools 2');
+    expect(normalLines.join(' ')).toContain('tokens 1.5k');
+    expect(normalLines.join(' ')).toContain('context 25.5%');
+    expect(normalLines.join(' ')).toContain('+7 more active · /subagents');
+
+    const narrowLines = widget.render(45);
+    expect(narrowLines.length).toBeLessThanOrEqual(18);
+    expect(narrowLines.every((l) => visibleWidth(l) <= 45)).toBe(true);
+    expect(narrowLines.join(' ')).toContain('turns 1');
+    expect(narrowLines.join(' ')).toContain('tools 2');
+  });
+
+  it('avoids huge task prompt in identity row while keeping short summary readable', () => {
+    const task = {
+      id: 'huge',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: '# delegated task\n' + 'A'.repeat(500) + '\nmore prompt lines',
+      created_at: new Date().toISOString(),
+    } as any;
+    const lines = renderClaudeBackgroundWidgetLines([task])!;
+    expect(lines[1]?.length).toBeLessThan(120);
+    expect(lines[1]).toContain('…');
+  });
+
+  it('safely handles terminal cell width with CJK and emoji without splitting sequences or overflowing', async () => {
+    const { visibleWidth, truncateToWidth } = await import(
+      '../../src/render/text-width.js'
+    );
+    expect(visibleWidth('你好世界')).toBe(8);
+    expect(visibleWidth('🚀 rocket')).toBe(9);
+    const truncated = truncateToWidth('你好世界朋友', 7, '…');
+    expect(visibleWidth(truncated)).toBeLessThanOrEqual(7);
+  });
+
+  it('correctly renders whole widget output containing ANSI, CJK, combining characters, and ZWJ emojis without sequence corruption or boundary overflow', () => {
+    const taskCjkZwj = {
+      id: 'task-cjk-zwj',
+      agent: 'worker-🚀',
+      mode: 'background',
+      status: 'running',
+      task: '日本語テキストと絵文字 👩‍💻 👨‍👩‍👧‍👦 combining e\u0301 accent test',
+      started_at: '2026-01-01T00:00:00Z',
+      runtime_metrics: {
+        turns: 3,
+        toolUses: 4,
+        contextPercent: 55.5,
+      },
+      usage: {
+        input: 1000,
+        output: 500,
+        cacheWrite: 0,
+        cacheRead: 0,
+        turns: 3,
+      },
+      live_activity: { current: { label: '実行中 ⚡ 👩‍🔬' } },
+    } as any;
+
+    const queuedTask = {
+      id: 'q-cjk',
+      agent: 'worker',
+      mode: 'background',
+      status: 'queued',
+      task: '待ち行列',
+      created_at: new Date().toISOString(),
+    } as any;
+
+    const tasks = [taskCjkZwj, queuedTask];
+    const options = { archIndicator: true };
+    const createSelectedState = () => {
+      const state = new ClaudeBackgroundWidgetState(() => tasks);
+      state.handleTerminalInput('\u001b[B');
+      state.handleTerminalInput('\u001b[A');
+      return state;
+    };
+    const widget = new ClaudeBackgroundWidget(
+      createSelectedState(),
+      {
+        fg: (_name: string, text: string) => `\u001b[36m${text}\u001b[39m`,
+        bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
+      },
+      options,
+    );
+    const styledOutput = widget.render(80).join('\n');
+    const plainOutput = new ClaudeBackgroundWidget(
+      createSelectedState(),
+      undefined,
+      options,
+    )
+      .render(80)
+      .join('\n');
+    expect(styledOutput).toContain(`\u001b[36m${ARCH_ICON}\u001b[39m`);
+    expect(styledOutput).toContain('\u001b[36mtools\u001b[39m');
+    expect(styledOutput).toContain('\u001b[36mtokens\u001b[39m');
+    expect(stripAnsi(styledOutput)).toBe(plainOutput);
+    expect(styledOutput).not.toMatch(
+      /[\uD800-\uDBFF]\u001b\[[0-9;]*m[\uDC00-\uDFFF]/,
+    );
+
+    for (const width of [80, 50, 35, 20]) {
+      const rendered = widget.render(width);
+      expect(rendered.length).toBeGreaterThan(0);
+      for (const line of rendered) {
+        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+        expect(line).not.toMatch(/\u001b(?:\[[0-9;]*)?$/);
+      }
+    }
   });
 });

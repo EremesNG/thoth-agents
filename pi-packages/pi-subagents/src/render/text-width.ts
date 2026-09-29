@@ -1,11 +1,24 @@
+import {
+  stripTerminalSequences as piStripAnsi,
+  truncateToWidth as piTruncateToWidth,
+  visibleWidth as piVisibleWidth,
+  wrapTextWithAnsi as piWrapTextWithAnsi,
+} from '@earendil-works/pi-tui';
+
 const TERMINAL_ESCAPE_RE =
   /\u001b\][^\u001b\u0007]*(?:\u001b\\|\u0007)|\u001b\[[0-?]*[ -/]*[@-~]/g;
 
 export function stripAnsi(text: string): string {
+  if (typeof piStripAnsi === 'function') {
+    return piStripAnsi(text);
+  }
   return text.replace(TERMINAL_ESCAPE_RE, '');
 }
 
 export function visibleWidth(text: string): number {
+  if (typeof piVisibleWidth === 'function') {
+    return piVisibleWidth(text);
+  }
   return [...stripAnsi(text)].length;
 }
 
@@ -15,6 +28,10 @@ export function truncateToWidth(
   ellipsis = '…',
 ): string {
   if (width <= 0) return '';
+  if (typeof piTruncateToWidth === 'function') {
+    const result = piTruncateToWidth(text, width, ellipsis);
+    return text.includes('\x1b') ? result : stripAnsi(result);
+  }
   if (visibleWidth(text) <= width) return text;
   const ellWidth = visibleWidth(ellipsis);
   if (width <= ellWidth) return ellipsis.slice(0, Math.max(0, width));
@@ -44,6 +61,10 @@ export function truncateToWidth(
 export function wrapLineToWidth(line: string, width: number): string[] {
   const max = Math.max(1, width);
   if (!line) return [''];
+  if (typeof piWrapTextWithAnsi === 'function') {
+    const result = piWrapTextWithAnsi(line, max);
+    return result.length ? result : [''];
+  }
   if (visibleWidth(line) <= max) return [line];
   const tokens =
     line.match(

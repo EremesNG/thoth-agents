@@ -1,5 +1,8 @@
 import { formatTaskLabel } from '../render/tools/formatting.js';
-import { isValidThreadSnapshot, renderThreadBody } from '../thread-view.js';
+import {
+  isValidThreadSnapshot,
+  renderThreadBodyItems,
+} from '../thread-view.js';
 import type {
   SubagentTask,
   SubagentThreadRenderContext,
@@ -1253,6 +1256,40 @@ export class SubagentsHistoryPanel {
     }
     let entries: Array<{ text: string; taskId?: string }>;
     if (activeSnapshot) {
+      const snapshotItems = [...activeSnapshot.items];
+      const delegatedPromptIndex = snapshotItems.findIndex((item) => {
+        if (item.type !== 'user') return false;
+        const label = item.label;
+        return item.id === 'delegated-prompt' || label === 'delegated_task';
+      });
+      if (delegatedPromptIndex >= 0) {
+        const item = snapshotItems[delegatedPromptIndex];
+        if (item?.type === 'user') {
+          snapshotItems[delegatedPromptIndex] = {
+            ...item,
+            label: 'delegated_task',
+            text: task.task,
+          };
+        }
+      } else {
+        let insertionIndex = snapshotItems[0]?.type === 'attempt' ? 1 : 0;
+        while (true) {
+          const item = snapshotItems[insertionIndex];
+          if (item?.type !== 'user' || item.label !== 'context') break;
+          insertionIndex++;
+        }
+        snapshotItems.splice(insertionIndex, 0, {
+          type: 'user',
+          id: 'delegated-prompt',
+          label: 'delegated_task',
+          text: task.task,
+        });
+      }
+      const snapshotToRender = {
+        ...activeSnapshot,
+        items: snapshotItems,
+      };
+
       const context = {
         ...this.renderContext,
         theme: this.renderContext.theme ?? this.theme,
@@ -1264,15 +1301,17 @@ export class SubagentsHistoryPanel {
         renderWidth: width,
         toolOutputExpanded: this.toolOutputExpanded,
         hideThinkingBlock: this.hideThinkingBlock,
+        includeFullDelegatedTask: true,
       };
-      const rendered = renderThreadBody(activeSnapshot, context);
-      const rawLines = rendered.length ? rendered : [''];
+      const renderedItems = renderThreadBodyItems(snapshotToRender, context);
+      const renderedLines = renderedItems.flatMap((item) => item.lines);
+      const rawLines = renderedLines.length ? renderedLines : [''];
       const knownTasks = this.tasks();
 
-      if (activeSnapshot.items.length <= 1) {
-        const taskId = activeSnapshot.items[0]
+      if (renderedItems.length <= 1) {
+        const taskId = renderedItems[0]
           ? this.resolveTaskIdFromSnapshotItem(
-              activeSnapshot.items[0],
+              renderedItems[0].item,
               knownTasks,
             )
           : undefined;
@@ -1283,24 +1322,19 @@ export class SubagentsHistoryPanel {
           return { text: resolved.cleanLine, taskId: resolved.taskId };
         });
       } else {
-        const itemSlices: Array<{ lines: string[]; taskId?: string }> = [];
-        for (const item of activeSnapshot.items) {
-          const itemLines = renderThreadBody(
-            { ...activeSnapshot, items: [item] },
-            context,
-          );
-          const taskId = this.resolveTaskIdFromSnapshotItem(item, knownTasks);
-          itemSlices.push({ lines: itemLines, taskId });
-        }
-        const flatLines = itemSlices.flatMap((s) => s.lines);
+        const itemSlices = renderedItems.map(({ item, lines }) => ({
+          lines,
+          taskId: this.resolveTaskIdFromSnapshotItem(item, knownTasks),
+        }));
+        const flatLines = itemSlices.flatMap((slice) => slice.lines);
         if (
           flatLines.length === rawLines.length &&
           flatLines.join('\n') === rawLines.join('\n')
         ) {
-          entries = itemSlices.flatMap((s) =>
-            s.lines.map((text) => {
-              const resolved = s.taskId
-                ? { cleanLine: text, taskId: s.taskId }
+          entries = itemSlices.flatMap((slice) =>
+            slice.lines.map((text) => {
+              const resolved = slice.taskId
+                ? { cleanLine: text, taskId: slice.taskId }
                 : this.resolveTaskIdFromFlowLine(text, knownTasks);
               return { text: resolved.cleanLine, taskId: resolved.taskId };
             }),
@@ -1349,9 +1383,7 @@ export class SubagentsHistoryPanel {
       '',
       hasResp ? 'Preparing for response' : undefined,
       hasResp ? '' : undefined,
-      task.prompt
-        ? ['# delegated task', this.extractPromptTail(task.prompt)].join('\n')
-        : ['# delegated task', task.task].join('\n'),
+      ['# delegated task', task.task].join('\n'),
       task.context ? ['', '# context', task.context].join('\n') : undefined,
       task.continuation_prompt
         ? ['', '# continuation prompt', task.continuation_prompt].join('\n')
@@ -1425,13 +1457,6 @@ export class SubagentsHistoryPanel {
     const clipped = this.truncateToWidth(text, width);
     const clippedVis = this.visibleWidth(clipped);
     return `${clipped}${' '.repeat(Math.max(0, width - clippedVis))}`;
-  }
-
-  private extractPromptTail(prompt: string): string {
-    const marker = '## delegated task';
-    const index = prompt.lastIndexOf(marker);
-    if (index >= 0) return prompt.slice(index + marker.length).trim();
-    return prompt.trim();
   }
 
   private wrap(text: string, width: number): string[] {

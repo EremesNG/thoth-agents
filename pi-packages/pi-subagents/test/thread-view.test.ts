@@ -276,6 +276,30 @@ describe('thread view and render', () => {
         'pi-assistant:42:true:from pi component',
       );
       expect(lines.join('\n')).toContain('pi-user:42:true:user component text');
+
+      const fullPromptLines = renderThreadBody(
+        {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'user',
+              id: 'delegated-prompt',
+              label: 'delegated_task',
+              text: `${'P'.repeat(80)} TAIL_SENTINEL`,
+            },
+          ],
+        } as any,
+        {
+          cwd: tmp,
+          renderWidth: 42,
+          includeFullDelegatedTask: true,
+          visibleWidth: (text: string) => text.length,
+          truncateToWidth: (text: string, width: number) =>
+            text.length > width ? text.slice(0, width) : text,
+        } as any,
+      );
+      expect(fullPromptLines.join('\n')).toContain('TAIL_SENTINEL');
     } finally {
       process.argv[1] = oldArgv1;
       resetPiComponentCacheForTests();
@@ -433,6 +457,81 @@ describe('thread view and render', () => {
     expect(rendered.indexOf('selecting suffix')).toBeLessThan(
       rendered.indexOf('CODE: UPDATED'),
     );
+  });
+
+  it('keeps ordinary thread rows unchanged while full prompt details leave snapshot bounds untouched', () => {
+    const normalSnapshot = {
+      version: 1,
+      source: 'events',
+      items: [
+        {
+          type: 'user',
+          label: 'user',
+          text: 'normal thread row with wrapping changes',
+        },
+      ],
+    } as any;
+    const narrowContext = {
+      cwd: tmp,
+      renderWidth: 12,
+      visibleWidth: (text: string) => text.length,
+      truncateToWidth: (text: string, width: number) => text.slice(0, width),
+    };
+    expect(renderThreadBody(normalSnapshot, narrowContext)).toEqual([
+      'user: normal',
+    ]);
+
+    const originalTask = [
+      'X'.repeat(2000),
+      'BEFORE_MARKER_SENTINEL',
+      '## delegated task',
+      'Y'.repeat(3020),
+      'TAIL_SENTINEL',
+    ].join('\n');
+    const snapshot = {
+      version: 1,
+      source: 'events',
+      items: [
+        {
+          type: 'user',
+          id: 'delegated-prompt',
+          label: 'delegated_task',
+          text: originalTask,
+        },
+      ],
+    } as any;
+    const boundedPromptSnapshot = {
+      ...snapshot,
+      items: [
+        {
+          ...snapshot.items[0],
+          text: `${'Z'.repeat(5000)}TAIL_SENTINEL`,
+        },
+      ],
+    };
+    const boundedText = (
+      boundThreadSnapshot(boundedPromptSnapshot)?.items[0] as any
+    )?.text;
+    expect(boundedText).toBe(`${'Z'.repeat(3999)}…`);
+
+    const wideContext = {
+      cwd: tmp,
+      renderWidth: 6000,
+      visibleWidth: (text: string) => text.length,
+      truncateToWidth: (text: string, width: number) => text.slice(0, width),
+    };
+    const normalDetails = renderThreadBody(
+      boundedPromptSnapshot,
+      wideContext,
+    ).join('\n');
+    expect(normalDetails).not.toContain('TAIL_SENTINEL');
+    const fullDetails = renderThreadBody(snapshot, {
+      ...wideContext,
+      includeFullDelegatedTask: true,
+    }).join('\n');
+    expect(fullDetails).toContain('BEFORE_MARKER_SENTINEL');
+    expect(fullDetails).toContain('## delegated task');
+    expect(fullDetails).toContain('TAIL_SENTINEL');
   });
 
   it('renders queued steering rows distinctly while preserving normal Pi-style consumed user rows', () => {

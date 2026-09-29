@@ -154,6 +154,7 @@ describe('subagents smoke', () => {
     const managerInstance = {
       reconcileOrphanedTasks,
       close,
+      onTaskUpdate: vi.fn(() => () => undefined),
       listSessionTasks: () => [],
     };
     class MockManager {
@@ -193,6 +194,7 @@ describe('subagents smoke', () => {
     const managerInstance = {
       reconcileOrphanedTasks: vi.fn(),
       cancelRunning: vi.fn(),
+      onTaskUpdate: vi.fn(() => () => undefined),
       listSessionTasks: () => [],
     };
     class MockManager {
@@ -391,6 +393,118 @@ describe('subagents smoke', () => {
     } finally {
       vi.restoreAllMocks();
       vi.useRealTimers();
+    }
+  });
+
+  it('opens full history from the widget overflow and retains an active task beyond 100 newer completed tasks', async () => {
+    vi.resetModules();
+    const completedTasks = Array.from({ length: 110 }, (_, index) => ({
+      id: `completed-${index + 1}`,
+      agent: 'finished-worker',
+      mode: 'background',
+      status: 'completed',
+      task: `completed task ${index + 1}`,
+      created_at: new Date(Date.now() - index * 1000).toISOString(),
+    }));
+    const activeTasks = Array.from({ length: 4 }, (_, index) => ({
+      id: `active-${index + 1}`,
+      agent: `active-worker-${index + 1}`,
+      mode: 'background',
+      status: 'running',
+      task: `active task ${index + 1}`,
+      created_at: new Date(Date.now() - 200_000 - index * 1000).toISOString(),
+    }));
+    const olderActiveTask = {
+      id: 'active-old',
+      agent: 'older-active-worker',
+      mode: 'background',
+      status: 'running',
+      task: 'OLDER_ACTIVE_TASK_SENTINEL',
+      created_at: '2020-01-01T00:00:00.000Z',
+    };
+    const allTasks = [...completedTasks, ...activeTasks, olderActiveTask];
+    const managerInstance = {
+      reconcileOrphanedTasks: vi.fn(),
+      onTaskUpdate: vi.fn(() => () => undefined),
+      listActiveSessionTasks: vi.fn(() => [...activeTasks, olderActiveTask]),
+      listSessionTasks: vi.fn(() => allTasks),
+      getTask: vi.fn((id: string) => allTasks.find((task) => task.id === id)),
+      cancel: vi.fn(),
+      close: vi.fn(),
+    };
+    class MockManager {
+      constructor() {
+        Object.assign(this, managerInstance);
+      }
+    }
+    vi.doMock('../src/manager.js', () => ({ SubagentManager: MockManager }));
+    const { default: reloadedExtension } = await import(
+      '../src/extension/subagents-extension.js'
+    );
+
+    const handlers = new Map<string, Function>();
+    let terminalInput: ((data: string) => unknown) | undefined;
+    let panelComponent: any;
+    const finishCustomUi = vi.fn();
+    const custom = vi.fn(async (factory: Function) => {
+      panelComponent = factory(
+        {
+          mode: 'fullscreen',
+          terminal: { rows: 40 },
+          requestRender: vi.fn(),
+        },
+        { fg: (_name: string, text: string) => text },
+        undefined,
+        finishCustomUi,
+      );
+    });
+    const setWidget = vi.fn();
+    const pi = {
+      registerMessageRenderer: vi.fn(),
+      registerShortcut: vi.fn(),
+      registerCommand: vi.fn(),
+      registerTool: vi.fn(),
+      on: vi.fn((event: string, handler: Function) =>
+        handlers.set(event, handler),
+      ),
+    };
+    reloadedExtension(pi);
+    const ctx = {
+      cwd: env.tmp,
+      sessionId: 'session-overflow-history',
+      ui: {
+        setWidget,
+        onTerminalInput: (handler: (data: string) => unknown) => {
+          terminalInput = handler;
+          return () => {
+            terminalInput = undefined;
+          };
+        },
+        getEditorText: () => '',
+        custom,
+      },
+    };
+
+    try {
+      handlers.get('session_start')?.({}, ctx);
+      expect(terminalInput).toBeDefined();
+      for (let i = 0; i < 4; i++) {
+        expect(terminalInput?.('\u001b[B')).toEqual({ consume: true });
+      }
+      expect(terminalInput?.('\r')).toEqual({
+        consume: true,
+        action: { type: 'open-history' },
+      });
+      await vi.waitFor(() => expect(custom).toHaveBeenCalledOnce());
+
+      for (let i = 0; i < 104; i++) panelComponent.handleInput('\u001b[C');
+      const rendered = panelComponent.render(160).join('\n');
+      expect(rendered).toContain('/105');
+      expect(rendered).toContain('OLDER_ACTIVE_TASK_SENTINEL');
+    } finally {
+      panelComponent?.handleInput('q');
+      await handlers.get('session_shutdown')?.({}, ctx);
+      vi.doUnmock('../src/manager.js');
     }
   });
 });

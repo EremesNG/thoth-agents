@@ -119,6 +119,36 @@ export function openSubagentsPanel(taskId?: string): void {
   }
 }
 
+export function getPanelTasks(
+  manager: {
+    listSessionTasks: (cwd?: string, sessionId?: string) => SubagentTask[];
+  },
+  cwd?: string,
+  sessionId?: string,
+  completedLimit = 100,
+): SubagentTask[] {
+  const all = manager.listSessionTasks(cwd, sessionId);
+  const active = all.filter(
+    (t) =>
+      t.status === 'running' ||
+      t.status === 'queued' ||
+      t.status === 'stopping',
+  );
+  const completed = all.filter(
+    (t) =>
+      t.status !== 'running' &&
+      t.status !== 'queued' &&
+      t.status !== 'stopping',
+  );
+  const activeIds = new Set(active.map((t) => t.id));
+  const completedCapped = completed.slice(0, completedLimit);
+  const includedIds = new Set([
+    ...activeIds,
+    ...completedCapped.map((t) => t.id),
+  ]);
+  return all.filter((t) => includedIds.has(t.id));
+}
+
 export async function showSubagentsPanel(input: {
   ctx: any;
   pi: any;
@@ -161,7 +191,7 @@ export async function showSubagentsPanel(input: {
         };
         const baseMatchesKey = createSubagentsPanelKeyMatcher(_keybindings);
         const panel = new SubagentsHistoryPanel(
-          () => manager.listSessionTasks(cwd, sessionId).slice(0, 100),
+          () => getPanelTasks(manager, cwd, sessionId),
           theme,
           close,
           (data: string, key: string) => {

@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { writeSubagentsDebugLog } from './debug.js';
+import { wrapLineToWidth } from './render/text-width.js';
 
 import type {
   SubagentAssistantItem,
@@ -709,6 +710,17 @@ function userItemTitle(item: SubagentUserItem): string | undefined {
   return undefined;
 }
 
+function isFullDelegatedTask(
+  item: SubagentThreadItem,
+  context: SubagentThreadRenderContext,
+): boolean {
+  return (
+    context.includeFullDelegatedTask === true &&
+    item.type === 'user' &&
+    (item.id === 'delegated-prompt' || item.label === 'delegated_task')
+  );
+}
+
 function renderUserItem(
   item: SubagentUserItem,
   context: SubagentThreadRenderContext,
@@ -725,12 +737,26 @@ function renderUserItem(
         new componentCtor(displayText, markdownTheme),
         width,
       );
-      if (rendered?.some((line) => line.trim())) return rendered;
+      if (rendered?.some((line) => line.trim())) {
+        return isFullDelegatedTask(item, context)
+          ? rendered.flatMap((line) => wrapLineToWidth(line, width))
+          : rendered;
+      }
     } catch (error) {
       debugLog(context, 'user_component_error', { error, label: item.label });
     }
   }
-  return title ? [title, item.text] : [`${item.label ?? 'user'}: ${item.text}`];
+  if (!isFullDelegatedTask(item, context)) {
+    return title
+      ? [title, item.text]
+      : [`${item.label ?? 'user'}: ${item.text}`];
+  }
+  const textLines = item.text
+    .split(/\r?\n/)
+    .flatMap((line) => wrapLineToWidth(line, width));
+  return title
+    ? [title, ...textLines]
+    : textLines.map((line) => `${item.label ?? 'user'}: ${line}`);
 }
 
 function renderAttemptItem(
@@ -1162,6 +1188,7 @@ function delegatedTaskText(text: string): string {
 
 function normalizeLegacyAttemptPrefix(
   items: SubagentThreadItem[],
+  preserveDelegatedTaskText = false,
 ): SubagentThreadItem[] {
   const users = items.filter(
     (item): item is SubagentUserItem => item.type === 'user',
@@ -1201,7 +1228,9 @@ function normalizeLegacyAttemptPrefix(
       if (context) normalized.push(context);
       normalized.push({
         ...delegated,
-        text: delegatedTaskText(delegated.text),
+        text: preserveDelegatedTaskText
+          ? delegated.text
+          : delegatedTaskText(delegated.text),
       });
     } else {
       normalized.push(continuations[index - 1]!);
@@ -1213,41 +1242,64 @@ function normalizeLegacyAttemptPrefix(
 
 function normalizeAttemptItems(
   items: SubagentThreadItem[],
+  preserveDelegatedTaskText = false,
 ): SubagentThreadItem[] {
   const firstAttempt = items.findIndex((item) => item.type === 'attempt');
   if (firstAttempt === 0) return items;
-  if (firstAttempt < 0) return normalizeLegacyAttemptPrefix(items);
+  if (firstAttempt < 0)
+    return normalizeLegacyAttemptPrefix(items, preserveDelegatedTaskText);
   return [
-    ...normalizeLegacyAttemptPrefix(items.slice(0, firstAttempt)),
+    ...normalizeLegacyAttemptPrefix(
+      items.slice(0, firstAttempt),
+      preserveDelegatedTaskText,
+    ),
     ...items.slice(firstAttempt),
   ];
+}
+
+export function renderThreadBodyItems(
+  snapshot: unknown,
+  context: SubagentThreadRenderContext,
+): Array<{ item: unknown; lines: string[] }> {
+  if (!isRenderableSnapshotRoot(snapshot)) return [];
+  const width = Math.max(
+    1,
+    Math.floor(context.renderWidth ?? DEFAULT_RENDER_WIDTH),
+  );
+  const renderedItems: Array<{ item: unknown; lines: string[] }> = [];
+  for (const rawItem of normalizeAttemptItems(
+    snapshot.items as SubagentThreadItem[],
+    context.includeFullDelegatedTask,
+  ).slice(0, DEFAULT_MAX_ITEMS)) {
+    try {
+      if (!isThreadItem(rawItem)) {
+        renderedItems.push({
+          item: rawItem,
+          lines: [safeTruncate(context, malformedItemText(rawItem), width)],
+        });
+        continue;
+      }
+      const limit = isFullDelegatedTask(rawItem, context)
+        ? Number.POSITIVE_INFINITY
+        : DEFAULT_TEXT_LIMIT;
+      const item = boundItem(rawItem, limit);
+      renderedItems.push({
+        item: rawItem,
+        lines: truncateLines(context, renderItem(item, context, width), width),
+      });
+    } catch {
+      renderedItems.push({
+        item: rawItem,
+        lines: [safeTruncate(context, 'thread item unavailable', width)],
+      });
+    }
+  }
+  return renderedItems;
 }
 
 export function renderThreadBody(
   snapshot: unknown,
   context: SubagentThreadRenderContext,
 ): string[] {
-  if (!isRenderableSnapshotRoot(snapshot)) return [];
-  const width = Math.max(
-    1,
-    Math.floor(context.renderWidth ?? DEFAULT_RENDER_WIDTH),
-  );
-  const lines: string[] = [];
-  for (const rawItem of normalizeAttemptItems(
-    snapshot.items as SubagentThreadItem[],
-  ).slice(0, DEFAULT_MAX_ITEMS)) {
-    try {
-      if (!isThreadItem(rawItem)) {
-        lines.push(safeTruncate(context, malformedItemText(rawItem), width));
-        continue;
-      }
-      const item = boundItem(rawItem, DEFAULT_TEXT_LIMIT);
-      lines.push(
-        ...truncateLines(context, renderItem(item, context, width), width),
-      );
-    } catch {
-      lines.push(safeTruncate(context, 'thread item unavailable', width));
-    }
-  }
-  return lines;
+  return renderThreadBodyItems(snapshot, context).flatMap((item) => item.lines);
 }

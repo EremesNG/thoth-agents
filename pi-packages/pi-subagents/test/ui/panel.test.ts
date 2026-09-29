@@ -1757,7 +1757,7 @@ describe('subagents panel and extension ui', () => {
       [task],
       { fg: (_name: string, text: string) => text },
       () => undefined,
-      () => false,
+      (data, key) => data === ({ home: 'g' } as Record<string, string>)[key],
       (text) => text.length,
       (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
@@ -1766,7 +1766,14 @@ describe('subagents panel and extension ui', () => {
     const lines = panel.render(100);
 
     expect(lines).toHaveLength(60);
-    expect(lines.at(-1)).toMatch(/\d+-\d+\/80/);
+    expect(lines.at(-1)).toMatch(/\d+-\d+\/83/);
+    expect(lines.join('\n')).toContain('viewport line 79');
+
+    panel.handleInput('g');
+    const promptStart = panel.render(100).join('\n');
+    expect(promptStart).toContain('delegated task');
+    expect(promptStart).toContain('bounded viewport');
+    expect(promptStart).toContain('viewport line 00');
   });
 
   it('preserves keyboard scrolling for long thread snapshot bodies', () => {
@@ -3214,5 +3221,142 @@ describe('subagents panel and extension ui', () => {
     } finally {
       resetPiComponentCacheForTests();
     }
+  });
+
+  it('overflow history includes older active tasks even when completed history exceeds 100 items', async () => {
+    const { getPanelTasks } = await import('../../src/ui/panel-overlay.js');
+    const completedTasks = Array.from({ length: 110 }, (_, i) => ({
+      id: `completed-${i + 1}`,
+      agent: 'worker',
+      mode: 'background',
+      status: 'completed',
+      task: `task ${i + 1}`,
+      created_at: new Date(Date.now() - i * 1000).toISOString(),
+    })) as SubagentTask[];
+
+    const olderActiveTask: SubagentTask = {
+      id: 'active-old',
+      agent: 'long-runner',
+      mode: 'background',
+      status: 'running',
+      task: 'long running active task',
+      created_at: new Date(Date.now() - 200000).toISOString(),
+    };
+
+    const allTasks = [...completedTasks, olderActiveTask];
+    const mockManager = {
+      listSessionTasks: () => allTasks,
+    };
+
+    const panelTasks = getPanelTasks(mockManager);
+    expect(panelTasks.some((t) => t.id === 'active-old')).toBe(true);
+    const completedCount = panelTasks.filter(
+      (t) => t.status === 'completed',
+    ).length;
+    expect(completedCount).toBe(100);
+    expect(panelTasks.length).toBe(101);
+  });
+
+  it('scrolls through the full original task prompt when a snapshot has no user item', () => {
+    const originalTask = [
+      'X'.repeat(2000),
+      'BEFORE_MARKER_SENTINEL',
+      '## delegated task',
+      'Y'.repeat(3020),
+      'TAIL_SENTINEL',
+    ].join('\n');
+    const task: SubagentTask = {
+      id: 'subtask_long_prompt_snapshot',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: originalTask,
+      prompt: `## orchestrator context\ncontext text\n\n## delegated task\n${originalTask}`,
+      created_at: new Date().toISOString(),
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'status', text: 'worker started' }],
+      },
+    };
+
+    const keys: Record<string, string> = {
+      down: 'j',
+      up: 'k',
+      pageDown: 'f',
+      pageUp: 'b',
+      home: 'g',
+      end: 'G',
+    };
+
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      (data, key) => data === keys[key],
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
+
+    panel.handleInput('G');
+    expect(panel.render(120).join('\n')).toContain('TAIL_SENTINEL');
+    expect(task.thread_snapshot?.items).toEqual([
+      { type: 'status', text: 'worker started' },
+    ]);
+
+    let sawOriginalTextBeforeMarker = false;
+    let sawEmbeddedMarker = false;
+    for (let i = 0; i < 20; i++) {
+      panel.handleInput('b');
+      const rendered = panel.render(120).join('\n');
+      sawOriginalTextBeforeMarker ||= rendered.includes(
+        'BEFORE_MARKER_SENTINEL',
+      );
+      sawEmbeddedMarker ||= rendered.includes('## delegated task');
+      if (sawOriginalTextBeforeMarker && sawEmbeddedMarker) break;
+    }
+    expect(sawOriginalTextBeforeMarker).toBe(true);
+    expect(sawEmbeddedMarker).toBe(true);
+  });
+
+  it('replaces bounded delegated prompt items without mutating the persisted snapshot', () => {
+    const originalTask = `${'X'.repeat(5020)} TAIL_SENTINEL`;
+    const persistedPrompt = `${originalTask.slice(0, 3999)}…`;
+    const task: SubagentTask = {
+      id: 'subtask_bounded_prompt_snapshot',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: originalTask,
+      prompt: `## delegated task\n${originalTask}`,
+      created_at: new Date().toISOString(),
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [
+          {
+            type: 'user',
+            id: 'delegated-prompt',
+            label: 'delegated_task',
+            text: persistedPrompt,
+          },
+        ],
+      },
+    };
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      (data, key) => data === ({ end: 'G' } as Record<string, string>)[key],
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
+
+    panel.handleInput('G');
+    expect(panel.render(120).join('\n')).toContain('TAIL_SENTINEL');
+    expect(task.thread_snapshot?.items[0]).toMatchObject({
+      type: 'user',
+      text: persistedPrompt,
+    });
   });
 });

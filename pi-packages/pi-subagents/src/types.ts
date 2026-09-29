@@ -343,6 +343,7 @@ export type SubagentThreadRenderContext = {
   imageWidthCells?: number;
   toolOutputExpanded?: boolean;
   hideThinkingBlock?: boolean;
+  includeFullDelegatedTask?: boolean;
 };
 
 export type SubagentLiveActivity = {

@@ -138,8 +138,15 @@ export default function subagentsExtension(pi: any): void {
         const result = widgetState?.handleTerminalInput(data, {
           allowActivate: !editorText.trim(),
         });
-        if (result?.action?.type === 'open-task' && widgetCtx) {
-          const selectedTaskId = result.action.taskId;
+        if (
+          (result?.action?.type === 'open-task' ||
+            result?.action?.type === 'open-history') &&
+          widgetCtx
+        ) {
+          const selectedTaskId =
+            result.action.type === 'open-task'
+              ? result.action.taskId
+              : undefined;
           void (async () => {
             await preloadPiComponentsForSubagentRendering();
             await showSubagentsPanel({

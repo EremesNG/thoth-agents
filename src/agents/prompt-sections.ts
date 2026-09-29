@@ -5,7 +5,6 @@ import {
   type SpecialistDecision,
   type TaskShapingPolicy,
 } from '../harness/core/agent-pack';
-import type { SddWorkflowContract } from '../harness/core/sdd';
 import { getSddWorkflowContract } from '../harness/core/sdd';
 import type { AgentPromptRole, HarnessPromptDialect } from './prompt-dialects';
 import type { ModelEntry } from './prompt-utils';
@@ -139,15 +138,19 @@ function roleTemplate(role: AgentPromptRole): string {
   return `{{role.${role}}}`;
 }
 
-function renderImplementationOwnershipPolicy(): string {
+function renderImplementationOwnershipPolicy(
+  directConsultation: string[],
+): string {
   return `<implementation-ownership>
-- Root retains known low-risk mechanical work, including reviewed commits, without rediscovery or delegation. Explicit direct-work or no-delegation instruction wins; disclose any unavailable independent review rather than self-approving.
-- Otherwise specialists execute by default for substantive work; root retains goals, decisions, coordination, acceptance, and synthesis. Delegate for a concrete discovery, implementation, parallelism, or independent-judgment benefit, not a second search or file count.
-- Unknown local source, flow, or responsibility triggers Explorer before root search unless the user requests direct investigation. A discovery assignment accepts an unknown location; no pre-reading.
-- Known bounded implementation selected for delegation goes directly to designer or worker without Explorer. Use librarian for external evidence and Oracle for judgment; no all-role pipeline.
+- Root retains known low-risk mechanical work, including reviewed commits; explicit direct-work or no-delegation instruction wins. Disclose unavailable independent review; never self-approve.
+- ${directConsultation.join('\n- ')}
+- Otherwise specialists execute by default for substantive work; root retains goals, decisions, coordination, acceptance, and synthesis. Delegate for a concrete discovery, implementation, parallelism, or independent-judgment benefit, not repeated searches or file count.
+- Unknown local source, flow, or responsibility triggers Explorer before root search unless the user requests direct investigation.
+- A discovery assignment accepts an unknown location; root does no exploratory pre-reading to prepare it.
+- Known bounded implementation goes directly to designer or worker without Explorer. No fixed all-role pipeline.
 - Preserve operator-selected model and effort, including max; fix scope and supervision, never lower effort for speed.
 - Root must not repeat delegated discovery; missing support gets targeted evidence. Independent verification remains mandatory.
-- Delegation failure is truthful and allows no unrestricted root execution; the investigator owns discovery fallback.
+- Report delegation failure truthfully; no unrestricted root fallback. The investigator owns discovery-tool fallback.
 </implementation-ownership>`;
 }
 
@@ -162,26 +165,27 @@ function renderRoleDirectory(directory: SpecialistDecision[]): string {
 
 function renderTaskShapingPolicy(policy: TaskShapingPolicy): string {
   return `<task-shaping>
-${policy.steps.join(' -> ')}
-- ${policy.decisions.dependency}; bind each unit to one independently checkable outcome, owned writes, exact known entrypoints and skill paths, focused checks, and a return/stop condition. Split broad integration into accepted outcomes, not agents per file.
-- ${policy.decisions.ownershipConflict}; require compatible reads, writes, interfaces, and resources.
+select-specialists -> admit-ready-units
+- ${policy.decisions.unitOutcome}.
+- ${policy.decisions.unitEnvelope}; include exact known entrypoints and skill paths.
+- ${policy.decisions.phaseSplitting}.
+- ${policy.decisions.independentDiscovery}.
+- ${policy.decisions.scopeGrowth}.
+- ${policy.decisions.dependency}.
 - ${policy.decisions.readyDispatch} through \`{{backgroundDelegationTool}}\`{{backgroundWaitInstruction}}
-- ${policy.decisions.refill}; release each consumer when its own dependencies qualify, with no global wave barrier.
+- ${policy.decisions.refill}; no global wave barrier.
 - Accept only {{lifecycleTerminalState}} after reconciling intent, checks, and freshness. {{lifecycleNonterminalState}}, ${policy.decisions.terminalEvidence}.
 - Native execution and terminal results are the sole authority; ${policy.decisions.degradation}.
 - On native attention or a missed milestone, inspect progress and steer, narrow, or stop safely. A timeout is a safety ceiling, not a progress plan.
 - After two consecutive attempts without new evidence or progress, return partial evidence and the smallest blocker. Duration alone does not invalidate useful work.
 - Use native waits/notifications, no polling or timers. Without attention delivery, return at an agreed milestone. Reconcile termination before replacing a writer.
-- Thoth defines policy and project evidence only; never invent an executor, queue, scheduler, portable wait API, or lifecycle mirror.
+- Policy only: never invent an executor, queue, scheduler, portable wait API, or lifecycle mirror.
 </task-shaping>`;
 }
 
-function renderSddPhaseDispatchTemplate(workflow: SddWorkflowContract): string {
+function renderSddPhaseDispatchTemplate(): string {
   return `<phase-dispatch>
-For each bounded assignment, specify:
-- PHASE / CHANGE (only substantial work uses \`${workflow.recordPath}\`); OBJECTIVE; INPUT ARTIFACTS; REQUIREMENTS.
-- BOUNDARIES; VERIFICATION; EXPECTED OUTPUT; HANDOFF; scoped MEMORY authorization.
-Small work has no record; understanding does not force documents, agents, or interviews.
+For each bounded assignment, specify PHASE / CHANGE, OBJECTIVE, INPUT ARTIFACTS, REQUIREMENTS, BOUNDARIES, VERIFICATION, EXPECTED OUTPUT, HANDOFF, and scoped MEMORY authorization.
 </phase-dispatch>`;
 }
 
@@ -191,13 +195,12 @@ export function createOrchestratorPromptSections(): RolePromptSection[] {
 
   return [
     roleText(`<role>
-You are the adaptive root. Keep requirements, decisions, ownership, and synthesis here.
+You are the adaptive root.
 </role>
 
 <operating-model>
-- Ownership is proportional to the actual task and explicit user direction; no writer self-approves independent verification.
 - The maximum delegation depth is ${policy.maxDelegationDepth}; children never delegate.
-- Keep one writer per mutable surface; parallelize only non-overlapping work.
+- One writer per mutable surface; parallelize only non-overlapping work.
 - Preserve unrelated changes; report risks and capability gaps.
 - {{progressInstruction}}
 </operating-model>
@@ -205,8 +208,8 @@ You are the adaptive root. Keep requirements, decisions, ownership, and synthesi
 <delegation-lifecycle>
 - When delegation is selected, a new objective, work unit, mutable surface, or independent judgment starts a fresh specialist using {{lifecycleFreshDelegation}}. A work boundary alone does not require delegation; completed agents are not a reusable role pool.
 - Independent context: {{lifecycleIndependentContext}}.
-- Continue with {{lifecycleSameAssignmentContinuation}} only to steer, complete, or clarify the same bounded assignment; never to cross a work boundary.
-- {{lifecycleSameSessionProbe}} only collects the active nonterminal assignment and does not authorize later reuse.
+- Continue with {{lifecycleSameAssignmentContinuation}} only to steer, complete, or clarify the same bounded assignment.
+- {{lifecycleSameSessionProbe}} only collects the active nonterminal assignment.
 - Every Oracle plan review, verification round, and PASS judgment uses a fresh Oracle instance. An existing Oracle session may only clarify its current findings.
 </delegation-lifecycle>
 
@@ -214,7 +217,7 @@ You are the adaptive root. Keep requirements, decisions, ownership, and synthesi
 ${renderRoleDirectory(policy.specialistDirectory)}
 </routing>
 
-${renderImplementationOwnershipPolicy()}
+${renderImplementationOwnershipPolicy(policy.implementationOwnership.directConsultation)}
 
 ${renderTaskShapingPolicy(policy.taskShaping)}
 
@@ -248,15 +251,15 @@ ${renderTaskShapingPolicy(policy.taskShaping)}
 </memory>
 
 <artifacts>
-- Root owns the record and acceptance; native execution state stays with the harness. Oracle findings are read-only; substantial work closes only after independent PASS.
+- Root owns the record; native execution state stays with the harness.
 - Worktree automation is deferred.
 </artifacts>
 
 <delegation>
-- Use this envelope for all \`{{delegationTool}}\` delegation. Dispatch every admitted conflict-free ready unit before waiting, then refill native capacity before the next wait.
+- Use this envelope for all \`{{delegationTool}}\` delegation.
 - Child return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
 
-${renderSddPhaseDispatchTemplate(workflow)}
+${renderSddPhaseDispatchTemplate()}
 </delegation>`),
     createQuestionProtocolSection(),
   ];
@@ -309,6 +312,13 @@ function childSections(
           'Edit only the assigned work-unit surface.',
           'Preserve unrelated working-tree changes and never use destructive Git cleanup.',
         ];
+  const assignedOutcomeRules =
+    role.mode === 'write-capable'
+      ? [
+          'Use local judgment to complete the accepted outcome within the assigned boundaries.',
+          'If a new independently acceptable outcome or material scope change appears, return bounded progress for root reassessment before expanding.',
+        ]
+      : [];
 
   const sections: RolePromptSection[] = [
     roleText(`<role>
@@ -333,8 +343,7 @@ ${role.responsibility}
 </routing-contract>`),
     createReasoningDisciplineSection(),
     roleText(`<rules>
-- ${modeRules.join('\n- ')}
-- ${ROLE_SPECIFIC_RULES[roleName].join('\n- ')}
+- ${[...modeRules, ...assignedOutcomeRules, ...ROLE_SPECIFIC_RULES[roleName]].join('\n- ')}
 </rules>`),
     createSubagentRulesSection(),
     createQuestionProtocolSection('child'),

@@ -14,10 +14,18 @@ writer per surface. No process tools, wrappers, reports, or temporary artifacts.
   targeted search or file count does not force a new agent.
 - Preserve operator-selected model and effort, including max. Efficiency comes
   from bounded work and supervision, not changing those settings.
-- Each assignment delivers one independently checkable outcome. Supply exact
-  known entrypoints and skill paths, accepted inputs, owned writes, focused
-  checks, non-goals, and a return/stop condition. Do not delegate an entire broad
-  integration without intermediate accepted outcomes or split by file count.
+- Each assignment delivers one independently acceptable outcome. Start from its
+  accepted inputs and named dependencies; state the concrete output, exact known
+  entrypoints and skill paths, owner, owned writes and interface boundaries,
+  focused checks with pass evidence, and a meaningful return milestone and stop
+  condition. Read-only assignments state `none` for writes. Do not delegate an
+  entire broad integration without separately acceptable outputs or split by
+  file count.
+- A dependent assignment starts only after root accepts the producer's output.
+  Missing inputs or interfaces, conflicting ownership, a new independent
+  outcome, or material scope or risk growth returns bounded progress to root for
+  reassessment before expansion. Keep one writer per surface and preserve the
+  native lifecycle, configured effort, and required independent verification.
 
 ## Work until the outcome is satisfied, not until time runs out
 

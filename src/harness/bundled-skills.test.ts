@@ -285,9 +285,30 @@ describe('canonical workflow bundle contracts', () => {
       );
       expect(sddSkill).toContain('`.thoth/changes/<id>/<id>.md`');
       expect(sddSkill).toMatch(/file count alone never increases scope/i);
+      expect(sddSkill).toContain('Root owns user intent');
+      expect(sddSkill).toContain('completing understanding');
+      expect(sddSkill).toContain('specific discovery');
+      expect(sddSkill).toContain('determines who gathers evidence');
+      expect(sddSkill).toMatch(/apply these rules across all workflow stages/i);
       expect(sddSkill).not.toMatch(
         /\b(?:Direct|Accelerated|Full)\s+(?:route|work|is)/i,
       );
+
+      const changeTemplate = readFileSync(
+        join(canonicalRoot, 'thoth-sdd', 'templates', 'change.md'),
+        'utf8',
+      );
+      expect(changeTemplate).toContain('- [ ] AC-1:');
+      expect(changeTemplate).toContain('- Outcome:');
+      expect(changeTemplate).toContain('- Inputs:');
+      expect(changeTemplate).toContain('- Dependencies:');
+      expect(changeTemplate).toContain('- Output:');
+      expect(changeTemplate).toContain('- Owner:');
+      expect(changeTemplate).toContain('- Writes:');
+      expect(changeTemplate).toContain('- Interface boundaries:');
+      expect(changeTemplate).toContain('- Focused check and PASS evidence:');
+      expect(changeTemplate).toContain('- Return milestone:');
+      expect(changeTemplate).toContain('- Stop / reassessment:');
     } finally {
       rmSync(packageRoot, { recursive: true, force: true });
     }

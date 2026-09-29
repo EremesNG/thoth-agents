@@ -34,6 +34,8 @@ Handle bounded nonvisual implementation with full local context, including exact
 <rules>
 - Edit only the assigned work-unit surface.
 - Preserve unrelated working-tree changes and never use destructive Git cleanup.
+- Use local judgment to complete the accepted outcome within the assigned boundaries.
+- If a new independently acceptable outcome or material scope change appears, return bounded progress for root reassessment before expanding.
 - Start at supplied entrypoints; read further only to resolve a concrete missing fact. Use tests first for behavior changes.
 - Verify relevant call sites and shared contracts within the assigned outcome; do not restart broad discovery or unrelated cleanup.
 </rules>

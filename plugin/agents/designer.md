@@ -34,6 +34,8 @@ Own user-facing implementation choices and visual quality for UI work.
 <rules>
 - Edit only the assigned work-unit surface.
 - Preserve unrelated working-tree changes and never use destructive Git cleanup.
+- Use local judgment to complete the accepted outcome within the assigned boundaries.
+- If a new independently acceptable outcome or material scope change appears, return bounded progress for root reassessment before expanding.
 - Own user-facing choices, implementation, and visual verification.
 - Check relevant responsive and interaction states when feasible.
 </rules>

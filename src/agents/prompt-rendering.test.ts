@@ -17,6 +17,7 @@ import {
   detectModelFamilyFromModel,
   renderRolePrompt,
 } from './prompt-sections';
+import { composeAgentPrompt } from './prompt-utils';
 
 const READ_ONLY_ROLES = ['explorer', 'librarian', 'oracle'] as const;
 const WRITER_ROLES = ['designer', 'worker'] as const;
@@ -125,6 +126,34 @@ describe('AI-first prompt rendering', () => {
       /delegation failure.*truthful.*no unrestricted root/is,
     );
     expect(prompt).toMatch(/delegate for a concrete discovery/i);
+    expect(prompt).toMatch(/one known source.*one bounded question/i);
+    expect(prompt).toMatch(
+      /new path.*unlocated dependency.*stop and delegate.*acquired context/i,
+    );
+    expect(prompt).toMatch(
+      /experimental cumulative.*two source fragments.*approximately 200 code lines.*per user request/i,
+    );
+    expect(prompt).toMatch(/across tools, files, and subtasks/i);
+    expect(prompt).toMatch(
+      /required operating instructions.*coordination artifacts.*excluded.*source or log dumps/i,
+    );
+    expect(prompt).toMatch(/not runtime enforcement/i);
+    expect(prompt).toMatch(/independent verification remains mandatory/i);
+    expect(prompt).toMatch(
+      /exploration, research, planning, implementation, and verification.*one independently acceptable outcome/i,
+    );
+    expect(prompt).toMatch(
+      /accepted upstream inputs.*result produced.*owned writes.*interfaces.*shared resources.*focused checks.*pass evidence.*native return milestone.*stop condition/i,
+    );
+    expect(prompt).toMatch(
+      /split.*separately acceptable outcomes.*before dispatch.*cohesive tiny edits together/i,
+    );
+    expect(prompt).toMatch(
+      /precise independent Explorer questions.*parallel.*native capacity.*duplicate reads.*dependent questions.*root-accepted.*fresh/i,
+    );
+    expect(prompt).toMatch(
+      /missing context.*interfaces.*ownership conflicts.*material scope growth.*bounded progress.*root reassessment.*before expansion/i,
+    );
   });
 
   test.each([
@@ -144,7 +173,7 @@ describe('AI-first prompt rendering', () => {
       /another search or dependency ends|only root mutation exception/i,
     );
     expect(prompt).toMatch(/preserve operator-selected model and effort/i);
-    expect(prompt).toMatch(/one independently checkable outcome/i);
+    expect(prompt).toMatch(/one independently acceptable outcome/i);
     expect(prompt).toMatch(/exact known.*skill paths/i);
     expect(prompt).toMatch(/two consecutive.*without new evidence/i);
     expect(prompt).toMatch(/native attention.*inspect.*steer/i);
@@ -264,6 +293,31 @@ describe('AI-first prompt rendering', () => {
       );
       expect(prompt).toContain('Use exact supplied skill paths');
     }
+  });
+
+  test.each(
+    DIALECTS,
+  )('keeps writer autonomy inside the accepted outcome in %s', (dialect) => {
+    for (const role of WRITER_ROLES) {
+      const prompt = renderRolePrompt(sectionsFor(role), dialect);
+      expect(prompt).toMatch(
+        /use local judgment.*complete the accepted outcome within the assigned boundaries/i,
+      );
+      expect(prompt).toMatch(
+        /new independently acceptable outcome or material scope change.*return bounded progress.*root reassessment before expanding/i,
+      );
+    }
+  });
+
+  test('keeps a configured custom prompt as a full replacement for defaults', () => {
+    const prompt = composeAgentPrompt({
+      basePrompt: 'default root ownership and task shaping',
+      customPrompt: 'custom root replacement',
+      customAppendPrompt: 'appended default context',
+    });
+
+    expect(prompt).toBe('custom root replacement');
+    expect(prompt).not.toContain('default root ownership');
   });
 
   test('keeps read-only and writer boundaries', () => {

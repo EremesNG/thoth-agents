@@ -234,6 +234,8 @@ export const SDD_PHASE_PROTOCOLS = [
     requiredInputs: ['User intent and known repository context'],
     instructions: [
       'Inspect repository evidence in proportion to the request to identify behavior, constraints, risks, and safe assumptions.',
+      'Root owns completing understanding and acceptance; specific discovery ownership determines who gathers evidence, even when generic guidance permits direct exploration.',
+      'Give each evidence assignment one precise question and result. Independent questions may run in parallel within native capacity; dependent questions wait until the upstream output is accepted by root. Do not duplicate discovery.',
       'Complete this phase before specifying. No document, agent, or interview is forced in this phase.',
     ],
     outputSchema: [
@@ -302,6 +304,8 @@ export const SDD_PHASE_PROTOCOLS = [
     instructions: [
       'Substantial classification only creates the `.thoth/changes/<id>/<id>.md` record.',
       'Capture interfaces, mutable surfaces, durable deltas, dependencies, risks, and verification seams.',
+      'Plan each useful work unit with concrete inputs, outputs, and dependencies.',
+      "Record each unit's owner, owned writes, interface boundaries, focused checks with PASS evidence, and return milestone and stop condition.",
       'Validate the plan before tasks exist; tasks are checked later for acceptance coverage.',
     ],
     outputSchema: [
@@ -343,7 +347,11 @@ export const SDD_PHASE_PROTOCOLS = [
       'Known dependencies',
     ],
     instructions: [
-      'Record only useful tasks in the same ID-named record.',
+      'Record one task row per outcome in the same ID-named record; each row names one independently acceptable outcome.',
+      'Use the validator-compatible `- [ ] AC-n: ...` row with indented details and name concrete inputs, outputs, dependencies, owner, owned writes, interface boundaries, focused checks with PASS evidence, a meaningful return milestone, and a stop condition for each unit.',
+      'Write `none` for owned writes on read-only work.',
+      'Split phases with separately acceptable outcomes before dispatch; keep tiny cohesive mechanical work together and do not split mechanically by file or test step.',
+      'Independent, precise Explorer questions may run in parallel within native capacity. Dependent questions wait for accepted evidence; root accepts producer outputs before consumers start, and discovery is not duplicated.',
       'Cover every accepted outcome with concrete work; test-first for behavior changes.',
       'Tasks and ready gates enforce coverage; the plan gate does not depend on tasks.',
     ],
@@ -383,7 +391,11 @@ export const SDD_PHASE_PROTOCOLS = [
     ],
     instructions: [
       'Use one writer per mutable surface and choose an owner from task shape and net gain.',
+      'Work only from accepted inputs and named dependencies within the assigned outcome and interface boundaries.',
+      'Return bounded progress for root acceptance before dependent work starts.',
       'Use test-first (TDD); observe red before green for behavior changes, then verify call sites, shared contracts, and edge cases.',
+      'Stop on a missing interface, ownership conflict, or new independent outcome.',
+      'Return completed bounded progress and the smallest blocker for root reassessment before expansion.',
       'Do not create process tooling, reports, evidence generators, or temporary artifacts.',
     ],
     outputSchema: ['outcome', 'changed files', 'checks', 'residual risks'],

@@ -56,6 +56,37 @@ describe('proportional SDD phase protocols', () => {
     expect(text('tasks')).toMatch(/cover every accepted outcome/i);
   });
 
+  test('shapes phase work around accepted outcomes, concrete dependencies, and bounded returns', () => {
+    const explore = text('explore');
+    expect(explore).toMatch(
+      /root owns.*understanding.*acceptance.*specific discovery ownership.*who gathers evidence/i,
+    );
+    expect(explore).toMatch(/independent.*questions.*parallel/i);
+    expect(explore).toMatch(/dependent.*wait.*accepted/i);
+    expect(explore).toMatch(/do not duplicate discovery/i);
+
+    const plan = text('plan');
+    expect(plan).toMatch(/concrete inputs.*outputs.*dependencies/i);
+    expect(plan).toMatch(/owned writes.*interface boundaries/i);
+    expect(plan).toMatch(/focused checks.*pass evidence/i);
+    expect(plan).toMatch(/return milestone.*stop condition/i);
+
+    const tasks = text('tasks');
+    expect(tasks).toMatch(/one independently acceptable outcome/i);
+    expect(tasks).toMatch(/concrete inputs.*outputs.*dependencies/i);
+    expect(tasks).toMatch(/owned writes.*interface boundaries/i);
+    expect(tasks).toMatch(/focused checks.*pass evidence/i);
+    expect(tasks).toMatch(/meaningful return milestone.*stop condition/i);
+    expect(tasks).toMatch(/split.*separately acceptable outcomes/i);
+    expect(tasks).toMatch(/tiny cohesive mechanical work.*together/i);
+    expect(tasks).toMatch(/root accepts.*producer.*consumer/i);
+
+    const implement = text('implement');
+    expect(implement).toMatch(/new independent outcome.*bounded progress/i);
+    expect(implement).toMatch(/missing interface.*ownership conflict/i);
+    expect(implement).toMatch(/root reassessment before expansion/i);
+  });
+
   test('keeps optional review separate from authorization and final verification', () => {
     const review = text('plan-review');
     expect(getSddPhase('plan-review').activation).toBe('conditional');

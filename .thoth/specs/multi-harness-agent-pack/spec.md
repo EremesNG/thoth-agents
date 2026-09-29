@@ -457,3 +457,13 @@ Pi root and librarian guidance MUST use pi-web-access default names web_search, 
 - **GIVEN** Exa-backed search
 - **WHEN** operator guidance describes capabilities
 - **THEN** it does not promise dedicated pi-exa answer, similarity, or research-planner tools
+
+### Requirement: Bound direct root consultation
+
+Default roots MUST delegate unlocated local discovery before searching and MUST limit direct code consultation to a known source and bounded question. A new discovery path or exhausted experimental cumulative budget of two fragments and approximately 200 lines per request MUST route missing evidence to a specialist. Tool, file and subtask changes MUST NOT reset the budget; required operating instructions and relevant coordination artifacts are excluded but MUST NOT hide source/log dumps. Explicit user ownership and required independent verification remain authoritative. Full custom prompt replacement MAY omit these defaults and MUST be documented truthfully.
+
+#### Scenario: Bound direct root consultation
+
+- **GIVEN** an initially bounded known-source question reveals an unlocated dependency
+- **WHEN** another discovery path is needed
+- **THEN** the root delegates the remaining question without using accumulated context or remaining budget to justify continued discovery

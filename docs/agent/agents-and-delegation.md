@@ -13,30 +13,36 @@ definitions and applies overrides; harness adapters translate the same intent.
 
 ## Invariants
 
-- Root retains goals, constraints, decisions, coordination, semantic acceptance
-  and synthesis. Specialists perform discovery, external research and
-  substantive implementation by default, independently of persistence mode.
-  Root retains known low-risk mechanical work (including reviewed commits).
-  Explicit direct-work or no-delegation instructions take precedence.
+- Specialists perform discovery, external research and substantive implementation by default.
+- Root directs and accepts work, owning goals, constraints, decisions,
+  coordination and synthesis. Root retains known low-risk mechanical work
+  (including reviewed commits). Explicit user direction controls ownership.
 - Delegation depth is one and each mutable surface has one writer. Treat explicit
   safe user direction as an ownership input.
-- Before substantive execution, shape the work into bounded units: record exact
-  output dependencies, mutable ownership, specialist fit, and verification inputs.
-  A dependency means a lane needs a concrete upstream artifact or decision; mere
-  preference for an order is not a dependency.
+- Shape each retained or delegated unit across discovery, research, planning,
+  implementation and verification around one independently acceptable outcome.
+  Record its accepted upstream inputs, produced result, owned writes and interface
+  boundary, focused check with pass evidence, and return milestone/stop condition.
+  Split separately acceptable outcomes; keep cohesive tiny edits together. A
+  dependency is a required upstream result, not a preferred order.
 - Dispatch all admitted independent ready units before waiting; refill freed
-  native capacity before another wait. Accept terminal fresh outputs before
-  releasing each dependent consumer, without a global wave barrier. Compatibility
-  includes read assumptions, interfaces and shared resources, not only filenames.
-- Unknown local source, effective flow or responsibility triggers Explorer before
-  root repository search or dependency traversal unless the user requests direct
-  investigation. Its bounded assignment may
-  name an unknown location; root does not perform exploratory pre-reading to
-  prepare it. The assigned investigator owns applicable discovery-tool fallback.
-- Root may retain bounded known-source work with known scope and checks; another
-  targeted search or file count does not force delegation. Reassess only when
-  actual uncertainty, scope or risk increases. Do not restart discovery to commit
-  already reviewed changes. A fresh specialist must provide a concrete benefit.
+  native capacity before another wait. Release each dependent consumer only
+  after its required upstream result is terminal, fresh and accepted. Check
+  compatible read assumptions, interfaces and shared resources, not only files.
+- Unless the user directs root-owned investigation, unknown local source, flow, or responsibility
+  goes to Explorer before root code search, reads or dependency traversal.
+  Explorer may receive a bounded assignment whose origin is unknown.
+  Root may make one bounded direct consultation only when both the source and
+  question are known. If it exposes another discovery path, stop and delegate the
+  remaining inquiry. The experimental cumulative allowance is at most two source
+  code fragments and about 200 source lines per user request, whichever is reached
+  first, across files, tools and subtasks. Required operating instructions and
+  pertinent coordination artifacts are excluded; this never permits source/log
+  dumps or duplicated specialist discovery. At the limit, route missing evidence
+  to a specialist; the allowance never waives required verification. This is
+  prompt guidance, not runtime enforcement. A full
+  custom `orchestrator.prompt` replacement remains supported and may omit these
+  bundled defaults. A fresh specialist must provide a concrete benefit.
 - Explorer, librarian, and oracle never mutate the workspace.
 - Every dispatch carries bounded thoth-mem `none|recall|observe` authorization
   independently of workspace mode. `observe` may permit a durable provider
@@ -55,7 +61,8 @@ definitions and applies overrides; harness adapters translate the same intent.
   Proven independent surfaces may use separate writers with non-overlapping
   files. Overlapping or compatibility-coupled work stays with one `worker` writer
   and ordered handoffs. Roles are selected as needed, never as a mechanical
-  Explorer-to-writer-to-Oracle pipeline.
+  Explorer-to-writer-to-Oracle pipeline. A known bounded implementation goes
+  directly to its writer without a discovery relay.
 - Root loads only the current work operation from bundled skills instead of
   delegating merely to change prompts.
 - Children return conclusions, localized evidence, verification, uncertainty,
@@ -86,6 +93,9 @@ definitions and applies overrides; harness adapters translate the same intent.
 - Focused checks accompany edits; final validation waits for stable relevant
   inputs. Reuse fresh evidence, rerun only invalidated checks, and consolidate
   project-wide validation instead of running it for every child.
+- If scope grows, a required interface is missing, ownership conflicts, or a new
+  independent outcome appears, return bounded progress to root for reassessment
+  before expanding the assignment.
 - Reconcile owned background results before final return. A late event preserves
   the substantive handoff instead of replacing it with an acknowledgment.
 - If the user forbids delegation, do the authorized work directly but disclose
@@ -113,6 +123,29 @@ that can change the result:
 - `worker` owns known bounded non-visual implementation regardless of complexity,
   from exact low-risk edits through coupled contracts, shared state, migrations,
   concurrency, edge cases, and high-risk work.
+
+## Behavioral evaluation cases
+
+Use these cases to check prompt behavior. They state expected decisions, not
+observed model results:
+
+| Case | Expected behavior |
+| --- | --- |
+| Source origin is unknown | Assign Explorer before root code reads; begin at zero consulted fragments. |
+| A known-source lookup reveals another path | Stop the direct lookup and delegate the new discovery question. |
+| Specialist report has sufficient localized evidence | Accept it without repeating discovery. If a claim lacks support, request that specific evidence from the specialist. |
+| Tiny question has a known source and answer boundary | Root may consult only the needed fragment and stop within the cumulative allowance. |
+| Implementation is known and bounded | Assign Worker or Designer directly; do not insert Explorer. |
+| Two Explorer questions have separate outcomes and no shared evidence | They may run in parallel within native capacity; do not split one cohesive inquiry mechanically. |
+| One Explorer question depends on another's finding | Hold it until the upstream result is terminal, fresh and accepted. |
+| Writer assignment contains several independently acceptable outcomes | Split along outcome/interface boundaries; keep coupled writes with one writer and ordered handoffs. |
+| Edit is tiny and cohesive | Keep it as one bounded unit rather than fragmenting by file or check. |
+
+For comparative evaluation, use the same cases and outcome rubric where
+practical, and record root source fragments/lines consulted, duplicated evidence,
+outcome quality, elapsed latency and cost; mark unavailable measures as such.
+This documentation change reports no measurements and claims no gains or model
+compliance.
 
 For Pi, use the public j0k3r `subagent_run` tool once per specialist, with an
 explicit canonical `agent`, bounded `task`, and `mode: "task"` or

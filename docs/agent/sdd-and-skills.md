@@ -41,6 +41,23 @@ for the end-to-end lifecycle.
   native dependency acceptance, and closeout. Worker and Designer are selected
   by task shape; one writer owns each mutable surface. Native execution/liveness
   remains authoritative.
+- Bound useful work across evidence gathering and research, planning,
+  implementation, and verification as one independently acceptable outcome per
+  unit. Each unit states exact known entrypoints and skill paths, accepted inputs
+  and dependencies, its output, owner, owned writes, interface boundaries
+  including shared-resource limits, a focused check with observable PASS
+  evidence, a return milestone, and a stop or reassessment condition. Read-only
+  work says `none` for writes. Substantial task rows stay in the sole ID-named
+  record.
+- Use units only when they clarify real ownership or dependencies. A known lookup
+  needs no invented discovery assignment. Independent precise Explorer questions
+  may run in parallel within native capacity; a dependent question names the
+  accepted producer output and starts after root accepts it. Keep tiny cohesive
+  mechanical work together; do not split by phase, file, test step, or elapsed
+  time. Set a meaningful native progress milestone; a generous timeout is not a
+  substitute. Preserve configured effort, one writer per mutable surface, and
+  native dispatch/liveness. Optional Oracle plan review stays at record level,
+  never per unit, and separate from final verification.
 - Offer `Review plan with Oracle (Recommended)` or `Proceed without review`; run
   the fresh review only when selected. For each choice separately, only its
   third confirmed answerless native return selects the recommendation; pending,
@@ -64,6 +81,22 @@ for the end-to-end lifecycle.
   never invokes the product CLI, downloads contracts, installs skills, or creates
   auxiliary execution tooling. Provider memory remains independent from project
   work evidence.
+
+## Work-unit examples
+
+- **Parallel and dependent discovery:** Explorer A traces a named CLI option
+  through its parser and tests to report accepted values. Explorer B checks the
+  named installer and tests to list the files it writes. Their evidence can be
+  accepted independently and gathered in parallel. An Explorer tracing whether
+  that option controls those writes names both accepted outputs as inputs and
+  waits until root accepts them. If the requested path or symbol is already
+  known, inspect it directly instead of inventing a discovery task.
+- **Worker and Designer outcomes:** A Worker owns a service contract and its
+  focused behavior check; a Designer owns the screen states and accessibility
+  behavior built against that accepted contract, with a separate UI check. The
+  Designer names the Worker output as a dependency and starts after root accepts
+  it. Split only when both results can be accepted on their own; keep a tiny,
+  cohesive change with one writer and one check together.
 
 ## Verification
 

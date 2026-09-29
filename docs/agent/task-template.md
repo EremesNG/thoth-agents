@@ -23,6 +23,24 @@
 
 - `[path]:[symbol]` — [why it matters].
 
+## Bounded work units (when active)
+
+For substantial work, keep the task rows in the sole ID-named change record and
+link to it here instead of copying them. For each active or just-accepted unit
+that needs a handoff, preserve this contract:
+
+- Outcome: one independently acceptable result.
+- Known entrypoints and skill paths: exact paths needed for the result.
+- Inputs: accepted evidence or upstream outputs.
+- Dependencies: named units and accepted outputs, or none.
+- Output: concrete finding, decision, or artifact.
+- Owner: root or selected role.
+- Writes: exact owned paths, or `none` for read-only work.
+- Interface boundaries: relevant contracts, callers, and shared-resource limits.
+- Focused check and PASS evidence: check and observable passing result.
+- Return milestone: when root can review and accept the result.
+- Stop / reassessment: smallest missing input, conflict, or new scope to return.
+
 ## Work completed
 
 - [Concrete change or investigation].

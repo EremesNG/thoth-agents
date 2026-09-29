@@ -31,6 +31,8 @@ const DEFAULT_RENDER_DEBUG_LOG_PATH = path.join(
   'pi-subagents-render.jsonl',
 );
 const BLOCKED_SUBAGENT_TOOLS = new Set([
+  'ask_user_question',
+  'todo',
   'subagent_run',
   'subagent_continue',
   'subagent_list_agents',

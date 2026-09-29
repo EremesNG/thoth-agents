@@ -792,8 +792,48 @@ describe('config and workflow loading', () => {
       ),
     ).toEqual(['tool_lookup', 'tool_write', 'read']);
     expect(expandToolPatterns(['tool_*'], ['read'])).toEqual([]);
+    expect(
+      expandToolPatterns(
+        ['*'],
+        ['read', 'ask_user_question', 'todo', 'subagent_run'],
+        [
+          'read',
+          'tool_hidden',
+          'future_tool',
+          'ask_user_question',
+          'todo',
+          'subagent_run',
+        ],
+      ),
+    ).toEqual(['read', 'tool_hidden', 'future_tool']);
+    expect(
+      expandToolPatterns(
+        ['@active'],
+        ['read', 'ask_user_question', 'todo', 'subagent_run'],
+        ['read', 'tool_hidden'],
+      ),
+    ).toEqual(['read']);
+    expect(
+      expandToolPatterns(['@active'], [], ['read', 'tool_hidden']),
+    ).toEqual([]);
     expect(matchesToolPattern('tool_lookup', 'tool_*')).toBe(true);
     expect(matchesToolPattern('tool_lookup', 'tool_?')).toBe(false);
+  });
+
+  it('excludes root-only controls from explicit child tool configuration', () => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'worker.md'),
+      `---\nname: worker\ntools: ask_user_question, todo, read, subagent_run\n---\n# Worker`,
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        default_tools: ['ask_user_question', 'todo', 'read', 'subagent_run'],
+      }),
+    );
+
+    expect(loadSubagents(tmp)[0].tools).toEqual(['read']);
+    expect(readSubagentsConfig(tmp).default_tools).toEqual(['read']);
   });
 
   it('keeps orchestrator context in the delegated user prompt when supplied', () => {

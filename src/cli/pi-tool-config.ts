@@ -204,6 +204,12 @@ export function validatePiSpecialistTools(tools: readonly string[]): void {
   if (!Array.isArray(tools) || tools.length === 0)
     throw new Error('Select at least one explicit Pi tool.');
 
+  if (tools.some((tool) => tool === '*' || tool === '@active')) {
+    if (tools.length !== 1)
+      throw new Error('Pi tool selectors must be selected alone.');
+    return;
+  }
+
   const seen = new Set<string>();
   for (const tool of tools) {
     if (typeof tool === 'string' && /[*?[\]{}]/.test(tool))

@@ -219,7 +219,7 @@ test('replaces the complete multiline tools list across column-zero comments', (
   ).toMatchObject({ tools: ['lookup_docs'] });
 });
 
-test('rejects empty, duplicate, wildcard, delegation, and root-only names without writing', () => {
+test('rejects empty, duplicate, mixed selector, unsupported pattern, delegation, and root-only names without writing', () => {
   const piRoot = fixture();
   const snapshot = readPiToolConfig(piRoot);
   for (const tools of [
@@ -227,8 +227,12 @@ test('rejects empty, duplicate, wildcard, delegation, and root-only names withou
     [''],
     ['   '],
     ['read', 'read'],
-    ['*'],
+    ['read', '*'],
+    ['read', '@active'],
+    ['*', '@active'],
+    ['@active', '@active'],
     ['read*'],
+    ['@act*'],
     ['subagent_run'],
     ['ask_user_question'],
     ['todo'],
@@ -243,13 +247,37 @@ test('rejects empty, duplicate, wildcard, delegation, and root-only names withou
   ).not.toContain('tools:');
 });
 
+test.each([
+  '*',
+  '@active',
+] as const)('saves and reloads the standalone %s selector as a quoted YAML scalar', (selector) => {
+  const piRoot = fixture();
+  const snapshot = readPiToolConfig(piRoot, ['worker']);
+
+  const result = savePiToolConfig(snapshot, [
+    { role: 'worker', tools: [selector] },
+  ]);
+
+  expect(result.success).toBe(true);
+  expect(result.changedRoles).toEqual(['worker']);
+  expect(
+    readFileSync(join(piRoot, 'agents', 'thoth-worker.md'), 'utf8'),
+  ).toContain(`tools: ${JSON.stringify(selector)}`);
+  const reloaded = readPiToolConfig(piRoot);
+  expect(reloaded.roles.find(({ role }) => role === 'worker')?.tools).toEqual([
+    selector,
+  ]);
+  for (const role of reloaded.roles.filter(({ role }) => role !== 'worker'))
+    expect(role.tools).toEqual(role.defaultTools);
+});
+
 test('rejects malformed and duplicate saved fields rather than guessing', () => {
   const piRoot = fixture();
   const target = join(piRoot, 'agents', 'thoth-worker.md');
   const original = readFileSync(target, 'utf8');
   writeFileSync(
     target,
-    `${original.replace('---\nInstructions', 'tools: "*"\n---\nInstructions')}`,
+    `${original.replace('---\nInstructions', 'tools: "read*"\n---\nInstructions')}`,
   );
   expect(() => readPiToolConfig(piRoot)).toThrow(/wildcard/i);
   writeFileSync(

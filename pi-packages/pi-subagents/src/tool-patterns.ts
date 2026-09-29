@@ -19,13 +19,30 @@ export function matchesToolPattern(toolName: string, pattern: string): boolean {
 export function expandToolPatterns(
   patterns: readonly string[],
   activeToolNames?: readonly string[],
+  allToolNames?: readonly string[],
 ): string[] {
   const active = activeToolNames ? [...new Set(activeToolNames)] : undefined;
+  const all = allToolNames ? [...new Set(allToolNames)] : undefined;
   const expanded: string[] = [];
   const add = (name: string) => {
-    if (name.startsWith('subagent_') || expanded.includes(name)) return;
+    if (
+      name.startsWith('subagent_') ||
+      name === 'ask_user_question' ||
+      name === 'todo' ||
+      expanded.includes(name)
+    )
+      return;
     expanded.push(name);
   };
+
+  if (patterns.length === 1 && patterns[0] === '*') {
+    for (const toolName of all ?? []) add(toolName);
+    return expanded;
+  }
+  if (patterns.length === 1 && patterns[0] === '@active') {
+    for (const toolName of active ?? []) add(toolName);
+    return expanded;
+  }
 
   for (const pattern of patterns) {
     if (hasToolGlob(pattern)) {

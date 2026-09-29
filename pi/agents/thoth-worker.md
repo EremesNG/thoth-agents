@@ -4,7 +4,7 @@ description: "Handle bounded nonvisual implementation with full local context, i
 tools: "read, bash, edit, write"
 model: "openai-codex/gpt-6-luna"
 effort: "max"
-subagent_mode: "task"
+subagent_mode: "background"
 managed-by: thoth-agents
 ---
 

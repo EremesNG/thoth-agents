@@ -175,7 +175,10 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   };
 
   const save = (): void => {
-    if (!dirty() && !failedSave) return;
+    if (!dirty() && !failedSave) {
+      options.onDone({ kind: 'saved', changedRoles: [...state.changedRoles] });
+      return;
+    }
     state.error = undefined;
     const result = options.save(baseline, cloneRoles(state.draft));
     baseline = result.snapshot;
@@ -224,16 +227,20 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   };
 
   const handleOverview = (data: string): void => {
-    if (isKey(data, 'up')) {
+    if (isKey(data, 'up') || data === 'k') {
       state.selectedRole = Math.max(0, state.selectedRole - 1);
-    } else if (isKey(data, 'down')) {
+    } else if (isKey(data, 'down') || data === 'j') {
       state.selectedRole = Math.min(
         state.draft.length - 1,
         state.selectedRole + 1,
       );
-    } else if (isKey(data, 'enter')) {
+    } else if (data === 'g') {
+      state.selectedRole = 0;
+    } else if (data === 'G') {
+      state.selectedRole = Math.max(0, state.draft.length - 1);
+    } else if (isKey(data, 'enter') || data === 'e') {
       openSelectedRole();
-    } else if (isKey(data, 'escape')) {
+    } else if (isKey(data, 'escape') || data === 'q') {
       if (dirty() || failedSave) state.screen = 'discard';
       else options.onDone({ kind: 'cancelled' });
     } else if (data.toLowerCase() === 's') {
@@ -252,22 +259,26 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     if (!role) return;
     const items = getToolItemsForRole(role);
 
-    if (isKey(data, 'up')) {
+    if (isKey(data, 'up') || data === 'k') {
       if (items.length > 0) {
         selectedToolIndex =
           (selectedToolIndex - 1 + items.length) % items.length;
       }
-    } else if (isKey(data, 'down')) {
+    } else if (isKey(data, 'down') || data === 'j') {
       if (items.length > 0) {
         selectedToolIndex = (selectedToolIndex + 1) % items.length;
       }
+    } else if (data === 'g') {
+      selectedToolIndex = 0;
+    } else if (data === 'G') {
+      selectedToolIndex = Math.max(0, items.length - 1);
     } else if (isKey(data, 'space') || data === ' ') {
       toggleCurrentTool();
     } else if (data.toLowerCase() === 'a') {
       selectAllActiveForRole(role);
     } else if (data.toLowerCase() === 'r') {
       restoreDefaultsForRole(role);
-    } else if (isKey(data, 'enter') || isKey(data, 'escape')) {
+    } else if (isKey(data, 'enter') || isKey(data, 'escape') || data === 'q') {
       state.screen = 'overview';
     }
   };
@@ -286,13 +297,23 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   };
 
   const overviewLines = (width: number): string[] => {
+    const dirtyCount = state.draft.filter((role) => {
+      const original = baseline.roles.find((item) => item.role === role.role);
+      return !original || !sameTools(role.tools, original.tools);
+    }).length;
     const lines = [
-      `Global directory: ${baseline.piRoot}`,
-      'Ambient root tools are unchanged.',
-      'Native settings or project definitions may override these global definitions.',
-      'Child specialists do not inherit root tools automatically.',
+      `target: global specialist definitions · ${dirtyCount ? `pending: ${dirtyCount} change${dirtyCount === 1 ? '' : 's'}` : 'pending: none'}`,
+      '↑/↓/j/k move · enter/e edit · a all active · r defaults · s save · esc/q cancel',
       '',
     ];
+
+    const innerWidth = Math.max(1, width - 4);
+    const table = innerWidth >= 80;
+    if (table)
+      lines.push(
+        `${'agent'.padEnd(18)}  ${'selected tools'.padEnd(18)}  tools`,
+      );
+    else lines.push('agent · selected tools');
 
     for (const [index, role] of state.draft.entries()) {
       const marker = index === state.selectedRole ? '›' : ' ';
@@ -302,27 +323,29 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       })();
       const toolSummary =
         role.tools.length === 0 ? '(none)' : role.tools.join(', ');
-      const countLabel = `(${role.tools.length} tool${role.tools.length === 1 ? '' : 's'})`;
-
-      if (width < 70) {
-        lines.push(
-          `${marker} ${role.role}${changed} · ${countLabel}`,
-          `  ${toolSummary}`,
-        );
-      } else {
-        lines.push(
-          `${marker} ${role.role}: ${toolSummary}${changed} ${countLabel}`,
-        );
-      }
+      const countLabel = `${role.tools.length} selected`;
+      const name = `${role.role}${changed}`;
+      lines.push(
+        table
+          ? `${marker} ${name.padEnd(16)}  ${countLabel.padEnd(18)}  ${toolSummary}`
+          : `${marker} ${name} · ${countLabel} · ${toolSummary}`,
+      );
     }
 
     lines.push('');
+    const selected = state.draft[state.selectedRole];
+    lines.push(
+      `selected: ${selected?.role ?? '(none)'} · tools: ${selected?.tools.join(', ') || '(none)'}`,
+    );
+    lines.push(`Global directory: ${baseline.piRoot}`);
+    lines.push('Ambient root tools are unchanged.');
+    lines.push(
+      'Native settings or project definitions may override these global definitions.',
+    );
+    lines.push('Child specialists do not inherit root tools automatically.');
     if (state.error) lines.push(`Save failed: ${state.error}`);
     if (state.changedRoles.length > 0)
       lines.push(`Already changed: ${state.changedRoles.join(', ')}`);
-    lines.push(
-      '↑↓ role · enter edit · a all active · r defaults · s save · esc cancel',
-    );
     return lines;
   };
 
@@ -355,7 +378,8 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       ),
     );
     const lines = [
-      `Role: ${role.role} · ${role.tools.length} tool${role.tools.length === 1 ? '' : 's'} selected`,
+      `row: ${role.role} · ${role.tools.length} tool${role.tools.length === 1 ? '' : 's'} selected`,
+      '↑/↓/j/k move · space toggle · a all active · r defaults · enter/esc/q back',
       '',
       ...choices.slice(start, start + pageSize),
     ];
@@ -364,10 +388,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       lines.push(
         `  Showing ${start + 1}–${Math.min(start + pageSize, choices.length)} of ${choices.length}`,
       );
-    lines.push(
-      '',
-      '↑↓ navigate · space toggle · a all active · r defaults · enter/esc done',
-    );
+    lines.push('', `selected: ${items[selectedToolIndex]?.name ?? '(none)'}`);
     return lines;
   };
 
@@ -379,7 +400,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       lines = overviewLines(width);
     } else if (state.screen === 'tools') {
       const role = state.draft[state.selectedRole];
-      title = `Configure tools · ${role?.role ?? ''}`;
+      title = `Choose tools · ${role?.role ?? ''}`;
       lines = toolLines();
     } else {
       title = 'Discard unsaved draft?';
@@ -398,8 +419,11 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     }
 
     const innerWidth = panelWidth - 4;
-    const horizontalCount = Math.max(0, panelWidth - measure(`╭─ ${title} ─╮`));
-    const top = fg('accent', `╭─ ${title} ${'─'.repeat(horizontalCount + 1)}╮`);
+    const titleText = truncate(` ${title} `, panelWidth - 2);
+    const top = fg(
+      'accent',
+      `╭${titleText}${'─'.repeat(Math.max(0, panelWidth - 2 - measure(titleText)))}╮`,
+    );
     const bottom = fg('border', `╰${'─'.repeat(panelWidth - 2)}╯`);
     const body = lines.map((line) => {
       const selected = line.startsWith('› ');
@@ -407,8 +431,8 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       if (selected) content = fg('accent', content);
       else if (
         line === '' ||
-        line.includes('navigate') ||
-        line.includes('enter edit') ||
+        line.includes('↑/↓/j/k') ||
+        line.startsWith('target:') ||
         line.startsWith('Global directory:') ||
         line.startsWith('Ambient root') ||
         line.startsWith('Native settings') ||
@@ -419,7 +443,8 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       else if (line.startsWith('Save failed:')) content = fg('error', content);
       else if (line.startsWith('Already changed:'))
         content = fg('warning', content);
-      else if (line.startsWith('Role:')) content = fg('accent', content);
+      else if (line.startsWith('selected:') || line.startsWith('row:'))
+        content = fg('accent', content);
 
       const padding = ' '.repeat(Math.max(0, innerWidth - measure(content)));
       const row = `${content}${padding}`;

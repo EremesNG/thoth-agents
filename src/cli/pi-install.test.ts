@@ -162,6 +162,25 @@ describe('Pi setup', () => {
     ).toBe('drift');
   });
 
+  test('validates an adopted runtime installed from a local source by its manifest identity', () => {
+    const spec = {
+      source: 'npm:@thoth-agents/pi-subagents@>=1.0.0',
+      packageName: '@thoth-agents/pi-subagents',
+      version: '1.0.0',
+    };
+    const local = externalPackageFixture(spec.packageName, spec.version);
+    local.candidate.source = local.installedPath;
+
+    expect(
+      inspectPiExternalPackage([local.candidate], spec, false),
+    ).toMatchObject({
+      state: 'installed',
+      source: local.installedPath,
+      installedPath: local.installedPath,
+      version: '1.0.0',
+    });
+  });
+
   test('parses user and project sources with their resolved installed directories', () => {
     expect(
       parsePiPackageList(
@@ -339,7 +358,7 @@ describe('Pi setup', () => {
         .map(({ target }) => target),
     ).toEqual([
       'npm:thoth-agents@0.3.12',
-      'npm:pi-subagents-j0k3r@>=1.6.1',
+      'npm:@thoth-agents/pi-subagents@>=1.0.0',
       'npm:@upstash/context7-pi@>=0.1.2',
       'npm:pi-web-access@>=0.27.0',
       'npm:pi-mcp-adapter@>=2.32.1',
@@ -376,6 +395,107 @@ describe('Pi setup', () => {
     });
     expect(calls).toBe(0);
     expect(existsSync(plan.paths.piRoot)).toBe(false);
+  });
+
+  test('uses and validates an explicit local delegation runtime without npm fallback', () => {
+    const paths = fixture();
+    const runtimeRoot = mkdtempSync(join(tmpdir(), 'thoth-pi-runtime-'));
+    roots.push(runtimeRoot);
+    writeFileSync(
+      join(runtimeRoot, 'package.json'),
+      JSON.stringify({ name: '@thoth-agents/pi-subagents', version: '1.0.0' }),
+    );
+
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      runtimePackageRoot: runtimeRoot,
+    });
+    const packageItems = plan.items.filter(({ kind }) => kind === 'package');
+    expect(plan.ready).toBe(true);
+    expect(packageItems[1]).toMatchObject({
+      target: runtimeRoot,
+      command: {
+        args: ['install', runtimeRoot, '--no-approve'],
+      },
+    });
+
+    const invalidRoot = mkdtempSync(join(tmpdir(), 'thoth-pi-runtime-bad-'));
+    roots.push(invalidRoot);
+    writeFileSync(
+      join(invalidRoot, 'package.json'),
+      JSON.stringify({ name: 'pi-subagents-j0k3r', version: '1.0.0' }),
+    );
+    const invalidPlan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      runtimePackageRoot: invalidRoot,
+    });
+    expect(invalidPlan.ready).toBe(false);
+    expect(invalidPlan.blockers.join('\n')).toMatch(/local.*runtime.*name/i);
+    expect(
+      invalidPlan.items
+        .filter(({ kind }) => kind === 'package')
+        .map(({ target }) => target),
+    ).toContain(invalidRoot);
+  });
+
+  test('installs and verifies the explicit local runtime through its configured source', () => {
+    const paths = fixture();
+    const runtimeRoot = mkdtempSync(join(tmpdir(), 'thoth-pi-runtime-apply-'));
+    roots.push(runtimeRoot);
+    writeFileSync(
+      join(runtimeRoot, 'package.json'),
+      JSON.stringify({ name: '@thoth-agents/pi-subagents', version: '1.0.0' }),
+    );
+    const allExternalLines = externalPackageList(paths.homeDir);
+    const otherPackageLines = PI_PACKAGE_SPECS.flatMap((spec, index) =>
+      spec.id === 'delegation'
+        ? []
+        : allExternalLines.slice(index * 2, index * 2 + 2),
+    );
+    const runtimeSource = localSource(paths.homeDir, runtimeRoot);
+    const installedSources: string[] = [];
+    let firstPartyInstalled = false;
+    let runtimeInstalled = false;
+    const plan = buildPiSetupPlan({
+      ...paths,
+      runtimePackageRoot: runtimeRoot,
+      commandExecutor: (command, args) => {
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+        if (args[0] === 'install') {
+          const source = args[1] ?? '';
+          installedSources.push(source);
+          if (source === 'npm:thoth-agents@0.3.12') firstPartyInstalled = true;
+          if (source === runtimeRoot) runtimeInstalled = true;
+          return { exitCode: 0, stdout: 'installed', stderr: '' };
+        }
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: [
+              ...(firstPartyInstalled
+                ? ['npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
+                : []),
+              ...(runtimeInstalled
+                ? [runtimeSource, `    ${runtimeRoot}`]
+                : []),
+              ...otherPackageLines,
+            ].join('\n'),
+            stderr: '',
+          };
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    const applied = applyPiSetup(plan);
+    expect(applied.success).toBe(true);
+    expect(installedSources).toContain(runtimeRoot);
+    expect(installedSources).not.toContain(PI_PACKAGE_SPECS[0].source);
+    expect(applied.installedPackages).toContain(runtimeRoot);
   });
 
   test('rejects Pi hosts below the upstream 0.86.1 minimum before installation', () => {
@@ -598,14 +718,75 @@ describe('Pi setup', () => {
     );
   });
 
-  test('restores a satisfying newer package if native range installation would downgrade it', () => {
+  test('blocks manifest-identified and ambiguous local or Git incumbents before first-party installation', () => {
+    const cases = [
+      {
+        source: '../operator-runtime',
+        packageName: 'pi-subagents',
+      },
+      {
+        source: 'git+https://example.test/operator/delegation.git',
+        packageName: 'pi-subagents-j0k3r',
+      },
+      {
+        source: 'git+https://example.test/operator/pi-subagents.git',
+        packageName: undefined,
+      },
+      {
+        source: 'npm:pi-subagents-j0k3r@1.6.1',
+        packageName: undefined,
+      },
+    ];
+
+    for (const [index, candidate] of cases.entries()) {
+      const paths = fixture();
+      const installedPath = mkdtempSync(
+        join(tmpdir(), `thoth-pi-incumbent-${index}-`),
+      );
+      roots.push(installedPath);
+      if (candidate.packageName)
+        writeFileSync(
+          join(installedPath, 'package.json'),
+          JSON.stringify({ name: candidate.packageName, version: '1.0.0' }),
+        );
+      const calls: string[] = [];
+      const commandExecutor = (command: string, args: readonly string[]) => {
+        calls.push(`${command} ${args.join(' ')}`);
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: `User packages:\n  ${candidate.source}\n    ${installedPath}`,
+            stderr: '',
+          };
+        return { exitCode: 0, stdout: 'unexpected', stderr: '' };
+      };
+      const plan = buildPiSetupPlan({ ...paths, commandExecutor });
+
+      expect(plan.ready).toBe(true);
+      expect(applyPiSetup(plan)).toMatchObject({
+        success: false,
+        failedStep: 'preflight',
+        installedPackages: [],
+        manualRecovery: expect.stringContaining('pi remove'),
+      });
+      expect(calls.some((call) => call.includes('pi install'))).toBe(false);
+    }
+  });
+
+  test('restores a satisfying newer local source if native range installation would downgrade it', () => {
     const paths = fixture();
     const packageLines = externalPackageList(
       paths.homeDir,
       { delegation: '9.0.0' },
-      { delegation: 'npm:pi-subagents-j0k3r@9.0.0' },
+      { delegation: 'npm:@thoth-agents/pi-subagents@9.0.0' },
     );
     const delegationPath = packageLines[1]?.trim() ?? '';
+    const priorSource = localSource(paths.homeDir, delegationPath);
+    packageLines[0] = `  ${priorSource}`;
     let firstPartyInstalled = false;
     const installCalls: string[] = [];
     const plan = buildPiSetupPlan({
@@ -622,7 +803,20 @@ describe('Pi setup', () => {
             packageLines[0] = `  ${PI_PACKAGE_SPECS[0].source}`;
             writeFileSync(
               join(delegationPath, 'package.json'),
-              JSON.stringify({ name: 'pi-subagents-j0k3r', version: '0.1.0' }),
+              JSON.stringify({
+                name: '@thoth-agents/pi-subagents',
+                version: '0.1.0',
+              }),
+            );
+          }
+          if (args[1] === priorSource) {
+            packageLines[0] = `  ${priorSource}`;
+            writeFileSync(
+              join(delegationPath, 'package.json'),
+              JSON.stringify({
+                name: '@thoth-agents/pi-subagents',
+                version: '9.0.0',
+              }),
             );
           }
           return { exitCode: 0, stdout: 'installed', stderr: '' };
@@ -644,13 +838,10 @@ describe('Pi setup', () => {
 
     expect(applyPiSetup(plan)).toMatchObject({
       success: false,
-      error: expect.stringContaining(
-        'exact-version recovery failed or unverifiable',
-      ),
-      manualRecovery:
-        'Manual recovery: run pi install npm:pi-subagents-j0k3r@9.0.0 --no-approve, then verify with pi list and the installed package manifest.',
+      error: expect.stringContaining('exact-version recovery verified'),
+      manualRecovery: `Manual recovery: run pi install ${priorSource} --no-approve, then verify with pi list and the installed package manifest.`,
     });
-    expect(installCalls).toContain('npm:pi-subagents-j0k3r@9.0.0');
+    expect(installCalls).toContain(priorSource);
   });
 
   test('rejects installed package evidence with the expected name at the wrong version', () => {
@@ -728,7 +919,7 @@ describe('Pi setup', () => {
       error: expect.stringContaining(failedSource),
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:pi-subagents-j0k3r@>=1.6.1',
+        'npm:@thoth-agents/pi-subagents@>=1.0.0',
         'npm:@upstash/context7-pi@>=0.1.2',
       ],
     });

@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lt } from 'semver';
 import { piAdapter } from '../harness/adapters/pi';
@@ -16,7 +16,10 @@ import {
   PI_ROOT_START,
 } from '../harness/writers/pi-agent';
 import { findPackageRoot } from './package-root';
-import { inspectPiExternalPackage } from './pi-external-package';
+import {
+  inspectPiExternalPackage,
+  piExternalSourceMatches,
+} from './pi-external-package';
 import {
   assertSafePiManagedPath,
   writePiManagedText,
@@ -40,9 +43,9 @@ export const PI_COMMAND_TIMEOUT_MS = 120_000;
 export const PI_PACKAGE_SPECS = [
   {
     id: 'delegation',
-    source: 'npm:pi-subagents-j0k3r@>=1.6.1',
-    packageName: 'pi-subagents-j0k3r',
-    version: '1.6.1',
+    source: 'npm:@thoth-agents/pi-subagents@>=1.0.0',
+    packageName: '@thoth-agents/pi-subagents',
+    version: '1.0.0',
   },
   {
     id: 'context7',
@@ -93,6 +96,7 @@ export interface PiSetupOptions extends PiPathOptions {
   commandExecutor?: PiCommandExecutor;
   expectedVersion?: string;
   packageRoot?: string;
+  runtimePackageRoot?: string;
   firstPartySource?: string;
   receiptOptions?: PiPackageReceiptOptions;
   verifyFirstParty?: (input: {
@@ -285,7 +289,17 @@ function readJsonObject(path: string): Record<string, unknown> {
 }
 
 export function isPiIncumbentDelegationSource(source: string): boolean {
-  return /^npm:pi-subagents(?:@|$)/.test(source);
+  return /^npm:pi-subagents(?:-j0k3r)?(?:@|$)/.test(source);
+}
+
+export function getPiExternalPackageSpecs(
+  options: Pick<PiSetupOptions, 'runtimePackageRoot'> = {},
+) {
+  const runtimePackageRoot = options.runtimePackageRoot;
+  if (!runtimePackageRoot) return PI_PACKAGE_SPECS;
+  return PI_PACKAGE_SPECS.map((spec) =>
+    spec.id === 'delegation' ? { ...spec, source: runtimePackageRoot } : spec,
+  );
 }
 
 function configuredIncumbentDelegationSource(
@@ -430,6 +444,25 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
     );
   }
   blockers.push(...findAgentConflicts(paths));
+  if (options.runtimePackageRoot) {
+    const runtimeRoot = options.runtimePackageRoot;
+    const spec = getPiExternalPackageSpecs(options)[0];
+    const sourceIsNormalizedAbsolutePath =
+      isAbsolute(runtimeRoot) && resolve(runtimeRoot) === runtimeRoot;
+    const inspection = sourceIsNormalizedAbsolutePath
+      ? inspectPiExternalPackage(
+          [{ scope: 'user', source: runtimeRoot, installedPath: runtimeRoot }],
+          spec,
+        )
+      : undefined;
+    if (inspection?.state !== 'installed') {
+      blockers.push(
+        `Local Pi delegation runtime root ${runtimeRoot} is invalid: ${
+          inspection?.reason ?? 'the source must be a normalized absolute path'
+        }.`,
+      );
+    }
+  }
   let subagentsConfigContent: string | undefined;
   let mcpContent: string | undefined;
   try {
@@ -482,7 +515,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
         args: ['install', firstPartySource, '--no-approve'],
       },
     },
-    ...PI_PACKAGE_SPECS.map((pkg) => ({
+    ...getPiExternalPackageSpecs(options).map((pkg) => ({
       kind: 'package' as const,
       description: `Install and verify Pi package ${pkg.source}`,
       target: pkg.source,
@@ -494,7 +527,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
           {
             kind: 'settings' as const,
             description:
-              'Configure global j0k3r lean resources and disable continuation',
+              'Configure global subagent lean resources and disable continuation',
             target: paths.subagentsConfigPath,
             content: subagentsConfigContent,
           },
@@ -601,6 +634,87 @@ export function parsePiPackageList(output: string): PiConfiguredPackage[] {
     packages.push({ scope, source: value.replace(/ \(filtered\)$/, '') });
   }
   return packages;
+}
+
+export interface PiIncumbentDelegation {
+  candidate: PiConfiguredPackage;
+  classification: 'confirmed' | 'ambiguous';
+  reason: string;
+}
+
+function npmPackageName(source: string): string | undefined {
+  if (!source.startsWith('npm:')) return undefined;
+  const spec = source.slice('npm:'.length);
+  const separator = spec.lastIndexOf('@');
+  return separator <= 0 ? spec || undefined : spec.slice(0, separator);
+}
+
+const incumbentDelegationNames = new Set([
+  'pi-subagents',
+  'pi-subagents-j0k3r',
+]);
+
+function sourceSuggestsIncumbentDelegation(source: string): boolean {
+  if (
+    !/^(?:git\+|https?:\/\/|ssh:\/\/|git@|github:|file:|\.\.?[\\/]|[a-z]:[\\/]|\/)/i.test(
+      source,
+    )
+  ) {
+    return false;
+  }
+  return /(?:^|[\\/:@?#._-])pi-subagents(?:-j0k3r)?(?:$|[\\/:@?#._-])/i.test(
+    source,
+  );
+}
+
+export function findPiIncumbentDelegation(
+  packages: readonly PiConfiguredPackage[],
+): PiIncumbentDelegation | undefined {
+  for (const candidate of packages) {
+    const sourceName = npmPackageName(candidate.source);
+    const { packageName: installedName } = configuredPackageIdentity(candidate);
+    if (installedName && incumbentDelegationNames.has(installedName)) {
+      return {
+        candidate,
+        classification: 'confirmed',
+        reason: `installed manifest identifies ${installedName}`,
+      };
+    }
+    if (sourceName && incumbentDelegationNames.has(sourceName)) {
+      return {
+        candidate,
+        classification: 'ambiguous',
+        reason: installedName
+          ? `source names ${sourceName}, but its installed manifest identifies ${installedName}`
+          : `source names ${sourceName}, but its installed manifest is unavailable`,
+      };
+    }
+    if (
+      !installedName &&
+      !sourceName &&
+      sourceSuggestsIncumbentDelegation(candidate.source)
+    ) {
+      return {
+        candidate,
+        classification: 'ambiguous',
+        reason:
+          'the source suggests an incumbent, but its manifest is unavailable',
+      };
+    }
+  }
+  return undefined;
+}
+
+export function piIncumbentDelegationRecovery(
+  incumbent: PiIncumbentDelegation,
+): string {
+  const source = incumbent.candidate.source;
+  const inspectManifest = incumbent.candidate.installedPath
+    ? ` Inspect the installed manifest at ${incumbent.candidate.installedPath}.`
+    : ' Inspect the package manifest through Pi’s package directory.';
+  return incumbent.classification === 'confirmed'
+    ? `Review its ownership, then run: pi remove ${source} --no-approve. Rerun setup after verifying it is removed.`
+    : `${incumbent.reason}.${inspectManifest} If it is an incumbent delegation runtime, run: pi remove ${source} --no-approve. Verify with pi list, then rerun setup.`;
 }
 
 export function isThothPackageLocation(
@@ -752,18 +866,16 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
     };
     const receipt = readPiPackageReceipt(receiptOptions);
     const configuredBefore = parsePiPackageList(before.stdout);
-    const incumbentDelegation = configuredBefore.find((candidate) =>
-      isPiIncumbentDelegationSource(candidate.source),
-    );
+    const incumbentDelegation = findPiIncumbentDelegation(configuredBefore);
     if (incumbentDelegation)
       return {
         success: false,
         changed,
         diagnostics,
-        error: `Incumbent delegation runtime ${incumbentDelegation.source} is still configured. Loading it beside ${PI_PACKAGE_SPECS[0].source} is unsupported.`,
+        error: `Pi delegation runtime preflight blocked ${incumbentDelegation.candidate.source}: ${incumbentDelegation.reason}. Loading it beside ${PI_PACKAGE_SPECS[0].source} is unsupported.`,
         failedStep: 'preflight',
         installedPackages,
-        manualRecovery: `Manual recovery: review the incumbent package ownership, then run pi remove ${incumbentDelegation.source} --no-approve and rerun setup.`,
+        manualRecovery: `Manual recovery: ${piIncumbentDelegationRecovery(incumbentDelegation)}`,
       };
     const knownReceiptSource =
       receipt.status === 'valid' ? receipt.receipt.source : undefined;
@@ -926,7 +1038,7 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
       throw new Error(migration.error ?? 'Pi legacy migration failed.');
     changed.push(...migration.changed);
 
-    for (const pkg of PI_PACKAGE_SPECS) {
+    for (const pkg of getPiExternalPackageSpecs(plan.options)) {
       const beforeInstall = execute('pi', ['list', '--no-approve']);
       if (beforeInstall.exitCode !== 0)
         throw new Error(
@@ -937,7 +1049,19 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
         pkg,
         false,
       );
-      if (prior.state !== 'installed' || prior.source !== pkg.source) {
+      const priorSourceMatches =
+        prior.state === 'installed' &&
+        prior.source !== undefined &&
+        prior.installedPath !== undefined &&
+        piExternalSourceMatches(
+          {
+            scope: 'user',
+            source: prior.source,
+            installedPath: prior.installedPath,
+          },
+          pkg.source,
+        );
+      if (!priorSourceMatches) {
         const result = execute('pi', ['install', pkg.source, '--no-approve']);
         if (result.exitCode !== 0)
           throw new Error(
@@ -958,7 +1082,8 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
         verified.version !== undefined &&
         lt(verified.version, prior.version)
       ) {
-        const restoreSource = `npm:${pkg.packageName}@${prior.version}`;
+        const restoreSource =
+          prior.source ?? `npm:${pkg.packageName}@${prior.version}`;
         const restored = execute('pi', [
           'install',
           restoreSource,
@@ -975,6 +1100,7 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
             : undefined;
         const recoverySucceeded =
           restoredEvidence?.state === 'installed' &&
+          restoredEvidence.source === prior.source &&
           restoredEvidence.version === prior.version;
         const recoveryGuidance = `Manual recovery: run pi install ${restoreSource} --no-approve, then verify with pi list and the installed package manifest.`;
         manualRecovery = recoveryGuidance;

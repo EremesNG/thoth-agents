@@ -26,6 +26,24 @@ describe('operation role effort parsing', () => {
     ).toMatchObject({ agent: 'pi', localPackageRoot });
   });
 
+  test('accepts an explicit local Pi runtime root', () => {
+    const localPiRuntimeRoot = resolve('fixtures/pi-local-runtime');
+
+    expect(
+      parseInstallArgs([
+        '--agent=pi',
+        '--local-pi-runtime-root',
+        localPiRuntimeRoot,
+      ]),
+    ).toMatchObject({ agent: 'pi', localPiRuntimeRoot });
+    expect(
+      parseInstallArgs([
+        '--agent=pi',
+        `--local-pi-runtime-root=${localPiRuntimeRoot}`,
+      ]),
+    ).toMatchObject({ agent: 'pi', localPiRuntimeRoot });
+  });
+
   test('rejects invalid local package root usage', () => {
     const localPackageRoot = resolve('fixtures/pi-local-package');
 
@@ -48,6 +66,19 @@ describe('operation role effort parsing', () => {
         `--local-package-root=${localPackageRoot}`,
       ]),
     ).toThrow('--local-package-root cannot be repeated.');
+
+    expect(() =>
+      parseInstallArgs(['--agent=pi', '--local-pi-runtime-root']),
+    ).toThrow('--local-pi-runtime-root requires a value.');
+    expect(() =>
+      parseInstallArgs(['--agent=pi', '--local-pi-runtime-root=relative/path']),
+    ).toThrow('--local-pi-runtime-root requires a normalized absolute path.');
+    expect(() =>
+      parseInstallArgs([
+        '--agent=codex',
+        `--local-pi-runtime-root=${resolve('fixtures/pi-local-runtime')}`,
+      ]),
+    ).toThrow('--local-pi-runtime-root is supported only with --agent=pi.');
   });
   test('merges repeatable role efforts with model input or an effort-only role', () => {
     const parsed = parseOperationArgs([

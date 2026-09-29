@@ -74,11 +74,7 @@ describe('Pi agent writer', () => {
         JSON.stringify(expectedTools[artifact.path]),
       );
       expect(artifact.content).toMatch(/^effort: "(?:low|medium|high|max)"$/m);
-      expect(artifact.content).toContain(
-        artifact.path === 'agents/thoth-librarian.md'
-          ? 'subagent_mode: "background"'
-          : 'subagent_mode: "task"',
-      );
+      expect(artifact.content).toContain('subagent_mode: "background"');
       expect(artifact.content).not.toMatch(
         /^(?:thinking|async|defaultContext|maxSubagentDepth):/m,
       );

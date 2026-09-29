@@ -156,6 +156,32 @@ describe('global Pi tools panel', () => {
     );
   });
 
+  test('uses the model editor row layout and keyboard navigation', () => {
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools: sampleDiscovered,
+      save: vi.fn(),
+      onDone: vi.fn(),
+    });
+    const wide = panel.render(110).join('\n');
+    expect(wide).toContain('agent');
+    expect(wide).toContain('selected tools');
+    expect(wide).toContain('pending: none');
+    expect(wide).toContain('selected: explorer');
+    panel.handleInput('j');
+    expect(panel.render(110).join('\n')).toContain('selected: librarian');
+    panel.handleInput('G');
+    expect(panel.render(110).join('\n')).toContain('selected: worker');
+    panel.handleInput('g');
+    expect(panel.render(110).join('\n')).toContain('selected: explorer');
+    panel.handleInput('\r');
+    expect(panel.render(80).join('\n')).toContain('Choose tools');
+    panel.handleInput('j');
+    expect(panel.render(80).join('\n')).toContain('selected: write');
+    panel.handleInput('q');
+    expect(panel.render(80).join('\n')).toContain('Global specialist tools');
+  });
+
   test('keeps lines within terminal columns for narrow terminals and long tool lists', () => {
     const wideSnapshot = sampleSnapshot();
     wideSnapshot.roles[0] = {
@@ -184,6 +210,10 @@ describe('global Pi tools panel', () => {
     expect(lines.length).toBeGreaterThan(6);
     expect(lines.every((line) => visibleWidth(line) <= 30)).toBe(true);
     expect(lines.join('\n')).toContain('tools');
+    panel.handleInput('\r');
+    expect(panel.render(30).every((line) => visibleWidth(line) <= 30)).toBe(
+      true,
+    );
   });
 
   test('filters out delegation tools and root-only controls from selectable list', () => {
@@ -410,6 +440,20 @@ describe('global Pi tools panel', () => {
       kind: 'saved',
       changedRoles: ['explorer'],
     });
+  });
+
+  test('save closes a clean draft without writing files', () => {
+    const save = vi.fn();
+    const done = vi.fn();
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools: sampleDiscovered,
+      save,
+      onDone: done,
+    });
+    panel.handleInput('s');
+    expect(save).not.toHaveBeenCalled();
+    expect(done).toHaveBeenCalledWith({ kind: 'saved', changedRoles: [] });
   });
 
   test('preserves draft and adopts returned retry snapshot after partial failure', () => {

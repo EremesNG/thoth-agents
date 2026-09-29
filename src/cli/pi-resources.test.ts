@@ -70,7 +70,7 @@ describe('Pi specialist synchronization', () => {
     const worker = join(agents, 'thoth-worker.md');
     writeFileSync(
       worker,
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: max\nsubagent_mode: background\ntools: [retired_extension, read]\n---\nCustom instructions.\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: max\nsubagent_mode: task\ntools: [retired_extension, read]\n---\nCustom instructions.\n',
     );
     const explorer = join(agents, 'thoth-explorer.md');
     writeFileSync(
@@ -83,13 +83,13 @@ describe('Pi specialist synchronization', () => {
     expect(readFileSync(worker, 'utf8')).toContain(
       'tools: "retired_extension, read"',
     );
-    expect(readFileSync(worker, 'utf8')).toContain(
-      'subagent_mode: "background"',
-    );
+    expect(readFileSync(worker, 'utf8')).toContain('subagent_mode: "task"');
     expect(readFileSync(worker, 'utf8')).toContain('model: custom/model');
     expect(readFileSync(worker, 'utf8')).toContain('effort: max');
     expect(readFileSync(explorer, 'utf8')).toContain('tools: "read, bash"');
-    expect(readFileSync(explorer, 'utf8')).toContain('subagent_mode: "task"');
+    expect(readFileSync(explorer, 'utf8')).toContain(
+      'subagent_mode: "background"',
+    );
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 

@@ -85,7 +85,7 @@ Be concise. Return distilled evidence and outcomes, not raw logs or full-file du
 
 - Specialist definitions inherit Pi's available tools; this provides no OS or credential sandbox.
 
-- Run librarian work in background by default for provider access. Before claiming research evidence, verify that the Context7, web-access, or MCP provider is loaded and that every required tool is registered.
+- Before claiming research evidence, verify that the Context7, web-access, or MCP provider is loaded and that every required tool is registered.
 
 - Use the pi-web-access default tool names: call `web_search` with `workflow: "none"` for delegated research, use `fetch_content` for retrieval, `get_search_content` for selected or paginated results, and `source_check` for claim checks. Operator aliases or disabled tools can make these defaults unavailable; report provider or tool failures instead of claiming evidence.
 

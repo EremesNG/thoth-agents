@@ -185,6 +185,8 @@ try {
     'thoth-mem',
     'pi-subagents',
     'pi-subagents-j0k3r',
+    '@thoth-agents/pi-subagents',
+    'pi-packages/pi-subagents',
     'pi-mcp-adapter',
     'context7',
     'pi-exa',

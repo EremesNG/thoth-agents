@@ -1,7 +1,6 @@
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import {
   Key,
   matchesKey,
@@ -9,12 +8,6 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import { findPackageRoot } from './cli/package-root';
-import {
-  type PiModelSaveResult,
-  type PiModelSnapshot,
-  readPiModelConfig,
-  savePiModelConfig,
-} from './cli/pi-model-config';
 import { syncPiSpecialists } from './cli/pi-resources';
 import {
   type PiToolConfigSnapshot,
@@ -25,12 +18,6 @@ import {
 import { renderPiRootInstructions } from './harness/adapters/pi';
 import { PI_ROOT_END, PI_ROOT_START } from './harness/writers/pi-agent';
 import {
-  createModelsPanel,
-  type ModelsPanelCatalogModel,
-  type ModelsPanelTheme,
-  type PanelKey,
-} from './pi/models-panel';
-import {
   createToolsPanel,
   type ToolsPanelDiscoveredTool,
   type ToolsPanelKey,
@@ -39,12 +26,7 @@ import {
 
 type PiHandler = (event: Record<string, unknown>, context?: unknown) => unknown;
 
-interface PiModel {
-  provider: string;
-  id: string;
-  name?: string;
-}
-interface PiModelsCommandContext {
+interface PiCommandContext {
   mode: string;
   ui: {
     notify(message: string, type?: 'info' | 'warning' | 'error'): void;
@@ -61,14 +43,12 @@ interface PiModelsCommandContext {
       },
     ): Promise<T>;
   };
-  modelRegistry: { getAll(): PiModel[] };
 }
 interface PiNativeModules {
   matchesKey(data: string, key: string): boolean;
   truncateToWidth(text: string, width: number): string;
   visibleWidth(text: string): number;
-  keys: Record<PanelKey | ToolsPanelKey, string>;
-  getSupportedThinkingLevels(model: PiModel): readonly string[];
+  keys: Record<ToolsPanelKey, string>;
 }
 
 export interface PiExtensionApi {
@@ -77,10 +57,7 @@ export interface PiExtensionApi {
     name: string,
     command: {
       description: string;
-      handler(
-        args: string | undefined,
-        context: PiModelsCommandContext,
-      ): unknown;
+      handler(args: string | undefined, context: PiCommandContext): unknown;
     },
   ): void;
   getAllTools?(): Array<{ name: string; description?: string }>;
@@ -89,9 +66,6 @@ export interface PiExtensionApi {
 export interface PiExtensionOptions {
   packageRoot?: string;
   piRoot?: string;
-  /** Public seams used by focused tests; production uses the accepted services. */
-  readModelConfig?: typeof readPiModelConfig;
-  saveModelConfig?: typeof savePiModelConfig;
   readToolConfig?: typeof readPiToolConfig;
   saveToolConfig?: typeof savePiToolConfig;
   loadNativeModules?: () => Promise<PiNativeModules>;
@@ -118,10 +92,6 @@ async function loadPiNativeModules(): Promise<PiNativeModules> {
     truncateToWidth,
     visibleWidth,
     keys: Key,
-    getSupportedThinkingLevels: (model) =>
-      getSupportedThinkingLevels(
-        model as Parameters<typeof getSupportedThinkingLevels>[0],
-      ),
   };
 }
 
@@ -137,77 +107,15 @@ export default function thothAgentsPiExtension(
   pi: PiExtensionApi,
   options: PiExtensionOptions = {},
 ): void {
-  // j0k3r SDK children run in-process and expose no child marker. Activation
+  // @thoth-agents/pi-subagents SDK children run in-process and expose no child marker. Activation
   // only registers callbacks; session_resources: "lean" must filter these two
   // root lifecycle hooks from Thoth children before their root-only work can run.
-  pi.registerCommand?.('thoth-agents:models', {
-    description: 'Edit global Thoth specialist models',
-    handler: async (_args, ctx) => {
-      if (ctx.mode !== 'tui') {
-        ctx.ui.notify(
-          '/thoth-agents:models requires interactive TUI mode; no files were changed.',
-          'error',
-        );
-        return;
-      }
-      try {
-        const [native, snapshot] = await Promise.all([
-          (options.loadNativeModules ?? loadPiNativeModules)(),
-          Promise.resolve(
-            (options.readModelConfig ?? readPiModelConfig)(
-              globalPiRoot(options),
-            ),
-          ),
-        ]);
-        const catalog: ModelsPanelCatalogModel[] = ctx.modelRegistry
-          .getAll()
-          .map((model) => ({
-            provider: model.provider,
-            id: model.id,
-            name: model.name,
-            supportedEfforts: [...native.getSupportedThinkingLevels(model)],
-          }));
-        const result = await ctx.ui.custom<
-          { kind: 'cancelled' } | { kind: 'saved'; changedRoles: string[] }
-        >((tui, theme, _keybindings, done) =>
-          createModelsPanel({
-            snapshot,
-            catalog,
-            save: (current: PiModelSnapshot, draft): PiModelSaveResult =>
-              (options.saveModelConfig ?? savePiModelConfig)(current, draft),
-            onDone: done,
-            requestRender: () => tui.requestRender(),
-            matchesKey: (data, key) =>
-              native.matchesKey(data, native.keys[key]),
-            truncate: native.truncateToWidth,
-            visibleWidth: native.visibleWidth,
-            theme: theme as ModelsPanelTheme,
-          }),
-        );
-        if (result.kind === 'saved') {
-          const detail =
-            result.changedRoles.length > 0
-              ? ` Updated: ${result.changedRoles.join(', ')}.`
-              : ' No file content changed.';
-          ctx.ui.notify(
-            `Saved global Thoth specialist models.${detail} Saved settings apply on subsequent specialist discovery; running children and the ambient root are unchanged. Native settings or project definitions may override them.`,
-            'info',
-          );
-        }
-      } catch (error) {
-        ctx.ui.notify(
-          `Unable to open global specialist models: ${error instanceof Error ? error.message : String(error)}`,
-          'error',
-        );
-      }
-    },
-  });
-  pi.registerCommand?.('thoth-agents:tools', {
+  pi.registerCommand?.('subagents-tools', {
     description: 'Edit global Thoth specialist tools',
     handler: async (_args, ctx) => {
       if (ctx.mode !== 'tui') {
         ctx.ui.notify(
-          '/thoth-agents:tools requires interactive TUI mode; no files were changed.',
+          '/subagents-tools requires interactive TUI mode; no files were changed.',
           'error',
         );
         return;

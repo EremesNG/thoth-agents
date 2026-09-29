@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { THOTH_OWNED_SKILL_NAMES } from '../harness/core/owned-skills';
 import { applyClaudeCodeSetup } from './claude-code-install';
@@ -209,7 +209,7 @@ describe('install', () => {
     expect(result).toBe(0);
     expect(events).toEqual([
       'package:npm:thoth-agents@0.6.0',
-      'package:npm:pi-subagents-j0k3r@>=1.6.1',
+      'package:npm:@thoth-agents/pi-subagents@>=1.0.0',
       'package:npm:@upstash/context7-pi@>=0.1.2',
       'package:npm:pi-web-access@>=0.27.0',
       'package:npm:pi-mcp-adapter@>=2.32.1',
@@ -312,6 +312,7 @@ describe('install', () => {
   test('Pi dry-run plans the explicit local package root', async () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-local-plan-'));
     const localPackageRoot = process.cwd();
+    const localPiRuntimeRoot = resolve('pi-packages/pi-subagents');
     const runProvider = vi.fn(({ harness }) => providerResult(harness));
     const lines: string[] = [];
     const originalLog = console.log;
@@ -323,6 +324,7 @@ describe('install', () => {
           agent: 'pi',
           dryRun: true,
           localPackageRoot,
+          localPiRuntimeRoot,
         },
         {
           homeDir,
@@ -339,6 +341,9 @@ describe('install', () => {
       expect(result).toBe(0);
       expect(lines.join('\n')).toContain(
         `pi install ${localPackageRoot} --no-approve`,
+      );
+      expect(lines.join('\n')).toContain(
+        `pi install ${localPiRuntimeRoot} --no-approve`,
       );
       expect(lines.join('\n')).toContain(
         'Local thoth-agents install omits thoth-mem setup',
@@ -360,14 +365,17 @@ describe('install', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-local-apply-'));
     const configRoot = join(homeDir, '.config');
     const localPackageRoot = process.cwd();
+    const localPiRuntimeRoot = resolve('pi-packages/pi-subagents');
     const runProvider = vi.fn(({ harness }) => providerResult(harness));
     let plannedFirstPartySource: string | undefined;
+    let plannedRuntimePackageRoot: string | undefined;
     try {
       const result = await install(
         {
           tui: false,
           agent: 'pi',
           localPackageRoot,
+          localPiRuntimeRoot,
         },
         {
           homeDir,
@@ -378,6 +386,7 @@ describe('install', () => {
           }),
           buildPiSetupPlan: (options) => {
             plannedFirstPartySource = options.firstPartySource;
+            plannedRuntimePackageRoot = options.runtimePackageRoot;
             return {
               dryRun: false,
               ready: true,
@@ -416,6 +425,7 @@ describe('install', () => {
 
       expect(result).toBe(0);
       expect(plannedFirstPartySource).toBe(localPackageRoot);
+      expect(plannedRuntimePackageRoot).toBe(localPiRuntimeRoot);
       expect(runProvider).not.toHaveBeenCalled();
       expect(readInstallLedger({ configRoot })).toMatchObject({
         status: 'valid',

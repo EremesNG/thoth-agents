@@ -4,7 +4,7 @@ description: "Own user-facing implementation choices and visual quality for UI w
 tools: "read, bash, edit, write"
 model: "openai-codex/gpt-6-sol"
 effort: "medium"
-subagent_mode: "task"
+subagent_mode: "background"
 managed-by: thoth-agents
 ---
 

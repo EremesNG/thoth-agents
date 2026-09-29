@@ -220,6 +220,32 @@ export function parseInstallArgs(args: string[]): InstallArgs {
         );
       }
       result.localPackageRoot = localPackageRoot;
+    } else if (
+      arg === '--local-pi-runtime-root' ||
+      arg.startsWith('--local-pi-runtime-root=')
+    ) {
+      if (result.localPiRuntimeRoot !== undefined) {
+        throw new Error('--local-pi-runtime-root cannot be repeated.');
+      }
+      let localPiRuntimeRoot: string | undefined;
+      if (arg === '--local-pi-runtime-root') {
+        index += 1;
+        localPiRuntimeRoot = args[index];
+      } else {
+        localPiRuntimeRoot = arg.slice('--local-pi-runtime-root='.length);
+      }
+      if (!localPiRuntimeRoot || localPiRuntimeRoot.startsWith('--')) {
+        throw new Error('--local-pi-runtime-root requires a value.');
+      }
+      if (
+        !isAbsolute(localPiRuntimeRoot) ||
+        resolve(localPiRuntimeRoot) !== localPiRuntimeRoot
+      ) {
+        throw new Error(
+          '--local-pi-runtime-root requires a normalized absolute path.',
+        );
+      }
+      result.localPiRuntimeRoot = localPiRuntimeRoot;
     } else if (arg === '-h' || arg === '--help') {
       throw new Error('help');
     } else {
@@ -229,6 +255,11 @@ export function parseInstallArgs(args: string[]): InstallArgs {
 
   if (result.localPackageRoot !== undefined && result.agent !== 'pi') {
     throw new Error('--local-package-root is supported only with --agent=pi.');
+  }
+  if (result.localPiRuntimeRoot !== undefined && result.agent !== 'pi') {
+    throw new Error(
+      '--local-pi-runtime-root is supported only with --agent=pi.',
+    );
   }
 
   return result;

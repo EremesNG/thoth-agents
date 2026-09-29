@@ -77,7 +77,7 @@ execution does not.
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
   then may it migrate attributable legacy root/skill copies and install the five
-  external sources as `npm:pi-subagents-j0k3r@>=1.6.1`,
+  external sources as `npm:@thoth-agents/pi-subagents@>=1.0.0`,
   `@upstash/context7-pi@>=0.1.2`, `pi-web-access@>=0.27.0`,
   `pi-mcp-adapter@>=2.32.1`, and
   `@juicesharp/rpiv-ask-user-question@>=2.9.0`. Task/progress extensions are
@@ -99,9 +99,10 @@ execution does not.
   the unchanged last-complete ledger. Project-local `subagents.json` can
   override global lean isolation; full child resources are unsupported. A custom
   `PI_CODING_AGENT_DIR`, unowned canonical agent, or conflicting global `grep`
-  entry blocks mutation. A configured incumbent `pi-subagents` runtime also
-  blocks before mutation and returns manual removal guidance; setup never deletes
-  it or loads both delegation runtimes. Partial native package state remains
+  entry blocks mutation. A configured incumbent `pi-subagents` or former
+  `pi-subagents-j0k3r` runtime also blocks before mutation and returns manual
+  recovery guidance; setup never deletes it or loads both delegation runtimes.
+  Partial native package state remains
   visible and is recovered by resolving the blocker and rerunning the complete
   flow.
 - OpenCode runtime update checks are notification-only. They do not rewrite

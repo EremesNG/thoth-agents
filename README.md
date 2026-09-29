@@ -81,17 +81,22 @@ claude plugin install thoth-agents@thoth-plugins --scope user
 > without writing changes. After installation, restart your harness; Claude Code
 > also supports `/reload-plugins`.
 
-Inside Pi, use `/thoth-agents:models` to edit the five specialists' global models
-and thinking levels without leaving the session. Changes remain a draft until
-saved; the parent model is unchanged. See [panel controls and precedence](docs/installation.md#configure-specialist-models-inside-pi).
-Use `/thoth-agents:tools` to select each specialist's tools from your Pi environment,
+Inside Pi, use `/subagents-model` to edit model and effort profiles for global
+and project subagent definitions. See [subagent profile configuration](docs/installation.md#configure-subagent-model-profiles-inside-pi).
+Use `/subagents-tools` to select each specialist's tools from your Pi environment,
 including registered extension and MCP tools. Selections are explicit, not wildcard
 inheritance; see [tool selection controls](docs/installation.md#configure-specialist-tools-inside-pi).
 
 Pi setup currently supports the default `~/.pi/agent` root. See the
 [Pi installation guide](docs/installation.md#pi) for runtime requirements,
-existing-package conflicts, and recovery. Pi extensions run with your user's
-system permissions; agent tool allowlists are not an OS sandbox.
+existing-package conflicts, and recovery. Thoth manages its separate Pi
+delegation runtime as package `@thoth-agents/pi-subagents` (`1.0.0`) through
+`npm:@thoth-agents/pi-subagents@>=1.0.0`. Existing `pi-subagents` and
+`pi-subagents-j0k3r` installs need manual recovery through Pi's package manager
+before setup. Local checkout development uses `pnpm run setup:pi:local`, which
+points Pi at the fork under `pi-packages/pi-subagents`; publishing the fork is
+not required for that path. Pi extensions run with your user's system
+permissions; agent tool allowlists are not an OS sandbox.
 
 For scopes, troubleshooting, or local checkout installation, see the
 [installation guide](docs/installation.md). Local Pi checkout installs keep

@@ -16,37 +16,34 @@ Pi extension for delegating work to markdown-defined subagents. Continuation is 
 - Task-to-background handoff via `ctrl+h` by default, configurable in `subagents.json`.
 - Automatic background completion/failure notifications that start or queue a parent-orchestrator response; no polling is needed just to wait.
 - TUI execution rendering can expand/collapse tool and rendered component output with `ctrl+o`, show/hide assistant thinking blocks with `ctrl+t`, and display queued/consumed steering messages in the owning task detail timeline.
-- Model profile UI via `/subagent-models`.
+- Model profile UI via `/subagents-model`.
 - Per-agent/default model and thinking-effort configuration.
 - Tool allowlist filtering that prevents subagents from delegating to other subagents.
 - Generic subagent-to-parent interaction handoff so human decisions happen on the main thread.
 
 ## Install as a Pi package
 
-This repository is an installable Pi package named `pi-subagents-j0k3r`.
+This fork is an installable Pi package named `@thoth-agents/pi-subagents`,
+version `1.0.0`.
 
-Install from npm after publishing:
+Thoth-managed public setup uses this npm source:
 
 ```bash
-pi install npm:pi-subagents-j0k3r
+pi install 'npm:@thoth-agents/pi-subagents@>=1.0.0'
 ```
 
-Install from a Git repository or tag:
+For local development in this monorepo, use the checkout directly:
 
 ```bash
-pi install git:https://github.com/<owner>/pi-subagents-j0k3r@<tag-or-commit>
+pnpm run setup:pi:local
 ```
 
-Try a local checkout without installing it permanently:
+The helper supplies the fork path to Thoth's Pi installer and does not require
+publishing the local package to npm. To configure Pi directly, use the same
+scoped source and add `-l` to install for one project instead of globally:
 
 ```bash
-pi -e ./path/to/pi-subagents-j0k3r
-```
-
-Install for one project instead of globally with `-l`:
-
-```bash
-pi install -l npm:pi-subagents-j0k3r
+pi install -l 'npm:@thoth-agents/pi-subagents@>=1.0.0'
 ```
 
 The package manifest exposes:
@@ -79,7 +76,7 @@ Load order:
 
 Project definitions override global definitions with the same normalized name. Within the same scope, `subagents` definitions override `agents` definitions with the same normalized name and Pi shows a startup warning so the duplicate can be cleaned up.
 
-The npm package is the extension runtime only. It does not ship or load subagent definitions from `node_modules/pi-subagents-j0k3r/agents`; use the directories above, or run `subagent_list_agents` / `subagent({ action: "list" })` to inspect the definitions Pi actually loaded.
+The npm package is the extension runtime only. It does not ship or load subagent definitions from `node_modules/@thoth-agents/pi-subagents/agents`; use the directories above, or run `subagent_list_agents` / `subagent({ action: "list" })` to inspect the definitions Pi actually loaded.
 
 Default global agent directory:
 
@@ -100,7 +97,7 @@ Example:
 ```md
 ---
 name: discovery
-description: investigates isolated ideas, code, documentation, and context7 before deciding whether to start prd/sdd
+description: investigates isolated ideas, code, documentation, and context7 before deciding whether deeper design work is needed
 tools:
   - read
   - bash
@@ -211,7 +208,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 {
   "default_model": "anthropic/claude-sonnet-4-5",
   "default_effort": "medium",
-  "default_mode": "task",
+  "default_mode": "background",
   "enable_continue": false,
   "timeout_ms": 1200000,
   "stall_timeout_ms": 240000,
@@ -232,10 +229,6 @@ The same JSON shape is valid globally or project-locally; place it only in the s
     "discovery": {
       "model": "anthropic/claude-haiku-4-5",
       "effort": "low"
-    },
-    "sdd-apply": {
-      "model": "anthropic/claude-sonnet-4-5",
-      "effort": "medium"
     }
   }
 }
@@ -247,7 +240,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 |---|---:|---|
 | `default_model` | current orchestrator model | Fallback model for all subagents. Format: `provider/model-id`. |
 | `default_effort` | current orchestrator effort | Fallback thinking effort. Also accepts `default_thinking_level` or `thinkingLevel`. |
-| `default_mode` | `task` | Fallback execution mode when neither the invocation nor the selected definition sets one. Accepts `task` or `background`. |
+| `default_mode` | `background` | Fallback execution mode when neither the invocation nor the selected definition sets one. Accepts `task` or `background`. |
 | `enable_continue` | `false` | Opt-in gate for new continuations and `subagent_continue` tool exposure. Project values override global values; changing it requires `/reload` or restart before tool availability changes. |
 | `model_profiles` | `{}` | Per-agent model/effort overrides scoped to matching definitions. Project-local profiles apply to project-local definitions; global profiles apply to global definitions. |
 | `timeout_ms` | `1200000` | Total timeout per subagent task (20 minutes). |
@@ -357,7 +350,7 @@ Parameters:
 
 Behavior:
 
-- Invocation mode stays optional. Effective resolution is `input.mode ?? definition.subagent_mode ?? config.default_mode`, where `default_mode` falls back to `"task"`.
+- Invocation mode stays optional. Effective resolution is `input.mode ?? definition.subagent_mode ?? config.default_mode ?? "background"`. An explicit `mode: "task"` remains effective when the user asks to wait.
 - `mode: "task"` waits for completion and returns compact task summaries.
 - `mode: "background"` returns task IDs immediately. Respond to the user and wait for the automatic completion/failure turn; do not sleep, poll status, or fetch results just to wait. Use status/result tools only when you explicitly need an intermediate status or stored result.
 - Batch input is intentionally unsupported: call `subagent_run` once per subagent so each delegation has an isolated lifecycle, result, and failure surface.
@@ -366,11 +359,11 @@ Behavior:
 Examples:
 
 ```ts
-// Omitted mode: the selected definition uses its own default.
+// Omitted mode: use the selected definition or config; otherwise background.
 { agent: "analyst", task: "review the plan" }
 
-// Explicit override: run this single delegation in background mode.
-{ agent: "reviewer", task: "review the plan", mode: "background" }
+// Explicit request to wait: task mode is preserved.
+{ agent: "reviewer", task: "review the plan", mode: "task" }
 ```
 
 ### `subagent_continue`
@@ -395,10 +388,11 @@ Behavior:
 
 - Continuations keep the same `task_id` and exact persisted nested Pi session.
 - New continuations and continuation guidance are available only while the task cwd resolves `enable_continue: true`.
-- Effective continuation mode resolves once as `input.mode ?? previous_task.effective_mode ?? previous_task.mode ?? config.default_mode ?? "task"`.
+- Effective continuation mode resolves once as `input.mode ?? previous_task.effective_mode ?? previous_task.mode ?? config.default_mode ?? "background"`.
 - `mode: "task"` waits, renders `(task)`, and remains eligible for manual `ctrl+h` handoff.
 - `mode: "background"` returns immediately, renders `(background)`, and relies on the automatic completion notification.
-- When `mode` is omitted, the continuation preserves the previous task attempt's effective mode. Legacy records without a valid saved mode fall back through `default_mode` and then `task`.
+- While background tasks are active, an `Agents` tree appears above the input. Running rows show the agent, resolved model, task, and available child turns, tool uses, tokens, context percentage, elapsed time, activity, and compactions; queued tasks appear as a count. Token totals include input, output, and cache writes, excluding repeated cache reads. Missing child metrics are omitted. Use the arrow keys and Enter to open a selected task, or return to the editor with Escape.
+- When `mode` is omitted, the continuation preserves the previous task attempt's effective mode. Legacy records without a valid saved mode fall back through `default_mode` and then `background`.
 - Model and effort overrides still require an explicit user decision before use.
 
 ### `subagent_send_message`
@@ -456,14 +450,14 @@ Live-message requirements, visibility, and lifecycle:
 | Entry point | Description |
 |---|---|
 | `/subagents` | Open the session-focused TUI subagent history panel. |
-| `/subagent-models` | Configure subagent and SDD phase model profiles in the matching local or global config. |
+| `/subagents-model` | Configure model profiles for global or project subagent definitions. |
 | `ctrl+,` | Open the TUI subagent history panel by default. Configurable via `history_panel_shortcut` in `subagents.json`. |
 | `x` | Cancel the currently selected queued/running subagent from the open history/detail panel by default. Configurable via `detail_cancel_shortcut` in `subagents.json`. |
 | `ctrl+h` | Send the running task-mode subagent task to the background by default. Configurable via `background_handoff_shortcut` in `subagents.json`. |
 | `ctrl+o` | Expand or collapse rendered tool output and subagent responses in the active execution/detail view. |
 | `ctrl+t` | Show or hide assistant thinking blocks in the open subagent execution panel, using Pi's `app.thinking.toggle` keybinding. |
 
-`/subagent-models` writes profile changes to the config that matches each selected definition: project-local subagents write to `.pi/subagents.json`, while global subagents and synthetic SDD phase rows write to `~/.pi/agent/subagents.json` or `$PI_CODING_AGENT_DIR/subagents.json` when `PI_CODING_AGENT_DIR` is set.
+`/subagents-model` writes profile changes to the config that matches each selected definition: project-local subagents write to `.pi/subagents.json`, while global subagents write to `~/.pi/agent/subagents.json` or `$PI_CODING_AGENT_DIR/subagents.json` when `PI_CODING_AGENT_DIR` is set.
 
 In non-TUI environments, edit `model_profiles` manually in the matching local or global JSON file.
 
@@ -551,9 +545,9 @@ In the default `lean` mode, the runner treats the subagent markdown body as the 
 
 Extensions are loaded in an isolated tools-only/safety-hook mode for subagents: allowlisted extension tools remain available, while context/prompt lifecycle hooks such as `before_agent_start` and `context` are removed so extensions cannot add hidden startup messages. Tool-safety hooks (`tool_call`, `tool_result`, and `user_bash`) are preserved for runtime guards and interaction handoff.
 
-Memory behavior should be specified in each subagent markdown definition. A subagent can use memory only when its tool allowlist includes the relevant memory tools. SDD/PRD phase agents use deterministic `memory_search`/`memory_get` plus `memory_add`/`memory_update` for active-flow state; they intentionally do not receive `memory_context` or `memory_recall`.
+Memory behavior should be specified in each subagent markdown definition. A subagent can use memory only when its tool allowlist includes the relevant memory tools.
 
-Context7 access is limited to `discovery`, `tool-smoke`, and `sdd-explore`; downstream SDD phase agents should consume curated evidence from artifacts or orchestrator context instead of performing broad external-doc discovery.
+Context7 access is controlled by each subagent definition's tool allowlist. Grant external documentation tools only to agents that need them.
 
 ## Bundled resources
 
@@ -562,7 +556,7 @@ This package bundles:
 - `index.ts` and `src/**` — the Pi extension runtime.
 - `skills/subagents-configuration/SKILL.md` — configuration guidance for agents that need to explain, create, or edit subagent definitions and global/project settings. It requires explicit scope selection and unresolved behavior decisions before edits.
 
-Subagent definitions are intentionally user/project configuration, not hard-coded package behavior. Add them globally in `$PI_CODING_AGENT_DIR/agents/*.md` or `$PI_CODING_AGENT_DIR/subagents/*.md`, or project-locally in `.pi/agents/*.md` or `.pi/subagents/*.md`. Do not inspect `node_modules/pi-subagents-j0k3r/agents` for definitions; that path is not part of the package design and may not exist.
+Subagent definitions are intentionally user/project configuration, not hard-coded package behavior. Add them globally in `$PI_CODING_AGENT_DIR/agents/*.md` or `$PI_CODING_AGENT_DIR/subagents/*.md`, or project-locally in `.pi/agents/*.md` or `.pi/subagents/*.md`. Do not inspect `node_modules/@thoth-agents/pi-subagents/agents` for definitions; that path is not part of the package design and may not exist.
 
 ## Development
 

@@ -254,67 +254,13 @@ Applying Update for Pi MUST perform the same exact first-party-package-first, ex
 
 ### Requirement: Preserve complete per-harness setup
 
-`install --agent=pi` MUST preflight Node.js and Pi; capture and validate the receipt-owned prior first-party state; install and verify the exact first-party native package before any external package; atomically commit its ownership receipt only after configured, loadable, and observed evidence passes; and compensate a failed replacement by restoring and verifying the prior owned source or removing a new source while leaving the prior receipt unchanged. Only then MAY setup install delegation and research packages, merge the attributable grep.app entry, synchronize only package-owned specialist resources, install mandatory external skills, invoke provider-owned setup for a published install, and record the last-complete Pi ledger after every required in-scope step succeeds. An explicit local package install MUST omit provider setup while keeping the ledger commit. Dry-run MUST describe the complete in-scope order without mutation, and a first-party failure MUST prevent all downstream mutation.
+`install --agent=pi` MUST preflight Node.js and Pi; capture and validate the receipt-owned prior first-party state; install and verify the exact first-party native package before any external package; atomically commit its ownership receipt only after configured, loadable, and observed evidence passes; and compensate a failed replacement by restoring and verifying the prior owned source or removing a new source while leaving the prior receipt unchanged. Only then MAY setup install the adopted delegation runtime and research packages, merge the attributable grep.app entry, synchronize only package-owned specialist resources, install mandatory external skills, invoke provider-owned setup for a published install, and record the last-complete Pi ledger after every required in-scope step succeeds. An explicit local package install MUST omit provider setup while keeping the ledger commit. Dry-run MUST describe the complete in-scope order without mutation, and a first-party failure MUST prevent all downstream mutation. Delegation inspection MUST validate manifest/version and actual selected source for published npm and explicit local-root installations; local setup MUST not silently fall back to npm. Incompatible incumbent runtimes MUST be diagnosed before mutation with bounded manual native recovery, preserving operator assets.
 
-#### Scenario: US1 - Install thoth-agents as the first native Pi package 1
+#### Scenario: Preserve complete per-harness setup
 
-- **GIVEN** Pi `0.86.1`, Node.js `>=22.19`, an executing thoth-agents version, and an empty isolated Pi home
-- **WHEN** Pi installation is applied
-- **THEN** `pi install npm:thoth-agents@<exact-version> --no-approve` completes and is verified before delegation, research, skills, provider, or ledger steps
-
-#### Scenario: US1 - Install thoth-agents as the first native Pi package 2
-
-- **GIVEN** the same environment
-- **WHEN** installation is previewed
-- **THEN** the first-party and external package commands plus every migration and setup target are reported with zero mutation
-
-#### Scenario: US1 - Install thoth-agents as the first native Pi package 3
-
-- **GIVEN** first-party package installation or verification fails
-- **WHEN** setup exits
-- **THEN** no external dependency is installed and no complete ledger record is written
-
-#### Scenario: US1 - Install thoth-agents as the first native Pi package 4
-
-- **GIVEN** an existing global `thoth-agents` Pi source
-- **WHEN** no valid thoth-agents ownership receipt matches that exact source
-- **THEN** setup reports an unowned conflict before invoking any mutating Pi command
-
-#### Scenario: US1 - Install thoth-agents as the first native Pi package 5
-
-- **GIVEN** a receipt-owned prior source
-- **WHEN** replacement, native-load observation, or receipt commit fails
-- **THEN** setup restores and verifies the prior source, leaves the prior receipt authoritative, and blocks every downstream dependency; a failed compensation is reported explicitly
-
-#### Scenario: US3 - Update, migrate, and diagnose native package state 1
-
-- **GIVEN** a legacy complete Pi setup from the prior release
-- **WHEN** Update succeeds
-- **THEN** the exact native package is installed, the attributable legacy root block and duplicate owned-skill copies are removed, specialist discovery is preserved, and unrelated operator content is unchanged
-
-#### Scenario: US3 - Update, migrate, and diagnose native package state 2
-
-- **GIVEN** any installed first-party or external package/source/version, resource, provider, or remote-state mismatch
-- **WHEN** status is requested
-- **THEN** each layer is reported independently without advancing or inferring the last-complete ledger
-
-#### Scenario: US3 - Update, migrate, and diagnose native package state 3
-
-- **GIVEN** native package state is incomplete or conflicting
-- **WHEN** Sync or Update is planned
-- **THEN** it returns a bounded repair or manual action and never falls through to another harness
-
-#### Scenario: US4 - Preserve external ownership and existing harnesses 1
-
-- **GIVEN** the native Pi package
-- **WHEN** its packed contents are inspected
-- **THEN** it contains only thoth-owned extension, agent, prompt, skill, and diagnostic assets and references external runtimes by pinned package source
-
-#### Scenario: US4 - Preserve external ownership and existing harnesses 2
-
-- **GIVEN** OpenCode, Codex, or Claude Code installation and runtime flows
-- **WHEN** the Pi package change is present
-- **THEN** their current behavior and generated artifacts remain unchanged except for shared truthful documentation
+- **GIVEN** an explicit valid local runtime root
+- **WHEN** installation or status inspects Pi
+- **THEN** the local source is verified consistently and invalid identity fails with an actionable diagnostic
 
 ### Requirement: Record the last complete CLI-managed version
 

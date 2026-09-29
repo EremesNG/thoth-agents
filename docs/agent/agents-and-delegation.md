@@ -147,16 +147,18 @@ outcome quality, elapsed latency and cost; mark unavailable measures as such.
 This documentation change reports no measurements and claims no gains or model
 compliance.
 
-For Pi, use the public j0k3r `subagent_run` tool once per specialist, with an
-explicit canonical `agent`, bounded `task`, and `mode: "task"` or
-`"background"`. Launch separate ready background tasks before collecting
-results. The root coordinates readiness, dependencies, and acceptance. Use
+For Pi, use the `subagent_run` tool from `@thoth-agents/pi-subagents` once per
+specialist, with a canonical `agent` and bounded `task`. Omit `mode` to follow
+definition/configuration and the background fallback; use `mode: "task"` only
+when the user explicitly asks to wait for completion. Launch separate ready
+background tasks before collecting results. The root coordinates readiness,
+dependencies, and acceptance. Use
 `subagent_status`, `subagent_result`, and `subagent_cancel` with the known
 `task_id`; terminal notifications wake the parent, so do not poll. A cancellation
 acknowledgement alone is not proof of termination, and `enable_continue: false`
 means continuation must not be assumed. These instructions are not runtime
-permissions: j0k3r provides no enforced delegation depth, tool allowlist, or
-`PI_SUBAGENT_CHILD` marker. The required `session_resources: "lean"` setting
+permissions: the runtime provides no enforced delegation depth, tool allowlist,
+or `PI_SUBAGENT_CHILD` marker. The required `session_resources: "lean"` setting
 filters `before_agent_start` and `session_start` but is not a process or OS
 sandbox; project-local `subagents.json` can override the global setting. If a native primitive is
 unavailable or unproven, report the degradation and use a truthful sequential

@@ -27,13 +27,19 @@
   package-owned `pi/agents/*.md` assets plus `.thoth-agents-assets.json`; no
   orchestrator child or external implementation tree is packaged. Pi discovers
   the five owned skills from the manifest, while the shared synchronizer
-  materializes the five specialists for `npm:pi-subagents-j0k3r@>=1.6.1`.
+  materializes the five specialists for the separate
+  `@thoth-agents/pi-subagents` runtime from
+  `npm:@thoth-agents/pi-subagents@>=1.0.0`.
   Generated definitions use supported `model`, `effort`, and `subagent_mode`
-  fields; they do not claim fresh-context or depth enforcement. The librarian
-  defaults to background mode. `/thoth-agents:models` exposes global specialist
-  configuration through a native TUI draft/save panel. CLI and extension share
-  `src/cli/pi-model-config.ts` for provenance/path checks, stale snapshots, and
-  partial-write recovery. `/thoth-agents:tools` discovers current registered tools,
+  fields; they do not claim fresh-context or depth enforcement. Omitted run mode
+  follows the selected definition and configuration, with background as the
+  runtime fallback; an explicit `mode: "task"` continues to wait. The
+  `/subagents-model` command edits model profiles for global or project
+  definitions in their matching config scope. `model_profiles` takes precedence
+  over definition fields, configuration defaults, and the parent model/effort.
+  `/subagents-tools` edits explicit per-role global tool lists. The CLI keeps
+  using `src/cli/pi-model-config.ts` for Thoth specialist provenance/path checks,
+  stale snapshots, and partial-write recovery. `/subagents-tools` discovers current registered tools,
   edits explicit per-role global tool lists and supports active-only select-all,
   marked inactive choices, retained unavailable names and role-default reset.
   `src/cli/pi-tool-config.ts` owns validation and safe persistence; synchronization
@@ -67,7 +73,7 @@
   skill against the release tag before any push.
 - No adapter bundles thoth-mem hooks, MCP, skill, lifecycle behavior, or project
   QA executables.
-- Pi j0k3r children run in-process and expose no `PI_SUBAGENT_CHILD` marker.
+- Pi subagent children run in-process and expose no `PI_SUBAGENT_CHILD` marker.
   Global `<agent-dir>/subagents.json` therefore requests
   `session_resources: "lean"` and `enable_continue: false`; lean filters
   `before_agent_start` and `session_start`, while full child resources are
@@ -78,9 +84,10 @@
 - Pi's Context7 and web-access integrations are native extensions. Only grep.app
   uses `pi-mcp-adapter`, through the exact attributable global server entry.
 - Pi safely merges `session_resources: "lean"` and `enable_continue: false`
-  into global `subagents.json` without replacing unrelated keys. A detected
-  incumbent `pi-subagents` package blocks before mutation with manual recovery;
-  setup never removes it or installs both delegation runtimes.
+  into global `subagents.json` without replacing unrelated keys. Detected
+  incumbent `pi-subagents` or former `pi-subagents-j0k3r` packages block before
+  mutation with manual recovery; setup never removes them or installs both
+  delegation runtimes.
 - Pi requires RPIV `ask_user_question` for root-owned interaction, but no task
   extension. Progress instructions use any available task tool through its actual
   contract, or written progress when unavailable; children report to root.

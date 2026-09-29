@@ -25,6 +25,7 @@ import {
   appendSubagentResumeGuidance,
   formatTaskLabel,
 } from './tools/formatting.js';
+import { statusGlyph } from './tools/progress.js';
 
 function formatErrorMetadataLines(task: any): string[] {
   if (!task?.error_metadata) return [];
@@ -158,7 +159,7 @@ export function renderSubagentCompletionMessage(
   const hasResp =
     typeof rawResponse === 'string' && rawResponse.trim().length > 0;
   const responseText = hasResp ? rawResponse : '';
-  const archPrefix = themeFg(theme, 'accent', ARCH_ICON, CYAN);
+  const archPrefix = themeStatus(theme, status, statusGlyph(status));
   const taskLabel = formatTaskLabel(task);
   const titleLabel = themeFg(
     theme,

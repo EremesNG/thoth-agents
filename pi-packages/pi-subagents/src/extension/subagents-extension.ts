@@ -116,7 +116,7 @@ export default function subagentsExtension(pi: any): void {
         widgetTimer = setInterval(() => {
           widgetRequestRender?.();
           syncWidgetTimer();
-        }, 1000);
+        }, 100);
         widgetTimer.unref?.();
       } else if (!hasRunningTask && widgetTimer) {
         clearInterval(widgetTimer);

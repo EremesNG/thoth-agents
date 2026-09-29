@@ -135,7 +135,7 @@ describe('completion message render', () => {
       },
     ).render(80);
 
-    expect(lines[0]).toMatch(/^┌─+ 󰣇 \[subagent\] discovery · completed ─+┐$/);
+    expect(lines[0]).toMatch(/^┌─+ ✓ \[subagent\] discovery · completed ─+┐$/);
     expect(lines[1]).toContain('subagent: discovery');
     expect(lines).toContainEqual(expect.stringContaining('ctrl+o to expand'));
     expect(lines.at(-1)).toMatch(/^└─+┘$/);

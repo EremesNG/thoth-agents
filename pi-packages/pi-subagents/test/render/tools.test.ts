@@ -5,12 +5,28 @@ import {
   resetExpandKeybindingProviderForTests,
   setExpandKeybindingProviderForTests,
 } from '../../src/render/tools/expansion-hint.js';
+import { statusGlyph } from '../../src/render/tools/progress.js';
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
 
 describe('tool render helpers', () => {
+  it('uses distinct task state glyphs', () => {
+    expect(
+      [
+        'running',
+        'completed',
+        'cancelled',
+        'interrupted',
+        'stopping',
+        'failed',
+        'queued',
+      ].map((state) => statusGlyph(state)),
+    ).toEqual(['⠋', '✓', '■', '■', '■', '✗', '○']);
+    expect(statusGlyph('running', 9)).toBe('⠏');
+    expect(statusGlyph('running', 10)).toBe('⠋');
+  });
   it('renders agent, model, and effort as explicit labels in tool results', async () => {
     env.writeAgent('analyst');
     const manager = env.createManager(async () => ({
@@ -597,7 +613,7 @@ describe('tool render helpers', () => {
       .render(80);
     expect(resultLines[0]).toContain('┌─');
     expect(resultLines[0]).toContain('┐');
-    expect(resultLines[0]).toContain('󰣇');
+    expect(resultLines[0]).toContain('✓');
     expect(resultLines.some((l: string) => l.includes('│'))).toBe(true);
     expect(resultLines.at(-1)).toContain('└');
     expect(resultLines.at(-1)).toContain('┘');
@@ -614,7 +630,7 @@ describe('tool render helpers', () => {
     ).render(80);
     expect(directLines[0]).toContain('┌─');
     expect(directLines[0]).toContain('┐');
-    expect(directLines[0]).toContain('󰣇');
+    expect(directLines[0]).toContain('✓');
     expect(directLines.some((l: string) => l.includes('│'))).toBe(true);
     expect(directLines.at(-1)).toContain('└');
     expect(directLines.at(-1)).toContain('┘');
@@ -659,7 +675,7 @@ describe('tool render helpers', () => {
       )
       .render(80);
     expect(lines[0]).toMatch(/^┌─+ .+subagent · sdd-verify · running ─+┐$/);
-    expect(lines[0]).toContain('󰣇');
+    expect(lines[0]).toContain('⠋');
     expect(lines.some((l: string) => l.includes('│'))).toBe(true);
     expect(lines.at(-1)).toMatch(/^└─+┘$/);
     expect(lines.join('\n')).not.toContain('\x1b[4');
@@ -720,7 +736,7 @@ describe('tool render helpers', () => {
     expect(lines[0]).toMatch(
       /^┌─+ .+subagent · sdd-verify · running \(background\) ─+┐$/,
     );
-    expect(lines[0]).toContain('󰣇');
+    expect(lines[0]).toContain('⠋');
     expect(lines[1]).toContain('subagent: sdd-verify');
     expect(lines[1]).toContain('status: running');
     expect(lines.join('\n')).toContain('click to view execution');
@@ -787,7 +803,7 @@ describe('tool render helpers', () => {
       .render(120);
     expect(resultLines[0]).toContain('┌─');
     expect(resultLines[0]).toContain('┐');
-    expect(resultLines[0]).toContain('󰣇');
+    expect(resultLines[0]).toContain('⠋');
     expect(resultLines[0]).toContain(
       'subagent · sdd-verify · running (background)',
     );
@@ -1106,7 +1122,19 @@ describe('tool render helpers', () => {
         .render(80);
       expect(collapsedLines[0], `${name} collapsed top border`).toContain('┌─');
       expect(collapsedLines[0], `${name} collapsed top border`).toContain('┐');
-      expect(collapsedLines[0], `${name} collapsed ARCH_ICON`).toContain('󰣇');
+      expect(
+        collapsedLines[0],
+        `${name} collapsed status/brand icon`,
+      ).toContain(
+        [
+          'subagent_run',
+          'subagent_continue',
+          'subagent_status',
+          'subagent_result',
+        ].includes(name)
+          ? '✓'
+          : '󰣇',
+      );
       expect(
         collapsedLines.some((l: string) => l.includes('│')),
         `${name} collapsed vertical border`,
@@ -1126,7 +1154,16 @@ describe('tool render helpers', () => {
         .render(80);
       expect(expandedLines[0], `${name} expanded top border`).toContain('┌─');
       expect(expandedLines[0], `${name} expanded top border`).toContain('┐');
-      expect(expandedLines[0], `${name} expanded ARCH_ICON`).toContain('󰣇');
+      expect(expandedLines[0], `${name} expanded status/brand icon`).toContain(
+        [
+          'subagent_run',
+          'subagent_continue',
+          'subagent_status',
+          'subagent_result',
+        ].includes(name)
+          ? '✓'
+          : '󰣇',
+      );
       expect(
         expandedLines.some((l: string) => l.includes('│')),
         `${name} expanded vertical border`,

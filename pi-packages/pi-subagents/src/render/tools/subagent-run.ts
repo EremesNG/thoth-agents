@@ -1,5 +1,4 @@
 import {
-  ARCH_ICON,
   themeAccent,
   themeBold,
   themeDim,
@@ -27,7 +26,7 @@ import {
   taskFinalText,
   taskResponseText,
 } from './formatting.js';
-import { progressText } from './progress.js';
+import { progressText, statusGlyph } from './progress.js';
 
 export function renderSubagentTaskCall(
   _agent?: string,
@@ -64,7 +63,12 @@ export function renderSubagentRunResult(
   context?: any,
 ) {
   const task = taskFromDetails(result);
-  const archPrefix = themeAccent(theme, ARCH_ICON);
+  const taskStatus = task?.status ?? (result?.isError ? 'failed' : 'completed');
+  const archPrefix = themeStatus(
+    theme,
+    taskStatus,
+    statusGlyph(taskStatus, result?.details?.frame ?? 0),
+  );
   const isBg =
     task?.mode === 'background' ||
     task?.effective_mode === 'background' ||

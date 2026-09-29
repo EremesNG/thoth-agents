@@ -21,6 +21,7 @@ import {
   modelEffortLine,
   taskResponseText,
 } from './formatting.js';
+import { statusGlyph } from './progress.js';
 
 export function renderSubagentStatusCall(_args?: any, _theme?: any) {
   return emptyComponent();
@@ -43,7 +44,9 @@ export function renderSubagentStatusResult(
       task?.status === 'failed' ||
       task?.status === 'cancelled',
   );
-  const archPrefix = themeFg(theme, 'accent', ARCH_ICON, CYAN);
+  const archPrefix = task
+    ? themeStatus(theme, task.status, statusGlyph(task.status))
+    : themeFg(theme, 'accent', ARCH_ICON, CYAN);
 
   if (!task) {
     const title = `${archPrefix} ${themeTitle(theme, failed ? 'subagent status · failed' : 'subagent status')}`;

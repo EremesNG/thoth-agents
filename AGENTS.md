@@ -97,16 +97,26 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   planning even for a patch-sized change. No alias, duplicate record, report,
   evidence directory, process tool, or execution wrapper is created. See the
   [SDD guide](docs/agent/sdd-and-skills.md).
-- Preserve optional selected Oracle plan review and the separate post-review
-  Implement (Recommended) / Stop decision. Review does not authorize execution
-  or replace final verification; no fallback may resolve material decisions.
-- Honor authorization and resolved choices. After ready, offer Oracle review
-  (recommended) or proceed without review; after [OKAY], separately offer
-  implementation (recommended) or Stop. Each question has at most three confirmed
-  answerless native returns before its recommended default applies. Explicit
-  answers and Stop win; pending/unavailable/failed questions do not count.
-  Review alone does not authorize implementation or replace final verification.
-  Never default other unresolved material decisions, secrets or sensitive actions.
+- At substantial `ready`, always offer `Review plan with Oracle (Recommended)` or
+  `Proceed without review`, even when implementation was already authorized.
+  Silence is never an explicit skip. After `[OKAY]`, preserve the separate
+  `Implement (Recommended)` / `Stop` choice; prior explicit authorization
+  remains valid and a later explicit `Stop` supersedes it. Review alone does not
+  authorize implementation or replace final verification.
+- Every orchestrator choice with a meaningful recommended action must state that
+  recommendation. Count confirmed answerless native returns separately for each
+  question: after the first and second, repeat the same question and do no
+  dependent work; after the third, select the recommendation. Explicit answers
+  win and explicit `Stop` always wins. Pending, unavailable, failed, interrupted,
+  or host-prohibited question attempts do not count. Report higher-priority host
+  limits accurately; never claim three returns or an explicit user choice when
+  they did not occur. Never fabricate missing facts or secrets; when the
+  unresolved decision is human-owned, recommend a safe deferral that leaves it
+  unresolved rather than choosing it for the user.
+- At closeout, plan-review provenance distinguishes `EXPLICIT_REVIEW`,
+  `EXPLICIT_SKIP`, and `DEFAULT_REVIEW_AFTER_3`. `SKIPPED` requires
+  `EXPLICIT_SKIP`; `OKAY` requires `EXPLICIT_REVIEW` or
+  `DEFAULT_REVIEW_AFTER_3`. Review approval does not replace final verification.
 - Shape each retained or delegated unit across discovery, research, planning,
   implementation and verification around one independently acceptable outcome,
   accepted upstream inputs, output, owned writes/interface, a focused check with

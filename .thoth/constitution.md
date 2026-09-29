@@ -1,17 +1,17 @@
 <!--
 Sync Impact Report
-- Version change: 9.0.0 -> 10.0.0
-- Modified principles: Replace work.yaml/route-selection workflow with mandatory proportional understanding followed by risk-aware classification; make one ID-named Markdown record the sole substantial-change artifact; establish .thoth as active governance and specification storage.
+- Version change: 10.0.0 -> 10.1.0
+- Modified principles: Principle 1 establishes safe deferral for unresolved human-owned choices and prohibits fabricating missing facts or secrets; Principle 3 extends the recommendation/retry policy to every orchestrator choice and makes the ready-stage Oracle review offer mandatory with explicit selection provenance.
 - Added sections: None
 - Removed sections: None
-- Templates: ✅ skills/thoth-constitution/templates/constitution.md; ✅ skills/thoth-sdd; ✅ skills/thoth-init; ✅ skills/thoth-archive; ✅ root prompts and active documentation
+- Templates: ✅ skills/thoth-constitution/templates/constitution.md; ✅ skills/thoth-sdd/templates/change.md and closeout validator; ✅ skills/thoth-sdd; ✅ skills/plan-reviewer; ✅ skills/thoth-init; ✅ skills/thoth-constitution; ✅ skills/thoth-archive; ✅ root prompts and active documentation
 - Follow-up TODOs: None
 -->
 # thoth-agents Project Constitution
 
-**Version**: 10.0.0<br>
+**Version**: 10.1.0<br>
 **Ratified**: 2026-06-16<br>
-**Last amended**: 2026-09-28
+**Last amended**: 2026-09-29
 
 ## Principles
 
@@ -27,7 +27,9 @@ The root orchestrator owns intent, scope, material decisions, coordination,
 semantic acceptance, and synthesis. Product, architecture, security, secret, and
 destructive decisions remain human-owned. An unresolved material decision MUST
 block classification and implementation; routine technical assumptions MUST be
-bounded by evidence and accepted intent.
+bounded by evidence and accepted intent. Missing facts and secrets MUST NOT be
+fabricated. When a human-owned choice remains unresolved, a safe recommendation
+MUST defer it and preserve the unresolved state.
 
 ### 2. Proportional SDD and classification
 
@@ -60,13 +62,29 @@ complexity. Delegation depth is one, each mutable surface has one writer, and no
 writer approves their own work.
 
 For substantial work, optional read-only Oracle plan review follows ready only
-when selected; its result does not authorize implementation. After a selected
-review returns `[OKAY]`, the root preserves the separate `Implement (Recommended)` /
-`Stop` decision. Explicit answers and Stop win. For each choice, only the third confirmed
-answerless native return MAY select its recommendation; pending questions,
-unavailable tools or UI, failures, and interruption MUST NOT count. These
-choices MUST NOT settle material human-owned decisions. A selected plan review
-never replaces final verification.
+when selected; root MUST always offer `Review plan with Oracle (Recommended)` or
+`Proceed without review` at ready, even when implementation was already
+authorized. An unanswered offer is never an explicit skip. Its result does not
+authorize implementation. After a selected review returns `[OKAY]`, the root
+MUST separately offer the `Implement (Recommended)` / `Stop` decision; prior
+explicit authorization remains valid and a later explicit `Stop` supersedes it.
+
+Every orchestrator choice with a meaningful recommended action MUST state that
+recommendation. For each question independently, the root MUST repeat the same
+question after the first and second confirmed answerless native returns and MUST
+NOT begin dependent work. After the third confirmed answerless return, it MUST
+select the recommendation. Explicit answers and `Stop` win. Pending, unavailable,
+failed, interrupted, or host-prohibited question attempts MUST NOT count. The
+root MUST report higher-priority host limits accurately and MUST NOT claim three
+returns or an explicit user choice when they did not occur. A recommendation for
+unresolved human-owned intent MUST preserve a blocker rather than choose for the
+user.
+
+At closeout, plan-review selection provenance MUST be
+`EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`. `SKIPPED`
+requires `EXPLICIT_SKIP`; `OKAY` requires `EXPLICIT_REVIEW` or
+`DEFAULT_REVIEW_AFTER_3`. A selected plan review never replaces final
+verification.
 
 ### 4. Independent verification and durable governance
 

@@ -13,6 +13,16 @@ These steps are mandatory, but they do not force saved documents, specialist
 agents, or interviews. Resolve repository facts through inspection before asking.
 An unresolved material decision blocks classification and implementation.
 
+Whenever the orchestrator asks a choice question with a meaningful recommended
+action, it states that recommendation. Track confirmed answerless native returns
+per question: after the first and second, repeat the same question without
+starting dependent work; after the third, select the recommendation. Explicit
+answers and `Stop` win. Pending, unavailable, failed, interrupted, or
+host-prohibited attempts do not count; report higher-priority host limits without
+claiming unmade attempts or an explicit user choice. Never fabricate requested
+facts or secrets. For unresolved human-owned intent, recommend safe deferral so
+the decision remains open.
+
 ## Classify after understanding
 
 Only after the three steps are complete does the root orchestrator classify by
@@ -39,16 +49,20 @@ verification, and closeout. Do not create a `change.md` alias, a second planning
 narrative, sidecar specifications, reports, evidence directories, worker
 packets, scripts, execution wrappers, or evidence generators, even temporarily.
 
-Substantial work uses plan and tasks. Checklist, plan review, and convergence
-are conditional when useful or selected; verification is always required. At
-ready, offer `Review plan with Oracle (Recommended)` or `Proceed without
-review`. Only a selected review runs. For the review choice and, after `[OKAY]`,
-the separate `Implement (Recommended)` / `Stop` choice, only that choice's third
-confirmed answerless native return selects its recommendation. Pending, unavailable,
-failed, or interrupted questions do not count; explicit Stop wins, and material
-human-owned decisions never default. A review result never authorizes
-implementation. Repair same-intent blockers with a fresh review; material intent
-changes require new clarification.
+Substantial work uses plan and tasks. Checklist and convergence are conditional
+when useful; verification is always required. At ready, always offer
+`Review plan with Oracle (Recommended)` or `Proceed without review`, even when
+implementation was already authorized. Silence is never an explicit skip; only
+a selected review runs. After a selected `[OKAY]`, separately offer
+`Implement (Recommended)` / `Stop`; prior explicit authorization remains valid,
+while an explicit later `Stop` supersedes it. Record plan-review selection
+as `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`: `SKIPPED`
+requires explicit skip, and `OKAY` requires an explicit review or the third-return
+review default; the initial `PENDING` provenance placeholder is valid before
+closeout only. A review result never authorizes implementation. Repair
+same-intent blockers with a fresh review; material intent changes require new
+clarification. A safe deferral recommendation never resolves material
+human-owned intent.
 
 ## Verification and archive
 

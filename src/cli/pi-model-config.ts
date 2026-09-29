@@ -55,13 +55,24 @@ function replaceField(
   else lines.splice(1, 0, `${name}: ${JSON.stringify(value)}`);
   return lines.join(newline);
 }
-function readOwned(piRoot: string, role: PiSpecialistRole): string {
+export function readOwnedPiSpecialistDefinition(
+  piRoot: string,
+  role: PiSpecialistRole,
+): string {
   if (!isPiSpecialistRole(role))
     throw new Error(`Unsupported Pi specialist: ${role}`);
   const path = join(piRoot, 'agents', `${piSpecialistName(role)}.md`);
   assertSafePiManagedPath(path);
   const content = readFileSync(path, 'utf8');
-  for (const name of ['name', 'managed-by', 'model', 'effort', 'thinking']) {
+  for (const name of [
+    'name',
+    'managed-by',
+    'model',
+    'effort',
+    'thinking',
+    'tools',
+    'subagent_mode',
+  ]) {
     if (
       [...frontmatter(content).matchAll(new RegExp(`^${name}:`, 'gm'))].length >
       1
@@ -87,7 +98,7 @@ export function readPiModelConfig(
     contents: {},
   };
   for (const role of roles) {
-    const content = readOwned(snapshot.piRoot, role);
+    const content = readOwnedPiSpecialistDefinition(snapshot.piRoot, role);
     snapshot.contents[role] = content;
     const effort = field(content, 'effort') ?? field(content, 'thinking');
     snapshot.roles.push({
@@ -122,7 +133,8 @@ export function savePiModelConfig(
       const effort = resolvePiEffort(input);
       if (!effort.ok) throw new Error(effort.message);
       if (
-        readOwned(snapshot.piRoot, input.role) !== snapshot.contents[input.role]
+        readOwnedPiSpecialistDefinition(snapshot.piRoot, input.role) !==
+        snapshot.contents[input.role]
       ) {
         throw new Error(
           `Pi specialist changed since opening: ${input.role}. Reopen the editor before saving.`,
@@ -147,7 +159,7 @@ export function savePiModelConfig(
         input.effort?.kind === 'effort' ? input.effort.value : undefined,
       );
       next = replaceField(next, 'thinking', undefined);
-      if (readOwned(snapshot.piRoot, role) !== current)
+      if (readOwnedPiSpecialistDefinition(snapshot.piRoot, role) !== current)
         throw new Error(
           `Pi specialist changed before saving: ${role}. Reopen the editor.`,
         );
@@ -155,6 +167,7 @@ export function savePiModelConfig(
         writePiManagedText(
           join(snapshot.piRoot, 'agents', `${piSpecialistName(role)}.md`),
           next,
+          current,
         )
       )
         changedRoles.push(role);

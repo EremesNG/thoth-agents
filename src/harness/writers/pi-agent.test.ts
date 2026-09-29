@@ -1,8 +1,44 @@
 import { describe, expect, test } from 'vitest';
 import { piAdapter } from '../adapters/pi';
-import { PI_ROOT_END, PI_ROOT_START } from './pi-agent';
+import {
+  getPiSpecialistDefaultTools,
+  PI_ROOT_END,
+  PI_ROOT_START,
+} from './pi-agent';
 
 describe('Pi agent writer', () => {
+  test('exposes the exact shared reset defaults for every specialist', () => {
+    const roles = [
+      'explorer',
+      'librarian',
+      'oracle',
+      'designer',
+      'worker',
+    ] as const;
+    expect(
+      roles.map((role) => [role, getPiSpecialistDefaultTools(role)]),
+    ).toEqual([
+      ['explorer', ['read', 'bash']],
+      [
+        'librarian',
+        [
+          'read',
+          'bash',
+          'resolve-library-id',
+          'query-docs',
+          'mcp',
+          'web_search',
+          'fetch_content',
+          'get_search_content',
+          'source_check',
+        ],
+      ],
+      ['oracle', ['read', 'bash']],
+      ['designer', ['read', 'bash', 'edit', 'write']],
+      ['worker', ['read', 'bash', 'edit', 'write']],
+    ]);
+  });
+
   test('renders one ambient root block and exactly five owned specialists deterministically', () => {
     const first = piAdapter.render({ projectRoot: process.cwd() });
     const second = piAdapter.render({ projectRoot: process.cwd() });

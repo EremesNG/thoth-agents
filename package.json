@@ -85,6 +85,7 @@
     "vscode-jsonrpc": "^8.2.0",
     "vscode-languageserver-protocol": "^3.17.5",
     "which": "^6.0.0",
+    "yaml": "2.9.0",
     "zod": "^4.1.8"
   },
   "peerDependencies": {

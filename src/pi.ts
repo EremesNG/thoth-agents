@@ -16,6 +16,12 @@ import {
   savePiModelConfig,
 } from './cli/pi-model-config';
 import { syncPiSpecialists } from './cli/pi-resources';
+import {
+  type PiToolConfigSnapshot,
+  type PiToolSaveResult,
+  readPiToolConfig,
+  savePiToolConfig,
+} from './cli/pi-tool-config';
 import { renderPiRootInstructions } from './harness/adapters/pi';
 import { PI_ROOT_END, PI_ROOT_START } from './harness/writers/pi-agent';
 import {
@@ -24,6 +30,12 @@ import {
   type ModelsPanelTheme,
   type PanelKey,
 } from './pi/models-panel';
+import {
+  createToolsPanel,
+  type ToolsPanelDiscoveredTool,
+  type ToolsPanelKey,
+  type ToolsPanelTheme,
+} from './pi/tools-panel';
 
 type PiHandler = (event: Record<string, unknown>, context?: unknown) => unknown;
 
@@ -55,7 +67,7 @@ interface PiNativeModules {
   matchesKey(data: string, key: string): boolean;
   truncateToWidth(text: string, width: number): string;
   visibleWidth(text: string): number;
-  keys: Record<PanelKey, string>;
+  keys: Record<PanelKey | ToolsPanelKey, string>;
   getSupportedThinkingLevels(model: PiModel): readonly string[];
 }
 
@@ -71,6 +83,8 @@ export interface PiExtensionApi {
       ): unknown;
     },
   ): void;
+  getAllTools?(): Array<{ name: string; description?: string }>;
+  getActiveTools?(): string[];
 }
 export interface PiExtensionOptions {
   packageRoot?: string;
@@ -78,6 +92,8 @@ export interface PiExtensionOptions {
   /** Public seams used by focused tests; production uses the accepted services. */
   readModelConfig?: typeof readPiModelConfig;
   saveModelConfig?: typeof savePiModelConfig;
+  readToolConfig?: typeof readPiToolConfig;
+  saveToolConfig?: typeof savePiToolConfig;
   loadNativeModules?: () => Promise<PiNativeModules>;
 }
 
@@ -181,6 +197,77 @@ export default function thothAgentsPiExtension(
       } catch (error) {
         ctx.ui.notify(
           `Unable to open global specialist models: ${error instanceof Error ? error.message : String(error)}`,
+          'error',
+        );
+      }
+    },
+  });
+  pi.registerCommand?.('thoth-agents:tools', {
+    description: 'Edit global Thoth specialist tools',
+    handler: async (_args, ctx) => {
+      if (ctx.mode !== 'tui') {
+        ctx.ui.notify(
+          '/thoth-agents:tools requires interactive TUI mode; no files were changed.',
+          'error',
+        );
+        return;
+      }
+      if (
+        typeof pi.getAllTools !== 'function' ||
+        typeof pi.getActiveTools !== 'function'
+      ) {
+        ctx.ui.notify(
+          'Tool discovery is unavailable in this Pi environment; no files were changed.',
+          'error',
+        );
+        return;
+      }
+      try {
+        const [native, snapshot] = await Promise.all([
+          (options.loadNativeModules ?? loadPiNativeModules)(),
+          Promise.resolve(
+            (options.readToolConfig ?? readPiToolConfig)(globalPiRoot(options)),
+          ),
+        ]);
+        const allTools = pi.getAllTools();
+        const activeTools = new Set(pi.getActiveTools());
+        const discoveredTools: ToolsPanelDiscoveredTool[] = allTools.map(
+          (tool) => ({
+            name: tool.name,
+            description: tool.description,
+            active: activeTools.has(tool.name),
+          }),
+        );
+        const result = await ctx.ui.custom<
+          { kind: 'cancelled' } | { kind: 'saved'; changedRoles: string[] }
+        >((tui, theme, _keybindings, done) =>
+          createToolsPanel({
+            snapshot,
+            discoveredTools,
+            save: (current: PiToolConfigSnapshot, draft): PiToolSaveResult =>
+              (options.saveToolConfig ?? savePiToolConfig)(current, draft),
+            onDone: done,
+            requestRender: () => tui.requestRender(),
+            matchesKey: (data, key) =>
+              native.matchesKey(data, native.keys[key]),
+            truncate: native.truncateToWidth,
+            visibleWidth: native.visibleWidth,
+            theme: theme as ToolsPanelTheme,
+          }),
+        );
+        if (result.kind === 'saved') {
+          const detail =
+            result.changedRoles.length > 0
+              ? ` Updated: ${result.changedRoles.join(', ')}.`
+              : ' No file content changed.';
+          ctx.ui.notify(
+            `Saved global Thoth specialist tools.${detail} Saved settings apply on subsequent specialist discovery; running children and the ambient root are unchanged. Native settings or project definitions may override them.`,
+            'info',
+          );
+        }
+      } catch (error) {
+        ctx.ui.notify(
+          `Unable to open global specialist tools: ${error instanceof Error ? error.message : String(error)}`,
           'error',
         );
       }

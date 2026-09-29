@@ -56,6 +56,244 @@ describe('Pi specialist synchronization', () => {
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
+  test('preserves explicit tools and mode while missing values acquire package defaults', () => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    const agents = join(options.piRoot, 'agents');
+    mkdirSync(agents, { recursive: true });
+    const worker = join(agents, 'thoth-worker.md');
+    writeFileSync(
+      worker,
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: max\nsubagent_mode: background\ntools: [retired_extension, read]\n---\nCustom instructions.\n',
+    );
+    const explorer = join(agents, 'thoth-explorer.md');
+    writeFileSync(
+      explorer,
+      '---\nname: thoth-explorer\nmanaged-by: thoth-agents\n---\nOld instructions.\n',
+    );
+
+    const synchronized = syncPiSpecialists(options);
+    expect(synchronized.error).toBeUndefined();
+    expect(readFileSync(worker, 'utf8')).toContain(
+      'tools: "retired_extension, read"',
+    );
+    expect(readFileSync(worker, 'utf8')).toContain(
+      'subagent_mode: "background"',
+    );
+    expect(readFileSync(worker, 'utf8')).toContain('model: custom/model');
+    expect(readFileSync(worker, 'utf8')).toContain('effort: max');
+    expect(readFileSync(explorer, 'utf8')).toContain('tools: "read, bash"');
+    expect(readFileSync(explorer, 'utf8')).toContain('subagent_mode: "task"');
+    expect(syncPiSpecialists(options).changed).toEqual([]);
+  });
+
+  test('leaves malformed and wildcard tool overrides unchanged with diagnostics', () => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+    const badMode = join(options.piRoot, 'agents', 'thoth-explorer.md');
+    mkdirSync(dirname(target), { recursive: true });
+    const legacy =
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\ntools: "*"\nsubagent_mode: task\n---\nKeep this exact file.\n';
+    const malformed =
+      '---\nname: thoth-explorer\nmanaged-by: thoth-agents\nsubagent_mode: unsupported\n---\nKeep this file too.\n';
+    writeFileSync(target, legacy);
+    writeFileSync(badMode, malformed);
+
+    const result = syncPiSpecialists(options);
+    expect(result.error).toBeUndefined();
+    expect(result.diagnostics.join(' ')).toMatch(
+      /worker.*wildcard|wildcard.*worker/i,
+    );
+    expect(result.diagnostics.join(' ')).toMatch(
+      /explorer.*subagent_mode|subagent_mode.*explorer/i,
+    );
+    expect(readFileSync(target, 'utf8')).toBe(legacy);
+    expect(readFileSync(badMode, 'utf8')).toBe(malformed);
+  });
+
+  test('preserves malformed semantic tool and mode fields byte-for-byte with diagnostics', () => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    const cases = [
+      {
+        role: 'worker',
+        fields: 'defaults: &defaults [read]\ntools: *defaults',
+        diagnostic: /worker.*anchors|worker.*aliases/i,
+      },
+      {
+        role: 'explorer',
+        fields: 'tools: read\n"tools" : [bash]',
+        diagnostic: /explorer.*duplicate.*tools/i,
+      },
+      {
+        role: 'librarian',
+        fields: 'tools: read\n  - bash',
+        diagnostic: /librarian.*tools.*continuation/i,
+      },
+      {
+        role: 'oracle',
+        fields: 'subagent_mode: task\n"subagent_mode" : background',
+        diagnostic: /oracle.*duplicate.*subagent_mode/i,
+      },
+      {
+        role: 'designer',
+        fields: 'tools:\n  - read\n    - bash',
+        diagnostic: /designer.*tools.*continuation/i,
+      },
+    ] as const;
+    const agents = join(options.piRoot, 'agents');
+    mkdirSync(agents, { recursive: true });
+    const originals = new Map<string, string>();
+    for (const { role, fields } of cases) {
+      const name = `thoth-${role}`;
+      const target = join(agents, `${name}.md`);
+      const content = `---\nname: ${name}\nmanaged-by: thoth-agents\n${fields}\n---\nKeep this exact file.\n`;
+      originals.set(target, content);
+      writeFileSync(target, content);
+    }
+
+    const result = syncPiSpecialists(options);
+
+    expect(result.success).toBe(true);
+    expect(result.changed).toEqual([]);
+    for (const { diagnostic } of cases)
+      expect(result.diagnostics.join('\n')).toMatch(diagnostic);
+    for (const [target, content] of originals)
+      expect(readFileSync(target, 'utf8')).toBe(content);
+  });
+
+  test('sync interprets escaped semantic keys and refuses ambiguous duplicates', () => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    const cases = [
+      {
+        role: 'worker',
+        fields: '"\\u0074ools": [read]',
+        accepted: 'tools: "read"',
+      },
+      {
+        role: 'explorer',
+        fields: 'tools: read\n"\\u0074ools" : [bash]',
+        diagnostic: /explorer.*duplicate.*tools/i,
+      },
+      {
+        role: 'librarian',
+        fields: '"subagent_\\u006dode": background',
+        accepted: 'subagent_mode: "background"',
+      },
+      {
+        role: 'oracle',
+        fields: 'subagent_mode: task\n? subagent_mode\n: background',
+        diagnostic: /oracle.*duplicate.*subagent_mode/i,
+      },
+      {
+        role: 'designer',
+        fields: 'tools: read\n# comment\n  - bash',
+        diagnostic: /designer.*Invalid Pi specialist YAML frontmatter/i,
+      },
+    ] as const;
+    const agents = join(options.piRoot, 'agents');
+    mkdirSync(agents, { recursive: true });
+    const originals = new Map<string, string>();
+    for (const { role, fields } of cases) {
+      const target = join(agents, `thoth-${role}.md`);
+      const content = `---\nname: thoth-${role}\nmanaged-by: thoth-agents\n${fields}\n---\nKeep this exact file.\n`;
+      originals.set(target, content);
+      writeFileSync(target, content);
+    }
+
+    const result = syncPiSpecialists(options);
+
+    expect(result.success).toBe(true);
+    expect(result.changed).toHaveLength(2);
+    for (const item of cases)
+      if ('diagnostic' in item)
+        expect(result.diagnostics.join('\n')).toMatch(item.diagnostic);
+    for (const [target, content] of originals) {
+      const current = readFileSync(target, 'utf8');
+      const role = target.match(/thoth-(\w+)\.md$/)?.[1];
+      const accepted = cases.find(
+        (item) => 'accepted' in item && item.role === role,
+      );
+      if (accepted && 'accepted' in accepted)
+        expect(current).toContain(accepted.accepted);
+      else expect(current).toBe(content);
+    }
+  });
+
+  test('sync refuses unsupported YAML tags without rewriting the file', () => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+    mkdirSync(dirname(target), { recursive: true });
+    const original =
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\ntools: !!seq [read]\n---\nKeep this exact file.\n';
+    writeFileSync(target, original);
+
+    const result = syncPiSpecialists(options);
+
+    expect(result.success).toBe(true);
+    expect(result.diagnostics.join('\n')).toMatch(/worker.*YAML tags/i);
+    expect(readFileSync(target, 'utf8')).toBe(original);
+  });
+
+  test('sync retains every multiline tool item across column-zero comments', () => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(
+      target,
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\ntools:\n  - read\n# comment between items\n  - bash\n---\nKeep this exact file.\n',
+    );
+
+    const result = syncPiSpecialists(options);
+
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    const content = readFileSync(target, 'utf8');
+    expect(content).toContain('tools: "read, bash"');
+    expect(content).not.toContain('  - bash');
+    expect(result.diagnostics).toEqual([]);
+  });
+
   test('materializes exactly five package-owned specialists idempotently', () => {
     const options = fixture();
     expect(syncPiSpecialists(options)).toMatchObject({

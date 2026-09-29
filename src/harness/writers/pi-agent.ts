@@ -1,4 +1,4 @@
-import type { AgentRoleContract } from '../core/agent-pack';
+import { type AgentRoleContract, getAgentRole } from '../core/agent-pack';
 import { type PiSpecialistRole, piSpecialistName } from '../pi-specialists';
 
 export const PI_MANAGED_OWNER = 'thoth-agents';
@@ -24,17 +24,22 @@ const LIBRARIAN_RESEARCH_TOOLS = [
   'source_check',
 ] as const;
 
+export function getPiSpecialistDefaultTools(role: PiSpecialistRole): string[] {
+  const contract = getAgentRole(role);
+  return [
+    'read',
+    'bash',
+    ...(contract.canMutateWorkspace ? ['edit', 'write'] : []),
+    ...(role === 'librarian' ? LIBRARIAN_RESEARCH_TOOLS : []),
+  ];
+}
+
 function yamlScalar(value: string): string {
   return JSON.stringify(value);
 }
 
 export function renderPiAgentDefinition(input: PiAgentDefinitionInput): string {
-  const tools = [
-    'read',
-    'bash',
-    ...(input.role.canMutateWorkspace ? ['edit', 'write'] : []),
-    ...(input.role.name === 'librarian' ? LIBRARIAN_RESEARCH_TOOLS : []),
-  ].join(', ');
+  const tools = getPiSpecialistDefaultTools(input.role.name).join(', ');
   return [
     '---',
     `name: ${piSpecialistName(input.role.name)}`,

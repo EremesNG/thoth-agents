@@ -83,9 +83,20 @@ export function assertSafePiManagedPath(path: string): void {
     throw new Error(`Managed Pi target is not a regular file: ${absolute}`);
 }
 
-export function writePiManagedText(path: string, content: string): boolean {
+export function writePiManagedText(
+  path: string,
+  content: string,
+  expectedBefore?: string | null,
+): boolean {
   assertSafePiManagedPath(path);
   const before = snapshot(path);
+  if (
+    expectedBefore !== undefined &&
+    (expectedBefore === null
+      ? before.exists
+      : !before.content?.equals(Buffer.from(expectedBefore)))
+  )
+    throw new Error(`Managed Pi target changed since preflight: ${path}`);
   const desired = Buffer.from(content);
   if (before.content?.equals(desired)) return false;
 

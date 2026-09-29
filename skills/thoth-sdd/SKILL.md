@@ -48,9 +48,12 @@ never build a scheduler, state mirror, or process tooling.
 ## Ownership and decisions
 
 Root owns user intent, scope, material decisions, classification, and final
-acceptance. Choose an implementation owner from the actual task shape and net
-gain after classification; no specialist is mandatory. Root retains known
-low-risk mechanical work, including reviewed commits, without rediscovery.
+acceptance. Root also owns completing understanding, while the specific discovery
+ownership policy determines who gathers evidence; that policy takes precedence
+over generic permission for root to inspect directly. Choose an implementation
+owner from the actual task shape and net gain after classification; no specialist
+is mandatory. Root retains known low-risk mechanical work, including reviewed
+commits, without rediscovery.
 Explicit direct-work or no-delegation instructions win. Preserve operator-selected
 model and effort, including max. Keep one writer per mutable surface. At ready, offer `Review plan with Oracle (Recommended)` or
 `Proceed without review`; run the optional fresh read-only review only when
@@ -67,12 +70,21 @@ but report unavailable independent review; never claim independent PASS or archi
 
 ## Bounded execution
 
-Each assignment has one independently checkable outcome, exact known entrypoints
-and skill paths, owned writes, focused checks, and a return/stop condition. Root
-reacts to native attention or a missed agreed milestone; a timeout is not a progress
-plan. After two consecutive attempts without new evidence or progress, return the
-smallest blocker rather than looping. Use native notifications/waits without polling
-or custom timers. Freeze relevant inputs before final validation, reuse fresh checks,
+Apply these rules across all workflow stages. Each assignment names one
+independently acceptable outcome, exact known entrypoints and skill paths,
+concrete accepted inputs and dependencies, its produced result, owned writes and
+interface boundaries, focused checks with pass evidence, and a meaningful return
+milestone and stop condition. A task row names one outcome and may repeat an
+`AC-n` when useful; split phases with separately acceptable outcomes and keep
+tiny cohesive mechanical edits together. Independent, precise Explorer questions
+may run in parallel within native capacity; dependent questions wait until root
+accepts the named upstream output. Do not duplicate discovery. Missing inputs or
+interfaces, conflicting ownership, a new independent outcome, or material scope
+growth returns bounded progress to root for reassessment before expansion. Root reacts to
+native attention or a missed agreed milestone; a timeout is not a progress plan.
+After two consecutive attempts without new evidence or progress, return the
+smallest blocker rather than looping. Use native notifications/waits without
+polling or custom timers. Freeze relevant inputs before final validation, reuse fresh checks,
 and preserve substantive handoffs across late notifications. Load the
 [implementation phase](references/phases/implement.md) for the concrete procedure.
 

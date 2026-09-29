@@ -165,3 +165,13 @@ preserved but MUST NOT become an active workflow dependency.
 - **GIVEN** an existing project constitution, specification, or historical record
 - **WHEN** `thoth-init` runs
 - **THEN** existing content remains byte-for-byte unchanged
+
+### Requirement: Shape independently acceptable work units
+
+Root MUST own understanding and acceptance while applying the specific discovery ownership policy to evidence gathering. Each substantial-record task and delegated work unit across exploration, research, planning, implementation and verification MUST identify one independently acceptable outcome, concrete upstream inputs and produced result, owned writes and relevant interface boundaries, focused checks with pass evidence, and a meaningful return milestone/stop condition. A phase containing separable outcomes MUST be split before dispatch; cohesive tiny edits MUST NOT be fragmented mechanically. Missing context, ownership conflicts or material scope growth MUST return bounded evidence for root reassessment before expansion. Native lifecycle, operator settings and independent verification remain unchanged.
+
+#### Scenario: Shape independently acceptable work units
+
+- **GIVEN** a planned discovery or implementation assignment contains several separately acceptable outcomes
+- **WHEN** the root prepares dispatch
+- **THEN** it separates the outcomes, records their concrete dependencies, and dispatches only ready conflict-free units with bounded ownership and return conditions

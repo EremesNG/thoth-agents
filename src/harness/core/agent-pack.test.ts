@@ -46,7 +46,10 @@ describe('agent-pack contract', () => {
       /goal.*constraints.*decisions.*coordination.*acceptance.*synthesis/i,
     );
     expect(ownership.directException.join(' ')).toMatch(
-      /source.*scope.*verification.*known.*no discovery.*independent judgment/i,
+      /minimal authorized low-risk edit.*scope.*verification.*known.*no discovery.*independent judgment/i,
+    );
+    expect(ownership.directConsultation.join(' ')).toMatch(
+      /known source.*bounded question/i,
     );
     expect(ownership.directException.join(' ')).toMatch(
       /root retains reviewed commits/i,
@@ -60,6 +63,35 @@ describe('agent-pack contract', () => {
     expect(ownership.insufficientSignals.join(' ')).toMatch(
       /file count.*targeted search/i,
     );
+  });
+
+  test('limits direct root consultation and stops chained discovery', () => {
+    const consultation =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership.directConsultation.join(
+        ' ',
+      );
+
+    expect(consultation).toMatch(/one known source.*one bounded question/i);
+    expect(consultation).toMatch(
+      /new path.*unlocated dependency.*stop and delegate.*acquired context/i,
+    );
+    expect(consultation).toMatch(
+      /experimental cumulative.*two source fragments.*approximately 200 code lines.*per user request/i,
+    );
+    expect(consultation).toMatch(/across tools, files, and subtasks/i);
+    expect(consultation).toMatch(
+      /required operating instructions.*coordination artifacts.*excluded.*source or log dumps/i,
+    );
+    expect(consultation).toMatch(/not runtime enforcement/i);
+    expect(consultation).toMatch(/never waives independent verification/i);
+    const anotherConsultation =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership
+        .directConsultation;
+    expect(consultation).toBe(anotherConsultation.join(' '));
+    expect(
+      getAgentPackContract().orchestrationPolicy.implementationOwnership
+        .directConsultation,
+    ).not.toBe(anotherConsultation);
   });
 
   test('routes unknown discovery before root search without imposing an Explorer relay on known work', () => {
@@ -109,6 +141,27 @@ describe('agent-pack contract', () => {
     expect(policy.decisions.refill).toMatch(/before another wait/i);
     expect(policy.decisions.terminalEvidence).toMatch(/timeout.*nonterminal/i);
     expect(policy.nativeAuthority).toBe(true);
+  });
+
+  test('shapes independently acceptable outcomes across every work stage', () => {
+    const decisions =
+      getAgentPackContract().orchestrationPolicy.taskShaping.decisions;
+
+    expect(decisions.unitOutcome).toMatch(
+      /exploration.*research.*planning.*implementation.*verification/i,
+    );
+    expect(decisions.unitEnvelope).toMatch(
+      /accepted upstream inputs.*result produced.*owned writes.*interfaces.*shared resources.*focused checks.*pass evidence.*native return milestone.*stop condition/i,
+    );
+    expect(decisions.phaseSplitting).toMatch(
+      /split.*separately acceptable outcomes.*before dispatch.*cohesive tiny edits together/i,
+    );
+    expect(decisions.independentDiscovery).toMatch(
+      /precise independent Explorer questions.*parallel.*native capacity.*duplicate reads.*dependent questions.*root-accepted.*fresh/i,
+    );
+    expect(decisions.scopeGrowth).toMatch(
+      /missing context.*interfaces.*ownership conflicts.*material scope growth.*bounded progress.*root reassessment.*before expansion/i,
+    );
   });
 
   test('routes bounded nonvisual implementation to Worker regardless of complexity', () => {

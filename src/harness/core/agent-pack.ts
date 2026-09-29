@@ -52,6 +52,11 @@ export interface TaskShapingPolicy {
   decisions: {
     dependency: string;
     ownershipConflict: string;
+    unitOutcome: string;
+    unitEnvelope: string;
+    phaseSplitting: string;
+    independentDiscovery: string;
+    scopeGrowth: string;
     readyDispatch: string;
     refill: string;
     terminalEvidence: string;
@@ -73,6 +78,7 @@ export interface ImplementationOwnershipPolicy {
   defaultImplementationOwner: 'specialist';
   rootResponsibilities: string[];
   discovery: string[];
+  directConsultation: string[];
   directException: string[];
   writerRouting: string[];
   evidenceHandling: string[];
@@ -256,8 +262,14 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
       'A bounded discovery assignment may state an unknown location; root must not perform exploratory pre-reading to prepare it.',
       'The assigned investigator owns applicable discovery-tool fallback.',
     ],
+    directConsultation: [
+      'One known source, one bounded question. On a new path or unlocated dependency, stop and delegate; do not continue discovery from acquired context.',
+      'Experimental cumulative budget: two source fragments, approximately 200 code lines per user request across tools, files, and subtasks.',
+      'Required operating instructions and pertinent coordination artifacts are excluded; this never permits source or log dumps.',
+      'At exhaustion, delegate missing evidence. Prompt guidance, not runtime enforcement; it never waives independent verification.',
+    ],
     directException: [
-      'Root may consult a known source for one bounded question or make a minimal authorized low-risk edit only when source, scope, and verification are known and no discovery or independent judgment is needed.',
+      'Root may make a minimal authorized low-risk edit only when scope and verification are known and no discovery or independent judgment is needed.',
       'Root retains reviewed commits and other known low-risk mechanical work; another search alone does not force delegation. Explicit direct-work or no-delegation instructions take precedence.',
     ],
     writerRouting: [
@@ -295,6 +307,16 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     nativeAuthority: true,
     boundedWidth: true,
     decisions: {
+      unitOutcome:
+        'For exploration, research, planning, implementation, and verification, each unit has one independently acceptable outcome',
+      unitEnvelope:
+        'Name accepted upstream inputs and result produced; bound owned writes and require compatible reads, interfaces, and shared resources; include focused checks with pass evidence, a native return milestone, and stop condition',
+      phaseSplitting:
+        'Split phases with separately acceptable outcomes before dispatch; keep cohesive tiny edits together',
+      independentDiscovery:
+        'Run precise independent Explorer questions in parallel within proven native capacity; avoid duplicate reads; dependent questions wait for root-accepted fresh outputs',
+      scopeGrowth:
+        'Missing context, interfaces, ownership conflicts, or material scope growth returns bounded progress for root reassessment before expansion',
       dependency:
         'block a unit until every concrete upstream output is terminal, root-accepted, and fresh',
       ownershipConflict:
@@ -330,7 +352,9 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
     'Do not duplicate delegated discovery; request targeted missing support and preserve bounded decision inspection plus mandatory independent verification.',
     'Report delegation failure truthfully without unrestricted root fallback; discovery-tool fallback belongs to the assigned investigator.',
     'Honor explicit user ownership; if independent review is prohibited, disclose the limitation and do not claim independent PASS or archive.',
-    'Each assignment has one independently checkable outcome, exact known entrypoints and skill paths, focused checks, and a return/stop condition; a broad integration label is not a bounded unit.',
+    'Across exploration, research, planning, implementation, and verification, each unit has one independently acceptable outcome; name concrete accepted inputs and output, owned writes, interfaces and resources, focused pass evidence, and a native return milestone/stop condition.',
+    'Split a phase containing separately acceptable outcomes before dispatch, keep cohesive tiny edits together, and run precise independent Explorer questions in parallel within native capacity without duplicate reads; dependent questions wait for accepted fresh outputs.',
+    'Missing context or interfaces, ownership conflicts, or material scope growth returns bounded progress for root reassessment before expansion.',
     'On native attention or a missed agreed milestone, root inspects progress and steers, narrows, or stops safely; timeout is a safety ceiling, not a progress plan.',
     'After two consecutive attempts without new evidence or progress, return the smallest blocker instead of repeating. Use native notifications/waits without polling or custom timers.',
     'Freeze relevant inputs before final validation; reuse fresh evidence and rerun only checks invalidated by later edits. Reconcile owned background results before the substantive handoff.',
@@ -417,6 +441,10 @@ export function getAgentPackContract(): AgentPackContract {
         discovery: [
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
             .discovery,
+        ],
+        directConsultation: [
+          ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership
+            .directConsultation,
         ],
         directException: [
           ...AGENT_PACK_CONTRACT.orchestrationPolicy.implementationOwnership

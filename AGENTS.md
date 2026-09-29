@@ -107,18 +107,29 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   answers and Stop win; pending/unavailable/failed questions do not count.
   Review alone does not authorize implementation or replace final verification.
   Never default other unresolved material decisions, secrets or sensitive actions.
-- Before retaining or delegating work, map concrete output dependencies, owned
-  writes, read assumptions, shared resources and verification. List order is not
-  a dependency. Dispatch all independent admitted ready work before waiting,
-  refill native capacity and release each consumer after its own fresh accepted
-  dependencies; avoid global wave barriers.
-- Root retains known low-risk mechanical work, including reviewed commits,
-  without rediscovery or delegation. Explicit direct-work or no-delegation
-  instructions win. Otherwise use specialists by default for substantive work
-  with a concrete benefit; neither file count nor another targeted search forces
-  delegation. Unknown local discovery goes to explorer unless the user requests
-  root investigation. Known delegated implementation goes to designer or worker;
-  use librarian for external evidence and oracle for independent judgment.
+- Shape each retained or delegated unit across discovery, research, planning,
+  implementation and verification around one independently acceptable outcome,
+  accepted upstream inputs, output, owned writes/interface, a focused check with
+  pass evidence, and a return/stop condition. Split separate outcomes; keep
+  cohesive tiny work together. List order is not a dependency. Before retaining or delegating, check
+  read assumptions, shared resources and concrete output dependencies. Dispatch all
+  independent admitted ready work before waiting within proven native capacity;
+  release consumers after their fresh accepted dependencies, with no global wave barrier.
+- Specialists perform discovery, external research and substantive implementation by default.
+- Use Librarian for external evidence and Oracle for independent judgment; no fixed all-role pipeline.
+- Root directs and accepts work and retains known low-risk mechanical work,
+  including reviewed commits. Root may answer one bounded question about a known
+  source. Unless the user directs root-owned investigation, unknown local source, flow, or responsibility
+  goes to Explorer before root code search/read. The experimental direct-source allowance is at most two
+  fragments and about 200 code lines per user request, cumulatively across files,
+  tools and subtasks; a new discovery path or exhausted allowance sends missing
+  evidence to a specialist. Required instructions and pertinent coordination
+  artifacts are excluded, never as a source/log dump. This is prompt guidance,
+  not runtime enforcement. Full custom `orchestrator.prompt` replacement remains
+  supported and may omit bundled defaults. Preserve explicit user ownership and
+  do not duplicate delegated discovery. Known bounded implementation goes to
+  designer or worker; external evidence to librarian; independent judgment to
+  oracle. See [agent and delegation guidance](docs/agent/agents-and-delegation.md).
 - Preserve operator-selected model and effort, including max. Fix scope and
   supervision, not the operator's settings. Delegation failure is not permission
   for unrestricted fallback. If independent review is prohibited, disclose that

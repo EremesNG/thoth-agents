@@ -826,6 +826,10 @@ describe('subagent runner interaction-required bridge', () => {
       prompt: vi.fn(async () => undefined),
       messages: [{ role: 'assistant', content: 'done' }],
       dispose: vi.fn(async () => undefined),
+      getAllTools: vi.fn(() =>
+        ['tool_lookup', 'tool_write', 'read'].map((name) => ({ name })),
+      ),
+      getActiveToolNames: vi.fn(() => ['tool_lookup', 'tool_write', 'read']),
     };
     const createAgentSession = vi.fn(() => ({ session }));
     const getTools = vi.fn(() => [
@@ -884,6 +888,10 @@ describe('subagent runner interaction-required bridge', () => {
       prompt: vi.fn(async () => undefined),
       messages: [{ role: 'assistant', content: 'done' }],
       dispose: vi.fn(async () => undefined),
+      getAllTools: vi.fn(() =>
+        ['tool_lookup', 'read'].map((name) => ({ name })),
+      ),
+      getActiveToolNames: vi.fn(() => ['tool_lookup', 'read']),
     };
     const createAgentSession = vi.fn(() => ({ session }));
     const getTools = vi.fn(() => ['read', 'tool_lookup']);
@@ -918,6 +926,260 @@ describe('subagent runner interaction-required bridge', () => {
     expect(createAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({ tools: ['tool_lookup', 'read'] }),
     );
+  });
+
+  it('resolves standalone all-tools selection from the fresh full inventory', async () => {
+    vi.resetModules();
+    let childTools: string[] = [];
+    const session = {
+      subscribe: vi.fn(() => vi.fn()),
+      prompt: vi.fn(async () => undefined),
+      messages: [{ role: 'assistant', content: 'done' }],
+      dispose: vi.fn(async () => undefined),
+      getAllTools: vi.fn(() => childTools.map((name) => ({ name }))),
+      getActiveToolNames: vi.fn(() => childTools),
+    };
+    const createAgentSession = vi.fn((options: any) => {
+      childTools = options.tools;
+      return { session };
+    });
+    const registeredTools = [
+      { name: 'read' },
+      { name: 'inactive_extension_tool' },
+      { name: 'ask_user_question' },
+      { name: 'todo' },
+      { name: 'subagent_run' },
+    ];
+    const getAllTools = vi.fn(() => registeredTools);
+    const getTools = vi.fn(() => [{ name: 'read' }]);
+
+    vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      SessionManager: { inMemory: () => ({}) },
+      createAgentSession,
+    }));
+
+    const { sdkSubagentRunner } = await import('../../src/runner.js');
+    const definition: SubagentDefinition = {
+      name: 'tool-user',
+      description: 'tool user',
+      filePath: '/tmp/tool-user.md',
+      instructions: 'return a concise result',
+      tools: ['*'],
+    };
+    const config: SubagentsConfig = {
+      timeout_ms: 10_000,
+      stall_timeout_ms: 10_000,
+      max_concurrency: 1,
+      default_tools: ['read'],
+      model_profiles: {},
+    };
+    const input = {
+      definition,
+      task: 'use every registered tool',
+      cwd: '/workspace',
+      ctx: {
+        model: { provider: 'test', id: 'model' },
+        pi: { getAllTools, getTools },
+      },
+      config,
+      signal: new AbortController().signal,
+    } as any;
+
+    await sdkSubagentRunner(input);
+    registeredTools.push({ name: 'future_extension_tool' });
+    await sdkSubagentRunner(input);
+
+    expect(getAllTools).toHaveBeenCalledTimes(2);
+    expect(getTools).not.toHaveBeenCalled();
+    expect(
+      createAgentSession.mock.calls.map(([options]) => options.tools),
+    ).toEqual([
+      ['read', 'inactive_extension_tool'],
+      ['read', 'inactive_extension_tool', 'future_extension_tool'],
+    ]);
+  });
+
+  it('keeps an empty current active-tool inventory empty', async () => {
+    vi.resetModules();
+    let childTools: string[] = [];
+    const session = {
+      subscribe: vi.fn(() => vi.fn()),
+      prompt: vi.fn(async () => undefined),
+      messages: [{ role: 'assistant', content: 'done' }],
+      dispose: vi.fn(async () => undefined),
+      getAllTools: vi.fn(() => childTools.map((name) => ({ name }))),
+      getActiveToolNames: vi.fn(() => childTools),
+    };
+    const createAgentSession = vi.fn((options: any) => {
+      childTools = options.tools;
+      return { session };
+    });
+    const getActiveTools = vi.fn(() => []);
+    const getAllTools = vi.fn(() => [{ name: 'read' }]);
+    const getTools = vi.fn(() => [{ name: 'read' }]);
+
+    vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      SessionManager: { inMemory: () => ({}) },
+      createAgentSession,
+    }));
+
+    const { sdkSubagentRunner } = await import('../../src/runner.js');
+    await sdkSubagentRunner({
+      definition: {
+        name: 'tool-user',
+        description: 'tool user',
+        filePath: '/tmp/tool-user.md',
+        instructions: 'return a concise result',
+        tools: ['@active'],
+      },
+      task: 'use active tools',
+      cwd: '/workspace',
+      ctx: {
+        model: { provider: 'test', id: 'model' },
+        pi: { getActiveTools, getAllTools, getTools },
+      },
+      config: {
+        timeout_ms: 10_000,
+        stall_timeout_ms: 10_000,
+        max_concurrency: 1,
+        default_tools: ['read'],
+        model_profiles: {},
+      },
+      signal: new AbortController().signal,
+    } as any);
+
+    expect(getActiveTools).toHaveBeenCalledOnce();
+    expect(getTools).not.toHaveBeenCalled();
+    expect(getAllTools).not.toHaveBeenCalled();
+    expect(createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: [] }),
+    );
+  });
+
+  it('falls back to legacy getTools for standalone selectors', async () => {
+    vi.resetModules();
+    let childTools: string[] = [];
+    const session = {
+      subscribe: vi.fn(() => vi.fn()),
+      prompt: vi.fn(async () => undefined),
+      messages: [{ role: 'assistant', content: 'done' }],
+      dispose: vi.fn(async () => undefined),
+      getAllTools: vi.fn(() => childTools.map((name) => ({ name }))),
+      getActiveToolNames: vi.fn(() => childTools),
+    };
+    const createAgentSession = vi.fn((options: any) => {
+      childTools = options.tools;
+      return { session };
+    });
+    const getTools = vi.fn(() => [
+      { name: 'read' },
+      { name: 'legacy_extension_tool' },
+    ]);
+
+    vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      SessionManager: { inMemory: () => ({}) },
+      createAgentSession,
+    }));
+
+    const { sdkSubagentRunner } = await import('../../src/runner.js');
+    const config: SubagentsConfig = {
+      timeout_ms: 10_000,
+      stall_timeout_ms: 10_000,
+      max_concurrency: 1,
+      default_tools: ['read'],
+      model_profiles: {},
+    };
+    const run = (selector: string) =>
+      sdkSubagentRunner({
+        definition: {
+          name: 'tool-user',
+          description: 'tool user',
+          filePath: '/tmp/tool-user.md',
+          instructions: 'return a concise result',
+          tools: [selector],
+        },
+        task: 'use selected tools',
+        cwd: '/workspace',
+        ctx: { model: { provider: 'test', id: 'model' }, pi: { getTools } },
+        config,
+        signal: new AbortController().signal,
+      } as any);
+
+    await run('*');
+    await run('@active');
+
+    expect(getTools).toHaveBeenCalledTimes(2);
+    expect(
+      createAgentSession.mock.calls.map(([options]) => options.tools),
+    ).toEqual([
+      ['read', 'legacy_extension_tool'],
+      ['read', 'legacy_extension_tool'],
+    ]);
+  });
+
+  it('reports a selected full-inventory tool that has no child implementation', async () => {
+    vi.resetModules();
+    const missingSession = {
+      subscribe: vi.fn(() => vi.fn()),
+      prompt: vi.fn(async () => undefined),
+      messages: [{ role: 'assistant', content: 'done' }],
+      dispose: vi.fn(async () => undefined),
+      getAllTools: vi.fn(() => []),
+      getActiveToolNames: vi.fn(() => []),
+    };
+    const inactiveSession = {
+      subscribe: vi.fn(() => vi.fn()),
+      prompt: vi.fn(async () => undefined),
+      messages: [{ role: 'assistant', content: 'done' }],
+      dispose: vi.fn(async () => undefined),
+      getAllTools: vi.fn(() => [{ name: 'inactive_extension_tool' }]),
+      getActiveToolNames: vi.fn(() => []),
+    };
+    let session: typeof missingSession | typeof inactiveSession =
+      missingSession;
+    const createAgentSession = vi.fn(() => ({ session }));
+
+    vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      SessionManager: { inMemory: () => ({}) },
+      createAgentSession,
+    }));
+
+    const { sdkSubagentRunner } = await import('../../src/runner.js');
+    const run = () =>
+      sdkSubagentRunner({
+        definition: {
+          name: 'tool-user',
+          description: 'tool user',
+          filePath: '/tmp/tool-user.md',
+          instructions: 'return a concise result',
+          tools: ['*'],
+        },
+        task: 'use every registered tool',
+        cwd: '/workspace',
+        ctx: {
+          model: { provider: 'test', id: 'model' },
+          pi: { getAllTools: () => [{ name: 'inactive_extension_tool' }] },
+        },
+        config: {
+          timeout_ms: 10_000,
+          stall_timeout_ms: 10_000,
+          max_concurrency: 1,
+          default_tools: ['read'],
+          model_profiles: {},
+        },
+        signal: new AbortController().signal,
+      } as any);
+
+    await expect(run()).rejects.toThrow('inactive_extension_tool');
+    session = inactiveSession;
+    await expect(run()).rejects.toThrow(
+      'registered but inactive: inactive_extension_tool',
+    );
+
+    expect(missingSession.prompt).not.toHaveBeenCalled();
+    expect(inactiveSession.prompt).not.toHaveBeenCalled();
+    expect(missingSession.dispose).toHaveBeenCalledOnce();
+    expect(inactiveSession.dispose).toHaveBeenCalledOnce();
   });
 
   it('detects supported and unsupported Pi versions from the loaded SDK version export', async () => {

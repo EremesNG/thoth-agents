@@ -169,6 +169,117 @@ function readJsonl(file: string): any[] {
 }
 
 describe('background widget', () => {
+  it('animates running status across frames while queue keeps a hollow dot', () => {
+    const running = {
+      id: 'r',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+    } as any;
+    const queued = {
+      id: 'q',
+      agent: 'worker',
+      mode: 'background',
+      status: 'queued',
+      task: 'wait',
+    } as any;
+    const first = renderClaudeBackgroundWidgetLines(
+      [running, queued],
+      undefined,
+      { frame: 0 },
+    );
+    const next = renderClaudeBackgroundWidgetLines(
+      [running, queued],
+      undefined,
+      { frame: 1 },
+    );
+    expect(first?.[1]).toContain('⠋ worker');
+    expect(next?.[1]).toContain('⠙ worker');
+    expect(first?.at(-1)).toBe('└─ ○ 1 queued');
+  });
+  it('keeps live metrics visible beside a long task at narrow widths and marks absent values', () => {
+    const task = {
+      id: 'long',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'PHASE / CHANGE: examine a lengthy migration task that fills the row',
+      model: 'provider/a-very-long-model-name',
+      created_at: '2026-01-01T00:00:00Z',
+      started_at: '2026-01-01T00:00:00Z',
+      usage: {
+        input: 20000,
+        output: 10000,
+        cacheWrite: 3800,
+        cacheRead: 90000,
+        turns: 0,
+      },
+      runtime_metrics: {
+        turns: 0,
+        toolUses: 5,
+        contextPercent: 62,
+        compactions: 1,
+      },
+    } as any;
+    const state = new ClaudeBackgroundWidgetState(() => [task]);
+    const widget = new ClaudeBackgroundWidget(state, {});
+    for (const width of [100, 80, 50]) {
+      const lines = widget.render(width);
+      expect(
+        lines.some(
+          (line) => line.includes('turns 0') && line.includes('tools 5'),
+        ),
+      ).toBe(true);
+      expect(lines.join(' ')).toContain('tokens 33.8k');
+      expect(lines.join(' ')).toContain('context 62%');
+      expect(lines.join(' ')).toContain('compaction');
+      expect(lines.every((line) => line.length <= width)).toBe(true);
+    }
+    task.usage = undefined;
+    task.runtime_metrics = undefined;
+    const unknown = widget.render(50).join(' ');
+    expect(unknown).toContain('turns ?');
+    expect(unknown).toContain('tools ?');
+    expect(unknown).toContain('tokens ?');
+    expect(unknown).toContain('context ?');
+    expect(unknown).toMatch(/elapsed \d/);
+  });
+
+  it('keeps multiple agents compact and makes a wrapped metrics row open its owner', () => {
+    const tasks = ['one', 'two'].map((id) => ({
+      id,
+      agent: id,
+      mode: 'background',
+      status: 'running',
+      task: 'PHASE / CHANGE: inspect the long migration surface and report back',
+      started_at: new Date(Date.now() - 12000).toISOString(),
+      runtime_metrics: { turns: 2, toolUses: 3, contextPercent: 40 },
+      usage: {
+        input: 1000,
+        output: 500,
+        cacheWrite: 0,
+        cacheRead: 2000,
+        turns: 2,
+      },
+    })) as any;
+    const actions: any[] = [];
+    const widget = new ClaudeBackgroundWidget(
+      new ClaudeBackgroundWidgetState(() => tasks),
+      {},
+      {},
+      (action) => actions.push(action),
+    );
+    const lines = widget.render(50);
+    expect(lines.filter((line) => line.includes('turns 2'))).toHaveLength(2);
+    expect(lines.filter((line) => line.includes('tokens 1.5k'))).toHaveLength(
+      2,
+    );
+    expect(lines.every((line) => line.length <= 50)).toBe(true);
+    widget.handleMouse({ row: 3, type: 'click' });
+    expect(actions).toEqual([{ type: 'open-task', taskId: 'one' }]);
+  });
+
   it('shows real child metrics in an Agents tree without counting cache reads', () => {
     const task = {
       id: 'metric-task',
@@ -198,11 +309,13 @@ describe('background widget', () => {
       },
     } as any;
     const lines = renderClaudeBackgroundWidgetLines([task], undefined, {
+      frame: 0,
       now: Date.parse('2026-01-01T00:00:12.300Z'),
     });
     expect(lines).toEqual([
       '● Agents',
-      '└─ ◌ worker [openai/gpt-6] Review the migration · ↻5 · 5 tool uses · 33.8k tokens (62%) · 12.3s · 1 compaction',
+      '└─ ⠋ worker [openai/gpt-6] Review the migration',
+      '   turns 5 · tools 5 · tokens 33.8k · context 62% · elapsed 12.3s · 1 compaction',
       '   ⎿ editing…',
     ]);
   });
@@ -228,14 +341,14 @@ describe('background widget', () => {
     ] as any;
     expect(renderClaudeBackgroundWidgetLines(tasks)).toEqual([
       '● Agents',
-      '└─ 2 queued',
+      '└─ ○ 2 queued',
     ]);
     const state = new ClaudeBackgroundWidgetState(() => tasks);
     const widget = new ClaudeBackgroundWidget(state, {
       fg: (_: string, text: string) => text,
       bold: (text: string) => text,
     });
-    expect(widget.render(8)).toEqual(['● Agents', '└─ 2 qu…']);
+    expect(widget.render(8)).toEqual(['● Agents', '└─ ○ 2 …']);
     expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
     expect(state.handleTerminalInput('\r')).toEqual({
       consume: true,
@@ -284,10 +397,10 @@ describe('background widget', () => {
     const lines = renderClaudeBackgroundWidgetLines(tasks)!;
     expect(lines[0]).toBe('● Agents');
     expect(lines[1]).toContain('claude ping-pong loop command');
-    expect(lines[2]).toBe('   ⎿ Running ping-pong loop command.');
-    expect(lines[3]).toBe('└─ 1 queued');
+    expect(lines[3]).toBe('   ⎿ Running ping-pong loop command.');
+    expect(lines[4]).toBe('└─ ○ 1 queued');
     expect(renderClaudeBackgroundWidgetLines(tasks, 'task-2')?.at(-1)).toBe(
-      '● └─ 1 queued',
+      '● └─ ○ 1 queued',
     );
     expect(moveClaudeBackgroundWidgetSelection(tasks, 'main', 'down')).toBe(
       'task-1',
@@ -345,20 +458,26 @@ describe('background widget', () => {
     });
 
     expect(widget.render(200)[0]).toBe('● Agents');
-    expect(widget.render(200).at(-1)).toBe('└─ 1 queued');
+    expect(widget.render(200).at(-1)).toBe('└─ ○ 1 queued');
 
     expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
     expect(requestRender).toHaveBeenCalledTimes(1);
-    expect(widget.render(200)[1]).toContain('● ├─ ◌ tool-smoke sleep 15');
+    expect(widget.render(200)[1]).toMatch(
+      /● ├─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/,
+    );
 
     expect(state.handleTerminalInput('q')).toEqual({ consume: true });
-    expect(widget.render(200)[1]).toContain('● ├─ ◌ tool-smoke sleep 15');
+    expect(widget.render(200)[1]).toMatch(
+      /● ├─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/,
+    );
 
     expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(widget.render(200).at(-1)).toBe('● └─ 1 queued');
+    expect(widget.render(200).at(-1)).toBe('● └─ ○ 1 queued');
 
     expect(state.handleTerminalInput('\u001b[A')).toEqual({ consume: true });
-    expect(widget.render(200)[1]).toContain('● ├─ ◌ tool-smoke sleep 15');
+    expect(widget.render(200)[1]).toMatch(
+      /● ├─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/,
+    );
 
     expect(state.handleTerminalInput('\u001b[A')).toEqual({ consume: true });
     expect(widget.render(200)[0]).toBe('● Agents');
@@ -403,7 +522,9 @@ describe('background widget', () => {
     expect(widget.render(200)[0]).toBe('● Agents');
 
     expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(widget.render(200)[1]).toContain('● └─ ◌ tool-smoke sleep 15');
+    expect(widget.render(200)[1]).toMatch(
+      /● └─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/,
+    );
   });
 
   it('renders the selected claude background widget row with warning styling only while navigation is active', () => {
@@ -434,10 +555,10 @@ describe('background widget', () => {
 
     expect(fg).toHaveBeenCalledWith(
       'warning',
-      expect.stringContaining('● └─ ◌ tool-smoke sleep 15'),
+      expect.stringMatching(/● └─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/),
     );
     expect(bold).toHaveBeenCalledWith(
-      expect.stringContaining('● └─ ◌ tool-smoke sleep 15'),
+      expect.stringMatching(/● └─ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke sleep 15/),
     );
   });
 

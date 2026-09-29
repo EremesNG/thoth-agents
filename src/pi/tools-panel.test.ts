@@ -4,6 +4,7 @@ import type {
   PiToolConfigSnapshot,
   PiToolSaveResult,
 } from '../cli/pi-tool-config';
+import { validatePiSpecialistTools } from '../cli/pi-tool-config';
 import {
   createToolsPanel,
   isEligibleTool,
@@ -92,6 +93,7 @@ describe('isEligibleTool', () => {
 
   test('rejects wildcards, whitespace, commas and invalid characters', () => {
     expect(isEligibleTool('*')).toBe(false);
+    expect(isEligibleTool('@active')).toBe(false);
     expect(isEligibleTool('tool*')).toBe(false);
     expect(isEligibleTool('tool?')).toBe(false);
     expect(isEligibleTool('tool[1]')).toBe(false);
@@ -103,6 +105,94 @@ describe('isEligibleTool', () => {
 });
 
 describe('global Pi tools panel', () => {
+  test('all saves a dynamic selector and checks eligible inactive tools without listing selectors as tools', () => {
+    const save = vi.fn((_snapshot, draft) => {
+      validatePiSpecialistTools(draft[0].tools);
+      return successfulSave(sampleSnapshot(), draft);
+    });
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools: sampleDiscovered,
+      save,
+      onDone: vi.fn(),
+    });
+    panel.handleInput('*');
+    expect(panel.getState().draft[0]?.tools).toEqual(['*']);
+    const wide = panel.render(100).join('\n');
+    expect(wide).toContain('› explorer *');
+    expect(wide).toContain('all tools (dynamic)');
+    const narrow = panel.render(40);
+    expect(narrow.join('\n')).toContain('all tools (dynamic)');
+    expect(narrow.every((line) => [...line].length <= 40)).toBe(true);
+    panel.handleInput('\r');
+    const text = panel.render(100).join('\n');
+    expect(text).toContain('[x] custom_inactive (inactive)');
+    expect(text).not.toContain('* (unavailable)');
+    expect(text).not.toContain('subagent_run');
+    panel.handleInput('\r');
+    panel.handleInput('s');
+    expect(save.mock.calls[0]?.[1][0]?.tools).toEqual(['*']);
+  });
+
+  test('all active stays dynamic and a checkbox turns it into a current explicit snapshot', () => {
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools: sampleDiscovered,
+      save: vi.fn(),
+      onDone: vi.fn(),
+    });
+    panel.handleInput('a');
+    expect(panel.getState().draft[0]?.tools).toEqual(['@active']);
+    expect(panel.render(110).join('\n')).toContain(
+      'current + future active tools',
+    );
+    panel.handleInput('\r');
+    const selectorText = panel.render(100).join('\n');
+    expect(selectorText).toContain('all active (dynamic)');
+    expect(selectorText).toContain('[x] bash');
+    expect(selectorText).toContain('[ ] custom_inactive (inactive)');
+    expect(selectorText).not.toContain('@active (unavailable)');
+    panel.handleInput(' '); // remove read from today's active inventory
+    expect(panel.getState().draft[0]?.tools).toEqual(['write', 'bash']);
+    expect(panel.render(100).join('\n')).toContain('2 selected');
+  });
+
+  test('toggling an item from all materializes eligible active and inactive names', () => {
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools: sampleDiscovered,
+      save: vi.fn(),
+      onDone: vi.fn(),
+    });
+    panel.handleInput('*');
+    panel.handleInput('\r');
+    panel.handleInput(' '); // remove read
+    expect(panel.getState().draft[0]?.tools).toEqual([
+      'write',
+      'bash',
+      'custom_inactive',
+    ]);
+  });
+
+  test('all active is available with zero currently active eligible tools', () => {
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools: [
+        { name: 'custom_inactive', active: false },
+        { name: 'subagent_run', active: true },
+      ],
+      save: vi.fn(),
+      onDone: vi.fn(),
+    });
+    panel.handleInput('a');
+    expect(panel.getState().draft[0]?.tools).toEqual(['@active']);
+    panel.handleInput('\r');
+    expect(panel.render(100).join('\n')).toContain(
+      '[ ] custom_inactive (inactive)',
+    );
+    expect(panel.render(100).join('\n')).not.toContain('subagent_run');
+  });
+
   test('renders global scope, five roles, ambient-root warning and override boundary', () => {
     const panel = createToolsPanel({
       snapshot: sampleSnapshot(),
@@ -303,7 +393,7 @@ describe('global Pi tools panel', () => {
     expect(panel.getState().draft[0]?.tools).toContain('legacy_mcp_tool');
   });
 
-  test('select-all active ("a") adds only active eligible tools, not unselected inactive tools', () => {
+  test('all active ("a") saves a compact dynamic selector', () => {
     const snapshot = sampleSnapshot();
     snapshot.roles[0] = {
       role: 'explorer',
@@ -319,12 +409,11 @@ describe('global Pi tools panel', () => {
     panel.handleInput('\r'); // edit explorer
     panel.handleInput('a'); // select all active
     const draftTools = panel.getState().draft[0]?.tools;
-    expect(draftTools).toEqual(['read', 'write', 'bash']);
-    expect(draftTools).not.toContain('custom_inactive');
-    expect(draftTools).not.toContain('subagent_run');
+    expect(draftTools).toEqual(['@active']);
+    expect(panel.render(100).join('\n')).toContain('all active (dynamic)');
   });
 
-  test('select all active preserves previously selected inactive and unavailable tools', () => {
+  test('all active replaces an explicit list only when selected', () => {
     const snapshot = sampleSnapshot();
     snapshot.roles[0] = {
       role: 'explorer',
@@ -337,16 +426,15 @@ describe('global Pi tools panel', () => {
       save: vi.fn(),
       onDone: vi.fn(),
     });
-    panel.handleInput('a');
     expect(panel.getState().draft[0]?.tools).toEqual([
       'read',
       'custom_inactive',
       'saved_mcp',
-      'write',
-      'bash',
     ]);
     panel.handleInput('a');
-    expect(new Set(panel.getState().draft[0]?.tools).size).toBe(5);
+    expect(panel.getState().draft[0]?.tools).toEqual(['@active']);
+    panel.handleInput('a');
+    expect(panel.getState().draft[0]?.tools).toEqual(['@active']);
   });
 
   test('restore defaults ("r") resets tools to role defaultTools', () => {
@@ -357,8 +445,8 @@ describe('global Pi tools panel', () => {
       onDone: vi.fn(),
     });
     panel.handleInput('\r'); // edit explorer
-    panel.handleInput('a'); // select active -> ['read', 'write', 'bash']
-    expect(panel.getState().draft[0]?.tools).toContain('bash');
+    panel.handleInput('a'); // select dynamic active mode
+    expect(panel.getState().draft[0]?.tools).toEqual(['@active']);
     panel.handleInput('r'); // restore defaults -> ['read', 'write']
     expect(panel.getState().draft[0]?.tools).toEqual(['read', 'write']);
   });
@@ -371,7 +459,7 @@ describe('global Pi tools panel', () => {
       onDone: vi.fn(),
     });
     panel.handleInput('a'); // select active on explorer from overview
-    expect(panel.getState().draft[0]?.tools).toEqual(['read', 'write', 'bash']);
+    expect(panel.getState().draft[0]?.tools).toEqual(['@active']);
     panel.handleInput('r'); // restore defaults on explorer from overview
     expect(panel.getState().draft[0]?.tools).toEqual(['read', 'write']);
   });

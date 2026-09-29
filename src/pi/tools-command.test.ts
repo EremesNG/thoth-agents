@@ -187,6 +187,7 @@ describe('subagents-tools command', () => {
     expect(getActiveTools).toHaveBeenCalledTimes(1);
     expect(renderedText).toContain('Global specialist tools');
     expect(saveToolConfig).toHaveBeenCalledTimes(1);
+    expect(saveToolConfig.mock.calls[0]?.[1][0]?.tools).toEqual(['@active']);
     expect(notify).toHaveBeenCalledWith(
       expect.stringContaining(
         'Saved global Thoth specialist tools. Updated: explorer.',

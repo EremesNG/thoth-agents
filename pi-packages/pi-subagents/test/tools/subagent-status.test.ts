@@ -173,7 +173,7 @@ describe('subagent_status tool', () => {
       .renderResult(result, { expanded: false }, theme)
       .render(80);
     expect(collapsed[0]).toContain('┌─');
-    expect(collapsed[0]).toContain('󰣇');
+    expect(collapsed[0]).toContain('✓');
     expect(collapsed[0]).toContain(
       'subagent status · analyst · analyze report · completed',
     );
@@ -185,7 +185,7 @@ describe('subagent_status tool', () => {
       .renderResult(result, { expanded: true }, theme)
       .render(80);
     expect(expanded[0]).toContain('┌─');
-    expect(expanded[0]).toContain('󰣇');
+    expect(expanded[0]).toContain('✓');
     expect(expanded.join('\n')).toContain('Subagent response');
     expect(expanded.join('\n')).toContain('analysis completed cleanly');
     expect(expanded.join('\n')).toContain('usage:');

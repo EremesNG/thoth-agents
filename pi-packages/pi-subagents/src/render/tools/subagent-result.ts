@@ -1,4 +1,9 @@
-import { ARCH_ICON, CYAN, themeFg } from '../completion-message.js';
+import {
+  ARCH_ICON,
+  CYAN,
+  themeFg,
+  themeStatus,
+} from '../completion-message.js';
 import { openSubagentsPanel } from '../panel-opener.js';
 import { taskFromDetails } from '../result-details.js';
 import { boxedComponent } from './components.js';
@@ -10,6 +15,7 @@ import {
   modelEffortLine,
   taskResponseText,
 } from './formatting.js';
+import { statusGlyph } from './progress.js';
 
 export function renderSubagentResult(
   result: any,
@@ -26,7 +32,9 @@ export function renderSubagentResult(
   const isRunning = task?.status === 'running' || task?.status === 'queued';
   const hasResp = hasAgentResponse(task, result);
   const responseText = taskResponseText(task, result);
-  const archPrefix = themeFg(theme, 'accent', ARCH_ICON, CYAN);
+  const archPrefix = task
+    ? themeStatus(theme, task.status, statusGlyph(task.status))
+    : themeFg(theme, 'accent', ARCH_ICON, CYAN);
 
   if (!task) {
     const text =

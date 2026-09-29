@@ -13,6 +13,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { piAdapter } from '../harness/adapters/pi';
 import { readPiModelConfig, savePiModelConfig } from './pi-model-config';
 import { PI_SPECIALIST_NAMES, syncPiSpecialists } from './pi-resources';
+import { readPiToolConfig, savePiToolConfig } from './pi-tool-config';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -93,7 +94,44 @@ describe('Pi specialist synchronization', () => {
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
-  test('leaves malformed and wildcard tool overrides unchanged with diagnostics', () => {
+  test.each([
+    '*',
+    '@active',
+  ] as const)('preserves the standalone %s selector through specialist synchronization', (selector) => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(
+      target,
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\n---\nOld worker instructions.\n',
+    );
+
+    const save = savePiToolConfig(
+      readPiToolConfig(options.piRoot, ['worker']),
+      [{ role: 'worker', tools: [selector] }],
+    );
+    expect(save.success).toBe(true);
+
+    const synchronized = syncPiSpecialists(options);
+    expect(synchronized.success).toBe(true);
+    expect(synchronized.changed).toContain(target);
+    expect(readFileSync(target, 'utf8')).toContain(
+      `tools: ${JSON.stringify(selector)}`,
+    );
+    expect(
+      readPiToolConfig(options.piRoot, ['worker']).roles[0]?.tools,
+    ).toEqual([selector]);
+    expect(syncPiSpecialists(options).changed).toEqual([]);
+  });
+
+  test('leaves malformed and unsupported wildcard tool overrides unchanged with diagnostics', () => {
     const options = fixture();
     for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
       .artifacts) {
@@ -106,7 +144,7 @@ describe('Pi specialist synchronization', () => {
     const badMode = join(options.piRoot, 'agents', 'thoth-explorer.md');
     mkdirSync(dirname(target), { recursive: true });
     const legacy =
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\ntools: "*"\nsubagent_mode: task\n---\nKeep this exact file.\n';
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\ntools: "read*"\nsubagent_mode: task\n---\nKeep this exact file.\n';
     const malformed =
       '---\nname: thoth-explorer\nmanaged-by: thoth-agents\nsubagent_mode: unsupported\n---\nKeep this file too.\n';
     writeFileSync(target, legacy);

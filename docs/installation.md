@@ -387,28 +387,32 @@ maintain a fixed catalog of those tools.
 
 - Use ↑/↓ and Enter to choose a specialist. In its tool list, use Space to toggle
   a selection. Enter or Escape returns to the overview.
-- Press `a` to add all currently active eligible tools for the selected role,
-  retaining its existing inactive/unavailable selections. Registered inactive
-  tools are labeled `(inactive)` and may be selected
-  individually. Saved names absent from the current registry remain visible as
-  `(unavailable)` and may be removed explicitly.
+- Press `a` for dynamic **all active** (`@active`): eligible tools active when a
+  child starts, including newly registered active tools. Press `*` for opt-in
+  dynamic **all** (`*`): eligible registered tools, including inactive and newly
+  registered tools. Either choice replaces that role's explicit list. Toggling an
+  individual checkbox turns the choice into a current explicit list, ending
+  future-tool inheritance. Registered inactive tools are labeled `(inactive)`;
+  saved explicit names absent from the registry remain `(unavailable)` and can
+  be removed individually.
 - Press `r` to restore that role's packaged defaults: `read, bash` for Explorer
   and Oracle; additionally `edit, write` for Designer and Worker; the historical
   research tools for Librarian. Defaults can include currently unavailable tools.
 - Press `s` on the overview to save. Escape or Ctrl-C cancels, with confirmation
   before discarding a dirty draft. Draft edits do not write files.
-- Selections must contain at least one explicit name. Wildcards, `subagent_*`
-  delegation tools and root-only `ask_user_question`/`todo` controls are excluded.
-  Empty selections are rejected because the runtime can substitute default tools.
+- Selections must contain at least one explicit name or one standalone selector:
+  `*` or `@active`. Mixed selectors, other patterns, `subagent_*` delegation tools
+  and root-only `ask_user_question`/`todo` controls are excluded. Empty selections
+  are rejected because the runtime can substitute default tools.
 - Saved lists remain in `~/.pi/agent/agents/thoth-*.md` (or Pi's configured agent
   directory), survive synchronization/reinstallation and model-panel saves, and
   do not change models, effort, mode or the parent's active tools. Project-local
   definitions may shadow these global definitions. Running children are unchanged.
-- Discovery refreshes when the panel is reopened. Newly installed tools are not
-  automatically selected: select-all is a snapshot, not ongoing inheritance.
+- Discovery refreshes when the panel is reopened. Explicit lists stay fixed;
+  `*` and `@active` resolve current eligible tools at each child launch.
 - Ownership, safe-path, stale-file and recoverable per-file write checks match
-  the models panel. Malformed or legacy wildcard overrides are preserved with
-  diagnostics during synchronization, not silently reset to broader defaults.
+  the models panel. Unsupported wildcard overrides are preserved with diagnostics
+  during synchronization, without resetting them to broader defaults.
 
 A selected name does not prove the child's runtime registered or initialized that
 extension, MCP connection or credentials. Verify a real child invocation. Tool

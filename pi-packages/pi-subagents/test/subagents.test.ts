@@ -318,8 +318,13 @@ describe('subagents smoke', () => {
       const listeners: Array<() => void> = [];
       const close = vi.fn(async () => undefined);
       let running = false;
+      let queued = false;
       const listActiveSessionTasks = vi.fn(() =>
-        running ? [{ status: 'running' }] : [],
+        running
+          ? [{ status: 'running' }]
+          : queued
+            ? [{ status: 'queued' }]
+            : [],
       );
       const interval = vi.spyOn(global, 'setInterval');
       class MockManager {
@@ -359,12 +364,16 @@ describe('subagents smoke', () => {
         { placement: 'aboveEditor' },
       );
       expect(interval).not.toHaveBeenCalled();
+      queued = true;
+      listeners[0]?.();
+      expect(interval).not.toHaveBeenCalled();
       const requestRender = vi.fn();
       const widgetFactory = setWidget.mock.calls[0]?.[1];
       widgetFactory({ requestRender }, {});
+      queued = false;
       running = true;
       listeners[0]?.();
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(100);
       expect(requestRender).toHaveBeenCalledTimes(2);
       running = false;
       listeners[0]?.();

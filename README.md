@@ -84,8 +84,9 @@ claude plugin install thoth-agents@thoth-plugins --scope user
 Inside Pi, use `/subagents-model` to edit model and effort profiles for global
 and project subagent definitions. See [subagent profile configuration](docs/installation.md#configure-subagent-model-profiles-inside-pi).
 Use `/subagents-tools` to select each specialist's tools from your Pi environment,
-including registered extension and MCP tools. Selections are explicit, not wildcard
-inheritance; see [tool selection controls](docs/installation.md#configure-specialist-tools-inside-pi).
+including registered extension and MCP tools. Choose individual names, dynamic
+`all active` (`@active`), or opt-in dynamic `all` (`*`) for eligible current and
+future registered tools; see [tool selection controls](docs/installation.md#configure-specialist-tools-inside-pi).
 
 Pi setup currently supports the default `~/.pi/agent` root. See the
 [Pi installation guide](docs/installation.md#pi) for runtime requirements,

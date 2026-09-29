@@ -1,17 +1,14 @@
-import { truncateToWidth } from '../render/text-width.js';
+import { truncateToWidth, visibleWidth } from '../render/text-width.js';
+import { statusGlyph } from '../render/tools/progress.js';
 import type { SubagentTask } from '../types.js';
-import {
-  ARCH_ICON,
-  getArchNeonWorkingIcon,
-  themeBold,
-  themeWarning,
-} from './theme.js';
+import { ARCH_ICON, themeBold, themeWarning } from './theme.js';
 
 type ClaudeBackgroundWidgetEntry = {
   key: string;
   line: string;
   status?: string;
   activity?: string;
+  metrics?: string[];
 };
 
 export type ClaudeBackgroundTerminalAction =
@@ -73,34 +70,30 @@ function buildClaudeBackgroundWidgetEntries(
   ];
   for (const [index, task] of running.entries()) {
     const metrics = task.runtime_metrics;
-    const parts = [
-      `${task.agent}${task.model ? ` [${task.model}]` : ''} ${normalize(task.task)}`.trim(),
-    ];
+    const description =
+      `${task.agent}${task.model ? ` [${task.model}]` : ''} ${normalize(task.task)}`.trim();
     const turns = metrics?.turns ?? task.usage?.turns;
-    if (finiteNonnegative(turns)) parts.push(`↻${turns}`);
-    if (finiteNonnegative(metrics?.toolUses))
-      parts.push(`${metrics.toolUses} tool uses`);
-    if (task.usage) {
-      const tokens =
-        task.usage.input + task.usage.output + task.usage.cacheWrite;
-      if (finiteNonnegative(tokens))
-        parts.push(
-          `${formatTokens(tokens)} tokens${finiteNonnegative(metrics?.contextPercent) ? ` (${metrics.contextPercent}%)` : ''}`,
-        );
-    } else if (finiteNonnegative(metrics?.contextPercent))
-      parts.push(`${metrics.contextPercent}% context`);
+    const tokens = task.usage
+      ? task.usage.input + task.usage.output + task.usage.cacheWrite
+      : undefined;
     const started = task.started_at ? Date.parse(task.started_at) : NaN;
-    if (Number.isFinite(started))
-      parts.push(`${formatDuration(Math.max(0, now - started))}`);
+    const metricParts = [
+      `turns ${finiteNonnegative(turns) ? turns : '?'}`,
+      `tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
+      `tokens ${finiteNonnegative(tokens) ? formatTokens(tokens) : '?'}`,
+      `context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent}%` : '?'}`,
+      `elapsed ${Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '?'}`,
+    ];
     if (finiteNonnegative(metrics?.compactions) && metrics.compactions > 0)
-      parts.push(
+      metricParts.push(
         `${metrics.compactions} compaction${metrics.compactions === 1 ? '' : 's'}`,
       );
     const branch = index === running.length - 1 && !queued.length ? '└─' : '├─';
     entries.push({
       key: task.id,
-      line: `${branch} ◌ ${parts.join(' · ')}`,
+      line: `${branch} ${statusGlyph('running')} ${description}`,
       status: task.status,
+      metrics: metricParts,
       activity: normalize(
         task.live_activity?.current?.label ?? task.last_activity,
       ),
@@ -109,7 +102,7 @@ function buildClaudeBackgroundWidgetEntries(
   if (queued.length)
     entries.push({
       key: queued[0]!.id,
-      line: `└─ ${queued.length} queued`,
+      line: `└─ ${statusGlyph('queued')} ${queued.length} queued`,
       status: 'queued',
     });
   return entries;
@@ -127,6 +120,27 @@ function formatDuration(milliseconds: number): string {
   return milliseconds < 1000
     ? `${Math.floor(milliseconds)}ms`
     : `${(milliseconds / 1000).toFixed(1)}s`;
+}
+
+function metricLines(parts: string[] = [], width = 80): string[] {
+  const lines: string[] = [];
+  for (const part of parts) {
+    const previous = lines.at(-1);
+    const joined = previous ? `${previous} · ${part}` : `   ${part}`;
+    if (previous && visibleWidth(joined) > width) lines.push(`   ${part}`);
+    else if (previous) lines[lines.length - 1] = joined;
+    else lines.push(joined);
+  }
+  return lines;
+}
+
+function entryRowCount(
+  entry: ClaudeBackgroundWidgetEntry,
+  width: number,
+): number {
+  return (
+    1 + metricLines(entry.metrics, width).length + (entry.activity ? 1 : 0)
+  );
 }
 
 function coerceClaudeBackgroundSelection(
@@ -163,6 +177,7 @@ export function renderClaudeBackgroundWidgetLines(
     neonRunning?: boolean;
     frame?: number;
     now?: number;
+    width?: number;
   } = {},
 ): string[] | undefined {
   const entries = buildClaudeBackgroundWidgetEntries(tasks, options.now);
@@ -176,21 +191,32 @@ export function renderClaudeBackgroundWidgetLines(
   return entries.flatMap((entry) => {
     const isSelected = entry.key === current;
     const runningLine =
-      entry.status === 'running' && useNeon
-        ? entry.line.replace('◌', getArchNeonWorkingIcon(options.frame))
+      entry.status === 'running'
+        ? entry.line.replace(
+            statusGlyph('running'),
+            statusGlyph(
+              'running',
+              options.frame ?? Math.floor(Date.now() / 100),
+            ),
+          )
         : entry.line;
 
     const line =
       entry.key === 'main'
         ? `${isSelected && useNeon ? ARCH_ICON : '●'} ${entry.line}`
         : `${isSelected ? '● ' : ''}${runningLine}`;
-    return entry.activity ? [line, `   ⎿ ${entry.activity}`] : [line];
+    return [
+      line,
+      ...metricLines(entry.metrics, options.width),
+      ...(entry.activity ? [`   ⎿ ${entry.activity}`] : []),
+    ];
   });
 }
 
 export class ClaudeBackgroundWidgetState {
   private selectedKey = 'main';
   private navigationActive = false;
+  private renderWidth = 80;
 
   constructor(
     private getTasks: () => SubagentTask[],
@@ -215,7 +241,9 @@ export class ClaudeBackgroundWidgetState {
     archIndicator?: boolean;
     neonRunning?: boolean;
     frame?: number;
+    width?: number;
   }): string[] {
+    this.renderWidth = options?.width ?? this.renderWidth;
     return (
       renderClaudeBackgroundWidgetLines(
         this.getTasks(),
@@ -249,15 +277,19 @@ export class ClaudeBackgroundWidgetState {
       Number.isFinite(row) &&
       row >= 0 &&
       row <
-        entries.reduce((count, entry) => count + (entry.activity ? 2 : 1), 0)
+        entries.reduce(
+          (count, entry) => count + entryRowCount(entry, this.renderWidth),
+          0,
+        )
     ) {
       let offset = 0;
       for (const entry of entries) {
-        if (row < offset + (entry.activity ? 2 : 1)) {
+        const rowCount = entryRowCount(entry, this.renderWidth);
+        if (row < offset + rowCount) {
           targetKey = entry.key;
           break;
         }
-        offset += entry.activity ? 2 : 1;
+        offset += rowCount;
       }
     } else if (tasks.length === 1) {
       targetKey = tasks[0]?.id;
@@ -391,8 +423,8 @@ export class ClaudeBackgroundWidget {
       : this.options;
 
     const lines = isNeon
-      ? this.state.renderLines(renderOptions)
-      : this.state.renderLines();
+      ? this.state.renderLines({ ...renderOptions, width })
+      : this.state.renderLines({ width });
 
     return lines.map((line) => truncateToWidth(this.decorate(line), width));
   }

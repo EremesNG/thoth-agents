@@ -1,6 +1,6 @@
+import { truncateToWidth } from '../completion-message.js';
 import { readSubagentsConfig } from '../config.js';
 import type { SubagentTask } from '../types.js';
-import { truncateToWidth } from '../completion-message.js';
 import { resolveExpandHint } from './expansion-hint.js';
 
 export const SUBAGENT_RESUME_GUIDANCE = [
@@ -10,9 +10,19 @@ export const SUBAGENT_RESUME_GUIDANCE = [
   "Do not resume or override the model or effort without the user's explicit decision. Never switch models automatically.",
 ].join('\n');
 
-export function appendSubagentResumeGuidance(text: string, tasks: Array<Pick<SubagentTask, 'status'>>, cwd = process.cwd()): string {
-  return readSubagentsConfig(cwd).enable_continue
-    && tasks.some((task) => task.status === 'failed' || task.status === 'cancelled' || task.status === 'interrupted' || task.status === 'stopping')
+export function appendSubagentResumeGuidance(
+  text: string,
+  tasks: Array<Pick<SubagentTask, 'status'>>,
+  cwd = process.cwd(),
+): string {
+  return readSubagentsConfig(cwd).enable_continue &&
+    tasks.some(
+      (task) =>
+        task.status === 'failed' ||
+        task.status === 'cancelled' ||
+        task.status === 'interrupted' ||
+        task.status === 'stopping',
+    )
     ? `${text}\n\n${SUBAGENT_RESUME_GUIDANCE}`
     : text;
 }
@@ -34,30 +44,45 @@ export function formatUsage(task: SubagentTask): string {
   const usage = task.usage;
   if (!usage) return '';
   const parts: string[] = [];
-  if (usage.turns) parts.push(`${usage.turns} turn${usage.turns > 1 ? 's' : ''}`);
+  if (usage.turns)
+    parts.push(`${usage.turns} turn${usage.turns > 1 ? 's' : ''}`);
   if (usage.input) parts.push(`↑${formatTokens(usage.input)}`);
   if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
   if (usage.cacheRead) parts.push(`R${formatTokens(usage.cacheRead)}`);
   if (usage.cacheWrite) parts.push(`W${formatTokens(usage.cacheWrite)}`);
   if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
-  if (usage.contextTokens) parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
+  if (usage.contextTokens)
+    parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
   return parts.join(' ');
 }
 
 export function modelEffortLine(task: SubagentTask): string {
-  return [`model: ${task.model ?? 'default/current'}`, `effort: ${task.effort ?? 'default/current'}`].join(' · ');
+  return [
+    `model: ${task.model ?? 'default/current'}`,
+    `effort: ${task.effort ?? 'default/current'}`,
+  ].join(' · ');
 }
 
-export function formatTaskLabel(task: Pick<SubagentTask, 'agent' | 'display_name' | 'task'> | undefined): string {
+export function formatTaskLabel(
+  task: Pick<SubagentTask, 'agent' | 'display_name' | 'task'> | undefined,
+): string {
   if (!task) return 'subagent';
   const displayName = task.display_name?.trim();
   if (displayName) return displayName;
   const taskSnippet = clip(task.task, 40);
-  return taskSnippet ? `${task.agent} · ${taskSnippet}` : (task.agent || 'subagent');
+  return taskSnippet
+    ? `${task.agent} · ${taskSnippet}`
+    : task.agent || 'subagent';
 }
 
-export function hasAgentResponse(task?: Pick<SubagentTask, 'result'>, result?: any): boolean {
-  if (typeof result?.details?.full_result === 'string' && result.details.full_result.trim().length > 0) {
+export function hasAgentResponse(
+  task?: Pick<SubagentTask, 'result'>,
+  result?: any,
+): boolean {
+  if (
+    typeof result?.details?.full_result === 'string' &&
+    result.details.full_result.trim().length > 0
+  ) {
     return true;
   }
   if (typeof task?.result === 'string' && task.result.trim().length > 0) {
@@ -66,8 +91,14 @@ export function hasAgentResponse(task?: Pick<SubagentTask, 'result'>, result?: a
   return false;
 }
 
-export function taskResponseText(task?: Pick<SubagentTask, 'result'>, result?: any): string {
-  if (typeof result?.details?.full_result === 'string' && result.details.full_result.trim().length > 0) {
+export function taskResponseText(
+  task?: Pick<SubagentTask, 'result'>,
+  result?: any,
+): string {
+  if (
+    typeof result?.details?.full_result === 'string' &&
+    result.details.full_result.trim().length > 0
+  ) {
     return result.details.full_result;
   }
   if (typeof task?.result === 'string' && task.result.trim().length > 0) {
@@ -85,7 +116,9 @@ export function formatTask(task: SubagentTask): string {
     task.effective_mode ? `effective mode: ${task.effective_mode}` : undefined,
     modelEffortLine(task),
     usage ? `usage: ${usage}` : undefined,
-    task.status === 'queued' || task.status === 'running' || task.status === 'stopping'
+    task.status === 'queued' ||
+    task.status === 'running' ||
+    task.status === 'stopping'
       ? `pending messages: ${task.pending_message_count ?? 0}`
       : `undelivered messages: ${task.undelivered_message_count ?? 0}`,
     `last: ${task.last_activity ?? 'n/a'}${when ? ` at ${when}` : ''}`,
@@ -110,7 +143,9 @@ function formatTaskListItem(task: SubagentTask): string {
     modelEffortLine(task),
     usage ? `usage: ${usage}` : undefined,
     `last: ${task.last_activity ?? 'n/a'}${when ? ` at ${when}` : ''}`,
-    hasPreview ? `preview: collapsed · ${resolveExpandHint('to expand')}` : undefined,
+    hasPreview
+      ? `preview: collapsed · ${resolveExpandHint('to expand')}`
+      : undefined,
     task.error ? `error: ${clip(task.error)}` : undefined,
   ].filter(Boolean) as string[];
   return lines.join('\n');
@@ -125,7 +160,10 @@ function formatTaskListRow(task: SubagentTask): string {
   ].join(' · ');
 }
 
-export function formatTaskListSummary(tasks: SubagentTask[], context?: any): string {
+export function formatTaskListSummary(
+  tasks: SubagentTask[],
+  context?: any,
+): string {
   if (!tasks.length) return 'Listed 0 subagent task(s).';
   const mostRecent = tasks[0]!;
   return [
@@ -135,9 +173,14 @@ export function formatTaskListSummary(tasks: SubagentTask[], context?: any): str
   ].join('\n');
 }
 
-export function formatTaskListRender(tasks: SubagentTask[], expanded: boolean, context?: any): string {
+export function formatTaskListRender(
+  tasks: SubagentTask[],
+  expanded: boolean,
+  context?: any,
+): string {
   if (!tasks.length) return 'Listed 0 subagent task(s).';
-  if (expanded) return `Listed ${tasks.length} subagent task(s):\n\n${tasks.map(formatTaskListItem).join('\n\n')}`;
+  if (expanded)
+    return `Listed ${tasks.length} subagent task(s):\n\n${tasks.map(formatTaskListItem).join('\n\n')}`;
   const mostRecent = tasks[0]!;
   const recentLabel = formatTaskLabel(mostRecent);
   return [
@@ -146,29 +189,46 @@ export function formatTaskListRender(tasks: SubagentTask[], expanded: boolean, c
   ].join('\n');
 }
 
-export function collapsedResultHint(_task: SubagentTask | undefined, _failed: boolean, context?: any): string {
+export function collapsedResultHint(
+  _task: SubagentTask | undefined,
+  _failed: boolean,
+  context?: any,
+): string {
   return resolveExpandHint('to expand', context);
 }
 
-export function taskFinalText(task: SubagentTask | undefined, result?: any): string {
+export function taskFinalText(
+  task: SubagentTask | undefined,
+  result?: any,
+): string {
   return taskResponseText(task, result);
 }
 
-export function formatTaskModeContent(tasks: SubagentTask[], cwd = process.cwd()): string {
+export function formatTaskModeContent(
+  tasks: SubagentTask[],
+  cwd = process.cwd(),
+): string {
   const content = [
     `Completed ${tasks.length} subagent task(s):`,
     ...tasks.map((task) => {
       const responseText = taskResponseText(task);
       return [
         formatTask(task),
-        responseText ? `\n# response from ${formatTaskLabel(task)}\n${responseText}` : undefined,
-      ].filter(Boolean).join('\n');
+        responseText
+          ? `\n# response from ${formatTaskLabel(task)}\n${responseText}`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n');
     }),
   ].join('\n\n');
   return appendSubagentResumeGuidance(content, tasks, cwd);
 }
 
-export function backgroundLaunchContent(tasksOrIds: Array<SubagentTask | string>, verb = 'Sent'): string {
+export function backgroundLaunchContent(
+  tasksOrIds: Array<SubagentTask | string>,
+  verb = 'Sent',
+): string {
   const lines = tasksOrIds.map((item) => {
     if (typeof item === 'object' && item !== null) {
       return `- ${formatTaskLabel(item)} · task_id: ${item.id}`;

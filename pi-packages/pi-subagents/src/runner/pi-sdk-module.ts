@@ -24,8 +24,13 @@ function versionGte(version: number[], minimum: readonly number[]): boolean {
   return true;
 }
 
-export function detectPiRuntimeSupport(version: unknown): { detected_pi_version: string | 'unknown'; supported: boolean; required_pi_version: '>=0.82.1' } {
-  const detected = typeof version === 'string' && version.trim() ? version.trim() : 'unknown';
+export function detectPiRuntimeSupport(version: unknown): {
+  detected_pi_version: string | 'unknown';
+  supported: boolean;
+  required_pi_version: '>=0.82.1';
+} {
+  const detected =
+    typeof version === 'string' && version.trim() ? version.trim() : 'unknown';
   const parsed = parseVersion(detected);
   return {
     detected_pi_version: detected,

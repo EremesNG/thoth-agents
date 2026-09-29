@@ -1,5 +1,11 @@
 import { sanitizeInteractionTransportText } from './interaction-channel.js';
-import type { SubagentErrorAttemptRole, SubagentErrorCategory, SubagentErrorMetadata, SubagentErrorPhase, UsageStats } from './types.js';
+import type {
+  SubagentErrorAttemptRole,
+  SubagentErrorCategory,
+  SubagentErrorMetadata,
+  SubagentErrorPhase,
+  UsageStats,
+} from './types.js';
 
 const MESSAGE_LIMIT = 1024;
 const CODE_LIMIT = 128;
@@ -31,32 +37,61 @@ const RETRYABLE_DEFAULTS: Record<SubagentErrorCategory, boolean> = {
   unknown: false,
 };
 
-const CATEGORY_SET = new Set<SubagentErrorCategory>(Object.keys(RETRYABLE_DEFAULTS) as SubagentErrorCategory[]);
-const PHASE_SET = new Set<SubagentErrorPhase>(['runner_invoke', 'runner_session', 'assistant_final', 'tool_execution', 'manager', 'user', 'serializer']);
+const CATEGORY_SET = new Set<SubagentErrorCategory>(
+  Object.keys(RETRYABLE_DEFAULTS) as SubagentErrorCategory[],
+);
+const PHASE_SET = new Set<SubagentErrorPhase>([
+  'runner_invoke',
+  'runner_session',
+  'assistant_final',
+  'tool_execution',
+  'manager',
+  'user',
+  'serializer',
+]);
 const ROLE_SET = new Set<SubagentErrorAttemptRole>(['primary', 'fallback']);
 
-function limitCodePoints(value: string | undefined, limit: number): string | undefined {
+function limitCodePoints(
+  value: string | undefined,
+  limit: number,
+): string | undefined {
   if (value === undefined) return undefined;
   const chars = Array.from(value);
-  return chars.length > limit ? `${chars.slice(0, Math.max(0, limit - 1)).join('')}…` : value;
+  return chars.length > limit
+    ? `${chars.slice(0, Math.max(0, limit - 1)).join('')}…`
+    : value;
 }
 
-function asciiSafe(value: string | undefined, limit: number): string | undefined {
+function asciiSafe(
+  value: string | undefined,
+  limit: number,
+): string | undefined {
   if (!value) return undefined;
   const bounded = limitCodePoints(value.replace(/[^\x20-\x7E]+/g, '_'), limit);
   return bounded || undefined;
 }
 
-function redactText(value: string | undefined, limit: number): string | undefined {
+function redactText(
+  value: string | undefined,
+  limit: number,
+): string | undefined {
   if (!value) return undefined;
   let text = sanitizeInteractionTransportText(String(value));
   text = text
-    .replace(/authorization\s*:\s*bearer\s+[A-Za-z0-9._\-]+/gi, 'Authorization: [redacted]')
+    .replace(
+      /authorization\s*:\s*bearer\s+[A-Za-z0-9._\-]+/gi,
+      'Authorization: [redacted]',
+    )
     .replace(/bearer\s+[A-Za-z0-9._\-]+/gi, 'Bearer [redacted]')
     .replace(/\b(sk|pk|rk)-[A-Za-z0-9._\-]+\b/g, '[redacted]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted]')
-    .replace(/(?:^|\s)(?:\/[A-Za-z0-9._-]+)+/g, (match) => match.replace(/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*/g, '[redacted]'))
-    .replace(/\b(?:prompt|system prompt|user prompt|prompt text)\s*:[^|\n\r]*/gi, '[redacted]')
+    .replace(/(?:^|\s)(?:\/[A-Za-z0-9._-]+)+/g, (match) =>
+      match.replace(/\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*/g, '[redacted]'),
+    )
+    .replace(
+      /\b(?:prompt|system prompt|user prompt|prompt text)\s*:[^|\n\r]*/gi,
+      '[redacted]',
+    )
     .replace(/\b(?:system|user|assistant)\s*:[^|\n\r]*/gi, '[redacted]')
     .replace(/SECRET_FILE_BODY[\w-]*/g, '[redacted]')
     .replace(/file contents?[^|\n\r]*/gi, '[redacted]')
@@ -66,20 +101,22 @@ function redactText(value: string | undefined, limit: number): string | undefine
 }
 
 function normalizeCategory(value: unknown): SubagentErrorCategory {
-  return typeof value === 'string' && CATEGORY_SET.has(value as SubagentErrorCategory)
-    ? value as SubagentErrorCategory
+  return typeof value === 'string' &&
+    CATEGORY_SET.has(value as SubagentErrorCategory)
+    ? (value as SubagentErrorCategory)
     : 'unknown';
 }
 
 function normalizePhase(value: unknown): SubagentErrorPhase | undefined {
   return typeof value === 'string' && PHASE_SET.has(value as SubagentErrorPhase)
-    ? value as SubagentErrorPhase
+    ? (value as SubagentErrorPhase)
     : undefined;
 }
 
 function normalizeRole(value: unknown): SubagentErrorAttemptRole | undefined {
-  return typeof value === 'string' && ROLE_SET.has(value as SubagentErrorAttemptRole)
-    ? value as SubagentErrorAttemptRole
+  return typeof value === 'string' &&
+    ROLE_SET.has(value as SubagentErrorAttemptRole)
+    ? (value as SubagentErrorAttemptRole)
     : undefined;
 }
 
@@ -98,23 +135,37 @@ function normalizeUsage(value: unknown): UsageStats | undefined {
 }
 
 function normalizeDetails(value: unknown): Record<string, string> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
   const details: Record<string, string> = {};
-  for (const [rawKey, rawValue] of Object.entries(value).slice(0, DETAILS_LIMIT)) {
+  for (const [rawKey, rawValue] of Object.entries(value).slice(
+    0,
+    DETAILS_LIMIT,
+  )) {
     const key = asciiSafe(rawKey, DETAILS_KEY_LIMIT);
-    const text = redactText(typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue), DETAILS_VALUE_LIMIT);
+    const text = redactText(
+      typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue),
+      DETAILS_VALUE_LIMIT,
+    );
     if (!key || !text) continue;
     details[key] = text;
   }
   return Object.keys(details).length ? details : undefined;
 }
 
-function safeMessage(category: SubagentErrorCategory, details?: Record<string, string>): string {
+function safeMessage(
+  category: SubagentErrorCategory,
+  details?: Record<string, string>,
+): string {
   switch (category) {
     case 'total_timeout':
-      return details?.timeout_ms ? `timed out after ${details.timeout_ms}ms` : 'timed out';
+      return details?.timeout_ms
+        ? `timed out after ${details.timeout_ms}ms`
+        : 'timed out';
     case 'stall_timeout':
-      return details?.stall_timeout_ms ? `Subagent stalled for ${details.stall_timeout_ms}ms without final response.` : 'Subagent stalled without final response.';
+      return details?.stall_timeout_ms
+        ? `Subagent stalled for ${details.stall_timeout_ms}ms without final response.`
+        : 'Subagent stalled without final response.';
     case 'cancelled':
       return `Subagent cancelled: ${details?.cancel_reason ?? 'cancelled'}`;
     case 'interrupted':
@@ -134,7 +185,11 @@ function safeMessage(category: SubagentErrorCategory, details?: Record<string, s
   }
 }
 
-export function normalizeErrorMetadata(input: Partial<SubagentErrorMetadata> & { category: SubagentErrorCategory } | Partial<SubagentErrorMetadata>): SubagentErrorMetadata {
+export function normalizeErrorMetadata(
+  input:
+    | (Partial<SubagentErrorMetadata> & { category: SubagentErrorCategory })
+    | Partial<SubagentErrorMetadata>,
+): SubagentErrorMetadata {
   try {
     return normalizeErrorMetadataInternal(input, 0);
   } catch {
@@ -149,37 +204,54 @@ export function normalizeErrorMetadata(input: Partial<SubagentErrorMetadata> & {
   }
 }
 
-function normalizeErrorMetadataInternal(input: Partial<SubagentErrorMetadata> | undefined, depth: number): SubagentErrorMetadata {
+function normalizeErrorMetadataInternal(
+  input: Partial<SubagentErrorMetadata> | undefined,
+  depth: number,
+): SubagentErrorMetadata {
   const category = normalizeCategory(input?.category);
   const details = normalizeDetails(input?.details);
-  const message = redactText(typeof input?.message === 'string' ? input.message : safeMessage(category, details), MESSAGE_LIMIT)
-    ?? safeMessage(category, details);
+  const message =
+    redactText(
+      typeof input?.message === 'string'
+        ? input.message
+        : safeMessage(category, details),
+      MESSAGE_LIMIT,
+    ) ?? safeMessage(category, details);
   const attempts = Array.isArray(input?.attempts)
-    ? input.attempts
-        .slice(0, ATTEMPTS_LIMIT)
-        .map((attempt, index) => {
-          const normalized = normalizeErrorMetadataInternal(attempt, depth + 1);
-          const role = normalizeRole(attempt?.role) ?? (index === 0 ? 'primary' : 'fallback');
-          return { ...normalized, role };
-        })
+    ? input.attempts.slice(0, ATTEMPTS_LIMIT).map((attempt, index) => {
+        const normalized = normalizeErrorMetadataInternal(attempt, depth + 1);
+        const role =
+          normalizeRole(attempt?.role) ??
+          (index === 0 ? 'primary' : 'fallback');
+        return { ...normalized, role };
+      })
     : undefined;
-  const cause = depth < CAUSE_DEPTH_LIMIT && input?.cause
-    ? normalizeErrorMetadataInternal(input.cause, depth + 1)
-    : undefined;
+  const cause =
+    depth < CAUSE_DEPTH_LIMIT && input?.cause
+      ? normalizeErrorMetadataInternal(input.cause, depth + 1)
+      : undefined;
   return {
     version: 1,
     category,
     message,
-    retryable: typeof input?.retryable === 'boolean' ? input.retryable : RETRYABLE_DEFAULTS[category],
+    retryable:
+      typeof input?.retryable === 'boolean'
+        ? input.retryable
+        : RETRYABLE_DEFAULTS[category],
     phase: normalizePhase(input?.phase),
-    code: asciiSafe(typeof input?.code === 'string' ? input.code : category, CODE_LIMIT),
+    code: asciiSafe(
+      typeof input?.code === 'string' ? input.code : category,
+      CODE_LIMIT,
+    ),
     role: normalizeRole(input?.role),
-    source: input?.source ? {
-      provider: redactText(input.source.provider, SOURCE_LIMIT),
-      model: redactText(input.source.model, SOURCE_LIMIT),
-      tool: redactText(input.source.tool, SOURCE_LIMIT),
-      operation: redactText(input.source.operation, SOURCE_LIMIT),
-    } : undefined,
+    source: input?.source
+      ? {
+          provider: redactText(input.source.provider, SOURCE_LIMIT),
+          model: redactText(input.source.model, SOURCE_LIMIT),
+          tool: redactText(input.source.tool, SOURCE_LIMIT),
+          operation: redactText(input.source.operation, SOURCE_LIMIT),
+        }
+      : undefined,
     cause,
     attempts: attempts?.length ? attempts : undefined,
     usage_at_failure: normalizeUsage(input?.usage_at_failure),
@@ -198,23 +270,49 @@ export function deriveErrorString(metadata: SubagentErrorMetadata): string {
     : safeMessage(normalized.category, normalized.details);
 }
 
-export function classifyThrownError(error: unknown, context: { phase?: SubagentErrorPhase; provider?: string; model?: string; operation?: string; retryable?: boolean } = {}): SubagentErrorMetadata {
-  const rawMessage = error instanceof Error
-    ? error.message
-    : typeof error === 'string'
-      ? error
-      : error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string'
-        ? String((error as { message: unknown }).message)
-        : String(error);
+export function classifyThrownError(
+  error: unknown,
+  context: {
+    phase?: SubagentErrorPhase;
+    provider?: string;
+    model?: string;
+    operation?: string;
+    retryable?: boolean;
+  } = {},
+): SubagentErrorMetadata {
+  const rawMessage =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : error &&
+            typeof error === 'object' &&
+            typeof (error as { message?: unknown }).message === 'string'
+          ? String((error as { message: unknown }).message)
+          : String(error);
   const message = rawMessage || 'Unknown subagent failure';
   const lower = message.toLowerCase();
-  const errorClass = error instanceof Error ? error.constructor.name : typeof error;
+  const errorClass =
+    error instanceof Error ? error.constructor.name : typeof error;
   let category: SubagentErrorCategory = 'unknown';
-  if (!(error instanceof Error) && typeof error !== 'string') category = 'malformed_thrown_value';
-  else if (/auth|api key|invalid key|unauthori[sz]ed|forbidden|401|403|credential/.test(lower)) category = 'provider_auth_error';
-  else if (/context|token|maximum|length/.test(lower)) category = 'context_overflow';
-  else if (/rate.?limit|quota|429|too many requests/.test(lower)) category = 'provider_rate_limit';
-  else if (/econnreset|enotfound|network|socket|timeout|timed out|connection/.test(lower)) category = 'provider_network_error';
+  if (!(error instanceof Error) && typeof error !== 'string')
+    category = 'malformed_thrown_value';
+  else if (
+    /auth|api key|invalid key|unauthori[sz]ed|forbidden|401|403|credential/.test(
+      lower,
+    )
+  )
+    category = 'provider_auth_error';
+  else if (/context|token|maximum|length/.test(lower))
+    category = 'context_overflow';
+  else if (/rate.?limit|quota|429|too many requests/.test(lower))
+    category = 'provider_rate_limit';
+  else if (
+    /econnreset|enotfound|network|socket|timeout|timed out|connection/.test(
+      lower,
+    )
+  )
+    category = 'provider_network_error';
   else if (error instanceof Error) category = 'provider_api_error';
   return normalizeErrorMetadata({
     category,
@@ -239,17 +337,21 @@ export function classifyAssistantFailure(input: {
   model?: string;
 }): SubagentErrorMetadata | undefined {
   if (input.stopReason === 'error' || input.errorMessage) {
-    return classifyThrownError(new Error(input.errorMessage ?? 'Assistant error'), {
-      phase: 'assistant_final',
-      provider: input.provider,
-      model: input.model,
-      operation: 'session.prompt',
-    });
+    return classifyThrownError(
+      new Error(input.errorMessage ?? 'Assistant error'),
+      {
+        phase: 'assistant_final',
+        provider: input.provider,
+        model: input.model,
+        operation: 'session.prompt',
+      },
+    );
   }
   if (input.sawToolActivity) {
     return normalizeErrorMetadata({
       category: 'empty_response_after_tools',
-      message: 'Subagent completed tool execution but did not produce a final response.',
+      message:
+        'Subagent completed tool execution but did not produce a final response.',
       phase: 'assistant_final',
       partial_result_available: false,
     });
@@ -262,30 +364,42 @@ export function classifyAssistantFailure(input: {
   });
 }
 
-export function classifyFallbackFailure(primary: SubagentErrorMetadata, fallback?: SubagentErrorMetadata): SubagentErrorMetadata {
+export function classifyFallbackFailure(
+  primary: SubagentErrorMetadata,
+  fallback?: SubagentErrorMetadata,
+): SubagentErrorMetadata {
   return normalizeErrorMetadata({
     category: fallback ? 'fallback_failed' : 'unknown_fallback',
-    message: fallback ? 'Subagent fallback failed.' : 'Subagent fallback unavailable after model failure.',
+    message: fallback
+      ? 'Subagent fallback failed.'
+      : 'Subagent fallback unavailable after model failure.',
     retryable: false,
     partial_result_available: false,
     attempts: fallback
-      ? [{ ...normalizeErrorMetadata(primary), role: 'primary' }, { ...normalizeErrorMetadata(fallback), role: 'fallback' }]
+      ? [
+          { ...normalizeErrorMetadata(primary), role: 'primary' },
+          { ...normalizeErrorMetadata(fallback), role: 'fallback' },
+        ]
       : [{ ...normalizeErrorMetadata(primary), role: 'primary' }],
   });
 }
 
-export function enrichErrorMetadata(metadata: SubagentErrorMetadata, snapshot: {
-  usage_at_failure?: UsageStats;
-  last_activity?: string;
-  partial_result_available?: boolean;
-  task_id?: string;
-  parent_session_id?: string;
-}): SubagentErrorMetadata {
+export function enrichErrorMetadata(
+  metadata: SubagentErrorMetadata,
+  snapshot: {
+    usage_at_failure?: UsageStats;
+    last_activity?: string;
+    partial_result_available?: boolean;
+    task_id?: string;
+    parent_session_id?: string;
+  },
+): SubagentErrorMetadata {
   return normalizeErrorMetadata({
     ...metadata,
     usage_at_failure: snapshot.usage_at_failure ?? metadata.usage_at_failure,
     last_activity: snapshot.last_activity ?? metadata.last_activity,
-    partial_result_available: snapshot.partial_result_available ?? metadata.partial_result_available,
+    partial_result_available:
+      snapshot.partial_result_available ?? metadata.partial_result_available,
     task_id: snapshot.task_id ?? metadata.task_id,
     parent_session_id: snapshot.parent_session_id ?? metadata.parent_session_id,
   });
@@ -293,27 +407,37 @@ export function enrichErrorMetadata(metadata: SubagentErrorMetadata, snapshot: {
 
 export function serializeErrorMetadata(metadata: unknown): string | null {
   try {
-    return JSON.stringify(normalizeErrorMetadata(metadata as Partial<SubagentErrorMetadata>));
+    return JSON.stringify(
+      normalizeErrorMetadata(metadata as Partial<SubagentErrorMetadata>),
+    );
   } catch {
-    return JSON.stringify(normalizeErrorMetadata({
-      category: 'serialization_failure',
-      message: 'Subagent error metadata could not be serialized safely.',
-      phase: 'serializer',
-      partial_result_available: false,
-    }));
+    return JSON.stringify(
+      normalizeErrorMetadata({
+        category: 'serialization_failure',
+        message: 'Subagent error metadata could not be serialized safely.',
+        phase: 'serializer',
+        partial_result_available: false,
+      }),
+    );
   }
 }
 
-export function parseErrorMetadata(json: unknown): SubagentErrorMetadata | undefined {
+export function parseErrorMetadata(
+  json: unknown,
+): SubagentErrorMetadata | undefined {
   try {
     if (typeof json !== 'string' || !json.trim()) return undefined;
-    return normalizeErrorMetadata(JSON.parse(json) as Partial<SubagentErrorMetadata>);
+    return normalizeErrorMetadata(
+      JSON.parse(json) as Partial<SubagentErrorMetadata>,
+    );
   } catch {
     return undefined;
   }
 }
 
-export function safeErrorMetadataDetails(metadata: SubagentErrorMetadata): Record<string, unknown> {
+export function safeErrorMetadataDetails(
+  metadata: SubagentErrorMetadata,
+): Record<string, unknown> {
   const normalized = normalizeErrorMetadata(metadata);
   return {
     version: normalized.version,

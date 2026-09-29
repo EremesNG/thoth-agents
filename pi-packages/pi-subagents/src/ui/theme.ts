@@ -5,26 +5,26 @@ export const BOLD = '\x1b[1m';
 export const DIM = '\x1b[2m';
 
 // Concrete electric accent tokens:
-export const CYAN = '\x1b[1;38;2;0;229;255m';       // Electric Cyan (#00e5ff)
-export const ARCH_BLUE = '\x1b[1;38;2;23;147;209m';  // Arch Blue (#1793d1)
+export const CYAN = '\x1b[1;38;2;0;229;255m'; // Electric Cyan (#00e5ff)
+export const ARCH_BLUE = '\x1b[1;38;2;23;147;209m'; // Arch Blue (#1793d1)
 export const BLUE = ARCH_BLUE;
-export const VIOLET = '\x1b[1;38;2;153;92;255m';    // Cyber Violet (#995cff)
-export const PINK = '\x1b[1;38;2;255;45;247m';      // Neon Pink (#ff2df7)
-export const LIME = '\x1b[1;38;2;102;255;102m';     // Neon Lime (#66ff66)
-export const AMBER = '\x1b[1;38;2;255;184;77m';     // Electric Amber (#ffb84d)
-export const ORANGE = '\x1b[1;38;2;255;140;0m';     // Neon Orange (#ff8c00)
-export const RED = '\x1b[1;38;2;255;77;109m';       // Cyber Red (#ff4d6d)
+export const VIOLET = '\x1b[1;38;2;153;92;255m'; // Cyber Violet (#995cff)
+export const PINK = '\x1b[1;38;2;255;45;247m'; // Neon Pink (#ff2df7)
+export const LIME = '\x1b[1;38;2;102;255;102m'; // Neon Lime (#66ff66)
+export const AMBER = '\x1b[1;38;2;255;184;77m'; // Electric Amber (#ffb84d)
+export const ORANGE = '\x1b[1;38;2;255;140;0m'; // Neon Orange (#ff8c00)
+export const RED = '\x1b[1;38;2;255;77;109m'; // Cyber Red (#ff4d6d)
 
 // Arch Linux icon token:
 export const ARCH_ICON = '󰣇';
 
 // Neon gradient color stops for working indicator animation:
 const NEON_COLOR_STOPS: [number, number, number][] = [
-  [0, 229, 255],   // Electric Cyan (#00e5ff)
-  [23, 147, 209],  // Arch Blue (#1793d1)
-  [153, 92, 255],  // Cyber Violet (#995cff)
-  [255, 45, 247],  // Neon Pink (#ff2df7)
-  [255, 184, 77],  // Electric Amber (#ffb84d)
+  [0, 229, 255], // Electric Cyan (#00e5ff)
+  [23, 147, 209], // Arch Blue (#1793d1)
+  [153, 92, 255], // Cyber Violet (#995cff)
+  [255, 45, 247], // Neon Pink (#ff2df7)
+  [255, 184, 77], // Electric Amber (#ffb84d)
   [102, 255, 102], // Neon Green / Lime (#66ff66)
 ];
 
@@ -47,7 +47,11 @@ export function createArchWorkingFrames(totalFrames = 12): string[] {
     const stopIndex = Math.floor(colorProgress * NEON_COLOR_STOPS.length);
     const nextStopIndex = (stopIndex + 1) % NEON_COLOR_STOPS.length;
     const stopT = colorProgress * NEON_COLOR_STOPS.length - stopIndex;
-    const baseColor = interpolateColor(NEON_COLOR_STOPS[stopIndex]!, NEON_COLOR_STOPS[nextStopIndex]!, stopT);
+    const baseColor = interpolateColor(
+      NEON_COLOR_STOPS[stopIndex]!,
+      NEON_COLOR_STOPS[nextStopIndex]!,
+      stopT,
+    );
 
     const wave = Math.sin(colorProgress * Math.PI * 2);
     const normWave = (wave + 1) / 2; // 0..1
@@ -73,9 +77,10 @@ export function createArchWorkingFrames(totalFrames = 12): string[] {
 export const ARCH_WORKING_FRAMES = createArchWorkingFrames(12);
 
 export function getArchNeonWorkingIcon(frame?: number): string {
-  const frameIndex = frame !== undefined
-    ? Math.abs(Math.floor(frame)) % ARCH_WORKING_FRAMES.length
-    : Math.floor((Date.now() / 60) % ARCH_WORKING_FRAMES.length);
+  const frameIndex =
+    frame !== undefined
+      ? Math.abs(Math.floor(frame)) % ARCH_WORKING_FRAMES.length
+      : Math.floor((Date.now() / 60) % ARCH_WORKING_FRAMES.length);
   return ARCH_WORKING_FRAMES[frameIndex] ?? `${CYAN}${ARCH_ICON}${RESET}`;
 }
 
@@ -104,19 +109,32 @@ export function cyberSeparator(color = VIOLET): string {
   return `${color}${CYBER_SEPARATOR}${RESET}`;
 }
 
-export function joinWithSeparator(segments: string[], sep = ` ${cyberSeparator()} `): string {
+export function joinWithSeparator(
+  segments: string[],
+  sep = ` ${cyberSeparator()} `,
+): string {
   return segments.filter(Boolean).join(sep);
 }
 
 // Pi theme wrappers with graceful fallback to Arch-electric tokens:
-export function themeFg(theme: any, colorKey: string, text: string, fallbackColor = ''): string {
+export function themeFg(
+  theme: any,
+  colorKey: string,
+  text: string,
+  fallbackColor = '',
+): string {
   if (typeof theme?.fg === 'function') {
     return theme.fg(colorKey, text);
   }
   return fallbackColor ? `${fallbackColor}${text}${RESET}` : text;
 }
 
-export function themeBg(theme: any, colorKey: string, text: string, fallbackColor = ''): string {
+export function themeBg(
+  theme: any,
+  colorKey: string,
+  text: string,
+  fallbackColor = '',
+): string {
   if (typeof theme?.bg === 'function') {
     return theme.bg(colorKey, text);
   }
@@ -192,7 +210,11 @@ export function getStatusColorToken(status: string): string {
   }
 }
 
-export function themeStatus(theme: any, status: string, customLabel?: string): string {
+export function themeStatus(
+  theme: any,
+  status: string,
+  customLabel?: string,
+): string {
   const label = customLabel ?? status;
   const s = status.toLowerCase();
   if (s === 'completed' || s === 'done' || s === 'success') {
@@ -214,8 +236,17 @@ export function themeStatus(theme: any, status: string, customLabel?: string): s
 }
 
 // Visible-width-safe string manipulation helpers:
-export { stripAnsi, visibleWidth, truncateToWidth } from '../render/text-width.js';
-import { stripAnsi, visibleWidth, truncateToWidth } from '../render/text-width.js';
+export {
+  stripAnsi,
+  truncateToWidth,
+  visibleWidth,
+} from '../render/text-width.js';
+
+import {
+  stripAnsi,
+  truncateToWidth,
+  visibleWidth,
+} from '../render/text-width.js';
 
 export function padToWidth(text: string, width: number): string {
   const clipped = truncateToWidth(text, width, '');
@@ -246,12 +277,17 @@ export function cardTopBorder(
   borderColor: string = CYAN,
   titleColor: string = CYAN,
 ): string {
-  const cleanAction = actionOrTarget ? actionOrTarget.replace(/[\r\n]+/g, ' ').trim() : undefined;
+  const cleanAction = actionOrTarget
+    ? actionOrTarget.replace(/[\r\n]+/g, ' ').trim()
+    : undefined;
   let label = cleanAction ? `${toolName} [${cleanAction}]` : toolName;
 
   const maxTitleWidth = Math.max(4, innerWidth - 4);
   if (visibleWidth(label) + 2 > maxTitleWidth && cleanAction) {
-    const maxActionWidth = Math.max(3, maxTitleWidth - visibleWidth(toolName) - 5);
+    const maxActionWidth = Math.max(
+      3,
+      maxTitleWidth - visibleWidth(toolName) - 5,
+    );
     const truncatedAction = truncateToWidth(cleanAction, maxActionWidth, '…');
     label = `${toolName} [${truncatedAction}]`;
   }
@@ -267,19 +303,33 @@ export function cardTopBorder(
   return `${electric(borderColor, '╭')}${electric(borderColor, '─'.repeat(leftDash))}${electric(titleColor, titleText)}${electric(borderColor, '─'.repeat(rightDash))}${electric(borderColor, '╮')}`;
 }
 
-export function cardBottomBorder(innerWidth: number, borderColor: string = CYAN): string {
+export function cardBottomBorder(
+  innerWidth: number,
+  borderColor: string = CYAN,
+): string {
   return `${electric(borderColor, '╰')}${electric(borderColor, '─'.repeat(innerWidth))}${electric(borderColor, '╯')}`;
 }
 
-export function boxLine(content: string, innerWidth: number, borderColor: string = CYAN): string {
+export function boxLine(
+  content: string,
+  innerWidth: number,
+  borderColor: string = CYAN,
+): string {
   const innerContentWidth = Math.max(0, innerWidth - 2);
   return `${electric(borderColor, '│')} ${padToWidth(content, innerContentWidth)} ${electric(borderColor, '│')}`;
 }
 
-export function metric(label: string, value: string | number, color: string): string {
+export function metric(
+  label: string,
+  value: string | number,
+  color: string,
+): string {
   return `${electric(DIM, label)} ${electric(color, String(value))}`;
 }
-export function subagentBadge(theme?: any, options?: { archIcon?: boolean }): string {
+export function subagentBadge(
+  theme?: any,
+  options?: { archIcon?: boolean },
+): string {
   const icon = options?.archIcon !== false ? `${ARCH_ICON} ` : '';
   const label = `${icon}subagent`;
   if (typeof theme?.fg === 'function') {
@@ -325,7 +375,10 @@ export function frameBox(
   }
 
   const flatLines = lines.flatMap((l) => l.split('\n'));
-  const middle = flatLines.map((l) => `${borderFn(BOX_CHARS.vertical)} ${padToWidth(l, contentWidth)} ${borderFn(BOX_CHARS.vertical)}`);
+  const middle = flatLines.map(
+    (l) =>
+      `${borderFn(BOX_CHARS.vertical)} ${padToWidth(l, contentWidth)} ${borderFn(BOX_CHARS.vertical)}`,
+  );
   const bottom = `${borderFn(BOX_CHARS.bottomLeft)}${borderFn(BOX_CHARS.horizontal.repeat(innerWidth))}${borderFn(BOX_CHARS.bottomRight)}`;
 
   return [top, ...middle, bottom];

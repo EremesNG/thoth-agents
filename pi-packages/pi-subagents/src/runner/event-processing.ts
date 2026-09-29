@@ -1,13 +1,45 @@
 import { writeSubagentsDebugLog } from '../debug.js';
-import { consumeLatestInteractionRequest, interactionRequestFromCandidate, sanitizeInteractionTransportText } from '../interaction-channel.js';
-import { registerSubagentRuntimeToolDefinition, resolveSubagentExternalToolDefinitionFromInfo } from '../thread-view.js';
-import { SubagentStructuredError, classifyAssistantFailure, classifyThrownError, normalizeErrorMetadata } from '../error-metadata.js';
+import {
+  classifyAssistantFailure,
+  classifyThrownError,
+  normalizeErrorMetadata,
+  SubagentStructuredError,
+} from '../error-metadata.js';
 import type { SubagentInteractionRequest } from '../interaction-channel.js';
-import type { ThinkingEffort, SubagentErrorMetadata, SubagentLiveActivity, SubagentLiveActivityProjection, SubagentThreadSnapshot, UsageStats } from '../types.js';
-import { ThreadSnapshotBuilder } from './snapshot-builder.js';
+import {
+  consumeLatestInteractionRequest,
+  interactionRequestFromCandidate,
+  sanitizeInteractionTransportText,
+} from '../interaction-channel.js';
+import {
+  registerSubagentRuntimeToolDefinition,
+  resolveSubagentExternalToolDefinitionFromInfo,
+} from '../thread-view.js';
+import type {
+  SubagentActivity,
+  SubagentErrorMetadata,
+  SubagentLiveActivity,
+  SubagentLiveActivityProjection,
+  SubagentRuntimeMetrics,
+  SubagentThreadSnapshot,
+  UsageStats,
+} from '../types.js';
+import {
+  assistantAccountingMessage,
+  SubagentRuntimeMetricsTracker,
+  ThreadSnapshotBuilder,
+} from './snapshot-builder.js';
 
 function emptyUsage(): UsageStats {
-  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 };
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    cost: 0,
+    contextTokens: 0,
+    turns: 0,
+  };
 }
 
 function addUsage(total: UsageStats, usage: any): UsageStats {
@@ -18,7 +50,7 @@ function addUsage(total: UsageStats, usage: any): UsageStats {
     cacheWrite: total.cacheWrite + (usage?.cacheWrite ?? 0),
     cost: total.cost + (usage?.cost?.total ?? usage?.cost ?? 0),
     contextTokens: usage?.totalTokens ?? total.contextTokens,
-    turns: total.turns + 1,
+    turns: total.turns,
   };
 }
 
@@ -29,13 +61,20 @@ function summarizeInteractionCarrier(value: unknown): unknown {
     keys: Object.keys(record),
     hasInteractionRequest: Object.hasOwn(record, 'interactionRequest'),
     hasInteractionRequestSnake: Object.hasOwn(record, 'interaction_request'),
-    details: record.details && typeof record.details === 'object' ? summarizeInteractionCarrier(record.details) : undefined,
+    details:
+      record.details && typeof record.details === 'object'
+        ? summarizeInteractionCarrier(record.details)
+        : undefined,
   };
 }
 
 function shortJson(value: unknown, limit = 900): string {
   try {
-    const text = JSON.stringify(value, (_key, val) => typeof val === 'string' && val.length > 300 ? `${val.slice(0, 300)}…` : val);
+    const text = JSON.stringify(value, (_key, val) =>
+      typeof val === 'string' && val.length > 300
+        ? `${val.slice(0, 300)}…`
+        : val,
+    );
     return text.length > limit ? `${text.slice(0, limit)}…` : text;
   } catch {
     return '[unserializable]';
@@ -52,41 +91,65 @@ function formatToolCall(name: string, args: any): string {
     const file = input.path ?? input.file_path ?? input.file ?? '';
     const offset = input.offset ?? 1;
     const limit = input.limit;
-    const range = limit ? `:${offset}-${offset + limit - 1}` : offset && offset !== 1 ? `:${offset}` : '';
+    const range = limit
+      ? `:${offset}-${offset + limit - 1}`
+      : offset && offset !== 1
+        ? `:${offset}`
+        : '';
     return `read ${file}${range}`.trim();
   }
-  if (name === 'bash') return `bash ${String(input.command ?? '').split('\n')[0] ?? ''}`.trim();
-  if (name === 'edit') return `edit ${input.path ?? input.file_path ?? ''}`.trim();
-  if (name === 'write') return `write ${input.path ?? input.file_path ?? ''}`.trim();
+  if (name === 'bash')
+    return `bash ${String(input.command ?? '').split('\n')[0] ?? ''}`.trim();
+  if (name === 'edit')
+    return `edit ${input.path ?? input.file_path ?? ''}`.trim();
+  if (name === 'write')
+    return `write ${input.path ?? input.file_path ?? ''}`.trim();
   if (name.startsWith('memory_')) return name;
   return `${name} ${shortJson(input)}`.trim();
 }
 
 function eventTranscript(event: any): string {
   const messageEvent = event?.assistantMessageEvent;
-  const delta = messageEvent?.type === 'text_delta' && typeof messageEvent.delta === 'string'
-    ? messageEvent.delta
-    : undefined;
-  if (event?.type === 'message_update' && typeof delta === 'string') return sanitizeInteractionTransportText(delta);
+  const delta =
+    messageEvent?.type === 'text_delta' &&
+    typeof messageEvent.delta === 'string'
+      ? messageEvent.delta
+      : undefined;
+  if (event?.type === 'message_update' && typeof delta === 'string')
+    return sanitizeInteractionTransportText(delta);
 
   if (event?.type === 'tool_execution_start') {
     const name = event.toolName ?? 'tool';
     return `\n\n${formatToolCall(name, event.args ?? event.input ?? {})}\n`;
   }
-  if (event?.type === 'tool_execution_update') return event.partialResult ? `\n${sanitizeInteractionTransportText(shortJson(event.partialResult, 500))}\n` : '';
-  if (event?.type === 'tool_execution_end') return `\n${event.isError ? 'failed' : 'done'}\n`;
-  if (event?.type === 'message_start' && event.message?.role === 'assistant') return '\n\nPreparing for response\n\n';
+  if (event?.type === 'tool_execution_update')
+    return event.partialResult
+      ? `\n${sanitizeInteractionTransportText(shortJson(event.partialResult, 500))}\n`
+      : '';
+  if (event?.type === 'tool_execution_end')
+    return `\n${event.isError ? 'failed' : 'done'}\n`;
+  if (event?.type === 'message_start' && event.message?.role === 'assistant')
+    return '\n\nPreparing for response\n\n';
   if (event?.type === 'auto_retry_start') return '\n\nauto retry start\n';
   if (event?.type === 'auto_retry_end') return '\n\nauto retry end\n';
   if (event?.type === 'agent_settled') return '\n\nagent settled\n';
   return '';
 }
 
-function activityMessage(event: any, transcriptChunk: string): string | undefined {
+function activityMessage(
+  event: any,
+  transcriptChunk: string,
+): string | undefined {
   if (!transcriptChunk.trim()) return undefined;
-  if (event?.type === 'message_start' && event.message?.role === 'assistant') return 'preparing response';
-  if (event?.type === 'tool_execution_start') return formatToolCall(event.toolName ?? 'tool', event.args ?? event.input ?? {});
-  if (event?.type === 'tool_execution_end') return event.isError ? 'tool failed' : 'tool completed';
+  if (event?.type === 'message_start' && event.message?.role === 'assistant')
+    return 'preparing response';
+  if (event?.type === 'tool_execution_start')
+    return formatToolCall(
+      event.toolName ?? 'tool',
+      event.args ?? event.input ?? {},
+    );
+  if (event?.type === 'tool_execution_end')
+    return event.isError ? 'tool failed' : 'tool completed';
   if (event?.type === 'tool_execution_update') return 'tool update';
   if (event?.type === 'auto_retry_start') return 'auto retry start';
   if (event?.type === 'auto_retry_end') return 'auto retry end';
@@ -94,26 +157,42 @@ function activityMessage(event: any, transcriptChunk: string): string | undefine
   return undefined;
 }
 
-function extractStructuredInteractionRequest(value: unknown): SubagentInteractionRequest | undefined {
+function extractStructuredInteractionRequest(
+  value: unknown,
+): SubagentInteractionRequest | undefined {
   return interactionRequestFromCandidate(value);
 }
 
-function lastAssistantFailure(messages: any[]): { stopReason?: string; errorMessage?: string } | undefined {
+function lastAssistantFailure(
+  messages: any[],
+): { stopReason?: string; errorMessage?: string } | undefined {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
     if (message?.role !== 'assistant') continue;
-    if (message?.stopReason === 'error' || message?.stopReason === 'aborted' || typeof message?.errorMessage === 'string') {
-      return { stopReason: message.stopReason, errorMessage: message.errorMessage };
+    if (
+      message?.stopReason === 'error' ||
+      message?.stopReason === 'aborted' ||
+      typeof message?.errorMessage === 'string'
+    ) {
+      return {
+        stopReason: message.stopReason,
+        errorMessage: message.errorMessage,
+      };
     }
   }
   return undefined;
 }
 
 function eventToolCallId(event: any): string | undefined {
-  return event?.toolCallId ?? event?.tool_call_id ?? event?.toolUseId ?? event?.id;
+  return (
+    event?.toolCallId ?? event?.tool_call_id ?? event?.toolUseId ?? event?.id
+  );
 }
 
-function toolDefinitionFromSession(session: any, name: string | undefined): unknown {
+function toolDefinitionFromSession(
+  session: any,
+  name: string | undefined,
+): unknown {
   if (!name) return undefined;
   const direct = session.getToolDefinition?.(name);
   if (direct) return direct;
@@ -121,13 +200,18 @@ function toolDefinitionFromSession(session: any, name: string | undefined): unkn
     const allTools = session.getAllTools?.();
     if (Array.isArray(allTools)) {
       const info = allTools.find((tool) => tool?.name === name);
-      return info ? (resolveSubagentExternalToolDefinitionFromInfo(name, info) ?? info) : undefined;
+      return info
+        ? (resolveSubagentExternalToolDefinitionFromInfo(name, info) ?? info)
+        : undefined;
     }
   } catch {}
   return undefined;
 }
 
-function activityLabel(kind: SubagentLiveActivity['kind'], toolNames: string[] = []): string {
+function activityLabel(
+  kind: SubagentLiveActivity['kind'],
+  toolNames: string[] = [],
+): string {
   if (kind === 'thinking') return 'thinking';
   if (kind === 'streaming_response') return 'streaming response';
   const suffix = toolNames.join(', ');
@@ -151,31 +235,53 @@ class LiveActivityReducer {
   }
 
   streaming(): SubagentLiveActivityProjection | undefined {
-    return this.push({ kind: 'streaming_response', label: activityLabel('streaming_response') });
+    return this.push({
+      kind: 'streaming_response',
+      label: activityLabel('streaming_response'),
+    });
   }
 
-  toolStart(id: string | undefined, name: string): SubagentLiveActivityProjection | undefined {
+  toolStart(
+    id: string | undefined,
+    name: string,
+  ): SubagentLiveActivityProjection | undefined {
     if (id) this.activeTools.set(id, name);
     return this.emitRunningTools();
   }
 
-  toolUpdate(id: string | undefined): SubagentLiveActivityProjection | undefined {
+  toolUpdate(
+    id: string | undefined,
+  ): SubagentLiveActivityProjection | undefined {
     if (id && !this.activeTools.has(id)) return undefined;
     return this.emitRunningTools();
   }
 
-  toolEnd(id: string | undefined, name: string, failed: boolean): SubagentLiveActivityProjection | undefined {
+  toolEnd(
+    id: string | undefined,
+    name: string,
+    failed: boolean,
+  ): SubagentLiveActivityProjection | undefined {
     if (id) this.activeTools.delete(id);
-    this.push({ kind: failed ? 'tool_failed' : 'tool_completed', label: activityLabel(failed ? 'tool_failed' : 'tool_completed', [name]), tool_names: [name] });
+    this.push({
+      kind: failed ? 'tool_failed' : 'tool_completed',
+      label: activityLabel(failed ? 'tool_failed' : 'tool_completed', [name]),
+      tool_names: [name],
+    });
     return this.activeTools.size ? this.emitRunningTools() : this.project();
   }
 
   private emitRunningTools(): SubagentLiveActivityProjection | undefined {
     const toolNames = [...this.activeTools.values()];
-    return this.push({ kind: 'tool_running', label: activityLabel('tool_running', toolNames), tool_names: toolNames });
+    return this.push({
+      kind: 'tool_running',
+      label: activityLabel('tool_running', toolNames),
+      tool_names: toolNames,
+    });
   }
 
-  private push(next: SubagentLiveActivity): SubagentLiveActivityProjection | undefined {
+  private push(
+    next: SubagentLiveActivity,
+  ): SubagentLiveActivityProjection | undefined {
     const last = this.trail.at(-1);
     if (!last || last.label !== next.label || last.kind !== next.kind) {
       this.trail.push(next);
@@ -190,8 +296,10 @@ function failingToolNames(snapshot?: SubagentThreadSnapshot): string[] {
   if (!snapshot?.items?.length) return [];
   const names = new Set<string>();
   for (const item of snapshot.items) {
-    if (item.type === 'tool' && item.status === 'failed' && item.name) names.add(item.name);
-    if (item.type === 'tool_result' && item.result?.isError && item.name) names.add(item.name);
+    if (item.type === 'tool' && item.status === 'failed' && item.name)
+      names.add(item.name);
+    if (item.type === 'tool_result' && item.result?.isError && item.name)
+      names.add(item.name);
     if (item.type === 'bash' && item.status === 'failed') names.add('bash');
   }
   return [...names].slice(0, 3);
@@ -201,12 +309,19 @@ function collectFinalizedAssistantText(messages: any[]): string {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
     if (message?.role !== 'assistant') continue;
-    if (message?.stopReason === 'error' || message?.stopReason === 'aborted' || typeof message?.errorMessage === 'string') return '';
+    if (
+      message?.stopReason === 'error' ||
+      message?.stopReason === 'aborted' ||
+      typeof message?.errorMessage === 'string'
+    )
+      return '';
     const content = message?.content;
     const parts: string[] = [];
     if (typeof content === 'string') parts.push(content);
     if (Array.isArray(content)) {
-      for (const part of content) if (part?.type === 'text' && typeof part.text === 'string') parts.push(part.text);
+      for (const part of content)
+        if (part?.type === 'text' && typeof part.text === 'string')
+          parts.push(part.text);
     }
     return parts.join('\n').trim();
   }
@@ -218,7 +333,7 @@ export async function promptWithInactivity(
   prompt: string,
   stallTimeoutMs: number,
   signal: AbortSignal,
-  onActivity?: (activity: { message: string; output?: string; prompt?: string; system_prompt?: string; transcript?: string; usage?: UsageStats; effort?: ThinkingEffort; thread_snapshot?: SubagentThreadSnapshot; interaction_request?: SubagentInteractionRequest; nested_session_path?: string; pi_retry_attempts?: number; live_activity?: SubagentLiveActivityProjection }) => void,
+  onActivity?: (activity: SubagentActivity) => void,
   delegatedContext?: string,
   cwd?: string,
   systemPrompt?: string,
@@ -228,127 +343,289 @@ export async function promptWithInactivity(
   attempt = 1,
   onQueuedMessageStart?: () => void,
   previousSnapshot?: SubagentThreadSnapshot,
-): Promise<{ result: string; usage: UsageStats; thread_snapshot?: SubagentThreadSnapshot; interaction_request?: SubagentInteractionRequest }> {
+): Promise<{
+  result: string;
+  usage: UsageStats;
+  runtime_metrics: SubagentRuntimeMetrics;
+  thread_snapshot?: SubagentThreadSnapshot;
+  interaction_request?: SubagentInteractionRequest;
+}> {
   let output = '';
-  const snapshotBuilder = new ThreadSnapshotBuilder(displayPrompt, delegatedContext, cwd, previousSnapshot, promptLabel, attempt);
+  const snapshotBuilder = new ThreadSnapshotBuilder(
+    displayPrompt,
+    delegatedContext,
+    cwd,
+    previousSnapshot,
+    promptLabel,
+    attempt,
+  );
   const liveActivity = new LiveActivityReducer();
   let latestInteractionRequest: SubagentInteractionRequest | undefined;
-  let usage = emptyUsage();
+  const runtimeMetricsTracker = new SubagentRuntimeMetricsTracker(session);
+  let usage = runtimeMetricsTracker.snapshot().usage ?? emptyUsage();
   let transcript = `${systemPrompt ? `# system prompt\n\n${systemPrompt}\n\n` : ''}# ${promptLabel === 'continuation' ? 'continuation prompt' : 'delegated prompt'}\n\n${prompt}\n\n# subagent execution\n`;
   let lastActivity = Date.now();
   let stalled = false;
-  const initialMessagesLength = promptLabel === 'continuation' && Array.isArray(session.messages) ? session.messages.length : 0;
+  const initialMessagesLength =
+    promptLabel === 'continuation' && Array.isArray(session.messages)
+      ? session.messages.length
+      : 0;
   let sawToolActivity = false;
   let piRetryAttempts = 0;
   let sawInitialUserMessage = false;
-  const activeToolCalls = new Map<string, { startTime: number; lastUpdate: number }>();
-  onActivity?.({ message: 'session started', prompt, system_prompt: systemPrompt, transcript, usage, thread_snapshot: snapshotBuilder.snapshot(), pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
-  const unsubscribe = session.subscribe?.((event: any) => {
-    lastActivity = Date.now();
-    debugLog(cwd, 'runner_event', {
-      type: event?.type,
-      messageRole: event?.message?.role,
-      assistantEventType: event?.assistantMessageEvent?.type,
-      hasDelta: typeof event?.assistantMessageEvent?.delta === 'string',
-      toolName: event?.toolName,
-      toolCallId: event?.toolCallId,
-      isError: event?.isError,
-      resultKeys: event?.result && typeof event.result === 'object' ? Object.keys(event.result) : undefined,
-      interactionCarrier: event?.type === 'tool_execution_end' ? summarizeInteractionCarrier(event?.result) : undefined,
+  const activeToolCalls = new Map<
+    string,
+    { startTime: number; lastUpdate: number }
+  >();
+  const emitActivity = (activity: SubagentActivity): void => {
+    const snapshot = runtimeMetricsTracker.snapshot();
+    usage = snapshot.usage ?? {
+      ...usage,
+      turns: snapshot.runtime_metrics.turns ?? usage.turns,
+    };
+    onActivity?.({
+      ...activity,
+      usage,
+      runtime_metrics: snapshot.runtime_metrics,
     });
-    if (event?.type === 'auto_retry_start') piRetryAttempts += 1;
-    if (event?.type === 'message_start' && event?.message?.role === 'user') {
-      if (sawInitialUserMessage) onQueuedMessageStart?.();
-      sawInitialUserMessage = true;
-    }
-    if (typeof event?.type === 'string' && event.type.startsWith('tool_execution_')) {
-      sawToolActivity = true;
-      registerSubagentRuntimeToolDefinition(taskId, event?.toolName, toolDefinitionFromSession(session, event?.toolName));
-      const toolCallId = eventToolCallId(event);
-      if (event.type === 'tool_execution_start' && toolCallId) activeToolCalls.set(toolCallId, { startTime: Date.now(), lastUpdate: Date.now() });
-      if (event.type === 'tool_execution_update' && toolCallId) {
-        const toolCall = activeToolCalls.get(toolCallId);
-        if (toolCall) toolCall.lastUpdate = Date.now();
-      }
-      if (event.type === 'tool_execution_end' && toolCallId) activeToolCalls.delete(toolCallId);
-    }
-    const snapshotUpdate = snapshotBuilder.update(event);
-    const thread_snapshot = snapshotBuilder.snapshot();
-    const transcriptChunk = eventTranscript(event);
-    transcript += transcriptChunk;
-    const interactionRequest = extractStructuredInteractionRequest(event?.result ?? event?.partialResult ?? event);
-    if (interactionRequest) {
-      latestInteractionRequest = interactionRequest;
-      debugLog(cwd, 'interaction_bridge_payload_detected', {
-        requestId: interactionRequest.requestId,
-        kind: interactionRequest.kind,
-        origin: interactionRequest.origin,
-        requester: interactionRequest.requester,
-        hasPrompt: Boolean(interactionRequest.prompt),
-        hasPayload: interactionRequest.payload !== undefined,
+  };
+  emitActivity({
+    message: 'session started',
+    prompt,
+    system_prompt: systemPrompt,
+    transcript,
+    thread_snapshot: snapshotBuilder.snapshot(),
+    pi_retry_attempts: piRetryAttempts,
+    live_activity: liveActivity.project(),
+  });
+  const unsubscribe =
+    session.subscribe?.((event: any) => {
+      lastActivity = Date.now();
+      const observedAt = lastActivity;
+      debugLog(cwd, 'runner_event', {
+        type: event?.type,
+        messageRole: event?.message?.role,
+        assistantEventType: event?.assistantMessageEvent?.type,
+        hasDelta: typeof event?.assistantMessageEvent?.delta === 'string',
+        toolName: event?.toolName,
+        toolCallId: event?.toolCallId,
+        isError: event?.isError,
+        resultKeys:
+          event?.result && typeof event.result === 'object'
+            ? Object.keys(event.result)
+            : undefined,
+        interactionCarrier:
+          event?.type === 'tool_execution_end'
+            ? summarizeInteractionCarrier(event?.result)
+            : undefined,
       });
-      onActivity?.({ message: 'interaction required', output, transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
-    } else if (event?.type === 'tool_execution_end' && event?.isError) {
-      const latest = consumeLatestInteractionRequest({ origin: 'subagent' });
-      if (latest) {
-        latestInteractionRequest = latest;
-        debugLog(cwd, 'interaction_bridge_payload_recovered_from_channel', {
-          requestId: latest.requestId,
-          kind: latest.kind,
-          origin: latest.origin,
-          requester: latest.requester,
-          hasPrompt: Boolean(latest.prompt),
-          hasPayload: latest.payload !== undefined,
-          carrier: summarizeInteractionCarrier(event.result),
-        });
-        onActivity?.({ message: 'interaction required', output, transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
-      } else {
-        debugLog(cwd, 'interaction_bridge_payload_missing', { toolName: event.toolName, carrier: summarizeInteractionCarrier(event.result) });
+      if (event?.type === 'auto_retry_start') piRetryAttempts += 1;
+      if (event?.type === 'message_start' && event?.message?.role === 'user') {
+        if (sawInitialUserMessage) onQueuedMessageStart?.();
+        sawInitialUserMessage = true;
       }
-    }
-    if (snapshotUpdate.activityMessage) {
-      onActivity?.({ message: snapshotUpdate.activityMessage, output, transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
-    }
-    const messageEvent = event?.assistantMessageEvent;
-    const delta = messageEvent?.type === 'text_delta' && typeof messageEvent.delta === 'string'
-      ? messageEvent.delta
-      : undefined;
-    if (event?.type === 'message_end' && event.message?.role === 'assistant') usage = addUsage(usage, event.message.usage);
-    if (event?.type === 'message_update' && typeof delta === 'string') {
-      output += sanitizeInteractionTransportText(delta);
-      onActivity?.({ message: 'streaming response', output, transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.streaming() });
-      return;
-    }
-    if (event?.type === 'message_update' && messageEvent?.type === 'thinking_delta') {
-      onActivity?.({ message: 'streaming thinking', output, transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.thinking() });
-      return;
-    }
-    const message = activityMessage(event, transcriptChunk);
-    if (!message) return;
-    const toolCallId = eventToolCallId(event);
-    const toolName = event?.toolName ?? event?.name ?? 'tool';
-    const projection = event?.type === 'tool_execution_start'
-      ? liveActivity.toolStart(toolCallId, toolName)
-      : event?.type === 'tool_execution_update'
-        ? liveActivity.toolUpdate(toolCallId)
-        : event?.type === 'tool_execution_end'
-          ? liveActivity.toolEnd(toolCallId, toolName, Boolean(event?.isError))
-          : liveActivity.project();
-    onActivity?.({ message, transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: projection });
-  }) ?? (() => {});
-  const interval = setInterval(() => {
-    if (stalled) return;
-    if (activeToolCalls.size === 0) {
-      if (Date.now() - lastActivity <= stallTimeoutMs) return;
-    } else {
-      const oldestToolUpdate = Math.min(...[...activeToolCalls.values()].map((entry) => entry.lastUpdate));
-      if (Date.now() - oldestToolUpdate <= stallTimeoutMs) return;
-    }
-    stalled = true;
-    transcript += `\n\n--- stall ---\nstalled for ${stallTimeoutMs}ms; aborting session\n`;
-    onActivity?.({ message: `stalled for ${stallTimeoutMs}ms; aborting session`, output, transcript, usage, thread_snapshot: snapshotBuilder.snapshot(), interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
-    session.abort?.().catch?.(() => {});
-  }, Math.min(5000, Math.max(500, stallTimeoutMs / 4)));
+      if (
+        typeof event?.type === 'string' &&
+        event.type.startsWith('tool_execution_')
+      ) {
+        sawToolActivity = true;
+        registerSubagentRuntimeToolDefinition(
+          taskId,
+          event?.toolName,
+          toolDefinitionFromSession(session, event?.toolName),
+        );
+        const toolCallId = eventToolCallId(event);
+        if (event.type === 'tool_execution_start' && toolCallId)
+          activeToolCalls.set(toolCallId, {
+            startTime: Date.now(),
+            lastUpdate: Date.now(),
+          });
+        if (event.type === 'tool_execution_update' && toolCallId) {
+          const toolCall = activeToolCalls.get(toolCallId);
+          if (toolCall) toolCall.lastUpdate = Date.now();
+        }
+        if (event.type === 'tool_execution_end' && toolCallId)
+          activeToolCalls.delete(toolCallId);
+      }
+      const runtimeSnapshot = runtimeMetricsTracker.observe(event, session);
+      usage = runtimeSnapshot.usage ?? {
+        ...usage,
+        turns: runtimeSnapshot.runtime_metrics.turns ?? usage.turns,
+      };
+      const snapshotUpdate = snapshotBuilder.update(event);
+      const thread_snapshot = snapshotBuilder.snapshot();
+      const transcriptChunk = eventTranscript(event);
+      transcript += transcriptChunk;
+      const interactionRequest = extractStructuredInteractionRequest(
+        event?.result ?? event?.partialResult ?? event,
+      );
+      if (interactionRequest) {
+        latestInteractionRequest = interactionRequest;
+        debugLog(cwd, 'interaction_bridge_payload_detected', {
+          requestId: interactionRequest.requestId,
+          kind: interactionRequest.kind,
+          origin: interactionRequest.origin,
+          requester: interactionRequest.requester,
+          hasPrompt: Boolean(interactionRequest.prompt),
+          hasPayload: interactionRequest.payload !== undefined,
+        });
+        emitActivity({
+          message: 'interaction required',
+          output,
+          transcript,
+          thread_snapshot,
+          interaction_request: latestInteractionRequest,
+          pi_retry_attempts: piRetryAttempts,
+          live_activity: liveActivity.project(),
+        });
+      } else if (event?.type === 'tool_execution_end' && event?.isError) {
+        const latest = consumeLatestInteractionRequest({ origin: 'subagent' });
+        if (latest) {
+          latestInteractionRequest = latest;
+          debugLog(cwd, 'interaction_bridge_payload_recovered_from_channel', {
+            requestId: latest.requestId,
+            kind: latest.kind,
+            origin: latest.origin,
+            requester: latest.requester,
+            hasPrompt: Boolean(latest.prompt),
+            hasPayload: latest.payload !== undefined,
+            carrier: summarizeInteractionCarrier(event.result),
+          });
+          emitActivity({
+            message: 'interaction required',
+            output,
+            transcript,
+            thread_snapshot,
+            interaction_request: latestInteractionRequest,
+            pi_retry_attempts: piRetryAttempts,
+            live_activity: liveActivity.project(),
+          });
+        } else {
+          debugLog(cwd, 'interaction_bridge_payload_missing', {
+            toolName: event.toolName,
+            carrier: summarizeInteractionCarrier(event.result),
+          });
+        }
+      }
+      if (snapshotUpdate.activityMessage) {
+        emitActivity({
+          message: snapshotUpdate.activityMessage,
+          output,
+          transcript,
+          thread_snapshot,
+          interaction_request: latestInteractionRequest,
+          pi_retry_attempts: piRetryAttempts,
+          live_activity: liveActivity.project(),
+        });
+      }
+      const messageEvent = event?.assistantMessageEvent;
+      const delta =
+        messageEvent?.type === 'text_delta' &&
+        typeof messageEvent.delta === 'string'
+          ? messageEvent.delta
+          : undefined;
+      if (
+        event?.type === 'message_end' &&
+        event.message?.role === 'assistant' &&
+        !runtimeSnapshot.usage
+      )
+        usage = addUsage(usage, event.message.usage);
+      const assistant_message =
+        event?.type === 'message_end'
+          ? assistantAccountingMessage(event.message)
+          : undefined;
+      if (event?.type === 'message_update' && typeof delta === 'string') {
+        output += sanitizeInteractionTransportText(delta);
+        emitActivity({
+          message: 'streaming response',
+          output,
+          transcript,
+          thread_snapshot,
+          interaction_request: latestInteractionRequest,
+          pi_retry_attempts: piRetryAttempts,
+          live_activity: liveActivity.streaming(),
+        });
+        return;
+      }
+      if (
+        event?.type === 'message_update' &&
+        messageEvent?.type === 'thinking_delta'
+      ) {
+        emitActivity({
+          message: 'streaming thinking',
+          output,
+          transcript,
+          thread_snapshot,
+          interaction_request: latestInteractionRequest,
+          pi_retry_attempts: piRetryAttempts,
+          live_activity: liveActivity.thinking(),
+        });
+        return;
+      }
+      const message =
+        activityMessage(event, transcriptChunk) ??
+        (event?.type === 'turn_end'
+          ? 'turn completed'
+          : event?.type === 'compaction_start'
+            ? 'context compaction started'
+            : event?.type === 'compaction_end'
+              ? event.aborted
+                ? 'context compaction aborted'
+                : 'context compacted'
+              : undefined);
+      if (!message && !assistant_message) return;
+      const toolCallId = eventToolCallId(event);
+      const toolName = event?.toolName ?? event?.name ?? 'tool';
+      const projection =
+        event?.type === 'tool_execution_start'
+          ? liveActivity.toolStart(toolCallId, toolName)
+          : event?.type === 'tool_execution_update'
+            ? liveActivity.toolUpdate(toolCallId)
+            : event?.type === 'tool_execution_end'
+              ? liveActivity.toolEnd(
+                  toolCallId,
+                  toolName,
+                  Boolean(event?.isError),
+                )
+              : liveActivity.project();
+      emitActivity({
+        message: message ?? 'assistant message completed',
+        transcript,
+        thread_snapshot,
+        interaction_request: latestInteractionRequest,
+        pi_retry_attempts: piRetryAttempts,
+        live_activity: projection,
+        ...(assistant_message
+          ? { assistant_message, observed_at: observedAt }
+          : {}),
+      });
+    }) ?? (() => {});
+  const interval = setInterval(
+    () => {
+      if (stalled) return;
+      if (activeToolCalls.size === 0) {
+        if (Date.now() - lastActivity <= stallTimeoutMs) return;
+      } else {
+        const oldestToolUpdate = Math.min(
+          ...[...activeToolCalls.values()].map((entry) => entry.lastUpdate),
+        );
+        if (Date.now() - oldestToolUpdate <= stallTimeoutMs) return;
+      }
+      stalled = true;
+      transcript += `\n\n--- stall ---\nstalled for ${stallTimeoutMs}ms; aborting session\n`;
+      emitActivity({
+        message: `stalled for ${stallTimeoutMs}ms; aborting session`,
+        output,
+        transcript,
+        thread_snapshot: snapshotBuilder.snapshot(),
+        interaction_request: latestInteractionRequest,
+        pi_retry_attempts: piRetryAttempts,
+        live_activity: liveActivity.project(),
+      });
+      session.abort?.().catch?.(() => {});
+    },
+    Math.min(5000, Math.max(500, stallTimeoutMs / 4)),
+  );
   try {
     let promptError: unknown;
     try {
@@ -357,77 +634,167 @@ export async function promptWithInactivity(
     } catch (error) {
       promptError = error;
     }
-    const currentMessages = (session.messages ?? []).slice(initialMessagesLength);
+    runtimeMetricsTracker.refresh(session);
+    const finalRuntimeSnapshot = runtimeMetricsTracker.snapshot();
+    usage = finalRuntimeSnapshot.usage ?? {
+      ...usage,
+      turns: finalRuntimeSnapshot.runtime_metrics.turns ?? usage.turns,
+    };
+    const currentMessages = (session.messages ?? []).slice(
+      initialMessagesLength,
+    );
     const thread_snapshot = snapshotBuilder.finalize(currentMessages);
-    debugLog(cwd, 'runner_final_snapshot', { source: thread_snapshot?.source, items: thread_snapshot?.items.map((item) => ({ type: item.type, label: (item as any).label, name: (item as any).name, status: (item as any).status, assistantContent: item.type === 'assistant' ? item.message.content.map((part: any) => part.type) : undefined })) });
+    debugLog(cwd, 'runner_final_snapshot', {
+      source: thread_snapshot?.source,
+      items: thread_snapshot?.items.map((item) => ({
+        type: item.type,
+        label: (item as any).label,
+        name: (item as any).name,
+        status: (item as any).status,
+        assistantContent:
+          item.type === 'assistant'
+            ? item.message.content.map((part: any) => part.type)
+            : undefined,
+      })),
+    });
     if (stalled) {
       const metadata = normalizeErrorMetadata({
         category: 'stall_timeout',
         phase: 'runner_session',
         message: `Subagent stalled for ${stallTimeoutMs}ms without final response.`,
-        partial_result_available: Boolean(output.trim() || thread_snapshot?.items?.length),
+        partial_result_available: Boolean(
+          output.trim() || thread_snapshot?.items?.length,
+        ),
         details: { stall_timeout_ms: String(stallTimeoutMs) },
       });
       transcript += `\n\n# subagent failure\n\n${metadata.message}`;
-      onActivity?.({ message: `failed: ${metadata.message}`, output: '', transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
+      emitActivity({
+        message: `failed: ${metadata.message}`,
+        output: '',
+        transcript,
+        usage,
+        thread_snapshot,
+        interaction_request: latestInteractionRequest,
+        pi_retry_attempts: piRetryAttempts,
+        live_activity: liveActivity.project(),
+      });
       throw new SubagentStructuredError(metadata);
     }
     const assistantFailure = lastAssistantFailure(currentMessages);
     if (assistantFailure) {
-      const metadata = assistantFailure.stopReason === 'aborted'
-        ? normalizeErrorMetadata({
-            category: 'interrupted',
-            phase: 'assistant_final',
-            message: 'Assistant aborted without a final response.',
-            partial_result_available: false,
-            details: { interrupt_reason: 'assistant_aborted' },
-          })
-        : classifyAssistantFailure({
-            ...assistantFailure,
-            sawToolActivity,
-          });
+      const metadata =
+        assistantFailure.stopReason === 'aborted'
+          ? normalizeErrorMetadata({
+              category: 'interrupted',
+              phase: 'assistant_final',
+              message: 'Assistant aborted without a final response.',
+              partial_result_available: false,
+              details: { interrupt_reason: 'assistant_aborted' },
+            })
+          : classifyAssistantFailure({
+              ...assistantFailure,
+              sawToolActivity,
+            });
       if (metadata) {
         transcript += `\n\n# subagent failure\n\n${metadata.message}`;
-        onActivity?.({ message: `failed: ${metadata.message}`, output: '', transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
+        emitActivity({
+          message: `failed: ${metadata.message}`,
+          output: '',
+          transcript,
+          usage,
+          thread_snapshot,
+          interaction_request: latestInteractionRequest,
+          pi_retry_attempts: piRetryAttempts,
+          live_activity: liveActivity.project(),
+        });
         throw new SubagentStructuredError(metadata);
       }
     }
-    const finalizedAssistantText = collectFinalizedAssistantText(currentMessages);
+    const finalizedAssistantText =
+      collectFinalizedAssistantText(currentMessages);
     if (promptError && finalizedAssistantText) {
       transcript += `\n\n# final assistant text\n\n${finalizedAssistantText}`;
-      onActivity?.({ message: 'collected final response', output: finalizedAssistantText, transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
-      return { result: finalizedAssistantText, usage, thread_snapshot, interaction_request: latestInteractionRequest };
+      emitActivity({
+        message: 'collected final response',
+        output: finalizedAssistantText,
+        transcript,
+        usage,
+        thread_snapshot,
+        interaction_request: latestInteractionRequest,
+        pi_retry_attempts: piRetryAttempts,
+        live_activity: liveActivity.project(),
+      });
+      return {
+        result: finalizedAssistantText,
+        usage,
+        runtime_metrics: finalRuntimeSnapshot.runtime_metrics,
+        thread_snapshot,
+        interaction_request: latestInteractionRequest,
+      };
     }
     if (promptError) throw promptError;
     const messageText = collectAssistantText(currentMessages);
     const streamedFallback = sawToolActivity ? '' : output.trim();
-    const collected = sanitizeInteractionTransportText(messageText || streamedFallback);
+    const collected = sanitizeInteractionTransportText(
+      messageText || streamedFallback,
+    );
     if (!collected.trim()) {
       const toolNames = failingToolNames(thread_snapshot);
       const metadata = toolNames.length
         ? normalizeErrorMetadata({
             category: 'tool_failure',
             phase: 'tool_execution',
-            message: 'Subagent terminated after tool failure without a final response.',
+            message:
+              'Subagent terminated after tool failure without a final response.',
             partial_result_available: false,
             source: { tool: toolNames[0], operation: 'tool_execution' },
-            details: { tool_names: toolNames.join(', '), tool_status: 'failed' },
+            details: {
+              tool_names: toolNames.join(', '),
+              tool_status: 'failed',
+            },
           })
-        : classifyAssistantFailure({ sawToolActivity }) ?? normalizeErrorMetadata({
-            category: sawToolActivity ? 'empty_response_after_tools' : 'empty_response_no_tools',
+        : (classifyAssistantFailure({ sawToolActivity }) ??
+          normalizeErrorMetadata({
+            category: sawToolActivity
+              ? 'empty_response_after_tools'
+              : 'empty_response_no_tools',
             phase: 'assistant_final',
             message: sawToolActivity
               ? 'Subagent completed tool execution but did not produce a final response.'
               : 'Subagent finished without a final response.',
             partial_result_available: false,
-          });
+          }));
       transcript += `\n\n# subagent failure\n\n${metadata.message}`;
-      onActivity?.({ message: `failed: ${metadata.message}`, output: '', transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
+      emitActivity({
+        message: `failed: ${metadata.message}`,
+        output: '',
+        transcript,
+        usage,
+        thread_snapshot,
+        interaction_request: latestInteractionRequest,
+        pi_retry_attempts: piRetryAttempts,
+        live_activity: liveActivity.project(),
+      });
       throw new SubagentStructuredError(metadata);
     }
     transcript += `\n\n# final assistant text\n\n${collected}`;
-    onActivity?.({ message: 'collected final response', output: collected, transcript, usage, thread_snapshot, interaction_request: latestInteractionRequest, pi_retry_attempts: piRetryAttempts, live_activity: liveActivity.project() });
-    return { result: collected, usage, thread_snapshot, interaction_request: latestInteractionRequest };
+    emitActivity({
+      message: 'collected final response',
+      output: collected,
+      transcript,
+      usage,
+      thread_snapshot,
+      interaction_request: latestInteractionRequest,
+      pi_retry_attempts: piRetryAttempts,
+      live_activity: liveActivity.project(),
+    });
+    return {
+      result: collected,
+      usage,
+      runtime_metrics: finalRuntimeSnapshot.runtime_metrics,
+      thread_snapshot,
+      interaction_request: latestInteractionRequest,
+    };
   } finally {
     clearInterval(interval);
     unsubscribe();
@@ -442,13 +809,27 @@ export function collectAssistantText(messages: any[]): string {
     const content = msg.content;
     if (typeof content === 'string') parts.push(content);
     if (Array.isArray(content)) {
-      for (const part of content) if (part?.type === 'text' && typeof part.text === 'string') parts.push(part.text);
+      for (const part of content)
+        if (part?.type === 'text' && typeof part.text === 'string')
+          parts.push(part.text);
     }
   }
   return parts.join('\n').trim();
 }
 
-export function structuredMetadataFromError(error: unknown, context: { provider?: string; model?: string; operation?: string; phase?: 'runner_invoke' | 'runner_session' | 'assistant_final' | 'tool_execution' }): SubagentErrorMetadata {
+export function structuredMetadataFromError(
+  error: unknown,
+  context: {
+    provider?: string;
+    model?: string;
+    operation?: string;
+    phase?:
+      | 'runner_invoke'
+      | 'runner_session'
+      | 'assistant_final'
+      | 'tool_execution';
+  },
+): SubagentErrorMetadata {
   if (error instanceof SubagentStructuredError) return error.error_metadata;
   return classifyThrownError(error, context);
 }

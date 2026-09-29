@@ -1,11 +1,156 @@
 import { writeSubagentsDebugLog } from '../debug.js';
 import { sanitizeInteractionTransportText } from '../interaction-channel.js';
 import { boundThreadSnapshot, isValidThreadSnapshot } from '../thread-view.js';
-import type { SubagentThreadItem, SubagentThreadSnapshot, SubagentToolItem, SubagentToolResultPayload } from '../types.js';
+import type {
+  SubagentAssistantAccountingMessage,
+  SubagentRuntimeMetrics,
+  SubagentThreadItem,
+  SubagentThreadSnapshot,
+  SubagentToolItem,
+  SubagentToolResultPayload,
+  UsageStats,
+} from '../types.js';
+
+function isFiniteNonNegative(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+export function assistantAccountingMessage(
+  message: any,
+): SubagentAssistantAccountingMessage | undefined {
+  if (message?.role !== 'assistant') return undefined;
+  const usage: NonNullable<SubagentAssistantAccountingMessage['usage']> = {};
+  for (const key of [
+    'input',
+    'output',
+    'cacheRead',
+    'cacheWrite',
+    'totalTokens',
+  ] as const) {
+    if (isFiniteNonNegative(message.usage?.[key]))
+      usage[key] = message.usage[key];
+  }
+  if (isFiniteNonNegative(message.usage?.cost?.total))
+    usage.cost = { total: message.usage.cost.total };
+  return {
+    role: 'assistant',
+    ...(typeof message.id === 'string' ? { id: message.id } : {}),
+    ...(typeof message.timestamp === 'number' ||
+    typeof message.timestamp === 'string'
+      ? { timestamp: message.timestamp }
+      : {}),
+    ...(Object.keys(usage).length ? { usage } : {}),
+  };
+}
+
+export class SubagentRuntimeMetricsTracker {
+  private turns = 0;
+  private compactions = 0;
+  private runtimeMetrics: SubagentRuntimeMetrics = { turns: 0, compactions: 0 };
+  private lifetimeUsage?: UsageStats;
+  private readonly seenEvents = new WeakSet<object>();
+
+  constructor(session: any) {
+    this.refresh(session);
+  }
+
+  observe(
+    event: any,
+    session: any,
+  ): { runtime_metrics: SubagentRuntimeMetrics; usage?: UsageStats } {
+    if (!event || typeof event !== 'object' || this.seenEvents.has(event))
+      return this.snapshot();
+    this.seenEvents.add(event);
+    if (event.type === 'turn_end') this.turns += 1;
+    if (
+      event.type === 'compaction_end' &&
+      !event.aborted &&
+      event.result != null
+    )
+      this.compactions += 1;
+    if (
+      [
+        'message_end',
+        'tool_execution_start',
+        'tool_execution_end',
+        'turn_end',
+        'compaction_end',
+      ].includes(event.type)
+    )
+      this.refresh(session);
+    return this.snapshot();
+  }
+
+  snapshot(): { runtime_metrics: SubagentRuntimeMetrics; usage?: UsageStats } {
+    return {
+      runtime_metrics: {
+        ...this.runtimeMetrics,
+        turns: this.turns,
+        compactions: this.compactions,
+      },
+      ...(this.lifetimeUsage
+        ? { usage: { ...this.lifetimeUsage, turns: this.turns } }
+        : {}),
+    };
+  }
+
+  refresh(session: any): void {
+    let context: any;
+    let stats: any;
+    try {
+      context = session?.getContextUsage?.();
+    } catch {}
+    try {
+      stats = session?.getSessionStats?.();
+    } catch {}
+
+    const runtimeMetrics: SubagentRuntimeMetrics = {
+      turns: this.turns,
+      compactions: this.compactions,
+    };
+    if (isFiniteNonNegative(context?.tokens))
+      runtimeMetrics.contextTokens = context.tokens;
+    if (
+      isFiniteNonNegative(context?.contextWindow) &&
+      context.contextWindow > 0
+    )
+      runtimeMetrics.contextWindow = context.contextWindow;
+    if (isFiniteNonNegative(context?.percent))
+      runtimeMetrics.contextPercent = context.percent;
+    if (isFiniteNonNegative(stats?.toolCalls))
+      runtimeMetrics.toolUses = stats.toolCalls;
+    this.runtimeMetrics = runtimeMetrics;
+
+    const tokens = stats?.tokens;
+    if (
+      !['input', 'output', 'cacheRead', 'cacheWrite'].every((key) =>
+        isFiniteNonNegative(tokens?.[key]),
+      )
+    )
+      return;
+    this.lifetimeUsage = {
+      input: tokens.input,
+      output: tokens.output,
+      cacheRead: tokens.cacheRead,
+      cacheWrite: tokens.cacheWrite,
+      cost: isFiniteNonNegative(stats.cost)
+        ? stats.cost
+        : (this.lifetimeUsage?.cost ?? 0),
+      contextTokens: isFiniteNonNegative(context?.tokens)
+        ? context.tokens
+        : (this.lifetimeUsage?.contextTokens ?? 0),
+      turns: this.turns,
+    };
+  }
+}
 
 function shortJson(value: unknown, limit = 900): string {
   try {
-    const text = JSON.stringify(value, (_key, val) => typeof val === 'string' && val.length > 300 ? `${val.slice(0, 300)}…` : val);
+    const text = JSON.stringify(value, (_key, val) =>
+      typeof val === 'string' && val.length > 300
+        ? `${val.slice(0, 300)}…`
+        : val,
+    );
     return text.length > limit ? `${text.slice(0, limit)}…` : text;
   } catch {
     return '[unserializable]';
@@ -13,11 +158,18 @@ function shortJson(value: unknown, limit = 900): string {
 }
 
 const SNAPSHOT_TEXT_LIMIT = 4000;
-const INITIAL_USER_LABELS = new Set(['delegated_task', 'continuation', 'context', 'prompt']);
+const INITIAL_USER_LABELS = new Set([
+  'delegated_task',
+  'continuation',
+  'context',
+  'prompt',
+]);
 
 type SnapshotUpdateResult = {
   snapshotChanged: boolean;
-  activityMessage?: 'live steering queue updated' | 'live steering message consumed';
+  activityMessage?:
+    | 'live steering queue updated'
+    | 'live steering message consumed';
 };
 
 type SteeringProjectionRecord = {
@@ -30,14 +182,21 @@ function debugLog(cwd: string | undefined, scope: string, data: unknown): void {
   writeSubagentsDebugLog(cwd, scope, data);
 }
 
-function truncateSnapshotText(text: string | undefined, limit = SNAPSHOT_TEXT_LIMIT): string | undefined {
+function truncateSnapshotText(
+  text: string | undefined,
+  limit = SNAPSHOT_TEXT_LIMIT,
+): string | undefined {
   if (text === undefined) return undefined;
   const sanitized = sanitizeInteractionTransportText(text);
-  return sanitized.length > limit ? `${sanitized.slice(0, limit - 1)}…` : sanitized;
+  return sanitized.length > limit
+    ? `${sanitized.slice(0, limit - 1)}…`
+    : sanitized;
 }
 
 function eventToolCallId(event: any): string | undefined {
-  return event?.toolCallId ?? event?.tool_call_id ?? event?.toolUseId ?? event?.id;
+  return (
+    event?.toolCallId ?? event?.tool_call_id ?? event?.toolUseId ?? event?.id
+  );
 }
 
 function resultTextFromContent(content: unknown): string | undefined {
@@ -46,7 +205,11 @@ function resultTextFromContent(content: unknown): string | undefined {
     .map((part) => {
       if (!part || typeof part !== 'object') return '';
       const record = part as Record<string, unknown>;
-      return typeof record.text === 'string' ? record.text : typeof record.data === 'string' ? record.data : '';
+      return typeof record.text === 'string'
+        ? record.text
+        : typeof record.data === 'string'
+          ? record.data
+          : '';
     })
     .filter(Boolean)
     .join('\n');
@@ -75,26 +238,43 @@ function steeringQueueTexts(event: any): string[] {
         : [];
   return steering
     .map((entry: unknown) => truncateSnapshotText(textFromUnknown(entry)))
-    .filter((text: string | undefined): text is string => Boolean(text?.trim()));
+    .filter((text: string | undefined): text is string =>
+      Boolean(text?.trim()),
+    );
 }
 
 function userMessageStartText(event: any): string | undefined {
-  if (event?.type !== 'message_start' || event?.message?.role !== 'user') return undefined;
-  return truncateSnapshotText(textFromUnknown(event.message?.content) ?? textFromUnknown(event.message?.text) ?? textFromUnknown(event.message));
+  if (event?.type !== 'message_start' || event?.message?.role !== 'user')
+    return undefined;
+  return truncateSnapshotText(
+    textFromUnknown(event.message?.content) ??
+      textFromUnknown(event.message?.text) ??
+      textFromUnknown(event.message),
+  );
 }
 
-function isInitialUserItem(item: SubagentThreadItem): item is Extract<SubagentThreadItem, { type: 'user' }> {
+function isInitialUserItem(
+  item: SubagentThreadItem,
+): item is Extract<SubagentThreadItem, { type: 'user' }> {
   return item.type === 'user' && INITIAL_USER_LABELS.has(item.label ?? 'user');
 }
 
 function boundUnknown(value: unknown, limit = SNAPSHOT_TEXT_LIMIT): unknown {
   if (typeof value === 'string') return truncateSnapshotText(value, limit);
-  if (Array.isArray(value)) return value.slice(0, 50).map((entry) => boundUnknown(entry, limit));
+  if (Array.isArray(value))
+    return value.slice(0, 50).map((entry) => boundUnknown(entry, limit));
   if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>).slice(0, 50).map(([key, entry]) => [key, boundUnknown(entry, limit)]));
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .slice(0, 50)
+      .map(([key, entry]) => [key, boundUnknown(entry, limit)]),
+  );
 }
 
-function resultPayload(result: unknown, isError = false): SubagentToolResultPayload {
+function resultPayload(
+  result: unknown,
+  isError = false,
+): SubagentToolResultPayload {
   let text = '';
   let details: unknown;
   if (typeof result === 'string') {
@@ -103,23 +283,49 @@ function resultPayload(result: unknown, isError = false): SubagentToolResultPayl
   } else if (result && typeof result === 'object') {
     const record = result as Record<string, unknown>;
     details = boundUnknown(record.details ?? record);
-    const candidate = resultTextFromContent(record.content) ?? record.output ?? record.text ?? record.error ?? record.stderr ?? record.stdout;
-    text = typeof candidate === 'string' ? candidate : shortJson(result, SNAPSHOT_TEXT_LIMIT);
+    const candidate =
+      resultTextFromContent(record.content) ??
+      record.output ??
+      record.text ??
+      record.error ??
+      record.stderr ??
+      record.stdout;
+    text =
+      typeof candidate === 'string'
+        ? candidate
+        : shortJson(result, SNAPSHOT_TEXT_LIMIT);
   } else if (result !== undefined) {
     text = String(result);
     details = String(result);
   }
   const bounded = truncateSnapshotText(text, SNAPSHOT_TEXT_LIMIT) ?? '';
-  return { content: bounded ? [{ type: 'text', text: bounded }] : [], details, isError, preview: bounded };
+  return {
+    content: bounded ? [{ type: 'text', text: bounded }] : [],
+    details,
+    isError,
+    preview: bounded,
+  };
 }
 
-function parseRawToolJson(text: string): { keys: string[]; kind: string } | undefined {
+function parseRawToolJson(
+  text: string,
+): { keys: string[]; kind: string } | undefined {
   const trimmed = text.trim();
-  if (!trimmed || !((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']')))) return undefined;
+  if (
+    !trimmed ||
+    !(
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    )
+  )
+    return undefined;
   try {
     const parsed = JSON.parse(trimmed);
     if (!parsed || typeof parsed !== 'object') return undefined;
-    return { kind: Array.isArray(parsed) ? 'array' : 'object', keys: Array.isArray(parsed) ? [] : Object.keys(parsed).slice(0, 20) };
+    return {
+      kind: Array.isArray(parsed) ? 'array' : 'object',
+      keys: Array.isArray(parsed) ? [] : Object.keys(parsed).slice(0, 20),
+    };
   } catch {
     return undefined;
   }
@@ -145,43 +351,82 @@ export class ThreadSnapshotBuilder {
   ) {
     this.cwd = cwd;
     this.createdAt = seedSnapshot?.created_at ?? new Date().toISOString();
-    if (isValidThreadSnapshot(seedSnapshot)) this.items.push(...seedSnapshot.items.map((item) => structuredClone(item)));
+    if (isValidThreadSnapshot(seedSnapshot))
+      this.items.push(
+        ...seedSnapshot.items.map((item) => structuredClone(item)),
+      );
     this.currentAttemptStart = this.items.length;
     this.items.push({ type: 'attempt', id: `attempt-${attempt}`, attempt });
-    if (promptLabel !== 'continuation' && context?.trim()) this.items.push({ type: 'user', id: 'delegated-context', label: 'context', text: truncateSnapshotText(context) ?? '' });
-    if (prompt?.trim()) this.items.push({ type: 'user', id: promptLabel === 'continuation' ? `continuation-prompt-${attempt}` : 'delegated-prompt', label: promptLabel, text: truncateSnapshotText(prompt) ?? '' });
+    if (promptLabel !== 'continuation' && context?.trim())
+      this.items.push({
+        type: 'user',
+        id: 'delegated-context',
+        label: 'context',
+        text: truncateSnapshotText(context) ?? '',
+      });
+    if (prompt?.trim())
+      this.items.push({
+        type: 'user',
+        id:
+          promptLabel === 'continuation'
+            ? `continuation-prompt-${attempt}`
+            : 'delegated-prompt',
+        label: promptLabel,
+        text: truncateSnapshotText(prompt) ?? '',
+      });
   }
 
   update(event: any): SnapshotUpdateResult {
     const now = new Date().toISOString();
     const messageEvent = event?.assistantMessageEvent;
-    const textDelta = event?.type === 'message_update' && messageEvent?.type === 'text_delta' && typeof messageEvent.delta === 'string'
-      ? messageEvent.delta
-      : undefined;
-    const thinkingDelta = event?.type === 'message_update' && messageEvent?.type === 'thinking_delta' && typeof messageEvent.delta === 'string'
-      ? messageEvent.delta
-      : undefined;
+    const textDelta =
+      event?.type === 'message_update' &&
+      messageEvent?.type === 'text_delta' &&
+      typeof messageEvent.delta === 'string'
+        ? messageEvent.delta
+        : undefined;
+    const thinkingDelta =
+      event?.type === 'message_update' &&
+      messageEvent?.type === 'thinking_delta' &&
+      typeof messageEvent.delta === 'string'
+        ? messageEvent.delta
+        : undefined;
     if (textDelta !== undefined || thinkingDelta !== undefined) {
       this.appendAssistantDelta(textDelta, thinkingDelta);
       return { snapshotChanged: true };
     }
     if (event?.type === 'queue_update') {
       return this.projectQueuedSteering(event)
-        ? { snapshotChanged: true, activityMessage: 'live steering queue updated' }
+        ? {
+            snapshotChanged: true,
+            activityMessage: 'live steering queue updated',
+          }
         : { snapshotChanged: false };
     }
     if (event?.type === 'message_start' && event?.message?.role === 'user') {
       return this.consumeQueuedSteering(event)
-        ? { snapshotChanged: true, activityMessage: 'live steering message consumed' }
+        ? {
+            snapshotChanged: true,
+            activityMessage: 'live steering message consumed',
+          }
         : { snapshotChanged: false };
     }
-    if (event?.type === 'auto_retry_start' || event?.type === 'auto_retry_end' || event?.type === 'agent_settled') {
-      const text = event.type === 'auto_retry_start'
-        ? 'auto retry start'
-        : event.type === 'auto_retry_end'
-          ? 'auto retry end'
-          : 'agent settled';
-      this.items.push({ type: 'status', text, severity: event.type === 'agent_settled' ? 'success' : 'info' });
+    if (
+      event?.type === 'auto_retry_start' ||
+      event?.type === 'auto_retry_end' ||
+      event?.type === 'agent_settled'
+    ) {
+      const text =
+        event.type === 'auto_retry_start'
+          ? 'auto retry start'
+          : event.type === 'auto_retry_end'
+            ? 'auto retry end'
+            : 'agent settled';
+      this.items.push({
+        type: 'status',
+        text,
+        severity: event.type === 'agent_settled' ? 'success' : 'info',
+      });
       return { snapshotChanged: true };
     }
     if (event?.type === 'tool_execution_start') {
@@ -197,7 +442,10 @@ export class ThreadSnapshotBuilder {
         status: 'running',
         started_at: now,
       };
-      this.toolIndex.set(tool_call_id ?? `item-${this.items.length}`, this.items.length);
+      this.toolIndex.set(
+        tool_call_id ?? `item-${this.items.length}`,
+        this.items.length,
+      );
       this.items.push(item);
       return { snapshotChanged: true };
     }
@@ -215,9 +463,18 @@ export class ThreadSnapshotBuilder {
       const id = eventToolCallId(event);
       const name = event.toolName ?? event.name ?? 'tool';
       const index = id ? this.toolIndex.get(id) : undefined;
-      const payload = resultPayload(event.result ?? event.output ?? event.error, Boolean(event.isError));
+      const payload = resultPayload(
+        event.result ?? event.output ?? event.error,
+        Boolean(event.isError),
+      );
       if (index === undefined) {
-        this.items.push({ type: 'tool_result', id, tool_call_id: id, name, result: payload });
+        this.items.push({
+          type: 'tool_result',
+          id,
+          tool_call_id: id,
+          name,
+          result: payload,
+        });
         return { snapshotChanged: true };
       }
       const item: any = this.items[index];
@@ -231,24 +488,66 @@ export class ThreadSnapshotBuilder {
     return { snapshotChanged: false };
   }
 
-  snapshot(source: SubagentThreadSnapshot['source'] = 'events'): SubagentThreadSnapshot | undefined {
-    return boundThreadSnapshot({ version: 1, created_at: this.createdAt, updated_at: new Date().toISOString(), source, items: this.items }, { textLimit: SNAPSHOT_TEXT_LIMIT });
+  snapshot(
+    source: SubagentThreadSnapshot['source'] = 'events',
+  ): SubagentThreadSnapshot | undefined {
+    return boundThreadSnapshot(
+      {
+        version: 1,
+        created_at: this.createdAt,
+        updated_at: new Date().toISOString(),
+        source,
+        items: this.items,
+      },
+      { textLimit: SNAPSHOT_TEXT_LIMIT },
+    );
   }
 
   finalize(messages: any[]): SubagentThreadSnapshot | undefined {
     const messageItems = assistantItemsFromMessages(messages);
     const priorItems = this.items.slice(0, this.currentAttemptStart);
     const currentItems = this.items.slice(this.currentAttemptStart);
-    const initialItems: SubagentThreadItem[] = currentItems.filter((item) => item.type === 'attempt' || isInitialUserItem(item));
-    const finalMessagesAlreadyHaveThinking = messageItems.some((item) => item.type === 'assistant' && item.message.content.some((part) => part.type === 'thinking'));
+    const initialItems: SubagentThreadItem[] = currentItems.filter(
+      (item) => item.type === 'attempt' || isInitialUserItem(item),
+    );
+    const finalMessagesAlreadyHaveThinking = messageItems.some(
+      (item) =>
+        item.type === 'assistant' &&
+        item.message.content.some((part) => part.type === 'thinking'),
+    );
     const eventItems = currentItems
       .filter((item) => item.type !== 'attempt' && !isInitialUserItem(item))
-      .map((item) => this.finalizeEventItem(item, messageItems.length > 0, finalMessagesAlreadyHaveThinking))
+      .map((item) =>
+        this.finalizeEventItem(
+          item,
+          messageItems.length > 0,
+          finalMessagesAlreadyHaveThinking,
+        ),
+      )
       .filter((item): item is SubagentThreadItem => Boolean(item));
-    const currentAttemptItems = [...initialItems, ...(messageItems.length ? interleaveMessagesWithToolRows(messageItems, eventItems) : eventItems)];
+    const currentAttemptItems = [
+      ...initialItems,
+      ...(messageItems.length
+        ? interleaveMessagesWithToolRows(messageItems, eventItems)
+        : eventItems),
+    ];
     const items: SubagentThreadItem[] = [...priorItems, ...currentAttemptItems];
-    const source = messageItems.length && eventItems.length ? 'mixed' : messageItems.length ? 'session_messages' : 'events';
-    return boundThreadSnapshot({ version: 1, created_at: this.createdAt, updated_at: new Date().toISOString(), source, items }, { textLimit: SNAPSHOT_TEXT_LIMIT });
+    const source =
+      messageItems.length && eventItems.length
+        ? 'mixed'
+        : messageItems.length
+          ? 'session_messages'
+          : 'events';
+    return boundThreadSnapshot(
+      {
+        version: 1,
+        created_at: this.createdAt,
+        updated_at: new Date().toISOString(),
+        source,
+        items,
+      },
+      { textLimit: SNAPSHOT_TEXT_LIMIT },
+    );
   }
 
   private projectQueuedSteering(event: any): boolean {
@@ -268,9 +567,18 @@ export class ThreadSnapshotBuilder {
         continue;
       }
       changed = true;
-      const record: SteeringProjectionRecord = { id: `steering-${++this.steeringSequence}`, text, state: 'queued' };
+      const record: SteeringProjectionRecord = {
+        id: `steering-${++this.steeringSequence}`,
+        text,
+        state: 'queued',
+      };
       this.steeringRecords.push(record);
-      this.items.push({ type: 'user', id: record.id, label: 'queued', text: record.text });
+      this.items.push({
+        type: 'user',
+        id: record.id,
+        label: 'queued',
+        text: record.text,
+      });
     }
     return changed;
   }
@@ -278,33 +586,69 @@ export class ThreadSnapshotBuilder {
   private consumeQueuedSteering(event: any): boolean {
     const text = userMessageStartText(event);
     if (!text) return false;
-    const record = this.steeringRecords.find((entry) => entry.state === 'queued' && entry.text === text);
+    const record = this.steeringRecords.find(
+      (entry) => entry.state === 'queued' && entry.text === text,
+    );
     if (!record) return false;
     record.state = 'consumed';
-    const index = this.items.findIndex((item) => item.type === 'user' && item.id === record.id);
+    const index = this.items.findIndex(
+      (item) => item.type === 'user' && item.id === record.id,
+    );
     if (index >= 0) this.items.splice(index, 1);
-    this.items.push({ type: 'user', id: record.id, label: 'user', text: record.text });
+    this.items.push({
+      type: 'user',
+      id: record.id,
+      label: 'user',
+      text: record.text,
+    });
     return true;
   }
 
-  private dropTrailingRawToolJson(toolName?: string, toolCallId?: string): void {
+  private dropTrailingRawToolJson(
+    toolName?: string,
+    toolCallId?: string,
+  ): void {
     const item = this.items.at(-1) as SubagentThreadItem | undefined;
-    if (item?.type !== 'assistant' || !item.id?.startsWith('streaming-assistant-')) return;
-    const textParts = item.message.content.filter((part): part is { type: 'text'; text: string } => part.type === 'text');
-    const hasNonText = item.message.content.some((part) => part.type !== 'text');
+    if (
+      item?.type !== 'assistant' ||
+      !item.id?.startsWith('streaming-assistant-')
+    )
+      return;
+    const textParts = item.message.content.filter(
+      (part): part is { type: 'text'; text: string } => part.type === 'text',
+    );
+    const hasNonText = item.message.content.some(
+      (part) => part.type !== 'text',
+    );
     if (hasNonText || !textParts.length) return;
     const text = textParts.map((part) => part.text).join('');
     const parsed = parseRawToolJson(text);
     if (!parsed) return;
 
     this.items.pop();
-    debugLog(this.cwd, 'live_raw_tool_json_dropped', { toolName, toolCallId, jsonKind: parsed.kind, keys: parsed.keys, textLength: text.length });
+    debugLog(this.cwd, 'live_raw_tool_json_dropped', {
+      toolName,
+      toolCallId,
+      jsonKind: parsed.kind,
+      keys: parsed.keys,
+      textLength: text.length,
+    });
   }
 
-  private appendAssistantDelta(textDelta?: string, thinkingDelta?: string): void {
+  private appendAssistantDelta(
+    textDelta?: string,
+    thinkingDelta?: string,
+  ): void {
     let item = this.items.at(-1) as SubagentThreadItem | undefined;
-    if (item?.type !== 'assistant' || !item.id?.startsWith('streaming-assistant-')) {
-      item = { type: 'assistant', id: `streaming-assistant-${++this.streamingAssistantSequence}`, message: { role: 'assistant', content: [] } };
+    if (
+      item?.type !== 'assistant' ||
+      !item.id?.startsWith('streaming-assistant-')
+    ) {
+      item = {
+        type: 'assistant',
+        id: `streaming-assistant-${++this.streamingAssistantSequence}`,
+        message: { role: 'assistant', content: [] },
+      };
       this.items.push(item);
     }
     const content = item.message.content as any[];
@@ -316,7 +660,10 @@ export class ThreadSnapshotBuilder {
         if (firstText >= 0) content.splice(firstText, 0, thinkingPart);
         else content.push(thinkingPart);
       }
-      const thinking = truncateSnapshotText(`${thinkingPart.thinking ?? thinkingPart.text ?? ''}${thinkingDelta}`) ?? '';
+      const thinking =
+        truncateSnapshotText(
+          `${thinkingPart.thinking ?? thinkingPart.text ?? ''}${thinkingDelta}`,
+        ) ?? '';
       thinkingPart.text = thinking;
       thinkingPart.thinking = thinking;
     }
@@ -326,35 +673,61 @@ export class ThreadSnapshotBuilder {
         textPart = { type: 'text', text: '' };
         content.push(textPart);
       }
-      textPart.text = truncateSnapshotText(`${textPart.text ?? ''}${textDelta}`) ?? '';
+      textPart.text =
+        truncateSnapshotText(`${textPart.text ?? ''}${textDelta}`) ?? '';
     }
   }
 
-  private finalizeEventItem(item: SubagentThreadItem, hasFinalMessages: boolean, finalMessagesAlreadyHaveThinking: boolean): SubagentThreadItem | undefined {
-    if (item.type !== 'assistant' || !item.id?.startsWith('streaming-assistant-')) return item;
+  private finalizeEventItem(
+    item: SubagentThreadItem,
+    hasFinalMessages: boolean,
+    finalMessagesAlreadyHaveThinking: boolean,
+  ): SubagentThreadItem | undefined {
+    if (
+      item.type !== 'assistant' ||
+      !item.id?.startsWith('streaming-assistant-')
+    )
+      return item;
     if (!hasFinalMessages) return item;
     if (finalMessagesAlreadyHaveThinking) return undefined;
     const thinkingContent = item.message.content
-      .filter((part): part is { type: 'thinking'; text?: string; thinking?: string } => part.type === 'thinking' && Boolean((part.thinking ?? part.text)?.trim()))
-      .map((part) => ({ type: 'thinking' as const, text: truncateSnapshotText(part.text), thinking: truncateSnapshotText(part.thinking ?? part.text) }));
-    return thinkingContent.length ? { ...item, message: { ...item.message, content: thinkingContent } } : undefined;
+      .filter(
+        (
+          part,
+        ): part is { type: 'thinking'; text?: string; thinking?: string } =>
+          part.type === 'thinking' &&
+          Boolean((part.thinking ?? part.text)?.trim()),
+      )
+      .map((part) => ({
+        type: 'thinking' as const,
+        text: truncateSnapshotText(part.text),
+        thinking: truncateSnapshotText(part.thinking ?? part.text),
+      }));
+    return thinkingContent.length
+      ? { ...item, message: { ...item.message, content: thinkingContent } }
+      : undefined;
   }
 }
 
 function assistantToolCallIds(item: SubagentThreadItem): Set<string> {
   const ids = new Set<string>();
   if (item.type !== 'assistant') return ids;
-  for (const part of item.message.content) if (part.type === 'toolCall') ids.add(part.id);
+  for (const part of item.message.content)
+    if (part.type === 'toolCall') ids.add(part.id);
   return ids;
 }
 
 function toolRowId(item: SubagentThreadItem): string | undefined {
-  if (item.type === 'tool' || item.type === 'tool_result') return item.tool_call_id ?? item.id;
+  if (item.type === 'tool' || item.type === 'tool_result')
+    return item.tool_call_id ?? item.id;
   if (item.type === 'bash') return item.tool_call_id ?? item.id;
   return undefined;
 }
 
-function interleaveMessagesWithToolRows(messageItems: SubagentThreadItem[], eventItems: SubagentThreadItem[]): SubagentThreadItem[] {
+function interleaveMessagesWithToolRows(
+  messageItems: SubagentThreadItem[],
+  eventItems: SubagentThreadItem[],
+): SubagentThreadItem[] {
   const used = new Set<number>();
   const ordered: SubagentThreadItem[] = [];
   const deferredMessages: SubagentThreadItem[] = [];
@@ -381,7 +754,8 @@ function interleaveMessagesWithToolRows(messageItems: SubagentThreadItem[], even
       }
     }
   }
-  for (let index = 0; index < eventItems.length; index++) if (!used.has(index)) ordered.push(eventItems[index]!);
+  for (let index = 0; index < eventItems.length; index++)
+    if (!used.has(index)) ordered.push(eventItems[index]!);
   ordered.push(...deferredMessages);
   return ordered;
 }
@@ -391,20 +765,73 @@ function assistantItemsFromMessages(messages: any[]): SubagentThreadItem[] {
   for (const msg of messages) {
     if (msg?.role !== 'assistant') continue;
     if (typeof msg.content === 'string') {
-      if (msg.content.trim()) items.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: truncateSnapshotText(msg.content) ?? '' }], usage: msg.usage } });
+      if (msg.content.trim())
+        items.push({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: truncateSnapshotText(msg.content) ?? '' },
+            ],
+            usage: msg.usage,
+          },
+        });
       continue;
     }
     if (!Array.isArray(msg.content)) continue;
     const content = msg.content.flatMap((part: any) => {
-      if (part?.type === 'text' && typeof part.text === 'string') return [{ type: 'text' as const, text: truncateSnapshotText(part.text) ?? '' }];
+      if (part?.type === 'text' && typeof part.text === 'string')
+        return [
+          {
+            type: 'text' as const,
+            text: truncateSnapshotText(part.text) ?? '',
+          },
+        ];
       if (part?.type === 'thinking') {
-        const thinking = typeof part.thinking === 'string' ? part.thinking : typeof part.text === 'string' ? part.text : '';
-        return thinking ? [{ type: 'thinking' as const, text: truncateSnapshotText(thinking), thinking: truncateSnapshotText(thinking) }] : [];
+        const thinking =
+          typeof part.thinking === 'string'
+            ? part.thinking
+            : typeof part.text === 'string'
+              ? part.text
+              : '';
+        return thinking
+          ? [
+              {
+                type: 'thinking' as const,
+                text: truncateSnapshotText(thinking),
+                thinking: truncateSnapshotText(thinking),
+              },
+            ]
+          : [];
       }
-      if ((part?.type === 'toolCall' || part?.type === 'tool_call') && typeof part.name === 'string') return [{ type: 'toolCall' as const, id: String(part.id ?? part.toolCallId ?? part.tool_call_id ?? part.name), name: part.name, arguments: part.arguments ?? part.args ?? part.input ?? {} }];
+      if (
+        (part?.type === 'toolCall' || part?.type === 'tool_call') &&
+        typeof part.name === 'string'
+      )
+        return [
+          {
+            type: 'toolCall' as const,
+            id: String(
+              part.id ?? part.toolCallId ?? part.tool_call_id ?? part.name,
+            ),
+            name: part.name,
+            arguments: part.arguments ?? part.args ?? part.input ?? {},
+          },
+        ];
       return [];
     });
-    if (content.length) items.push({ type: 'assistant', id: msg.id, message: { role: 'assistant', content, stopReason: msg.stopReason, errorMessage: msg.errorMessage, usage: msg.usage } });
+    if (content.length)
+      items.push({
+        type: 'assistant',
+        id: msg.id,
+        message: {
+          role: 'assistant',
+          content,
+          stopReason: msg.stopReason,
+          errorMessage: msg.errorMessage,
+          usage: msg.usage,
+        },
+      });
   }
   return items;
 }

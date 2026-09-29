@@ -480,6 +480,9 @@ async function runPiInstall(
     ...(config.localPackageRoot
       ? { firstPartySource: config.localPackageRoot }
       : {}),
+    ...(config.localPiRuntimeRoot
+      ? { runtimePackageRoot: config.localPiRuntimeRoot }
+      : {}),
     receiptOptions: dependencies.installLedgerOptions,
     verifyFirstParty: dependencies.verifyPiFirstParty,
   });
@@ -568,6 +571,9 @@ export function createInstallConfig(args: InstallArgs): InstallConfig {
     hasTmux: args.tmux === 'yes',
     ...(args.localPackageRoot
       ? { localPackageRoot: args.localPackageRoot }
+      : {}),
+    ...(args.localPiRuntimeRoot
+      ? { localPiRuntimeRoot: args.localPiRuntimeRoot }
       : {}),
     dryRun: args.dryRun,
     reset: args.reset ?? false,

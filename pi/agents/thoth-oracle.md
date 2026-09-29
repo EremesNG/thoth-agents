@@ -4,7 +4,7 @@ description: "Independently review plans when selected and provide independent j
 tools: "read, bash"
 model: "openai-codex/gpt-6-astra"
 effort: "medium"
-subagent_mode: "task"
+subagent_mode: "background"
 managed-by: thoth-agents
 ---
 

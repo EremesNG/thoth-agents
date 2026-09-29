@@ -1,8 +1,18 @@
+import {
+  BOX_CHARS,
+  CYAN,
+  electricBorder,
+  padToWidth,
+  themeFg,
+  truncateToWidth,
+  visibleWidth,
+} from '../completion-message.js';
 import { wrapLineToWidth } from '../text-width.js';
-import { BOX_CHARS, CYAN, electricBorder, padToWidth, themeFg, truncateToWidth, visibleWidth } from '../completion-message.js';
 
-const TERMINAL_ESCAPE_RE = /\u001b\][^\u001b\u0007]*(?:\u001b\\|\u0007)|\u001b\[[0-?]*[ -/]*[@-~]/g;
-const TERMINAL_ESCAPE_AT_START_RE = /^(?:\u001b\][^\u001b\u0007]*(?:\u001b\\|\u0007)|\u001b\[[0-?]*[ -/]*[@-~])/;
+const TERMINAL_ESCAPE_RE =
+  /\u001b\][^\u001b\u0007]*(?:\u001b\\|\u0007)|\u001b\[[0-?]*[ -/]*[@-~]/g;
+const TERMINAL_ESCAPE_AT_START_RE =
+  /^(?:\u001b\][^\u001b\u0007]*(?:\u001b\\|\u0007)|\u001b\[[0-?]*[ -/]*[@-~])/;
 
 function visibleTextWidth(text: string): number {
   return [...text.replace(TERMINAL_ESCAPE_RE, '')].length;
@@ -17,10 +27,10 @@ function truncateStyledLine(text: string, width: number): string {
   let index = 0;
   while (index < text.length && used < maxTextWidth) {
     const rest = text.slice(index);
-    const escape = rest.match(TERMINAL_ESCAPE_AT_START_RE)?.[0];
-    if (escape) {
-      out += escape;
-      index += escape.length;
+    const terminalEscape = rest.match(TERMINAL_ESCAPE_AT_START_RE)?.[0];
+    if (terminalEscape) {
+      out += terminalEscape;
+      index += terminalEscape.length;
       continue;
     }
     const char = [...rest][0];
@@ -68,21 +78,32 @@ export interface BoxedComponentOptions {
   onClick?: () => void;
 }
 
-export function boxedComponent(linesOrText: string | string[], options?: BoxedComponentOptions) {
+export function boxedComponent(
+  linesOrText: string | string[],
+  options?: BoxedComponentOptions,
+) {
   return {
     invalidate() {},
     handleMouse(event: any) {
-      if (options?.onClick && (event?.type === 'click' || (!event?.type && (event?.button === 'left' || event?.button === undefined)))) {
+      if (
+        options?.onClick &&
+        (event?.type === 'click' ||
+          (!event?.type &&
+            (event?.button === 'left' || event?.button === undefined)))
+      ) {
         options.onClick();
         return { handled: true };
       }
       return undefined;
     },
     render(width: number): string[] {
-      const borderFn = options?.borderFn ?? ((text: string) => {
-        if (options?.theme) return themeFg(options.theme, 'accent', text, CYAN);
-        return electricBorder(text);
-      });
+      const borderFn =
+        options?.borderFn ??
+        ((text: string) => {
+          if (options?.theme)
+            return themeFg(options.theme, 'accent', text, CYAN);
+          return electricBorder(text);
+        });
       const rawLines = Array.isArray(linesOrText)
         ? linesOrText.flatMap((l) => l.split('\n'))
         : linesOrText.split('\n');
@@ -108,7 +129,10 @@ export function boxedComponent(linesOrText: string | string[], options?: BoxedCo
       const formattedLines = options?.wrapped
         ? rawLines.flatMap((l) => wrapLineToWidth(l, contentWidth))
         : rawLines.map((l) => truncateToWidth(l, contentWidth, '…'));
-      const middle = formattedLines.map((l) => `${borderFn(BOX_CHARS.vertical)} ${padToWidth(l, contentWidth)} ${borderFn(BOX_CHARS.vertical)}`);
+      const middle = formattedLines.map(
+        (l) =>
+          `${borderFn(BOX_CHARS.vertical)} ${padToWidth(l, contentWidth)} ${borderFn(BOX_CHARS.vertical)}`,
+      );
       const bottom = `${borderFn(BOX_CHARS.bottomLeft)}${borderFn(BOX_CHARS.horizontal.repeat(innerWidth))}${borderFn(BOX_CHARS.bottomRight)}`;
 
       return [top, ...middle, bottom];

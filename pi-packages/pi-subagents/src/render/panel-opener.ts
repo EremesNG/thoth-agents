@@ -1,1 +1,5 @@
-export { openSubagentsPanel, registerSubagentsPanelOpener, resetSubagentsPanelOpenerStateForTests } from '../ui/panel-overlay.js';
+export {
+  openSubagentsPanel,
+  registerSubagentsPanelOpener,
+  resetSubagentsPanelOpenerStateForTests,
+} from '../ui/panel-overlay.js';

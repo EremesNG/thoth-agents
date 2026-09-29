@@ -1,22 +1,78 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
-import extension, { ClaudeBackgroundWidget, ClaudeBackgroundWidgetState, completionMessage, createSubagentsPanelKeyMatcher, moveClaudeBackgroundWidgetSelection, renderClaudeBackgroundWidgetLines, resolveRegisteredToolDefinition, sendSubagentCompletionMessage } from '../index.js';
-import { loadSubagents, parseFrontmatter, readSubagentsConfig, resetGlobalSubagentModelProfileField, saveGlobalSubagentModelProfile, subagentSourceWarnings } from '../src/config.js';
-import { resolveEffectiveSubagentProfile } from '../src/profile-resolver.js';
-import { buildPrompt, ThreadSnapshotBuilder } from '../src/runner.js';
-import { SubagentStructuredError, deriveErrorString, normalizeErrorMetadata, parseErrorMetadata, safeErrorMetadataDetails, serializeErrorMetadata } from '../src/error-metadata.js';
-import { applyDirtyProfileEdit, buildModelProfileRows, buildNoChangesModelProfilesMessage, buildNonTuiModelProfilesMessage, commitStagedModelProfiles, createSubagentModelProfilesModal, globalSubagentsConfigPath, groupAvailableModelsByProvider, runSubagentModelsCommand, stageModelProfileEdit } from '../src/model-profiles-ui.js';
-import { resolveSubagentHistoryDbPath, resolveSubagentsHistoryHome, SubagentHistoryStore } from '../src/history.js';
-import { isSubagentsDebugEnabled, writeSubagentsDebugLog } from '../src/debug.js';
-import { createSubagentsRenderLogger, DEFAULT_RENDER_DEBUG_LOG_PATH } from '../src/render-debug.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import extension, {
+  ClaudeBackgroundWidget,
+  ClaudeBackgroundWidgetState,
+  completionMessage,
+  createSubagentsPanelKeyMatcher,
+  moveClaudeBackgroundWidgetSelection,
+  renderClaudeBackgroundWidgetLines,
+  resolveRegisteredToolDefinition,
+  sendSubagentCompletionMessage,
+} from '../index.js';
+import {
+  loadSubagents,
+  parseFrontmatter,
+  readSubagentsConfig,
+  resetGlobalSubagentModelProfileField,
+  saveGlobalSubagentModelProfile,
+  subagentSourceWarnings,
+} from '../src/config.js';
+import {
+  isSubagentsDebugEnabled,
+  writeSubagentsDebugLog,
+} from '../src/debug.js';
+import {
+  deriveErrorString,
+  normalizeErrorMetadata,
+  parseErrorMetadata,
+  SubagentStructuredError,
+  safeErrorMetadataDetails,
+  serializeErrorMetadata,
+} from '../src/error-metadata.js';
+import {
+  resolveSubagentHistoryDbPath,
+  resolveSubagentsHistoryHome,
+  SubagentHistoryStore,
+} from '../src/history.js';
 import { SubagentManager } from '../src/manager.js';
+import {
+  applyDirtyProfileEdit,
+  buildModelProfileRows,
+  buildNoChangesModelProfilesMessage,
+  buildNonTuiModelProfilesMessage,
+  commitStagedModelProfiles,
+  createSubagentModelProfilesModal,
+  globalSubagentsConfigPath,
+  groupAvailableModelsByProvider,
+  runSubagentModelsCommand,
+  stageModelProfileEdit,
+} from '../src/model-profiles-ui.js';
+import { resolveEffectiveSubagentProfile } from '../src/profile-resolver.js';
+import {
+  createSubagentsRenderLogger,
+  DEFAULT_RENDER_DEBUG_LOG_PATH,
+} from '../src/render-debug.js';
+import { buildPrompt, ThreadSnapshotBuilder } from '../src/runner.js';
+import {
+  boundThreadSnapshot,
+  isValidThreadSnapshot,
+  registerSubagentRuntimeToolDefinition,
+  renderThreadBody,
+  resetPiComponentCacheForTests,
+} from '../src/thread-view.js';
 import { registerSubagentTools } from '../src/tools.js';
+import type {
+  EffectiveSubagentProfile,
+  SubagentErrorMetadata,
+  SubagentModelProfiles,
+  SubagentRunner,
+  SubagentTask,
+} from '../src/types.js';
 import { SubagentsHistoryPanel } from '../src/ui.js';
-import { boundThreadSnapshot, isValidThreadSnapshot, registerSubagentRuntimeToolDefinition, renderThreadBody, resetPiComponentCacheForTests } from '../src/thread-view.js';
-import type { EffectiveSubagentProfile, SubagentErrorMetadata, SubagentModelProfiles, SubagentRunner, SubagentTask } from '../src/types.js';
 
 const require = createRequire(import.meta.url);
 
@@ -28,44 +84,68 @@ beforeEach(() => {
   oldAgentDir = process.env.PI_CODING_AGENT_DIR;
   oldHistoryDbPath = process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
   process.env.PI_CODING_AGENT_DIR = path.join(tmp, 'isolated-agent');
-  process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(tmp, 'global-agent', 'subagents-history.sqlite');
+  process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(
+    tmp,
+    'global-agent',
+    'subagents-history.sqlite',
+  );
   fs.mkdirSync(path.join(tmp, '.pi', 'subagents'), { recursive: true });
 });
 afterEach(() => {
   if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
   else process.env.PI_CODING_AGENT_DIR = oldAgentDir;
-  if (oldHistoryDbPath === undefined) delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
+  if (oldHistoryDbPath === undefined)
+    delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
   else process.env.PI_SUBAGENTS_HISTORY_DB_PATH = oldHistoryDbPath;
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 function writeAgent(name: string, body = '# Agent\nhello') {
-  fs.writeFileSync(path.join(tmp, '.pi', 'subagents', `${name}.md`), `---\nname: ${name}\ndescription: ${name} agent\ntools:\n  - read\n  - memory_search\n---\n${body}`);
+  fs.writeFileSync(
+    path.join(tmp, '.pi', 'subagents', `${name}.md`),
+    `---\nname: ${name}\ndescription: ${name} agent\ntools:\n  - read\n  - memory_search\n---\n${body}`,
+  );
 }
 
 function mockRunner(delay = 0): SubagentRunner {
   return async ({ definition, task }) => {
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-    return { result: `${definition.name} handled ${task}`, model: 'mock/model', fallback_used: false };
+    return {
+      result: `${definition.name} handled ${task}`,
+      model: 'mock/model',
+      fallback_used: false,
+    };
   };
 }
 
 function statusSnapshot(text: string) {
-  return { version: 1 as const, source: 'events' as const, items: [{ type: 'status' as const, text }] };
+  return {
+    version: 1 as const,
+    source: 'events' as const,
+    items: [{ type: 'status' as const, text }],
+  };
 }
 
 function stripAnsi(text: string): string {
-  return text.replace(/\u001b\[[0-9;]*m/g, '').replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, '');
+  return text
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, '');
 }
 
-function renderText(snapshot: unknown, overrides: Partial<Parameters<typeof renderThreadBody>[1]> = {}): string {
+function renderText(
+  snapshot: unknown,
+  overrides: Partial<Parameters<typeof renderThreadBody>[1]> = {},
+): string {
   const context = {
     cwd: tmp,
     visibleWidth: (text: string) => stripAnsi(text).length,
-    truncateToWidth: (text: string, width: number) => text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text,
+    truncateToWidth: (text: string, width: number) =>
+      text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text,
     ...overrides,
   };
-  return stripAnsi(renderThreadBody(snapshot, context).join('\n')).replace(/\s+/g, ' ').trim();
+  return stripAnsi(renderThreadBody(snapshot, context).join('\n'))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function withAgentDir<T>(agentDir: string, run: () => T): T {
@@ -80,7 +160,12 @@ function withAgentDir<T>(agentDir: string, run: () => T): T {
 }
 
 function readJsonl(file: string): any[] {
-  return fs.readFileSync(file, 'utf8').trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  return fs
+    .readFileSync(file, 'utf8')
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 describe('structured error metadata public compatibility', () => {
@@ -105,15 +190,20 @@ describe('structured error metadata public compatibility', () => {
 
     expect(task.error).toBe('timed out after 123ms');
     expect(task.error_metadata?.version).toBe(1);
-    expect(task.error_metadata?.last_activity?.length ?? 0).toBeLessThanOrEqual(512);
-    expect(task.error_metadata?.last_activity).not.toContain('/tmp/fake-private.txt');
+    expect(task.error_metadata?.last_activity?.length ?? 0).toBeLessThanOrEqual(
+      512,
+    );
+    expect(task.error_metadata?.last_activity).not.toContain(
+      '/tmp/fake-private.txt',
+    );
     expect(deriveErrorString(task.error_metadata!)).toBe(task.error);
   });
 
   it('serializes, parses, and exposes safe bounded metadata details without leaking secrets', () => {
     const metadata: SubagentErrorMetadata = normalizeErrorMetadata({
       category: 'provider_api_error',
-      message: 'Authorization: Bearer sk-fake-secret-token fake.user@example.com /tmp/fake-private.txt',
+      message:
+        'Authorization: Bearer sk-fake-secret-token fake.user@example.com /tmp/fake-private.txt',
       partial_result_available: false,
       details: {
         provider_code: '500',

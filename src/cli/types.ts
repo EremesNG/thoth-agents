@@ -5,6 +5,7 @@ export interface InstallArgs {
   tui: boolean;
   agent?: InstallAgent;
   localPackageRoot?: string;
+  localPiRuntimeRoot?: string;
   tmux?: BooleanArg;
   dryRun?: boolean;
   reset?: boolean;
@@ -59,6 +60,7 @@ export interface InstallConfig {
   agent: InstallAgent;
   hasTmux: boolean;
   localPackageRoot?: string;
+  localPiRuntimeRoot?: string;
   dryRun?: boolean;
   reset: boolean;
 }

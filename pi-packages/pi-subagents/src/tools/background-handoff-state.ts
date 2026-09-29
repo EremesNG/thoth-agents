@@ -20,7 +20,9 @@ function sendTasksToBackground(
   const backgrounded = manager.sendToBackground(getTaskIds());
   if (!backgrounded.length) return [];
   ctx?.ui?.notify?.(
-    backgrounded.length === 1 ? `Sent subagent to background: ${backgrounded[0]!.id}` : `Sent ${backgrounded.length} subagent task(s) to background.`,
+    backgrounded.length === 1
+      ? `Sent subagent to background: ${backgrounded[0]!.id}`
+      : `Sent ${backgrounded.length} subagent task(s) to background.`,
     'info',
   );
   onBackground(backgrounded);
@@ -38,7 +40,10 @@ export function triggerClaudeBackgroundHandoff(): boolean {
 }
 
 function ctrlShortcutToTerminalInput(shortcut: string): string | undefined {
-  const match = shortcut.trim().toLowerCase().match(/^ctrl\+([a-z])$/);
+  const match = shortcut
+    .trim()
+    .toLowerCase()
+    .match(/^ctrl\+([a-z])$/);
   if (!match) return undefined;
   const code = match[1]!.charCodeAt(0) - 96;
   return code >= 1 && code <= 26 ? String.fromCharCode(code) : undefined;
@@ -50,22 +55,32 @@ export function installBackgroundHandoffShortcut(
   getTaskIds: () => string[],
   onBackground: (tasks: SubagentTask[]) => void,
 ): () => void {
-  const shortcut = readSubagentsConfig(ctx?.cwd ?? process.cwd()).background_handoff_shortcut ?? 'ctrl+h';
+  const shortcut =
+    readSubagentsConfig(ctx?.cwd ?? process.cwd())
+      .background_handoff_shortcut ?? 'ctrl+h';
   const terminalInput = ctrlShortcutToTerminalInput(shortcut);
-  const handoff = () => sendTasksToBackground(ctx, manager, getTaskIds, onBackground);
+  const handoff = () =>
+    sendTasksToBackground(ctx, manager, getTaskIds, onBackground);
   const entry: BackgroundHandoffEntry = {
     createdAt: ++backgroundHandoffSequence,
     handoff,
-    hasActiveTask: () => getTaskIds().some((id) => {
-      const task = manager.getTask(id);
-      return Boolean(task && task.mode !== 'background' && (task.status === 'queued' || task.status === 'running'));
-    }),
+    hasActiveTask: () =>
+      getTaskIds().some((id) => {
+        const task = manager.getTask(id);
+        return Boolean(
+          task &&
+            task.mode !== 'background' &&
+            (task.status === 'queued' || task.status === 'running'),
+        );
+      }),
   };
   activeClaudeBackgroundHandoffs.add(entry);
-  const unsubscribe = terminalInput ? ctx?.ui?.onTerminalInput?.((data: string) => {
-    if (data !== terminalInput) return undefined;
-    return handoff().length ? { consume: true } : undefined;
-  }) : undefined;
+  const unsubscribe = terminalInput
+    ? ctx?.ui?.onTerminalInput?.((data: string) => {
+        if (data !== terminalInput) return undefined;
+        return handoff().length ? { consume: true } : undefined;
+      })
+    : undefined;
   return () => {
     activeClaudeBackgroundHandoffs.delete(entry);
     if (typeof unsubscribe === 'function') unsubscribe();

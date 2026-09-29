@@ -31,16 +31,19 @@ import { inspectPiExternalPackage } from '../pi-external-package';
 import {
   applyPiSetup,
   buildPiSetupPlan,
+  findPiIncumbentDelegation,
+  getPiExternalPackageSpecs,
   getPiFirstPartyPackages,
   hasExactInstalledPiPackage,
-  isPiIncumbentDelegationSource,
   isVersionAtLeast,
   PI_MINIMUM_VERSION,
   PI_NODE_MINIMUM,
   PI_PACKAGE_SPECS,
   type PiCommandExecutor,
+  type PiIncumbentDelegation,
   type PiSetupPlan,
   parsePiPackageList,
+  piIncumbentDelegationRecovery,
   writePiManagedText,
 } from '../pi-install';
 import { migrateLegacyPiResources } from '../pi-migration';
@@ -84,6 +87,7 @@ import {
 export interface PiOperationContext extends OperationContext {
   homeDir?: string;
   packageRoot?: string;
+  runtimePackageRoot?: string;
   env?: Readonly<Record<string, string | undefined>>;
   installLedgerOptions?: InstallLedgerOptions;
   buildPiSetupPlan?: typeof buildPiSetupPlan;
@@ -197,8 +201,7 @@ function disclaimers() {
     },
     {
       code: 'pi-runtime-owned',
-      message:
-        'Pi and pi-subagents-j0k3r own execution, concurrency, task/history storage, trust, and lifecycle.',
+      message: `Pi and ${PI_PACKAGE_SPECS[0].packageName} own execution, concurrency, task/history storage, trust, and lifecycle.`,
     },
     {
       code: 'pi-lean-resources-global-only',
@@ -296,8 +299,8 @@ function runtimeTarget(
   };
 }
 
-function incumbentDelegationRecovery(source: string): string {
-  return `Incumbent Pi delegation runtime ${source} conflicts with ${PI_PACKAGE_SPECS[0].source}. Review its ownership, then run: pi remove ${source} --no-approve and rerun setup.`;
+function incumbentDelegationRecovery(incumbent: PiIncumbentDelegation): string {
+  return `Incumbent Pi delegation runtime ${incumbent.candidate.source} conflicts with ${PI_PACKAGE_SPECS[0].source}. ${piIncumbentDelegationRecovery(incumbent)}`;
 }
 
 function runtimeDiagnostic(
@@ -407,14 +410,14 @@ function statusFromPlan(
   );
   const configuredPackages =
     packages.exitCode === 0 ? parsePiPackageList(packages.stdout) : [];
-  const incumbentDelegation = configuredPackages.find(({ source }) =>
-    isPiIncumbentDelegationSource(source),
-  );
+  const incumbentDelegation = findPiIncumbentDelegation(configuredPackages);
+  const packageSpecs = getPiExternalPackageSpecs(plan.options);
   for (const target of targets.filter(
     (candidate) =>
-      candidate.kind === 'package' && candidate.path?.startsWith('npm:'),
+      candidate.kind === 'package' &&
+      packageSpecs.some(({ source }) => source === candidate.path),
   )) {
-    const externalSpec = PI_PACKAGE_SPECS.find(
+    const externalSpec = packageSpecs.find(
       ({ source }) => source === target.path,
     );
     if (packages.exitCode !== 0) {
@@ -424,6 +427,8 @@ function statusFromPlan(
       const inspected = inspectPiExternalPackage(
         configuredPackages,
         externalSpec,
+        externalSpec.id !== 'delegation' ||
+          plan.options.runtimePackageRoot !== undefined,
       );
       target.state = inspected.state;
       target.observed =
@@ -446,12 +451,12 @@ function statusFromPlan(
   if (incumbentDelegation)
     targets.push({
       kind: 'package',
-      path: incumbentDelegation.source,
+      path: incumbentDelegation.candidate.source,
       label: 'Pi incumbent delegation runtime',
       state: 'drift',
-      expected: 'not configured alongside pi-subagents-j0k3r',
-      observed: incumbentDelegation.source,
-      description: incumbentDelegationRecovery(incumbentDelegation.source),
+      expected: `not configured alongside ${PI_PACKAGE_SPECS[0].packageName}`,
+      observed: incumbentDelegation.candidate.source,
+      description: incumbentDelegationRecovery(incumbentDelegation),
     });
   const receiptOptions = context.installLedgerOptions ?? {
     env: context.env,
@@ -630,11 +635,11 @@ function statusFromPlan(
     ),
     ...(incumbentDelegation &&
     !plan.blockers.some((message) =>
-      message.includes(incumbentDelegation.source),
+      message.includes(incumbentDelegation.candidate.source),
     )
       ? [
           warning(
-            incumbentDelegationRecovery(incumbentDelegation.source),
+            incumbentDelegationRecovery(incumbentDelegation),
             'pi-incumbent-delegation-conflict',
             'critical',
           ),
@@ -693,6 +698,7 @@ function contextPlan(context: PiOperationContext, dryRun = true): PiSetupPlan {
     commandExecutor: context.piCommandExecutor,
     packageRoot:
       context.packageRoot ?? (version.ok ? version.packageRoot : undefined),
+    runtimePackageRoot: context.runtimePackageRoot,
     expectedVersion: version.ok ? version.version : undefined,
     receiptOptions: context.installLedgerOptions,
   });

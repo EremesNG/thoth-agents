@@ -5,7 +5,10 @@ import path from 'node:path';
 import { readSubagentsConfig } from './config.js';
 import type { SubagentsRenderDebugConfig } from './types.js';
 
-export const DEFAULT_RENDER_DEBUG_LOG_PATH = path.join(os.tmpdir(), 'pi-subagents-render.jsonl');
+export const DEFAULT_RENDER_DEBUG_LOG_PATH = path.join(
+  os.tmpdir(),
+  'pi-subagents-render.jsonl',
+);
 
 type RenderDebugDimensions = {
   stdoutColumns?: number;
@@ -33,7 +36,13 @@ type RenderDebugInput = {
 };
 
 type RenderDebugEvent = {
-  event: 'panel_created' | 'render_requested' | 'render_started' | 'render_completed' | 'input_received' | 'panel_disposed';
+  event:
+    | 'panel_created'
+    | 'render_requested'
+    | 'render_started'
+    | 'render_completed'
+    | 'input_received'
+    | 'panel_disposed';
   reason?: string;
   renderCycle?: number;
   durationMs?: number;
@@ -65,17 +74,34 @@ function pickTerminal(env: NodeJS.ProcessEnv) {
 function sanitizeState(state?: RenderDebugState) {
   if (!state) return undefined;
   return {
-    task_count: typeof state.taskCount === 'number' ? state.taskCount : undefined,
-    selected_index: typeof state.selectedIndex === 'number' ? state.selectedIndex : undefined,
+    task_count:
+      typeof state.taskCount === 'number' ? state.taskCount : undefined,
+    selected_index:
+      typeof state.selectedIndex === 'number' ? state.selectedIndex : undefined,
     selected_status: state.selectedStatus,
-    scroll_offset: typeof state.scrollOffset === 'number' ? state.scrollOffset : undefined,
-    follow_tail: typeof state.followTail === 'boolean' ? state.followTail : undefined,
+    scroll_offset:
+      typeof state.scrollOffset === 'number' ? state.scrollOffset : undefined,
+    follow_tail:
+      typeof state.followTail === 'boolean' ? state.followTail : undefined,
     has_usage: typeof state.hasUsage === 'boolean' ? state.hasUsage : undefined,
-    configured_max_lines: typeof state.configuredMaxLines === 'number' ? state.configuredMaxLines : undefined,
-    rendered_line_count: typeof state.renderedLineCount === 'number' ? state.renderedLineCount : undefined,
-    body_height: typeof state.bodyHeight === 'number' ? state.bodyHeight : undefined,
-    max_visible_width: typeof state.maxVisibleWidth === 'number' ? state.maxVisibleWidth : undefined,
-    width_violation_count: typeof state.widthViolationCount === 'number' ? state.widthViolationCount : undefined,
+    configured_max_lines:
+      typeof state.configuredMaxLines === 'number'
+        ? state.configuredMaxLines
+        : undefined,
+    rendered_line_count:
+      typeof state.renderedLineCount === 'number'
+        ? state.renderedLineCount
+        : undefined,
+    body_height:
+      typeof state.bodyHeight === 'number' ? state.bodyHeight : undefined,
+    max_visible_width:
+      typeof state.maxVisibleWidth === 'number'
+        ? state.maxVisibleWidth
+        : undefined,
+    width_violation_count:
+      typeof state.widthViolationCount === 'number'
+        ? state.widthViolationCount
+        : undefined,
   };
 }
 
@@ -118,20 +144,32 @@ export function createSubagentsRenderLogger(input: {
           timestamp: new Date().toISOString(),
           sequence: ++sequence,
           panel_instance_id: panelInstanceId,
-          session_id_hash: input.sessionId ? sha256(input.sessionId) : undefined,
+          session_id_hash: input.sessionId
+            ? sha256(input.sessionId)
+            : undefined,
           reason: event.reason,
           render_cycle: event.renderCycle,
-          duration_ms: typeof event.durationMs === 'number' ? Number(event.durationMs.toFixed(3)) : undefined,
-          dimensions: event.dimensions ? {
-            stdout_columns: event.dimensions.stdoutColumns,
-            stdout_rows: event.dimensions.stdoutRows,
-            render_width: event.dimensions.renderWidth,
-          } : undefined,
+          duration_ms:
+            typeof event.durationMs === 'number'
+              ? Number(event.durationMs.toFixed(3))
+              : undefined,
+          dimensions: event.dimensions
+            ? {
+                stdout_columns: event.dimensions.stdoutColumns,
+                stdout_rows: event.dimensions.stdoutRows,
+                render_width: event.dimensions.renderWidth,
+              }
+            : undefined,
           state: sanitizeState(event.state),
-          input: event.input ? { category: event.input.category, action: event.input.action } : undefined,
+          input: event.input
+            ? { category: event.input.category, action: event.input.action }
+            : undefined,
           terminal,
         };
-        fs.mkdirSync(path.dirname(config.path), { recursive: true, mode: 0o700 });
+        fs.mkdirSync(path.dirname(config.path), {
+          recursive: true,
+          mode: 0o700,
+        });
         fs.appendFileSync(config.path, `${JSON.stringify(record)}\n`, 'utf8');
       } catch {}
     },

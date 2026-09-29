@@ -25,10 +25,17 @@ describe('generic subagent interaction channel', () => {
     const published = publishInteractionRequest(request);
     expect(published.handle).toMatch(/^interaction_/);
     expect(resolveInteractionRequest(published.handle)).toEqual(request);
-    expect(consumeLatestInteractionRequest({ origin: 'subagent' })).toEqual(request);
+    expect(consumeLatestInteractionRequest({ origin: 'subagent' })).toEqual(
+      request,
+    );
     expect(resolveInteractionRequest(published.handle)).toBeUndefined();
 
-    publishInteractionResponse({ type: 'interaction_response', requestId: request.requestId, status: 'answered', value: { strategy: 'safe' } });
+    publishInteractionResponse({
+      type: 'interaction_response',
+      requestId: request.requestId,
+      status: 'answered',
+      value: { strategy: 'safe' },
+    });
     expect(consumeInteractionResponse(request.requestId)).toMatchObject({
       type: 'interaction_response',
       requestId: 'req-anything',
@@ -43,11 +50,19 @@ describe('generic subagent interaction channel', () => {
       requestId: 'req-nested',
       kind: 'operator-decision',
       origin: 'subagent',
-      prompt: { title: 'Need operator decision', message: 'Pick a rollout strategy.', choices: ['safe', 'fast'] },
+      prompt: {
+        title: 'Need operator decision',
+        message: 'Pick a rollout strategy.',
+        choices: ['safe', 'fast'],
+      },
       payload: { rollout: { environments: ['staging', 'prod'] } },
     };
 
-    expect(interactionRequestFromCandidate({ details: { interactionRequest: { payload: request } } })).toMatchObject(request);
+    expect(
+      interactionRequestFromCandidate({
+        details: { interactionRequest: { payload: request } },
+      }),
+    ).toMatchObject(request);
   });
 
   it('sanitizes generic interaction marker transport text', () => {
@@ -56,9 +71,8 @@ describe('generic subagent interaction channel', () => {
       'safe text',
     ].join('\n');
 
-    expect(sanitizeInteractionTransportText(text)).toBe([
-      '[interaction request hidden]',
-      'safe text',
-    ].join('\n'));
+    expect(sanitizeInteractionTransportText(text)).toBe(
+      ['[interaction request hidden]', 'safe text'].join('\n'),
+    );
   });
 });

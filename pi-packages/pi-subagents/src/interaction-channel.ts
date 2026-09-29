@@ -64,12 +64,15 @@ export interface PublishedInteractionRequest {
 }
 
 const INTERACTION_CHANNEL_KEY = Symbol.for('pi.subagents.interactionChannel');
-const INTERACTION_RESPONSE_CHANNEL_KEY = Symbol.for('pi.subagents.interactionResponses');
+const INTERACTION_RESPONSE_CHANNEL_KEY = Symbol.for(
+  'pi.subagents.interactionResponses',
+);
 
 function requestRegistry(): Map<string, PublishedInteractionRequest> {
   const holder = globalThis as Record<symbol, unknown>;
   const existing = holder[INTERACTION_CHANNEL_KEY];
-  if (existing instanceof Map) return existing as Map<string, PublishedInteractionRequest>;
+  if (existing instanceof Map)
+    return existing as Map<string, PublishedInteractionRequest>;
   const registry = new Map<string, PublishedInteractionRequest>();
   holder[INTERACTION_CHANNEL_KEY] = registry;
   return registry;
@@ -78,7 +81,8 @@ function requestRegistry(): Map<string, PublishedInteractionRequest> {
 function responseRegistry(): Map<string, SubagentInteractionResponse> {
   const holder = globalThis as Record<symbol, unknown>;
   const existing = holder[INTERACTION_RESPONSE_CHANNEL_KEY];
-  if (existing instanceof Map) return existing as Map<string, SubagentInteractionResponse>;
+  if (existing instanceof Map)
+    return existing as Map<string, SubagentInteractionResponse>;
   const registry = new Map<string, SubagentInteractionResponse>();
   holder[INTERACTION_RESPONSE_CHANNEL_KEY] = registry;
   return registry;
@@ -90,14 +94,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function requestIdFrom(value: Record<string, unknown>): string | undefined {
   const requestId = value.requestId ?? value.request_id;
-  return typeof requestId === 'string' && requestId.length > 0 ? requestId : undefined;
+  return typeof requestId === 'string' && requestId.length > 0
+    ? requestId
+    : undefined;
 }
 
-function promptFrom(value: Record<string, unknown>): InteractionPrompt | undefined {
-  return isRecord(value.prompt) ? value.prompt as InteractionPrompt : undefined;
+function promptFrom(
+  value: Record<string, unknown>,
+): InteractionPrompt | undefined {
+  return isRecord(value.prompt)
+    ? (value.prompt as InteractionPrompt)
+    : undefined;
 }
 
-function findInteractionRequest(value: unknown, seen: Set<unknown>): SubagentInteractionRequest | undefined {
+function findInteractionRequest(
+  value: unknown,
+  seen: Set<unknown>,
+): SubagentInteractionRequest | undefined {
   if (!isRecord(value) || seen.has(value)) return undefined;
   seen.add(value);
 
@@ -107,9 +120,14 @@ function findInteractionRequest(value: unknown, seen: Set<unknown>): SubagentInt
       ...value,
       type: 'interaction_required',
       requestId: directRequestId,
-      kind: typeof value.kind === 'string' && value.kind.length > 0 ? value.kind : 'custom',
+      kind:
+        typeof value.kind === 'string' && value.kind.length > 0
+          ? value.kind
+          : 'custom',
       prompt: promptFrom(value),
-      requester: isRecord(value.requester) ? value.requester as InteractionRequester : undefined,
+      requester: isRecord(value.requester)
+        ? (value.requester as InteractionRequester)
+        : undefined,
     } as SubagentInteractionRequest;
   }
 
@@ -127,11 +145,15 @@ function findInteractionRequest(value: unknown, seen: Set<unknown>): SubagentInt
   return undefined;
 }
 
-export function interactionRequestFromCandidate(value: unknown): SubagentInteractionRequest | undefined {
+export function interactionRequestFromCandidate(
+  value: unknown,
+): SubagentInteractionRequest | undefined {
   return findInteractionRequest(value, new Set());
 }
 
-export function publishInteractionRequest(payload: SubagentInteractionRequest): PublishedInteractionRequest {
+export function publishInteractionRequest(
+  payload: SubagentInteractionRequest,
+): PublishedInteractionRequest {
   const published: PublishedInteractionRequest = {
     handle: `interaction_${randomUUID().replace(/-/g, '')}`,
     payload,
@@ -141,11 +163,15 @@ export function publishInteractionRequest(payload: SubagentInteractionRequest): 
   return published;
 }
 
-export function resolveInteractionRequest(handle: string): SubagentInteractionRequest | undefined {
+export function resolveInteractionRequest(
+  handle: string,
+): SubagentInteractionRequest | undefined {
   return requestRegistry().get(handle)?.payload;
 }
 
-export function consumeInteractionRequest(handle: string): SubagentInteractionRequest | undefined {
+export function consumeInteractionRequest(
+  handle: string,
+): SubagentInteractionRequest | undefined {
   const registry = requestRegistry();
   const published = registry.get(handle);
   if (!published) return undefined;
@@ -153,14 +179,23 @@ export function consumeInteractionRequest(handle: string): SubagentInteractionRe
   return published.payload;
 }
 
-export function consumeLatestInteractionRequest(options: { maxAgeMs?: number; origin?: string } = {}): SubagentInteractionRequest | undefined {
+export function consumeLatestInteractionRequest(
+  options: { maxAgeMs?: number; origin?: string } = {},
+): SubagentInteractionRequest | undefined {
   const maxAgeMs = options.maxAgeMs ?? 30_000;
   const now = Date.now();
   const candidates = [...requestRegistry().entries()]
-    .map(([handle, published]) => ({ handle, published, timestamp: Date.parse(published.createdAt) }))
-    .filter(({ published, timestamp }) => Number.isFinite(timestamp)
-      && now - timestamp <= maxAgeMs
-      && (!options.origin || published.payload.origin === options.origin))
+    .map(([handle, published]) => ({
+      handle,
+      published,
+      timestamp: Date.parse(published.createdAt),
+    }))
+    .filter(
+      ({ published, timestamp }) =>
+        Number.isFinite(timestamp) &&
+        now - timestamp <= maxAgeMs &&
+        (!options.origin || published.payload.origin === options.origin),
+    )
     .sort((a, b) => b.timestamp - a.timestamp);
   const latest = candidates[0];
   if (!latest) return undefined;
@@ -168,7 +203,9 @@ export function consumeLatestInteractionRequest(options: { maxAgeMs?: number; or
   return latest.published.payload;
 }
 
-export function publishInteractionResponse(response: SubagentInteractionResponse): SubagentInteractionResponse {
+export function publishInteractionResponse(
+  response: SubagentInteractionResponse,
+): SubagentInteractionResponse {
   const normalized: SubagentInteractionResponse = {
     responder: 'parent',
     answeredAt: new Date().toISOString(),
@@ -179,11 +216,15 @@ export function publishInteractionResponse(response: SubagentInteractionResponse
   return normalized;
 }
 
-export function resolveInteractionResponse(requestId: string): SubagentInteractionResponse | undefined {
+export function resolveInteractionResponse(
+  requestId: string,
+): SubagentInteractionResponse | undefined {
   return responseRegistry().get(requestId);
 }
 
-export function consumeInteractionResponse(requestId: string): SubagentInteractionResponse | undefined {
+export function consumeInteractionResponse(
+  requestId: string,
+): SubagentInteractionResponse | undefined {
   const registry = responseRegistry();
   const response = registry.get(requestId);
   if (!response) return undefined;
@@ -193,5 +234,8 @@ export function consumeInteractionResponse(requestId: string): SubagentInteracti
 
 export function sanitizeInteractionTransportText(text: string): string {
   if (!text) return text;
-  return text.replace(/interaction_required:[^\r\n]*/g, '[interaction request hidden]');
+  return text.replace(
+    /interaction_required:[^\r\n]*/g,
+    '[interaction request hidden]',
+  );
 }

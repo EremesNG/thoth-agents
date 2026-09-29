@@ -23,7 +23,7 @@ function sampleSnapshot() {
   };
 }
 
-describe('thoth-agents:tools command', () => {
+describe('subagents-tools command', () => {
   test('registers the command with correct description', () => {
     const registerCommand = vi.fn();
     piExtension({
@@ -31,7 +31,7 @@ describe('thoth-agents:tools command', () => {
       registerCommand,
     });
     expect(registerCommand).toHaveBeenCalledWith(
-      'thoth-agents:tools',
+      'subagents-tools',
       expect.objectContaining({
         description: 'Edit global Thoth specialist tools',
         handler: expect.any(Function),
@@ -58,15 +58,13 @@ describe('thoth-agents:tools command', () => {
 
     const notify = vi.fn();
     const custom = vi.fn();
-    await commands.get('thoth-agents:tools')?.(undefined, {
+    await commands.get('subagents-tools')?.(undefined, {
       mode: 'rpc',
       ui: { notify, custom },
     });
 
     expect(notify).toHaveBeenCalledWith(
-      expect.stringContaining(
-        '/thoth-agents:tools requires interactive TUI mode',
-      ),
+      expect.stringContaining('/subagents-tools requires interactive TUI mode'),
       'error',
     );
     expect(readToolConfig).not.toHaveBeenCalled();
@@ -92,7 +90,7 @@ describe('thoth-agents:tools command', () => {
 
     const notify = vi.fn();
     const custom = vi.fn();
-    await commands.get('thoth-agents:tools')?.(undefined, {
+    await commands.get('subagents-tools')?.(undefined, {
       mode: 'tui',
       ui: { notify, custom },
     });
@@ -158,7 +156,7 @@ describe('thoth-agents:tools command', () => {
       },
     );
 
-    await commands.get('thoth-agents:tools')?.(undefined, {
+    await commands.get('subagents-tools')?.(undefined, {
       mode: 'tui',
       ui: {
         notify,

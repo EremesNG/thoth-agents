@@ -21,7 +21,10 @@ import * as uiModule from '../src/ui.js';
 
 async function withIsolatedSubagentsConfig(
   callback: (workspaceDir: string) => void | Promise<void>,
-  options: { globalConfig?: Record<string, unknown>; projectConfig?: Record<string, unknown> } = {},
+  options: {
+    globalConfig?: Record<string, unknown>;
+    projectConfig?: Record<string, unknown>;
+  } = {},
 ): Promise<void> {
   const fs = await import('node:fs');
   const os = await import('node:os');
@@ -36,12 +39,18 @@ async function withIsolatedSubagentsConfig(
   fs.mkdirSync(workspaceDir, { recursive: true });
 
   if (options.globalConfig) {
-    fs.writeFileSync(path.join(agentDir, 'subagents.json'), JSON.stringify(options.globalConfig));
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents.json'),
+      JSON.stringify(options.globalConfig),
+    );
   }
 
   if (options.projectConfig) {
     fs.mkdirSync(path.join(workspaceDir, '.pi'), { recursive: true });
-    fs.writeFileSync(path.join(workspaceDir, '.pi', 'subagents.json'), JSON.stringify(options.projectConfig));
+    fs.writeFileSync(
+      path.join(workspaceDir, '.pi', 'subagents.json'),
+      JSON.stringify(options.projectConfig),
+    );
   }
 
   process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -79,11 +88,25 @@ describe('compatibility smoke', () => {
       const tools: string[] = [];
       const events: string[] = [];
       const pi = {
-        registerMessageRenderer: vi.fn((name: string) => { calls.push(`renderer:${name}`); }),
-        registerTool: vi.fn((tool: { name: string }) => { calls.push(`tool:${tool.name}`); tools.push(tool.name); }),
-        on: vi.fn((name: string) => { calls.push(`event:${name}`); events.push(name); }),
-        registerShortcut: vi.fn((name: string) => { calls.push(`shortcut:${name}`); shortcuts.push(name); }),
-        registerCommand: vi.fn((name: string) => { calls.push(`command:${name}`); commands.push(name); }),
+        registerMessageRenderer: vi.fn((name: string) => {
+          calls.push(`renderer:${name}`);
+        }),
+        registerTool: vi.fn((tool: { name: string }) => {
+          calls.push(`tool:${tool.name}`);
+          tools.push(tool.name);
+        }),
+        on: vi.fn((name: string) => {
+          calls.push(`event:${name}`);
+          events.push(name);
+        }),
+        registerShortcut: vi.fn((name: string) => {
+          calls.push(`shortcut:${name}`);
+          shortcuts.push(name);
+        }),
+        registerCommand: vi.fn((name: string) => {
+          calls.push(`command:${name}`);
+          commands.push(name);
+        }),
       };
 
       extension(pi);
@@ -100,21 +123,26 @@ describe('compatibility smoke', () => {
       ]);
       expect(events).toEqual(['session_start', 'session_shutdown']);
       expect(shortcuts).toEqual(expect.arrayContaining(['ctrl+,', 'ctrl+h']));
-      expect(commands).toEqual(['subagents', 'subagent-models']);
+      expect(commands).toEqual(['subagents', 'subagents-model']);
     });
   });
 
   it('restores subagent_continue registration when continuation is explicitly enabled before extension initialization', async () => {
-    await withIsolatedSubagentsConfig(() => {
-      const tools: string[] = [];
-      extension({
-        registerMessageRenderer: () => undefined,
-        registerTool: vi.fn((tool: { name: string }) => { tools.push(tool.name); }),
-        on: () => undefined,
-        registerShortcut: () => undefined,
-        registerCommand: () => undefined,
-      });
-      expect(tools).toContain('subagent_continue');
-    }, { projectConfig: { enable_continue: true } });
+    await withIsolatedSubagentsConfig(
+      () => {
+        const tools: string[] = [];
+        extension({
+          registerMessageRenderer: () => undefined,
+          registerTool: vi.fn((tool: { name: string }) => {
+            tools.push(tool.name);
+          }),
+          on: () => undefined,
+          registerShortcut: () => undefined,
+          registerCommand: () => undefined,
+        });
+        expect(tools).toContain('subagent_continue');
+      },
+      { projectConfig: { enable_continue: true } },
+    );
   });
 });

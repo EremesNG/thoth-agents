@@ -1,5 +1,5 @@
 {
-  "name": "pi-subagents-j0k3r",
+  "name": "@thoth-agents/pi-subagents",
   "version": "1.0.0",
   "description": "Installable Pi package that adds markdown-defined subagents, delegated task tools, history, and model profiles.",
   "type": "module",
@@ -7,7 +7,8 @@
   "author": "j0k3r",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/j0k3r-dev-rgl/pi-subagents-j0k3r.git"
+    "url": "git+https://github.com/EremesNG/thoth-agents.git",
+    "directory": "pi-packages/pi-subagents"
   },
   "keywords": [
     "pi-package",

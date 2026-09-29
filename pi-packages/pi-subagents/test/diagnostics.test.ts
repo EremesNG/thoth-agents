@@ -1,22 +1,78 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
-import extension, { ClaudeBackgroundWidget, ClaudeBackgroundWidgetState, completionMessage, createSubagentsPanelKeyMatcher, moveClaudeBackgroundWidgetSelection, renderClaudeBackgroundWidgetLines, resolveRegisteredToolDefinition, sendSubagentCompletionMessage } from '../index.js';
-import { loadSubagents, parseFrontmatter, readSubagentsConfig, resetGlobalSubagentModelProfileField, saveGlobalSubagentModelProfile, subagentSourceWarnings } from '../src/config.js';
-import { resolveEffectiveSubagentProfile } from '../src/profile-resolver.js';
-import { buildPrompt, ThreadSnapshotBuilder } from '../src/runner.js';
-import { SubagentStructuredError, deriveErrorString, normalizeErrorMetadata, parseErrorMetadata, safeErrorMetadataDetails, serializeErrorMetadata } from '../src/error-metadata.js';
-import { applyDirtyProfileEdit, buildModelProfileRows, buildNoChangesModelProfilesMessage, buildNonTuiModelProfilesMessage, commitStagedModelProfiles, createSubagentModelProfilesModal, globalSubagentsConfigPath, groupAvailableModelsByProvider, runSubagentModelsCommand, stageModelProfileEdit } from '../src/model-profiles-ui.js';
-import { resolveSubagentHistoryDbPath, resolveSubagentsHistoryHome, SubagentHistoryStore } from '../src/history.js';
-import { isSubagentsDebugEnabled, writeSubagentsDebugLog } from '../src/debug.js';
-import { createSubagentsRenderLogger, DEFAULT_RENDER_DEBUG_LOG_PATH } from '../src/render-debug.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import extension, {
+  ClaudeBackgroundWidget,
+  ClaudeBackgroundWidgetState,
+  completionMessage,
+  createSubagentsPanelKeyMatcher,
+  moveClaudeBackgroundWidgetSelection,
+  renderClaudeBackgroundWidgetLines,
+  resolveRegisteredToolDefinition,
+  sendSubagentCompletionMessage,
+} from '../index.js';
+import {
+  loadSubagents,
+  parseFrontmatter,
+  readSubagentsConfig,
+  resetGlobalSubagentModelProfileField,
+  saveGlobalSubagentModelProfile,
+  subagentSourceWarnings,
+} from '../src/config.js';
+import {
+  isSubagentsDebugEnabled,
+  writeSubagentsDebugLog,
+} from '../src/debug.js';
+import {
+  deriveErrorString,
+  normalizeErrorMetadata,
+  parseErrorMetadata,
+  SubagentStructuredError,
+  safeErrorMetadataDetails,
+  serializeErrorMetadata,
+} from '../src/error-metadata.js';
+import {
+  resolveSubagentHistoryDbPath,
+  resolveSubagentsHistoryHome,
+  SubagentHistoryStore,
+} from '../src/history.js';
 import { SubagentManager } from '../src/manager.js';
+import {
+  applyDirtyProfileEdit,
+  buildModelProfileRows,
+  buildNoChangesModelProfilesMessage,
+  buildNonTuiModelProfilesMessage,
+  commitStagedModelProfiles,
+  createSubagentModelProfilesModal,
+  globalSubagentsConfigPath,
+  groupAvailableModelsByProvider,
+  runSubagentModelsCommand,
+  stageModelProfileEdit,
+} from '../src/model-profiles-ui.js';
+import { resolveEffectiveSubagentProfile } from '../src/profile-resolver.js';
+import {
+  createSubagentsRenderLogger,
+  DEFAULT_RENDER_DEBUG_LOG_PATH,
+} from '../src/render-debug.js';
+import { buildPrompt, ThreadSnapshotBuilder } from '../src/runner.js';
+import {
+  boundThreadSnapshot,
+  isValidThreadSnapshot,
+  registerSubagentRuntimeToolDefinition,
+  renderThreadBody,
+  resetPiComponentCacheForTests,
+} from '../src/thread-view.js';
 import { registerSubagentTools } from '../src/tools.js';
+import type {
+  EffectiveSubagentProfile,
+  SubagentErrorMetadata,
+  SubagentModelProfiles,
+  SubagentRunner,
+  SubagentTask,
+} from '../src/types.js';
 import { SubagentsHistoryPanel } from '../src/ui.js';
-import { boundThreadSnapshot, isValidThreadSnapshot, registerSubagentRuntimeToolDefinition, renderThreadBody, resetPiComponentCacheForTests } from '../src/thread-view.js';
-import type { EffectiveSubagentProfile, SubagentErrorMetadata, SubagentModelProfiles, SubagentRunner, SubagentTask } from '../src/types.js';
 
 const require = createRequire(import.meta.url);
 
@@ -28,44 +84,68 @@ beforeEach(() => {
   oldAgentDir = process.env.PI_CODING_AGENT_DIR;
   oldHistoryDbPath = process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
   process.env.PI_CODING_AGENT_DIR = path.join(tmp, 'isolated-agent');
-  process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(tmp, 'global-agent', 'subagents-history.sqlite');
+  process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(
+    tmp,
+    'global-agent',
+    'subagents-history.sqlite',
+  );
   fs.mkdirSync(path.join(tmp, '.pi', 'subagents'), { recursive: true });
 });
 afterEach(() => {
   if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
   else process.env.PI_CODING_AGENT_DIR = oldAgentDir;
-  if (oldHistoryDbPath === undefined) delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
+  if (oldHistoryDbPath === undefined)
+    delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
   else process.env.PI_SUBAGENTS_HISTORY_DB_PATH = oldHistoryDbPath;
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 function writeAgent(name: string, body = '# Agent\nhello') {
-  fs.writeFileSync(path.join(tmp, '.pi', 'subagents', `${name}.md`), `---\nname: ${name}\ndescription: ${name} agent\ntools:\n  - read\n  - memory_search\n---\n${body}`);
+  fs.writeFileSync(
+    path.join(tmp, '.pi', 'subagents', `${name}.md`),
+    `---\nname: ${name}\ndescription: ${name} agent\ntools:\n  - read\n  - memory_search\n---\n${body}`,
+  );
 }
 
 function mockRunner(delay = 0): SubagentRunner {
   return async ({ definition, task }) => {
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-    return { result: `${definition.name} handled ${task}`, model: 'mock/model', fallback_used: false };
+    return {
+      result: `${definition.name} handled ${task}`,
+      model: 'mock/model',
+      fallback_used: false,
+    };
   };
 }
 
 function statusSnapshot(text: string) {
-  return { version: 1 as const, source: 'events' as const, items: [{ type: 'status' as const, text }] };
+  return {
+    version: 1 as const,
+    source: 'events' as const,
+    items: [{ type: 'status' as const, text }],
+  };
 }
 
 function stripAnsi(text: string): string {
-  return text.replace(/\u001b\[[0-9;]*m/g, '').replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, '');
+  return text
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, '');
 }
 
-function renderText(snapshot: unknown, overrides: Partial<Parameters<typeof renderThreadBody>[1]> = {}): string {
+function renderText(
+  snapshot: unknown,
+  overrides: Partial<Parameters<typeof renderThreadBody>[1]> = {},
+): string {
   const context = {
     cwd: tmp,
     visibleWidth: (text: string) => stripAnsi(text).length,
-    truncateToWidth: (text: string, width: number) => text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text,
+    truncateToWidth: (text: string, width: number) =>
+      text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text,
     ...overrides,
   };
-  return stripAnsi(renderThreadBody(snapshot, context).join('\n')).replace(/\s+/g, ' ').trim();
+  return stripAnsi(renderThreadBody(snapshot, context).join('\n'))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function withAgentDir<T>(agentDir: string, run: () => T): T {
@@ -80,7 +160,12 @@ function withAgentDir<T>(agentDir: string, run: () => T): T {
 }
 
 function readJsonl(file: string): any[] {
-  return fs.readFileSync(file, 'utf8').trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  return fs
+    .readFileSync(file, 'utf8')
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 describe('diagnostics and debug logging', () => {
@@ -95,7 +180,10 @@ describe('diagnostics and debug logging', () => {
   it('keeps render diagnostics disabled by default and ignores malformed settings', () => {
     expect(readSubagentsConfig(tmp).render_debug).toBeUndefined();
 
-    fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), JSON.stringify({ render_debug: { enabled: 'true', path: 42 } }));
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ render_debug: { enabled: 'true', path: 42 } }),
+    );
 
     expect(readSubagentsConfig(tmp).render_debug).toBeUndefined();
   });
@@ -105,26 +193,61 @@ describe('diagnostics and debug logging', () => {
     const projectRoot = path.join(tmp, 'project-root');
     fs.mkdirSync(globalAgentDir, { recursive: true });
     fs.mkdirSync(path.join(projectRoot, '.pi'), { recursive: true });
-    fs.writeFileSync(path.join(globalAgentDir, 'subagents.json'), JSON.stringify({ render_debug: { enabled: true, path: '/tmp/global-render.jsonl' } }));
-    fs.writeFileSync(path.join(projectRoot, '.pi', 'subagents.json'), JSON.stringify({ renderDebug: { enabled: true, path: '/tmp/project-render.jsonl' } }));
+    fs.writeFileSync(
+      path.join(globalAgentDir, 'subagents.json'),
+      JSON.stringify({
+        render_debug: { enabled: true, path: '/tmp/global-render.jsonl' },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectRoot, '.pi', 'subagents.json'),
+      JSON.stringify({
+        renderDebug: { enabled: true, path: '/tmp/project-render.jsonl' },
+      }),
+    );
 
-    const config = withAgentDir(globalAgentDir, () => readSubagentsConfig(projectRoot));
+    const config = withAgentDir(globalAgentDir, () =>
+      readSubagentsConfig(projectRoot),
+    );
 
-    expect(config.render_debug).toEqual({ enabled: true, path: '/tmp/project-render.jsonl' });
+    expect(config.render_debug).toEqual({
+      enabled: true,
+      path: '/tmp/project-render.jsonl',
+    });
 
-    fs.writeFileSync(path.join(projectRoot, '.pi', 'subagents.json'), JSON.stringify({ renderDebug: { enabled: true } }));
-    expect(withAgentDir(globalAgentDir, () => readSubagentsConfig(projectRoot)).render_debug).toEqual({ enabled: true, path: '/tmp/global-render.jsonl' });
+    fs.writeFileSync(
+      path.join(projectRoot, '.pi', 'subagents.json'),
+      JSON.stringify({ renderDebug: { enabled: true } }),
+    );
+    expect(
+      withAgentDir(globalAgentDir, () => readSubagentsConfig(projectRoot))
+        .render_debug,
+    ).toEqual({ enabled: true, path: '/tmp/global-render.jsonl' });
 
-    fs.writeFileSync(path.join(globalAgentDir, 'subagents.json'), JSON.stringify({ render_debug: { enabled: true } }));
+    fs.writeFileSync(
+      path.join(globalAgentDir, 'subagents.json'),
+      JSON.stringify({ render_debug: { enabled: true } }),
+    );
     fs.rmSync(path.join(projectRoot, '.pi', 'subagents.json'));
-    expect(withAgentDir(globalAgentDir, () => readSubagentsConfig(projectRoot)).render_debug).toEqual({ enabled: true, path: DEFAULT_RENDER_DEBUG_LOG_PATH });
+    expect(
+      withAgentDir(globalAgentDir, () => readSubagentsConfig(projectRoot))
+        .render_debug,
+    ).toEqual({ enabled: true, path: DEFAULT_RENDER_DEBUG_LOG_PATH });
   });
 
   it('lets project render diagnostics disable a globally enabled render logger', () => {
     const globalAgentDir = path.join(tmp, 'global-agent');
     fs.mkdirSync(globalAgentDir, { recursive: true });
-    fs.writeFileSync(path.join(globalAgentDir, 'subagents.json'), JSON.stringify({ render_debug: { enabled: true, path: '/tmp/global-render.jsonl' } }));
-    fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), JSON.stringify({ render_debug: { enabled: false } }));
+    fs.writeFileSync(
+      path.join(globalAgentDir, 'subagents.json'),
+      JSON.stringify({
+        render_debug: { enabled: true, path: '/tmp/global-render.jsonl' },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ render_debug: { enabled: false } }),
+    );
 
     const config = withAgentDir(globalAgentDir, () => readSubagentsConfig(tmp));
 
@@ -142,9 +265,22 @@ describe('diagnostics and debug logging', () => {
       prompt: 'SENTINEL_PROMPT_TEXT',
       result: 'SENTINEL_OUTPUT_TEXT',
       created_at: new Date().toISOString(),
-      thread_snapshot: { version: 1, source: 'events', items: [{ type: 'status', text: 'SENTINEL_RENDERED_LINE' }] },
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'status', text: 'SENTINEL_RENDERED_LINE' }],
+      },
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, {}, () => 18);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+      {},
+      () => 18,
+    );
     panel.render(72);
 
     const logger = createSubagentsRenderLogger({
@@ -160,18 +296,53 @@ describe('diagnostics and debug logging', () => {
     });
 
     logger.log({ event: 'panel_created' });
-    logger.log({ event: 'render_started', reason: 'initial', renderCycle: 1, dimensions: { stdoutColumns: 120, stdoutRows: 40, renderWidth: 72 } });
-    logger.log({ event: 'render_completed', reason: 'initial', renderCycle: 1, durationMs: 2.5, dimensions: { stdoutColumns: 120, stdoutRows: 40, renderWidth: 72 }, state: panel.getRenderDebugState() });
+    logger.log({
+      event: 'render_started',
+      reason: 'initial',
+      renderCycle: 1,
+      dimensions: { stdoutColumns: 120, stdoutRows: 40, renderWidth: 72 },
+    });
+    logger.log({
+      event: 'render_completed',
+      reason: 'initial',
+      renderCycle: 1,
+      durationMs: 2.5,
+      dimensions: { stdoutColumns: 120, stdoutRows: 40, renderWidth: 72 },
+      state: panel.getRenderDebugState(),
+    });
 
     const records = readJsonl(logFile);
     const serialized = JSON.stringify(records);
 
     expect(records.map((record) => record.sequence)).toEqual([1, 2, 3]);
-    expect(records.every((record) => record.panel_instance_id === records[0].panel_instance_id)).toBe(true);
-    expect(records[1]).toMatchObject({ event: 'render_started', reason: 'initial', render_cycle: 1 });
-    expect(records[2]).toMatchObject({ event: 'render_completed', reason: 'initial', render_cycle: 1 });
-    expect(records[2].terminal).toEqual({ term: 'xterm-256color', colorterm: 'truecolor', term_program: 'ghostty', inside_tmux: false, inside_herdr: false });
-    expect(records[2].state).toMatchObject({ task_count: 1, selected_index: 0, selected_status: 'running', has_usage: false });
+    expect(
+      records.every(
+        (record) => record.panel_instance_id === records[0].panel_instance_id,
+      ),
+    ).toBe(true);
+    expect(records[1]).toMatchObject({
+      event: 'render_started',
+      reason: 'initial',
+      render_cycle: 1,
+    });
+    expect(records[2]).toMatchObject({
+      event: 'render_completed',
+      reason: 'initial',
+      render_cycle: 1,
+    });
+    expect(records[2].terminal).toEqual({
+      term: 'xterm-256color',
+      colorterm: 'truecolor',
+      term_program: 'ghostty',
+      inside_tmux: false,
+      inside_herdr: false,
+    });
+    expect(records[2].state).toMatchObject({
+      task_count: 1,
+      selected_index: 0,
+      selected_status: 'running',
+      has_usage: false,
+    });
     expect(records[2].session_id_hash).toMatch(/^sha256:/);
     expect(serialized).not.toContain('SENTINEL_TASK_TEXT');
     expect(serialized).not.toContain('SENTINEL_PROMPT_TEXT');
@@ -185,7 +356,10 @@ describe('diagnostics and debug logging', () => {
   it('swallows render diagnostics filesystem errors', () => {
     const logDir = path.join(tmp, 'render-debug-dir');
     fs.mkdirSync(logDir, { recursive: true });
-    const logger = createSubagentsRenderLogger({ cwd: tmp, config: { enabled: true, path: logDir } });
+    const logger = createSubagentsRenderLogger({
+      cwd: tmp,
+      config: { enabled: true, path: logDir },
+    });
 
     expect(() => logger.log({ event: 'panel_created' })).not.toThrow();
     expect(fs.readdirSync(logDir)).toHaveLength(0);
@@ -195,12 +369,17 @@ describe('diagnostics and debug logging', () => {
     vi.useFakeTimers();
     try {
       const logFile = path.join(tmp, 'subagents-panel-render.jsonl');
-      fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), JSON.stringify({ render_debug: { enabled: true, path: logFile } }));
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({ render_debug: { enabled: true, path: logFile } }),
+      );
       let subagentsCommand: any;
       const requestRender = vi.fn();
       extension({
         registerTool: () => undefined,
-        registerCommand: (name: string, command: any) => { if (name === 'subagents') subagentsCommand = command; },
+        registerCommand: (name: string, command: any) => {
+          if (name === 'subagents') subagentsCommand = command;
+        },
       });
 
       await subagentsCommand.handler('', {
@@ -209,7 +388,10 @@ describe('diagnostics and debug logging', () => {
           custom: async (factory: any) => {
             const component = factory(
               { terminal: { write: () => undefined }, requestRender },
-              { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+              {
+                fg: (_name: string, text: string) => text,
+                bold: (text: string) => text,
+              },
               {},
               () => undefined,
             );
@@ -233,11 +415,31 @@ describe('diagnostics and debug logging', () => {
       expect(events).toContain('render_completed');
       expect(events).toContain('input_received');
       expect(events).toContain('panel_disposed');
-      expect(records.filter((record) => record.event === 'render_requested').map((record) => record.reason)).toEqual(expect.arrayContaining(['initial', 'interval', 'input']));
-      expect(records.filter((record) => record.event === 'input_received').map((record) => record.input)).toEqual([{ category: 'navigation', action: 'down' }, { category: 'lifecycle', action: 'close' }]);
-      expect(records.filter((record) => record.event === 'render_completed').every((record) => typeof record.duration_ms === 'number' && record.duration_ms >= 0)).toBe(true);
+      expect(
+        records
+          .filter((record) => record.event === 'render_requested')
+          .map((record) => record.reason),
+      ).toEqual(expect.arrayContaining(['initial', 'interval', 'input']));
+      expect(
+        records
+          .filter((record) => record.event === 'input_received')
+          .map((record) => record.input),
+      ).toEqual([
+        { category: 'navigation', action: 'down' },
+        { category: 'lifecycle', action: 'close' },
+      ]);
+      expect(
+        records
+          .filter((record) => record.event === 'render_completed')
+          .every(
+            (record) =>
+              typeof record.duration_ms === 'number' && record.duration_ms >= 0,
+          ),
+      ).toBe(true);
       expect(serialized).not.toContain('\u001b[B');
-      expect(serialized).not.toContain('No subagent tasks recorded in this session yet.');
+      expect(serialized).not.toContain(
+        'No subagent tasks recorded in this session yet.',
+      );
       expect(serialized).not.toContain('session execution flow');
       expect(requestRender).toHaveBeenCalledTimes(3);
     } finally {
@@ -250,30 +452,57 @@ describe('diagnostics and debug logging', () => {
     const projectRoot = path.join(tmp, 'project-root');
     fs.mkdirSync(path.join(globalAgentDir), { recursive: true });
     fs.mkdirSync(path.join(projectRoot, '.pi'), { recursive: true });
-    fs.writeFileSync(path.join(globalAgentDir, 'subagents.json'), JSON.stringify({ debug: true }));
-    const config = withAgentDir(globalAgentDir, () => readSubagentsConfig(projectRoot));
+    fs.writeFileSync(
+      path.join(globalAgentDir, 'subagents.json'),
+      JSON.stringify({ debug: true }),
+    );
+    const config = withAgentDir(globalAgentDir, () =>
+      readSubagentsConfig(projectRoot),
+    );
     expect(config.debug).toBe(true);
-    expect(withAgentDir(globalAgentDir, () => isSubagentsDebugEnabled(projectRoot))).toBe(true);
-    withAgentDir(globalAgentDir, () => writeSubagentsDebugLog(projectRoot, 'config_enabled_event', { ok: true }));
-    expect(fs.readFileSync(path.join(projectRoot, '.pi', 'subagents-debug.log'), 'utf8')).toContain('config_enabled_event');
-    expect(fs.existsSync(path.join(globalAgentDir, '.pi', 'subagents-debug.log'))).toBe(false);
+    expect(
+      withAgentDir(globalAgentDir, () => isSubagentsDebugEnabled(projectRoot)),
+    ).toBe(true);
+    withAgentDir(globalAgentDir, () =>
+      writeSubagentsDebugLog(projectRoot, 'config_enabled_event', { ok: true }),
+    );
+    expect(
+      fs.readFileSync(
+        path.join(projectRoot, '.pi', 'subagents-debug.log'),
+        'utf8',
+      ),
+    ).toContain('config_enabled_event');
+    expect(
+      fs.existsSync(path.join(globalAgentDir, '.pi', 'subagents-debug.log')),
+    ).toBe(false);
   });
 
   it('lets project subagents debug config override global debug config', () => {
     const globalAgentDir = path.join(tmp, 'global-agent');
     fs.mkdirSync(globalAgentDir, { recursive: true });
-    fs.writeFileSync(path.join(globalAgentDir, 'subagents.json'), JSON.stringify({ debug: true }));
-    fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), JSON.stringify({ debug: false }));
+    fs.writeFileSync(
+      path.join(globalAgentDir, 'subagents.json'),
+      JSON.stringify({ debug: true }),
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ debug: false }),
+    );
 
     const config = withAgentDir(globalAgentDir, () => readSubagentsConfig(tmp));
 
     expect(config.debug).toBe(false);
-    expect(withAgentDir(globalAgentDir, () => isSubagentsDebugEnabled(tmp))).toBe(false);
+    expect(
+      withAgentDir(globalAgentDir, () => isSubagentsDebugEnabled(tmp)),
+    ).toBe(false);
   });
 
   it('adds the subagent debug log path to gitignore when debug logs are written inside a git repo', () => {
     fs.mkdirSync(path.join(tmp, '.git'), { recursive: true });
-    fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), JSON.stringify({ debug: true }));
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ debug: true }),
+    );
     fs.writeFileSync(path.join(tmp, '.gitignore'), 'node_modules\n');
 
     writeSubagentsDebugLog(tmp, 'gitignore_event', { ok: true });
@@ -283,5 +512,4 @@ describe('diagnostics and debug logging', () => {
     expect(gitignore).toContain('.pi/subagents-debug.log\n');
     expect(gitignore.match(/\.pi\/subagents-debug\.log/g)).toHaveLength(1);
   });
-
 });

@@ -1,9 +1,19 @@
-import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { SubagentStructuredError, classifyFallbackFailure, classifyThrownError, deriveErrorString, normalizeErrorMetadata } from '../../src/error-metadata.js';
-import type { SubagentDefinition, SubagentErrorMetadata, SubagentsConfig } from '../../src/types.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  classifyFallbackFailure,
+  classifyThrownError,
+  deriveErrorString,
+  normalizeErrorMetadata,
+  SubagentStructuredError,
+} from '../../src/error-metadata.js';
+import type {
+  SubagentDefinition,
+  SubagentErrorMetadata,
+  SubagentsConfig,
+} from '../../src/types.js';
 
 describe('structured error metadata contract', () => {
   it('normalizes v1 metadata defaults, bounds, retryability, and redaction', () => {
@@ -52,9 +62,29 @@ describe('structured error metadata contract', () => {
         },
       },
       attempts: [
-        { version: 1, category: 'provider_api_error', message: 'primary', retryable: true, partial_result_available: false, role: 'primary' },
-        { version: 1, category: 'provider_network_error', message: 'fallback', retryable: true, partial_result_available: false, role: 'fallback' },
-        { version: 1, category: 'unknown', message: 'ignored', retryable: false, partial_result_available: false },
+        {
+          version: 1,
+          category: 'provider_api_error',
+          message: 'primary',
+          retryable: true,
+          partial_result_available: false,
+          role: 'primary',
+        },
+        {
+          version: 1,
+          category: 'provider_network_error',
+          message: 'fallback',
+          retryable: true,
+          partial_result_available: false,
+          role: 'fallback',
+        },
+        {
+          version: 1,
+          category: 'unknown',
+          message: 'ignored',
+          retryable: false,
+          partial_result_available: false,
+        },
       ],
     });
 
@@ -69,68 +99,106 @@ describe('structured error metadata contract', () => {
     expect(metadata.source?.tool?.length ?? 0).toBeLessThanOrEqual(256);
     expect(metadata.source?.operation?.length ?? 0).toBeLessThanOrEqual(256);
     expect(Object.keys(metadata.details ?? {}).length).toBeLessThanOrEqual(16);
-    expect(Object.values(metadata.details ?? {})).toEqual(expect.not.arrayContaining([
-      expect.stringContaining('sk-fake-secret-token'),
-      expect.stringContaining('fake.user@example.com'),
-      expect.stringContaining('/tmp/fake-private.txt'),
-      expect.stringContaining('SECRET_FILE_BODY'),
-    ]));
+    expect(Object.values(metadata.details ?? {})).toEqual(
+      expect.not.arrayContaining([
+        expect.stringContaining('sk-fake-secret-token'),
+        expect.stringContaining('fake.user@example.com'),
+        expect.stringContaining('/tmp/fake-private.txt'),
+        expect.stringContaining('SECRET_FILE_BODY'),
+      ]),
+    );
     expect(metadata.attempts).toHaveLength(2);
-    expect(metadata.attempts?.map((attempt) => attempt.role)).toEqual(['primary', 'fallback']);
+    expect(metadata.attempts?.map((attempt) => attempt.role)).toEqual([
+      'primary',
+      'fallback',
+    ]);
     expect(metadata.cause?.cause?.cause).toBeUndefined();
   });
 
   it('preserves exact-string compatibility for legacy-facing derived errors', () => {
-    expect(deriveErrorString(normalizeErrorMetadata({
-      category: 'total_timeout',
-      message: 'ignored',
-      retryable: false,
-      partial_result_available: false,
-      details: { timeout_ms: '123' },
-    }))).toBe('timed out after 123ms');
+    expect(
+      deriveErrorString(
+        normalizeErrorMetadata({
+          category: 'total_timeout',
+          message: 'ignored',
+          retryable: false,
+          partial_result_available: false,
+          details: { timeout_ms: '123' },
+        }),
+      ),
+    ).toBe('timed out after 123ms');
 
-    expect(deriveErrorString(normalizeErrorMetadata({
-      category: 'stall_timeout',
-      message: 'ignored',
-      retryable: false,
-      partial_result_available: false,
-      details: { stall_timeout_ms: '20' },
-    }))).toBe('Subagent stalled for 20ms without final response.');
+    expect(
+      deriveErrorString(
+        normalizeErrorMetadata({
+          category: 'stall_timeout',
+          message: 'ignored',
+          retryable: false,
+          partial_result_available: false,
+          details: { stall_timeout_ms: '20' },
+        }),
+      ),
+    ).toBe('Subagent stalled for 20ms without final response.');
 
-    expect(deriveErrorString(normalizeErrorMetadata({
-      category: 'cancelled',
-      message: 'ignored',
-      retryable: false,
-      partial_result_available: true,
-      details: { cancel_reason: 'parent abort' },
-    }))).toBe('Subagent cancelled: parent abort');
+    expect(
+      deriveErrorString(
+        normalizeErrorMetadata({
+          category: 'cancelled',
+          message: 'ignored',
+          retryable: false,
+          partial_result_available: true,
+          details: { cancel_reason: 'parent abort' },
+        }),
+      ),
+    ).toBe('Subagent cancelled: parent abort');
   });
 
   it('classifies conservative thrown errors and fallback attempts', () => {
-    const auth = classifyThrownError(new Error('401 invalid api key Bearer sk-fake-secret-token'), {
-      phase: 'runner_invoke',
-      provider: 'openai',
-      model: 'gpt-test',
-    });
+    const auth = classifyThrownError(
+      new Error('401 invalid api key Bearer sk-fake-secret-token'),
+      {
+        phase: 'runner_invoke',
+        provider: 'openai',
+        model: 'gpt-test',
+      },
+    );
     expect(auth.category).toBe('provider_auth_error');
     expect(auth.retryable).toBe(false);
     expect(auth.message).not.toContain('sk-fake-secret-token');
 
-    const malformed = classifyThrownError({ message: 'ECONNRESET fake.user@example.com' }, {
-      phase: 'runner_invoke',
-      provider: 'openai',
-      model: 'gpt-test',
-    });
+    const malformed = classifyThrownError(
+      { message: 'ECONNRESET fake.user@example.com' },
+      {
+        phase: 'runner_invoke',
+        provider: 'openai',
+        model: 'gpt-test',
+      },
+    );
     expect(malformed.category).toBe('malformed_thrown_value');
     expect(malformed.retryable).toBe(false);
 
     const fallback = classifyFallbackFailure(
-      normalizeErrorMetadata({ category: 'provider_network_error', message: 'primary failure', retryable: true, partial_result_available: false, role: 'primary' }),
-      normalizeErrorMetadata({ category: 'provider_rate_limit', message: 'fallback failure', retryable: true, partial_result_available: false, role: 'fallback' }),
+      normalizeErrorMetadata({
+        category: 'provider_network_error',
+        message: 'primary failure',
+        retryable: true,
+        partial_result_available: false,
+        role: 'primary',
+      }),
+      normalizeErrorMetadata({
+        category: 'provider_rate_limit',
+        message: 'fallback failure',
+        retryable: true,
+        partial_result_available: false,
+        role: 'fallback',
+      }),
     );
     expect(fallback.category).toBe('fallback_failed');
     expect(fallback.retryable).toBe(false);
-    expect(fallback.attempts?.map((attempt) => attempt.role)).toEqual(['primary', 'fallback']);
+    expect(fallback.attempts?.map((attempt) => attempt.role)).toEqual([
+      'primary',
+      'fallback',
+    ]);
   });
 
   it('wraps normalized metadata in SubagentStructuredError', () => {

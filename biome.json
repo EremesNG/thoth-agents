@@ -17,6 +17,16 @@
   },
   "overrides": [
     {
+      "includes": ["pi-packages/pi-subagents/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noControlCharactersInRegex": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["plugin/**"],
       "formatter": { "enabled": false },
       "linter": { "enabled": false },

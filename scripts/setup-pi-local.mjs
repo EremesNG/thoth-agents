@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('../', import.meta.url)));
+const runtimeRoot = join(root, 'pi-packages', 'pi-subagents');
 const result = spawnSync(
   process.execPath,
   [
@@ -11,6 +12,7 @@ const result = spawnSync(
     ...process.argv.slice(2),
     '--agent=pi',
     `--local-package-root=${root}`,
+    `--local-pi-runtime-root=${runtimeRoot}`,
   ],
   { cwd: root, stdio: 'inherit' },
 );

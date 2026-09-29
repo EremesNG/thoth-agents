@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -64,7 +64,12 @@ describe('local Pi setup command', () => {
     const { root, result } = runFixture([]);
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({
-      args: ['install', '--agent=pi', `--local-package-root=${root}`],
+      args: [
+        'install',
+        '--agent=pi',
+        `--local-package-root=${resolve(root)}`,
+        `--local-pi-runtime-root=${resolve(root, 'pi-packages', 'pi-subagents')}`,
+      ],
       cwd: root,
     });
   });

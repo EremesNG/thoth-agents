@@ -1,22 +1,80 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
-import extension, { ClaudeBackgroundWidget, ClaudeBackgroundWidgetState, completionMessage, createSubagentsPanelKeyMatcher, moveClaudeBackgroundWidgetSelection, renderClaudeBackgroundWidgetLines, resolveRegisteredToolDefinition, sendSubagentCompletionMessage } from '../../index.js';
-import { loadSubagents, parseFrontmatter, readSubagentsConfig, resetGlobalSubagentModelProfileField, saveGlobalSubagentModelProfile, subagentSourceWarnings } from '../../src/config.js';
-import { resolveEffectiveSubagentProfile } from '../../src/profile-resolver.js';
-import { buildPrompt, ThreadSnapshotBuilder } from '../../src/runner.js';
-import { SubagentStructuredError, deriveErrorString, normalizeErrorMetadata, parseErrorMetadata, safeErrorMetadataDetails, serializeErrorMetadata } from '../../src/error-metadata.js';
-import { applyDirtyProfileEdit, buildModelProfileRows, buildNoChangesModelProfilesMessage, buildNonTuiModelProfilesMessage, commitStagedModelProfiles, createSubagentModelProfilesModal, globalSubagentsConfigPath, groupAvailableModelsByProvider, runSubagentModelsCommand, stageModelProfileEdit } from '../../src/model-profiles-ui.js';
-import { resolveSubagentHistoryDbPath, resolveSubagentsHistoryHome, SubagentHistoryStore } from '../../src/history.js';
-import { isSubagentsDebugEnabled, writeSubagentsDebugLog } from '../../src/debug.js';
-import { createSubagentsRenderLogger, DEFAULT_RENDER_DEBUG_LOG_PATH } from '../../src/render-debug.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import extension, {
+  ClaudeBackgroundWidget,
+  ClaudeBackgroundWidgetState,
+  completionMessage,
+  createSubagentsPanelKeyMatcher,
+  moveClaudeBackgroundWidgetSelection,
+  renderClaudeBackgroundWidgetLines,
+  resolveRegisteredToolDefinition,
+  sendSubagentCompletionMessage,
+} from '../../index.js';
+import {
+  loadSubagents,
+  parseFrontmatter,
+  readSubagentsConfig,
+  resetGlobalSubagentModelProfileField,
+  saveGlobalSubagentModelProfile,
+  subagentSourceWarnings,
+} from '../../src/config.js';
+import {
+  isSubagentsDebugEnabled,
+  writeSubagentsDebugLog,
+} from '../../src/debug.js';
+import {
+  deriveErrorString,
+  normalizeErrorMetadata,
+  parseErrorMetadata,
+  SubagentStructuredError,
+  safeErrorMetadataDetails,
+  serializeErrorMetadata,
+} from '../../src/error-metadata.js';
+import {
+  resolveSubagentHistoryDbPath,
+  resolveSubagentsHistoryHome,
+  SubagentHistoryStore,
+} from '../../src/history.js';
 import { SubagentManager } from '../../src/manager.js';
+import {
+  applyDirtyProfileEdit,
+  buildModelProfileRows,
+  buildNoChangesModelProfilesMessage,
+  buildNonTuiModelProfilesMessage,
+  commitStagedModelProfiles,
+  createSubagentModelProfilesModal,
+  globalSubagentsConfigPath,
+  groupAvailableModelsByProvider,
+  runSubagentModelsCommand,
+  stageModelProfileEdit,
+} from '../../src/model-profiles-ui.js';
+import { resolveEffectiveSubagentProfile } from '../../src/profile-resolver.js';
+import {
+  createSubagentsRenderLogger,
+  DEFAULT_RENDER_DEBUG_LOG_PATH,
+} from '../../src/render-debug.js';
+import { buildPrompt, ThreadSnapshotBuilder } from '../../src/runner.js';
+import {
+  boundThreadSnapshot,
+  isValidThreadSnapshot,
+  preloadPiComponentsForSubagentRendering,
+  registerSubagentRuntimeToolDefinition,
+  renderThreadBody,
+  resetPiComponentCacheForTests,
+  setPiComponentProviderForSubagentRendering,
+} from '../../src/thread-view.js';
 import { registerSubagentTools } from '../../src/tools.js';
+import type {
+  EffectiveSubagentProfile,
+  SubagentErrorMetadata,
+  SubagentModelProfiles,
+  SubagentRunner,
+  SubagentTask,
+} from '../../src/types.js';
 import { SubagentsHistoryPanel } from '../../src/ui.js';
-import { boundThreadSnapshot, isValidThreadSnapshot, preloadPiComponentsForSubagentRendering, registerSubagentRuntimeToolDefinition, renderThreadBody, resetPiComponentCacheForTests, setPiComponentProviderForSubagentRendering } from '../../src/thread-view.js';
-import type { EffectiveSubagentProfile, SubagentErrorMetadata, SubagentModelProfiles, SubagentRunner, SubagentTask } from '../../src/types.js';
 
 const require = createRequire(import.meta.url);
 
@@ -28,44 +86,68 @@ beforeEach(() => {
   oldAgentDir = process.env.PI_CODING_AGENT_DIR;
   oldHistoryDbPath = process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
   process.env.PI_CODING_AGENT_DIR = path.join(tmp, 'isolated-agent');
-  process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(tmp, 'global-agent', 'subagents-history.sqlite');
+  process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(
+    tmp,
+    'global-agent',
+    'subagents-history.sqlite',
+  );
   fs.mkdirSync(path.join(tmp, '.pi', 'subagents'), { recursive: true });
 });
 afterEach(() => {
   if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
   else process.env.PI_CODING_AGENT_DIR = oldAgentDir;
-  if (oldHistoryDbPath === undefined) delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
+  if (oldHistoryDbPath === undefined)
+    delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
   else process.env.PI_SUBAGENTS_HISTORY_DB_PATH = oldHistoryDbPath;
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 function writeAgent(name: string, body = '# Agent\nhello') {
-  fs.writeFileSync(path.join(tmp, '.pi', 'subagents', `${name}.md`), `---\nname: ${name}\ndescription: ${name} agent\ntools:\n  - read\n  - memory_search\n---\n${body}`);
+  fs.writeFileSync(
+    path.join(tmp, '.pi', 'subagents', `${name}.md`),
+    `---\nname: ${name}\ndescription: ${name} agent\ntools:\n  - read\n  - memory_search\n---\n${body}`,
+  );
 }
 
 function mockRunner(delay = 0): SubagentRunner {
   return async ({ definition, task }) => {
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-    return { result: `${definition.name} handled ${task}`, model: 'mock/model', fallback_used: false };
+    return {
+      result: `${definition.name} handled ${task}`,
+      model: 'mock/model',
+      fallback_used: false,
+    };
   };
 }
 
 function statusSnapshot(text: string) {
-  return { version: 1 as const, source: 'events' as const, items: [{ type: 'status' as const, text }] };
+  return {
+    version: 1 as const,
+    source: 'events' as const,
+    items: [{ type: 'status' as const, text }],
+  };
 }
 
 function stripAnsi(text: string): string {
-  return text.replace(/\u001b\[[0-9;]*m/g, '').replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, '');
+  return text
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, '');
 }
 
-function renderText(snapshot: unknown, overrides: Partial<Parameters<typeof renderThreadBody>[1]> = {}): string {
+function renderText(
+  snapshot: unknown,
+  overrides: Partial<Parameters<typeof renderThreadBody>[1]> = {},
+): string {
   const context = {
     cwd: tmp,
     visibleWidth: (text: string) => stripAnsi(text).length,
-    truncateToWidth: (text: string, width: number) => text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text,
+    truncateToWidth: (text: string, width: number) =>
+      text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text,
     ...overrides,
   };
-  return stripAnsi(renderThreadBody(snapshot, context).join('\n')).replace(/\s+/g, ' ').trim();
+  return stripAnsi(renderThreadBody(snapshot, context).join('\n'))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function withAgentDir<T>(agentDir: string, run: () => T): T {
@@ -80,7 +162,12 @@ function withAgentDir<T>(agentDir: string, run: () => T): T {
 }
 
 function readJsonl(file: string): any[] {
-  return fs.readFileSync(file, 'utf8').trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  return fs
+    .readFileSync(file, 'utf8')
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 describe('subagents panel and extension ui', () => {
@@ -90,19 +177,48 @@ describe('subagents panel and extension ui', () => {
       setPiComponentProviderForSubagentRendering({
         ToolExecutionComponent: class {
           private result: any;
-          constructor(private name: string, _id: string, private args: any, _options: any, private definition: any) {}
+          constructor(
+            private name: string,
+            _id: string,
+            private args: any,
+            _options: any,
+            private definition: any,
+          ) {}
           markExecutionStarted() {}
           setArgsComplete() {}
-          updateResult(result: any) { this.result = result; }
+          updateResult(result: any) {
+            this.result = result;
+          }
           setExpanded() {}
           render(width: number) {
-            const call = this.definition.renderCall(this.args, {}, { toolCallId: this.name, isError: false }).render(width).join('\n');
-            const result = this.definition.renderResult(this.result, { expanded: false, isPartial: false }, {}, { isError: false }).render(width).join('\n');
+            const call = this.definition
+              .renderCall(
+                this.args,
+                {},
+                { toolCallId: this.name, isError: false },
+              )
+              .render(width)
+              .join('\n');
+            const result = this.definition
+              .renderResult(
+                this.result,
+                { expanded: false, isPartial: false },
+                {},
+                { isError: false },
+              )
+              .render(width)
+              .join('\n');
             return [`captured:${call}:${result}`];
           }
         },
       });
-      const pi: any = { registerTool: (_tool: any) => undefined, registerMessageRenderer: () => undefined, on: () => undefined, registerShortcut: () => undefined, registerCommand: () => undefined };
+      const pi: any = {
+        registerTool: (_tool: any) => undefined,
+        registerMessageRenderer: () => undefined,
+        on: () => undefined,
+        registerShortcut: () => undefined,
+        registerCommand: () => undefined,
+      };
       extension(pi);
       pi.registerTool({
         name: 'mem_save',
@@ -110,8 +226,14 @@ describe('subagents panel and extension ui', () => {
         description: 'memory save',
         parameters: {},
         renderShell: 'self',
-        renderCall: (args: any) => ({ render: () => [`engram-call:${args.title}`], invalidate: () => undefined }),
-        renderResult: (result: any) => ({ render: () => [`engram-result:${result.details?.status}`], invalidate: () => undefined }),
+        renderCall: (args: any) => ({
+          render: () => [`engram-call:${args.title}`],
+          invalidate: () => undefined,
+        }),
+        renderResult: (result: any) => ({
+          render: () => [`engram-result:${result.details?.status}`],
+          invalidate: () => undefined,
+        }),
       });
       const task: SubagentTask = {
         id: 'subtask_captured_external_renderer',
@@ -120,11 +242,37 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'render captured external renderer',
         created_at: new Date().toISOString(),
-        thread_snapshot: { version: 1, source: 'events', items: [{ type: 'tool', name: 'mem_save', status: 'completed', arguments: { title: 'Fix render' }, result: { content: [{ type: 'text', text: 'Saved' }], details: { status: 'saved' }, isError: false } }] },
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'tool',
+              name: 'mem_save',
+              status: 'completed',
+              arguments: { title: 'Fix render' },
+              result: {
+                content: [{ type: 'text', text: 'Saved' }],
+                details: { status: 'saved' },
+                isError: false,
+              },
+            },
+          ],
+        },
       } as any;
-      const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, { cwd: tmp, tui: { requestRender() {} } });
+      const panel = new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        () => false,
+        (text) => text.length,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+        { cwd: tmp, tui: { requestRender() {} } },
+      );
       const rendered = panel.render(160).join('\n');
-      expect(rendered).toContain('captured:engram-call:Fix render:engram-result:saved');
+      expect(rendered).toContain(
+        'captured:engram-call:Fix render:engram-result:saved',
+      );
       expect(rendered).not.toContain('mem_save completed');
     } finally {
       resetPiComponentCacheForTests();
@@ -138,12 +286,24 @@ describe('subagents panel and extension ui', () => {
         ToolExecutionComponent: class {
           private expanded = false;
           private result: any;
-          constructor(private name: string, _id: string, private args: any) {}
+          constructor(
+            private name: string,
+            _id: string,
+            private args: any,
+          ) {}
           markExecutionStarted() {}
           setArgsComplete() {}
-          updateResult(result: any) { this.result = result; }
-          setExpanded(expanded: boolean) { this.expanded = expanded; }
-          render() { return [`native-tool:${this.name}:${this.expanded}:${this.args.path}:${this.result?.content?.[0]?.text ?? ''}`]; }
+          updateResult(result: any) {
+            this.result = result;
+          }
+          setExpanded(expanded: boolean) {
+            this.expanded = expanded;
+          }
+          render() {
+            return [
+              `native-tool:${this.name}:${this.expanded}:${this.args.path}:${this.result?.content?.[0]?.text ?? ''}`,
+            ];
+          }
         },
         createReadToolDefinition: () => ({ name: 'read' }),
       });
@@ -154,9 +314,32 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'render native component',
         created_at: new Date().toISOString(),
-        thread_snapshot: { version: 1, source: 'events', items: [{ type: 'tool', name: 'read', status: 'completed', arguments: { path: 'AGENTS.md' }, result: { content: [{ type: 'text', text: 'body' }], isError: false } }] },
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'tool',
+              name: 'read',
+              status: 'completed',
+              arguments: { path: 'AGENTS.md' },
+              result: {
+                content: [{ type: 'text', text: 'body' }],
+                isError: false,
+              },
+            },
+          ],
+        },
       } as any;
-      const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, { cwd: tmp, tui: { requestRender() {} } });
+      const panel = new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        () => false,
+        (text) => text.length,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+        { cwd: tmp, tui: { requestRender() {} } },
+      );
       const rendered = panel.render(160).join('\n');
       expect(rendered).toContain('native-tool:read:false:AGENTS.md:body');
       expect(rendered).not.toContain('read completed');
@@ -168,11 +351,28 @@ describe('subagents panel and extension ui', () => {
   it('preloads current ESM Pi bundle chunks for native snapshot rendering', async () => {
     resetPiComponentCacheForTests();
     const packageRoot = path.join(tmp, 'fake-pi-esm-bundle-package');
-    fs.mkdirSync(path.join(packageRoot, 'dist', 'bundle', 'chunks'), { recursive: true });
-    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', type: 'module', main: 'dist/index.js' }));
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'index.js'), "import 'missing-pi-optional-package';\n");
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'bundle', 'chunks', 'chunk-native.js'), `
+    fs.mkdirSync(path.join(packageRoot, 'dist', 'bundle', 'chunks'), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        type: 'module',
+        main: 'dist/index.js',
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      '#!/usr/bin/env node\n',
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'index.js'),
+      "import 'missing-pi-optional-package';\n",
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'bundle', 'chunks', 'chunk-native.js'),
+      `
       export class ToolExecutionComponent {
         constructor(name, _id, args) { this.name = name; this.args = args; }
         markExecutionStarted() {}
@@ -182,24 +382,45 @@ describe('subagents panel and extension ui', () => {
         render() { return ['bundle-native:' + this.name + ':' + this.args.path + ':' + this.result.content[0].text]; }
       }
       export function createReadToolDefinition() { return { name: 'read' }; }
-    `);
+    `,
+    );
     const shimDir = path.join(tmp, 'bin-panel-esm-bundle');
     fs.mkdirSync(shimDir);
-    fs.symlinkSync(path.join(packageRoot, 'dist', 'cli.js'), path.join(shimDir, 'pi'));
+    fs.symlinkSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      path.join(shimDir, 'pi'),
+    );
     const oldArgv1 = process.argv[1];
     process.argv[1] = path.join(shimDir, 'pi');
     try {
-      await expect(preloadPiComponentsForSubagentRendering()).resolves.toBe(true);
-      const rendered = renderThreadBody({
-        version: 1,
-        source: 'events',
-        items: [{ type: 'tool', name: 'read', status: 'completed', arguments: { path: 'AGENTS.md' }, result: { content: [{ type: 'text', text: 'body' }], isError: false } }],
-      }, {
-        cwd: tmp,
-        tui: { requestRender() {} },
-        visibleWidth: (text: string) => stripAnsi(text).length,
-        truncateToWidth: (text: string, width: number) => text.length > width ? text.slice(0, width) : text,
-      }).join('\n');
+      await expect(preloadPiComponentsForSubagentRendering()).resolves.toBe(
+        true,
+      );
+      const rendered = renderThreadBody(
+        {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'tool',
+              name: 'read',
+              status: 'completed',
+              arguments: { path: 'AGENTS.md' },
+              result: {
+                content: [{ type: 'text', text: 'body' }],
+                isError: false,
+              },
+            },
+          ],
+        },
+        {
+          cwd: tmp,
+          tui: { requestRender() {} },
+          visibleWidth: (text: string) => stripAnsi(text).length,
+          truncateToWidth: (text: string, width: number) =>
+            text.length > width ? text.slice(0, width) : text,
+        },
+      ).join('\n');
       expect(rendered).toContain('bundle-native:read:AGENTS.md:body');
       expect(rendered).not.toContain('read completed');
     } finally {
@@ -212,12 +433,26 @@ describe('subagents panel and extension ui', () => {
     resetPiComponentCacheForTests();
     const packageRoot = path.join(tmp, 'fake-pi-panel-memo-package');
     fs.mkdirSync(path.join(packageRoot, 'dist'), { recursive: true });
-    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', main: 'index.cjs' }));
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        main: 'index.cjs',
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      '#!/usr/bin/env node\n',
+    );
     const shimDir = path.join(tmp, 'bin-panel-memo');
     fs.mkdirSync(shimDir);
-    fs.symlinkSync(path.join(packageRoot, 'dist', 'cli.js'), path.join(shimDir, 'pi'));
-    fs.writeFileSync(path.join(packageRoot, 'index.cjs'), `
+    fs.symlinkSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      path.join(shimDir, 'pi'),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'index.cjs'),
+      `
       let assistantRenders = 0;
       exports.__assistantRenders = () => assistantRenders;
       exports.getMarkdownTheme = () => ({});
@@ -225,7 +460,8 @@ describe('subagents panel and extension ui', () => {
         constructor(message) { this.message = message; }
         render(width) { assistantRenders += 1; return ['assistant-render:' + width + ':' + this.message.content[0].text]; }
       };
-    `);
+    `,
+    );
     const oldArgv1 = process.argv[1];
     process.argv[1] = path.join(shimDir, 'pi');
     try {
@@ -240,7 +476,20 @@ describe('subagents panel and extension ui', () => {
       } as any;
       const fullTask: SubagentTask = {
         ...summaryTask,
-        thread_snapshot: { version: 1, updated_at: 'snapshot-v1', source: 'events', items: [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hydrated snapshot body' }] } }] },
+        thread_snapshot: {
+          version: 1,
+          updated_at: 'snapshot-v1',
+          source: 'events',
+          items: [
+            {
+              type: 'assistant',
+              message: {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'hydrated snapshot body' }],
+              },
+            },
+          ],
+        },
       } as any;
       let detailLoads = 0;
       const panel = new SubagentsHistoryPanel(
@@ -249,14 +498,21 @@ describe('subagents panel and extension ui', () => {
         () => undefined,
         () => false,
         (text) => text.length,
-        (text, width) => text.length > width ? text.slice(0, width) : text,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp },
         20,
-        (id) => { detailLoads += 1; return id === fullTask.id ? fullTask : undefined; },
+        (id) => {
+          detailLoads += 1;
+          return id === fullTask.id ? fullTask : undefined;
+        },
       );
 
-      expect(panel.render(120).join('\n')).toContain('assistant-render:83:hydrated snapshot body');
-      expect(panel.render(120).join('\n')).toContain('assistant-render:83:hydrated snapshot body');
+      expect(panel.render(120).join('\n')).toContain(
+        'assistant-render:83:hydrated snapshot body',
+      );
+      expect(panel.render(120).join('\n')).toContain(
+        'assistant-render:83:hydrated snapshot body',
+      );
       expect(detailLoads).toBe(1);
       expect(require(packageRoot).__assistantRenders()).toBe(1);
     } finally {
@@ -269,12 +525,26 @@ describe('subagents panel and extension ui', () => {
     resetPiComponentCacheForTests();
     const packageRoot = path.join(tmp, 'fake-pi-panel-active-bash-package');
     fs.mkdirSync(path.join(packageRoot, 'dist'), { recursive: true });
-    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', main: 'index.cjs' }));
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        main: 'index.cjs',
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      '#!/usr/bin/env node\n',
+    );
     const shimDir = path.join(tmp, 'bin-panel-active-bash');
     fs.mkdirSync(shimDir);
-    fs.symlinkSync(path.join(packageRoot, 'dist', 'cli.js'), path.join(shimDir, 'pi'));
-    fs.writeFileSync(path.join(packageRoot, 'index.cjs'), `
+    fs.symlinkSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      path.join(shimDir, 'pi'),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'index.cjs'),
+      `
       let constructions = 0;
       exports.__constructions = () => constructions;
       exports.createBashToolDefinition = (cwd) => ({ name: 'bash', cwd, kind: 'native-bash' });
@@ -293,7 +563,8 @@ describe('subagents panel and extension ui', () => {
           return ['native-bash-render:' + this.renderCount + ':' + this.command];
         }
       };
-    `);
+    `,
+    );
     const oldArgv1 = process.argv[1];
     process.argv[1] = path.join(shimDir, 'pi');
     try {
@@ -306,12 +577,38 @@ describe('subagents panel and extension ui', () => {
         task: 'keep native bash active',
         created_at: now,
         last_activity_at: now,
-        thread_snapshot: { version: 1, updated_at: now, source: 'events', items: [{ type: 'tool', tool_call_id: 'bash-1', name: 'bash', status: 'running', arguments: { command: 'npm test', timeout: 15 }, started_at: now }] },
+        thread_snapshot: {
+          version: 1,
+          updated_at: now,
+          source: 'events',
+          items: [
+            {
+              type: 'tool',
+              tool_call_id: 'bash-1',
+              name: 'bash',
+              status: 'running',
+              arguments: { command: 'npm test', timeout: 15 },
+              started_at: now,
+            },
+          ],
+        },
       };
-      const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, { cwd: tmp, tui: { requestRender() {} } });
+      const panel = new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        () => false,
+        (text) => text.length,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+        { cwd: tmp, tui: { requestRender() {} } },
+      );
 
-      expect(panel.render(160).join('\n')).toContain('native-bash-render:1:npm test');
-      expect(panel.render(160).join('\n')).toContain('native-bash-render:2:npm test');
+      expect(panel.render(160).join('\n')).toContain(
+        'native-bash-render:1:npm test',
+      );
+      expect(panel.render(160).join('\n')).toContain(
+        'native-bash-render:2:npm test',
+      );
       expect(require(packageRoot).__constructions()).toBe(1);
     } finally {
       process.argv[1] = oldArgv1;
@@ -331,10 +628,31 @@ describe('subagents panel and extension ui', () => {
       result: 'legacy result line',
       error: 'legacy error line',
     };
-    const makePanel = (task: SubagentTask) => new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const makePanel = (task: SubagentTask) =>
+      new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        () => false,
+        (text) => text.length,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+      );
 
-    expect(makePanel(baseTask).render(160).join('\n')).toContain('legacy transcript line');
-    expect(makePanel({ ...baseTask, thread_snapshot: { version: 1, source: 'events', items: [{ type: 'future', text: 'ignore me' }] } as any }).render(160).join('\n')).toContain('legacy error line');
+    expect(makePanel(baseTask).render(160).join('\n')).toContain(
+      'legacy transcript line',
+    );
+    expect(
+      makePanel({
+        ...baseTask,
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [{ type: 'future', text: 'ignore me' }],
+        } as any,
+      })
+        .render(160)
+        .join('\n'),
+    ).toContain('legacy error line');
   });
 
   it('renders valid thread snapshots before legacy transcript text in the history panel', () => {
@@ -347,9 +665,28 @@ describe('subagents panel and extension ui', () => {
       created_at: new Date().toISOString(),
       transcript: 'legacy transcript should not win',
       result: 'legacy result should not win',
-      thread_snapshot: { version: 1, source: 'events', items: [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'structured snapshot wins' }] } }] },
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [
+          {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: 'structured snapshot wins' }],
+            },
+          },
+        ],
+      },
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const rendered = panel.render(160).join('\n');
 
     expect(rendered).toContain('structured snapshot wins');
@@ -374,23 +711,69 @@ describe('subagents panel and extension ui', () => {
         source: 'mixed',
         items: [
           { type: 'attempt', attempt: 1 },
-          { type: 'user', label: 'delegated_task', text: 'summarize dependencies' },
+          {
+            type: 'user',
+            label: 'delegated_task',
+            text: 'summarize dependencies',
+          },
           { type: 'user', id: 'steering-1', label: 'user', text: steeringText },
-          { type: 'assistant', message: { role: 'assistant', content: [{ type: 'toolCall', id: 'read-1', name: 'read', arguments: { path: 'package.json' } }] } },
-          { type: 'tool', tool_call_id: 'read-1', name: 'read', status: 'completed', arguments: { path: 'package.json' }, result: { content: [{ type: 'text', text: 'package body' }], isError: false } },
-          { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'dependency summary ready' }] } },
+          {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'toolCall',
+                  id: 'read-1',
+                  name: 'read',
+                  arguments: { path: 'package.json' },
+                },
+              ],
+            },
+          },
+          {
+            type: 'tool',
+            tool_call_id: 'read-1',
+            name: 'read',
+            status: 'completed',
+            arguments: { path: 'package.json' },
+            result: {
+              content: [{ type: 'text', text: 'package body' }],
+              isError: false,
+            },
+          },
+          {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: 'dependency summary ready' }],
+            },
+          },
         ],
       },
     } as any;
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const rendered = panel.render(160).join('\n');
 
     expect(rendered).toContain(steeringText);
-    expect(rendered.indexOf(steeringText)).toBeLessThan(rendered.indexOf('read completed'));
-    expect(rendered.indexOf('read completed')).toBeLessThan(rendered.indexOf('dependency summary ready'));
+    expect(rendered.indexOf(steeringText)).toBeLessThan(
+      rendered.indexOf('read completed'),
+    );
+    expect(rendered.indexOf('read completed')).toBeLessThan(
+      rendered.indexOf('dependency summary ready'),
+    );
     expect(task.output_preview).toBe('dependency summary ready');
     expect(task.output_preview).not.toContain(steeringText);
-    expect(rendered).not.toContain('task: summarize dependencies read package.json');
+    expect(rendered).not.toContain(
+      'task: summarize dependencies read package.json',
+    );
   });
 
   it('renders failed and cancelled terminal errors even when a valid thread snapshot exists', () => {
@@ -402,7 +785,19 @@ describe('subagents panel and extension ui', () => {
       task: 'thread task failed',
       created_at: new Date().toISOString(),
       error: 'provider api error',
-      thread_snapshot: { version: 1, source: 'events', items: [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'structured snapshot body' }] } }] },
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [
+          {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: 'structured snapshot body' }],
+            },
+          },
+        ],
+      },
     };
     const cancelledTask: SubagentTask = {
       id: 'subtask_thread_cancelled',
@@ -412,9 +807,21 @@ describe('subagents panel and extension ui', () => {
       task: 'thread task cancelled',
       created_at: new Date().toISOString(),
       error: 'Subagent cancelled: user request',
-      thread_snapshot: { version: 1, source: 'events', items: [{ type: 'status', text: 'cancellation reached runner' }] },
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'status', text: 'cancellation reached runner' }],
+      },
     };
-    const makePanel = (task: SubagentTask) => new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const makePanel = (task: SubagentTask) =>
+      new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        () => false,
+        (text) => text.length,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+      );
 
     const failedRendered = makePanel(failedTask).render(160).join('\n');
     const cancelledRendered = makePanel(cancelledTask).render(160).join('\n');
@@ -436,9 +843,20 @@ describe('subagents panel and extension ui', () => {
       task: 'thread task dedup',
       created_at: new Date().toISOString(),
       error: 'provider api error',
-      thread_snapshot: { version: 1, source: 'events', items: [{ type: 'error', text: 'provider api error' }] },
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'error', text: 'provider api error' }],
+      },
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const rendered = panel.render(160).join('\n');
 
     expect(rendered.match(/provider api error/g)).toHaveLength(1);
@@ -454,11 +872,40 @@ describe('subagents panel and extension ui', () => {
       task: 'thread task completed',
       created_at: new Date().toISOString(),
       error: 'should stay hidden',
-      thread_snapshot: { version: 1, source: 'events', items: [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'completed snapshot body' }] } }] },
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [
+          {
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: 'completed snapshot body' }],
+            },
+          },
+        ],
+      },
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const rendered = panel.render(160).join('\n');
-    const bounded = boundThreadSnapshot({ version: 1, source: 'events', items: [{ type: 'error', text: 'x'.repeat(5000) }, { type: 'status', text: 'second item' }] } as any, { textLimit: 32, maxItems: 1 });
+    const bounded = boundThreadSnapshot(
+      {
+        version: 1,
+        source: 'events',
+        items: [
+          { type: 'error', text: 'x'.repeat(5000) },
+          { type: 'status', text: 'second item' },
+        ],
+      } as any,
+      { textLimit: 32, maxItems: 1 },
+    );
 
     expect(rendered).toContain('completed snapshot body');
     expect(rendered).not.toContain('# error');
@@ -471,12 +918,26 @@ describe('subagents panel and extension ui', () => {
     resetPiComponentCacheForTests();
     const packageRoot = path.join(tmp, 'fake-pi-ansi-package');
     fs.mkdirSync(path.join(packageRoot, 'dist'), { recursive: true });
-    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', main: 'index.cjs' }));
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        main: 'index.cjs',
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      '#!/usr/bin/env node\n',
+    );
     const shimDir = path.join(tmp, 'bin-ansi');
     fs.mkdirSync(shimDir);
-    fs.symlinkSync(path.join(packageRoot, 'dist', 'cli.js'), path.join(shimDir, 'pi'));
-    fs.writeFileSync(path.join(packageRoot, 'index.cjs'), `
+    fs.symlinkSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      path.join(shimDir, 'pi'),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'index.cjs'),
+      `
       exports.createReadToolDefinition = (cwd) => ({ name: 'read', cwd });
       exports.ToolExecutionComponent = class {
         constructor() {}
@@ -486,7 +947,8 @@ describe('subagents panel and extension ui', () => {
         setExpanded() {}
         render() { return ['\\x1b[42m│\\x1b[0m \\x1b[42mread\\x1b[0m    \\x1b[42mAGENTS.md\\x1b[0m \\x1b[42m│\\x1b[0m']; }
       };
-    `);
+    `,
+    );
     const oldArgv1 = process.argv[1];
     process.argv[1] = path.join(shimDir, 'pi');
     try {
@@ -497,15 +959,41 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'preserve ansi component line',
         created_at: new Date().toISOString(),
-        thread_snapshot: { version: 1, source: 'events', items: [{ type: 'tool', name: 'read', status: 'completed', arguments: { path: 'AGENTS.md' }, result: { content: [{ type: 'text', text: 'body' }], isError: false } }] },
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'tool',
+              name: 'read',
+              status: 'completed',
+              arguments: { path: 'AGENTS.md' },
+              result: {
+                content: [{ type: 'text', text: 'body' }],
+                isError: false,
+              },
+            },
+          ],
+        },
       };
-      const visible = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '').length;
-      const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, visible, (text, width) => text.length > width ? text.slice(0, width) : text, { cwd: tmp, tui: { requestRender() {} } });
+      const visible = (text: string) =>
+        text.replace(/\u001b\[[0-9;]*m/g, '').length;
+      const panel = new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        () => false,
+        visible,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+        { cwd: tmp, tui: { requestRender() {} } },
+      );
       const rendered = panel.render(40).join('\n');
 
       expect(rendered).toContain('\u001b[42m');
       expect(rendered).toContain('\u001b[0m');
-      expect(rendered.replace(/\u001b\[[0-9;]*m/g, '')).toContain('│ read    AGENTS.md │');
+      expect(rendered.replace(/\u001b\[[0-9;]*m/g, '')).toContain(
+        '│ read    AGENTS.md │',
+      );
     } finally {
       process.argv[1] = oldArgv1;
       resetPiComponentCacheForTests();
@@ -515,32 +1003,55 @@ describe('subagents panel and extension ui', () => {
   it('does not add body ellipsis for hidden OSC hyperlink escapes in rendered thread lines', () => {
     const hiddenTarget = `file:///tmp/${'x'.repeat(160)}/AGENTS.md`;
     const oscLine = `\u001b]8;;${hiddenTarget}\u001b\\read AGENTS.md\u001b]8;;\u001b\\`;
-    const lines = renderThreadBody({
-      version: 1,
-      source: 'events',
-      items: [{ type: 'status', text: oscLine }],
-    } as any, {
-      cwd: tmp,
-      renderWidth: 40,
-      visibleWidth: (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '').length,
-      truncateToWidth: (text: string, width: number) => text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text,
-    } as any);
+    const lines = renderThreadBody(
+      {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'status', text: oscLine }],
+      } as any,
+      {
+        cwd: tmp,
+        renderWidth: 40,
+        visibleWidth: (text: string) =>
+          text.replace(/\u001b\[[0-9;]*m/g, '').length,
+        truncateToWidth: (text: string, width: number) =>
+          text.length > width
+            ? `${text.slice(0, Math.max(0, width - 1))}…`
+            : text,
+      } as any,
+    );
     const rendered = lines.join('\n');
 
     expect(rendered).not.toContain('…');
-    expect(rendered.replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, '')).toContain('info: read AGENTS.md');
+    expect(
+      rendered.replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, ''),
+    ).toContain('info: read AGENTS.md');
   });
 
   it('preserves Pi component-rendered spacing in selected thread snapshots', () => {
     resetPiComponentCacheForTests();
     const packageRoot = path.join(tmp, 'fake-pi-panel-package');
     fs.mkdirSync(path.join(packageRoot, 'dist'), { recursive: true });
-    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', main: 'index.cjs' }));
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        main: 'index.cjs',
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      '#!/usr/bin/env node\n',
+    );
     const shimDir = path.join(tmp, 'bin-panel');
     fs.mkdirSync(shimDir);
-    fs.symlinkSync(path.join(packageRoot, 'dist', 'cli.js'), path.join(shimDir, 'pi'));
-    fs.writeFileSync(path.join(packageRoot, 'index.cjs'), `
+    fs.symlinkSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      path.join(shimDir, 'pi'),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'index.cjs'),
+      `
       exports.createReadToolDefinition = (cwd) => ({ name: 'read', cwd });
       exports.ToolExecutionComponent = class {
         constructor() {}
@@ -550,7 +1061,8 @@ describe('subagents panel and extension ui', () => {
         setExpanded() {}
         render() { return ['╭──── read tool ────╮', '│ read    AGENTS.md │']; }
       };
-    `);
+    `,
+    );
     const oldArgv1 = process.argv[1];
     process.argv[1] = path.join(shimDir, 'pi');
     try {
@@ -561,9 +1073,32 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'preserve component spacing',
         created_at: new Date().toISOString(),
-        thread_snapshot: { version: 1, source: 'events', items: [{ type: 'tool', name: 'read', status: 'completed', arguments: { path: 'AGENTS.md' }, result: { content: [{ type: 'text', text: 'body' }], isError: false } }] },
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'tool',
+              name: 'read',
+              status: 'completed',
+              arguments: { path: 'AGENTS.md' },
+              result: {
+                content: [{ type: 'text', text: 'body' }],
+                isError: false,
+              },
+            },
+          ],
+        },
       };
-      const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, { cwd: tmp, tui: { requestRender() {} } });
+      const panel = new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        () => false,
+        (text) => text.length,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+        { cwd: tmp, tui: { requestRender() {} } },
+      );
       const rendered = panel.render(160).join('\n');
 
       expect(rendered).toContain('╭──── read tool ────╮');
@@ -579,12 +1114,26 @@ describe('subagents panel and extension ui', () => {
     resetPiComponentCacheForTests();
     const packageRoot = path.join(tmp, 'fake-pi-panel-multiline-package');
     fs.mkdirSync(path.join(packageRoot, 'dist'), { recursive: true });
-    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', main: 'index.cjs' }));
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        main: 'index.cjs',
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      '#!/usr/bin/env node\n',
+    );
     const shimDir = path.join(tmp, 'bin-panel-multiline');
     fs.mkdirSync(shimDir);
-    fs.symlinkSync(path.join(packageRoot, 'dist', 'cli.js'), path.join(shimDir, 'pi'));
-    fs.writeFileSync(path.join(packageRoot, 'index.cjs'), `
+    fs.symlinkSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      path.join(shimDir, 'pi'),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'index.cjs'),
+      `
       exports.createBashToolDefinition = (cwd) => ({ name: 'bash', cwd, kind: 'native-bash' });
       exports.ToolExecutionComponent = class {
         constructor(name, id, args) { this.command = args.command; }
@@ -594,7 +1143,8 @@ describe('subagents panel and extension ui', () => {
         setExpanded() {}
         render() { return ['go test results:\r\n' + this.output]; }
       };
-    `);
+    `,
+    );
     const oldArgv1 = process.argv[1];
     process.argv[1] = path.join(shimDir, 'pi');
     try {
@@ -608,23 +1158,30 @@ describe('subagents panel and extension ui', () => {
         thread_snapshot: {
           version: 1,
           source: 'events',
-          items: [{
-            type: 'tool',
-            name: 'bash',
-            status: 'completed',
-            arguments: { command: 'go test ./...' },
-            result: {
-              content: [{ type: 'text', text: [
-                'ok github.com/example/project/internal/components 0.929s',
-                'ok github.com/example/project/internal/components/communitytool 0.044s',
-              ].join('\n') }],
-              preview: [
-                'ok github.com/example/project/internal/components 0.929s',
-                'ok github.com/example/project/internal/components/communitytool 0.044s',
-              ].join('\n'),
-              isError: false,
+          items: [
+            {
+              type: 'tool',
+              name: 'bash',
+              status: 'completed',
+              arguments: { command: 'go test ./...' },
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: [
+                      'ok github.com/example/project/internal/components 0.929s',
+                      'ok github.com/example/project/internal/components/communitytool 0.044s',
+                    ].join('\n'),
+                  },
+                ],
+                preview: [
+                  'ok github.com/example/project/internal/components 0.929s',
+                  'ok github.com/example/project/internal/components/communitytool 0.044s',
+                ].join('\n'),
+                isError: false,
+              },
             },
-          }],
+          ],
         },
       };
       const panel = new SubagentsHistoryPanel(
@@ -633,15 +1190,19 @@ describe('subagents panel and extension ui', () => {
         () => undefined,
         () => false,
         (text) => text.length,
-        (text, width) => text.length > width ? text.slice(0, width) : text,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
         { cwd: tmp, tui: { requestRender() {} } },
       );
       const rendered = panel.render(48);
 
-      expect(rendered.every((line) => !line.includes('\n') && !line.includes('\r'))).toBe(true);
+      expect(
+        rendered.every((line) => !line.includes('\n') && !line.includes('\r')),
+      ).toBe(true);
       expect(rendered.every((line) => line.length <= 48)).toBe(true);
       expect(rendered.join('\n')).toContain('go test ./...');
-      expect(rendered.join('\n')).toContain('github.com/example/project/internal/compo');
+      expect(rendered.join('\n')).toContain(
+        'github.com/example/project/internal/compo',
+      );
     } finally {
       process.argv[1] = oldArgv1;
       resetPiComponentCacheForTests();
@@ -652,12 +1213,26 @@ describe('subagents panel and extension ui', () => {
     resetPiComponentCacheForTests();
     const packageRoot = path.join(tmp, 'fake-pi-panel-expand-package');
     fs.mkdirSync(path.join(packageRoot, 'dist'), { recursive: true });
-    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', main: 'index.cjs' }));
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        main: 'index.cjs',
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      '#!/usr/bin/env node\n',
+    );
     const shimDir = path.join(tmp, 'bin-panel-expand');
     fs.mkdirSync(shimDir);
-    fs.symlinkSync(path.join(packageRoot, 'dist', 'cli.js'), path.join(shimDir, 'pi'));
-    fs.writeFileSync(path.join(packageRoot, 'index.cjs'), `
+    fs.symlinkSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      path.join(shimDir, 'pi'),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'index.cjs'),
+      `
       exports.createBashToolDefinition = (cwd) => ({ name: 'bash', cwd, kind: 'native-bash' });
       exports.ToolExecutionComponent = class {
         constructor(name, id, args) { this.command = args.command; this.expanded = false; }
@@ -667,7 +1242,8 @@ describe('subagents panel and extension ui', () => {
         setExpanded(value) { this.expanded = value; }
         render() { return ['bash-expanded:' + this.expanded + ':' + this.command + ':' + this.output]; }
       };
-    `);
+    `,
+    );
     const oldArgv1 = process.argv[1];
     process.argv[1] = path.join(shimDir, 'pi');
     try {
@@ -678,16 +1254,46 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'toggle component expansion',
         created_at: new Date().toISOString(),
-        thread_snapshot: { version: 1, source: 'events', items: [{ type: 'tool', name: 'bash', status: 'completed', arguments: { command: 'npm test', timeout: 15 }, result: { content: [{ type: 'text', text: 'long output' }], preview: 'long output', isError: false } }] },
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'tool',
+              name: 'bash',
+              status: 'completed',
+              arguments: { command: 'npm test', timeout: 15 },
+              result: {
+                content: [{ type: 'text', text: 'long output' }],
+                preview: 'long output',
+                isError: false,
+              },
+            },
+          ],
+        },
       };
       const keys: Record<string, string> = { 'ctrl+o': '\u000f' };
-      const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, (data, key) => data === keys[key], (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, { cwd: tmp, tui: { requestRender() {} } });
+      const panel = new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        (data, key) => data === keys[key],
+        (text) => text.length,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+        { cwd: tmp, tui: { requestRender() {} } },
+      );
 
-      expect(panel.render(160).join('\n')).toContain('bash-expanded:false:npm test:long output');
+      expect(panel.render(160).join('\n')).toContain(
+        'bash-expanded:false:npm test:long output',
+      );
       panel.handleInput('\u000f');
-      expect(panel.render(160).join('\n')).toContain('bash-expanded:true:npm test:long output');
+      expect(panel.render(160).join('\n')).toContain(
+        'bash-expanded:true:npm test:long output',
+      );
       panel.handleInput('\u000f');
-      expect(panel.render(160).join('\n')).toContain('bash-expanded:false:npm test:long output');
+      expect(panel.render(160).join('\n')).toContain(
+        'bash-expanded:false:npm test:long output',
+      );
     } finally {
       process.argv[1] = oldArgv1;
       resetPiComponentCacheForTests();
@@ -696,14 +1302,31 @@ describe('subagents panel and extension ui', () => {
 
   it('toggles expanded tool output with injected app.tools.expand keybindings', () => {
     resetPiComponentCacheForTests();
-    const packageRoot = path.join(tmp, 'fake-pi-panel-expand-keybindings-package');
+    const packageRoot = path.join(
+      tmp,
+      'fake-pi-panel-expand-keybindings-package',
+    );
     fs.mkdirSync(path.join(packageRoot, 'dist'), { recursive: true });
-    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', main: 'index.cjs' }));
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        main: 'index.cjs',
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      '#!/usr/bin/env node\n',
+    );
     const shimDir = path.join(tmp, 'bin-panel-expand-keybindings');
     fs.mkdirSync(shimDir);
-    fs.symlinkSync(path.join(packageRoot, 'dist', 'cli.js'), path.join(shimDir, 'pi'));
-    fs.writeFileSync(path.join(packageRoot, 'index.cjs'), `
+    fs.symlinkSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      path.join(shimDir, 'pi'),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'index.cjs'),
+      `
       exports.createBashToolDefinition = (cwd) => ({ name: 'bash', cwd, kind: 'native-bash' });
       exports.ToolExecutionComponent = class {
         constructor(name, id, args) { this.command = args.command; this.expanded = false; }
@@ -713,7 +1336,8 @@ describe('subagents panel and extension ui', () => {
         setExpanded(value) { this.expanded = value; }
         render() { return ['bash-expanded:' + this.expanded + ':' + this.command + ':' + this.output]; }
       };
-    `);
+    `,
+    );
     const oldArgv1 = process.argv[1];
     process.argv[1] = path.join(shimDir, 'pi');
     try {
@@ -724,14 +1348,45 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'toggle component expansion with injected keybindings',
         created_at: new Date().toISOString(),
-        thread_snapshot: { version: 1, source: 'events', items: [{ type: 'tool', name: 'bash', status: 'completed', arguments: { command: 'npm test', timeout: 15 }, result: { content: [{ type: 'text', text: 'long output' }], preview: 'long output', isError: false } }] },
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'tool',
+              name: 'bash',
+              status: 'completed',
+              arguments: { command: 'npm test', timeout: 15 },
+              result: {
+                content: [{ type: 'text', text: 'long output' }],
+                preview: 'long output',
+                isError: false,
+              },
+            },
+          ],
+        },
       };
-      const keybindings = { matches: (data: string, keybinding: string) => keybinding === 'app.tools.expand' && data === '\u001b[111;5u' };
-      const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, createSubagentsPanelKeyMatcher(keybindings), (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, { cwd: tmp, tui: { requestRender() {} } });
+      const keybindings = {
+        matches: (data: string, keybinding: string) =>
+          keybinding === 'app.tools.expand' && data === '\u001b[111;5u',
+      };
+      const panel = new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        createSubagentsPanelKeyMatcher(keybindings),
+        (text) => text.length,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+        { cwd: tmp, tui: { requestRender() {} } },
+      );
 
-      expect(panel.render(160).join('\n')).toContain('bash-expanded:false:npm test:long output');
+      expect(panel.render(160).join('\n')).toContain(
+        'bash-expanded:false:npm test:long output',
+      );
       panel.handleInput('\u001b[111;5u');
-      expect(panel.render(160).join('\n')).toContain('bash-expanded:true:npm test:long output');
+      expect(panel.render(160).join('\n')).toContain(
+        'bash-expanded:true:npm test:long output',
+      );
     } finally {
       process.argv[1] = oldArgv1;
       resetPiComponentCacheForTests();
@@ -748,7 +1403,15 @@ describe('subagents panel and extension ui', () => {
       created_at: new Date().toISOString(),
       thread_snapshot: statusSnapshot('completed'),
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, { cwd: tmp });
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+      { cwd: tmp },
+    );
 
     const header = panel.render(180)[0];
 
@@ -758,14 +1421,31 @@ describe('subagents panel and extension ui', () => {
 
   it('toggles thinking visibility with injected app.thinking.toggle keybindings and ctrl+t', () => {
     resetPiComponentCacheForTests();
-    const packageRoot = path.join(tmp, 'fake-pi-panel-thinking-keybindings-package');
+    const packageRoot = path.join(
+      tmp,
+      'fake-pi-panel-thinking-keybindings-package',
+    );
     fs.mkdirSync(path.join(packageRoot, 'dist'), { recursive: true });
-    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', main: 'index.cjs' }));
-    fs.writeFileSync(path.join(packageRoot, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
+    fs.writeFileSync(
+      path.join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: '@earendil-works/pi-coding-agent',
+        main: 'index.cjs',
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      '#!/usr/bin/env node\n',
+    );
     const shimDir = path.join(tmp, 'bin-panel-thinking-keybindings');
     fs.mkdirSync(shimDir);
-    fs.symlinkSync(path.join(packageRoot, 'dist', 'cli.js'), path.join(shimDir, 'pi'));
-    fs.writeFileSync(path.join(packageRoot, 'index.cjs'), `
+    fs.symlinkSync(
+      path.join(packageRoot, 'dist', 'cli.js'),
+      path.join(shimDir, 'pi'),
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, 'index.cjs'),
+      `
       exports.getMarkdownTheme = () => ({});
       exports.AssistantMessageComponent = class {
         constructor(message, hideThinkingBlock) {
@@ -774,7 +1454,8 @@ describe('subagents panel and extension ui', () => {
         }
         render() { return ['thinking-hidden:' + this.hideThinkingBlock + ':' + this.message.content[0].thinking]; }
       };
-    `);
+    `,
+    );
     const oldArgv1 = process.argv[1];
     process.argv[1] = path.join(shimDir, 'pi');
     try {
@@ -785,16 +1466,45 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'toggle thinking visibility',
         created_at: new Date().toISOString(),
-        thread_snapshot: { version: 1, source: 'events', items: [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'thinking', thinking: 'private reasoning' }] } }] },
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'assistant',
+              message: {
+                role: 'assistant',
+                content: [{ type: 'thinking', thinking: 'private reasoning' }],
+              },
+            },
+          ],
+        },
       };
-      const keybindings = { matches: (data: string, keybinding: string) => keybinding === 'app.thinking.toggle' && data === '\u001b[116;5u' };
-      const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, createSubagentsPanelKeyMatcher(keybindings), (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, { cwd: tmp });
+      const keybindings = {
+        matches: (data: string, keybinding: string) =>
+          keybinding === 'app.thinking.toggle' && data === '\u001b[116;5u',
+      };
+      const panel = new SubagentsHistoryPanel(
+        [task],
+        { fg: (_name: string, text: string) => text },
+        () => undefined,
+        createSubagentsPanelKeyMatcher(keybindings),
+        (text) => text.length,
+        (text, width) => (text.length > width ? text.slice(0, width) : text),
+        { cwd: tmp },
+      );
 
-      expect(panel.render(160).join('\n')).toContain('thinking-hidden:false:private reasoning');
+      expect(panel.render(160).join('\n')).toContain(
+        'thinking-hidden:false:private reasoning',
+      );
       panel.handleInput('\u001b[116;5u');
-      expect(panel.render(160).join('\n')).toContain('thinking-hidden:true:private reasoning');
+      expect(panel.render(160).join('\n')).toContain(
+        'thinking-hidden:true:private reasoning',
+      );
       panel.handleInput('\u0014');
-      expect(panel.render(160).join('\n')).toContain('thinking-hidden:false:private reasoning');
+      expect(panel.render(160).join('\n')).toContain(
+        'thinking-hidden:false:private reasoning',
+      );
     } finally {
       process.argv[1] = oldArgv1;
       resetPiComponentCacheForTests();
@@ -803,18 +1513,21 @@ describe('subagents panel and extension ui', () => {
 
   it('matches injected keybindings for panel navigation, scrolling, and detail cancel controls', () => {
     const matcher = createSubagentsPanelKeyMatcher({
-      matches: (data: string, keybinding: string) => ({
-        navUp: ['tui.select.up', 'tui.editor.cursorUp'],
-        navDown: ['tui.select.down', 'tui.editor.cursorDown'],
-        navLeft: ['tui.editor.cursorLeft'],
-        navRight: ['tui.editor.cursorRight'],
-        pageUpKey: ['tui.select.pageUp', 'tui.editor.pageUp'],
-        pageDownKey: ['tui.select.pageDown', 'tui.editor.pageDown'],
-        homeKey: ['tui.editor.cursorLineStart'],
-        endKey: ['tui.editor.cursorLineEnd'],
-        escKey: ['app.interrupt', 'tui.select.cancel'],
-        ctrlWFromEditorBinding: ['tui.editor.deleteWordBackward'],
-      }[data] ?? []).includes(keybinding),
+      matches: (data: string, keybinding: string) =>
+        (
+          ({
+            navUp: ['tui.select.up', 'tui.editor.cursorUp'],
+            navDown: ['tui.select.down', 'tui.editor.cursorDown'],
+            navLeft: ['tui.editor.cursorLeft'],
+            navRight: ['tui.editor.cursorRight'],
+            pageUpKey: ['tui.select.pageUp', 'tui.editor.pageUp'],
+            pageDownKey: ['tui.select.pageDown', 'tui.editor.pageDown'],
+            homeKey: ['tui.editor.cursorLineStart'],
+            endKey: ['tui.editor.cursorLineEnd'],
+            escKey: ['app.interrupt', 'tui.select.cancel'],
+            ctrlWFromEditorBinding: ['tui.editor.deleteWordBackward'],
+          })[data] ?? []
+        ).includes(keybinding),
     });
 
     expect(matcher('navUp', 'up')).toBe(true);
@@ -842,7 +1555,10 @@ describe('subagents panel and extension ui', () => {
         thread_snapshot: {
           version: 1,
           source: 'events',
-          items: Array.from({ length: 160 }, (_, i) => ({ type: 'status' as const, text: `first line ${String(i).padStart(3, '0')}` })),
+          items: Array.from({ length: 160 }, (_, i) => ({
+            type: 'status' as const,
+            text: `first line ${String(i).padStart(3, '0')}`,
+          })),
         },
       },
       {
@@ -860,16 +1576,26 @@ describe('subagents panel and extension ui', () => {
       },
     ];
     const matcher = createSubagentsPanelKeyMatcher({
-      matches: (data: string, keybinding: string) => ({
-        keyDown: ['tui.select.down'],
-        keyUp: ['tui.select.up'],
-        keyRight: ['tui.editor.cursorRight'],
-        keyLeft: ['tui.editor.cursorLeft'],
-        keyPageDown: ['tui.editor.pageDown'],
-        keyHome: ['tui.editor.cursorLineStart'],
-      }[data] ?? []).includes(keybinding),
+      matches: (data: string, keybinding: string) =>
+        (
+          ({
+            keyDown: ['tui.select.down'],
+            keyUp: ['tui.select.up'],
+            keyRight: ['tui.editor.cursorRight'],
+            keyLeft: ['tui.editor.cursorLeft'],
+            keyPageDown: ['tui.editor.pageDown'],
+            keyHome: ['tui.editor.cursorLineStart'],
+          })[data] ?? []
+        ).includes(keybinding),
     });
-    const panel = new SubagentsHistoryPanel(tasks, { fg: (_name: string, text: string) => text }, () => undefined, matcher, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      tasks,
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      matcher,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('agent: analyst');
@@ -906,7 +1632,11 @@ describe('subagents panel and extension ui', () => {
       status: 'completed',
       task: `task ${i + 1}`,
       created_at: new Date().toISOString(),
-      thread_snapshot: { version: 1, source: 'events', items: [{ type: 'status' as const, text: `body ${i + 1}` }] },
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'status' as const, text: `body ${i + 1}` }],
+      },
     }));
     const warningSelections: string[] = [];
     const theme = {
@@ -916,8 +1646,18 @@ describe('subagents panel and extension ui', () => {
       },
       bold: (text: string) => text,
     };
-    const matcher = (data: string, key: string) => key === 'right' && data === 'right';
-    const panel = new SubagentsHistoryPanel(tasks, theme, () => undefined, matcher, (text) => text.replace(/<[^>]+>/g, '').length, (text, width) => text.length > width ? text.slice(0, width) : text, {}, 24);
+    const matcher = (data: string, key: string) =>
+      key === 'right' && data === 'right';
+    const panel = new SubagentsHistoryPanel(
+      tasks,
+      theme,
+      () => undefined,
+      matcher,
+      (text) => text.replace(/<[^>]+>/g, '').length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+      {},
+      24,
+    );
 
     for (let i = 0; i < 9; i++) panel.handleInput('right');
     const rendered = panel.render(130).join('\n');
@@ -926,7 +1666,9 @@ describe('subagents panel and extension ui', () => {
     expect(rendered).toContain('○ agent-09:completed');
     expect(rendered).toContain('● agent-10:completed');
     expect(rendered).toContain('○ agent-11:completed');
-    expect(warningSelections.some((text) => text.includes('● agent-10:completed'))).toBe(true);
+    expect(
+      warningSelections.some((text) => text.includes('● agent-10:completed')),
+    ).toBe(true);
   });
 
   it('preserves panel chrome while rendering selected thread snapshots', () => {
@@ -942,23 +1684,42 @@ describe('subagents panel and extension ui', () => {
       last_activity: 'rendering snapshot',
       model: 'mock/model',
       effort: 'high',
-      usage: { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 50_000, turns: 2 },
-      thread_snapshot: { version: 1, source: 'events', items: [{ type: 'status', text: 'thread body visible' }] },
+      usage: {
+        input: 1000,
+        output: 500,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0,
+        contextTokens: 50_000,
+        turns: 2,
+      },
+      thread_snapshot: {
+        version: 1,
+        source: 'events',
+        items: [{ type: 'status', text: 'thread body visible' }],
+      },
     };
     const panel = new SubagentsHistoryPanel(
       [task],
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       () => false,
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       42,
       undefined,
       undefined,
       undefined,
       'ctrl+shift+q',
-      { timeoutMs: 2_600_000, stallTimeoutMs: 120_000, contextWindowForTask: () => 200_000 },
+      {
+        timeoutMs: 2_600_000,
+        stallTimeoutMs: 120_000,
+        contextWindowForTask: () => 200_000,
+      },
     );
     const rendered = panel.render(160).join('\n');
 
@@ -986,10 +1747,22 @@ describe('subagents panel and extension ui', () => {
       thread_snapshot: {
         version: 1,
         source: 'events',
-        items: Array.from({ length: 80 }, (_, i) => ({ type: 'status' as const, text: `viewport line ${String(i).padStart(2, '0')}` })),
+        items: Array.from({ length: 80 }, (_, i) => ({
+          type: 'status' as const,
+          text: `viewport line ${String(i).padStart(2, '0')}`,
+        })),
       },
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text, {}, () => 60);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+      {},
+      () => 60,
+    );
     const lines = panel.render(100);
 
     expect(lines).toHaveLength(60);
@@ -997,7 +1770,14 @@ describe('subagents panel and extension ui', () => {
   });
 
   it('preserves keyboard scrolling for long thread snapshot bodies', () => {
-    const keys: Record<string, string> = { down: 'j', up: 'k', pageDown: 'f', pageUp: 'b', home: 'g', end: 'G' };
+    const keys: Record<string, string> = {
+      down: 'j',
+      up: 'k',
+      pageDown: 'f',
+      pageUp: 'b',
+      home: 'g',
+      end: 'G',
+    };
     const task: SubagentTask = {
       id: 'subtask_thread_scroll',
       agent: 'analyst',
@@ -1008,10 +1788,20 @@ describe('subagents panel and extension ui', () => {
       thread_snapshot: {
         version: 1,
         source: 'events',
-        items: Array.from({ length: 160 }, (_, i) => ({ type: 'status' as const, text: `thread line ${String(i).padStart(3, '0')}` })),
+        items: Array.from({ length: 160 }, (_, i) => ({
+          type: 'status' as const,
+          text: `thread line ${String(i).padStart(3, '0')}`,
+        })),
       },
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, (data, key) => data === keys[key], (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      (data, key) => data === keys[key],
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('thread line 159');
@@ -1044,18 +1834,34 @@ describe('subagents panel and extension ui', () => {
       thread_snapshot: {
         version: 1,
         source: 'events',
-        items: Array.from({ length: 160 }, (_, i) => ({ type: 'status' as const, text: `normalized mouse line ${String(i).padStart(3, '0')}` })),
+        items: Array.from({ length: 160 }, (_, i) => ({
+          type: 'status' as const,
+          text: `normalized mouse line ${String(i).padStart(3, '0')}`,
+        })),
       },
     } as any;
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('normalized mouse line 159');
-    expect(panel.handleMouse({ type: 'wheel', button: 'none', wheelDelta: -1 })).toEqual({ handled: true, render: true });
+    expect(
+      panel.handleMouse({ type: 'wheel', button: 'none', wheelDelta: -1 }),
+    ).toEqual({ handled: true, render: true });
     expect(body()).toContain('normalized mouse line 158');
     expect(body()).not.toContain('normalized mouse line 159');
-    expect(panel.handleMouse({ type: 'press', button: 'left' })).toBeUndefined();
-    expect(panel.handleMouse({ type: 'wheel', button: 'none', wheelDelta: 0 })).toBeUndefined();
+    expect(
+      panel.handleMouse({ type: 'press', button: 'left' }),
+    ).toBeUndefined();
+    expect(
+      panel.handleMouse({ type: 'wheel', button: 'none', wheelDelta: 0 }),
+    ).toBeUndefined();
     expect(panel.handleMouse({ type: 'move', button: 'none' })).toBeUndefined();
     expect(panel.handleMouse({ button: 'none' })).toBeUndefined();
   });
@@ -1071,10 +1877,20 @@ describe('subagents panel and extension ui', () => {
       thread_snapshot: {
         version: 1,
         source: 'events',
-        items: Array.from({ length: 160 }, (_, i) => ({ type: 'status' as const, text: `mouse sgr line ${String(i).padStart(3, '0')}` })),
+        items: Array.from({ length: 160 }, (_, i) => ({
+          type: 'status' as const,
+          text: `mouse sgr line ${String(i).padStart(3, '0')}`,
+        })),
       },
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('mouse sgr line 159');
@@ -1096,10 +1912,20 @@ describe('subagents panel and extension ui', () => {
       thread_snapshot: {
         version: 1,
         source: 'events',
-        items: Array.from({ length: 160 }, (_, i) => ({ type: 'status' as const, text: `mouse x10 line ${String(i).padStart(3, '0')}` })),
+        items: Array.from({ length: 160 }, (_, i) => ({
+          type: 'status' as const,
+          text: `mouse x10 line ${String(i).padStart(3, '0')}`,
+        })),
       },
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, () => false, (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('mouse x10 line 159');
@@ -1115,7 +1941,10 @@ describe('subagents panel and extension ui', () => {
     const snapshot = {
       version: 1 as const,
       source: 'events' as const,
-      items: Array.from({ length: 80 }, (_, i) => ({ type: 'status' as const, text: `tail line ${String(i).padStart(3, '0')}` })),
+      items: Array.from({ length: 80 }, (_, i) => ({
+        type: 'status' as const,
+        text: `tail line ${String(i).padStart(3, '0')}`,
+      })),
     };
     const task: SubagentTask = {
       id: 'subtask_thread_autotail',
@@ -1126,7 +1955,14 @@ describe('subagents panel and extension ui', () => {
       created_at: new Date().toISOString(),
       thread_snapshot: snapshot,
     };
-    const panel = new SubagentsHistoryPanel([task], { fg: (_name: string, text: string) => text }, () => undefined, (data, key) => data === keys[key], (text) => text.length, (text, width) => text.length > width ? text.slice(0, width) : text);
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      (data, key) => data === keys[key],
+      (text) => text.length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
     const body = () => panel.render(120).join('\n');
 
     expect(body()).toContain('tail line 079');
@@ -1146,39 +1982,69 @@ describe('subagents panel and extension ui', () => {
     expect(body()).toContain('tail line 082');
   });
 
-  it('notifies duplicate agents/subagents names at session startup', () => {
+  it('notifies duplicate agents/subagents names at session startup', async () => {
     const agentDir = path.join(tmp, 'global-agent');
     fs.mkdirSync(path.join(agentDir, 'agents'), { recursive: true });
     fs.mkdirSync(path.join(agentDir, 'subagents'), { recursive: true });
-    fs.writeFileSync(path.join(agentDir, 'agents', 'dup.md'), `---\nname: dup\ndescription: global agents dup\n---\n# Dup`);
-    fs.writeFileSync(path.join(agentDir, 'subagents', 'dup.md'), `---\nname: dup\ndescription: global subagents dup\n---\n# Dup`);
+    fs.writeFileSync(
+      path.join(agentDir, 'agents', 'dup.md'),
+      `---\nname: dup\ndescription: global agents dup\n---\n# Dup`,
+    );
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents', 'dup.md'),
+      `---\nname: dup\ndescription: global subagents dup\n---\n# Dup`,
+    );
     const notifications: Array<[string, string | undefined]> = [];
     let sessionStart: any;
+    let sessionShutdown: any;
     const previousCwd = process.cwd();
+    const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const sessionContext = {
+      cwd: tmp,
+      ui: {
+        notify: (message: string, level?: string) =>
+          notifications.push([message, level]),
+      },
+    };
     process.chdir(tmp);
+    process.env.PI_CODING_AGENT_DIR = agentDir;
     try {
-      withAgentDir(agentDir, () => {
-        extension({
-          registerTool: () => undefined,
-          registerCommand: () => undefined,
-          registerShortcut: () => undefined,
-          on: (event: string, handler: any) => { if (event === 'session_start') sessionStart = handler; },
-        });
-        sessionStart?.({}, { cwd: tmp, ui: { notify: (message: string, level?: string) => notifications.push([message, level]) } });
+      extension({
+        registerTool: () => undefined,
+        registerCommand: () => undefined,
+        registerShortcut: () => undefined,
+        on: (event: string, handler: any) => {
+          if (event === 'session_start') sessionStart = handler;
+          if (event === 'session_shutdown') sessionShutdown = handler;
+        },
       });
-    } finally {
-      process.chdir(previousCwd);
-    }
+      await sessionStart?.({}, sessionContext);
 
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0][0]).toContain('Duplicate subagent name');
-    expect(notifications[0][0]).toContain('dup');
-    expect(notifications[0][0]).toContain('using subagents');
-    expect(notifications[0][1]).toBe('warning');
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0][0]).toContain('Duplicate subagent name');
+      expect(notifications[0][0]).toContain('dup');
+      expect(notifications[0][0]).toContain('using subagents');
+      expect(notifications[0][1]).toBe('warning');
+    } finally {
+      try {
+        await sessionShutdown?.({}, sessionContext);
+      } finally {
+        process.chdir(previousCwd);
+        if (previousAgentDir === undefined)
+          delete process.env.PI_CODING_AGENT_DIR;
+        else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+      }
+    }
   });
 
   it('registers the configured history, detail cancel, and background handoff shortcuts at extension startup', () => {
-    fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), JSON.stringify({ history_panel_shortcut: 'ctrl+p', detail_cancel_shortcut: 'ctrl+shift+q' }));
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        history_panel_shortcut: 'ctrl+p',
+        detail_cancel_shortcut: 'ctrl+shift+q',
+      }),
+    );
     const previousCwd = process.cwd();
     process.chdir(tmp);
     try {
@@ -1195,7 +2061,10 @@ describe('subagents panel and extension ui', () => {
   });
 
   it('detail cancel shortcut only cancels while the subagents panel is active', async () => {
-    fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), JSON.stringify({ detail_cancel_shortcut: 'ctrl+shift+q' }));
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ detail_cancel_shortcut: 'ctrl+shift+q' }),
+    );
     let cancelShortcut: any;
     let subagentsCommand: any;
     const previousCwd = process.cwd();
@@ -1203,8 +2072,12 @@ describe('subagents panel and extension ui', () => {
     try {
       extension({
         registerTool: () => undefined,
-        registerCommand: (name: string, command: any) => { if (name === 'subagents') subagentsCommand = command; },
-        registerShortcut: (key: string, shortcut: any) => { if (key === 'ctrl+shift+q') cancelShortcut = shortcut.handler; },
+        registerCommand: (name: string, command: any) => {
+          if (name === 'subagents') subagentsCommand = command;
+        },
+        registerShortcut: (key: string, shortcut: any) => {
+          if (key === 'ctrl+shift+q') cancelShortcut = shortcut.handler;
+        },
       });
     } finally {
       process.chdir(previousCwd);
@@ -1217,7 +2090,12 @@ describe('subagents panel and extension ui', () => {
         cwd: tmp,
         ui: {
           custom: async (factory: any) => {
-            factory({ terminal: { write: () => undefined }, requestRender() {} }, { fg: (_name: string, text: string) => text }, {}, () => undefined);
+            factory(
+              { terminal: { write: () => undefined }, requestRender() {} },
+              { fg: (_name: string, text: string) => text },
+              {},
+              () => undefined,
+            );
             resolve();
             await new Promise(() => undefined);
           },
@@ -1231,16 +2109,37 @@ describe('subagents panel and extension ui', () => {
   it('subagents history panel can start focused on a selected task id', () => {
     const now = new Date().toISOString();
     const tasks = [
-      { id: 'task-1', agent: 'first', mode: 'background', status: 'running', task: 'first task', created_at: now, last_activity_at: now, last_activity: 'running first' },
-      { id: 'task-2', agent: 'second', mode: 'background', status: 'running', task: 'second task', created_at: now, last_activity_at: now, last_activity: 'running second' },
+      {
+        id: 'task-1',
+        agent: 'first',
+        mode: 'background',
+        status: 'running',
+        task: 'first task',
+        created_at: now,
+        last_activity_at: now,
+        last_activity: 'running first',
+      },
+      {
+        id: 'task-2',
+        agent: 'second',
+        mode: 'background',
+        status: 'running',
+        task: 'second task',
+        created_at: now,
+        last_activity_at: now,
+        last_activity: 'running second',
+      },
     ] as any;
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       () => false,
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       () => 30,
       undefined,
@@ -1253,26 +2152,51 @@ describe('subagents panel and extension ui', () => {
   });
 
   it('cancels only the active task currently selected in the history panel with the configured detail shortcut', () => {
-    fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), JSON.stringify({ detail_cancel_shortcut: 'w' }));
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ detail_cancel_shortcut: 'w' }),
+    );
     expect(readSubagentsConfig(tmp).detail_cancel_shortcut).toBe('w');
     const now = new Date().toISOString();
     const tasks = [
-      { id: 'task-1', agent: 'first', mode: 'background', status: 'running', task: 'first task', created_at: now },
-      { id: 'task-2', agent: 'second', mode: 'background', status: 'completed', task: 'second task', created_at: now },
+      {
+        id: 'task-1',
+        agent: 'first',
+        mode: 'background',
+        status: 'running',
+        task: 'first task',
+        created_at: now,
+      },
+      {
+        id: 'task-2',
+        agent: 'second',
+        mode: 'background',
+        status: 'completed',
+        task: 'second task',
+        created_at: now,
+      },
     ] as any;
     const cancelled: string[] = [];
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
-      (data, key) => key === 'detailCancel' && data === readSubagentsConfig(tmp).detail_cancel_shortcut,
+      (data, key) =>
+        key === 'detailCancel' &&
+        data === readSubagentsConfig(tmp).detail_cancel_shortcut,
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       () => 30,
       undefined,
       undefined,
-      (id) => { cancelled.push(id); tasks.find((task: any) => task.id === id)!.status = 'cancelled'; },
+      (id) => {
+        cancelled.push(id);
+        tasks.find((task: any) => task.id === id)!.status = 'cancelled';
+      },
       'w',
     );
 
@@ -1288,7 +2212,10 @@ describe('subagents panel and extension ui', () => {
   });
 
   it('registers the configured background handoff shortcut at extension startup', () => {
-    fs.writeFileSync(path.join(tmp, '.pi', 'subagents.json'), JSON.stringify({ background_handoff_shortcut: 'ctrl+b' }));
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ background_handoff_shortcut: 'ctrl+b' }),
+    );
     const previousCwd = process.cwd();
     process.chdir(tmp);
     try {
@@ -1309,19 +2236,24 @@ describe('subagents panel and extension ui', () => {
     const setIntervalSpy = vi.spyOn(global, 'setInterval');
     try {
       extension({
-        on: (event: string, handler: any) => { handlers[event] = handler; },
+        on: (event: string, handler: any) => {
+          handlers[event] = handler;
+        },
         registerTool: () => undefined,
         registerCommand: () => undefined,
         registerShortcut: () => undefined,
       });
 
-      await handlers.session_start?.({}, {
-        cwd: tmp,
-        ui: {
-          setWidget: vi.fn(),
-          onTerminalInput: vi.fn(() => () => undefined),
+      await handlers.session_start?.(
+        {},
+        {
+          cwd: tmp,
+          ui: {
+            setWidget: vi.fn(),
+            onTerminalInput: vi.fn(() => () => undefined),
+          },
         },
-      });
+      );
 
       expect(setIntervalSpy).not.toHaveBeenCalled();
     } finally {
@@ -1335,19 +2267,24 @@ describe('subagents panel and extension ui', () => {
     const off = vi.fn();
     const setWidget = vi.fn();
     extension({
-      on: (event: string, handler: any) => { handlers[event] = handler; },
+      on: (event: string, handler: any) => {
+        handlers[event] = handler;
+      },
       registerTool: () => undefined,
       registerCommand: () => undefined,
       registerShortcut: () => undefined,
     });
 
-    await handlers.session_start?.({}, {
-      cwd: tmp,
-      ui: {
-        setWidget,
-        onTerminalInput: vi.fn(() => off),
+    await handlers.session_start?.(
+      {},
+      {
+        cwd: tmp,
+        ui: {
+          setWidget,
+          onTerminalInput: vi.fn(() => off),
+        },
       },
-    });
+    );
 
     expect(setWidget).toHaveBeenCalled();
     expect(off).not.toHaveBeenCalled();
@@ -1362,8 +2299,12 @@ describe('subagents panel and extension ui', () => {
     const custom = vi.fn();
     extension({
       registerTool: () => undefined,
-      registerCommand: (name: string, command: any) => { if (name === 'subagents') subagentsCommand = command; },
-      registerShortcut: (key: string, shortcut: any) => { if (key === 'ctrl+,') historyShortcutHandler = shortcut.handler; },
+      registerCommand: (name: string, command: any) => {
+        if (name === 'subagents') subagentsCommand = command;
+      },
+      registerShortcut: (key: string, shortcut: any) => {
+        if (key === 'ctrl+,') historyShortcutHandler = shortcut.handler;
+      },
     });
 
     await historyShortcutHandler({ cwd: tmp, ui: { custom } });
@@ -1379,10 +2320,15 @@ describe('subagents panel and extension ui', () => {
     let renderedLines: string[] = [];
     const writes: string[] = [];
     const rows = Object.getOwnPropertyDescriptor(process.stdout, 'rows');
-    Object.defineProperty(process.stdout, 'rows', { configurable: true, value: 50 });
+    Object.defineProperty(process.stdout, 'rows', {
+      configurable: true,
+      value: 50,
+    });
     extension({
       registerTool: () => undefined,
-      registerCommand: (name: string, command: any) => { if (name === 'subagents') subagentsCommand = command; },
+      registerCommand: (name: string, command: any) => {
+        if (name === 'subagents') subagentsCommand = command;
+      },
     });
 
     await subagentsCommand.handler('', {
@@ -1390,14 +2336,31 @@ describe('subagents panel and extension ui', () => {
       ui: {
         custom: async (factory: any, options: any) => {
           customOptions = options;
-          const component = factory({ mode: 'fullscreen', terminal: { write: (text: string) => writes.push(text) }, requestRender() {} }, { fg: (_name: string, text: string) => text }, {}, () => undefined);
+          const component = factory(
+            {
+              mode: 'fullscreen',
+              terminal: { write: (text: string) => writes.push(text) },
+              requestRender() {},
+            },
+            { fg: (_name: string, text: string) => text },
+            {},
+            () => undefined,
+          );
           renderedLines = component.render(80);
           component.handleInput('\x1b');
         },
       },
     });
 
-    expect(customOptions).toEqual({ overlay: true, overlayOptions: { anchor: 'top-left', width: '100%', maxHeight: '100%', margin: 0 } });
+    expect(customOptions).toEqual({
+      overlay: true,
+      overlayOptions: {
+        anchor: 'top-left',
+        width: '100%',
+        maxHeight: '100%',
+        margin: 0,
+      },
+    });
     expect(renderedLines).toHaveLength(50);
     expect(writes.join('')).not.toContain('\x1b[?1000h');
     if (rows) Object.defineProperty(process.stdout, 'rows', rows);
@@ -1413,7 +2376,8 @@ describe('subagents panel and extension ui', () => {
       task: 'fallback task to box',
       created_at: new Date().toISOString(),
       prompt: '## delegated task\nanalyze codebase',
-      transcript: 'subagent analyst started\nread src/ui/theme.ts\nbash npm test\n',
+      transcript:
+        'subagent analyst started\nread src/ui/theme.ts\nbash npm test\n',
       result: 'analysis finished',
     };
     const theme = {
@@ -1421,14 +2385,16 @@ describe('subagents panel and extension ui', () => {
       bg: (name: string, text: string) => `BG(${name}:${text})`,
       bold: (text: string) => text,
     };
-    const stripTheme = (text: string) => text.replace(/FG\([^:]+:|\)/g, '').replace(/\u001b\[[0-9;]*m/g, '');
+    const stripTheme = (text: string) =>
+      text.replace(/FG\([^:]+:|\)/g, '').replace(/\u001b\[[0-9;]*m/g, '');
     const panel = new SubagentsHistoryPanel(
       [task],
       theme,
       () => undefined,
       () => false,
       (text) => stripTheme(text).length,
-      (text, width) => stripTheme(text).length > width ? text.slice(0, width) : text,
+      (text, width) =>
+        stripTheme(text).length > width ? text.slice(0, width) : text,
       {},
       40,
     );
@@ -1469,7 +2435,7 @@ describe('subagents panel and extension ui', () => {
       () => undefined,
       () => false,
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       30,
     );
@@ -1495,7 +2461,8 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'coordinate pipeline',
         created_at: now,
-        transcript: 'subagent sdd-apply started\nread src/ui/theme.ts\nbash npm test\n',
+        transcript:
+          'subagent sdd-apply started\nread src/ui/theme.ts\nbash npm test\n',
       },
       {
         id: 'subtask_apply_002',
@@ -1509,11 +2476,14 @@ describe('subagents panel and extension ui', () => {
     ];
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       () => false,
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       30,
     );
@@ -1522,7 +2492,9 @@ describe('subagents panel and extension ui', () => {
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Find terminal row of "subagent sdd-apply"
-    const flowRowIndex = initialRender.findIndex((line) => line.includes('subagent sdd-apply'));
+    const flowRowIndex = initialRender.findIndex((line) =>
+      line.includes('subagent sdd-apply'),
+    );
     expect(flowRowIndex).toBeGreaterThan(0);
 
     const clickResult = panel.handleMouse({ type: 'click', row: flowRowIndex });
@@ -1556,8 +2528,12 @@ describe('subagents panel and extension ui', () => {
               status: 'completed',
               arguments: { agent: 'analyst', task: 'analyze performance' },
               result: {
-                details: { task: { id: 'subtask_secret_id_987', agent: 'analyst' } },
-                content: [{ type: 'text', text: 'analyst executed successfully' }],
+                details: {
+                  task: { id: 'subtask_secret_id_987', agent: 'analyst' },
+                },
+                content: [
+                  { type: 'text', text: 'analyst executed successfully' },
+                ],
                 preview: 'analyst executed successfully',
                 isError: false,
               },
@@ -1589,11 +2565,14 @@ describe('subagents panel and extension ui', () => {
 
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       () => false,
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       { cwd: tmp, tui: { requestRender() {} } },
       30,
     );
@@ -1606,7 +2585,11 @@ describe('subagents panel and extension ui', () => {
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Find row corresponding to the subagent_run entry
-    const subagentRow = initialLines.findIndex((line) => line.includes('analyst executed successfully') || line.includes('subagent_run'));
+    const subagentRow = initialLines.findIndex(
+      (line) =>
+        line.includes('analyst executed successfully') ||
+        line.includes('subagent_run'),
+    );
     expect(subagentRow).toBeGreaterThan(0);
 
     // Click navigation targets the referenced task
@@ -1630,7 +2613,8 @@ describe('subagents panel and extension ui', () => {
         status: 'completed',
         task: 'inspect rows',
         created_at: now,
-        transcript: 'subagent second started\nread src/ui/theme.ts\nbash npm test\n',
+        transcript:
+          'subagent second started\nread src/ui/theme.ts\nbash npm test\n',
       },
       {
         id: 'task_2',
@@ -1644,11 +2628,14 @@ describe('subagents panel and extension ui', () => {
 
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       () => false,
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       30,
     );
@@ -1657,42 +2644,72 @@ describe('subagents panel and extension ui', () => {
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Header row 0
-    expect(panel.handleMouse({ type: 'click', row: 0 })).toEqual({ handled: true, focus: true });
+    expect(panel.handleMouse({ type: 'click', row: 0 })).toEqual({
+      handled: true,
+      focus: true,
+    });
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Top frame row 1
-    expect(panel.handleMouse({ type: 'click', row: 1 })).toEqual({ handled: true, focus: true });
+    expect(panel.handleMouse({ type: 'click', row: 1 })).toEqual({
+      handled: true,
+      focus: true,
+    });
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Metadata row 2
-    expect(panel.handleMouse({ type: 'click', row: 2 })).toEqual({ handled: true, focus: true });
+    expect(panel.handleMouse({ type: 'click', row: 2 })).toEqual({
+      handled: true,
+      focus: true,
+    });
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Task strip row
-    const taskStripRow = rendered.findIndex((line) => line.includes('executions 1-2/2'));
+    const taskStripRow = rendered.findIndex((line) =>
+      line.includes('executions 1-2/2'),
+    );
     expect(taskStripRow).toBeGreaterThan(0);
-    expect(panel.handleMouse({ type: 'click', row: taskStripRow })).toEqual({ handled: true, focus: true });
+    expect(panel.handleMouse({ type: 'click', row: taskStripRow })).toEqual({
+      handled: true,
+      focus: true,
+    });
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Non-subagent body tool row: "bash npm test"
-    const bashRow = rendered.findIndex((line) => line.includes('bash npm test'));
+    const bashRow = rendered.findIndex((line) =>
+      line.includes('bash npm test'),
+    );
     expect(bashRow).toBeGreaterThan(0);
-    expect(panel.handleMouse({ type: 'click', row: bashRow })).toEqual({ handled: true, focus: true });
+    expect(panel.handleMouse({ type: 'click', row: bashRow })).toEqual({
+      handled: true,
+      focus: true,
+    });
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Non-subagent body tool row: "read src/ui/theme.ts"
-    const readRow = rendered.findIndex((line) => line.includes('read src/ui/theme.ts'));
+    const readRow = rendered.findIndex((line) =>
+      line.includes('read src/ui/theme.ts'),
+    );
     expect(readRow).toBeGreaterThan(0);
-    expect(panel.handleMouse({ type: 'click', row: readRow })).toEqual({ handled: true, focus: true });
+    expect(panel.handleMouse({ type: 'click', row: readRow })).toEqual({
+      handled: true,
+      focus: true,
+    });
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Bottom frame row
     const bottomRow = rendered.length - 1;
-    expect(panel.handleMouse({ type: 'click', row: bottomRow })).toEqual({ handled: true, focus: true });
+    expect(panel.handleMouse({ type: 'click', row: bottomRow })).toEqual({
+      handled: true,
+      focus: true,
+    });
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
     // Wheel scrolling does not change selected task
-    expect(panel.handleMouse({ type: 'wheel', wheelDelta: 1 })).toEqual({ handled: true, render: true });
+    expect(panel.handleMouse({ type: 'wheel', wheelDelta: 1 })).toEqual({
+      handled: true,
+      render: true,
+    });
     expect(panel.getRenderDebugState().selectedIndex).toBe(0);
   });
 
@@ -1707,17 +2724,21 @@ describe('subagents panel and extension ui', () => {
         task: 'manage execution',
         created_at: now,
         // References a missing subtask ID in transcript
-        transcript: 'subagent deleted-agent (subtask_ghost_9999) started\nread notes.md\n',
+        transcript:
+          'subagent deleted-agent (subtask_ghost_9999) started\nread notes.md\n',
       },
     ];
 
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       () => false,
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       30,
     );
@@ -1726,7 +2747,9 @@ describe('subagents panel and extension ui', () => {
     // Raw task ID must remain hidden from user-visible lines
     expect(rendered.join('\n')).not.toContain('subtask_ghost_9999');
 
-    const ghostRow = rendered.findIndex((line) => line.includes('deleted-agent'));
+    const ghostRow = rendered.findIndex((line) =>
+      line.includes('deleted-agent'),
+    );
     expect(ghostRow).toBeGreaterThan(0);
 
     // Clicking does not throw, does not change selection, and returns handled: true, focus: true
@@ -1769,11 +2792,14 @@ describe('subagents panel and extension ui', () => {
 
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       (data, key) => data === keys[key],
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       30,
       undefined,
@@ -1787,7 +2813,9 @@ describe('subagents panel and extension ui', () => {
     panel.handleInput('\u0014'); // hideThinkingBlock = true
 
     const rendered = panel.render(120);
-    const flowRow = rendered.findIndex((line) => line.includes('subagent second'));
+    const flowRow = rendered.findIndex((line) =>
+      line.includes('subagent second'),
+    );
     expect(flowRow).toBeGreaterThan(0);
 
     // Mouse click navigates to task 2
@@ -1826,17 +2854,22 @@ describe('subagents panel and extension ui', () => {
 
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       () => false,
       (text) => text.length,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       30,
     );
 
     const rendered = panel.render(120);
-    const flowRow = rendered.findIndex((line) => line.includes('sdd-apply tool completed: bash'));
+    const flowRow = rendered.findIndex((line) =>
+      line.includes('sdd-apply tool completed: bash'),
+    );
     expect(flowRow).toBeGreaterThan(0);
 
     // Send SGR mouse click: \x1b[<button;col;rowM (1-based row = flowRow + 1)
@@ -1850,20 +2883,65 @@ describe('subagents panel and extension ui', () => {
     let closed = false;
     const now = new Date().toISOString();
     const tasks: SubagentTask[] = [
-      { id: 'task-1', agent: 'orchestrator', mode: 'task', status: 'completed', task: 'coordinate workflow', created_at: now, thread_snapshot: { version: 1, source: 'events', items: [{ type: 'status', text: 'orch status' }] } },
-      { id: 'task-2', agent: 'analyst', display_name: 'Deep Analysis', mode: 'task', status: 'running', task: 'analyze performance', created_at: now, thread_snapshot: { version: 1, source: 'events', items: [{ type: 'status', text: 'analyst status' }] } },
-      { id: 'task-3', agent: 'sdd-apply', mode: 'task', status: 'queued', task: 'apply modifications', created_at: now },
-      { id: 'task-4', agent: 'sdd-verify', mode: 'task', status: 'queued', task: 'verify results', created_at: now },
+      {
+        id: 'task-1',
+        agent: 'orchestrator',
+        mode: 'task',
+        status: 'completed',
+        task: 'coordinate workflow',
+        created_at: now,
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [{ type: 'status', text: 'orch status' }],
+        },
+      },
+      {
+        id: 'task-2',
+        agent: 'analyst',
+        display_name: 'Deep Analysis',
+        mode: 'task',
+        status: 'running',
+        task: 'analyze performance',
+        created_at: now,
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [{ type: 'status', text: 'analyst status' }],
+        },
+      },
+      {
+        id: 'task-3',
+        agent: 'sdd-apply',
+        mode: 'task',
+        status: 'queued',
+        task: 'apply modifications',
+        created_at: now,
+      },
+      {
+        id: 'task-4',
+        agent: 'sdd-verify',
+        mode: 'task',
+        status: 'queued',
+        task: 'verify results',
+        created_at: now,
+      },
     ];
 
-    const visible = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '').length;
+    const visible = (text: string) =>
+      text.replace(/\u001b\[[0-9;]*m/g, '').length;
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
-      () => { closed = true; },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
+      () => {
+        closed = true;
+      },
       () => false,
       visible,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       24,
     );
@@ -1884,9 +2962,15 @@ describe('subagents panel and extension ui', () => {
     expect(fullText).toContain('sdd-apply · queued');
 
     // Click on the second subagent row in the bottom list to select it
-    const analystRow = rendered.findIndex((line) => line.includes('Deep Analysis'));
+    const analystRow = rendered.findIndex((line) =>
+      line.includes('Deep Analysis'),
+    );
     expect(analystRow).toBeGreaterThan(0);
-    const clickResult = panel.handleMouse({ type: 'click', row: analystRow, col: 10 });
+    const clickResult = panel.handleMouse({
+      type: 'click',
+      row: analystRow,
+      col: 10,
+    });
     expect(clickResult).toEqual({ handled: true, focus: true, render: true });
     expect(panel.getRenderDebugState().selectedIndex).toBe(1);
 
@@ -1909,27 +2993,42 @@ describe('subagents panel and extension ui', () => {
       status: 'completed' as const,
       task: `task number ${i + 1}`,
       created_at: now,
-      thread_snapshot: { version: 1 as const, source: 'events' as const, items: [{ type: 'status' as const, text: `line ${i + 1}` }] },
+      thread_snapshot: {
+        version: 1 as const,
+        source: 'events' as const,
+        items: [{ type: 'status' as const, text: `line ${i + 1}` }],
+      },
     }));
 
-    const visible = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '').length;
+    const visible = (text: string) =>
+      text.replace(/\u001b\[[0-9;]*m/g, '').length;
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       () => false,
       visible,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       24,
     );
 
     const initial = panel.render(60);
-    const listRowIndex = initial.findIndex((line) => line.includes('● 1. agent-1'));
+    const listRowIndex = initial.findIndex((line) =>
+      line.includes('● 1. agent-1'),
+    );
     expect(listRowIndex).toBeGreaterThan(0);
 
     // Wheel down on the list row scrolls the subagent list
-    const wheelResult = panel.handleMouse({ type: 'wheel', wheelDelta: 1, row: listRowIndex, col: 10 });
+    const wheelResult = panel.handleMouse({
+      type: 'wheel',
+      wheelDelta: 1,
+      row: listRowIndex,
+      col: 10,
+    });
     expect(wheelResult).toEqual({ handled: true, render: true });
 
     const scrolled = panel.render(60).join('\n');
@@ -1949,14 +3048,18 @@ describe('subagents panel and extension ui', () => {
       },
     ];
 
-    const visible = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '').length;
+    const visible = (text: string) =>
+      text.replace(/\u001b\[[0-9;]*m/g, '').length;
     const panel = new SubagentsHistoryPanel(
       tasks,
-      { fg: (_name: string, text: string) => text, bold: (text: string) => text },
+      {
+        fg: (_name: string, text: string) => text,
+        bold: (text: string) => text,
+      },
       () => undefined,
       () => false,
       visible,
-      (text, width) => text.length > width ? text.slice(0, width) : text,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
       {},
       20,
     );
@@ -1969,19 +3072,26 @@ describe('subagents panel and extension ui', () => {
   });
 
   it('renders narrow stacked view with intact borders and clean task description', async () => {
-    const { truncateToWidth: realTruncate, visibleWidth: realVisible } = await import('../../src/render/text-width.js');
+    const { truncateToWidth: realTruncate, visibleWidth: realVisible } =
+      await import('../../src/render/text-width.js');
     resetPiComponentCacheForTests();
     try {
       setPiComponentProviderForSubagentRendering({
         ToolExecutionComponent: class {
-          constructor(private name: string, _id: string, private args: any) {}
+          constructor(
+            private name: string,
+            _id: string,
+            private args: any,
+          ) {}
           markExecutionStarted() {}
           setArgsComplete() {}
           updateResult() {}
           setExpanded() {}
           render(width: number) {
             const innerWidth = Math.max(10, width - 4);
-            const topBar = '─'.repeat(Math.max(0, innerWidth - this.name.length - 1));
+            const topBar = '─'.repeat(
+              Math.max(0, innerWidth - this.name.length - 1),
+            );
             return [
               `┌ ${this.name} ${topBar}┐`,
               `│ $ ${this.args?.command ?? 'cmd'} │`,
@@ -2019,7 +3129,10 @@ describe('subagents panel and extension ui', () => {
               name: 'bash',
               status: 'completed',
               arguments: { command: 'ls -la "openspec/changes"' },
-              result: { content: [{ type: 'text', text: 'total 12' }], isError: false },
+              result: {
+                content: [{ type: 'text', text: 'total 12' }],
+                isError: false,
+              },
             },
             {
               type: 'assistant',
@@ -2040,7 +3153,10 @@ describe('subagents panel and extension ui', () => {
 
       const panel = new SubagentsHistoryPanel(
         [task],
-        { fg: (_name: string, text: string) => `\x1b[36m${text}\x1b[0m`, bold: (text: string) => `\x1b[1m${text}\x1b[0m` },
+        {
+          fg: (_name: string, text: string) => `\x1b[36m${text}\x1b[0m`,
+          bold: (text: string) => `\x1b[1m${text}\x1b[0m`,
+        },
         () => {},
         () => false,
         realVisible,
@@ -2055,7 +3171,10 @@ describe('subagents panel and extension ui', () => {
       // 1. Every single rendered line must not exceed width
       for (let i = 0; i < rendered.length; i++) {
         const vis = realVisible(rendered[i]!);
-        expect(vis, `line ${i} visible width (${vis}) must be <= ${width}: ${rendered[i]}`).toBeLessThanOrEqual(width);
+        expect(
+          vis,
+          `line ${i} visible width (${vis}) must be <= ${width}: ${rendered[i]}`,
+        ).toBeLessThanOrEqual(width);
       }
 
       // 2. Top frame must end with [✕ Cerrar] and right corner
@@ -2068,8 +3187,12 @@ describe('subagents panel and extension ui', () => {
       expect(stripAnsi(rendered[1]!).trimEnd().endsWith('│')).toBe(true);
 
       // 4. Subheader Row 2 must have clean non-duplicated task description
-      expect(rendered[2]).toContain('Archive verified definitive mobile redesign');
-      expect(rendered[2]).not.toContain('Archive verified definitive mobile redesign: Archive verified');
+      expect(rendered[2]).toContain(
+        'Archive verified definitive mobile redesign',
+      );
+      expect(rendered[2]).not.toContain(
+        'Archive verified definitive mobile redesign: Archive verified',
+      );
       expect(stripAnsi(rendered[2]!).trimEnd().endsWith('│')).toBe(true);
 
       // 5. Divider line must connect properly
@@ -2092,6 +3215,4 @@ describe('subagents panel and extension ui', () => {
       resetPiComponentCacheForTests();
     }
   });
-
 });
-

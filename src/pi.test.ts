@@ -50,12 +50,9 @@ describe('native Pi extension', () => {
       'before_agent_start',
       'session_start',
     ]);
-    expect(registerCommand).toHaveBeenCalledWith(
+    expect(registerCommand).not.toHaveBeenCalledWith(
       'thoth-agents:models',
-      expect.objectContaining({
-        description: 'Edit global Thoth specialist models',
-        handler: expect.any(Function),
-      }),
+      expect.anything(),
     );
   });
   test('registers one bounded adaptive-root block per turn without import side effects', async () => {
@@ -87,130 +84,6 @@ describe('native Pi extension', () => {
     ).toHaveLength(1);
     expect(second.systemPrompt).toContain('host prompt');
   });
-  test('registers the root-only models command and rejects non-TUI invocation without reads or writes', async () => {
-    const commands = new Map<
-      string,
-      (args: string | undefined, context: any) => unknown
-    >();
-    const readModelConfig = vi.fn();
-    const saveModelConfig = vi.fn();
-    piExtension(
-      {
-        on: vi.fn(),
-        registerCommand: (name, command) => commands.set(name, command.handler),
-      },
-      { readModelConfig, saveModelConfig },
-    );
-    const notify = vi.fn();
-    const custom = vi.fn();
-    await commands.get('thoth-agents:models')?.(undefined, {
-      mode: 'rpc',
-      ui: { notify, custom },
-      modelRegistry: { getAll: vi.fn() },
-    });
-    expect(commands.has('thoth-agents:models')).toBe(true);
-    expect(notify).toHaveBeenCalledWith(
-      expect.stringContaining('requires interactive TUI mode'),
-      'error',
-    );
-    expect(readModelConfig).not.toHaveBeenCalled();
-    expect(saveModelConfig).not.toHaveBeenCalled();
-    expect(custom).not.toHaveBeenCalled();
-  });
-
-  test('wires the host catalog and native input/render helpers into the custom panel', async () => {
-    const commands = new Map<
-      string,
-      (args: string | undefined, context: any) => unknown
-    >();
-    const roles = ['explorer', 'librarian', 'oracle', 'designer', 'worker'];
-    const snapshot = {
-      piRoot: '/global/pi',
-      roles: roles.map((role) => ({
-        role,
-        model: 'inherit',
-        effort: { kind: 'inherit' as const },
-      })),
-      contents: Object.fromEntries(roles.map((role) => [role, role])),
-    };
-    const saveModelConfig = vi.fn((_snapshot, draft) => ({
-      success: true,
-      changedRoles: ['explorer'],
-      snapshot: { ...snapshot, roles: draft },
-    }));
-    const notify = vi.fn();
-    const requestRender = vi.fn();
-    let rendered = '';
-    piExtension(
-      {
-        on: vi.fn(),
-        registerCommand: (name, command) => commands.set(name, command.handler),
-      },
-      {
-        piRoot: '/global/pi',
-        readModelConfig: vi.fn(() => snapshot),
-        saveModelConfig,
-        loadNativeModules: async () => ({
-          keys: {
-            up: 'up',
-            down: 'down',
-            enter: 'enter',
-            escape: 'escape',
-            backspace: 'backspace',
-          },
-          matchesKey: (data, key) => data === `<${key}>`,
-          truncateToWidth: (text, width) => text.slice(0, width),
-          visibleWidth: (text) => text.length,
-          getSupportedThinkingLevels: () => ['low', 'max'],
-        }),
-      },
-    );
-    await commands.get('thoth-agents:models')?.(undefined, {
-      mode: 'tui',
-      ui: {
-        notify,
-        custom: async (factory: any) => {
-          let result: unknown;
-          const component = factory(
-            { requestRender },
-            {
-              fg: (_color: string, text: string) => text,
-              bg: (_color: string, text: string) => text,
-            },
-            {},
-            (value: unknown) => {
-              result = value;
-            },
-          );
-          rendered = component.render(80).join('\n');
-          component.handleInput('<enter>');
-          component.handleInput('<down>');
-          component.handleInput('<enter>');
-          component.handleInput('<down>');
-          component.handleInput('<down>');
-          component.handleInput('<enter>');
-          component.handleInput('s');
-          return result;
-        },
-      },
-      modelRegistry: {
-        getAll: () => [{ provider: 'openai', id: 'gpt-5.4', name: 'GPT 5.4' }],
-      },
-    });
-    expect(rendered).toContain('Global specialist models');
-    expect(saveModelConfig).toHaveBeenCalledTimes(1);
-    expect(saveModelConfig.mock.calls[0]?.[1][0]).toMatchObject({
-      model: 'openai/gpt-5.4',
-      effort: { kind: 'effort', value: 'max' },
-      availableEfforts: ['low', 'max'],
-    });
-    expect(requestRender).toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith(
-      expect.stringContaining('Saved global Thoth specialist models'),
-      'info',
-    );
-  });
-
   test('session start converges package specialists without rejecting the session', async () => {
     const root = mkdtempSync(join(tmpdir(), 'thoth-pi-extension-'));
     try {

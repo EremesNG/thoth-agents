@@ -11,10 +11,15 @@ function wildcardToRegExp(pattern: string): RegExp {
 }
 
 export function matchesToolPattern(toolName: string, pattern: string): boolean {
-  return hasToolGlob(pattern) ? wildcardToRegExp(pattern).test(toolName) : toolName === pattern;
+  return hasToolGlob(pattern)
+    ? wildcardToRegExp(pattern).test(toolName)
+    : toolName === pattern;
 }
 
-export function expandToolPatterns(patterns: readonly string[], activeToolNames?: readonly string[]): string[] {
+export function expandToolPatterns(
+  patterns: readonly string[],
+  activeToolNames?: readonly string[],
+): string[] {
   const active = activeToolNames ? [...new Set(activeToolNames)] : undefined;
   const expanded: string[] = [];
   const add = (name: string) => {

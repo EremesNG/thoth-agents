@@ -1,1 +1,5 @@
-export { loadSubagents, readSubagentsConfig, resolveEffectiveSubagentMode } from '../config.js';
+export {
+  loadSubagents,
+  readSubagentsConfig,
+  resolveEffectiveSubagentMode,
+} from '../config.js';

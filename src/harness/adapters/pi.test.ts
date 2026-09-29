@@ -38,9 +38,7 @@ describe('Pi adapter', () => {
       );
       expect(artifact?.content).toContain(`model: "openai-codex/${model}"`);
       expect(artifact?.content).toContain(`effort: "${effort}"`);
-      expect(artifact?.content).toContain(
-        `subagent_mode: "${role === 'librarian' ? 'background' : 'task'}"`,
-      );
+      expect(artifact?.content).toContain('subagent_mode: "background"');
       expect(artifact?.content).not.toMatch(
         /^(?:thinking|async|defaultContext|maxSubagentDepth):/m,
       );
@@ -104,12 +102,13 @@ describe('Pi adapter', () => {
     expect(librarian?.content).toContain('default tool names');
   });
 
-  test('uses one direct j0k3r launch per canonical specialist assignment', () => {
+  test('uses one direct @thoth-agents/pi-subagents launch per canonical specialist assignment', () => {
     const root = renderPiRootInstructions();
     const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];
-    expect(runtime).toContain('subagent_run({ agent, task, mode: "task" })');
+    expect(runtime).toContain('launch in background when neither sets a mode');
+    expect(runtime).toContain('explicitly asks you to wait for completion');
     expect(runtime).toContain(
-      'subagent_run({ agent, task, mode: "background" })',
+      'subagent_run({ agent: "thoth-worker", task: "…" })',
     );
     expect(runtime).toContain(
       'Use one separate `subagent_run` call per specialist, never a batch.',
@@ -158,7 +157,9 @@ describe('Pi adapter', () => {
   test('requires lean child resources for session-owned hook isolation', () => {
     const root = renderPiRootInstructions();
     const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];
-    expect(runtime).toContain('j0k3r SDK children run in-process');
+    expect(runtime).toContain(
+      '@thoth-agents/pi-subagents SDK children run in-process',
+    );
     expect(runtime).toContain('`session_resources: "lean"` is required');
     expect(runtime).toContain(
       'filters `before_agent_start` and `session_start`',
@@ -189,13 +190,13 @@ describe('Pi adapter', () => {
     expect(shaping).toContain('cancellation-acknowledged state');
   });
 
-  test('uses actual j0k3r role-call examples without borrowed context semantics', () => {
+  test('uses actual @thoth-agents/pi-subagents role-call examples without borrowed context semantics', () => {
     const root = renderPiRootInstructions();
     expect(root).toContain(
-      'subagent_run({ agent: "thoth-explorer", task: "…", mode: "task" })',
+      'subagent_run({ agent: "thoth-worker", task: "…" })',
     );
     expect(root).toContain(
-      'subagent_run({ agent: "thoth-librarian", task: "…", mode: "background" })',
+      'subagent_run({ agent: "thoth-worker", task: "…", mode: "task" })',
     );
     expect(root).toContain('optional `context` is plain supporting text');
     expect(root).not.toContain('context: "fresh"');

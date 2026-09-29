@@ -1,8 +1,11 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
-import { parseErrorMetadata, serializeErrorMetadata } from './error-metadata.js';
+import {
+  parseErrorMetadata,
+  serializeErrorMetadata,
+} from './error-metadata.js';
 import { boundThreadSnapshot } from './thread-view.js';
 import type { SubagentTask, SubagentThreadSnapshot } from './types.js';
 
@@ -10,6 +13,7 @@ const require = createRequire(import.meta.url);
 
 type Db = {
   exec(sql: string): void;
+  close(): void;
   prepare(sql: string): {
     run(...args: unknown[]): unknown;
     all(...args: unknown[]): unknown[];
@@ -20,27 +24,46 @@ type DbConstructor = new (file: string) => Db;
 
 function loadDbConstructor(): DbConstructor {
   try {
-    const { DatabaseSync } = require('node:sqlite') as { DatabaseSync?: DbConstructor };
+    const { DatabaseSync } = require('node:sqlite') as {
+      DatabaseSync?: DbConstructor;
+    };
     if (DatabaseSync) return DatabaseSync;
   } catch {}
   const { Database } = require('bun:sqlite') as { Database?: DbConstructor };
   if (Database) return Database;
-  throw new Error('No supported sqlite runtime is available. Expected node:sqlite or bun:sqlite.');
+  throw new Error(
+    'No supported sqlite runtime is available. Expected node:sqlite or bun:sqlite.',
+  );
 }
 
-export function resolveSubagentsHistoryHome(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.PI_SUBAGENTS_HISTORY_HOME) return path.resolve(env.PI_SUBAGENTS_HISTORY_HOME);
+export function resolveSubagentsHistoryHome(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  if (env.PI_SUBAGENTS_HISTORY_HOME)
+    return path.resolve(env.PI_SUBAGENTS_HISTORY_HOME);
   const xdg = env.XDG_DATA_HOME;
-  return xdg ? path.join(xdg, 'pi', 'subagents') : path.join(os.homedir(), '.local', 'share', 'pi', 'subagents');
+  return xdg
+    ? path.join(xdg, 'pi', 'subagents')
+    : path.join(os.homedir(), '.local', 'share', 'pi', 'subagents');
 }
 
-export function resolveSubagentHistoryDbPath(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.PI_SUBAGENTS_HISTORY_DB_PATH) return path.resolve(env.PI_SUBAGENTS_HISTORY_DB_PATH);
-  return path.join(resolveSubagentsHistoryHome(env), 'subagents-history.sqlite');
+export function resolveSubagentHistoryDbPath(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  if (env.PI_SUBAGENTS_HISTORY_DB_PATH)
+    return path.resolve(env.PI_SUBAGENTS_HISTORY_DB_PATH);
+  return path.join(
+    resolveSubagentsHistoryHome(env),
+    'subagents-history.sqlite',
+  );
 }
 
-function value(text: string | undefined): string | null { return text ?? null; }
-function snapshotJson(snapshot: SubagentTask['thread_snapshot']): string | null {
+function value(text: string | undefined): string | null {
+  return text ?? null;
+}
+function snapshotJson(
+  snapshot: SubagentTask['thread_snapshot'],
+): string | null {
   const bounded = boundThreadSnapshot(snapshot);
   return bounded ? JSON.stringify(bounded) : null;
 }
@@ -92,15 +115,27 @@ const SESSION_TASK_METADATA_COLUMNS = `
         undelivered_message_count
 `;
 
-function ensureColumn(db: Db, table: string, column: string, definition: string): void {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>;
-  if (!columns.some((row) => row.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+function ensureColumn(
+  db: Db,
+  table: string,
+  column: string,
+  definition: string,
+): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+    name?: string;
+  }>;
+  if (!columns.some((row) => row.name === column))
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 function configureHistoryDb(db: Db): void {
   db.exec('PRAGMA busy_timeout = 2000');
-  try { db.exec('PRAGMA journal_mode = WAL'); } catch {}
-  try { db.exec('PRAGMA synchronous = NORMAL'); } catch {}
+  try {
+    db.exec('PRAGMA journal_mode = WAL');
+  } catch {}
+  try {
+    db.exec('PRAGMA synchronous = NORMAL');
+  } catch {}
 }
 
 function ensureAttemptColumns(db: Db): void {
@@ -141,11 +176,26 @@ function ensureAttemptColumns(db: Db): void {
   ensureColumn(db, 'subagent_task_attempts', 'result', 'TEXT');
   ensureColumn(db, 'subagent_task_attempts', 'thread_snapshot_json', 'TEXT');
   ensureColumn(db, 'subagent_task_attempts', 'pi_retry_attempts', 'INTEGER');
-  ensureColumn(db, 'subagent_task_attempts', 'pending_message_count', 'INTEGER');
-  ensureColumn(db, 'subagent_task_attempts', 'undelivered_message_count', 'INTEGER');
+  ensureColumn(
+    db,
+    'subagent_task_attempts',
+    'pending_message_count',
+    'INTEGER',
+  );
+  ensureColumn(
+    db,
+    'subagent_task_attempts',
+    'undelivered_message_count',
+    'INTEGER',
+  );
 }
 
-function upsertTaskRecord(db: Db, table: 'subagent_tasks' | 'subagent_task_attempts', cwd: string, task: SubagentTask): void {
+function upsertTaskRecord(
+  db: Db,
+  table: 'subagent_tasks' | 'subagent_task_attempts',
+  cwd: string,
+  task: SubagentTask,
+): void {
   let errorMetadataJson: string | null = null;
   let errorCategory: string | null = null;
   if (task.error_metadata !== undefined) {
@@ -158,12 +208,16 @@ function upsertTaskRecord(db: Db, table: 'subagent_tasks' | 'subagent_task_attem
     }
   }
 
-  const columns = table === 'subagent_tasks'
-    ? 'id, display_name, cwd, agent, mode, status, task, context, created_at, attempt, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count'
-    : 'task_id, attempt, display_name, cwd, agent, mode, status, task, context, created_at, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count';
-  const placeholders = new Array(columns.split(',').length).fill('?').join(', ');
-  const update = table === 'subagent_tasks'
-    ? `display_name=excluded.display_name,
+  const columns =
+    table === 'subagent_tasks'
+      ? 'id, display_name, cwd, agent, mode, status, task, context, created_at, attempt, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count'
+      : 'task_id, attempt, display_name, cwd, agent, mode, status, task, context, created_at, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count';
+  const placeholders = new Array(columns.split(',').length)
+    .fill('?')
+    .join(', ');
+  const update =
+    table === 'subagent_tasks'
+      ? `display_name=excluded.display_name,
         status=excluded.status,
         attempt=excluded.attempt,
         session_id=excluded.session_id,
@@ -197,7 +251,7 @@ function upsertTaskRecord(db: Db, table: 'subagent_tasks' | 'subagent_task_attem
         pi_retry_attempts=excluded.pi_retry_attempts,
         pending_message_count=excluded.pending_message_count,
         undelivered_message_count=excluded.undelivered_message_count`
-    : `display_name=excluded.display_name,
+      : `display_name=excluded.display_name,
         status=excluded.status,
         session_id=excluded.session_id,
         nested_session_path=excluded.nested_session_path,
@@ -282,16 +336,41 @@ function upsertTaskRecord(db: Db, table: 'subagent_tasks' | 'subagent_task_attem
 
 export class SubagentHistoryStore {
   private dbs = new Map<string, Db>();
+  private closed = false;
+
+  close(): void {
+    if (this.closed && this.dbs.size === 0) return;
+    this.closed = true;
+    const errors: unknown[] = [];
+    for (const [file, db] of this.dbs) {
+      try {
+        db.close();
+        this.dbs.delete(file);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length)
+      throw new AggregateError(
+        errors,
+        'Failed to close subagent history databases.',
+      );
+  }
 
   private db(_cwd: string): Db {
+    if (this.closed) throw new Error('Subagent history store is closed.');
     const file = resolveSubagentHistoryDbPath();
     const existing = this.dbs.get(file);
     if (existing) return existing;
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    try { fs.chmodSync(path.dirname(file), 0o700); } catch {}
+    try {
+      fs.chmodSync(path.dirname(file), 0o700);
+    } catch {}
     const Database = loadDbConstructor();
     const db = new Database(file) as Db;
-    try { fs.chmodSync(file, 0o600); } catch {}
+    try {
+      fs.chmodSync(file, 0o600);
+    } catch {}
     configureHistoryDb(db);
     db.exec(`
       CREATE TABLE IF NOT EXISTS subagent_tasks (
@@ -415,59 +494,112 @@ export class SubagentHistoryStore {
   upsertTask(cwd: string, task: SubagentTask): void {
     const db = this.db(cwd);
     upsertTaskRecord(db, 'subagent_tasks', cwd, task);
-    upsertTaskRecord(db, 'subagent_task_attempts', cwd, { ...task, attempt: task.attempt ?? 1 });
+    upsertTaskRecord(db, 'subagent_task_attempts', cwd, {
+      ...task,
+      attempt: task.attempt ?? 1,
+    });
   }
 
   addEvent(cwd: string, task: SubagentTask, activity: string): void {
-    this.db(cwd).prepare(`
+    this.db(cwd)
+      .prepare(`
       INSERT INTO subagent_events (task_id, attempt, cwd, created_at, status, activity, output_preview)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(task.id, task.attempt ?? 1, cwd, task.last_activity_at ?? new Date().toISOString(), task.status, activity, value(task.output_preview));
+    `)
+      .run(
+        task.id,
+        task.attempt ?? 1,
+        cwd,
+        task.last_activity_at ?? new Date().toISOString(),
+        task.status,
+        activity,
+        value(task.output_preview),
+      );
   }
 
-  getTask(cwd: string, id: string, options: HistoryReadOptions = {}): SubagentTask | undefined {
-    const rows = this.db(cwd).prepare(`
+  getTask(
+    cwd: string,
+    id: string,
+    options: HistoryReadOptions = {},
+  ): SubagentTask | undefined {
+    const rows = this.db(cwd)
+      .prepare(`
       SELECT * FROM subagent_tasks WHERE cwd = ? AND id = ? LIMIT 1
-    `).all(cwd, id);
+    `)
+      .all(cwd, id);
     return rows.length ? rowToTask(rows[0], options) : undefined;
   }
 
-  listTasks(cwd: string, limit = 100, options: HistoryReadOptions = {}): SubagentTask[] {
-    return this.db(cwd).prepare(`
+  listTasks(
+    cwd: string,
+    limit = 100,
+    options: HistoryReadOptions = {},
+  ): SubagentTask[] {
+    return this.db(cwd)
+      .prepare(`
       SELECT * FROM subagent_tasks WHERE cwd = ?
       ORDER BY COALESCE(last_activity_at, started_at, created_at) DESC, created_at DESC, id DESC
       LIMIT ?
-    `).all(cwd, limit).map((row) => rowToTask(row, options));
+    `)
+      .all(cwd, limit)
+      .map((row) => rowToTask(row, options));
   }
 
-  listSessionTasks(cwd: string, sessionId: string, limit = 100, options: HistoryReadOptions = {}): SubagentTask[] {
-    return this.db(cwd).prepare(`
+  listSessionTasks(
+    cwd: string,
+    sessionId: string,
+    limit = 100,
+    options: HistoryReadOptions = {},
+  ): SubagentTask[] {
+    return this.db(cwd)
+      .prepare(`
       SELECT * FROM subagent_tasks WHERE cwd = ? AND session_id = ?
       ORDER BY COALESCE(last_activity_at, started_at, created_at) DESC, created_at DESC, id DESC
       LIMIT ?
-    `).all(cwd, sessionId, limit).map((row) => rowToTask(row, options));
+    `)
+      .all(cwd, sessionId, limit)
+      .map((row) => rowToTask(row, options));
   }
 
-  listSessionTaskMetadata(cwd: string, sessionId: string, limit = 100): SubagentTask[] {
-    return this.db(cwd).prepare(`
+  listSessionTaskMetadata(
+    cwd: string,
+    sessionId: string,
+    limit = 100,
+  ): SubagentTask[] {
+    return this.db(cwd)
+      .prepare(`
       SELECT ${SESSION_TASK_METADATA_COLUMNS}
       FROM subagent_tasks WHERE cwd = ? AND session_id = ?
       ORDER BY COALESCE(last_activity_at, started_at, created_at) DESC, created_at DESC, id DESC
       LIMIT ?
-    `).all(cwd, sessionId, limit).map((row) => rowToTask(row, { includeSnapshots: false }));
+    `)
+      .all(cwd, sessionId, limit)
+      .map((row) => rowToTask(row, { includeSnapshots: false }));
   }
 
-  listTasksByStatus(cwd: string, statuses: SubagentTask['status'][], options: HistoryReadOptions = {}): SubagentTask[] {
+  listTasksByStatus(
+    cwd: string,
+    statuses: SubagentTask['status'][],
+    options: HistoryReadOptions = {},
+  ): SubagentTask[] {
     if (!statuses.length) return [];
     const placeholders = statuses.map(() => '?').join(', ');
-    return this.db(cwd).prepare(`
+    return this.db(cwd)
+      .prepare(`
       SELECT * FROM subagent_tasks WHERE cwd = ? AND status IN (${placeholders})
       ORDER BY COALESCE(last_activity_at, started_at, created_at) DESC, created_at DESC, id DESC
-    `).all(cwd, ...statuses).map((row) => rowToTask(row, options));
+    `)
+      .all(cwd, ...statuses)
+      .map((row) => rowToTask(row, options));
   }
 
-  listTaskAttempts(cwd: string, taskId: string, options: HistoryReadOptions = {}): SubagentTask[] {
-    return this.db(cwd).prepare(`
+  listTaskAttempts(
+    cwd: string,
+    taskId: string,
+    options: HistoryReadOptions = {},
+  ): SubagentTask[] {
+    return this.db(cwd)
+      .prepare(`
       SELECT
         task_id AS id,
         display_name,
@@ -513,7 +645,9 @@ export class SubagentHistoryStore {
       FROM subagent_task_attempts
       WHERE cwd = ? AND task_id = ?
       ORDER BY attempt ASC
-    `).all(cwd, taskId).map((row) => rowToTask(row, options));
+    `)
+      .all(cwd, taskId)
+      .map((row) => rowToTask(row, options));
   }
 }
 
@@ -539,26 +673,49 @@ function rowToTask(row: any, options: HistoryReadOptions = {}): SubagentTask {
     continuation_prompt: row.continuation_prompt ?? undefined,
     system_prompt: row.system_prompt ?? undefined,
     transcript: row.transcript ?? undefined,
-    usage: row.usage_input == null && row.usage_output == null && row.usage_cache_read == null && row.usage_cache_write == null && row.usage_cost == null && row.usage_context_tokens == null && row.usage_turns == null ? undefined : {
-      input: row.usage_input ?? 0,
-      output: row.usage_output ?? 0,
-      cacheRead: row.usage_cache_read ?? 0,
-      cacheWrite: row.usage_cache_write ?? 0,
-      cost: row.usage_cost ?? 0,
-      contextTokens: row.usage_context_tokens ?? 0,
-      turns: row.usage_turns ?? 0,
-    },
+    usage:
+      row.usage_input == null &&
+      row.usage_output == null &&
+      row.usage_cache_read == null &&
+      row.usage_cache_write == null &&
+      row.usage_cost == null &&
+      row.usage_context_tokens == null &&
+      row.usage_turns == null
+        ? undefined
+        : {
+            input: row.usage_input ?? 0,
+            output: row.usage_output ?? 0,
+            cacheRead: row.usage_cache_read ?? 0,
+            cacheWrite: row.usage_cache_write ?? 0,
+            cost: row.usage_cost ?? 0,
+            contextTokens: row.usage_context_tokens ?? 0,
+            turns: row.usage_turns ?? 0,
+          },
     model: row.model ?? undefined,
     effort: row.effort ?? undefined,
     model_source: row.model_source ?? undefined,
     effort_source: row.effort_source ?? undefined,
-    fallback_used: row.fallback_used === null || row.fallback_used === undefined ? undefined : Boolean(row.fallback_used),
+    fallback_used:
+      row.fallback_used === null || row.fallback_used === undefined
+        ? undefined
+        : Boolean(row.fallback_used),
     error: row.error ?? undefined,
     error_metadata: parseErrorMetadata(row.error_metadata_json),
     result: row.result ?? undefined,
-    thread_snapshot: options.includeSnapshots === false ? undefined : parseSnapshotJson(row.thread_snapshot_json),
+    thread_snapshot:
+      options.includeSnapshots === false
+        ? undefined
+        : parseSnapshotJson(row.thread_snapshot_json),
     pi_retry_attempts: row.pi_retry_attempts ?? undefined,
-    pending_message_count: row.pending_message_count === null || row.pending_message_count === undefined ? undefined : row.pending_message_count,
-    undelivered_message_count: row.undelivered_message_count === null || row.undelivered_message_count === undefined ? undefined : row.undelivered_message_count,
+    pending_message_count:
+      row.pending_message_count === null ||
+      row.pending_message_count === undefined
+        ? undefined
+        : row.pending_message_count,
+    undelivered_message_count:
+      row.undelivered_message_count === null ||
+      row.undelivered_message_count === undefined
+        ? undefined
+        : row.undelivered_message_count,
   };
 }

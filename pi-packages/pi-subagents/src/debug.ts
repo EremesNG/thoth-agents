@@ -18,7 +18,9 @@ function ensureDebugLogGitignored(root: string): void {
     if (!fs.existsSync(path.join(root, '.git'))) return;
     const gitignorePath = path.join(root, '.gitignore');
     let current = '';
-    try { current = fs.readFileSync(gitignorePath, 'utf8'); } catch {}
+    try {
+      current = fs.readFileSync(gitignorePath, 'utf8');
+    } catch {}
     const lines = current.split(/\r?\n/).map((line) => line.trim());
     if (lines.includes(DEBUG_LOG_RELATIVE_PATH)) return;
     const prefix = current.length > 0 && !current.endsWith('\n') ? '\n' : '';
@@ -26,13 +28,20 @@ function ensureDebugLogGitignored(root: string): void {
   } catch {}
 }
 
-export function writeSubagentsDebugLog(cwd: string | undefined, scope: string, data: unknown): void {
+export function writeSubagentsDebugLog(
+  cwd: string | undefined,
+  scope: string,
+  data: unknown,
+): void {
   const root = cwd ?? process.cwd();
   if (!isSubagentsDebugEnabled(root)) return;
   try {
     const file = path.join(root, DEBUG_LOG_RELATIVE_PATH);
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     ensureDebugLogGitignored(root);
-    fs.appendFileSync(file, `${new Date().toISOString()} ${scope} ${JSON.stringify(data, (_key, value) => value instanceof Error ? { name: value.name, message: value.message, stack: value.stack } : value).slice(0, 4000)}\n`);
+    fs.appendFileSync(
+      file,
+      `${new Date().toISOString()} ${scope} ${JSON.stringify(data, (_key, value) => (value instanceof Error ? { name: value.name, message: value.message, stack: value.stack } : value)).slice(0, 4000)}\n`,
+    );
   } catch {}
 }

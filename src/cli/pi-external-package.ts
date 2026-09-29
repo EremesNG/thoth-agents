@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { satisfies, valid } from 'semver';
 
 export interface PiExternalPackageSpec {
@@ -37,13 +37,51 @@ function npmPackageName(source: string): string | undefined {
   return spec.slice(0, separator);
 }
 
+function installedPackageName(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  try {
+    const manifest: unknown = JSON.parse(
+      readFileSync(join(path, 'package.json'), 'utf8'),
+    );
+    if (
+      typeof manifest === 'object' &&
+      manifest !== null &&
+      !Array.isArray(manifest)
+    ) {
+      const { name } = manifest as { name?: unknown };
+      if (typeof name === 'string') return name;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+export function piExternalSourceMatches(
+  candidate: PiConfiguredExternalPackage,
+  expectedSource: string,
+): boolean {
+  if (candidate.source === expectedSource) return true;
+  if (!isAbsolute(expectedSource) || !candidate.installedPath) return false;
+  try {
+    return (
+      realpathSync(candidate.installedPath) === realpathSync(expectedSource)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function inspectPiExternalPackage(
   packages: readonly PiConfiguredExternalPackage[],
   spec: PiExternalPackageSpec,
   requireManagedSource = true,
 ): PiExternalPackageEvidence {
   const matching = packages.filter(
-    ({ source }) => npmPackageName(source) === spec.packageName,
+    ({ source, installedPath }) =>
+      source === spec.source ||
+      npmPackageName(source) === spec.packageName ||
+      installedPackageName(installedPath) === spec.packageName,
   );
   if (matching.some(({ scope }) => scope === 'project'))
     return {
@@ -107,13 +145,13 @@ export function inspectPiExternalPackage(
       version,
       reason: `installed package version does not satisfy >=${spec.version}`,
     };
-  if (requireManagedSource && candidate.source !== spec.source)
+  if (requireManagedSource && !piExternalSourceMatches(candidate, spec.source))
     return {
       state: 'drift',
       source: candidate.source,
       installedPath: candidate.installedPath,
       version,
-      reason: `configured source must be ${spec.source}`,
+      reason: `configured source must resolve to ${spec.source}`,
     };
   return {
     state: 'installed',

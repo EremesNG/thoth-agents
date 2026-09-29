@@ -140,7 +140,7 @@ describe('Pi operations', () => {
     );
     expect(
       install.items.some(({ preview }) =>
-        preview?.includes('npm:pi-subagents-j0k3r@>=1.6.1'),
+        preview?.includes('npm:@thoth-agents/pi-subagents@>=1.0.0'),
       ),
     ).toBe(true);
     expect(
@@ -173,7 +173,7 @@ describe('Pi operations', () => {
     );
   });
 
-  test('reports the j0k3r package floor, global lean config, and project override limit', () => {
+  test('reports the adopted runtime package floor, global lean config, and project override limit', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-j0k3r-status-'));
     roots.push(homeDir);
     const configPath = join(homeDir, '.pi', 'agent', 'subagents.json');
@@ -198,9 +198,9 @@ describe('Pi operations', () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'package',
-          path: 'npm:pi-subagents-j0k3r@>=1.6.1',
+          path: 'npm:@thoth-agents/pi-subagents@>=1.0.0',
           state: 'installed',
-          observed: '1.6.1',
+          observed: '1.0.0',
         }),
         expect.objectContaining({
           kind: 'file',
@@ -214,6 +214,67 @@ describe('Pi operations', () => {
         expect.objectContaining({
           code: 'pi-lean-resources-global-only',
           message: expect.stringContaining('project-local'),
+        }),
+      ]),
+    );
+  });
+
+  test('status recognizes the adopted runtime from a configured local source manifest', () => {
+    const homeDir = mkdtempSync(
+      join(tmpdir(), 'thoth-pi-local-runtime-status-'),
+    );
+    roots.push(homeDir);
+    const localRuntimeRoot = join(homeDir, 'checked-out-fork');
+    mkdirSync(localRuntimeRoot, { recursive: true });
+    writeFileSync(
+      join(localRuntimeRoot, 'package.json'),
+      JSON.stringify({ name: '@thoth-agents/pi-subagents', version: '1.0.0' }),
+    );
+    const packageList = PI_PACKAGE_SPECS.flatMap((spec) => {
+      const installedPath = join(homeDir, 'external', spec.id);
+      mkdirSync(installedPath, { recursive: true });
+      writeFileSync(
+        join(installedPath, 'package.json'),
+        JSON.stringify({ name: spec.packageName, version: spec.version }),
+      );
+      return [
+        `  ${spec.id === 'delegation' ? localRuntimeRoot : spec.source}`,
+        `    ${spec.id === 'delegation' ? localRuntimeRoot : installedPath}`,
+      ];
+    }).join('\n');
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command, args) =>
+        command === 'node'
+          ? { exitCode: 0, stdout: 'v24.20.0', stderr: '' }
+          : args[0] === '--version'
+            ? { exitCode: 0, stdout: '0.86.1', stderr: '' }
+            : { exitCode: 0, stdout: packageList, stderr: '' },
+    };
+    const report = getPiStatus(context);
+
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'npm:@thoth-agents/pi-subagents@>=1.0.0',
+          state: 'installed',
+          observed: '1.0.0',
+        }),
+      ]),
+    );
+
+    const explicit = getPiStatus({
+      ...context,
+      runtimePackageRoot: localRuntimeRoot,
+    });
+    expect(explicit.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: localRuntimeRoot,
+          state: 'installed',
+          observed: '1.0.0',
         }),
       ]),
     );
@@ -264,6 +325,53 @@ describe('Pi operations', () => {
             'pi remove npm:pi-subagents@0.72.0',
           ),
         }),
+      ]),
+    );
+  });
+
+  test('identifies local or Git incumbents by manifest and ignores source spelling alone', () => {
+    const homeDir = mkdtempSync(
+      join(tmpdir(), 'thoth-pi-git-incumbent-status-'),
+    );
+    roots.push(homeDir);
+    const installedPath = join(homeDir, 'package-cache', 'custom-package');
+    mkdirSync(installedPath, { recursive: true });
+    const source = 'git+https://example.test/vendor/custom-package.git';
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({ name: 'pi-subagents-j0k3r', version: '1.0.0' }),
+    );
+    const runtime = installedRuntime(homeDir);
+    const piCommandExecutor = (command: string, args: readonly string[]) => {
+      const result = runtime(command, args);
+      return args[0] === 'list'
+        ? {
+            ...result,
+            stdout: `${result.stdout}\nUser packages:\n  ${source}\n    ${installedPath}`,
+          }
+        : result;
+    };
+    const context = { cwd: homeDir, homeDir, env: {}, piCommandExecutor };
+
+    const incumbentStatus = getPiStatus(context);
+    expect(incumbentStatus.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi incumbent delegation runtime',
+          observed: source,
+          state: 'drift',
+        }),
+      ]),
+    );
+    expect(buildPiUpdatePlan(context).canApply).toBe(false);
+
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({ name: 'vendor-agent-tools', version: '1.0.0' }),
+    );
+    expect(getPiStatus(context).targets).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Pi incumbent delegation runtime' }),
       ]),
     );
   });

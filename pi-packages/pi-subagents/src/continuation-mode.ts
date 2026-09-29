@@ -17,5 +17,5 @@ export function resolveContinuationEffectiveMode(input: {
         ? input.previousTask.mode
         : isSubagentMode(input.config?.default_mode)
           ? input.config.default_mode
-          : 'task';
+          : 'background';
 }

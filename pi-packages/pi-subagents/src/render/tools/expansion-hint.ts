@@ -1,5 +1,5 @@
-import { createRequire } from 'node:module';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 export type KeybindingResolver = (keybinding: string) => string | undefined;
@@ -11,19 +11,27 @@ let triedNativeLoad = false;
 function runningPiEntrypoint(): string | undefined {
   if (!process.argv[1]) return undefined;
   const resolved = path.resolve(process.argv[1]);
-  try { return fs.realpathSync(resolved); } catch { return resolved; }
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
 }
 
 function findRunningPiPackageRoot(): string | undefined {
   let current = runningPiEntrypoint();
   if (!current) return undefined;
   if (!fs.existsSync(current)) return undefined;
-  current = fs.statSync(current).isDirectory() ? current : path.dirname(current);
+  current = fs.statSync(current).isDirectory()
+    ? current
+    : path.dirname(current);
   while (true) {
     const packageJson = path.join(current, 'package.json');
     if (fs.existsSync(packageJson)) {
       try {
-        const parsed = JSON.parse(fs.readFileSync(packageJson, 'utf8')) as { name?: string };
+        const parsed = JSON.parse(fs.readFileSync(packageJson, 'utf8')) as {
+          name?: string;
+        };
         if (parsed.name === '@earendil-works/pi-coding-agent') return current;
       } catch {}
     }
@@ -50,7 +58,9 @@ function getNativePiKeyTextFn(): ((id: string) => string) | undefined {
   return undefined;
 }
 
-export function setExpandKeybindingProviderForTests(resolver: KeybindingResolver | undefined): void {
+export function setExpandKeybindingProviderForTests(
+  resolver: KeybindingResolver | undefined,
+): void {
   customKeybindingResolver = resolver;
 }
 
@@ -67,7 +77,12 @@ export function resolveExpandKeyText(context?: any): string {
   const contextKb = context?.keybindings ?? context?.ui?.keybindings;
   if (typeof contextKb?.getKeys === 'function') {
     const keys = contextKb.getKeys('app.tools.expand');
-    if (Array.isArray(keys) && keys.length > 0 && typeof keys[0] === 'string' && keys[0].trim()) {
+    if (
+      Array.isArray(keys) &&
+      keys.length > 0 &&
+      typeof keys[0] === 'string' &&
+      keys[0].trim()
+    ) {
       return keys[0].trim();
     }
     if (typeof keys === 'string' && keys.trim()) {

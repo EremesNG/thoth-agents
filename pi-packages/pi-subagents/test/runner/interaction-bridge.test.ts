@@ -1,9 +1,19 @@
-import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { SubagentStructuredError, classifyFallbackFailure, classifyThrownError, deriveErrorString, normalizeErrorMetadata } from '../../src/error-metadata.js';
-import type { SubagentDefinition, SubagentErrorMetadata, SubagentsConfig } from '../../src/types.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  classifyFallbackFailure,
+  classifyThrownError,
+  deriveErrorString,
+  normalizeErrorMetadata,
+  SubagentStructuredError,
+} from '../../src/error-metadata.js';
+import type {
+  SubagentDefinition,
+  SubagentErrorMetadata,
+  SubagentsConfig,
+} from '../../src/types.js';
 
 describe('subagent runner interaction-required bridge', () => {
   it('uses a lean isolated resource loader with modelRuntime and systemPromptOverride', async () => {
@@ -12,7 +22,9 @@ describe('subagent runner interaction-required bridge', () => {
     const session = {
       systemPrompt: '# Analyst\nSYSTEM_SENTINEL',
       subscribe: vi.fn(() => vi.fn()),
-      prompt: vi.fn(async (prompt: string) => { delegatedPrompt = prompt; }),
+      prompt: vi.fn(async (prompt: string) => {
+        delegatedPrompt = prompt;
+      }),
       messages: [{ role: 'assistant', content: 'lean done' }],
       dispose: vi.fn(async () => undefined),
     };
@@ -22,7 +34,10 @@ describe('subagent runner interaction-required bridge', () => {
     class DefaultResourceLoader {
       options: any;
       reload = vi.fn(async () => undefined);
-      constructor(options: any) { this.options = options; loaderInstances.push(this); }
+      constructor(options: any) {
+        this.options = options;
+        loaderInstances.push(this);
+      }
     }
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
       DefaultResourceLoader,
@@ -63,17 +78,43 @@ describe('subagent runner interaction-required bridge', () => {
     expect(result.result).toBe('lean done');
     expect(loaderInstances).toHaveLength(1);
     expect(loaderInstances[0].reload).toHaveBeenCalledTimes(1);
-    expect(loaderInstances[0].options).toMatchObject({ cwd: '/workspace', agentDir: '/agent-dir', noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true });
+    expect(loaderInstances[0].options).toMatchObject({
+      cwd: '/workspace',
+      agentDir: '/agent-dir',
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+    });
     expect(loaderInstances[0].options.systemPrompt).toBeUndefined();
-    expect(typeof loaderInstances[0].options.systemPromptOverride).toBe('function');
-    expect(loaderInstances[0].options.systemPromptOverride()).toBe('# Analyst\nSYSTEM_SENTINEL');
-    expect(typeof loaderInstances[0].options.extensionsOverride).toBe('function');
+    expect(typeof loaderInstances[0].options.systemPromptOverride).toBe(
+      'function',
+    );
+    expect(loaderInstances[0].options.systemPromptOverride()).toBe(
+      '# Analyst\nSYSTEM_SENTINEL',
+    );
+    expect(typeof loaderInstances[0].options.extensionsOverride).toBe(
+      'function',
+    );
     expect(inMemory).toHaveBeenCalledWith('/workspace');
-    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({ resourceLoader: loaderInstances[0], cwd: '/workspace', tools: ['read'], modelRuntime }));
-    expect(createAgentSession).not.toHaveBeenCalledWith(expect.objectContaining({ authStorage: expect.anything() }));
+    expect(createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resourceLoader: loaderInstances[0],
+        cwd: '/workspace',
+        tools: ['read'],
+        modelRuntime,
+      }),
+    );
+    expect(createAgentSession).not.toHaveBeenCalledWith(
+      expect.objectContaining({ authStorage: expect.anything() }),
+    );
     expect(delegatedPrompt).toBe('## delegated task\nlean startup');
     expect(delegatedPrompt).not.toContain('SYSTEM_SENTINEL');
-    expect(activities.some((activity) => activity.system_prompt === '# Analyst\nSYSTEM_SENTINEL')).toBe(true);
+    expect(
+      activities.some(
+        (activity) => activity.system_prompt === '# Analyst\nSYSTEM_SENTINEL',
+      ),
+    ).toBe(true);
   });
 
   it('resolves configured models through modelRuntime.getModel before falling back to modelRegistry', async () => {
@@ -93,20 +134,37 @@ describe('subagent runner interaction-required bridge', () => {
 
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     const modelRuntime = { getModel: vi.fn(() => resolvedModel) };
-    const modelRegistry = { find: vi.fn(() => ({ provider: 'registry', id: 'old-path' })) };
+    const modelRegistry = {
+      find: vi.fn(() => ({ provider: 'registry', id: 'old-path' })),
+    };
 
     await sdkSubagentRunner({
-      definition: { name: 'analyst', description: 'analysis', filePath: '/tmp/analyst.md', instructions: 'system', tools: ['read'], model: { provider: 'openai', id: 'gpt-5.5' } },
+      definition: {
+        name: 'analyst',
+        description: 'analysis',
+        filePath: '/tmp/analyst.md',
+        instructions: 'system',
+        tools: ['read'],
+        model: { provider: 'openai', id: 'gpt-5.5' },
+      },
       task: 'use configured model',
       cwd: '/workspace',
       ctx: { modelRuntime, modelRegistry },
-      config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['read'], model_profiles: {} },
+      config: {
+        timeout_ms: 10_000,
+        stall_timeout_ms: 10_000,
+        max_concurrency: 1,
+        default_tools: ['read'],
+        model_profiles: {},
+      },
       signal: new AbortController().signal,
     } as any);
 
     expect(modelRuntime.getModel).toHaveBeenCalledWith('openai', 'gpt-5.5');
     expect(modelRegistry.find).not.toHaveBeenCalled();
-    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({ model: resolvedModel }));
+    expect(createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({ model: resolvedModel }),
+    );
   });
 
   it('filters subagent extension hooks to tools and tool-safety events only', async () => {
@@ -115,9 +173,18 @@ describe('subagent runner interaction-required bridge', () => {
     class DefaultResourceLoader {
       options: any;
       reload = vi.fn(async () => undefined);
-      constructor(options: any) { this.options = options; loaderInstances.push(this); }
+      constructor(options: any) {
+        this.options = options;
+        loaderInstances.push(this);
+      }
     }
-    const session = { systemPrompt: 'system', subscribe: vi.fn(() => vi.fn()), prompt: vi.fn(async () => undefined), messages: [{ role: 'assistant', content: 'ok' }], dispose: vi.fn(async () => undefined) };
+    const session = {
+      systemPrompt: 'system',
+      subscribe: vi.fn(() => vi.fn()),
+      prompt: vi.fn(async () => undefined),
+      messages: [{ role: 'assistant', content: 'ok' }],
+      dispose: vi.fn(async () => undefined),
+    };
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
       DefaultResourceLoader,
       getAgentDir: () => '/agent-dir',
@@ -127,11 +194,24 @@ describe('subagent runner interaction-required bridge', () => {
 
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     await sdkSubagentRunner({
-      definition: { name: 'analyst', description: 'analysis', filePath: '/tmp/analyst.md', instructions: 'system', tools: ['read'] },
+      definition: {
+        name: 'analyst',
+        description: 'analysis',
+        filePath: '/tmp/analyst.md',
+        instructions: 'system',
+        tools: ['read'],
+      },
       task: 'ping',
       cwd: '/workspace',
       ctx: { model: { provider: 'test', id: 'model' } },
-      config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['read'], model_profiles: {}, session_resources: 'lean' },
+      config: {
+        timeout_ms: 10_000,
+        stall_timeout_ms: 10_000,
+        max_concurrency: 1,
+        default_tools: ['read'],
+        model_profiles: {},
+        session_resources: 'lean',
+      },
       signal: new AbortController().signal,
     });
 
@@ -141,23 +221,25 @@ describe('subagent runner interaction-required bridge', () => {
     const filtered = loaderInstances[0].options.extensionsOverride({
       runtime: { keep: true },
       errors: [],
-      extensions: [{
-        path: 'memory',
-        resolvedPath: 'memory',
-        sourceInfo: {},
-        handlers: new Map<string, any[]>([
-          ['before_agent_start', [beforeAgentStart]],
-          ['context', [vi.fn()]],
-          ['tool_call', [toolCall]],
-          ['user_bash', [vi.fn()]],
-          ['message_update', [vi.fn()]],
-        ]),
-        tools: new Map([['memory_search', tool]]),
-        messageRenderers: new Map([['memory-context', vi.fn()]]),
-        commands: new Map([['memory', vi.fn()]]),
-        flags: new Map([['flag', {}]]),
-        shortcuts: new Map([['ctrl+x', {}]]),
-      }],
+      extensions: [
+        {
+          path: 'memory',
+          resolvedPath: 'memory',
+          sourceInfo: {},
+          handlers: new Map<string, any[]>([
+            ['before_agent_start', [beforeAgentStart]],
+            ['context', [vi.fn()]],
+            ['tool_call', [toolCall]],
+            ['user_bash', [vi.fn()]],
+            ['message_update', [vi.fn()]],
+          ]),
+          tools: new Map([['memory_search', tool]]),
+          messageRenderers: new Map([['memory-context', vi.fn()]]),
+          commands: new Map([['memory', vi.fn()]]),
+          flags: new Map([['flag', {}]]),
+          shortcuts: new Map([['ctrl+x', {}]]),
+        },
+      ],
     });
 
     const extension = filtered.extensions[0];
@@ -187,7 +269,12 @@ describe('subagent runner interaction-required bridge', () => {
       prompt: {
         title: 'Interaction required for read',
         message: 'Outside-workspace read requires approval.',
-        choices: ['Allow once', 'Allow for session', 'Allow for project', 'Deny'],
+        choices: [
+          'Allow once',
+          'Allow for session',
+          'Allow for project',
+          'Deny',
+        ],
         safeTarget: '/tmp/outside.txt',
       },
     };
@@ -209,7 +296,11 @@ describe('subagent runner interaction-required bridge', () => {
         return vi.fn();
       }),
       prompt: vi.fn(async () => {
-        subscriber?.({ type: 'tool_execution_start', toolName: 'read', args: { path: '../outside.txt' } });
+        subscriber?.({
+          type: 'tool_execution_start',
+          toolName: 'read',
+          args: { path: '../outside.txt' },
+        });
         subscriber?.({
           type: 'tool_execution_end',
           toolName: 'read',
@@ -217,7 +308,9 @@ describe('subagent runner interaction-required bridge', () => {
           result: structuredToolResult,
         });
       }),
-      messages: [{ role: 'assistant', content: 'I could not complete the read.' }],
+      messages: [
+        { role: 'assistant', content: 'I could not complete the read.' },
+      ],
       dispose: vi.fn(async () => undefined),
     };
 
@@ -241,8 +334,14 @@ describe('subagent runner interaction-required bridge', () => {
       default_tools: ['read'],
       model_profiles: {},
     };
-    const activities: Array<{ transcript?: string; output?: string; message: string }> = [];
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagent-runner-interaction-'));
+    const activities: Array<{
+      transcript?: string;
+      output?: string;
+      message: string;
+    }> = [];
+    const cwd = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'pi-subagent-runner-interaction-'),
+    );
     try {
       const result = await sdkSubagentRunner({
         definition,
@@ -255,8 +354,17 @@ describe('subagent runner interaction-required bridge', () => {
       });
 
       expect(result.result).not.toContain('interaction_required:');
-      expect(result.interaction_request).toEqual(expect.objectContaining({ requestId: 'req-subagent-read', tool: 'read' }));
-      expect(activities.map((activity) => activity.transcript ?? activity.output ?? '').join('\n')).not.toContain('interaction_required:');
+      expect(result.interaction_request).toEqual(
+        expect.objectContaining({
+          requestId: 'req-subagent-read',
+          tool: 'read',
+        }),
+      );
+      expect(
+        activities
+          .map((activity) => activity.transcript ?? activity.output ?? '')
+          .join('\n'),
+      ).not.toContain('interaction_required:');
       expect(session.prompt).toHaveBeenCalledOnce();
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true });
@@ -272,7 +380,10 @@ describe('subagent runner interaction-required bridge', () => {
       action: 'read',
       origin: 'subagent',
       reasonCode: 'outside_workspace_read_requires_approval',
-      prompt: { title: 'Interaction required', message: 'Outside-workspace read requires approval.' },
+      prompt: {
+        title: 'Interaction required',
+        message: 'Outside-workspace read requires approval.',
+      },
     };
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {
@@ -286,12 +397,22 @@ describe('subagent runner interaction-required bridge', () => {
           toolName: 'read',
           isError: true,
           result: {
-            content: [{ type: 'text', text: 'Interaction response must be collected by the main thread.' }],
+            content: [
+              {
+                type: 'text',
+                text: 'Interaction response must be collected by the main thread.',
+              },
+            ],
             details: {
               block: true,
-              reason: 'Interaction response must be collected by the main thread.',
+              reason:
+                'Interaction response must be collected by the main thread.',
               details: {
-                interactionRequest: { handle: 'perm_nested_details', payload, createdAt: new Date().toISOString() },
+                interactionRequest: {
+                  handle: 'perm_nested_details',
+                  payload,
+                  createdAt: new Date().toISOString(),
+                },
               },
             },
           },
@@ -308,15 +429,31 @@ describe('subagent runner interaction-required bridge', () => {
 
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     const result = await sdkSubagentRunner({
-      definition: { name: 'discovery', description: 'discovery', filePath: '/tmp/discovery.md', instructions: 'try read', tools: ['read'] },
+      definition: {
+        name: 'discovery',
+        description: 'discovery',
+        filePath: '/tmp/discovery.md',
+        instructions: 'try read',
+        tools: ['read'],
+      },
       task: 'read outside workspace',
-      cwd: fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagent-nested-interaction-')),
+      cwd: fs.mkdtempSync(
+        path.join(os.tmpdir(), 'pi-subagent-nested-interaction-'),
+      ),
       ctx: { model: { provider: 'test', id: 'model' } },
-      config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['read'], model_profiles: {} },
+      config: {
+        timeout_ms: 10_000,
+        stall_timeout_ms: 10_000,
+        max_concurrency: 1,
+        default_tools: ['read'],
+        model_profiles: {},
+      },
       signal: new AbortController().signal,
     });
 
-    expect(result.interaction_request).toEqual(expect.objectContaining({ requestId: 'req-nested-details' }));
+    expect(result.interaction_request).toEqual(
+      expect.objectContaining({ requestId: 'req-nested-details' }),
+    );
     expect(result.result).not.toContain('interaction_required:');
   });
 
@@ -329,7 +466,10 @@ describe('subagent runner interaction-required bridge', () => {
       action: 'read',
       origin: 'subagent',
       reasonCode: 'outside_workspace_read_requires_approval',
-      prompt: { title: 'Interaction required', message: 'Outside-workspace read requires approval.' },
+      prompt: {
+        title: 'Interaction required',
+        message: 'Outside-workspace read requires approval.',
+      },
     };
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {
@@ -338,14 +478,21 @@ describe('subagent runner interaction-required bridge', () => {
         return vi.fn();
       }),
       prompt: vi.fn(async () => {
-        const { publishInteractionRequest } = await import('../../src/interaction-channel.js');
+        const { publishInteractionRequest } = await import(
+          '../../src/interaction-channel.js'
+        );
         publishInteractionRequest(payload as any);
         subscriber?.({
           type: 'tool_execution_end',
           toolName: 'read',
           isError: true,
           result: {
-            content: [{ type: 'text', text: 'Interaction response must be collected by the main thread.' }],
+            content: [
+              {
+                type: 'text',
+                text: 'Interaction response must be collected by the main thread.',
+              },
+            ],
             details: {},
           },
         });
@@ -361,15 +508,31 @@ describe('subagent runner interaction-required bridge', () => {
 
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     const result = await sdkSubagentRunner({
-      definition: { name: 'discovery', description: 'discovery', filePath: '/tmp/discovery.md', instructions: 'try read', tools: ['read'] },
+      definition: {
+        name: 'discovery',
+        description: 'discovery',
+        filePath: '/tmp/discovery.md',
+        instructions: 'try read',
+        tools: ['read'],
+      },
       task: 'read outside workspace',
-      cwd: fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagent-channel-fallback-')),
+      cwd: fs.mkdtempSync(
+        path.join(os.tmpdir(), 'pi-subagent-channel-fallback-'),
+      ),
       ctx: { model: { provider: 'test', id: 'model' } },
-      config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['read'], model_profiles: {} },
+      config: {
+        timeout_ms: 10_000,
+        stall_timeout_ms: 10_000,
+        max_concurrency: 1,
+        default_tools: ['read'],
+        model_profiles: {},
+      },
       signal: new AbortController().signal,
     });
 
-    expect(result.interaction_request).toEqual(expect.objectContaining({ requestId: 'req-channel-fallback' }));
+    expect(result.interaction_request).toEqual(
+      expect.objectContaining({ requestId: 'req-channel-fallback' }),
+    );
     expect(result.result).not.toContain('interaction_required:');
   });
 
@@ -401,7 +564,12 @@ describe('subagent runner interaction-required bridge', () => {
       stall_timeout_ms: 10_000,
       max_concurrency: 1,
       default_tools: ['read'],
-      model_profiles: { 'sdd-apply': { model: { provider: 'profile', id: 'model' }, effort: 'xhigh' } },
+      model_profiles: {
+        'sdd-apply': {
+          model: { provider: 'profile', id: 'model' },
+          effort: 'xhigh',
+        },
+      },
     };
     const profileModel = { provider: 'profile', id: 'model' };
 
@@ -411,15 +579,25 @@ describe('subagent runner interaction-required bridge', () => {
       cwd: '/workspace',
       ctx: {
         model: { provider: 'orchestrator', id: 'model' },
-        modelRegistry: { find: vi.fn((provider: string, id: string) => provider === 'profile' && id === 'model' ? profileModel : undefined) },
+        modelRegistry: {
+          find: vi.fn((provider: string, id: string) =>
+            provider === 'profile' && id === 'model' ? profileModel : undefined,
+          ),
+        },
         pi: { getThinkingLevel: () => 'low' },
       },
       config,
       signal: new AbortController().signal,
     });
 
-    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({ model: profileModel, thinkingLevel: 'xhigh' }));
-    expect(result).toMatchObject({ model: 'profile/model', effort: 'xhigh', fallback_used: false });
+    expect(createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({ model: profileModel, thinkingLevel: 'xhigh' }),
+    );
+    expect(result).toMatchObject({
+      model: 'profile/model',
+      effort: 'xhigh',
+      fallback_used: false,
+    });
   });
 
   it('inherits missing profile fields from the remaining fallback chain', async () => {
@@ -459,12 +637,21 @@ describe('subagent runner interaction-required bridge', () => {
       definition,
       task: 'design work',
       cwd: '/workspace',
-      ctx: { modelRegistry: { find: vi.fn(() => frontmatterModel) }, model: { provider: 'orchestrator', id: 'model' }, thinkingLevel: 'low' },
+      ctx: {
+        modelRegistry: { find: vi.fn(() => frontmatterModel) },
+        model: { provider: 'orchestrator', id: 'model' },
+        thinkingLevel: 'low',
+      },
       config,
       signal: new AbortController().signal,
     });
 
-    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({ model: frontmatterModel, thinkingLevel: 'high' }));
+    expect(createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: frontmatterModel,
+        thinkingLevel: 'high',
+      }),
+    );
   });
 
   it('keeps no-profile default-config and orchestrator-inherited behavior unchanged', async () => {
@@ -505,24 +692,42 @@ describe('subagent runner interaction-required bridge', () => {
       definition,
       task: 'review work',
       cwd: '/workspace',
-      ctx: { modelRegistry: { find: vi.fn(() => defaultModel) }, model: { provider: 'orchestrator', id: 'model' }, thinkingLevel: 'low' },
+      ctx: {
+        modelRegistry: { find: vi.fn(() => defaultModel) },
+        model: { provider: 'orchestrator', id: 'model' },
+        thinkingLevel: 'low',
+      },
       config,
       signal: new AbortController().signal,
     });
 
-    expect(createAgentSession).toHaveBeenLastCalledWith(expect.objectContaining({ model: defaultModel, thinkingLevel: 'medium' }));
+    expect(createAgentSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: defaultModel, thinkingLevel: 'medium' }),
+    );
 
     createAgentSession.mockClear();
     await sdkSubagentRunner({
       definition,
       task: 'review work',
       cwd: '/workspace',
-      ctx: { model: { provider: 'orchestrator', id: 'model' }, thinkingLevel: 'low' },
-      config: { ...config, default_model: undefined, default_effort: undefined },
+      ctx: {
+        model: { provider: 'orchestrator', id: 'model' },
+        thinkingLevel: 'low',
+      },
+      config: {
+        ...config,
+        default_model: undefined,
+        default_effort: undefined,
+      },
       signal: new AbortController().signal,
     });
 
-    expect(createAgentSession).toHaveBeenLastCalledWith(expect.objectContaining({ model: { provider: 'orchestrator', id: 'model' }, thinkingLevel: 'low' }));
+    expect(createAgentSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        model: { provider: 'orchestrator', id: 'model' },
+        thinkingLevel: 'low',
+      }),
+    );
   });
 
   it('reports unresolved profile models with the subagent name and selected model', async () => {
@@ -533,14 +738,35 @@ describe('subagent runner interaction-required bridge', () => {
     }));
 
     const { sdkSubagentRunner } = await import('../../src/runner.js');
-    await expect(sdkSubagentRunner({
-      definition: { name: 'sdd-apply', description: 'apply executor', filePath: '/tmp/sdd-apply.md', instructions: 'return a concise result', tools: ['read'] },
-      task: 'apply work',
-      cwd: '/workspace',
-      ctx: { modelRegistry: { find: vi.fn(() => undefined) }, model: { provider: 'orchestrator', id: 'model' } },
-      config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['read'], model_profiles: { 'sdd-apply': { model: { provider: 'missing', id: 'model' } } } },
-      signal: new AbortController().signal,
-    })).rejects.toThrow('Subagent sdd-apply could not resolve selected model missing/model');
+    await expect(
+      sdkSubagentRunner({
+        definition: {
+          name: 'sdd-apply',
+          description: 'apply executor',
+          filePath: '/tmp/sdd-apply.md',
+          instructions: 'return a concise result',
+          tools: ['read'],
+        },
+        task: 'apply work',
+        cwd: '/workspace',
+        ctx: {
+          modelRegistry: { find: vi.fn(() => undefined) },
+          model: { provider: 'orchestrator', id: 'model' },
+        },
+        config: {
+          timeout_ms: 10_000,
+          stall_timeout_ms: 10_000,
+          max_concurrency: 1,
+          default_tools: ['read'],
+          model_profiles: {
+            'sdd-apply': { model: { provider: 'missing', id: 'model' } },
+          },
+        },
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow(
+      'Subagent sdd-apply could not resolve selected model missing/model',
+    );
   });
 
   it('passes the resolved thinking effort to nested SDK sessions and reports it', async () => {
@@ -579,12 +805,17 @@ describe('subagent runner interaction-required bridge', () => {
       definition,
       task: 'design work',
       cwd: '/workspace',
-      ctx: { model: { provider: 'test', id: 'model' }, pi: { getThinkingLevel: () => 'low' } },
+      ctx: {
+        model: { provider: 'test', id: 'model' },
+        pi: { getThinkingLevel: () => 'low' },
+      },
       config,
       signal: new AbortController().signal,
     });
 
-    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({ thinkingLevel: 'high' }));
+    expect(createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({ thinkingLevel: 'high' }),
+    );
     expect(result.effort).toBe('high');
   });
 
@@ -597,8 +828,17 @@ describe('subagent runner interaction-required bridge', () => {
       dispose: vi.fn(async () => undefined),
     };
     const createAgentSession = vi.fn(() => ({ session }));
-    const getTools = vi.fn(() => [{ name: 'read' }, { name: 'tool_lookup' }, { name: 'tool_write' }]);
-    const getAllTools = vi.fn(() => [{ name: 'read' }, { name: 'tool_lookup' }, { name: 'tool_write' }, { name: 'tool_hidden' }]);
+    const getTools = vi.fn(() => [
+      { name: 'read' },
+      { name: 'tool_lookup' },
+      { name: 'tool_write' },
+    ]);
+    const getAllTools = vi.fn(() => [
+      { name: 'read' },
+      { name: 'tool_lookup' },
+      { name: 'tool_write' },
+      { name: 'tool_hidden' },
+    ]);
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
       SessionManager: { inMemory: () => ({}) },
@@ -607,17 +847,34 @@ describe('subagent runner interaction-required bridge', () => {
 
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     await sdkSubagentRunner({
-      definition: { name: 'tool-user', description: 'tool user', filePath: '/tmp/tool-user.md', instructions: 'return a concise result', tools: ['tool_*', 'read'] },
+      definition: {
+        name: 'tool-user',
+        description: 'tool user',
+        filePath: '/tmp/tool-user.md',
+        instructions: 'return a concise result',
+        tools: ['tool_*', 'read'],
+      },
       task: 'use tools',
       cwd: '/workspace',
-      ctx: { model: { provider: 'test', id: 'model' }, pi: { getTools, getAllTools } },
-      config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['read'], model_profiles: {} },
+      ctx: {
+        model: { provider: 'test', id: 'model' },
+        pi: { getTools, getAllTools },
+      },
+      config: {
+        timeout_ms: 10_000,
+        stall_timeout_ms: 10_000,
+        max_concurrency: 1,
+        default_tools: ['read'],
+        model_profiles: {},
+      },
       signal: new AbortController().signal,
     } as any);
 
     expect(getTools).toHaveBeenCalledTimes(1);
     expect(getAllTools).not.toHaveBeenCalled();
-    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({ tools: ['tool_lookup', 'tool_write', 'read'] }));
+    expect(createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: ['tool_lookup', 'tool_write', 'read'] }),
+    );
   });
 
   it('expands wildcard patterns from default_tools using the active parent-session tools', async () => {
@@ -638,19 +895,35 @@ describe('subagent runner interaction-required bridge', () => {
 
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     await sdkSubagentRunner({
-      definition: { name: 'tool-user', description: 'tool user', filePath: '/tmp/tool-user.md', instructions: 'return a concise result', tools: [] },
+      definition: {
+        name: 'tool-user',
+        description: 'tool user',
+        filePath: '/tmp/tool-user.md',
+        instructions: 'return a concise result',
+        tools: [],
+      },
       task: 'use tools',
       cwd: '/workspace',
       ctx: { model: { provider: 'test', id: 'model' }, pi: { getTools } },
-      config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['tool_*', 'read'], model_profiles: {} },
+      config: {
+        timeout_ms: 10_000,
+        stall_timeout_ms: 10_000,
+        max_concurrency: 1,
+        default_tools: ['tool_*', 'read'],
+        model_profiles: {},
+      },
       signal: new AbortController().signal,
     } as any);
 
-    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({ tools: ['tool_lookup', 'read'] }));
+    expect(createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: ['tool_lookup', 'read'] }),
+    );
   });
 
   it('detects supported and unsupported Pi versions from the loaded SDK version export', async () => {
-    const { detectPiRuntimeSupport } = await import('../../src/runner/pi-sdk-module.js');
+    const { detectPiRuntimeSupport } = await import(
+      '../../src/runner/pi-sdk-module.js'
+    );
 
     expect((detectPiRuntimeSupport as any)('0.83.0')).toEqual({
       supported: true,
@@ -691,19 +964,36 @@ describe('subagent runner interaction-required bridge', () => {
       const bridges: any[] = [];
       let cleared = 0;
       await sdkSubagentRunner({
-        definition: { name: 'sdd-apply', description: 'implementation executor', filePath: '/tmp/sdd-apply.md', instructions: 'return a concise result', tools: ['read'] },
+        definition: {
+          name: 'sdd-apply',
+          description: 'implementation executor',
+          filePath: '/tmp/sdd-apply.md',
+          instructions: 'return a concise result',
+          tools: ['read'],
+        },
         task: 'implement work',
         cwd: '/workspace',
         ctx: { model: { provider: 'test', id: 'model' } },
-        config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['read'], model_profiles: {} },
+        config: {
+          timeout_ms: 10_000,
+          stall_timeout_ms: 10_000,
+          max_concurrency: 1,
+          default_tools: ['read'],
+          model_profiles: {},
+        },
         signal: new AbortController().signal,
         registerLiveBridge: (bridge) => bridges.push(bridge),
-        clearLiveBridge: () => { cleared += 1; },
+        clearLiveBridge: () => {
+          cleared += 1;
+        },
       });
 
       expect(createAgentSession).toHaveBeenCalledOnce();
       expect(bridges).toHaveLength(1);
-      expect(bridges[0]).toMatchObject({ supported: true, detected_pi_version: '0.83.0' });
+      expect(bridges[0]).toMatchObject({
+        supported: true,
+        detected_pi_version: '0.83.0',
+      });
       bridges[0].steer('steer this nested session');
       expect(steer).toHaveBeenCalledWith('steer this nested session');
       expect(cleared).toBe(1);
@@ -722,7 +1012,9 @@ describe('subagent runner interaction-required bridge', () => {
       sessionManager: { getSessionId: () => 'nested-session-1' },
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => {
-        const registry = holder[registryKey] as Map<string, unknown> | undefined;
+        const registry = holder[registryKey] as
+          | Map<string, unknown>
+          | undefined;
         metadataDuringPrompt = registry?.get('nested-session-1');
       }),
       messages: [{ role: 'assistant', content: 'done' }],
@@ -756,17 +1048,28 @@ describe('subagent runner interaction-required bridge', () => {
         task: 'read /etc/hosts',
         taskId: 'task_sdd-verify_123',
         cwd: '/workspace',
-        ctx: { model: { provider: 'test', id: 'model' }, sessionManager: { getSessionId: () => 'parent-pi-session' } },
+        ctx: {
+          model: { provider: 'test', id: 'model' },
+          sessionManager: { getSessionId: () => 'parent-pi-session' },
+        },
         config,
         signal: new AbortController().signal,
       });
 
       expect(metadataDuringPrompt).toEqual({
         origin: 'subagent',
-        requester: { subagentName: 'sdd-verify', description: 'verification executor', taskId: 'task_sdd-verify_123' },
+        requester: {
+          subagentName: 'sdd-verify',
+          description: 'verification executor',
+          taskId: 'task_sdd-verify_123',
+        },
         parent: { piSessionId: 'parent-pi-session' },
       });
-      expect((holder[registryKey] as Map<string, unknown> | undefined)?.has('nested-session-1')).toBe(false);
+      expect(
+        (holder[registryKey] as Map<string, unknown> | undefined)?.has(
+          'nested-session-1',
+        ),
+      ).toBe(false);
     } finally {
       if (previousRegistry === undefined) delete holder[registryKey];
       else holder[registryKey] = previousRegistry;
@@ -791,7 +1094,9 @@ describe('subagent runner interaction-required bridge', () => {
       dispose: vi.fn(async () => undefined),
     };
 
-    const { promptWithInactivity } = await import('../../src/runner/event-processing.js');
+    const { promptWithInactivity } = await import(
+      '../../src/runner/event-processing.js'
+    );
     await promptWithInactivity(
       session,
       'delegate',
@@ -815,15 +1120,21 @@ describe('subagent runner interaction-required bridge', () => {
     vi.resetModules();
     let settlePrompt: (() => void) | undefined;
     let promptEntered: (() => void) | undefined;
-    const promptStarted = new Promise<void>((resolve) => { promptEntered = resolve; });
+    const promptStarted = new Promise<void>((resolve) => {
+      promptEntered = resolve;
+    });
     const session = {
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async (_prompt: string, options?: unknown) => {
         expect(options).toBeUndefined();
         promptEntered?.();
-        await new Promise<void>((resolve) => { settlePrompt = resolve; });
+        await new Promise<void>((resolve) => {
+          settlePrompt = resolve;
+        });
       }),
-      abort: vi.fn(async () => { settlePrompt?.(); }),
+      abort: vi.fn(async () => {
+        settlePrompt?.();
+      }),
       messages: [{ role: 'assistant', content: 'aborted after cleanup' }],
       dispose: vi.fn(async () => undefined),
     };
@@ -836,11 +1147,23 @@ describe('subagent runner interaction-required bridge', () => {
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     const controller = new AbortController();
     const runPromise = sdkSubagentRunner({
-      definition: { name: 'sdd-apply', description: 'apply executor', filePath: '/tmp/sdd-apply.md', instructions: 'return a concise result', tools: ['read'] },
+      definition: {
+        name: 'sdd-apply',
+        description: 'apply executor',
+        filePath: '/tmp/sdd-apply.md',
+        instructions: 'return a concise result',
+        tools: ['read'],
+      },
       task: 'cancel in flight',
       cwd: '/workspace',
       ctx: { model: { provider: 'test', id: 'model' } },
-      config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['read'], model_profiles: {} },
+      config: {
+        timeout_ms: 10_000,
+        stall_timeout_ms: 10_000,
+        max_concurrency: 1,
+        default_tools: ['read'],
+        model_profiles: {},
+      },
       signal: controller.signal,
     });
 
@@ -871,14 +1194,28 @@ describe('subagent runner interaction-required bridge', () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(sdkSubagentRunner({
-      definition: { name: 'sdd-apply', description: 'apply executor', filePath: '/tmp/sdd-apply.md', instructions: 'return a concise result', tools: ['read'] },
-      task: 'cancel before prompt',
-      cwd: '/workspace',
-      ctx: { model: { provider: 'test', id: 'model' } },
-      config: { timeout_ms: 10_000, stall_timeout_ms: 10_000, max_concurrency: 1, default_tools: ['read'], model_profiles: {} },
-      signal: controller.signal,
-    })).rejects.toThrow('Subagent was aborted');
+    await expect(
+      sdkSubagentRunner({
+        definition: {
+          name: 'sdd-apply',
+          description: 'apply executor',
+          filePath: '/tmp/sdd-apply.md',
+          instructions: 'return a concise result',
+          tools: ['read'],
+        },
+        task: 'cancel before prompt',
+        cwd: '/workspace',
+        ctx: { model: { provider: 'test', id: 'model' } },
+        config: {
+          timeout_ms: 10_000,
+          stall_timeout_ms: 10_000,
+          max_concurrency: 1,
+          default_tools: ['read'],
+          model_profiles: {},
+        },
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow('Subagent was aborted');
 
     expect(session.abort).toHaveBeenCalledOnce();
     expect(session.prompt).not.toHaveBeenCalled();

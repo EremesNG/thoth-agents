@@ -1,15 +1,20 @@
-import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { describe, expect, it } from 'vitest';
 
-const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as Record<string, any>;
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+) as Record<string, any>;
 
 describe('pi package manifest', () => {
-  it('is a public pi package named after the project directory', () => {
-    expect(packageJson.name).toBe(path.basename(process.cwd()));
+  it('is the public Thoth Agents fork of the Pi subagents package', () => {
+    expect(packageJson.name).toBe('@thoth-agents/pi-subagents');
+    expect(packageJson.version).toBe('1.0.0');
     expect(packageJson.private).not.toBe(true);
     expect(packageJson.license).toBe('MIT');
-    expect(packageJson.keywords).toEqual(expect.arrayContaining(['pi-package', 'pi-extension', 'subagents']));
+    expect(packageJson.keywords).toEqual(
+      expect.arrayContaining(['pi-package', 'pi-extension', 'subagents']),
+    );
   });
 
   it('declares pi resources for install and gallery discovery', () => {
@@ -33,15 +38,17 @@ describe('pi package manifest', () => {
   });
 
   it('limits the npm package to runtime resources and docs', () => {
-    expect(packageJson.files).toEqual(expect.arrayContaining([
-      'index.ts',
-      'src',
-      'skills',
-      'scripts/verify-package-files.mjs',
-      '.releaserc.json',
-      'README.md',
-      'LICENSE',
-    ]));
+    expect(packageJson.files).toEqual(
+      expect.arrayContaining([
+        'index.ts',
+        'src',
+        'skills',
+        'scripts/verify-package-files.mjs',
+        '.releaserc.json',
+        'README.md',
+        'LICENSE',
+      ]),
+    );
     expect(packageJson.files).not.toContain('node_modules');
     expect(packageJson.files).not.toContain('test');
   });

@@ -1,12 +1,19 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SubagentHistoryStore } from '../src/history.js';
 import type { SubagentTask } from '../src/types.js';
 
 const require = createRequire(import.meta.url);
+const stores = new Set<SubagentHistoryStore>();
+
+function createHistoryStore(): SubagentHistoryStore {
+  const store = new SubagentHistoryStore();
+  stores.add(store);
+  return store;
+}
 
 describe('subagent history persistence and display_name compatibility', () => {
   let tmp: string;
@@ -15,17 +22,38 @@ describe('subagent history persistence and display_name compatibility', () => {
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-history-test-'));
     oldDbPath = process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
-    process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(tmp, 'subagents-history.sqlite');
+    process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(
+      tmp,
+      'subagents-history.sqlite',
+    );
   });
 
   afterEach(() => {
-    if (oldDbPath === undefined) delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
+    for (const store of stores) store.close();
+    stores.clear();
+    if (oldDbPath === undefined)
+      delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
     else process.env.PI_SUBAGENTS_HISTORY_DB_PATH = oldDbPath;
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  it('closes database handles idempotently so its temporary directory can be removed', () => {
+    const store = createHistoryStore();
+    store.listTasks(tmp);
+
+    store.close();
+    expect(() => store.close()).not.toThrow();
+    expect(() => store.listTasks(tmp)).toThrow(
+      'Subagent history store is closed.',
+    );
+    expect(() =>
+      fs.rmSync(tmp, { recursive: true, force: true }),
+    ).not.toThrow();
+    fs.mkdirSync(tmp, { recursive: true });
+  });
+
   it('persists and retrieves display_name across task queries and attempts', () => {
-    const store = new SubagentHistoryStore();
+    const store = createHistoryStore();
     const task: SubagentTask = {
       id: 'subtask_persisted_friendly_name',
       display_name: 'Security Vulnerability Scan',
@@ -161,18 +189,39 @@ describe('subagent history persistence and display_name compatibility', () => {
         output_preview TEXT
       );
     `);
-    legacyDb.prepare(`
+    legacyDb
+      .prepare(`
       INSERT INTO subagent_tasks (id, cwd, agent, mode, status, task, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run('subtask_legacy_row', tmp, 'analyst', 'task', 'completed', 'legacy task', '2026-01-01T00:00:00.000Z');
-    legacyDb.prepare(`
+    `)
+      .run(
+        'subtask_legacy_row',
+        tmp,
+        'analyst',
+        'task',
+        'completed',
+        'legacy task',
+        '2026-01-01T00:00:00.000Z',
+      );
+    legacyDb
+      .prepare(`
       INSERT INTO subagent_task_attempts (task_id, attempt, cwd, agent, mode, status, task, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('subtask_legacy_row', 1, tmp, 'analyst', 'task', 'completed', 'legacy task', '2026-01-01T00:00:00.000Z');
+    `)
+      .run(
+        'subtask_legacy_row',
+        1,
+        tmp,
+        'analyst',
+        'task',
+        'completed',
+        'legacy task',
+        '2026-01-01T00:00:00.000Z',
+      );
     legacyDb.close();
 
     // Opening with SubagentHistoryStore should trigger ensureColumn migration
-    const store = new SubagentHistoryStore();
+    const store = createHistoryStore();
     const legacyTask = store.getTask(tmp, 'subtask_legacy_row');
     expect(legacyTask).toBeDefined();
     expect(legacyTask?.display_name).toBeUndefined();

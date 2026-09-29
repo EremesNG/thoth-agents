@@ -23,9 +23,20 @@ describe('Pi agent writer', () => {
     expect(
       agents.some((artifact) => artifact.path.includes('orchestrator')),
     ).toBe(false);
+    // Explicit tool lists from 54db74b; worker inherits the write-capable list.
+    const expectedTools: Record<string, string> = {
+      'agents/thoth-explorer.md': 'read, bash',
+      'agents/thoth-librarian.md':
+        'read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
+      'agents/thoth-oracle.md': 'read, bash',
+      'agents/thoth-designer.md': 'read, bash, edit, write',
+      'agents/thoth-worker.md': 'read, bash, edit, write',
+    };
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');
-      expect(artifact.content).toMatch(/^tools: "\*"$/m);
+      expect(artifact.content.match(/^tools: (.+)$/m)?.[1]).toBe(
+        JSON.stringify(expectedTools[artifact.path]),
+      );
       expect(artifact.content).toMatch(/^effort: "(?:low|medium|high|max)"$/m);
       expect(artifact.content).toContain(
         artifact.path === 'agents/thoth-librarian.md'

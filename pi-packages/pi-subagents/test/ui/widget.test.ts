@@ -169,6 +169,25 @@ function readJsonl(file: string): any[] {
 }
 
 describe('background widget', () => {
+  it('shows context usage with exactly one decimal place', () => {
+    const task = {
+      id: 'context-task',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+      runtime_metrics: { contextPercent: 1.134191176470588 },
+    } as any;
+    const render = () =>
+      renderClaudeBackgroundWidgetLines([task])?.join(' ') ?? '';
+
+    expect(render()).toContain('context 1.1%');
+    task.runtime_metrics.contextPercent = 0;
+    expect(render()).toContain('context 0.0%');
+    task.runtime_metrics.contextPercent = 62;
+    expect(render()).toContain('context 62.0%');
+  });
+
   it('animates running status across frames while queue keeps a hollow dot', () => {
     const running = {
       id: 'r',
@@ -232,7 +251,7 @@ describe('background widget', () => {
         ),
       ).toBe(true);
       expect(lines.join(' ')).toContain('tokens 33.8k');
-      expect(lines.join(' ')).toContain('context 62%');
+      expect(lines.join(' ')).toContain('context 62.0%');
       expect(lines.join(' ')).toContain('compaction');
       expect(lines.every((line) => line.length <= width)).toBe(true);
     }
@@ -315,7 +334,8 @@ describe('background widget', () => {
     expect(lines).toEqual([
       '● Agents',
       '└─ ⠋ worker [openai/gpt-6] Review the migration',
-      '   turns 5 · tools 5 · tokens 33.8k · context 62% · elapsed 12.3s · 1 compaction',
+      '   turns 5 · tools 5 · tokens 33.8k · context 62.0% · elapsed 12.3s',
+      '   1 compaction',
       '   ⎿ editing…',
     ]);
   });

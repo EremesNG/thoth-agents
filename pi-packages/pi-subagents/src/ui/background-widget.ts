@@ -81,7 +81,7 @@ function buildClaudeBackgroundWidgetEntries(
       `turns ${finiteNonnegative(turns) ? turns : '?'}`,
       `tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
       `tokens ${finiteNonnegative(tokens) ? formatTokens(tokens) : '?'}`,
-      `context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent}%` : '?'}`,
+      `context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
       `elapsed ${Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '?'}`,
     ];
     if (finiteNonnegative(metrics?.compactions) && metrics.compactions > 0)

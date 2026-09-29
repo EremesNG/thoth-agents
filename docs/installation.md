@@ -386,6 +386,47 @@ Custom terminal UI is unavailable in RPC/JSON/print modes; invocation there make
 no configuration changes. After updating the extension, reload Pi to register the
 new command.
 
+### Configure specialist tools inside Pi
+
+Run `/thoth-agents:tools` in Pi's interactive TUI to configure the **global** five
+specialists. The panel discovers registered tools from your current Pi environment,
+including tools supplied by user extensions and MCP integrations; Thoth does not
+maintain a fixed catalog of those tools.
+
+- Use ↑/↓ and Enter to choose a specialist. In its tool list, use Space to toggle
+  a selection. Enter or Escape returns to the overview.
+- Press `a` to add all currently active eligible tools for the selected role,
+  retaining its existing inactive/unavailable selections. Registered inactive
+  tools are labeled `(inactive)` and may be selected
+  individually. Saved names absent from the current registry remain visible as
+  `(unavailable)` and may be removed explicitly.
+- Press `r` to restore that role's packaged defaults: `read, bash` for Explorer
+  and Oracle; additionally `edit, write` for Designer and Worker; the historical
+  research tools for Librarian. Defaults can include currently unavailable tools.
+- Press `s` on the overview to save. Escape or Ctrl-C cancels, with confirmation
+  before discarding a dirty draft. Draft edits do not write files.
+- Selections must contain at least one explicit name. Wildcards, `subagent_*`
+  delegation tools and root-only `ask_user_question`/`todo` controls are excluded.
+  Empty selections are rejected because j0k3r would substitute default tools.
+- Saved lists remain in `~/.pi/agent/agents/thoth-*.md` (or Pi's configured agent
+  directory), survive synchronization/reinstallation and model-panel saves, and
+  do not change models, effort, mode or the parent's active tools. Project-local
+  definitions may shadow these global definitions. Running children are unchanged.
+- Discovery refreshes when the panel is reopened. Newly installed tools are not
+  automatically selected: select-all is a snapshot, not ongoing inheritance.
+- Ownership, safe-path, stale-file and recoverable per-file write checks match
+  the models panel. Malformed or legacy wildcard overrides are preserved with
+  diagnostics during synchronization, not silently reset to broader defaults.
+
+A selected name does not prove the child's runtime registered or initialized that
+extension, MCP connection or credentials. Verify a real child invocation. Tool
+selection is **not an OS sandbox**: a child with `bash` can execute installed CLIs
+such as `codegraph` even without a directly exposed CodeGraph MCP tool.
+
+This command requires Pi's interactive TUI and tool-discovery APIs; unsupported
+hosts receive a diagnostic without configuration writes. Reload Pi after updating
+the extension to register the command.
+
 ## Skill ownership
 
 All harness distributions carry only thoth-owned workflow skills: `thoth-init`,

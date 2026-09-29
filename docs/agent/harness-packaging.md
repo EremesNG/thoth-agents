@@ -33,7 +33,14 @@
   defaults to background mode. `/thoth-agents:models` exposes global specialist
   configuration through a native TUI draft/save panel. CLI and extension share
   `src/cli/pi-model-config.ts` for provenance/path checks, stale snapshots, and
-  partial-write recovery. Native TUI/AI modules are declared public peers and
+  partial-write recovery. `/thoth-agents:tools` discovers current registered tools,
+  edits explicit per-role global tool lists and supports active-only select-all,
+  marked inactive choices, retained unavailable names and role-default reset.
+  `src/cli/pi-tool-config.ts` owns validation and safe persistence; synchronization
+  preserves valid explicit tools/modes as well as model/effort. Malformed or legacy
+  wildcard overrides remain untouched with diagnostics. Empty selections and
+  delegation/root-only controls are rejected; no automatic future-tool inheritance
+  or guaranteed child extension availability is claimed. Native TUI/AI modules are declared public peers and
   kept external in the build; static imports let Pi's loader resolve its native
   aliases for compiled JS. Lazy imports from a natively loaded compiled extension
   bypass those aliases. Root model and external override precedence remain

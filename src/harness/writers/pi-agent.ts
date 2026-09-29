@@ -23,6 +23,7 @@ export function renderPiAgentDefinition(input: PiAgentDefinitionInput): string {
     '---',
     `name: ${piSpecialistName(input.role.name)}`,
     `description: ${yamlScalar(input.description)}`,
+    'tools: "*"',
     ...(input.model ? [`model: ${yamlScalar(input.model)}`] : []),
     ...(input.effort ? [`effort: ${yamlScalar(input.effort)}`] : []),
     `subagent_mode: ${yamlScalar(input.subagentMode)}`,

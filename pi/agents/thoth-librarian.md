@@ -1,6 +1,7 @@
 ---
 name: thoth-librarian
 description: "Gather current authoritative evidence and separate documented facts from inference. Use when: Current authoritative external evidence is required. Do not use when: Not for implementation, edits, or purely local discovery. Escalate when: Report contradictory or insufficient sources to root. Mutation: read-only; never mutate the workspace. Verification: provides direct sources for substantive external claims Return: conclusion, evidence, verification, risks, openQuestions, nextAction."
+tools: "*"
 model: "openai-codex/gpt-6-luna"
 effort: "high"
 subagent_mode: "background"

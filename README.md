@@ -84,6 +84,9 @@ claude plugin install thoth-agents@thoth-plugins --scope user
 Inside Pi, use `/thoth-agents:models` to edit the five specialists' global models
 and thinking levels without leaving the session. Changes remain a draft until
 saved; the parent model is unchanged. See [panel controls and precedence](docs/installation.md#configure-specialist-models-inside-pi).
+Use `/thoth-agents:tools` to select each specialist's tools from your Pi environment,
+including registered extension and MCP tools. Selections are explicit, not wildcard
+inheritance; see [tool selection controls](docs/installation.md#configure-specialist-tools-inside-pi).
 
 Pi setup currently supports the default `~/.pi/agent` root. See the
 [Pi installation guide](docs/installation.md#pi) for runtime requirements,

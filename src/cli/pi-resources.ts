@@ -8,6 +8,7 @@ import {
   assertSafePiManagedPath,
   writePiManagedText,
 } from './pi-managed-write';
+import { readPiSpecialistToolOverrides } from './pi-tool-config';
 
 const OBSOLETE_PI_SPECIALIST_NAMES = ['thoth-quick', 'thoth-deep'] as const;
 
@@ -54,6 +55,7 @@ function replaceField(
 }
 
 function preserveOverrides(next: string, current: string): string {
+  const toolOverrides = readPiSpecialistToolOverrides(current);
   const end = next.indexOf('\n---', 4);
   if (end < 0) return next;
   let frontmatter = next.slice(0, end);
@@ -87,6 +89,18 @@ function preserveOverrides(next: string, current: string): string {
       : field(next, 'effort');
   frontmatter = replaceField(frontmatter, 'effort', effort);
   frontmatter = replaceField(frontmatter, 'thinking', undefined);
+  if (toolOverrides.tools)
+    frontmatter = replaceField(
+      frontmatter,
+      'tools',
+      JSON.stringify(toolOverrides.tools.join(', ')),
+    );
+  if (toolOverrides.subagentMode)
+    frontmatter = replaceField(
+      frontmatter,
+      'subagent_mode',
+      JSON.stringify(toolOverrides.subagentMode),
+    );
 
   return `${frontmatter}${next.slice(end)}`;
 }
@@ -103,7 +117,11 @@ export function syncPiSpecialists(
         `Project-local Pi specialists may shadow package-owned global definitions: ${root}`,
       );
   try {
-    const prepared: Array<{ target: string; content: string }> = [];
+    const prepared: Array<{
+      target: string;
+      content: string;
+      expectedBefore: string | null;
+    }> = [];
     const retired: Array<{ target: string; content: string }> = [];
 
     // Preflight every write and retirement before mutating anything. A role
@@ -147,18 +165,27 @@ export function syncPiSpecialists(
         field(content, 'managed-by') !== 'thoth-agents'
       )
         throw new Error(`Invalid package-owned Pi specialist asset: ${source}`);
-      if (existsSync(target)) {
-        const current = readFileSync(target, 'utf8');
-        content = preserveOverrides(content, current);
+      const current = existsSync(target)
+        ? readFileSync(target, 'utf8')
+        : undefined;
+      if (current !== undefined) {
+        try {
+          content = preserveOverrides(content, current);
+        } catch (error) {
+          diagnostics.push(
+            `Preserved ${name} unchanged because its tool or mode override is malformed: ${error instanceof Error ? error.message : String(error)}. Fix the frontmatter explicitly before synchronizing this role.`,
+          );
+          continue;
+        }
         if (content === current) continue;
       }
-      prepared.push({ target, content });
+      prepared.push({ target, content, expectedBefore: current ?? null });
     }
     if (!options.dryRun) {
       // Write the complete current roster before retiring obsolete assets so an
       // interrupted run remains recoverable by an idempotent retry.
       for (const item of prepared) {
-        writePiManagedText(item.target, item.content);
+        writePiManagedText(item.target, item.content, item.expectedBefore);
         changed.push(item.target);
       }
       options.beforeRetireForTest?.();

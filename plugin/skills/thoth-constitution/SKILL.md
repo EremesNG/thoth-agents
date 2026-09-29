@@ -20,8 +20,11 @@ amendment. Preserve original ratification, set last-amended to the amendment
 date, choose MAJOR for redefinition/removal, MINOR for addition/material
 expansion, PATCH for clarification, and refresh the Sync Impact Report (old/new
 version, modified principles, added/removed sections, affected templates,
-follow-up). Propagate changes to affected instruction and template surfaces,
-then run:
+follow-up). This requirement for explicit activation is not replaced by a
+defaulted choice. Any orchestrator choice presented during amendment follows the
+shared per-question recommendation policy; a safe deferral keeps unresolved
+human-owned intent open, and missing facts or secrets are never invented.
+Propagate changes to affected instruction and template surfaces, then run:
 
 ```text
 node "<skill-dir>/scripts/validate.mjs" --constitution .thoth/constitution.md --json

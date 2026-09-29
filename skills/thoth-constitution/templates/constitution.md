@@ -25,7 +25,14 @@ contract impact, uncertainty, and risk. File count alone does not increase scope
 a clear, low-risk localized mechanical change may touch several files and remain
 small. Material product, architecture, security, and destructive decisions
 remain human-owned; unresolved material intent blocks classification and
-implementation.
+implementation. Whenever an orchestrator presents a choice with a meaningful
+recommended action, it states that recommendation. For each choice separately,
+repeat the same question after the first and second confirmed answerless native
+returns without taking dependent action; after the third, select the
+recommendation. Explicit answers and `Stop` win. Pending, unavailable, failed,
+interrupted, or host-prohibited attempts do not count; report higher-priority
+host limits accurately. Never fabricate facts or secrets. A safe deferral may be
+the recommendation for unresolved human-owned intent and leaves it unresolved.
 
 ### II. Minimal recoverable SDD
 
@@ -42,7 +49,14 @@ Provider memory is independent of project records.
 ### III. Bounded ownership and verification
 
 Delegation depth is one and each mutable surface has one writer. Root accepts
-terminal dependency results before releasing consumers. A plan review is not
+terminal dependency results before releasing consumers. At substantial `ready`,
+root always offers Oracle plan review (Recommended) or proceeding without review,
+even if implementation was authorized; an unanswered offer never means skip.
+After `[OKAY]`, root separately offers the Implement (Recommended) / Stop choice,
+honors prior explicit authorization, and lets explicit Stop supersede it. Record
+selection provenance as `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or
+`DEFAULT_REVIEW_AFTER_3`; only `EXPLICIT_SKIP` permits `SKIPPED`, and `OKAY`
+requires explicit review or the third-return recommendation. A plan review is not
 implementation authorization or final verification. Every change is verified;
 substantial or materially risky work needs a fresh independent Oracle judgment,
 and no implementation writer approves their own work. Archive only after

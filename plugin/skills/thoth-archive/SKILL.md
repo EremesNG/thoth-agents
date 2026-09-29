@@ -21,6 +21,13 @@ by its SHA-256 `Source` entry or an explicit `absent` entry. Missing or stale
 coverage blocks before canonical or archive changes. No verification or archive
 report is required or allowed.
 
+Plan-review selection provenance must be `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or
+`DEFAULT_REVIEW_AFTER_3`. A `SKIPPED` disposition requires `EXPLICIT_SKIP`; an
+`OKAY` disposition requires explicit review or the third-answerless review
+default. An unanswered offer never authorizes skip. The orchestrator owns the
+choice and uses the shared per-question recommendation rule; archive validation
+does not claim that it can authenticate the native interaction.
+
 Run the installed sibling validator at `--through closeout`, then:
 
 ```text

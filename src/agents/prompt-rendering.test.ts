@@ -51,25 +51,35 @@ describe('AI-first prompt rendering', () => {
   ] as const)('offers both planning choices with bounded defaults in %s', (_harness, render) => {
     const prompt = render();
     expect(prompt).toContain('Review plan with Oracle (Recommended)');
-    expect(prompt).toContain('Proceed without review');
+    expect(prompt).toContain('Implement directly without review');
+    expect(prompt).toMatch(
+      /EXPLICIT_REVIEW.*EXPLICIT_SKIP.*DEFAULT_REVIEW_AFTER_3/i,
+    );
+    expect(prompt).toMatch(
+      /plan-review disposition separately from implementation authorization/i,
+    );
     expect(prompt).toMatch(/After \[OKAY\].*Implement \(Recommended\).*Stop/);
-    expect(prompt).toMatch(/\[OKAY\] alone is not authorization/);
+    expect(prompt).toMatch(/\[OKAY\] alone never authorizes implementation/);
     expect(prompt).toMatch(
-      /third confirmed answerless native return selects the recommendation/,
+      /Every orchestrator choice.*meaningful safe recommendation/i,
     );
     expect(prompt).toMatch(
-      /third confirmed answerless native return selects review/,
+      /first and second confirmed empty native returns.*repeat the same question.*no dependent work/i,
     );
     expect(prompt).toMatch(
-      /separate third confirmed answerless return selects implementation/,
+      /third confirmed empty native return.*choose the recommendation/i,
     );
     expect(prompt).toMatch(/explicit Stop wins/i);
     expect(prompt).toMatch(
-      /Pending, unavailable or failed questions do not count/,
+      /Pending, unavailable, failed, interrupted or host-prohibited questions do not count/i,
     );
     expect(prompt).toMatch(
-      /Ask human-owned material decisions; never default them/,
+      /higher-priority host or tool rules prevent.*report the limitation/i,
     );
+    expect(prompt).toMatch(
+      /do not claim three returns or treat the result as explicit selection/i,
+    );
+    expect(prompt).toMatch(/Never fabricate facts or secrets.*safe deferral/i);
     expect(prompt).toMatch(/No implementation writer may approve/);
     expect(prompt).toMatch(/closes only after independent PASS/);
   });
@@ -419,6 +429,6 @@ describe('AI-first prompt rendering', () => {
       renderClaudeCodeRootInstructions(),
     ];
     // Keep the shared pre-plan guarantees bounded; detailed procedures stay routed.
-    for (const root of roots) expect(root.length).toBeLessThan(12_500);
+    for (const root of roots) expect(root.length).toBeLessThan(13_500);
   });
 });

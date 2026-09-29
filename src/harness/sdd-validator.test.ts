@@ -21,6 +21,9 @@ function fixture(
   id = 'example',
   deltas = '- None.',
   specs: Record<string, string | null> = {},
+  reviewDisposition = 'SKIPPED',
+  reviewSelection: string | null = 'EXPLICIT_SKIP',
+  implementationAuthorization = 'AUTHORIZED',
 ) {
   const root = mkdtempSync(join(tmpdir(), 'sdd-'));
   roots.push(root);
@@ -46,7 +49,7 @@ function fixture(
     writeFileSync(canonical, content);
     return `- Source: ${path} | sha256:${digest(content)}`;
   });
-  const before = `# Change: ${id}\n\n**Classification**: substantial\n**Scope**: coordinated\n**Uncertainty**: low\n**Risk**: low\n\n## Exploration\n\n- Inspected source and constraints.\n\n## Intent\n\nDeliver explicit behavior.\n\n## Non-goals\n\nNo unrelated migration.\n\n## Acceptance\n\n- AC-1: Visible result is checked.\n\n## Clarifications\n\n- No material question remains; accepted intent is settled.\n\n## Decisions\n\n- Scope and behavior confirmed.\n\n## Durable deltas\n\n${deltas}\n\n## Plan\n\nUpdate source and test behavior; no process tooling.\n\n## Tasks\n\n- [x] AC-1: Implement and test the behavior.\n\n## Authorization\n\n**Plan review**: SKIPPED\n**Implementation**: AUTHORIZED\n\n`;
+  const before = `# Change: ${id}\n\n**Classification**: substantial\n**Scope**: coordinated\n**Uncertainty**: low\n**Risk**: low\n\n## Exploration\n\n- Inspected source and constraints.\n\n## Intent\n\nDeliver explicit behavior.\n\n## Non-goals\n\nNo unrelated migration.\n\n## Acceptance\n\n- AC-1: Visible result is checked.\n\n## Clarifications\n\n- No material question remains; accepted intent is settled.\n\n## Decisions\n\n- Scope and behavior confirmed.\n\n## Durable deltas\n\n${deltas}\n\n## Plan\n\nUpdate source and test behavior; no process tooling.\n\n## Tasks\n\n- [x] AC-1: Implement and test the behavior.\n\n## Authorization\n\n**Plan review**: ${reviewDisposition}\n${reviewSelection === null ? '' : `**Plan review selection**: ${reviewSelection}\n`}**Implementation**: ${implementationAuthorization}\n\n`;
   const verification = `## Verification\n\n**Reviewer**: oracle\n**Independent from implementer**: Yes\n**Verdict**: PASS\n**Reviewed record SHA-256**: ${digest(before)}\n\n- AC-1: PASS | pnpm test | behavior observed\n- Source: source.txt | sha256:${digest('verified implementation\n')}\n${reviewedSpecs.length ? `${reviewedSpecs.join('\n')}\n` : ''}\n## Closeout\n\n**Archive**: READY\n`;
   writeFileSync(join(change, `${id}.md`), before + verification);
   return { root, change, id, before, verification };
@@ -73,6 +76,61 @@ afterEach(() => {
 });
 
 describe('ID-named SDD validator', () => {
+  test('requires plan-review selection provenance at closeout', () => {
+    const invalidSelections = [
+      ['missing', 'SKIPPED', null],
+      ['placeholder', 'SKIPPED', 'PENDING'],
+      ['unsupported', 'OKAY', 'DECLINED'],
+      [
+        'duplicate',
+        'SKIPPED',
+        'EXPLICIT_SKIP\n**Plan review selection**: EXPLICIT_REVIEW',
+      ],
+      ['one-empty-default', 'OKAY', 'DEFAULT_REVIEW_AFTER_1'],
+      ['two-empty-default', 'OKAY', 'DEFAULT_REVIEW_AFTER_2'],
+      ['review-selected-but-skipped', 'SKIPPED', 'EXPLICIT_REVIEW'],
+      ['skip-selected-but-reviewed', 'OKAY', 'EXPLICIT_SKIP'],
+      ['default-review-but-skipped', 'SKIPPED', 'DEFAULT_REVIEW_AFTER_3'],
+    ] as const;
+
+    for (const [id, disposition, selection] of invalidSelections) {
+      const f = fixture(id, '- None.', {}, disposition, selection);
+      const result = validate(f.change, 'closeout');
+
+      expect(result.report.valid, id).toBe(false);
+      expect(
+        result.report.errors.map(({ code }) => code),
+        id,
+      ).toContain('SDD-REVIEW-SELECTION');
+    }
+  });
+
+  test('accepts explicit review and a third-empty recommended review at closeout', () => {
+    for (const [id, selection] of [
+      ['explicit-review', 'EXPLICIT_REVIEW'],
+      ['third-empty-default', 'DEFAULT_REVIEW_AFTER_3'],
+    ] as const) {
+      const f = fixture(id, '- None.', {}, 'OKAY', selection);
+      expect(validate(f.change, 'closeout').report.valid, id).toBe(true);
+    }
+  });
+
+  test('permits the initial review-selection placeholder before closeout', () => {
+    const f = fixture(
+      'pending-review-selection',
+      '- None.',
+      {},
+      'PENDING',
+      'PENDING',
+      'PENDING',
+    );
+
+    expect(validate(f.change, 'ready').report.valid).toBe(true);
+    expect(
+      validate(f.change, 'closeout').report.errors.map(({ code }) => code),
+    ).toContain('SDD-REVIEW-SELECTION');
+  });
+
   test('validates one substantial record and locates it by its known ID', () => {
     const f = fixture();
     expect(validate(f.change, 'explore').report.valid).toBe(true);

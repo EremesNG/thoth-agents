@@ -91,33 +91,13 @@ temporarily.
 
 ### Requirement: Preserve selected review and implementation authorization
 
-Substantial work MUST use a plan and tasks before implementation. Checklist and
-convergence are conditional. Optional fresh read-only Oracle plan review runs
-only when selected and MUST NOT authorize implementation. After a selected review
-returns `[OKAY]`, the root MUST preserve a separate `Implement (Recommended)` /
-`Stop` decision; explicit Stop MUST win. For each of these two choices
-separately, only the third confirmed answerless native return MAY select its
-recommendation. Pending dialogs, unavailable tools or UI, failed questions, and
-interruption MUST NOT count. These defaults MUST NOT settle material human-owned
-decisions. Same-intent review blockers require correction and a fresh review.
+Substantial work MUST have a ready plan and tasks and MUST always offer Oracle plan review (Recommended) or direct implementation. Every orchestrator choice MUST present a meaningful recommendation, repeat the same question after the first and second confirmed answerless native returns without starting dependent work, and select its recommendation on the third. Explicit answers and Stop prevail; counters are per question. Open, unavailable, failed, interrupted or host-prohibited questions MUST NOT count. A higher-priority host limitation MUST be disclosed and MUST NOT be reported as three completed attempts or an explicit decline. Missing facts and secrets MUST NOT be fabricated. Review approval does not authorize implementation; preserve the separate implementation decision and applicable prior explicit authorization. SKIPPED review requires explicit direct-implementation selection with recorded provenance; silence never selects SKIPPED. Same-intent review blockers require correction and a fresh review; final independent verification remains mandatory.
 
-#### Scenario: Review approval does not authorize execution
+#### Scenario: Preserve selected review and implementation authorization
 
-- **GIVEN** a selected Oracle review returns `[OKAY]`
-- **WHEN** no implementation choice has been received
-- **THEN** implementation remains blocked pending the separate choice
-
-#### Scenario: Explicit Stop wins
-
-- **GIVEN** the user selects Stop after review
-- **WHEN** the answer is received
-- **THEN** implementation does not begin
-
-#### Scenario: Unavailable question surface does not count
-
-- **GIVEN** a plan-choice prompt cannot be delivered or returns pending
-- **WHEN** the native state is unavailable or unresolved
-- **THEN** no unanswered attempt is inferred and no choice is defaulted
+- **GIVEN** the ready review choice returns empty once or twice
+- **WHEN** root processes that return
+- **THEN** it repeats the same choice and does not implement dependent work
 
 ### Requirement: Verify independently and archive declared deltas
 

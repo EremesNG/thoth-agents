@@ -55,18 +55,33 @@ owner from the actual task shape and net gain after classification; no specialis
 is mandatory. Root retains known low-risk mechanical work, including reviewed
 commits, without rediscovery.
 Explicit direct-work or no-delegation instructions win. Preserve operator-selected
-model and effort, including max. Keep one writer per mutable surface. At ready, offer `Review plan with Oracle (Recommended)` or
-`Proceed without review`; run the optional fresh read-only review only when
-selected. After a selected `[OKAY]`, preserve the separate `Implement
-(Recommended)` / `Stop` decision. For each prompted choice independently, only
-its third confirmed answerless native return may select the recommendation.
-Pending questions, unavailable UI/tools, failures, and interruption do not
-count; explicit Stop wins, and no default may settle material human-owned
-decisions. A review result does not authorize implementation. Final verification is always required: small low-risk work can
-use focused root verification, while substantial or materially risky work
-requires a fresh independent Oracle. An implementation writer never approves
-its own work. If the user forbids delegation, perform authorized work directly
-but report unavailable independent review; never claim independent PASS or archive.
+model and effort, including max. Keep one writer per mutable surface.
+
+Every orchestrator choice with a meaningful recommended action states that
+recommendation. Track confirmed answerless native returns separately per
+question: after the first and second, repeat the same question without starting
+dependent work; after the third, select the recommendation. Explicit answers win
+and explicit `Stop` always wins. Pending, unavailable, failed, interrupted, or
+host-prohibited attempts do not count. Report higher-priority host limits
+accurately; do not claim three returns or an explicit user choice when they did
+not occur. Never invent missing facts or secrets. When a human-owned choice
+remains unresolved, a safe deferral can be the recommendation and leaves the
+decision open.
+
+At substantial `ready`, always offer `Review plan with Oracle (Recommended)` or
+`Proceed without review`, even when implementation was already authorized.
+Silence is never an explicit review skip; run a fresh read-only review only when
+selected. After a selected `[OKAY]`, separately offer `Implement (Recommended)` /
+`Stop`; prior explicit authorization remains valid, while an explicit later
+`Stop` supersedes it. Record the plan-review selection as
+`EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`; `SKIPPED`
+requires `EXPLICIT_SKIP`, and `OKAY` requires an explicit review or the third-
+return review default. A review result does not authorize implementation. Final
+verification is always required: small low-risk work can use focused root
+verification, while substantial or materially risky work requires a fresh
+independent Oracle. An implementation writer never approves its own work. If the
+user forbids delegation, perform authorized work directly but report unavailable
+independent review; never claim independent PASS or archive.
 
 ## Bounded execution
 
@@ -133,11 +148,15 @@ node "<skill-dir>/scripts/validate.mjs" --change .thoth/changes/<id> --through <
 
 The early gates validate the one record proportionally. `plan` validates without
 requiring tasks. `tasks` and `ready` require concrete coverage of every accepted
-outcome. `ready` requires settled material decisions before optional plan review
-or implementation authorization. `closeout` requires complete tasks, explicit
-review disposition and implementation authorization, a fresh independent Oracle
-PASS, every acceptance outcome with concrete PASS check/evidence, a matching
-record SHA-256 and reviewed source SHA-256 digests. Every canonical spec affected
+outcome. `ready` requires settled material decisions before the mandatory
+plan-review offer or implementation authorization. `closeout` requires complete
+tasks, review disposition plus `**Plan review selection**` provenance
+(`EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or `DEFAULT_REVIEW_AFTER_3`) and
+implementation authorization, a fresh independent Oracle PASS, every acceptance
+outcome with concrete PASS check/evidence, a matching record SHA-256 and reviewed
+source SHA-256 digests. The initial `PENDING` selection placeholder is allowed
+before closeout only. `SKIPPED` requires `EXPLICIT_SKIP`; `OKAY` requires an
+explicit review or `DEFAULT_REVIEW_AFTER_3`. Every canonical spec affected
 by a durable delta must have exactly one `Source` entry in the same record:
 `- Source: .thoth/specs/<capability>/spec.md | sha256:<digest>` when present, or
 `- Source: .thoth/specs/<capability>/spec.md | absent` when absent. Missing or

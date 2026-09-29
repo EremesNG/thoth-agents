@@ -58,13 +58,24 @@ for the end-to-end lifecycle.
   substitute. Preserve configured effort, one writer per mutable surface, and
   native dispatch/liveness. Optional Oracle plan review stays at record level,
   never per unit, and separate from final verification.
-- Offer `Review plan with Oracle (Recommended)` or `Proceed without review`; run
-  the fresh review only when selected. For each choice separately, only its
-  third confirmed answerless native return selects the recommendation; pending,
-  unavailable, failed, or interrupted questions do not count. After a selected
-  `[OKAY]`, preserve the separate `Implement (Recommended)` / `Stop` decision;
-  review never grants authorization or replaces final verification. Material
-  decisions never default.
+- At substantial `ready`, always offer `Review plan with Oracle (Recommended)`
+  or `Proceed without review`, even when implementation is already authorized.
+  Silence is never an explicit review skip; run a fresh review only when selected.
+  After `[OKAY]`, separately offer the `Implement (Recommended)` / `Stop` choice;
+  prior explicit authorization remains valid, while a later explicit `Stop`
+  supersedes it. Review never grants authorization or replaces final verification.
+- Every orchestrator choice with a meaningful recommended action states it.
+  Track confirmed answerless native returns per question: repeat the same
+  question after the first and second without dependent work, then select the
+  recommendation after the third. Explicit answers and `Stop` win. Pending,
+  unavailable, failed, interrupted, or host-prohibited attempts do not count;
+  disclose higher-priority host limits without claiming three returns or an
+  explicit choice. Never invent requested facts or secrets. For unresolved
+  human-owned intent, recommend safe deferral so the choice remains open.
+- Record plan-review provenance as `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or
+  `DEFAULT_REVIEW_AFTER_3`; `SKIPPED` is valid only with `EXPLICIT_SKIP`, while
+  `OKAY` requires an explicit review or the third-return review default. The
+  initial `PENDING` placeholder is valid before closeout only.
 - Every change verifies. Small low-risk work receives focused checks; substantial
   or materially risky work requires fresh read-only Oracle judgment. Root maps
   acceptance to actual checks and changed source before PASS. Failed verification

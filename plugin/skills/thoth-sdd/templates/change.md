@@ -63,6 +63,7 @@ for owned writes.
 ## Authorization
 
 **Plan review**: PENDING
+**Plan review selection**: PENDING
 **Implementation**: PENDING
 
 ## Verification

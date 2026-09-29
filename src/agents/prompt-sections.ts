@@ -227,8 +227,8 @@ ${renderTaskShapingPolicy(policy.taskShaping)}
 - Small work is test-first with focused verification and no record. Substantial work uses one ${workflow.recordPath} for intent, acceptance, decisions, deltas, plan, tasks, authorization and verification; no separate discovery or specification documents.
 - Small, clear, low-risk direct work may delegate to a known owner without planning artifacts. Delegation unit count and staffing do not determine persistence.
 - Reclassify on material uncertainty, scope or risk changes. Bounded technical unknowns need a resolution strategy and stop condition. Material human-owned uncertainty blocks classification and readiness.
-- At ready offer “Review plan with Oracle (Recommended)” or “Proceed without review”. Reuse explicit choices. Selected review returns [OKAY]/[REJECT]; repair blockers with fresh Oracle. After [OKAY], ask Implement (Recommended) or Stop; [OKAY] alone is not authorization and explicit Stop wins.
-- Each third confirmed answerless native return selects the recommendation: the third confirmed answerless native return selects review; the separate third confirmed answerless return selects implementation. Pending, unavailable or failed questions do not count; neither do interruptions. Ask human-owned material decisions; never default them.
+- At ready, always offer “Review plan with Oracle (Recommended)” or “Implement directly without review”. Record plan-review disposition separately from implementation authorization: explicit review/direct choices are EXPLICIT_REVIEW/EXPLICIT_SKIP; only the third confirmed empty review answer is DEFAULT_REVIEW_AFTER_3. Silence never skips. Review is optional; [OKAY] alone never authorizes implementation. After [OKAY], preserve the separate Implement (Recommended) / Stop decision, honor prior authorization, and let explicit Stop win.
+- Every orchestrator choice with a meaningful safe recommendation has its own three-return budget: after the first and second confirmed empty native returns, repeat the same question and do no dependent work; after the third confirmed empty native return, choose the recommendation. Explicit answers win; explicit Stop wins. Pending, unavailable, failed, interrupted or host-prohibited questions do not count. If higher-priority host or tool rules prevent asking or repeating, obey and report the limitation; do not claim three returns or treat the result as explicit selection. Never fabricate facts or secrets; recommend safe deferral and keep dependent work blocked when needed.
 - No auxiliary process tools, scripts, report files, execution wrappers, or evidence generators, even temporarily. Use shipped validators and native/project commands.
 - Final verification is mandatory. Trivial deterministic low-risk work may use focused root checks; substantial or materially risky work requires fresh read-only ${roleTemplate('oracle')} judgment. No implementation writer may approve its own work; plan review does not replace final verification.
 - Root closes only after independent PASS on substantial work; record acceptance, checks, source digests, and risks in the single record. Converge failures; archive only fresh PASS and sync declared ADDED/MODIFIED/REMOVED/RENAMED deltas to .thoth/specs/.
@@ -402,7 +402,7 @@ Do not open a user dialog. Continue safe non-blocked work, then escalate the unr
   }
   if (section.audience === 'root') {
     return `<questions>
-Use \`${dialect.tools.userQuestionTool}\` for planning choices or a blocking decision, sensitive action, or missing secret. Ask one targeted question with a recommended default.
+Use \`${dialect.tools.userQuestionTool}\` for planning choices or blocking/sensitive decisions or missing secrets, within higher-priority host/tool rules. Ask one targeted question with a safe recommendation. If host/tool rules prevent asking or repeating, obey and report that limit; do not count it as an empty return.
 </questions>`;
   }
   return `<questions>

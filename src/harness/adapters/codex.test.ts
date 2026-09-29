@@ -56,7 +56,7 @@ describe('Codex adapter v0.3', () => {
   test('renders a compact adaptive Codex root', () => {
     const root = renderCodexRootInstructions();
 
-    expect(root.length - 9_855).toBeLessThanOrEqual(2_500);
+    expect(root.length).toBeLessThanOrEqual(13_500);
     expect(root).toContain('adaptive root');
     expect(root).toContain(
       'Root retains known low-risk mechanical work, including reviewed commits',

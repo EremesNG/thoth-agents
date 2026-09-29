@@ -91,6 +91,24 @@ describe('proportional SDD phase protocols', () => {
     const review = text('plan-review');
     expect(getSddPhase('plan-review').activation).toBe('conditional');
     expect(review).toMatch(/optional.*after.*plan/i);
+    expect(review).toMatch(
+      /at ready.*always offer.*Review plan with Oracle \(Recommended\).*Implement directly without review/i,
+    );
+    expect(review).toMatch(
+      /first and second confirmed empty native returns.*repeat the same question.*no dependent work/i,
+    );
+    expect(review).toMatch(
+      /third confirmed empty native return.*choose the recommendation/i,
+    );
+    expect(review).toMatch(
+      /unavailable, failed, interrupted or host-prohibited questions do not count/i,
+    );
+    expect(review).toMatch(
+      /host or tool rules prevent.*report the limitation/i,
+    );
+    expect(review).toMatch(
+      /EXPLICIT_REVIEW.*EXPLICIT_SKIP.*DEFAULT_REVIEW_AFTER_3.*separate from implementation authorization/i,
+    );
     expect(review).toMatch(/implementation.*separate/i);
     expect(review).toMatch(/fresh.*final verification/i);
     expect(text('implement')).toMatch(/test-first|TDD|red before green/i);

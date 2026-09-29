@@ -57,9 +57,7 @@ describe('Pi adapter', () => {
     expect(root).toContain('ask_user_question');
     expect(root).toContain('one to four questions');
     expect(root).toContain('two to four options');
-    expect(root).toContain(
-      'A missing tool, no UI or a pending dialog never counts as an attempt',
-    );
+    expect(root).toContain('only confirmed returned empty answers count');
     expect(root).not.toContain('Use `subagent_status` only when the work');
     const children = piAdapter.render({ projectRoot: process.cwd() }).artifacts;
     for (const child of children) {

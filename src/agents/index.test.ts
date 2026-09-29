@@ -149,7 +149,7 @@ describe('OpenCode v0.3 prompt boundaries', () => {
   test('keeps the root compact and adaptive', () => {
     const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
-    expect(prompt.length - 8_499).toBeLessThanOrEqual(2_500);
+    expect(prompt.length).toBeLessThanOrEqual(13_500);
     expect(prompt).toContain('adaptive root');
     expect(prompt).toContain(
       'Root retains known low-risk mechanical work, including reviewed commits',
@@ -192,7 +192,7 @@ describe('OpenCode v0.3 prompt boundaries', () => {
     for (const agent of createAgents()) {
       const length = agent.config.prompt?.length ?? 0;
       if (agent.name === 'orchestrator') {
-        expect(length - 8_499, agent.name).toBeLessThanOrEqual(2_500);
+        expect(length, agent.name).toBeLessThanOrEqual(13_500);
       } else {
         expect(length, agent.name).toBeLessThan(5_000);
       }

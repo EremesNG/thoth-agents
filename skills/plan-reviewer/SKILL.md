@@ -10,10 +10,18 @@ metadata:
 
 # Plan Reviewer
 
-After the substantial plan passes `ready`, root may offer Review plan with Oracle
-(Recommended) or Proceed without review. Explicit answers win; only three
-confirmed answerless native returns permit the recommended review default. Root,
-not Oracle, owns choices, budgets, recovery, and implementation authorization.
+After the substantial plan passes `ready`, root always offers Review plan with
+Oracle (Recommended) or Proceed without review, even when implementation is
+already authorized. Silence is never an explicit skip; a fresh review runs only
+when selected. Root, not Oracle, owns choices, budgets, recovery, and
+implementation authorization. Every orchestrator choice with a meaningful
+recommendation follows the per-question rule: repeat the same question after its
+first and second confirmed answerless native returns without dependent work,
+then select the recommendation after the third. Explicit answers and `Stop` win.
+Pending, unavailable, failed, interrupted, or host-prohibited attempts do not
+count. Report higher-priority host limits accurately; do not claim unmade returns
+or an explicit user choice. Never invent facts or secrets; when a human-owned
+decision is still unresolved, recommend safe deferral.
 
 A fresh read-only Oracle reviews `.thoth/changes/<id>/<id>.md`,
 `.thoth/constitution.md`, affected canonical `.thoth/specs/`, and focused source
@@ -29,7 +37,12 @@ Return `[OKAY]` with concise evidence or `[REJECT]` with at most three actual
 execution blockers and smallest repairs; keep cautions separate. Root repairs
 same-intent blockers in the same record, revalidates affected gates, and uses a
 fresh Oracle for each round. A human-owned material blocker stops the round.
-Root records review disposition without inventing approval, then separately
-offers Implement (Recommended) or Stop. That second decision has its own
-three-confirmed-answerless budget. Review never substitutes for fresh
-independent final Oracle verification, and Oracle never writes change artifacts.
+Root records both review disposition and selection provenance without inventing
+approval. Accepted provenance is `EXPLICIT_REVIEW`, `EXPLICIT_SKIP`, or
+`DEFAULT_REVIEW_AFTER_3`; `SKIPPED` requires explicit skip, while `OKAY` requires
+explicit review or the third-return review default. After `[OKAY]`, root preserves
+the separate Implement (Recommended) / Stop choice and separately offers it,
+honoring prior explicit implementation authorization; an explicit later Stop
+supersedes it. That choice has its own per-question budget. Review never
+substitutes for fresh independent final Oracle verification, and Oracle never
+writes change artifacts.

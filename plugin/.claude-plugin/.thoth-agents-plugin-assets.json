@@ -29,7 +29,7 @@
     {
       "path": "agents/orchestrator.md",
       "kind": "agent-config",
-      "sha256": "sha256:3d00d94ac2b01a53f77ad24a93b8a043e8d8f1897190cbf26f8c3e8b49cd8025"
+      "sha256": "sha256:d0b5fed88df4c71554345cee82fcf2e86ec4a86ea2c0406f5eca2c0a195b43fb"
     },
     {
       "path": "agents/worker.md",

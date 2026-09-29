@@ -369,9 +369,12 @@ export const SDD_PHASE_PROTOCOLS = [
       'Offer optional independent blocker review after the ready plan.',
     requiredInputs: ['Ready substantial record', 'Selected review disposition'],
     instructions: [
+      'At ready, always offer “Review plan with Oracle (Recommended)” or “Implement directly without review”; record the plan-review choice as EXPLICIT_REVIEW for an explicit review answer, EXPLICIT_SKIP for an explicit direct answer, or DEFAULT_REVIEW_AFTER_3 only when the third confirmed empty return selects review. Keep selection provenance separate from implementation authorization; silence never means EXPLICIT_SKIP.',
+      'For every orchestrator choice with a meaningful safe recommendation, after its first and second confirmed empty native returns repeat the same question and do no dependent work; after the third confirmed empty native return choose the recommendation. Explicit answers and Stop win. Pending, unavailable, failed, interrupted or host-prohibited questions do not count. If higher-priority host or tool rules prevent asking or repeating, obey them and report the limitation rather than claiming three returns or an explicit selection.',
+      'Never fabricate facts or secrets; recommend safe deferral when needed information or material intent is unresolved, and keep dependent work blocked.',
       'Review scope, approach, risks, and acceptance coverage without redesigning settled intent.',
       'Return actionable blockers and cautions; a pass is not implementation authorization or final verification.',
-      'Keep the separate Implement (Recommended) / Stop decision.',
+      'After [OKAY], preserve the separate Implement (Recommended) / Stop authorization decision; honor applicable prior explicit authorization, and let explicit Stop supersede it.',
       'A plan review does not substitute for fresh final verification.',
     ],
     outputSchema: ['status', 'blockers', 'cautions'],

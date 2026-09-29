@@ -28,3 +28,6 @@ effect.
 The operation is offline and idempotent. It creates no manifests, change records,
 workflow templates, OpenSpec tree, process tools, or mirrored state. Return JSON
 `created` and `preserved` paths. No installer or network access is involved.
+This skill presents no interactive choices and does not infer missing target
+facts. Any orchestrator choice around initialization follows the shared SDD
+recommendation and per-question retry policy.

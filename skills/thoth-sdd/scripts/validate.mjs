@@ -468,6 +468,17 @@ export function validate({ change, through }) {
 
   if (through === 'closeout') {
     const auth = section(text, 'Authorization') ?? '';
+    const reviewDisposition = /^\*\*Plan review\*\*: (SKIPPED|OKAY)$/m.exec(
+      auth,
+    )?.[1];
+    const selectionLines =
+      auth.match(/^\*\*Plan review selection\*\*:.*$/gm) ?? [];
+    const reviewSelection =
+      selectionLines.length === 1
+        ? /^\*\*Plan review selection\*\*: (EXPLICIT_REVIEW|EXPLICIT_SKIP|DEFAULT_REVIEW_AFTER_3)$/.exec(
+            selectionLines[0],
+          )?.[1]
+        : undefined;
     if (
       !/^\*\*Plan review\*\*: (?:SKIPPED|OKAY)$/m.test(auth) ||
       !/^\*\*Implementation\*\*: AUTHORIZED$/m.test(auth)
@@ -476,6 +487,24 @@ export function validate({ change, through }) {
         issue(
           'SDD-AUTHORIZATION',
           'Plan-review disposition and separate implementation authorization are required',
+          recordName,
+        ),
+      );
+    }
+    if (
+      !(
+        (reviewDisposition === 'SKIPPED' &&
+          reviewSelection === 'EXPLICIT_SKIP') ||
+        (reviewDisposition === 'OKAY' &&
+          ['EXPLICIT_REVIEW', 'DEFAULT_REVIEW_AFTER_3'].includes(
+            reviewSelection,
+          ))
+      )
+    ) {
+      errors.push(
+        issue(
+          'SDD-REVIEW-SELECTION',
+          'Plan-review selection must support the recorded disposition',
           recordName,
         ),
       );

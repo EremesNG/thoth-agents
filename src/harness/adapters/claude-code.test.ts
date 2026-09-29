@@ -115,7 +115,7 @@ describe('Claude Code adapter v0.3', () => {
   test('renders adaptive native root instructions with namespaced roles', () => {
     const instructions = renderClaudeCodeRootInstructions();
 
-    expect(instructions.length - 9_340).toBeLessThanOrEqual(2_500);
+    expect(instructions.length).toBeLessThanOrEqual(13_500);
     expect(instructions).toContain('adaptive root');
     expect(instructions).toContain('<implementation-ownership>');
     expect(instructions).toMatch(

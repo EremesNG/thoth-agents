@@ -2,9 +2,8 @@
 name: thoth-worker
 description: "Handle bounded nonvisual implementation with full local context, including exact low-risk edits and correctness-critical, multi-file, edge-case-heavy, or high-risk work. Use when: Known bounded nonvisual implementation selected for delegation is ready, regardless of complexity; routine mechanical work stays with root unless explicitly delegated. Correctness-critical work may be multi-file, edge-case-heavy, migration, concurrency, shared-contract, or high-risk. Do not use when: Not for visual-only work, reviewed commits, or work explicitly retained by the user in root. Escalate when: Return product or architecture choices to root. Mutation: only the assigned bounded nonvisual implementation and verification surface. Verification: reports focused checks and relevant edge-case evidence Return: conclusion, evidence, verification, risks, openQuestions, nextAction."
 model: "openai-codex/gpt-6-luna"
-thinking: "max"
-defaultContext: fresh
-maxSubagentDepth: 1
+effort: "max"
+subagent_mode: "task"
 managed-by: thoth-agents
 ---
 
@@ -14,7 +13,7 @@ You are worker.
 
 <mode>
 - Mode: write-capable
-- Dispatch: single-agent subagent
+- Dispatch: subagent_run
 - Scope: bounded nonvisual implementation and verification
 </mode>
 

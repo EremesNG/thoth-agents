@@ -61,7 +61,7 @@ function readOwned(piRoot: string, role: PiSpecialistRole): string {
   const path = join(piRoot, 'agents', `${piSpecialistName(role)}.md`);
   assertSafePiManagedPath(path);
   const content = readFileSync(path, 'utf8');
-  for (const name of ['name', 'managed-by', 'model', 'thinking']) {
+  for (const name of ['name', 'managed-by', 'model', 'effort', 'thinking']) {
     if (
       [...frontmatter(content).matchAll(new RegExp(`^${name}:`, 'gm'))].length >
       1
@@ -89,13 +89,11 @@ export function readPiModelConfig(
   for (const role of roles) {
     const content = readOwned(snapshot.piRoot, role);
     snapshot.contents[role] = content;
-    const thinking = field(content, 'thinking');
+    const effort = field(content, 'effort') ?? field(content, 'thinking');
     snapshot.roles.push({
       role,
       model: field(content, 'model') ?? 'inherit',
-      effort: thinking
-        ? { kind: 'effort', value: thinking }
-        : { kind: 'inherit' },
+      effort: effort ? { kind: 'effort', value: effort } : { kind: 'inherit' },
     });
   }
   return snapshot;
@@ -145,9 +143,10 @@ export function savePiModelConfig(
       let next = replaceField(current, 'model', input.model);
       next = replaceField(
         next,
-        'thinking',
+        'effort',
         input.effort?.kind === 'effort' ? input.effort.value : undefined,
       );
+      next = replaceField(next, 'thinking', undefined);
       if (readOwned(snapshot.piRoot, role) !== current)
         throw new Error(
           `Pi specialist changed before saving: ${role}. Reopen the editor.`,

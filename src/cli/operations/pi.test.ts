@@ -140,7 +140,7 @@ describe('Pi operations', () => {
     );
     expect(
       install.items.some(({ preview }) =>
-        preview?.includes('pi-subagents@>=0.71.0'),
+        preview?.includes('npm:pi-subagents-j0k3r@>=1.6.1'),
       ),
     ).toBe(true);
     expect(
@@ -168,6 +168,101 @@ describe('Pi operations', () => {
       expect.arrayContaining([
         expect.objectContaining({
           label: 'Pi package-declared skill evidence blocker',
+        }),
+      ]),
+    );
+  });
+
+  test('reports the j0k3r package floor, global lean config, and project override limit', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-j0k3r-status-'));
+    roots.push(homeDir);
+    const configPath = join(homeDir, '.pi', 'agent', 'subagents.json');
+    mkdirSync(dirname(configPath), { recursive: true });
+    writeFileSync(
+      configPath,
+      `${JSON.stringify(
+        { session_resources: 'lean', enable_continue: false },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const report = getPiStatus({
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: installedRuntime(homeDir),
+    });
+
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'package',
+          path: 'npm:pi-subagents-j0k3r@>=1.6.1',
+          state: 'installed',
+          observed: '1.6.1',
+        }),
+        expect.objectContaining({
+          kind: 'file',
+          path: configPath,
+          state: 'installed',
+        }),
+      ]),
+    );
+    expect(report.disclaimers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'pi-lean-resources-global-only',
+          message: expect.stringContaining('project-local'),
+        }),
+      ]),
+    );
+  });
+
+  test('reports and blocks an incumbent delegation runtime seen in Pi package state', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-incumbent-status-'));
+    roots.push(homeDir);
+    const runtime = installedRuntime(homeDir);
+    const piCommandExecutor = (command: string, args: readonly string[]) => {
+      const result = runtime(command, args);
+      return args[0] === 'list'
+        ? {
+            ...result,
+            stdout: `${result.stdout}\nUser packages:\n  npm:pi-subagents@0.72.0\n    ${join(homeDir, 'incumbent')}`,
+          }
+        : result;
+    };
+    const context = { cwd: homeDir, homeDir, env: {}, piCommandExecutor };
+
+    const report = getPiStatus(context);
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi incumbent delegation runtime',
+          state: 'drift',
+          observed: 'npm:pi-subagents@0.72.0',
+        }),
+      ]),
+    );
+    expect(report.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'pi-incumbent-delegation-conflict',
+          severity: 'critical',
+          message: expect.stringContaining('pi remove npm:pi-subagents@0.72.0'),
+        }),
+      ]),
+    );
+
+    const update = buildPiUpdatePlan(context);
+    expect(update.canApply).toBe(false);
+    expect(update.blockerTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi delegation runtime blocker',
+          observed: expect.stringContaining(
+            'pi remove npm:pi-subagents@0.72.0',
+          ),
         }),
       ]),
     );
@@ -1019,7 +1114,7 @@ describe('Pi operations', () => {
     expect(applyPiPlan(plan).applied).toBe(true);
     const content = readFileSync(agentPath, 'utf8');
     expect(content).toContain('model: "provider/model"');
-    expect(content).toContain('thinking: "high"');
+    expect(content).toContain('effort: "high"');
     expect(content).toContain('model: keep-this-body-text');
   });
 
@@ -1107,7 +1202,7 @@ Keep this body.
     const content = readFileSync(paths[index] ?? '', 'utf8');
     expect(content).toContain(`model: "${role.model}"`);
     expect(content).toContain(
-      `thinking: "${role.effort?.kind === 'effort' ? role.effort.value : ''}"`,
+      `effort: "${role.effort?.kind === 'effort' ? role.effort.value : ''}"`,
     );
     expect(content).toContain('tools: read');
     expect(content).toContain('Keep this body.');

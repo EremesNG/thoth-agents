@@ -77,31 +77,33 @@ execution does not.
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
   then may it migrate attributable legacy root/skill copies and install the five
-  external sources as `pi-subagents@>=0.71.0`, `@upstash/context7-pi@>=0.1.2`,
-  `pi-web-access@>=0.27.0`, `pi-mcp-adapter@>=2.32.1`,
-  and `@juicesharp/rpiv-ask-user-question@>=2.9.0`. Task/progress extensions are
+  external sources as `npm:pi-subagents-j0k3r@>=1.6.1`,
+  `@upstash/context7-pi@>=0.1.2`, `pi-web-access@>=0.27.0`,
+  `pi-mcp-adapter@>=2.32.1`, and
+  `@juicesharp/rpiv-ask-user-question@>=2.9.0`. Task/progress extensions are
   optional and operator-owned; setup never installs or removes them and status
-  does not require them. Pi's native manager owns installation and
-  subsequent independent updates within these open-ended stable ranges. Setup
-  validates each resolved package manifest's exact name and SemVer floor,
-  accepts newer stable versions, and does not reinstall an already satisfying
-  managed range. Legacy exact sources are migrated through Pi's native install
-  command so object-form resource filters and unrelated settings survive; a
-  detected downgrade fails setup and triggers restoration, verified against a
-  fresh listing and manifest; unverifiable recovery exposes manual guidance.
-  The first-party thoth-agents
-  source and ownership receipt remain exact. Pi 0.86.1 compatibility is based
-  on an isolated native package-manager probe: it parses `>=` as an unpinned
-  valid range and preserves object-form filters while replacing a source.
-  Setup then merges builtin-disablement and fresh depth-one delegation settings
-  without replacing unrelated user keys, synchronizes five specialists, installs
-  four external skills, runs provider setup, and commits the unchanged
-  last-complete ledger. A custom
+  does not require them. Pi's native manager owns installation and subsequent
+  independent updates within these open-ended stable ranges. Setup validates
+  each resolved package manifest's exact name and SemVer floor, accepts newer
+  stable versions, and does not reinstall an already satisfying managed range.
+  Legacy exact sources are migrated through Pi's native install command so
+  object-form resource filters and unrelated settings survive; a detected
+  downgrade fails setup and triggers restoration, verified against a fresh
+  listing and manifest; unverifiable recovery exposes manual guidance. The
+  first-party thoth-agents source and ownership receipt remain exact. Pi 0.86.1
+  compatibility is based on an isolated native package-manager probe: it parses
+  `>=` as an unpinned valid range and preserves object-form filters while
+  replacing a source. Setup merges `session_resources: "lean"` and
+  `enable_continue: false` into global `subagents.json`, synchronizes five
+  specialists, installs four external skills, runs provider setup, and commits
+  the unchanged last-complete ledger. Project-local `subagents.json` can
+  override global lean isolation; full child resources are unsupported. A custom
   `PI_CODING_AGENT_DIR`, unowned canonical agent, or conflicting global `grep`
-  entry blocks mutation. A configured legacy `pi-subagents-j0k3r` runtime also
-  blocks before mutation and returns manual removal guidance; setup never
-  deletes it or loads both delegation runtimes. Partial native package state remains visible and is
-  recovered by resolving the blocker and rerunning the complete flow.
+  entry blocks mutation. A configured incumbent `pi-subagents` runtime also
+  blocks before mutation and returns manual removal guidance; setup never deletes
+  it or loads both delegation runtimes. Partial native package state remains
+  visible and is recovered by resolving the blocker and rerunning the complete
+  flow.
 - OpenCode runtime update checks are notification-only. They do not rewrite
   config, invalidate package state, or run package installation; operators must
   rerun the latest CLI installer or apply Update explicitly.

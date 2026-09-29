@@ -32,10 +32,11 @@ persistence, receipts, state, and recovery remain outside this package.
    `before_agent_start` hook contributes the bounded ambient root and
    `session_start` safely synchronizes five package-owned specialists. Pi loads
    the five owned skills from the package manifest. The CLI then installs the
-   six external packages and four external skills. Published installs also
-   invoke provider-owned thoth-mem; an explicit local Pi package install leaves
-   thoth-mem to its separate local installer. Pi and `pi-subagents@0.71.0` retain
-   execution and lifecycle ownership.
+   five external packages, including `npm:pi-subagents-j0k3r@>=1.6.1`, and four
+   external skills. Published installs also invoke provider-owned thoth-mem; an
+   explicit local Pi package install leaves thoth-mem to its separate local
+   installer. Pi and j0k3r retain delegation execution and task lifecycle
+   ownership.
 
 ## Boundaries
 

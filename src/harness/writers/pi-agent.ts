@@ -10,8 +10,8 @@ export interface PiAgentDefinitionInput {
   description: string;
   instructions: string;
   model?: string;
-  thinking?: string;
-  async?: boolean;
+  effort?: string;
+  subagentMode: 'task' | 'background';
 }
 
 function yamlScalar(value: string): string {
@@ -24,10 +24,8 @@ export function renderPiAgentDefinition(input: PiAgentDefinitionInput): string {
     `name: ${piSpecialistName(input.role.name)}`,
     `description: ${yamlScalar(input.description)}`,
     ...(input.model ? [`model: ${yamlScalar(input.model)}`] : []),
-    ...(input.thinking ? [`thinking: ${yamlScalar(input.thinking)}`] : []),
-    ...(input.async === undefined ? [] : [`async: ${input.async}`]),
-    'defaultContext: fresh',
-    'maxSubagentDepth: 1',
+    ...(input.effort ? [`effort: ${yamlScalar(input.effort)}`] : []),
+    `subagent_mode: ${yamlScalar(input.subagentMode)}`,
     `managed-by: ${PI_MANAGED_OWNER}`,
     '---',
     '',

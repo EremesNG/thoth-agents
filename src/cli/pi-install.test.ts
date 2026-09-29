@@ -17,8 +17,7 @@ import {
   applyPiSetup,
   buildPiSetupPlan,
   mergePiGrepMcpConfig,
-  mergePiSubagentConfig,
-  mergePiUserSettings,
+  mergePiSubagentsConfig,
   PI_MINIMUM_VERSION,
   PI_PACKAGE_SPECS,
   parsePiPackageList,
@@ -340,7 +339,7 @@ describe('Pi setup', () => {
         .map(({ target }) => target),
     ).toEqual([
       'npm:thoth-agents@0.3.12',
-      'npm:pi-subagents@>=0.71.0',
+      'npm:pi-subagents-j0k3r@>=1.6.1',
       'npm:@upstash/context7-pi@>=0.1.2',
       'npm:pi-web-access@>=0.27.0',
       'npm:pi-mcp-adapter@>=2.32.1',
@@ -362,7 +361,6 @@ describe('Pi setup', () => {
       'package',
       'package',
       'package',
-      'settings',
       'settings',
       'mcp',
       'agent',
@@ -417,7 +415,18 @@ describe('Pi setup', () => {
     const commands: string[][] = [];
     const packages = ['npm:unrelated@1.0.0', ...taskPackages];
     const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
-    const subagentConfigPath = join(
+    const settings = {
+      theme: 'dark',
+      packages,
+      subagents: { disableBuiltins: false, operatorSetting: 'preserve' },
+    };
+    const subagentsConfigPath = join(
+      paths.homeDir,
+      '.pi',
+      'agent',
+      'subagents.json',
+    );
+    const legacySubagentConfigPath = join(
       paths.homeDir,
       '.pi',
       'agent',
@@ -426,10 +435,18 @@ describe('Pi setup', () => {
       'config.json',
     );
     mkdirSync(dirname(settingsPath), { recursive: true });
-    mkdirSync(dirname(subagentConfigPath), { recursive: true });
-    writeFileSync(settingsPath, JSON.stringify({ theme: 'dark', packages }));
+    mkdirSync(dirname(legacySubagentConfigPath), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings));
     writeFileSync(
-      subagentConfigPath,
+      subagentsConfigPath,
+      JSON.stringify({
+        session_resources: 'full',
+        enable_continue: true,
+        operatorSetting: 'preserve',
+      }),
+    );
+    writeFileSync(
+      legacySubagentConfigPath,
       JSON.stringify({ inlineToolDisplay: 'summary' }),
     );
     let firstPartyInstalled = false;
@@ -487,20 +504,17 @@ describe('Pi setup', () => {
         .filter(({ kind }) => kind === 'agent')
         .every(({ target }) => existsSync(target)),
     ).toBe(true);
-    const settings = JSON.parse(readFileSync(plan.paths.settingsPath, 'utf8'));
-    const subagentConfig = JSON.parse(
-      readFileSync(plan.paths.subagentConfigPath, 'utf8'),
+    expect(JSON.parse(readFileSync(plan.paths.settingsPath, 'utf8'))).toEqual(
+      settings,
     );
-    expect(settings).toMatchObject({
-      theme: 'dark',
-      packages,
-      subagents: { disableBuiltins: true },
+    expect(JSON.parse(readFileSync(subagentsConfigPath, 'utf8'))).toEqual({
+      session_resources: 'lean',
+      enable_continue: false,
+      operatorSetting: 'preserve',
     });
-    expect(subagentConfig).toMatchObject({
-      inlineToolDisplay: 'summary',
-      defaultSubagentContext: 'fresh',
-      maxSubagentDepth: 1,
-    });
+    expect(readFileSync(legacySubagentConfigPath, 'utf8')).toBe(
+      JSON.stringify({ inlineToolDisplay: 'summary' }),
+    );
     const mcp = JSON.parse(readFileSync(plan.paths.mcpConfigPath, 'utf8'));
     expect(mcp.imports).toEqual(['added-after-plan.json']);
     expect(mcp.mcpServers.grep).toEqual({
@@ -519,10 +533,25 @@ describe('Pi setup', () => {
     ).toBe(false);
   });
 
-  test('migrates a legacy exact source through Pi while preserving object filters and unrelated settings', () => {
+  test('blocks the incumbent package before mutation and preserves object-form settings', () => {
     const paths = fixture();
     const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const subagentsConfigPath = join(
+      paths.homeDir,
+      '.pi',
+      'agent',
+      'subagents.json',
+    );
+    const legacyConfigPath = join(
+      paths.homeDir,
+      '.pi',
+      'agent',
+      'extensions',
+      'subagent',
+      'config.json',
+    );
     mkdirSync(dirname(settingsPath), { recursive: true });
+    mkdirSync(dirname(legacyConfigPath), { recursive: true });
     const settings = {
       theme: 'dark',
       packages: [
@@ -534,64 +563,39 @@ describe('Pi setup', () => {
         'npm:operator-package@1.0.0',
       ],
     };
+    const subagentsConfig = { operatorSetting: 'preserve' };
+    const legacyConfig = { inlineToolDisplay: 'summary' };
     writeFileSync(settingsPath, JSON.stringify(settings));
-    const packageLines = externalPackageList(
-      paths.homeDir,
-      { delegation: '0.72.0' },
-      { delegation: 'npm:pi-subagents@0.72.0' },
-    );
-    let firstPartyInstalled = false;
-    const installCalls: string[] = [];
+    writeFileSync(subagentsConfigPath, JSON.stringify(subagentsConfig));
+    writeFileSync(legacyConfigPath, JSON.stringify(legacyConfig));
+    const commands: string[] = [];
     const plan = buildPiSetupPlan({
       ...paths,
       commandExecutor: (command, args) => {
-        if (command === 'node')
-          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
-        if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
-        if (args[0] === 'install') {
-          installCalls.push(args[1] ?? '');
-          if (args[1] === 'npm:thoth-agents@0.3.12') firstPartyInstalled = true;
-          if (args[1] === PI_PACKAGE_SPECS[0].source) {
-            packageLines[0] = `  ${PI_PACKAGE_SPECS[0].source} (filtered)`;
-            const current = JSON.parse(readFileSync(settingsPath, 'utf8'));
-            current.packages[0].source = PI_PACKAGE_SPECS[0].source;
-            writeFileSync(settingsPath, JSON.stringify(current));
-          }
-          return { exitCode: 0, stdout: 'installed', stderr: '' };
-        }
-        if (args[0] === 'list')
-          return {
-            exitCode: 0,
-            stdout: [
-              ...(firstPartyInstalled
-                ? ['npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
-                : []),
-              ...packageLines,
-            ].join('\n'),
-            stderr: '',
-          };
+        commands.push(`${command} ${args.join(' ')}`);
         return { exitCode: 0, stdout: '', stderr: '' };
       },
     });
 
-    expect(applyPiSetup(plan).success).toBe(true);
-    expect(installCalls).toEqual([
-      'npm:thoth-agents@0.3.12',
-      PI_PACKAGE_SPECS[0].source,
-    ]);
-    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toMatchObject({
-      theme: 'dark',
-      packages: [
-        {
-          source: PI_PACKAGE_SPECS[0].source,
-          extensions: ['extensions/index.js'],
-          skills: [],
-        },
-        'npm:operator-package@1.0.0',
-      ],
-      subagents: { disableBuiltins: true },
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toContain('npm:pi-subagents@0.72.0');
+    expect(plan.blockers.join('\n')).toContain(
+      'pi remove npm:pi-subagents@0.72.0 --no-approve',
+    );
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      failedStep: 'preflight',
+      changed: [],
+      installedPackages: [],
     });
+    expect(commands).toEqual([]);
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual(settings);
+    expect(JSON.parse(readFileSync(subagentsConfigPath, 'utf8'))).toEqual(
+      subagentsConfig,
+    );
+    expect(JSON.parse(readFileSync(legacyConfigPath, 'utf8'))).toEqual(
+      legacyConfig,
+    );
   });
 
   test('restores a satisfying newer package if native range installation would downgrade it', () => {
@@ -599,7 +603,7 @@ describe('Pi setup', () => {
     const packageLines = externalPackageList(
       paths.homeDir,
       { delegation: '9.0.0' },
-      { delegation: 'npm:pi-subagents@9.0.0' },
+      { delegation: 'npm:pi-subagents-j0k3r@9.0.0' },
     );
     const delegationPath = packageLines[1]?.trim() ?? '';
     let firstPartyInstalled = false;
@@ -618,7 +622,7 @@ describe('Pi setup', () => {
             packageLines[0] = `  ${PI_PACKAGE_SPECS[0].source}`;
             writeFileSync(
               join(delegationPath, 'package.json'),
-              JSON.stringify({ name: 'pi-subagents', version: '0.1.0' }),
+              JSON.stringify({ name: 'pi-subagents-j0k3r', version: '0.1.0' }),
             );
           }
           return { exitCode: 0, stdout: 'installed', stderr: '' };
@@ -644,9 +648,9 @@ describe('Pi setup', () => {
         'exact-version recovery failed or unverifiable',
       ),
       manualRecovery:
-        'Manual recovery: run pi install npm:pi-subagents@9.0.0 --no-approve, then verify with pi list and the installed package manifest.',
+        'Manual recovery: run pi install npm:pi-subagents-j0k3r@9.0.0 --no-approve, then verify with pi list and the installed package manifest.',
     });
-    expect(installCalls).toContain('npm:pi-subagents@9.0.0');
+    expect(installCalls).toContain('npm:pi-subagents-j0k3r@9.0.0');
   });
 
   test('rejects installed package evidence with the expected name at the wrong version', () => {
@@ -724,7 +728,7 @@ describe('Pi setup', () => {
       error: expect.stringContaining(failedSource),
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:pi-subagents@>=0.71.0',
+        'npm:pi-subagents-j0k3r@>=1.6.1',
         'npm:@upstash/context7-pi@>=0.1.2',
       ],
     });
@@ -762,31 +766,20 @@ describe('Pi setup', () => {
     });
   });
 
-  test('merges required delegation settings without overwriting unrelated user settings', () => {
+  test('merges j0k3r global delegation settings without overwriting unrelated settings', () => {
     expect(
-      mergePiUserSettings({ theme: 'dark', subagents: { fleetView: false } }),
-    ).toEqual({
-      theme: 'dark',
-      subagents: { fleetView: false, disableBuiltins: true },
-    });
-    expect(
-      mergePiSubagentConfig({
-        inlineToolDisplay: 'summary',
-        waitTool: false,
-        missions: { enabled: true, directory: '/custom/missions' },
-        scheduledRuns: { enabled: true, maxPending: 7 },
+      mergePiSubagentsConfig({
+        session_resources: 'full',
+        enable_continue: true,
+        execution_mode: 'background',
+        operatorSetting: 'preserve',
       }),
     ).toEqual({
-      inlineToolDisplay: 'summary',
-      waitTool: false,
-      missions: { enabled: false, directory: '/custom/missions' },
-      scheduledRuns: { enabled: false, maxPending: 7 },
-      defaultSubagentContext: 'fresh',
-      maxSubagentDepth: 1,
+      session_resources: 'lean',
+      enable_continue: false,
+      execution_mode: 'background',
+      operatorSetting: 'preserve',
     });
-    expect(() => mergePiUserSettings({ subagents: 'invalid' })).toThrow(
-      'subagents must be a JSON object',
-    );
   });
 
   test('blocks a legacy delegation declaration during dry-run without deleting user settings', () => {
@@ -795,13 +788,13 @@ describe('Pi setup', () => {
     mkdirSync(dirname(settingsPath), { recursive: true });
     const settings = {
       theme: 'dark',
-      packages: [{ source: 'npm:pi-subagents-j0k3r@1.5.9', skills: [] }],
+      packages: [{ source: 'npm:pi-subagents@0.72.0', skills: [] }],
     };
     writeFileSync(settingsPath, JSON.stringify(settings));
     const plan = buildPiSetupPlan({ ...paths, dryRun: true });
     expect(plan.ready).toBe(false);
     expect(plan.blockers).toEqual([
-      expect.stringContaining('pi-subagents-j0k3r@1.5.9'),
+      expect.stringContaining('pi-subagents@0.72.0'),
     ]);
     expect(applyPiSetup(plan).success).toBe(false);
     expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual(settings);
@@ -821,7 +814,7 @@ describe('Pi setup', () => {
         if (args[0] === 'list')
           return {
             exitCode: 0,
-            stdout: 'User packages:\n  npm:pi-subagents-j0k3r@1.5.9',
+            stdout: 'User packages:\n  npm:pi-subagents@0.72.0',
             stderr: '',
           };
         return { exitCode: 0, stdout: '', stderr: '' };
@@ -830,7 +823,7 @@ describe('Pi setup', () => {
     expect(applyPiSetup(plan)).toMatchObject({
       success: false,
       failedStep: 'preflight',
-      error: expect.stringContaining('pi-subagents-j0k3r'),
+      error: expect.stringContaining('pi-subagents@0.72.0'),
       manualRecovery: expect.stringContaining('pi remove'),
     });
     expect(calls.some((call) => call.includes('pi install'))).toBe(false);
@@ -1035,7 +1028,9 @@ describe('Pi setup', () => {
       receiptCommitted: false,
     });
     expect(calls).toContain('pi remove npm:thoth-agents@0.3.12 --no-approve');
-    expect(calls.some((call) => call.includes('pi-subagents@'))).toBe(false);
+    expect(calls.some((call) => call.includes('npm:pi-subagents-j0k3r@'))).toBe(
+      false,
+    );
   });
 
   test('restores and verifies the exact prior receipt-owned source after replacement failure', () => {

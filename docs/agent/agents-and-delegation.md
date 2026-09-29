@@ -114,25 +114,20 @@ that can change the result:
   from exact low-risk edits through coupled contracts, shared state, migrations,
   concurrency, edge cases, and high-risk work.
 
-For Pi, always use one direct `subagent` call per specialist, including when
-multiple specialists are ready. Never use Pi subagent orchestration APIs such as
-`workflow`, `workflowScript`, `workflowScriptPath`, or `runs.*`; the root
-coordinates readiness, dependencies, and acceptance rather than delegating
-orchestration. This is instruction-level policy, not runtime enforcement;
-higher-priority Pi or extension instructions remain authoritative and conflicts
-must be reported. Every direct specialist launch must explicitly supply an
-`async` boolean chosen by root: use `async: false` for suitable intentional
-foreground execution, and `async: true` when background concurrency or provider
-loading requires it. Never omit `async` or rely on the overridable
-`asyncByDefault`. Librarian launches explicitly request `async: true` because
-the frontmatter and `asyncByDefault` values are overridable and foreground
-children do not load ambient extensions. Provider loading and required-tool
-registration are independent checks; verify both before claiming evidence.
-
-Native harness execution and lifecycle are the sole authority for role selection,
-fan-out, status/wait, steering, cancellation, and terminal results. If a native
-primitive is unavailable or unproven, report the degradation and use a truthful
-sequential fallback; do not emulate another runtime.
+For Pi, use the public j0k3r `subagent_run` tool once per specialist, with an
+explicit canonical `agent`, bounded `task`, and `mode: "task"` or
+`"background"`. Launch separate ready background tasks before collecting
+results. The root coordinates readiness, dependencies, and acceptance. Use
+`subagent_status`, `subagent_result`, and `subagent_cancel` with the known
+`task_id`; terminal notifications wake the parent, so do not poll. A cancellation
+acknowledgement alone is not proof of termination, and `enable_continue: false`
+means continuation must not be assumed. These instructions are not runtime
+permissions: j0k3r provides no enforced delegation depth, tool allowlist, or
+`PI_SUBAGENT_CHILD` marker. The required `session_resources: "lean"` setting
+filters `before_agent_start` and `session_start` but is not a process or OS
+sandbox; project-local `subagents.json` can override the global setting. If a native primitive is
+unavailable or unproven, report the degradation and use a truthful sequential
+fallback; do not emulate another runtime.
 
 ## Subagent session lifecycle
 
@@ -151,7 +146,7 @@ clarify its current findings without issuing a new judgment.
 | OpenCode | Call `task` without `task_id`. | Pass the prior `task_id`. |
 | Codex | Call `collaboration.spawn_agent` with `fork_turns="none"`; set `agent_type` when the active schema exposes it, otherwise use a role-prefixed bounded fallback and report instruction-only selection. | Call `collaboration.followup_task` for the existing agent. |
 | Claude Code | Use a normal `Agent` invocation and do not use `fork` for independent work. | Use `SendMessage` with the prior agent ID. |
-| Pi | Call `subagents_enable({})`, then on the next request call `subagent` with one canonical `agent`, a bounded `task`, and an explicit `async` boolean chosen by root. Thoth normally requests `context: "fresh"`; native `fork` and `profile` remain available when policy intentionally selects them. Use `async: false` for suitable intentional foreground execution or `async: true` when background concurrency or provider loading is needed, especially for librarian/MCP work; never omit `async` or rely on `asyncByDefault`. | Use native `subagent` actions with the known run `id`: `status`, `stop`, or `steer` (`mode: steer|follow_up|auto`). |
+| Pi | Call `subagent_run` with one canonical `agent`, bounded `task`, and explicit task or background mode; launch independent ready background tasks before collection. | Use `subagent_status`, `subagent_result`, and `subagent_cancel` with the known `task_id`; terminal notifications wake the parent. |
 
 ## Entrypoints and tests
 

@@ -26,9 +26,15 @@ describe('Pi agent writer', () => {
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');
       expect(artifact.content).not.toMatch(/^tools:/m);
-      expect(artifact.content).toContain('defaultContext: fresh');
-      expect(artifact.content).toContain('maxSubagentDepth: 1');
-      expect(artifact.content).not.toContain('\neffort:');
+      expect(artifact.content).toMatch(/^effort: "(?:low|medium|high|max)"$/m);
+      expect(artifact.content).toContain(
+        artifact.path === 'agents/thoth-librarian.md'
+          ? 'subagent_mode: "background"'
+          : 'subagent_mode: "task"',
+      );
+      expect(artifact.content).not.toMatch(
+        /^(?:thinking|async|defaultContext|maxSubagentDepth):/m,
+      );
       expect(artifact.content).toContain(
         `name: ${artifact.path.slice('agents/'.length, -'.md'.length)}`,
       );
@@ -36,7 +42,6 @@ describe('Pi agent writer', () => {
     const librarian = agents.find(
       (artifact) => artifact.path === 'agents/thoth-librarian.md',
     );
-    expect(librarian?.content).toContain('async: true');
     expect(librarian?.content).toContain('provider is loaded');
     expect(librarian?.content).not.toContain('tool allowlist');
     for (const artifact of agents.filter(

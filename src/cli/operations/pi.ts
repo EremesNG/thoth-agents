@@ -33,6 +33,7 @@ import {
   buildPiSetupPlan,
   getPiFirstPartyPackages,
   hasExactInstalledPiPackage,
+  isPiIncumbentDelegationSource,
   isVersionAtLeast,
   PI_MINIMUM_VERSION,
   PI_NODE_MINIMUM,
@@ -197,7 +198,12 @@ function disclaimers() {
     {
       code: 'pi-runtime-owned',
       message:
-        'Pi and pi-subagents own execution, concurrency, task/history storage, trust, and lifecycle.',
+        'Pi and pi-subagents-j0k3r own execution, concurrency, task/history storage, trust, and lifecycle.',
+    },
+    {
+      code: 'pi-lean-resources-global-only',
+      message:
+        'Global subagents.json requests lean session resources; project-local subagents.json may override it, and full child resource mode is unsupported.',
     },
     {
       code: 'pi-research-independent',
@@ -288,6 +294,10 @@ function runtimeTarget(
     observed: evidence.state,
     description: evidence.basis.join('; '),
   };
+}
+
+function incumbentDelegationRecovery(source: string): string {
+  return `Incumbent Pi delegation runtime ${source} conflicts with ${PI_PACKAGE_SPECS[0].source}. Review its ownership, then run: pi remove ${source} --no-approve and rerun setup.`;
 }
 
 function runtimeDiagnostic(
@@ -397,6 +407,9 @@ function statusFromPlan(
   );
   const configuredPackages =
     packages.exitCode === 0 ? parsePiPackageList(packages.stdout) : [];
+  const incumbentDelegation = configuredPackages.find(({ source }) =>
+    isPiIncumbentDelegationSource(source),
+  );
   for (const target of targets.filter(
     (candidate) =>
       candidate.kind === 'package' && candidate.path?.startsWith('npm:'),
@@ -430,6 +443,16 @@ function statusFromPlan(
       target.observed = target.state;
     }
   }
+  if (incumbentDelegation)
+    targets.push({
+      kind: 'package',
+      path: incumbentDelegation.source,
+      label: 'Pi incumbent delegation runtime',
+      state: 'drift',
+      expected: 'not configured alongside pi-subagents-j0k3r',
+      observed: incumbentDelegation.source,
+      description: incumbentDelegationRecovery(incumbentDelegation.source),
+    });
   const receiptOptions = context.installLedgerOptions ?? {
     env: context.env,
     homeDir: context.homeDir,
@@ -605,6 +628,18 @@ function statusFromPlan(
     ...plan.blockers.map((message) =>
       warning(message, 'pi-preflight-blocked', 'critical'),
     ),
+    ...(incumbentDelegation &&
+    !plan.blockers.some((message) =>
+      message.includes(incumbentDelegation.source),
+    )
+      ? [
+          warning(
+            incumbentDelegationRecovery(incumbentDelegation.source),
+            'pi-incumbent-delegation-conflict',
+            'critical',
+          ),
+        ]
+      : []),
     ...plan.diagnostics.map((message) =>
       warning(message, 'pi-resource-shadowing'),
     ),
@@ -803,6 +838,22 @@ function piPlan(
         },
       ]
     : [];
+  const incumbentDelegation = status.targets.find(
+    ({ label }) => label === 'Pi incumbent delegation runtime',
+  );
+  const delegationBlockers: ManagedTarget[] = incumbentDelegation
+    ? [
+        {
+          kind: 'package',
+          path: incumbentDelegation.path,
+          label: 'Pi delegation runtime blocker',
+          state: 'drift',
+          observed:
+            incumbentDelegation.description ??
+            `${incumbentDelegation.observed} conflicts with ${PI_PACKAGE_SPECS[0].source}. Remove it manually before applying ${action}.`,
+        },
+      ]
+    : [];
   const syncSkillsUnavailable =
     action === 'sync' &&
     (!configuredPackageRoot ||
@@ -835,6 +886,7 @@ function piPlan(
       setup.ready &&
       (!complete || version.ok) &&
       ownershipBlockers.length === 0 &&
+      delegationBlockers.length === 0 &&
       syncSkillBlockers.length === 0,
     targets: status.targets,
     blockerTargets: [
@@ -845,6 +897,7 @@ function piPlan(
         observed: message,
       })),
       ...ownershipBlockers,
+      ...delegationBlockers,
       ...syncSkillBlockers,
     ],
     surfaces: setup.items

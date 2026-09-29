@@ -121,9 +121,9 @@ export default function thothAgentsPiExtension(
   pi: PiExtensionApi,
   options: PiExtensionOptions = {},
 ): void {
-  // pi-subagents loads ambient extensions in child processes; root authority
-  // and global resource synchronization must stay in the parent.
-  if (process.env.PI_SUBAGENT_CHILD === '1') return;
+  // j0k3r SDK children run in-process and expose no child marker. Activation
+  // only registers callbacks; session_resources: "lean" must filter these two
+  // root lifecycle hooks from Thoth children before their root-only work can run.
   pi.registerCommand?.('thoth-agents:models', {
     description: 'Edit global Thoth specialist models',
     handler: async (_args, ctx) => {

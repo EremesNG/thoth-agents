@@ -8,6 +8,7 @@ import {
   CLAUDE_CODE_PROMPT_DIALECT,
   CODEX_PROMPT_DIALECT,
   OPENCODE_PROMPT_DIALECT,
+  PI_PROMPT_DIALECT,
 } from './prompt-dialects';
 import {
   createOrchestratorPromptSections,
@@ -309,12 +310,30 @@ describe('AI-first prompt rendering', () => {
     expect(claude).toContain('Agent(run_in_background=true)');
     expect(claude).toContain('TaskOutput');
     expect(opencode).toContain('task_status');
-    expect(pi).toContain('subagents_enable({})');
-    expect(pi).toContain('subagent({ agent, task');
-    expect(pi).toContain('action: "status"');
-    expect(pi).toContain('action: "stop"');
-    expect(pi).not.toContain('subagent_run');
-    expect(pi).not.toContain('subagent_result');
+    expect(pi).toContain('subagent_run');
+    expect(pi).toContain('subagent_status({ task_id })');
+    expect(pi).toContain('subagent_result({ task_id })');
+    expect(pi).toContain('subagent_cancel({ task_id })');
+    expect(pi).not.toContain('subagents_enable({})');
+    expect(pi).not.toContain('subagent({ agent');
+    expect(pi).not.toContain('context: "fresh"');
+  });
+
+  test('renders Pi ready-task fan-out and native terminal notification semantics', () => {
+    const prompt = renderRolePrompt(
+      createOrchestratorPromptSections(),
+      PI_PROMPT_DIALECT,
+    );
+    expect(prompt).toContain(
+      'subagent_run({ agent, task, mode: "background" })',
+    );
+    expect(prompt.toLowerCase()).toContain('launch separate background runs');
+    expect(prompt).toContain('before collecting results');
+    expect(prompt.toLowerCase()).toContain(
+      'native terminal notifications (`triggerturn`/`followup`) wake the parent',
+    );
+    expect(prompt).toContain('Do not poll status or sleep merely to wait');
+    expect(prompt).toContain('cancellation-acknowledged state');
   });
 
   test('keeps child memory authorization and compact return fields', () => {

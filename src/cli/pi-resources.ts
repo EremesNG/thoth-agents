@@ -58,9 +58,6 @@ function preserveOverrides(next: string, current: string): string {
   if (end < 0) return next;
   let frontmatter = next.slice(0, end);
 
-  // Bounded migration from the old thoth-managed schema. `default` formerly
-  // meant parent inheritance; pi-subagents requires the explicit native model
-  // sentinel so a global subagents.defaultModel cannot intercept that intent.
   const oldModel = field(current, 'model');
   const transitionalModelInherit = isSentinel(
     field(current, 'thoth-model-inherit') ?? '',
@@ -73,31 +70,23 @@ function preserveOverrides(next: string, current: string): string {
       !oldModel || isSentinel(oldModel, 'default') ? '"inherit"' : oldModel,
     );
 
-  const thinking = field(current, 'thinking');
-  const oldEffort = field(current, 'effort');
-  const transitionalThinkingInherit = isSentinel(
-    field(current, 'thoth-thinking-inherit') ?? '',
-    'true',
-  );
-  if (thinking)
-    frontmatter = replaceField(
-      frontmatter,
-      'thinking',
-      isSentinel(thinking, 'default') || isSentinel(thinking, 'inherit')
-        ? undefined
-        : thinking,
-    );
-  else if (oldEffort)
-    frontmatter = replaceField(
-      frontmatter,
-      'thinking',
-      isSentinel(oldEffort, 'default') || isSentinel(oldEffort, 'inherit')
-        ? undefined
-        : oldEffort,
-    );
-  else if (transitionalThinkingInherit || field(current, 'defaultContext'))
-    // In the native schema omission intentionally leaves thinking unpinned.
-    frontmatter = replaceField(frontmatter, 'thinking', undefined);
+  // Migrate legacy thinking values once; absent effort on an existing owned
+  // definition means inherit, so later package syncs must not re-pin a default.
+  const oldEffort = field(current, 'effort') ?? field(current, 'thinking');
+  const preservesInheritance =
+    oldEffort === undefined &&
+    (isSentinel(field(current, 'thoth-thinking-inherit') ?? '', 'true') ||
+      field(current, 'defaultContext') !== undefined ||
+      field(current, 'subagent_mode') !== undefined);
+  const effort = oldEffort
+    ? isSentinel(oldEffort, 'default') || isSentinel(oldEffort, 'inherit')
+      ? undefined
+      : oldEffort
+    : preservesInheritance
+      ? undefined
+      : field(next, 'effort');
+  frontmatter = replaceField(frontmatter, 'effort', effort);
+  frontmatter = replaceField(frontmatter, 'thinking', undefined);
 
   return `${frontmatter}${next.slice(end)}`;
 }

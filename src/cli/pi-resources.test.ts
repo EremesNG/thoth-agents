@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { piAdapter } from '../harness/adapters/pi';
+import { readPiModelConfig, savePiModelConfig } from './pi-model-config';
 import { PI_SPECIALIST_NAMES, syncPiSpecialists } from './pi-resources';
 
 const roots: string[] = [];
@@ -51,7 +52,7 @@ describe('Pi specialist synchronization', () => {
     expect(syncPiSpecialists(options).success).toBe(true);
     const content = readFileSync(target, 'utf8');
     expect(content).toContain('model: "openai-codex/gpt-6-luna"');
-    expect(content).toContain('thinking: "max"');
+    expect(content).toContain('effort: "max"');
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
@@ -66,28 +67,112 @@ describe('Pi specialist synchronization', () => {
       changed: [],
     });
   });
-  test('preserves supported model and thinking state on attributable updates', () => {
+  test('preserves supported model and effort state on attributable updates', () => {
     const options = fixture();
     writeFileSync(
       join(options.packageRoot, 'pi', 'agents', 'thoth-worker.md'),
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "openai-codex/gpt-5.6-sol"\nthinking: "medium"\n---\nfresh\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "openai-codex/gpt-5.6-sol"\neffort: "medium"\n---\nfresh\n',
     );
     const target = join(options.piRoot, 'agents', 'thoth-worker.md');
     mkdirSync(join(options.piRoot, 'agents'), { recursive: true });
     writeFileSync(
       target,
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\nthinking: high\n---\nstale\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: high\n---\nstale\n',
     );
     expect(syncPiSpecialists(options).success).toBe(true);
     expect(readFileSync(target, 'utf8')).toContain('model: custom/model');
-    expect(readFileSync(target, 'utf8')).toContain('thinking: high');
+    expect(readFileSync(target, 'utf8')).toContain('effort: high');
+  });
+
+  test('preserves max and inheritance across edit, sync, and model reread', () => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    expect(syncPiSpecialists(options).success).toBe(true);
+
+    const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+    const snapshot = readPiModelConfig(options.piRoot);
+    const edited = savePiModelConfig(snapshot, [
+      {
+        role: 'worker',
+        model: 'provider/chosen',
+        availableEfforts: ['max'],
+        effort: { kind: 'effort', value: 'max' },
+      },
+    ]);
+    expect(edited.success).toBe(true);
+
+    const editedContent = readFileSync(target, 'utf8');
+    writeFileSync(
+      target,
+      editedContent.replace(
+        'effort: "max"',
+        'thinking: "max"\ndefaultContext: fresh',
+      ),
+    );
+    const packageWorker = join(
+      options.packageRoot,
+      'pi',
+      'agents',
+      'thoth-worker.md',
+    );
+    writeFileSync(
+      packageWorker,
+      readFileSync(packageWorker, 'utf8')
+        .replace('model: "openai-codex/gpt-6-luna"', 'model: "provider/next"')
+        .replace('effort: "max"', 'effort: "medium"'),
+    );
+
+    expect(syncPiSpecialists(options).success).toBe(true);
+    let migrated = readFileSync(target, 'utf8');
+    expect(migrated).toContain('model: "provider/chosen"');
+    expect(migrated).toContain('effort: "max"');
+    expect(migrated).not.toMatch(/^(?:thinking|defaultContext):/m);
+    expect(
+      readPiModelConfig(options.piRoot).roles.find(
+        ({ role }) => role === 'worker',
+      ),
+    ).toMatchObject({
+      model: 'provider/chosen',
+      effort: { kind: 'effort', value: 'max' },
+    });
+    expect(syncPiSpecialists(options).changed).toEqual([]);
+
+    const inherited = savePiModelConfig(readPiModelConfig(options.piRoot), [
+      { role: 'worker', model: 'inherit', effort: { kind: 'inherit' } },
+    ]);
+    expect(inherited.success).toBe(true);
+    writeFileSync(
+      packageWorker,
+      readFileSync(packageWorker, 'utf8')
+        .replace('model: "provider/next"', 'model: "provider/latest"')
+        .replace('effort: "medium"', 'effort: "high"'),
+    );
+    expect(syncPiSpecialists(options).success).toBe(true);
+    migrated = readFileSync(target, 'utf8');
+    expect(migrated).toContain('model: "inherit"');
+    expect(migrated).not.toMatch(/^(?:thinking|effort):/m);
+    expect(
+      readPiModelConfig(options.piRoot).roles.find(
+        ({ role }) => role === 'worker',
+      ),
+    ).toMatchObject({
+      model: 'inherit',
+      effort: { kind: 'inherit' },
+    });
+    expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
   test('transitions old managed defaults and effort without losing user intent', () => {
     const options = fixture();
     writeFileSync(
       join(options.packageRoot, 'pi', 'agents', 'thoth-worker.md'),
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "new/default"\nthinking: "medium"\ndefaultContext: fresh\n---\nfresh\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "new/default"\neffort: "medium"\nsubagent_mode: "task"\n---\nfresh\n',
     );
     const target = join(options.piRoot, 'agents', 'thoth-worker.md');
     mkdirSync(dirname(target), { recursive: true });
@@ -108,15 +193,15 @@ describe('Pi specialist synchronization', () => {
     expect(syncPiSpecialists(options).success).toBe(true);
     content = readFileSync(target, 'utf8');
     expect(content).toContain('model: custom/model');
-    expect(content).toContain('thinking: high');
-    expect(content).not.toMatch(/^effort:/m);
+    expect(content).toContain('effort: high');
+    expect(content).not.toMatch(/^thinking:/m);
   });
 
-  test('preserves native model inheritance and independent thinking omission', () => {
+  test('preserves model inheritance and independent effort omission', () => {
     const options = fixture();
     writeFileSync(
       join(options.packageRoot, 'pi', 'agents', 'thoth-worker.md'),
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "new/default"\nthinking: "medium"\ndefaultContext: fresh\n---\nfresh\n',
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: "new/default"\neffort: "medium"\nsubagent_mode: "task"\n---\nfresh\n',
     );
     const target = join(options.piRoot, 'agents', 'thoth-worker.md');
     mkdirSync(dirname(target), { recursive: true });
@@ -127,7 +212,7 @@ describe('Pi specialist synchronization', () => {
     expect(syncPiSpecialists(options).success).toBe(true);
     const content = readFileSync(target, 'utf8');
     expect(content).toContain('model: "inherit"');
-    expect(content).not.toMatch(/^thinking:/m);
+    expect(content).not.toMatch(/^(?:thinking|effort):/m);
     expect(content).not.toContain('thoth-model-inherit');
 
     writeFileSync(
@@ -137,7 +222,8 @@ describe('Pi specialist synchronization', () => {
     expect(syncPiSpecialists(options).success).toBe(true);
     const transitioned = readFileSync(target, 'utf8');
     expect(transitioned).toContain('model: custom/model');
-    expect(transitioned).toContain('thinking: high');
+    expect(transitioned).toContain('effort: high');
+    expect(transitioned).not.toContain('thinking:');
     expect(transitioned).not.toContain('thoth-model-inherit');
     expect(transitioned).not.toContain('thoth-thinking-inherit');
   });

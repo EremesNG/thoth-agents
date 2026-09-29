@@ -34,7 +34,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `pi-subagents@0.71.0` and the research packages | The package injects one bounded adaptive-root block, configures fresh depth-one delegation, synchronizes five specialists, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:pi-subagents-j0k3r@>=1.6.1` and the research packages | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five j0k3r specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -206,8 +206,8 @@ The CLI installs and verifies these Pi packages in order:
 
 1. the exact executing `npm:thoth-agents@<version>` first-party package, or the
    explicit local package root selected by `--local-package-root`;
-2. `pi-subagents@0.71.0` for native direct specialist execution and
-   lifecycle control;
+2. `npm:pi-subagents-j0k3r@>=1.6.1` for native direct specialist execution
+   and task-ID lifecycle control;
 3. `@upstash/context7-pi@0.1.2` as a native Context7 extension;
 4. `pi-web-access@0.27.0` as the native web extension exposing the default
    `web_search`, `fetch_content`, `get_search_content`, and `source_check` tools;
@@ -223,10 +223,11 @@ Previously installed `@juicesharp/rpiv-todo` remains untouched; users decide whe
 to keep it. Progress tracking never replaces native delegation or `.thoth/`
 change records.
 
-The old `pi-subagents-j0k3r` runtime is not supported beside `pi-subagents`.
-When setup detects it, setup stops before mutation and prints a manual `pi remove`
-recovery command; it never deletes a user package or silently loads both runtimes.
-Review ownership, remove the old runtime explicitly, and rerun setup.
+The incumbent `pi-subagents` runtime is not supported beside
+`pi-subagents-j0k3r`. When setup detects `pi-subagents`, it stops before
+mutation and prints a manual `pi remove` recovery command; it never deletes a
+user package or silently loads both runtimes. Review ownership, remove the
+incumbent explicitly with Pi's package manager, and rerun setup.
 
 Before running complete setup on an installation that has either replaced web
 package, remove both with Pi's native package manager:
@@ -295,19 +296,19 @@ package succeeds and a later step fails, the ledger remains unchanged; resolve
 the reported blocker and rerun the idempotent complete flow. Do not delete
 unknown Pi packages or provider assets as a recovery shortcut.
 
-Setup safely merges `subagents.disableBuiltins: true` into Pi's user
-`settings.json` and writes `defaultSubagentContext: "fresh"` plus
-`maxSubagentDepth: 1`, `missions.enabled: false`, and
-`scheduledRuns.enabled: false` under
-`<agent-dir>/extensions/subagent/config.json`, preserving unrelated settings.
-Every specialist also declares fresh context and depth one. The librarian is
-background-default because research providers and MCP tools must be loaded in
-its child runtime. That frontmatter default is overridable, so root guidance
-explicitly passes `async:true` for librarian calls; every direct specialist
-launch supplies its own root-selected boolean rather than relying on that
-default. Foreground children do not load ambient parent extensions; before
-claiming evidence, it verifies that the relevant Context7, web-access, or MCP
-provider is loaded and every required tool is registered.
+Setup safely merges `session_resources: "lean"` and `enable_continue: false`
+into the global `<agent-dir>/subagents.json` (normally
+`~/.pi/agent/subagents.json`), preserving unrelated settings. Lean resources
+filter `before_agent_start` and `session_start` from child sessions; full child
+resources are unsupported. A project-local `subagents.json` can override the
+global setting and invalidate lean isolation, so check project configuration
+separately.
+Definitions do not provide a `PI_SUBAGENT_CHILD` marker, enforced delegation
+depth, or tool allowlist; role boundaries remain instruction-level, and
+extensions still run with the invoking user's system permissions. The librarian
+definition defaults to background mode for provider access; verify the relevant
+Context7, web-access, or MCP provider and required tools before claiming
+research evidence.
 
 The five specialist definitions use `thoth-` names in both filenames and
 frontmatter: `thoth-explorer`, `thoth-librarian`, `thoth-oracle`,
@@ -318,36 +319,29 @@ using a reserved `thoth-` specialist name blocks installation. During explicit
 setup or synchronization, obsolete `thoth-quick` and `thoth-deep` definitions
 are retired only when their ownership and paths are proven safe. Unowned old
 role files and an unowned `thoth-worker` collision are preserved and reported;
-old role model or thinking customizations are not copied to Worker.
+old role model or effort customizations are not copied to Worker.
 
-Delegation is lazily activated with `subagents_enable({})`; `subagent` becomes
-available on the next model request. Thoth starts each bounded specialist
-assignment with one direct call, for example
-`subagent({agent:"thoth-explorer", task:"...", context:"fresh", async:false})`
-for a suitable intentional foreground launch, and uses one call per specialist
-even when dispatching multiple specialists. Put the bounded Thoth envelope in
-`task`. Native context also supports `fork` and `profile`; Thoth policy chooses
-`fresh` unless inherited context is intentional. Root coordinates readiness,
-dependencies, and acceptance. Every direct specialist launch explicitly supplies
-an `async` boolean chosen by root: use `async:false` for suitable intentional
-foreground execution or `async:true` when background concurrency or provider
-loading is needed, especially for librarian/MCP work. Never omit `async` or rely
-on `asyncByDefault`. Foreground children do not load ambient parent extensions.
+Each fresh assignment uses one `subagent_run` call with a canonical specialist,
+a bounded task, and an explicit mode, for example
+`subagent_run({agent:"thoth-explorer", task:"...", mode:"task"})` for a
+foreground task or `mode:"background"` for independent concurrent work. Launch
+separate ready background assignments before collecting results; root
+coordinates readiness, dependencies, and acceptance. Use
+`subagent_status({task_id})`, `subagent_result({task_id})`, and
+`subagent_cancel({task_id})` only for a known task. Terminal notifications wake
+the parent, so return control rather than polling. A cancellation acknowledgement
+alone does not prove termination, and continuation is disabled by configuration.
 
-Never use Pi subagent orchestration APIs such as `workflow`, `workflowScript`,
-`workflowScriptPath`, or `runs.*`, including for multiple specialists. This is
-instruction-level policy, not runtime enforcement; higher-priority Pi or
-extension instructions remain authoritative and conflicts must be reported.
-Native lifecycle actions are `subagent({action:"status"|"stop"|"steer", id, ...})`;
-steering mode is `steer|follow_up|auto`. Native completion notifications wake
-ordinary background work; return control instead of polling. When enabled,
-`bg_wait({id})` provides a blocking wait for detached/provider work that needs a
-same-turn result. Queued messages and nonterminal status never count as fan-in.
+Children run in the owning Pi session. Graceful session shutdown cancels active
+children; abrupt shutdown or cleanup of arbitrary descendants is not guaranteed.
+Do not invent batch, fresh-context, workflow, depth-enforcement, or child-marker
+controls absent from the runtime contract. Lean filters extension lifecycle
+hooks, not process permissions or host tools.
 
 Pi specialists use the shared OpenAI role preset through the `openai-codex`
-provider. The ambient root retains Pi's selected model and thinking level:
+provider. The ambient root retains Pi's selected model and effort settings:
 
-| Specialist | Model | Thinking |
+| Specialist | Model | Effort |
 | --- | --- | --- |
 | explorer | `openai-codex/gpt-6-luna` | `low` |
 | librarian | `openai-codex/gpt-6-luna` | `high` |
@@ -355,14 +349,11 @@ provider. The ambient root retains Pi's selected model and thinking level:
 | designer | `openai-codex/gpt-6-sol` | `medium` |
 | worker | `openai-codex/gpt-6-luna` | `max` |
 
-Definitions use pi-subagents' `model` and `thinking` fields. Synchronization
-translates old managed `model: default` to native `model: inherit`, translates
-old `effort` values to `thinking`, and preserves explicit frontmatter values.
-Native model inheritance is explicit so `subagents.defaultModel` cannot intercept
-it. Thinking remains independent: an inherit choice omits `thinking`, matching
-the pinned runtime parser rather than inventing a sentinel. An explicit model
-override keeps its provider-qualified ID and omits `thinking`, so the runtime
-selects thinking independently instead of imposing the OpenAI preset. Use a
+Definitions use j0k3r-supported `model`, `effort`, and `subagent_mode` fields.
+Synchronization migrates legacy `thinking` values to `effort`, preserves
+explicit model and effort overrides (including `max`), and translates legacy
+`model: default` to `model: inherit`. Inheritance stays unpinned by omitting an
+effort value; explicit models retain their provider-qualified IDs. Use a
 provider/model available in the local Pi catalog; installation does not
 authenticate providers or silently substitute models.
 
@@ -373,8 +364,9 @@ five Thoth specialists, not the ambient root. It does not create profiles or
 project configuration, install packages, or authenticate providers.
 
 - Use ↑/↓ and Enter to select a role. Type to search Pi's current model catalog,
-  select a model, then choose a supported thinking level (including `max` where
-  supported). `inherit` uses the native inheritance behavior described above.
+  select a model, then choose a supported effort level (including `max` where
+  supported). `inherit` uses the native model and effort inheritance behavior
+  described above.
 - Press `s` on the overview to save. Escape backs out or cancels; a dirty draft
   requires explicit discard confirmation. Draft edits do not write files.
 - Saved overrides remain in `~/.pi/agent/agents/thoth-*.md` and survive specialist
@@ -383,7 +375,8 @@ project configuration, install packages, or authenticate providers.
 - Changes are picked up on subsequent specialist discovery; already-running
   children and the parent model are unchanged. Native settings, provider-specific
   overrides, and project definitions can take precedence over these stored global
-  values. Thinking inheritance is unpinned and may use `subagents.defaultThinking`.
+  values. An omitted effort remains unpinned for native inheritance/default
+  behavior.
 - If a definition changes externally while the panel is open, reopen it before
   saving. Missing/unowned definitions and unsafe paths are rejected. Writes are
   atomic per file, not across all five files: a failure identifies roles already

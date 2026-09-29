@@ -275,33 +275,35 @@ export const CLAUDE_CODE_PROMPT_DIALECT: HarnessPromptDialect = {
 export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
   harness: 'pi',
   tools: {
-    delegationTool: 'subagent',
-    backgroundDelegationTool: 'subagent',
-    backgroundStatusTool: 'subagent({ action: "status", id })',
+    delegationTool: 'subagent_run',
+    backgroundDelegationTool:
+      'subagent_run({ agent, task, mode: "background" })',
+    backgroundStatusTool: 'subagent_status({ task_id })',
     backgroundWaitInstruction:
-      'Background runs notify the parent on completion. Do not sleep or poll status merely to wait; use `bg_wait({ id })` only when a blocking wait is needed and enabled.',
+      'Launch separate background runs with `subagent_run({ agent, task, mode: "background" })` before collecting results. Native terminal notifications (`triggerTurn`/`followUp`) wake the parent. Do not poll status or sleep merely to wait.',
     userQuestionTool: 'ask_user_question',
-    hostStatusSurface: 'subagent({ action: "status" })',
+    hostStatusSurface: 'subagent_status({ task_id })',
     lifecycle: {
       freshDelegation:
-        '`subagent` with one exact canonical `agent` and `task`, plus `context: "fresh"`',
+        '`subagent_run` with one canonical `agent`, a fresh bounded `task`, and an explicit `mode` of `"task"` or `"background"`',
       sameAssignmentContinuation:
-        '`subagent({ action: "steer", id, message, mode: "steer" | "follow_up" | "auto" })` for a live run or an explicit `resume` action for retained work',
+        '`subagent_send_message` only when exposed and its schema is confirmed; `subagent_continue` is unavailable unless `enable_continue` is explicitly enabled',
       independentContext:
-        'a new objective, phase, mutable surface, or independent judgment starts a fresh `subagent` run with the bounded envelope in `task`',
-      statusAction: 'inspect status, stop, steer, or resume by run id',
+        'a new objective, phase, mutable surface, or independent judgment uses a fresh `subagent_run`; optional `context` is plain supporting text, not a context-mode selector',
+      statusAction:
+        '`subagent_status`, `subagent_result`, or `subagent_cancel` by `task_id`',
       terminalState:
-        'a terminal completion notification or terminal status outcome',
+        'a native terminal completion notification or terminal task-id result',
       nonterminalState:
-        'running, queued, timed-out, malformed, or merely message-accepted state',
+        'running, queued, timed-out, malformed, message-accepted, or cancellation-acknowledged state',
       sameSessionProbe:
-        '`subagent({ action: "status", id })` for the current parent-owned run',
+        '`subagent_status({ task_id })` for the current parent-owned assignment',
       enforcement: 'runtime-supported',
     },
     roleReference: (role) =>
       role === 'orchestrator'
         ? 'the ambient Pi root'
-        : `subagent({ agent: "${piSpecialistName(role)}", task: "…", context: "fresh"${role === 'librarian' ? ', async: true' : ''} })`,
+        : `subagent_run({ agent: "${piSpecialistName(role)}", task: "…", mode: "${role === 'librarian' ? 'background' : 'task'}" })`,
   },
   capabilities: {
     capabilities: PI_PROMPT_CAPABILITIES,
@@ -312,13 +314,13 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       case 'root-coordinator':
         return 'ambient Pi root session coordinator';
       case 'task':
-        return 'single-agent subagent';
+        return 'subagent_run';
     }
   },
   renderRoleInvocation(role) {
     return role === 'orchestrator'
       ? 'ambient Pi root'
-      : `subagent({ agent: "${piSpecialistName(role)}", task: "…", context: "fresh"${role === 'librarian' ? ', async: true' : ''} })`;
+      : `subagent_run({ agent: "${piSpecialistName(role)}", task: "…", mode: "${role === 'librarian' ? 'background' : 'task'}" })`;
   },
 };
 

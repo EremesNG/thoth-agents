@@ -28,8 +28,8 @@ describe('Pi paths', () => {
     expect(paths.settingsPath).toBe(
       join(homeDir, '.pi', 'agent', 'settings.json'),
     );
-    expect(paths.subagentConfigPath).toBe(
-      join(homeDir, '.pi', 'agent', 'extensions', 'subagent', 'config.json'),
+    expect(paths.subagentsConfigPath).toBe(
+      join(homeDir, '.pi', 'agent', 'subagents.json'),
     );
     expect(paths.mcpConfigPath).toBe(join(homeDir, 'xdg', 'mcp', 'mcp.json'));
     expect(paths.projectAgentRoots).toEqual([

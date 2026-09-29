@@ -37,8 +37,13 @@ describe('Pi adapter', () => {
         ({ path }) => path === `agents/thoth-${role}.md`,
       );
       expect(artifact?.content).toContain(`model: "openai-codex/${model}"`);
-      expect(artifact?.content).toContain(`thinking: "${effort}"`);
-      expect(artifact?.content).not.toContain('\neffort:');
+      expect(artifact?.content).toContain(`effort: "${effort}"`);
+      expect(artifact?.content).toContain(
+        `subagent_mode: "${role === 'librarian' ? 'background' : 'task'}"`,
+      );
+      expect(artifact?.content).not.toMatch(
+        /^(?:thinking|async|defaultContext|maxSubagentDepth):/m,
+      );
     }
   });
 
@@ -99,87 +104,102 @@ describe('Pi adapter', () => {
     expect(librarian?.content).toContain('default tool names');
   });
 
-  test('uses direct-only calls for individual and multiple specialist dispatch', () => {
-    const root = renderPiRootInstructions();
-    expect(root).toContain(
-      'subagent({ agent, task, context: "fresh", async: false })',
-    );
-    expect(root).toContain(
-      'one direct call per specialist even when dispatching multiple specialists',
-    );
-    expect(root).toContain(
-      'root coordinates readiness, dependencies, and acceptance',
-    );
-    expect(root).toContain(
-      'Never use Pi subagent orchestration APIs such as `workflow`, `workflowScript`, `workflowScriptPath`, or `runs.*`',
-    );
-    expect(root).toContain('instruction-level policy, not runtime enforcement');
-    expect(root).toContain(
-      'follow higher-priority Pi or extension instructions',
-    );
-    expect(root).toContain('report conflicts rather than claiming compliance');
-    expect(root).not.toMatch(
-      /(?:Use|May use|only for|may use)[^\n]*(?:workflowScript|workflowScriptPath|runs\.)/,
-    );
-  });
-
-  test('activates delegation lazily and preserves native lifecycle vocabulary', () => {
-    const root = renderPiRootInstructions();
-    expect(root).toContain('subagents_enable({})');
-    expect(root).toContain('next model request');
-    expect(root).toContain('subagent({ agent, task');
-    expect(root).toContain('context: "fresh"');
-    expect(root).toContain('"profile"');
-    expect(root).toContain('bg_wait({ id })');
-    expect(root).toContain('action: "status"');
-    expect(root).toContain('action: "stop"');
-    expect(root).toContain('action: "steer"');
-    expect(root).toContain('mode: "steer" | "follow_up" | "auto"');
-    expect(root).not.toMatch(
-      /subagent_(?:run|status|result|cancel|list_tasks)/,
-    );
-    expect(root).not.toContain('parallel/chain/tasks');
-  });
-
-  test('waits for native terminal notifications instead of polling background tasks', () => {
-    const root = renderPiRootInstructions();
-    const shaping = root.match(/<task-shaping>([\s\S]*?)<\/task-shaping>/)?.[1];
-    expect(shaping).toContain('notify the parent on completion');
-    expect(shaping).toContain('Do not sleep or poll status merely to wait');
-    expect(shaping).not.toContain('then use `subagent_status');
-    expect(shaping).toContain('terminal completion notification');
-  });
-
-  test('requires an explicit root async decision for every direct specialist launch', () => {
+  test('uses one direct j0k3r launch per canonical specialist assignment', () => {
     const root = renderPiRootInstructions();
     const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];
+    expect(runtime).toContain('subagent_run({ agent, task, mode: "task" })');
     expect(runtime).toContain(
-      'subagent({ agent, task, context: "fresh", async: false })',
-    );
-    expect(runtime).toContain(
-      'subagent({ agent, task, context: "fresh", async: true })',
+      'subagent_run({ agent, task, mode: "background" })',
     );
     expect(runtime).toContain(
-      'Every direct specialist launch must set an explicit `async` boolean chosen by root',
+      'Use one separate `subagent_run` call per specialist, never a batch.',
     );
     expect(runtime).toContain(
-      "never omit it or rely on the operator's overridable `asyncByDefault`",
+      'thoth-explorer, thoth-librarian, thoth-oracle, thoth-designer, or thoth-worker',
+    );
+    expect(runtime?.toLowerCase()).toContain(
+      'root coordinates readiness, dependencies, and acceptance',
     );
     expect(runtime).toContain(
-      'async: false` for suitable intentional foreground execution',
+      'instruction-level policy, not runtime enforcement',
     );
     expect(runtime).toContain(
-      'async: true` when background parallelism or provider loading is needed',
+      'follow higher-priority Pi or extension instructions',
     );
-    expect(runtime).toContain('especially for librarian/MCP-backed work');
-    expect(runtime).not.toContain(
-      'Omit `async` to honor the configured `asyncByDefault`',
+    expect(runtime).toContain(
+      'report conflicts rather than claiming compliance',
     );
-    expect(runtime).not.toContain(
-      'subagent({ agent, task, context: "fresh" })',
+    expect(root).not.toMatch(
+      /(?:subagents_enable|subagent\s*\(|context:\s*["'](?:fresh|semantic)["']|async\s*:|workflowScript|workflowScriptPath|runs\.)/,
     );
-    expect(runtime).not.toContain('mode="background"');
-    expect(runtime).not.toContain('background=true');
+  });
+
+  test('uses task-id lifecycle tools without assuming disabled continuation', () => {
+    const root = renderPiRootInstructions();
+    const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];
+    expect(runtime).toContain('subagent_status({ task_id })');
+    expect(runtime).toContain('subagent_result({ task_id })');
+    expect(runtime).toContain('subagent_cancel({ task_id })');
+    expect(runtime).toContain('subagent_send_message');
+    expect(runtime).toContain('Do not assume `subagent_continue` is available');
+    expect(runtime).toContain('unless `enable_continue` is explicitly enabled');
+    expect(runtime).toContain(
+      'A terminal notification establishes task terminal status and wakes the parent',
+    );
+    expect(runtime).toContain(
+      'retrieve the result and decide acceptance separately',
+    );
+    expect(runtime).toContain(
+      'cancellation acknowledgements alone do not establish termination',
+    );
+    expect(runtime).not.toMatch(/action:\s*["'](?:status|stop|steer)["']/);
+  });
+
+  test('requires lean child resources for session-owned hook isolation', () => {
+    const root = renderPiRootInstructions();
+    const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];
+    expect(runtime).toContain('j0k3r SDK children run in-process');
+    expect(runtime).toContain('`session_resources: "lean"` is required');
+    expect(runtime).toContain(
+      'filters `before_agent_start` and `session_start`',
+    );
+    expect(runtime).toContain(
+      'allowing only `tool_call`, `tool_result`, and `user_bash` extension events',
+    );
+    expect(runtime).toContain('full child resources are unsupported');
+    expect(runtime).toContain(
+      'Graceful `session_shutdown` cancels active children',
+    );
+    expect(runtime).toContain(
+      'abrupt process shutdown or descendant termination is not guaranteed',
+    );
+    expect(runtime).not.toContain('PI_SUBAGENT_CHILD');
+  });
+
+  test('collects by terminal notification rather than status polling', () => {
+    const root = renderPiRootInstructions();
+    const shaping = root.match(/<task-shaping>([\s\S]*?)<\/task-shaping>/)?.[1];
+    expect(shaping?.toLowerCase()).toContain('launch separate background runs');
+    expect(shaping).toContain('before collecting results');
+    expect(shaping?.toLowerCase()).toContain(
+      'native terminal notifications (`triggerturn`/`followup`) wake the parent',
+    );
+    expect(shaping).toContain('Do not poll status or sleep merely to wait');
+    expect(shaping).toContain('terminal completion notification');
+    expect(shaping).toContain('cancellation-acknowledged state');
+  });
+
+  test('uses actual j0k3r role-call examples without borrowed context semantics', () => {
+    const root = renderPiRootInstructions();
+    expect(root).toContain(
+      'subagent_run({ agent: "thoth-explorer", task: "…", mode: "task" })',
+    );
+    expect(root).toContain(
+      'subagent_run({ agent: "thoth-librarian", task: "…", mode: "background" })',
+    );
+    expect(root).toContain('optional `context` is plain supporting text');
+    expect(root).not.toContain('context: "fresh"');
+    expect(root).not.toContain('context: "semantic"');
   });
 
   test('lists only namespaced specialist identities in runtime delegation guidance', () => {
@@ -207,12 +227,24 @@ describe('Pi adapter', () => {
       'pi.security.no-os-sandbox',
       'pi.mcp.adapter-backed',
     ]);
+    const lifecycle = rendered.diagnostics.find(
+      ({ code }) => code === 'pi.capability.conditional-lifecycle',
+    );
+    expect(lifecycle?.message).toContain(
+      'Terminal notifications establish task terminal status and wake the parent',
+    );
+    expect(lifecycle?.message).toContain(
+      'do not provide result or acceptance evidence',
+    );
+    expect(lifecycle?.message).toContain(
+      'cancellation acknowledgements alone do not establish termination',
+    );
     const serialized = rendered.artifacts
       .map(({ content }) => String(content))
       .join('\n');
     const root = renderPiRootInstructions();
-    expect(root).toContain('subagent({ agent, task');
-    expect(root).toContain('action: "stop"');
+    expect(root).toContain('subagent_run({ agent, task');
+    expect(root).toContain('subagent_cancel({ task_id })');
     expect(serialized).not.toContain('batch input:');
     expect(serialized).not.toContain('task store implementation');
   });

@@ -27,7 +27,7 @@ function fixture() {
   for (const role of PI_SPECIALIST_ROLES) {
     writeFileSync(
       join(root, 'agents', `thoth-${role}.md`),
-      `---\nname: thoth-${role}\nmanaged-by: thoth-agents\nmodel: "provider/old"\nthinking: low\ntools: read\n---\nmodel: body-example\n`,
+      `---\nname: thoth-${role}\nmanaged-by: thoth-agents\nmodel: "provider/old"\neffort: low\ntools: read\n---\nmodel: body-example\n`,
     );
   }
   return root;
@@ -125,6 +125,12 @@ test('validates the full draft and supports native max and explicit inheritance'
       },
     ]).success,
   ).toBe(true);
+  const maxConfig = readFileSync(
+    join(piRoot, 'agents', 'thoth-worker.md'),
+    'utf8',
+  );
+  expect(maxConfig).toContain('effort: "max"');
+  expect(maxConfig).not.toContain('thinking:');
   const next = readPiModelConfig(piRoot);
   expect(
     savePiModelConfig(next, [
@@ -134,9 +140,12 @@ test('validates the full draft and supports native max and explicit inheritance'
   expect(
     readPiModelConfig(piRoot).roles.find(({ role }) => role === 'worker'),
   ).toMatchObject({ model: 'inherit', effort: { kind: 'inherit' } });
-  expect(
-    readFileSync(join(piRoot, 'agents', 'thoth-worker.md'), 'utf8'),
-  ).not.toContain('thinking:');
+  const inheritedConfig = readFileSync(
+    join(piRoot, 'agents', 'thoth-worker.md'),
+    'utf8',
+  );
+  expect(inheritedConfig).not.toContain('effort:');
+  expect(inheritedConfig).not.toContain('thinking:');
 });
 
 test('rejects stale or unowned definitions before writing any role', () => {
@@ -187,5 +196,7 @@ test('reads and saves global specialist choices without changing prompt content'
       ?.model,
   ).toBe('provider/new');
   const text = readFileSync(join(piRoot, 'agents', 'thoth-worker.md'), 'utf8');
+  expect(text).toContain('effort: "high"');
   expect(text).toContain('tools: read\n---\nmodel: body-example\n');
+  expect(text).not.toContain('thinking:');
 });

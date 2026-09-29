@@ -118,7 +118,7 @@ Supported frontmatter:
 |---|---|
 | `name` | Subagent name. Defaults to filename stem. Normalized to lowercase. |
 | `description` | Short description shown by `subagent_list_agents`. |
-| `tools` | Tool allowlist for the subagent. Accepts either a comma-separated inline list or a multiline YAML list, but never both in one definition. Entries may include `*` wildcards such as `tool_*`. Wildcards expand only against tools that are active in the current parent session; inactive or blocked tools are ignored. When omitted, the definition gets the built-in default tool list. Configured `default_tools` is used by the runner when a definition has an empty tool list. |
+| `tools` | Tool allowlist for the subagent. Accepts either a comma-separated inline list or a multiline YAML list, but never both in one definition. Standalone `*` selects all registered eligible tools, including inactive tools; standalone `@active` selects currently active eligible tools. Both resolve afresh at child launch. Other patterns such as `tool_*` retain active-only matching. When omitted, the definition gets the built-in default tool list. Configured `default_tools` is used by the runner when a definition has an empty tool list. |
 | `model` | Optional model as `provider/model-id`. |
 | `effort`, `thinking_level`, `thinkingLevel` | Optional thinking effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
 | `subagent_mode` | Optional default execution mode for this definition: `task` or `background`. |
@@ -144,7 +144,9 @@ tools:
 
 Both examples load the same allowlist: `read`, `write`, and `bash`. Comma splitting applies only to `tools`; scalar fields such as `description` can contain commas without becoming lists.
 
-Tool entries can include `*` wildcards such as `tool_*`. Wildcards expand at runtime only against tools that are currently active in the parent session. If a pattern matches no active tool, it expands to nothing. Blocked `subagent_*` tools remain unavailable even if a pattern would match them.
+Use `tools: "*"` to include all currently registered eligible tools, including inactive tools and tools registered before a future launch. Use `tools: "@active"` to follow the parent's current active tools at each launch. These selectors remain compact in the saved definition. An empty active inventory stays empty. A selected tool must have a child-loadable implementation; otherwise launch reports the missing tool.
+
+Other wildcard patterns such as `tool_*`, including `*` mixed with other entries, retain active-only matching. If a pattern matches no active tool, it expands to nothing. Reserved `subagent_*`, `ask_user_question`, and `todo` controls remain excluded.
 
 Do not mix the formats or declare `tools` more than once:
 
@@ -251,7 +253,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `history_panel_shortcut` | `ctrl+,` | Shortcut used to open the subagents history/detail panel. Accepts modified Pi-style shortcuts such as `ctrl+<letter>`, `ctrl+,`, `ctrl+shift+,`, or `shift+alt+,`, and also accepts camelCase `historyPanelShortcut`. |
 | `detail_cancel_shortcut` | `x` | Shortcut for the subagents history/detail panel to cancel only the currently selected queued/running subagent. `ctrl+...` values are also registered as a Pi shortcut scoped by the active panel, so they still work when the TUI captures control keys; single-letter values are handled by the panel input. Accepts `ctrl+<letter>`, `ctrl+shift+<letter>`, `ctrl+,`, or one lowercase letter, and also accepts camelCase `detailCancelShortcut`. It is ignored when the panel is not active or the selected subagent is already finished. |
 | `background_handoff_shortcut` | `ctrl+h` | Shortcut used to send a running task-mode subagent to the background. Accepts `ctrl+<letter>` and also accepts camelCase `backgroundHandoffShortcut`. |
-| `default_tools` | see below | Fallback tool allowlist used by the runner when an agent definition has an empty tool list. Supports the same `*` wildcard behavior as frontmatter `tools`. Omitted frontmatter `tools` uses the built-in default list. |
+| `default_tools` | see below | Fallback tool allowlist used by the runner when an agent definition has an empty tool list. Supports the same standalone `*` / `@active` selectors and legacy wildcard patterns as frontmatter `tools`. Omitted frontmatter `tools` uses the built-in default list. |
 
 Default tools:
 
@@ -391,7 +393,7 @@ Behavior:
 - Effective continuation mode resolves once as `input.mode ?? previous_task.effective_mode ?? previous_task.mode ?? config.default_mode ?? "background"`.
 - `mode: "task"` waits, renders `(task)`, and remains eligible for manual `ctrl+h` handoff.
 - `mode: "background"` returns immediately, renders `(background)`, and relies on the automatic completion notification.
-- While background tasks are active, an `Agents` tree appears above the input. Running rows show the agent, resolved model, task, and available child turns, tool uses, tokens, context percentage, elapsed time, activity, and compactions; queued tasks appear as a count. Token totals include input, output, and cache writes, excluding repeated cache reads. Missing child metrics are omitted. Use the arrow keys and Enter to open a selected task, or return to the editor with Escape.
+- While background tasks are active, an `Agents` tree appears above the input. Running rows use an animated braille indicator and show the agent, resolved model, and task. Separate compact rows keep child turns, tool uses, lifetime tokens, context percentage, and elapsed time readable even when the task is long; activity and compactions also appear when available. Token totals include input, output, and cache writes, excluding repeated cache reads. Unavailable metrics show `?`, while measured zeroes remain visible. Queued tasks use a hollow dot and appear as a count. Use the arrow keys and Enter to open a selected task, or return to the editor with Escape.
 - When `mode` is omitted, the continuation preserves the previous task attempt's effective mode. Legacy records without a valid saved mode fall back through `default_mode` and then `background`.
 - Model and effort overrides still require an explicit user decision before use.
 

@@ -470,23 +470,23 @@ Default roots MUST delegate unlocated local discovery before searching and MUST 
 
 ### Requirement: Configure adopted Pi subagents natively
 
-Pi MUST expose `/subagents-model` using native profiles and `/subagents-tools` using the same UI design with safe explicit tool persistence; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent.
+Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same UI design with safe tool persistence; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST distinguish all-active selection persisted as standalone @active from opt-in all selection persisted as standalone *, covering respectively eligible currently active tools or all current and future registered tools including inactive root tools. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve either selector and child launch MUST resolve its current inventory and report missing child implementations truthfully.
 
 #### Scenario: Configure adopted Pi subagents natively
 
-- **GIVEN** saved model/effort and explicit tool selections
-- **WHEN** either native command saves and Thoth synchronizes
-- **THEN** effective operator settings and unrelated definition content remain intact
+- **GIVEN** explicit or wildcard operator selections and inactive registered tools
+- **WHEN** the panel saves, synchronization runs and a child launches
+- **THEN** operator intent persists, eligible child-loadable tools are available and missing implementations are diagnosed without silent widening or omission
 
 ### Requirement: Run visible background Pi specialists
 
-Omitted mode MUST run specialists in background while respecting explicit modes, and the runtime MUST display truthful live execution metrics in a tree above input.
+Omitted mode MUST run specialists in background while respecting explicit modes, and the runtime MUST display truthful live execution metrics in a tree above input. Turns, tool uses, lifetime tokens, available child-context percentage and active elapsed time MUST remain readable even with long task/model text, using compact or separate metric rows as needed and marking absent values without fabrication. Running status MUST use an animated braille indicator and terminal statuses MUST use simple distinguishable completion, cancellation and failure glyphs. Animation MUST remain inactive when no child runs and MUST clean up on task termination or session teardown without blocking root input.
 
 #### Scenario: Run visible background Pi specialists
 
-- **GIVEN** a child is running and another queued
-- **WHEN** root receives the launch result
-- **THEN** the user can interact with root while the widget reports available child metrics and queue count
+- **GIVEN** a child running or queued and later completing or stopping
+- **WHEN** the UI renders and the session tears down
+- **THEN** metrics and status symbols remain truthful, root stays interactive and no idle animation timer remains
 
 ### Requirement: Expose session-owned Pi subagent consumption
 

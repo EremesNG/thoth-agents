@@ -37,16 +37,19 @@
   `/subagents-model` command edits model profiles for global or project
   definitions in their matching config scope. `model_profiles` takes precedence
   over definition fields, configuration defaults, and the parent model/effort.
-  `/subagents-tools` edits explicit per-role global tool lists. The CLI keeps
+  `/subagents-tools` edits per-role global tool selections. The CLI keeps
   using `src/cli/pi-model-config.ts` for Thoth specialist provenance/path checks,
-  stale snapshots, and partial-write recovery. `/subagents-tools` discovers current registered tools,
-  edits explicit per-role global tool lists and supports active-only select-all,
-  marked inactive choices, retained unavailable names and role-default reset.
+  stale snapshots, and partial-write recovery. `/subagents-tools` discovers
+  registered tools and edits either explicit per-role lists or standalone dynamic
+  `*` (all eligible registered) and `@active` (eligible currently active)
+  selectors. The panel marks inactive choices, retains unavailable explicit
+  names, and supports role-default reset.
   `src/cli/pi-tool-config.ts` owns validation and safe persistence; synchronization
-  preserves valid explicit tools/modes as well as model/effort. Malformed or legacy
-  wildcard overrides remain untouched with diagnostics. Empty selections and
-  delegation/root-only controls are rejected; no automatic future-tool inheritance
-  or guaranteed child extension availability is claimed. Native TUI/AI modules are declared public peers and
+  preserves valid explicit tools, selectors, modes, model, and effort.
+  Unsupported wildcard overrides remain untouched with diagnostics. Empty
+  selections and delegation/root-only controls are rejected; dynamic selectors
+  resolve at launch and require child-loadable implementations. Native TUI/AI
+  modules are declared public peers and
   kept external in the build; static imports let Pi's loader resolve its native
   aliases for compiled JS. Lazy imports from a natively loaded compiled extension
   bypass those aliases. Root model and external override precedence remain

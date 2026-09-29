@@ -25,7 +25,7 @@ describe('Pi agent writer', () => {
     ).toBe(false);
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');
-      expect(artifact.content).not.toMatch(/^tools:/m);
+      expect(artifact.content).toMatch(/^tools: "\*"$/m);
       expect(artifact.content).toMatch(/^effort: "(?:low|medium|high|max)"$/m);
       expect(artifact.content).toContain(
         artifact.path === 'agents/thoth-librarian.md'

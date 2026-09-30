@@ -5,6 +5,69 @@ import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 const env = installSubagentTestEnv();
 
 describe('subagent_send_message tool', () => {
+  it('awaits native handled and rejected acknowledgments without claiming model consumption', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents', 'backgrounder.md'),
+      `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
+    );
+    let finish!: () => void;
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let handle!: () => void;
+    const handled = new Promise<'handled'>((resolve) => {
+      handle = () => resolve('handled');
+    });
+    const manager = env.createManager(async ({ registerLiveBridge, signal }) => {
+      registerLiveBridge?.({
+        supported: true,
+        detected_pi_version: '0.99.1',
+        steer: (message) =>
+          message === 'extension input'
+            ? handled
+            : Promise.reject(new Error('input rejected')),
+      });
+      started();
+      return await new Promise((resolve) => {
+        finish = () =>
+          resolve({ result: 'done', model: 'mock/model', fallback_used: false });
+        signal.addEventListener('abort', () => finish(), { once: true });
+      });
+    });
+    let sendTool: any;
+    registerSubagentTools(
+      { registerTool: (tool: any) => {
+        if (tool.name === 'subagent_send_message') sendTool = tool;
+      } },
+      manager,
+    );
+    const ctx = { cwd: env.tmp, sessionId: 'parent-a' };
+    const run = await manager.run(
+      { agent: 'backgrounder', task: 'messages', mode: 'background' }, ctx,
+    );
+    await ready;
+    const taskId = run.task_ids[0]!;
+    try {
+      const responsePromise = sendTool.execute('handled', { task_id: taskId, message: 'extension input' }, undefined, undefined, ctx);
+      expect(manager.getTask(taskId)?.pending_message_count).toBe(1);
+      handle();
+      const response = await responsePromise;
+      expect(response.details).toMatchObject({ status: 'handled', pending_message_count: 0 });
+      expect(response.content[0].text).toBe('handled: Message handled by an input extension; this does not prove model consumption.');
+      const rejected = await sendTool.execute('rejected', { task_id: taskId, message: 'rejected input' }, undefined, undefined, ctx);
+      expect(rejected.details).toMatchObject({ status: 'rejected', reason: 'enqueue_failed' });
+      expect(rejected.content[0].text).toContain('rejected:');
+      expect(manager.getTask(taskId)?.pending_message_count).toBe(0);
+    } finally {
+      finish();
+    }
+    await vi.waitFor(() => expect(manager.getTask(taskId)?.status).toBe('completed'));
+    expect(manager.getTask(taskId)?.undelivered_message_count).toBe(0);
+  });
+
   it('README documents queued acknowledgements, ownership rejection, undelivered counts, and unsupported runtime rejection', async () => {
     const fs = await import('node:fs');
     const readme = fs.readFileSync('README.md', 'utf8');
@@ -13,7 +76,7 @@ describe('subagent_send_message tool', () => {
     expect(readme).toContain('pending_message_count');
     expect(readme).toContain('undelivered_message_count');
     expect(readme).toContain('unsupported_runtime');
-    expect(readme).toContain('>=0.82.1');
+    expect(readme).toContain('>=0.99.0');
   });
 
   it('accepts immediate same-parent messages from sessionManager context before bridge readiness', async () => {
@@ -24,7 +87,7 @@ describe('subagent_send_message tool', () => {
       `---\nname: backgrounder\ndescription: background agent\nsubagent_mode: background\ntools:\n  - read\n---\n# Agent`,
     );
 
-    const supportedSteer = vi.fn();
+    const supportedSteer = vi.fn(async () => 'queued' as const);
     let release: () => void = () => undefined;
     const manager = env.createManager(async ({ registerLiveBridge }) => {
       setTimeout(() => {
@@ -139,7 +202,7 @@ describe('subagent_send_message tool', () => {
 
     const backgroundTaskId = background.task_ids[0]!;
     const legacyTaskId = legacy.task_ids[0]!;
-    const supportedSteer = vi.fn();
+    const supportedSteer = vi.fn(async () => 'queued' as const);
     (manager as any).registerLiveBridge(
       backgroundTaskId,
       {
@@ -206,10 +269,10 @@ describe('subagent_send_message tool', () => {
     expect(unsupported.details).toMatchObject({
       status: 'rejected',
       reason: 'unsupported_runtime',
-      required_pi_version: '>=0.82.1',
+      required_pi_version: '>=0.99.0',
       detected_pi_version: '0.81.0',
     });
-    expect(unsupported.content[0].text).toContain('>=0.82.1');
+    expect(unsupported.content[0].text).toContain('>=0.99.0');
     expect(manager.getTask(legacyTaskId)?.pending_message_count ?? 0).toBe(0);
 
     for (let index = 0; index < 15; index += 1) {

@@ -35,7 +35,12 @@ describe('subagent runner structured errors', () => {
     overrides: { config?: SubagentsConfig; ctx?: any } = {},
   ) {
     vi.resetModules();
-    const createAgentSession = vi.fn(() => ({ session: sessionFactory() }));
+    const createAgentSession = vi.fn(() => ({
+      session: {
+        getAllTools: () => [{ name: 'read' }],
+        ...sessionFactory(),
+      },
+    }));
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
@@ -357,6 +362,7 @@ describe('subagent runner structured errors', () => {
     const fallbackModel = { provider: 'current', id: 'fallback-model' };
     const createAgentSession = vi.fn().mockReturnValueOnce({
       session: {
+        getAllTools: () => [{ name: 'read' }],
         subscribe: vi.fn(() => vi.fn()),
         prompt: vi.fn(async () => {
           throw new Error('ECONNRESET primary network failure');
@@ -414,6 +420,7 @@ describe('subagent runner structured errors', () => {
     const sharedModel = { provider: 'preferred', id: 'primary-model' };
     const createAgentSession = vi.fn().mockReturnValueOnce({
       session: {
+        getAllTools: () => [{ name: 'read' }],
         subscribe: vi.fn(() => vi.fn()),
         prompt: vi.fn(async () => {
           throw new Error('ECONNRESET primary network failure');

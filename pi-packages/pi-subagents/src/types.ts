@@ -381,10 +381,16 @@ export type SubagentRunResult = {
 export type LiveSteeringBridge = {
   detected_pi_version: string | 'unknown';
   supported: boolean;
-  steer(message: string): void;
+  steer(message: string): Promise<'queued' | 'handled'>;
 };
 
 export type SendMessageResult =
+  | {
+      status: 'handled';
+      task_id: string;
+      pending_message_count: number;
+      message: 'Message handled by an input extension; this does not prove model consumption.';
+    }
   | {
       status: 'queued';
       task_id: string;
@@ -407,7 +413,7 @@ export type SendMessageResult =
         | 'queue_count_limit'
         | 'queue_bytes_limit'
         | 'enqueue_failed';
-      required_pi_version?: '>=0.82.1';
+      required_pi_version?: '>=0.99.0';
       detected_pi_version?: string | 'unknown';
       message: string;
     };

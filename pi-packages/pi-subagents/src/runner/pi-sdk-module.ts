@@ -1,5 +1,5 @@
 const moduleName = '@earendil-works/pi-coding-agent';
-const MIN_PI_VERSION = [0, 82, 1] as const;
+const MIN_PI_VERSION = [0, 99, 0] as const;
 
 let piSdkModulePromise: Promise<any> | undefined;
 
@@ -27,7 +27,7 @@ function versionGte(version: number[], minimum: readonly number[]): boolean {
 export function detectPiRuntimeSupport(version: unknown): {
   detected_pi_version: string | 'unknown';
   supported: boolean;
-  required_pi_version: '>=0.82.1';
+  required_pi_version: '>=0.99.0';
 } {
   const detected =
     typeof version === 'string' && version.trim() ? version.trim() : 'unknown';
@@ -35,6 +35,6 @@ export function detectPiRuntimeSupport(version: unknown): {
   return {
     detected_pi_version: detected,
     supported: Boolean(parsed && versionGte(parsed, MIN_PI_VERSION)),
-    required_pi_version: '>=0.82.1',
+    required_pi_version: '>=0.99.0',
   };
 }

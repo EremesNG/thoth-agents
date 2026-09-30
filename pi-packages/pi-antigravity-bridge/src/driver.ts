@@ -1,0 +1,782 @@
+// Persistent agy stream-json driver.
+//
+// One long-lived `agy --input-format stream-json --output-format stream-json`
+// process per provider instance. Turns are serialized through the driver
+// queue; a turn that parks mid-flight (pi toolUse round-trip) keeps the agy
+// process running and is re-entered via reentry() instead of spawning again.
+//
+// Recycle semantics: the child is killed and respawned when the next turn's
+// process profile (model / effort / mode / cwd / conversation) drifts from the
+// running one. Stats and a bounded
+// lifecycle log feed /agy doctor.
+//
+// The driver never talks to the MCP bridge directly: the provider owns the
+// toolUse round-trips and injects bridge_call activities via
+// handle.pushExternal(). This keeps the driver testable with a fake child.
+
+import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { parseAgyLine } from "./stream-events.js";
+import { isKnownNoiseLine, MAX_FRAME_BYTES, stripGluedNoise } from "./frame-guard.js";
+import { bridgeMcpConfigDir, bridgeMcpConfigExists } from "./mcp-server.js";
+import { gateHooksStaged } from "./approval-hook.js";
+import { parkedTurnAnswer } from "./parked-turn.js";
+import { redactText } from "./redact.js";
+import { terminateProcessTree } from "./process-termination.js";
+import type {
+	AgyUsage,
+	DriverActivity,
+	DriverProfile,
+	DriverSnapshot,
+	DriverState,
+	DriverTurnRequest,
+	TurnDriver,
+	TurnHandle,
+	TurnOutcome,
+} from "./driver-types.js";
+
+export type {
+	DriverActivity,
+	DriverProfile,
+	DriverSnapshot,
+	DriverState,
+	DriverTurnRequest,
+	TurnHandle,
+	TurnOutcome,
+} from "./driver-types.js";
+
+const LIFECYCLE_LIMIT = 24;
+const THINKING_TOKEN_FLOOR = 64;
+
+interface ActiveTurn {
+	id: string;
+	request: DriverTurnRequest;
+	/** Activities not yet pulled by a consumer. */
+	buffer: DriverActivity[];
+	/** Wake waiting next() callers. */
+	wake: (() => void)[];
+	closed: boolean;
+	resolve: (o: TurnOutcome) => void;
+	outcome: Promise<TurnOutcome>;
+	overallTimer?: NodeJS.Timeout;
+	idleTimer?: NodeJS.Timeout;
+	onAbort?: () => void;
+	response: string;
+	usage?: AgyUsage;
+	conversationId?: string;
+	/** Wall clock at turn creation; the parked-turn probe filters
+	 *  transcript steps to those written after this. */
+	startedAt: number;
+	sawResult: boolean;
+	/** An agent_response or tool step arrived this turn. Distinguishes a
+	 *  real (if terse) turn from agy's silent over-cap drop, which settles
+	 *  SUCCESS with no model step at all (issue #2). */
+	sawModelStep: boolean;
+	/** Text-dedupe guard state (delta vs cumulative response_text). */
+	cumulativeText: boolean | undefined;
+	/** Open bridge parks. Each one suspends the stdout idle timer: agy is
+	 *  blocked waiting on the MCP HTTP response and produces no output, so
+	 *  inactivity is EXPECTED while parked. */
+	parks: number;
+}
+
+/** The skip-permissions flag actually passed to agy. Plan mode never
+ *  carries it: the flag auto-approves every permission request including
+ *  plan mode's own approval gate, silently turning review-only into full
+ *  write access. #start (argv + profile) and #recycleCause (comparison)
+ *  must both go through this, or plan turns recycle on every turn. */
+function effectiveSkipPermissions(mode: DriverTurnRequest["mode"], skipPermissions: boolean): boolean {
+	return mode !== "plan" && skipPermissions;
+}
+
+function emit(turn: ActiveTurn, activity: DriverActivity): void {
+	if (turn.closed) return;
+	if (turn.wake.length > 0) turn.wake.shift()!();
+	turn.buffer.push(activity);
+}
+
+async function nextActivity(turn: ActiveTurn): Promise<DriverActivity | null> {
+	for (;;) {
+		if (turn.buffer.length > 0) return turn.buffer.shift()!;
+		if (turn.closed) return null;
+		await new Promise<void>((r) => turn.wake.push(r));
+	}
+}
+
+function makeHandle(turn: ActiveTurn): TurnHandle {
+	return {
+		id: turn.id,
+		outcome: turn.outcome,
+		next: () => nextActivity(turn),
+		pushExternal: (activity) => {
+			if (activity.type === "bridge_call") {
+				turn.parks += 1;
+				if (turn.idleTimer) {
+					clearTimeout(turn.idleTimer);
+					turn.idleTimer = undefined;
+				}
+			}
+			emit(turn, activity);
+		},
+	};
+}
+
+function nowIso(): string {
+	return new Date().toISOString().slice(11, 19);
+}
+
+/** True when any usage counter carries a real value. The silent over-cap
+ *  drop reports all-zero usage (no model call happened); a turn that burned
+ *  any tokens demonstrably reached the model. */
+function hasTokenEvidence(usage: AgyUsage | undefined): boolean {
+	if (!usage) return false;
+	return (
+		(usage.input_tokens ?? 0) > 0 ||
+		(usage.output_tokens ?? 0) > 0 ||
+		(usage.thinking_tokens ?? 0) > 0 ||
+		(usage.cache_read_tokens ?? 0) > 0 ||
+		(usage.total_tokens ?? 0) > 0
+	);
+}
+
+/** True when `next` is a cumulative resend of `accumulated` (it repeats every
+ *  byte already streamed) rather than a fresh delta. Exported for tests. */
+export function isCumulativeResend(accumulated: string, next: string): boolean {
+	// Nothing accumulated yet: no resend is possible (first chunk).
+	return accumulated.length > 0 && next.length > accumulated.length && next.startsWith(accumulated);
+}
+
+/** Flip threshold for the same guard: short accumulations ("**", "#", "\n")
+ *  are trivially extended by ordinary markdown deltas, and flipping on them
+ *  corrupts every remaining frame of the turn. Require a respectable
+ *  accumulation before believing a resend. Exported for tests. */
+export const CUMULATIVE_FLIP_MIN_CHARS = 32;
+
+/** Mode decision for the text-dedupe guard. Extracted for tests. */
+export function shouldFlipToCumulative(accumulated: string, next: string): boolean {
+	return accumulated.length >= CUMULATIVE_FLIP_MIN_CHARS && isCumulativeResend(accumulated, next);
+}
+
+export class StreamDriver implements TurnDriver {
+	#state: DriverState = "idle";
+	#child: ChildProcess | undefined;
+	#termination: Promise<void> = Promise.resolve();
+	#generation = 0;
+	#profile: DriverProfile | undefined;
+	#boundConversation: string | undefined;
+	#active: ActiveTurn | undefined;
+	#queueTail: Promise<void> = Promise.resolve();
+	#stderrTail = "";
+	// Frames can split across pipe chunks; the trailing partial line lives here
+	// until its newline arrives (same scheme as JsonRpcSession.feed). Dropping
+	// it ate large tool frames and could hide the result frame of a turn.
+	#stdoutBuf = "";
+	#lifecycle: string[] = [];
+	/** Optional external lifecycle sink (the extension's daily file log).
+	 *  Fire-and-forget: the ring buffer stays the source for /agy doctor. */
+	log?: (msg: string, data?: unknown) => void;
+	#onTurnEnd: ((outcome: TurnOutcome) => void) | undefined;
+	#stats = {
+		spawns: 0,
+		turns: 0,
+		reused: 0,
+		recycles: 0,
+		lastRecycleReason: undefined as string | undefined,
+		recycleReasons: {} as Record<string, number>,
+	};
+
+	constructor(private readonly bridgeDir: string = bridgeMcpConfigDir()) {}
+
+	get state(): DriverState {
+		return this.#state;
+	}
+
+	get activeHandle(): TurnHandle | null {
+		return this.#active && !this.#active.closed ? makeHandle(this.#active) : null;
+	}
+
+	/** Called when a parked bridge call resolves or fails. Rearms the idle
+	 *  timer once no parks remain. */
+	kickIdle(): void {
+		const turn = this.#active;
+		if (!turn || turn.closed) return;
+		if (turn.parks > 0) turn.parks -= 1;
+		if (turn.parks === 0 && !turn.idleTimer) {
+			const idleMin = turn.request.inactivityMin ?? 5;
+			// 0 disables the stall guard (config inactivityTimeoutMin: 0).
+			if (idleMin > 0) {
+				turn.idleTimer = setTimeout(() => {
+					void this.#turnDeadlineGuard(turn, "stall", `agy stalled for ${idleMin}m with no output`);
+				}, idleMin * 60_000);
+			}
+		}
+	}
+
+	/** Hook: invoked with the outcome whenever a turn settles. The provider
+	 *  uses it to fail round-trips parked against a dead turn. */
+	set onTurnEnd(fn: ((outcome: TurnOutcome) => void) | undefined) {
+		this.#onTurnEnd = fn;
+	}
+
+	snapshot(): DriverSnapshot {
+		return {
+			state: this.#state,
+			pid: this.#child?.pid,
+			conversationId: this.#boundConversation,
+			stats: { ...this.#stats, recycleReasons: { ...this.#stats.recycleReasons } },
+			lifecycle: [...this.#lifecycle],
+		};
+	}
+
+	/** Run one turn. Turn LIFETIMES are serialized: release fires only when
+	 *  the dispatched turn settles, so a second run() can never overlap an
+	 *  open turn (which would orphan the first). A turn parked on a pi toolUse
+	 *  round-trip stays open; the continuation path uses reentry(), which does
+	 *  not queue, so parking cannot deadlock the queue. */
+	run(request: DriverTurnRequest): Promise<TurnHandle> {
+		let release!: () => void;
+		const prev = this.#queueTail;
+		this.#queueTail = new Promise<void>((r) => (release = r));
+		return prev
+			.then(() => this.#runExclusive(request))
+			.then((handle) => {
+				void handle.outcome.catch(() => {}).then(() => release());
+				return handle;
+			})
+			.catch((err) => {
+				release();
+				throw err;
+			});
+	}
+
+	/** Re-attach to the active turn (pi toolUse continuation). */
+	reentry(): TurnHandle | null {
+		return this.activeHandle;
+	}
+
+	async #runExclusive(request: DriverTurnRequest): Promise<TurnHandle> {
+		// No shutdown latch: pi fires session_shutdown on /new, /resume and
+		// /fork (not only process exit), so a closed driver must respawn on the
+		// next turn instead of rejecting forever. Parity with the ACP driver
+		// fix (regression 2026-09-07).
+		await this.#termination;
+		if (request.signal?.aborted) throw new Error("aborted before start");
+
+		const cause = this.#recycleCause(request);
+		if (cause) await this.close("recycle", cause);
+		else if (this.#child) this.#stats.reused += 1;
+		if (!this.#child) this.#start(request);
+
+		const turn = this.#createTurn(request);
+		this.#active = turn;
+		this.#state = "running";
+		this.#stats.turns += 1;
+		this.#log("turn-start", {
+			model: request.model,
+			effort: request.effort,
+			mode: request.mode,
+			conversation: request.conversationId ?? null,
+			images: request.images?.length ?? 0,
+		});
+		this.#armTimers(turn);
+
+		const line = `${JSON.stringify({
+			event: "user",
+			message: { role: "user", content: request.prompt },
+		})}\n`;
+		const stdin = this.#child?.stdin;
+		try {
+			if (!stdin) throw new Error("agy driver stdin unavailable");
+			stdin.write(line);
+		} catch (err) {
+			this.#failTurn(
+				turn,
+				`failed to write to agy driver: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+		return makeHandle(turn);
+	}
+
+	#createTurn(request: DriverTurnRequest): ActiveTurn {
+		let resolve!: (o: TurnOutcome) => void;
+		const outcome = new Promise<TurnOutcome>((r) => (resolve = r));
+		const turn: ActiveTurn = {
+			id: randomUUID().slice(0, 8),
+			request,
+			buffer: [],
+			wake: [],
+			closed: false,
+			resolve,
+			outcome,
+			response: "",
+			sawResult: false,
+			sawModelStep: false,
+			cumulativeText: undefined,
+			parks: 0,
+			startedAt: Date.now(),
+		};
+		if (request.signal) {
+			turn.onAbort = async () => {
+				if (turn.closed) return;
+				this.#log(`abort:${turn.id}`);
+				const termination = this.#killChild();
+				this.#settle(turn, {
+					conversationId: turn.conversationId,
+					status: "ERROR",
+					response: turn.response,
+					error: "aborted",
+					usage: turn.usage,
+					finished: true,
+					aborted: true,
+				});
+				await termination;
+			};
+			request.signal.addEventListener("abort", turn.onAbort, { once: true });
+		}
+		return turn;
+	}
+
+	#armTimers(turn: ActiveTurn): void {
+		// 0 disables a cap (config turnTimeoutMin / inactivityTimeoutMin: 0):
+		// setTimeout(fn, 0) would fire instantly and kill every turn.
+		const totalMin = turn.request.timeoutMin ?? 10;
+		if (totalMin > 0) {
+			turn.overallTimer = setTimeout(() => {
+				void this.#turnDeadlineGuard(turn, "timeout", `agy exceeded the ${totalMin}m turn timeout`);
+			}, totalMin * 60_000);
+		}
+		const idleMin = turn.request.inactivityMin ?? 5;
+		if (idleMin > 0) {
+			turn.idleTimer = setTimeout(() => {
+				void this.#turnDeadlineGuard(turn, "stall", `agy stalled for ${idleMin}m with no output`);
+			}, idleMin * 60_000);
+		}
+	}
+
+	#start(request: DriverTurnRequest): void {
+		this.#state = "starting";
+		this.#generation += 1;
+		const generation = this.#generation;
+		// Plan mode never carries the skip flag: the flag auto-approves ALL
+		// permission requests including plan mode's own approval gate, which
+		// would silently turn "review-only" into full write access (probed
+		// 2026-09-25: with the flag a plan session wrote files; without it,
+		// file and command attempts end exit 0 in ~20-30s with a "confirm
+		// plan" message). The profile stores the EFFECTIVE value so the
+		// recycle comparison stays consistent with the argv.
+		const skipPermissions = effectiveSkipPermissions(request.mode, request.skipPermissions);
+		this.#profile = {
+			cwd: request.cwd,
+			model: request.model,
+			effort: request.effort,
+			mode: request.mode,
+			skipPermissions,
+			agent: request.agent,
+		};
+		this.#boundConversation = request.conversationId ?? undefined;
+		this.#stderrTail = "";
+
+		const args: string[] = ["--add-dir", request.cwd];
+		// The bridge dir carries .agents/mcp_config.json (tool bridge) and, when
+		// the approval gate is on, .agents/hooks.json (gate staging). Only this
+		// session's agy ever gets it: standalone IDE/CLI sessions in the
+		// workspace must never load our gate (issue #5 isolation).
+		if (bridgeMcpConfigExists(this.bridgeDir) || gateHooksStaged(this.bridgeDir)) args.push("--add-dir", this.bridgeDir);
+		args.push("--model", request.model);
+		if (request.effort) args.push("--effort", request.effort);
+		args.push("--mode", request.mode);
+		if (request.agent) args.push("--agent", request.agent);
+		if (skipPermissions) args.push("--dangerously-skip-permissions");
+		if (request.conversationId) args.push("--conversation", request.conversationId);
+		args.push(
+			"--input-format",
+			"stream-json",
+			"--output-format",
+			"stream-json",
+			// Skills and slash commands are bridged/owned by pi, not expanded by agy.
+			"--disable-slash-commands",
+		);
+
+		const child = spawn("agy", args, {
+			cwd: request.cwd,
+			stdio: ["pipe", "pipe", "pipe"],
+			detached: process.platform !== "win32",
+			windowsHide: true,
+		});
+		this.#child = child;
+		this.#stdoutBuf = "";
+		this.#stats.spawns += 1;
+		// Pipe write failures surface asynchronously as stream 'error' events;
+		// the sync try/catch around stdin.write cannot see them. Without this
+		// listener an EPIPE (agy died mid-write) is uncaught and kills pi.
+		child.stdin!.on("error", (err) => {
+			if (generation !== this.#generation) return;
+			const turn = this.#active;
+			if (turn && !turn.closed) this.#failTurn(turn, `agy stdin write failed: ${err.message}`);
+		});
+		this.#log(`spawn:${child.pid ?? "?"}:${request.conversationId ? "resume" : "fresh"}`);
+		this.#state = "ready";
+
+		child.stdout!.setEncoding("utf8");
+		child.stdout!.on("data", (chunk: string) => {
+			if (generation !== this.#generation) return;
+			this.#onStdout(chunk);
+		});
+		child.stderr!.setEncoding("utf8");
+		child.stderr!.on("data", (chunk: string) => {
+			this.#stderrTail = (this.#stderrTail + chunk).slice(-8192);
+		});
+		child.on("exit", (code) => {
+			if (generation !== this.#generation) return;
+			const turn = this.#active;
+			this.#child = undefined;
+			this.#state = "dead";
+			this.#log(`exit:${code ?? "signal"}`);
+			if (turn && !turn.closed) {
+				if (turn.sawResult) {
+					this.#settle(turn, {
+						conversationId: turn.conversationId,
+						status: turn.usage || turn.response ? "OK" : "UNKNOWN",
+						response: turn.response,
+						usage: turn.usage,
+						finished: true,
+						aborted: false,
+					});
+				} else {
+					this.#failTurn(
+						turn,
+						// agy stderr can carry auth material; the tail becomes the
+						// user-facing error and a daily-log value.
+						redactText(this.#stderrTail.trim()) || `agy exited with status ${code ?? "signal"}`,
+					);
+				}
+			}
+		});
+		child.on("error", (err) => {
+			if (generation !== this.#generation) return;
+			const turn = this.#active;
+			this.#child = undefined;
+			this.#state = "dead";
+			if (turn && !turn.closed) this.#failTurn(turn, `agy spawn failed: ${err.message}`);
+		});
+	}
+
+	#onStdout(chunk: string): void {
+		// Buffer the trailing partial line: a frame split across pipe chunks is
+		// reassembled when its newline arrives (mirrors JsonRpcSession.feed).
+		this.#stdoutBuf += chunk;
+		if (this.#stdoutBuf.length > MAX_FRAME_BYTES) {
+			// A no-newline flood over the cap means the peer is broken or
+			// hostile: fail the turn and tear the process tree down instead of
+			// growing memory without bound.
+			const detail = `${this.#stdoutBuf.length} bytes buffered with no newline (cap ${MAX_FRAME_BYTES})`;
+			this.#stdoutBuf = "";
+			const turn = this.#active;
+			this.#log("frame-overflow", { detail });
+			void this.#killChild().then(() => {
+				if (turn && !turn.closed) this.#failTurn(turn, `stdout frame overflow: ${detail}`);
+			});
+			return;
+		}
+		const lines = this.#stdoutBuf.split("\n");
+		this.#stdoutBuf = lines.pop() ?? "";
+		const turn = this.#active;
+		if (!turn || turn.closed) return;
+		if (turn.idleTimer) turn.idleTimer.refresh();
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			// Known foreign noise (e.g. the Chromium launcher behind a browser
+			// login) is dropped; a noise FRAGMENT glued onto a real frame is
+			// stripped so the frame still parses.
+			if (isKnownNoiseLine(line)) continue;
+			let parsed = parseAgyLine(line);
+			// Repair applies only to true parse failures (raw is the string
+			// fragment): a valid JSON object agy sent with an unrecognized shape
+			// also lands as "unknown" and must reach the turn untouched.
+			if (parsed.kind === "unknown" && typeof parsed.raw === "string") {
+				const repaired = stripGluedNoise(line);
+				if (repaired) parsed = parseAgyLine(repaired);
+			}
+			this.#applyParsed(turn, parsed);
+			if (turn.closed) return;
+		}
+	}
+
+	#applyParsed(turn: ActiveTurn, parsed: ReturnType<typeof parseAgyLine>): void {
+		switch (parsed.kind) {
+			case "init": {
+				if (parsed.conversationId) {
+					turn.conversationId = parsed.conversationId;
+					this.#boundConversation = parsed.conversationId;
+				}
+				if (parsed.usage) {
+					turn.usage = parsed.usage;
+					emit(turn, { type: "usage", usage: parsed.usage });
+				}
+				break;
+			}
+			case "step": {
+				const s = parsed.step;
+				if (s.conversation_id && !turn.conversationId) {
+					turn.conversationId = s.conversation_id;
+					this.#boundConversation = s.conversation_id;
+				}
+				if (s.usage) {
+					turn.usage = s.usage;
+					emit(turn, { type: "usage", usage: s.usage });
+				}
+				if (s.step_type === "agent_response") {
+					turn.sawModelStep = true;
+					const text =
+						typeof s.text_delta === "string"
+							? s.text_delta
+							: typeof s.response_text === "string"
+								? s.response_text
+								: "";
+					if (text) this.#appendAgentText(turn, text);
+					if (typeof s.thinking_tokens === "number" && s.thinking_tokens >= THINKING_TOKEN_FLOOR) {
+						emit(turn, { type: "thought", tokens: s.thinking_tokens });
+					}
+					break;
+				}
+				if (s.step_type === "tool") {
+					turn.sawModelStep = true;
+					const name = s.tool_name ?? s.tool_info?.name ?? "tool";
+					const args =
+						s.tool_info?.parameters && typeof s.tool_info.parameters === "object"
+							? (s.tool_info.parameters as Record<string, unknown>)
+							: {};
+					if (s.state === "ACTIVE") {
+						emit(turn, { type: "tool_start", stepId: s.step_index, name, args });
+					} else if (s.state === "DONE") {
+						emit(turn, {
+							type: "tool_done",
+							stepId: s.step_index,
+							name,
+							args,
+							// Newer stream-json frames put native tool output under
+							// tool_info.output. Prefer that field when it is a string,
+							// including an explicit empty string; retain response_text
+							// for older agy builds and ignore malformed values.
+							output:
+								typeof s.tool_info?.output === "string"
+									? s.tool_info.output
+									: typeof s.response_text === "string"
+										? s.response_text
+										: undefined,
+							durationSeconds: s.duration_seconds,
+						});
+					} else if (s.state === "ERROR") {
+						emit(turn, {
+							type: "tool_error",
+							stepId: s.step_index,
+							name,
+							message: s.error_message ?? "tool error",
+						});
+					}
+				}
+				// user_input / checkpoint: no provider-facing activity.
+				break;
+			}
+			case "result": {
+				turn.sawResult = true;
+				const r = parsed.result;
+				if (r.conversation_id) turn.conversationId = r.conversation_id;
+				if (r.usage) turn.usage = r.usage;
+				// agy reports SUCCESS on live stream-json runs (OK seen in older builds).
+				const ok = r.status === "OK" || r.status === "SUCCESS";
+				const status = ok ? "OK" : "ERROR";
+				// Prefer the streamed accumulation, fall back to the result body.
+				const response = turn.response || (typeof r.response === "string" ? r.response : "");
+				turn.response = response;
+				this.#settle(turn, {
+					conversationId: turn.conversationId,
+					status,
+					response,
+					error: status === "ERROR" ? (r.error ?? "agy reported an error") : undefined,
+					usage: r.usage ?? turn.usage,
+					finished: true,
+					aborted: false,
+				});
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	#appendAgentText(turn: ActiveTurn, text: string): void {
+		// response_text is observed as a delta stream; guard against builds that
+		// resend the full text. A cumulative sender's second chunk CONTAINS
+		// everything accumulated so far as a prefix. Two guards against
+		// misflips (round-7 review): short accumulations never flip, and a
+		// cumulative frame that no longer extends the accumulator is evidence
+		// of a misflip - fall back to append mode.
+		if (turn.cumulativeText === undefined) {
+			turn.cumulativeText = false;
+		} else if (
+			!turn.cumulativeText &&
+			shouldFlipToCumulative(turn.response, text)
+		) {
+			turn.cumulativeText = true;
+		}
+		if (turn.cumulativeText) {
+			if (!text.startsWith(turn.response)) {
+				// Misflip evidence: back to deltas.
+				turn.cumulativeText = false;
+				turn.response += text;
+				emit(turn, { type: "text", delta: text });
+				return;
+			}
+			if (text.length > turn.response.length) {
+				const delta = text.slice(turn.response.length);
+				turn.response = text;
+				emit(turn, { type: "text", delta });
+			}
+			return;
+		}
+		turn.response += text;
+		emit(turn, { type: "text", delta: text });
+	}
+
+	#settle(turn: ActiveTurn, outcome: TurnOutcome): void {
+		if (turn.closed) return;
+		turn.closed = true;
+		if (turn.overallTimer) clearTimeout(turn.overallTimer);
+		if (turn.idleTimer) clearTimeout(turn.idleTimer);
+		if (turn.onAbort && turn.request.signal) {
+			turn.request.signal.removeEventListener("abort", turn.onAbort);
+		}
+		this.#active = undefined;
+		this.#state = this.#child ? "ready" : "dead";
+		for (const wake of turn.wake) wake();
+		turn.wake = [];
+		// Evidence fields every consumer can rely on. modelOutputSeen separates a
+		// real (if terse) turn from agy's silent over-cap drop, which settles
+		// SUCCESS with NO model step, empty response, and zero usage (issue #2).
+		const usage = outcome.usage ?? turn.usage;
+		const enriched: TurnOutcome = {
+			...outcome,
+			usage,
+			sawResult: turn.sawResult,
+			modelOutputSeen:
+				turn.sawModelStep ||
+				outcome.response.length > 0 ||
+				hasTokenEvidence(usage),
+		};
+		void this.#termination.then(() => turn.resolve(enriched));
+		try {
+			this.#onTurnEnd?.(enriched);
+		} catch {
+			/* listener errors must not break settling */
+		}
+	}
+
+	/** Stall / total-timeout guard shared by both timer sites. Kills the
+	 *  child FIRST (bumping the generation so a racing exit handler cannot
+	 *  settle the turn ERROR mid-probe), then probes the conversation's
+	 *  brain transcript for a clean final-response step written during the
+	 *  turn (parked turn: agy finished its answer but never streamed it).
+	 *  One found, the turn settles OK with the withheld answer instead of
+	 *  discarding finished work; either way the next turn respawns into a
+	 *  known state. */
+	async #turnDeadlineGuard(turn: ActiveTurn, label: "timeout" | "stall", message: string): Promise<void> {
+		if (turn.closed) return;
+		this.#log(`${label}:${turn.id}`);
+		await this.#killChild();
+		let parked: string | undefined;
+		try {
+			parked = turn.conversationId
+				? await parkedTurnAnswer(turn.conversationId, turn.startedAt)
+				: undefined;
+		} catch {
+			parked = undefined; // the guard must never throw
+		}
+		if (parked !== undefined) {
+			this.#settle(turn, {
+				conversationId: turn.conversationId,
+				status: "OK",
+				response: parked,
+				usage: turn.usage,
+				finished: true,
+				aborted: false,
+				deadline: label,
+			});
+			return;
+		}
+		this.#failTurn(turn, message, label);
+	}
+
+	#failTurn(turn: ActiveTurn, message: string, deadline?: "timeout" | "stall"): void {
+		this.#settle(turn, {
+			conversationId: turn.conversationId,
+			status: "ERROR",
+			response: turn.response,
+			error: message,
+			usage: turn.usage,
+			finished: true,
+			aborted: false,
+			deadline,
+		});
+	}
+
+	#recycleCause(next: DriverTurnRequest): string | undefined {
+		const cur = this.#profile;
+		if (!cur) return undefined;
+		if (cur.cwd !== next.cwd) return "cwd";
+		if (cur.model !== next.model) return "model";
+		if (cur.effort !== next.effort) return "effort";
+		if (cur.mode !== next.mode) return "mode";
+		if (cur.skipPermissions !== effectiveSkipPermissions(next.mode, next.skipPermissions)) {
+			return "permissions";
+		}
+		if (cur.agent !== next.agent) return "agent";
+		if (!next.conversationId) return this.#boundConversation ? "conversation-reset" : undefined;
+		return next.conversationId === this.#boundConversation ? undefined : "conversation";
+	}
+
+	async close(reason: "recycle" | "shutdown", cause?: string): Promise<void> {
+		const child = this.#child;
+		if (!child) {
+			await this.#termination;
+			this.#state = reason === "shutdown" ? "dead" : "idle";
+			return;
+		}
+		if (reason === "recycle" && cause) {
+			this.#stats.recycles += 1;
+			this.#stats.lastRecycleReason = cause;
+			this.#stats.recycleReasons[cause] = (this.#stats.recycleReasons[cause] ?? 0) + 1;
+		}
+		this.#log(`close:${reason}${cause ? `:${cause}` : ""}`);
+		const turn = this.#active;
+		const termination = this.#killChild();
+		if (turn && !turn.closed) {
+			this.#failTurn(turn, `agy driver ${reason === "recycle" ? "recycled" : "shut down"} mid-turn${cause ? ` (${cause})` : ""}`);
+		}
+		await termination;
+		this.#state = reason === "shutdown" ? "dead" : "idle";
+	}
+
+	#killChild(): Promise<void> {
+		const child = this.#child;
+		if (!child) return this.#termination;
+		this.#child = undefined;
+		this.#generation += 1;
+		this.#stdoutBuf = "";
+		try {
+			child.stdout?.removeAllListeners();
+			child.stderr?.removeAllListeners();
+		} catch {
+			/* already gone */
+		}
+		this.#termination = terminateProcessTree(child, { log: (message, data) => this.#log(message, data) });
+		return this.#termination;
+	}
+
+	#log(msg: string, data?: unknown): void {
+		const line = `${nowIso()} ${msg}${data !== undefined ? ` ${JSON.stringify(data)}` : ""}`;
+		this.#lifecycle.push(line);
+		if (this.#lifecycle.length > LIFECYCLE_LIMIT) this.#lifecycle.shift();
+		this.log?.(msg, data);
+	}
+}

@@ -298,13 +298,13 @@ Native wait and status operations MUST remain scoped to collecting a nonterminal
 
 ### Requirement: Native lifecycle translation
 
-Pi root guidance MUST use one direct subagent_run with explicit canonical agent and bounded task per fresh assignment; omitted mode MUST use the configured agent/config mode or otherwise background, and explicit task/background modes MUST remain supported. Native status/result/cancel or supported live messaging MUST be used only for a known task ID. Queued delivery, nonterminal state and cancellation requests MUST NOT prove termination or acceptance. New objectives, phases, mutable surfaces and independent judgments MUST receive fresh assignments. Thoth MUST NOT use subagent orchestration APIs or claim instruction-only policy is runtime enforcement. Terminal notifications drive collection without polling; children MUST remain scoped to the parent Pi lifetime.
+Pi root guidance MUST use one direct subagent_run with explicit canonical agent and bounded task per fresh assignment; omitted mode MUST use the configured agent/config mode or otherwise background, and explicit task/background modes MUST remain supported. Native status/result/cancel or supported live messaging MUST be used only for a known task ID. Queued delivery, nonterminal state and cancellation requests MUST NOT prove termination or acceptance. New objectives, phases, mutable surfaces and independent judgments MUST receive fresh assignments. Thoth MUST NOT use subagent orchestration APIs or claim instruction-only policy is runtime enforcement. Terminal notifications drive collection without polling; children MUST remain scoped to the parent Pi lifetime. The adopted delegation runtime MUST support Pi 0.99.0/0.99.1 registry and model-only exposure semantics, restrict child registered tools to the selected permitted implementations, and distinguish queued, extension-handled, rejected, and model-consumed live input. Updating this runtime MUST preserve its responsibility for LLM subagent delegation; non-LLM background task execution remains external.
 
 #### Scenario: Native lifecycle translation
 
-- **GIVEN** independent bounded assignments and @thoth-agents/pi-subagents
-- **WHEN** root delegates
-- **THEN** separate background launches precede collection and fresh terminal evidence governs acceptance
+- **GIVEN** an active root using the adopted fork on Pi 0.99.0 or 0.99.1
+- **WHEN** it launches an LLM subagent, selects tools, or sends live input
+- **THEN** native delegation controls remain model-only, child callability respects the permitted registry, and reported message/terminal states retain their actual meanings without adding generic task responsibilities
 
 ### Requirement: Expose routable role contracts
 

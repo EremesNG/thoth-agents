@@ -2,6 +2,8 @@
 
 Pi extension for delegating work to markdown-defined subagents. Continuation is unavailable by default: `subagent_continue` is exposed only when effective `enable_continue` is explicitly `true`. The extension registers tools for the orchestrator, runs subagents in isolated in-memory Pi sessions, tracks task history, provides a TUI history panel, and supports per-subagent model/thinking-effort profiles.
 
+Requires Pi `>=0.99.0`; development SDK/TUI dependencies are pinned to `0.99.1`, with native compatibility checks on both `0.99.0` and `0.99.1`. This fork delegates LLM subagents. Non-LLM background work belongs to the separate `pi-background-tasks` package. Existing configuration, model/tool commands, run-mode defaults, and continuation policy are preserved.
+
 ## What it provides
 
 - Markdown-defined subagents loaded from global and project directories.
@@ -145,6 +147,8 @@ tools:
 Both examples load the same allowlist: `read`, `write`, and `bash`. Comma splitting applies only to `tools`; scalar fields such as `description` can contain commas without becoming lists.
 
 Use `tools: "*"` to include all currently registered eligible tools, including inactive tools and tools registered before a future launch. Use `tools: "@active"` to follow the parent's current active tools at each launch. These selectors remain compact in the saved definition. An empty active inventory stays empty. A selected tool must have a child-loadable implementation; otherwise launch reports the missing tool.
+
+Explicit lists and `*` are checked against the child's registered implementations, rather than requiring every selected tool to be active in the model tool list. Selected `deferred` and `codemode` tools remain callable through Pi's native nested-tool interface. Excluded and prohibited tools are absent from the child's registered inventory.
 
 Other wildcard patterns such as `tool_*`, including `*` mixed with other entries, retain active-only matching. If a pattern matches no active tool, it expands to nothing. Reserved `subagent_*`, `ask_user_question`, and `todo` controls remain excluded.
 
@@ -337,6 +341,8 @@ Useful event names:
 
 Only the main orchestrator should call these tools. Subagents are explicitly prevented from calling `subagent_*` tools.
 
+Delegation controls use Pi's `model-only` exposure: they remain active for the orchestrator's model, while native `executeTool` and codemode cannot invoke them.
+
 ### `subagent_run`
 
 Parameters:
@@ -430,18 +436,19 @@ Rejected ownership/runtime examples:
 {
   "status": "rejected",
   "reason": "unsupported_runtime",
-  "required_pi_version": ">=0.82.1",
-  "detected_pi_version": "0.81.0",
-  "message": "Live background messaging requires Pi runtime >=0.82.1; detected 0.81.0."
+  "required_pi_version": ">=0.99.0",
+  "detected_pi_version": "0.98.0",
+  "message": "Live background messaging requires Pi runtime >=0.99.0; detected 0.98.0."
 }
 ```
 
 Live-message requirements, visibility, and lifecycle:
 
-- Live steering requires Pi runtime `>=0.82.1` and an available nested SDK `session.steer(...)` bridge. Compatibility is detected from the Pi SDK version already loaded by the runner; known old or unknown runtimes fail closed.
+- Live steering requires Pi runtime `>=0.99.0` and an available nested SDK `session.steer(...)` bridge. Compatibility is detected from the Pi SDK version already loaded by the runner; known old or unknown runtimes fail closed.
 - Ownership is exact: only the parent Pi session that launched the currently running background attempt can send to it. Continuations rebind ownership to the parent session that starts that attempt.
 - A same-parent message may be accepted before the nested steering bridge is ready. It remains in a bounded pending queue and is forwarded exactly once when readiness is established.
 - `status: "queued"` proves queue acceptance, not model consumption. The owning `/subagents` task detail timeline renders each message chronologically as queued and then consumed when the SDK confirms consumption, including FIFO handling of identical message text.
+- When the bridge is ready, the tool awaits Pi's asynchronous steering acknowledgment. `status: "handled"` means an input extension handled the message, clears its pending delivery expectation, and does not prove model consumption. A native rejection returns `status: "rejected"` with `reason: "enqueue_failed"` and removes that message's pending entry. Pre-ready acceptance remains queued until the bridge forwards it; a later failure contributes to the terminal undelivered count.
 - Active `subagent_status` surfaces `pending_message_count`. Terminal `subagent_result` and completion notifications surface `undelivered_message_count`, including `0`.
 - Pending queue entries are discarded on completion, cancellation, shutdown, restart, or continuation; they are not replayed into a new attempt.
 - Message text is private to the owning task detail timeline and persisted task-detail snapshot. Lists, widgets, completion notifications, result summaries, logs, and unrelated parent sessions expose only safe counts/metadata.
@@ -561,6 +568,8 @@ This package bundles:
 Subagent definitions are intentionally user/project configuration, not hard-coded package behavior. Add them globally in `$PI_CODING_AGENT_DIR/agents/*.md` or `$PI_CODING_AGENT_DIR/subagents/*.md`, or project-locally in `.pi/agents/*.md` or `.pi/subagents/*.md`. Do not inspect `node_modules/@thoth-agents/pi-subagents/agents` for definitions; that path is not part of the package design and may not exist.
 
 ## Development
+
+The lockfile pins the development Pi SDK and TUI to `0.99.1`. Run focused native SDK and renderer checks with `0.99.0` as well, then restore the locked tree with `npm ci` before final validation.
 
 Install dependencies once:
 

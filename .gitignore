@@ -75,3 +75,6 @@ wheels/
 .installed.cfg
 *.egg
 /.codegraph/
+
+# Pi background task output
+.pi/tasks/

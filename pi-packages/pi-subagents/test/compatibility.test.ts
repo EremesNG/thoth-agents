@@ -166,9 +166,9 @@ describe('compatibility smoke', () => {
           'subagent_cancel',
           'subagent_send_message',
         ]);
-        expect(definitions.every((tool) => tool.exposure === 'model-only')).toBe(
-          true,
-        );
+        expect(
+          definitions.every((tool) => tool.exposure === 'model-only'),
+        ).toBe(true);
       },
       { projectConfig: { enable_continue: true } },
     );

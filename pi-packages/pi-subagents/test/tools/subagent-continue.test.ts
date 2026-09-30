@@ -412,7 +412,11 @@ describe('subagent_continue tool', () => {
     );
     (manager as any).registerLiveBridge(
       taskId,
-      { supported: true, detected_pi_version: '0.82.1', steer: vi.fn(async () => 'queued' as const) },
+      {
+        supported: true,
+        detected_pi_version: '0.82.1',
+        steer: vi.fn(async () => 'queued' as const),
+      },
       'parent-a',
       1,
     );

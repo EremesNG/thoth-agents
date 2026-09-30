@@ -51,7 +51,7 @@
     "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-coding-agent": ">=0.99.0",
     "typebox": "*"
   },
   "peerDependenciesMeta": {
@@ -63,8 +63,8 @@
     }
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.85.1",
-    "@earendil-works/pi-tui": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.99.1",
+    "@earendil-works/pi-tui": "0.99.1",
     "@semantic-release/github": "12.0.8",
     "@semantic-release/npm": "13.1.5",
     "@types/node": "24.10.1",

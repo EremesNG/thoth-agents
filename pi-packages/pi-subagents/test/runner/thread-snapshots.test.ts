@@ -50,7 +50,11 @@ describe('subagent runner thread snapshots', () => {
         create: sessionManagerSpies.create,
         open: sessionManagerSpies.open,
       },
-      createAgentSession: vi.fn(() => ({ session })),
+      createAgentSession: vi.fn((options: any) => ({
+        session: Object.assign(session, {
+          getAllTools: () => options.tools.map((name: string) => ({ name })),
+        }),
+      })),
     }));
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     const activities: any[] = [];
@@ -460,7 +464,11 @@ describe('subagent runner thread snapshots', () => {
     };
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
       SessionManager: { inMemory: () => ({}) },
-      createAgentSession: vi.fn(() => ({ session })),
+      createAgentSession: vi.fn((options: any) => ({
+        session: Object.assign(session, {
+          getAllTools: () => options.tools.map((name: string) => ({ name })),
+        }),
+      })),
     }));
 
     try {

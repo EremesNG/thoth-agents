@@ -412,12 +412,12 @@ describe('subagent_continue tool', () => {
     );
     (manager as any).registerLiveBridge(
       taskId,
-      { supported: true, detected_pi_version: '0.82.1', steer: vi.fn() },
+      { supported: true, detected_pi_version: '0.82.1', steer: vi.fn(async () => 'queued' as const) },
       'parent-a',
       1,
     );
     expect(
-      (manager as any).sendMessage({
+      await manager.sendMessage({
         task_id: taskId,
         message: 'stale pending message',
         session_id: 'parent-a',

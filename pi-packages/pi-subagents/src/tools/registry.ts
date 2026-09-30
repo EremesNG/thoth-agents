@@ -14,13 +14,17 @@ export function registerSubagentTools(
   manager: SubagentManager,
   cwd = process.cwd(),
 ): void {
-  pi.registerTool(createSubagentListAgentsTool(manager));
-  pi.registerTool(createSubagentRunTool(manager, pi));
+  const registerTool = (tool: { name: string }): void => {
+    pi.registerTool({ ...tool, exposure: 'model-only' });
+  };
+
+  registerTool(createSubagentListAgentsTool(manager));
+  registerTool(createSubagentRunTool(manager, pi));
   if (readSubagentsConfig(cwd).enable_continue)
-    pi.registerTool(createSubagentContinueTool(manager));
-  pi.registerTool(createSubagentStatusTool(manager));
-  pi.registerTool(createSubagentResultTool(manager));
-  pi.registerTool(createSubagentListTasksTool(manager));
-  pi.registerTool(createSubagentCancelTool(manager));
-  pi.registerTool(createSubagentSendMessageTool(manager));
+    registerTool(createSubagentContinueTool(manager));
+  registerTool(createSubagentStatusTool(manager));
+  registerTool(createSubagentResultTool(manager));
+  registerTool(createSubagentListTasksTool(manager));
+  registerTool(createSubagentCancelTool(manager));
+  registerTool(createSubagentSendMessageTool(manager));
 }

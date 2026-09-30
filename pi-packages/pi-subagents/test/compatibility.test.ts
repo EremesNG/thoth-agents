@@ -86,14 +86,16 @@ describe('compatibility smoke', () => {
       const shortcuts: string[] = [];
       const commands: string[] = [];
       const tools: string[] = [];
+      const definitions: { name: string; exposure?: string }[] = [];
       const events: string[] = [];
       const pi = {
         registerMessageRenderer: vi.fn((name: string) => {
           calls.push(`renderer:${name}`);
         }),
-        registerTool: vi.fn((tool: { name: string }) => {
+        registerTool: vi.fn((tool: { name: string; exposure?: string }) => {
           calls.push(`tool:${tool.name}`);
           tools.push(tool.name);
+          definitions.push(tool);
         }),
         on: vi.fn((name: string) => {
           calls.push(`event:${name}`);
@@ -122,6 +124,18 @@ describe('compatibility smoke', () => {
         'subagent_send_message',
       ]);
       expect(events).toEqual(['session_start', 'session_shutdown']);
+      for (const tool of definitions) {
+        expect(tool).toMatchObject({
+          exposure: 'model-only',
+          label: expect.any(String),
+          description: expect.any(String),
+          parameters: { type: 'object' },
+          execute: expect.any(Function),
+          renderShell: 'self',
+          renderCall: expect.any(Function),
+          renderResult: expect.any(Function),
+        });
+      }
       expect(shortcuts).toEqual(expect.arrayContaining(['ctrl+,', 'ctrl+h']));
       expect(commands).toEqual(['subagents', 'subagents-model']);
     });
@@ -131,16 +145,30 @@ describe('compatibility smoke', () => {
     await withIsolatedSubagentsConfig(
       () => {
         const tools: string[] = [];
+        const definitions: { name: string; exposure?: string }[] = [];
         extension({
           registerMessageRenderer: () => undefined,
-          registerTool: vi.fn((tool: { name: string }) => {
+          registerTool: vi.fn((tool: { name: string; exposure?: string }) => {
             tools.push(tool.name);
+            definitions.push(tool);
           }),
           on: () => undefined,
           registerShortcut: () => undefined,
           registerCommand: () => undefined,
         });
-        expect(tools).toContain('subagent_continue');
+        expect(tools).toEqual([
+          'subagent_list_agents',
+          'subagent_run',
+          'subagent_continue',
+          'subagent_status',
+          'subagent_result',
+          'subagent_list_tasks',
+          'subagent_cancel',
+          'subagent_send_message',
+        ]);
+        expect(definitions.every((tool) => tool.exposure === 'model-only')).toBe(
+          true,
+        );
       },
       { projectConfig: { enable_continue: true } },
     );

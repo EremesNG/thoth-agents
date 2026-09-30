@@ -26,15 +26,12 @@ export function createSubagentSendMessageTool(manager: SubagentManager) {
       ctx: any,
     ) {
       try {
-        const result = manager.sendMessage({
+        const result = await manager.sendMessage({
           task_id: params.task_id,
           message: params.message,
           session_id: sessionIdFromToolContext(ctx),
         });
-        const text =
-          result.status === 'queued'
-            ? `queued: ${result.message}`
-            : `rejected: ${result.message}`;
+        const text = `${result.status}: ${result.message}`;
         return ok(text, result);
       } catch (error) {
         return fail(error);

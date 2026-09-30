@@ -27,7 +27,7 @@ describe('pi package manifest', () => {
 
   it('does not bundle pi core runtime packages', () => {
     expect(packageJson.peerDependencies).toMatchObject({
-      '@earendil-works/pi-coding-agent': '*',
+      '@earendil-works/pi-coding-agent': '>=0.99.0',
       typebox: '*',
     });
     expect(packageJson.peerDependenciesMeta).toMatchObject({

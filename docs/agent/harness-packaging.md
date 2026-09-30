@@ -30,6 +30,14 @@
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=1.0.0`.
+  The delegation fork supports Pi `>=0.99.0`, pins its development SDK/TUI to
+  `0.99.1`, and verifies native registry, rendering, and steering on both
+  `0.99.0` and `0.99.1`. Selected registered deferred/codemode tools can be
+  callable while inactive; excluded tools are absent from the child registry.
+  Delegation controls use native `model-only` exposure. Live messaging
+  distinguishes queued, extension-handled, rejected, and model-consumed input.
+  Its responsibility remains LLM subagent delegation; non-LLM background work
+  belongs to the separate `pi-background-tasks` package.
   Generated definitions use supported `model`, `effort`, and `subagent_mode`
   fields; they do not claim fresh-context or depth enforcement. Omitted run mode
   follows the selected definition and configuration, with background as the

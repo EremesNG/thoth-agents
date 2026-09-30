@@ -455,6 +455,7 @@ type PendingMessageEntry = {
   message: string;
   bytes: number;
   forwarded: boolean;
+  acknowledged: boolean;
 };
 
 type LiveTaskState = {
@@ -464,20 +465,23 @@ type LiveTaskState = {
   bridge?: LiveSteeringBridge;
   pendingMessages: PendingMessageEntry[];
   pendingBytes: number;
+  pendingConsumption: number;
 };
 
 function closeLiveState(
   task: SubagentTask,
   state: LiveTaskState | undefined,
 ): void {
-  const pendingCount =
-    state?.pendingMessages.length ?? task.pending_message_count ?? 0;
+  const pendingCount = state
+    ? Math.max(0, state.pendingMessages.length - state.pendingConsumption)
+    : task.pending_message_count ?? 0;
   task.pending_message_count = 0;
   task.undelivered_message_count =
     (task.undelivered_message_count ?? 0) + pendingCount;
   if (!state) return;
   state.pendingMessages = [];
   state.pendingBytes = 0;
+  state.pendingConsumption = 0;
   state.bridgeReady = true;
   delete state.bridge;
 }
@@ -721,6 +725,7 @@ export class SubagentManager {
             bridgeReady: false,
             pendingMessages: [],
             pendingBytes: 0,
+            pendingConsumption: 0,
           };
     state.parentSessionId = parentSessionId;
     state.attempt = attempt;
@@ -749,32 +754,98 @@ export class SubagentManager {
     state: LiveTaskState,
   ): void {
     if (!state.bridgeReady || !state.bridge?.supported) return;
-    for (const entry of state.pendingMessages) {
+    for (const entry of [...state.pendingMessages]) {
       if (entry.forwarded) continue;
-      try {
-        state.bridge.steer(entry.message);
-        entry.forwarded = true;
-      } catch {
-        break;
-      }
+      void this.forwardLiveMessage(task, state, entry, true);
     }
     task.pending_message_count = state.pendingMessages.length;
+  }
+
+  private async forwardLiveMessage(
+    task: SubagentTask,
+    state: LiveTaskState,
+    entry: PendingMessageEntry,
+    alreadyAccepted = false,
+  ): Promise<'queued' | 'handled' | 'rejected'> {
+    entry.forwarded = true;
+    let disposition: 'queued' | 'handled';
+    try {
+      disposition = await state.bridge!.steer(entry.message);
+    } catch {
+      if (this.removeLiveMessage(task, state, entry)) {
+        if (alreadyAccepted)
+          task.undelivered_message_count =
+            (task.undelivered_message_count ?? 0) + 1;
+        this.drainConsumedLiveMessages(task, state);
+        this.recordLiveMessageOutcome(task, 'rejected');
+      }
+      return 'rejected';
+    }
+    if (
+      disposition === 'handled' &&
+      this.removeLiveMessage(task, state, entry)
+    ) {
+      this.drainConsumedLiveMessages(task, state);
+      this.recordLiveMessageOutcome(task, 'handled by input extension');
+    }
+    if (disposition === 'queued' && this.liveStates.get(task.id) === state) {
+      entry.acknowledged = true;
+      this.drainConsumedLiveMessages(task, state);
+    }
+    return disposition;
+  }
+
+  private recordLiveMessageOutcome(task: SubagentTask, outcome: string): void {
+    task.last_activity = `live steering message ${outcome}`;
+    task.last_activity_at = nowIso();
+    const cwd = this.taskCwds.get(task.id);
+    if (cwd) this.record(cwd, task, task.last_activity, true);
+  }
+
+  private removeLiveMessage(
+    task: SubagentTask,
+    state: LiveTaskState,
+    entry: PendingMessageEntry,
+  ): boolean {
+    if (this.liveStates.get(task.id) !== state) return false;
+    const index = state.pendingMessages.indexOf(entry);
+    if (index < 0) return false;
+    state.pendingMessages.splice(index, 1);
+    state.pendingBytes = Math.max(0, state.pendingBytes - entry.bytes);
+    task.pending_message_count = state.pendingMessages.length;
+    return true;
   }
 
   consumeQueuedMessage(taskId: string): void {
     const task = this.tasks.get(taskId);
     const state = this.liveStates.get(taskId);
     if (!task || !state || !state.pendingMessages.length) return;
-    const forwardedIndex = state.pendingMessages.findIndex(
+    const forwardedCount = state.pendingMessages.filter(
       (entry) => entry.forwarded,
-    );
-    if (forwardedIndex < 0) return;
-    const [entry] = state.pendingMessages.splice(forwardedIndex, 1);
-    state.pendingBytes = Math.max(0, state.pendingBytes - (entry?.bytes ?? 0));
-    task.pending_message_count = state.pendingMessages.length;
+    ).length;
+    if (state.pendingConsumption >= forwardedCount) return;
+    state.pendingConsumption += 1;
+    this.drainConsumedLiveMessages(task, state);
   }
 
-  sendMessage(input: SendMessageInput): SendMessageResult {
+  private drainConsumedLiveMessages(
+    task: SubagentTask,
+    state: LiveTaskState,
+  ): void {
+    while (state.pendingConsumption > 0) {
+      const entry = state.pendingMessages.find((entry) => entry.forwarded);
+      if (!entry) {
+        state.pendingConsumption = 0;
+        break;
+      }
+      // User events can precede steer acknowledgment; skip handled inputs in FIFO order.
+      if (!entry.acknowledged) break;
+      if (!this.removeLiveMessage(task, state, entry)) break;
+      state.pendingConsumption -= 1;
+    }
+  }
+
+  async sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
     const task = this.tasks.get(input.task_id);
     if (!task) {
       return {
@@ -840,9 +911,9 @@ export class SubagentManager {
         status: 'rejected',
         task_id: input.task_id,
         reason: 'unsupported_runtime',
-        required_pi_version: '>=0.82.1',
+        required_pi_version: '>=0.99.0',
         detected_pi_version: liveState.bridge.detected_pi_version,
-        message: `Live background messaging requires Pi runtime >=0.82.1; detected ${liveState.bridge.detected_pi_version}.`,
+        message: `Live background messaging requires Pi runtime >=0.99.0; detected ${liveState.bridge.detected_pi_version}.`,
       };
     }
     const message = sanitizeInteractionTransportText(input.message ?? '');
@@ -886,21 +957,23 @@ export class SubagentManager {
       message,
       bytes: messageBytes,
       forwarded: false,
+      acknowledged: false,
     };
     liveState.pendingMessages.push(entry);
     liveState.pendingBytes += messageBytes;
     task.pending_message_count = liveState.pendingMessages.length;
     if (liveState.bridgeReady && liveState.bridge?.supported) {
-      try {
-        liveState.bridge.steer(message);
-        entry.forwarded = true;
-      } catch {
-        liveState.pendingMessages.pop();
-        liveState.pendingBytes = Math.max(
-          0,
-          liveState.pendingBytes - messageBytes,
-        );
-        task.pending_message_count = liveState.pendingMessages.length;
+      const disposition = await this.forwardLiveMessage(task, liveState, entry);
+      if (disposition === 'handled') {
+        return {
+          status: 'handled',
+          task_id: input.task_id,
+          pending_message_count: liveState.pendingMessages.length,
+          message:
+            'Message handled by an input extension; this does not prove model consumption.',
+        };
+      }
+      if (disposition === 'rejected') {
         return {
           status: 'rejected',
           task_id: input.task_id,
@@ -1313,6 +1386,7 @@ export class SubagentManager {
       bridgeReady: false,
       pendingMessages: [],
       pendingBytes: 0,
+      pendingConsumption: 0,
     });
     const abortFromParent = () => this.cancel(id, 'parent abort');
     if (parentSignal?.aborted) abortFromParent();

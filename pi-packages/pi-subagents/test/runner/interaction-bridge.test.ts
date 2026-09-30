@@ -20,6 +20,7 @@ describe('subagent runner interaction-required bridge', () => {
     vi.resetModules();
     let delegatedPrompt = '';
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       systemPrompt: '# Analyst\nSYSTEM_SENTINEL',
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async (prompt: string) => {
@@ -121,6 +122,7 @@ describe('subagent runner interaction-required bridge', () => {
     vi.resetModules();
     const resolvedModel = { provider: 'runtime', id: 'resolved-model' };
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => undefined),
       messages: [{ role: 'assistant', content: 'runtime done' }],
@@ -179,6 +181,7 @@ describe('subagent runner interaction-required bridge', () => {
       }
     }
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       systemPrompt: 'system',
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => undefined),
@@ -291,6 +294,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn((callback: (event: unknown) => void) => {
         subscriber = callback;
         return vi.fn();
@@ -387,6 +391,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn((callback: (event: unknown) => void) => {
         subscriber = callback;
         return vi.fn();
@@ -473,6 +478,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn((callback: (event: unknown) => void) => {
         subscriber = callback;
         return vi.fn();
@@ -539,6 +545,7 @@ describe('subagent runner interaction-required bridge', () => {
   it('passes profile model and effort to nested SDK sessions and reports them', async () => {
     vi.resetModules();
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => undefined),
       messages: [{ role: 'assistant', content: 'done' }],
@@ -603,6 +610,7 @@ describe('subagent runner interaction-required bridge', () => {
   it('inherits missing profile fields from the remaining fallback chain', async () => {
     vi.resetModules();
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => undefined),
       messages: [{ role: 'assistant', content: 'done' }],
@@ -657,6 +665,7 @@ describe('subagent runner interaction-required bridge', () => {
   it('keeps no-profile default-config and orchestrator-inherited behavior unchanged', async () => {
     vi.resetModules();
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => undefined),
       messages: [{ role: 'assistant', content: 'done' }],
@@ -772,6 +781,7 @@ describe('subagent runner interaction-required bridge', () => {
   it('passes the resolved thinking effort to nested SDK sessions and reports it', async () => {
     vi.resetModules();
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => undefined),
       messages: [{ role: 'assistant', content: 'done' }],
@@ -1117,7 +1127,7 @@ describe('subagent runner interaction-required bridge', () => {
     ]);
   });
 
-  it('reports a selected full-inventory tool that has no child implementation', async () => {
+  it('reports missing child implementations while permitting registered inactive tools', async () => {
     vi.resetModules();
     const missingSession = {
       subscribe: vi.fn(() => vi.fn()),
@@ -1172,14 +1182,58 @@ describe('subagent runner interaction-required bridge', () => {
 
     await expect(run()).rejects.toThrow('inactive_extension_tool');
     session = inactiveSession;
-    await expect(run()).rejects.toThrow(
-      'registered but inactive: inactive_extension_tool',
-    );
+    await expect(run()).resolves.toMatchObject({ result: 'done' });
 
     expect(missingSession.prompt).not.toHaveBeenCalled();
-    expect(inactiveSession.prompt).not.toHaveBeenCalled();
+    expect(inactiveSession.prompt).toHaveBeenCalledOnce();
     expect(missingSession.dispose).toHaveBeenCalledOnce();
     expect(inactiveSession.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('verifies explicit child selections and rejects unexpected registered tools before prompting', async () => {
+    vi.resetModules();
+    let registered: string[] = [];
+    const session = {
+      subscribe: vi.fn(() => vi.fn()),
+      prompt: vi.fn(async () => undefined),
+      messages: [{ role: 'assistant', content: 'done' }],
+      dispose: vi.fn(async () => undefined),
+      getAllTools: () => registered.map((name) => ({ name })),
+      getActiveToolNames: () => ['read'],
+    };
+    vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      SessionManager: { inMemory: () => ({}) },
+      createAgentSession: () => ({ session }),
+    }));
+    const { sdkSubagentRunner } = await import('../../src/runner.js');
+    const run = (tools: string[]) =>
+      sdkSubagentRunner({
+        definition: {
+          name: 'reader',
+          description: 'reader',
+          filePath: '/tmp/reader.md',
+          instructions: 'read only',
+          tools,
+        },
+        task: 'read a file',
+        cwd: '/workspace',
+        ctx: { model: { provider: 'test', id: 'model' } },
+        config: {
+          timeout_ms: 10_000,
+          stall_timeout_ms: 10_000,
+          max_concurrency: 1,
+          default_tools: ['read'],
+          model_profiles: {},
+        },
+        signal: new AbortController().signal,
+      });
+    await expect(run(['read'])).rejects.toThrow('missing implementation: read');
+    registered = ['read', 'subagent_run'];
+    await expect(run(['read'])).rejects.toThrow('unexpectedly registered: subagent_run');
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(session.dispose).toHaveBeenCalledTimes(2);
+    registered = ['read'];
+    await expect(run(['read', 'subagent_run', 'ask_user_question', 'todo'])).resolves.toMatchObject({ result: 'done' });
   });
 
   it('detects supported and unsupported Pi versions from the loaded SDK version export', async () => {
@@ -1187,27 +1241,33 @@ describe('subagent runner interaction-required bridge', () => {
       '../../src/runner/pi-sdk-module.js'
     );
 
-    expect((detectPiRuntimeSupport as any)('0.83.0')).toEqual({
+    expect(detectPiRuntimeSupport('0.99.0')).toEqual({
       supported: true,
-      detected_pi_version: '0.83.0',
-      required_pi_version: '>=0.82.1',
+      detected_pi_version: '0.99.0',
+      required_pi_version: '>=0.99.0',
     });
-    expect((detectPiRuntimeSupport as any)('0.81.0')).toEqual({
+    expect(detectPiRuntimeSupport('0.99.1')).toEqual({
+      supported: true,
+      detected_pi_version: '0.99.1',
+      required_pi_version: '>=0.99.0',
+    });
+    expect(detectPiRuntimeSupport('0.98.1')).toEqual({
       supported: false,
-      detected_pi_version: '0.81.0',
-      required_pi_version: '>=0.82.1',
+      detected_pi_version: '0.98.1',
+      required_pi_version: '>=0.99.0',
     });
-    expect((detectPiRuntimeSupport as any)(undefined)).toEqual({
+    expect(detectPiRuntimeSupport(undefined)).toEqual({
       supported: false,
       detected_pi_version: 'unknown',
-      required_pi_version: '>=0.82.1',
+      required_pi_version: '>=0.99.0',
     });
   });
 
   it('registers the nested SDK live steering bridge and clears it after settlement', async () => {
     vi.resetModules();
-    const steer = vi.fn(async () => undefined);
+    const steer = vi.fn(async () => 'queued');
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       steer,
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => undefined),
@@ -1216,7 +1276,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
     const createAgentSession = vi.fn(() => ({ session }));
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
-      VERSION: '0.83.0',
+      VERSION: '0.99.1',
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -1254,9 +1314,13 @@ describe('subagent runner interaction-required bridge', () => {
       expect(bridges).toHaveLength(1);
       expect(bridges[0]).toMatchObject({
         supported: true,
-        detected_pi_version: '0.83.0',
+        detected_pi_version: '0.99.1',
       });
-      bridges[0].steer('steer this nested session');
+      await expect(bridges[0].steer('steer this nested session')).resolves.toBe('queued');
+      steer.mockResolvedValueOnce('handled');
+      await expect(bridges[0].steer('extension input')).resolves.toBe('handled');
+      steer.mockRejectedValueOnce(new Error('steering failed'));
+      await expect(bridges[0].steer('rejected input')).rejects.toThrow('steering failed');
       expect(steer).toHaveBeenCalledWith('steer this nested session');
       expect(cleared).toBe(1);
     } finally {
@@ -1271,6 +1335,7 @@ describe('subagent runner interaction-required bridge', () => {
     const previousRegistry = holder[registryKey];
     let metadataDuringPrompt: unknown;
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       sessionManager: { getSessionId: () => 'nested-session-1' },
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => {
@@ -1386,6 +1451,7 @@ describe('subagent runner interaction-required bridge', () => {
       promptEntered = resolve;
     });
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async (_prompt: string, options?: unknown) => {
         expect(options).toBeUndefined();
@@ -1440,6 +1506,7 @@ describe('subagent runner interaction-required bridge', () => {
   it('aborts a pre-aborted AgentSession before prompting', async () => {
     vi.resetModules();
     const session = {
+      getAllTools: () => [{ name: 'read' }],
       subscribe: vi.fn(() => vi.fn()),
       prompt: vi.fn(async () => undefined),
       abort: vi.fn(async () => undefined),

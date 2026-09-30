@@ -25,14 +25,10 @@ Ideas and open questions, ordered by rough priority. Nothing is a commitment.
    1.1% invisible loss into a number, which is the prerequisite for ever
    explaining it.
 
-3. **Delete `reasoningText`** (`src/index.ts:991`): `reasoning=` appears in 0 of
-   14,994 `usage:` lines, so the SDK never supplies the field. Right now it reads
-   as a working diagnostic. Delete it or record why it stays.
+3. **Per-query rewrite staleness — done for the serving instance; worktree-spawn instances still mark via the `Symbol.for` hook registry** (`claude-bridge:markRebuildHooks`), which relies on every instance loading the same module. If a future pi loader change makes that unreliable, the hook registry needs to grow into a shared state channel (per-session mark records the serving instance reads). Session id attribution rides on `options.sessionId`, which pi-ai documents as ignorable metadata — verify it stays set on `streamSimple` calls (agent.ts passes `sessionManager.getSessionId()` today).
+4. **Decide which other `WARNING:` lines should fail integration runs.** The suite gates bridge-origin `BUG:` and stranded MCP-handler markers; `diag/audit-warnings.mjs` inventories the remaining warnings. Add a warning only when its meaning and any intentional test cases are pinned.
 
-4. **Per-query rewrite staleness — done for the serving instance; worktree-spawn instances still mark via the `Symbol.for` hook registry** (`claude-bridge:markRebuildHooks`), which relies on every instance loading the same module. If a future pi loader change makes that unreliable, the hook registry needs to grow into a shared state channel (per-session mark records the serving instance reads). Session id attribution rides on `options.sessionId`, which pi-ai documents as ignorable metadata — verify it stays set on `streamSimple` calls (agent.ts passes `sessionManager.getSessionId()` today).
-5. **Decide which other `WARNING:` lines should fail integration runs.** The suite gates bridge-origin `BUG:` and stranded MCP-handler markers; `diag/audit-warnings.mjs` inventories the remaining warnings. Add a warning only when its meaning and any intentional test cases are pinned.
-
-6. **Stop the diag replay harness manufacturing the phantom-tool-call condition.**
+5. **Stop the diag replay harness manufacturing the phantom-tool-call condition.**
    `diag/replay-write-path.mjs` and `diag/lib/write-path.mjs` (also used by
    `unit-convert-determinism`) call the conversion without a populated
    `customToolNameToSdk` map, so pi's `bash` is rebuilt as Claude Code's builtin
@@ -41,12 +37,12 @@ Ideas and open questions, ordered by rough priority. Nothing is a commitment.
    under test. Fix: pass the recorded tool list through to `convertPiMessages`.
    Production is unaffected (verified over 86,652 real pi messages).
 
-7. **Mirror `eli/lifecycle-coverage-gaps.md` into a tracked file** -- the
+6. **Mirror `eli/lifecycle-coverage-gaps.md` into a tracked file** -- the
    QueryContext lifecycle x sync-path coverage map is in a gitignored directory, so
    nobody else gets it. Belongs in `docs/` or as a section of `diag/AUDIT.md`. (The
    provenance rule is already in `AGENTS.md`.)
 
-8. **Surface errors that arrive with no open pi stream.** When a result lands
+7. **Surface errors that arrive with no open pi stream.** When a result lands
    after the turn already ended on a tool call, `consumeQuery` records the error
    (stopReason, errorMessage, log) but there is no open `currentPiStream` to push
    an error event onto, so the user sees a stalled turn rather than "rate limited".
@@ -54,31 +50,31 @@ Ideas and open questions, ordered by rough priority. Nothing is a commitment.
    `tests/unit-error-result.mjs` covers the recording; nothing covers the
    surfacing. This is also the third stall cause behind GitHub #35.
 
-9. **Handler timeout / stall watchdog** -- whether the bridge should give up on an
+8. **Handler timeout / stall watchdog** -- whether the bridge should give up on an
    MCP handler that has waited implausibly long instead of only warning.
 
-10. **Markdown rendering** in expanded tool result view. Currently plain text.
+9. **Markdown rendering** in expanded tool result view. Currently plain text.
    Use `Markdown` from `@earendil-works/pi-tui` with a `MarkdownTheme`.
 
-11. **`/claude config` slash command** for runtime configuration. Currently
+10. **`/claude config` slash command** for runtime configuration. Currently
     requires editing JSON and `/reload`.
 
-12. **`/claude:btw` command** for ephemeral questions: response displayed but
+11. **`/claude:btw` command** for ephemeral questions: response displayed but
     not added to LLM context.
 
-13. **Audit tool parameter mismatches**: The bash timeout default (120s) was added
+12. **Audit tool parameter mismatches**: The bash timeout default (120s) was added
     because pi's bash has no default while Claude Code expects one. Other bridged
     tools may have similar mismatches (units, defaults, optional-vs-required params).
     Compare Claude Code's tool schemas against pi's for read, write, edit, grep, find.
 
-14. **AskUserQuestion pi shim** (main provider only): CC never sees
+13. **AskUserQuestion pi shim** (main provider only): CC never sees
     AskUserQuestion (it's in `DISALLOWED_BUILTIN_TOOLS`), so it can't ask the
     user questions interactively. Port a pi-native version using `ctx.ui.custom()`
     for an option picker with free-text fallback. Not applicable to AskClaude
     subagents (can't interact with user). See `fractary/pi-claude-code`
     `AskUserQuestion.ts` for reference.
 
-15. **PlanMode pi shim** (main provider only): Similarly, EnterPlanMode/
+14. **PlanMode pi shim** (main provider only): Similarly, EnterPlanMode/
     ExitPlanMode are blocked. A pi-native plan mode could use
     `pi.setActiveTools()` to restrict to read-only tools, block destructive bash
     via `tool_call` event, and surface plan approval through pi's TUI. Not

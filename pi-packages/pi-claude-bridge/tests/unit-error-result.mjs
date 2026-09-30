@@ -1,7 +1,8 @@
 /**
  * CC reports API failures (429 capacity, overload, prompt-too-long) as a result with
  * is_error set while subtype stays "success", after streaming the text as a <synthetic>
- * assistant message. Shape verified against claude-agent-sdk 0.2.141. Without this the
+ * assistant message. The result shape (is_error with subtype "success") is pinned
+ * live against the installed SDK in tests/int-cc-contracts.mjs. Without this the
  * turn finalizes as a normal stop and the failure never reaches pi.
  */
 import { describe, it } from "node:test";

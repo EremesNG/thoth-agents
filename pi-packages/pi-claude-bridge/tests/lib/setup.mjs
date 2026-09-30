@@ -6,7 +6,7 @@
  * before any test imports the module. Doing that per test file is easy to forget,
  * and forgetting is invisible: the suite still passes everywhere except on a
  * developer machine with CLAUDE_BRIDGE_DEBUG=1, where the tests instead append
- * fixture data to the real ~/.pi/agent/claude-bridge.log.
+ * fixture data to the real bridge log in pi's agent dir.
  *
  * Wiring this as `node --import ./tests/lib/setup.mjs` guarantees it runs first
  * in every test child process. tests/unit-debug-path.mjs asserts it took effect.

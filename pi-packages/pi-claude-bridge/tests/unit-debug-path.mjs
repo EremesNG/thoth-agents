@@ -5,6 +5,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -23,8 +24,31 @@ describe("test harness", () => {
 		// $HOME" check would misfire for anyone whose TMPDIR lives inside their home.
 		assert.notEqual(
 			path,
-			join(homedir(), ".pi", "agent", "claude-bridge.log"),
+			join(getAgentDir(), "claude-bridge.log"),
 			"debug log must not resolve to the real one",
 		);
+		assert.notEqual(
+			path,
+			join(homedir(), ".pi", "agent", "claude-bridge.log"),
+			"debug log must not resolve to the developer's real one",
+		);
+	});
+});
+
+describe("log paths", () => {
+	it("follow PI_CODING_AGENT_DIR when no debug path override is set", () => {
+		// log-paths.ts resolves at import time, so read it from a fresh process.
+		const probeDir = "/tmp/pi-agent-dir-probe";
+		const env = { ...process.env, PI_CODING_AGENT_DIR: probeDir };
+		delete env.CLAUDE_BRIDGE_DEBUG_PATH;
+		const src = new URL("../src/log-paths.ts", import.meta.url).href;
+		const out = execFileSync(process.execPath, [
+			"--import", "tsx", "--input-type=module", "-e",
+			`const p = await import(${JSON.stringify(src)}); console.log(JSON.stringify(p));`,
+		], { env, encoding: "utf8" });
+		assert.deepEqual(JSON.parse(out), {
+			DEBUG_LOG_PATH: join(probeDir, "claude-bridge.log"),
+			DIAG_LOG_PATH: join(probeDir, "claude-bridge-diag.log"),
+		});
 	});
 });

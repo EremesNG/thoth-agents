@@ -20,6 +20,7 @@ import {
 import { getInteractionSessionRegistry } from './interaction-session-registry.js';
 import { detectPiRuntimeSupport, loadPiSdkModule } from './pi-sdk-module.js';
 import { buildPrompt } from './prompt.js';
+import { teardownSubagentSession } from './session-teardown.js';
 
 function modelLabel(model: any): string | undefined {
   if (!model) return undefined;
@@ -113,7 +114,9 @@ function verifyChildToolSelection(
   if (missing.length || unexpected.length) {
     const details = [
       missing.length ? `missing implementation: ${missing.join(', ')}` : '',
-      unexpected.length ? `unexpectedly registered: ${unexpected.join(', ')}` : '',
+      unexpected.length
+        ? `unexpectedly registered: ${unexpected.join(', ')}`
+        : '',
     ].filter(Boolean);
     throw new NonRetryableSubagentError(
       `Selected tools are unavailable in the child session (${details.join('; ')}). Check that their extensions are installed and loadable by the child session.`,
@@ -151,6 +154,12 @@ function isNonRetryableSubagentError(error: unknown): boolean {
 }
 
 function isolateSubagentExtensions(base: any): any {
+  // Capture ownership before SDK binding consumes and clears the load-time queues.
+  const providerOwners = new Set(
+    (base?.runtime?.pendingProviderRegistrations ?? []).map(
+      (registration: { extensionPath: string }) => registration.extensionPath,
+    ),
+  );
   return {
     ...base,
     extensions: (base?.extensions ?? []).map((extension: any) => ({
@@ -158,7 +167,12 @@ function isolateSubagentExtensions(base: any): any {
       handlers: new Map(
         [
           ...((extension.handlers as Map<string, unknown[]>) ?? new Map()),
-        ].filter(([event]) => SUBAGENT_ALLOWED_EXTENSION_EVENTS.has(event)),
+        ].filter(
+          ([event]) =>
+            SUBAGENT_ALLOWED_EXTENSION_EVENTS.has(event) ||
+            (event === 'session_shutdown' &&
+              providerOwners.has(extension.path)),
+        ),
       ),
       commands: new Map(),
       flags: new Map(),
@@ -292,7 +306,10 @@ async function createSession(
     tools,
     sessionManager,
   };
-  if (ctx?.modelRuntime) options.modelRuntime = ctx.modelRuntime;
+  const modelRuntime =
+    ctx?.modelRuntime ??
+    (await piSdk.ModelRuntime.create({ allowModelNetwork: false }));
+  options.modelRuntime = modelRuntime;
   if (ctx?.settingsManager) options.settingsManager = ctx.settingsManager;
   if (config.session_resources === 'lean') {
     const DefaultResourceLoader = piSdk.DefaultResourceLoader;
@@ -319,9 +336,31 @@ async function createSession(
   }
   const created = await createAgentSession(options);
   try {
+    if (!ctx?.modelRuntime) {
+      // SDK binding has flushed the child's queued registrations into this runtime.
+      // Replay only missing IDs so child-owned providers keep their own closures.
+      const childProviders = new Set(modelRuntime.getRegisteredProviderIds());
+      for (const providerId of ctx?.modelRegistry?.getRegisteredProviderIds?.() ??
+        []) {
+        if (childProviders.has(providerId)) continue;
+        const providerConfig =
+          ctx.modelRegistry.getRegisteredProviderConfig(providerId);
+        const nativeProvider =
+          ctx.modelRegistry.getRegisteredNativeProvider(providerId);
+        if (providerConfig)
+          modelRuntime.registerProvider(providerId, providerConfig);
+        else if (nativeProvider)
+          modelRuntime.registerNativeProvider(nativeProvider);
+        else
+          throw new NonRetryableSubagentError(
+            `Cannot replay parent provider ${providerId} through public registry APIs.`,
+          );
+      }
+      await modelRuntime.refresh({ allowNetwork: false });
+    }
     verifyChildToolSelection(created.session, tools);
   } catch (error) {
-    await created.session?.dispose?.();
+    await teardownSubagentSession(created.session);
     throw error;
   }
   return {
@@ -422,10 +461,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
   const configuredTools = definition.tools?.length
     ? definition.tools
     : config.default_tools;
-  const tools = resolveConfiguredTools(
-    configuredTools,
-    ctx,
-  );
+  const tools = resolveConfiguredTools(configuredTools, ctx);
   const systemPrompt = definition.instructions;
   const prompt =
     continuation?.prompt ?? buildPrompt(definition, task, context, tools);
@@ -460,19 +496,20 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       systemPrompt,
       nested_session_path,
     );
-    registerLiveBridge?.(createLiveSteeringBridge(session, piVersion));
-    onActivity?.({
-      message: 'nested session ready',
-      nested_session_path: resolvedNestedSessionPath,
-    });
-    const unregisterInteractionSession = registerInteractionSubagentSession(
-      session,
-      definition,
-      taskId,
-      parentPiSessionId ?? ctx?.sessionManager?.getSessionId?.(),
-    );
     const abortBridge = createSessionAbortBridge(session, signal);
+    let unregisterInteractionSession = () => {};
     try {
+      registerLiveBridge?.(createLiveSteeringBridge(session, piVersion));
+      onActivity?.({
+        message: 'nested session ready',
+        nested_session_path: resolvedNestedSessionPath,
+      });
+      unregisterInteractionSession = registerInteractionSubagentSession(
+        session,
+        definition,
+        taskId,
+        parentPiSessionId ?? ctx?.sessionManager?.getSessionId?.(),
+      );
       if (signal.aborted) {
         await abortBridge.abortSession();
         throw new Error('Subagent was aborted');
@@ -531,9 +568,13 @@ export const sdkSubagentRunner: SubagentRunner = async ({
             }),
           );
     } finally {
-      clearLiveBridge?.();
-      abortBridge.dispose();
-      unregisterInteractionSession();
+      try {
+        clearLiveBridge?.();
+        abortBridge.dispose();
+        unregisterInteractionSession();
+      } finally {
+        await teardownSubagentSession(session);
+      }
     }
   }
 

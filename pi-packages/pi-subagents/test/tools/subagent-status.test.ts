@@ -69,7 +69,9 @@ describe('subagent_status tool', () => {
       partial_result_available: false,
       details: { provider_code: '429' },
     });
-    expect(statusResult.details.task.error_metadata.message).toBeUndefined();
+    expect(statusResult.details.task.error_metadata.message).toBe(
+      'Authorization: [redacted] [redacted] [redacted]',
+    );
     expect(
       statusResult.details.task.error_metadata.last_activity,
     ).toBeUndefined();

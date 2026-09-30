@@ -124,7 +124,8 @@ function buildClaudeBackgroundWidgetEntries(
         Buffer.compare(
           Buffer.from(b.created_at ?? '', 'utf8'),
           Buffer.from(a.created_at ?? '', 'utf8'),
-        ) || Buffer.compare(Buffer.from(b.id, 'utf8'), Buffer.from(a.id, 'utf8')),
+        ) ||
+        Buffer.compare(Buffer.from(b.id, 'utf8'), Buffer.from(a.id, 'utf8')),
     );
   const queued = active.filter((task) => task.status === 'queued');
   const entries: ClaudeBackgroundWidgetEntry[] = [

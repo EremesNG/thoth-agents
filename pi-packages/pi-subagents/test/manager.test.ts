@@ -1032,7 +1032,11 @@ describe('manager and history integration', () => {
         started();
         return await new Promise((resolve) => {
           finish = () =>
-            resolve({ result: 'done', model: 'mock/model', fallback_used: false });
+            resolve({
+              result: 'done',
+              model: 'mock/model',
+              fallback_used: false,
+            });
           signal.addEventListener('abort', () => finish(), { once: true });
         });
       },
@@ -1047,108 +1051,195 @@ describe('manager and history integration', () => {
       register({ supported: true, detected_pi_version: '0.99.1', steer });
     if (registerImmediately) bridge();
     return {
-      manager, taskId, bridge, consume, finish,
+      manager,
+      taskId,
+      bridge,
+      consume,
+      finish,
       send: (message: string) =>
-        manager.sendMessage({ task_id: taskId, message, session_id: 'parent-a' }),
+        manager.sendMessage({
+          task_id: taskId,
+          message,
+          session_id: 'parent-a',
+        }),
     };
   }
 
   it('reports extension-handled live input without expecting model consumption', async () => {
     const live = await liveMessageHarness(async () => 'handled');
     const response = await live.send('extension input');
-    expect(response).toMatchObject({ status: 'handled', pending_message_count: 0 });
+    expect(response).toMatchObject({
+      status: 'handled',
+      pending_message_count: 0,
+    });
     expect(live.manager.getTask(live.taskId)?.pending_message_count).toBe(0);
-    expect(live.manager.getTask(live.taskId)?.undelivered_message_count ?? 0).toBe(0);
+    expect(
+      live.manager.getTask(live.taskId)?.undelivered_message_count ?? 0,
+    ).toBe(0);
     live.finish();
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)?.status).toBe('completed'));
-    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(0);
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)?.status).toBe('completed'),
+    );
+    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(
+      0,
+    );
   });
 
   it('rejects asynchronous steering failures without removing a later concurrent message', async () => {
     let rejectFirst!: (error: Error) => void;
-    const firstAck = new Promise<'queued' | 'handled'>((_resolve, reject) => { rejectFirst = reject; });
+    const firstAck = new Promise<'queued' | 'handled'>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
     let handleSecond!: () => void;
-    const secondAck = new Promise<'queued' | 'handled'>((resolve) => { handleSecond = () => resolve('handled'); });
-    const live = await liveMessageHarness((message) => message === 'first' ? firstAck : secondAck);
+    const secondAck = new Promise<'queued' | 'handled'>((resolve) => {
+      handleSecond = () => resolve('handled');
+    });
+    const live = await liveMessageHarness((message) =>
+      message === 'first' ? firstAck : secondAck,
+    );
     const first = live.send('first');
     const second = live.send('second');
     rejectFirst(new Error('input rejected'));
-    expect(await first).toMatchObject({ status: 'rejected', reason: 'enqueue_failed' });
+    expect(await first).toMatchObject({
+      status: 'rejected',
+      reason: 'enqueue_failed',
+    });
     expect(live.manager.getTask(live.taskId)?.pending_message_count).toBe(1);
     handleSecond();
     expect(await second).toMatchObject({ status: 'handled' });
     expect(live.manager.getTask(live.taskId)?.pending_message_count).toBe(0);
     live.finish();
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)?.status).toBe('completed'));
-    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(0);
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)?.status).toBe('completed'),
+    );
+    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(
+      0,
+    );
   });
 
   it('reports and removes a pre-ready message when asynchronous forwarding rejects', async () => {
     let reject!: (error: Error) => void;
-    const ack = new Promise<'queued' | 'handled'>((_resolve, fail) => { reject = fail; });
+    const ack = new Promise<'queued' | 'handled'>((_resolve, fail) => {
+      reject = fail;
+    });
     const inputs: string[] = [];
-    const live = await liveMessageHarness((message) => { inputs.push(message); return ack; }, false);
-    expect(await live.send('pre-ready')).toMatchObject({ status: 'queued', pending_message_count: 1 });
+    const live = await liveMessageHarness((message) => {
+      inputs.push(message);
+      return ack;
+    }, false);
+    expect(await live.send('pre-ready')).toMatchObject({
+      status: 'queued',
+      pending_message_count: 1,
+    });
     live.bridge();
     live.bridge();
     expect(inputs).toEqual(['pre-ready']);
     reject(new Error('input rejected'));
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)).toMatchObject({
-      pending_message_count: 0, undelivered_message_count: 1, last_activity: 'live steering message rejected',
-    }));
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)).toMatchObject({
+        pending_message_count: 0,
+        undelivered_message_count: 1,
+        last_activity: 'live steering message rejected',
+      }),
+    );
     live.consume();
     live.finish();
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)?.status).toBe('completed'));
-    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(1);
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)?.status).toBe('completed'),
+    );
+    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(
+      1,
+    );
   });
 
   it('keeps early consumption behind an unresolved earlier input disposition', async () => {
     let handleFirst!: () => void;
-    const firstAck = new Promise<'queued' | 'handled'>((resolve) => { handleFirst = () => resolve('handled'); });
-    const live = await liveMessageHarness((message) => message === 'first' ? firstAck : Promise.resolve('queued'));
+    const firstAck = new Promise<'queued' | 'handled'>((resolve) => {
+      handleFirst = () => resolve('handled');
+    });
+    const live = await liveMessageHarness((message) =>
+      message === 'first' ? firstAck : Promise.resolve('queued'),
+    );
     const first = live.send('first');
-    expect(await live.send('second')).toMatchObject({ status: 'queued', pending_message_count: 2 });
+    expect(await live.send('second')).toMatchObject({
+      status: 'queued',
+      pending_message_count: 2,
+    });
     live.consume();
     handleFirst();
-    expect(await first).toMatchObject({ status: 'handled', pending_message_count: 0 });
+    expect(await first).toMatchObject({
+      status: 'handled',
+      pending_message_count: 0,
+    });
     expect(live.manager.getTask(live.taskId)?.pending_message_count).toBe(0);
     live.finish();
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)?.status).toBe('completed'));
-    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(0);
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)?.status).toBe('completed'),
+    );
+    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(
+      0,
+    );
   });
 
   it('accounts for consumption during steering before its queued acknowledgment', async () => {
     let consume!: () => void;
-    const live = await liveMessageHarness(async () => { consume(); return 'queued'; });
+    const live = await liveMessageHarness(async () => {
+      consume();
+      return 'queued';
+    });
     consume = live.consume;
-    expect(await live.send('early consumed')).toMatchObject({ status: 'queued', pending_message_count: 0 });
+    expect(await live.send('early consumed')).toMatchObject({
+      status: 'queued',
+      pending_message_count: 0,
+    });
     live.finish();
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)?.status).toBe('completed'));
-    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(0);
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)?.status).toBe('completed'),
+    );
+    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(
+      0,
+    );
   });
 
   it('does not count already consumed inflight input as undelivered on cancellation', async () => {
     let acknowledge!: () => void;
-    const ack = new Promise<'queued' | 'handled'>((resolve) => { acknowledge = () => resolve('queued'); });
+    const ack = new Promise<'queued' | 'handled'>((resolve) => {
+      acknowledge = () => resolve('queued');
+    });
     const live = await liveMessageHarness(() => ack);
     const sending = live.send('already consumed');
     live.consume();
     live.manager.cancel(live.taskId, 'user request');
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)?.status).toBe('cancelled'));
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)?.status).toBe('cancelled'),
+    );
     acknowledge();
-    expect(await sending).toMatchObject({ status: 'queued', pending_message_count: 0 });
-    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(0);
+    expect(await sending).toMatchObject({
+      status: 'queued',
+      pending_message_count: 0,
+    });
+    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(
+      0,
+    );
   });
 
   it('keeps identical inflight messages within queue limits and consumes them once in FIFO order', async () => {
     let acknowledge!: () => void;
-    const ack = new Promise<'queued' | 'handled'>((resolve) => { acknowledge = () => resolve('queued'); });
+    const ack = new Promise<'queued' | 'handled'>((resolve) => {
+      acknowledge = () => resolve('queued');
+    });
     const inputs: string[] = [];
-    const live = await liveMessageHarness((message) => { inputs.push(message); return ack; });
+    const live = await liveMessageHarness((message) => {
+      inputs.push(message);
+      return ack;
+    });
     const sends = Array.from({ length: 16 }, () => live.send('same input'));
     live.bridge();
     expect(inputs).toEqual(Array(16).fill('same input'));
-    expect(await live.send('over limit')).toMatchObject({ status: 'rejected', reason: 'queue_count_limit' });
+    expect(await live.send('over limit')).toMatchObject({
+      status: 'rejected',
+      reason: 'queue_count_limit',
+    });
     live.consume();
     live.consume();
     acknowledge();
@@ -1157,42 +1248,77 @@ describe('manager and history integration', () => {
     expect(live.manager.getTask(live.taskId)?.pending_message_count).toBe(14);
     for (let index = 0; index < 14; index += 1) live.consume();
     expect(live.manager.getTask(live.taskId)?.pending_message_count).toBe(0);
-    expect(await live.send('same input')).toMatchObject({ status: 'queued', pending_message_count: 1 });
+    expect(await live.send('same input')).toMatchObject({
+      status: 'queued',
+      pending_message_count: 1,
+    });
     live.finish();
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)?.status).toBe('completed'));
-    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(1);
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)?.status).toBe('completed'),
+    );
+    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(
+      1,
+    );
   });
 
   it('preserves UTF-8 message and queue byte limits while releasing consumed bytes', async () => {
     const live = await liveMessageHarness(async () => 'queued');
     const message = 'é'.repeat(8 * 1024);
-    expect(await live.send(`${message}é`)).toMatchObject({ status: 'rejected', reason: 'message_too_large' });
+    expect(await live.send(`${message}é`)).toMatchObject({
+      status: 'rejected',
+      reason: 'message_too_large',
+    });
     for (let index = 0; index < 4; index += 1) {
-      expect(await live.send(message)).toMatchObject({ status: 'queued', pending_message_count: index + 1 });
+      expect(await live.send(message)).toMatchObject({
+        status: 'queued',
+        pending_message_count: index + 1,
+      });
     }
-    expect(await live.send('é')).toMatchObject({ status: 'rejected', reason: 'queue_bytes_limit' });
+    expect(await live.send('é')).toMatchObject({
+      status: 'rejected',
+      reason: 'queue_bytes_limit',
+    });
     live.consume();
-    expect(await live.send(message)).toMatchObject({ status: 'queued', pending_message_count: 4 });
+    expect(await live.send(message)).toMatchObject({
+      status: 'queued',
+      pending_message_count: 4,
+    });
     live.finish();
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)?.status).toBe('completed'));
-    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(4);
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)?.status).toBe('completed'),
+    );
+    expect(live.manager.getTask(live.taskId)?.undelivered_message_count).toBe(
+      4,
+    );
   });
 
-  it.each(['queued', 'handled', 'rejected'] as const)('ignores late %s acknowledgment after cancellation without resurrecting messages', async (outcome) => {
+  it.each([
+    'queued',
+    'handled',
+    'rejected',
+  ] as const)('ignores late %s acknowledgment after cancellation without resurrecting messages', async (outcome) => {
     let settle!: () => void;
     const ack = new Promise<'queued' | 'handled'>((resolve, reject) => {
-      settle = () => outcome === 'rejected' ? reject(new Error('late rejection')) : resolve(outcome);
+      settle = () =>
+        outcome === 'rejected'
+          ? reject(new Error('late rejection'))
+          : resolve(outcome);
     });
     const live = await liveMessageHarness(() => ack);
     const sending = live.send('cancelled input');
     live.manager.cancel(live.taskId, 'user request');
-    await vi.waitFor(() => expect(live.manager.getTask(live.taskId)?.status).toBe('cancelled'));
+    await vi.waitFor(() =>
+      expect(live.manager.getTask(live.taskId)?.status).toBe('cancelled'),
+    );
     const cancelled = { ...live.manager.getTask(live.taskId)! };
     settle();
     expect(await sending).toMatchObject({ status: outcome });
     live.consume();
     expect(live.manager.getTask(live.taskId)).toMatchObject({
-      status: 'cancelled', pending_message_count: 0, undelivered_message_count: 1, last_activity: cancelled.last_activity,
+      status: 'cancelled',
+      pending_message_count: 0,
+      undelivered_message_count: 1,
+      last_activity: cancelled.last_activity,
     });
   });
 
@@ -1401,7 +1527,11 @@ describe('manager and history integration', () => {
     const taskId = started.task_ids[0]!;
     (manager as any).registerLiveBridge(
       taskId,
-      { supported: true, detected_pi_version: '0.82.1', steer: vi.fn(async () => 'queued' as const) },
+      {
+        supported: true,
+        detected_pi_version: '0.82.1',
+        steer: vi.fn(async () => 'queued' as const),
+      },
       'parent-a',
       1,
     );

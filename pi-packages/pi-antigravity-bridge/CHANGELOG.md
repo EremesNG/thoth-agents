@@ -1,0 +1,657 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [1.7.8] - 2026-09-30
+
+### Fixed
+
+- **The system prompt no longer rides the prompt line on stream-json.** Probed on agy 1.2.14: the CLI silently drops any single prompt past a ~25KB input cap. The drop reports SUCCESS with an empty response, zero usage, and no model step, and a conversation whose turn was dropped never answers again - resuming it hangs with no result frame. The G10 system-prompt block shipped inline on the first prompt of every fresh conversation by default and routinely crossed the cap, so provider sessions answered boilerplate while the user's message never ran (issue #2). The block now stages as an agy agent file under the agents discovery root and rides `--agent`: the CLI reads agent files from disk, so the cap never applies, and the prompt line carries only the user message. Staging is content-addressed - one dir per distinct body, write-once, pid-marked, orphan-swept - so two conversations in one process can never overwrite each other's carrier (the round-2 review blocked the original per-process slot for exactly that cross-contamination). A user-configured `config.agent` always wins, with the inline block as fallback and a one-time warning. ACP keeps the inline block: the JSON-RPC transport has no cap and no `--agent` slot.
+- **A dropped or dead turn now fails loudly instead of poisoning the session.** The stream-json driver settles every turn with model-output and result-frame evidence. An OK outcome with no model output - the exact signature of the silent over-cap drop - fails the turn with the cause and the remedy, and never stores the conversation binding; a deadline on a bound conversation with no result frame clears the binding so the next turn starts a fresh conversation instead of hanging forever on a dead one. Real terse turns (tool steps, thinking, any usage) are untouched; a deadline that recovered a withheld answer keeps settling OK.
+- **Regression coverage pins the whole failure chain at both layers.** The fake agy binary grew a SILENT-DROP branch reproducing the exact wire signature; driver tests pin the evidence fields; provider tests cover the drop, the poisoned resume, a deadline-with-result keeping its binding, terse-turn false positives, carrier isolation across interleaved conversations, and deadline-flavored error copy. 1343 tests, tsc clean; round-2 adversarial review signed off after the carrier-isolation blocker fix.
+
+Thanks @Jamsa for the report (#2).
+
+## [1.7.7] - 2026-09-30
+
+### Fixed
+
+- **A recreated agy conversation no longer starves the context digest.** When `session/load` failed, the ACP engine silently fell back to a fresh conversation (`session-load-failed-creating-fresh`), but the end-of-turn write-back kept advancing the stored watermark, so the new conversation never received the backlog: the digest delivered only the current prompt for the rest of the session, and the G10 system-prompt gate stayed closed too, because the surviving record always carried a conversation id. The write-back now compares the outcome's conversation id against the one stored before the turn and drops the record on a mismatch: the next turn re-delivers the full digest backlog and re-arms the system prompt, on both engines, with no protocol change. `SessionStore` gained a per-key `delete()` whose removal persists exactly once (the removal set prunes after a durable write, so a later persist can never destroy a record another process wrote in the meantime), preserving the multi-process merge invariant.
+- **Failed and aborted turns no longer advance the digest watermark.** The write-back recorded `lastMessageCount` on any turn that reported a conversation id, ERROR and aborts included. Whether the prompt actually landed in the conversation's history is not observable from the provider, and advancing on that ambiguity starves the digest of the missed turn (the same failure class as the recreation bug above). The watermark now advances only on a clean, non-aborted turn; failed, aborted, and unknown outcomes leave the pre-turn record untouched, so the next digest re-delivers the missed turn bounded by the existing `maxChars` cap (default 8000) instead of losing it. With the digest off (the default) neither fix changes observable behavior.
+- **Regression coverage pins both behaviors at the provider layer.** Eight new tests: record drop, backlog re-delivery, and system-prompt re-arm across the id swap; unchanged watermark across failed, aborted, and unknown outcomes on the same conversation; and the session-store delete and multi-process semantics, including a reclaimed key surviving an unrelated persist from another process. 1329 tests, tsc clean.
+
+Thanks @fishfuuu for the report (#1).
+
+## [1.7.6] - 2026-09-28
+
+### Fixed
+
+- **Plan-mode delegations enforce read-only instead of promising it.** The old design withheld the skip flag and relied on a prompt asking nicely; the field disagreed once — a plan delegation with the flag re-injected through the environment still edited files, because a prompt guard is a request, not a wall. Plan-mode runs now stage a temporary agy agent under `~/.gemini/config/agents/pi-bridge-ask-*` whose `tools:` list carries only `view_file` and `run_command`: with no file-editing tool in the toolset the model cannot emit an edit call at all (probed on agy 1.2.12 with and without `--dangerously-skip-permissions` — the restricted toolset reports "none" for edits both ways). The staged agent's `commandExecutionPolicy: auto` is what keeps reviews useful: analysis commands (git, rg, test runners) run headless for every user, with no `permissions.allow` edits — the per-user-config approach was rejected as unshippable for a product. With the agent staged, the skip flag returns under the same `skipPermissions` knob (default on): its only real danger was auto-approving edit calls, and none exist to approve. The prompt guard switches to a mutation-forbidding text (read-only commands allowed), and the tool description now states the true residual plainly: file-editing tools are hard-blocked, arbitrary shell execution under the flag stays prompt-guarded alone. Staging failure degrades fail-closed — no agent, no flag, the stricter all-commands-forbidden guard, with an env-injected skip flag stripped from `AGY_EXTRA_ARGS` on that path only. Agent dirs are nonce-named, pid-marked, removed in the run's finally, and orphans swept at registration (the web-delegate sweep gained a prefix parameter so both doctrines share one implementation).
+- **Headless plan prompts say what they cannot do.** `agy -p` cannot answer permission prompts, and in plan mode a shell-command attempt is soft-denied: the run ends cleanly with nothing on stdout and the reason only on stderr. Plan prompts now append an explicit constraint — no shell commands, answer from the material in the prompt, state exactly what is missing — converting the silent death into a visible missing-content request (probed: the previously-fatal prompt shape now answers "Missing information: ..." in about ten seconds). With the staged reviewer agent above, this guard yields to the mutation-forbidding variant; it remains the rule on the staging-failure fallback path.
+
+## [1.7.5] - 2026-09-25
+
+### Fixed
+
+- **Exit 0 with no output is a failure, not a silent success.** A headless `agy -p` run can end cleanly with nothing on stdout when a delegated tool call hits a permission gate the headless run cannot prompt for. The plan-mode fix (withholding the skip flag in plan) makes the command gate the common case: the call is auto-denied, the reason goes only to stderr, agy exits 0, and the execute path fell through to success, returning just the conversation footer. The delegating model read that as "returned only a conversationId, zero output, no error" (silent-failure handoff, 2026-09-25). An empty answer now returns a loud failure note carrying the redacted stderr plus the remedy (allow-list the command under `permissions.allow` in the CLI settings, or rerun outside plan mode), the ask-end log marks the run warn with an `empty` flag so error-only default logging records what the chat saw, and a new `details.empty` marker flips the TUI result row to its error glyph instead of a green checkmark. Three new tests pin both stderr shapes and the glyph flip through the fake-binary stub.
+
+## [1.7.4] - 2026-09-25
+
+### Added
+
+- **`/agy agent <name|off>` — select a custom agy agent for stream-json turns.** The agent list comes from a one-shot `agy agent` spawn through the same bounded raw-spawn helper as the model catalog (8 s watchdog, 1 MiB cap, fail-closed to an empty list), parsed line-oriented: banner and help noise skipped, first whitespace token per line taken, filesystem-safe names validated, duplicates dropped. The choice persists in config with an `AGY_AGENT` env override, rides `--agent` on stream-json spawns, and recycles the process when it changes. ACP has no protocol slot for agent selection, so the command refuses it there with a stream-json-only message instead of silently ignoring the knob.
+- **`/agy subagents` — live subagent roster.** agy's subagent steps were invisible from pi: spawn, message, and manage activity now folds from the engine-agnostic activity stream into an in-memory roster (spawn tools open entries, `send_message` counts messages, `manage_subagents` kills mark entries killed, done/error closes them). Entries key by tool-call id on ACP and step id on stream-json, with name, status, duration, message count, detail, and last error rendered on demand. Works on both engines; deliberately never persisted — agy's conversation database is the durable record, and telemetry must never be able to fail a turn.
+- **`/agy quota` — subscription quota view.** One-shot `agy --print /usage` fetch rendered as bars per window, 5h ranked before weekly, with reset times. The fetch carries its own 30 s budget (the live call answers in ~10 s) and the wrapper watchdog is padded 5 s past agy's own `--print-timeout` so agy's clean self-timeout always wins the race over a SIGKILL. Quota reflects the CLI's Google account identity, so the reading is equally true under both engines; a CLI-less ACP-only install gets a fail-closed pointer to `/agy doctor` rather than a raw spawn error.
+- **`/agy artifacts [open <n|name>]` — browse the conversation brain dir.** Non-recursive scan of the conversation root, `.tempmediaStorage`, and `.user_uploaded`, deduped by canonical path, newest first, with kind/size/last-write shown. `open` resolves by index, exact name, or unique substring and launches the OS opener detached. Path containment canonicalizes the scan root once and re-realpaths every entry before opening, so symlinked ancestors (macOS `/var` → `/private/var`, symlinked homes) cannot silently empty the listing — the first containment gate compared raw paths and did exactly that on such machines.
+- **Parked-answer recovery on stream-json deadline guards.** When the stall or total-timeout guard fires, the driver now kills the child first (bumping the generation so a racing exit handler cannot settle the turn ERROR mid-probe), then probes the conversation's brain transcript: if the NEWEST step written during the turn is a clean, tool-free DONE MODEL response, the turn settles OK with the withheld answer instead of discarding finished work. The newest-step rule is the load-bearing part — a corpus sweep found 96.6% of PLANNER_RESPONSE transcript steps carry tool_calls; they are intermediate plan-and-act steps whose content is status text, not answers, and an older scan that accepted any matching step could settle a turn with "Running test..." as the answer. ACP reports turn completion itself, so the probe is stream-json-only by construction.
+- **`/agy tasks [tail <id>]` — read-only background-task dashboard.** Scans the conversation's task logs (newest first, 128 cap, missing dirs degrade to an empty list) and marks a task ACTIVE while any process holds its log open, via one batched `lsof -nP -Fpn` call — a reader counts too, so the state is a watch, not a fact. Watch-only by design: modern agy pipes task output through itself, making log ownership unprovable, so nothing is ever stopped from here and a missing lsof shows `liveness?` instead of a guess. `tail <id>` resolves against the scanned list and prints the last 40 lines.
+- **Agy CLI version awareness.** A warn-once session toast fires when the CLI reports older than the 1.1.22 stream-json floor; development builds pass, unparseable output classifies as invalid, and a failed spawn maps to a distinct unavailable status rather than a fake verdict. `/agy doctor` gained a CLI version line, labeled "(optional here; AskAntigravity delegations use the CLI)" on ACP-only installs because the CLI matters on both engines. Warn-only by design: a hard spawn gate would block turns on a slow `--version` in odd environments, and an old agy already fails turns with parse noise the warning explains. ACP server versions stay display-only — `agy_acp_server_1.1.1` and CLI `1.2.10` are unrelated streams, and no floor is enforced against the server until its versioning is understood.
+
+### Removed
+
+- **`/agy status`.** It was never a real subcommand — the old argument guard let the literal name fall through to the settings picker while the printed summary read as a broken second status surface. `/agy doctor` is now the single status surface: bridge state, driver counters, CLI and ACP versions, lifecycle, plus the settings rows folded in (nothing duplicated — rows doctor already rendered stay out of the shared block). Typing the retired name gets a one-line pointer to doctor; bare `/agy` keeps its settings picker.
+
+### Fixed
+
+- **The agy models discovery spawn can no longer balloon memory.** It accumulated child stdout with no cap, so a runaway agy could exhaust the whole pi session. Output is now capped at 1 MiB (decoded-length proxy, documented); past the cap the child is SIGKILLed and the result fails closed to empty, which engages the baked-in fallback catalog — and a capped empty result never overwrites a good on-disk cache.
+- **Plan mode never receives `--dangerously-skip-permissions`.** agy's plan-mode no-write gate IS a permission request ("File creation requires plan approval"), and the skip flag auto-approves every permission request — so passing the flag alongside `--mode plan` silently turned review-only into full write access inside the `--add-dir` grant. Probed both directions on 2026-09-25: with the flag a plan run wrote files; without it, file-write and run_command attempts end exit 0 in ~20-30 s with a "confirm plan" message — fail-visible, never the upstream #318 prompt-hang. Both spawn surfaces (the AskAntigravity one-shot and the stream-json driver) now withhold the flag in plan mode through one shared helper; the recycle profile stores the effective value and compares effective-vs-effective so plan sessions keep process reuse. README and ENGINES.md now state the enforcement instead of the aspirational claim.
+
+## [1.7.3] - 2026-09-24
+
+### Fixed
+
+- **Collapsed ACP tool cards no longer repeat the tool name.** The `agy-native-event` renderer filled the muted detail slot with the tool name itself whenever an event carried neither a path nor a recognized command argument, so `ls` and `exec_command` collapsed to "✓ ls ls" / "✓ exec_command exec_command". The detail now prefers the path basename, then the command's first line, then agy's own display text (the first line of the completed call's output, e.g. "Run make test in wicket-cli-atlas"), and stays empty when none exists; the name always stands alone. ACP tool_call frames carry no per-tool reasoning, so agy's display text is the closest honest signal.
+
+## [1.7.2] - 2026-09-24
+
+### Added
+
+- **ACP permission requests park on a human decision.** `session/request_permission` was answered silently in-process (skip turns auto-allowed, everything else auto-denied), making ACP turns all-or-nothing with no per-tool human say. Interactive turns now hold the JSON-RPC request open and surface the server's options as a pi select dialog under the dialog lock, with the turn budget paused while the human decides: 480 s park, deny on timeout/esc/throw/connection death, and a cancel instead of an answer when the server offers no reject option (a deny must never degrade into picking an allow). `skipPermissions` keeps the synchronous auto-allow; `approvals.mode allow` maps to it, deny and headless stay fail-closed. `allow_always`/`reject_always` answers are remembered per connection for identical later requests, and first settle wins: a late dialog answer after a timeout is forgotten. Nine new tests pin the behavior, including a scenario proving a late answer writes nothing. tsc clean.
+
+### Changed
+
+- **Removed the dead `acp.permissions` config key.** It documented the in-connection auto policy but never had a consumer. Configs carrying it keep loading (unknown `acp` keys are ignored) and it drops out of the file on the next save.
+
+## [1.7.1] - 2026-09-23
+
+### Fixed
+
+- **Subprocess stderr can no longer leak secrets into logs or the chat.** The `agy` CLI can print auth material (API keys, OAuth tokens, credential headers) to stderr, and six surfaces carried that text verbatim: the daily support log users attach to bug reports, the stream-json turn-failure error, the ACP connection-exit rejection reasons and `/agy doctor` tail, the web tools' failure note, and the AskAntigravity delegation exit note. A key in an auth error therefore landed on disk and in the transcript unchanged. Redaction now runs on the reassembled stderr tail at exit and getter boundaries - never per chunk - so a token split across two pipe events still matches, and the raw tail stays internal. New `redactText()` scrubs four secret-shaped pattern classes (API-key prefixes, OAuth tokens, credential headers, token-ish JSON fields), anchored with a word boundary so ordinary text like `desk-123456789012` survives, and carries no length cap because callers already bound their own output sizes. The daily log scrubber additionally scans string values, not just secret-shaped keys, and routes `Error.message` through the same pass; values are scanned before truncation so a cut token cannot lose the characters a pattern needs. Best-effort by design: a last line against leak paths, not a sandbox. Ten new tests pin the behavior, two of them spawning real processes (a secret-bearing crash and a token split across stderr chunks). 1200 tests, tsc clean.
+
+## [1.7.0] - 2026-09-23
+
+### Added
+
+- **Opt-in web tools for any provider's model** (`agy_web_search`, `agy_read_url`). Pi ships no web tools and no MCP by default, so sessions driven by non-Antigravity models had no way to search or fetch. With `webTools: on` (`AGY_WEB_TOOLS`, `/agy web on`; off by default because Antigravity sessions already have native web tools on both engines), each call spawns a one-shot search-only `agy` agent (`--mode plan`, bridge MCP inheritance off, per-call agent dir under `~/.gemini/config/agents/pi-bridge-web-*` removed in `finally`), enforces a 120 s deadline and a 2 MiB output cap, tolerates agy's `OK`/`SUCCESS` result-status drift, requires an observed native `search_web`/`read_url_content` step before trusting the answer, and refuses the call if the agent touches any disallowed tool - the init frame advertises a broad tool list regardless of the agent's `tools:` restriction, so the response-side gate is the real anti-hallucination device. Stale agent dirs from crashed calls are swept by pid liveness at registration (marker-less dirs after a 24 h grace); dir names carry a random nonce so same-millisecond parallel calls cannot collide. URLs are scheme-allowlisted (http/https); queries cap at 2000 chars. Every call spends Antigravity subscription quota.
+- **ACP native tool display cards.** The ACP engine had no card story: agy's own tool steps surfaced only as thinking-stream labels. agy's tool events now render as display-only pi entries (status icon plus the file path with colored diff lines, the first command line, or the captured output; persisted content bounded at 4000/12000/500 chars), streamed as steps start and complete. Events attributed to `mcpServer: "pi-bridge"` are filtered out, so bridge round-trips that already produce genuine pi tool cards never double-render. Stream-json keeps its stronger native re-exec cards.
+- **Live ACP usage estimates.** The ACP engine showed zeros until a turn settled (Gate B). Estimates now stream live: the turn's prompt is tokenized once, each text/thought delta updates the running counts, and an `ACP ≈ X in / Y out` status line tracks the turn (suppressed when `acp.usageEstimate` is `off`). Estimates are superseded only by a real `PromptResponse.usage` the day the server sends one; diagnostic usage-shaped frames (context windows, occupancy) never disable them.
+- **`/agy tools` session-only catalog control.** `hide <name>` / `show <name>` / `reset` filter the bridge catalog for the current session only (multi-word names OK; names validated against pi's registered tools; saved config never touched). Bare `/agy tools` lists exposed and hidden tools.
+
+### Changed
+
+- **The bridge catalog is computed live and guarded at dispatch.** The exposed set used to be computed once at registration; `/mcp` or `pi.setActiveTools()` changes mid-session left stale tools callable. The catalog is now derived from pi's live active set on every `tools/list` AND re-checked immediately before every `tools/call` - a call for anything outside the fresh set is rejected (`a cached MCP catalog is not authorization`). The bridge's own internal tools (AskAntigravity, the display-only `antigravity` wrapper, `activate_skill`, `bridge_poll_result`, `agy_web_search`/`agy_read_url`) are excluded from the catalog, closing a gap where the wrapper tool was exposed. `/agy bridge` mode changes apply to a running server immediately; a stopped one picks them up on the next start.
+- **Global MCP registration is stream-json-only; hygiene is universal.** Registering and unregistering the bridge's per-pid entry in `~/.gemini/config/mcp_config.json` now happens only for the stream-json engine (ACP supplies the bridge per-session and never touches the global config), while the stale-entry sweep and the stuck-suppression heal run for BOTH engines - an ACP-only session no longer leaves dead entries or a stuck suppression flag behind by a crashed stream-json session.
+
+### Fixed
+
+- **Concurrent native tool results no longer cross-pair on ACP.** When several of agy's tools ran at once, a completed event for one could attach its diff/output to a different pending call. Adoption now happens only when exactly one call is pending, finished and errored ids leave the tracking map, and a known-acceptable residual is documented at the site: a done event for a genuinely unrelated call can still pair with the single pending entry.
+- **Diagnostic usage frames can no longer kill ACP estimates.** The old suppression latch tripped on ANY usage-shaped frame and lived for the whole connection, so one context-window notice in turn one silenced the live estimates for every later turn, with no exact data ever replacing them. Suppression now keys on a real per-turn `PromptResponse.usage` only; a two-turn regression test pins that estimates survive the diagnostic frames.
+
+## [1.6.3] - 2026-09-22
+
+### Fixed
+
+- **The approval gate no longer leaks into standalone sessions, and its verdicts parse.** Thanks @explesy for the report (issue #5). Two defects in the generated hook script and its staging. Every terminal path printed the bare decision scalar (`"deny"` / `"allow"`) instead of a JSON object, so any session that loaded a staged gate failed hook parsing outright (`protojson: syntax error`): the direct-POST and polling branches now print the full response object guarded by a `typeof json.decision === "string"` check, fall back to a fail-closed deny object on malformed bodies, and read ticket and poll status through `json?.`. The gate group itself was staged into the shared workspace `.agents/hooks.json`, so any standalone IDE or CLI session in that workspace loaded pi's gate: tool calls were denied with "no active antigravity turn" while pi sat idle, and mid-turn they parked into pi's approval queue. A live probe of the CLI settled the discovery rule (hooks load from `--add-dir` directories in stream-json and interactive sessions; print mode reads only the global config), and the gate now stages `.agents/hooks.json` into the session-private per-pid bridge dir beside `mcp_config.json`, which only this session's agy receives as an extra `--add-dir`. Staging into a pid-private file dropped the merge/backup/symlink surface to a plain atomic replace; the driver passes the dir when the gate is staged even without an MCP config; a legacy sweep at session start strips groups that dead sessions left in workspace files (live and foreign groups are never touched). The hook also gained per-fetch aborts (`AbortSignal.timeout`, POST capped at 10s, polls bounded by the remaining park budget) so a hung bridge request can never outlive the park deadline into an ungated soft-pass. Seven stub-server hook-execution regression tests pin the object contract; the staging suite covers the private-dir semantics and the sweep. 364 tests, tsc clean.
+
+## [1.6.2] - 2026-09-19
+
+### Fixed
+
+- **Compatibility with host 0.86.0's normalized provider stream input.** Stream entry points now receive a branded `TranscriptContext` (`{ messages }` only): the `context.systemPrompt` / `context.tools` fields are gone, and only `normalizeContext()` produces the new type. G10 fresh-conversation delivery read `context.systemPrompt`, so every fresh agy conversation silently lost the system prompt block (operating instructions, AGENTS.md project context, tool-priority note); the prompt now comes from the transcript via `getCurrentSystemPrompt(context.messages)`. `emitToolUse` arguments are restricted to `Record<string, JsonValue>` per the tightened `ToolCall.arguments` contract (driver args arrive JSON-decoded off the wire, so the two call-site casts are sound). Test fixtures in `provider-{sysprompt,streaming,late-result,escalation}.test.ts` and the `scripts/test-provider.ts` smoke context wrap raw objects with `normalizeContext()`. Dev pins `@earendil-works/*` raised `^0.85.0` to `^0.86.0`; `tsc` clean, 360 tests green.
+
+## [1.6.1] - 2026-09-18
+
+### Added
+
+- **`thinking` / `effort` params on AskAntigravity (synonyms).** Delegation calls had no direct tier knob: the only lever was tier sugar inside `model` ("flash high"), so a caller told "peer review on high thinking" fell through to the configured default (medium) with no signal anything was dropped. The tool now takes `thinking` (pi vocabulary: minimal|low|medium|high|xhigh|max, clamped to agy's low|medium|high; unknown values fall back to low) plus `effort` as the same knob under agy's own name, so calling models reach for either word. An explicit level beats a tier embedded in `model` and the config default; passing both with different values errors; fixed-thinking families (Claude, GPT-OSS) ignore it because agy rejects `--effort` for them. `toAgyEffort` moved from `src/provider.ts` to `src/models.ts` so provider turns and the delegation tool share one clamp.
+
+## [1.6.0] - 2026-09-14
+
+### Added
+
+- Turn-cap knobs (`turnTimeoutMin`, `inactivityTimeoutMin`) with TTY-aware defaults. The "ACP turn exceeded the 10m deadline" error was the bridge's own overall turn cap - not a Google server limit: the ACP server binary exposes no timeout flag (`--helpfull` lists only debug/notices), and the stream-json engine carried the identical 10m cap ("agy exceeded the 10m turn timeout"). The cap never refreshed on activity, so healthy long turns died mid-task at exactly 10m. The default is now `0` (no cap) on an interactive pi - the user aborts with Esc and is the better backstop - and `20` minutes headless, where nobody can abort and one runaway turn blocks the drivers' serialized turn queue. Opt into a timed gate with 1-1440 minutes: free type via `config.json` or the new `/agy timeout <1-1440|off>` subcommand, or pick a preset (0/1/5/10/15/30/60/120/360/720/1440) in the `/agy` settings picker; `0` disables explicitly; garbage, negative, or >1440 falls back to the TTY-aware default. The 5m inactivity stall guard is unchanged, so a silent hung server still dies. Env `AGY_TURN_TIMEOUT_MIN` / `AGY_INACTIVITY_TIMEOUT_MIN` win over the file.
+
+## [1.5.3] - 2026-09-10
+
+### Fixed
+
+- **Parallel agy tool approvals no longer clobber each other.** The shadow-tool `GatePolicy` asked through pi's `ui.confirm`, but pi's TUI shows ONE extension dialog at a time and an overlapping call replaces the live dialog without settling it: with several agy bash/write/edit calls in flight, approvals were silently lost (the park timeout eventually resolved them as declines). The confirm now holds the same shared cross-extension dialog lock as the pi-*-me gates (`withDialogLock`, `Symbol.for("pi-me.dialog-lock")`), so approvals queue and render in turn; the park timeout still bounds each dialog and is held inside the lock. New `src/dialog-lock.ts` module plus contract tests (FIFO order, throw-release, shared key).
+
+## [1.5.2] - 2026-09-09
+
+### Fixed
+
+- Delegation suppression now spans the whole delegated run. The 1.5.1 suppression window ended after 5 seconds, but agy watches `mcp_config.json` and hot-reloads MCP servers on every file change (`ReloadMcpConfig` in the binary): the window's rewrite poked the live delegation into reconnecting, and a delegated peer review hit the fail-closed "no active antigravity turn" deny ~50 seconds in (observed live, reproduced on demand through `AskAntigravity`). The bridge entries are now hidden until the delegated process actually closes; the release fires on process close or error only, and a regression test pins "exactly one release, at close, never on a timer" with a fake `AGY_BIN` that outlives the old grace (plus the spawn-error route).
+- Suppression is coordinated across pi processes through a shared marker file (`suppression.json` in the bridge's extensions-data dir, `{pid: since}` per live delegation, 0600/0700, atomic rename). Release and the session-start heal re-enable the entries only when no live delegator remains, so two sessions delegating concurrently - or a second pi window opening mid-delegation, which the old blind heal did unconditionally - no longer un-hide each other's entries, and a session starting mid-delegation registers its own entry disabled. Dead delegators are pruned by pid liveness with a 24h age bound against pid reuse; re-enable decisions read the marker fresh at the flip, so a racing acquire keeps its suppression. The marker is coordination only (the disabled flags in `mcp_config.json` stay the gate), lives outside agy's watched config dir, and its writes are best-effort: a lost entry in the syscall-scale read-modify-write window degrades to the status-quo fail-closed deny, and any residual interleave is bounded and self-heals at the next release or heal.
+
+### Changed
+
+- README's recursion-safety paragraph, the DEVELOPMENT regression list, and the AGENTS.md module lines describe the shipped mechanism: whole-run suppression, cross-process marker, marker-aware heal and registration guard.
+
+## [1.5.1] - 2026-09-15
+
+### Fixed
+
+- Delegated agy no longer sees the pi tool bridge. `AskAntigravity` spawns `agy -p`, and any agy on the machine discovers MCP servers from the global `~/.gemini/config/mcp_config.json`, which carries a live `pi-bridge-*` entry for every running pi session. A delegation could therefore connect to a host bridge and call tools (observed live: `memory_search`), which the round-trip store denies fail-closed with "no active antigravity turn" the moment no provider turn is streaming - a dead end for the delegation and an error toast in the host session. The bridge entries are now suppressed while a delegated agy starts: disabled before the spawn, re-enabled on process close or after a 5s grace, whichever lands first. Suppression is reference-counted, so overlapping delegations cannot re-enable early; session start re-enables any entries a crashed delegation left disabled. Foreign MCP servers in the file are never touched. Residual race, documented in code: another session's provider agy respawning inside the window reads the entries disabled and that process lacks bridge tools until its next recycle.
+- Real bridge tool-call failures now land on disk in default mode. The daily log records only errors, and `call-tool-fail` was logged at warn tier (toast only), so a failure like the one above left no durable trace. Genuine rejections now log at error tier; routine turn-end and shutdown aborts stay silent, with the reasons shared as constants between the emit sites and the log classifier so the two cannot drift.
+
+### Changed
+
+- README corrected: the bridge mechanism section described only the dir-scoped discovery and claimed the user's global agy config is never touched. Global per-pid registration shipped earlier and is now documented, along with the delegation suppression and its window.
+
+## [1.5.0] - 2026-09-08
+
+### Added
+
+- First-run engine picker. The choice of engine is left to the user: on a fresh install (no `config.json`, no `AGY_ENGINE`), the first interactive pi start opens a modal that explains both engines - stream-json needs the `agy` CLI installed and authenticated; ACP needs a second Google sign-in plus a ~1.5 GB server binary downloaded from Google. stream-json is preselected as the default; `esc` defers (nothing is written, the modal reappears next start). Headless sessions and existing installs are never asked.
+- The ACP pick chains setup immediately instead of waiting for a restart: the ~1.5 GB server binary downloads right away (live percent in the status bar, phase milestones as chat lines), the Google sign-in opens when it lands, and a restart applies the engine. The next start's self-heal sees binary + auth settled and stays silent.
+- `/agy engine` with no arguments (TUI) opens the same picker modal with identical semantics: plan mode blocks acp, an acp pick chains the download + sign-in, same-engine picks ack, esc acknowledges. Direct `/agy engine acp|stream-json` and the headless usage line are unchanged.
+- Missing-CLI warning: while the stream-json engine is active and the `agy` binary cannot be found (PATH or `AGY_BIN`), every pi start warns with the official install URL (toast in the TUI, stderr headless) until the binary is detected. Auth state is not checked, presence only.
+
+### Fixed
+
+- The picker's ACP line no longer claims "adds image input and native diffs": tool-result images ride both engines (probe-verified 2026-09-07) and stream-json has its own diff rendering. A negative test pin keeps the claim from returning.
+
+### Changed
+
+- README streamlined: the engine capability table, switching, and setup/auth details moved to docs/ENGINES.md; the approval-gate mechanics, configuration, and sample extension moved to docs/APPROVAL-GATE.md. Both stay linked from the README, which now carries the quick surface and states that engine choice is the user's.
+- Dependencies: fast-uri 3.1.5 → 3.1.7 clears four high-severity advisories (repeated hostname percent-decoding SSRF, malformed IPv6 normalization SSRF, percent-encoded scheme and IDN host confusion; in-range lockfile bump under ajv's `^3.0.1`), qs 6.15.3 → 6.16.0 clears a moderate pair (via express, dev surface). npm audit reports zero.
+
+## [1.4.10] - 2026-09-07
+
+### Added
+
+- Approval gate for agy native tool calls. agy runs its own agent loop, and its mutating native tools (`run_command`, `create_file`, `edit_file`, ...) executed with no pi involvement: pi's permission extensions never saw them. The gate routes the calls through a pi-side approval in builtin shape, so the existing permission-extension ecosystem gates them with zero changes: a staged `.agents/hooks.json` `PreToolUse` hook parks the call in the bridge, the provider emits a pi `toolUse` for a builtin-shaped shadow tool (`bash`/`write`/`edit`), and the decision - allow, or deny with a reason the model sees - travels back to the hook. Marker calls never execute locally and are verified against the bridge's pending-ticket set (a forged marker denies even in allow mode); non-marker calls delegate to factory twins of the real builtins, so normal pi behavior is unchanged. Read-only agy tools stay ungated. Opt-in via `approvals.gateMode` (`auto`, the default, keeps it off until a known pi permission extension is detected; `shadow` forces on; `off` forces off) and `approvals.mode` (`ask`, the default, shows a pi confirm dialog and denies headless; `allow`/`deny` skip the dialog). Timeout, an unwired gate, and shutdown all deny fail-closed. Every decision lands in the daily log with tool names, source, and latency. README has the full section plus a sample gate extension.
+
+### Fixed
+
+- Concurrent pi sessions on the same workspace no longer disable each other's approval gate. The staged `hooks.json` group was one shared key, so a second session resolving the gate to `off` deleted the first session's live gate, and two gate-on sessions overwrote each other's port/token/script. Groups are now keyed per session (`pi-bridge-gate-<pid>`), shutdown removes only the session's own group, and the next staging sweeps groups whose owning session is dead (found by an external pre-release audit).
+- The shared `~/.gemini/config/mcp_config.json` now lands `0600` (dir `0700`). It carries the bridge's shared-secret token and previously landed at the umask default (typically world-readable) (found by an external pre-release audit).
+- Bridge tools now register for the stream-json engine. That engine registered nothing: the agy CLI discovers MCP servers from `~/.gemini/config/mcp_config.json`, which the bridge never wrote (only the per-invocation `--add-dir` config existed), and the gap was masked because the daily engine is ACP. The bridge now registers itself there per-pid (`pi-bridge-<pid>`) at session start, sweeps stale entries left by crashed sessions, and unregisters on shutdown. Foreign servers in the shared file are preserved; a corrupt file is refused, never rewritten. Probe-verified live: agy discovers the server and completes tool calls through its native `call_mcp_tool` wrapper.
+- Image blocks in tool results now reach the model on the stream-json engine too (they were ACP-only). The engine gate downgraded pixels to a text label over an unverified transport concern; a live probe settled it - the CLI's MCP client delivers tool-result image content, and the model named a two-tone PNG's halves from the tool result alone with no decoders in the frame trail. `read` on an image file now gives agy real pixels on both engines. Stream-json prompt attachments and the late-delivery prompt stay text-only by design.
+
+## [1.4.9] - 2026-09-05
+
+### Added
+
+- Warn toasts in the pi UI: bridge tool failures, stalls, timeouts, process exits, and other warnings surface as native warning notifications the moment they happen, so users see them and can report them. Over SSH or without a UI the same text falls back to stderr. Deliberate aborts, connection exits (the turn's own error block carries real crashes), and `call-tool-fail` (same-instant duplicate of `round-trip-fail`) stay silent.
+- Gate B watch in `/agy doctor`: the ACP connection latches the first `session/update` payload that carries usage/token fields, and doctor prints one "acp tokens: AVAILABLE" line when that happens. Silent until then; the day the line appears, wiring real token counts becomes a small mapping job. Auth-style string `"token"` keys inside tool frames cannot trip the latch.
+
+### Fixed
+
+- Esc-abort on the ACP engine no longer dumps the dying server's raw stderr tail (a google3 stack trace) into the transcript. Teardown exits (abort kill, shutdown, idle recycle) are marked expected and never render; a genuine mid-turn crash surfaces as the turn's own clean error block instead. Raw tails still land in the file log for post-mortems.
+
+### Changed
+
+- The ACP engine is now beta. Parity is verified live against RC01 (text streaming, multi-turn resume, bridge tools, effort switching, serialization, abort recovery - see `scripts/parity-live.mjs`), so it graduates from opt-in-experimental to a supported alternative engine. It stays behind `config.engine` for now; the two known RC01 gaps (no usage fields, kill+reload abort) are documented in the README.
+- Daily log volume: the default tier now writes ONLY errors, so a regular session costs the disk nothing. Warns live in the UI (see above); `AGY_DEBUG=1` restores the full debug/info/warn/error trail for reproducing a problem. Docs: README debug-logs section, `/agy doctor` hint.
+- The tool-priority note now steers agy's native `view_file` (artifact-sandboxed on RC01) to the Pi Bridge file tools (`read`, `ls`, `grep`, `find`, `edit`, `execute`) for any real filesystem path. Observed live: repeated `invalid_args` rejections on `operator/pkg/tmux/client.go` before the model fell back to `edit`.
+
+## [1.4.8] - 2026-09-05
+
+### Added
+
+- Early-ack + poll for long bridge calls. agy's MCP client abandons a `tools/call` request at a flat ~180s (observed twice at exactly 180.000s), so any pi tool that ran longer died with "agy disconnected before the tool result arrived": the 225.7s `AskClaude` peer review that exposed it never reached agy, and agy salvaged its turn without the result. Now a call still running after ~20 seconds settles the HTTP request with a `STILL RUNNING` answer carrying a `callId`, and the new bridge-local `bridge_poll_result` tool returns the result when it lands (or "still running" on the way). pi keeps executing the whole time; fast calls never see any of this. An escalated park re-arms its own timeout to 30 minutes, so human-gated tools (commit previews, permission dialogs) can take as long as the human takes.
+- Late tool-result delivery as a backstop: a park that does fail (abort, timeout, recycle) leaves a bounded tombstone, and when the toolResult arrives anyway the provider re-routes it to agy as a new prompt in the same conversation ("Late tool delivery: ...") instead of erroring the turn. A late result that lands while another park still anchors the pass is deferred to the next pass (`late-result-deferred`), never dropped.
+- A `progress-token` probe in the bridge server: if agy's requests ever carry `_meta.progressToken`, MCP progress notifications become a testable zero-UX fix for the deadline. The exact-180s signature says it likely never fires; one log line settles it.
+
+### Fixed
+
+- A toolResult whose park already died no longer misclassifies the turn as "No user message to send to agy." That was the second half of the incident, and it turned a recoverable late delivery into a hard error.
+- `failAll` (fired on every turn end, OK turns included) no longer marks escalated calls failed: an escalated call outlives its agy turn by design, and the poll handle must not lie about a still-running tool (peer-review blocker).
+- `EscalationRegistry` eviction can no longer strand a running call: only settled entries evict, so a saturated cap grows instead of losing an in-flight result.
+
+### Changed
+
+- The tool-priority note now also teaches the poll pattern: long bridge calls answer `STILL RUNNING` + `bridge_poll_result`, and work that is known-long should use `exec_command`'s session output or background agents.
+- New daily-log events: `call-tool-escalated`, `poll-tool`, `late-result` (with a `freshConversation` flag), `late-result-deferred`, `progress-token`. Docs: README bridge section, ACP-PROTOCOL-REFERENCE timing table.
+
+## [1.4.7] - 2026-09-05
+
+### Added
+
+- Daily debug log on disk, sorted by day: `~/.pi/extensions-data/estebanforge/pi-antigravity-bridge/logs/<YYYY-MM-DD>.ndjson`, one JSON record per line, 14-day retention. Built for support: when something breaks, the last days' files replay the failure (engine, session, bridge call, error) without reproducing it. Both engines and everything around them feed it: turn start/outcome with error text, driver failures (stall, abort, timeout, nonzero exit), ACP session load/new and connection exits, bridge tool calls and round-trip failures, AskAntigravity runs, `/agy` commands, ACP setup/self-heal/auth, and the login URL (query string stripped). Secret-shaped values (tokens, API keys, credentials, header blocks) are redacted; prompt text, tool arguments, and tool output never land in the log; an unwritable directory is skipped silently and retried. `/agy doctor` prints the directory.
+- Two verbosity tiers keep the disk cost negligible: by default only the info/warn/error skeleton is written (a handful of records per turn). `AGY_DEBUG=1` (or `true`/`on`) restores the full per-event trail: spawn/exit, session load/new, unparks, recycle causes, raw bridge chatter. Turn it on to reproduce, then off.
+- Pre-dispatch turn errors now reach the log (previously they only surfaced as a one-line pi error and were lost): driver start failures, stray tool results with no active turn, the ACP plan-mode refusal, and a miswired extension.
+- The engine capabilities comparison table in the README: 20 rows comparing `stream-json` vs `acp` (thinking text, token usage, image/audio input, plan mode, slash-command handling, model/effort switching, process lifecycle, session resume, abort, bridge routing, edit diffs, permissions, digest and system-prompt delivery, auth, wire protocol, doctor diagnostics), peer-reviewed against the code and the live probes.
+
+### Changed
+
+- `/agy doctor` prints the log directory with a hint to attach recent days' files when reporting issues.
+- README, architecture module map, and the regression-test list document the logger, its support flow, and the `AGY_DEBUG` gate.
+
+## [1.4.6] - 2026-09-04
+
+### Added
+
+- Tool-priority note in the system prompt block (`systemPrompt` setting, on by default): agy runs embedded in pi, so its native interactive tools (the live example was `ask_question` vs the bridge's `ask_user_question`) never reach the user. The note tells agy to always prefer the Pi Bridge tool when one covers the same purpose. The old preamble sentence that allowed "your own tools or the pi tool bridge" is gone, since that ambiguity was the cause.
+
+### Fixed
+
+- `/agy auth` reports a distinct failure instead of a false "Signed in." when the server accepts the sign-in but `acp_token.json` never appears within the 5 s post-authenticate grace window (peer-review find; the poll result was never read).
+- Test-infra: the fake ACP server's request log was lost on SIGTERM (buffered write stream + Gate D teardown), which flaked the Gate D abort test ~1-in-3 suite runs; the log now appends synchronously.
+
+### Changed
+
+- The sign-in URL toast fences the URL with blank lines so it stays readable and copyable next to the ssh port-forward hint.
+
+## [1.4.5] - 2026-09-04
+
+### Added
+
+- Tool-priority note in the system prompt block (`systemPrompt` setting, on by default): agy runs embedded in pi, so its native interactive tools (the live example was `ask_question` vs the bridge's `ask_user_question`) never reach the user. The note tells agy to always prefer the Pi Bridge tool when one covers the same purpose. The old preamble sentence that allowed "your own tools or the pi tool bridge" is gone, since that ambiguity was the cause.
+
+- `/agy auth` subcommand: runs the antigravity-acp sign-in on demand (spawns the server, sends `authenticate`, waits for the browser round-trip to complete; minutes-scale). Signing in no longer rides the first Antigravity message, and both login-pending moments now point at `/agy auth`. The sign-in URL toast (and its ssh port-forward hint) fires during `/agy auth` exactly as it does during turns, and a second concurrent `/agy auth` fails fast instead of racing the token write.
+
+### Changed
+
+- `/agy acp-auth` renamed to `/agy auth-manual` (no alias): it prints the manual credential setup for those who want it. Auth-error remediation, MANUAL_SETUP, README, and docs now point at `/agy auth` / `/agy auth-manual`, and the stale first-message login wording is gone from the manual steps.
+
+## [1.4.4] - 2026-09-04
+
+### Added
+
+- The Google sign-in URL now surfaces in pi. The ACP server hands the OAuth URL only to the browser-open call (nothing on stdout/stderr, headless or not), so a `BROWSER` wrapper script records the URL and forwards to the real opener; the connection watches the record file and logs it as an `auth-url` event. The extension toasts it at warning level with the ssh port-forward command for the redirect port, so logins work from SSH sessions on remote machines; local users keep the automatic browser open and get the URL as a fallback. An existing `BROWSER` setting is chained, not replaced.
+
+### Fixed
+
+- ACP login pending was reported only at the moment setup wrote `settings.json`, so after the restart, with `settings.json` in place but the browser login never completed, every check went silent: no toast, no hint, while the first ACP message had no token to use. `needsLogin` now tracks the token file (stat only, never read): `oauth-personal` without `acp_token.json` is login-pending, so the switch-time toast, the picker, and the `session_start` self-heal keep saying so on every start until the login is done.
+
+### Changed
+
+- Engine switching is command-only now: `/agy engine stream-json|acp`. The bare-`/agy` settings picker no longer carries an Engine row (nor the post-save setup run), so the switch surface cannot be hit accidentally; `/agy engine acp` keeps the self-service setup (binary + auth) and the login warning. The picker's plan+acp (RC01) guard stays in a narrower form: the mode row alone can still produce `plan` while the engine is `acp`.
+- ACP login-pending messages rewritten for end users: what happens (the server opens the Google sign-in page in your browser on the first Antigravity message), when (after the restart or immediately, per moment), and which account (your Antigravity subscription, the same Google account as the `agy` CLI). No URL to open manually. All remaining moments (engine switch, session start) now toast at warning level so the pending action stands out.
+- The "Turn engine" wording became "Engine" in the README env table, the config comment, and the architecture doc heading; the picker row itself is gone (engine switching is command-only, see above).
+
+## [1.4.3] - 2026-09-04
+
+### Added
+
+- AskAntigravity tool toggle: `/agy ask on|off`, an "AskAntigravity tool" row in the bare-`/agy` picker, and the `askTool` config key (env `AGY_ASK_TOOL`). Default on; `off` skips registering the AskAntigravity one-shot delegation tool entirely, for users who want only the provider and its models and no delegation tool in the model's window context. When the separate pi-ask-antigravity package is also installed, `off` means no delegation tool from either package (no fallback). Takes effect on the next pi start (or /reload); `/agy status` shows the state.
+
+### Changed
+### Changed
+
+- The bare-`/agy` settings picker gains a Turn engine row (`stream-json`/`acp`). Saving `acp` persists the switch, then runs the same self-service setup as `/agy engine acp` (binary install + auth bootstrap, `acp.bin` updated). The plan+acp RC01 guard now evaluates the effective engine AND mode after the save, so a config already in `plan` plus a fresh `acp` pick is refused instead of persisting an invalid combination (peer-review find).
+- "Tool default model/thinking" renamed to "AskAntigravity model/thinking" across the picker, `/agy status`, and toasts; descriptions and README now state the values are fallbacks that callers may override per call.
+- All ACP login-pending messages share one wording that names the antigravity-acp server and its place in Google's Antigravity suite (agy desktop, agy editor, agy cli, agy acp), and clarifies the login: same Google account as the agy CLI, separate login with its own token file.
+
+## [1.4.2] - 2026-09-04
+
+### Changed
+
+- `bridgeTools` now defaults to `all` (every registered non-builtin pi tool) instead of `mcp`. The `mcp` surface filters to pi-mcp-adapter tools and serves an empty catalog on installs without that adapter, which left the bridge registered but tool-less from the model's point of view. `none` still opts out entirely; explicit `"bridgeTools": "mcp"` in an existing config keeps pinning the narrow surface.
+- Skill discovery now mirrors pi's directory-based scan (docs/skills.md): global `~/.pi/agent/skills` AND `~/.agents/skills`, project `.pi/skills` plus `.agents/skills` in cwd and ancestors up to the git root (project dirs only when pi has trusted the project, same gate pi applies), recursive SKILL.md discovery with grouping folders, per-style root/`.md` rules, hidden entries skipped, and description-less skills dropped. Pi's other skill sources (`skills` settings array, `package.json`, `--skill`) are not mirrored. Previously only one flat level of two directories was scanned, and `~/.agents/skills` (where pi actually reads most skills) was missing entirely, so `activate_skill` never appeared.
+- `/agy` now exposes the full runtime config surface: new `/agy bridge all|mcp|none` (which pi tools the MCP bridge hands to agy) and `/agy acp-bin <path|auto>` (target a specific ACP server binary; applies on the next ACP turn), plus Bridge tools, Context digest, and System prompt rows in the bare `/agy` settings picker. Usage strings and `/agy status` list every knob.
+
+## [1.4.1] - 2026-09-04
+
+### Added
+
+- Self-service ACP setup (`src/acp/setup.ts`): `/agy engine acp` now prepares the whole engine instead of printing instructions. It installs the official server binary from the antigravity-acp registry entry (`agentclientprotocol/registry`) into the pinned layout `~/.local/opt/agy-acp/<build>/` with a `current` symlink and the zip sha256 recorded (no upstream checksums exist; plan §12), points `acp.bin` at it, and prepares the login: `oauth-personal` by default, which is the user's own Antigravity subscription (the same Google account and plan as the `agy` CLI; the server opens the browser on the first ACP message, tokens persist). Credential values are never read or written (`acp_token.json` is only stat()ed); `gemini-api-key` stays a manual headless option, never the default. A `session_start` self-heal repeats the check silently when everything is ready and surfaces the manual steps only on failure; `AcpDriverOptions.bin` accepts a resolver so a mid-session install is picked up by the next turn without a restart; `/agy doctor` shows binary source and auth type. Tests inject the registry, archive, and unpacker, so the suite stays offline.
+
+### Fixed
+
+- Stream-json frames split across pipe chunks are now reassembled instead of dropped: `AgyDriver` buffers the trailing partial stdout line (the scheme `JsonRpcSession.feed` already used on the ACP engine). Previously a large `tool` frame or the `result` frame split by a pipe boundary was lost whole, which could turn a successful turn into a bogus "agy exited with status 0" error. Regression test drives a fake agy whose reply is deliberately split mid-line.
+- Both drivers attach an `'error'` listener on the child's stdin: an async pipe failure (EPIPE when agy/the ACP server dies mid-write) now fails the turn (ACP: tears the connection down) instead of escaping as an uncaught exception that kills the whole pi process.
+- ACP permission answering is fail-closed: `session/request_permission` selects the first reject option unless the turn runs with `skipPermissions`. Previously every request was auto-approved regardless of the `permissions` setting shown by `/agy status`. The unsupported `engine=acp` + `mode=plan` combination is now refused at `/agy engine`, `/agy mode`, and the settings picker, and fails the turn with a visible error instead of silently running non-plan (ACP has no review-only mode in RC01).
+- Startup-log fix hardening: four genuine ACP failure events (`session-load-failed-creating-fresh`, `connection-exited`, `cancel-failed`, `unsupported-server-request`) surface again; the dead MCP entries (`capability-missing`, `self-patch-error`) are gone; `call-tool-fail` no longer toasts for the routine fail-all on turn end / session shutdown.
+- Startup log leaks: the ACP driver log sink now forwards only genuine failures (`start-failed`, `spawn-error`, `parse-error`, `write-failed`, `mode-apply-failed`, `timeout`, `stall`, `auth-required`) to stderr; routine lifecycle (`driver-created`, spawn, session new/load) stays in the `#lifecycle` ring buffer under `/agy doctor`. The MCP bridge logger no longer toasts (or headless-stderr-logs) normal startup/teardown events (`listening`, `bridge-config-written`, `bridge-config-removed`, `closed`); only failures surface, as warning toasts. The stream-json engine already had no terminal sink.
+
+## [1.4.0] - 2026-09-04
+
+### Added
+
+- The official-server ACP engine as a second turn engine behind `config.engine` (env `AGY_ENGINE`, `/agy engine acp|stream-json`), default off: the tested stream-json engine stays default until upstream ships usage fields. New modules: `src/acp/jsonrpc.ts` (NDJSON JSON-RPC session with line buffering - stdio chunks are not newline-aligned), `src/acp/connection.ts` (initialize, session/new and load, config options, in-connection auto permissions, cancel probing), `src/acp/events.ts` (update mapping), `src/acp/driver.ts` (AcpDriver over the shared `TurnDriver` contract in `src/driver-types.ts`). Sessions are engine-scoped (`sid:<id>@acp`) so switching engines never crosses conversations.
+- `/agy engine acp|stream-json` command and `/agy acp-auth` (one-time credential setup for the ACP server, which keeps its own auth state). `/agy doctor` is engine-aware.
+- `scripts/smoke-acp.mjs` (live ACP smoke), `scripts/smoke-acp-bridge.mjs` (live Gate F bridge e2e), `scripts/parity-live.mjs` (live parity run: 7 scenarios through BOTH engines). All quota-gated via `AGY_ACP_LIVE=1`.
+- `docs/ACP-ADOPTION-PLAN.md` (adoption plan, gates, progress tracking) and `docs/ACP-PROTOCOL-REFERENCE.md` (captured wire shapes of the ACP server).
+- Image prompt support on the ACP engine: pi image attachments ride as typed content blocks (`DriverTurnRequest.images`, forwarded by `connection.prompt` ahead of the text block). Models advertise `input: ["text","image"]` only when the engine is `acp` (read at extension load; engine switches require a restart), so the text-only legacy CLI never offers an attach button it cannot honor. Verified live: a 64x64 two-tone PNG answered correctly through the full driver stack (`scripts/smoke-acp-image.mjs`, quota-gated) and in the phase-2 probe (`scripts/probe-acp-phase2.mjs`).
+- `scripts/probe-acp-phase2.mjs`: live probe capturing thought-chunk sparsity, image end-to-end, full tool_call/tool_call_update frames, and the `/plan` command flow (raw frames in `probe-logs/`).
+
+### Changed
+
+- `McpServerHandle` exposes the shared-secret token (`token`), and `TOKEN_HEADER` is exported: engines other than the stream-json discovery file need the header to reach the bridge (the ACP registration was silently sending no header and would have been 403'd).
+- Driver exit handling is connection-scoped in `AcpDriver`: a killed connection's late exit (the current ACP build intercepts SIGTERM and can outlive its replacement) no longer clobbers the live connection or fails the recovery turn.
+- `tool_call_update` display: the completed call's output now prefers the `content[]` text over `rawOutput`, which the server fills with a display title ("Call bridge_echo") rather than the result. The result itself reaches the model out-of-band; only the activity display was wrong.
+- Tool-frame mapping fixes from the phase-2 probe: MCP `rawInput` args unwrap the `arguments` envelope, and the tool name prefers `_meta.mcp.tool` over the "<server>_<tool>" title.
+- Gate C consolidation on the ACP engine: `native-tools.ts` re-exec and `WrapperReplay` parking are retired for ACP turns (tool steps render as thinking labels; `bridge_call` round-trips unaffected); ACP-native edit diffs from `tool_call` `content[]` render directly into the thinking stream via the new in-memory `formatInlineDiff` (same line-numbered format, zero git subprocesses). The git-sourced `diff-render.ts` path remains solely for the `stream-json` engine.
+- G1 digest delivery split by engine: on ACP the digest ships as a native `embeddedContext` resource block in the prompt array (`promptCapabilities.embeddedContext` verified live: a resource block with a secret word was read and answered correctly); `stream-json` keeps the inline text default.
+- `/agy doctor` (ACP): shows server reconnects (connections beyond the first = Gate D kills + replacements) and the handshake `agentInfo` name/title next to the server version.
+
+### Fixed
+
+- `tool_call_update` failed frames whose `rawOutput` matches the RC01
+  approved-but-never-executed sentinel are dropped instead of rendering as a
+  bogus tool error next to a successful edit (run 6, finding 7).
+- `AcpDriver` kills a leaked server process when the initialize handshake
+  fails (spawn succeeded, init timed out) - the detached process would
+  otherwise outlive pi.
+- `AcpDriver` snapshot prefers the active session id over the last settled
+  one, so `/agy doctor` during a live turn shows the correct session.
+- Text dedupe guard: the cumulative-mode flip now requires a respectable
+  accumulation (32+ chars), and a cumulative frame that stops extending the
+  accumulator falls back to append mode - a short markdown opener (`**`,
+  `#`) followed by an ordinary delta no longer corrupts the remaining output
+  (round-7 review, applies to both engines).
+
+- No usage fields anywhere: token display shows zero (Gate B; the stream-json engine stays default until upstream ships usage).
+- No `session/cancel` (-32601): abort tears the connection down and reloads on the next turn; `cancelSupported` is probed once and shown in `/agy doctor`.
+- `tool_call` activity output shows the server's display string, not the MCP result content (the model receives the result out-of-band; only the activity display lacks it).
+- `agent_thought_chunk` is sparse on RC01 (a step-by-step prompt produced zero; reasoning ships as plain message text). The thinking pipeline handles deltas when they occur.
+- ACP has NO review-only mode: the three modes are permission modes only, and the server-intercepted `/plan` command writes its artifact under auto policy. Plan delegations keep the legacy `agy -p --mode plan` path (committed exception).
+
+## [1.3.3] - 2026-09-01
+
+### Added
+
+- pi system prompt injection (G10): pi's composed system prompt - operating instructions plus the global agent-dir `AGENTS.md` and ancestor `AGENTS.md`/`CLAUDE.md` files - is prepended as a delimited block to the first prompt of each NEW agy conversation. agy has no system-prompt flag, so the prompt text is the only delivery path; the block is sent once per conversation and stays byte-identical afterwards, so agy's server-side prompt cache keeps hitting (unlike the per-turn G1 digest, which stays off by default for that reason). On by default (`config.systemPrompt`, `AGY_SYSTEM_PROMPT`, `/agy system-prompt on|off`); existing conversations keep the version they started with.
+
+## [1.3.2] - 2026-09-01
+
+### Removed
+
+- The `legacy-sqlite` fallback engine: `src/runner.ts`, `src/poller.ts`, `src/protobuf.ts`, the `run-agy` and `decode-db` scripts, and the `engine` config key / `AGY_ENGINE` env var. agy 1.1.18 changed step-row storage to a two-phase write (a placeholder row first, grown in place later); the polling engine read each row once as an empty placeholder and never re-read it, so turns completed with the full reply in the database and zero text in pi (issue #1). The engine decoded an undocumented storage format, so every agy storage change risked repeating that failure silently. The stream-json engine shares none of that code path; verified live against agy 1.1.18-era storage (1.1.23 installed). A stale `engine` value in an existing `config.json` is ignored.
+  Reported by @imatimba in #1. Thanks for the exact repro and the root-cause analysis; the report drove this removal.
+
+### Changed
+
+- `scripts/test-provider.ts` wires the stream-json driver explicitly (it exercised the legacy path implicitly before).
+- `tests/provider-streaming.test.ts` covers effort mapping against a fake driver. The legacy event-mapping tests died with the engine; stream-json event coverage lives in `tests/stream-roundtrip.test.ts`.
+
+## [1.3.1] - 2026-08-31
+
+### Changed
+
+- Docs-only release. README and package description now describe the 1.3.0 reality: `stream-json` engine as default, no-patch tool bridge, `/agy doctor` + `/agy patch-cleanup`, live token usage. The 1.3.0 tarball shipped the pre-rewrite README, so npm and the pi.dev package gallery still showed the patch-era docs; this republish refreshes the registry metadata.
+
+
+## [1.3.0] - 2026-08-31
+
+### Added
+
+- Stream-json engine: one persistent `agy --input-format stream-json` process per provider; conversation binding from the `init` event (no more SQLite snapshot diffing), native tool-step events (no protobuf decoding), and token usage mapped onto pi's usage when agy reports it. `AGY_ENGINE=legacy-sqlite` keeps the old engine for one release.
+- No-patch MCP tool bridge: bridge calls park in a round-trip store; the provider emits them as real pi `toolUse` turns, pi executes with native cards/permissions/hooks, and the toolResult completes the parked MCP response on the next stream call. `bridgeTools` config selects the surface: `none` / `mcp` (default) / `all`.
+- Native re-execution of agy read-only tools as real pi builtins (native cards, live output).
+- Display-only `antigravity` wrapper tool: mutating agy steps land as real toolCall/toolResult pairs via recorded-output replay.
+- Skills bridge: `activate_skill` tool exposing the pi Agent Skills catalog to agy, answered by the bridge directly.
+- `/agy doctor`: engine, bridge, driver counters, and lifecycle tail, zero tokens.
+- Legacy patch cleanup: `src/patch-cleanup.ts` detects a leftover invokeTool patch, one-time notice on session start, and `/agy patch-cleanup` restores the original files from the versioned backup.
+
+### Changed
+
+- The MCP tool bridge no longer patches pi. The `pi.invokeTool` round-trip is replaced by the provider-owned park/emit/resolve flow above.
+
+### Fixed
+
+- Live stream-json protocol shapes against real agy: terminal status is `SUCCESS` (not `OK`) and agent text arrives as `text_delta`. The first burn-in turn failed on both; both are pinned by a regression test.
+- Native re-exec tool calls include the `reasoning` argument pi requires on read/edit-class builtins; without it pi rejected every native `read` card at validation.
+- Peer-review round 2 (engine): parked bridge calls suspend the stdout idle timer (a >5-minute permission prompt no longer kills the turn); turn lifetimes are serialized (a second `run()` can no longer orphan an open turn); the cumulative-text guard points the right direction; a settled turn fails round-trips parked against it.
+- Peer-review round 2 (cleanup): backup selection prefers an exact version match over newest-by-mtime (stacked multi-version backups made legitimate restores refuse); `WrapperReplay` entries are single-use (no unbounded growth, no enumerable stale outputs); `rt`-kind round-trips are removed on turn death; the one-time leftover-patch notice is headless-safe (`ctx.hasUI` gate with stderr fallback) and set after surfacing, not before.
+
+### Removed
+
+- `pi.invokeTool` patch: `src/patcher.ts`, the load-time consent prompt, `/agy patch` subcommands, `docs/PI-INVOKETOOL-PATCH.md`, and the `invokeToolPatchDeclined` config flag.
+
+
+## [1.2.6] - 2026-08-28
+
+### Changed
+
+- **Offline fallback Flash bumped to Gemini 3.7.** `FALLBACK_MODELS`
+  (served only when `agy models` fails or is unauthenticated at load) now
+  offers `gemini-3.7-flash` instead of `gemini-3.6-flash`. Live discovery
+  always overrides the fallback, so this only affects the picker when agy
+  is missing or broken.
+
+## [1.2.5] - 2026-08-24
+
+### Fixed
+
+- **Patch updated for pi 0.84.3's bundled runtime.** Two upstream changes
+  broke the `pi.invokeTool` patch. First, the `core/extensions/loader.js`
+  facade was refactored (`runtime.assertActive()` became a local
+  `assertActive()` guard), so the sixth site no longer matched and the
+  two-phase apply aborted (fail-closed, no files written). Second, pi's `bin`
+  now launches `dist/bundle/cli.js`, a bundled runtime with its own embedded
+  core, so patching `dist/core/` could never affect a running pi. The patcher
+  now also replaces `dist/bundle/cli.js` with a shim that loads the modular
+  `dist/cli.js`, making the six sites live again; `findPiRoot` understands
+  the `dist/bundle` argv layout. Tradeoff: pi starts via the modular runtime
+  (the bundle's faster startup is forfeited while the patch is applied).
+  After upgrading, re-apply via `/agy patch apply` and fully restart pi.
+- **Patcher hardening (peer-reviewed).** Atomic writes now preserve the
+  destination's permission bits. Without this, every apply stripped the
+  execute bit from `dist/bundle/cli.js` (pi's bin target) and broke the `pi`
+  command. The entry redirect is never written after any write error, so a
+  failed run can no longer silently switch pi to the modular runtime. Backups
+  copy forward from the previous same-version backup, so a repair run after a
+  partial patch keeps backups complete and restore still reverts the entry
+  redirect; an already-redirected entry with no surviving original now warns
+  loudly instead of failing silently later.
+
+## [1.2.4] - 2026-08-13
+
+### Added
+
+- **Model, thinking tier, and mode shown next to the tool name.** The
+  `AskAntigravity` tool now renders
+  `AskAntigravity [model=gemini-3.6-flash, thinking=high]` with a prompt
+  preview while a delegation runs, plus a tidy result row
+  (`✓ AskAntigravity 12.3s`) with an expandable body. Built on pi's
+  `renderCall`/`renderResult` hooks; the values shown are the resolved
+  config defaults (model alias + tier), not just the args the caller passed.
+  `AgyDetails` gained a `thinking` field.
+- **Opt-in full-context delegation (`includeContext`).** New boolean param
+  (default `false`, isolated one-shot unchanged). When `true`, the current pi
+  conversation is exported as resolved markdown to
+  `~/.pi/extensions-data/estebanforge/pi-antigravity-bridge/` and the prompt
+  tells agy to read it first. The run passes `--add-dir` for that folder so
+  the sandbox can read it; the temp file is removed after the run.
+
+## [1.2.3] - 2026-08-10
+
+### Fixed
+
+- **Model parsing now handles agy's real two-column output.** `agy models`
+  prints `<slug>  <display label>` per line, and `--model` accepts only the
+  slug. `entriesFromRaw` (provider path) applied its slug regex to the whole
+  line, so every real line was rejected and the provider always fell back to
+  the hardcoded catalog; it now splits column 1 and requires a hyphen, which
+  also drops banner words split out of column 1. The AskAntigravity resolver
+  swallowed slug + label into `--model`, which agy rejected; it now returns a
+  `{model, effort?}` shape that sends Gemini-family bases' base slug to
+  `--model` and their tier to `--effort`, while fixed-thinking families
+  (Claude, GPT-OSS) keep the exact slug with no `--effort` (agy rejects it for
+  them). Matches the provider's collapse + clamping path. Tests rewritten to
+  the verified live `agy models` fixture.
+
+## [1.1.2] - 2026-08-10
+
+### Fixed
+
+- **MCP bridge startup messages no longer pin above the input.** pi's TUI
+captures extension stderr and pins it above the editor for the whole session,
+which left the `[antigravity-bridge mcp] bridge-config-written` and
+`listening` lines stuck on screen. The lifecycle logger now routes through
+`ctx.ui.notify` (an ephemeral toast that fades); headless print/json modes
+fall back to stderr. Error and diagnostic events use the same channel, so
+they no longer pin either.
+
+## [1.1.1] - 2026-08-06
+
+### Changed
+- **Dependencies updated.** Raised the `pi-coding-agent`, `pi-ai`, `pi-tui` dev pins to `^0.84.0`. Audited against the pi v0.84.0 breaking changes; the custom `streamSimple` provider still matches pi-ai 0.84.0's stream-event contract, and `tsc --noEmit` passes.
+
+## [1.1.0] - 2026-07-31
+
+### Added
+
+- **Full agy catalog in the picker, grouped like agy's own.** Gemini models
+  collapse to base entries (gemini-3.6-flash, gemini-3.1-pro) with a
+  thinking-effort toggle; Claude (Sonnet/Opus) and GPT-OSS appear as fixed
+  entries with no toggle, since their thinking cannot be changed. The earlier
+  Gemini-only filter is gone. Google's Antigravity subscription bills all of
+  these through agy, so routing Claude here uses the agy quota you already pay
+  for (if you also run pi-claude-bridge you will simply see two Claude
+  entries).
+- **Reasoning-effort bridging (`agy --effort`).** For an effort-driven Gemini
+  base, pi's thinking-effort toggle drives agy's `--effort` (agy 1.1.5+), and
+  the toggle only offers the tiers that base actually accepts (Flash:
+  low/medium/high; Pro: low/high), so it can never request a tier agy rejects.
+  The level is clamped to the base's supported tiers and always passed (a base
+  slug is invalid on its own). Fixed models never receive `--effort` (agy
+  rejects it for them). Behavior verified by local experiments against agy
+  1.1.9.
+
+### Changed
+
+- **Breaking: Gemini model ids changed shape.** Effort is no longer part of the
+  model id (`antigravity/gemini-3-6-flash-medium` →
+  `antigravity/gemini-3-6-flash`); it is now chosen via pi's thinking-effort
+  toggle. A persisted default model, a `--model antigravity/...` flag, or a
+  scoped-model pattern set before upgrading will need re-selection.
+  Claude/GPT-OSS ids keep their qualified shape (e.g.
+  `antigravity/claude-sonnet-4-6`).
+- **Requires agy >= 1.1.5.** Base slugs and the `--effort` flag landed there;
+  older agy rejects every Gemini entry with a flag error.
+
+### Fixed
+
+- **AskAntigravity model resolution** now parses agy's stable-slug catalog
+  (`gemini-3.6-flash-high`, `claude-sonnet-4-6`) instead of the legacy human
+  names. The `sonnet`/`opus`/`gpt-oss` aliases and the `/agy thinking` tier had
+  silently resolved to invalid `--model` values since agy switched to slugs;
+  they now resolve to exact valid slugs.
+
+## [1.0.0] - 2026-07-29
+
+First release. A streaming Gemini model provider for pi, built on Google's
+`agy` CLI, plus an MCP tool bridge that lets agy use pi's installed tools
+(memory, codegraph, Slack, Asana, web, peer delegation, etc.) instead of its
+own. Registers `antigravity/*` models in pi's `/model` picker and streams
+responses by polling the SQLite database agy writes and decoding its
+protobuf step payloads. No generated protobuf code, no native SQLite
+dependency.
+
+### Added
+
+#### Streaming provider
+
+- **Gemini provider for pi.** `antigravity/gemini-*` models appear in pi's
+  `/model` picker, discovered live from `agy models` (with a fallback catalog
+  when discovery fails). Picking one routes each turn through the provider.
+- **Real streaming.** A concurrent poll loop (250ms, `PRAGMA data_version`
+  coalescing) reads agy's conversation DB while agy is still running, so text
+  and tool activity arrive during the turn, not replayed at exit. Three
+  trailing polls catch the final flush; abort skips them for prompt cancel.
+- **Hand-rolled protobuf decoder** for agy's `step_payload` blobs: agent text
+  at field 20.1, tool calls at field 5.4 (name@2/9, input@3), title at 30.4.
+  Field numbers verified against real agy 1.1.7 databases and cross-checked
+  against the shindgew/agy-acp and shubzkothekar/antigravity-acp decoders.
+  Unknown fields are skipped per protobuf wire rules.
+- **Multi-turn conversations.** A pi session is bound to an agy conversation
+  id (persisted at `~/.pi/agent/antigravity-bridge/sessions.json`) and
+  resumed via `--conversation <id>`. agy keeps its own history; only the latest
+  user message is sent each turn. Atomic, dirty-key-merged writes survive
+  concurrent pi processes.
+- **`/agy` slash command** with status, an interactive picker (mode,
+  permissions), and direct subcommands. Settings persist to
+  `~/.pi/agent/antigravity-bridge/config.json`.
+- **Configurable execution mode** (`accept-edits` default, or `plan`) and
+  permissions, overridable by `AGY_MODE` /
+  `AGY_SKIP_PERMISSIONS` env vars.
+- **`--dangerously-skip-permissions` passed by default.** Technically
+  required: `accept-edits` auto-approves file edits but not shell commands,
+  so a `run_command` would otherwise hang on an unanswerable `y/n` prompt in
+  non-interactive `-p` mode (upstream google-antigravity/antigravity-cli#318).
+  Consistent with pi's own no-confirmation-gate design.
+- **Conversation-id discovery** by snapshot/diff of agy's conversations dir
+  (agy `-p` never prints the id). Refuses to bind on ambiguity.
+- **Tool-activity visibility.** agy's closed tool loop surfaces in pi's
+  thinking panel as `[agy tool: <name>]`. agy edits/commands land on disk;
+  pi's tools never fire (architectural wall, documented).
+- **Cross-turn context continuity.** agy keeps its own history, but it now
+  also receives pi-side context it wasn't spawned for (compaction summaries,
+  turns from other providers or pi's own tools) as a brief digest with the
+  prompt each turn, so multi-turn work and provider switches stay coherent.
+- **Edit diffs in the thinking stream.** When agy writes a file, pi's thinking
+  panel shows a line-numbered diff of the change as it lands. Works across
+  nested repos, submodules, and multi-repo workspaces; degrades cleanly for
+  binary, off-repo, or unchanged files.
+- **Tests.** Unit tests for the protobuf decoder; a
+  deterministic fake-agy test that asserts events stream during the run and
+  that abort returns promptly (guards the "provider did not actually stream"
+  regression class).
+
+#### MCP tool bridge (agy -> pi tools)
+
+- **`AskAntigravity` tool** is now provided by this extension (ported from
+  `pi-ask-antigravity` v1.1.0). The bridge ships BOTH the streaming
+  antigravity provider AND the one-shot delegation tool - the same combined
+  shape as `pi-claude-bridge`. Model aliases (flash/pro/gemini, tier/version
+  qualifiers), one-shot vs continued-conversation modes, and the `mode`/
+  `digest` params are all preserved.
+- **Cross-extension clash avoidance.** When both this bridge and
+  `pi-ask-antigravity` are installed, the bridge wins and
+  `pi-ask-antigravity` silently registers nothing (it detects the bridge via
+  package resolution, order-independent). The `AskAntigravity` tool is never
+  duplicated.
+- **`/agy` gains `model` and `thinking` subcommands + picker rows** for the
+  tool's defaults (alias flash/pro/gemini; tier low/medium/high). Persisted
+  alongside the provider settings in `config.json`.
+- **MCP tool bridge.** agy runs as pi's Gemini provider; the bridge exposes
+  pi's installed tools to agy over a Streamable HTTP MCP server so agy can
+  call them (memory, codegraph, Slack, Asana, web, peer delegation, etc.)
+  instead of doing the work itself. Per-pid config directory at
+  `~/.pi/agent/antigravity-bridge/agy-mcp-<pid>/`, written into agy's
+  `--add-dir` path so agy reads `.agents/mcp_config.json` from there.
+  Global agy config is never touched.
+- **Capability gate.** The bridge checks for `pi.invokeTool` at startup and
+  silently no-ops the MCP server if the patch is absent (clean pi reinstall
+  drops the patch; bridge still runs as a provider).
+- **Tool filtering.** Builtin tools that agy already has natively (read,
+  write, edit, bash, ls, grep, find) are filtered out so agy does not double
+  up on its own equivalents; `AskAntigravity` is filtered to avoid recursion.
+  Every other registered tool is exposed.
+- **Security.** Shared-secret `x-bridge-token` header, request body size cap,
+  per-call `AbortController` so agy can cancel in-flight tool calls, full
+  request handler `try/catch`, rawHeaders rewrite for Hono's protocol clamp.
+
+#### Documentation
+
+- `docs/ARCHITECTURE.md` - bridge design and per-pid config layout.
+- `docs/DEVELOPMENT.md` - how to run tests, rebuild, and iterate.
+- `docs/PI-INVOKETOOL-PATCH.md` - the local patch to pi's dist that the
+  bridge depends on.
+- `docs/PI-BRIDGE-GAPS.md` - capability gaps, as actionable tasks (G1-G10).
+  G1 (conversation history) and G8 (edit diffs) are closed via no-patch,
+  provider/decode-side work; the rest (streaming progress, UI primitives,
+  MCP-server double-exposure, etc.) remain open, triaged by effort and payoff.
+
+### Fixed
+
+- **Protocol-version clamp for the MCP bridge.** agy negotiates a protocol
+  version newer than the SDK this bridge ships: `@modelcontextprotocol/sdk`
+  1.29.0 tops out at `2025-11-25`, but agy sends `2026-07-28`. `initialize` is
+  exempt from the transport's header check and the SDK downgrades its body
+  version itself, yet every follow-up (`tools/list`, `tools/call`,
+  `notifications/initialized`) is validated against the `MCP-Protocol-Version`
+  header and rejected with `400 Bad Request: Unsupported protocol version`,
+  surfaced as a `transport-error` on every turn. The bridge now rewrites any
+  unsupported header value to `LATEST_PROTOCOL_VERSION` before the transport
+  sees it. The server is stateless (a fresh transport per request), so it
+  cannot track the negotiated version across requests; clamping to LATEST is
+  the correct downgrade. Hono's Node->Web conversion reads `req.rawHeaders`,
+  not the parsed `req.headers` object, so the value is rewritten in the raw
+  array (and mirrored on `req.headers` for other readers).

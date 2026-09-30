@@ -8,7 +8,9 @@ import {
   deriveErrorString,
   normalizeErrorMetadata,
   SubagentStructuredError,
+  safeErrorMetadataDetails,
 } from '../../src/error-metadata.js';
+import { completionMessage } from '../../src/render/completion-message.js';
 import type {
   SubagentDefinition,
   SubagentErrorMetadata,
@@ -16,6 +18,39 @@ import type {
 } from '../../src/types.js';
 
 describe('structured error metadata contract', () => {
+  it('includes a bounded redacted message in orchestrator-safe failure details', () => {
+    const metadata: SubagentErrorMetadata = {
+      version: 1,
+      category: 'provider_auth_error',
+      retryable: false,
+      partial_result_available: false,
+      message: `No API key found for fixture | Bearer sk-fake-secret-token | fake.user@example.com | /tmp/private.txt | prompt: SECRET_FILE_BODY | ${'x'.repeat(1400)}`,
+    };
+    const details = safeErrorMetadataDetails(metadata);
+    expect(details.message).toEqual(
+      expect.stringContaining('No API key found for fixture'),
+    );
+    expect(Array.from(details.message as string)).toHaveLength(1024);
+    expect(details.message).toEqual(expect.stringContaining('[redacted]'));
+    for (const secret of [
+      'sk-fake-secret-token',
+      'fake.user@example.com',
+      '/tmp/private.txt',
+      'SECRET_FILE_BODY',
+    ]) {
+      expect(details.message).not.toContain(secret);
+    }
+    const completion = completionMessage({
+      id: 'fixture',
+      agent: 'worker',
+      status: 'failed',
+      error: 'provider auth error',
+      error_metadata: metadata,
+    });
+    expect(completion).toContain('- message: No API key found for fixture');
+    expect(completion).not.toContain('sk-fake-secret-token');
+  });
+
   it('normalizes v1 metadata defaults, bounds, retryability, and redaction', () => {
     const secretLikeMessage = [
       'Bearer sk-fake-secret-token',

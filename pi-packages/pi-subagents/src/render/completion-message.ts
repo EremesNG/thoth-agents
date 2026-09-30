@@ -33,6 +33,7 @@ function formatErrorMetadataLines(task: any): string[] {
   if (!safe || Object.keys(safe).length === 0) return [];
   const lines: string[] = [];
   lines.push(`- category: ${safe.category ?? 'unknown'}`);
+  if (safe.message) lines.push(`- message: ${safe.message}`);
   if (safe.phase) lines.push(`- phase: ${safe.phase}`);
   lines.push(`- retryable: ${safe.retryable ?? false}`);
   if (safe.code && safe.code !== safe.category)

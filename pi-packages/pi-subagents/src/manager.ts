@@ -474,7 +474,7 @@ function closeLiveState(
 ): void {
   const pendingCount = state
     ? Math.max(0, state.pendingMessages.length - state.pendingConsumption)
-    : task.pending_message_count ?? 0;
+    : (task.pending_message_count ?? 0);
   task.pending_message_count = 0;
   task.undelivered_message_count =
     (task.undelivered_message_count ?? 0) + pendingCount;

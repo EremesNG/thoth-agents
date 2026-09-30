@@ -116,7 +116,16 @@ function buildClaudeBackgroundWidgetEntries(
 ): ClaudeBackgroundWidgetEntry[] {
   const active = tasks.filter(isActiveBackgroundTask);
   if (!active.length) return [];
-  const running = active.filter((task) => task.status === 'running');
+  // Streaming activity must refresh content without moving cards or changing visibility.
+  const running = active
+    .filter((task) => task.status === 'running')
+    .sort(
+      (a, b) =>
+        Buffer.compare(
+          Buffer.from(b.created_at ?? '', 'utf8'),
+          Buffer.from(a.created_at ?? '', 'utf8'),
+        ) || Buffer.compare(Buffer.from(b.id, 'utf8'), Buffer.from(a.id, 'utf8')),
+    );
   const queued = active.filter((task) => task.status === 'queued');
   const entries: ClaudeBackgroundWidgetEntry[] = [
     { key: 'main', line: 'Agents' },

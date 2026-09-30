@@ -171,6 +171,80 @@ function readJsonl(file: string): any[] {
 }
 
 describe('background widget', () => {
+  it('keeps running cards and selection stationary while streaming inputs reorder', () => {
+    const makeTask = (id: string, created_at: string) => ({
+      id, agent: id, mode: 'background', status: 'running', task: `work ${id}`,
+      created_at, started_at: '2026-01-01T00:00:00Z',
+      last_activity_at: '2026-01-01T00:00:00Z', last_activity: 'initial',
+      runtime_metrics: { turns: 0, toolUses: 0, contextPercent: 0 },
+    }) as SubagentTask;
+    const a = makeTask('A', '2026-01-01T00:00:02Z');
+    const b = makeTask('B', '2026-01-01T00:00:01Z');
+    let tasks = [b, a];
+    const state = new ClaudeBackgroundWidgetState(() => tasks);
+    const headers = () => state.renderLines({ width: 200, frame: 0 })
+      .filter((line) => line.includes('work '));
+    expect(headers()).toEqual(['  ╭─ ⠋ A · work A', '  ╭─ ⠋ B · work B']);
+    state.handleTerminalInput('\u001b[B');
+    expect(state.getSelectedKey()).toBe('A');
+    for (const [index, input] of [[a, b], [b, a]].entries()) {
+      tasks = input;
+      const before = [...input];
+      a.last_activity_at = `2026-01-01T00:00:0${index + 3}Z`;
+      a.started_at = `2026-01-01T00:00:0${index + 1}Z`;
+      a.last_activity = `stream ${index}`;
+      a.runtime_metrics = { turns: index + 1, toolUses: index + 2, contextPercent: 50 + index };
+      expect(headers()).toEqual(['● ┏━ ⠋ A · work A', '  ╭─ ⠋ B · work B']);
+      expect(state.getSelectedKey()).toBe('A');
+      const text = state.renderLines({ width: 200 }).join('\n');
+      expect(text).toContain(`stream ${index}`);
+      expect(text).toContain(`turns ${index + 1} · ⚙ tools ${index + 2}`);
+      expect(text).toContain(`context ${50 + index}.0%`);
+      expect(renderClaudeBackgroundWidgetLines(tasks, undefined, {
+        now: Date.parse('2026-01-01T00:00:10Z'), width: 200,
+      })?.join('\n')).toContain(`elapsed ${9 - index}.0s`);
+      expect(tasks).toEqual(before);
+    }
+    state.handleTerminalInput('\u001b[B');
+    expect(state.getSelectedKey()).toBe('B');
+    state.handleTerminalInput('\u001b[A');
+    expect(state.handleTerminalInput('\r')).toEqual({
+      consume: true, action: { type: 'open-task', taskId: 'A' },
+    });
+  });
+  it('keeps the newest three visible with binary descending ID ties across streaming reorders', () => {
+    const tasks = ['a', 'Z', 'z', 'older'].map((id) => ({
+      id, agent: id, mode: 'background', status: 'running', task: `work ${id}`,
+      created_at: id === 'older' ? '2026-01-01T00:00:00Z' : '2026-01-01T00:00:01Z',
+    })) as SubagentTask[];
+    let current = [...tasks];
+    const state = new ClaudeBackgroundWidgetState(() => current);
+    state.handleTerminalInput('\u001b[B');
+    state.handleTerminalInput('\u001b[B');
+    expect(state.getSelectedKey()).toBe('a');
+    for (const input of [[tasks[3]!, tasks[1]!, tasks[0]!, tasks[2]!], [...tasks].reverse()]) {
+      current = input;
+      tasks[3]!.last_activity_at = '2026-01-01T00:00:59Z';
+      const before = [...input];
+      const lines = state.renderLines({ frame: 0 });
+      expect(lines.filter((line) => line.includes('work '))).toEqual([
+        '  ╭─ ⠋ z · work z', '● ┏━ ⠋ a · work a', '  ╭─ ⠋ Z · work Z',
+      ]);
+      expect(lines.join('\n')).toContain('+1 more active');
+      expect(lines.join('\n')).not.toContain('work older');
+      expect(state.getSelectedKey()).toBe('a');
+      expect(input).toEqual(before);
+    }
+    state.handleTerminalInput('\u001b[B');
+    expect(state.getSelectedKey()).toBe('Z');
+    state.handleTerminalInput('\u001b[B');
+    expect(state.getSelectedKey()).toBe('overflow');
+    state.handleTerminalInput('\u001b[A');
+    expect(state.handleTerminalInput('\r')).toEqual({
+      consume: true, action: { type: 'open-task', taskId: 'Z' },
+    });
+  });
+
   it('shows context usage with exactly one decimal place', () => {
     const task = {
       id: 'context-task',
@@ -268,7 +342,8 @@ describe('background widget', () => {
   });
 
   it('keeps multiple agents compact and makes a wrapped metrics row open its owner', () => {
-    const tasks = ['one', 'two'].map((id) => ({
+    const tasks = ['one', 'two'].map((id, i) => ({
+      created_at: `2026-01-01T00:00:0${2 - i}Z`,
       id,
       agent: id,
       mode: 'background',
@@ -701,7 +776,7 @@ describe('background widget', () => {
       mode: 'background',
       status: 'running',
       task: `task ${i + 1}`,
-      created_at: new Date().toISOString(),
+      created_at: new Date(Date.parse('2026-01-01T00:00:10Z') - i * 1000).toISOString(),
     }));
     const queuedTasks = [
       {
@@ -742,7 +817,7 @@ describe('background widget', () => {
       mode: 'background',
       status: 'running',
       task: `task ${i + 1}`,
-      created_at: new Date().toISOString(),
+      created_at: new Date(Date.parse('2026-01-01T00:00:10Z') - i * 1000).toISOString(),
     }));
     const queued = [
       {
@@ -791,7 +866,7 @@ describe('background widget', () => {
         mode: 'background',
         status: 'running',
         task: 't1',
-        created_at: new Date().toISOString(),
+        created_at: '2026-01-01T00:00:03Z',
       },
       {
         id: 'task-2',
@@ -799,7 +874,7 @@ describe('background widget', () => {
         mode: 'background',
         status: 'running',
         task: 't2',
-        created_at: new Date().toISOString(),
+        created_at: '2026-01-01T00:00:02Z',
       },
       {
         id: 'task-3',
@@ -807,7 +882,7 @@ describe('background widget', () => {
         mode: 'background',
         status: 'running',
         task: 't3',
-        created_at: new Date().toISOString(),
+        created_at: '2026-01-01T00:00:01Z',
       },
     ] as any[];
 
@@ -827,6 +902,7 @@ describe('background widget', () => {
       mode: 'background',
       status: 'running',
       task: `task ${i + 1}`,
+      created_at: new Date(Date.parse('2026-01-01T00:00:10Z') - i * 1000).toISOString(),
       started_at: '2026-01-01T00:00:00Z',
       runtime_metrics: {
         turns: i + 1,

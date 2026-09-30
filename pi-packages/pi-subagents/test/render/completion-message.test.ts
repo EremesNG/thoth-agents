@@ -336,7 +336,12 @@ describe('completion message render', () => {
       partial_result_available: true,
       details: { provider_code: '429' },
     });
-    expect(payload.details.task.error_metadata.message).toBeUndefined();
+    expect(payload.details.task.error_metadata.message).toBe(
+      'Authorization: [redacted] [redacted] [redacted]',
+    );
+    expect(payload.content).toContain(
+      '- message: Authorization: [redacted] [redacted] [redacted]',
+    );
     expect(payload.details.task.error_metadata.last_activity).toBeUndefined();
     expect(
       payload.details.task.error_metadata.usage_at_failure,

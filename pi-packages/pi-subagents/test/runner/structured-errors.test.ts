@@ -13,6 +13,7 @@ import type {
   SubagentErrorMetadata,
   SubagentsConfig,
 } from '../../src/types.js';
+import { ModelRuntimeFixture } from '../helpers/model-runtime-fixture.js';
 
 describe('subagent runner structured errors', () => {
   const definition: SubagentDefinition = {
@@ -42,6 +43,7 @@ describe('subagent runner structured errors', () => {
       },
     }));
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -372,6 +374,7 @@ describe('subagent runner structured errors', () => {
       },
     });
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -430,6 +433,7 @@ describe('subagent runner structured errors', () => {
       },
     });
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));

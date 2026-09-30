@@ -14,6 +14,7 @@ import type {
   SubagentErrorMetadata,
   SubagentsConfig,
 } from '../../src/types.js';
+import { ModelRuntimeFixture } from '../helpers/model-runtime-fixture.js';
 
 const sessionManagerSpies = vi.hoisted(() => ({
   create: vi.fn(() => ({ path: '/tmp/subagent-session.jsonl' })),
@@ -45,6 +46,7 @@ describe('subagent runner thread snapshots', () => {
     sessionManagerSpies.create.mockClear();
     sessionManagerSpies.open.mockClear();
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: {
         inMemory: () => ({}),
         create: sessionManagerSpies.create,
@@ -463,6 +465,7 @@ describe('subagent runner thread snapshots', () => {
       dispose: vi.fn(async () => undefined),
     };
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession: vi.fn((options: any) => ({
         session: Object.assign(session, {

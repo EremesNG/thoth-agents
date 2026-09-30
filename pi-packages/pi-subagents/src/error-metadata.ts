@@ -442,6 +442,7 @@ export function safeErrorMetadataDetails(
   return {
     version: normalized.version,
     category: normalized.category,
+    message: normalized.message,
     retryable: normalized.retryable,
     phase: normalized.phase,
     code: normalized.code,

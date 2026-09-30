@@ -14,6 +14,7 @@ import type {
   SubagentErrorMetadata,
   SubagentsConfig,
 } from '../../src/types.js';
+import { ModelRuntimeFixture } from '../helpers/model-runtime-fixture.js';
 
 describe('subagent runner interaction-required bridge', () => {
   it('uses a lean isolated resource loader with modelRuntime and systemPromptOverride', async () => {
@@ -41,6 +42,7 @@ describe('subagent runner interaction-required bridge', () => {
       }
     }
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       DefaultResourceLoader,
       getAgentDir: () => '/agent-dir',
       SessionManager: { inMemory },
@@ -130,6 +132,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
     const createAgentSession = vi.fn(() => ({ session }));
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -189,6 +192,7 @@ describe('subagent runner interaction-required bridge', () => {
       dispose: vi.fn(async () => undefined),
     };
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       DefaultResourceLoader,
       getAgentDir: () => '/agent-dir',
       SessionManager: { inMemory: () => ({}) },
@@ -319,6 +323,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession: vi.fn(() => ({ session })),
     }));
@@ -428,6 +433,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession: vi.fn(() => ({ session })),
     }));
@@ -508,6 +514,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession: vi.fn(() => ({ session })),
     }));
@@ -554,6 +561,7 @@ describe('subagent runner interaction-required bridge', () => {
     const createAgentSession = vi.fn(() => ({ session }));
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -619,6 +627,7 @@ describe('subagent runner interaction-required bridge', () => {
     const createAgentSession = vi.fn(() => ({ session }));
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -674,6 +683,7 @@ describe('subagent runner interaction-required bridge', () => {
     const createAgentSession = vi.fn(() => ({ session }));
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -742,6 +752,7 @@ describe('subagent runner interaction-required bridge', () => {
   it('reports unresolved profile models with the subagent name and selected model', async () => {
     vi.resetModules();
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession: vi.fn(),
     }));
@@ -790,6 +801,7 @@ describe('subagent runner interaction-required bridge', () => {
     const createAgentSession = vi.fn(() => ({ session }));
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -855,6 +867,7 @@ describe('subagent runner interaction-required bridge', () => {
     ]);
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -907,6 +920,7 @@ describe('subagent runner interaction-required bridge', () => {
     const getTools = vi.fn(() => ['read', 'tool_lookup']);
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -964,6 +978,7 @@ describe('subagent runner interaction-required bridge', () => {
     const getTools = vi.fn(() => [{ name: 'read' }]);
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -1029,6 +1044,7 @@ describe('subagent runner interaction-required bridge', () => {
     const getTools = vi.fn(() => [{ name: 'read' }]);
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -1087,6 +1103,7 @@ describe('subagent runner interaction-required bridge', () => {
     ]);
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -1150,6 +1167,7 @@ describe('subagent runner interaction-required bridge', () => {
     const createAgentSession = vi.fn(() => ({ session }));
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
     }));
@@ -1202,8 +1220,9 @@ describe('subagent runner interaction-required bridge', () => {
       getActiveToolNames: () => ['read'],
     };
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
-      createAgentSession: () => ({ session }),
+      createAgentSession: () => ({ session: { ...session } }),
     }));
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     const run = (tools: string[]) =>
@@ -1229,11 +1248,15 @@ describe('subagent runner interaction-required bridge', () => {
       });
     await expect(run(['read'])).rejects.toThrow('missing implementation: read');
     registered = ['read', 'subagent_run'];
-    await expect(run(['read'])).rejects.toThrow('unexpectedly registered: subagent_run');
+    await expect(run(['read'])).rejects.toThrow(
+      'unexpectedly registered: subagent_run',
+    );
     expect(session.prompt).not.toHaveBeenCalled();
     expect(session.dispose).toHaveBeenCalledTimes(2);
     registered = ['read'];
-    await expect(run(['read', 'subagent_run', 'ask_user_question', 'todo'])).resolves.toMatchObject({ result: 'done' });
+    await expect(
+      run(['read', 'subagent_run', 'ask_user_question', 'todo']),
+    ).resolves.toMatchObject({ result: 'done' });
   });
 
   it('detects supported and unsupported Pi versions from the loaded SDK version export', async () => {
@@ -1276,6 +1299,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
     const createAgentSession = vi.fn(() => ({ session }));
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       VERSION: '0.99.1',
       SessionManager: { inMemory: () => ({}) },
       createAgentSession,
@@ -1316,11 +1340,17 @@ describe('subagent runner interaction-required bridge', () => {
         supported: true,
         detected_pi_version: '0.99.1',
       });
-      await expect(bridges[0].steer('steer this nested session')).resolves.toBe('queued');
+      await expect(bridges[0].steer('steer this nested session')).resolves.toBe(
+        'queued',
+      );
       steer.mockResolvedValueOnce('handled');
-      await expect(bridges[0].steer('extension input')).resolves.toBe('handled');
+      await expect(bridges[0].steer('extension input')).resolves.toBe(
+        'handled',
+      );
       steer.mockRejectedValueOnce(new Error('steering failed'));
-      await expect(bridges[0].steer('rejected input')).rejects.toThrow('steering failed');
+      await expect(bridges[0].steer('rejected input')).rejects.toThrow(
+        'steering failed',
+      );
       expect(steer).toHaveBeenCalledWith('steer this nested session');
       expect(cleared).toBe(1);
     } finally {
@@ -1349,6 +1379,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession: vi.fn(() => ({ session })),
     }));
@@ -1468,6 +1499,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession: vi.fn(() => ({ session })),
     }));
@@ -1515,6 +1547,7 @@ describe('subagent runner interaction-required bridge', () => {
     };
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
       SessionManager: { inMemory: () => ({}) },
       createAgentSession: vi.fn(() => ({ session })),
     }));

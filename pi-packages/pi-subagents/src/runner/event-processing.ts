@@ -24,6 +24,7 @@ import type {
   SubagentThreadSnapshot,
   UsageStats,
 } from '../types.js';
+import { teardownSubagentSession } from './session-teardown.js';
 import {
   assistantAccountingMessage,
   SubagentRuntimeMetricsTracker,
@@ -798,7 +799,7 @@ export async function promptWithInactivity(
   } finally {
     clearInterval(interval);
     unsubscribe();
-    await session.dispose?.();
+    await teardownSubagentSession(session);
   }
 }
 

@@ -43,8 +43,8 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 `pnpm run check:ci`, `pnpm run typecheck`, and `pnpm test`. It currently has no
 build step. The repository is a pnpm workspace: the root install also installs
 `pi-packages/*`, and CI then runs each package's `typecheck` plus offline tests
-through `pnpm --filter` (`test` for pi-subagents and pi-antigravity-bridge,
-`test:unit` for pi-claude-bridge; its live `test` never runs in CI).
+through `pnpm --filter` (`test` for `@thoth-agents/pi-subagents` and `@thoth-agents/pi-antigravity-bridge`,
+`test:unit` for `@thoth-agents/pi-claude-bridge`; its live `test` never runs in CI).
 
 `.github/workflows/release.yml` waits for successful CI for the commit, installs
 again, runs `pnpm run build`, then

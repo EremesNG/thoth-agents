@@ -1,4 +1,4 @@
-Project: **@estebanforge/pi-antigravity-bridge**
+Project: **@thoth-agents/pi-antigravity-bridge**
 Stack: **TypeScript / Node.js (ESNext / ES2022, ESM module)** targeting Node.js 22+, built as a streaming Gemini provider extension for `pi` (`@earendil-works/pi-coding-agent`) with TWO turn engines behind one contract: the default **stream-json engine** (persistent `agy` CLI process) and the opt-in **ACP engine** (`src/acp/*`, Google's official `agy_acp_server.par` over JSON-RPC stdio, disabled by default).
 
 ## STRUCTURE
@@ -37,8 +37,8 @@ Stack: **TypeScript / Node.js (ESNext / ES2022, ESM module)** targeting Node.js 
 | Action | Command |
 |--------|---------|
 | Install | `pnpm install` (from the thoth-agents repository root; this package is a pnpm workspace member) |
-| Test | `pnpm --filter @estebanforge/pi-antigravity-bridge run test` |
-| Typecheck | `pnpm --filter @estebanforge/pi-antigravity-bridge run typecheck` |
+| Test | `pnpm --filter @thoth-agents/pi-antigravity-bridge run test` |
+| Typecheck | `pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck` |
 | In-pi smoke | `bash scripts/smoke-in-pi.sh` |
 | Live stream-json smoke | `AGY_LIVE=1 node --experimental-strip-types scripts/smoke-stream-json.mjs` (spends quota) |
 | Live ACP smokes (bridge e2e, image) | `AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par pnpm exec tsx scripts/smoke-acp-bridge.mjs` / `smoke-acp-image.mjs` |

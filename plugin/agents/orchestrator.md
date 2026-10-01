@@ -100,7 +100,11 @@ select-specialists -> admit-ready-units
 
 <delegation>
 - Use this envelope for all `Agent` delegation.
-- Child return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
+- thoth-agents:explorer return fields: conclusion, evidence, verification, risks, openQuestions.
+- thoth-agents:librarian return fields: conclusion, evidence, verification, risks, openQuestions.
+- thoth-agents:oracle return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
+- thoth-agents:designer return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
+- thoth-agents:worker return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
 
 <phase-dispatch>
 For each bounded assignment, specify PHASE / CHANGE, OBJECTIVE, INPUT ARTIFACTS, REQUIREMENTS, BOUNDARIES, VERIFICATION, EXPECTED OUTPUT, HANDOFF, and scoped MEMORY authorization.

@@ -180,6 +180,16 @@ longer misclassified as context overflow.
   fixtures, CHANGELOG history and CI step display labels keep the product name and
   are not package-identity references. Updated: antigravity README line 218,
   `docs/PI-BRIDGE-GAPS.md` heading, claude-bridge issue template.
+- Final verification round 3 (fresh Oracle subtask_thoth-oracle_1790819024426_21da46f8):
+  AC-5 PASS (recorded boundary accepted); AC-4 FAIL on proximity false positives
+  (retry limit/budget exceeded near context/tokens; negated "was not exceeded").
+  Repair (root, test-first): proximity matching replaced by a named list of
+  contiguous affirmative phrasings (`CONTEXT_OVERFLOW_PATTERNS`: context
+  length/window exceeded or exceeds, non-negated exceed the context window,
+  `context_overflow` code, too many tokens, OpenAI and Anthropic capacity
+  messages); four new negatives incl. "does not exceed the context window";
+  classifier 24/24, pi-subagents 446 passed, check:ci 0. Removed the reviewer probe
+  artifact `200000` (untracked JSON output).
 
 ## Durable deltas
 

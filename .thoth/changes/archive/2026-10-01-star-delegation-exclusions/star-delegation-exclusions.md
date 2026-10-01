@@ -159,17 +159,25 @@ mixed selections too; keep the parity import test-only.
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 81d3cbe3fbe7b305f31472df58a1247258c7636c9ac31825a9cb18278ac7f481
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
+Fresh read-only Oracle subtask_thoth-oracle_1790826845929_15b39c8e returned PASS at
+HEAD 7acf647.
+
+- AC-1: PASS | runtime diff review + package tests | seven names excluded only for standalone star via the exported constant; lists, globs, mixed selectors unchanged; shell task tools kept; 488 tests passed
+- AC-2: PASS | panel review + focused tests | preview uses the matching set; parity test passes with a test-only import; 84 focused root tests passed
+- AC-3: PASS | four docs reviewed | exclusions listed with the not-a-sandbox note
+- AC-4: PASS | serial checks | package typecheck, root check:ci and typecheck exit 0
 - Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:c6e8e2208e5b1621c7963eaa77a2a58ef77efc74b5e7fae0c5a6c01d3fd056a3
+- Source: pi-packages/pi-subagents/src/tool-patterns.ts | sha256:a8087427302bd4fcc1b84e9376629fdc01f9c1a938c0dd4087fb79e3f8592bfb
+- Source: src/pi/tools-panel.ts | sha256:6fdc357454077a8e0a65becbea43221689b30fb05823e1bd4814a44d4d425ff9
+- Source: pi-packages/pi-subagents/README.md | sha256:94c293859730cfc9ca71dc389194691b80ae333a65d42f9623240049006d50e1
+- Source: docs/installation.md | sha256:d412a1051a13d117af1a5095167f3247a03aeaa36d128f8c3a5078006ec6f003
+- Source: docs/agent/harness-packaging.md | sha256:f93479ab62126cf09512e0456b05e738960ab338881e7ee1209072989e3246df
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

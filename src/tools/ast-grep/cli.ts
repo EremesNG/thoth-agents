@@ -108,6 +108,7 @@ export async function runSg(options: RunOptions): Promise<SgResult> {
   const timeout = DEFAULT_TIMEOUT_MS;
 
   const proc = spawn([cliPath, ...args], {
+    windowsHide: true,
     stdout: 'pipe',
     stderr: 'pipe',
   });

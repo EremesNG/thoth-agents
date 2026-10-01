@@ -120,7 +120,10 @@ export async function isOpenCodeInstalled(): Promise<boolean> {
   for (const opencodePath of paths) {
     try {
       const invocation = getOpenCodeVersionInvocation(opencodePath);
-      const proc = spawn(invocation.command, invocation.options);
+      const proc = spawn(invocation.command, {
+        ...invocation.options,
+        windowsHide: true,
+      });
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timedOut = Symbol('timeout');
       try {
@@ -157,6 +160,7 @@ export async function isOpenCodeInstalled(): Promise<boolean> {
 export async function isTmuxInstalled(): Promise<boolean> {
   try {
     const proc = spawn(['tmux', '-V'], {
+      windowsHide: true,
       stdout: 'pipe',
       stderr: 'pipe',
     });
@@ -171,7 +175,10 @@ export async function getOpenCodeVersion(): Promise<string | null> {
   const opencodePath = resolveOpenCodePath();
   try {
     const invocation = getOpenCodeVersionInvocation(opencodePath);
-    const proc = spawn(invocation.command, invocation.options);
+    const proc = spawn(invocation.command, {
+      ...invocation.options,
+      windowsHide: true,
+    });
     const output = await new Response(proc.stdout).text();
     await proc.exited;
     if (proc.exitCode === 0) {

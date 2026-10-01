@@ -155,6 +155,7 @@ function defaultCommandExecutor(
   options: { cwd?: string; timeoutMs: number },
 ): ThothMemCommandResult {
   const result = spawnSync(command, [...args], {
+    windowsHide: true,
     cwd: options.cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

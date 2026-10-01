@@ -31,6 +31,7 @@ async function runHookScript(
 	fs.writeFileSync(scriptFile, scriptContent, { mode: 0o700 });
 	try {
 		const proc = spawn("node", [scriptFile], {
+			windowsHide: true,
 			stdio: ["pipe", "pipe", "pipe"],
 		});
 		let stdout = "";

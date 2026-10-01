@@ -133,6 +133,7 @@ export async function spawnAgyRaw(
 				stdio: ["ignore", "pipe", "ignore"],
 				shell: false,
 				detached: process.platform !== "win32",
+				windowsHide: true,
 			});
 			proc.stdout?.setEncoding("utf8");
 			let out = "";

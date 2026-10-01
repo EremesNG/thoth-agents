@@ -10,6 +10,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import extension from "../extensions/index.js";
 import { saveConfig } from "../src/config.js";
 import { mcpConfigPath } from "../src/mcp-registration.js";
+import { agyConversationDir } from "../src/agy-paths.js";
 
 vi.mock("../src/patch-cleanup.js", () => ({ patchStatus: () => ({ present: false }), restorePatch: () => ({}) }));
 
@@ -26,6 +27,7 @@ afterEach(async () => {
 
 function session(providerName = "antigravity") {
 	const handlers = new Map<string, Array<(...args: any[]) => any>>();
+	const commands = new Map<string, any>();
 	let provider: any;
 	const notices: string[] = [];
 	const ctx = { hasUI: false, mode: "rpc", model: { provider: providerName }, isProjectTrusted: () => false,
@@ -33,11 +35,12 @@ function session(providerName = "antigravity") {
 	const pi = {
 		on: (name: string, fn: (...args: any[]) => any) => handlers.set(name, [...handlers.get(name) ?? [], fn]),
 		registerProvider: (_name: string, config: any) => { provider = config; },
-		registerTool: () => {}, registerCommand: () => {}, registerEntryRenderer: () => {},
+		registerTool: () => {}, registerCommand: (name: string, command: any) => commands.set(name, command), registerEntryRenderer: () => {},
 		getAllTools: () => [], getActiveTools: () => [],
 	} as unknown as ExtensionAPI;
 	const s = {
 		pi, ctx, notices,
+		command: (args: string, ui: any = ctx.ui) => commands.get("agy").handler(args, { ...ctx, ui }),
 		emit: async (name: string, event: any = { reason: "startup" }) => {
 			for (const fn of handlers.get(name) ?? []) await fn(event, ctx);
 		},
@@ -86,6 +89,45 @@ function privateConfigs(): Array<{ dir: string; servers: Record<string, any> }> 
 		return fs.existsSync(file) ? [{ dir, servers: JSON.parse(fs.readFileSync(file, "utf8")).mcpServers }] : [];
 	});
 }
+
+test.each(["artifacts open 0", "artifacts"])("/agy %s hides the detached artifact-opener console", async (args) => {
+	const spawn = fixture();
+	const s = session();
+	await extension(s.pi);
+	await s.emit("session_start");
+	assert.deepEqual(await s.turn(), []);
+	const dir = agyConversationDir("stream-json", "conv-lazy");
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(path.join(dir, "report.md"), "offline artifact");
+	dirs.push(dir);
+	const unref = vi.fn();
+	spawn.mockImplementation(((command: string, argv: string[], options: any) => command === "xdg-open"
+		? { unref } : spawnProcess(command, argv, options)) as typeof childProcess.spawn);
+	spawn.mockClear();
+	const ui = {
+		...s.ctx.ui,
+		custom: (factory: any) => new Promise((resolve) => {
+			const component = factory({ requestRender: () => {} }, {
+				fg: (_color: string, text: string) => text, bold: (text: string) => text,
+			}, {}, resolve);
+			component.handleInput("\r");
+		}),
+	};
+	// Artifact open is supported on Linux/macOS only today. Exercise both
+	// command paths on Windows too, without ever launching an actual opener.
+	const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	try {
+		Object.defineProperty(process, "platform", { value: "linux" });
+		await s.command(args, ui);
+	} finally {
+		Object.defineProperty(process, "platform", platform);
+	}
+	assert.equal(spawn.mock.calls.length, 1);
+	assert.deepEqual(spawn.mock.calls[0], ["xdg-open", [fs.realpathSync(path.join(dir, "report.md"))], {
+		detached: true, stdio: "ignore", shell: false, windowsHide: true,
+	}]);
+	assert.equal(unref.mock.calls.length, 1);
+});
 
 test("private model-at-start writes unique private discovery, no global entries, and reuses it on resume", async () => {
 	const spawn = fixture();

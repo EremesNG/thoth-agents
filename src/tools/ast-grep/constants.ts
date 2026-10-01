@@ -172,6 +172,7 @@ export function checkEnvironment(): EnvironmentCheckResult {
         process.platform === 'win32' ? 'where' : 'which',
         ['sg'],
         {
+          windowsHide: true,
           encoding: 'utf-8',
           timeout: 5000,
         },

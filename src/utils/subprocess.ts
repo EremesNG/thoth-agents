@@ -11,6 +11,7 @@ type SpawnOptions = {
   stdout?: 'pipe' | 'ignore';
   stderr?: 'pipe' | 'ignore';
   shell?: boolean | string;
+  windowsHide?: boolean;
 };
 
 export type ManagedSubprocess = {
@@ -66,6 +67,7 @@ export function spawn(
       options.stderr ?? 'pipe',
     ],
     shell: options.shell,
+    windowsHide: options.windowsHide ?? true,
   });
 
   const managed: ManagedSubprocess = {
@@ -104,6 +106,7 @@ export function spawnSync(
       options.stderr ?? 'pipe',
     ],
     shell: options.shell,
+    windowsHide: options.windowsHide ?? true,
   });
 
   return { exitCode: result.status };

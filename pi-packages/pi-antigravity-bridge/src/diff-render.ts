@@ -33,6 +33,7 @@ export function createExecGitOps(): GitOps {
 	const run = (args: string[], cwd: string): string | null => {
 		try {
 			return execFileSync("git", args, {
+				windowsHide: true,
 				cwd,
 				encoding: "utf-8",
 				stdio: ["ignore", "pipe", "ignore"],

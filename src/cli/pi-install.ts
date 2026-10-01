@@ -792,6 +792,7 @@ function defaultCommandExecutor(
     }
   }
   const result = spawnSync(executable, executableArgs, {
+    windowsHide: true,
     encoding: 'utf8',
     timeout: PI_COMMAND_TIMEOUT_MS,
   });

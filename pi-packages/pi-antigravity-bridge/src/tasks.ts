@@ -121,7 +121,7 @@ async function defaultSpawnRaw(
 	capBytes: number,
 ): Promise<string> {
 	return new Promise<string>((resolve, reject) => {
-		const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "ignore"], detached: process.platform !== "win32" });
+		const child = spawn(cmd, args, { windowsHide: true, stdio: ["ignore", "pipe", "ignore"], detached: process.platform !== "win32" });
 		let out = "";
 		let settled = false;
 		const done = (fn: () => void, terminate = false) => {

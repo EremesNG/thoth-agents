@@ -58,7 +58,7 @@ function validate(change: string, through = 'ready') {
   const result = spawnSync(
     process.execPath,
     [script, '--change', change, '--through', through, '--json'],
-    { encoding: 'utf8' },
+    { windowsHide: true, encoding: 'utf8' },
   );
   return {
     ...result,
@@ -289,7 +289,7 @@ describe('ID-named SDD validator', () => {
     const withRoute = spawnSync(
       process.execPath,
       [script, '--change', f.change, '--route', 'full', '--through', 'ready'],
-      { encoding: 'utf8' },
+      { windowsHide: true, encoding: 'utf8' },
     );
     expect(withRoute.status).toBe(2);
   });

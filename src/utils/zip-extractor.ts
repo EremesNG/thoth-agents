@@ -17,6 +17,7 @@ function getWindowsBuildNumber(): number | null {
 function isPwshAvailable(): boolean {
   if (process.platform !== 'win32') return false;
   const result = spawnSync(['where', 'pwsh'], {
+    windowsHide: true,
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -55,6 +56,7 @@ export async function extractZip(
     switch (extractor) {
       case 'tar':
         proc = spawn(['tar', '-xf', archivePath, '-C', destDir], {
+          windowsHide: true,
           stdout: 'ignore',
           stderr: 'pipe',
         });
@@ -67,6 +69,7 @@ export async function extractZip(
             `Expand-Archive -Path '${escapePowerShellPath(archivePath)}' -DestinationPath '${escapePowerShellPath(destDir)}' -Force`,
           ],
           {
+            windowsHide: true,
             stdout: 'ignore',
             stderr: 'pipe',
           },
@@ -80,6 +83,7 @@ export async function extractZip(
             `Expand-Archive -Path '${escapePowerShellPath(archivePath)}' -DestinationPath '${escapePowerShellPath(destDir)}' -Force`,
           ],
           {
+            windowsHide: true,
             stdout: 'ignore',
             stderr: 'pipe',
           },
@@ -88,6 +92,7 @@ export async function extractZip(
     }
   } else {
     proc = spawn(['unzip', '-o', archivePath, '-d', destDir], {
+      windowsHide: true,
       stdout: 'ignore',
       stderr: 'pipe',
     });

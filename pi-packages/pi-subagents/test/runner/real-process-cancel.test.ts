@@ -59,6 +59,7 @@ describe('real process cancellation settlement', () => {
     const runner: SubagentRunner = async ({ signal, onActivity }) => {
       onActivity?.({ message: `bash sleep 120 # ${marker}` });
       const child = spawn('bash', ['-lc', 'sleep 120 & wait'], {
+        windowsHide: true,
         cwd: env.tmp,
         detached: true,
         stdio: ['ignore', 'ignore', 'ignore'],
@@ -71,7 +72,7 @@ describe('real process cancellation settlement', () => {
             const output = execFileSync(
               'ps',
               ['-o', 'pid=', '--ppid', String(shellPid)],
-              { encoding: 'utf8' },
+              { windowsHide: true, encoding: 'utf8' },
             ).trim();
             const parsed = Number.parseInt(output.split(/\s+/)[0] ?? '', 10);
             if (!Number.isFinite(parsed)) return false;

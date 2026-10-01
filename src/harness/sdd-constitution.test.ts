@@ -23,6 +23,7 @@ const template = join(
 );
 function run(script: string, args: string[]) {
   return spawnSync(process.execPath, [script, ...args, '--json'], {
+    windowsHide: true,
     encoding: 'utf8',
   });
 }

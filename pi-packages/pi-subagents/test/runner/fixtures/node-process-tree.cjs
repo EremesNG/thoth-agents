@@ -11,6 +11,7 @@ if (process.argv[2] === 'grandchild') {
 } else {
   const pidFile = process.argv[2];
   const grandchild = spawn(process.execPath, [__filename, 'grandchild'], {
+    windowsHide: true,
     stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
   });
   grandchild.once('error', (error) => {

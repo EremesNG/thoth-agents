@@ -7,7 +7,10 @@ import { describe, expect, it } from 'vitest';
 
 describe('history runtime compatibility', () => {
   it('opens the history store under Bun using the runtime-supported sqlite module', () => {
-    const bunCheck = spawnSync('bun', ['--version'], { encoding: 'utf8' });
+    const bunCheck = spawnSync('bun', ['--version'], {
+      windowsHide: true,
+      encoding: 'utf8',
+    });
     if (bunCheck.status !== 0) return;
 
     const tmp = fs.mkdtempSync(
@@ -24,6 +27,7 @@ describe('history runtime compatibility', () => {
 
     try {
       const output = execFileSync('bun', ['-e', script], {
+        windowsHide: true,
         cwd: process.cwd(),
         env: { ...process.env, PI_SUBAGENTS_HISTORY_DB_PATH: dbPath },
         encoding: 'utf8',

@@ -62,7 +62,10 @@ export function resolvePiWindowsCliFromShim(
 }
 
 export function findPiWindowsCli(): string | undefined {
-  const located = spawnSync('where.exe', ['pi.cmd'], { encoding: 'utf8' })
+  const located = spawnSync('where.exe', ['pi.cmd'], {
+    windowsHide: true,
+    encoding: 'utf8',
+  })
     .stdout?.split(/\r?\n/)
     .find(Boolean);
   if (!located) return undefined;
@@ -104,6 +107,7 @@ function defaultExecutor(
     }
   }
   const result = spawnSync(executable, executableArgs, {
+    windowsHide: true,
     encoding: 'utf8',
     timeout: 30_000,
     env: { ...process.env, ...env },

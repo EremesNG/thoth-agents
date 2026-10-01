@@ -54,7 +54,7 @@ function archive(f: { root: string; change: string }, env = {}) {
   return spawnSync(
     process.execPath,
     [script, '--change', f.change, '--date', '2026-09-28', '--json'],
-    { encoding: 'utf8', env: { ...process.env, ...env } },
+    { windowsHide: true, encoding: 'utf8', env: { ...process.env, ...env } },
   );
 }
 afterEach(() => {
@@ -117,7 +117,7 @@ describe('transactional .thoth change archive', () => {
         '2026-09-28',
         '--json',
       ],
-      { encoding: 'utf8' },
+      { windowsHide: true, encoding: 'utf8' },
     );
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout).changeId).toBe('demo');
@@ -134,7 +134,7 @@ describe('transactional .thoth change archive', () => {
         '2026-09-28',
         '--json',
       ],
-      { encoding: 'utf8' },
+      { windowsHide: true, encoding: 'utf8' },
     );
     expect(mismatch.status).not.toBe(0);
     expect(existsSync(join(other.change, 'demo.md'))).toBe(true);

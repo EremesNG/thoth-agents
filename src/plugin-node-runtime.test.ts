@@ -50,7 +50,7 @@ describe('plugin runtime compatibility', () => {
             '--eval',
             `import(${JSON.stringify(new URL('../dist/pi.js', import.meta.url).href)}).then(m=>{if(typeof m.default!=="function")process.exit(2)})`,
           ],
-          { cwd: root, encoding: 'utf8' },
+          { windowsHide: true, cwd: root, encoding: 'utf8' },
         );
         expect(result.status, result.stderr).toBe(0);
       } finally {
@@ -160,6 +160,7 @@ describe('plugin runtime compatibility', () => {
             '--tmux=no',
           ],
           {
+            windowsHide: true,
             cwd: homeDir,
             encoding: 'utf8',
             env: {

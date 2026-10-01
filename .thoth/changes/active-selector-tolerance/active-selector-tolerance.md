@@ -141,6 +141,14 @@ glob patterns stay strict.
   0; root `pnpm test` without Orca CODEX_HOME 1149 passed / 4 missing-sibling
   failures; operator claude-bridge.json hash unchanged. Remaining `@active` text is
   rejection code and its docs only. Live AC-8 follows after merge and restart.
+- AC-8 live evidence (root, 2026-10-01): merged into `0.5.0` as `66bb371`; operator
+  restarted Pi. Task subtask_thoth-explorer_1790823834137_3e0ce356 (thoth-explorer,
+  `tools: "*"`) launched and completed; it reported its tools (read, edit, write,
+  bash, powershell, grep, find, ls, memory, MCP, LSP, browser, background and
+  fusion tools, `antigravity`, `parallel`) and none of the subagent, delegation,
+  user-question or progress-list tools. History row: status `completed`,
+  `dropped_tools_json` `[]`. The main checkout has an unrelated uncommitted
+  `package.json` `workspaces` edit not made by this change; left untouched.
 
 ## Durable deltas
 
@@ -245,7 +253,7 @@ glob patterns stay strict.
   - Focused check and PASS evidence: diff against backup shows only `tools: "@active"` -> `tools: "*"`
   - Return milestone: files migrated
   - Stop / reassessment: a file has a different tools value
-- [ ] AC-8: checks and live launch
+- [x] AC-8: checks and live launch
   - Outcome: green checks; live subagent launches with `*`
   - Known entrypoints and skill paths: package filters, root scripts, operator Pi after merge
   - Inputs: AC-1..AC-7

@@ -211,7 +211,7 @@ with verified termination, on every other shutdown, including subagent teardown.
 ## Authorization
 
 **Plan review**: PENDING
-**Plan review selection**: PENDING
+**Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: PENDING
 
 ## Verification

@@ -25,7 +25,7 @@ import {
 	newConversationId,
 	snapshotConversations,
 } from "./discovery.js";
-import { loadConfig, type AgyMode, type ThinkingTier } from "./config.js";
+import { loadConfig, type AgyMode, type BridgeDiscovery, type ThinkingTier } from "./config.js";
 import { redactText } from "./redact.js";
 import { acquireBridgeSuppression } from "./mcp-registration.js";
 import { AGY_EFFORT_ORDER, spawnAgyModelsRaw, toAgyEffort } from "./models.js";
@@ -388,6 +388,7 @@ export async function registerAskAntigravityTool(
 	 *  prompt text. Level matches DailyLogger: debug is the AGY_DEBUG-only
 	 *  verbose tier; info/warn/error always land. */
 	log?: (event: string, data?: unknown, level?: "debug" | "info" | "warn" | "error") => void,
+	bridgeDiscovery: BridgeDiscovery = loadConfig().bridgeDiscovery,
 ): Promise<void> {
 	// Orphan sweep for the plan-mode reviewer agents (SIGKILL can skip the
 	// run's finally): same pid-marker doctrine as the web delegates.
@@ -721,7 +722,7 @@ export async function registerAskAntigravityTool(
 			// process coordination rides the suppression marker in mcp-registration.
 			// Refcounted, so overlapping delegations in this process cannot release
 			// each other's window early. A refused config fail-opens to the status quo.
-			const restoreBridge = acquireBridgeSuppression();
+			const restoreBridge = bridgeDiscovery === "legacy-global" ? acquireBridgeSuppression() : () => {};
 
 			const statusInterval = onUpdate
 				? setInterval(() => {

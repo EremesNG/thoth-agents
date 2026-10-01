@@ -256,30 +256,35 @@ export function refreshModelsInBackground(
 		});
 }
 
-/** Load the raw `agy models` text for catalog derivation, optimized for load
- *  time:
- *    - Fresh cache (< MODELS_CACHE_TTL_MS): return it, no spawn.
- *    - Stale cache (>= TTL): return it instantly, refresh in the background.
- *    - No cache: spawn once (blocks), persist. First-ever load only.
- *
- *  pi registers providers with a static model list, so a background refresh only
- *  updates the cache for the NEXT load; the current session keeps whatever this
- *  returned. The provider falls back to FALLBACK_MODELS when the raw yields no
- *  Gemini entries (agy missing/auth-failed). */
+/** Load-time catalog read only: even a missing or stale cache never spawns agy.
+ *  Empty text selects FALLBACK_MODELS. Provider lists are static until reload. */
 export async function loadModelCatalogRaw(
-	binary: string,
+	_binary: string,
 	cachePath: string = MODELS_CACHE_PATH,
 ): Promise<string> {
+	return readModelsCache(cachePath)?.raw ?? "";
+}
+
+const catalogRefreshes = new Map<string, Promise<void>>();
+
+/** First Antigravity use refreshes missing/stale catalogs for the NEXT load.
+ *  Coalesce in-process instances sharing the same cache. Failed refreshes retain
+ *  the old catalog and never prevent a provider turn. */
+export async function refreshModelCatalogIfNeeded(
+	binary: string,
+	cachePath: string = MODELS_CACHE_PATH,
+): Promise<void> {
 	const cache = readModelsCache(cachePath);
-	if (cache) {
-		if (Date.now() - cache.savedAt < MODELS_CACHE_TTL_MS) return cache.raw;
-		refreshModelsInBackground(binary, cachePath);
-		return cache.raw;
+	if (cache && Date.now() - cache.savedAt < MODELS_CACHE_TTL_MS) return;
+	const key = `${binary}\u0000${path.resolve(cachePath)}`;
+	let flight = catalogRefreshes.get(key);
+	if (!flight) {
+		flight = spawnAgyModelsRaw(binary).then((raw) => {
+			if (raw) writeModelsCache(raw, cachePath);
+		}).catch(() => { /* best effort */ }).finally(() => { catalogRefreshes.delete(key); });
+		catalogRefreshes.set(key, flight);
 	}
-	// No cache: populate it. Blocks once; later loads hit the cache above.
-	const raw = await spawnAgyModelsRaw(binary);
-	if (raw) writeModelsCache(raw, cachePath);
-	return raw;
+	await flight;
 }
 
 /** Parse raw `agy models` text into the provider's model entries.

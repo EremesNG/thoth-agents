@@ -189,12 +189,12 @@ function sweepStaleBridgeDirs(): void {
 
 /** Write our .agents/mcp_config.json (serverUrl + shared-secret header) so a
  *  provider agy that adds this dir via --add-dir discovers us. Atomic write. */
-function writeBridgeMcpConfig(port: number, token: string, dir: string): void {
+function writeBridgeMcpConfig(port: number, token: string, dir: string, serverName: string): void {
 	const cfgPath = bridgeMcpConfigPath(dir);
 	fs.mkdirSync(path.dirname(cfgPath), { recursive: true, mode: 0o700 });
 	const cfg = {
 		mcpServers: {
-			[BRIDGE_MCP_KEY]: {
+			[serverName]: {
 				serverUrl: `http://127.0.0.1:${port}/mcp`,
 				headers: { [TOKEN_HEADER]: token },
 			},
@@ -288,6 +288,8 @@ export async function startMcpServer(
 		preferredPort?: number;
 		/** Private discovery directory owned by the calling extension instance. */
 		configDir?: string;
+		/** Owned discovery key and MCP identity. Defaults to the legacy key. */
+		serverName?: string;
 		log?: (s: string, d?: unknown) => void;
 		/** Test override for the per-park timeout (deny, fail closed). */
 		approvalTimeoutMs?: number;
@@ -295,6 +297,7 @@ export async function startMcpServer(
 ): Promise<McpStartResult> {
 	const log = opts.log ?? (() => {});
 	const configDir = opts.configDir ?? bridgeMcpConfigDir();
+	const serverName = opts.serverName ?? BRIDGE_MCP_KEY;
 	const removeConfig = () => removeBridgeMcpConfig(configDir);
 	const approvalTimeoutMs = opts.approvalTimeoutMs ?? APPROVAL_PARK_TIMEOUT_MS;
 
@@ -336,7 +339,7 @@ export async function startMcpServer(
 
 	const makeServer = (signal: AbortSignal) => {
 		const s = new Server(
-			{ name: "pi-antigravity-bridge", version: "1.1.0" },
+			{ name: serverName, version: "1.1.0" },
 			{ capabilities: { tools: {} } },
 		);
 		s.setRequestHandler(ListToolsRequestSchema, listHandler);
@@ -589,7 +592,7 @@ export async function startMcpServer(
 				return;
 			}
 			try {
-				writeBridgeMcpConfig(port, token, configDir);
+				writeBridgeMcpConfig(port, token, configDir, serverName);
 				log("bridge-config-written", { port, path: bridgeMcpConfigPath(configDir) });
 			} catch (e) {
 				log("bridge-config-write-failed", e instanceof Error ? e.message : String(e));

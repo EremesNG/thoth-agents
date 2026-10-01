@@ -319,8 +319,8 @@ function pidAlive(pid: number): boolean {
 	try {
 		process.kill(pid, 0);
 		return true;
-	} catch {
-		return false;
+	} catch (err) {
+		return (err as NodeJS.ErrnoException).code === "EPERM";
 	}
 }
 
@@ -330,10 +330,11 @@ function pidAlive(pid: number): boolean {
 export function sweepStaleBridgeServers(
 	configPath: string = mcpConfigPath(),
 	isAlive: (pid: number) => boolean = pidAlive,
-): { removed: string[]; reason?: string } {
+): { removed: string[]; live: string[]; reason?: string } {
 	const read = readConfig(configPath);
-	if (!read.ok) return { removed: [], reason: read.reason };
+	if (!read.ok) return { removed: [], live: [], reason: read.reason };
 	const removed: string[] = [];
+	const live: string[] = [];
 	for (const name of Object.keys(read.config.mcpServers)) {
 		const match = /^pi-bridge-(\d+)(?:-[0-9a-f-]+)?$/.exec(name);
 		if (!match) continue;
@@ -341,8 +342,10 @@ export function sweepStaleBridgeServers(
 		if (Number.isFinite(pid) && !isAlive(pid)) {
 			delete read.config.mcpServers[name];
 			removed.push(name);
+		} else if (Number.isFinite(pid)) {
+			live.push(name);
 		}
 	}
 	if (removed.length > 0) writeConfig(configPath, read.config);
-	return { removed };
+	return { removed, live };
 }

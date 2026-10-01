@@ -44,6 +44,7 @@ export type Engine = "stream-json" | "acp";
 export type AgyMode = "accept-edits" | "plan";
 export type ThinkingTier = "low" | "medium" | "high";
 export type BridgeTools = "none" | "mcp" | "all";
+export type BridgeDiscovery = "private" | "legacy-global";
 
 /** How ACP turns report token usage while Gate B stands (agy sends none).
  *  "estimate" (default): word-boundary regex over prompt/response/thought
@@ -122,6 +123,9 @@ export interface AgyConfig {
 	 *  "mcp" surface serves an empty catalog on installs without
 	 *  pi-mcp-adapter), "mcp" (pi-mcp-adapter tools + skills bridge only). */
 	bridgeTools: BridgeTools;
+	/** Private instance discovery by default; legacy-global retains shared registration.
+	 *  Latched at extension load; changing it requires a restart. */
+	bridgeDiscovery: BridgeDiscovery;
 	/** Inject a delta digest of pi-side context (compaction summaries, turns
 	 *  handled by other providers or pi's own tools) into each agy prompt.
 	 *
@@ -182,6 +186,7 @@ const DEFAULTS: AgyConfig = {
 	askTool: false,
 	webTools: false,
 	bridgeTools: "all",
+	bridgeDiscovery: "private",
 	digest: false,
 	systemPrompt: true,
 	turnTimeoutMin: 0, // placeholder: the real default is resolved per loadConfig call (defaultTurnTimeoutMin)
@@ -273,6 +278,9 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 			? bridgeRaw
 			: DEFAULTS.bridgeTools;
 
+	const discoveryRaw = String(process.env.AGY_BRIDGE_DISCOVERY ?? file.bridgeDiscovery ?? DEFAULTS.bridgeDiscovery).toLowerCase();
+	const bridgeDiscovery: BridgeDiscovery = discoveryRaw === "legacy-global" ? "legacy-global" : "private";
+
 	const digest = process.env.AGY_DIGEST !== undefined
 		? ["1", "true", "on"].includes(process.env.AGY_DIGEST.toLowerCase())
 		: file.digest ?? false;
@@ -335,6 +343,7 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 		askTool,
 		webTools,
 		bridgeTools,
+		bridgeDiscovery,
 		digest,
 		systemPrompt,
 		turnTimeoutMin,

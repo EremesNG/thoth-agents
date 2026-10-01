@@ -56,7 +56,7 @@ test(
 				registerTool: (tool: { execute: (id: string, params: Record<string, unknown>, signal?: unknown, onUpdate?: unknown, ctx?: Record<string, unknown>) => Promise<unknown> }) =>
 					tools.push(tool),
 			} as unknown as ExtensionAPI;
-			await registerAskAntigravityTool(fakePi, []);
+			await registerAskAntigravityTool(fakePi, [], undefined, "legacy-global");
 			expect(tools).toHaveLength(1);
 
 			const start = Date.now();
@@ -102,7 +102,7 @@ test(
 				registerTool: (tool: { execute: (id: string, params: Record<string, unknown>, signal?: unknown, onUpdate?: unknown, ctx?: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }> }> }) =>
 					tools.push(tool),
 			} as unknown as ExtensionAPI;
-			await registerAskAntigravityTool(fakePi, []);
+			await registerAskAntigravityTool(fakePi, [], undefined, "legacy-global");
 
 			const before = suppressionEvents.length;
 			const start = Date.now();
@@ -126,3 +126,19 @@ test(
 		}
 	},
 );
+
+test("private AskAntigravity never suppresses or heals global bridges", async () => {
+ const bin = makeNodeFixture("process.exit(0);");
+ vi.stubEnv("AGY_BIN", bin);
+ vi.stubEnv("AGY_BRIDGE_DISCOVERY", "private");
+ try {
+  const tools: any[] = [];
+  await registerAskAntigravityTool({ registerTool: (tool: any) => tools.push(tool) } as unknown as ExtensionAPI, []);
+  const before = suppressionEvents.length;
+  await tools[0].execute("private", { prompt: "noop", cwd: process.cwd(), timeoutMinutes: 1 }, undefined, undefined, {});
+  expect(suppressionEvents.length).toBe(before);
+ } finally {
+  vi.unstubAllEnvs();
+  fs.rmSync(path.dirname(bin), { recursive: true, force: true });
+ }
+});

@@ -25,6 +25,9 @@ export interface DriverProfile {
 }
 
 export interface DriverTurnRequest extends DriverProfile {
+	/** Instance lifecycle fence; checked after queued waits and before launch.
+	 *  Throws when the owning session has shut down or been replaced. */
+	assertCurrent?: () => void;
 	/** Existing conversation/session to resume. Stream-json: agy conversation id via
 	 *  `--conversation`. ACP: sessionId via `session/load` (falls back to
 	 *  `session/new` when the server no longer knows it). */

@@ -173,6 +173,12 @@ that starts only when that session actually uses antigravity and cleans up after
   subagents.json, restored by hash) spawned no agy and registered nothing. Operator
   confirmed root antigravity works. Antigravity suite leaves `~/.gemini` untouched; two
   stale `pi-agy-*` caches from interrupted worker runs at 01:00 were removed.
+- Final verification round 1 (fresh Oracle subtask_thoth-oracle_1790866558724_0ee25ae9):
+  FAIL — AC-5 shutdown deleted the shared legacy cache name `pi-antigravity-bridge`
+  unconditionally; AC-6 stale claims in pi-subagents README/skill and antigravity
+  README. Repaired in `680e310`: cleanup tracks only acquired instance-unique
+  keys (five new tests, temp HOME, red then green), docs/AGENTS.md aligned. Antigravity
+  typecheck 0, 560 passed / 9 skipped; `git diff --check` clean.
 
 ## Durable deltas
 

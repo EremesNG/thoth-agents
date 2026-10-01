@@ -85,7 +85,13 @@ with verified termination, on every other shutdown, including subagent teardown.
   suspend/handoff behavior is kept; on every other reason the package stops all running
   jobs of that origin, including in-flight watch commands (tracked and aborted), with
   verified termination (Windows tree kill awaited; POSIX TERM, bounded wait, then KILL)
-  and records them cancelled. Runtime scheduling state, navigator ownership
+  and records them cancelled. When a job leader or a watch poll command exits on its
+  own, the remaining descendants of its tree are terminated and verified before the job
+  becomes terminal or the next poll starts (process-group semantics); leader exit or a
+  settled command alone never counts as verified termination, and a job whose cleanup
+  fails stays running and owned until verification. A leader already lost when an
+  instance resumes, whose descendants cannot be identified on Windows, is a documented
+  limit. Runtime scheduling state, navigator ownership
   (`navigator-provider.ts:21-43` `piRef`/active origin, `shared-navigator.ts` global UI
   state) and failure-attention state are per extension instance or keyed by origin, so
   a headless child loading or ending never replaces or disposes root UI, navigator or
@@ -122,6 +128,9 @@ with verified termination, on every other shutdown, including subagent teardown.
 - Package name `@thoth-agents/pi-background-tasks` (user, 2026-10-01).
 - Jobs survive `/reload`; stopped on any other shutdown (user, 2026-10-01).
 - Child jobs stop with the subagent, including on root `/reload` (user, 2026-10-01).
+- When a job leader or watch poll command exits on its own, kill and verify its remaining
+  descendants before terminalizing (user, 2026-10-01, after final verification round 3
+  found natural-close, lost-leader and poll-settlement paths abandoning descendants).
 - Standalone-star exclusions stay as defense; docs recommend the fork (user, 2026-10-01).
 
 ## Decisions
@@ -188,9 +197,16 @@ with verified termination, on every other shutdown, including subagent teardown.
   write and terminator release. Six regressions red then green. Package typecheck 0; two
   suite runs 198 passed / 4 skipped; pi-subagents suite unchanged.
 
+- Final verification round 3 (fresh Oracle subtask_thoth-oracle_1790891116577_ad68839c):
+  FAIL only on AC-3 — requested-stop failure paths now hold, but ownership escaped through
+  natural leader close (runtime.ts:239-260), lost-leader recovery (runtime.ts:351-354,
+  398-404,428-437) and every watch poll settlement (process.ts:237-254; runtime.ts:539-655,
+  690-713); a real Windows probe confirmed exit 0 with a live descendant. The user chose
+  process-group semantics (Clarifications); AC-3 and the delta were amended accordingly.
+
 ## Durable deltas
 
-- `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session, MUST keep a session's running jobs across that session's reload, and MUST stop every running job of the session, including in-flight watch commands, with verified process-tree termination on any other session shutdown, including subagent teardown, without affecting jobs of other sessions.
+- `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session, MUST keep a session's running jobs across that session's reload, and MUST stop every running job of the session, including in-flight watch commands, with verified process-tree termination on any other session shutdown, including subagent teardown, MUST terminate and verify the remaining process tree when a job leader or watch command exits on its own before recording the job terminal, and MUST NOT affect jobs of other sessions.
   - GIVEN running background jobs in a root session and in a subagent; WHEN the root reloads, the subagent ends, or the root quits; THEN the root jobs survive the reload and deliver once, the subagent jobs stop with it, and on quit no job process of that session survives while other sessions' jobs continue.
 
 ## Plan

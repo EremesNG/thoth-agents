@@ -103,6 +103,15 @@ Worker and Designer keep their implementation next step.
 - The ADDED requirement does not overlap existing ones: `Preserve the six-role contract`
   only requires preserving whatever return contracts exist, and `Expose routable role
   contracts` covers roster selection; neither defines discovery-role output content.
+- Implementation checkpoint (root, 2026-10-01): `4fc5b68` (root docs: AGENTS.md
+  return contract and delegation line, agents-and-delegation, task-template),
+  `397f579` (worker: role-specific canonical return fields, evidence-only rule, open
+  questions with options and facts, role-scoped step budget, 40-case four-harness test
+  matrix, shared `evidence-only-rule.txt` fixture; Codex worker fixture unchanged),
+  `f6e91a7` (root `pnpm run build`: generated diff limited to Pi/plugin explorer,
+  librarian, orchestrator plus provenance hashes; oracle/worker/designer unchanged).
+  Checks: root check:ci 0, typecheck 0, build 0, `pnpm test` without Orca CODEX_HOME
+  1204 passed / 4 missing-sibling marketplace failures.
 
 ## Durable deltas
 
@@ -124,7 +133,7 @@ Worker and Designer keep their implementation next step.
 
 ## Tasks
 
-- [ ] AC-1: per-role return contract
+- [x] AC-1: per-role return contract
   - Outcome: discovery roles return five fields; others six; rendering truthful
   - Known entrypoints and skill paths: `src/harness/core/agent-pack.ts:280,377,414`, `src/agents/prompt-sections.ts:260,295,357`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
   - Inputs: Exploration, Clarifications
@@ -136,7 +145,7 @@ Worker and Designer keep their implementation next step.
   - Focused check and PASS evidence: `prompt-rendering`, `agent-routing`, `agent-pack` tests assert per-role fields; targeted vitest green
   - Return milestone: focused tests green
   - Stop / reassessment: the contract array is consumed by a public/config interface that requires one shared list
-- [ ] AC-2: evidence-only rule and blocked questions
+- [x] AC-2: evidence-only rule and blocked questions
   - Outcome: discovery prompts carry the rule; no recommended default for them
   - Known entrypoints and skill paths: `src/agents/prompt-sections.ts:400,409,458`, `src/agents/explorer.ts`, `src/agents/librarian.ts`, tdd skill
   - Inputs: AC-1
@@ -148,7 +157,7 @@ Worker and Designer keep their implementation next step.
   - Focused check and PASS evidence: rendering tests for Pi and non-Pi dialects of all five roles, with and without configured `steps`
   - Return milestone: tests green
   - Stop / reassessment: none
-- [ ] AC-3: harness outputs and fixtures
+- [x] AC-3: harness outputs and fixtures
   - Outcome: four harness renderings reflect AC-1/AC-2
   - Known entrypoints and skill paths: `src/harness/adapters/{opencode,pi,codex,claude-code}.ts`, `src/harness/__fixtures__/**`
   - Inputs: AC-1, AC-2
@@ -160,7 +169,7 @@ Worker and Designer keep their implementation next step.
   - Focused check and PASS evidence: adapter/fixture and agent/harness focused tests green; diff of fixtures limited to contract lines
   - Return milestone: focused tests green (generated-asset equality left to root build)
   - Stop / reassessment: fixture drift beyond the contract lines
-- [ ] AC-4: repository instructions
+- [x] AC-4: repository instructions
   - Outcome: instructions distinguish discovery roles from others
   - Known entrypoints and skill paths: `AGENTS.md:161,233-234`, `docs/agent/agents-and-delegation.md:68-69`, `docs/agent/task-template.md:58,60`, progressive-context-router skill `C:\Users\EremesNG\.pi\agent\skills\progressive-context-router\SKILL.md`
   - Inputs: Clarifications
@@ -172,7 +181,7 @@ Worker and Designer keep their implementation next step.
   - Focused check and PASS evidence: text review; `pnpm run check:ci`
   - Return milestone: docs committed
   - Stop / reassessment: none
-- [ ] AC-5: checks and delta
+- [x] AC-5: checks and delta
   - Outcome: full checks pass; delta ready
   - Known entrypoints and skill paths: thoth-archive skill
   - Inputs: AC-1..AC-4

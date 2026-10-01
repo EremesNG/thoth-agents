@@ -177,6 +177,17 @@ with verified termination, on every other shutdown, including subagent teardown.
   fault-injection regressions red then green. Package typecheck 0; two suite runs 192
   passed / 4 skipped. Deployed Pi needs a full restart to load it.
 
+- Final verification round 2 (fresh Oracle subtask_thoth-oracle_1790889810203_f698208b):
+  FAIL only on AC-3 — the watch repair held, but ordinary jobs lost cleanup ownership after
+  partial termination (retry recorded cancelled with an orphan alive; a delayed leader
+  close recorded failed and quit skipped the survivor). Repaired in `91773a4`
+  (worker, test-first) as a general invariant: every job keeps its terminator and captured
+  descendants across stop/deadline failures, retries, shutdown and reload; leader close
+  only records exit facts while cleanup is pending; handoff/lost-process paths and
+  finalization cannot terminalize pending cleanup; worker audited every terminal-status
+  write and terminator release. Six regressions red then green. Package typecheck 0; two
+  suite runs 198 passed / 4 skipped; pi-subagents suite unchanged.
+
 ## Durable deltas
 
 - `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session, MUST keep a session's running jobs across that session's reload, and MUST stop every running job of the session, including in-flight watch commands, with verified process-tree termination on any other session shutdown, including subagent teardown, without affecting jobs of other sessions.

@@ -103,21 +103,34 @@ export function recoverDeclaredOperation(meta: BackgroundTaskMeta, at = Date.now
   }
 }
 
-const attentionTimers = new Map<string, ReturnType<typeof setTimeout>>();
-let attentionSuspended = false;
-/** Session shutdown: stop this instance's attention timers; the next session_start reschedules (#324). */
-export function suspendFailureAttention(): void {
-  attentionSuspended = true;
-  for (const timer of attentionTimers.values()) clearTimeout(timer);
-  attentionTimers.clear();
+interface AttentionState { timers: Map<string, ReturnType<typeof setTimeout>>; suspended: boolean }
+const attentionStates = new WeakMap<ExtensionAPI, AttentionState>();
+const knownAttentionStates = new Set<WeakRef<AttentionState>>();
+function attentionFor(pi: ExtensionAPI): AttentionState {
+  let state = attentionStates.get(pi);
+  if (!state) { state = { timers: new Map(), suspended: false }; attentionStates.set(pi, state); knownAttentionStates.add(new WeakRef(state)); }
+  return state;
 }
-export function resumeFailureAttention(): void {
-  attentionSuspended = false;
+function* liveAttentionStates(): Generator<AttentionState> {
+  for (const ref of knownAttentionStates) {
+    const state = ref.deref();
+    if (state) yield state; else knownAttentionStates.delete(ref);
+  }
 }
-export function stopFailureAttention(id: string): void {
-  const timer = attentionTimers.get(id);
-  if (timer) clearTimeout(timer);
-  attentionTimers.delete(id);
+export function suspendFailureAttention(pi?: ExtensionAPI): void {
+  for (const state of pi ? [attentionFor(pi)] : liveAttentionStates()) {
+    state.suspended = true;
+    for (const timer of state.timers.values()) clearTimeout(timer);
+    state.timers.clear();
+  }
+}
+export function resumeFailureAttention(pi?: ExtensionAPI): void {
+  for (const state of pi ? [attentionFor(pi)] : liveAttentionStates()) state.suspended = false;
+}
+export function stopFailureAttention(id: string, pi?: ExtensionAPI): void {
+  for (const state of pi ? [attentionFor(pi)] : liveAttentionStates()) {
+    const timer = state.timers.get(id); if (timer) clearTimeout(timer); state.timers.delete(id);
+  }
 }
 
 /**
@@ -145,13 +158,14 @@ export function failureAttentionFields(meta: BackgroundTaskMeta, state: FailureS
 
 /** Running incidents get one grace wake. Terminal incidents ride the completion callback. */
 export function scheduleFailureAttention(pi: ExtensionAPI, id: string, getActiveSession?: ActiveSessionProvider): void {
-  stopFailureAttention(id);
-  if (attentionSuspended) return;
+  const attention = attentionFor(pi);
+  stopFailureAttention(id, pi);
+  if (attention.suspended) return;
   const meta = readMeta(id);
   if (!meta) {
     const timer = setTimeout(() => scheduleFailureAttention(pi, id, getActiveSession), 1_000);
     timer.unref();
-    attentionTimers.set(id, timer);
+    attention.timers.set(id, timer);
     return;
   }
   if (meta.status !== "running" || meta.callback === false || meta.stopRequestedAt) return;
@@ -179,10 +193,10 @@ export function scheduleFailureAttention(pi: ExtensionAPI, id: string, getActive
       onDelivered: (at) => { markFailureAttentionDelivered(failurePath(id), pending, at); },
     });
     void Promise.resolve(delivery).then((sent) => {
-      if (!sent && (!readMeta(id) || readMeta(id)?.status === "running")) {
+      if (!attention.suspended && !sent && (!readMeta(id) || readMeta(id)?.status === "running")) {
         const timer = setTimeout(() => scheduleFailureAttention(pi, id, getActiveSession), 1_000);
         timer.unref();
-        attentionTimers.set(id, timer);
+        attention.timers.set(id, timer);
       }
     });
     return;
@@ -193,7 +207,7 @@ export function scheduleFailureAttention(pi: ExtensionAPI, id: string, getActive
   if (due.length) {
     const timer = setTimeout(() => scheduleFailureAttention(pi, id, getActiveSession), Math.max(1, Math.min(...due)));
     timer.unref();
-    attentionTimers.set(id, timer);
+    attention.timers.set(id, timer);
   }
 }
 

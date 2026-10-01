@@ -297,7 +297,7 @@ describe("spawnCommand platform gating", () => {
     expect(spawned.pgid).toBe(777);
   });
 
-  it("keeps fd stdio, no windowsHide, and a verbatim command on POSIX", () => {
+  it("keeps fd stdio and a verbatim command on POSIX", () => {
     vi.stubEnv("PI_BETTER_BACKGROUND_TASKS_SHELL", "");
     fakePlatform("linux");
     const log = join(mkdtempSync(join(tmpdir(), "bbt-gate-")), "gate.log");
@@ -315,7 +315,7 @@ describe("spawnCommand platform gating", () => {
     const args = call[1] as string[];
     const options = call[2] as { windowsHide: boolean; detached: boolean; stdio: unknown[] };
     expect(args).toEqual(["-lc", "echo hi"]);
-    expect(options).toMatchObject({ windowsHide: false, detached: true });
+    expect(options).toMatchObject({ windowsHide: true, detached: true });
     expect(options.stdio[0]).toBe("ignore");
     expect(readFileSync(log, "utf8")).toContain("stdout probe\nstderr probe\n");
   });

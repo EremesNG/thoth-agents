@@ -11,6 +11,7 @@ export function readProcessStartToken(pid: number): string | undefined {
   try {
     const output = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
       encoding: "utf8",
+      windowsHide: true,
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 2_000,
     }).trim();

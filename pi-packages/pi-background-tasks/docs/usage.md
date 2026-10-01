@@ -35,4 +35,4 @@ Default scope is the current session. `all:true` explicitly allows inspection or
 
 `operation_id` groups modified retries of the same operation in one session; a later success recovers earlier failures. `expected_exit_codes` declares intentional nonzero exits. Zero is ignored, not rejected. Neither field treats signals or timeouts as expected.
 
-Logs retain up to 4 MiB by default, disclosing retention and capture loss. Terminal artifacts expire after seven days. See the README lifecycle checkpoint and limits before relying on shutdown cleanup.
+Logs retain up to 4 MiB by default, disclosing retention and capture loss. Terminal artifacts expire after seven days. See the README lifecycle and limits for reload handoff and verified shutdown cleanup.

@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { refreshBackgroundTasksNavigator } from "./navigator-provider.js";
+import { getBackgroundTasksNavigator } from "./navigator-provider.js";
 import {
   classifyOwnership,
   formatLaunch,
@@ -198,7 +198,7 @@ export function registerTools(pi: ExtensionAPI): void {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
       const launched = reportLaunch(() => spawnTask(pi, params, ctx.cwd, activeSession, getActiveSession));
-      refreshBackgroundTasksNavigator(ctx);
+      getBackgroundTasksNavigator(pi).refresh(ctx);
       return text(launched);
     },
   });
@@ -212,7 +212,7 @@ export function registerTools(pi: ExtensionAPI): void {
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
       const launched = await launchWatch(pi, params, ctx.cwd, activeSession, getActiveSession, FIRST_WATCH_CHECK_WAIT_MS, signal);
-      refreshBackgroundTasksNavigator(ctx);
+      getBackgroundTasksNavigator(pi).refresh(ctx);
       return text(launched);
     },
   });
@@ -261,7 +261,7 @@ export function registerTools(pi: ExtensionAPI): void {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
       const result = await formatStop(pi, params.id, ctx, getActiveSession, statusOptions(params, activeSession));
-      refreshBackgroundTasksNavigator(ctx);
+      getBackgroundTasksNavigator(pi).refresh(ctx);
       return text(result);
     },
   });
@@ -365,10 +365,10 @@ async function runAction(
 ): Promise<string> {
   switch (params.action) {
     case "spawn":
-      return withNavigatorRefresh(ctx, reportLaunch(() => spawnTask(pi, params, ctx.cwd, callbackOrigin, getActiveSession)));
+      return withNavigatorRefresh(pi, ctx, reportLaunch(() => spawnTask(pi, params, ctx.cwd, callbackOrigin, getActiveSession)));
     case "watch":
       if (!params.success_when) return "Invalid parameters: watch requires success_when.";
-      return withNavigatorRefresh(ctx, await launchWatch(pi, params as unknown as WatchTaskParams, ctx.cwd, callbackOrigin, getActiveSession, FIRST_WATCH_CHECK_WAIT_MS, signal));
+      return withNavigatorRefresh(pi, ctx, await launchWatch(pi, params as unknown as WatchTaskParams, ctx.cwd, callbackOrigin, getActiveSession, FIRST_WATCH_CHECK_WAIT_MS, signal));
     case "list":
       return formatList(listOptions(params, callbackOrigin));
     case "status":
@@ -379,9 +379,9 @@ async function runAction(
       return formatLog(String(params.id), logOptions(params, callbackOrigin));
     case "stop":
       if (!params.id) return "Invalid parameters: stop requires id.";
-      return withNavigatorRefresh(ctx, await formatStop(pi, String(params.id), ctx, getActiveSession, statusOptions(params, callbackOrigin)));
+      return withNavigatorRefresh(pi, ctx, await formatStop(pi, String(params.id), ctx, getActiveSession, statusOptions(params, callbackOrigin)));
     case "clear":
-      return withNavigatorRefresh(ctx, formatClear(params, statusOptions(params, callbackOrigin)));
+      return withNavigatorRefresh(pi, ctx, formatClear(params, statusOptions(params, callbackOrigin)));
     default:
       return `Unknown action: ${String(params.action)}`;
   }
@@ -412,8 +412,8 @@ export async function launchWatch(
   return formatLaunch(latest);
 }
 
-function withNavigatorRefresh(ctx: ExtensionContext, result: string): string {
-  refreshBackgroundTasksNavigator(ctx);
+function withNavigatorRefresh(pi: ExtensionAPI, ctx: ExtensionContext, result: string): string {
+  getBackgroundTasksNavigator(pi).refresh(ctx);
   return result;
 }
 

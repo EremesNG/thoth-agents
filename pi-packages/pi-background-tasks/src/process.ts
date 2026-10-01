@@ -1,3 +1,4 @@
+import { terminateProcessTree } from "./process-termination.js";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -42,9 +43,6 @@ export function resolveDefaultShell(): string {
   // logged spawn error for the task instead of crashing the whole host process.
   return "/bin/bash";
 }
-
-/** How long a timed-out process group has to exit on SIGTERM before SIGKILL. */
-const TERMINATION_GRACE_MS = 2_000;
 
 export interface SpawnedProcess {
   child: ChildProcess;
@@ -164,82 +162,53 @@ export function runCommandOnce(
   spec: CommandSpec,
   maxBufferBytes = 1024 * 1024,
   timeoutMs?: number,
+  signal?: AbortSignal,
 ): Promise<CommandResult> {
   validateCommandSpec(spec);
+  if (signal?.aborted) return Promise.reject(new Error("Command aborted before launch"));
   const startedAt = Date.now();
   const child = spawnArgs(spec, true, ["ignore", "pipe", "pipe"]);
   const cap = Math.max(1, Math.floor(maxBufferBytes));
   const stdoutCapture = createCaptureBuffer();
   const stderrCapture = createCaptureBuffer();
   let timedOut = false;
-  child.stdout?.on("data", (chunk: Buffer | string) => {
-    captureChunk(stdoutCapture, chunk, cap);
-  });
-  child.stderr?.on("data", (chunk: Buffer | string) => {
-    captureChunk(stderrCapture, chunk, cap);
-  });
+  child.stdout?.on("data", (chunk: Buffer | string) => captureChunk(stdoutCapture, chunk, cap));
+  child.stderr?.on("data", (chunk: Buffer | string) => captureChunk(stderrCapture, chunk, cap));
   return new Promise((resolve, reject) => {
-    // The group outlives the leader as long as any member is alive, so the
-    // kernel keeps the id reserved and this stays addressable after the spawned
-    // process itself has been reaped.
-    const signalGroup = (signal: NodeJS.Signals): void => {
-      if (child.pid === undefined) return;
-      try {
-        stopProcessGroup(child.pid, undefined, signal);
-      } catch (error) {
-        if (process.platform === "win32") throw error;
-        // Nothing left in the group: the tree is already gone.
-      }
-    };
-    let escalation: NodeJS.Timeout | undefined;
-    const timeout = timeoutMs === undefined ? undefined : setTimeout(() => {
-      timedOut = true;
-      try {
-        signalGroup("SIGTERM");
-      } catch (error) {
-        settle();
-        reject(error);
-        return;
-      }
-      // SIGTERM is a request. Whatever still holds the output pipes after the
-      // grace period is exactly what would keep this promise pending, so the
-      // group is killed outright rather than waited on.
-      escalation = setTimeout(() => {
-        try {
-          signalGroup("SIGKILL");
-        } catch (error) {
-          settle();
-          reject(error);
-        }
-      }, TERMINATION_GRACE_MS);
-      escalation.unref();
-    }, Math.max(1, timeoutMs));
-    timeout?.unref();
-    const settle = (): void => {
+    let termination: Promise<void> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
       if (timeout) clearTimeout(timeout);
-      if (escalation) clearTimeout(escalation);
+      signal?.removeEventListener("abort", onAbort);
     };
-    child.on("error", (error) => {
-      settle();
-      reject(error);
-    });
-    child.on("close", (exitCode, signal) => {
-      settle();
-      const stdout = finishCapture(stdoutCapture);
-      const stderr = finishCapture(stderrCapture);
-      const captureTruncated = stdout.discardedBytes > 0 || stderr.discardedBytes > 0;
-      resolve({
-        exitCode,
-        signal,
-        stdout: stdout.text,
-        stderr: stderr.text,
-        startedAt,
-        endedAt: Date.now(),
-        ...(timedOut ? { timedOut: true } : {}),
-        ...(stdout.discardedBytes > 0 ? { stdoutDiscardedBytes: stdout.discardedBytes } : {}),
-        ...(stderr.discardedBytes > 0 ? { stderrDiscardedBytes: stderr.discardedBytes } : {}),
-        ...(captureTruncated ? { captureTruncated: true } : {}),
-      });
+    const terminate = () => {
+      if (termination || !child.pid) return;
+      termination = terminateProcessTree(child.pid, child.pid);
+      void termination.catch((error) => { cleanup(); reject(error); });
+    };
+    const onAbort = () => terminate();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) terminate();
+    if (timeoutMs !== undefined) {
+      timeout = setTimeout(() => { timedOut = true; terminate(); }, Math.max(1, timeoutMs));
+      timeout.unref();
+    }
+    child.on("error", (error) => { cleanup(); reject(error); });
+    child.on("close", (exitCode, exitSignal) => {
+      cleanup();
+      void (async () => {
+        await termination;
+        const stdout = finishCapture(stdoutCapture);
+        const stderr = finishCapture(stderrCapture);
+        resolve({
+          exitCode, signal: exitSignal, stdout: stdout.text, stderr: stderr.text,
+          startedAt, endedAt: Date.now(),
+          ...(timedOut ? { timedOut: true } : {}),
+          ...(stdout.discardedBytes > 0 ? { stdoutDiscardedBytes: stdout.discardedBytes } : {}),
+          ...(stderr.discardedBytes > 0 ? { stderrDiscardedBytes: stderr.discardedBytes } : {}),
+          ...(stdout.discardedBytes > 0 || stderr.discardedBytes > 0 ? { captureTruncated: true } : {}),
+        });
+      })().catch(reject);
     });
   });
 }
@@ -343,6 +312,7 @@ export function stopProcessGroup(
     const result = spawnSync("taskkill", ["/T", "/F", "/PID", String(pid)], {
       encoding: "utf8",
       windowsHide: true,
+      timeout: 2000,
     });
     if (result.error) {
       const code = (result.error as NodeJS.ErrnoException).code;
@@ -403,6 +373,6 @@ function spawnArgs(
     stdio,
     // A detached Windows child gets its own console window unless hidden; these
     // tasks write to log files and must not flash terminals.
-    windowsHide: process.platform === "win32",
+    windowsHide: true,
   });
 }

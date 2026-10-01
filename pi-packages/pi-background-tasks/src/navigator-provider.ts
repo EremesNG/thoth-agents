@@ -1,9 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   DEFAULT_LOG_TAIL_ROWS as NAVIGATOR_DETAIL_ROWS,
-  ensureBackgroundWorkNavigator,
-  refreshBackgroundWorkNavigator,
-  registerBackgroundWorkProvider,
+  createBackgroundWorkNavigator,
   type BackgroundWorkDetail,
   type BackgroundWorkProvider,
   type BackgroundWorkRow,
@@ -18,18 +16,20 @@ import { stopTask } from "./runtime.js";
 import { observeBackgroundTaskStall } from "./stall.js";
 import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta, BackgroundTaskStatus } from "./types.js";
 
+function createBackgroundTasksNavigator(pi: ExtensionAPI) {
+  const { ensureBackgroundWorkNavigator, refreshBackgroundWorkNavigator, registerBackgroundWorkProvider, disposeBackgroundWorkNavigator } = createBackgroundWorkNavigator();
 let unregister: (() => void) | undefined;
 let piRef: ExtensionAPI | undefined;
 let activeNavigatorOrigin: BackgroundTaskCallbackOrigin | undefined;
 const TERMINAL_NAVIGATOR_RETENTION_MS = 30_000;
 
-export function ensureBackgroundTasksNavigatorProvider(pi: ExtensionAPI): void {
+function ensureBackgroundTasksNavigatorProvider(pi: ExtensionAPI): void {
   piRef = pi;
   if (unregister) return;
   unregister = registerBackgroundWorkProvider(provider);
 }
 
-export function ensureBackgroundTasksNavigator(ctx: ExtensionContext): void {
+function ensureBackgroundTasksNavigator(ctx: ExtensionContext): void {
   activeNavigatorOrigin = getNavigatorOrigin(ctx);
   ensureBackgroundWorkNavigator(ctx, {
     createDefaultEditor: (tui, theme, keybindings) => new CustomEditor(tui as never, theme as never, keybindings as never),
@@ -39,11 +39,11 @@ export function ensureBackgroundTasksNavigator(ctx: ExtensionContext): void {
   });
 }
 
-export function clearBackgroundTasksNavigatorSession(): void {
+function clearBackgroundTasksNavigatorSession(): void {
   activeNavigatorOrigin = undefined;
 }
 
-export function refreshBackgroundTasksNavigator(ctx?: ExtensionContext): void {
+function refreshBackgroundTasksNavigator(ctx?: ExtensionContext): void {
   refreshBackgroundWorkNavigator(ctx);
 }
 
@@ -59,7 +59,7 @@ const provider: BackgroundWorkProvider = {
     const meta = readMeta(id);
     if (!meta) return { action: "missing", providerId: "background-tasks", id };
     if (meta.status === "running") {
-      void stopTask(piRef as ExtensionAPI, id);
+      void stopTask(piRef as ExtensionAPI, id, () => activeNavigatorOrigin);
       return { action: "stopped", providerId: "background-tasks", id, status: "stopping" };
     }
     meta.dismissedAt = Date.now();
@@ -246,4 +246,23 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+  ensureBackgroundTasksNavigatorProvider(pi);
+  return {
+    ensure: ensureBackgroundTasksNavigator,
+    refresh: refreshBackgroundTasksNavigator,
+    provider,
+    dispose(ctx?: ExtensionContext) {
+      clearBackgroundTasksNavigatorSession();
+      disposeBackgroundWorkNavigator(ctx);
+      unregister?.(); unregister = undefined;
+    },
+  };
+}
+const navigators = new WeakMap<ExtensionAPI, ReturnType<typeof createBackgroundTasksNavigator>>();
+export function getBackgroundTasksNavigator(pi: ExtensionAPI) {
+  let navigator = navigators.get(pi);
+  if (!navigator) { navigator = createBackgroundTasksNavigator(pi); navigators.set(pi, navigator); }
+  return navigator;
 }

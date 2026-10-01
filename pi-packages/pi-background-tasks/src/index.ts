@@ -1,25 +1,28 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { disposeBackgroundWorkNavigator } from "./shared-navigator.ts";
-import { clearBackgroundTasksNavigatorSession, ensureBackgroundTasksNavigator, ensureBackgroundTasksNavigatorProvider } from "./navigator-provider.js";
-import { resumeScheduledWork, suspendScheduledWork } from "./runtime.js";
+import { getBackgroundTasksNavigator } from "./navigator-provider.js";
+import { resumeScheduledWork, stopTask, suspendScheduledWork } from "./runtime.js";
+import { listMetasForOrigin } from "./registry.js";
 import { registerTools } from "./tools.js";
 
 export default function backgroundTasksExtension(pi: ExtensionAPI): void {
-  ensureBackgroundTasksNavigatorProvider(pi);
+  const navigator = getBackgroundTasksNavigator(pi);
   // Registered before registerTools(pi), so this runs before running tasks are resumed.
   pi.on("session_start", async (_event, ctx) => {
-    resumeScheduledWork();
-    ensureBackgroundTasksNavigator(ctx);
+    resumeScheduledWork(pi);
+    navigator.ensure(ctx);
   });
   pi.on("session_before_switch", async () => {
-    clearBackgroundTasksNavigatorSession();
-    disposeBackgroundWorkNavigator();
+    navigator.dispose();
   });
-  pi.on("session_shutdown", async (_event, ctx) => {
-    // /reload, session replacement, and quit load a fresh instance; stop this one's timers (#324).
-    suspendScheduledWork();
-    clearBackgroundTasksNavigatorSession();
-    disposeBackgroundWorkNavigator(ctx);
+  pi.on("session_shutdown", async (event, ctx) => {
+    suspendScheduledWork(pi);
+    if (event.reason !== "reload") {
+      const origin = { cwd: ctx.cwd, sessionId: ctx.sessionManager?.getSessionId() };
+      const stopped = await Promise.all(listMetasForOrigin(origin).filter((meta) => meta.status === "running")
+        .map((meta) => stopTask(pi, meta.id)));
+      if (stopped.some((meta) => meta?.status === "running")) throw new Error("Background job cleanup failed: a process tree is still running");
+    }
+    navigator.dispose(ctx);
   });
   registerTools(pi);
 }

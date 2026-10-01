@@ -27,11 +27,13 @@ A watch repeatedly executes a command until `success_when`, `failure_when`, or t
 
 Completion callbacks are session-origin scoped and delivered as Pi follow-ups. Cancelled tasks do not wake the agent. Failed checks remain visible in status and can receive failure-attention callbacks. The navigator shows local work and its evidence.
 
-## Lifecycle implementation checkpoint
+## Lifecycle and limits
 
-Reload currently suspends scheduling and hands durable task metadata to the next instance. Processes remain alive and a resumed session delivers terminal callbacks once. The stronger session-ending cleanup and concurrent-instance isolation described in the approved change record are **not implemented yet**. Until that work lands, ending Pi can leave jobs running, and suspended deadlines are not enforced. Do not rely on automatic cleanup at this checkpoint.
+A session's `/reload` suspends that instance's scheduling without stopping its jobs. The next instance adopts work of the same origin, including an in-flight watch poll: it does not start an overlapping poll, and completion is delivered once. Runtime timers, navigator UI and failure-attention state belong to each extension instance; loading or ending a headless child does not change root-session work or UI.
 
-Even after lifecycle cleanup is implemented, abrupt host death cannot run shutdown hooks; OS-level containment is outside this package's guarantees.
+Every other `session_shutdown` reason (including quit, new, resume and fork) stops the origin's running jobs, aborts in-flight watch commands, and awaits verified process-tree termination before recording them cancelled. Cancelled jobs do not send completion callbacks. Windows uses hidden, bounded `taskkill /T /F` and checks captured descendants. POSIX sends TERM, waits up to 500 ms, then sends KILL if necessary; verification includes live descendants and process groups, not only the leader. A failed termination is reported and remains running rather than falsely recorded as cancelled.
+
+Cleanup relies on Pi emitting the shutdown hook. Abrupt host death cannot run hooks, and OS-level containment is outside this package's guarantees. During the gap between reload instances, scheduled deadlines are suspended; resumed work enforces overdue deadlines. Child sessions are separate origins and must emit their own shutdown event when they end. All package and fixture process launchers explicitly hide Windows consoles.
 
 ## Development
 

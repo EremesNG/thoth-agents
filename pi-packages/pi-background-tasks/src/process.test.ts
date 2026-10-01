@@ -28,7 +28,8 @@ describe("process shell execution", () => {
 
     expect(result.timedOut).toBe(true);
     expect(result.signal).toBe(process.platform === "win32" ? null : "SIGTERM");
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    // Verified Windows cleanup includes a bounded process census and awaited tree kill.
+    expect(Date.now() - startedAt).toBeLessThan(process.platform === "win32" ? 10_000 : 2_000);
   });
 
   // @level integration
@@ -38,7 +39,7 @@ describe("process shell execution", () => {
     // signal to that pid never reaches. Reproduced here with a plain shell,
     const startedAt = Date.now();
 
-    const result = await runCommandOnce({ shell: false, argv: [process.execPath, "-e", "require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 10000)'], {stdio: 'inherit'}); setInterval(() => {}, 10000)"] }, undefined, 25);
+    const result = await runCommandOnce({ shell: false, argv: [process.execPath, "-e", "require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 10000)'], {stdio: 'inherit', windowsHide: true}); setInterval(() => {}, 10000)"] }, undefined, 25);
 
     expect(result.timedOut).toBe(true);
     expect(Date.now() - startedAt).toBeLessThan(5_000);

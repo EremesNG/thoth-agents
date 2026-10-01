@@ -16,7 +16,7 @@ import {
 } from "./output.js";
 import { inspectMeta, logPathFor, metaPathFor, taskDir, writeMeta } from "./registry.js";
 import { registerTools } from "./tools.js";
-import { ensureBackgroundTasksNavigator, ensureBackgroundTasksNavigatorProvider } from "./navigator-provider.js";
+import { getBackgroundTasksNavigator } from "./navigator-provider.js";
 import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta, Condition } from "./types.js";
 
 const createdIds: string[] = [];
@@ -835,18 +835,18 @@ describe("status cursor delegation (#323)", () => {
 
 describe("#332 navigator rows", () => {
   it("history-only failures keep the command in the row; an actionable incident still leads it", () => {
-    ensureBackgroundTasksNavigatorProvider({} as any);
-    ensureBackgroundTasksNavigator({ cwd: origin.cwd, hasUI: false, sessionManager: { getSessionId: () => origin.sessionId } } as any);
-    const provider = (globalThis as any)[Symbol.for("pi-better-harness.navigator.state")].providers.get("background-tasks");
+    const navigator = getBackgroundTasksNavigator({} as any);
+    navigator.ensure({ cwd: origin.cwd, hasUI: false, sessionManager: { getSessionId: () => origin.sessionId } } as any);
+    const provider = navigator.provider;
     const quiet = fixture({ status: "running", endedAt: undefined, command: "rg needle src" });
     recordFailure(quiet, "exit", "exited with declared expected code 1", "q1", { expected: true });
     let row = provider.listRows(Date.now()).find((x: any) => x.id === quiet.id);
-    expect(row.primary).toBe("rg needle src");
-    expect(row.facts.join("\n")).not.toMatch(/Expected failure|No failures need action/);
-    expect(provider.detail(quiet.id, Date.now()).subtitle).toBe("rg needle src");
+    expect(row!.primary).toBe("rg needle src");
+    expect(row!.facts!.join("\n")).not.toMatch(/Expected failure|No failures need action/);
+    expect(provider.detail(quiet.id, Date.now())!.subtitle).toBe("rg needle src");
     const loud = fixture({ status: "running", endedAt: undefined, command: "npm test" });
     recordFailure(loud, "exit", "exited with code 2", "l1");
     row = provider.listRows(Date.now()).find((x: any) => x.id === loud.id);
-    expect(row.primary).toMatch(/Action required/);
+    expect(row!.primary).toMatch(/Action required/);
   });
 });

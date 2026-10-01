@@ -108,10 +108,6 @@ type NavigatorState = {
   overlay?: { showDetail(navigatorId: string): void; focus(): void };
 };
 
-const GLOBAL_KEY = Symbol.for("pi-better-harness.navigator.state");
-const FACTORY_MARK = "__piBetterHarnessNavigatorFactory";
-const FACTORY_REFRESH = "__piBetterHarnessNavigatorRefresh";
-
 export const NAVIGATOR_STATUS_KEY = "background-work-nav";
 export const CLOSE_CONFIRM_STATUS_KEY = "background-work-close";
 export const MAIN_LIST_WIDGET_KEY = "background-work-list";
@@ -119,20 +115,24 @@ export const DETAIL_TICK_MS = 10_000;
 export const CLOSE_ARM_MS = 3000;
 export const DEFAULT_LOG_TAIL_ROWS = 25;
 export const LOG_TAIL_ROW_CHOICES = [10, 25] as const;
+
+type InternalRow = BackgroundWorkRow & { navigatorId: string; providerLabel: string; parentRow?: boolean };
+
+type OverlayState = { rows: InternalRow[]; selected: number };
+export function createBackgroundWorkNavigator() {
+
+
+const FACTORY_MARK = "__piBetterHarnessNavigatorFactory";
+const FACTORY_REFRESH = "__piBetterHarnessNavigatorRefresh";
 const MAIN_LIST_FALLBACK_WIDTH = 100;
 const DETAIL_OVERLAY_BOTTOM_MARGIN_ROWS = 0;
 const EVIDENCE_SECTION_ID = "__evidence__";
 const RUNNING_DOT_GLYPH = "●";
 
-function state(): NavigatorState {
-  const g = globalThis as typeof globalThis & { [GLOBAL_KEY]?: NavigatorState };
-  if (!g[GLOBAL_KEY]) {
-    g[GLOBAL_KEY] = { providers: new Map(), unsubscribers: new Map() };
-  }
-  return g[GLOBAL_KEY]!;
-}
+const navigatorState: NavigatorState = { providers: new Map(), unsubscribers: new Map() };
+function state(): NavigatorState { return navigatorState; }
 
-export function registerBackgroundWorkProvider(provider: BackgroundWorkProvider): () => void {
+function registerBackgroundWorkProvider(provider: BackgroundWorkProvider): () => void {
   const s = state();
   const previousUnsub = s.unsubscribers.get(provider.id);
   if (previousUnsub) {
@@ -152,7 +152,7 @@ export function registerBackgroundWorkProvider(provider: BackgroundWorkProvider)
   return () => unregisterBackgroundWorkProvider(provider.id);
 }
 
-export function unregisterBackgroundWorkProvider(id: string): void {
+function unregisterBackgroundWorkProvider(id: string): void {
   const s = state();
   const unsub = s.unsubscribers.get(id);
   if (unsub) {
@@ -163,7 +163,7 @@ export function unregisterBackgroundWorkProvider(id: string): void {
   refreshBackgroundWorkNavigator();
 }
 
-export function isNavigatorUiAvailable(ctx: ExtensionContext | undefined): boolean {
+function isNavigatorUiAvailable(ctx: ExtensionContext | undefined): boolean {
   if (!ctx) return false;
   try {
     return Boolean(ctx.mode === "tui" && ctx.hasUI === true && ctx.ui);
@@ -172,22 +172,22 @@ export function isNavigatorUiAvailable(ctx: ExtensionContext | undefined): boole
   }
 }
 
-export function navigatorFooterHint(count: number): string | null {
+function navigatorFooterHint(count: number): string | null {
   return count > 0 ? `← work · ${count}` : null;
 }
 
-export function applyNavigatorFooter(ui: { setStatus(key: string, value: string | undefined): void }, count: number): string | null {
+function applyNavigatorFooter(ui: { setStatus(key: string, value: string | undefined): void }, count: number): string | null {
   const hint = navigatorFooterHint(count);
   ui.setStatus(NAVIGATOR_STATUS_KEY, hint ?? undefined);
   return hint;
 }
 
-export function applyCloseConfirmFooter(ui: { setStatus(key: string, value: string | undefined): void }, hint: string | null | undefined): string | null {
+function applyCloseConfirmFooter(ui: { setStatus(key: string, value: string | undefined): void }, hint: string | null | undefined): string | null {
   ui.setStatus(CLOSE_CONFIRM_STATUS_KEY, hint ?? undefined);
   return hint ?? null;
 }
 
-export function ensureBackgroundWorkNavigator(ctx: ExtensionContext, deps: HostDeps): void {
+function ensureBackgroundWorkNavigator(ctx: ExtensionContext, deps: HostDeps): void {
   if (!isNavigatorUiAvailable(ctx)) return;
   const s = state();
   s.uiCtx = ctx;
@@ -206,7 +206,7 @@ export function ensureBackgroundWorkNavigator(ctx: ExtensionContext, deps: HostD
   refreshMainListWidget();
 }
 
-export function disposeBackgroundWorkNavigator(ctx?: ExtensionContext): void {
+function disposeBackgroundWorkNavigator(ctx?: ExtensionContext): void {
   const s = state();
   try { s.dispose?.(); } catch { /* ignore */ }
   s.dispose = undefined;
@@ -233,7 +233,7 @@ export function disposeBackgroundWorkNavigator(ctx?: ExtensionContext): void {
   s.mainListFocused = false;
 }
 
-export function refreshBackgroundWorkNavigator(ctx?: ExtensionContext): void {
+function refreshBackgroundWorkNavigator(ctx?: ExtensionContext): void {
   const s = state();
   const activeCtx = isNavigatorUiAvailable(ctx) ? ctx : s.uiCtx;
   if (!isNavigatorUiAvailable(activeCtx)) return;
@@ -354,8 +354,6 @@ function createMainListWidget(tui: { requestRender?(): void }, theme: unknown, d
 function renderWidth(width: number): number {
   return Number.isFinite(width) && width > 0 ? Math.floor(width) : MAIN_LIST_FALLBACK_WIDTH;
 }
-
-type InternalRow = BackgroundWorkRow & { navigatorId: string; providerLabel: string; parentRow?: boolean };
 
 function rowKey(providerId: string, id: string): string {
   return `${providerId}:${id}`;
@@ -834,8 +832,6 @@ function openNavigator(): void {
     void Promise.resolve(opened).then(clear, clear);
   } catch { /* keep foreground usable */ }
 }
-
-type OverlayState = { rows: InternalRow[]; selected: number };
 
 function createOverlayComponent(
   initialRows: InternalRow[],
@@ -1366,7 +1362,7 @@ function wrapEvidenceText(text: string, width: number): string[] {
  * retain the source indentation, and long paths/JSON tokens are hard-wrapped
  * so the final width guard never has to discard their suffix.
  */
-export function wrapLogText(text: string, width: number): string[] {
+function wrapLogText(text: string, width: number): string[] {
   const max = Math.max(8, Math.floor(width));
   const rows: string[] = [];
   for (const source of String(text ?? "").split(/\r?\n/)) {
@@ -1509,7 +1505,7 @@ function truncateVisible(value: string, width: number): string {
  * the provider. `listedIds` is the live list; `rowLine` uses the same
  * formatter on the detail payload when the live list has filtered the run.
  */
-export function renderRegisteredWorkDetail(providerId: string, id: string, width = 100): {
+function renderRegisteredWorkDetail(providerId: string, id: string, width = 100): {
   detail: BackgroundWorkDetail | null;
   lines: string[];
   rowLine: string | null;
@@ -1569,3 +1565,8 @@ export function renderRegisteredWorkDetail(providerId: string, id: string, width
     listedIds,
   };
 }
+return { registerBackgroundWorkProvider, unregisterBackgroundWorkProvider, isNavigatorUiAvailable, navigatorFooterHint, applyNavigatorFooter, applyCloseConfirmFooter, ensureBackgroundWorkNavigator, disposeBackgroundWorkNavigator, refreshBackgroundWorkNavigator, wrapLogText, renderRegisteredWorkDetail };
+}
+
+const defaultNavigator = createBackgroundWorkNavigator();
+export const { registerBackgroundWorkProvider, unregisterBackgroundWorkProvider, isNavigatorUiAvailable, navigatorFooterHint, applyNavigatorFooter, applyCloseConfirmFooter, ensureBackgroundWorkNavigator, disposeBackgroundWorkNavigator, refreshBackgroundWorkNavigator, wrapLogText, renderRegisteredWorkDetail } = defaultNavigator;

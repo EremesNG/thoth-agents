@@ -105,6 +105,16 @@ with all packages developing against Pi 0.99.1.
   bash tool already owns its own tree kill.
 - Tests that need processes use `node` scripts (not bash/sleep) so they run on Windows
   and Ubuntu alike.
+- Implementation checkpoint (root, 2026-10-01): `eb88b34` (worker A: five antigravity
+  paths await the shared tree helper, six node parent/grandchild tests, Pi dev deps
+  0.99.1 with ExtensionToolContext typing fixes, lockfile), `399cc48` (worker B: real SDK
+  bash cancellation test with negative control; POSIX test explicit skip reason),
+  `d5a6c92` (root: `pi-packages-windows` CI job, AGENTS.md, docs/agent/testing.md).
+  Frozen checks: frozen install 0; pi-subagents typecheck 0 and five suite runs 516
+  passed / 1 skipped after one first-run single intermittent failure whose test name
+  was not captured; antigravity 0 / 566 passed, 9 skipped; claude 0 / unit 290; root
+  check:ci, typecheck, build 0; root test 1204 passed / 4 missing-sibling failures.
+  Ubuntu and Node 22.19 left to CI. Live AC-5 follows after merge and restart.
 
 ## Durable deltas
 
@@ -120,7 +130,7 @@ with all packages developing against Pi 0.99.1.
 
 ## Tasks
 
-- [ ] AC-1: shared tree termination in antigravity
+- [x] AC-1: shared tree termination in antigravity
   - Outcome: no owned agy subprocess path skips tree termination
   - Known entrypoints and skill paths: the AskAntigravity module and `pi-packages/pi-antigravity-bridge/src/{agy-version,models,tasks,web-tools}.ts`, `src/process-termination.ts`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
   - Inputs: Exploration
@@ -132,7 +142,7 @@ with all packages developing against Pi 0.99.1.
   - Focused check and PASS evidence: new parent+grandchild tests pass on Windows; full package suite green
   - Return milestone: tests green
   - Stop / reassessment: a path needs the process to outlive Pi
-- [ ] AC-2: Pi 0.99.1 dev alignment
+- [x] AC-2: Pi 0.99.1 dev alignment
   - Outcome: antigravity develops against 0.99.1
   - Known entrypoints and skill paths: `pi-packages/pi-antigravity-bridge/package.json:65-67`, `pnpm-lock.yaml`
   - Inputs: Exploration
@@ -144,7 +154,7 @@ with all packages developing against Pi 0.99.1.
   - Focused check and PASS evidence: `pnpm install --frozen-lockfile`, package typecheck/test
   - Return milestone: green
   - Stop / reassessment: fallout requires behavior changes
-- [ ] AC-3: real Pi bash cancellation test
+- [x] AC-3: real Pi bash cancellation test
   - Outcome: Windows proof that subagent cancel kills bash descendants
   - Known entrypoints and skill paths: `pi-packages/pi-subagents/test/runner/real-process-cancel.test.ts`, `test/runner/providers-real-sdk.test.ts`, `src/runner/sdk-runner.ts`, tdd skill
   - Inputs: Exploration
@@ -156,7 +166,7 @@ with all packages developing against Pi 0.99.1.
   - Focused check and PASS evidence: new test passes on Windows; suite green
   - Return milestone: tests green
   - Stop / reassessment: the test exposes a defect needing a design decision
-- [ ] AC-4: Windows CI job and docs
+- [x] AC-4: Windows CI job and docs
   - Outcome: CI runs package checks on Windows
   - Known entrypoints and skill paths: `.github/workflows/ci.yml` (one step per check so a failing command cannot be masked by multiline PowerShell), `AGENTS.md` (edited after evidence-only-discovery-roles' AGENTS.md edit; serialized) (Change and verification flow), `docs/agent/testing.md`, progressive-context-router skill
   - Inputs: Clarifications

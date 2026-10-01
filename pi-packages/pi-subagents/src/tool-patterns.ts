@@ -19,10 +19,12 @@ export function matchesToolPattern(toolName: string, pattern: string): boolean {
 export function expandToolPatterns(
   patterns: readonly string[],
   activeToolNames?: readonly string[],
-  allToolNames?: readonly string[],
 ): string[] {
+  if (patterns.includes('@active'))
+    throw new Error(
+      "The '@active' tool selector was removed; use standalone '*' instead.",
+    );
   const active = activeToolNames ? [...new Set(activeToolNames)] : undefined;
-  const all = allToolNames ? [...new Set(allToolNames)] : undefined;
   const expanded: string[] = [];
   const add = (name: string) => {
     if (
@@ -36,11 +38,10 @@ export function expandToolPatterns(
   };
 
   if (patterns.length === 1 && patterns[0] === '*') {
-    for (const toolName of all ?? []) add(toolName);
-    return expanded;
-  }
-  if (patterns.length === 1 && patterns[0] === '@active') {
-    for (const toolName of active ?? []) add(toolName);
+    for (const toolName of active ?? []) {
+      if (toolName !== 'AskClaude' && toolName !== 'AskAntigravity')
+        add(toolName);
+    }
     return expanded;
   }
 

@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import {
   type AtelierAttemptStatus,
-  AtelierMetadataRun,
-  AtelierMetadataWriter,
+  type AtelierMetadataRun,
+  type AtelierMetadataWriter,
   type AtelierSessionOwner,
   captureAtelierSessionOwner,
 } from './atelier-metadata.js';
@@ -1164,6 +1164,7 @@ export class SubagentManager {
       ended_at: undefined,
       output_preview: undefined,
       continuation_prompt: continuationPrompt,
+      dropped_tools: undefined,
       transcript: undefined,
       model: modelRefLabel(effectiveProfile.model.value),
       effort: effectiveProfile.effort.value,
@@ -1420,7 +1421,7 @@ export class SubagentManager {
         this.notifyTaskUpdate(id, onTaskUpdate, true);
         let interactionsHandled = 0;
         let result: Awaited<ReturnType<SubagentRunner>> | undefined;
-        let runnerMetricOffset = { turns: 0, compactions: 0 };
+        const runnerMetricOffset = { turns: 0, compactions: 0 };
         while (true) {
           const runnerMetricHighwater = { turns: 0, compactions: 0 };
           const runnerPromise = this.runner({
@@ -1533,9 +1534,12 @@ export class SubagentManager {
                 task.interaction_request = activity.interaction_request;
               if (activity.nested_session_path)
                 task.nested_session_path = activity.nested_session_path;
+              if (activity.dropped_tools !== undefined)
+                task.dropped_tools = [...activity.dropped_tools];
               if (activity.pi_retry_attempts !== undefined)
                 task.pi_retry_attempts = activity.pi_retry_attempts;
               const importantActivity =
+                activity.dropped_tools !== undefined ||
                 activity.message === 'interaction required' ||
                 Boolean(activity.interaction_request) ||
                 (Boolean(activity.thread_snapshot) &&
@@ -1667,6 +1671,8 @@ export class SubagentManager {
           task.fallback_used = result.fallback_used;
           if (result.thread_snapshot)
             task.thread_snapshot = sanitizeUnknown(result.thread_snapshot);
+          if (result.dropped_tools !== undefined)
+            task.dropped_tools = [...result.dropped_tools];
           if (result.nested_session_path)
             task.nested_session_path = result.nested_session_path;
           task.interaction_request = interactionRequest;
@@ -1737,6 +1743,8 @@ export class SubagentManager {
         task.fallback_used = result.fallback_used;
         if (result.thread_snapshot)
           task.thread_snapshot = sanitizeUnknown(result.thread_snapshot);
+        if (result.dropped_tools !== undefined)
+          task.dropped_tools = [...result.dropped_tools];
         if (result.nested_session_path)
           task.nested_session_path = result.nested_session_path;
         delete task.interaction_request;

@@ -21,7 +21,7 @@ import {
 import { installDoubleEscapeCancel } from './subagent-run.js';
 import { fail, ok } from './tool-response.js';
 
-export function createSubagentContinueTool(manager: SubagentManager) {
+export function createSubagentContinueTool(manager: SubagentManager, pi: any) {
   return {
     name: 'subagent_continue',
     label: 'Subagent Continue',
@@ -130,7 +130,7 @@ export function createSubagentContinueTool(manager: SubagentManager) {
         emit();
         const continuePromise = manager.continueTask(
           params,
-          ctx,
+          { ...ctx, pi },
           _signal,
           isBackground
             ? undefined

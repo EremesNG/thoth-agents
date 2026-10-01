@@ -178,7 +178,9 @@ tools:
 Instructions...
 ```
 
-Standalone `tools: "*"` selects all registered eligible tools at each child launch, including inactive tools and tools registered since the definition was saved. Standalone `tools: "@active"` follows the parent's current active tools at each launch; an empty active inventory stays empty. Preserve these selectors rather than expanding them while saving. Selected tools need child-loadable implementations; missing implementations produce a launch diagnostic.
+Standalone `tools: "*"` is the single dynamic selector: it follows the parent’s currently active eligible tools at each child launch (`getActiveTools()`, falling back to legacy `getTools()`), not inactive registered tools. It excludes `subagent_*`, `ask_user_question`, `todo`, `AskClaude`, and `AskAntigravity`; the two bridge delegation names can still be selected explicitly, but reserved controls remain blocked. Preserve `*` rather than expanding it while saving; an empty active inventory stays empty. The former active selector is removed and explicitly rejected at launch with a diagnostic naming `*` as the replacement.
+
+Only standalone `*` drops tools with missing child implementations and runs with the available subset. Dropped names persist in the `dropped_tools` task and attempt history field and appear as warnings in status, result, and completion messages, never as tool names in the child prompt. If every selected tool is missing, launch fails. Explicit lists and other globs (which match active tools) remain strict: any missing implementation fails launch. Unexpected extra child tools always fail. These rules also apply to configured `default_tools` when the definition’s tool list is empty.
 
 Other wildcard patterns such as `tool_*`, including `*` mixed with other entries, retain active-only matching. If a pattern matches nothing active, it expands to nothing. Reserved `subagent_*`, `ask_user_question`, and `todo` controls remain excluded. The same selector and pattern behavior is supported by `default_tools` in `subagents.json`.
 

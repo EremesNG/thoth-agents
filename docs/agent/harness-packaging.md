@@ -48,16 +48,24 @@
   `/subagents-tools` edits per-role global tool selections. The CLI keeps
   using `src/cli/pi-model-config.ts` for Thoth specialist provenance/path checks,
   stale snapshots, and partial-write recovery. `/subagents-tools` discovers
-  registered tools and edits either explicit per-role lists or standalone dynamic
-  `*` (all eligible registered) and `@active` (eligible currently active)
-  selectors. The panel marks inactive choices, retains unavailable explicit
-  names, and supports role-default reset.
+  registered tools and edits either explicit per-role lists or the single
+  standalone dynamic selector `*`: tools currently active in the root session,
+  excluding `subagent_*`, root-only `ask_user_question`/`todo` controls, and
+  delegation tools `AskClaude` and `AskAntigravity`. Inactive registered tools
+  are not inherited. The bridge delegation names remain valid explicit choices;
+  the panel marks inactive choices, retains unavailable explicit names, and
+  supports role-default reset. Generated defaults remain explicit tool lists.
   `src/cli/pi-tool-config.ts` owns validation and safe persistence; synchronization
-  preserves valid explicit tools, selectors, modes, model, and effort.
-  Unsupported wildcard overrides remain untouched with diagnostics. Empty
-  selections and delegation/root-only controls are rejected; dynamic selectors
-  resolve at launch and require child-loadable implementations. Native TUI/AI
-  modules are declared public peers and
+  preserves valid explicit tools, `*`, modes, model, and effort.
+  `@active` is rejected with a diagnostic naming `*` as its replacement, never
+  accepted as an alias or explicit name. Unsupported overrides remain untouched
+  with diagnostics during synchronization. Empty selections and reserved
+  delegation/root-only controls are rejected. `*` resolves at child launch;
+  tools without a child implementation are dropped and reported as durable
+  warnings in status/results/completion while the child uses the available
+  subset. An all-missing selection or unexpected extra child tools still fail.
+  Runtime explicit lists and glob patterns stay strict on missing implementations;
+  the panel does not accept globs. Native TUI/AI modules are declared public peers and
   kept external in the build; static imports let Pi's loader resolve its native
   aliases for compiled JS. Lazy imports from a natively loaded compiled extension
   bypass those aliases. Root model and external override precedence remain

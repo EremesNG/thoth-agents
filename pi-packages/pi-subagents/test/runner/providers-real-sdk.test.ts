@@ -147,6 +147,49 @@ async function fixture(
   };
 }
 
+it('drops and reports missing active tools only for standalone * in a real SDK child', async () => {
+  const parent = await fixture([captureExtension]);
+  const activities: any[] = [];
+  const active = ['read', 'missing_fixture_tool'];
+  const run = (tools: string[]) =>
+    parent.run({
+      definition: { ...captureDefinition, tools },
+      ctx: {
+        modelRegistry: parent.modelRegistry,
+        settingsManager: parent.settingsManager,
+        pi: { getActiveTools: () => active },
+      },
+      onActivity: (activity) => activities.push(activity),
+    });
+  try {
+    const result = await run(['*']);
+    expect(result).toMatchObject({ dropped_tools: ['missing_fixture_tool'] });
+    expect(activities).toContainEqual(
+      expect.objectContaining({ dropped_tools: ['missing_fixture_tool'] }),
+    );
+    const capture = JSON.parse(result.result);
+    expect(
+      activities
+        .filter((activity) => activity.prompt)
+        .every((activity) => !activity.prompt.includes('missing_fixture_tool')),
+    ).toBe(true);
+    expect(capture.systemPrompt).not.toContain('missing_fixture_tool');
+    expect(capture.systemPrompt).not.toContain('AskClaude');
+    await expect(run(['read', 'missing_fixture_tool'])).rejects.toThrow(
+      'missing implementation: missing_fixture_tool',
+    );
+    await expect(run(['missing_*'])).rejects.toThrow(
+      'missing implementation: missing_fixture_tool',
+    );
+    active.splice(0, 1);
+    await expect(run(['*'])).rejects.toThrow(
+      'missing implementation: missing_fixture_tool',
+    );
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
+
 it('authenticates and streams through a provider registered only in the parent session_start', async () => {
   const parent = await fixture();
   try {

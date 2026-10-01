@@ -528,8 +528,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// AskAntigravity tool: one-shot delegation to agy (ported from
 	// pi-ask-antigravity). When both extensions are installed, the bridge wins
 	// and pi-ask-antigravity registers nothing (its load-time defer guard
-	// detects this package via import.meta.resolve). Opt-out: askTool=false
-	// (config file, AGY_ASK_TOOL, /agy ask, or the picker) skips registration
+	// detects this package via import.meta.resolve). Off by default; opt in with askTool=true
+	// (config file, AGY_ASK_TOOL, /agy ask, or the picker). While off, registration is skipped
 	// entirely - users who want only the provider keep a clean tool list.
 	// Note: the active flag below is set regardless of askTool, so
 	// pi-ask-antigravity keeps deferring even then: off means NO delegation

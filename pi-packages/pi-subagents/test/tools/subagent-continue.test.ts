@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { registerSubagentTools } from '../../src/tools.js';
+import { ModelRuntimeFixture } from '../helpers/model-runtime-fixture.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
@@ -152,6 +153,107 @@ describe('subagent_continue tool', () => {
     expect(renderedResult).toContain('status: completed');
     expect(renderedResult).toContain('click to view execution');
     expect(renderedResult).not.toContain(`id: ${taskId}`);
+  });
+
+  it('resolves * tools from the current parent Pi session on continuation', async () => {
+    const fs = await import('node:fs');
+    fs.writeFileSync(
+      `${env.tmp}/.pi/subagents.json`,
+      JSON.stringify({ enable_continue: true, session_resources: 'full' }),
+    );
+    fs.writeFileSync(
+      `${env.tmp}/.pi/subagents/active-user.md`,
+      '---\nname: active-user\ndescription: active tool user\ntools:\n  - "*"\n---\n# Agent',
+    );
+    const nestedSessionPath = `${env.tmp}/active-tools-session.jsonl`;
+    fs.writeFileSync(nestedSessionPath, '{"type":"session"}\n');
+    const createAgentSession = vi.fn((options: any) => {
+      const messages: any[] = [];
+      const retainedTools = options.tools.filter(
+        (name: string) => name !== 'missing_fixture_tool',
+      );
+      return {
+        session: {
+          subscribe: vi.fn(() => vi.fn()),
+          prompt: vi.fn(async () => {
+            messages.push({
+              role: 'assistant',
+              content: `selected tools: ${retainedTools.join(', ')}`,
+            });
+          }),
+          messages,
+          dispose: vi.fn(async () => undefined),
+          getAllTools: () => retainedTools.map((name: string) => ({ name })),
+        },
+      };
+    });
+    vi.resetModules();
+    vi.doMock('@earendil-works/pi-coding-agent', () => ({
+      ModelRuntime: ModelRuntimeFixture,
+      SessionManager: {
+        create: () => ({ path: nestedSessionPath }),
+        open: (sessionPath: string) => ({ path: sessionPath }),
+      },
+      createAgentSession,
+    }));
+    const { sdkSubagentRunner } = await import('../../src/runner.js');
+    const manager = env.createManager(sdkSubagentRunner);
+    let activeTools = ['read', 'missing_fixture_tool'];
+    let runTool: any;
+    let continueTool: any;
+    const pi = {
+      getActiveTools: vi.fn(() => activeTools),
+      registerTool: (tool: any) => {
+        if (tool.name === 'subagent_run') runTool = tool;
+        if (tool.name === 'subagent_continue') continueTool = tool;
+      },
+    };
+    registerSubagentTools(pi, manager, env.tmp);
+    const ctx = { cwd: env.tmp, model: { provider: 'mock', id: 'model' } };
+    const first = await runTool.execute(
+      '1',
+      { agent: 'active-user', task: 'initial execution', mode: 'task' },
+      undefined,
+      undefined,
+      ctx,
+    );
+    expect(first.isError, first.content[0].text).not.toBe(true);
+    expect(first.details.results[0].status).toBe('completed');
+    expect(first.details.results[0].dropped_tools).toEqual([
+      'missing_fixture_tool',
+    ]);
+    const taskId = first.details.task_ids[0];
+    activeTools = ['read', 'current_extension_tool'];
+
+    const result = await continueTool.execute(
+      '2',
+      { task_id: taskId, prompt: 'Use the current tools.' },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.isError, result.content[0].text).not.toBe(true);
+    expect(result.details.task).toMatchObject({
+      id: taskId,
+      attempt: 2,
+      status: 'completed',
+      dropped_tools: [],
+    });
+    expect(result.content[0].text).toContain(
+      'selected tools: read, current_extension_tool',
+    );
+    expect(
+      createAgentSession.mock.calls.map(([options]) => options.tools),
+    ).toEqual([
+      ['read', 'missing_fixture_tool'],
+      ['read', 'current_extension_tool'],
+    ]);
+    const attempts = env.createHistoryStore().listTaskAttempts(env.tmp, taskId);
+    expect(attempts.map((attempt) => attempt.dropped_tools)).toEqual([
+      ['missing_fixture_tool'],
+      [],
+    ]);
   });
 
   it('streams the same live task-mode progress rendering as subagent_run before completion', async () => {

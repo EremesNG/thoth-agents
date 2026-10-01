@@ -73,33 +73,28 @@ function resolveConfiguredTools(
   patterns: readonly string[],
   context: any,
 ): string[] {
-  const selectsAllTools = patterns.length === 1 && patterns[0] === '*';
-  const selectsActiveTools = patterns.length === 1 && patterns[0] === '@active';
-  const usesActivePattern = patterns.some(hasToolGlob);
-  const active =
-    selectsActiveTools || (usesActivePattern && !selectsAllTools)
-      ? readToolNames(context, ['getActiveTools', 'getTools'])
-      : undefined;
-  const all = selectsAllTools
-    ? readToolNames(context, ['getAllTools', 'getTools'])
+  const selectsActiveTools = patterns.length === 1 && patterns[0] === '*';
+  const active = patterns.some(hasToolGlob)
+    ? readToolNames(context, ['getActiveTools', 'getTools'])
     : undefined;
 
-  if (selectsAllTools && !all)
-    throw new NonRetryableSubagentError(
-      "Cannot resolve the standalone '*' tool selector because the parent Pi session exposes neither getAllTools() nor legacy getTools().",
-    );
   if (selectsActiveTools && !active)
     throw new NonRetryableSubagentError(
-      "Cannot resolve the standalone '@active' tool selector because the parent Pi session exposes neither getActiveTools() nor legacy getTools().",
+      "Cannot resolve the standalone '*' tool selector because the parent Pi session exposes neither getActiveTools() nor legacy getTools().",
     );
 
-  return expandToolPatterns(patterns, active, all);
+  try {
+    return expandToolPatterns(patterns, active);
+  } catch (error) {
+    throw new NonRetryableSubagentError((error as Error).message);
+  }
 }
 
 function verifyChildToolSelection(
   session: any,
   selectedToolNames: readonly string[],
-): void {
+  allowMissing: boolean,
+): string[] {
   const registered = readToolNames(session, ['getAllTools']);
   if (!registered)
     throw new NonRetryableSubagentError(
@@ -112,7 +107,11 @@ function verifyChildToolSelection(
     (name) => !registeredNames.has(name),
   );
   const unexpected = registered.filter((name) => !selectedNames.has(name));
-  if (missing.length || unexpected.length) {
+  if (
+    unexpected.length ||
+    (missing.length &&
+      (!allowMissing || missing.length === selectedToolNames.length))
+  ) {
     const details = [
       missing.length ? `missing implementation: ${missing.join(', ')}` : '',
       unexpected.length
@@ -123,6 +122,7 @@ function verifyChildToolSelection(
       `Selected tools are unavailable in the child session (${details.join('; ')}). Check that their extensions are installed and loadable by the child session.`,
     );
   }
+  return missing;
 }
 
 const SUBAGENT_ALLOWED_EXTENSION_EVENTS = new Set([
@@ -354,6 +354,7 @@ async function createSession(
   ctx: any,
   systemPrompt: string,
   nestedSessionPath?: string,
+  allowMissing = false,
 ) {
   const piSdk = await loadPiSdkModule();
   const { createAgentSession, SessionManager } = piSdk;
@@ -408,6 +409,7 @@ async function createSession(
     options.resourceLoader = resourceLoader;
   }
   const created = await createAgentSession(options);
+  let droppedTools: string[];
   try {
     if (!ctx?.modelRuntime) {
       // SDK binding has flushed the child's queued registrations into this runtime.
@@ -431,13 +433,18 @@ async function createSession(
       }
       await modelRuntime.refresh({ allowNetwork: false });
     }
-    verifyChildToolSelection(created.session, tools);
+    droppedTools = verifyChildToolSelection(
+      created.session,
+      tools,
+      allowMissing,
+    );
   } catch (error) {
     await teardownSubagentSession(created.session);
     throw error;
   }
   return {
     ...created,
+    dropped_tools: droppedTools,
     nested_session_path: resolvedSessionPath,
     pi_version: versionFromPiSdk(piSdk),
   };
@@ -535,6 +542,8 @@ export const sdkSubagentRunner: SubagentRunner = async ({
     ? definition.tools
     : config.default_tools;
   const tools = resolveConfiguredTools(configuredTools, ctx);
+  const allowMissing =
+    configuredTools.length === 1 && configuredTools[0] === '*';
   const systemPrompt = definition.instructions;
   const prompt =
     continuation?.prompt ?? buildPrompt(definition, task, context, tools);
@@ -559,6 +568,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       session,
       nested_session_path: resolvedNestedSessionPath,
       pi_version: piVersion,
+      dropped_tools,
     } = await createSession(
       model,
       cwd,
@@ -568,6 +578,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       ctx,
       systemPrompt,
       nested_session_path,
+      allowMissing,
     );
     const abortBridge = createSessionAbortBridge(session, signal);
     let unregisterInteractionSession = () => {};
@@ -575,6 +586,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       registerLiveBridge?.(createLiveSteeringBridge(session, piVersion));
       onActivity?.({
         message: 'nested session ready',
+        dropped_tools,
         nested_session_path: resolvedNestedSessionPath,
       });
       unregisterInteractionSession = registerInteractionSubagentSession(
@@ -620,6 +632,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       await secureSessionPathWhenReady(resolvedNestedSessionPath);
       return {
         result,
+        dropped_tools,
         usage,
         runtime_metrics,
         thread_snapshot,
@@ -654,6 +667,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
   try {
     const {
       result,
+      dropped_tools,
       usage,
       runtime_metrics,
       thread_snapshot,
@@ -663,6 +677,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
     } = await attempt(preferred);
     return {
       result,
+      dropped_tools,
       usage,
       runtime_metrics,
       thread_snapshot,

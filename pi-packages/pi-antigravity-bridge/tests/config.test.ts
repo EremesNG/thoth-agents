@@ -71,9 +71,11 @@ test("config: invalid bridgeTools value falls back to the default surface", () =
 	}
 });
 
-test("config: askTool defaults on and round-trips through load/save", () => {
+test("config: askTool defaults off and round-trips through load/save", () => {
 	const p = tmpConfig();
 	try {
+		assert.equal(loadConfig(p).askTool, false);
+		saveConfig({ askTool: true }, p);
 		assert.equal(loadConfig(p).askTool, true);
 		saveConfig({ askTool: false }, p);
 		assert.equal(loadConfig(p).askTool, false);

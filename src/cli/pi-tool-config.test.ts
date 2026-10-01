@@ -247,10 +247,8 @@ test('rejects empty, duplicate, mixed selector, unsupported pattern, delegation,
   ).not.toContain('tools:');
 });
 
-test.each([
-  '*',
-  '@active',
-] as const)('saves and reloads the standalone %s selector as a quoted YAML scalar', (selector) => {
+test('saves and reloads the standalone * selector as a quoted YAML scalar', () => {
+  const selector = '*';
   const piRoot = fixture();
   const snapshot = readPiToolConfig(piRoot, ['worker']);
 
@@ -269,6 +267,34 @@ test.each([
   ]);
   for (const role of reloaded.roles.filter(({ role }) => role !== 'worker'))
     expect(role.tools).toEqual(role.defaultTools);
+});
+
+test.each([
+  { tools: ['@active'] },
+  { tools: ['read', '@active'] },
+  { tools: ['*', '@active'] },
+])('rejects removed @active selection $tools before writing any role', ({
+  tools,
+}) => {
+  const piRoot = fixture();
+  const snapshot = readPiToolConfig(piRoot);
+
+  expect(() => validatePiSpecialistTools(tools)).toThrow(/@active.*\*/);
+  const result = savePiToolConfig(snapshot, [
+    { role: 'explorer', tools: ['new_tool'] },
+    { role: 'worker', tools },
+  ]);
+
+  expect(result).toMatchObject({
+    success: false,
+    changedRoles: [],
+    error: expect.stringMatching(/@active.*\*/),
+  });
+  expect(result.snapshot).toEqual(snapshot);
+  for (const role of PI_SPECIALIST_ROLES)
+    expect(
+      readFileSync(join(piRoot, 'agents', `thoth-${role}.md`), 'utf8'),
+    ).toBe(snapshot.contents[role]);
 });
 
 test('rejects malformed and duplicate saved fields rather than guessing', () => {

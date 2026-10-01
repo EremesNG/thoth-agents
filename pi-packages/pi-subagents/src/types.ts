@@ -153,6 +153,7 @@ export type SubagentActivity = {
   thread_snapshot?: SubagentThreadSnapshot;
   interaction_request?: SubagentInteractionRequest;
   nested_session_path?: string;
+  dropped_tools?: string[];
   pi_retry_attempts?: number;
   live_activity?: SubagentLiveActivityProjection;
 };
@@ -432,6 +433,7 @@ export type SubagentTask = {
   attempt?: number;
   session_id?: string;
   nested_session_path?: string;
+  dropped_tools?: string[];
   started_at?: string;
   ended_at?: string;
   last_activity_at?: string;
@@ -493,4 +495,5 @@ export type SubagentRunner = (input: {
   interaction_request?: SubagentInteractionRequest;
   system_prompt?: string;
   nested_session_path?: string;
+  dropped_tools?: string[];
 }>;

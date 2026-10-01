@@ -174,8 +174,8 @@ describe('subagents-tools command', () => {
             },
           );
           renderedText = component.render(80).join('\n');
-          // overview: select all active on explorer
-          component.handleInput('a');
+          // overview: select dynamic active-root tools on explorer
+          component.handleInput('*');
           // overview: press s to save
           component.handleInput('s');
           return result;
@@ -187,7 +187,7 @@ describe('subagents-tools command', () => {
     expect(getActiveTools).toHaveBeenCalledTimes(1);
     expect(renderedText).toContain('Global specialist tools');
     expect(saveToolConfig).toHaveBeenCalledTimes(1);
-    expect(saveToolConfig.mock.calls[0]?.[1][0]?.tools).toEqual(['@active']);
+    expect(saveToolConfig.mock.calls[0]?.[1][0]?.tools).toEqual(['*']);
     expect(notify).toHaveBeenCalledWith(
       expect.stringContaining(
         'Saved global Thoth specialist tools. Updated: explorer.',

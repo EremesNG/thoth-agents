@@ -43,7 +43,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test"
+    "check": "pnpm run typecheck && pnpm run test"
   },
   "pi": {
     "extensions": [

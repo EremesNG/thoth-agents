@@ -21,7 +21,7 @@ export function registerSubagentTools(
   registerTool(createSubagentListAgentsTool(manager));
   registerTool(createSubagentRunTool(manager, pi));
   if (readSubagentsConfig(cwd).enable_continue)
-    registerTool(createSubagentContinueTool(manager));
+    registerTool(createSubagentContinueTool(manager, pi));
   registerTool(createSubagentStatusTool(manager));
   registerTool(createSubagentResultTool(manager));
   registerTool(createSubagentListTasksTool(manager));

@@ -153,6 +153,21 @@ with verified termination, on every other shutdown, including subagent teardown.
   on POSIX CI); claude 0 / unit 290; root check:ci, typecheck, build 0 (no generated
   drift); root test 1208 passed / 4 missing-sibling failures. Live AC-6 follows.
 
+- Live AC-6 (2026-10-01, main 0.5.0 at 0272780; full restart; operator settings entry
+  switched from npm:pi-background-tasks to the fork path with backup
+  settings.json.bgfork-1790881896; Pi loaded bg_task_* and no bg_run). Root reload: job
+  bg_1crw_muq0ha8b_1 (node 69736 + grandchild 75308) kept the same PIDs and creation
+  times across the operator's /reload, origin session 01a0f3b8 unchanged, and its
+  completion was delivered exactly once (one background-completion-batch entry in the
+  session). Root /new: job bg_1crw_muq0mpfq_1 (67412 + 31764) — after the operator's /new
+  and /resume both PIDs were gone and meta recorded cancelled at 20:58:12Z. Children (the
+  operator temporarily added bg_task_spawn/bg_task_status to thoth-worker via
+  /subagents-tools): a worker that spawned a job and finished left no job process (45192 +
+  33900 gone; meta cancelled, origin = child session); a worker cancelled while running
+  left no job process (77100 + 18160 gone after 10 s; meta cancelled, child origin); the
+  root control job bg_1crw_muq0q2yt_2 (15776 + 77564) stayed alive throughout and was then
+  stopped by root.
+
 ## Durable deltas
 
 - `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session, MUST keep a session's running jobs across that session's reload, and MUST stop every running job of the session, including in-flight watch commands, with verified process-tree termination on any other session shutdown, including subagent teardown, without affecting jobs of other sessions.
@@ -230,7 +245,7 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Focused check and PASS evidence: `pnpm run check:ci`; workflow review
   - Return milestone: committed
   - Stop / reassessment: none
-- [ ] AC-6: live and frozen checks
+- [x] AC-6: live and frozen checks
   - Outcome: live lifecycle verified
   - Known entrypoints and skill paths: thoth-archive skill
   - Inputs: AC-1..AC-5

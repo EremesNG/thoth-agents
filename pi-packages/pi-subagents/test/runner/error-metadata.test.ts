@@ -258,6 +258,8 @@ describe('structured error metadata contract', () => {
     'context window exceeded',
     'too many tokens',
     "This model's maximum context length is 4096 tokens. However, you requested 5000 tokens",
+    'prompt is too long: 213462 tokens > 200000 maximum',
+    'context_length_exceeded',
     'context length exceeds the limit',
     'input tokens exceed the context window',
   ])('recognizes explicit context capacity errors: %s', (message) => {
@@ -272,6 +274,7 @@ describe('structured error metadata contract', () => {
     'Invalid response length',
     'Maximum retries reached',
     'Failed to load maximum context configuration',
+    "This model's maximum context length is 8192 tokens. Request could not be parsed: invalid JSON.",
   ])('does not infer context overflow from incidental words: %s', (message) => {
     expect(classifyThrownError(new Error(message)).category).toBe(
       'provider_api_error',

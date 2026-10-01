@@ -306,7 +306,7 @@ export function classifyThrownError(
   )
     category = 'provider_auth_error';
   else if (
-    /context[_ -](?:length|window|limit).{0,80}exceed|exceed.{0,80}context[_ -](?:length|window|limit)|context[_ -]overflow|too many tokens|maximum context length is \d+ tokens.{0,80}request|(?:input|prompt|total|requested) tokens?.{0,80}exceed/.test(
+    /context[_ -](?:length|window|limit).{0,80}exceed|exceed.{0,80}context[_ -](?:length|window|limit)|context[_ -]overflow|too many tokens|maximum context length is \d+ tokens.{0,80}you requested \d+ tokens|prompt is too long: \d+ tokens > \d+ maximum|(?:input|prompt|total|requested) tokens?.{0,80}exceed/.test(
       lower,
     )
   )

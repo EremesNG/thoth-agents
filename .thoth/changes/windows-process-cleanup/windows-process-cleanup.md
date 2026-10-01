@@ -116,6 +116,21 @@ with all packages developing against Pi 0.99.1.
   check:ci, typecheck, build 0; root test 1204 passed / 4 missing-sibling failures.
   Ubuntu and Node 22.19 left to CI. Live AC-5 follows after merge and restart.
 
+- Live AC-5 (2026-10-01, main 0.5.0 at 0272780 containing the merged change; full Pi
+  restart; settings load all four pi-packages from the main checkout; root PID 63212,
+  quiescent baseline 4 descendants; snapshots by CIM outside Pi's view, excluding the
+  snapshotting chain). Claude child (subagents.json designer model switched temporarily,
+  restored, hash f51fa3f3 unchanged; first attempt invalid: designer explicitly selected
+  inactive agent_browser_electron whose top-level anyOf schema claude-bridge rejects,
+  misclassified as provider_network_error; operator removed inactive tools):
+  task subtask_thoth-designer_1790887829492_cad607c8 running Pi bash; bound set 8
+  (claude.exe 37708 + conhost; bash 68740 > bash 27680 > node 76248 > node 35064 +
+  conhosts); cancel; after 10 s survivors 0 by PID and creation time; history status
+  cancelled. Antigravity child: task subtask_thoth-designer_1790887908871_e3b9d555 running
+  agy native command; bound set 9 (agy.exe 29004 > cmd > node > node, pwsh > node > node,
+  conhosts); cancel; after 10 s survivors 0; history cancelled; no pi-agy cache or private
+  config left.
+
 ## Durable deltas
 
 - None.
@@ -178,7 +193,7 @@ with all packages developing against Pi 0.99.1.
   - Focused check and PASS evidence: workflow YAML review; `pnpm run check:ci`
   - Return milestone: committed
   - Stop / reassessment: none
-- [ ] AC-5: live and frozen checks
+- [x] AC-5: live and frozen checks
   - Outcome: live cancel leaves no descendants; full checks pass
   - Known entrypoints and skill paths: thoth-archive skill
   - Inputs: AC-1..AC-4

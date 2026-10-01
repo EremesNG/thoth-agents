@@ -68,8 +68,15 @@ with all packages developing against Pi 0.99.1.
 - AC-4: CI adds a `windows-latest` job (Node 22.19, pnpm 11.2.2, frozen install) running
   the three package typechecks and offline tests (claude `test:unit`); the root suite
   stays on Ubuntu. `AGENTS.md` and `docs/agent/testing.md` describe the new job.
-- AC-5: Live manual check after merge and restart: cancelling a running claude-bridge
-  subagent and a running antigravity subagent leaves no claude/agy descendant; frozen
+- AC-5: Live manual check after merge and full Pi restart, on main at the merged commit
+  (record the commit and confirm the loaded package paths point at the main checkout).
+  For each of a claude-bridge subagent and an antigravity subagent: record the task id;
+  wait until its owned subprocess is running (readiness: the provider process is
+  visible and the task reports a running tool or stream); snapshot the full descendant
+  tree of the Pi process (PIDs, names, parent PIDs) before cancel; cancel; after a
+  bounded wait of 10 s, check that none of the snapshotted descendants owned by that
+  task (any name, not only claude/agy) survive and the task persists `cancelled`. A
+  survivor or a non-running provider at cancel time fails AC-5 and blocks archive; frozen
   package checks and root `check:ci`, `typecheck`, `build`, `pnpm test` (known four
   missing-sibling failures only) pass.
 
@@ -81,6 +88,13 @@ with all packages developing against Pi 0.99.1.
 
 ## Decisions
 
+- Plan review round 1 (fresh Oracle): REJECT only on AC-5 vagueness; repaired with
+  loaded-source evidence, readiness, pre-cancel descendant snapshots and a bounded
+  survivor check. Cautions adopted: preserve timeout/output-cap outcomes while awaiting
+  termination and use POSIX detached groups for short-lived paths (AC-1); 0.99.1 bump
+  fallout is `ExtensionToolContext` typing in `approval-gate.ts` and tests (AC-2); AC-3
+  measures survivors rather than inferring cleanup from `cancelled` (Pi's taskkill is
+  asynchronous) and uses a deterministic offline bash tool-call fixture provider.
 - Reuse the existing antigravity helper rather than a new cross-package utility; Pi's
   bash tool already owns its own tree kill.
 - Tests that need processes use `node` scripts (not bash/sleep) so they run on Windows
@@ -138,7 +152,7 @@ with all packages developing against Pi 0.99.1.
   - Stop / reassessment: the test exposes a defect needing a design decision
 - [ ] AC-4: Windows CI job and docs
   - Outcome: CI runs package checks on Windows
-  - Known entrypoints and skill paths: `.github/workflows/ci.yml`, `AGENTS.md` (Change and verification flow), `docs/agent/testing.md`, progressive-context-router skill
+  - Known entrypoints and skill paths: `.github/workflows/ci.yml` (one step per check so a failing command cannot be masked by multiline PowerShell), `AGENTS.md` (edited after evidence-only-discovery-roles' AGENTS.md edit; serialized) (Change and verification flow), `docs/agent/testing.md`, progressive-context-router skill
   - Inputs: Clarifications
   - Dependencies: none
   - Output: workflow + docs
@@ -157,7 +171,7 @@ with all packages developing against Pi 0.99.1.
   - Owner: root
   - Writes: none
   - Interface boundaries: operator config restored by hash after any temporary profile switch
-  - Focused check and PASS evidence: process listing after cancel; frozen checks
+  - Focused check and PASS evidence: per-task pre-cancel descendant snapshot and bounded post-cancel survivor check as defined in AC-5; frozen checks
   - Return milestone: fresh Oracle PASS
   - Stop / reassessment: claude descendants survive (then plan a claude-bridge fix)
 

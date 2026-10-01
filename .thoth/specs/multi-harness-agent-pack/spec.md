@@ -486,7 +486,7 @@ Omitted mode MUST run specialists in background while respecting explicit modes,
 
 - **GIVEN** a child running or queued and later completing or stopping, and an overlay possibly open
 - **WHEN** the UI renders, keys are pressed and the session tears down
-- **THEN** metrics including average output speed and status symbols remain truthful, keys reach the focused overlay, dialog or custom UI, root stays interactive and no idle animation timer remains 
+- **THEN** metrics including average output speed and status symbols remain truthful, keys reach the focused overlay, dialog or custom UI, root stays interactive and no idle animation timer remains
 
 ### Requirement: Expose session-owned Pi subagent consumption
 
@@ -497,3 +497,13 @@ The adopted runtime MUST produce Atelier-compatible session references, usage me
 - **GIVEN** runs belonging to distinct root sessions
 - **WHEN** Atelier reads referenced artifacts
 - **THEN** it attributes only each session's own child usage and cost history
+
+### Requirement: Keep discovery roles evidence-only
+
+Explorer and Librarian MUST return facts with evidence, verification, risks and open questions only, MUST NOT recommend fixes, designs, defaults or next actions, and MUST escalate an open question it cannot settle as the question with its possible options and the facts for each option without choosing one. Oracle judgment and Worker/Designer implementation handoffs MUST remain unchanged, and every harness MUST render the same role-specific return contract.
+
+#### Scenario: Keep discovery roles evidence-only
+
+- **GIVEN** an Explorer or Librarian assignment that ends with findings and an open choice it cannot settle
+- **WHEN** the specialist returns in any harness
+- **THEN** its return lists facts and the open question with options and their facts, contains no recommendation or next action, and root decides or asks Oracle

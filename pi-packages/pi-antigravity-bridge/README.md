@@ -1,6 +1,6 @@
-# pi-antigravity-bridge
+# @thoth-agents/pi-antigravity-bridge
 
-A Gemini model provider **and** the `AskAntigravity` delegation tool for [pi](https://github.com/earendil-works/pi), built on Google's official Antigravity binaries: the `agy` CLI by default, or **Google's official ACP server** (opt-in). It registers `antigravity/gemini-*` models in pi's `/model` picker (streaming), and provides the `AskAntigravity` tool for one-shot delegation - the same combined shape as `pi-claude-bridge`.
+A Gemini model provider **and** the `AskAntigravity` delegation tool for [pi](https://github.com/earendil-works/pi), built on Google's official Antigravity binaries: the `agy` CLI by default, or **Google's official ACP server** (opt-in). It registers `antigravity/gemini-*` models in pi's `/model` picker (streaming), and provides the `AskAntigravity` tool for one-shot delegation - the same combined shape as `@thoth-agents/pi-claude-bridge`.
 
 
 If you also have [`@estebanforge/pi-ask-antigravity`](https://github.com/EstebanForge/pi-extensions/tree/main/packages/pi-ask-antigravity) installed, this bridge takes over: pi-ask-antigravity detects the bridge and registers nothing, so the `AskAntigravity` tool is never duplicated.

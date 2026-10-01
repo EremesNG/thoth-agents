@@ -183,8 +183,8 @@ with verified termination, on every other shutdown, including subagent teardown.
   close recorded failed and quit skipped the survivor). Repaired in `91773a4`
   (worker, test-first) as a general invariant: every job keeps its terminator and captured
   descendants across stop/deadline failures, retries, shutdown and reload; leader close
-  only records exit facts while cleanup is pending; handoff/lost-process paths and
-  finalization cannot terminalize pending cleanup; worker audited every terminal-status
+  only records exit facts while cleanup is still running; handoff/lost-process paths and
+  finalization cannot terminalize unfinished cleanup; worker audited every terminal-status
   write and terminator release. Six regressions red then green. Package typecheck 0; two
   suite runs 198 passed / 4 skipped; pi-subagents suite unchanged.
 

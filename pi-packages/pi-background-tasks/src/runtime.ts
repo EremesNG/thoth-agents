@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendLine, appendWatchResult, retainLogTail, resolveMaxLogBytes } from "./logs.js";
 import { evaluateCondition, validateCondition } from "./conditions.js";
 import { CommandTerminationError, processExists, startCommandOnce, spawnCommand, type RunningCommand } from "./process.js";
-import { terminateProcessTree } from "./process-termination.js";
+import { createProcessTreeTerminator } from "./process-termination.js";
 import { currentProcessStartToken, readProcessStartToken } from "./process-identity.js";
 import { ensureTaskDir, logPathFor, nextTaskId, readMeta, writeMeta } from "./registry.js";
 import { failurePath, readTaskIntent, recordExitFailure, recordFailure, recoverDeclaredOperation, recoverFailure, resumeFailureAttention, scheduleFailureAttention, stopFailureAttention, suspendFailureAttention, terminalFailureAttention } from "./failures.js";
@@ -67,9 +67,48 @@ export interface WatchTaskParams extends CommandSpec, TaskIntentParams {
 }
 interface InFlightPoll extends RunningCommand { origin: string }
 const POLL_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.poll-handoff");
-const shared = globalThis as typeof globalThis & { [POLL_HANDOFF_KEY]?: Map<string, InFlightPoll> };
+interface OwnedProcessTree {
+  origin: string;
+  terminate(): Promise<void>;
+  readonly cleanupPending: boolean;
+  readonly terminationRequested: boolean;
+}
+const PROCESS_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.process-handoff");
+const shared = globalThis as typeof globalThis & {
+  [POLL_HANDOFF_KEY]?: Map<string, InFlightPoll>;
+  [PROCESS_HANDOFF_KEY]?: Map<string, OwnedProcessTree>;
+};
 const inFlightPolls = shared[POLL_HANDOFF_KEY] ??= new Map<string, InFlightPoll>();
+const processTrees = shared[PROCESS_HANDOFF_KEY] ??= new Map<string, OwnedProcessTree>();
 const pollOrigin = (meta: BackgroundTaskMeta) => JSON.stringify([meta.logPath, meta.callbackOrigin?.cwd ?? meta.cwd, meta.callbackOrigin?.sessionId]);
+
+/** Keep captured descendants/groups through failures and same-origin reloads. */
+function processTreeFor(meta: BackgroundTaskMeta): OwnedProcessTree | undefined {
+  let tree = processTrees.get(meta.id);
+  if (tree && tree.origin !== pollOrigin(meta)) throw new Error("Process tree belongs to another origin");
+  if (!tree && meta.pid) {
+    const terminateTree = createProcessTreeTerminator(meta.pid, meta.pgid);
+    let termination: Promise<void> | undefined;
+    let cleanupPending = false;
+    let terminationRequested = false;
+    tree = {
+      origin: pollOrigin(meta),
+      get cleanupPending() { return cleanupPending; },
+      get terminationRequested() { return terminationRequested; },
+      terminate() {
+        if (termination) return termination;
+        terminationRequested = cleanupPending = true;
+        termination = terminateTree().then(() => { cleanupPending = false; }, (error) => {
+          termination = undefined;
+          throw error;
+        });
+        return termination;
+      },
+    };
+    processTrees.set(meta.id, tree);
+  }
+  return tree;
+}
 
 function createTaskRuntime(owner: ExtensionAPI) {
 
@@ -195,6 +234,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
       ...intent,
     };
     writeMeta(meta);
+    processTreeFor(meta);
     scheduleLogRetention(id);
     spawned.child.unref();
     spawned.child.on("close", (exitCode, signal) => {
@@ -203,7 +243,10 @@ function createTaskRuntime(owner: ExtensionAPI) {
         const latest = readMeta(id);
         if (!latest) return;
         enforceLogRetention(latest);
-        if (isTerminalStatus(latest.status) || latest.stopRequestedAt) return;
+        if (isTerminalStatus(latest.status)) return;
+        latest.lastExitCode = exitCode;
+        latest.lastSignal = signal;
+        if (latest.stopRequestedAt || processTrees.get(id)?.terminationRequested) { writeMeta(latest); return; }
         if (exitCode !== 0) recordExitFailure(latest, "execution", `Process exited with code ${exitCode ?? "unknown"}${signal ? ` (${signal})` : ""}`, exitCode, "close", { at: Date.now() });
         else {
           recoverFailure(latest, "execution", "close");
@@ -211,10 +254,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
         }
         latest.status = exitCode === 0 ? "succeeded" : "failed";
         latest.endedAt = Date.now();
-        latest.lastExitCode = exitCode;
-        latest.lastSignal = signal;
         latest.result = { exitCode, signal };
         writeMeta(latest);
+        processTrees.delete(id);
         void notifyTerminal(pi, latest, getActiveSession);
     });
     if (meta.deadlineAt) scheduleProcessTimeout(pi, id, meta.deadlineAt, getActiveSession);
@@ -349,7 +391,11 @@ function createTaskRuntime(owner: ExtensionAPI) {
         void notifyTerminal(pi, meta, getActiveSession);
         return;
       }
-      if (meta.pid && !processExists(meta.pid)) {
+      if (processTrees.get(id)?.terminationRequested || meta.stopRequestedAt) {
+        // The leader may be gone while a captured orphan still needs cleanup.
+        deadSince = undefined;
+        delayMs = Math.min(HANDOFF_MAX_CHECK_MS, delayMs * 2);
+      } else if (meta.pid && !processExists(meta.pid)) {
         deadSince ??= Date.now();
         if (Date.now() - deadSince >= HANDOFF_LOST_GRACE_MS) {
           stopHandoff(id);
@@ -380,12 +426,14 @@ function createTaskRuntime(owner: ExtensionAPI) {
   }
 
   function markProcessLost(pi: ExtensionAPI, meta: BackgroundTaskMeta, getActiveSession?: ActiveSessionProvider): void {
+    if (processTrees.get(meta.id)?.terminationRequested || meta.stopRequestedAt) return;
     meta.status = "failed";
     meta.endedAt = Date.now();
     meta.error = "process is no longer alive; exit result was not captured by this pi session";
     meta.result = { reason: meta.error };
     recordFailure(meta, "execution", meta.error, "lost", { incomplete: true });
     writeMeta(meta);
+    processTrees.delete(meta.id);
     void notifyTerminal(pi, meta, getActiveSession);
   }
 
@@ -414,7 +462,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     if (meta.kind === "process" && meta.pid) {
       try {
-        await terminateProcessTree(meta.pid, meta.pgid);
+        await processTreeFor(meta)!.terminate();
       } catch (error) {
         recordStopError(meta, error instanceof Error ? error.message : String(error));
         if (meta.deadlineAt && meta.deadlineAt > Date.now()) {
@@ -424,18 +472,24 @@ function createTaskRuntime(owner: ExtensionAPI) {
       }
     }
 
+    const latest = readMeta(id);
+    if (!latest || isTerminalStatus(latest.status)) return latest;
+    processTrees.delete(id);
     stopFailureAttention(id, owner);
-    meta.status = "cancelled";
-    meta.stopError = undefined;
-    meta.endedAt = Date.now();
-    meta.result = { reason: "cancelled" };
-    writeMeta(meta);
+    latest.status = "cancelled";
+    latest.stopError = undefined;
+    latest.endedAt = Date.now();
+    latest.result = { reason: "cancelled" };
+    writeMeta(latest);
     stopLogRetention(id);
-    void notifyTerminal(pi, meta, getActiveSession);
-    return meta;
+    void notifyTerminal(pi, latest, getActiveSession);
+    return latest;
   }
 
   function recordStopError(meta: BackgroundTaskMeta, message: string): void {
+    // Preserve leader exit facts written while termination was in flight.
+    const latest = readMeta(meta.id) ?? meta;
+    Object.assign(meta, latest);
     meta.stopRequestedAt = undefined;
     meta.stopError = message;
     meta.error = message;
@@ -633,6 +687,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
     pi: ExtensionAPI,
     getActiveSession?: ActiveSessionProvider,
   ): void {
+    // No result, deadline, or stale close handler may outrun tree verification.
+    if (isTerminalStatus(readMeta(meta.id)?.status ?? meta.status) ||
+        processTrees.get(meta.id)?.cleanupPending || inFlightPolls.get(meta.id)?.cleanupPending) return;
     stopFailureAttention(meta.id, owner);
     if (terminal.status === "timed_out") recordFailure(meta, "timeout", terminal.reason, "deadline", { category: "timeout" });
     if (terminal.status === "succeeded") recoverDeclaredOperation(meta);
@@ -653,6 +710,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
       meta.lastState = extractLastState(terminal.commandResult);
     }
     writeMeta(meta);
+    processTrees.delete(meta.id);
     clearWatchTimer(meta.id);
     clearProcessTimeout(meta.id);
     stopLogRetention(meta.id);
@@ -725,7 +783,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
     {
       if (meta.pid) {
         try {
-          await terminateProcessTree(meta.pid, meta.pgid);
+          await processTreeFor(meta)!.terminate();
         } catch (error) {
           reason = `timeout; could not terminate local process tree: ${readableError(error)}`;
           // The task is still running: this is a stop failure, reported as such.
@@ -736,7 +794,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
     }
 
     const latest = readMeta(id);
-    if (!latest || latest.status !== "running") return;
+    if (!latest || latest.status !== "running" || latest.stopRequestedAt) return;
     latest.error = meta.error;
     finalize(latest, { status: "timed_out", reason }, pi, getActiveSession);
   }

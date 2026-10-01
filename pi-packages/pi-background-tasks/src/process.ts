@@ -381,8 +381,10 @@ export function processExists(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // Only ESRCH proves absence. Permission/unknown probe failures must not
+    // let cleanup declare a possibly-live tree terminated.
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
   }
 }
 

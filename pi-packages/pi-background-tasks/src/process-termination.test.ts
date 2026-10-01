@@ -1,9 +1,9 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { terminateProcessTree } from "./process-termination.js";
 
 vi.mock("node:child_process", async (original) => ({
-  ...await original<typeof import("node:child_process")>(), execFileSync: vi.fn(),
+  ...await original<typeof import("node:child_process")>(), execFileSync: vi.fn(), spawnSync: vi.fn(),
 }));
 const platform = process.platform;
 afterEach(() => {
@@ -11,7 +11,18 @@ afterEach(() => {
   vi.restoreAllMocks(); vi.clearAllMocks();
 });
 
-describe("verified POSIX termination", () => {
+describe("verified tree termination", () => {
+  it("does not treat a permission-denied liveness probe as verified termination", async () => {
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    vi.mocked(execFileSync).mockReturnValue(JSON.stringify([{ ProcessId: 950001, ParentProcessId: process.pid }]));
+    vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("Access is denied"), { code: "EPERM" });
+    });
+    vi.mocked(spawnSync).mockReturnValue({ status: 5, stderr: "Access is denied." } as any);
+    await expect(terminateProcessTree(950001)).rejects.toThrow("taskkill failed with exit 5 for PID 950001");
+  });
+
+
   it("escalates orphaned group members and their TERM-resistant descendants in separate groups after the leader exits", async () => {
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
     const live = new Set([910001, 910002]);

@@ -253,7 +253,7 @@ describe("stopProcessGroup", () => {
   it("accepts a taskkill race when the process has already exited", () => {
     fakePlatform("win32");
     mockSpawnSync.mockReturnValue({ status: 128, stderr: "not found" } as ReturnType<typeof spawnSync>);
-    vi.spyOn(process, "kill").mockImplementation(() => { throw new Error("process gone"); });
+    vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error("process gone"), { code: "ESRCH" }); });
 
     expect(() => stopProcessGroup(4242)).not.toThrow();
   });

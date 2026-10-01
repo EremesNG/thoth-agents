@@ -168,6 +168,15 @@ with verified termination, on every other shutdown, including subagent teardown.
   root control job bg_1crw_muq0q2yt_2 (15776 + 77564) stayed alive throughout and was then
   stopped by root.
 
+- Final verification round 1 (fresh Oracle subtask_thoth-oracle_1790888523859_eed6d6f8):
+  FAIL only on AC-3 — a failed watch termination dropped poll ownership (a retry recorded
+  cancelled without verifying the live tree) and a failed timeout cleanup marked the watch
+  terminal so shutdown skipped it; AC-1, AC-2, AC-4..AC-6 PASS, spec baseline matched.
+  Repaired in `31fadad` (worker, test-first): command handle and captured
+  descendant/group IDs stay owned and retriable until termination verifies; two
+  fault-injection regressions red then green. Package typecheck 0; two suite runs 192
+  passed / 4 skipped. Deployed Pi needs a full restart to load it.
+
 ## Durable deltas
 
 - `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session, MUST keep a session's running jobs across that session's reload, and MUST stop every running job of the session, including in-flight watch commands, with verified process-tree termination on any other session shutdown, including subagent teardown, without affecting jobs of other sessions.

@@ -189,7 +189,7 @@ Worker and Designer keep their implementation next step.
 
 **Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
-**Implementation**: PENDING
+**Implementation**: AUTHORIZED
 
 The user explicitly selected Review plan with Oracle. Round 1 returned [REJECT] (step
 budget next target; asset regeneration ordering), repaired here; round 2 fresh Oracle

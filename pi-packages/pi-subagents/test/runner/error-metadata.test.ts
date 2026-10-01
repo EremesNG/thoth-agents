@@ -275,6 +275,10 @@ describe('structured error metadata contract', () => {
     'Maximum retries reached',
     'Failed to load maximum context configuration',
     "This model's maximum context length is 8192 tokens. Request could not be parsed: invalid JSON.",
+    'Failed to retrieve context window metadata: retry limit exceeded.',
+    'Failed to count input tokens: retry budget exceeded.',
+    'Context window was not exceeded; invalid JSON in request body.',
+    'Input does not exceed the context window; request rejected.',
   ])('does not infer context overflow from incidental words: %s', (message) => {
     expect(classifyThrownError(new Error(message)).category).toBe(
       'provider_api_error',

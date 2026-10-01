@@ -270,6 +270,19 @@ export function deriveErrorString(metadata: SubagentErrorMetadata): string {
     : safeMessage(normalized.category, normalized.details);
 }
 
+// Contiguous, affirmative capacity phrasings only. Proximity matching between
+// words such as "context", "tokens" and "exceeded" misreads unrelated failures
+// (retry budgets, metadata lookups, negated statements) as overflow.
+const CONTEXT_OVERFLOW_PATTERNS: readonly RegExp[] = [
+  /\bcontext[_ ](?:length|window)[_ ]exceeded\b/,
+  /\bcontext (?:length|window) exceeds\b/,
+  /(?<!not |n't )\bexceeds? (?:the )?(?:model's )?(?:maximum )?context (?:length|window)\b/,
+  /\bcontext_overflow\b/,
+  /\btoo many tokens\b/,
+  /maximum context length is \d+ tokens\. however, you requested \d+ tokens/,
+  /\bprompt is too long: \d+ tokens > \d+ maximum\b/,
+];
+
 export function classifyThrownError(
   error: unknown,
   context: {
@@ -305,11 +318,7 @@ export function classifyThrownError(
     )
   )
     category = 'provider_auth_error';
-  else if (
-    /context[_ -](?:length|window|limit).{0,80}exceed|exceed.{0,80}context[_ -](?:length|window|limit)|context[_ -]overflow|too many tokens|maximum context length is \d+ tokens.{0,80}you requested \d+ tokens|prompt is too long: \d+ tokens > \d+ maximum|(?:input|prompt|total|requested) tokens?.{0,80}exceed/.test(
-      lower,
-    )
-  )
+  else if (CONTEXT_OVERFLOW_PATTERNS.some((pattern) => pattern.test(lower)))
     category = 'context_overflow';
   else if (/rate.?limit|quota|429|too many requests/.test(lower))
     category = 'provider_rate_limit';

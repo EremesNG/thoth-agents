@@ -68,10 +68,17 @@ Worker and Designer keep their implementation next step.
   a `conclusion` is a factual finding, not advice. Open questions go to
   `openQuestions` as the question, the possible options and the facts for each option,
   without recommending one. Pi and non-Pi blocked-question wording for these two roles
-  drops "recommended default"; the other three roles keep it.
+  drops "recommended default"; the other three roles keep it. The configured step
+  budget (`renderStepBudget`, `prompt-sections.ts:458`, "return partial evidence with
+  the next target") is role-scoped: discovery roles return partial evidence and what
+  remains unexamined, without a next target; other roles keep current wording; tests
+  cover configured `steps` for all five roles.
 - AC-3: Every harness output reflects AC-1/AC-2 (OpenCode, Pi, Codex, Claude Code)
   with tests pinning: discovery roles lack `nextAction`/recommended default and carry
-  the evidence-only rule; Oracle/Worker/Designer unchanged; fixtures updated.
+  the evidence-only rule; Oracle/Worker/Designer unchanged; fixtures updated. Committed
+  generated assets (`plugin/**`, `pi/**`, including Pi provenance hashes) are
+  refreshed by root with `pnpm run build` after the worker finishes, so
+  `generate-integration-packages.test.ts` equality passes.
 - AC-4: Repository instructions: `AGENTS.md` subagent return contract and line 161,
   `docs/agent/agents-and-delegation.md`, `docs/agent/task-template.md` distinguish
   discovery roles (facts only) from Oracle/Worker/Designer, using the
@@ -89,6 +96,9 @@ Worker and Designer keep their implementation next step.
 
 - Represent per-role return fields in the canonical pack (single source) rather than
   per-harness string edits, so all four harnesses stay consistent.
+- Plan review round 1 (fresh Oracle): REJECT — step budget asked discovery roles for a
+  next target; worker-owned full-test milestone preceded required asset generation.
+  Repaired in AC-2/AC-3, Tasks and Plan (root regenerates assets).
 - Keep `openQuestions` for discovery roles; it carries options and facts, no default.
 - The ADDED requirement does not overlap existing ones: `Preserve the six-role contract`
   only requires preserving whatever return contracts exist, and `Expose routable role
@@ -102,11 +112,15 @@ Worker and Designer keep their implementation next step.
 ## Plan
 
 1. Worker (sole writer of `src/agents/**`, `src/harness/**`): test-first per-role
-   return contract in `agent-pack.ts`, prompt sections, routing/delegation guidance,
-   fixtures and tests for all harnesses.
+   return contract in `agent-pack.ts`, prompt sections incl. step budget,
+   routing/delegation guidance, fixtures and tests for all harnesses; focused checks
+   only (generated-asset equality is expected to fail until step 3).
 2. Root (parallel, disjoint files; progressive-context-router skill): `AGENTS.md`,
    `docs/agent/agents-and-delegation.md`, `docs/agent/task-template.md`.
-3. Root: full checks, commit, fresh Oracle verification, archive, merge.
+3. Root (after worker): `pnpm run build` to refresh committed `plugin/**` and `pi/**`
+   generated assets and Pi provenance hashes; review that the asset diff is limited to
+   the contract lines.
+4. Root: full checks, commit, fresh Oracle verification, archive, merge.
 
 ## Tasks
 
@@ -124,14 +138,14 @@ Worker and Designer keep their implementation next step.
   - Stop / reassessment: the contract array is consumed by a public/config interface that requires one shared list
 - [ ] AC-2: evidence-only rule and blocked questions
   - Outcome: discovery prompts carry the rule; no recommended default for them
-  - Known entrypoints and skill paths: `src/agents/prompt-sections.ts:400,409`, `src/agents/explorer.ts`, `src/agents/librarian.ts`, tdd skill
+  - Known entrypoints and skill paths: `src/agents/prompt-sections.ts:400,409,458`, `src/agents/explorer.ts`, `src/agents/librarian.ts`, tdd skill
   - Inputs: AC-1
   - Dependencies: AC-1 (same writer)
   - Output: code + tests
   - Owner: worker
   - Writes: `src/agents/**`
   - Interface boundaries: Oracle/Worker/Designer wording unchanged
-  - Focused check and PASS evidence: rendering tests for Pi and non-Pi dialects of all five roles
+  - Focused check and PASS evidence: rendering tests for Pi and non-Pi dialects of all five roles, with and without configured `steps`
   - Return milestone: tests green
   - Stop / reassessment: none
 - [ ] AC-3: harness outputs and fixtures
@@ -140,11 +154,11 @@ Worker and Designer keep their implementation next step.
   - Inputs: AC-1, AC-2
   - Dependencies: AC-2
   - Output: tests/fixtures
-  - Owner: worker
-  - Writes: `src/harness/**`
+  - Owner: worker (source/fixtures); root (generated `plugin/**`, `pi/**` via `pnpm run build`)
+  - Writes: `src/harness/**`; root: `plugin/**`, `pi/**`
   - Interface boundaries: unrelated generated content unchanged
-  - Focused check and PASS evidence: adapter/fixture tests green; diff of fixtures limited to contract lines
-  - Return milestone: `pnpm test` green except known four failures
+  - Focused check and PASS evidence: adapter/fixture and agent/harness focused tests green; diff of fixtures limited to contract lines
+  - Return milestone: focused tests green (generated-asset equality left to root build)
   - Stop / reassessment: fixture drift beyond the contract lines
 - [ ] AC-4: repository instructions
   - Outcome: instructions distinguish discovery roles from others

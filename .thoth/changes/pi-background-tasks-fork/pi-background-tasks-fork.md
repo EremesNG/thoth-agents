@@ -136,6 +136,23 @@ with verified termination, on every other shutdown, including subagent teardown.
   per-instance runtime state makes lifecycle passthrough safe for concurrent sessions.
 - Keep tool names unchanged; they stay eligible under standalone `*`.
 
+- Implementation checkpoint (root, 2026-10-01): `a41144d` (worker A: vendored from
+  86876e8 with provenance/MIT, owned shared libs, Pi 0.99.1/Vitest 4; trimmed remote,
+  sandbox and goal), `cda1fef` (worker A: reload keep + origin poll adoption; non-reload
+  stop of jobs and in-flight watches with verified tree termination; per-instance
+  runtime/navigator/attention state; windowsHide on every spawn; tests found and fixed two
+  POSIX descendant-discovery gaps and an overdue-adoption leak), `ecc6568` (worker B:
+  default passthrough + dedicated bounded fork shutdown phase before generic teardown;
+  red run left four survivors behind a hanging handler, green zero; docs), `01d6514` and
+  `3a5159d` (root: Biome exclusion, CI steps on Ubuntu and Windows, AGENTS.md, testing,
+  installation and packaging docs, adapter default passthrough guidance test-first).
+  Out of scope, recorded: Windows Git Bash trampoline mangles escaped backslash paths
+  inside multiline `node -e` arguments (upstream behavior). Frozen checks: frozen install
+  0; pi-subagents 0 / 525 passed, 1 skipped; antigravity 0 / 571 passed, 9 skipped;
+  background-tasks 0 / 190 passed, 4 skipped (two real POSIX termination cases run only
+  on POSIX CI); claude 0 / unit 290; root check:ci, typecheck, build 0 (no generated
+  drift); root test 1208 passed / 4 missing-sibling failures. Live AC-6 follows.
+
 ## Durable deltas
 
 - `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session, MUST keep a session's running jobs across that session's reload, and MUST stop every running job of the session, including in-flight watch commands, with verified process-tree termination on any other session shutdown, including subagent teardown, without affecting jobs of other sessions.
@@ -153,7 +170,7 @@ with verified termination, on every other shutdown, including subagent teardown.
 
 ## Tasks
 
-- [ ] AC-1: vendor and tooling
+- [x] AC-1: vendor and tooling
   - Outcome: package builds and tests in the workspace
   - Known entrypoints and skill paths: upstream `packages/pi-better-background-tasks` at `86876e8`, prior vendoring record `.thoth/changes/archive/2026-09-30-pi-bridges-adoption/pi-bridges-adoption.md`
   - Inputs: Exploration
@@ -165,7 +182,7 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Focused check and PASS evidence: frozen install; package typecheck and test on Windows
   - Return milestone: green
   - Stop / reassessment: a hidden runtime dependency on a sibling monorepo package
-- [ ] AC-2: trim to local jobs
+- [x] AC-2: trim to local jobs
   - Outcome: remote, sandbox and goal code removed
   - Known entrypoints and skill paths: `src/remote-task-preset.ts`, `src/shared-ssh-core/**`, `src/shared-sandbox-core.ts`, `src/sandbox.ts`, `src/goal-provider.ts`, `src/tools.ts`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
   - Inputs: AC-1
@@ -177,7 +194,7 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Focused check and PASS evidence: suite green on Windows; no remote/sandbox/goal references remain
   - Return milestone: green
   - Stop / reassessment: local paths depend on removed modules beyond simple extraction
-- [ ] AC-3: lifecycle and verified termination
+- [x] AC-3: lifecycle and verified termination
   - Outcome: reload keeps jobs; other shutdowns stop them verifiably
   - Known entrypoints and skill paths: `src/index.ts:25-29`, `src/runtime.ts:28-44,130-146,570-614,728-800,830-858,1061-1150`, `src/process.ts:178-259,352-392`, `src/navigator-provider.ts:21-43`, `src/shared-navigator.ts:111,209-238`, tdd skill
   - Inputs: AC-2
@@ -189,7 +206,7 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Focused check and PASS evidence: tests listed in AC-3 pass on Windows
   - Return milestone: green
   - Stop / reassessment: per-instance state conflicts with reload handoff semantics
-- [ ] AC-4: child coverage
+- [x] AC-4: child coverage
   - Outcome: child jobs stop with the child
   - Known entrypoints and skill paths: `pi-packages/pi-subagents/src/config.ts:23-26`, `src/runner/sdk-runner.ts:272-308`, `src/runner/session-teardown.ts:12-38`, `test/runner/providers-real-sdk.test.ts`, tdd skill
   - Inputs: AC-3
@@ -201,7 +218,7 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Focused check and PASS evidence: child completion/cancel/error stop child jobs; sibling and root jobs unaffected; with a hanging preceding shutdown handler the child's multiple jobs still stop before disposal
   - Return milestone: green
   - Stop / reassessment: passthrough exposes prompt-shaping behavior from the package
-- [ ] AC-5: docs and CI
+- [x] AC-5: docs and CI
   - Outcome: docs and CI cover the fork
   - Known entrypoints and skill paths: `biome.json`, `.github/workflows/ci.yml`, `AGENTS.md`, `src/harness/adapters/pi.ts:52` + `pi.test.ts` (root, after worker B), `docs/installation.md:396-399`, `docs/agent/harness-packaging.md:40,54-58`, pi-subagents README:5,151 and SKILL:182 (worker B), package README (worker A)
   - Inputs: Clarifications

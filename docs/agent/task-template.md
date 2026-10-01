@@ -57,6 +57,8 @@ Do not list a command as run if it was not run.
 
 ## Next action
 
-[One specific next step.]
+[One specific next step. Omit this section for Explorer and Librarian, which
+report facts only; list their open choices with the facts for each option under
+Questions and risks.]
 
 Do not attach full logs, whole files, secrets, or unfiltered search transcripts.

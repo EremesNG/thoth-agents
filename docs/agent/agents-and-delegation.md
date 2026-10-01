@@ -65,8 +65,12 @@ definitions and applies overrides; harness adapters translate the same intent.
   directly to its writer without a discovery relay.
 - Root loads only the current work operation from bundled skills instead of
   delegating merely to change prompts.
-- Children return conclusions, localized evidence, verification, uncertainty,
-  open questions and next action rather than raw dumps. Root does not duplicate
+- Children return conclusions, localized evidence, verification, uncertainty and
+  open questions rather than raw dumps. Explorer and Librarian report facts only:
+  no recommended fixes, designs, defaults or next actions; an open question they
+  cannot settle lists its options and the facts for each without choosing one.
+  Oracle adds independent judgment; Worker and Designer add the next
+  implementation action. Root does not duplicate
   delegated discovery before, during or after the assignment; unsupported claims
   receive targeted evidence requests or bounded inspection of identified
   evidence. Mandatory independent verification remains intact.

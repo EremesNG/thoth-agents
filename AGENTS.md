@@ -157,9 +157,9 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   only those invalidated by edits. Reconcile background commands before returning;
   late notifications must preserve the substantive handoff. See the
   [execution guidance](skills/thoth-sdd/references/phases/implement.md).
-- Do not duplicate delegated discovery. Request conclusions, localized evidence,
-  uncertainty and next action; target missing support instead of rereading every
-  file. Bounded evidence inspection for root decisions/recovery and mandatory
+- Do not duplicate delegated discovery. Request conclusions, localized evidence
+  and uncertainty (plus next action from Oracle, Worker and Designer only); target
+  missing support instead of rereading every file. Bounded evidence inspection for root decisions/recovery and mandatory
   independent verification remain valid. Coordination artifacts must not hide
   source or log dumps.
 - Keep delegation depth one, one writer per mutable surface, and fresh specialist
@@ -231,8 +231,15 @@ and before a PR, keep this applicable local pre-merge order:
 ## Subagent return contract
 
 Return the conclusion, inspected paths and symbols, relevant tests or commands,
-open questions, risks, and the recommended next action. Do not return full logs,
-whole files, or unfiltered search transcripts.
+open questions, and risks. Do not return full logs, whole files, or unfiltered
+search transcripts.
+
+- Explorer and Librarian report facts only: no recommended fixes, designs,
+  defaults or next actions. An open question they cannot settle is returned as the
+  question, its possible options and the facts for each option, without choosing
+  one; root decides or asks Oracle.
+- Oracle adds its independent judgment and recommendations; Worker and Designer
+  add the next implementation action.
 
 ## Definition of done
 

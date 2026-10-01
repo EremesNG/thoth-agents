@@ -922,29 +922,29 @@ describe('config and workflow loading', () => {
         'fusion_validate',
       ],
     },
-  ])(
-    'keeps delegation tools selectable through $pattern',
-    ({ pattern, expected }) => {
-      expect(
-        expandToolPatterns(
-          [pattern],
-          [
-            'read',
-            'bg_delegate',
-            'bg_run_pi_attested',
-            'bg_result',
-            'fusion_reason',
-            'fusion_investigate',
-            'fusion_research',
-            'fusion_validate',
-            'subagent_run',
-            'ask_user_question',
-            'todo',
-          ],
-        ),
-      ).toEqual(expected);
-    },
-  );
+  ])('keeps delegation tools selectable through $pattern', ({
+    pattern,
+    expected,
+  }) => {
+    expect(
+      expandToolPatterns(
+        [pattern],
+        [
+          'read',
+          'bg_delegate',
+          'bg_run_pi_attested',
+          'bg_result',
+          'fusion_reason',
+          'fusion_investigate',
+          'fusion_research',
+          'fusion_validate',
+          'subagent_run',
+          'ask_user_question',
+          'todo',
+        ],
+      ),
+    ).toEqual(expected);
+  });
 
   it('treats * mixed with other selectors as an ordinary active-only glob', () => {
     const delegationTools = [
@@ -973,15 +973,17 @@ describe('config and workflow loading', () => {
     ).toEqual(['read', ...delegationTools]);
   });
 
-  it.each(['bg_run', 'bg_status', 'bg_logs', 'bg_kill'])(
-    'keeps shell task tool %s selectable under standalone *',
-    (toolName) => {
-      expect(expandToolPatterns(['*'], ['read', toolName])).toEqual([
-        'read',
-        toolName,
-      ]);
-    },
-  );
+  it.each([
+    'bg_run',
+    'bg_status',
+    'bg_logs',
+    'bg_kill',
+  ])('keeps shell task tool %s selectable under standalone *', (toolName) => {
+    expect(expandToolPatterns(['*'], ['read', toolName])).toEqual([
+      'read',
+      toolName,
+    ]);
+  });
 
   it('preserves removed selectors for an explicit launch diagnostic rather than silently using defaults', () => {
     fs.writeFileSync(

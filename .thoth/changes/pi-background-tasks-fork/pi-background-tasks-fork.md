@@ -297,7 +297,7 @@ Windows, command jobs run in PowerShell 7.
 ## Durable deltas
 
 - `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST on Windows stop every running job of the session, including in-flight watch commands, on any other session shutdown, subagent teardown or Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run Windows command jobs in PowerShell 7, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
-  - GIVEN running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild; WHEN one root reloads, the subagent ends, the job leader exits, or the root quits or (on Windows) its process dies; THEN on Windows reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched, while on POSIX the same triggers attempt TERM, a bounded wait, KILL and ESRCH verification of each job's group, subject to the documented limits.
+  - GIVEN running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild; WHEN one root reloads, the subagent ends, the job leader exits, or the root quits or (on Windows) its process dies; THEN on Windows reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched, while on POSIX the non-reload cleanup triggers attempt TERM, a bounded wait, KILL and ESRCH verification of each job's group, subject to the documented limits.
 
 ## Plan
 
@@ -410,9 +410,16 @@ Windows, command jobs run in PowerShell 7.
 
 ## Authorization
 
-**Plan review**: PENDING
+**Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: PENDING
+
+Replan (2026-10-01): the user explicitly selected Review plan with Oracle. Replan rounds
+1-3 returned [REJECT] (POSIX crash/PGID contracts, impossible anchor, then POSIX-scope
+wording), repaired here; round 4 fresh Oracle subtask_thoth-oracle_1790898132864_06ba3783
+returned [OKAY]. Its wording caution (POSIX scenario uses non-reload cleanup triggers) was
+applied. Cautions: keep the real-host helper-feasibility checkpoint first; rerun child
+real-SDK tests after containment rewiring.
 
 Before the 2026-10-01 replan: the user explicitly selected Review plan with Oracle. Round 1 returned [REJECT] (shared
 navigator state, reload poll handoff, best-effort child teardown), repaired here; round 2

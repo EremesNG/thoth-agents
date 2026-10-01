@@ -106,8 +106,9 @@ with verified termination, on every other shutdown, including subagent teardown.
   tests in pi-subagents, including a hanging preceding handler and multiple jobs.
 - AC-5: Docs and CI: package README (provenance, trimmed scope, lifecycle and limits),
   pi-subagents README/skill, `docs/installation.md`, `docs/agent/harness-packaging.md`
-  name the fork for shell jobs; the Ubuntu and Windows CI jobs check the package;
-  AGENTS.md CI description updated.
+  name the fork for shell jobs; the root Pi adapter guidance default passthrough list
+  (`src/harness/adapters/pi.ts:52`) and its test include the fork; the Ubuntu and Windows
+  CI jobs check the package; AGENTS.md CI description updated.
 - AC-6: Live, after merge, operator settings switch (backup first, explicit
   confirmation) and full Pi restart: a root job survives `/reload` and delivers once;
   `/quit` (or `/new`) stops a running root job tree (verified from outside Pi by PID and
@@ -202,7 +203,7 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Stop / reassessment: passthrough exposes prompt-shaping behavior from the package
 - [ ] AC-5: docs and CI
   - Outcome: docs and CI cover the fork
-  - Known entrypoints and skill paths: `biome.json`, `.github/workflows/ci.yml`, `AGENTS.md`, `docs/installation.md:396-399`, `docs/agent/harness-packaging.md:40,54-58`, pi-subagents README:5,151 and SKILL:182 (worker B), package README (worker A)
+  - Known entrypoints and skill paths: `biome.json`, `.github/workflows/ci.yml`, `AGENTS.md`, `src/harness/adapters/pi.ts:52` + `pi.test.ts` (root, after worker B), `docs/installation.md:396-399`, `docs/agent/harness-packaging.md:40,54-58`, pi-subagents README:5,151 and SKILL:182 (worker B), package README (worker A)
   - Inputs: Clarifications
   - Dependencies: none for root parts
   - Output: docs/CI
@@ -227,9 +228,19 @@ with verified termination, on every other shutdown, including subagent teardown.
 
 ## Authorization
 
-**Plan review**: PENDING
+**Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
-**Implementation**: PENDING
+**Implementation**: AUTHORIZED
+
+The user explicitly selected Review plan with Oracle. Round 1 returned [REJECT] (shared
+navigator state, reload poll handoff, best-effort child teardown), repaired here; round 2
+fresh Oracle subtask_thoth-oracle_1790873914669_dab9caec returned [OKAY]. The user then
+explicitly chose Implement. Cautions: the AC-4 seam captures the fork's handlers during
+isolation and invokes them once via the public `ExtensionRunner.createContext()` with
+their own bound, deduplicating ordinary emission (enlarging the shared race does not
+satisfy AC-4); explicit passthrough arrays replace defaults, so AC-6 checks the
+effective configuration; the root adapter's hardcoded default list was added to AC-5 at
+the reviewer's caution.
 
 ## Verification
 

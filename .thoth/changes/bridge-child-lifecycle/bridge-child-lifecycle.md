@@ -163,6 +163,16 @@ that starts only when that session actually uses antigravity and cleans up after
   check:ci, typecheck, build 0; root `pnpm test` without Orca CODEX_HOME 1160 passed /
   4 missing-sibling failures; operator claude-bridge.json hash unchanged. Live AC-7
   follows after merge and restart.
+- Live AC-7 (2026-10-01, main 0.5.0 d39367f after full restart, stream-json, agy
+  1.2.14): antigravity child launched agy with a private `--add-dir` and unique
+  server `pi-agy-<id>`, listed only `codegraph` plus its own server (no `pi-bridge-*`),
+  completed `bg_status` through its own server (`ls` correctly refused: native-overlap
+  tool not exposed, upstream behavior); global mcp_config gained no entry and dead
+  `pi-bridge-*` entries were swept; completion and cancel left no agy process, private
+  config dir or owned descriptor cache. Claude child (profile switched temporarily in
+  subagents.json, restored by hash) spawned no agy and registered nothing. Operator
+  confirmed root antigravity works. Antigravity suite leaves `~/.gemini` untouched; two
+  stale `pi-agy-*` caches from interrupted worker runs at 01:00 were removed.
 
 ## Durable deltas
 
@@ -255,7 +265,7 @@ that starts only when that session actually uses antigravity and cleans up after
   - Focused check and PASS evidence: docs describe the behavior; adapter test pins the trusted-lifecycle wording and no longer asserts the cannot-change-prompt claim
   - Return milestone: docs updated
   - Stop / reassessment: none expected
-- [ ] AC-7: checks and live
+- [x] AC-7: checks and live
   - Outcome: green checks; live behavior confirmed
   - Known entrypoints and skill paths: package filters, root scripts, operator Pi after merge
   - Inputs: AC-1..AC-6

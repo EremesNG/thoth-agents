@@ -124,6 +124,9 @@ subagent's average output speed (tok/s) between context and elapsed instead of t
   passed, 9 skipped; claude-bridge 0 / unit 290; root check:ci, typecheck, build 0;
   root `pnpm test` without Orca CODEX_HOME 1160 passed / 4 missing-sibling failures;
   operator claude-bridge.json hash unchanged. Live AC-5 follows after merge.
+- Live AC-5 (2026-10-01, after merge c58eb68/d39367f and full Pi restart): operator
+  confirmed arrow navigation in `/subagents-model`, the `/subagents-tools` overlay and
+  native dialogs while background subagents ran, and running cards showing tok/s.
 
 ## Durable deltas
 
@@ -192,7 +195,7 @@ subagent's average output speed (tok/s) between context and elapsed instead of t
   - Focused check and PASS evidence: README lists the new metric set and focus behavior
   - Return milestone: docs updated
   - Stop / reassessment: none expected
-- [ ] AC-5: checks and live
+- [x] AC-5: checks and live
   - Outcome: green checks; live focus and tok/s
   - Known entrypoints and skill paths: package filters, root scripts, operator Pi after merge
   - Inputs: AC-1..AC-4

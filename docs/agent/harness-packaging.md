@@ -36,8 +36,11 @@
   callable while inactive; excluded tools are absent from the child registry.
   Delegation controls use native `model-only` exposure. Live messaging
   distinguishes queued, extension-handled, rejected, and model-consumed input.
-  Its responsibility remains LLM subagent delegation; non-LLM background work
-  belongs to the separate `pi-background-tasks` package.
+  Its responsibility remains LLM subagent delegation; non-LLM shell jobs belong to
+  the vendored `@thoth-agents/pi-background-tasks` (`pi-packages/pi-background-tasks`,
+  a trimmed local-jobs fork of pi-better-background-tasks), which the operator adds
+  to Pi settings; jobs survive `/reload` of their session and stop on any other
+  shutdown, including subagent teardown.
   Generated definitions use supported `model`, `effort`, and `subagent_mode`
   fields; they do not claim fresh-context or depth enforcement. Omitted run mode
   follows the selected definition and configuration, with background as the
@@ -54,8 +57,9 @@
   delegation tools `AskClaude`, `AskAntigravity`, `bg_delegate`,
   `bg_run_pi_attested`, `bg_result`, `fusion_reason`, `fusion_investigate`,
   `fusion_research` and `fusion_validate`. Inactive registered tools are not
-  inherited; ordinary background task tools (`bg_run`, `bg_status`, `bg_logs`,
-  `bg_kill`) remain eligible. These delegation names remain valid explicit choices;
+  inherited; ordinary shell-job tools (`bg_task_*` and `bg_status` of the vendored
+  fork, or `bg_run`, `bg_status`, `bg_logs`, `bg_kill` of the npm package) remain
+  eligible. These delegation names remain valid explicit choices;
   the panel marks inactive choices, retains unavailable explicit names, and
   supports role-default reset. Generated defaults remain explicit tool lists.
   The `*` exclusions are not a sandbox: shell and MCP tools can still launch

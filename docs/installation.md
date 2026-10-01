@@ -395,8 +395,10 @@ maintain a fixed catalog of those tools.
   `subagent_*`, root-only `ask_user_question`/`todo` controls, and delegation tools
   `AskClaude`, `AskAntigravity`, `bg_delegate`, `bg_run_pi_attested`, `bg_result`,
   `fusion_reason`, `fusion_investigate`, `fusion_research` and `fusion_validate`.
-  Inactive registered tools are not inherited. Ordinary background task tools
-  (`bg_run`, `bg_status`, `bg_logs`, `bg_kill`) remain eligible.
+  Inactive registered tools are not inherited. Ordinary shell-job tools remain
+  eligible: those of the vendored `@thoth-agents/pi-background-tasks`
+  (`bg_task_*`, `bg_status`) and, if an operator still uses the npm
+  `pi-background-tasks`, its `bg_run`, `bg_status`, `bg_logs` and `bg_kill`.
   This choice replaces that role's explicit list. Toggling an individual checkbox
   turns it into a current explicit list, ending dynamic inheritance. Registered
   inactive tools are labeled `(inactive)` and can be selected explicitly; saved

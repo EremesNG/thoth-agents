@@ -60,6 +60,11 @@ jobs:
           pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
           pnpm --filter @thoth-agents/pi-antigravity-bridge run test
 
+      - name: Check pi-background-tasks
+        run: |
+          pnpm --filter @thoth-agents/pi-background-tasks run typecheck
+          pnpm --filter @thoth-agents/pi-background-tasks run test
+
       # Offline unit tests only; the package `test` script runs live Claude integrations.
       - name: Check pi-claude-bridge
         run: |
@@ -100,6 +105,12 @@ jobs:
 
       - name: Test pi-antigravity-bridge
         run: pnpm --filter @thoth-agents/pi-antigravity-bridge run test
+
+      - name: Typecheck pi-background-tasks
+        run: pnpm --filter @thoth-agents/pi-background-tasks run typecheck
+
+      - name: Test pi-background-tasks
+        run: pnpm --filter @thoth-agents/pi-background-tasks run test
 
       - name: Typecheck pi-claude-bridge
         run: pnpm --filter @thoth-agents/pi-claude-bridge run typecheck

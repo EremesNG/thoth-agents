@@ -72,10 +72,13 @@ with all packages developing against Pi 0.99.1.
   (record the commit and confirm the loaded package paths point at the main checkout).
   For each of a claude-bridge subagent and an antigravity subagent: record the task id;
   wait until its owned subprocess is running (readiness: the provider process is
-  visible and the task reports a running tool or stream); snapshot the full descendant
-  tree of the Pi process (PIDs, names, parent PIDs) before cancel; cancel; after a
-  bounded wait of 10 s, check that none of the snapshotted descendants owned by that
-  task (any name, not only claude/agy) survive and the task persists `cancelled`. A
+  visible and the task reports a running tool or stream). Run the two tasks serially
+  with Pi otherwise quiescent. Snapshot the Pi descendant tree (PIDs, names, parent
+  PIDs, creation times) before each task starts and again just before cancel; bind the
+  non-empty pre-cancel-minus-baseline set, including provider and Pi-tool branches, to
+  that task id (empty or ambiguous attribution fails AC-5); cancel; after a bounded
+  wait of 10 s, check that no bound process (same PID and creation time, any name)
+  survives and the task persists `cancelled`. A
   survivor or a non-running provider at cancel time fails AC-5 and blocks archive; frozen
   package checks and root `check:ci`, `typecheck`, `build`, `pnpm test` (known four
   missing-sibling failures only) pass.
@@ -88,6 +91,9 @@ with all packages developing against Pi 0.99.1.
 
 ## Decisions
 
+- Plan review round 2 (fresh Oracle): REJECT only on AC-5 attribution (SDK children
+  share the Pi process; no public PID mapping); repaired with serial quiescent runs and
+  baseline-diff binding with creation times.
 - Plan review round 1 (fresh Oracle): REJECT only on AC-5 vagueness; repaired with
   loaded-source evidence, readiness, pre-cancel descendant snapshots and a bounded
   survivor check. Cautions adopted: preserve timeout/output-cap outcomes while awaiting

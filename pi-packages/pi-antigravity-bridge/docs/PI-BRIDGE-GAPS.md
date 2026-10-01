@@ -1,4 +1,4 @@
-# pi-antigravity-bridge: capability gaps
+# @thoth-agents/pi-antigravity-bridge: capability gaps
 
 Open capability gaps only — things the bridge cannot do today, each blocked
 on something outside this repo. For how the bridge works (engines, G9

@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report something broken in pi-claude-bridge
+about: Report something broken in @thoth-agents/pi-claude-bridge
 labels: bug
 ---
 
@@ -44,5 +44,5 @@ paste here
 
 ## Environment
 
-- **pi-claude-bridge version:**
+- **@thoth-agents/pi-claude-bridge version:**
 - **Platform:** <!-- macOS 14 / Ubuntu 24.04 / WSL2 / etc. -->

@@ -243,6 +243,7 @@ export class AcpDriver implements TurnDriver {
 
 	async #runExclusive(request: DriverTurnRequest): Promise<TurnHandle> {
 		await this.#termination;
+		request.assertCurrent?.();
 		// No shutdown latch here: pi fires session_shutdown on /new, /resume and
 		// /fork (not only process exit), so a closed driver must respawn on the
 		// next turn instead of rejecting forever. Regression 2026-09-07:
@@ -283,7 +284,10 @@ export class AcpDriver implements TurnDriver {
 
 	async #executeTurn(turn: ActiveTurn): Promise<void> {
 		const request = turn.request;
+		request.assertCurrent?.();
 		const conn = await this.#ensureConnection(request);
+		request.assertCurrent?.();
+		if (turn.closed) return;
 
 		// Session: load (resume) or create. Load failures fall back to a fresh
 		// session — a missing conversation must not fail the turn (9.4).
@@ -294,6 +298,7 @@ export class AcpDriver implements TurnDriver {
 				await conn.loadSession(request.conversationId, request.cwd);
 				turn.sessionId = request.conversationId;
 			} else {
+				request.assertCurrent?.();
 				const created = await conn.newSession(request.cwd);
 				turn.sessionId = created.sessionId;
 				this.#stats.sessionsCreated += 1;
@@ -316,7 +321,8 @@ export class AcpDriver implements TurnDriver {
 					message: err instanceof Error ? err.message : String(err),
 				});
 				try {
-					const created = await conn.newSession(request.cwd);
+					request.assertCurrent?.();
+				const created = await conn.newSession(request.cwd);
 					turn.sessionId = created.sessionId;
 					this.#stats.sessionsCreated += 1;
 				} catch (err2) {

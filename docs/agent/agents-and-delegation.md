@@ -159,8 +159,9 @@ acknowledgement alone is not proof of termination, and `enable_continue: false`
 means continuation must not be assumed. These instructions are not runtime
 permissions: the runtime provides no enforced delegation depth, tool allowlist,
 or `PI_SUBAGENT_CHILD` marker. The required `session_resources: "lean"` setting
-filters `before_agent_start` and `session_start` but is not a process or OS
-sandbox; project-local `subagents.json` can override the global setting. If a native primitive is
+filters `before_agent_start` and `session_start` (except for trusted
+`lifecycle_passthrough` packages, which keep their full lifecycle) but is not a
+process or OS sandbox; project-local `subagents.json` can override the global setting. If a native primitive is
 unavailable or unproven, report the degradation and use a truthful sequential
 fallback; do not emulate another runtime.
 

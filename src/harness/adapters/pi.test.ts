@@ -166,8 +166,12 @@ describe('Pi adapter', () => {
       'allowing only `tool_call`, `tool_result`, and `user_bash` extension events',
     );
     expect(runtime).toContain(
-      'packages listed in `lifecycle_passthrough` (default: `@thoth-agents/pi-claude-bridge` and `@thoth-agents/pi-antigravity-bridge`) also observe `before_agent_start`, `agent_start`, and `turn_start` on a cloned event with their return value discarded, so they cannot change the child prompt',
+      'trusted packages listed in `lifecycle_passthrough` (default: `@thoth-agents/pi-claude-bridge` and `@thoth-agents/pi-antigravity-bridge`; never thoth-agents) keep their full extension lifecycle in children, including `session_start` and `session_shutdown`',
     );
+    expect(runtime).toContain(
+      'their prompt-shaping events receive cloned data with returns discarded as defense in depth, but the list is a trust list, not a sandbox',
+    );
+    expect(runtime).not.toContain('so they cannot change the child prompt');
     expect(runtime).toContain('full child resources are unsupported');
     expect(runtime).toContain(
       'Graceful `session_shutdown` cancels active children',

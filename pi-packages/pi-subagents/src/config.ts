@@ -227,7 +227,11 @@ function parseLifecyclePassthrough(value: unknown): string[] {
     console.warn(
       'subagents: non-string lifecycle_passthrough entries ignored.',
     );
-  return names;
+  if (names.includes('thoth-agents'))
+    console.warn(
+      'subagents: lifecycle_passthrough cannot include thoth-agents (adaptive-root prompt injector); ignored.',
+    );
+  return names.filter((name) => name !== 'thoth-agents');
 }
 
 function parseDefaultMode(value: unknown): SubagentMode {

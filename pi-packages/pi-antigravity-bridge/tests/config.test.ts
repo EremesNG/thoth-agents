@@ -220,3 +220,28 @@ test("config: AGY_TURN_TIMEOUT_MIN env overrides the file, 0 disables", () => {
 		fs.rmSync(path.dirname(p), { recursive: true, force: true });
 	}
 });
+
+test("config: bridgeDiscovery defaults private, round-trips and honors env precedence", () => {
+ const p = tmpConfig();
+ const prev = process.env.AGY_BRIDGE_DISCOVERY;
+ try {
+  delete process.env.AGY_BRIDGE_DISCOVERY;
+  assert.equal(loadConfig(p).bridgeDiscovery, "private");
+  saveConfig({ bridgeDiscovery: "legacy-global" }, p);
+  saveConfig({ mode: "plan" }, p);
+  assert.equal(loadConfig(p).bridgeDiscovery, "legacy-global");
+  process.env.AGY_BRIDGE_DISCOVERY = "private";
+  assert.equal(loadConfig(p).bridgeDiscovery, "private");
+  process.env.AGY_BRIDGE_DISCOVERY = "legacy-global";
+  assert.equal(loadConfig(p).bridgeDiscovery, "legacy-global");
+  process.env.AGY_BRIDGE_DISCOVERY = "bogus";
+  assert.equal(loadConfig(p).bridgeDiscovery, "private");
+  delete process.env.AGY_BRIDGE_DISCOVERY;
+  fs.writeFileSync(p, JSON.stringify({ bridgeDiscovery: 7 }));
+  assert.equal(loadConfig(p).bridgeDiscovery, "private");
+ } finally {
+  if (prev === undefined) delete process.env.AGY_BRIDGE_DISCOVERY;
+  else process.env.AGY_BRIDGE_DISCOVERY = prev;
+  fs.rmSync(path.dirname(p), { recursive: true, force: true });
+ }
+});

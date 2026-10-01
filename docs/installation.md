@@ -308,7 +308,10 @@ unknown Pi packages or provider assets as a recovery shortcut.
 Setup safely merges `session_resources: "lean"` and `enable_continue: false`
 into the global `<agent-dir>/subagents.json` (normally
 `~/.pi/agent/subagents.json`), preserving unrelated settings. Lean resources
-filter `before_agent_start` and `session_start` from child sessions; full child
+filter `before_agent_start` and `session_start` from child sessions, except for
+trusted packages in `lifecycle_passthrough` (default: the Claude and Antigravity
+bridges; never thoth-agents), which keep their full lifecycle with prompt-shaping
+events observe-only; that list is a trust list, not a sandbox. Full child
 resources are unsupported. A project-local `subagents.json` can override the
 global setting and invalidate lean isolation, so check project configuration
 separately.

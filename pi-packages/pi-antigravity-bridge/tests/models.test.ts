@@ -18,6 +18,7 @@ import {
 	MODELS_CACHE_TTL_MS,
 	MODELS_OUTPUT_CAP_BYTES,
 	refreshModelsInBackground,
+ refreshModelCatalogIfNeeded,
 	spawnAgyModelsRaw,
 	toPiModel,
 } from "../src/models.js";
@@ -74,18 +75,18 @@ test("loadModelCatalogRaw: fresh cache is returned without spawning agy", async 
 
 // --- loadModelCatalogRaw: no cache -> spawn + persist -----------------------
 
-test("loadModelCatalogRaw: no cache spawns agy and persists the result", async () => {
+test("loadModelCatalogRaw: no cache returns fallback input without spawning", async () => {
 	const cachePath = tempCachePath();
 	const bin = makeFakeAgy("Gemini 3.6 Flash (Medium)");
 
 	const raw = await loadModelCatalogRaw(bin, cachePath);
-	assert.equal(raw, "Gemini 3.6 Flash (Medium)");
-	assert.equal(readCacheRaw(cachePath), "Gemini 3.6 Flash (Medium)"); // persisted
+	assert.equal(raw, "");
+	assert.equal(readCacheRaw(cachePath), null);
 });
 
 // --- loadModelCatalogRaw: stale cache -> serve + background refresh ---------
 
-test("loadModelCatalogRaw: stale cache is served instantly, then refreshed in background", async () => {
+test("loadModelCatalogRaw: stale cache is served without spawning; first use refreshes", async () => {
 	const cachePath = tempCachePath();
 	// Stale: savedAt well past the TTL.
 	const staleSavedAt = Date.now() - MODELS_CACHE_TTL_MS - 60_000;
@@ -96,7 +97,9 @@ test("loadModelCatalogRaw: stale cache is served instantly, then refreshed in ba
 	assert.equal(raw, "OLD"); // returned the stale cache without waiting
 
 	// The background refresh updates the cache for the next load.
-	await waitForCacheRaw(cachePath, "NEW");
+	assert.equal(readCacheRaw(cachePath), "OLD");
+ await refreshModelCatalogIfNeeded(bin, cachePath);
+ assert.equal(readCacheRaw(cachePath), "NEW");
 });
 
 // --- refreshModelsInBackground: writes the cache on success -----------------
@@ -110,14 +113,14 @@ test("refreshModelsInBackground: persists agy output to the cache", async () => 
 
 // --- corrupt / missing cache -----------------------------------------------
 
-test("loadModelCatalogRaw: corrupt cache is treated as no cache (spawns fresh)", async () => {
+test("loadModelCatalogRaw: corrupt cache returns fallback input without spawning", async () => {
 	const cachePath = tempCachePath();
 	fs.writeFileSync(cachePath, "{not valid json");
 	const bin = makeFakeAgy("RECOVERED");
 
 	const raw = await loadModelCatalogRaw(bin, cachePath);
-	assert.equal(raw, "RECOVERED");
-	assert.equal(readCacheRaw(cachePath), "RECOVERED");
+	assert.equal(raw, "");
+	assert.equal(readCacheRaw(cachePath), null);
 });
 
 // --- entriesFromRaw: collapses effort-driven bases, keeps fixed models -------

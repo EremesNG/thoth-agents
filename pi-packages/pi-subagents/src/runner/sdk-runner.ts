@@ -158,7 +158,62 @@ const SUBAGENT_OBSERVE_ONLY_EVENTS = new Set([
   'before_agent_start',
   'agent_start',
   'turn_start',
+  'context',
+  'context_with_system',
+  'input',
+  'before_provider_request',
+  'before_provider_headers',
 ]);
+
+/** Clone event data, retaining opaque live members (e.g. AbortSignal/functions). */
+function cloneEventData(value: any, seen = new Map<object, any>()): any {
+  if (value === null || typeof value !== 'object') return value;
+  if (seen.has(value)) return seen.get(value);
+  if (value instanceof Map) {
+    const clone = new Map();
+    seen.set(value, clone);
+    for (const [key, entry] of value)
+      clone.set(cloneEventData(key, seen), cloneEventData(entry, seen));
+    return clone;
+  }
+  if (value instanceof Set) {
+    const clone = new Set();
+    seen.set(value, clone);
+    for (const entry of value) clone.add(cloneEventData(entry, seen));
+    return clone;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (
+    Array.isArray(value) ||
+    prototype === Object.prototype ||
+    prototype === null
+  ) {
+    const clone = Array.isArray(value)
+      ? new Array(value.length)
+      : Object.create(prototype);
+    seen.set(value, clone);
+    for (const key of Object.keys(value))
+      Object.defineProperty(clone, key, {
+        value: cloneEventData(value[key], seen),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    return clone;
+  }
+  if (
+    value instanceof Date ||
+    value instanceof RegExp ||
+    value instanceof ArrayBuffer ||
+    ArrayBuffer.isView(value)
+  ) {
+    const clone = structuredClone(value);
+    seen.set(value, clone);
+    return clone;
+  }
+  // structuredClone can silently turn an AbortSignal into {}, not just throw.
+  return value;
+}
 
 function extensionPackageName(
   resolvedPath: unknown,
@@ -218,25 +273,30 @@ function isolateSubagentExtensions(
     ...base,
     extensions: (base?.extensions ?? []).map((extension: any) => {
       const name = extensionPackageName(extension.resolvedPath, packageNames);
-      const passthrough = name !== undefined && listedPackages.has(name);
+      // Never permit the adaptive-root injector, even with a programmatic config.
+      const passthrough =
+        name !== undefined &&
+        name !== 'thoth-agents' &&
+        listedPackages.has(name);
       const handlers = new Map<string, unknown[]>();
       for (const [event, callbacks] of (extension.handlers as Map<
         string,
         any[]
       >) ?? new Map()) {
-        if (
+        if (passthrough && SUBAGENT_OBSERVE_ONLY_EVENTS.has(event)) {
+          handlers.set(
+            event,
+            callbacks.map((handler) => async (event: any, ctx: any) => {
+              // Defense in depth only: trusted handlers still have live session/API access.
+              await handler(cloneEventData(event), ctx);
+            }),
+          );
+        } else if (
+          passthrough ||
           SUBAGENT_ALLOWED_EXTENSION_EVENTS.has(event) ||
           (event === 'session_shutdown' && providerOwners.has(extension.path))
         ) {
           handlers.set(event, callbacks);
-        } else if (passthrough && SUBAGENT_OBSERVE_ONLY_EVENTS.has(event)) {
-          handlers.set(
-            event,
-            callbacks.map((handler) => async (event: any, ctx: any) => {
-              // Context contains functions; only events are cloneable. Discard all returns.
-              await handler(structuredClone(event), ctx);
-            }),
-          );
         }
       }
       return {
@@ -345,6 +405,33 @@ function versionFromPiSdk(piSdk: any): unknown {
   }
 }
 
+async function emitChildSessionStart(
+  session: any,
+  onActivity?: Parameters<SubagentRunner>[0]['onActivity'],
+): Promise<void> {
+  const errors: any[] = [];
+  let unsubscribe: (() => void) | undefined;
+  try {
+    const runner = session.extensionRunner;
+    if (!runner) throw new Error('Child Pi session has no extension runner.');
+    // The SDK catches handler failures and reports them via onError().
+    unsubscribe = runner.onError((error: unknown) => errors.push(error));
+    // createAgentSession already binds the headless context. bindExtensions()
+    // would also discover resources outside the lean set.
+    await runner.emit({ type: 'session_start', reason: 'startup' });
+  } catch (error) {
+    errors.push(error);
+  } finally {
+    unsubscribe?.();
+  }
+  for (const error of errors) {
+    onActivity?.({
+      diagnostic: true,
+      message: `session_start handler error${error?.extensionPath ? ` (${error.extensionPath})` : ''}: ${error?.error ?? error?.message ?? String(error)}`,
+    });
+  }
+}
+
 async function createSession(
   model: any,
   cwd: string,
@@ -355,6 +442,7 @@ async function createSession(
   systemPrompt: string,
   nestedSessionPath?: string,
   allowMissing = false,
+  onActivity?: Parameters<SubagentRunner>[0]['onActivity'],
 ) {
   const piSdk = await loadPiSdkModule();
   const { createAgentSession, SessionManager } = piSdk;
@@ -438,6 +526,7 @@ async function createSession(
       tools,
       allowMissing,
     );
+    await emitChildSessionStart(created.session, onActivity);
   } catch (error) {
     await teardownSubagentSession(created.session);
     throw error;
@@ -579,6 +668,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       systemPrompt,
       nested_session_path,
       allowMissing,
+      onActivity,
     );
     const abortBridge = createSessionAbortBridge(session, signal);
     let unregisterInteractionSession = () => {};

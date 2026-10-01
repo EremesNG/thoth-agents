@@ -260,11 +260,13 @@ export class StreamDriver implements TurnDriver {
 		// next turn instead of rejecting forever. Parity with the ACP driver
 		// fix (regression 2026-09-07).
 		await this.#termination;
+		request.assertCurrent?.();
 		if (request.signal?.aborted) throw new Error("aborted before start");
 
 		const cause = this.#recycleCause(request);
 		if (cause) await this.close("recycle", cause);
 		else if (this.#child) this.#stats.reused += 1;
+		request.assertCurrent?.();
 		if (!this.#child) this.#start(request);
 
 		const turn = this.#createTurn(request);

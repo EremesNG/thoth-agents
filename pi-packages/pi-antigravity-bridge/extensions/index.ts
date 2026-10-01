@@ -39,6 +39,7 @@ import {
 	entriesFromRaw,
 	FALLBACK_MODELS,
 	loadModelCatalogRaw,
+	refreshModelCatalogIfNeeded,
 	toPiModel,
 	type AgyModelEntry,
 } from "../src/models.js";
@@ -128,15 +129,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 
 	const binary = resolveAgyBinary();
 
-	// Discover once at load. Failure is non-fatal: FALLBACK_MODELS keeps the
-	// picker populated so the user gets a clear runtime error from agy rather
-	// than an empty model list. /reload re-runs this and refreshes after an
-	// `agy update`.
-	// loadModelCatalogRaw serves a short-TTL cache (~/.pi/agent/antigravity-bridge/
-	// models-cache.json) so reloads are instant and only re-spawn in the
-	// background when stale. Derive both catalogs from the same raw text
-	// (provider's slugified Gemini entries + the tool's family/version/tier
-	// entries).
+	// Loading never spawns agy: use the cached catalog (even stale) or the
+	// built-in fallback. First Antigravity use refreshes the cache for /reload.
+	// Provider and AskAntigravity derive their catalogs from the same raw text.
 	const raw = await loadModelCatalogRaw(binary);
 	const discovered = entriesFromRaw(raw);
 	const toolModels = toolModelsFromRaw(raw);
@@ -147,6 +142,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// config reads would let a mid-session flip leave ToolRoundTrips,
 	// kickIdle, and reentry pointing at the other engine (round-7 finding).
 	const engine: Engine = loadConfig().engine;
+	const bridgeDiscovery = loadConfig().bridgeDiscovery;
+	const serverName = bridgeDiscovery === "private" ? `pi-agy-${instanceId.replaceAll("-", "")}` : "pi-antigravity-bridge";
+	const acpServerName = bridgeDiscovery === "private" ? serverName : "pi-bridge";
 	// Engine switching requires a restart, so the catalog-time engine read is
 	// authoritative for input advertising: image attach rides only when turns
 	// will run on the ACP engine (the stream-json CLI prompt is text-only).
@@ -205,6 +203,33 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// MCP bridge handle, declared early: the ACP engine reads the bridge port
 	// at session/new / session/load time.
 	let mcpHandle: McpServerHandle | null = null;
+	let projectTrusted = false;
+	let lifecycleEpoch = 0;
+	let stopped = false;
+	let bridgeReady = false;
+	let startFlight: Promise<void> | null = null;
+	let shutdownFlight: Promise<void> | null = null;
+	let mixedDiscoveryWarned = false;
+
+	// One flight owns startup. A generation guard travels with each stream so
+	// a shutdown (including /new or resume) cannot resurrect an old turn.
+	async function ensureBridgeStarted(): Promise<() => void> {
+		const epoch = lifecycleEpoch;
+		const assertCurrent = () => {
+			if (stopped || epoch !== lifecycleEpoch) throw new Error("antigravity session shut down during startup");
+		};
+		assertCurrent();
+		if (!bridgeReady) {
+			if (!startFlight) {
+				const flight = Promise.resolve().then(() => startBridge(epoch)).then(() => {
+					if (!stopped && epoch === lifecycleEpoch) bridgeReady = true;
+				}).finally(() => { if (startFlight === flight) startFlight = null; });
+				startFlight = flight;
+			}
+			await startFlight;
+		}
+		return assertCurrent;
+	}
 	// Session-only visibility overrides; never change either application's MCP config.
 	const hiddenBridgeTools = new Set<string>();
 	const getBridgeTools = () => bridgedPiTools(pi.getAllTools(), pi.getActiveTools(), loadConfig().bridgeTools, hiddenBridgeTools);
@@ -344,7 +369,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			// stream engine carries it via mcp_config.json, ACP via headers[].
 			return [
 				{
-					name: "pi-bridge",
+					name: acpServerName,
 					type: "http",
 					url: `http://127.0.0.1:${handle.port}/mcp`,
 					headers: [{ name: TOKEN_HEADER, value: handle.token }],
@@ -402,7 +427,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	}
 	let pendingNativeTools = 0;
 	const onNativeEvent = (event: NativeDisplayEvent): void => {
-		if (engine !== "acp" || event.mcpServer === "pi-bridge") return;
+		if (engine !== "acp" || event.mcpServer === acpServerName) return;
 		// MCP calls through our own pi-bridge already have genuine Pi tool cards;
 		// only native Antigravity / other MCP events need display-only entries.
 		if (event.status === "started") {
@@ -485,6 +510,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		onNativeEvent,
 		roster,
 		engine,
+		beforeStart: ensureBridgeStarted,
 		log: fileLog.log.bind(fileLog),
 	});
 
@@ -534,7 +560,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// Note: the active flag below is set regardless of askTool, so
 	// pi-ask-antigravity keeps deferring even then: off means NO delegation
 	// tool from either package, not a fallback to pi-ask-antigravity.
-	if (loadConfig().askTool) await registerAskAntigravityTool(pi, toolModels, fileLog.log.bind(fileLog));
+	if (loadConfig().askTool) await registerAskAntigravityTool(pi, toolModels, fileLog.log.bind(fileLog), bridgeDiscovery);
 	// Web tools are opt-in (config.webTools, default off): Antigravity sessions
 	// already have native web tools; these serve NON-Antigravity providers.
 	if (loadConfig().webTools) registerWebTools(pi, { log: fileLog.log.bind(fileLog) });
@@ -627,8 +653,11 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// MCP tool bridge: expose pi's tools to agy over localhost Streamable HTTP.
 	// Calls park in the provider's round-trip store and complete through pi's
 	// normal toolUse loop (native cards, permissions, hooks) - no patch, no
-	// privileged API. Started on session_start, torn down on session_shutdown.
+	// privileged API. Started on first Antigravity use, torn down on session_shutdown.
 	pi.on("session_start", async (event, ctx) => {
+		if (shutdownFlight) await shutdownFlight;
+		stopped = false;
+		projectTrusted = ctx.isProjectTrusted();
 		claimActive();
 		if (ctx.hasUI) activeUi = ctx.ui;
 		// First-run engine picker: ask once, on the first interactive start,
@@ -657,31 +686,6 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				console.error(`[antigravity-bridge] engine picker failed: ${String(err)}`);
 			}
 		}
-		// agy presence check (stream-json engine): the CLI is the whole engine,
-		// so a missing binary means every Antigravity turn would fail. Warn on
-		// every process start until it is installed (per-process flag so /new,
-		// /resume and /reload re-fires do not nag mid-session). Runs after the
-		// picker above, so a first-run stream-json pick warns immediately.
-		if (engine === "stream-json" && !agyMissingWarned && !isAgyInstalled(binary)) {
-			agyMissingWarned = true;
-			const msg = agyMissingMessage();
-			if (ctx.hasUI) ctx.ui.notify(msg, "warning");
-			else console.error(`[antigravity-bridge] ${msg}`);
-		}
-		// Version gate (stream-json): an agy older than MIN_AGY_VERSION fails
-		// turns with raw stream errors that look like bridge bugs. Warn once
-		// with the fix in the message; doctor carries the full verdict.
-		// Development builds and unreadable output stay silent here (an agy
-		// from source works; doctor shows what we could not parse).
-		if (engine === "stream-json" && !agyVersionWarned && isAgyInstalled(binary)) {
-			void checkAgyCliVersion(binary).then((check) => {
-				if (agyVersionWarned || check.status !== "unsupported") return;
-				agyVersionWarned = true;
-				const msg = `agy ${check.version} is too old; install ${MIN_AGY_VERSION} or newer. Stream-json turns may fail in confusing ways until then (/agy doctor inspects).`;
-				if (ctx.hasUI) ctx.ui.notify(msg, "warning");
-				else console.error(`[antigravity-bridge] ${msg}`);
-			});
-		}
 		// Legacy cleanup: users who ran the old consent-gated patcher still
 		// carry pi.invokeTool in their installed pi. Inert, but tell them once
 		// and offer /agy patch-cleanup. Never auto-edits the install.
@@ -699,6 +703,42 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		} catch {
 			/* detection is best-effort */
 		}
+		if (ctx.model?.provider === "antigravity") await ensureBridgeStarted();
+	});
+	pi.on("model_select", async (event, ctx) => {
+		if (ctx.hasUI) activeUi = ctx.ui;
+		projectTrusted = ctx.isProjectTrusted();
+		if (event.model.provider === "antigravity") await ensureBridgeStarted();
+	});
+
+	async function startBridge(epoch: number): Promise<void> {
+		if (stopped || epoch !== lifecycleEpoch) return;
+		// agy presence check (stream-json engine): the CLI is the whole engine,
+		// so a missing binary means every Antigravity turn would fail. Warn on
+		// every process start until it is installed (per-process flag so /new,
+		// /resume and /reload re-fires do not nag mid-session). Runs after the
+		// picker above, so a first-run stream-json pick warns immediately.
+		if (engine === "stream-json" && !agyMissingWarned && !isAgyInstalled(binary)) {
+			agyMissingWarned = true;
+			const msg = agyMissingMessage();
+			if (activeUi) activeUi.notify(msg, "warning");
+			else console.error(`[antigravity-bridge] ${msg}`);
+		}
+		// Version gate (stream-json): an agy older than MIN_AGY_VERSION fails
+		// turns with raw stream errors that look like bridge bugs. Warn once
+		// with the fix in the message; doctor carries the full verdict.
+		// Development builds and unreadable output stay silent here (an agy
+		// from source works; doctor shows what we could not parse).
+		if (engine === "stream-json" && !agyVersionWarned && isAgyInstalled(binary)) {
+			await checkAgyCliVersion(binary).then((check) => {
+				if (agyVersionWarned || check.status !== "unsupported") return;
+				agyVersionWarned = true;
+				const msg = `agy ${check.version} is too old; install ${MIN_AGY_VERSION} or newer. Stream-json turns may fail in confusing ways until then (/agy doctor inspects).`;
+				if (activeUi) activeUi.notify(msg, "warning");
+				else console.error(`[antigravity-bridge] ${msg}`);
+			});
+		}
+		if (stopped || epoch !== lifecycleEpoch) return;
 		// ACP self-heal: engine=acp needs a server binary + auth. Silent when
 		// everything is ready; installs from the registry and bootstraps auth
 		// otherwise; manual instructions only on failure. Fire-and-forget: it
@@ -719,21 +759,23 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 					}
 					if (status.needsLogin) {
 						const msg = acpLoginPending();
-						if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+						if (activeUi) activeUi.notify(msg, "warning");
 						else console.error(`[antigravity-bridge] ${msg}`);
 					}
 					return;
 				}
 				const msg = `ACP auto-setup failed (${status.error}).\n${status.manual}`;
-				if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+				if (activeUi) activeUi.notify(msg, "warning");
 				else console.error(`[antigravity-bridge] ${msg}`);
 			});
 		}
+		await refreshModelCatalogIfNeeded(binary);
+		if (stopped || epoch !== lifecycleEpoch) return;
 		// Bridge failure logger. Routine lifecycle (listening,
 		// bridge-config-written/removed, closed) is normal startup/teardown
 		// traffic: toasting it every session, or pinning it via stderr in
 		// headless mode, was noise. Only genuine failures surface - as a
-		// warning toast (ctx.ui.notify, ephemeral) or stderr when headless.
+		// warning toast (activeUi.notify, ephemeral) or stderr when headless.
 		// Per-turn success events (list-tools / call-tool) stay silent.
 		const mcpLog = (s: string, d?: unknown) => {
 			const failures = new Set([
@@ -769,7 +811,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			if (routineAbort) return;
 			if (!failures.has(s)) return;
 			const msg = `[antigravity-bridge mcp] ${s}${d !== undefined ? " " + JSON.stringify(d) : ""}`;
-			if (ctx.hasUI) ctx.ui.notify(msg, "warning");
+			if (activeUi) activeUi.notify(msg, "warning");
 			else console.error(msg);
 		};
 		// Start the bridge unless the user turned it off. No patch gate, no
@@ -779,7 +821,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		if (mcpHandle) return; // already running (reload re-fires session_start)
 		// pi loads project skill locations only after the project is trusted;
 		// mirror that gate. Global skill dirs are always scanned.
-		const skills: SkillLite[] = scanSkills(ctx.isProjectTrusted() ? process.cwd() : undefined);
+		const skills: SkillLite[] = scanSkills(projectTrusted ? process.cwd() : undefined);
 		const listTools = () => {
 			// /mcp and pi.setActiveTools() update the same live catalog. ACP gets
 			// this endpoint through session/new or session/load; no global config write.
@@ -862,8 +904,12 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				onToolCall: bridgeOnToolCall,
 				onApproval: (ticket, payload) => roundTrips.onApproval(ticket, payload),
 			},
-			{ log: mcpLog, configDir: bridgeDir },
+			{ log: mcpLog, configDir: bridgeDir, serverName },
 		);
+		if (stopped || epoch !== lifecycleEpoch) {
+			await r.handle?.close();
+			return;
+		}
 		if (r.ok && r.handle) {
 			mcpHandle = r.handle;
 			// Stale entries swept at start; entries a crashed delegation left
@@ -873,11 +919,17 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			// Global-config hygiene runs on BOTH engines: a crashed stream-json
 			// session must not leave dead-pid entries or stuck suppression flags
 			// for the next one.
-			sweepStaleBridgeServers();
-			healBridgeSuppression();
+			const swept = sweepStaleBridgeServers();
+			if (bridgeDiscovery === "private" && swept.live.length > 0 && !mixedDiscoveryWarned) {
+				mixedDiscoveryWarned = true;
+				const message = "Private Antigravity discovery found a live legacy-global pi-bridge server. Mixed discovery modes are not isolated; restart all sessions in private mode.";
+				if (activeUi) activeUi.notify(message, "warning");
+				else console.error(`[antigravity-bridge] ${message}`);
+			}
+			if (bridgeDiscovery === "legacy-global") healBridgeSuppression();
 			// ACP supplies the bridge per-session (session/new | session/load);
 			// only the stream-json CLI reads the global MCP config.
-			if (engine === "stream-json") {
+			if (engine === "stream-json" && bridgeDiscovery === "legacy-global") {
 				registerBridgeServer({
 					pid: process.pid,
 					instanceId,
@@ -991,41 +1043,55 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		} else {
 			console.error(`[antigravity-bridge] MCP tool bridge disabled: ${r.reason}`);
 		}
-	});
+	}
 	pi.on("session_shutdown", async () => {
-		// The UI is going away; a later auth-url must fall back to stderr
-		// instead of toasting into a dead UI (where it would be lost).
-		activeUi = null;
-		activeInstances.delete(instanceId);
-		if (activeInstances.size === 0) delete (globalThis as Record<symbol, unknown>)[ACTIVE_BRIDGE];
-		const h = mcpHandle;
-		mcpHandle = null;
-		await h?.close();
-		roundTrips.failAll(FAIL_REASON_SHUTDOWN);
-		// "recycle", NOT "shutdown": pi fires session_shutdown on /new, /resume
-		// and /fork (docs/extensions.md session lifecycle), not only on process
-		// exit. The drivers are process-lifetime singletons; closing them with
-		// "shutdown" latched them permanently and every later turn failed with
-		// "ACP driver is shut down." (regression 2026-09-07). Recycle kills the
-		// connection now; the next turn respawns it. event.reason is
-		// deliberately ignored: recycle is correct even on real process exit
-		// ("quit") - the connection kill is identical and nothing runs after.
-		await streamDriver.close("recycle", "session shutdown");
-		await acpDriver.close("recycle", "session shutdown");
-		if (engine === "stream-json") unregisterBridgeServer(process.pid, undefined, instanceId);
-		hiddenBridgeTools.clear();
-		// Approval gate: unstage hooks and remove the per-pid script. Pending
-		// approvals already failed closed via handle close (bridge shutdown deny).
-		const unstaged = removeGateHooks(bridgeDir);
-		if (unstaged.wrote) fileLog.log("approval-unstaged", unstaged, "info");
-		if (gateScriptPath) {
+		if (shutdownFlight) return shutdownFlight;
+		stopped = true;
+		lifecycleEpoch++;
+		bridgeReady = false;
+		const flight = (async () => {
+			await startFlight?.catch(() => {});
+			// The UI is going away; a later auth-url must fall back to stderr
+			// instead of toasting into a dead UI (where it would be lost).
+			activeUi = null;
+			activeInstances.delete(instanceId);
+			if (activeInstances.size === 0) delete (globalThis as Record<symbol, unknown>)[ACTIVE_BRIDGE];
+			const h = mcpHandle;
+			mcpHandle = null;
+			await h?.close();
+			roundTrips.failAll(FAIL_REASON_SHUTDOWN);
+			// "recycle", NOT "shutdown": pi fires session_shutdown on /new, /resume
+			// and /fork (docs/extensions.md session lifecycle), not only on process
+			// exit. The drivers are process-lifetime singletons; closing them with
+			// "shutdown" latched them permanently and every later turn failed with
+			// "ACP driver is shut down." (regression 2026-09-07). Recycle kills the
+			// connection now; the next turn respawns it. event.reason is
+			// deliberately ignored: recycle is correct even on real process exit
+			// ("quit") - the connection kill is identical and nothing runs after.
+			await streamDriver.close("recycle", "session shutdown");
+			await acpDriver.close("recycle", "session shutdown");
+			if (engine === "stream-json" && bridgeDiscovery === "legacy-global") unregisterBridgeServer(process.pid, undefined, instanceId);
+			// Descriptor caches are per owned discovery name. Never sweep old or
+			// sibling caches, and wait for both engines to stop writing first.
 			try {
-				fs.rmSync(gateScriptPath, { force: true });
-			} catch {
-				/* best effort */
+				fs.rmSync(path.join(os.homedir(), ".gemini", "antigravity-cli", "mcp", serverName), { recursive: true, force: true });
+			} catch { /* best effort */ }
+			hiddenBridgeTools.clear();
+			// Approval gate: unstage hooks and remove the per-pid script. Pending
+			// approvals already failed closed via handle close (bridge shutdown deny).
+			const unstaged = removeGateHooks(bridgeDir);
+			if (unstaged.wrote) fileLog.log("approval-unstaged", unstaged, "info");
+			if (gateScriptPath) {
+				try {
+					fs.rmSync(gateScriptPath, { force: true });
+				} catch {
+					/* best effort */
+				}
+				gateScriptPath = null;
 			}
-			gateScriptPath = null;
-		}
+		})().finally(() => { if (shutdownFlight === flight) shutdownFlight = null; });
+		shutdownFlight = flight;
+		await flight;
 	});
 }
 

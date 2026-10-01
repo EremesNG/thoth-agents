@@ -260,6 +260,31 @@ function readJsonl(file: string): any[] {
 }
 
 describe('manager and history integration', () => {
+  it('persists startup diagnostics before later activity can coalesce them away', async () => {
+    writeAgent('analyst');
+    const history = createHistoryStore();
+    const addEvent = vi.spyOn(history, 'addEvent');
+    const manager = createManager(async ({ onActivity }) => {
+      onActivity?.({
+        message: 'session_start handler error: fixture failure',
+        diagnostic: true,
+      });
+      onActivity?.({ message: 'nested session ready' });
+      return {
+        result: 'completed despite startup warning',
+        fallback_used: false,
+      };
+    }, history);
+    const result = await manager.run(
+      { agent: 'analyst', task: 'check scope', mode: 'task' },
+      { cwd: tmp },
+    );
+    expect(result.results?.[0].status).toBe('completed');
+    expect(addEvent.mock.calls.map((call) => call[2])).toContain(
+      'session_start handler error: fixture failure',
+    );
+  });
+
   it('runs one subagent as task and exposes the active effort', async () => {
     writeAgent('analyst');
     const manager = createManager(mockRunner());

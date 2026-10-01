@@ -75,7 +75,7 @@ for await (const line of readline.createInterface({input:process.stdin})) {
 		const originalConfig = fs.readFileSync(configFile, "utf8");
 		const originalHooks = fs.readFileSync(hookFile, "utf8");
 		const scripts = fs.readdirSync(logsDir()).filter((f) => f.startsWith("approval-hook-"));
-		const originalGlobal = JSON.parse(fs.readFileSync(mcpConfigPath(), "utf8")).mcpServers;
+		const originalGlobal = fs.existsSync(mcpConfigPath()) ? fs.readFileSync(mcpConfigPath(), "utf8") : null;
 		await sibling.emit("session_start");
 		await sibling.turn();
 		assert.equal(fs.readFileSync(configFile, "utf8"), originalConfig, "sibling startup must not overwrite parent discovery");
@@ -86,8 +86,8 @@ for await (const line of readline.createInterface({input:process.stdin})) {
 		assert.equal(fs.readFileSync(configFile, "utf8"), originalConfig);
 		assert.equal(fs.readFileSync(hookFile, "utf8"), originalHooks);
 		for (const script of scripts) assert.ok(fs.existsSync(path.join(logsDir(), script)), "parent approval script survives");
-		assert.deepEqual(JSON.parse(fs.readFileSync(mcpConfigPath(), "utf8")).mcpServers, originalGlobal);
-		const endpoint = JSON.parse(originalConfig).mcpServers["pi-antigravity-bridge"];
+		assert.equal(fs.existsSync(mcpConfigPath()) ? fs.readFileSync(mcpConfigPath(), "utf8") : null, originalGlobal);
+		const endpoint = Object.values(JSON.parse(originalConfig).mcpServers)[0] as { serverUrl: string; headers: Record<string, string> };
 		const response = await fetch(endpoint.serverUrl.replace("/mcp", "/approval"), {
 			method: "POST", headers: { "content-type": "application/json", [TOKEN_HEADER]: endpoint.headers[TOKEN_HEADER] },
 			body: JSON.stringify({ toolCall: { name: "ungated", args: {} } }),
@@ -98,7 +98,7 @@ for await (const line of readline.createInterface({input:process.stdin})) {
 		await parent.emit("session_shutdown");
 		assert.equal(fs.existsSync(privateDir), false);
 		for (const script of scripts) assert.equal(fs.existsSync(path.join(logsDir(), script)), false);
-		assert.deepEqual(JSON.parse(fs.readFileSync(mcpConfigPath(), "utf8")).mcpServers, {});
+		assert.equal(fs.existsSync(mcpConfigPath()), false);
 		assert.equal((globalThis as Record<symbol, unknown>)[Symbol.for("pi-antigravity-bridge:active")], undefined);
 	} finally {
 		await sibling.emit("session_shutdown");

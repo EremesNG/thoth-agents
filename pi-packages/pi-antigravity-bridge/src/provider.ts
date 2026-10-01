@@ -389,6 +389,9 @@ export interface NativeDisplayEvent {
 }
 
 export interface StreamSimpleDeps {
+	/** Lazy instance startup. Returns a shutdown-generation guard checked
+	 *  synchronously before the selected engine can spawn or open a session. */
+	beforeStart?: () => Promise<(() => void) | void>;
 	entries: AgyModelEntry[];
 	store: SessionStore;
 	/** Stream-json driver (the tested default engine). Turns run on the
@@ -977,6 +980,7 @@ export function buildLateResultPrompt(late: LateToolResult[], userPrompt?: strin
 // --- stream-json engine -------------------------------------------------------
 
 export interface DriverDeps {
+	beforeStart?: StreamSimpleDeps["beforeStart"];
 	driver: TurnDriver;
 	roundTrips: ToolRoundTrips;
 	replay?: WrapperReplay;
@@ -1346,7 +1350,10 @@ async function runTurnDriver(
 				? buildLateResultPrompt(late, prompt || undefined)
 				: buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "");
 		try {
+			const assertReady = await deps.beforeStart?.();
+			assertReady?.();
 			handle = await deps.driver.run({
+				assertCurrent: assertReady ?? undefined,
 				cwd,
 				model: agyModel,
 				effort,
@@ -1507,6 +1514,7 @@ export function createStreamSimple(
 		}
 		if (selected && roundTrips) {
 			void runTurnDriver(stream, model, context, options, entries, store, {
+				beforeStart: deps.beforeStart,
 				driver: selected,
 				roundTrips,
 				replay: deps.replay,

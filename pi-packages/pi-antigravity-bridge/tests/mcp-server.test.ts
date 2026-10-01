@@ -121,3 +121,30 @@ function bridgeMcpConfigPathForTest(): string {
 beforeEach(() => {
 	/* no shared state beyond the handle */
 });
+
+test("mcp-server: owned private names are unique in config and MCP identity", async () => {
+ const os = await import("node:os");
+ const path = await import("node:path");
+ const root = fs.mkdtempSync(path.join(os.tmpdir(), "agy-private-name-"));
+ const handles: McpServerHandle[] = [];
+ try {
+  for (const name of ["pi-agy-a1", "pi-agy-b2"]) {
+   const dir = path.join(root, name);
+   const r = await startMcpServer(fakeDeps(), { configDir: dir, serverName: name });
+   assert.equal(r.ok, true);
+   handles.push(r.handle!);
+   const cfg = JSON.parse(fs.readFileSync(path.join(dir, ".agents", "mcp_config.json"), "utf8"));
+   assert.deepEqual(Object.keys(cfg.mcpServers), [name]);
+   const res = await fetch(cfg.mcpServers[name].serverUrl, {
+    method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", [TOKEN_HEADER]: r.handle!.token },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } } }),
+   });
+   const text = await res.text();
+   const data = JSON.parse(text.split("\n").find((line) => line.startsWith("data:"))!.slice(5));
+   assert.equal(data.result.serverInfo.name, name);
+  }
+ } finally {
+  for (const h of handles) await h.close();
+  fs.rmSync(root, { recursive: true, force: true });
+ }
+});

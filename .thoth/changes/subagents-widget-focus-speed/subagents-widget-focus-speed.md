@@ -224,18 +224,31 @@ same-wrapper reinstallation; deduplicate the notice.
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: cd67a829c41ac9522227345161eaf34e4ec9ac4d6d4fd553fd3ed5297b0ecaf2
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
+Fresh read-only Oracle subtask_thoth-oracle_1790866558712_6db2494c returned PASS at
+HEAD 9eac15c (diffs 6d69f59, 96638d9, 95bef54; no secret/generated/unrelated drift).
+
+- AC-1: PASS | diff review + focus-guard tests | positive editor-identity/focus guard, overlay/suspension exclusions, navigation reset, deduplicated replacement warning; default/configured/replaced editor and overlay/native/custom UI tests pass
+- AC-2: PASS | diff review + root panel tests | tools command opens as centered overlay; sizing/resize and persistence/protection tests pass
+- AC-3: PASS | diff review + accounting tests | paired assistant generation counters exclude tool/compaction/standalone usage, persist through continuations/history, unknown legacy timing renders ?; render order tested
+- AC-4: PASS | README + delta review | README and exact-title MODIFIED delta match accepted behavior; delta validation passes, spec baseline matches
+- AC-5: PASS | fresh checks + operator live confirmation | subagents 516/516, focused root 86/86, both typechecks and check:ci pass; post-restart operator confirmed arrows in /subagents-model, /subagents-tools overlay and native dialogs plus tok/s cards
 - Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:c42781ec2e06373bdf4601bbdfb2dd3b56e715085cdd951aad29619adedfaa7b
+- Source: pi-packages/pi-subagents/src/ui/background-widget.ts | sha256:460c69764f558cbbffb5a59ab6e6303c69ca1856127d7b92ee6fdfd71f95cc98
+- Source: pi-packages/pi-subagents/src/extension/subagents-extension.ts | sha256:b72b4ec81b34c2f46f0842b69e5723d0eab7857d8e41e3b878f9d4a74eacf72f
+- Source: pi-packages/pi-subagents/src/runner/event-processing.ts | sha256:6dd221d2aeebdffc8208104f03f225184c00ef526e2868470011368d0f26db70
+- Source: pi-packages/pi-subagents/src/runner/snapshot-builder.ts | sha256:023e10dd6a7df0e4f60652a46364490791f9afbc2a417171b0c0243dc21e8695
+- Source: pi-packages/pi-subagents/src/history.ts | sha256:e2fa68a6998514ed4dbb1b84753aafdc367f51d159619d77c9279aca7f07a63b
+- Source: pi-packages/pi-subagents/src/manager.ts | sha256:931b9a964667d84aae0c5c0d5308f481f48b669ff697cad9ae5a5dfa5e62772b
+- Source: pi-packages/pi-subagents/src/types.ts | sha256:5d7ebc67fb07624a855444d0e20e59d05fc17b4cbbfcdcda07ded389964a87cc
+- Source: pi-packages/pi-subagents/README.md | sha256:a475f9a602ccc1a0e099b049f373eacae34ffb1f7ff5e34f4f2ad840d09572c6
+- Source: src/pi.ts | sha256:7c67b6e19d382475273a10a4e3b3a615ab5b58e260bcb65971d65d2479dbb741
+- Source: src/pi/tools-panel.ts | sha256:fb44c6526bf1461cd00d49ca2ec4cd843da3eb8a635c318e3ae3bfbfe21557f4
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

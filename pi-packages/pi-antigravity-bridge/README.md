@@ -84,7 +84,7 @@ Full mechanics, configuration, and a sample gate extension: [docs/APPROVAL-GATE.
 Install with pi's package manager:
 
 ```bash
-pi install npm:@estebanforge/pi-antigravity-bridge
+pi install npm:@thoth-agents/pi-antigravity-bridge
 ```
 
 Requires the **`agy` CLI** installed and authenticated. If you don't have it, follow Google's [official install guide](https://antigravity.google/docs/cli/install) for your platform, then run `agy` once to complete Google OAuth. The extension resolves `agy` on `$PATH`, or via the `AGY_BIN` environment variable. While the stream-json engine is active and the binary cannot be found, pi warns on every start (toast in the TUI, stderr headless) pointing at the install guide; the warning stops once the binary is detected.

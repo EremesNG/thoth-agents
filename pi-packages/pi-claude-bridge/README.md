@@ -1,6 +1,6 @@
-# pi-claude-bridge
+# @thoth-agents/pi-claude-bridge
 
-[![npm version](https://img.shields.io/npm/v/pi-claude-bridge)](https://www.npmjs.com/package/pi-claude-bridge)
+[![npm version](https://img.shields.io/npm/v/@thoth-agents/pi-claude-bridge)](https://www.npmjs.com/package/@thoth-agents/pi-claude-bridge)
 
 Pi extension that integrates Claude Code via the [Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript). Originally based on [claude-agent-sdk-pi](https://github.com/prateekmedia/claude-agent-sdk-pi) by Prateek Sunal.
 
@@ -18,7 +18,7 @@ Pi extension that integrates Claude Code via the [Agent SDK](https://github.com/
 ## Install
 
 ```
-pi install npm:pi-claude-bridge
+pi install npm:@thoth-agents/pi-claude-bridge
 ```
 
 Requires pi 0.86.1 or newer.
@@ -98,7 +98,7 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or the project Pi config direc
 
 ## Tests
 
-Install from the thoth-agents repository root with `pnpm install` (this package is a pnpm workspace member). `pnpm --filter pi-claude-bridge run test:unit` runs offline tests. `pnpm --filter pi-claude-bridge run test` adds integration tests that hit APIs; set `CLAUDE_BRIDGE_TESTING_ALT_MODEL` in `.env.test` for the alt-provider smoke test.
+Install from the thoth-agents repository root with `pnpm install` (this package is a pnpm workspace member). `pnpm --filter @thoth-agents/pi-claude-bridge run test:unit` runs offline tests. `pnpm --filter @thoth-agents/pi-claude-bridge run test` adds integration tests that hit APIs; set `CLAUDE_BRIDGE_TESTING_ALT_MODEL` in `.env.test` for the alt-provider smoke test.
 
 Integration tests spawn real `pi` and Claude Code subprocesses and need write access to `~/.claude` — a sandbox that blocks it makes `--resume` fail with `No conversation found with session ID`.
 

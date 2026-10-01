@@ -236,6 +236,47 @@ describe('structured error metadata contract', () => {
     ]);
   });
 
+  it('classifies prompt-capture failures as non-retryable provider API errors even with context words and retry hints', () => {
+    const message =
+      "prompt-capture: no capture for this 4314-char system prompt, and it embeds none of the 1 known. Claude Code would receive none of this turn's context files, skills or custom instructions.";
+    expect(
+      classifyThrownError(new Error(message), { retryable: true }),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: false,
+    });
+    expect(
+      classifyThrownError('prompt-capture: maximum context length exceeded'),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: false,
+    });
+  });
+
+  it.each([
+    'maximum context length exceeded',
+    'context window exceeded',
+    'too many tokens',
+    'maximum context is 4096 tokens',
+    'context length exceeds the limit',
+    'input tokens exceed the context window',
+  ])('recognizes explicit context capacity errors: %s', (message) => {
+    expect(classifyThrownError(new Error(message)).category).toBe(
+      'context_overflow',
+    );
+  });
+
+  it.each([
+    'Failed to load context files',
+    'Token encoding failed',
+    'Invalid response length',
+    'Maximum retries reached',
+  ])('does not infer context overflow from incidental words: %s', (message) => {
+    expect(classifyThrownError(new Error(message)).category).toBe(
+      'provider_api_error',
+    );
+  });
+
   it('wraps normalized metadata in SubagentStructuredError', () => {
     const metadata: SubagentErrorMetadata = normalizeErrorMetadata({
       category: 'unknown',

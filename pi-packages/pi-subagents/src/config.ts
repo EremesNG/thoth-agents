@@ -20,6 +20,10 @@ const DEFAULT_TOOLS = [
   'memory_recall',
   'memory_get',
 ];
+export const DEFAULT_LIFECYCLE_PASSTHROUGH = [
+  '@thoth-agents/pi-claude-bridge',
+  '@thoth-agents/pi-antigravity-bridge',
+];
 const DEFAULT_MAX_CONCURRENCY = 5;
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
 const DEFAULT_STALL_TIMEOUT_MS = 4 * 60 * 1000;
@@ -206,6 +210,24 @@ function parseSessionResources(value: any): SubagentSessionResources {
     .trim()
     .toLowerCase();
   return resources === 'full' ? 'full' : 'lean';
+}
+
+function parseLifecyclePassthrough(value: unknown): string[] {
+  if (value === undefined) return [...DEFAULT_LIFECYCLE_PASSTHROUGH];
+  if (!Array.isArray(value)) {
+    console.warn(
+      'subagents: lifecycle_passthrough must be an array of package names; ignored.',
+    );
+    return [];
+  }
+  const names = value.filter(
+    (name): name is string => typeof name === 'string',
+  );
+  if (names.length !== value.length)
+    console.warn(
+      'subagents: non-string lifecycle_passthrough entries ignored.',
+    );
+  return names;
 }
 
 function parseDefaultMode(value: unknown): SubagentMode {
@@ -415,6 +437,7 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
     session_resources: parseSessionResources(
       raw.session_resources ?? raw.sessionResources,
     ),
+    lifecycle_passthrough: parseLifecyclePassthrough(raw.lifecycle_passthrough),
     background_handoff_shortcut: parseBackgroundHandoffShortcut(
       raw.background_handoff_shortcut ?? raw.backgroundHandoffShortcut,
     ),

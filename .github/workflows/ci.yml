@@ -57,11 +57,11 @@ jobs:
 
       - name: Check pi-antigravity-bridge
         run: |
-          pnpm --filter @estebanforge/pi-antigravity-bridge run typecheck
-          pnpm --filter @estebanforge/pi-antigravity-bridge run test
+          pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
+          pnpm --filter @thoth-agents/pi-antigravity-bridge run test
 
       # Offline unit tests only; the package `test` script runs live Claude integrations.
       - name: Check pi-claude-bridge
         run: |
-          pnpm --filter pi-claude-bridge run typecheck
-          pnpm --filter pi-claude-bridge run test:unit
+          pnpm --filter @thoth-agents/pi-claude-bridge run typecheck
+          pnpm --filter @thoth-agents/pi-claude-bridge run test:unit

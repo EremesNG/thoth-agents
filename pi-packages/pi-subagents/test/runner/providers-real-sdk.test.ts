@@ -22,6 +22,27 @@ const fixtureExtension = fileURLToPath(
 const loadTimeExtension = fileURLToPath(
   new URL('./fixtures/load-time-provider.ts', import.meta.url),
 );
+const observerExtension = fileURLToPath(
+  new URL('./fixtures/lifecycle/observer.ts', import.meta.url),
+);
+const memoryExtension = fileURLToPath(
+  new URL('./fixtures/memory-style.ts', import.meta.url),
+);
+const captureExtension = fileURLToPath(
+  new URL('./fixtures/prompt-capture/index.ts', import.meta.url),
+);
+const injectorExtension = fileURLToPath(
+  new URL('./fixtures/lifecycle/root-injector.ts', import.meta.url),
+);
+const captureDefinition = {
+  name: 'capture-child',
+  description: 'Capture inheritance',
+  filePath: captureExtension,
+  instructions:
+    'CHILD POLICY: Reply with the portable child instruction marker.',
+  tools: [],
+  model: { provider: 'prompt-capture-fixture', id: 'fixture' },
+};
 const config: SubagentsConfig = {
   timeout_ms: 10_000,
   stall_timeout_ms: 10_000,
@@ -36,11 +57,19 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function fixture(extraExtensions: string[] = []) {
-  const extensions = [fixtureExtension, loadTimeExtension, ...extraExtensions];
+async function fixture(
+  extraExtensions: string[] = [],
+  prepare?: (root: string) => string[],
+) {
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), 'pi-subagents-providers-'),
   );
+  const extensions = [
+    fixtureExtension,
+    loadTimeExtension,
+    ...extraExtensions,
+    ...(prepare?.(root) ?? []),
+  ];
   const agentDir = path.join(root, 'agent');
   const cwd = path.join(root, 'workspace');
   fs.mkdirSync(agentDir, { recursive: true });
@@ -123,6 +152,200 @@ it('authenticates and streams through a provider registered only in the parent s
   try {
     const result = await parent.run();
     expect(result.result).toBe('inherited provider streamed');
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
+
+it('runs the three listed lifecycle observers in lean children while stripping memory and other lifecycle hooks', async () => {
+  const parent = await fixture([observerExtension, memoryExtension]);
+  try {
+    await expect(
+      parent.run({
+        config: { ...config, lifecycle_passthrough: ['@fixture/lifecycle'] },
+      }),
+    ).resolves.toMatchObject({ result: 'inherited provider streamed' });
+    expect(parent.trace()).toEqual([
+      'observer:before_agent_start',
+      'observer:agent_start',
+      'observer:turn_start',
+      'stream:inherited provider streamed',
+      'load-time:session_shutdown',
+    ]);
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
+
+it('projects the child instructions through a parent-only capture-dependent provider with default passthrough', async () => {
+  const parent = await fixture([captureExtension]);
+  try {
+    const result = await parent.run({ definition: captureDefinition });
+    const capture = JSON.parse(result.result);
+    expect(capture.projected).toBe(captureDefinition.instructions);
+    expect(capture.systemPrompt).toContain(captureDefinition.instructions);
+    expect(capture.hooks).toEqual([
+      'before_agent_start',
+      'agent_start',
+      'turn_start',
+    ]);
+    expect(parent.trace()).not.toContain('capture:session_start');
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
+
+it('fails closed without lifecycle passthrough for a parent-only capture-dependent provider', async () => {
+  const parent = await fixture([captureExtension]);
+  try {
+    await expect(
+      parent.run({
+        definition: captureDefinition,
+        config: { ...config, lifecycle_passthrough: [] },
+      }),
+    ).rejects.toMatchObject({
+      error_metadata: {
+        category: 'provider_api_error',
+        retryable: false,
+        message: expect.stringContaining('prompt-capture:'),
+      },
+    });
+    expect(parent.trace().some((event) => event.startsWith('capture:'))).toBe(
+      false,
+    );
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
+
+it('discards listed root-injector returns and clones prompt options separately for each handler', async () => {
+  const parent = await fixture([injectorExtension, captureExtension]);
+  try {
+    const result = await parent.run({
+      definition: captureDefinition,
+      config: {
+        ...config,
+        lifecycle_passthrough: [
+          '@fixture/lifecycle',
+          '@thoth-agents/pi-claude-bridge',
+        ],
+      },
+    });
+    const capture = JSON.parse(result.result);
+    expect(parent.trace()).toContain('injector:before_agent_start');
+    expect(capture.projected).toBe(captureDefinition.instructions);
+    expect(capture.systemPrompt).toContain(captureDefinition.instructions);
+    expect(capture.systemPrompt).not.toContain('ROOT');
+    expect(JSON.stringify(capture.messages)).not.toContain('ROOT');
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
+
+it.each([
+  ['missing', undefined],
+  ['invalid JSON', '{'],
+  ['missing name', '{}'],
+  ['non-string name', '{"name":42}'],
+  ['foreign nearest package', '{"name":"@fixture/listed-foreign"}'],
+  ['unreadable', '{"name":"@fixture/listed"}'],
+  ['missing manifest target', '{"name":"@fixture/listed"}'],
+] as const)(
+  'fails closed for a %s manifest without inheriting an outer package name',
+  async (kind, manifest) => {
+    let manifestPath = '';
+    const parent = await fixture([], (root) => {
+      const extensionDir = path.join(root, 'package', 'nested');
+      fs.mkdirSync(extensionDir, { recursive: true });
+      if (kind !== 'missing')
+        fs.writeFileSync(
+          path.join(root, 'package', 'package.json'),
+          '{"name":"@fixture/listed"}',
+        );
+      manifestPath = path.join(extensionDir, 'package.json');
+      if (manifest !== undefined) fs.writeFileSync(manifestPath, manifest);
+      const extensionPath = path.join(extensionDir, 'observer.ts');
+      fs.writeFileSync(
+        extensionPath,
+        `import fs from 'node:fs';
+      export default function (pi) {
+        pi.on('before_agent_start', () => fs.appendFileSync(process.env.PI_SUBAGENTS_PROVIDER_TRACE, 'foreign:before_agent_start\\n'));
+      }`,
+      );
+      return [extensionPath];
+    });
+    const readFileSync = fs.readFileSync;
+    if (kind === 'unreadable' || kind === 'missing manifest target') {
+      vi.spyOn(fs, 'readFileSync').mockImplementation(((
+        file: fs.PathOrFileDescriptor,
+        ...args: any[]
+      ) => {
+        if (String(file) === manifestPath)
+          throw Object.assign(new Error('Permission denied'), {
+            code: kind === 'unreadable' ? 'EACCES' : 'ENOENT',
+          });
+        return (readFileSync as any)(file, ...args);
+      }) as typeof fs.readFileSync);
+    }
+    try {
+      await expect(
+        parent.run({
+          config: { ...config, lifecycle_passthrough: ['@fixture/listed'] },
+        }),
+      ).resolves.toMatchObject({ result: 'inherited provider streamed' });
+      expect(parent.trace()).not.toContain('foreign:before_agent_start');
+    } finally {
+      vi.restoreAllMocks();
+      await parent.close();
+    }
+  },
+  30_000,
+);
+
+it('realpaths a symlinked standalone extension before checking its foreign manifest', async (test) => {
+  let symlinkError: unknown;
+  const parent = await fixture([], (root) => {
+    const listed = path.join(root, 'listed');
+    const foreign = path.join(root, 'foreign');
+    fs.mkdirSync(listed);
+    fs.mkdirSync(foreign);
+    fs.writeFileSync(
+      path.join(listed, 'package.json'),
+      '{"name":"@fixture/listed"}',
+    );
+    fs.writeFileSync(
+      path.join(foreign, 'package.json'),
+      '{"name":"@fixture/foreign"}',
+    );
+    const target = path.join(foreign, 'observer.ts');
+    fs.writeFileSync(
+      target,
+      `import fs from 'node:fs';
+      export default function (pi) {
+        pi.on('before_agent_start', () => fs.appendFileSync(process.env.PI_SUBAGENTS_PROVIDER_TRACE, 'foreign:before_agent_start\\n'));
+      }`,
+    );
+    const link = path.join(listed, 'standalone.ts');
+    try {
+      fs.symlinkSync(target, link, 'file');
+    } catch (error) {
+      if (process.platform !== 'win32') throw error;
+      symlinkError = error;
+      return [];
+    }
+    return [link];
+  });
+  try {
+    if (symlinkError)
+      test.skip(
+        `Windows cannot create a file symlink: ${String(symlinkError)}`,
+      );
+    await expect(
+      parent.run({
+        config: { ...config, lifecycle_passthrough: ['@fixture/listed'] },
+      }),
+    ).resolves.toMatchObject({ result: 'inherited provider streamed' });
+    expect(parent.trace()).not.toContain('foreign:before_agent_start');
   } finally {
     await parent.close();
   }

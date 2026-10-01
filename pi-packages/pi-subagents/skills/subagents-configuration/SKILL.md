@@ -112,7 +112,9 @@ Do not load this skill for ordinary subagent delegation/use (`subagent_run`, tas
 - `model_profiles` are scoped to the matching subagent definition source: project-local profile entries in `.pi/subagents.json` apply to project-local definitions, while global profile entries apply to global definitions. If a project definition overrides a global definition with the same normalized name, the project definition and its project-local profile win.
 - Prefer configuring subagent `model` and `effort` under `model_profiles` in the config matching the definition scope: project-local definitions use `.pi/subagents.json`; global definitions use `$PI_CODING_AGENT_DIR/subagents.json` or `~/.pi/agent/subagents.json`. Markdown definitions should usually contain identity, description, tool allowlist, and behavioral instructions only.
 - Nested subagent sessions should use `session_resources: "lean"` by default so the subagent markdown body becomes the nested session system prompt, the delegated user prompt contains only orchestrator context/task, and workflow skills, prompt templates, themes, context files, and startup context injections are not auto-loaded.
-- In lean mode, extensions are loaded for allowlisted tools and tool-safety hooks only; prompt/context lifecycle hooks such as `before_agent_start` and `context` must not inject hidden messages into subagent turns.
+- In lean mode, extensions retain allowlisted tools and tool-safety hooks (`tool_call`, `tool_result`, `user_bash`). `lifecycle_passthrough` is an array of exact package names, defaulting to `["@thoth-agents/pi-claude-bridge", "@thoth-agents/pi-antigravity-bridge"]`; a project array replaces the global array and explicit `[]` disables it. Non-string entries are ignored with a warning. Identity uses the nearest `package.json` of the real extension file, stops at the first manifest, and fails closed on missing, unreadable, or invalid manifests.
+- Listed packages additionally retain exactly `before_agent_start`, `agent_start`, and `turn_start` as observe-only handlers: each invocation receives a structured clone of the event, context is passed unchanged, and the awaited return is discarded. Event mutations and returned prompts/messages cannot inject root context. Unlisted lifecycle hooks, `context`, and `session_start` remain stripped; only load-time provider owners retain `session_shutdown`. Full resource mode is unchanged.
+- Antigravity currently registers none of the three observe-only events. Its Pi-tool MCP bridge initializes in `session_start`, so it is not initialized in lean children.
 - Subagent task history is stored globally under data storage, but rows remain project-scoped by `cwd`; history stores delegated prompt and subagent system prompt separately.
 - Debug logging is disabled by default with `debug: false`; when enabled in global or project `subagents.json`, logs are written to the executing project's `cwd/.pi/subagents-debug.log`.
 - To install the package through Pi's package manager, use `npm:@thoth-agents/pi-subagents@>=1.0.0`. For this monorepo's local setup, use `pnpm run setup:pi:local`, which supplies the checked-out fork path and does not require npm publication.
@@ -140,6 +142,10 @@ Recommended `subagents.json` starter:
   "max_concurrency": 5,
   "debug": false,
   "session_resources": "lean",
+  "lifecycle_passthrough": [
+    "@thoth-agents/pi-claude-bridge",
+    "@thoth-agents/pi-antigravity-bridge"
+  ],
   "history_panel_shortcut": "ctrl+,",
   "detail_cancel_shortcut": "x",
   "background_handoff_shortcut": "ctrl+h",

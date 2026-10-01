@@ -8,8 +8,8 @@ This package is a member of the thoth-agents pnpm workspace; install from the re
 
 ```bash
 pnpm install                                                   # from the repository root
-pnpm --filter @estebanforge/pi-antigravity-bridge run test       # unit tests via vitest (no agy spawn, no network)
-pnpm --filter @estebanforge/pi-antigravity-bridge run typecheck  # tsc --noEmit type check
+pnpm --filter @thoth-agents/pi-antigravity-bridge run test       # unit tests via vitest (no agy spawn, no network)
+pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck  # tsc --noEmit type check
 ```
 
 The integration scripts below spawn a real `agy` process and need a logged-in account. The unit tests need neither.

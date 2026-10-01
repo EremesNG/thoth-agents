@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { DEFAULT_LIFECYCLE_PASSTHROUGH } from '../config.js';
 import { SubagentStructuredError } from '../error-metadata.js';
 import { resolveSubagentsHistoryHome } from '../history.js';
 import { resolveEffectiveSubagentProfile } from '../profile-resolver.js';
@@ -153,7 +154,60 @@ function isNonRetryableSubagentError(error: unknown): boolean {
   );
 }
 
-function isolateSubagentExtensions(base: any): any {
+const SUBAGENT_OBSERVE_ONLY_EVENTS = new Set([
+  'before_agent_start',
+  'agent_start',
+  'turn_start',
+]);
+
+function extensionPackageName(
+  resolvedPath: unknown,
+  cache: Map<string, string | undefined>,
+): string | undefined {
+  if (typeof resolvedPath !== 'string') return undefined;
+  try {
+    // SDK resolvedPath may still be a symlink into another package.
+    let dir = path.dirname(fs.realpathSync(resolvedPath));
+    const visited: string[] = [];
+    let name: string | undefined;
+    while (true) {
+      if (cache.has(dir)) {
+        name = cache.get(dir);
+        break;
+      }
+      visited.push(dir);
+      const manifestPath = path.join(dir, 'package.json');
+      try {
+        // lstat distinguishes an absent entry from a manifest with a broken symlink.
+        fs.lstatSync(manifestPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') break;
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+        continue;
+      }
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        name = typeof manifest?.name === 'string' ? manifest.name : undefined;
+      } catch {
+        // An unreadable, disappeared, or invalid nearest manifest fails closed.
+      }
+      break; // Never inherit the name of an outer package past a manifest.
+    }
+    for (const directory of visited) cache.set(directory, name);
+    return name;
+  } catch {
+    return undefined;
+  }
+}
+
+function isolateSubagentExtensions(
+  base: any,
+  packages: readonly string[],
+): any {
+  const listedPackages = new Set(packages);
+  const packageNames = new Map<string, string | undefined>();
   // Capture ownership before SDK binding consumes and clears the load-time queues.
   const providerOwners = new Set(
     (base?.runtime?.pendingProviderRegistrations ?? []).map(
@@ -162,22 +216,37 @@ function isolateSubagentExtensions(base: any): any {
   );
   return {
     ...base,
-    extensions: (base?.extensions ?? []).map((extension: any) => ({
-      ...extension,
-      handlers: new Map(
-        [
-          ...((extension.handlers as Map<string, unknown[]>) ?? new Map()),
-        ].filter(
-          ([event]) =>
-            SUBAGENT_ALLOWED_EXTENSION_EVENTS.has(event) ||
-            (event === 'session_shutdown' &&
-              providerOwners.has(extension.path)),
-        ),
-      ),
-      commands: new Map(),
-      flags: new Map(),
-      shortcuts: new Map(),
-    })),
+    extensions: (base?.extensions ?? []).map((extension: any) => {
+      const name = extensionPackageName(extension.resolvedPath, packageNames);
+      const passthrough = name !== undefined && listedPackages.has(name);
+      const handlers = new Map<string, unknown[]>();
+      for (const [event, callbacks] of (extension.handlers as Map<
+        string,
+        any[]
+      >) ?? new Map()) {
+        if (
+          SUBAGENT_ALLOWED_EXTENSION_EVENTS.has(event) ||
+          (event === 'session_shutdown' && providerOwners.has(extension.path))
+        ) {
+          handlers.set(event, callbacks);
+        } else if (passthrough && SUBAGENT_OBSERVE_ONLY_EVENTS.has(event)) {
+          handlers.set(
+            event,
+            callbacks.map((handler) => async (event: any, ctx: any) => {
+              // Context contains functions; only events are cloneable. Discard all returns.
+              await handler(structuredClone(event), ctx);
+            }),
+          );
+        }
+      }
+      return {
+        ...extension,
+        handlers,
+        commands: new Map(),
+        flags: new Map(),
+        shortcuts: new Map(),
+      };
+    }),
   };
 }
 
@@ -328,7 +397,11 @@ async function createSession(
       noThemes: true,
       noContextFiles: true,
       systemPromptOverride: () => systemPrompt,
-      extensionsOverride: isolateSubagentExtensions,
+      extensionsOverride: (base: any) =>
+        isolateSubagentExtensions(
+          base,
+          config.lifecycle_passthrough ?? DEFAULT_LIFECYCLE_PASSTHROUGH,
+        ),
     });
     await resourceLoader.reload();
     options.agentDir = agentDir;

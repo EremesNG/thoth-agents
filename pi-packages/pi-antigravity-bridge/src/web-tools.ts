@@ -22,6 +22,7 @@ import os from "node:os";
 import path from "node:path";
 import { Type } from "typebox";
 import { redactText } from "./redact.js";
+import { terminateProcessTree } from "./process-termination.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export const WEB_AGENT_PREFIX = "pi-bridge-web-";
@@ -145,10 +146,12 @@ export async function runWebAgent(opts: WebRunOptions): Promise<WebRunResult> {
 	];
 	opts.log?.("web-run-start", { agent: agentName, gatedTool: opts.gatedTool });
 
-	const child = spawn(bin, args, { cwd: opts.cwd ?? process.cwd(), stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-	const stop = () => {
-		if (!child.killed) child.kill();
-	};
+	const child = spawn(bin, args, {
+		cwd: opts.cwd ?? process.cwd(), stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+		detached: process.platform !== "win32",
+	});
+	let termination: Promise<void> | undefined;
+	const stop = () => termination ??= terminateProcessTree(child);
 	const onAbort = () => stop();
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
 	const timer = setTimeout(stop, opts.timeoutMs ?? DEADLINE_MS);
@@ -200,7 +203,7 @@ export async function runWebAgent(opts: WebRunOptions): Promise<WebRunResult> {
 	} finally {
 		clearTimeout(timer);
 		opts.signal?.removeEventListener("abort", onAbort);
-		stop();
+		await stop();
 		rmSync(agentDir, { recursive: true, force: true });
 	}
 

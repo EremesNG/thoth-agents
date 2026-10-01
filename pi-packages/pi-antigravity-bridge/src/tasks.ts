@@ -16,6 +16,7 @@ import { readdir, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { readTranscriptTail } from "./parked-turn.js";
+import { terminateProcessTree } from "./process-termination.js";
 
 const TASK_LOG_RE = /^task-(\d+)\.log$/;
 const MAX_TASKS = 128;
@@ -120,27 +121,23 @@ async function defaultSpawnRaw(
 	capBytes: number,
 ): Promise<string> {
 	return new Promise<string>((resolve, reject) => {
-		const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "ignore"] });
+		const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "ignore"], detached: process.platform !== "win32" });
 		let out = "";
 		let settled = false;
-		const done = (fn: () => void) => {
+		const done = (fn: () => void, terminate = false) => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timer);
-			fn();
+			if (terminate) void terminateProcessTree(child).then(fn);
+			else fn();
 		};
 		const timer = setTimeout(() => {
-			child.kill("SIGKILL");
-			done(() => reject(new Error(`${cmd} timed out`)));
+			done(() => reject(new Error(`${cmd} timed out`)), true);
 		}, timeoutMs);
 		child.stdout.on("data", (d: Buffer) => {
+			if (settled) return;
 			if (out.length + d.length > capBytes) {
-				try {
-					child.kill("SIGKILL");
-				} catch {
-					/* already gone */
-				}
-				done(() => reject(new Error(`${cmd} output cap exceeded`)));
+				done(() => reject(new Error(`${cmd} output cap exceeded`)), true);
 				return;
 			}
 			out += d.toString("utf8");

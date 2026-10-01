@@ -1,4 +1,5 @@
 import {
+  AGENT_RETURN_CONTRACT,
   type AgentRoleName,
   getAgentPackContract,
   getAgentRole,
@@ -19,6 +20,7 @@ export interface QuestionProtocolSection {
   kind: 'question-protocol';
   toolConcept: 'userQuestion';
   audience: 'root' | 'child';
+  role?: AgentRoleName;
 }
 
 export interface SubagentRulesSection {
@@ -39,6 +41,7 @@ export interface ResponseBudgetSection {
 export interface StepBudgetSection {
   kind: 'step-budget';
   steps: number;
+  role?: string;
 }
 
 export interface ModelFamilySection {
@@ -69,8 +72,14 @@ export interface PromptSectionRenderer<TSection extends PromptSection> {
 
 export function createQuestionProtocolSection(
   audience: 'root' | 'child' = 'root',
+  role?: AgentRoleName,
 ): QuestionProtocolSection {
-  return { kind: 'question-protocol', toolConcept: 'userQuestion', audience };
+  return {
+    kind: 'question-protocol',
+    toolConcept: 'userQuestion',
+    audience,
+    role,
+  };
 }
 
 export function createSubagentRulesSection(
@@ -94,12 +103,13 @@ export function createResponseBudgetSection(): ResponseBudgetSection {
 
 export function createStepBudgetSection(
   steps?: number,
+  role?: string,
 ): StepBudgetSection | undefined {
   if (steps === undefined || !Number.isInteger(steps) || steps <= 0) {
     return undefined;
   }
 
-  return { kind: 'step-budget', steps };
+  return { kind: 'step-budget', steps, role };
 }
 
 function getPrimaryModelId(model?: string | ModelEntry[]): string | undefined {
@@ -192,6 +202,12 @@ For each bounded assignment, specify PHASE / CHANGE, OBJECTIVE, INPUT ARTIFACTS,
 export function createOrchestratorPromptSections(): RolePromptSection[] {
   const workflow = getSddWorkflowContract();
   const policy = getAgentPackContract().orchestrationPolicy;
+  const childReturnFields = policy.specialistDirectory
+    .map(
+      ({ role }) =>
+        `- ${roleTemplate(role)} return fields: ${AGENT_RETURN_CONTRACT[role].join(', ')}.`,
+    )
+    .join('\n');
 
   return [
     roleText(`<role>
@@ -257,7 +273,7 @@ ${renderTaskShapingPolicy(policy.taskShaping)}
 
 <delegation>
 - Use this envelope for all \`{{delegationTool}}\` delegation.
-- Child return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.
+${childReturnFields}
 
 ${renderSddPhaseDispatchTemplate()}
 </delegation>`),
@@ -292,6 +308,10 @@ const ROLE_SPECIFIC_RULES: Record<
     'Verify relevant call sites and shared contracts within the assigned outcome; do not restart broad discovery or unrelated cleanup.',
   ],
 };
+
+function isDiscoveryRole(role?: string): boolean {
+  return role === 'explorer' || role === 'librarian';
+}
 
 function childSections(
   roleName: ReadOnlyAgentRole | WriteCapableAgentRole,
@@ -345,16 +365,20 @@ ${role.responsibility}
     roleText(`<rules>
 - ${[...modeRules, ...assignedOutcomeRules, ...ROLE_SPECIFIC_RULES[roleName]].join('\n- ')}
 </rules>`),
+    ...(isDiscoveryRole(roleName)
+      ? [
+          roleText(`<evidence-only>
+- Report facts with evidence and uncertainty; never recommend fixes, designs, defaults or next actions.
+- Treat conclusion as a factual finding, not advice.
+- Return any open question you cannot settle through openQuestions as the question, the possible options and the facts for each option, without recommending one. Root decides or asks Oracle.
+</evidence-only>`),
+        ]
+      : []),
     createSubagentRulesSection(),
-    createQuestionProtocolSection('child'),
+    createQuestionProtocolSection('child', roleName),
     roleText(`<return-contract>
 Return a compact result with these fields:
-- conclusion
-- evidence
-- verification
-- risks
-- openQuestions
-- nextAction
+${AGENT_RETURN_CONTRACT[roleName].map((field) => `- ${field}`).join('\n')}
 </return-contract>`),
     createResponseBudgetSection(),
   ];
@@ -395,6 +419,15 @@ function renderQuestionProtocol(
   section: QuestionProtocolSection,
   dialect: HarnessPromptDialect,
 ): string {
+  if (section.audience === 'child' && isDiscoveryRole(section.role)) {
+    const instruction =
+      dialect.harness === 'pi'
+        ? 'Do not open a user dialog. Continue safe non-blocked work, then'
+        : `Use \`${dialect.tools.userQuestionTool}\` only for a blocking material choice, destructive or security-sensitive action, or missing secret. Do safe non-blocked work first, then`;
+    return `<questions>
+${instruction} escalate the unresolved question to the root through openQuestions as the question, the possible options and the facts for each option, without recommending one.
+</questions>`;
+  }
   if (section.audience === 'child' && dialect.harness === 'pi') {
     return `<questions>
 Do not open a user dialog. Continue safe non-blocked work, then escalate the unresolved question to the root through openQuestions with the material choices and a recommended default.
@@ -453,9 +486,12 @@ function renderResponseBudget(): string {
 }
 
 function renderStepBudget(section: StepBudgetSection): string {
+  const partialEvidence = isDiscoveryRole(section.role)
+    ? 'and what remains unexamined'
+    : 'with the next target';
   return `<step-budget>
 - Execution budget: ${section.steps} steps.
-- Prioritize high-signal checks and return partial evidence with the next target instead of looping.
+- Prioritize high-signal checks and return partial evidence ${partialEvidence} instead of looping.
 </step-budget>`;
 }
 

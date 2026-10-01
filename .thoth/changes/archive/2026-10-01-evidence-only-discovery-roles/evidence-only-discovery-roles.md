@@ -1,0 +1,239 @@
+# Change: evidence-only-discovery-roles
+
+**Classification**: substantial
+**Scope**: coordinated
+**Uncertainty**: low
+**Risk**: medium
+
+## Exploration
+
+- Facts-only Explorer (subtask_thoth-explorer_1790868586278_b533a393, worktree HEAD
+  e809b90 lineage): all five specialists share one return contract. Canonical field
+  array `AGENT_RETURN_CONTRACT` at `src/harness/core/agent-pack.ts:377` includes
+  `nextAction`; it is rendered into routing descriptions (`agent-pack.ts:414`) and the
+  root delegation section ("Child return fields: … nextAction",
+  `src/agents/prompt-sections.ts:260`). `childSections()` (`prompt-sections.ts:295`)
+  serves all specialists; the return list ends with `- nextAction` (`:357`).
+- Blocked-question rule for every specialist asks for "a recommended default":
+  Pi `prompt-sections.ts:400`, non-Pi `:409`; the Codex worker fixture pins the latter
+  (`src/harness/__fixtures__/codex/agent-worker.toml:46`).
+- Generic delegation guidance requests "next action" (`agent-pack.ts:280`), pinned by
+  `src/harness/core/agent-pack.test.ts:113`; `nextAction` is pinned by
+  `src/agents/prompt-rendering.test.ts:418`, `src/harness/core/agent-routing.test.ts:368`,
+  `src/harness/core/agent-pack.test.ts:224`.
+- All four harnesses consume the shared renderer: OpenCode
+  (`src/harness/adapters/opencode.ts:29,47`), Pi (`pi.ts:94-101`), Codex
+  (`codex.ts:152,228-233`), Claude Code (`claude-code.ts:124,235-241`,
+  `writers/claude-code-subagent.ts:69-71`) via `src/agents/configured-role-prompt.ts:29`.
+- Repository instructions repeat the generic contract: `AGENTS.md:161` ("uncertainty and
+  next action"), `AGENTS.md:233-234` ("recommended next action"),
+  `docs/agent/agents-and-delegation.md:68-69`, `docs/agent/task-template.md:58,60`.
+  Implementation handoff guidance (`skills/thoth-sdd/references/phases/implement.md:40,52-53`)
+  concerns writers.
+- Oracle legitimately separates observations, risks and recommendations
+  (`prompt-sections.ts:281`, `agent-pack.ts:187,194,199`); plan-reviewer returns
+  blockers with smallest repairs. Worker/Designer share the same return list and differ
+  in write authority and local implementation judgment (`prompt-sections.ts:316`,
+  `agent-pack.ts:207-209,240`). Root recommendation policy (orchestrator choices,
+  safe deferral, Review/Implement recommendations) is separate and unaffected.
+- Spec `.thoth/specs/multi-harness-agent-pack/spec.md` requires preserving return
+  contracts (`Preserve the six-role contract`) and escalation "through its return
+  contract" (lines 403, 431) but defines no evidence-only rule.
+- Custom `prompt` replacement/append (`configured-role-prompt.ts:25-39`) can change
+  effective instructions; out of scope.
+
+## Intent
+
+Explorer and Librarian explore and report facts only: no recommended fixes, designs,
+defaults or next actions. Root decides or asks Oracle. Oracle keeps its judgment;
+Worker and Designer keep their implementation next step.
+
+## Non-goals
+
+- No change to Oracle, Worker or Designer return contracts or responsibilities.
+- No change to root recommendation policy (orchestrator choices, plan-review offer,
+  safe deferral).
+- No change to custom prompt replacement/append behavior.
+- No runtime enforcement; this is prompt and documentation guidance.
+
+## Acceptance
+
+- AC-1: Canonical contract: role-specific return fields. Explorer and Librarian
+  return `conclusion, evidence, verification, risks, openQuestions` (no `nextAction`);
+  Oracle, Worker and Designer keep the current six fields. Routing descriptions and
+  the root delegation section render per-role fields truthfully; generic delegation
+  guidance stops requesting "next action" from discovery roles.
+- AC-2: Explorer/Librarian prompts state the evidence-only rule: report facts with
+  evidence and uncertainty; never recommend fixes, designs, defaults or next actions;
+  a `conclusion` is a factual finding, not advice. Open questions go to
+  `openQuestions` as the question, the possible options and the facts for each option,
+  without recommending one. Pi and non-Pi blocked-question wording for these two roles
+  drops "recommended default"; the other three roles keep it. The configured step
+  budget (`renderStepBudget`, `prompt-sections.ts:458`, "return partial evidence with
+  the next target") is role-scoped: discovery roles return partial evidence and what
+  remains unexamined, without a next target; other roles keep current wording; tests
+  cover configured `steps` for all five roles.
+- AC-3: Every harness output reflects AC-1/AC-2 (OpenCode, Pi, Codex, Claude Code)
+  with tests pinning: discovery roles lack `nextAction`/recommended default and carry
+  the evidence-only rule; Oracle/Worker/Designer unchanged; fixtures updated. Committed
+  generated assets (`plugin/**`, `pi/**`, including Pi provenance hashes) are
+  refreshed by root with `pnpm run build` after the worker finishes, so
+  `generate-integration-packages.test.ts` equality passes.
+- AC-4: Repository instructions: `AGENTS.md` subagent return contract and line 161,
+  `docs/agent/agents-and-delegation.md`, `docs/agent/task-template.md` distinguish
+  discovery roles (facts only) from Oracle/Worker/Designer, using the
+  progressive-context-router skill.
+- AC-5: Durable delta below applied at archive; root `check:ci`, `typecheck`,
+  `build`, `pnpm test` (known four missing-sibling failures only) pass.
+
+## Clarifications
+
+- Scope: only Explorer and Librarian (user, 2026-10-01).
+- Open questions: return the question and the options with their facts, without
+  recommending (user, 2026-10-01).
+
+## Decisions
+
+- Represent per-role return fields in the canonical pack (single source) rather than
+  per-harness string edits, so all four harnesses stay consistent.
+- Plan review round 1 (fresh Oracle): REJECT — step budget asked discovery roles for a
+  next target; worker-owned full-test milestone preceded required asset generation.
+  Repaired in AC-2/AC-3, Tasks and Plan (root regenerates assets).
+- Keep `openQuestions` for discovery roles; it carries options and facts, no default.
+- The ADDED requirement does not overlap existing ones: `Preserve the six-role contract`
+  only requires preserving whatever return contracts exist, and `Expose routable role
+  contracts` covers roster selection; neither defines discovery-role output content.
+- Implementation checkpoint (root, 2026-10-01): `4fc5b68` (root docs: AGENTS.md
+  return contract and delegation line, agents-and-delegation, task-template),
+  `397f579` (worker: role-specific canonical return fields, evidence-only rule, open
+  questions with options and facts, role-scoped step budget, 40-case four-harness test
+  matrix, shared `evidence-only-rule.txt` fixture; Codex worker fixture unchanged),
+  `f6e91a7` (root `pnpm run build`: generated diff limited to Pi/plugin explorer,
+  librarian, orchestrator plus provenance hashes; oracle/worker/designer unchanged).
+  Checks: root check:ci 0, typecheck 0, build 0, `pnpm test` without Orca CODEX_HOME
+  1204 passed / 4 missing-sibling marketplace failures.
+
+## Durable deltas
+
+- `ADDED multi-harness-agent-pack` **Keep discovery roles evidence-only** — Explorer and Librarian MUST return facts with evidence, verification, risks and open questions only, MUST NOT recommend fixes, designs, defaults or next actions, and MUST escalate an open question it cannot settle as the question with its possible options and the facts for each option without choosing one. Oracle judgment and Worker/Designer implementation handoffs MUST remain unchanged, and every harness MUST render the same role-specific return contract.
+  - GIVEN an Explorer or Librarian assignment that ends with findings and an open choice it cannot settle; WHEN the specialist returns in any harness; THEN its return lists facts and the open question with options and their facts, contains no recommendation or next action, and root decides or asks Oracle.
+
+## Plan
+
+1. Worker (sole writer of `src/agents/**`, `src/harness/**`): test-first per-role
+   return contract in `agent-pack.ts`, prompt sections incl. step budget,
+   routing/delegation guidance, fixtures and tests for all harnesses; focused checks
+   only (generated-asset equality is expected to fail until step 3).
+2. Root (parallel, disjoint files; progressive-context-router skill): `AGENTS.md`,
+   `docs/agent/agents-and-delegation.md`, `docs/agent/task-template.md`.
+3. Root (after worker): `pnpm run build` to refresh committed `plugin/**` and `pi/**`
+   generated assets and Pi provenance hashes; review that the asset diff is limited to
+   the contract lines.
+4. Root: full checks, commit, fresh Oracle verification, archive, merge.
+
+## Tasks
+
+- [x] AC-1: per-role return contract
+  - Outcome: discovery roles return five fields; others six; rendering truthful
+  - Known entrypoints and skill paths: `src/harness/core/agent-pack.ts:280,377,414`, `src/agents/prompt-sections.ts:260,295,357`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
+  - Inputs: Exploration, Clarifications
+  - Dependencies: none
+  - Output: code + tests
+  - Owner: worker
+  - Writes: `src/agents/**`, `src/harness/**`
+  - Interface boundaries: role names, permissions and other prompt sections unchanged
+  - Focused check and PASS evidence: `prompt-rendering`, `agent-routing`, `agent-pack` tests assert per-role fields; targeted vitest green
+  - Return milestone: focused tests green
+  - Stop / reassessment: the contract array is consumed by a public/config interface that requires one shared list
+- [x] AC-2: evidence-only rule and blocked questions
+  - Outcome: discovery prompts carry the rule; no recommended default for them
+  - Known entrypoints and skill paths: `src/agents/prompt-sections.ts:400,409,458`, `src/agents/explorer.ts`, `src/agents/librarian.ts`, tdd skill
+  - Inputs: AC-1
+  - Dependencies: AC-1 (same writer)
+  - Output: code + tests
+  - Owner: worker
+  - Writes: `src/agents/**`
+  - Interface boundaries: Oracle/Worker/Designer wording unchanged
+  - Focused check and PASS evidence: rendering tests for Pi and non-Pi dialects of all five roles, with and without configured `steps`
+  - Return milestone: tests green
+  - Stop / reassessment: none
+- [x] AC-3: harness outputs and fixtures
+  - Outcome: four harness renderings reflect AC-1/AC-2
+  - Known entrypoints and skill paths: `src/harness/adapters/{opencode,pi,codex,claude-code}.ts`, `src/harness/__fixtures__/**`
+  - Inputs: AC-1, AC-2
+  - Dependencies: AC-2
+  - Output: tests/fixtures
+  - Owner: worker (source/fixtures); root (generated `plugin/**`, `pi/**` via `pnpm run build`)
+  - Writes: `src/harness/**`; root: `plugin/**`, `pi/**`
+  - Interface boundaries: unrelated generated content unchanged
+  - Focused check and PASS evidence: adapter/fixture and agent/harness focused tests green; diff of fixtures limited to contract lines
+  - Return milestone: focused tests green (generated-asset equality left to root build)
+  - Stop / reassessment: fixture drift beyond the contract lines
+- [x] AC-4: repository instructions
+  - Outcome: instructions distinguish discovery roles from others
+  - Known entrypoints and skill paths: `AGENTS.md:161,233-234`, `docs/agent/agents-and-delegation.md:68-69`, `docs/agent/task-template.md:58,60`, progressive-context-router skill `C:\Users\EremesNG\.pi\agent\skills\progressive-context-router\SKILL.md`
+  - Inputs: Clarifications
+  - Dependencies: none
+  - Output: docs
+  - Owner: root
+  - Writes: those three files
+  - Interface boundaries: other instruction content unchanged
+  - Focused check and PASS evidence: text review; `pnpm run check:ci`
+  - Return milestone: docs committed
+  - Stop / reassessment: none
+- [x] AC-5: checks and delta
+  - Outcome: full checks pass; delta ready
+  - Known entrypoints and skill paths: thoth-archive skill
+  - Inputs: AC-1..AC-4
+  - Dependencies: AC-3, AC-4
+  - Output: check evidence
+  - Owner: root
+  - Writes: none
+  - Interface boundaries: none
+  - Focused check and PASS evidence: root check:ci, typecheck, build, test
+  - Return milestone: fresh Oracle PASS
+  - Stop / reassessment: failures beyond the known four
+
+## Authorization
+
+**Plan review**: OKAY
+**Plan review selection**: EXPLICIT_REVIEW
+**Implementation**: AUTHORIZED
+
+The user explicitly selected Review plan with Oracle. Round 1 returned [REJECT] (step
+budget next target; asset regeneration ordering), repaired here; round 2 fresh Oracle
+subtask_thoth-oracle_1790870114788_f7752c4b returned [OKAY]. Caution: generated-asset
+review must allow expected Pi provenance-hash changes.
+
+## Verification
+
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 772c1062b9a466e1f478ecb75a75b89826d57bd4a008a2448354b555a47b794d
+
+Fresh read-only Oracle subtask_thoth-oracle_1790871392334_59cd2669 returned PASS for
+commits 4fc5b68, 397f579, f6e91a7 (unrelated uncommitted pi-packages edits excluded).
+
+- AC-1: PASS | code + routing/delegation review | canonical contracts, routing descriptions and root delegation list five discovery fields and six Oracle/Worker/Designer fields
+- AC-2: PASS | rendered prompts incl. configured steps | discovery prompts require factual conclusions and questions with options/facts; no nextAction, recommended default or next target
+- AC-3: PASS | 40-case four-harness matrix + regeneration check | all 40 generated assets match fresh rendering, provenance matches, diff limited to contract lines and hashes; Oracle/Worker/Designer unchanged; focused suite 143 passed
+- AC-4: PASS | docs review | three documentation changes agree with AGENTS.md; no active surface asks discovery roles to recommend
+- AC-5: PASS | delta validation + recorded checks | delta valid, non-overlapping, baseline matches; root check:ci/typecheck/build 0, pnpm test 1204 passed / 4 known missing-sibling failures
+- Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:315d62b8e1486723de465ea010dc43b2ff6eed838bf623e5bf090c477eaa4391
+- Source: src/harness/core/agent-pack.ts | sha256:e2afa2272b0970e29f2d1edb599858feddbc45210589bf122fd820c2f27f1a12
+- Source: src/agents/prompt-sections.ts | sha256:748bff44e40a65988e4afbb8b558acab3abbb8cb48f8f43496e6b77895080e5b
+- Source: src/agents/prompt-utils.ts | sha256:1d120fa8ad249ffb635c30eacbf4e4d13885b5725f31d25e28d717311a65810e
+- Source: src/agents/configured-role-prompt.ts | sha256:f71c897fda8424044912f61efbddd9397307d52f39c24bda3e22c0630889320f
+- Source: AGENTS.md | sha256:580653dbeb31ef0b0a9560839dda11a7d9b7f245aa750b1b0a7298d9960daa26
+- Source: docs/agent/agents-and-delegation.md | sha256:1bab284eb6ec0884f56ebf07593d3799b23b63cc0551bbad716a1259f1dfa371
+- Source: docs/agent/task-template.md | sha256:a6d9ff08f70c75e9bd066fc9a818a6a96641eda71a5419db319bdc967f938026
+- Source: pi/agents/thoth-explorer.md | sha256:6bce71c7564fa1ebacc4e728a483467c10ed5d7e74f56f9d39ebb65792d0b89e
+- Source: pi/agents/thoth-librarian.md | sha256:300dc40cc36a8dde0338fa4bd19100b1ae25aec85933fb5a90d57807cb6c134f
+- Source: plugin/agents/explorer.md | sha256:4faa5cf7900d535264e8eb890ab1cb0c8c587d767166153224490798ab530e6f
+- Source: plugin/agents/librarian.md | sha256:56d133c640a3be2707668f601878185eafb7579cecdd767ccbe2bed8bc06de47
+- Source: plugin/agents/orchestrator.md | sha256:8200e6289cebaeea224a87054271d76c4e5771b56587e45055cdf2f0b6abe9e3
+
+## Closeout
+
+**Archive**: READY

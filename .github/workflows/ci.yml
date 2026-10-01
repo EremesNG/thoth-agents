@@ -65,3 +65,45 @@ jobs:
         run: |
           pnpm --filter @thoth-agents/pi-claude-bridge run typecheck
           pnpm --filter @thoth-agents/pi-claude-bridge run test:unit
+
+  # Windows qualification for the vendored Pi packages only; the root suite stays on Ubuntu.
+  pi-packages-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck pi-subagents
+        run: pnpm --filter @thoth-agents/pi-subagents run typecheck
+
+      - name: Test pi-subagents
+        run: pnpm --filter @thoth-agents/pi-subagents run test
+
+      - name: Typecheck pi-antigravity-bridge
+        run: pnpm --filter @thoth-agents/pi-antigravity-bridge run typecheck
+
+      - name: Test pi-antigravity-bridge
+        run: pnpm --filter @thoth-agents/pi-antigravity-bridge run test
+
+      - name: Typecheck pi-claude-bridge
+        run: pnpm --filter @thoth-agents/pi-claude-bridge run typecheck
+
+      # Offline unit tests only; the package `test` script runs live Claude integrations.
+      - name: Test pi-claude-bridge
+        run: pnpm --filter @thoth-agents/pi-claude-bridge run test:unit

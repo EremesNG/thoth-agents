@@ -65,8 +65,11 @@ export function appendPromptSections(
   return sections.map(trimPromptSection).filter(Boolean).join('\n\n');
 }
 
-export function getStepBudgetPromptSection(steps?: number): string | undefined {
-  const section = createStepBudgetSection(steps);
+export function getStepBudgetPromptSection(
+  steps?: number,
+  role?: string,
+): string | undefined {
+  const section = createStepBudgetSection(steps, role);
 
   if (!section) {
     return undefined;

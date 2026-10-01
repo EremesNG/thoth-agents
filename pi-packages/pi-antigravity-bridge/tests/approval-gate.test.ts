@@ -19,7 +19,7 @@ import {
 	type GateDecision,
 } from "../src/approval-gate.js";
 
-const ctxStub = { hasUI: false } as import("@earendil-works/pi-coding-agent").ExtensionContext;
+const ctxStub = { hasUI: false } as import("@earendil-works/pi-coding-agent").ExtensionToolContext;
 
 interface ExecuteLog {
 	params: Record<string, unknown>;

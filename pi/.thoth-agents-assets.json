@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "owner": "thoth-agents",
   "files": {
-    "agents/thoth-explorer.md": "7f3f57b4f4a530692cc2f185a1fe820a6f2b95db43463e98549965d0d427bfe4",
-    "agents/thoth-librarian.md": "169c4e23fbbdc4b40f4951f833eb5f77187bcce73ca105eb9576ed41c6f74faa",
+    "agents/thoth-explorer.md": "6bce71c7564fa1ebacc4e728a483467c10ed5d7e74f56f9d39ebb65792d0b89e",
+    "agents/thoth-librarian.md": "300dc40cc36a8dde0338fa4bd19100b1ae25aec85933fb5a90d57807cb6c134f",
     "agents/thoth-oracle.md": "bc32e16e608b832eccf81571f5843c51979804dee284a1a833d7fc2d12d4ade5",
     "agents/thoth-designer.md": "40f929301494f3e07921d224bababa9c55f3580390c1e773f2613dda8c5416fd",
     "agents/thoth-worker.md": "9719fdf71e7a47f39b38d0398d752c42d75b17c00fa0afad6ca66f14821ee0ec"

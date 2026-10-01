@@ -13,6 +13,7 @@
 // there: the one known-good build must not be locked out by a CLI number.
 
 import { spawn } from "node:child_process";
+import { terminateProcessTree } from "./process-termination.js";
 
 /** Floor for the stream-json CLI. Matches the protocol grammar our driver
  *  and the event mapping rely on; older agy predates verified fields. */
@@ -82,34 +83,31 @@ export function checkAgyCliVersion(binary: string = "agy"): Promise<AgyVersionCh
 	const run = new Promise<AgyVersionCheck>((resolve) => {
 		let out = "";
 		let done = false;
-		const finish = (check: AgyVersionCheck) => {
+		let watchdog: NodeJS.Timeout | undefined;
+		const finish = (check: AgyVersionCheck, terminate = false) => {
 			if (done) return;
 			done = true;
 			clearTimeout(watchdog);
-			resolve(check);
+			if (terminate) void terminateProcessTree(proc).then(() => resolve(check));
+			else resolve(check);
 		};
 		let proc: ReturnType<typeof spawn>;
 		try {
-			proc = spawn(binary, ["--version"], { stdio: ["ignore", "pipe", "ignore"], shell: false });
+			proc = spawn(binary, ["--version"], {
+				stdio: ["ignore", "pipe", "ignore"], shell: false, detached: process.platform !== "win32",
+			});
 		} catch {
 			finish({ status: "unavailable", raw: "" });
 			return;
 		}
 		proc.stdout?.setEncoding("utf8");
-		proc.stdout?.on("data", (d: string) => (out = (out + d).slice(0, 4096)));
+		proc.stdout?.on("data", (d: string) => { if (!done) out = (out + d).slice(0, 4096); });
 		proc.on("error", () => finish({ status: "unavailable", raw: "" }));
 		// Exit code is ignored on purpose: `agy --version` failures print to
 		// stderr (ignored) and leave junk or empty stdout, which classifies as
 		// invalid — close enough in effect to unavailable for a warn-only gate.
 		proc.on("close", () => finish(agyVersionVerdict(out)));
-		const watchdog = setTimeout(() => {
-			try {
-				proc.kill("SIGKILL");
-			} catch {
-				/* already gone */
-			}
-			finish({ status: "unavailable", raw: out });
-		}, VERSION_TIMEOUT_MS);
+		watchdog = setTimeout(() => finish({ status: "unavailable", raw: out }, true), VERSION_TIMEOUT_MS);
 	});
 	checkCache.set(binary, run);
 	return run;

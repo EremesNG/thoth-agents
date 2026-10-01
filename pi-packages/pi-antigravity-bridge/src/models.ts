@@ -22,6 +22,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Api, Model, ThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai";
+import { terminateProcessTree } from "./process-termination.js";
 
 const DISCOVERY_TIMEOUT_MS = 8_000;
 
@@ -131,44 +132,36 @@ export async function spawnAgyRaw(
 			const proc = spawn(binary, args, {
 				stdio: ["ignore", "pipe", "ignore"],
 				shell: false,
+				detached: process.platform !== "win32",
 			});
 			proc.stdout?.setEncoding("utf8");
 			let out = "";
 			let done = false;
-			let capped = false;
-			const finish = (v: string) => {
+			const finish = (v: string, terminate = false) => {
 				if (done) return;
 				done = true;
 				clearTimeout(watchdog);
-				resolve(v);
+				// Reserve the failure before killing: close must not replace a
+				// timeout/cap result while tree termination is being awaited.
+				if (terminate) void terminateProcessTree(proc).then(() => resolve(v));
+				else resolve(v);
 			};
 			proc.stdout?.on("data", (d: string) => {
-				if (capped) return;
+				if (done) return;
 				if (out.length + d.length > capBytes) {
-					capped = true;
-					try {
-						proc.kill("SIGKILL");
-					} catch {
-						/* already gone */
-					}
-					finish("");
+					finish("", true);
 					return;
 				}
 				out += d;
 			});
 			proc.on("error", (err) => {
+				if (done) return;
+				done = true;
 				clearTimeout(watchdog);
 				reject(err);
 			});
 			proc.on("close", (code) => finish(code === 0 ? out : ""));
-			const watchdog = setTimeout(() => {
-				try {
-					proc.kill("SIGKILL");
-				} catch {
-					/* already gone */
-				}
-				finish("");
-			}, timeoutMs);
+			const watchdog = setTimeout(() => finish("", true), timeoutMs);
 		});
 	} catch {
 		return "";

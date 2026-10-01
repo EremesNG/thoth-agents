@@ -40,8 +40,11 @@ function processExists(pid: number | undefined): boolean {
 }
 
 describe('real process cancellation settlement', () => {
-  it('waits for real bash cleanup before persisting cancelled', async () => {
-    if (process.platform === 'win32') return;
+  it('waits for real bash cleanup before persisting cancelled', async (test) => {
+    if (process.platform === 'win32')
+      test.skip(
+        'POSIX custom runner requires ps --ppid and negative-PID SIGTERM; real SDK bash cancellation is covered cross-platform.',
+      );
     const marker = `pi-subagent-cancel-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents', 'analyst.md'),

@@ -155,7 +155,7 @@ describe('subagent_continue tool', () => {
     expect(renderedResult).not.toContain(`id: ${taskId}`);
   });
 
-  it('resolves @active tools from the current parent Pi session on continuation', async () => {
+  it('resolves * tools from the current parent Pi session on continuation', async () => {
     const fs = await import('node:fs');
     fs.writeFileSync(
       `${env.tmp}/.pi/subagents.json`,
@@ -163,24 +163,27 @@ describe('subagent_continue tool', () => {
     );
     fs.writeFileSync(
       `${env.tmp}/.pi/subagents/active-user.md`,
-      '---\nname: active-user\ndescription: active tool user\ntools:\n  - "@active"\n---\n# Agent',
+      '---\nname: active-user\ndescription: active tool user\ntools:\n  - "*"\n---\n# Agent',
     );
     const nestedSessionPath = `${env.tmp}/active-tools-session.jsonl`;
     fs.writeFileSync(nestedSessionPath, '{"type":"session"}\n');
     const createAgentSession = vi.fn((options: any) => {
       const messages: any[] = [];
+      const retainedTools = options.tools.filter(
+        (name: string) => name !== 'missing_fixture_tool',
+      );
       return {
         session: {
           subscribe: vi.fn(() => vi.fn()),
           prompt: vi.fn(async () => {
             messages.push({
               role: 'assistant',
-              content: `selected tools: ${options.tools.join(', ')}`,
+              content: `selected tools: ${retainedTools.join(', ')}`,
             });
           }),
           messages,
           dispose: vi.fn(async () => undefined),
-          getAllTools: () => options.tools.map((name: string) => ({ name })),
+          getAllTools: () => retainedTools.map((name: string) => ({ name })),
         },
       };
     });
@@ -195,7 +198,7 @@ describe('subagent_continue tool', () => {
     }));
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     const manager = env.createManager(sdkSubagentRunner);
-    let activeTools = ['read'];
+    let activeTools = ['read', 'missing_fixture_tool'];
     let runTool: any;
     let continueTool: any;
     const pi = {
@@ -216,6 +219,9 @@ describe('subagent_continue tool', () => {
     );
     expect(first.isError, first.content[0].text).not.toBe(true);
     expect(first.details.results[0].status).toBe('completed');
+    expect(first.details.results[0].dropped_tools).toEqual([
+      'missing_fixture_tool',
+    ]);
     const taskId = first.details.task_ids[0];
     activeTools = ['read', 'current_extension_tool'];
 
@@ -232,13 +238,22 @@ describe('subagent_continue tool', () => {
       id: taskId,
       attempt: 2,
       status: 'completed',
+      dropped_tools: [],
     });
     expect(result.content[0].text).toContain(
       'selected tools: read, current_extension_tool',
     );
     expect(
       createAgentSession.mock.calls.map(([options]) => options.tools),
-    ).toEqual([['read'], ['read', 'current_extension_tool']]);
+    ).toEqual([
+      ['read', 'missing_fixture_tool'],
+      ['read', 'current_extension_tool'],
+    ]);
+    const attempts = env.createHistoryStore().listTaskAttempts(env.tmp, taskId);
+    expect(attempts.map((attempt) => attempt.dropped_tools)).toEqual([
+      ['missing_fixture_tool'],
+      [],
+    ]);
   });
 
   it('streams the same live task-mode progress rendering as subagent_run before completion', async () => {

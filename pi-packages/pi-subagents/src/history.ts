@@ -112,7 +112,8 @@ const SESSION_TASK_METADATA_COLUMNS = `
         error_category,
         pi_retry_attempts,
         pending_message_count,
-        undelivered_message_count
+        undelivered_message_count,
+        dropped_tools_json
 `;
 
 function ensureColumn(
@@ -176,6 +177,7 @@ function ensureAttemptColumns(db: Db): void {
   ensureColumn(db, 'subagent_task_attempts', 'result', 'TEXT');
   ensureColumn(db, 'subagent_task_attempts', 'thread_snapshot_json', 'TEXT');
   ensureColumn(db, 'subagent_task_attempts', 'pi_retry_attempts', 'INTEGER');
+  ensureColumn(db, 'subagent_task_attempts', 'dropped_tools_json', 'TEXT');
   ensureColumn(
     db,
     'subagent_task_attempts',
@@ -210,8 +212,8 @@ function upsertTaskRecord(
 
   const columns =
     table === 'subagent_tasks'
-      ? 'id, display_name, cwd, agent, mode, status, task, context, created_at, attempt, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count'
-      : 'task_id, attempt, display_name, cwd, agent, mode, status, task, context, created_at, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count';
+      ? 'id, display_name, cwd, agent, mode, status, task, context, created_at, attempt, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json'
+      : 'task_id, attempt, display_name, cwd, agent, mode, status, task, context, created_at, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json';
   const placeholders = new Array(columns.split(',').length)
     .fill('?')
     .join(', ');
@@ -250,7 +252,8 @@ function upsertTaskRecord(
         thread_snapshot_json=excluded.thread_snapshot_json,
         pi_retry_attempts=excluded.pi_retry_attempts,
         pending_message_count=excluded.pending_message_count,
-        undelivered_message_count=excluded.undelivered_message_count`
+        undelivered_message_count=excluded.undelivered_message_count,
+        dropped_tools_json=excluded.dropped_tools_json`
       : `display_name=excluded.display_name,
         status=excluded.status,
         session_id=excluded.session_id,
@@ -283,7 +286,8 @@ function upsertTaskRecord(
         thread_snapshot_json=excluded.thread_snapshot_json,
         pi_retry_attempts=excluded.pi_retry_attempts,
         pending_message_count=excluded.pending_message_count,
-        undelivered_message_count=excluded.undelivered_message_count`;
+        undelivered_message_count=excluded.undelivered_message_count,
+        dropped_tools_json=excluded.dropped_tools_json`;
   const identity = table === 'subagent_tasks' ? 'id' : 'task_id, attempt';
 
   db.prepare(`
@@ -331,6 +335,9 @@ function upsertTaskRecord(
     task.pi_retry_attempts ?? null,
     task.pending_message_count ?? null,
     task.undelivered_message_count ?? null,
+    task.dropped_tools === undefined
+      ? null
+      : JSON.stringify(task.dropped_tools),
   );
 }
 
@@ -483,6 +490,7 @@ export class SubagentHistoryStore {
     ensureColumn(db, 'subagent_tasks', 'error_metadata_json', 'TEXT');
     ensureColumn(db, 'subagent_tasks', 'error_category', 'TEXT');
     ensureColumn(db, 'subagent_tasks', 'pi_retry_attempts', 'INTEGER');
+    ensureColumn(db, 'subagent_tasks', 'dropped_tools_json', 'TEXT');
     ensureColumn(db, 'subagent_tasks', 'pending_message_count', 'INTEGER');
     ensureColumn(db, 'subagent_tasks', 'undelivered_message_count', 'INTEGER');
     ensureAttemptColumns(db);
@@ -641,13 +649,27 @@ export class SubagentHistoryStore {
         thread_snapshot_json,
         pi_retry_attempts,
         pending_message_count,
-        undelivered_message_count
+        undelivered_message_count,
+        dropped_tools_json
       FROM subagent_task_attempts
       WHERE cwd = ? AND task_id = ?
       ORDER BY attempt ASC
     `)
       .all(cwd, taskId)
       .map((row) => rowToTask(row, options));
+  }
+}
+
+function parseDroppedTools(text: unknown): string[] | undefined {
+  if (typeof text !== 'string') return undefined;
+  try {
+    const names: unknown = JSON.parse(text);
+    return Array.isArray(names) &&
+      names.every((name) => typeof name === 'string')
+      ? names
+      : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -707,6 +729,7 @@ function rowToTask(row: any, options: HistoryReadOptions = {}): SubagentTask {
         ? undefined
         : parseSnapshotJson(row.thread_snapshot_json),
     pi_retry_attempts: row.pi_retry_attempts ?? undefined,
+    dropped_tools: parseDroppedTools(row.dropped_tools_json),
     pending_message_count:
       row.pending_message_count === null ||
       row.pending_message_count === undefined

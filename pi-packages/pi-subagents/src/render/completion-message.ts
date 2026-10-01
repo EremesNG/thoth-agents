@@ -21,6 +21,7 @@ import {
   visibleWidth,
 } from '../ui/theme.js';
 import { wrapLineToWidth } from './text-width.js';
+import { toolSelectionWarning } from './tool-selection-warning.js';
 import {
   appendSubagentResumeGuidance,
   formatTaskLabel,
@@ -83,12 +84,14 @@ export {
 export function completionMessage(task: any): string {
   const cwd = task?.cwd ?? process.cwd();
   const label = formatTaskLabel(task);
+  const warning = toolSelectionWarning(task);
   const hasResp =
     typeof task.result === 'string' && task.result.trim().length > 0;
   const content = [
     `Subagent ${label} ${task.status}`,
     `task_id: ${task.id ?? task.task_id ?? 'unknown'}`,
     `Undelivered messages: ${task.undelivered_message_count ?? 0}`,
+    ...(warning ? [warning] : []),
     '',
     'Read only this final response from the subagent. Do not reread the full execution transcript unless the user explicitly asks for debugging details.',
   ];
@@ -135,6 +138,7 @@ export function sendSubagentCompletionMessage(
           result: task.result,
           error: task.error,
           undelivered_message_count: task.undelivered_message_count ?? 0,
+          dropped_tools: task.dropped_tools,
           error_metadata: safeCompletionErrorMetadata(task),
         },
       },

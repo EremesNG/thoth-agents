@@ -854,29 +854,39 @@ describe('config and workflow loading', () => {
     expect(
       expandToolPatterns(
         ['*'],
-        ['read', 'ask_user_question', 'todo', 'subagent_run'],
         [
           'read',
-          'tool_hidden',
-          'future_tool',
+          'AskClaude',
+          'AskAntigravity',
           'ask_user_question',
           'todo',
           'subagent_run',
         ],
       ),
-    ).toEqual(['read', 'tool_hidden', 'future_tool']);
-    expect(
-      expandToolPatterns(
-        ['@active'],
-        ['read', 'ask_user_question', 'todo', 'subagent_run'],
-        ['read', 'tool_hidden'],
-      ),
     ).toEqual(['read']);
-    expect(
-      expandToolPatterns(['@active'], [], ['read', 'tool_hidden']),
-    ).toEqual([]);
+    expect(expandToolPatterns(['*'], [])).toEqual([]);
+    expect(expandToolPatterns(['AskClaude', 'AskAntigravity'])).toEqual([
+      'AskClaude',
+      'AskAntigravity',
+    ]);
     expect(matchesToolPattern('tool_lookup', 'tool_*')).toBe(true);
     expect(matchesToolPattern('tool_lookup', 'tool_?')).toBe(false);
+  });
+
+  it('preserves removed selectors for an explicit launch diagnostic rather than silently using defaults', () => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'worker.md'),
+      '---\nname: worker\ntools: "@active"\n---\n# Worker',
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ default_tools: ['@active'] }),
+    );
+    expect(loadSubagents(tmp)[0].tools).toEqual(['@active']);
+    expect(readSubagentsConfig(tmp).default_tools).toEqual(['@active']);
+    expect(() => expandToolPatterns(['read', '@active'])).toThrow(
+      /@active.*removed.*\*/,
+    );
   });
 
   it('excludes root-only controls from explicit child tool configuration', () => {

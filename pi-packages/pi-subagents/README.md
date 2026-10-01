@@ -120,7 +120,7 @@ Supported frontmatter:
 |---|---|
 | `name` | Subagent name. Defaults to filename stem. Normalized to lowercase. |
 | `description` | Short description shown by `subagent_list_agents`. |
-| `tools` | Tool allowlist for the subagent. Accepts either a comma-separated inline list or a multiline YAML list, but never both in one definition. Standalone `*` selects all registered eligible tools, including inactive tools; standalone `@active` selects currently active eligible tools. Both resolve afresh at child launch. Other patterns such as `tool_*` retain active-only matching. When omitted, the definition gets the built-in default tool list. Configured `default_tools` is used by the runner when a definition has an empty tool list. |
+| `tools` | Tool allowlist for the subagent. Accepts either a comma-separated inline list or a multiline YAML list, but never both in one definition. Standalone `*` selects the parent’s currently active eligible tools afresh at child launch, excluding root-only controls and delegation tools. Missing child implementations are dropped with a durable warning; explicit lists and other glob patterns such as `tool_*` remain strict (globs match active tools). When omitted, the definition gets the built-in default tool list. Configured `default_tools` is used by the runner when a definition has an empty tool list. |
 | `model` | Optional model as `provider/model-id`. |
 | `effort`, `thinking_level`, `thinkingLevel` | Optional thinking effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
 | `subagent_mode` | Optional default execution mode for this definition: `task` or `background`. |
@@ -146,7 +146,9 @@ tools:
 
 Both examples load the same allowlist: `read`, `write`, and `bash`. Comma splitting applies only to `tools`; scalar fields such as `description` can contain commas without becoming lists.
 
-Use `tools: "*"` to include all currently registered eligible tools, including inactive tools and tools registered before a future launch. Use `tools: "@active"` to follow the parent's current active tools at each launch. These selectors remain compact in the saved definition. An empty active inventory stays empty. A selected tool must have a child-loadable implementation; otherwise launch reports the missing tool.
+Use standalone `tools: "*"` to follow the parent’s currently active eligible tools at each launch (via `getActiveTools()`, falling back to legacy `getTools()`). Inactive registered tools are not inherited. Preserve the compact selector when saving; an empty active inventory stays empty. The former active selector has been removed and is rejected at launch with a diagnostic directing you to `*`.
+
+Standalone `*` excludes `subagent_*`, `ask_user_question`, `todo`, `AskClaude`, and `AskAntigravity`. The two bridge delegation tools may still be selected explicitly; reserved orchestration controls stay blocked. If a selected tool has no child-loadable implementation, only standalone `*` drops it and runs with the remaining tools. Dropped names are persisted as `dropped_tools` in task and attempt history and reported as warnings in status, result, and completion notifications; they are never listed in the child prompt. If every selected tool is missing, launch fails. Explicit lists and other glob patterns fail on any missing implementation, and all selections reject unexpected extra child tools.
 
 Explicit lists and `*` are checked against the child's registered implementations, rather than requiring every selected tool to be active in the model tool list. Selected `deferred` and `codemode` tools remain callable through Pi's native nested-tool interface. Excluded and prohibited tools are absent from the child's registered inventory.
 
@@ -262,7 +264,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `history_panel_shortcut` | `ctrl+,` | Shortcut used to open the subagents history/detail panel. Accepts modified Pi-style shortcuts such as `ctrl+<letter>`, `ctrl+,`, `ctrl+shift+,`, or `shift+alt+,`, and also accepts camelCase `historyPanelShortcut`. |
 | `detail_cancel_shortcut` | `x` | Shortcut for the subagents history/detail panel to cancel only the currently selected queued/running subagent. `ctrl+...` values are also registered as a Pi shortcut scoped by the active panel, so they still work when the TUI captures control keys; single-letter values are handled by the panel input. Accepts `ctrl+<letter>`, `ctrl+shift+<letter>`, `ctrl+,`, or one lowercase letter, and also accepts camelCase `detailCancelShortcut`. It is ignored when the panel is not active or the selected subagent is already finished. |
 | `background_handoff_shortcut` | `ctrl+h` | Shortcut used to send a running task-mode subagent to the background. Accepts `ctrl+<letter>` and also accepts camelCase `backgroundHandoffShortcut`. |
-| `default_tools` | see below | Fallback tool allowlist used by the runner when an agent definition has an empty tool list. Supports the same standalone `*` / `@active` selectors and legacy wildcard patterns as frontmatter `tools`. Omitted frontmatter `tools` uses the built-in default list. |
+| `default_tools` | see below | Fallback tool allowlist used by the runner when an agent definition has an empty tool list. Supports the same standalone `*` active-tool selector (drop-and-warn) and strict explicit lists / other wildcard patterns as frontmatter `tools`. Omitted frontmatter `tools` uses the built-in default list. |
 
 Default tools:
 

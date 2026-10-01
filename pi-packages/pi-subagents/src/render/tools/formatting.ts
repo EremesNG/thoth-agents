@@ -1,5 +1,6 @@
 import { truncateToWidth } from '../completion-message.js';
 import { readSubagentsConfig } from '../config.js';
+import { toolSelectionWarning } from '../tool-selection-warning.js';
 import type { SubagentTask } from '../types.js';
 import { resolveExpandHint } from './expansion-hint.js';
 
@@ -115,6 +116,7 @@ export function formatTask(task: SubagentTask): string {
     `task: ${taskLabel} · task_id: ${task.id} · status: ${task.status} · attempt: ${task.attempt ?? 1}`,
     task.effective_mode ? `effective mode: ${task.effective_mode}` : undefined,
     modelEffortLine(task),
+    toolSelectionWarning(task),
     usage ? `usage: ${usage}` : undefined,
     task.status === 'queued' ||
     task.status === 'running' ||

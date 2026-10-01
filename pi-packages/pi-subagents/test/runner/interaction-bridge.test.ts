@@ -952,7 +952,7 @@ describe('subagent runner interaction-required bridge', () => {
     );
   });
 
-  it('resolves standalone all-tools selection from the fresh full inventory', async () => {
+  it('resolves standalone * from the fresh eligible active inventory', async () => {
     vi.resetModules();
     let childTools: string[] = [];
     const session = {
@@ -975,6 +975,14 @@ describe('subagent runner interaction-required bridge', () => {
       { name: 'subagent_run' },
     ];
     const getAllTools = vi.fn(() => registeredTools);
+    const getActiveTools = vi.fn(() => [
+      { name: 'read' },
+      { name: 'AskClaude' },
+      { name: 'AskAntigravity' },
+      { name: 'ask_user_question' },
+      { name: 'todo' },
+      { name: 'subagent_run' },
+    ]);
     const getTools = vi.fn(() => [{ name: 'read' }]);
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
@@ -1004,7 +1012,7 @@ describe('subagent runner interaction-required bridge', () => {
       cwd: '/workspace',
       ctx: {
         model: { provider: 'test', id: 'model' },
-        pi: { getAllTools, getTools },
+        pi: { getActiveTools, getAllTools, getTools },
       },
       config,
       signal: new AbortController().signal,
@@ -1012,16 +1020,18 @@ describe('subagent runner interaction-required bridge', () => {
 
     await sdkSubagentRunner(input);
     registeredTools.push({ name: 'future_extension_tool' });
+    getActiveTools.mockReturnValue([
+      { name: 'read' },
+      { name: 'future_extension_tool' },
+    ]);
     await sdkSubagentRunner(input);
 
-    expect(getAllTools).toHaveBeenCalledTimes(2);
+    expect(getActiveTools).toHaveBeenCalledTimes(2);
+    expect(getAllTools).not.toHaveBeenCalled();
     expect(getTools).not.toHaveBeenCalled();
     expect(
       createAgentSession.mock.calls.map(([options]) => options.tools),
-    ).toEqual([
-      ['read', 'inactive_extension_tool'],
-      ['read', 'inactive_extension_tool', 'future_extension_tool'],
-    ]);
+    ).toEqual([['read'], ['read', 'future_extension_tool']]);
   });
 
   it('keeps an empty current active-tool inventory empty', async () => {
@@ -1056,7 +1066,7 @@ describe('subagent runner interaction-required bridge', () => {
         description: 'tool user',
         filePath: '/tmp/tool-user.md',
         instructions: 'return a concise result',
-        tools: ['@active'],
+        tools: ['*'],
       },
       task: 'use active tools',
       cwd: '/workspace',
@@ -1133,15 +1143,12 @@ describe('subagent runner interaction-required bridge', () => {
       } as any);
 
     await run('*');
-    await run('@active');
+    await expect(run('@active')).rejects.toThrow(/@active.*removed.*\*/);
 
-    expect(getTools).toHaveBeenCalledTimes(2);
+    expect(getTools).toHaveBeenCalledOnce();
     expect(
       createAgentSession.mock.calls.map(([options]) => options.tools),
-    ).toEqual([
-      ['read', 'legacy_extension_tool'],
-      ['read', 'legacy_extension_tool'],
-    ]);
+    ).toEqual([['read', 'legacy_extension_tool']]);
   });
 
   it('reports missing child implementations while permitting registered inactive tools', async () => {
@@ -1186,7 +1193,7 @@ describe('subagent runner interaction-required bridge', () => {
         cwd: '/workspace',
         ctx: {
           model: { provider: 'test', id: 'model' },
-          pi: { getAllTools: () => [{ name: 'inactive_extension_tool' }] },
+          pi: { getActiveTools: () => [{ name: 'inactive_extension_tool' }] },
         },
         config: {
           timeout_ms: 10_000,

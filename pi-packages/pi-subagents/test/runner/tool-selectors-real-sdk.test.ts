@@ -72,7 +72,6 @@ it('distinguishes queued, extension-handled and rejected steering in the real SD
 
 it.each([
   '*',
-  '@active',
   'explicit',
 ])('restricts the child registry and nested calls for %s selection', async (selection) => {
   const fixtureRoot = fs.mkdtempSync(
@@ -94,6 +93,8 @@ it.each([
         ['subagent_run', 'deferred'],
         ['ask_user_question', 'codemode'],
         ['todo', 'deferred'],
+        ['AskClaude', 'deferred'],
+        ['AskAntigravity', 'deferred'],
       ]) pi.registerTool({
         name, exposure, label: name, description: 'Returns its fixture marker.',
         parameters: { type: 'object', properties: {}, additionalProperties: false },
@@ -153,18 +154,25 @@ it.each([
       'inactive_fixture_tool',
       'codemode_fixture_tool',
     ];
-    rootSession.setActiveToolsByName(selection === '@active' ? permitted : []);
-    const registeredNames = rootSession
-      .getAllTools()
-      .map((tool: { name: string }) => tool.name);
+    rootSession.setActiveToolsByName(
+      selection === '*'
+        ? [
+            ...permitted,
+            'subagent_run',
+            'ask_user_question',
+            'todo',
+            'AskClaude',
+            'AskAntigravity',
+          ]
+        : [],
+    );
     const rootActiveNames = rootSession.getActiveToolNames();
-    if (selection !== '@active')
+    if (selection === 'explicit')
       expect(rootActiveNames).not.toContain('inactive_fixture_tool');
 
     const selectedTools = expandToolPatterns(
       selection === 'explicit' ? permitted : [selection],
       rootActiveNames,
-      registeredNames,
     );
     expect(
       selectedTools,
@@ -227,7 +235,6 @@ it.each([
         },
       );
     const callableNames = ['inactive_fixture_tool', 'codemode_fixture_tool'];
-    if (selection === '*') callableNames.push('excluded_fixture_tool');
     for (const name of callableNames) {
       const outcome = await executeNested(name);
       expect(outcome.isError).toBe(false);
@@ -237,8 +244,14 @@ it.each([
         text: `${name} executed`,
       });
     }
-    const rejectedNames = ['subagent_run', 'ask_user_question', 'todo'];
-    if (selection !== '*') rejectedNames.push('excluded_fixture_tool');
+    const rejectedNames = [
+      'subagent_run',
+      'ask_user_question',
+      'todo',
+      'AskClaude',
+      'AskAntigravity',
+      'excluded_fixture_tool',
+    ];
     for (const name of rejectedNames) {
       expect(childRegistered).not.toContain(name);
       const outcome = await executeNested(name);

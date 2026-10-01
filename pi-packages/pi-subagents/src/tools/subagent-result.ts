@@ -1,5 +1,6 @@
 import { Type } from 'typebox';
 import type { SubagentManager } from '../manager.js';
+import { toolSelectionWarning } from '../render/tool-selection-warning.js';
 import { emptyComponent } from '../render/tools/components.js';
 import { formatTask } from '../render/tools/formatting.js';
 import { renderSubagentResult } from '../render/tools/subagent-result.js';
@@ -25,7 +26,10 @@ export function createSubagentResultTool(manager: SubagentManager) {
         if (!task) throw new Error('Subagent task not found');
         const fullResult =
           task.result ?? task.error ?? task.output_preview ?? formatTask(task);
-        return ok(fullResult, {
+        const content = [toolSelectionWarning(task), fullResult]
+          .filter(Boolean)
+          .join('\n\n');
+        return ok(content, {
           task: compactTaskForToolResult(task),
           full_result: fullResult,
         });

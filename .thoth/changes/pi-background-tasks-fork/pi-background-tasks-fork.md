@@ -412,7 +412,7 @@ Windows, command jobs run in PowerShell 7.
 
 **Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
-**Implementation**: PENDING
+**Implementation**: AUTHORIZED
 
 Replan (2026-10-01): the user explicitly selected Review plan with Oracle. Replan rounds
 1-3 returned [REJECT] (POSIX crash/PGID contracts, impossible anchor, then POSIX-scope

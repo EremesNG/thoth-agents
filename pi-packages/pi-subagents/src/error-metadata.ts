@@ -292,10 +292,12 @@ export function classifyThrownError(
           : String(error);
   const message = rawMessage || 'Unknown subagent failure';
   const lower = message.toLowerCase();
+  const promptCaptureFailure = lower.includes('prompt-capture:');
   const errorClass =
     error instanceof Error ? error.constructor.name : typeof error;
   let category: SubagentErrorCategory = 'unknown';
-  if (!(error instanceof Error) && typeof error !== 'string')
+  if (promptCaptureFailure) category = 'provider_api_error';
+  else if (!(error instanceof Error) && typeof error !== 'string')
     category = 'malformed_thrown_value';
   else if (
     /auth|api key|invalid key|unauthori[sz]ed|forbidden|401|403|credential/.test(
@@ -303,7 +305,11 @@ export function classifyThrownError(
     )
   )
     category = 'provider_auth_error';
-  else if (/context|token|maximum|length/.test(lower))
+  else if (
+    /context[_ -](?:length|window|limit).{0,80}exceed|exceed.{0,80}context[_ -](?:length|window|limit)|context[_ -]overflow|too many tokens|maximum context|(?:input|prompt|total|requested) tokens?.{0,80}exceed/.test(
+      lower,
+    )
+  )
     category = 'context_overflow';
   else if (/rate.?limit|quota|429|too many requests/.test(lower))
     category = 'provider_rate_limit';
@@ -317,7 +323,7 @@ export function classifyThrownError(
   return normalizeErrorMetadata({
     category,
     message,
-    retryable: context.retryable,
+    retryable: promptCaptureFailure ? false : context.retryable,
     phase: context.phase,
     source: {
       provider: context.provider,

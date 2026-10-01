@@ -285,6 +285,65 @@ describe('config and workflow loading', () => {
     });
   });
 
+  it('defaults lifecycle passthrough to both bridge packages and lets project arrays replace global arrays', () => {
+    expect(readSubagentsConfig(tmp).lifecycle_passthrough).toEqual([
+      '@thoth-agents/pi-claude-bridge',
+      '@thoth-agents/pi-antigravity-bridge',
+    ]);
+    const agentDir = path.join(tmp, 'global-agent');
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents.json'),
+      JSON.stringify({ lifecycle_passthrough: ['@fixture/global'] }),
+    );
+    withAgentDir(agentDir, () => {
+      expect(readSubagentsConfig(tmp).lifecycle_passthrough).toEqual([
+        '@fixture/global',
+      ]);
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({ lifecycle_passthrough: ['@fixture/project'] }),
+      );
+      expect(readSubagentsConfig(tmp).lifecycle_passthrough).toEqual([
+        '@fixture/project',
+      ]);
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({ lifecycle_passthrough: [] }),
+      );
+      expect(readSubagentsConfig(tmp).lifecycle_passthrough).toEqual([]);
+    });
+  });
+
+  it('warns and ignores non-string lifecycle passthrough entries without coercion', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({
+          lifecycle_passthrough: ['@fixture/valid', 42, null, {}],
+        }),
+      );
+      expect(readSubagentsConfig(tmp).lifecycle_passthrough).toEqual([
+        '@fixture/valid',
+      ]);
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining('lifecycle_passthrough'),
+      );
+      warning.mockClear();
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({ lifecycle_passthrough: '@fixture/not-an-array' }),
+      );
+      expect(readSubagentsConfig(tmp).lifecycle_passthrough).toEqual([]);
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining('lifecycle_passthrough'),
+      );
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it('resolves invocation and definition modes ahead of config and background fallback', () => {
     expect(resolveEffectiveSubagentMode({})).toBe('background');
     expect(

@@ -221,6 +221,10 @@ The same JSON shape is valid globally or project-locally; place it only in the s
   "max_concurrency": 5,
   "debug": false,
   "session_resources": "lean",
+  "lifecycle_passthrough": [
+    "@thoth-agents/pi-claude-bridge",
+    "@thoth-agents/pi-antigravity-bridge"
+  ],
   "history_panel_shortcut": "ctrl+,",
   "detail_cancel_shortcut": "x",
   "background_handoff_shortcut": "ctrl+h",
@@ -254,6 +258,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `max_concurrency` | `5` | Max concurrent subagent tasks per cwd/config pair. |
 | `debug` | `false` | Enable bounded runtime/interaction diagnostics in the executing project's `.pi/subagents-debug.log`. Use temporarily and disable after diagnosis. |
 | `session_resources` | `lean` | SDK resource loading mode. `lean` uses the subagent markdown body as the nested session system prompt, skips skills, prompt templates, themes, and context files, and loads extensions in tools-only/safety-hook mode so allowlisted extension tools remain available without startup context injection. Use explicit `full` only when a subagent intentionally needs the full Pi resource set. Also accepts camelCase `sessionResources`. |
+| `lifecycle_passthrough` | `["@thoth-agents/pi-claude-bridge", "@thoth-agents/pi-antigravity-bridge"]` | In lean mode, packages with an exact matching nearest `package.json` name keep observe-only `before_agent_start`, `agent_start`, and `turn_start` handlers. Each handler receives its own structured clone of the event (context is passed unchanged); returned values are discarded, preventing event mutation or returned prompts/messages from injecting root context. Project arrays replace global arrays; `[]` disables passthrough. Non-string entries are ignored with a warning. |
 | `history_panel_shortcut` | `ctrl+,` | Shortcut used to open the subagents history/detail panel. Accepts modified Pi-style shortcuts such as `ctrl+<letter>`, `ctrl+,`, `ctrl+shift+,`, or `shift+alt+,`, and also accepts camelCase `historyPanelShortcut`. |
 | `detail_cancel_shortcut` | `x` | Shortcut for the subagents history/detail panel to cancel only the currently selected queued/running subagent. `ctrl+...` values are also registered as a Pi shortcut scoped by the active panel, so they still work when the TUI captures control keys; single-letter values are handled by the panel input. Accepts `ctrl+<letter>`, `ctrl+shift+<letter>`, `ctrl+,`, or one lowercase letter, and also accepts camelCase `detailCancelShortcut`. It is ignored when the panel is not active or the selected subagent is already finished. |
 | `background_handoff_shortcut` | `ctrl+h` | Shortcut used to send a running task-mode subagent to the background. Accepts `ctrl+<letter>` and also accepts camelCase `backgroundHandoffShortcut`. |
@@ -552,7 +557,9 @@ Background subagent tasks cannot request interactive main-thread handling. Rerun
 
 In the default `lean` mode, the runner treats the subagent markdown body as the nested session system prompt. The delegated user prompt contains only the orchestrator-provided context and task. The runner does not inject `AGENTS.md`, workflow skills, memory startup context, or generated memory constraints into the delegated user prompt.
 
-Extensions are loaded in an isolated tools-only/safety-hook mode for subagents: allowlisted extension tools remain available, while context/prompt lifecycle hooks such as `before_agent_start` and `context` are removed so extensions cannot add hidden startup messages. Tool-safety hooks (`tool_call`, `tool_result`, and `user_bash`) are preserved for runtime guards and interaction handoff.
+In lean mode, extensions are loaded in isolated tools/safety-hook mode: allowlisted extension tools and tool-safety hooks (`tool_call`, `tool_result`, and `user_bash`) remain available. `lifecycle_passthrough` additionally preserves exactly `before_agent_start`, `agent_start`, and `turn_start` for listed packages as observe-only handlers: every invocation receives a structured-cloned event, unchanged context, and has its awaited return discarded. Unlisted lifecycle hooks, `context`, and `session_start` stay stripped; only load-time provider owners retain `session_shutdown`. Package identity uses the nearest manifest of the real extension file, stops at the first manifest, and fails closed on missing, unreadable, or invalid manifests. Full resource mode is unchanged.
+
+The default list contains `@thoth-agents/pi-claude-bridge` and `@thoth-agents/pi-antigravity-bridge`; explicit `[]` disables it, and a project array replaces the global array. Antigravity currently registers none of these three events. Its Pi-tool MCP bridge is initialized in `session_start`, which is not run in lean children, so that MCP bridge is not initialized there.
 
 Memory behavior should be specified in each subagent markdown definition. A subagent can use memory only when its tool allowlist includes the relevant memory tools.
 

@@ -2,6 +2,12 @@
 // extension instance may still own a task's child; the resuming instance must
 // deliver what it records, and must still mark a truly lost process as lost.
 import { rmSync } from "node:fs";
+import * as childProcess from "node:child_process";
+
+vi.mock("node:child_process", async (original) => {
+  const actual = await original<typeof import("node:child_process")>();
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { currentProcessStartToken } from "./process-identity.js";
@@ -76,6 +82,9 @@ describe("reload handoff", () => {
   }, 15_000);
 
   it("backs its checks off while a same-process task keeps running, and still delivers its exit (#332)", async () => {
+    // This test measures registry scheduling, not OS discovery. A minute of
+    // virtual time must not launch a minute's worth of real census helpers.
+    vi.mocked(childProcess.execFileSync).mockReturnValue(process.platform === "win32" ? "[]" : "");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const { pi, messages } = host();
     const id = `bg_reload_handoff_backoff_${Date.now()}`;

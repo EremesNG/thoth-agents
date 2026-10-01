@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 describe("background task registry maintenance", () => {
-  it("marks a foreign command watcher terminal when its spawning process is gone", () => {
+  it("reports a lost foreign supervisor without terminalizing an unverified poll tree", () => {
     const meta = fixture("running", { kind: "command_watch", spawnPid: 900_001 });
     writeMeta(meta);
 
@@ -26,9 +26,10 @@ describe("background task registry maintenance", () => {
 
     expect(result.reconciled).toBe(1);
     expect(readMeta(meta.id)).toMatchObject({
-      status: "failed",
+      status: "running",
       error: "task supervisor is no longer alive; execution result is unavailable",
     });
+    expect(readMeta(meta.id)?.endedAt).toBeUndefined();
   });
 
   it("preserves active-session tasks without adjudicating them", () => {

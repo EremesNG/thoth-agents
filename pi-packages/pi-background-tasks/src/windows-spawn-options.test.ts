@@ -28,6 +28,7 @@ function child() {
 describe("hidden Windows process launches", () => {
   it("jobs and one-shot watches hide their detached consoles on win32", async () => {
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    vi.mocked(execFileSync).mockReturnValue("[]");
     child();
     spawnCommand({ shell: false, argv: [process.execPath, "-e", "process.exit(0)"] },
       join(mkdtempSync(join(tmpdir(), "bg-hide-")), "log"), true);
@@ -39,6 +40,10 @@ describe("hidden Windows process launches", () => {
       expect.objectContaining({ detached: true, windowsHide: true }));
     watchChild.emit("close", 0, null);
     await result;
+    // Initial capture plus one fresh settlement census: an empty tree neither
+    // waits on a fixed grace period nor starts taskkill/redundant censuses.
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+    expect(spawnSync).not.toHaveBeenCalled();
   });
 
   it("process census and awaited tree kill hide their helper consoles on win32", async () => {
@@ -60,7 +65,7 @@ describe("hidden Windows process launches", () => {
   it("Node descendant fixtures explicitly hide consoles, including embedded scripts", () => {
     for (const file of ["lifecycle.test.ts", "process.test.ts"]) {
       const source = readFileSync(new URL(file, import.meta.url), "utf8");
-      const launches = [...source.matchAll(/require\('node:child_process'\)\.spawn\([\s\S]*?\{([^}]+)\}/g)];
+      const launches = [...source.matchAll(/require\('node:child_process'\)\.spawn\([\s\S]*?\{(stdio:[^}]+)\}/g)];
       expect(launches.length).toBeGreaterThan(0);
       for (const launch of launches) expect(launch[1], file).toMatch(/windowsHide:\s*true/);
     }

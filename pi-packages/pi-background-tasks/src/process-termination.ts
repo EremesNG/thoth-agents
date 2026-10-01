@@ -1,63 +1,94 @@
 import { execFileSync } from "node:child_process";
 import { processExists, stopProcessGroup } from "./process.js";
 
-interface ProcessEntry { pid: number; parent: number; group?: number; state?: string }
+interface ProcessEntry { pid: number; parent: number; group?: number; state?: string; started?: string }
 function snapshot(): ProcessEntry[] {
   if (process.platform === "win32") {
     const json = execFileSync("powershell.exe", ["-WindowStyle", "Hidden", "-NoProfile", "-NonInteractive", "-Command",
-      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress"],
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate | ConvertTo-Json -Compress"],
     { encoding: "utf8", windowsHide: true, timeout: 5000 });
     const values = JSON.parse(json);
-    return (Array.isArray(values) ? values : [values]).map((p) => ({ pid: p.ProcessId, parent: p.ParentProcessId }));
+    return (Array.isArray(values) ? values : values ? [values] : []).map((p) => ({
+      pid: p.ProcessId, parent: p.ParentProcessId, started: p.CreationDate == null ? undefined : String(p.CreationDate),
+    }));
   }
-  return execFileSync("ps", ["-eo", "pid=,ppid=,pgid=,stat="], { encoding: "utf8", windowsHide: true, timeout: 2000 })
-    .trim().split(/\r?\n/).map((line) => {
-      const [pid, parent, group, state] = line.trim().split(/\s+/);
-      return { pid: Number(pid), parent: Number(parent), group: Number(group), state };
+  return execFileSync("ps", ["-eo", "pid=,ppid=,pgid=,stat=,lstart="], { encoding: "utf8", windowsHide: true, timeout: 2000 })
+    .trim().split(/\r?\n/).filter(Boolean).map((line) => {
+      const [pid, parent, group, state, ...started] = line.trim().split(/\s+/);
+      return { pid: Number(pid), parent: Number(parent), group: Number(group), state, started: started.join(" ") || undefined };
     });
 }
 
-/** Retain captured descendants/groups across retries, including reparented orphans. */
+/** Capture while the leader lives; retain identities/groups through exit, retries and reload. */
 export function createProcessTreeTerminator(pid: number, pgid?: number): () => Promise<void> {
-  const targets = new Set([pid]);
+  const targets = new Map<number, string | undefined>([[pid, undefined]]);
   const groups = new Set<number>();
-  return async () => {
-    const entries = snapshot();
+  let verified = false;
+  const matches = (entry: ProcessEntry) => targets.has(entry.pid) &&
+    (!targets.get(entry.pid) || !entry.started || targets.get(entry.pid) === entry.started);
+  const capture = (entries: ProcessEntry[]) => {
     const hostGroup = entries.find((entry) => entry.pid === process.pid)?.group;
     if (process.platform !== "win32" && (pgid ?? pid) !== hostGroup) groups.add(pgid ?? pid);
-    // A group member can own descendants in other groups, even after its leader exits.
-    const capture = (processes: ProcessEntry[]) => {
-      for (let changed = true; changed;) {
-        changed = false;
-        for (const entry of processes) {
-          if (!targets.has(entry.pid) && !targets.has(entry.parent) && !(entry.group && groups.has(entry.group))) continue;
-          if (!targets.has(entry.pid)) { targets.add(entry.pid); changed = true; }
-          if (process.platform !== "win32" && entry.group && entry.group !== hostGroup && !groups.has(entry.group)) {
-            groups.add(entry.group); changed = true;
-          }
+    const byPid = new Map(entries.map((entry) => [entry.pid, entry]));
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const entry of entries) {
+        // A reused PID is not the captured process, nor a source of new descendants.
+        if (targets.has(entry.pid) && !matches(entry)) continue;
+        const parent = byPid.get(entry.parent);
+        const ownedParent = targets.has(entry.parent) && (!parent || matches(parent));
+        if (!matches(entry) && !ownedParent && !(entry.group && groups.has(entry.group))) continue;
+        if (!targets.has(entry.pid)) { targets.set(entry.pid, entry.started); changed = true; }
+        else if (!targets.get(entry.pid) && entry.started) targets.set(entry.pid, entry.started);
+        if (process.platform !== "win32" && entry.group && entry.group !== hostGroup && !groups.has(entry.group)) {
+          groups.add(entry.group); changed = true;
         }
       }
-    };
+    }
+  };
+  // Capture errors are not success. Settlement takes a fresh, mandatory snapshot and can retry.
+  const observe = () => { try { capture(snapshot()); } catch { /* retained for settlement */ } };
+  observe();
+  const tracker = setInterval(observe, process.platform === "win32" ? 1000 : 100);
+  tracker.unref();
+  return async () => {
+    if (verified) return;
+    const entries = snapshot();
     capture(entries);
-    const signal = (value: NodeJS.Signals) => {
+    const signal = (value: NodeJS.Signals, processes = snapshot()) => {
+      capture(processes);
+      const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
       if (process.platform === "win32") {
-        // taskkill is synchronous and awaited, including /T descendants; captured orphans are retried below.
-        for (const target of targets) if (processExists(target)) stopProcessGroup(target, undefined, value);
+        // Await taskkill, then independently verify captured orphans by PID + creation time.
+        for (const target of targets.keys()) {
+          const entry = byPid.get(target);
+          if ((!entry || matches(entry)) && processExists(target)) stopProcessGroup(target, undefined, value);
+        }
         return;
       }
       for (const group of groups) try { process.kill(-group, value); } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
       }
-      for (const target of targets) try { process.kill(target, value); } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      for (const target of targets.keys()) {
+        const entry = byPid.get(target);
+        if (entry && !matches(entry)) continue;
+        try { process.kill(target, value); } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        }
       }
     };
-    const alive = () => {
-      if (process.platform === "win32") return [...targets].some(processExists);
-      // Zombies have exited and cannot execute; only init/their parent can reap them.
-      const processes = snapshot();
+    const alive = (processes = snapshot()) => {
       capture(processes); // TERM handlers can fork more work before escalation.
-      return processes.some((entry) => !entry.state?.startsWith("Z") && (targets.has(entry.pid) || (entry.group && groups.has(entry.group))));
+      if (process.platform === "win32") {
+        const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
+        return [...targets.keys()].some((target) => {
+          const entry = byPid.get(target);
+          return (!entry || matches(entry)) && processExists(target);
+        });
+      }
+      // Zombies have exited and cannot execute; only init/their parent can reap them.
+      return processes.some((entry) => !entry.state?.startsWith("Z") &&
+        (matches(entry) || (entry.group && groups.has(entry.group))));
     };
     const wait = async (ms: number) => {
       const until = Date.now() + ms;
@@ -67,10 +98,20 @@ export function createProcessTreeTerminator(pid: number, pgid?: number): () => P
       }
       return true;
     };
-    signal("SIGTERM");
-    if (await wait(process.platform === "win32" ? 2000 : 500)) return;
-    signal("SIGKILL");
-    if (!await wait(2000)) throw new Error(`Process tree ${pid} did not terminate after SIGKILL`);
+    // The mandatory settlement census can prove an empty tree immediately;
+    // do not launch kill helpers or repeat expensive censuses in that case.
+    if (!alive(entries)) {
+      verified = true;
+      clearInterval(tracker);
+      return;
+    }
+    signal("SIGTERM", entries);
+    if (!await wait(process.platform === "win32" ? 2000 : 500)) {
+      signal("SIGKILL");
+      if (!await wait(2000)) throw new Error(`Process tree ${pid} did not terminate after SIGKILL`);
+    }
+    verified = true;
+    clearInterval(tracker);
   };
 }
 

@@ -71,6 +71,7 @@ interface OwnedProcessTree {
   origin: string;
   terminate(): Promise<void>;
   readonly cleanupPending: boolean;
+  readonly cleanupVerified: boolean;
   readonly terminationRequested: boolean;
 }
 const PROCESS_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.process-handoff");
@@ -89,16 +90,18 @@ function processTreeFor(meta: BackgroundTaskMeta): OwnedProcessTree | undefined 
   if (!tree && meta.pid) {
     const terminateTree = createProcessTreeTerminator(meta.pid, meta.pgid);
     let termination: Promise<void> | undefined;
-    let cleanupPending = false;
+    let cleanupPending = true;
+    let cleanupVerified = false;
     let terminationRequested = false;
     tree = {
       origin: pollOrigin(meta),
       get cleanupPending() { return cleanupPending; },
+      get cleanupVerified() { return cleanupVerified; },
       get terminationRequested() { return terminationRequested; },
       terminate() {
         if (termination) return termination;
         terminationRequested = cleanupPending = true;
-        termination = terminateTree().then(() => { cleanupPending = false; }, (error) => {
+        termination = terminateTree().then(() => { cleanupPending = false; cleanupVerified = true; }, (error) => {
           termination = undefined;
           throw error;
         });
@@ -238,29 +241,34 @@ function createTaskRuntime(owner: ExtensionAPI) {
     scheduleLogRetention(id);
     spawned.child.unref();
     spawned.child.on("close", (exitCode, signal) => {
-        clearProcessTimeout(id);
-        stopLogRetention(id);
-        const latest = readMeta(id);
-        if (!latest) return;
-        enforceLogRetention(latest);
-        if (isTerminalStatus(latest.status)) return;
-        latest.lastExitCode = exitCode;
-        latest.lastSignal = signal;
-        if (latest.stopRequestedAt || processTrees.get(id)?.terminationRequested) { writeMeta(latest); return; }
-        if (exitCode !== 0) recordExitFailure(latest, "execution", `Process exited with code ${exitCode ?? "unknown"}${signal ? ` (${signal})` : ""}`, exitCode, "close", { at: Date.now() });
-        else {
-          recoverFailure(latest, "execution", "close");
-          recoverDeclaredOperation(latest);
-        }
-        latest.status = exitCode === 0 ? "succeeded" : "failed";
-        latest.endedAt = Date.now();
-        latest.result = { exitCode, signal };
-        writeMeta(latest);
-        processTrees.delete(id);
-        void notifyTerminal(pi, latest, getActiveSession);
+      void settleProcessExit(pi, id, exitCode, signal, getActiveSession);
     });
     if (meta.deadlineAt) scheduleProcessTimeout(pi, id, meta.deadlineAt, getActiveSession);
     return meta;
+  }
+
+  async function settleProcessExit(
+    pi: ExtensionAPI, id: string, exitCode: number | null, signal: NodeJS.Signals | null,
+    getActiveSession?: ActiveSessionProvider,
+  ): Promise<void> {
+    const meta = readMeta(id);
+    if (!meta || isTerminalStatus(meta.status)) return;
+    meta.lastExitCode = exitCode;
+    meta.lastSignal = signal;
+    writeMeta(meta);
+    // Requested stop/deadline cleanup owns its final state, even if the leader exits first.
+    if (meta.stopRequestedAt || processTrees.get(id)?.terminationRequested) return;
+    try { await processTreeFor(meta)?.terminate(); } catch (error) {
+      recordStopError(meta, readableError(error));
+      return;
+    }
+    const latest = readMeta(id);
+    if (!latest || isTerminalStatus(latest.status) || latest.stopRequestedAt) return;
+    enforceLogRetention(latest);
+    if (exitCode !== 0) recordExitFailure(latest, "execution", `Process exited with code ${exitCode ?? "unknown"}${signal ? ` (${signal})` : ""}`, exitCode, "close", { at: Date.now() });
+    else recoverFailure(latest, "execution", "close");
+    finalize(latest, { status: exitCode === 0 ? "succeeded" : "failed", reason: "process exited",
+      commandResult: { exitCode, signal, stdout: "", stderr: "", startedAt: latest.startedAt, endedAt: Date.now() } }, pi, getActiveSession);
   }
 
   function startWatchTask(
@@ -355,13 +363,14 @@ function createTaskRuntime(owner: ExtensionAPI) {
       return meta;
     }
 
+    processTreeFor(meta);
     scheduleLogRetention(meta.id);
     if (ownedByThisProcess) {
       // A dead pid is not yet "lost" here: the earlier instance's close listener may
       // still record the real exit. The handoff marks it lost after a grace period.
       scheduleHandoff(pi, meta.id, getActiveSession);
     } else if (meta.pid && !processExists(meta.pid)) {
-      markProcessLost(pi, meta, getActiveSession);
+      void markProcessLost(pi, meta, getActiveSession);
       return meta;
     }
     if (meta.deadlineAt) scheduleProcessTimeout(pi, meta.id, meta.deadlineAt, getActiveSession);
@@ -399,9 +408,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
         deadSince ??= Date.now();
         if (Date.now() - deadSince >= HANDOFF_LOST_GRACE_MS) {
           stopHandoff(id);
-          clearProcessTimeout(id);
-          stopLogRetention(id);
-          markProcessLost(pi, meta, getActiveSession);
+          void markProcessLost(pi, meta, getActiveSession);
           return;
         }
         delayMs = HANDOFF_CHECK_MS;
@@ -425,16 +432,18 @@ function createTaskRuntime(owner: ExtensionAPI) {
     handoffTimers.delete(id);
   }
 
-  function markProcessLost(pi: ExtensionAPI, meta: BackgroundTaskMeta, getActiveSession?: ActiveSessionProvider): void {
+  async function markProcessLost(pi: ExtensionAPI, meta: BackgroundTaskMeta, getActiveSession?: ActiveSessionProvider): Promise<void> {
     if (processTrees.get(meta.id)?.terminationRequested || meta.stopRequestedAt) return;
-    meta.status = "failed";
-    meta.endedAt = Date.now();
-    meta.error = "process is no longer alive; exit result was not captured by this pi session";
-    meta.result = { reason: meta.error };
-    recordFailure(meta, "execution", meta.error, "lost", { incomplete: true });
-    writeMeta(meta);
-    processTrees.delete(meta.id);
-    void notifyTerminal(pi, meta, getActiveSession);
+    // Absence of the leader cannot release captured identities or a surviving POSIX group.
+    try { await processTreeFor(meta)?.terminate(); } catch (error) {
+      recordStopError(meta, readableError(error));
+      return;
+    }
+    const latest = readMeta(meta.id);
+    if (!latest || latest.status !== "running" || latest.stopRequestedAt) return;
+    latest.error = "process is no longer alive; exit result was not captured by this pi session";
+    recordFailure(latest, "execution", latest.error, "lost", { incomplete: true });
+    finalize(latest, { status: "failed", reason: latest.error }, pi, getActiveSession);
   }
 
   async function stopTask(
@@ -652,7 +661,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
     } finally {
       activePolls.delete(id);
       // A rejected result does not prove cleanup: retain the handle for stop/shutdown/reload.
-      if (poll && !poll.cleanupPending && inFlightPolls.get(id) === poll) inFlightPolls.delete(id);
+      if (poll?.cleanupVerified && inFlightPolls.get(id) === poll) inFlightPolls.delete(id);
       if (firstCheckWaiters.has(id)) {
         if (checked) settleFirstCheck(id, checked);
         else if (readMeta(id)?.status !== "running") settleFirstCheck(id, undefined);
@@ -689,31 +698,37 @@ function createTaskRuntime(owner: ExtensionAPI) {
   ): void {
     // No result, deadline, or stale close handler may outrun tree verification.
     if (isTerminalStatus(readMeta(meta.id)?.status ?? meta.status) ||
-        processTrees.get(meta.id)?.cleanupPending || inFlightPolls.get(meta.id)?.cleanupPending) return;
+        (processTrees.has(meta.id) && !processTrees.get(meta.id)!.cleanupVerified) ||
+        (inFlightPolls.has(meta.id) && !inFlightPolls.get(meta.id)!.cleanupVerified)) return;
     stopFailureAttention(meta.id, owner);
     if (terminal.status === "timed_out") recordFailure(meta, "timeout", terminal.reason, "deadline", { category: "timeout" });
     if (terminal.status === "succeeded") recoverDeclaredOperation(meta);
     meta.status = terminal.status;
     meta.endedAt = Date.now();
-    meta.result = {
-      reason: terminal.reason,
-      matchedCondition: terminal.matchedCondition,
-      matchedValue: terminal.matchedValue,
-      exitCode: terminal.commandResult?.exitCode,
-      signal: terminal.commandResult?.signal,
-    };
+    meta.result = meta.kind === "process" && terminal.commandResult
+      ? { exitCode: terminal.commandResult.exitCode, signal: terminal.commandResult.signal }
+      : {
+        reason: terminal.reason,
+        matchedCondition: terminal.matchedCondition,
+        matchedValue: terminal.matchedValue,
+        exitCode: terminal.commandResult?.exitCode,
+        signal: terminal.commandResult?.signal,
+      };
     if (terminal.commandResult) {
       applyCaptureOverflow(meta, terminal.commandResult);
       meta.lastExitCode = terminal.commandResult.exitCode;
       meta.lastSignal = terminal.commandResult.signal;
-      meta.lastCheckedAt = terminal.commandResult.endedAt;
-      meta.lastState = extractLastState(terminal.commandResult);
+      if (meta.kind === "command_watch") {
+        meta.lastCheckedAt = terminal.commandResult.endedAt;
+        meta.lastState = extractLastState(terminal.commandResult);
+      }
     }
     writeMeta(meta);
     processTrees.delete(meta.id);
     clearWatchTimer(meta.id);
     clearProcessTimeout(meta.id);
     stopLogRetention(meta.id);
+    stopHandoff(meta.id);
     void notifyTerminal(pi, meta, getActiveSession);
   }
 

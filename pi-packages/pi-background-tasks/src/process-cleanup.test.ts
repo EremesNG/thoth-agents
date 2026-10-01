@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { lifecycleHost } from "./test-support/lifecycle-harness.js";
+import { readMeta, writeMeta } from "./registry.js";
 
 vi.mock("node:child_process", async (original) => ({
   ...await original<typeof import("node:child_process")>(),
@@ -23,8 +24,8 @@ function faultInjectedTree() {
   const child = Object.assign(new EventEmitter(), { pid: 940001, unref() {} });
   vi.mocked(spawn).mockReturnValue(child as any);
   vi.mocked(execFileSync).mockImplementation(() => JSON.stringify([
-    ...(live.has(940001) ? [{ ProcessId: 940001, ParentProcessId: process.pid }] : []),
-    ...(live.has(940002) ? [{ ProcessId: 940002, ParentProcessId: live.has(940001) ? 940001 : 1 }] : []),
+    ...(live.has(940001) ? [{ ProcessId: 940001, ParentProcessId: process.pid, CreationDate: "leader-original" }] : []),
+    ...(live.has(940002) ? [{ ProcessId: 940002, ParentProcessId: live.has(940001) ? 940001 : 1, CreationDate: "child-original" }] : []),
   ]));
   vi.spyOn(process, "kill").mockImplementation((pid) => {
     if (!live.has(pid)) throw Object.assign(new Error("gone"), { code: "ESRCH" });
@@ -51,6 +52,80 @@ async function launchProcess(host: ReturnType<typeof lifecycleHost>, timeoutSeco
 }
 
 describe("ordinary process cleanup ownership after termination failure", () => {
+  it.each([0, 7])("a natural leader exit %s keeps captured descendants owned until retry verifies cleanup", async (exitCode) => {
+    const { live, child } = faultInjectedTree();
+    const host = lifecycleHost(`natural-process-close-${exitCode}`); hosts.push(host);
+    await host.emit("session_start");
+    const id = await launchProcess(host);
+    live.delete(940001);
+    child.emit("close", exitCode, null);
+
+    await expect.poll(async () => !!(await host.status(id)).stopError).toBe(true);
+    expect(await host.status(id)).toMatchObject({ status: "running", lastExitCode: exitCode });
+    expect((await host.status(id)).endedAt).toBeUndefined();
+    expect([...live]).toEqual([940002]);
+    expect(host.messages).toEqual([]);
+    await host.emit("session_shutdown", "quit");
+    expect([...live]).toEqual([]);
+    expect(await host.status(id)).toMatchObject({ status: "cancelled" });
+  });
+
+  it("a failed process census is not verification, and shutdown retries retained identities", async () => {
+    const { live, child, allowCleanup } = faultInjectedTree();
+    allowCleanup();
+    const host = lifecycleHost("natural-process-census-failure"); hosts.push(host);
+    await host.emit("session_start");
+    const id = await launchProcess(host);
+    const census = vi.mocked(execFileSync).getMockImplementation()!;
+    vi.mocked(execFileSync).mockImplementation(() => { throw new Error("census unavailable"); });
+    live.delete(940001);
+    child.emit("close", 0, null);
+    await expect.poll(async () => !!(await host.status(id)).stopError).toBe(true);
+    expect(await host.status(id)).toMatchObject({ status: "running", stopError: "census unavailable" });
+    expect([...live]).toEqual([940002]);
+    await expect(host.emit("session_shutdown", "quit")).rejects.toThrow("cleanup failed");
+    expect(await host.status(id)).toMatchObject({ status: "running" });
+    vi.mocked(execFileSync).mockImplementation(census);
+    await host.emit("session_shutdown", "quit");
+    expect([...live]).toEqual([]);
+    expect(await host.status(id)).toMatchObject({ status: "cancelled" });
+  });
+
+  it("a reused descendant PID is not killed or mistaken for the captured process", async () => {
+    const { live, child } = faultInjectedTree();
+    const host = lifecycleHost("natural-process-pid-reuse"); hosts.push(host);
+    await host.emit("session_start");
+    const id = await launchProcess(host);
+    live.delete(940001);
+    vi.mocked(execFileSync).mockReturnValue(JSON.stringify([
+      { ProcessId: 940002, ParentProcessId: 1, CreationDate: "unrelated-replacement" },
+    ]));
+    child.emit("close", 0, null);
+    await expect.poll(async () => (await host.status(id)).status).toBe("succeeded");
+    expect(spawnSync).not.toHaveBeenCalled();
+    expect([...live]).toEqual([940002]); // An unrelated process is not owned work.
+  });
+
+  it.each(["restoration", "same-process grace"])("%s verifies an identifiable lost leader's tree before releasing ownership", async (path) => {
+    const { live } = faultInjectedTree();
+    const before = lifecycleHost(`lost-tree-${path}`); hosts.push(before);
+    await before.emit("session_start");
+    const id = await launchProcess(before);
+    await before.emit("session_shutdown", "reload");
+    live.delete(940001);
+    if (path === "restoration") writeMeta({ ...readMeta(id)!, spawnPid: 999999 });
+    const after = lifecycleHost(`lost-tree-${path}`); hosts.push(after);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    await after.emit("session_start");
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(await after.status(id)).toMatchObject({ status: "running", stopError: expect.stringContaining("Access is denied") });
+    expect((await after.status(id)).endedAt).toBeUndefined();
+    expect([...live]).toEqual([940002]);
+    await after.emit("session_shutdown", "quit");
+    expect([...live]).toEqual([]);
+    expect(await after.status(id)).toMatchObject({ status: "cancelled" });
+  });
+
   it("a failed partial stop records cancelled only after retry verifies the orphan is gone", async () => {
     const { live } = faultInjectedTree();
     const host = lifecycleHost("failed-process-stop"); hosts.push(host);

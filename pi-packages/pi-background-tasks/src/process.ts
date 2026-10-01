@@ -169,6 +169,8 @@ export interface RunningCommand {
   /** Retry cleanup independently of an already rejected command result. */
   terminate(): Promise<void>;
   readonly cleanupPending: boolean;
+  /** True only after tree verification, or when no process was launched. */
+  readonly cleanupVerified: boolean;
 }
 
 /** Run a command in its own process group, including any descendants holding output pipes. */
@@ -191,7 +193,7 @@ export function startCommandOnce(
   validateCommandSpec(spec);
   if (signal?.aborted) return {
     result: Promise.reject(new Error("Command aborted before launch")),
-    terminate: async () => {}, cleanupPending: false,
+    terminate: async () => {}, cleanupPending: false, cleanupVerified: true,
   };
   const startedAt = Date.now();
   const child = spawnArgs(spec, true, ["ignore", "pipe", "pipe"]);
@@ -202,10 +204,12 @@ export function startCommandOnce(
   child.stdout?.on("data", (chunk: Buffer | string) => captureChunk(stdoutCapture, chunk, cap));
   child.stderr?.on("data", (chunk: Buffer | string) => captureChunk(stderrCapture, chunk, cap));
   const terminateTree = child.pid ? createProcessTreeTerminator(child.pid, child.pid) : async () => {};
-  let cleanupPending = false;
+  let cleanupPending = !!child.pid;
+  let cleanupVerified = !child.pid;
   let requestTermination!: () => Promise<void>;
   const result = new Promise<CommandResult>((resolve, reject) => {
     let termination: Promise<void> | undefined;
+    let commandError: Error | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const cleanup = () => {
       if (timeout) clearTimeout(timeout);
@@ -214,7 +218,7 @@ export function startCommandOnce(
     requestTermination = () => {
       if (termination) return termination;
       cleanupPending = true;
-      termination = terminateTree().then(() => { cleanupPending = false; }, (error) => {
+      termination = Promise.resolve().then(terminateTree).then(() => { cleanupPending = false; cleanupVerified = true; }, (error) => {
         termination = undefined;
         cleanup();
         const failure = new CommandTerminationError(error);
@@ -231,11 +235,19 @@ export function startCommandOnce(
       timeout = setTimeout(() => { timedOut = true; terminate(); }, Math.max(1, timeoutMs));
       timeout.unref();
     }
-    child.on("error", (error) => { cleanup(); reject(error); });
+    child.on("error", (error) => {
+      commandError = error;
+      cleanup();
+      void requestTermination().then(() => reject(error), reject);
+    });
+    // 'close' can wait forever on pipes inherited by a descendant. Leader exit
+    // starts settlement; close/result resolution still awaits that verification.
+    child.on("exit", terminate);
     child.on("close", (exitCode, exitSignal) => {
       cleanup();
       void (async () => {
-        await termination;
+        await requestTermination();
+        if (commandError) throw commandError;
         const stdout = finishCapture(stdoutCapture);
         const stderr = finishCapture(stderrCapture);
         resolve({
@@ -249,7 +261,8 @@ export function startCommandOnce(
       })().catch(reject);
     });
   });
-  return { result, terminate: () => requestTermination(), get cleanupPending() { return cleanupPending; } };
+  return { result, terminate: () => requestTermination(),
+    get cleanupPending() { return cleanupPending; }, get cleanupVerified() { return cleanupVerified; } };
 }
 
 interface CaptureBuffer {

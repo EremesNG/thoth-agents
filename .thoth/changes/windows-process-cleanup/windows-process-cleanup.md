@@ -183,9 +183,14 @@ with all packages developing against Pi 0.99.1.
 
 ## Authorization
 
-**Plan review**: PENDING
+**Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: PENDING
+
+The user explicitly selected Review plan with Oracle. Rounds 1-2 returned [REJECT]
+(AC-5 vagueness, then attribution), repaired here; round 3 fresh Oracle
+subtask_thoth-oracle_1790871001625_d15f42af returned [OKAY]. Cautions: take snapshots
+outside Pi and check bound identities globally afterward (reparented survivors).
 
 ## Verification
 

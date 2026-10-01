@@ -31,7 +31,7 @@ function runFixture(args: string[], exitCode = 0) {
   const result = spawnSync(
     process.execPath,
     [join(root, 'scripts/setup-pi-local.mjs'), ...args],
-    { cwd: tmpdir(), encoding: 'utf8' },
+    { windowsHide: true, cwd: tmpdir(), encoding: 'utf8' },
   );
   return { root, result };
 }

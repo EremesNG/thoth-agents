@@ -361,6 +361,7 @@ function statusFromPlan(
     context.piCommandExecutor ??
     ((command, args) => {
       const result = spawnSync(command, [...args], {
+        windowsHide: true,
         encoding: 'utf8',
         timeout: 5_000,
         env: {

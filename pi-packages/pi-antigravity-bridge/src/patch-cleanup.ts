@@ -284,7 +284,7 @@ function candidateFromResolve(): string | null {
 /** Candidate from `npm root -g`. */
 function candidateFromNpmGlobal(): string | null {
 	try {
-		const root = execSync("npm root -g", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+		const root = execSync("npm root -g", { windowsHide: true, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 		return path.join(root, PACKAGE_NAME);
 	} catch {
 		return null;

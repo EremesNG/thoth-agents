@@ -17,6 +17,7 @@ import { generateIntegrationPackages } from './generate-integration-packages';
 
 function runInit(script: string, project: string, cwd = process.cwd()) {
   return spawnSync(process.execPath, [script, '--project', project, '--json'], {
+    windowsHide: true,
     cwd,
     encoding: 'utf8',
   });
@@ -108,7 +109,7 @@ describe('bundled thoth-init', () => {
           join(project, '.thoth', 'constitution.md'),
           '--json',
         ],
-        { cwd: unrelatedCwd, encoding: 'utf8' },
+        { windowsHide: true, cwd: unrelatedCwd, encoding: 'utf8' },
       );
       expect(constitutionValidation.status, constitutionValidation.stderr).toBe(
         0,

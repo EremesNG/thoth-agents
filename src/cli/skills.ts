@@ -174,7 +174,10 @@ export function installRequiredSkill(
     options,
   );
   try {
-    const result = spawnSync(command, args, { stdio: 'inherit' });
+    const result = spawnSync(command, args, {
+      windowsHide: true,
+      stdio: 'inherit',
+    });
     if (result.status === 0) {
       return {
         skill,

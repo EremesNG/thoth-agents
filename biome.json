@@ -5,7 +5,8 @@
     "includes": [
       "**",
       "!!pi-packages/pi-antigravity-bridge",
-      "!!pi-packages/pi-claude-bridge"
+      "!!pi-packages/pi-claude-bridge",
+      "!!pi-packages/pi-background-tasks"
     ]
   },
   "vcs": {

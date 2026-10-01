@@ -136,7 +136,7 @@ describe("runWebAgent gate", () => {
 
 describe("sweepStaleWebAgents", () => {
 	test("removes dead-pid and old marker-less dirs, keeps live-pid, fresh marker-less, and foreign dirs", () => {
-		const dead = spawnSync(process.execPath, ["-e", "process.exit(0)"]);
+		const dead = spawnSync(process.execPath, ["-e", "process.exit(0)"], { windowsHide: true });
 		const deadPid = dead.pid ?? 0;
 		expect(deadPid).toBeGreaterThan(0);
 

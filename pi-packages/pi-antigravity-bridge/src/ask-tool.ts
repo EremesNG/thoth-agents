@@ -752,6 +752,7 @@ export async function registerAskAntigravityTool(
 						stdio: ["ignore", "pipe", "pipe"],
 						shell: false,
 						detached: true,
+						windowsHide: true,
 					});
 					proc.stdout?.setEncoding("utf8");
 					proc.stderr?.setEncoding("utf8");

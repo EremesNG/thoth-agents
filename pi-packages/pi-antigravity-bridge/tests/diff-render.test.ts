@@ -156,7 +156,7 @@ test("diffEdit: line cap truncates with a marker", () => {
 
 function gitAvailable(): boolean {
 	try {
-		execFileSync("git", ["--version"], { stdio: ["ignore", "pipe", "ignore"] });
+		execFileSync("git", ["--version"], { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
 		return true;
 	} catch {
 		return false;
@@ -169,7 +169,7 @@ test("createExecGitOps: toplevel + showHead against a real temp repo", () => {
 	// --show-toplevel returns the canonical /private/var/... form.
 	const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "agy-diff-")));
 	try {
-		const run = (args: string[]) => execFileSync("git", args, { cwd: repo, stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
+		const run = (args: string[]) => execFileSync("git", args, { windowsHide: true, cwd: repo, stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
 		run(["init", "-q"]);
 		run(["config", "user.email", "t@t"]);
 		run(["config", "user.name", "t"]);

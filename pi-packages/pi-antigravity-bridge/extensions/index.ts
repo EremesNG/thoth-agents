@@ -1589,7 +1589,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 						ui?.notify(`no file-open handler for ${process.platform}; the file is at ${artifact.absolutePath}`, "warning");
 						return;
 					}
-					spawn(openCmd.cmd, [artifact.absolutePath], { detached: true, stdio: "ignore", shell: false }).unref();
+					spawn(openCmd.cmd, [artifact.absolutePath], { detached: true, stdio: "ignore", shell: false, windowsHide: true }).unref();
 					ui?.notify(`opened ${artifact.name}`, "info");
 					return;
 				}
@@ -1619,7 +1619,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 							ui.notify(`no file-open handler for ${process.platform}.`, "warning");
 							continue;
 						}
-						spawn(openCmd.cmd, [action.artifact.absolutePath], { detached: true, stdio: "ignore", shell: false }).unref();
+						spawn(openCmd.cmd, [action.artifact.absolutePath], { detached: true, stdio: "ignore", shell: false, windowsHide: true }).unref();
 					}
 					break;
 				}

@@ -130,7 +130,7 @@ async function fetchRegistryBinary(opts: SetupOptions, key: string): Promise<Reg
 
 function defaultUnpack(archive: string, dest: string): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = spawn("unzip", ["-o", "-q", archive, "-d", dest], { stdio: "ignore" });
+		const child = spawn("unzip", ["-o", "-q", archive, "-d", dest], { windowsHide: true, stdio: "ignore" });
 		child.on("error", (err) => reject(new Error(`unzip is not available: ${err.message}`)));
 		child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`unzip exited with ${code}`))));
 	});

@@ -94,7 +94,7 @@ export function checkAgyCliVersion(binary: string = "agy"): Promise<AgyVersionCh
 		let proc: ReturnType<typeof spawn>;
 		try {
 			proc = spawn(binary, ["--version"], {
-				stdio: ["ignore", "pipe", "ignore"], shell: false, detached: process.platform !== "win32",
+				stdio: ["ignore", "pipe", "ignore"], shell: false, detached: process.platform !== "win32", windowsHide: true,
 			});
 		} catch {
 			finish({ status: "unavailable", raw: "" });

@@ -285,10 +285,11 @@ describe('config and workflow loading', () => {
     });
   });
 
-  it('defaults lifecycle passthrough to both bridge packages and lets project arrays replace global arrays', () => {
+  it('defaults lifecycle passthrough to bridges and background jobs and lets project arrays replace global arrays', () => {
     expect(readSubagentsConfig(tmp).lifecycle_passthrough).toEqual([
       '@thoth-agents/pi-claude-bridge',
       '@thoth-agents/pi-antigravity-bridge',
+      '@thoth-agents/pi-background-tasks',
     ]);
     const agentDir = path.join(tmp, 'global-agent');
     fs.mkdirSync(agentDir, { recursive: true });

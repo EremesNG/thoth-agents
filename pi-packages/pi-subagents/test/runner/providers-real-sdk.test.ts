@@ -863,3 +863,37 @@ it('shuts down and disposes a child rejected before prompting for unavailable to
     await parent.close();
   }
 }, 30_000);
+
+it('emits default background package shutdown handlers once before ordinary SDK shutdown', async () => {
+  const parent = await fixture([], (root) => {
+    const directory = path.join(root, 'background');
+    fs.mkdirSync(directory);
+    fs.writeFileSync(
+      path.join(directory, 'package.json'),
+      '{"name":"@thoth-agents/pi-background-tasks"}',
+    );
+    const entry = path.join(directory, 'index.ts');
+    fs.writeFileSync(
+      entry,
+      `import fs from 'node:fs';
+      export default function (pi) {
+        for (const label of ['one', 'two']) pi.on('session_shutdown', (event, ctx) => {
+          if (event.reason !== 'quit' || !ctx.sessionManager.getSessionId()) throw new Error('Missing child context');
+          fs.appendFileSync(process.env.PI_SUBAGENTS_PROVIDER_TRACE, 'background:' + label + '\\n');
+        });
+      }`,
+    );
+    return [entry];
+  });
+  try {
+    await parent.run();
+    expect(parent.trace()).toEqual([
+      'stream:inherited provider streamed',
+      'background:one',
+      'background:two',
+      'load-time:session_shutdown',
+    ]);
+  } finally {
+    await parent.close();
+  }
+}, 30_000);

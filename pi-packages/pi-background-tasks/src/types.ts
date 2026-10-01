@@ -1,0 +1,137 @@
+export type BackgroundTaskStatus =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "timed_out";
+
+export type BackgroundTaskKind = "process" | "command_watch";
+
+export type Condition =
+  | { type: "exit_code"; equals: number }
+  | { type: "stdout_contains"; value: string }
+  | { type: "stderr_contains"; value: string }
+  | { type: "json_path_equals"; path: string; value: unknown }
+  | { type: "json_path_exists"; path: string };
+
+export interface CommandSpec {
+  command?: string;
+  argv?: string[];
+  shell?: boolean;
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+export interface CommandResult {
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  stdout: string;
+  stderr: string;
+  startedAt: number;
+  endedAt: number;
+  timedOut?: boolean;
+  /** Bytes of stdout never stored because the capture cap was reached. */
+  stdoutDiscardedBytes?: number;
+  /** Bytes of stderr never stored because the capture cap was reached. */
+  stderrDiscardedBytes?: number;
+  /** True when stdout or stderr capture overflowed. Distinct from log retention. */
+  captureTruncated?: boolean;
+}
+
+/** A watch's first check, as reported in the launch tool result (#359). */
+export interface FirstWatchCheck {
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  durationMs: number;
+  timedOut?: boolean;
+  stdout: string;
+  stderr: string;
+  /** Set when the check itself could not run (a launch error). */
+  error?: string;
+}
+
+export interface BackgroundTaskCallbackOrigin {
+  cwd: string;
+  sessionId?: string;
+}
+
+export interface BackgroundTaskMeta {
+  id: string;
+  name?: string;
+  kind: BackgroundTaskKind;
+  status: BackgroundTaskStatus;
+  startedAt: number;
+  endedAt?: number;
+  deadlineAt?: number;
+  intervalMs?: number;
+  lastCheckedAt?: number;
+  /** Latest command completion or observed process log output. */
+  lastProgressAt?: number;
+  lastExitCode?: number | null;
+  lastSignal?: NodeJS.Signals | null;
+  lastState?: unknown;
+  result?: unknown;
+  logPath: string;
+  callback?: boolean;
+  callbackSentAt?: number;
+  callbackOrigin?: BackgroundTaskCallbackOrigin;
+  callbackSuppressedAt?: number;
+  callbackSuppressedReason?: string;
+  dismissedAt?: number;
+  command?: string;
+  argv?: string[];
+  shell?: boolean;
+  cwd: string;
+  env?: Record<string, string>;
+  maxLogBytes?: number;
+  logDiscardedBytes?: number;
+  logRetentionEvents?: number;
+  /** Incremented on every same-inode compaction so log-page cursors can detect it. */
+  logGeneration?: number;
+  /** Bytes never captured into watch/command buffers. Distinct from logDiscardedBytes. */
+  captureDiscardedBytes?: number;
+  captureOverflowEvents?: number;
+  stdoutDiscardedBytes?: number;
+  stderrDiscardedBytes?: number;
+  pid?: number;
+  /** Opaque process-start token used to reject recycled child PIDs. */
+  pidStartTime?: string;
+  pgid?: number;
+  spawnPid: number;
+  /** Opaque process-start token used to reject recycled supervisor PIDs. */
+  spawnPidStartTime?: string;
+  successWhen?: Condition;
+  failureWhen?: Condition;
+  /**
+   * Watch only (#359): consecutive exit-0 checks that write stderr and match neither
+   * condition before the watch is flagged as possibly blind. 0 turns the rule off;
+   * undefined means DEFAULT_BLIND_CHECKS.
+   */
+  blindChecks?: number;
+  /** Current run of such checks; reset by any other check. */
+  blindCheckStreak?: number;
+  /**
+   * Caller-declared structured intent (#325), validated before launch. A later task of the same
+   * kind, cwd, and session with the same operationId that succeeds recovers this
+   * task's earlier failures; exit codes in expectedExitCodes are recorded as expected failures.
+   */
+  operationId?: string;
+  expectedExitCodes?: number[];
+  notifyOn?: "terminal";
+  stopRequestedAt?: number;
+  error?: string;
+  /** Set when stop failed while the task is still running. Distinct from poll errors. */
+  stopError?: string;
+}
+
+export interface TerminalResult {
+  status: Exclude<BackgroundTaskStatus, "running">;
+  reason: string;
+  matchedCondition?: Condition;
+  matchedValue?: unknown;
+  commandResult?: CommandResult;
+}
+
+export function isTerminalStatus(status: BackgroundTaskStatus): boolean {
+  return status !== "running";
+}

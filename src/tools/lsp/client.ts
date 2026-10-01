@@ -218,6 +218,7 @@ export class LSPClient {
     });
 
     this.proc = spawn(this.server.command, {
+      windowsHide: true,
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',

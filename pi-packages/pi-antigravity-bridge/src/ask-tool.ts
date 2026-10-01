@@ -27,6 +27,7 @@ import {
 } from "./discovery.js";
 import { loadConfig, type AgyMode, type BridgeDiscovery, type ThinkingTier } from "./config.js";
 import { redactText } from "./redact.js";
+import { terminateProcessTree } from "./process-termination.js";
 import { acquireBridgeSuppression } from "./mcp-registration.js";
 import { AGY_EFFORT_ORDER, spawnAgyModelsRaw, toAgyEffort } from "./models.js";
 import { sweepStaleWebAgents, webAgentsRoot } from "./web-tools.js";
@@ -34,7 +35,6 @@ import { sweepStaleWebAgents, webAgentsRoot } from "./web-tools.js";
 // --- Constants -------------------------------------------------------------
 
 const DEFAULT_TIMEOUT_MIN = 10;
-const GRACE_AFTER_TIMEOUT_MS = 5000;
 const STATUS_INTERVAL_MS = 1000;
 const STATUS_TAIL_CHARS = 160;
 
@@ -780,33 +780,18 @@ export async function registerAskAntigravityTool(
 						});
 					}
 
-					let sigkillTimer: ReturnType<typeof setTimeout> | undefined;
+					let termination: Promise<void> | undefined;
 					let watchdog: ReturnType<typeof setTimeout> | undefined;
 					let settled = false;
 					let timedOut = false;
 
 					const killTree = () => {
-						try {
-							if (proc.pid) process.kill(-proc.pid, "SIGTERM");
-						} catch {
-							/* process group already gone */
-						}
-						if (!sigkillTimer) {
-							sigkillTimer = setTimeout(() => {
-								try {
-									if (proc.pid) process.kill(-proc.pid, "SIGKILL");
-								} catch {
-									/* give up */
-								}
-							}, GRACE_AFTER_TIMEOUT_MS);
-						}
+						termination ??= terminateProcessTree(proc);
 					};
 
 					const cleanup = () => {
 						if (watchdog) clearTimeout(watchdog);
-						if (sigkillTimer) clearTimeout(sigkillTimer);
 						if (signal) signal.removeEventListener("abort", onAbort);
-						restoreBridge();
 					};
 					const onAbort = () => killTree();
 
@@ -824,16 +809,26 @@ export async function registerAskAntigravityTool(
 						if (settled) return;
 						settled = true;
 						cleanup();
-						resolveP({
+						const outcome = {
 							exitCode: code ?? 0,
 							aborted: !!signal?.aborted,
 							timedOut,
+						};
+						// Parent exit can precede descendant escalation/taskkill completion.
+						void Promise.resolve(termination).then(() => {
+							restoreBridge();
+							resolveP(outcome);
 						});
 					};
 
 					proc.on("error", (err) => {
+						if (settled) return;
+						settled = true;
 						cleanup();
-						rejectP(err);
+						void Promise.resolve(termination).then(() => {
+							restoreBridge();
+							rejectP(err);
+						});
 					});
 					proc.on("close", finish);
 					proc.on("exit", finish);

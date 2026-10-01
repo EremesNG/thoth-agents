@@ -18,10 +18,9 @@ Bridge startup is model-gated for every instance: `session_start` with an Antigr
 
 ## Owned shutdown
 
-Shutdown invalidates pending startup, closes the MCP endpoint, terminates both drivers, and removes the private discovery directory and approval hook. After driver termination it removes only:
+Shutdown invalidates pending startup, closes the MCP endpoint, terminates both drivers, and removes the private discovery directory and approval hook. After driver termination it removes only descriptor-cache keys this instance actually acquired under `~/.gemini/antigravity-cli/mcp/`:
 
-```
-~/.gemini/antigravity-cli/mcp/<owned-server-name>
-```
+- Private discovery: its unique `pi-agy-<instance-id>` key after bridge startup.
+- Legacy-global stream-json: its unique `pi-bridge-<pid>-<instance>` key only after successful global registration.
 
-Sibling and old descriptor directories are not swept. `/new` or resume reopens the same extension instance and its recyclable drivers without reusing an invalidated turn.
+Shared names (`pi-antigravity-bridge` and legacy ACP's `pi-bridge`) are never removed. An instance that never started its bridge, or failed to acquire a unique discovery key, removes no descriptor cache. Shutdown releases the acquired key; another cleanup requires fresh acquisition on startup. Sibling and old descriptor directories are not swept. `/new` or resume reopens the same extension instance and its recyclable drivers without reusing an invalidated turn.

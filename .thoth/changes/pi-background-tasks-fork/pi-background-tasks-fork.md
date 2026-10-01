@@ -418,7 +418,8 @@ Replan (2026-10-01): the user explicitly selected Review plan with Oracle. Repla
 1-3 returned [REJECT] (POSIX crash/PGID contracts, impossible anchor, then POSIX-scope
 wording), repaired here; round 4 fresh Oracle subtask_thoth-oracle_1790898132864_06ba3783
 returned [OKAY]. Its wording caution (POSIX scenario uses non-reload cleanup triggers) was
-applied. Cautions: keep the real-host helper-feasibility checkpoint first; rerun child
+applied. The user then explicitly chose Stop for now (restarting Pi; will confirm
+implementation later). No writer is running; the working tree is clean. Cautions: keep the real-host helper-feasibility checkpoint first; rerun child
 real-SDK tests after containment rewiring.
 
 Before the 2026-10-01 replan: the user explicitly selected Review plan with Oracle. Round 1 returned [REJECT] (shared

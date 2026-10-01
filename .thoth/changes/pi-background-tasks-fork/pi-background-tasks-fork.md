@@ -48,8 +48,9 @@
   `docs/agent/harness-packaging.md:40,54-58`; standalone-star exclusions
   (`pi-subagents/src/tool-patterns.ts`, root `src/pi/tools-panel.ts`, spec line 473) stay.
 - Previously vendored packages (`pi-subagents`, both bridges) live in `pi-packages/`,
-  are installed by the root pnpm workspace, excluded from root Biome, and checked in CI
-  (Ubuntu and the `pi-packages-windows` job).
+  are installed by the root pnpm workspace and checked in CI (Ubuntu and the
+  `pi-packages-windows` job); the two bridges are excluded from root Biome while
+  pi-subagents stays Biome-checked.
 
 ## Intent
 
@@ -84,14 +85,25 @@ with verified termination, on every other shutdown, including subagent teardown.
   suspend/handoff behavior is kept; on every other reason the package stops all running
   jobs of that origin, including in-flight watch commands (tracked and aborted), with
   verified termination (Windows tree kill awaited; POSIX TERM, bounded wait, then KILL)
-  and records them cancelled. Runtime scheduling state is per extension instance, so
-  concurrent sessions and children do not interfere. Tests cover quit/new/resume/fork
-  stop, reload survival and single delivery, TERM-resistant POSIX processes, watch
-  abort, and two concurrent origins.
+  and records them cancelled. Runtime scheduling state, navigator ownership
+  (`navigator-provider.ts:21-43` `piRef`/active origin, `shared-navigator.ts` global UI
+  state) and failure-attention state are per extension instance or keyed by origin, so
+  a headless child loading or ending never replaces or disposes root UI, navigator or
+  callbacks. On reload, control of an in-flight watch poll is handed off by origin: the
+  new instance adopts (or the old instance finishes and releases) the running poll so
+  no overlapping poll starts and a later quit can abort it; timers stay instance-local.
+  Tests cover quit/new/resume/fork stop, reload survival and single delivery, reload
+  during a blocked poll followed by quit (no overlapping poll, no surviving descendant,
+  single delivery), TERM-resistant POSIX processes (descendants and groups, not only the
+  leader), watch abort, two concurrent origins, and child load/end leaving root UI and
+  callbacks unchanged.
 - AC-4: Children: `@thoth-agents/pi-background-tasks` joins pi-subagents' default
   `lifecycle_passthrough`; a child's jobs stop on child completion, cancellation, error
-  or parent-driven teardown, without affecting sibling or root jobs. Real-SDK tests in
-  pi-subagents.
+  or parent-driven teardown, without affecting sibling or root jobs. Child teardown
+  guarantees the background package's shutdown cleanup runs before disposal with its own
+  bound, independent of other extensions' shutdown handlers that stall (today the whole
+  sequential emission races one 5 s deadline, `session-teardown.ts:12-38`). Real-SDK
+  tests in pi-subagents, including a hanging preceding handler and multiple jobs.
 - AC-5: Docs and CI: package README (provenance, trimmed scope, lifecycle and limits),
   pi-subagents README/skill, `docs/installation.md`, `docs/agent/harness-packaging.md`
   name the fork for shell jobs; the Ubuntu and Windows CI jobs check the package;
@@ -113,6 +125,11 @@ with verified termination, on every other shutdown, including subagent teardown.
 
 ## Decisions
 
+- Plan review round 1 (fresh Oracle): REJECT — shared navigator/attention state made
+  passthrough unsafe; reload could strand an in-flight watch poll; child teardown is
+  best-effort behind other handlers. Repaired in AC-3/AC-4 and Tasks. Cautions adopted:
+  child `pi.sendMessage` is bound to the child session; verify descendants and groups;
+  keep hermetic test isolation from prior vendoring.
 - Base on upstream `86876e8` (current main; package identical to the probed `97218c6`).
 - Fix lifecycle in the fork rather than a bridge over the private registry format;
   per-instance runtime state makes lifecycle passthrough safe for concurrent sessions.
@@ -161,7 +178,7 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Stop / reassessment: local paths depend on removed modules beyond simple extraction
 - [ ] AC-3: lifecycle and verified termination
   - Outcome: reload keeps jobs; other shutdowns stop them verifiably
-  - Known entrypoints and skill paths: `src/index.ts:25-29`, `src/runtime.ts:28-44,130-146,728-800,830-858,1061-1150`, `src/process.ts:178-259,352-392`, tdd skill
+  - Known entrypoints and skill paths: `src/index.ts:25-29`, `src/runtime.ts:28-44,130-146,570-614,728-800,830-858,1061-1150`, `src/process.ts:178-259,352-392`, `src/navigator-provider.ts:21-43`, `src/shared-navigator.ts:111,209-238`, tdd skill
   - Inputs: AC-2
   - Dependencies: AC-2
   - Output: code + tests
@@ -173,14 +190,14 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Stop / reassessment: per-instance state conflicts with reload handoff semantics
 - [ ] AC-4: child coverage
   - Outcome: child jobs stop with the child
-  - Known entrypoints and skill paths: `pi-packages/pi-subagents/src/config.ts:23-26`, `src/runner/sdk-runner.ts:272-308`, `test/runner/providers-real-sdk.test.ts`, tdd skill
+  - Known entrypoints and skill paths: `pi-packages/pi-subagents/src/config.ts:23-26`, `src/runner/sdk-runner.ts:272-308`, `src/runner/session-teardown.ts:12-38`, `test/runner/providers-real-sdk.test.ts`, tdd skill
   - Inputs: AC-3
   - Dependencies: AC-3
   - Output: config default + real-SDK tests + docs
   - Owner: worker B
   - Writes: `pi-packages/pi-subagents/**`
   - Interface boundaries: other passthrough behavior unchanged
-  - Focused check and PASS evidence: child completion/cancel/error stop child jobs; sibling and root jobs unaffected
+  - Focused check and PASS evidence: child completion/cancel/error stop child jobs; sibling and root jobs unaffected; with a hanging preceding shutdown handler the child's multiple jobs still stop before disposal
   - Return milestone: green
   - Stop / reassessment: passthrough exposes prompt-shaping behavior from the package
 - [ ] AC-5: docs and CI

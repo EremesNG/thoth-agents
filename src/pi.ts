@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import {
   Key,
   matchesKey,
+  type OverlayOptions,
   truncateToWidth,
   visibleWidth,
 } from '@earendil-works/pi-tui';
@@ -32,7 +33,7 @@ interface PiCommandContext {
     notify(message: string, type?: 'info' | 'warning' | 'error'): void;
     custom<T>(
       factory: (
-        tui: { requestRender(): void },
+        tui: { requestRender(): void; terminal: { rows: number } },
         theme: unknown,
         keybindings: unknown,
         done: (result: T) => void,
@@ -41,6 +42,7 @@ interface PiCommandContext {
         invalidate(): void;
         handleInput(data: string): void;
       },
+      options?: { overlay?: boolean; overlayOptions?: OverlayOptions },
     ): Promise<T>;
   };
 }
@@ -148,20 +150,33 @@ export default function thothAgentsPiExtension(
         );
         const result = await ctx.ui.custom<
           { kind: 'cancelled' } | { kind: 'saved'; changedRoles: string[] }
-        >((tui, theme, _keybindings, done) =>
-          createToolsPanel({
-            snapshot,
-            discoveredTools,
-            save: (current: PiToolConfigSnapshot, draft): PiToolSaveResult =>
-              (options.saveToolConfig ?? savePiToolConfig)(current, draft),
-            onDone: done,
-            requestRender: () => tui.requestRender(),
-            matchesKey: (data, key) =>
-              native.matchesKey(data, native.keys[key]),
-            truncate: native.truncateToWidth,
-            visibleWidth: native.visibleWidth,
-            theme: theme as ToolsPanelTheme,
-          }),
+        >(
+          (tui, theme, _keybindings, done) =>
+            createToolsPanel({
+              snapshot,
+              discoveredTools,
+              save: (current: PiToolConfigSnapshot, draft): PiToolSaveResult =>
+                (options.saveToolConfig ?? savePiToolConfig)(current, draft),
+              onDone: done,
+              requestRender: () => tui.requestRender(),
+              // Match the overlay's 90% cap on every render, including resize.
+              maxHeight: () =>
+                Math.max(1, Math.floor((tui.terminal.rows * 90) / 100)),
+              matchesKey: (data, key) =>
+                native.matchesKey(data, native.keys[key]),
+              truncate: native.truncateToWidth,
+              visibleWidth: native.visibleWidth,
+              theme: theme as ToolsPanelTheme,
+            }),
+          {
+            overlay: true,
+            overlayOptions: {
+              anchor: 'center',
+              width: '96%',
+              maxHeight: '90%',
+              minWidth: 96,
+            },
+          },
         );
         if (result.kind === 'saved') {
           const detail =

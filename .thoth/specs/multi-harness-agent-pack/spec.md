@@ -470,13 +470,13 @@ Default roots MUST delegate unlocated local discovery before searching and MUST 
 
 ### Requirement: Configure adopted Pi subagents natively
 
-Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same UI design with safe tool persistence; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST distinguish all-active selection persisted as standalone @active from opt-in all selection persisted as standalone *, covering respectively eligible currently active tools or all current and future registered tools including inactive root tools. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve either selector and child launch MUST resolve its current inventory and report missing child implementations truthfully.
+Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same UI design with safe tool persistence; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST offer one dynamic selection persisted as standalone `*`, meaning the eligible tools currently active in the root session excluding subagent and delegation tools (`AskClaude`, `AskAntigravity`); inactive registered tools MUST NOT be inherited and `@active` MUST be rejected rather than persisted or treated as a tool name. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve `*` and child launch MUST resolve its current inventory; for `*`, tools without a child implementation MUST be dropped and reported as a durable warning, while explicit lists and glob patterns MUST fail with a truthful missing-implementation diagnostic.
 
 #### Scenario: Configure adopted Pi subagents natively
 
-- **GIVEN** explicit or wildcard operator selections and inactive registered tools
+- **GIVEN** explicit or dynamic operator selections and root tools that are inactive or lack a child implementation
 - **WHEN** the panel saves, synchronization runs and a child launches
-- **THEN** operator intent persists, eligible child-loadable tools are available and missing implementations are diagnosed without silent widening or omission
+- **THEN** operator intent persists, `*` yields the child-loadable active eligible tools with dropped names reported, explicit lists fail on missing implementations, and nothing is silently widened or omitted 
 
 ### Requirement: Run visible background Pi specialists
 

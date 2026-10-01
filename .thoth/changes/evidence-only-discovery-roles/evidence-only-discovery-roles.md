@@ -187,9 +187,14 @@ Worker and Designer keep their implementation next step.
 
 ## Authorization
 
-**Plan review**: PENDING
+**Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: PENDING
+
+The user explicitly selected Review plan with Oracle. Round 1 returned [REJECT] (step
+budget next target; asset regeneration ordering), repaired here; round 2 fresh Oracle
+subtask_thoth-oracle_1790870114788_f7752c4b returned [OKAY]. Caution: generated-asset
+review must allow expected Pi provenance-hash changes.
 
 ## Verification
 

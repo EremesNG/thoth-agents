@@ -18,11 +18,11 @@ Turns run through one of two engines behind the same provider surface (`config.e
 - **stream-json** (default): the persistent `agy` CLI process. The tested default; live token usage; conversation resume via `--conversation`.
 - **acp** (beta): Google's official ACP server (`agy_acp_server.par`), JSON-RPC 2.0 over stdio. Beta: parity-verified live against the current build (RC01) - text streaming, multi-turn resume via `session/load`, bridge tools, effort switching, serialization, abort recovery (see `scripts/parity-live.mjs`). Two known RC01 gaps remain: no usage fields (token display runs on live client-side estimates via `acp.usageEstimate`, default `estimate`, streamed per delta and superseded automatically the day the server starts sending real per-turn usage) and no cancel (abort tears the server down and reloads it next turn).
 
-The choice of engine is left to the user, with the trade-offs explained in the tool: a first-run picker modal asks once on a fresh install (stream-json preselected; `esc` defers, and the modal reappears next start), and `/agy engine` with no arguments reopens it anytime. An `acp` pick downloads the ~1.5 GB server binary and starts the Google sign-in immediately; a restart applies the engine. With stream-json active and the `agy` binary missing, pi warns on every start until the binary is found.
+The choice of engine is left to the user, with the trade-offs explained in the tool: a first-run picker modal asks once on a fresh install (stream-json preselected; `esc` defers, and the modal reappears next start), and `/agy engine` with no arguments reopens it anytime. An `acp` pick downloads the ~1.5 GB server binary and starts the Google sign-in immediately; a restart applies the engine. With stream-json active and the `agy` binary missing, pi warns once per extension instance, when that session first uses an Antigravity model (lazy bridge start), until the binary is found.
 
 Full capability comparison, switching, and setup/auth details: [docs/ENGINES.md](docs/ENGINES.md).
 
-Switch and setup details live in [docs/ENGINES.md](docs/ENGINES.md): switching to `acp` self-installs Google's official server binary from the [antigravity-acp registry entry](https://github.com/agentclientprotocol/registry) and prepares the login (your Antigravity subscription, same account as the `agy` CLI; the extension never sees your credentials). `/agy auth` signs in explicitly, `/agy doctor` diagnoses, and a session start self-heals silently when everything is ready. Sessions are engine-scoped, so switching engines never crosses conversations.
+Switch and setup details live in [docs/ENGINES.md](docs/ENGINES.md): switching to `acp` self-installs Google's official server binary from the [antigravity-acp registry entry](https://github.com/agentclientprotocol/registry) and prepares the login (your Antigravity subscription, same account as the `agy` CLI; the extension never sees your credentials). `/agy auth` signs in explicitly, `/agy doctor` diagnoses, and first Antigravity use self-heals silently when everything is ready. Sessions are engine-scoped, so switching engines never crosses conversations.
 
 ## What it cannot do
 
@@ -42,7 +42,7 @@ The bridge starts a localhost MCP server inside pi's process. The exposed catalo
 
 **Lazy lifecycle and catalog.** Every instance, including root, starts the MCP server/private config/approval hooks only when using an `antigravity` model: at session start, on model selection, or immediately before its first provider stream. Startup is single-flight and awaited before either engine launches; shutdown invalidates pending startup. Sessions using other providers do not start the bridge or spawn agy. Loading reads the model catalog only from `models-cache.json` (even when stale) or the built-in fallback: it never runs `agy models`. First Antigravity use refreshes a missing/stale catalog for the next `/reload`; the current registered model list remains fixed. The stream-json CLI version check is also deferred to first use. Existing root/UI onboarding guards are unchanged.
 
-**Owned cleanup.** Session shutdown terminates the drivers, removes the private config and approval hook, and removes only `~/.gemini/antigravity-cli/mcp/<owned-server-name>`. Other instances' and old descriptor-cache directories are never swept. `/new` and resume can start the same extension instance again. See [bridge lifecycle](docs/BRIDGE-LIFECYCLE.md).
+**Owned cleanup.** Session shutdown terminates the drivers, removes the private config and approval hook, and removes only descriptor-cache keys the instance acquired under `~/.gemini/antigravity-cli/mcp/`: its private `pi-agy-<id>` name, or the unique `pi-bridge-<pid>-<instance>` key if it successfully registered in legacy-global mode. Shared names (`pi-antigravity-bridge` and ACP's `pi-bridge`), other instances' keys, and old caches are never removed. An instance that never started the bridge removes no descriptor cache. `/new` and resume can start the same extension instance again. See [bridge lifecycle](docs/BRIDGE-LIFECYCLE.md).
 
 **Upstream pi APIs only.** Bridge calls park in the provider's round-trip store; the provider ends the pi assistant message with a `toolUse` stop reason for the real pi tool, pi executes it in its own loop (native cards, permissions, hooks), and the toolResult completes the parked MCP response on the next stream call.
 
@@ -91,7 +91,7 @@ Install with pi's package manager:
 pi install npm:@thoth-agents/pi-antigravity-bridge
 ```
 
-Requires the **`agy` CLI** installed and authenticated. If you don't have it, follow Google's [official install guide](https://antigravity.google/docs/cli/install) for your platform, then run `agy` once to complete Google OAuth. The extension resolves `agy` on `$PATH`, or via the `AGY_BIN` environment variable. While the stream-json engine is active and the binary cannot be found, pi warns on every start (toast in the TUI, stderr headless) pointing at the install guide; the warning stops once the binary is detected.
+Requires the **`agy` CLI** installed and authenticated. If you don't have it, follow Google's [official install guide](https://antigravity.google/docs/cli/install) for your platform, then run `agy` once to complete Google OAuth. The extension resolves `agy` on `$PATH`, or via the `AGY_BIN` environment variable. While the stream-json engine is active and the binary cannot be found, pi warns once per instance on first Antigravity use (toast in the TUI, stderr headless) pointing at the install guide; sessions that never use Antigravity do not run this check.
 
 ## Usage
 
@@ -109,9 +109,9 @@ Or specify a model directly:
 /model antigravity/gemini-3-6-flash-medium
 ```
 
-Model ids are slugified from the `agy models` output (`Gemini 3.6 Flash (Medium)` becomes `gemini-3-6-flash-medium`). Discovery runs once at extension load. Run `/reload` after an `agy update` to refresh the list.
+Model ids are slugified from the `agy models` output (`Gemini 3.6 Flash (Medium)` becomes `gemini-3-6-flash-medium`). Extension load reads only `models-cache.json` (fresh or stale) or the built-in fallback; it never spawns agy. First Antigravity use refreshes a missing/stale cache, and `/reload` then registers that catalog. After an `agy update`, use Antigravity to refresh a stale cache before reloading.
 
-If `agy models` fails at load (binary missing, auth not done, network stall), a fallback catalog still populates the picker so you get a clear runtime error instead of an empty list.
+If no usable cached catalog exists, the built-in fallback populates the picker. Bridge startup and the stream-json version check are deferred until an Antigravity model is used, so binary/auth/network failures surface at first use rather than triggering discovery at load.
 
 ### Bridge surface
 

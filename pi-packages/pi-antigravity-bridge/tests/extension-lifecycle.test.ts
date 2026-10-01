@@ -66,6 +66,8 @@ for await (const line of readline.createInterface({input:process.stdin})) {
  console.log(JSON.stringify({event:'result',result:{status:'SUCCESS',response:'ok',conversation_id:'conv-lazy'}}));
 }
 `);
+	vi.stubEnv("HOME", os.homedir());
+	vi.stubEnv("USERPROFILE", os.homedir());
 	vi.stubEnv("AGY_BIN", bin);
 	vi.stubEnv("PATH", `${dir}${path.delimiter}${process.env.PATH}`);
 	vi.stubEnv("AGY_ENGINE", "stream-json");
@@ -285,6 +287,109 @@ test("owned shutdown removes only its descriptor cache after termination, preser
 	await b.emit("session_shutdown");
 	assert.equal(fs.existsSync(path.join(cacheRoot, siblingName)), false);
 	for (const name of names.slice(2)) assert.equal(fs.readFileSync(path.join(cacheRoot, name, "tool.json"), "utf8"), name);
+});
+
+test("legacy-global shutdown removes only its acquired unique descriptor cache, preserving shared and sibling caches", async () => {
+	fixture();
+	vi.stubEnv("AGY_BRIDGE_DISCOVERY", "legacy-global");
+	const a = session(); const b = session();
+	await extension(a.pi); await extension(b.pi);
+	await a.emit("session_start");
+	const ownName = Object.keys(JSON.parse(fs.readFileSync(mcpConfigPath(), "utf8")).mcpServers)[0];
+	assert.match(ownName, /^pi-bridge-\d+-[0-9a-f-]+$/);
+	await b.emit("session_start");
+	const siblingName = Object.keys(JSON.parse(fs.readFileSync(mcpConfigPath(), "utf8")).mcpServers).find((name) => name !== ownName)!;
+	const cacheRoot = path.join(os.homedir(), ".gemini", "antigravity-cli", "mcp");
+	const names = [ownName, siblingName, "pi-antigravity-bridge", "pi-bridge", "pi-bridge-123-old", "foreign-server"];
+	for (const name of names) {
+		fs.mkdirSync(path.join(cacheRoot, name), { recursive: true });
+		fs.writeFileSync(path.join(cacheRoot, name, "tool.json"), name);
+	}
+	await a.emit("session_shutdown");
+	assert.equal(fs.existsSync(path.join(cacheRoot, ownName)), false);
+	for (const name of names.slice(1)) assert.equal(fs.readFileSync(path.join(cacheRoot, name, "tool.json"), "utf8"), name);
+	assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(mcpConfigPath(), "utf8")).mcpServers), [siblingName]);
+	// A repeated shutdown must not reacquire an old cache with the same name.
+	fs.mkdirSync(path.join(cacheRoot, ownName));
+	fs.writeFileSync(path.join(cacheRoot, ownName, "tool.json"), "not reacquired");
+	await a.emit("session_shutdown");
+	assert.equal(fs.readFileSync(path.join(cacheRoot, ownName, "tool.json"), "utf8"), "not reacquired");
+	await b.emit("session_shutdown");
+	assert.equal(fs.existsSync(path.join(cacheRoot, siblingName)), false);
+	for (const name of names.slice(2)) assert.equal(fs.readFileSync(path.join(cacheRoot, name, "tool.json"), "utf8"), name);
+});
+
+test.each(["private", "legacy-global"])("non-antigravity shutdown deletes no descriptor cache (%s)", async (discovery) => {
+	const spawn = fixture();
+	vi.stubEnv("AGY_BRIDGE_DISCOVERY", discovery);
+	const cacheRoot = path.join(os.homedir(), ".gemini", "antigravity-cli", "mcp");
+	const names = ["pi-antigravity-bridge", "pi-bridge", "pi-agy-deadbeef", "pi-bridge-123-old", "foreign-server"];
+	for (const name of names) {
+		fs.mkdirSync(path.join(cacheRoot, name), { recursive: true });
+		fs.writeFileSync(path.join(cacheRoot, name, "tool.json"), name);
+	}
+	const s = session("anthropic");
+	await extension(s.pi);
+	await s.emit("session_start");
+	const removal = vi.spyOn(fs, "rmSync");
+	await s.emit("session_shutdown");
+	assert.deepEqual(removal.mock.calls.filter(([file]) => String(file).startsWith(cacheRoot + path.sep)), [], "no descriptor key was acquired");
+	for (const name of names) assert.equal(fs.readFileSync(path.join(cacheRoot, name, "tool.json"), "utf8"), name);
+	assert.equal(spawn.mock.calls.length, 0);
+	assert.equal(privateConfigs().length, 0);
+	assert.equal(fs.existsSync(mcpConfigPath()), false);
+});
+
+test("legacy-global ACP shutdown preserves shared descriptor caches", async () => {
+	fixture();
+	const dir = path.dirname(process.env.AGY_BIN!);
+	const bin = path.join(dir, "acp.mjs");
+	const log = path.join(dir, "acp-wire.jsonl");
+	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"));
+	vi.stubEnv("AGY_ENGINE", "acp");
+	vi.stubEnv("AGY_ACP_BIN", bin);
+	vi.stubEnv("ACP_FAKE_LOG", log);
+	vi.stubEnv("AGY_BRIDGE_DISCOVERY", "legacy-global");
+	const s = session();
+	await extension(s.pi);
+	await s.emit("session_start");
+	const cacheRoot = path.join(os.homedir(), ".gemini", "antigravity-cli", "mcp");
+	const names = ["pi-antigravity-bridge", "pi-bridge", "pi-agy-deadbeef", "foreign-server"];
+	for (const name of names) {
+		fs.mkdirSync(path.join(cacheRoot, name), { recursive: true });
+		fs.writeFileSync(path.join(cacheRoot, name, "tool.json"), name);
+	}
+	assert.deepEqual(await s.turn("legacy-acp-cache"), []);
+	const opens = fs.readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line)).filter((request) => request.method === "session/new");
+	assert.equal(opens[0].params.mcpServers[0].name, "pi-bridge");
+	const removal = vi.spyOn(fs, "rmSync");
+	await s.emit("session_shutdown");
+	assert.deepEqual(removal.mock.calls.filter(([file]) => String(file).startsWith(cacheRoot + path.sep)), []);
+	for (const name of names) assert.equal(fs.readFileSync(path.join(cacheRoot, name, "tool.json"), "utf8"), name);
+	assert.equal(fs.existsSync(mcpConfigPath()), false);
+});
+
+test("refused legacy-global registration acquires no descriptor cache key", async () => {
+	fixture();
+	vi.stubEnv("AGY_BRIDGE_DISCOVERY", "legacy-global");
+	const configFile = mcpConfigPath();
+	fs.mkdirSync(path.dirname(configFile), { recursive: true });
+	fs.writeFileSync(configFile, "invalid JSON");
+	const s = session();
+	await extension(s.pi);
+	await s.emit("session_start");
+	const unregisteredName = path.basename(privateConfigs()[0].dir).replace("agy-mcp-", "pi-bridge-");
+	const cacheRoot = path.join(os.homedir(), ".gemini", "antigravity-cli", "mcp");
+	const names = [unregisteredName, "pi-antigravity-bridge", "pi-bridge", "foreign-server"];
+	for (const name of names) {
+		fs.mkdirSync(path.join(cacheRoot, name), { recursive: true });
+		fs.writeFileSync(path.join(cacheRoot, name, "tool.json"), name);
+	}
+	const removal = vi.spyOn(fs, "rmSync");
+	await s.emit("session_shutdown");
+	assert.deepEqual(removal.mock.calls.filter(([file]) => String(file).startsWith(cacheRoot + path.sep)), []);
+	for (const name of names) assert.equal(fs.readFileSync(path.join(cacheRoot, name, "tool.json"), "utf8"), name);
+	assert.equal(fs.readFileSync(configFile, "utf8"), "invalid JSON");
 });
 
 test("root /new and resume recycle drivers and restage the same owned bridge without reviving stopped turns", async () => {

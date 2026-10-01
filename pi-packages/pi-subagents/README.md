@@ -569,7 +569,7 @@ For listed packages, `before_agent_start`, `agent_start`, `turn_start`, `context
 
 Package identity uses the nearest manifest of the real extension file, stops at the first manifest, and fails closed on missing, unreadable, or invalid manifests. Commands, flags, and shortcuts remain stripped in lean mode; full resource mode is unchanged.
 
-The default list contains `@thoth-agents/pi-claude-bridge` and `@thoth-agents/pi-antigravity-bridge`; explicit `[]` disables it, and a project array replaces the global array. Antigravity currently registers none of these three events. Its Pi-tool MCP bridge is initialized in `session_start`, which is not run in lean children, so that MCP bridge is not initialized there.
+The default list contains `@thoth-agents/pi-claude-bridge` and `@thoth-agents/pi-antigravity-bridge`; explicit `[]` disables it, and a project array replaces the global array. These listed packages receive their full lifecycle in lean children. An Antigravity child starts its Pi-tool MCP bridge lazily when using an `antigravity` model (at startup, model selection, or before its first provider stream), with private per-instance discovery by default. Children that never use Antigravity do not start a bridge or spawn agy.
 
 Memory behavior should be specified in each subagent markdown definition. A subagent can use memory only when its tool allowlist includes the relevant memory tools.
 

@@ -34,9 +34,10 @@ mocked `ui` seam per primitive.
 
 **Objective:** Let a long-lived agy session observe pi events: `turn_start`,
 `turn_end`, `tool_call`, `tool_result`, `compaction`. Today the bridge
-handles only `session_start` and `session_shutdown`. Scope would be a
-provider-side event tap plus a `pi_subscribe(event)` bridge tool with an SSE
-channel.
+consumes Pi lifecycle events (including `session_start`, `model_select`, and
+`session_shutdown`) for its own lazy startup and cleanup, but does not expose
+an event subscription to agy. Scope would be a provider-side event tap plus a
+`pi_subscribe(event)` bridge tool with an SSE channel.
 
 **Caveat:** agy is request-response per turn even when the engine keeps a
 process alive. Before building, confirm a consumer that can act on an async

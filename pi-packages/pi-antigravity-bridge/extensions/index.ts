@@ -85,6 +85,7 @@ import { registerAskAntigravityTool, toolModelsFromRaw } from "../src/ask-tool.j
 import { registerWebTools } from "../src/web-tools.js";
 import { bridgeMcpConfigDir, startMcpServer, TOKEN_HEADER, type McpServerHandle } from "../src/mcp-server.js";
 import {
+	bridgeServerName,
 	registerBridgeServer,
 	healBridgeSuppression,
 	sweepStaleBridgeServers,
@@ -203,6 +204,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// MCP bridge handle, declared early: the ACP engine reads the bridge port
 	// at session/new / session/load time.
 	let mcpHandle: McpServerHandle | null = null;
+	let ownedDescriptorCacheName: string | null = null;
 	let projectTrusted = false;
 	let lifecycleEpoch = 0;
 	let stopped = false;
@@ -714,10 +716,10 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	async function startBridge(epoch: number): Promise<void> {
 		if (stopped || epoch !== lifecycleEpoch) return;
 		// agy presence check (stream-json engine): the CLI is the whole engine,
-		// so a missing binary means every Antigravity turn would fail. Warn on
-		// every process start until it is installed (per-process flag so /new,
-		// /resume and /reload re-fires do not nag mid-session). Runs after the
-		// picker above, so a first-run stream-json pick warns immediately.
+		// so a missing binary means every Antigravity turn would fail. Warn once
+		// per extension instance when the bridge first starts (first Antigravity
+		// use), until it is installed; the flag keeps /new, /resume and /reload
+		// re-fires from nagging mid-session.
 		if (engine === "stream-json" && !agyMissingWarned && !isAgyInstalled(binary)) {
 			agyMissingWarned = true;
 			const msg = agyMissingMessage();
@@ -912,6 +914,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		}
 		if (r.ok && r.handle) {
 			mcpHandle = r.handle;
+			if (bridgeDiscovery === "private") ownedDescriptorCacheName = serverName;
 			// Stale entries swept at start; entries a crashed delegation left
 			// suppressed are healed here - but only when no live delegation is in
 			// flight anywhere (marker-aware heal). A blind re-enable used to
@@ -930,13 +933,14 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			// ACP supplies the bridge per-session (session/new | session/load);
 			// only the stream-json CLI reads the global MCP config.
 			if (engine === "stream-json" && bridgeDiscovery === "legacy-global") {
-				registerBridgeServer({
+				const registration = registerBridgeServer({
 					pid: process.pid,
 					instanceId,
 					port: r.handle.port,
 					token: r.handle.token,
 					tokenHeader: TOKEN_HEADER,
 				});
+				if (registration.wrote) ownedDescriptorCacheName = bridgeServerName(process.pid, instanceId);
 			}
 			// --- Approval gate (docs/TODO.md 2.5) ------------------------------
 			// agy native tool calls pass through a pi-side approval: a PreToolUse
@@ -1070,12 +1074,15 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			// ("quit") - the connection kill is identical and nothing runs after.
 			await streamDriver.close("recycle", "session shutdown");
 			await acpDriver.close("recycle", "session shutdown");
-			if (engine === "stream-json" && bridgeDiscovery === "legacy-global") unregisterBridgeServer(process.pid, undefined, instanceId);
-			// Descriptor caches are per owned discovery name. Never sweep old or
-			// sibling caches, and wait for both engines to stop writing first.
-			try {
-				fs.rmSync(path.join(os.homedir(), ".gemini", "antigravity-cli", "mcp", serverName), { recursive: true, force: true });
-			} catch { /* best effort */ }
+			if (engine === "stream-json" && bridgeDiscovery === "legacy-global" && ownedDescriptorCacheName) unregisterBridgeServer(process.pid, undefined, instanceId);
+			// Remove only an acquired, instance-unique discovery key, after both
+			// engines stop writing. Shared legacy/ACP names are never owned.
+			if (ownedDescriptorCacheName) {
+				try {
+					fs.rmSync(path.join(os.homedir(), ".gemini", "antigravity-cli", "mcp", ownedDescriptorCacheName), { recursive: true, force: true });
+				} catch { /* best effort */ }
+				ownedDescriptorCacheName = null;
+			}
 			hiddenBridgeTools.clear();
 			// Approval gate: unstage hooks and remove the per-pid script. Pending
 			// approvals already failed closed via handle close (bridge shutdown deny).

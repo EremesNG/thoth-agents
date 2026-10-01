@@ -205,3 +205,13 @@ command-generation, auto-update or lockfile handling, and fixture outputs.
   `pnpm-lock.yaml` semantics
 - AND they MUST prove product and harness semantics remain unchanged except for
   package-manager or runtime invocation surfaces
+
+### Requirement: Install and verify Pi packages through the pnpm workspace
+
+Packages under `pi-packages/` MUST be pnpm workspace members installed by the root `pnpm install` from the single root lockfile, MUST invoke pnpm in their scripts, and CI MUST run each package's typecheck and offline tests.
+
+#### Scenario: Install and verify Pi packages through the pnpm workspace
+
+- **GIVEN** a clean checkout
+- **WHEN** `pnpm install --frozen-lockfile` runs at the root and CI proceeds
+- **THEN** every `pi-packages/*` package has its dependencies installed without per-package npm lockfiles AND CI fails if any package typecheck or offline test fails 

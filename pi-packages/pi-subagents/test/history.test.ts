@@ -64,6 +64,8 @@ describe('subagent history persistence and display_name compatibility', () => {
       created_at: new Date().toISOString(),
       attempt: 1,
       result: 'no vulnerabilities found',
+      session_id: 'history-metrics',
+      runtime_metrics: { generationOutputTokens: 300, generationMs: 4000 },
     };
 
     store.upsertTask(tmp, task);
@@ -83,6 +85,18 @@ describe('subagent history persistence and display_name compatibility', () => {
     const attempts = store.listTaskAttempts(tmp, task.id);
     expect(attempts).toHaveLength(1);
     expect(attempts[0].display_name).toBe('Security Vulnerability Scan');
+    store.close();
+    const reopened = createHistoryStore();
+    for (const projected of [
+      reopened.getTask(tmp, task.id),
+      reopened.listTasks(tmp)[0],
+      reopened.listTaskAttempts(tmp, task.id)[0],
+      reopened.listSessionTaskMetadata(tmp, 'history-metrics')[0],
+    ])
+      expect(projected?.runtime_metrics).toEqual({
+        generationOutputTokens: 300,
+        generationMs: 4000,
+      });
   });
 
   it('migrates older databases without display_name column and leaves legacy rows with undefined display_name', () => {
@@ -225,6 +239,10 @@ describe('subagent history persistence and display_name compatibility', () => {
     const legacyTask = store.getTask(tmp, 'subtask_legacy_row');
     expect(legacyTask).toBeDefined();
     expect(legacyTask?.display_name).toBeUndefined();
+    expect(legacyTask?.runtime_metrics).toBeUndefined();
+    expect(
+      store.listTaskAttempts(tmp, 'subtask_legacy_row')[0]?.runtime_metrics,
+    ).toBeUndefined();
 
     // Now upsert a new task with display_name
     const newTask: SubagentTask = {

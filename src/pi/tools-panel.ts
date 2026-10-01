@@ -41,6 +41,7 @@ export interface ToolsPanelOptions {
   ): PiToolSaveResult;
   onDone(result: ToolsPanelResult): void;
   requestRender?(): void;
+  maxHeight?(): number;
   matchesKey?: (data: string, key: ToolsPanelKey) => boolean;
   truncate?: (text: string, width: number) => string;
   visibleWidth?: (text: string) => number;
@@ -332,7 +333,48 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     requestRender();
   };
 
-  const overviewLines = (width: number): string[] => {
+  // Overlay maxHeight clips rather than scrolls. Keep controls, save errors and
+  // a cursor-centered choice window visible when the full presentation won't fit.
+  const fitChoiceViewport = (
+    lines: string[],
+    choices: string[],
+    cursor: number,
+    height: number,
+  ): string[] => {
+    if (lines.length <= height) return lines;
+    if (height <= 0) return [];
+    const messages = lines
+      .filter(
+        (line) =>
+          line.startsWith('Save failed:') ||
+          line.startsWith('Already changed:'),
+      )
+      .slice(0, Math.max(0, height - 1));
+    const headerSpace = height - messages.length - 1;
+    const header =
+      headerSpace >= 2
+        ? lines.slice(0, 2)
+        : headerSpace === 1
+          ? lines.slice(1, 2)
+          : [];
+    const available = height - header.length - messages.length;
+    const showRange = choices.length > available && available > 1;
+    const pageSize = available - Number(showRange);
+    const start = Math.max(
+      0,
+      Math.min(cursor - Math.floor(pageSize / 2), choices.length - pageSize),
+    );
+    return [
+      ...header,
+      ...messages,
+      ...choices.slice(start, start + pageSize),
+      ...(showRange
+        ? [`  Showing ${start + 1}–${start + pageSize} of ${choices.length}`]
+        : []),
+    ];
+  };
+
+  const overviewLines = (width: number, height: number): string[] => {
     const dirtyCount = state.draft.filter((role) => {
       const original = baseline.roles.find((item) => item.role === role.role);
       return !original || !sameTools(role.tools, original.tools);
@@ -351,6 +393,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       );
     else lines.push('agent · selected tools');
 
+    const choices: string[] = [];
     for (const [index, role] of state.draft.entries()) {
       const marker = index === state.selectedRole ? '›' : ' ';
       const changed = (() => {
@@ -363,14 +406,14 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         : selectionSummary(role);
       const countLabel = selectionLabel(role);
       const name = `${role.role}${changed}`;
-      lines.push(
+      choices.push(
         table
           ? `${marker} ${name.padEnd(16)}  ${countLabel.padEnd(18)}  ${toolSummary}`
           : `${marker} ${name} · ${countLabel} · ${toolSummary}`,
       );
     }
 
-    lines.push('');
+    lines.push(...choices, '');
     const selected = state.draft[state.selectedRole];
     lines.push(
       `selected: ${selected?.role ?? '(none)'} · tools: ${selected ? selectionSummary(selected) : '(none)'}`,
@@ -385,10 +428,10 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     if (state.error) lines.push(`Save failed: ${state.error}`);
     if (state.changedRoles.length > 0)
       lines.push(`Already changed: ${state.changedRoles.join(', ')}`);
-    return lines;
+    return fitChoiceViewport(lines, choices, state.selectedRole, height);
   };
 
-  const toolLines = (): string[] => {
+  const toolLines = (height: number): string[] => {
     const role = state.draft[state.selectedRole];
     if (!role) return [];
     const items = getToolItemsForRole(role);
@@ -430,19 +473,29 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         `  Showing ${start + 1}–${Math.min(start + pageSize, choices.length)} of ${choices.length}`,
       );
     lines.push('', `selected: ${items[selectedToolIndex]?.name ?? '(none)'}`);
-    return lines;
+    return fitChoiceViewport(
+      lines,
+      choices.length ? choices : ['  No tools available'],
+      selectedToolIndex,
+      height,
+    );
   };
 
   const render = (width: number): string[] => {
+    const maxHeight = Math.max(
+      1,
+      Math.floor(options.maxHeight?.() ?? Infinity),
+    );
+    const bodyHeight = Math.max(0, maxHeight - 2);
     let title: string;
     let lines: string[];
     if (state.screen === 'overview') {
       title = 'Global specialist tools';
-      lines = overviewLines(width);
+      lines = overviewLines(width, bodyHeight);
     } else if (state.screen === 'tools') {
       const role = state.draft[state.selectedRole];
       title = `Choose tools · ${role?.role ?? ''}`;
-      lines = toolLines();
+      lines = toolLines(bodyHeight);
     } else {
       title = 'Discard unsaved draft?';
       lines = ['d discard and close · k or esc keep editing'];
@@ -455,6 +508,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       text: string,
     ): string => options.theme?.fg(color, text) ?? text;
     const panelWidth = Math.max(1, width);
+    if (maxHeight < 3) return [truncate(title, panelWidth)];
     if (panelWidth < 4) {
       return [title, ...lines].map((line) => truncate(line, panelWidth));
     }

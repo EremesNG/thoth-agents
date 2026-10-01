@@ -448,7 +448,11 @@ export async function promptWithInactivity(
         if (event.type === 'tool_execution_end' && toolCallId)
           activeToolCalls.delete(toolCallId);
       }
-      const runtimeSnapshot = runtimeMetricsTracker.observe(event, session);
+      const runtimeSnapshot = runtimeMetricsTracker.observe(
+        event,
+        session,
+        observedAt,
+      );
       usage = runtimeSnapshot.usage ?? {
         ...usage,
         turns: runtimeSnapshot.runtime_metrics.turns ?? usage.turns,

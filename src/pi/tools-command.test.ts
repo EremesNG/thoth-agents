@@ -106,6 +106,54 @@ describe('subagents-tools command', () => {
     expect(custom).not.toHaveBeenCalled();
   });
 
+  test('opens as a centered overlay with model-style sizing', async () => {
+    const commands = new Map<
+      string,
+      (args: string | undefined, context: any) => unknown
+    >();
+    const custom = vi.fn().mockResolvedValue({ kind: 'cancelled' });
+    piExtension(
+      {
+        on: vi.fn(),
+        registerCommand: (name, command) => commands.set(name, command.handler),
+        getAllTools: () => [{ name: 'read' }],
+        getActiveTools: () => ['read'],
+      },
+      { readToolConfig: () => sampleSnapshot() },
+    );
+
+    await commands.get('subagents-tools')?.(undefined, {
+      mode: 'tui',
+      ui: { notify: vi.fn(), custom },
+    });
+
+    expect(custom).toHaveBeenCalledWith(expect.any(Function), {
+      overlay: true,
+      overlayOptions: {
+        anchor: 'center',
+        width: '96%',
+        maxHeight: '90%',
+        minWidth: 96,
+      },
+    });
+    const tui = { requestRender: vi.fn(), terminal: { rows: 10 } };
+    const panel = custom.mock.calls[0]?.[0](
+      tui,
+      {
+        fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+      },
+      {},
+      vi.fn(),
+    );
+    panel.handleInput('G');
+    expect(panel.render(96).length).toBeLessThanOrEqual(9);
+    expect(panel.render(96).join('\n')).toContain('› worker');
+    tui.terminal.rows = 6;
+    expect(panel.render(96).length).toBeLessThanOrEqual(5);
+    expect(panel.render(96).join('\n')).toContain('› worker');
+  });
+
   test('discovers tools anew on open and wires them into custom panel with save notification', async () => {
     const commands = new Map<
       string,
@@ -163,7 +211,7 @@ describe('subagents-tools command', () => {
         custom: async (factory: any) => {
           let result: unknown;
           const component = factory(
-            { requestRender },
+            { requestRender, terminal: { rows: 24 } },
             {
               fg: (_color: string, text: string) => text,
               bg: (_color: string, text: string) => text,

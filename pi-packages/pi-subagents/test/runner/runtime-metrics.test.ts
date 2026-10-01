@@ -95,6 +95,76 @@ function sessionFixture() {
 }
 
 describe('child runtime metrics', () => {
+  it('averages paired assistant generation across messages, excluding tool waits and compaction usage', async () => {
+    const session = sessionFixture();
+    let listener: (event: any) => void = () => {};
+    session.subscribe.mockImplementation((callback: any) => {
+      listener = callback;
+      return () => {};
+    });
+    let arrival = 100;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => arrival);
+    session.prompt.mockImplementation(async () => {
+      const emit = (type: string, role: string, output?: number) =>
+        listener({
+          type,
+          message: {
+            role,
+            content: [{ type: 'text', text: 'answer' }],
+            usage: { output },
+          },
+        });
+      emit('message_start', 'assistant');
+      arrival = 1100;
+      emit('message_end', 'assistant', 100);
+      listener({ type: 'tool_execution_start', toolName: 'read' });
+      arrival = 6100;
+      emit('message_end', 'toolResult', 9000);
+      listener({ type: 'tool_execution_end', toolName: 'read' });
+      emit('message_start', 'assistant');
+      arrival = 9100;
+      emit('message_end', 'assistant', 200);
+      listener({ type: 'compaction_start' });
+      emit('message_start', 'assistant');
+      arrival = 29100;
+      emit('message_end', 'assistant', 9999);
+      listener({ type: 'compaction_end', result: { usage: { output: 9999 } } });
+      emit('message_end', 'assistant', 8888); // standalone, no generation start
+      session.messages.push({
+        role: 'assistant',
+        content: [{ type: 'text', text: 'answer' }],
+      });
+    });
+    try {
+      const result = await promptWithInactivity(
+        session,
+        'work',
+        10000,
+        new AbortController().signal,
+      );
+      expect(result.runtime_metrics).toMatchObject({
+        generationOutputTokens: 300,
+        generationMs: 4000,
+      });
+      expect(result.usage.output).toBe(12); // deliberately unrelated session total
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('keeps generation unmeasurable without paired timing and output usage', async () => {
+    const session = sessionFixture();
+    const result = await promptWithInactivity(
+      session,
+      'work',
+      10000,
+      new AbortController().signal,
+    );
+    expect(result.runtime_metrics).toMatchObject({
+      generationOutputTokens: 0,
+      generationMs: 0,
+    });
+  });
   it('projects the child session lifetime stats and redacted assistant accounting events', async () => {
     const session = sessionFixture();
     const activities: any[] = [];
@@ -134,6 +204,8 @@ describe('child runtime metrics', () => {
       toolUses: 3,
       turns: 1,
       compactions: 1,
+      generationOutputTokens: 0,
+      generationMs: 0,
     });
     expect(result.usage).toMatchObject({
       input: 38,

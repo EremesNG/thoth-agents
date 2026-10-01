@@ -214,7 +214,7 @@ describe('background widget', () => {
       expect(state.getSelectedKey()).toBe('A');
       const text = state.renderLines({ width: 200 }).join('\n');
       expect(text).toContain(`stream ${index}`);
-      expect(text).toContain(`turns ${index + 1} · ⚙ tools ${index + 2}`);
+      expect(text).toContain(`⚙ tools ${index + 2}`);
       expect(text).toContain(`context ${50 + index}.0%`);
       expect(
         renderClaudeBackgroundWidgetLines(tasks, undefined, {
@@ -324,6 +324,52 @@ describe('background widget', () => {
     expect(next?.[1]).toContain('⠙ worker');
     expect(first?.at(-1)).toBe('  ○ 1 queued');
   });
+  it('shows task-average output speed between context and elapsed, not turns or session usage', () => {
+    const task: SubagentTask = {
+      id: 'speed',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+      created_at: '2026-01-01T00:00:00Z',
+      started_at: '2026-01-01T00:00:00Z',
+      usage: {
+        input: 100,
+        output: 99999,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0,
+        contextTokens: 0,
+        turns: 5,
+      },
+      runtime_metrics: {
+        contextPercent: 25,
+        generationOutputTokens: 300,
+        generationMs: 4000,
+      },
+    };
+    const render = () =>
+      renderClaudeBackgroundWidgetLines([task], undefined, {
+        width: 200,
+        now: Date.parse('2026-01-01T00:00:10Z'),
+      })!.join(' ');
+    expect(render()).toContain('context 25.0% · 75 tok/s · ⧗ elapsed 10.0s');
+    expect(render()).not.toContain('turns');
+    for (const metrics of [
+      undefined,
+      {},
+      { generationOutputTokens: 100 },
+      { generationOutputTokens: 0, generationMs: 0 },
+      { generationOutputTokens: NaN, generationMs: 1000 },
+      { generationOutputTokens: 100, generationMs: -1 },
+    ]) {
+      task.runtime_metrics = metrics;
+      expect(render()).toContain('? tok/s');
+    }
+    task.runtime_metrics = { generationOutputTokens: 0, generationMs: 1000 };
+    expect(render()).toContain('0 tok/s');
+  });
+
   it('keeps live metrics visible beside a long task at narrow widths and marks absent values', () => {
     const task = {
       id: 'long',
@@ -352,11 +398,7 @@ describe('background widget', () => {
     const widget = new ClaudeBackgroundWidget(state, {});
     for (const width of [100, 80, 50]) {
       const lines = widget.render(width);
-      expect(
-        lines.some(
-          (line) => line.includes('turns 0') && line.includes('tools 5'),
-        ),
-      ).toBe(true);
+      expect(lines.some((line) => line.includes('tools 5'))).toBe(true);
       expect(lines.join(' ')).toContain('tokens 33.8k');
       expect(lines.join(' ')).toContain('context 62.0%');
       expect(lines.join(' ')).toContain('compaction');
@@ -365,7 +407,7 @@ describe('background widget', () => {
     task.usage = undefined;
     task.runtime_metrics = undefined;
     const unknown = widget.render(50).join(' ');
-    expect(unknown).toContain('turns ?');
+    expect(unknown).toContain('? tok/s');
     expect(unknown).toContain('tools ?');
     expect(unknown).toContain('tokens ?');
     expect(unknown).toContain('context ?');
@@ -398,7 +440,7 @@ describe('background widget', () => {
       (action) => actions.push(action),
     );
     const lines = widget.render(50);
-    expect(lines.filter((line) => line.includes('turns 2'))).toHaveLength(2);
+    expect(lines.filter((line) => line.includes('? tok/s'))).toHaveLength(2);
     expect(lines.filter((line) => line.includes('tokens 1.5k'))).toHaveLength(
       2,
     );
@@ -442,7 +484,7 @@ describe('background widget', () => {
     expect(lines).toEqual([
       '● Agents  (↑↓ navigate · ↵ open)',
       '  ╭─ ⠋ worker [openai/gpt-6] · Review the migration',
-      '  │  ↻ turns 5 · ⚙ tools 5 · ◈ tokens 33.8k · ▣ context 62.0% · ⧗ elapsed 12.3s',
+      '  │  ⚙ tools 5 · ◈ tokens 33.8k · ▣ context 62.0% · ? tok/s · ⧗ elapsed 12.3s',
       '  │  ≋ 1 compaction',
       '  ╰⎿ editing…',
     ]);
@@ -456,7 +498,7 @@ describe('background widget', () => {
     );
     const styled = widget.render(80).join('\n');
     for (const metric of [
-      '↻ \x1b[2mturns\x1b[0m 5',
+      '? \x1b[2mtok/s\x1b[0m',
       '⚙ \x1b[2mtools\x1b[0m 5',
       '◈ \x1b[2mtokens\x1b[0m 33.8k',
       '▣ \x1b[2mcontext\x1b[0m 62.0%',
@@ -963,7 +1005,7 @@ describe('background widget', () => {
     );
     const normalLines = widget.render(100);
     expect(normalLines.length).toBeLessThanOrEqual(14);
-    expect(normalLines.join(' ')).toContain('turns 1');
+    expect(normalLines.join(' ')).toContain('? tok/s');
     expect(normalLines.join(' ')).toContain('tools 2');
     expect(normalLines.join(' ')).toContain('tokens 1.5k');
     expect(normalLines.join(' ')).toContain('context 25.5%');
@@ -972,7 +1014,7 @@ describe('background widget', () => {
     const narrowLines = widget.render(45);
     expect(narrowLines.length).toBeLessThanOrEqual(18);
     expect(narrowLines.every((l) => visibleWidth(l) <= 45)).toBe(true);
-    expect(narrowLines.join(' ')).toContain('turns 1');
+    expect(narrowLines.join(' ')).toContain('? tok/s');
     expect(narrowLines.join(' ')).toContain('tools 2');
   });
 

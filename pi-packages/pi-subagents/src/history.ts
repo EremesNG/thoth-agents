@@ -102,6 +102,8 @@ const SESSION_TASK_METADATA_COLUMNS = `
         usage_cost,
         usage_context_tokens,
         usage_turns,
+        generation_output_tokens,
+        generation_ms,
         model,
         effort,
         model_source,
@@ -140,6 +142,13 @@ function configureHistoryDb(db: Db): void {
 }
 
 function ensureAttemptColumns(db: Db): void {
+  ensureColumn(
+    db,
+    'subagent_task_attempts',
+    'generation_output_tokens',
+    'INTEGER',
+  );
+  ensureColumn(db, 'subagent_task_attempts', 'generation_ms', 'REAL');
   ensureColumn(db, 'subagent_task_attempts', 'display_name', 'TEXT');
   ensureColumn(db, 'subagent_task_attempts', 'cwd', 'TEXT');
   ensureColumn(db, 'subagent_task_attempts', 'agent', 'TEXT');
@@ -212,8 +221,8 @@ function upsertTaskRecord(
 
   const columns =
     table === 'subagent_tasks'
-      ? 'id, display_name, cwd, agent, mode, status, task, context, created_at, attempt, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json'
-      : 'task_id, attempt, display_name, cwd, agent, mode, status, task, context, created_at, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json';
+      ? 'id, display_name, cwd, agent, mode, status, task, context, created_at, attempt, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, generation_output_tokens, generation_ms, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json'
+      : 'task_id, attempt, display_name, cwd, agent, mode, status, task, context, created_at, session_id, nested_session_path, started_at, ended_at, last_activity_at, last_activity, output_preview, prompt, continuation_prompt, system_prompt, transcript, usage_input, usage_output, usage_cache_read, usage_cache_write, usage_cost, usage_context_tokens, usage_turns, generation_output_tokens, generation_ms, model, effort, model_source, effort_source, fallback_used, error, error_metadata_json, error_category, result, thread_snapshot_json, pi_retry_attempts, pending_message_count, undelivered_message_count, dropped_tools_json';
   const placeholders = new Array(columns.split(',').length)
     .fill('?')
     .join(', ');
@@ -240,6 +249,8 @@ function upsertTaskRecord(
         usage_cost=excluded.usage_cost,
         usage_context_tokens=excluded.usage_context_tokens,
         usage_turns=excluded.usage_turns,
+        generation_output_tokens=excluded.generation_output_tokens,
+        generation_ms=excluded.generation_ms,
         model=excluded.model,
         effort=excluded.effort,
         model_source=excluded.model_source,
@@ -274,6 +285,8 @@ function upsertTaskRecord(
         usage_cost=excluded.usage_cost,
         usage_context_tokens=excluded.usage_context_tokens,
         usage_turns=excluded.usage_turns,
+        generation_output_tokens=excluded.generation_output_tokens,
+        generation_ms=excluded.generation_ms,
         model=excluded.model,
         effort=excluded.effort,
         model_source=excluded.model_source,
@@ -322,6 +335,8 @@ function upsertTaskRecord(
     task.usage?.cost ?? null,
     task.usage?.contextTokens ?? null,
     task.usage?.turns ?? null,
+    task.runtime_metrics?.generationOutputTokens ?? null,
+    task.runtime_metrics?.generationMs ?? null,
     value(task.model),
     value(task.effort),
     value(task.model_source),
@@ -482,6 +497,8 @@ export class SubagentHistoryStore {
       CREATE INDEX IF NOT EXISTS idx_subagent_events_task ON subagent_events(task_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_subagent_attempts_task ON subagent_task_attempts(task_id, attempt);
     `);
+    ensureColumn(db, 'subagent_tasks', 'generation_output_tokens', 'INTEGER');
+    ensureColumn(db, 'subagent_tasks', 'generation_ms', 'REAL');
     ensureColumn(db, 'subagent_tasks', 'display_name', 'TEXT');
     ensureColumn(db, 'subagent_tasks', 'attempt', 'INTEGER');
     ensureColumn(db, 'subagent_tasks', 'nested_session_path', 'TEXT');
@@ -637,6 +654,8 @@ export class SubagentHistoryStore {
         usage_cost,
         usage_context_tokens,
         usage_turns,
+        generation_output_tokens,
+        generation_ms,
         model,
         effort,
         model_source,
@@ -712,6 +731,13 @@ function rowToTask(row: any, options: HistoryReadOptions = {}): SubagentTask {
             cost: row.usage_cost ?? 0,
             contextTokens: row.usage_context_tokens ?? 0,
             turns: row.usage_turns ?? 0,
+          },
+    runtime_metrics:
+      row.generation_output_tokens == null || row.generation_ms == null
+        ? undefined
+        : {
+            generationOutputTokens: row.generation_output_tokens,
+            generationMs: row.generation_ms,
           },
     model: row.model ?? undefined,
     effort: row.effort ?? undefined,

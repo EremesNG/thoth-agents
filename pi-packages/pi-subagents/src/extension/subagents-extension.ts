@@ -1,3 +1,4 @@
+import { CustomEditor } from '@earendil-works/pi-coding-agent';
 import {
   AtelierMetadataWriter,
   type AtelierSessionOwner,
@@ -99,11 +100,45 @@ export default function subagentsExtension(pi: any): void {
   let widgetState: ClaudeBackgroundWidgetState | undefined;
   let activePanelCancelSelected: (() => void) | undefined;
   let activePanelRequestRender: (() => void) | undefined;
+  // Unwrap our own prior session factory instead of nesting stale identity guards.
+  const editorFactories = new WeakMap<Function, any>();
 
   const installClaudeBackgroundWidget = (ctx: any): boolean => {
     if (typeof ctx?.ui?.setWidget !== 'function') return false;
     const cwd = ctx?.cwd ?? process.cwd();
     const sessionId = currentSessionId(ctx);
+    let widgetTui: any;
+    let editorInstance: any;
+    let editorInvocations = 0;
+    let editorIdentityLost = false;
+    const loseEditorIdentity = () => {
+      if (editorIdentityLost) return;
+      editorIdentityLost = true;
+      ctx.ui.notify?.(
+        'Subagents widget navigation is unavailable: the editor was replaced. Restart the session to restore navigation.',
+        'warning',
+      );
+    };
+    let configuredFactory = ctx.ui.getEditorComponent?.();
+    if (configuredFactory && editorFactories.has(configuredFactory))
+      configuredFactory = editorFactories.get(configuredFactory);
+    const editorFactory = (tui: any, theme: any, keybindings: any) => {
+      const instance = configuredFactory
+        ? configuredFactory(tui, theme, keybindings)
+        : new CustomEditor(tui, theme, keybindings, {
+            embedWorkingStatus: true,
+          });
+      editorInvocations += 1;
+      if (editorInvocations === 1) editorInstance = instance;
+      else loseEditorIdentity();
+      return instance;
+    };
+    editorFactories.set(editorFactory, configuredFactory);
+    if (
+      typeof ctx.ui.getEditorComponent === 'function' &&
+      typeof ctx.ui.setEditorComponent === 'function'
+    )
+      ctx.ui.setEditorComponent(editorFactory);
     widgetState = new ClaudeBackgroundWidgetState(
       () => manager.listActiveSessionTasks(cwd, sessionId),
       () => widgetRequestRender?.(),
@@ -130,12 +165,20 @@ export default function subagentsExtension(pi: any): void {
     syncWidgetTimer();
     if (typeof ctx?.ui?.onTerminalInput === 'function') {
       removeTerminalInputListener = ctx.ui.onTerminalInput((data: string) => {
-        if (widgetInputSuspensions.size > 0) return undefined;
+        if (ctx.ui.getEditorComponent?.() !== editorFactory)
+          loseEditorIdentity();
+        const editorFocused =
+          !editorIdentityLost &&
+          editorInstance !== undefined &&
+          widgetTui?.getFocusedComponent?.() === editorInstance &&
+          widgetTui?.hasOverlay?.() === false &&
+          widgetInputSuspensions.size === 0;
         const editorText =
           typeof ctx.ui.getEditorText === 'function'
             ? String(ctx.ui.getEditorText() ?? '')
             : '';
         const result = widgetState?.handleTerminalInput(data, {
+          editorFocused,
           allowActivate: !editorText.trim(),
         });
         if (
@@ -172,6 +215,7 @@ export default function subagentsExtension(pi: any): void {
     ctx.ui.setWidget(
       'subagents-claude-background',
       (tui: any, theme: any) => {
+        widgetTui = tui;
         widgetRequestRender = () => tui?.requestRender?.();
         return new ClaudeBackgroundWidget(widgetState!, theme);
       },

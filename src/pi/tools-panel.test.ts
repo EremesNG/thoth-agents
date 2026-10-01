@@ -396,6 +396,55 @@ describe('global Pi tools panel', () => {
     );
   });
 
+  test('keeps the selected role and tool visible in short overlays and after resize', () => {
+    let maxHeight = 9; // 90% of a ten-row terminal
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools: Array.from({ length: 30 }, (_, index) => ({
+        name: `tool_${index.toString().padStart(2, '0')}`,
+        active: true,
+      })),
+      save: vi.fn(),
+      onDone: vi.fn(),
+      maxHeight: () => maxHeight,
+    });
+    const render = () => {
+      const lines = panel.render(96);
+      expect(lines.length).toBeLessThanOrEqual(maxHeight);
+      expect(lines[0]).toContain('╭');
+      expect(lines.at(-1)).toContain('╰');
+      return lines.join('\n');
+    };
+
+    expect(render()).toContain('› explorer');
+    panel.handleInput('G');
+    expect(render()).toContain('› worker');
+    expect(render()).toContain('s save');
+    panel.handleInput('\r');
+    panel.handleInput('G');
+    expect(render()).toContain('› [x] write (unavailable)');
+    expect(render()).toContain('space toggle');
+    panel.handleInput('k');
+    panel.handleInput('k');
+    expect(render()).toContain('› [ ] tool_29');
+    panel.handleInput(' ');
+    expect(render()).toContain('› [x] tool_29');
+    panel.handleInput('g');
+    expect(render()).toContain('› [ ] tool_00');
+
+    maxHeight = 5;
+    panel.handleInput('G');
+    expect(render()).toContain('› [x] write (unavailable)');
+    panel.handleInput('q');
+    expect(render()).toContain('› worker *');
+    panel.handleInput('\x1b');
+    expect(render()).toContain('d discard and close · k or esc keep editing');
+    panel.handleInput('k');
+    expect(render()).toContain('› worker *');
+    maxHeight = 21;
+    expect(render()).toContain('Ambient root tools are unchanged');
+  });
+
   test('filters out delegation tools and root-only controls from selectable list', () => {
     const panel = createToolsPanel({
       snapshot: sampleSnapshot(),
@@ -659,9 +708,11 @@ describe('global Pi tools panel', () => {
       discoveredTools: sampleDiscovered,
       save,
       onDone: vi.fn(),
+      maxHeight: () => 5,
     });
     panel.handleInput('*'); // explorer changed to the dynamic active selector
     panel.handleInput('s'); // save -> partial failure
+    expect(panel.render(100).length).toBeLessThanOrEqual(5);
     expect(panel.render(100).join('\n')).toContain('designer write failed');
     expect(panel.render(100).join('\n')).toContain('Already changed: explorer');
 

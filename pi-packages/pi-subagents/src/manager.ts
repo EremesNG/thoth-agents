@@ -1376,6 +1376,12 @@ export class SubagentManager {
     const metricBaseline = {
       turns: task.runtime_metrics?.turns ?? 0,
       compactions: task.runtime_metrics?.compactions ?? 0,
+      generationOutputTokens:
+        task.runtime_metrics?.generationOutputTokens ??
+        ((task.attempt ?? 1) === 1 ? 0 : undefined),
+      generationMs:
+        task.runtime_metrics?.generationMs ??
+        ((task.attempt ?? 1) === 1 ? 0 : undefined),
     };
     const controller = new AbortController();
     this.tasks.set(id, task);
@@ -1421,9 +1427,55 @@ export class SubagentManager {
         this.notifyTaskUpdate(id, onTaskUpdate, true);
         let interactionsHandled = 0;
         let result: Awaited<ReturnType<SubagentRunner>> | undefined;
-        const runnerMetricOffset = { turns: 0, compactions: 0 };
+        const runnerMetricOffset = {
+          turns: 0,
+          compactions: 0,
+          generationOutputTokens: 0,
+          generationMs: 0,
+        };
         while (true) {
-          const runnerMetricHighwater = { turns: 0, compactions: 0 };
+          const runnerMetricHighwater = {
+            turns: 0,
+            compactions: 0,
+            generationOutputTokens: 0,
+            generationMs: 0,
+          };
+          const updateRunnerMetrics = (
+            metrics: SubagentTask['runtime_metrics'],
+          ) => {
+            if (!metrics) return;
+            for (const key of [
+              'turns',
+              'compactions',
+              'generationOutputTokens',
+              'generationMs',
+            ] as const) {
+              if (metrics[key] !== undefined)
+                runnerMetricHighwater[key] = Math.max(
+                  runnerMetricHighwater[key],
+                  metrics[key],
+                );
+            }
+            task.runtime_metrics = { ...metrics };
+            for (const key of [
+              'turns',
+              'compactions',
+              'generationOutputTokens',
+              'generationMs',
+            ] as const) {
+              if (
+                metrics[key] !== undefined ||
+                key === 'generationOutputTokens' ||
+                key === 'generationMs'
+              )
+                task.runtime_metrics[key] =
+                  metricBaseline[key] === undefined
+                    ? undefined
+                    : metricBaseline[key] +
+                      runnerMetricOffset[key] +
+                      runnerMetricHighwater[key];
+            }
+          };
           const runnerPromise = this.runner({
             definition,
             task: taskText,
@@ -1465,38 +1517,7 @@ export class SubagentManager {
                   activity.observed_at,
                 );
               }
-              const runtimeMetrics = activity.runtime_metrics;
-              if (runtimeMetrics) {
-                if (runtimeMetrics.turns !== undefined)
-                  runnerMetricHighwater.turns = Math.max(
-                    runnerMetricHighwater.turns,
-                    runtimeMetrics.turns,
-                  );
-                if (runtimeMetrics.compactions !== undefined)
-                  runnerMetricHighwater.compactions = Math.max(
-                    runnerMetricHighwater.compactions,
-                    runtimeMetrics.compactions,
-                  );
-                task.runtime_metrics = {
-                  ...runtimeMetrics,
-                  ...(runtimeMetrics.turns !== undefined
-                    ? {
-                        turns:
-                          metricBaseline.turns +
-                          runnerMetricOffset.turns +
-                          runnerMetricHighwater.turns,
-                      }
-                    : {}),
-                  ...(runtimeMetrics.compactions !== undefined
-                    ? {
-                        compactions:
-                          metricBaseline.compactions +
-                          runnerMetricOffset.compactions +
-                          runnerMetricHighwater.compactions,
-                      }
-                    : {}),
-                };
-              }
+              updateRunnerMetrics(activity.runtime_metrics);
               if (task.status === 'stopping' || isTerminalStatus(task.status))
                 return;
               task.last_activity_at = nowIso();
@@ -1595,33 +1616,14 @@ export class SubagentManager {
           ]);
           await activeRunnerSettlement;
           activeRunnerSettlement = undefined;
-          if (result?.runtime_metrics?.turns !== undefined)
-            runnerMetricHighwater.turns = Math.max(
-              runnerMetricHighwater.turns,
-              result.runtime_metrics.turns,
-            );
-          if (result?.runtime_metrics?.compactions !== undefined)
-            runnerMetricHighwater.compactions = Math.max(
-              runnerMetricHighwater.compactions,
-              result.runtime_metrics.compactions,
-            );
-          runnerMetricOffset.turns += runnerMetricHighwater.turns;
-          runnerMetricOffset.compactions += runnerMetricHighwater.compactions;
-          if (result?.runtime_metrics) {
-            task.runtime_metrics = {
-              ...result.runtime_metrics,
-              ...(result.runtime_metrics.turns !== undefined
-                ? { turns: metricBaseline.turns + runnerMetricOffset.turns }
-                : {}),
-              ...(result.runtime_metrics.compactions !== undefined
-                ? {
-                    compactions:
-                      metricBaseline.compactions +
-                      runnerMetricOffset.compactions,
-                  }
-                : {}),
-            };
-          }
+          updateRunnerMetrics(result?.runtime_metrics);
+          for (const key of [
+            'turns',
+            'compactions',
+            'generationOutputTokens',
+            'generationMs',
+          ] as const)
+            runnerMetricOffset[key] += runnerMetricHighwater[key];
           if (timeout) {
             clearTimeout(timeout);
             timeout = undefined;

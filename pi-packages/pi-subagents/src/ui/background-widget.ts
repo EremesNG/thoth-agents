@@ -142,16 +142,21 @@ function buildClaudeBackgroundWidgetEntries(
     const summary = formatTaskSummary(task);
     const description =
       `${task.agent}${task.model ? ` [${task.model}]` : ''}${summary ? ` · ${summary}` : ''}`.trim();
-    const turns = metrics?.turns ?? task.usage?.turns;
+    const speed =
+      finiteNonnegative(metrics?.generationOutputTokens) &&
+      finiteNonnegative(metrics?.generationMs) &&
+      metrics.generationMs > 0
+        ? (metrics.generationOutputTokens * 1000) / metrics.generationMs
+        : undefined;
     const tokens = task.usage
       ? task.usage.input + task.usage.output + task.usage.cacheWrite
       : undefined;
     const started = task.started_at ? Date.parse(task.started_at) : NaN;
     const metricParts = [
-      `↻ turns ${finiteNonnegative(turns) ? turns : '?'}`,
       `⚙ tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
       `◈ tokens ${finiteNonnegative(tokens) ? formatTokens(tokens) : '?'}`,
       `▣ context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
+      `${finiteNonnegative(speed) ? Math.round(speed) : '?'} tok/s`,
       `⧗ elapsed ${Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '?'}`,
     ];
     if (finiteNonnegative(metrics?.compactions) && metrics.compactions > 0)
@@ -473,8 +478,17 @@ export class ClaudeBackgroundWidgetState {
 
   handleTerminalInput(
     data: string,
-    options: { allowActivate?: boolean } = {},
+    options: { allowActivate?: boolean; editorFocused?: boolean } = {},
   ): ClaudeBackgroundTerminalInputResult {
+    if (options.editorFocused === false) {
+      if (this.navigationActive || this.selectedKey !== 'main') {
+        this.navigationActive = false;
+        this.selectedKey = 'main';
+        this.selectedIndex = 0;
+        this.onChange?.();
+      }
+      return undefined;
+    }
     const mouse = isMouseClickInput(data);
     if (mouse.isClick) {
       return this.handleMouseClick({ type: 'click', row: mouse.row });
@@ -685,7 +699,7 @@ export class ClaudeBackgroundWidget {
       const rail = themeDim(this.theme, '  ╭─ ');
       const rest = line.slice(5);
       const match = rest.match(
-        /^(\S+)\s+([^\s·\[]+)(?:\s+\[(.*?)\])?(?:\s+·\s+(.*))?$/,
+        /^(\S+)\s+([^\s·[]+)(?:\s+\[(.*?)\])?(?:\s+·\s+(.*))?$/,
       );
       if (match) {
         const glyph = themeAccent(this.theme, match[1]!);
@@ -726,6 +740,8 @@ export class ClaudeBackgroundWidget {
     const parts = text.split(' · ');
     const sep = themeDim(this.theme, ' · ');
     const decoratedParts = parts.map((part) => {
+      const speed = part.match(/^(\d+|\?) tok\/s$/);
+      if (speed) return `${speed[1]} ${themeDim(this.theme, 'tok/s')}`;
       const match = part.match(/^([↻⚙◈▣⧗≋])\s+(.+)$/u);
       if (!match) return part;
       const icon = match[1]!;

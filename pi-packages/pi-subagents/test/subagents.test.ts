@@ -1,5 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  CustomEditor,
+  ExtensionInputComponent,
+  ExtensionSelectorComponent,
+  initTheme,
+} from '@earendil-works/pi-coding-agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import extension from '../index.js';
 import { SubagentManager } from '../src/manager.js';
@@ -424,7 +430,16 @@ describe('subagents smoke', () => {
         finishCustomUi,
       );
     });
-    const setWidget = vi.fn();
+    let editorFactory: any;
+    let editor: any;
+    const tui = {
+      requestRender: vi.fn(),
+      hasOverlay: () => false,
+      getFocusedComponent: () => editor,
+    };
+    const setWidget = vi.fn((_name: string, factory: any) =>
+      factory?.(tui, {}),
+    );
     const pi = {
       registerMessageRenderer: vi.fn(),
       registerShortcut: vi.fn(),
@@ -440,6 +455,11 @@ describe('subagents smoke', () => {
       sessionId: 'session-overflow-history',
       ui: {
         setWidget,
+        getEditorComponent: () => editorFactory,
+        setEditorComponent: (factory: any) => {
+          editorFactory = factory;
+          editor = factory(tui, {}, {});
+        },
         onTerminalInput: (handler: (data: string) => unknown) => {
           terminalInput = handler;
           return () => {
@@ -470,6 +490,212 @@ describe('subagents smoke', () => {
     } finally {
       panelComponent?.handleInput('q');
       await handlers.get('session_shutdown')?.({}, ctx);
+    }
+  });
+});
+
+describe('widget editor focus ownership', () => {
+  function start(configuredFactory?: any) {
+    managerInstance.listActiveSessionTasks.mockReturnValue([
+      {
+        id: 'focused-task',
+        agent: 'worker',
+        mode: 'background',
+        status: 'running',
+        task: 'work',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    const handlers = new Map<string, Function>();
+    extension({
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => handlers.set(event, handler),
+    });
+    let factory = configuredFactory;
+    let focused: any;
+    let overlay = false;
+    let input: any;
+    const keybindings = { matches: vi.fn(() => false) };
+    const theme = { borderColor: (text: string) => text };
+    const tui = {
+      requestRender: vi.fn(),
+      getFocusedComponent: () => focused,
+      hasOverlay: () => overlay,
+    };
+    const ui = {
+      getEditorComponent: () => factory,
+      setEditorComponent: (next: any) => {
+        factory = next;
+        focused = next
+          ? next(tui, theme, keybindings)
+          : { handleInput: vi.fn() };
+      },
+      setWidget: (_name: string, next: any) => next?.(tui, {}),
+      onTerminalInput: (next: any) => {
+        input = next;
+        return () => {
+          input = undefined;
+        };
+      },
+      getEditorText: () => '',
+      notify: vi.fn(),
+    };
+    const ctx = { cwd: env.tmp, sessionId: 'focus-session', ui };
+    const restart = () => handlers.get('session_start')?.({}, ctx);
+    restart();
+    const dispatch = (key: string) => {
+      const result = input?.(key);
+      if (!result?.consume) focused?.handleInput?.(key);
+      return result;
+    };
+    return {
+      ui,
+      tui,
+      theme,
+      keybindings,
+      restart,
+      dispatch,
+      getEditor: () => focused,
+      focus: (next: any) => {
+        focused = next;
+      },
+      overlay: (value: boolean) => {
+        overlay = value;
+      },
+      close: () => handlers.get('session_shutdown')?.({}, ctx),
+    };
+  }
+
+  it('installs the default CustomEditor with embedded working status and preserves input', async () => {
+    const fixture = start();
+    try {
+      expect(fixture.getEditor()).toBeInstanceOf(CustomEditor);
+      expect(fixture.getEditor().embedWorkingStatus).toBe(true);
+      expect(fixture.dispatch('a')).toBeUndefined();
+      expect(fixture.getEditor().getText()).toBe('a');
+      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('delegates the configured editor with the original TUI, theme and keybindings across session starts', async () => {
+    const configured = vi.fn(() => ({ handleInput: vi.fn() }));
+    const fixture = start(configured);
+    try {
+      expect(configured).toHaveBeenCalledWith(
+        fixture.tui,
+        fixture.theme,
+        fixture.keybindings,
+      );
+      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+      fixture.restart();
+      expect(configured).toHaveBeenCalledTimes(2);
+      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+      expect(fixture.ui.notify).not.toHaveBeenCalled();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it.each([
+    'overlay',
+    'custom',
+  ])('passes keys to %s UI and exits existing navigation without consuming', async (kind) => {
+    const fixture = start();
+    try {
+      const editor = fixture.getEditor();
+      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+      const dialog = { handleInput: vi.fn() };
+      fixture.focus(dialog);
+      fixture.overlay(kind === 'overlay');
+      for (const key of ['\u001b[B', '\u001b[A', '\r', '\u001b', 'x']) {
+        expect(fixture.dispatch(key)).toBeUndefined();
+        expect(dialog.handleInput).toHaveBeenLastCalledWith(key);
+      }
+      expect(fixture.ui.notify).not.toHaveBeenCalled();
+      fixture.focus(editor);
+      fixture.overlay(false);
+      expect(fixture.dispatch('\u001b[A')).toBeUndefined();
+      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it.each([
+    'select',
+    'confirm',
+    'input',
+  ])('lets Pi native %s receive input while the editor is temporarily unmounted', async (kind) => {
+    const fixture = start();
+    try {
+      const editor = fixture.getEditor();
+      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+      const selected = vi.fn();
+      initTheme('dark', false);
+      const dialog =
+        kind === 'input'
+          ? new ExtensionInputComponent('Input', undefined, selected, () => {})
+          : new ExtensionSelectorComponent(
+              'Select',
+              kind === 'confirm' ? ['Yes', 'No'] : ['first', 'second'],
+              selected,
+              () => {},
+            );
+      fixture.focus(dialog);
+      expect(fixture.dispatch('\u001b[B')).toBeUndefined();
+      if (kind === 'input') expect(fixture.dispatch('x')).toBeUndefined();
+      expect(fixture.dispatch('\r')).toBeUndefined();
+      expect(selected).toHaveBeenCalledWith(
+        kind === 'input' ? 'x' : kind === 'confirm' ? 'No' : 'second',
+      );
+      dialog.dispose();
+      fixture.focus(editor);
+      expect(fixture.ui.notify).not.toHaveBeenCalled();
+      expect(fixture.dispatch('\u001b[A')).toBeUndefined();
+      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('does not navigate even if an overlay leaves the editor focused', async () => {
+    const fixture = start();
+    try {
+      fixture.overlay(true);
+      expect(fixture.dispatch('\u001b[B')).toBeUndefined();
+      fixture.overlay(false);
+      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it.each([
+    'replacement',
+    'default-restoration',
+    'same-wrapper',
+  ])('fails closed with one visible notice after %s', async (kind) => {
+    const fixture = start();
+    try {
+      const installed = fixture.ui.getEditorComponent();
+      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+      fixture.ui.setEditorComponent(
+        kind === 'same-wrapper'
+          ? installed
+          : kind === 'replacement'
+            ? () => ({ handleInput: vi.fn() })
+            : undefined,
+      );
+      for (const key of ['\u001b[B', '\u001b[A', '\r', 'x'])
+        expect(fixture.dispatch(key)).toBeUndefined();
+      expect(fixture.ui.notify).toHaveBeenCalledTimes(1);
+      expect(fixture.ui.notify.mock.calls[0][0]).toMatch(
+        /widget navigation.*unavailable/i,
+      );
+    } finally {
+      await fixture.close();
     }
   });
 });

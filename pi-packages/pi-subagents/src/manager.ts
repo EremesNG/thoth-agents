@@ -1560,6 +1560,7 @@ export class SubagentManager {
               if (activity.pi_retry_attempts !== undefined)
                 task.pi_retry_attempts = activity.pi_retry_attempts;
               const importantActivity =
+                activity.diagnostic === true ||
                 activity.dropped_tools !== undefined ||
                 activity.message === 'interaction required' ||
                 Boolean(activity.interaction_request) ||

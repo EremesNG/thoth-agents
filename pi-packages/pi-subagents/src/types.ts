@@ -143,6 +143,8 @@ export type SubagentAssistantAccountingMessage = {
 
 export type SubagentActivity = {
   message: string;
+  /** Persist a non-fatal diagnostic immediately, without activity coalescing. */
+  diagnostic?: boolean;
   output?: string;
   prompt?: string;
   system_prompt?: string;

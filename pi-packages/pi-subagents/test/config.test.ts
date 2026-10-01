@@ -315,6 +315,26 @@ describe('config and workflow loading', () => {
     });
   });
 
+  it('rejects the adaptive-root package from lifecycle passthrough with a warning', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({
+          lifecycle_passthrough: ['@fixture/trusted', 'thoth-agents'],
+        }),
+      );
+      expect(readSubagentsConfig(tmp).lifecycle_passthrough).toEqual([
+        '@fixture/trusted',
+      ]);
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringMatching(/lifecycle_passthrough.*thoth-agents/),
+      );
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it('warns and ignores non-string lifecycle passthrough entries without coercion', () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {

@@ -14,7 +14,7 @@ import {
 import { afterEach, expect, it, vi } from 'vitest';
 import { sdkSubagentRunner } from '../../src/runner/sdk-runner.js';
 import type { SubagentRunner, SubagentsConfig } from '../../src/types.js';
-import { fixtureProvider } from './fixtures/provider-fixture.js';
+import { fixtureProvider, trace } from './fixtures/provider-fixture.js';
 
 const fixtureExtension = fileURLToPath(
   new URL('./fixtures/session-start-provider.ts', import.meta.url),
@@ -200,7 +200,7 @@ it('authenticates and streams through a provider registered only in the parent s
   }
 }, 30_000);
 
-it('runs the three listed lifecycle observers in lean children while stripping memory and other lifecycle hooks', async () => {
+it('runs the full listed lifecycle in lean children while stripping unlisted memory hooks', async () => {
   const parent = await fixture([observerExtension, memoryExtension]);
   try {
     await expect(
@@ -209,12 +209,133 @@ it('runs the three listed lifecycle observers in lean children while stripping m
       }),
     ).resolves.toMatchObject({ result: 'inherited provider streamed' });
     expect(parent.trace()).toEqual([
+      'observer:session_start',
       'observer:before_agent_start',
       'observer:agent_start',
       'observer:turn_start',
+      'observer:context',
       'stream:inherited provider streamed',
+      'observer:agent_end',
       'load-time:session_shutdown',
+      'observer:session_shutdown',
     ]);
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
+
+it('awaits replay then verification then startup before prompting, and passes other events unchanged', async () => {
+  const parent = await fixture([observerExtension]);
+  const registerProvider = ModelRuntime.prototype.registerProvider;
+  vi.spyOn(ModelRuntime.prototype, 'registerProvider').mockImplementation(
+    function (this: ModelRuntime, ...args: any[]) {
+      if (args[0] === 'session-start-fixture') trace('replay');
+      return (registerProvider as any).apply(this, args);
+    },
+  );
+  const getAllTools = AgentSession.prototype.getAllTools;
+  vi.spyOn(AgentSession.prototype, 'getAllTools').mockImplementation(function (
+    this: AgentSession,
+  ) {
+    trace('verify');
+    return getAllTools.call(this);
+  });
+  const prompt = AgentSession.prototype.prompt;
+  vi.spyOn(AgentSession.prototype, 'prompt').mockImplementation(async function (
+    this: AgentSession,
+    ...args: Parameters<AgentSession['prompt']>
+  ) {
+    expect(parent.trace()).toEqual([
+      'replay',
+      'verify',
+      'observer:session_start',
+    ]);
+    const selectedModel = this.model!;
+    await this.setModel(
+      parent.modelRegistry.find('load-time-fixture', 'fixture')!,
+    );
+    await this.setModel(selectedModel);
+    const event = {
+      type: 'session_before_tree' as const,
+      signal: new AbortController().signal,
+      preparation: {
+        targetId: 'target',
+        oldLeafId: null,
+        commonAncestorId: null,
+        entriesToSummarize: [],
+        userWantsSummary: false,
+        customInstructions: 'CHILD TREE',
+      },
+    };
+    expect(await this.extensionRunner!.emit(event)).toEqual({ cancel: true });
+    expect(event.preparation.customInstructions).toBe('LIVE TREE MUTATION');
+    return prompt.apply(this, args);
+  });
+  try {
+    await expect(
+      parent.run({
+        config: { ...config, lifecycle_passthrough: ['@fixture/lifecycle'] },
+      }),
+    ).resolves.toMatchObject({ result: 'inherited provider streamed' });
+    expect(parent.trace()).toContain('observer:model_select');
+    expect(parent.trace()).toContain('observer:session_before_tree');
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
+
+it('never passes the adaptive-root package through even with a programmatic trust list', async () => {
+  const parent = await fixture([], (root) => {
+    const directory = path.join(root, 'adaptive-root');
+    fs.mkdirSync(directory);
+    fs.writeFileSync(
+      path.join(directory, 'package.json'),
+      '{"name":"thoth-agents"}',
+    );
+    const extension = path.join(directory, 'index.ts');
+    fs.writeFileSync(
+      extension,
+      `import fs from 'node:fs';
+      export default function (pi) {
+        for (const type of ['session_start', 'before_agent_start', 'context', 'session_shutdown'])
+          pi.on(type, () => fs.appendFileSync(process.env.PI_SUBAGENTS_PROVIDER_TRACE, 'adaptive-root:' + type + '\\n'));
+      }`,
+    );
+    return [extension];
+  });
+  try {
+    await expect(
+      parent.run({
+        config: { ...config, lifecycle_passthrough: ['thoth-agents'] },
+      }),
+    ).resolves.toMatchObject({ result: 'inherited provider streamed' });
+    expect(
+      parent.trace().filter((event) => event.startsWith('adaptive-root:')),
+    ).toEqual([]);
+  } finally {
+    await parent.close();
+  }
+}, 30_000);
+
+it('records session_start handler errors in task diagnostics without failing the child', async () => {
+  const parent = await fixture([observerExtension]);
+  const activities: any[] = [];
+  vi.stubEnv('PI_SUBAGENTS_FIXTURE_START', 'throw');
+  try {
+    await expect(
+      parent.run({
+        config: { ...config, lifecycle_passthrough: ['@fixture/lifecycle'] },
+        onActivity: (activity) => activities.push(activity),
+      }),
+    ).resolves.toMatchObject({ result: 'inherited provider streamed' });
+    expect(activities).toContainEqual(
+      expect.objectContaining({
+        message: expect.stringMatching(/session_start.*Fixture startup failed/),
+      }),
+    );
+    expect(
+      parent.trace().filter((event) => event === 'observer:session_shutdown'),
+    ).toHaveLength(1);
   } finally {
     await parent.close();
   }
@@ -232,7 +353,7 @@ it('projects the child instructions through a parent-only capture-dependent prov
       'agent_start',
       'turn_start',
     ]);
-    expect(parent.trace()).not.toContain('capture:session_start');
+    expect(parent.trace()).toContain('capture:session_start');
   } finally {
     await parent.close();
   }
@@ -261,8 +382,37 @@ it('fails closed without lifecycle passthrough for a parent-only capture-depende
   }
 }, 30_000);
 
-it('discards listed root-injector returns and clones prompt options separately for each handler', async () => {
+it('clones all listed prompt-shaping events per handler and discards overrides without losing AbortSignals', async () => {
   const parent = await fixture([injectorExtension, captureExtension]);
+  const originalPrompt = AgentSession.prototype.prompt;
+  vi.spyOn(AgentSession.prototype, 'prompt').mockImplementation(async function (
+    this: AgentSession,
+    ...args: Parameters<AgentSession['prompt']>
+  ) {
+    const runner = this.extensionRunner!;
+    const signal = new AbortController().signal;
+    const callback = () => 'live callback';
+    const payload = {
+      messages: [{ content: 'CHILD PAYLOAD' }],
+      signal,
+      callback,
+    };
+    expect(await runner.emitBeforeProviderRequest(payload)).toBe(payload);
+    expect(payload.messages).toEqual([{ content: 'CHILD PAYLOAD' }]);
+    expect(payload.signal).toBe(signal);
+    expect(payload.callback).toBe(callback);
+    const headers = { 'x-child': 'CHILD HEADER' };
+    expect(await runner.emitBeforeProviderHeaders(headers)).toBe(headers);
+    expect(headers).toEqual({ 'x-child': 'CHILD HEADER' });
+    const images = [
+      { type: 'image' as const, data: 'CHILD IMAGE', mimeType: 'image/png' },
+    ];
+    expect(await runner.emitInput('CHILD INPUT', images, 'extension')).toEqual({
+      action: 'continue',
+    });
+    expect(images[0].data).toBe('CHILD IMAGE');
+    return originalPrompt.apply(this, args);
+  });
   try {
     const result = await parent.run({
       definition: captureDefinition,
@@ -275,7 +425,20 @@ it('discards listed root-injector returns and clones prompt options separately f
       },
     });
     const capture = JSON.parse(result.result);
-    expect(parent.trace()).toContain('injector:before_agent_start');
+    expect(
+      parent.trace().filter((event) => event.startsWith('injector:')),
+    ).toEqual([
+      'injector:before_provider_request',
+      'injector:before_provider_headers',
+      'injector:input',
+      'injector:input',
+      'injector:before_agent_start',
+      'injector:agent_start',
+      'injector:turn_start',
+      'injector:context',
+      'injector:context_with_system',
+      'injector:before_provider_headers',
+    ]);
     expect(capture.projected).toBe(captureDefinition.instructions);
     expect(capture.systemPrompt).toContain(captureDefinition.instructions);
     expect(capture.systemPrompt).not.toContain('ROOT');
@@ -522,6 +685,79 @@ it.each([
       'stream:inherited provider streamed',
       'load-time:session_shutdown',
     ]);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    await parent.close();
+  }
+}, 30_000);
+
+it.each([
+  'success',
+  'failure',
+  'cancel',
+  'total-timeout',
+  'stall-timeout',
+  'pre-aborted',
+  'verification-failure',
+] as const)('shuts down listed lifecycle extensions exactly once on %s', async (ending) => {
+  const parent = await fixture([observerExtension]);
+  const dispose = vi.spyOn(AgentSession.prototype, 'dispose');
+  const controller = new AbortController();
+  if (ending === 'pre-aborted') controller.abort();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const run = parent.run({
+      definition: {
+        name: 'listed-fixture',
+        description: 'Listed shutdown coverage',
+        filePath: fixtureExtension,
+        instructions: 'Reply.',
+        tools:
+          ending === 'verification-failure' ? ['missing_fixture_tool'] : [],
+        model: { provider: 'session-start-fixture', id: 'fixture' },
+      },
+      task:
+        ending === 'failure'
+          ? 'fixture-failure'
+          : ['cancel', 'total-timeout', 'stall-timeout'].includes(ending)
+            ? 'fixture-wait'
+            : 'Reply.',
+      signal: controller.signal,
+      config: {
+        ...config,
+        lifecycle_passthrough: ['@fixture/lifecycle'],
+        stall_timeout_ms: ending === 'stall-timeout' ? 1 : 10_000,
+      },
+      onActivity(activity) {
+        if (activity.message !== 'preparing response') return;
+        if (ending === 'cancel') controller.abort();
+        if (ending === 'total-timeout')
+          timer = setTimeout(() => controller.abort('timeout'), 25);
+      },
+    });
+    if (ending === 'success')
+      await expect(run).resolves.toMatchObject({
+        result: 'inherited provider streamed',
+      });
+    else if (ending === 'verification-failure')
+      await expect(run).rejects.toThrow(
+        'missing implementation: missing_fixture_tool',
+      );
+    else if (ending === 'failure' || ending === 'stall-timeout')
+      await expect(run).rejects.toMatchObject({
+        error_metadata: {
+          category:
+            ending === 'failure' ? 'provider_api_error' : 'stall_timeout',
+        },
+      });
+    else await expect(run).rejects.toThrow('Subagent was aborted');
+    expect(
+      parent.trace().filter((event) => event === 'observer:session_shutdown'),
+    ).toHaveLength(1);
+    expect(
+      parent.trace().filter((event) => event === 'observer:session_start'),
+    ).toHaveLength(ending === 'verification-failure' ? 0 : 1);
     expect(dispose).toHaveBeenCalledTimes(1);
   } finally {
     if (timer !== undefined) clearTimeout(timer);

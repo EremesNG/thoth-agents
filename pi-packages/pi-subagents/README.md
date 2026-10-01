@@ -120,7 +120,7 @@ Supported frontmatter:
 |---|---|
 | `name` | Subagent name. Defaults to filename stem. Normalized to lowercase. |
 | `description` | Short description shown by `subagent_list_agents`. |
-| `tools` | Tool allowlist for the subagent. Accepts either a comma-separated inline list or a multiline YAML list, but never both in one definition. Standalone `*` selects the parent’s currently active eligible tools afresh at child launch, excluding root-only controls and delegation tools. Missing child implementations are dropped with a durable warning; explicit lists and other glob patterns such as `tool_*` remain strict (globs match active tools). When omitted, the definition gets the built-in default tool list. Configured `default_tools` is used by the runner when a definition has an empty tool list. |
+| `tools` | Tool allowlist for the subagent. Accepts either a comma-separated inline list or a multiline YAML list, but never both in one definition. Standalone `*` selects the parent's currently active eligible tools afresh at child launch, excluding root-only controls and delegation tools. Missing child implementations are dropped with a durable warning; explicit lists and other glob patterns such as `tool_*` remain strict (globs match active tools). When omitted, the definition gets the built-in default tool list. Configured `default_tools` is used by the runner when a definition has an empty tool list. |
 | `model` | Optional model as `provider/model-id`. |
 | `effort`, `thinking_level`, `thinkingLevel` | Optional thinking effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
 | `subagent_mode` | Optional default execution mode for this definition: `task` or `background`. |
@@ -146,7 +146,7 @@ tools:
 
 Both examples load the same allowlist: `read`, `write`, and `bash`. Comma splitting applies only to `tools`; scalar fields such as `description` can contain commas without becoming lists.
 
-Use standalone `tools: "*"` to follow the parent’s currently active eligible tools at each launch (via `getActiveTools()`, falling back to legacy `getTools()`). Inactive registered tools are not inherited. Preserve the compact selector when saving; an empty active inventory stays empty. The former active selector has been removed and is rejected at launch with a diagnostic directing you to `*`.
+Use standalone `tools: "*"` to follow the parent's currently active eligible tools at each launch (via `getActiveTools()`, falling back to legacy `getTools()`). Inactive registered tools are not inherited. Preserve the compact selector when saving; an empty active inventory stays empty. The former active selector has been removed and is rejected at launch with a diagnostic directing you to `*`.
 
 Standalone `*` excludes `subagent_*`, `ask_user_question`, `todo`, `AskClaude`, and `AskAntigravity`. The two bridge delegation tools may still be selected explicitly; reserved orchestration controls stay blocked. If a selected tool has no child-loadable implementation, only standalone `*` drops it and runs with the remaining tools. Dropped names are persisted as `dropped_tools` in task and attempt history and reported as warnings in status, result, and completion notifications; they are never listed in the child prompt. If every selected tool is missing, launch fails. Explicit lists and other glob patterns fail on any missing implementation, and all selections reject unexpected extra child tools.
 

@@ -141,6 +141,14 @@ glob patterns stay strict.
   0; root `pnpm test` without Orca CODEX_HOME 1149 passed / 4 missing-sibling
   failures; operator claude-bridge.json hash unchanged. Remaining `@active` text is
   rejection code and its docs only. Live AC-8 follows after merge and restart.
+- AC-8 live evidence (root, 2026-10-01): merged into `0.5.0` as `66bb371`; operator
+  restarted Pi. Task subtask_thoth-explorer_1790823834137_3e0ce356 (thoth-explorer,
+  `tools: "*"`) launched and completed; it reported its tools (read, edit, write,
+  bash, powershell, grep, find, ls, memory, MCP, LSP, browser, background and
+  fusion tools, `antigravity`, `parallel`) and none of the subagent, delegation,
+  user-question or progress-list tools. History row: status `completed`,
+  `dropped_tools_json` `[]`. The main checkout has an unrelated uncommitted
+  `package.json` `workspaces` edit not made by this change; left untouched.
 
 ## Durable deltas
 
@@ -245,7 +253,7 @@ glob patterns stay strict.
   - Focused check and PASS evidence: diff against backup shows only `tools: "@active"` -> `tools: "*"`
   - Return milestone: files migrated
   - Stop / reassessment: a file has a different tools value
-- [ ] AC-8: checks and live launch
+- [x] AC-8: checks and live launch
   - Outcome: green checks; live subagent launches with `*`
   - Known entrypoints and skill paths: package filters, root scripts, operator Pi after merge
   - Inputs: AC-1..AC-7
@@ -272,21 +280,32 @@ controls stay blocked; AC-4 warnings round-trip through task and attempt history
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 23bf493f95029920ade451148706abd1251074046a3f6692d556ac5a548b5800
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
-- AC-6: PENDING | check | evidence
-- AC-7: PENDING | check | evidence
-- AC-8: PENDING | check | evidence
+Fresh read-only Oracle subtask_thoth-oracle_1790823877612_474a8f18 returned PASS at
+HEAD 65fd918.
+
+- AC-1: PASS | selector review + tests | star uses active inventory with fallback, excludes control and delegation tools and inactive tools; explicit bridge names selectable; reserved controls blocked
+- AC-2: PASS | launch and config rejection tests | standalone and mixed legacy selector rejected with a diagnostic naming star, never a tool name
+- AC-3: PASS | real-SDK regression + probes | available subset runs; unexpected extras, all-missing and strict selections fail; pre-existing strict tests unchanged
+- AC-4: PASS | history and rendering tests | dropped_tools round-trips task, attempt and metadata history; status/result/completion warn; prompts never name dropped tools
+- AC-5: PASS | 98 focused root tests | single dynamic option; persistence and sync reject the legacy selector; panel protections preserved
+- AC-6: PASS | four docs reviewed | semantics match behavior
+- AC-7: PASS | operator file audit | five thoth agent files use tools star
+- AC-8: PASS | checks + history query | package 454/454, root check/typecheck/build 0, root suite 1149 passed with only documented env failures; live task completed with dropped_tools_json []
 - Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:8ccd4073f76b986f57fd3cc890e8eeb12501038ca550d19f554eb65876ff8fec
+- Source: pi-packages/pi-subagents/src/tool-patterns.ts | sha256:d26585ecfa0c3d22c6fc77d28604b18d114767b193ec93b4e690b92abc3f5e39
+- Source: pi-packages/pi-subagents/src/runner/sdk-runner.ts | sha256:8ecec35f76eb5444746afbb56c93058975e76887b83ace85e9fe417270e2efd6
+- Source: pi-packages/pi-subagents/src/history.ts | sha256:bbd1d61955e960a98f3483af882b1467868def23a26208ba796eacda0280ab02
+- Source: pi-packages/pi-subagents/src/manager.ts | sha256:1d1c14bf0f2ee6e9caba7b4a61fdaeb7ef70bc095827fc92df372fdfdca1e333
+- Source: src/pi/tools-panel.ts | sha256:86521707ac4dfcfe492afdb355c230831aa8ba617836ee35c2342d7b527227fc
+- Source: src/cli/pi-tool-config.ts | sha256:8c8dbe18487d23952ba502476be53e27b1070caaf2e84c3dd213e5300288b43f
+- Source: docs/installation.md | sha256:ed0f6721b62a9dde222eebdd9ffa8d843969f845c68eec4dd937f65c5cad66e1
+- Source: docs/agent/harness-packaging.md | sha256:50924d1afb5e40d38e3f5b2c25d0c4ac909285beceb56433d8c247dfc945048a
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

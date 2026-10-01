@@ -2935,6 +2935,74 @@ describe('manager and history integration', () => {
     });
   });
 
+  it.each([
+    false,
+    true,
+  ])('accumulates generation counters after history reload without fabricating legacy timing (legacy=%s)', async (legacy) => {
+    writeAgent('analyst');
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ enable_continue: true }),
+    );
+    const nestedSessionPath = path.join(tmp, 'metrics-session.jsonl');
+    fs.writeFileSync(nestedSessionPath, '{}');
+    const runner: SubagentRunner = async ({ continuation, onActivity }) => {
+      const metrics = continuation
+        ? { generationOutputTokens: 200, generationMs: 3000 }
+        : { generationOutputTokens: 100, generationMs: 1000 };
+      onActivity?.({
+        message: 'generating',
+        runtime_metrics: metrics,
+        nested_session_path: nestedSessionPath,
+      });
+      onActivity?.({ message: 'done', runtime_metrics: metrics });
+      return {
+        result: 'done',
+        runtime_metrics: metrics,
+        nested_session_path: nestedSessionPath,
+      };
+    };
+    const initialManager = createManager(runner);
+    const initial = await initialManager.run(
+      { agent: 'analyst', task: 'work', mode: 'task' },
+      { cwd: tmp, sessionId: 'metric-owner' },
+    );
+    const taskId = initial.task_ids[0]!;
+    expect(initialManager.getTask(taskId)?.runtime_metrics).toMatchObject({
+      generationOutputTokens: 100,
+      generationMs: 1000,
+    });
+    await initialManager.close();
+    if (legacy) {
+      const db = createTestDatabase(resolveSubagentHistoryDbPath());
+      for (const table of ['subagent_tasks', 'subagent_task_attempts']) {
+        db.exec(`ALTER TABLE ${table} DROP COLUMN generation_output_tokens`);
+        db.exec(`ALTER TABLE ${table} DROP COLUMN generation_ms`);
+      }
+    }
+    const reloaded = createManager(runner);
+    await reloaded.continueTask(
+      { task_id: taskId, prompt: 'continue', mode: 'task' },
+      { cwd: tmp, sessionId: 'metric-owner' },
+    );
+    const history = createHistoryStore();
+    for (const task of [
+      reloaded.getTask(taskId),
+      history.getTask(tmp, taskId),
+      history.listTaskAttempts(tmp, taskId)[1],
+      history.listSessionTaskMetadata(tmp, 'metric-owner')[0],
+    ]) {
+      if (legacy) {
+        expect(task?.runtime_metrics?.generationOutputTokens).toBeUndefined();
+        expect(task?.runtime_metrics?.generationMs).toBeUndefined();
+      } else
+        expect(task?.runtime_metrics).toMatchObject({
+          generationOutputTokens: 300,
+          generationMs: 4000,
+        });
+    }
+  });
+
   it('continues a completed task under the same task id, reuses the nested session, and persists attempts across reloads', async () => {
     writeAgent('analyst');
     fs.writeFileSync(

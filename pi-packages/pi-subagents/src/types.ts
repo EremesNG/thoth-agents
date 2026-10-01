@@ -122,6 +122,9 @@ export type SubagentRuntimeMetrics = {
   toolUses?: number;
   turns?: number;
   compactions?: number;
+  /** Output usage paired only with measured assistant generation intervals. */
+  generationOutputTokens?: number;
+  generationMs?: number;
 };
 
 export type SubagentAssistantAccountingMessage = {

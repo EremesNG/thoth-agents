@@ -46,6 +46,10 @@ export function assistantAccountingMessage(
 export class SubagentRuntimeMetricsTracker {
   private turns = 0;
   private compactions = 0;
+  private generationOutputTokens = 0;
+  private generationMs = 0;
+  private generationStart?: { at: number; id?: string };
+  private compacting = false;
   private runtimeMetrics: SubagentRuntimeMetrics = { turns: 0, compactions: 0 };
   private lifetimeUsage?: UsageStats;
   private readonly seenEvents = new WeakSet<object>();
@@ -57,10 +61,38 @@ export class SubagentRuntimeMetricsTracker {
   observe(
     event: any,
     session: any,
+    observedAt = Date.now(),
   ): { runtime_metrics: SubagentRuntimeMetrics; usage?: UsageStats } {
     if (!event || typeof event !== 'object' || this.seenEvents.has(event))
       return this.snapshot();
     this.seenEvents.add(event);
+    if (event.type === 'compaction_start') {
+      this.compacting = true;
+      this.generationStart = undefined;
+    }
+    if (event.type === 'compaction_end') this.compacting = false;
+    if (
+      event.type === 'message_start' &&
+      event.message?.role === 'assistant' &&
+      !this.compacting
+    )
+      this.generationStart = { at: observedAt, id: event.message.id };
+    if (event.type === 'message_end' && event.message?.role === 'assistant') {
+      const start = this.generationStart;
+      this.generationStart = undefined;
+      const elapsed = start ? observedAt - start.at : 0;
+      if (
+        start &&
+        !this.compacting &&
+        elapsed > 0 &&
+        Number.isFinite(elapsed) &&
+        (!start.id || !event.message.id || start.id === event.message.id) &&
+        isFiniteNonNegative(event.message.usage?.output)
+      ) {
+        this.generationOutputTokens += event.message.usage.output;
+        this.generationMs += elapsed;
+      }
+    }
     if (event.type === 'turn_end') this.turns += 1;
     if (
       event.type === 'compaction_end' &&
@@ -87,6 +119,8 @@ export class SubagentRuntimeMetricsTracker {
         ...this.runtimeMetrics,
         turns: this.turns,
         compactions: this.compactions,
+        generationOutputTokens: this.generationOutputTokens,
+        generationMs: this.generationMs,
       },
       ...(this.lifetimeUsage
         ? { usage: { ...this.lifetimeUsage, turns: this.turns } }

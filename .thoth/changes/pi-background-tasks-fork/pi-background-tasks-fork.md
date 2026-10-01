@@ -372,7 +372,7 @@ Windows, command jobs run in PowerShell 7.
 ## Authorization
 
 **Plan review**: PENDING
-**Plan review selection**: PENDING
+**Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: PENDING
 
 Before the 2026-10-01 replan: the user explicitly selected Review plan with Oracle. Round 1 returned [REJECT] (shared

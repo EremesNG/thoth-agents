@@ -94,10 +94,8 @@ describe('Pi specialist synchronization', () => {
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
-  test.each([
-    '*',
-    '@active',
-  ] as const)('preserves the standalone %s selector through specialist synchronization', (selector) => {
+  test('preserves the standalone * selector through specialist synchronization', () => {
+    const selector = '*';
     const options = fixture();
     for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
       .artifacts) {
@@ -129,6 +127,40 @@ describe('Pi specialist synchronization', () => {
       readPiToolConfig(options.piRoot, ['worker']).roles[0]?.tools,
     ).toEqual([selector]);
     expect(syncPiSpecialists(options).changed).toEqual([]);
+  });
+
+  test.each([
+    '"@active"',
+    '["@active"]',
+    '[read, "@active"]',
+    '["*", "@active"]',
+  ])('rejects removed @active override %s during synchronization without rewriting it', (value) => {
+    const options = fixture();
+    for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
+      .artifacts) {
+      writeFileSync(
+        join(options.packageRoot, 'pi', artifact.path),
+        String(artifact.content),
+      );
+    }
+    const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+    mkdirSync(dirname(target), { recursive: true });
+    const original = `---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\neffort: high\nsubagent_mode: task\ntools: ${value}\nother-setting: keep\n---\nKeep this exact body.\n`;
+    writeFileSync(target, original);
+
+    const result = syncPiSpecialists(options);
+
+    expect(result.success).toBe(true);
+    expect(result.changed).not.toContain(target);
+    expect(result.diagnostics.join('\n')).toMatch(/worker.*@active.*\*/);
+    expect(readFileSync(target, 'utf8')).toBe(original);
+    expect(() => readPiToolConfig(options.piRoot, ['worker'])).toThrow(
+      /@active.*\*/,
+    );
+    const repeat = syncPiSpecialists(options);
+    expect(repeat.changed).toEqual([]);
+    expect(repeat.diagnostics.join('\n')).toMatch(/worker.*@active.*\*/);
+    expect(readFileSync(target, 'utf8')).toBe(original);
   });
 
   test('leaves malformed and unsupported wildcard tool overrides unchanged with diagnostics', () => {

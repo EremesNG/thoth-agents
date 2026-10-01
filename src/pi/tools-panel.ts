@@ -80,8 +80,14 @@ const FALLBACK_KEYS: Record<ToolsPanelKey, readonly string[]> = {
   space: [' '],
 };
 
+const DYNAMIC_DELEGATION_TOOLS = new Set(['AskClaude', 'AskAntigravity']);
+const DYNAMIC_DESCRIPTION =
+  'Dynamic *: tools currently active in the root session.';
+const DYNAMIC_EXCLUSIONS =
+  'Excludes subagent_*, ask_user_question, todo, AskClaude, AskAntigravity.';
+
 export function isEligibleTool(name: string): boolean {
-  if (name === '*' || name === '@active') return false;
+  if (name === '*') return false;
   try {
     validatePiSpecialistTools([name]);
     return true;
@@ -175,34 +181,23 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     return items;
   };
 
-  const selectorForRole = (
-    role: RoleToolsDraft,
-  ): '*' | '@active' | undefined =>
-    role.tools.length === 1 &&
-    (role.tools[0] === '*' || role.tools[0] === '@active')
-      ? role.tools[0]
-      : undefined;
+  const selectorForRole = (role: RoleToolsDraft): '*' | undefined =>
+    role.tools.length === 1 && role.tools[0] === '*' ? '*' : undefined;
 
   const visibleSelectedTools = (role: RoleToolsDraft): string[] => {
-    const selector = selectorForRole(role);
-    if (!selector) return role.tools;
+    if (!selectorForRole(role)) return role.tools;
     return getToolItemsForRole(role)
       .filter(
         (item) =>
-          item.status !== 'unavailable' &&
-          (selector === '*' || item.status === 'active'),
+          item.status === 'active' && !DYNAMIC_DELEGATION_TOOLS.has(item.name),
       )
       .map((item) => item.name);
   };
 
-  const selectionLabel = (role: RoleToolsDraft): string => {
-    const selector = selectorForRole(role);
-    return selector === '*'
-      ? 'all tools (dynamic)'
-      : selector === '@active'
-        ? 'all active (dynamic)'
-        : `${role.tools.length} selected`;
-  };
+  const selectionLabel = (role: RoleToolsDraft): string =>
+    selectorForRole(role)
+      ? 'active (dynamic)'
+      : `${role.tools.length} selected`;
 
   const selectionSummary = (role: RoleToolsDraft): string => {
     const selector = selectorForRole(role);
@@ -235,11 +230,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     selectedToolIndex = 0;
   };
 
-  const selectAllActiveForRole = (role: RoleToolsDraft): void => {
-    role.tools = ['@active'];
-  };
-
-  const selectAllForRole = (role: RoleToolsDraft): void => {
+  const selectActiveForRole = (role: RoleToolsDraft): void => {
     role.tools = ['*'];
   };
 
@@ -281,12 +272,9 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       else options.onDone({ kind: 'cancelled' });
     } else if (data.toLowerCase() === 's') {
       save();
-    } else if (data.toLowerCase() === 'a') {
-      const role = state.draft[state.selectedRole];
-      if (role) selectAllActiveForRole(role);
     } else if (data === '*') {
       const role = state.draft[state.selectedRole];
-      if (role) selectAllForRole(role);
+      if (role) selectActiveForRole(role);
     } else if (data.toLowerCase() === 'r') {
       const role = state.draft[state.selectedRole];
       if (role) restoreDefaultsForRole(role);
@@ -313,10 +301,8 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       selectedToolIndex = Math.max(0, items.length - 1);
     } else if (isKey(data, 'space') || data === ' ') {
       toggleCurrentTool();
-    } else if (data.toLowerCase() === 'a') {
-      selectAllActiveForRole(role);
     } else if (data === '*') {
-      selectAllForRole(role);
+      selectActiveForRole(role);
     } else if (data.toLowerCase() === 'r') {
       restoreDefaultsForRole(role);
     } else if (isKey(data, 'enter') || isKey(data, 'escape') || data === 'q') {
@@ -344,7 +330,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     }).length;
     const lines = [
       `target: global specialist definitions · ${dirtyCount ? `pending: ${dirtyCount} change${dirtyCount === 1 ? '' : 's'}` : 'pending: none'}`,
-      '↑/↓/j/k move · enter/e edit · * all · a all active · r defaults · s save · esc/q cancel',
+      '↑/↓/j/k move · enter/e edit · * active tools · r defaults · s save · esc/q cancel',
       '',
     ];
 
@@ -363,12 +349,9 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         return original && sameTools(role.tools, original.tools) ? '' : ' *';
       })();
       const selector = selectorForRole(role);
-      const toolSummary =
-        selector === '*'
-          ? 'current + future eligible tools'
-          : selector === '@active'
-            ? 'current + future active tools'
-            : selectionSummary(role);
+      const toolSummary = selector
+        ? 'currently active root tools'
+        : selectionSummary(role);
       const countLabel = selectionLabel(role);
       const name = `${role.role}${changed}`;
       lines.push(
@@ -389,6 +372,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       'Native settings or project definitions may override these global definitions.',
     );
     lines.push('Child specialists do not inherit root tools automatically.');
+    lines.push(DYNAMIC_DESCRIPTION, DYNAMIC_EXCLUSIONS);
     if (state.error) lines.push(`Save failed: ${state.error}`);
     if (state.changedRoles.length > 0)
       lines.push(`Already changed: ${state.changedRoles.join(', ')}`);
@@ -425,7 +409,9 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     );
     const lines = [
       `row: ${role.role} · ${selectionLabel(role)}`,
-      '↑/↓/j/k move · space toggle · * all · a all active · r defaults · enter/esc/q back',
+      '↑/↓/j/k move · space toggle · * active tools · r defaults · enter/esc/q back',
+      DYNAMIC_DESCRIPTION,
+      DYNAMIC_EXCLUSIONS,
       '',
       ...choices.slice(start, start + pageSize),
     ];
@@ -483,6 +469,8 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         line.startsWith('Ambient root') ||
         line.startsWith('Native settings') ||
         line.startsWith('Child specialists') ||
+        line.startsWith('Dynamic *:') ||
+        line.startsWith('Excludes ') ||
         line.startsWith('  Showing')
       )
         content = fg('muted', content);

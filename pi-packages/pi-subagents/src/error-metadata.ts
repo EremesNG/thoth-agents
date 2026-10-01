@@ -270,6 +270,18 @@ export function deriveErrorString(metadata: SubagentErrorMetadata): string {
     : safeMessage(normalized.category, normalized.details);
 }
 
+// Exact provider error codes and capacity messages only. Generic English
+// phrasing ("context window exceeded", "too many tokens") is not inferred: it
+// also appears in negated or unrelated failures, which would be misreported as
+// non-retryable overflow.
+const CONTEXT_OVERFLOW_PATTERNS: readonly RegExp[] = [
+  /\bcontext_length_exceeded\b/,
+  /\bcontext_overflow\b/,
+  /maximum context length is \d+ tokens\. however, you requested \d+ tokens/,
+  /\bprompt is too long: \d+ tokens > \d+ maximum\b/,
+  /\bthe input token count \(\d+\) exceeds the maximum number of tokens allowed \(\d+\)/,
+];
+
 export function classifyThrownError(
   error: unknown,
   context: {
@@ -305,11 +317,7 @@ export function classifyThrownError(
     )
   )
     category = 'provider_auth_error';
-  else if (
-    /context[_ -](?:length|window|limit).{0,80}exceed|exceed.{0,80}context[_ -](?:length|window|limit)|context[_ -]overflow|too many tokens|maximum context|(?:input|prompt|total|requested) tokens?.{0,80}exceed/.test(
-      lower,
-    )
-  )
+  else if (CONTEXT_OVERFLOW_PATTERNS.some((pattern) => pattern.test(lower)))
     category = 'context_overflow';
   else if (/rate.?limit|quota|429|too many requests/.test(lower))
     category = 'provider_rate_limit';

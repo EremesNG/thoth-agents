@@ -10,7 +10,7 @@
 //   5. persist the conversation id + final step idx for the next turn
 //
 // Event mapping (close-on-switch: at most one content block open at a time,
-// matching pi-claude-bridge's lifecycle):
+// matching @thoth-agents/pi-claude-bridge's lifecycle):
 //   agy text     -> pi text block  (text_start / text_delta / text_end)
 //   agy thinking -> pi thinking block
 //   agy tool     -> pi thinking block, labelled "[agy tool: <name>]"

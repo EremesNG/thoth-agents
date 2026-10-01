@@ -1,7 +1,7 @@
 // The AskAntigravity tool: delegate a self-contained sub-task to Google
 // Antigravity's `agy` CLI. Ported from pi-ask-antigravity v1.1.0 so this
 // extension (pi-antigravity-bridge) provides BOTH the streaming provider AND
-// the one-shot delegation tool - the same shape as pi-claude-bridge.
+// the one-shot delegation tool - the same shape as @thoth-agents/pi-claude-bridge.
 //
 // One self-contained tool. Spawns `agy -p`, streams its stdout as partial
 // output, returns the final response. agy runs its OWN tool loop (read,
@@ -38,7 +38,7 @@ const GRACE_AFTER_TIMEOUT_MS = 5000;
 const STATUS_INTERVAL_MS = 1000;
 const STATUS_TAIL_CHARS = 160;
 
-// renderCall / renderResult preview limits (match pi-claude-bridge).
+// renderCall / renderResult preview limits (match @thoth-agents/pi-claude-bridge).
 const PREVIEW_MAX_CHARS = 1000;
 const PREVIEW_MAX_LINES = 6;
 const DISCOVERY_POLL_ATTEMPTS = 5;

@@ -179,6 +179,13 @@ that starts only when that session actually uses antigravity and cleans up after
   README. Repaired in `680e310`: cleanup tracks only acquired instance-unique
   keys (five new tests, temp HOME, red then green), docs/AGENTS.md aligned. Antigravity
   typecheck 0, 560 passed / 9 skipped; `git diff --check` clean.
+- Final verification round 2 (fresh Oracle subtask_thoth-oracle_1790867721500_6260f821):
+  AC-1..AC-5 and AC-7 PASS (560 passed / 9 skipped); AC-6 FAIL on remaining doc
+  contradictions (README:21, docs/ENGINES.md:12, AGENTS.md:32/61/63: every-start agy
+  warning, unqualified global registration/heal, fixed `pi-bridge` ACP self-filter).
+  Root repaired them plus the matching stale code comment in `45e9b60`
+  (docs/comment only). Typecheck 0; two suite runs 560 passed / 9 skipped (one earlier
+  run showed a single non-reproduced intermittent failure).
 
 ## Durable deltas
 

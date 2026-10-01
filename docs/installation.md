@@ -390,13 +390,16 @@ maintain a fixed catalog of those tools.
 - Press `*` for the single dynamic selector **active root tools** (`*`): tools
   currently active in the root session when a child starts, excluding
   `subagent_*`, root-only `ask_user_question`/`todo` controls, and delegation tools
-  `AskClaude` and `AskAntigravity`. Inactive registered tools are not inherited.
+  `AskClaude`, `AskAntigravity`, `bg_delegate`, `bg_run_pi_attested`, `bg_result`,
+  `fusion_reason`, `fusion_investigate`, `fusion_research` and `fusion_validate`.
+  Inactive registered tools are not inherited. Ordinary background task tools
+  (`bg_run`, `bg_status`, `bg_logs`, `bg_kill`) remain eligible.
   This choice replaces that role's explicit list. Toggling an individual checkbox
   turns it into a current explicit list, ending dynamic inheritance. Registered
   inactive tools are labeled `(inactive)` and can be selected explicitly; saved
   explicit names absent from the registry remain `(unavailable)` and can be
-  removed individually. The two bridge delegation names are also permitted in
-  explicit lists, not inherited by `*`.
+  removed individually. These delegation names are also permitted in explicit
+  lists, not inherited by `*`.
 - Press `r` to restore that role's packaged defaults: `read, bash` for Explorer
   and Oracle; additionally `edit, write` for Designer and Worker; the historical
   research tools for Librarian. Defaults can include currently unavailable tools.
@@ -427,8 +430,9 @@ cannot load. The panel itself does not accept glob patterns.
 
 A selected name does not prove the child's runtime registered or initialized that
 extension, MCP connection or credentials. Verify a real child invocation. Tool
-selection is **not an OS sandbox**: a child with `bash` can execute installed CLIs
-such as `codegraph` even without a directly exposed CodeGraph MCP tool.
+selection and the `*` exclusions are **not an OS sandbox**: shell and MCP tools
+can still launch agents indirectly. A child with `bash` can also execute installed
+CLIs such as `codegraph` even without a directly exposed CodeGraph MCP tool.
 
 This command requires Pi's interactive TUI and tool-discovery APIs; unsupported
 hosts receive a diagnostic without configuration writes. Reload Pi after updating

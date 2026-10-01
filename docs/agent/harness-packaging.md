@@ -51,10 +51,15 @@
   registered tools and edits either explicit per-role lists or the single
   standalone dynamic selector `*`: tools currently active in the root session,
   excluding `subagent_*`, root-only `ask_user_question`/`todo` controls, and
-  delegation tools `AskClaude` and `AskAntigravity`. Inactive registered tools
-  are not inherited. The bridge delegation names remain valid explicit choices;
+  delegation tools `AskClaude`, `AskAntigravity`, `bg_delegate`,
+  `bg_run_pi_attested`, `bg_result`, `fusion_reason`, `fusion_investigate`,
+  `fusion_research` and `fusion_validate`. Inactive registered tools are not
+  inherited; ordinary background task tools (`bg_run`, `bg_status`, `bg_logs`,
+  `bg_kill`) remain eligible. These delegation names remain valid explicit choices;
   the panel marks inactive choices, retains unavailable explicit names, and
   supports role-default reset. Generated defaults remain explicit tool lists.
+  The `*` exclusions are not a sandbox: shell and MCP tools can still launch
+  agents indirectly.
   `src/cli/pi-tool-config.ts` owns validation and safe persistence; synchronization
   preserves valid explicit tools, `*`, modes, model, and effort.
   `@active` is rejected with a diagnostic naming `*` as its replacement, never

@@ -21,7 +21,11 @@ import {
 import { getInteractionSessionRegistry } from './interaction-session-registry.js';
 import { detectPiRuntimeSupport, loadPiSdkModule } from './pi-sdk-module.js';
 import { buildPrompt } from './prompt.js';
-import { teardownSubagentSession } from './session-teardown.js';
+import {
+  type ChildShutdownHandler,
+  registerChildBackgroundShutdown,
+  teardownSubagentSession,
+} from './session-teardown.js';
 
 function modelLabel(model: any): string | undefined {
   if (!model) return undefined;
@@ -260,6 +264,7 @@ function extensionPackageName(
 function isolateSubagentExtensions(
   base: any,
   packages: readonly string[],
+  backgroundShutdown: ChildShutdownHandler[],
 ): any {
   const listedPackages = new Set(packages);
   const packageNames = new Map<string, string | undefined>();
@@ -283,7 +288,14 @@ function isolateSubagentExtensions(
         string,
         any[]
       >) ?? new Map()) {
-        if (passthrough && SUBAGENT_OBSERVE_ONLY_EVENTS.has(event)) {
+        if (
+          passthrough &&
+          name === '@thoth-agents/pi-background-tasks' &&
+          event === 'session_shutdown'
+        ) {
+          // Run these once, before generic emission can stall on another package.
+          backgroundShutdown.push(...callbacks);
+        } else if (passthrough && SUBAGENT_OBSERVE_ONLY_EVENTS.has(event)) {
           handlers.set(
             event,
             callbacks.map((handler) => async (event: any, ctx: any) => {
@@ -469,6 +481,7 @@ async function createSession(
     (await piSdk.ModelRuntime.create({ allowModelNetwork: false }));
   options.modelRuntime = modelRuntime;
   if (ctx?.settingsManager) options.settingsManager = ctx.settingsManager;
+  const backgroundShutdown: ChildShutdownHandler[] = [];
   if (config.session_resources === 'lean') {
     const DefaultResourceLoader = piSdk.DefaultResourceLoader;
     const agentDir =
@@ -490,6 +503,7 @@ async function createSession(
         isolateSubagentExtensions(
           base,
           config.lifecycle_passthrough ?? DEFAULT_LIFECYCLE_PASSTHROUGH,
+          backgroundShutdown,
         ),
     });
     await resourceLoader.reload();
@@ -497,6 +511,7 @@ async function createSession(
     options.resourceLoader = resourceLoader;
   }
   const created = await createAgentSession(options);
+  registerChildBackgroundShutdown(created.session, backgroundShutdown);
   let droppedTools: string[];
   try {
     if (!ctx?.modelRuntime) {

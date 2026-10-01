@@ -90,7 +90,7 @@ export interface ImplementationOwnershipPolicy {
 export interface AgentPackContract {
   roles: AgentRoleContract[];
   orchestrationPolicy: OrchestrationPolicy;
-  returnContract: string[];
+  returnContract: Record<AgentRoleName, string[]>;
   verificationProtocol: string[];
 }
 
@@ -277,7 +277,7 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
       'Use librarian for needed external evidence and Oracle for independent judgment; never impose a mechanical all-role pipeline.',
     ],
     evidenceHandling: [
-      'Request conclusions, localized evidence, uncertainty, and next action instead of full files, source dumps, or logs.',
+      'Request conclusions, localized evidence, and uncertainty instead of full files, source dumps, or logs. Request next action only from Oracle, Worker and Designer.',
       'Root must not repeat delegated discovery before, during, or after the assignment.',
       'Missing support triggers a targeted evidence request or bounded inspection of identified evidence, while mandatory independent verification remains intact.',
     ],
@@ -368,14 +368,34 @@ export const ORCHESTRATION_POLICY: OrchestrationPolicy = {
   ],
 };
 
-export const AGENT_RETURN_CONTRACT = [
+const EVIDENCE_RETURN_FIELDS = [
   'conclusion',
   'evidence',
   'verification',
   'risks',
   'openQuestions',
+] as const;
+const HANDOFF_RETURN_FIELDS = [
+  ...EVIDENCE_RETURN_FIELDS,
   'nextAction',
 ] as const;
+
+export const AGENT_RETURN_CONTRACT = {
+  orchestrator: HANDOFF_RETURN_FIELDS,
+  explorer: EVIDENCE_RETURN_FIELDS,
+  librarian: EVIDENCE_RETURN_FIELDS,
+  oracle: HANDOFF_RETURN_FIELDS,
+  designer: HANDOFF_RETURN_FIELDS,
+  worker: HANDOFF_RETURN_FIELDS,
+} as const satisfies Record<AgentRoleName, readonly string[]>;
+
+function cloneReturnContract(
+  contract: Record<AgentRoleName, readonly string[]>,
+): AgentPackContract['returnContract'] {
+  return Object.fromEntries(
+    AGENT_ROLE_NAMES.map((role) => [role, [...contract[role]]]),
+  ) as AgentPackContract['returnContract'];
+}
 
 export const VERIFICATION_PROTOCOL = [
   'Completion reports identify changed files and verification evidence.',
@@ -389,7 +409,7 @@ export const AGENT_PACK_CONTRACT: AgentPackContract = {
     ...ORCHESTRATION_POLICY,
     rules: [...ORCHESTRATION_POLICY.rules],
   },
-  returnContract: [...AGENT_RETURN_CONTRACT],
+  returnContract: cloneReturnContract(AGENT_RETURN_CONTRACT),
   verificationProtocol: [...VERIFICATION_PROTOCOL],
 };
 
@@ -411,7 +431,7 @@ export function renderAgentRoutingDescription(role: AgentRoleContract): string {
     `Escalate when: ${role.escalateWhen.join(' ')}`,
     `Mutation: ${role.canMutateWorkspace ? `only the assigned ${role.scope} surface` : 'read-only; never mutate the workspace'}.`,
     `Verification: ${role.verification.join(' ')}`,
-    `Return: ${AGENT_RETURN_CONTRACT.join(', ')}.`,
+    `Return: ${AGENT_RETURN_CONTRACT[role.name].join(', ')}.`,
   ].join(' ');
 }
 
@@ -480,7 +500,7 @@ export function getAgentPackContract(): AgentPackContract {
         ),
       rules: [...AGENT_PACK_CONTRACT.orchestrationPolicy.rules],
     },
-    returnContract: [...AGENT_PACK_CONTRACT.returnContract],
+    returnContract: cloneReturnContract(AGENT_PACK_CONTRACT.returnContract),
     verificationProtocol: [...AGENT_PACK_CONTRACT.verificationProtocol],
   };
 }

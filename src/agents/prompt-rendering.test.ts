@@ -1,9 +1,18 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import { renderClaudeCodeRootInstructions } from '../harness/adapters/claude-code';
-import { renderCodexRootInstructions } from '../harness/adapters/codex';
+import type { PluginConfig } from '../config';
+import {
+  claudeCodeAdapter,
+  renderClaudeCodeRootInstructions,
+} from '../harness/adapters/claude-code';
+import {
+  codexAdapter,
+  renderCodexRootInstructions,
+} from '../harness/adapters/codex';
 import { renderOpenCodeAgentConfigs } from '../harness/adapters/opencode';
-import { renderPiRootInstructions } from '../harness/adapters/pi';
+import { piAdapter, renderPiRootInstructions } from '../harness/adapters/pi';
 import type { AgentRoleName } from '../harness/core/agent-pack';
+import type { HarnessAdapter } from '../harness/types';
 import {
   CLAUDE_CODE_PROMPT_DIALECT,
   CODEX_PROMPT_DIALECT,
@@ -26,6 +35,65 @@ const DIALECTS = [
   CODEX_PROMPT_DIALECT,
   CLAUDE_CODE_PROMPT_DIALECT,
 ] as const;
+
+type SpecialistRole = Exclude<AgentRoleName, 'orchestrator'>;
+
+function renderAgentArtifact(
+  adapter: HarnessAdapter,
+  agentPath: string,
+  config?: PluginConfig,
+): string {
+  const context = { projectRoot: process.cwd(), config };
+  return String(
+    adapter.render(context).artifacts.find(({ path }) => path === agentPath)
+      ?.content ?? '',
+  );
+}
+
+const HARNESS_RENDERERS = [
+  {
+    harness: 'OpenCode',
+    questionTool: 'question',
+    render(role: SpecialistRole, config?: PluginConfig) {
+      const agent = renderOpenCodeAgentConfigs(config)[role];
+      return `${agent?.description}\n${agent?.prompt}`;
+    },
+  },
+  {
+    harness: 'Pi',
+    questionTool: 'ask_user_question',
+    render(role: SpecialistRole, config?: PluginConfig) {
+      return renderAgentArtifact(piAdapter, `agents/thoth-${role}.md`, config);
+    },
+  },
+  {
+    harness: 'Codex',
+    questionTool: 'request_user_input',
+    render(role: SpecialistRole, config?: PluginConfig) {
+      return renderAgentArtifact(
+        codexAdapter,
+        `.codex/agents/thoth-agents-${role}.toml`,
+        config,
+      );
+    },
+  },
+  {
+    harness: 'Claude Code',
+    questionTool: 'AskUserQuestion',
+    render(role: SpecialistRole, config?: PluginConfig) {
+      return renderAgentArtifact(
+        claudeCodeAdapter,
+        `agents/${role}.md`,
+        config,
+      );
+    },
+  },
+];
+
+const EVIDENCE_ONLY_RULE = readFileSync(
+  new URL('../harness/__fixtures__/evidence-only-rule.txt', import.meta.url),
+  'utf8',
+).trim();
 
 function sectionsFor(role: AgentRoleName) {
   if (role === 'orchestrator') return createOrchestratorPromptSections();
@@ -415,11 +483,143 @@ describe('AI-first prompt rendering', () => {
         'verification',
         'risks',
         'openQuestions',
-        'nextAction',
       ]) {
         expect(prompt).toContain(field);
       }
+      if (role === 'explorer' || role === 'librarian') {
+        expect(prompt).not.toContain('nextAction');
+      } else {
+        expect(prompt).toContain('nextAction');
+      }
     }
+  });
+
+  test.each([
+    ...DIALECTS,
+    PI_PROMPT_DIALECT,
+  ])('renders truthful per-role child return fields in the $harness root', (dialect) => {
+    const root = renderRolePrompt(createOrchestratorPromptSections(), dialect);
+    for (const role of ['explorer', 'librarian'] as const) {
+      expect(root).toContain(
+        `${dialect.renderRoleInvocation(role)} return fields: conclusion, evidence, verification, risks, openQuestions.`,
+      );
+    }
+    for (const role of ['oracle', 'worker', 'designer'] as const) {
+      expect(root).toContain(
+        `${dialect.renderRoleInvocation(role)} return fields: conclusion, evidence, verification, risks, openQuestions, nextAction.`,
+      );
+    }
+    expect(root).not.toContain('Child return fields:');
+  });
+
+  describe.each(HARNESS_RENDERERS)('$harness specialist outputs', ({
+    harness,
+    questionTool,
+    render,
+  }) => {
+    test.each([
+      ...READ_ONLY_ROLES,
+      ...WRITER_ROLES,
+    ])('%s has role-specific return fields and question guidance', (role) => {
+      const output = render(role);
+      const returnContract = output.match(
+        /<return-contract>([\s\S]*?)<\/return-contract>/,
+      )?.[1];
+      const fields = returnContract
+        ?.split('\n')
+        .filter((line) => line.startsWith('- '));
+      const questions = output.match(/<questions>([\s\S]*?)<\/questions>/)?.[1];
+
+      if (role === 'explorer' || role === 'librarian') {
+        expect(fields).toEqual([
+          '- conclusion',
+          '- evidence',
+          '- verification',
+          '- risks',
+          '- openQuestions',
+        ]);
+        expect(output).toContain(
+          'Return: conclusion, evidence, verification, risks, openQuestions.',
+        );
+        expect(
+          output.match(/<evidence-only>[\s\S]*?<\/evidence-only>/)?.[0],
+        ).toBe(EVIDENCE_ONLY_RULE);
+        expect(output).not.toMatch(
+          /nextAction|recommended default|next target/,
+        );
+        expect(questions).toContain(
+          'escalate the unresolved question to the root through openQuestions',
+        );
+        expect(questions).toContain(
+          'the question, the possible options and the facts for each option, without recommending one',
+        );
+        if (harness === 'Pi') {
+          expect(questions).toContain('Do not open a user dialog');
+        } else {
+          expect(questions).toMatch(
+            /Use .*only for a blocking material choice/,
+          );
+        }
+      } else {
+        expect(fields).toEqual([
+          '- conclusion',
+          '- evidence',
+          '- verification',
+          '- risks',
+          '- openQuestions',
+          '- nextAction',
+        ]);
+        expect(output).toContain(
+          'Return: conclusion, evidence, verification, risks, openQuestions, nextAction.',
+        );
+        expect(output).not.toContain('<evidence-only>');
+        if (harness === 'Pi') {
+          expect(questions?.trim()).toBe(
+            'Do not open a user dialog. Continue safe non-blocked work, then escalate the unresolved question to the root through openQuestions with the material choices and a recommended default.',
+          );
+        } else {
+          expect(questions?.trim()).toBe(
+            `Use \`${questionTool}\` only for a blocking material choice, destructive or security-sensitive action, or missing secret. Do safe non-blocked work first and ask one targeted question with a recommended default.`,
+          );
+        }
+      }
+      expect(output).not.toContain('<step-budget>');
+    });
+
+    test.each([
+      ...READ_ONLY_ROLES,
+      ...WRITER_ROLES,
+    ])('%s returns role-appropriate partial evidence at its configured step limit', (role) => {
+      const config: PluginConfig = { agents: { [role]: { steps: 5 } } };
+      const output = render(role, config);
+      const budget = output
+        .match(/<step-budget>([\s\S]*?)<\/step-budget>/)?.[1]
+        ?.trim();
+
+      if (role === 'explorer' || role === 'librarian') {
+        expect(budget).toBe(
+          [
+            '- Execution budget: 5 steps.',
+            '- Prioritize high-signal checks and return partial evidence and what remains unexamined instead of looping.',
+          ].join('\n'),
+        );
+        expect(output).not.toMatch(
+          /nextAction|recommended default|next target/,
+        );
+        expect(
+          output.match(/<evidence-only>[\s\S]*?<\/evidence-only>/)?.[0],
+        ).toBe(EVIDENCE_ONLY_RULE);
+      } else {
+        expect(budget).toBe(
+          [
+            '- Execution budget: 5 steps.',
+            '- Prioritize high-signal checks and return partial evidence with the next target instead of looping.',
+          ].join('\n'),
+        );
+        expect(output).toContain('nextAction');
+        expect(output).toContain('recommended default');
+      }
+    });
   });
 
   test('keeps generated roots compact', () => {

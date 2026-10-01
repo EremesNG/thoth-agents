@@ -110,7 +110,13 @@ describe('agent-pack contract', () => {
     const ownership =
       getAgentPackContract().orchestrationPolicy.implementationOwnership;
     expect(ownership.evidenceHandling.join(' ')).toMatch(
-      /conclusions.*localized evidence.*uncertainty.*next action/i,
+      /conclusions.*localized evidence.*uncertainty/i,
+    );
+    expect(ownership.evidenceHandling.join(' ')).toMatch(
+      /next action only from Oracle, Worker and Designer/i,
+    );
+    expect(ownership.evidenceHandling.join(' ')).not.toMatch(
+      /uncertainty, and next action instead/i,
     );
     expect(ownership.evidenceHandling.join(' ')).toMatch(
       /must not repeat delegated discovery/i,
@@ -214,14 +220,30 @@ describe('agent-pack contract', () => {
       expect(serialized).not.toContain(forbidden);
   });
 
-  test('defines one compact return contract', () => {
-    expect(getAgentPackContract().returnContract).toEqual([
-      'conclusion',
-      'evidence',
-      'verification',
-      'risks',
-      'openQuestions',
-      'nextAction',
-    ]);
+  test('defines evidence-only discovery returns and preserves judgment and writer handoffs', () => {
+    const contract = getAgentPackContract().returnContract;
+    for (const role of ['explorer', 'librarian'] as const) {
+      expect(contract[role]).toEqual([
+        'conclusion',
+        'evidence',
+        'verification',
+        'risks',
+        'openQuestions',
+      ]);
+    }
+    for (const role of ['oracle', 'designer', 'worker'] as const) {
+      expect(contract[role]).toEqual([
+        'conclusion',
+        'evidence',
+        'verification',
+        'risks',
+        'openQuestions',
+        'nextAction',
+      ]);
+    }
+    const anotherContract = getAgentPackContract().returnContract;
+    for (const role of AGENT_ROLE_NAMES) {
+      expect(contract[role]).not.toBe(anotherContract[role]);
+    }
   });
 });

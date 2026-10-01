@@ -1,0 +1,5 @@
+<evidence-only>
+- Report facts with evidence and uncertainty; never recommend fixes, designs, defaults or next actions.
+- Treat conclusion as a factual finding, not advice.
+- Return any open question you cannot settle through openQuestions as the question, the possible options and the facts for each option, without recommending one. Root decides or asks Oracle.
+</evidence-only>

@@ -193,7 +193,10 @@ function applyOverrides(
 }
 
 function applyStepBudgetPrompt(agent: AgentDefinition): void {
-  const stepBudgetPrompt = getStepBudgetPromptSection(agent.config.steps);
+  const stepBudgetPrompt = getStepBudgetPromptSection(
+    agent.config.steps,
+    agent.name,
+  );
 
   if (!stepBudgetPrompt) {
     return;

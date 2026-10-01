@@ -8,7 +8,6 @@ import { codexAdapter, renderCodexRootInstructions } from '../adapters/codex';
 import { renderOpenCodeAgentConfigs } from '../adapters/opencode';
 import type { HarnessId } from '../types';
 import {
-  AGENT_RETURN_CONTRACT,
   type AgentRoleName,
   getAgentPackContract,
   getAgentRole,
@@ -359,14 +358,18 @@ describe('canonical agent routing', () => {
 
   test('preserves one-writer ownership and compact child results', () => {
     expect(getAgentPackContract().orchestrationPolicy.singleWriter).toBe(true);
-    expect(AGENT_RETURN_CONTRACT).toEqual([
-      'conclusion',
-      'evidence',
-      'verification',
-      'risks',
-      'openQuestions',
-      'nextAction',
-    ]);
+    for (const role of ['explorer', 'librarian'] as const) {
+      const description = renderAgentRoutingDescription(getAgentRole(role));
+      expect(description).toContain(
+        'Return: conclusion, evidence, verification, risks, openQuestions.',
+      );
+      expect(description).not.toContain('nextAction');
+    }
+    for (const role of ['oracle', 'worker', 'designer'] as const) {
+      expect(renderAgentRoutingDescription(getAgentRole(role))).toContain(
+        'Return: conclusion, evidence, verification, risks, openQuestions, nextAction.',
+      );
+    }
   });
 
   test('keeps active instructions workflow-neutral and director-default', () => {

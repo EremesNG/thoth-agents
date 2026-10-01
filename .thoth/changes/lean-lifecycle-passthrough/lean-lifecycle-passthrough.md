@@ -149,6 +149,24 @@ longer misclassified as context overflow.
   root `pnpm test` without Orca CODEX_HOME 1142 passed / 4 missing-sibling
   failures; operator claude-bridge.json hash unchanged across runs. AC-7 live
   evidence follows after merge.
+- AC-7 live evidence (root, 2026-10-01, operator Pi restarted on 0.5.0 `5bd7d73`,
+  root Pi PID 65724, root `claude.exe` 15496): designer temporarily on
+  `claude-bridge/claude-sonnet-5-5` (operator `subagents.json` restored after).
+  Task subtask_thoth-designer_1790817918433_35716eec completed; asked to quote the
+  first sentence of its own `<role>`, it answered `"You are designer."`, the
+  literal first sentence in `~/.pi/agent/agents/thoth-designer.md`. Task
+  subtask_thoth-designer_1790817960971_eb0a8690 ran a 120 s pwsh tool with child
+  `claude.exe` 61332 (parent 65724); cancel at 01:26:33Z; within 2 s 61332 and the
+  tool `pwsh` were gone, only root 15496 remained; task status `cancelled`.
+- Final verification round 1 (fresh Oracle subtask_thoth-oracle_1790818047441_e67dc8b2):
+  FAIL on AC-4 (bare `maximum context` matched "Failed to load maximum context
+  configuration") and AC-5 (antigravity README still named `pi-claude-bridge`);
+  other ACs, including AC-7 live evidence, passed. Repairs (root, test-first):
+  classifier accepts the maximum-context phrase only as `maximum context length is
+  <n> tokens ... request(ed)`, with the configuration negative case and the real
+  OpenAI-style capacity message as tests (pi-subagents 439/439); antigravity README
+  heading and shape reference plus three source comments use
+  `@thoth-agents/*`; antigravity 542 passed / 9 skipped; check:ci 0.
 
 ## Durable deltas
 
@@ -239,7 +257,7 @@ longer misclassified as context overflow.
   - Focused check and PASS evidence: docs name key, default, three events, limitation
   - Return milestone: docs updated
   - Stop / reassessment: none expected
-- [ ] AC-7: checks and live verification
+- [x] AC-7: checks and live verification
   - Outcome: green checks; live claude-bridge subagent works and cancels cleanly
   - Known entrypoints and skill paths: package filters, root scripts, operator Pi after merge
   - Inputs: AC-1..AC-6

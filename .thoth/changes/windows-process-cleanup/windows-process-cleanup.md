@@ -219,17 +219,31 @@ outside Pi and check bound identities globally afterward (reparented survivors).
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: d09d4eb685ebab8e105c63762aaf466c4f276a60a17b0717c5c4c3048da22c0d
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
+Fresh read-only Oracle subtask_thoth-oracle_1790888523853_345260f7 returned PASS at
+HEAD a3950b5 for commits eb88b34, 399cc48, d5a6c92 (later commits distinguished; relevant
+content matches live-checked main 0272780).
+
+- AC-1: PASS | code review + fresh Windows focused tests | five antigravity termination paths await the shared helper with outcomes preserved, artifact openers stay detached; 144 focused tests passed
+- AC-2: PASS | manifest/lockfile/installed deps + typecheck | Pi 0.99.1 everywhere; ExtensionToolContext typing only; typecheck 0
+- AC-3: PASS | real SDK bash cancel test + in-memory negative control | test passes with history cancelled; disabling tree kill leaves two survivors and fails as expected; POSIX test keeps explicit skip reason
+- AC-4: PASS | workflow and docs review | windows-latest job Node 22.19/pnpm 11.2.2, frozen install, one step per check; root stays Ubuntu; docs accurate
+- AC-5: PASS | recorded live protocol | restarted main checkout, readiness, bound sets 8 (claude) and 9 (antigravity), zero identity-matched survivors after 10 s, history cancelled; invalid schema attempt excluded; frozen/root checks within the four-failure exception
+- Source: pi-packages/pi-antigravity-bridge/src/process-termination.ts | sha256:d7fa760a815c59da1b8694bb2f3d3425274e6bc406bdc88c03acd94666586636
+- Source: pi-packages/pi-antigravity-bridge/src/ask-tool.ts | sha256:31749f853468018040184fcb78a74c1e7446da761287e737b87dbf0fa1beabf1
+- Source: pi-packages/pi-antigravity-bridge/src/agy-version.ts | sha256:511b68e0eda63f7c4f20feb8d2d37e3d550772ac64eb3370aec13227d3167495
+- Source: pi-packages/pi-antigravity-bridge/src/models.ts | sha256:7576d516419783292e7b53dee6aba8b76dc472453a144797f20ac05ba654c5e0
+- Source: pi-packages/pi-antigravity-bridge/src/tasks.ts | sha256:838d67412ac3ba4ed80a0529aca97960b07608bb157f66b73f9842944c3d872b
+- Source: pi-packages/pi-antigravity-bridge/src/web-tools.ts | sha256:6569621d39c7b417550d847cb6caccb6a23ca3a1dfc7754d7b92fb98330a185a
+- Source: pi-packages/pi-antigravity-bridge/package.json | sha256:80c21c8b073a70fcb58a6d6095c1ec33a165cace1e3ea7d9810d9a0368d8be67
+- Source: pi-packages/pi-subagents/test/runner/real-sdk-process-cancel.test.ts | sha256:7426972ade612f8c32b82d2f8a2b2ba28e48479718c0d2a7527b0fd1d8363ecb
+- Source: .github/workflows/ci.yml | sha256:09a751383c1d0673f4a66fc9a0a7f3dea1c8bbf64ff7eaa97e11a6316890f248
+- Source: docs/agent/testing.md | sha256:18e46ce2ea18cd6310ee3d4d495e7541cac2785095f3188c4a648fb48ed0ad12
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

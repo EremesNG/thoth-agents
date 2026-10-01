@@ -60,7 +60,8 @@ contained by a Job Object, so stopping a job never misses an ordinarily created
 descendant and never touches another job's or session's processes, and abrupt Pi death
 kills the jobs. On POSIX the fork's existing process-group handling stays as best-effort.
 Jobs survive a same-process `/reload` of their owning session and stop on every other
-shutdown, including subagent teardown. On Windows, command jobs run in PowerShell 7.
+shutdown, including subagent teardown, under AC-7's platform-specific guarantees. On
+Windows, command jobs run in PowerShell 7.
 
 ## Non-goals
 
@@ -92,7 +93,9 @@ shutdown, including subagent teardown. On Windows, command jobs run in PowerShel
   provider removed with their tool parameters, docs and tests; local spawn, watches,
   logs, list/status/stop, callbacks and the navigator kept. Tests that need POSIX tools
   become node-based or carry an explicit POSIX guard with reason.
-- AC-3: Lifecycle: on `session_shutdown` with reason `reload` the jobs keep running
+- AC-3: Lifecycle (termination and verification below follow AC-7: Windows verifies Job
+  Object emptiness; POSIX uses best-effort group cleanup, where ESRCH does not prove that
+  escaped descendants exited): on `session_shutdown` with reason `reload` the jobs keep running
   and the new instance adopts them (and any in-flight watch poll) by origin in the same Pi
   process, delivering each completion once; on every other reason the package stops all
   running jobs of that origin, including in-flight watch commands, terminating their
@@ -139,12 +142,10 @@ shutdown, including subagent teardown. On Windows, command jobs run in PowerShel
   the user): each job keeps the fork's own detached process group; termination is TERM,
   bounded wait, KILL to the group and the group reporting ESRCH; the ancestry census is
   removed on POSIX too; the README states the POSIX limits (group-ID reuse after the
-  leader is reaped, no cleanup on abrupt Pi death, `setsid` escapes). Tests (Windows and
-  POSIX CI): containment of immediate-exit intermediates, deterministic PID-reuse cases
+  leader is reaped, no cleanup on abrupt Pi death, `setsid` escapes). Windows tests: containment of immediate-exit intermediates, deterministic PID-reuse cases
   (an unrelated process reusing a former descendant PID is never signalled), concurrent
   sessions with same cwd, nested host jobs, denied assignment fail-closed, attempted
-  breakaway, helper death and abrupt parent death killing the jobs, reload re-attach;
-  POSIX tests cover group TERM then KILL and ESRCH verification. The first worker checkpoint
+  breakaway, helper death and abrupt parent death killing the jobs, reload re-attach. POSIX tests (Ubuntu CI) cover group TERM then KILL and ESRCH verification. The first worker checkpoint
   proves helper feasibility on the real host (compile once, assignment under the actual
   Pi/Orca job nesting) before rewiring.
 - AC-8: PowerShell 7 on Windows. Command (string) jobs and watch commands run in
@@ -193,6 +194,12 @@ shutdown, including subagent teardown. On Windows, command jobs run in PowerShel
   reconstruction and foreign-owner reassignment with opaque container ownership; child
   teardown must not terminate the shared helper; assert pwsh Core 7+ on windows-latest;
   README (Git Bash, census, crash disclaimer) amended; rerun real-SDK child tests.
+- Replan review round 3 (fresh Oracle subtask_thoth-oracle_1790897953416_38c9c338):
+  REJECT on wording only — POSIX best-effort scope was not carried into the delta, its
+  scenario, AC-3, Intent and task outcomes. Applied the reviewer's exact edits: delta
+  obligations Windows-scoped and the single scenario split into a Windows outcome and a
+  POSIX best-effort outcome (the validator admits one scenario per delta), AC-3 and Intent
+  qualified by AC-7's platform-specific guarantees, AC-7 test headings split.
 - Replan review round 2 (fresh Oracle subtask_thoth-oracle_1790897535266_55ddb349):
   REJECT — the POSIX anchor cannot survive a group KILL nor distinguish itself from
   survivors; a sound POSIX guarantee needs an outside-group reservation helper. The user
@@ -289,8 +296,8 @@ shutdown, including subagent teardown. On Windows, command jobs run in PowerShel
 
 ## Durable deltas
 
-- `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST stop every running job of the session, including in-flight watch commands, on any other session shutdown or subagent teardown and, on Windows, on Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run Windows command jobs in PowerShell 7, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
-  - GIVEN running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild; WHEN one root reloads, the subagent ends, the job leader exits, or the root quits or (on Windows) its process dies; THEN reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched.
+- `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST on Windows stop every running job of the session, including in-flight watch commands, on any other session shutdown, subagent teardown or Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run Windows command jobs in PowerShell 7, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
+  - GIVEN running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild; WHEN one root reloads, the subagent ends, the job leader exits, or the root quits or (on Windows) its process dies; THEN on Windows reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched, while on POSIX the same triggers attempt TERM, a bounded wait, KILL and ESRCH verification of each job's group, subject to the documented limits.
 
 ## Plan
 
@@ -329,7 +336,7 @@ shutdown, including subagent teardown. On Windows, command jobs run in PowerShel
   - Return milestone: green
   - Stop / reassessment: local paths depend on removed modules beyond simple extraction
 - [ ] AC-3: lifecycle on containment
-  - Outcome: reload keeps and re-attaches jobs; other shutdowns and natural exits terminate containers verifiably
+  - Outcome: reload keeps and re-attaches jobs; other shutdowns and natural exits terminate containers under AC-7's platform-specific guarantees
   - Known entrypoints and skill paths: `src/index.ts:25-29`, `src/runtime.ts:28-44,130-146,570-614,728-800,830-858,1061-1150`, `src/process.ts:178-259,352-392`, `src/navigator-provider.ts:21-43`, `src/shared-navigator.ts:111,209-238`, tdd skill
   - Inputs: AC-2
   - Dependencies: AC-7, AC-8
@@ -377,7 +384,7 @@ shutdown, including subagent teardown. On Windows, command jobs run in PowerShel
   - Return milestone: fresh Oracle PASS
   - Stop / reassessment: a job survives quit or a subagent end
 - [ ] AC-7: OS containment
-  - Outcome: every job and watch command runs in its own OS container; termination and verification act only on the container
+  - Outcome: on Windows every job and watch command runs in its own Job Object and termination/verification act only on it; POSIX keeps best-effort process groups (AC-7's platform-specific guarantees)
   - Known entrypoints and skill paths: `src/process.ts`, `src/process-termination.ts`, `src/runtime.ts`, `src/process-identity.ts`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
   - Inputs: Exploration, Clarifications, Decisions (ownership-design judgment)
   - Dependencies: none

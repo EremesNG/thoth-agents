@@ -57,6 +57,7 @@ import {
   DEFAULT_RENDER_DEBUG_LOG_PATH,
 } from '../../src/render-debug.js';
 import { buildPrompt, ThreadSnapshotBuilder } from '../../src/runner.js';
+import * as subagentRendering from '../../src/thread-view.js';
 import {
   boundThreadSnapshot,
   isValidThreadSnapshot,
@@ -2068,49 +2069,82 @@ describe('subagents panel and extension ui', () => {
   });
 
   it('detail cancel shortcut only cancels while the subagents panel is active', async () => {
-    fs.writeFileSync(
-      path.join(tmp, '.pi', 'subagents.json'),
-      JSON.stringify({ detail_cancel_shortcut: 'ctrl+shift+q' }),
-    );
-    let cancelShortcut: any;
-    let subagentsCommand: any;
-    const previousCwd = process.cwd();
-    process.chdir(tmp);
+    const preload = vi
+      .spyOn(subagentRendering, 'preloadPiComponentsForSubagentRendering')
+      .mockResolvedValue(false);
+    vi.useFakeTimers();
+    let component: any;
+    let commandPromise: Promise<void> | undefined;
+    let resolveCustomUi!: () => void;
+    const customClosed = new Promise<void>((resolve) => {
+      resolveCustomUi = resolve;
+    });
+    const finishCustomUi = vi.fn(() => resolveCustomUi());
     try {
-      extension({
-        registerTool: () => undefined,
-        registerCommand: (name: string, command: any) => {
-          if (name === 'subagents') subagentsCommand = command;
-        },
-        registerShortcut: (key: string, shortcut: any) => {
-          if (key === 'ctrl+shift+q') cancelShortcut = shortcut.handler;
-        },
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({ detail_cancel_shortcut: 'ctrl+shift+q' }),
+      );
+      let cancelShortcut: any;
+      let subagentsCommand: any;
+      const previousCwd = process.cwd();
+      process.chdir(tmp);
+      try {
+        extension({
+          registerTool: () => undefined,
+          registerCommand: (name: string, command: any) => {
+            if (name === 'subagents') subagentsCommand = command;
+          },
+          registerShortcut: (key: string, shortcut: any) => {
+            if (key === 'ctrl+shift+q') cancelShortcut = shortcut.handler;
+          },
+        });
+      } finally {
+        process.chdir(previousCwd);
+      }
+
+      await cancelShortcut({ cwd: tmp });
+
+      let resolveCustomStarted!: () => void;
+      const customStarted = new Promise<void>((resolve) => {
+        resolveCustomStarted = resolve;
       });
-    } finally {
-      process.chdir(previousCwd);
-    }
-
-    await cancelShortcut({ cwd: tmp });
-
-    const customStarted = new Promise<void>((resolve) => {
-      void subagentsCommand.handler('', {
+      commandPromise = subagentsCommand.handler('', {
         cwd: tmp,
         ui: {
           custom: async (factory: any) => {
-            factory(
+            component = factory(
               { terminal: { write: () => undefined }, requestRender() {} },
               { fg: (_name: string, text: string) => text },
               {},
-              () => undefined,
+              finishCustomUi,
             );
-            resolve();
-            await new Promise(() => undefined);
+            resolveCustomStarted();
+            await customClosed;
           },
         },
       });
-    });
-    await customStarted;
-    await cancelShortcut({ cwd: tmp });
+      // A failed command must reject this test, not leave it waiting for the UI.
+      await Promise.race([customStarted, commandPromise]);
+      expect(component).toBeDefined();
+      expect(vi.getTimerCount()).toBe(1);
+      await cancelShortcut({ cwd: tmp });
+      expect(preload).toHaveBeenCalledOnce();
+    } finally {
+      try {
+        component?.handleInput('\u001b');
+        expect(finishCustomUi).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        resolveCustomUi();
+        try {
+          await commandPromise;
+        } finally {
+          preload.mockRestore();
+          vi.useRealTimers();
+        }
+      }
+    }
   });
 
   it('subagents history panel can start focused on a selected task id', () => {

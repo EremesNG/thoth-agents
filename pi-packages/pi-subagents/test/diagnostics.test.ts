@@ -57,6 +57,7 @@ import {
   DEFAULT_RENDER_DEBUG_LOG_PATH,
 } from '../src/render-debug.js';
 import { buildPrompt, ThreadSnapshotBuilder } from '../src/runner.js';
+import * as subagentRendering from '../src/thread-view.js';
 import {
   boundThreadSnapshot,
   isValidThreadSnapshot,
@@ -366,6 +367,9 @@ describe('diagnostics and debug logging', () => {
   });
 
   it('logs subagents panel lifecycle diagnostics without raw input or rendered text', async () => {
+    const preload = vi
+      .spyOn(subagentRendering, 'preloadPiComponentsForSubagentRendering')
+      .mockResolvedValue(false);
     vi.useFakeTimers();
     try {
       const logFile = path.join(tmp, 'subagents-panel-render.jsonl');
@@ -442,7 +446,10 @@ describe('diagnostics and debug logging', () => {
       );
       expect(serialized).not.toContain('session execution flow');
       expect(requestRender).toHaveBeenCalledTimes(3);
+      expect(preload).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
     } finally {
+      preload.mockRestore();
       vi.useRealTimers();
     }
   });

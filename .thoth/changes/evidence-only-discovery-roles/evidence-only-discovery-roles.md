@@ -174,7 +174,7 @@ Worker and Designer keep their implementation next step.
 ## Authorization
 
 **Plan review**: PENDING
-**Plan review selection**: PENDING
+**Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: PENDING
 
 ## Verification

@@ -716,10 +716,10 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	async function startBridge(epoch: number): Promise<void> {
 		if (stopped || epoch !== lifecycleEpoch) return;
 		// agy presence check (stream-json engine): the CLI is the whole engine,
-		// so a missing binary means every Antigravity turn would fail. Warn on
-		// every process start until it is installed (per-process flag so /new,
-		// /resume and /reload re-fires do not nag mid-session). Runs after the
-		// picker above, so a first-run stream-json pick warns immediately.
+		// so a missing binary means every Antigravity turn would fail. Warn once
+		// per extension instance when the bridge first starts (first Antigravity
+		// use), until it is installed; the flag keeps /new, /resume and /reload
+		// re-fires from nagging mid-session.
 		if (engine === "stream-json" && !agyMissingWarned && !isAgyInstalled(binary)) {
 			agyMissingWarned = true;
 			const msg = agyMissingMessage();

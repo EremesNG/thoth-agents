@@ -9,7 +9,7 @@ Turns run through one of two engines behind the same provider surface (`config.e
 
 On a fresh install (no `config.json` yet), the first interactive pi start opens a picker modal that explains both engines - stream-json needs the `agy` CLI installed and authenticated; ACP needs a second Google sign-in plus a ~1.5 GB server binary downloaded from Google. stream-json is preselected (the default); `esc` decides later (nothing is written, the modal reappears on the next start).
 
-Picking **acp** starts the server download immediately (progress in the status bar, milestones in the chat), then opens the Google sign-in; a restart applies the engine. Picking **stream-json** persists and toasts; while that engine is active and the `agy` binary is missing, pi warns on every start with the install link until the binary shows up.
+Picking **acp** starts the server download immediately (progress in the status bar, milestones in the chat), then opens the Google sign-in; a restart applies the engine. Picking **stream-json** persists and toasts; while that engine is active and the `agy` binary is missing, pi warns with the install link once per extension instance, when that session first uses an Antigravity model (lazy bridge start), until the binary is found.
 
 ## Capabilities
 

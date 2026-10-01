@@ -84,9 +84,14 @@ longer misclassified as context overflow.
   projected capture the stream receives contains the child agent's own
   instructions (not merely a registry hit).
 - AC-4: Errors containing `prompt-capture:` classify as non-retryable
-  `provider_api_error`; `context_overflow` requires explicit capacity-exceeded
-  language; existing classification tests still pass and a regression covers the
-  reported message.
+  `provider_api_error`; `context_overflow` is assigned only for exact provider
+  capacity codes and messages (`context_length_exceeded`, `context_overflow`, the
+  OpenAI "maximum context length is N tokens. However, you requested M tokens",
+  the Anthropic "prompt is too long: N tokens > M maximum", the Gemini "The input
+  token count (N) exceeds the maximum number of tokens allowed (M)"); generic or
+  negated wording falls back to `provider_api_error`; existing classification
+  tests still pass and regressions cover the reported message and the reviewer
+  negatives.
 - AC-5: The two bridge packages are named `@thoth-agents/pi-claude-bridge` and
   `@thoth-agents/pi-antigravity-bridge`; CI filters, active docs and the
   workspace lockfile use the new names; directories, provider ids and archived
@@ -190,6 +195,13 @@ longer misclassified as context overflow.
   messages); four new negatives incl. "does not exceed the context window";
   classifier 24/24, pi-subagents 446 passed, check:ci 0. Removed the reviewer probe
   artifact `200000` (untracked JSON output).
+- Final verification round 4 (fresh Oracle subtask_thoth-oracle_1790819371653_d320dd6f):
+  only AC-4 FAIL (negated generic phrasing: "never exceeds", "does not currently
+  exceed", "not too many tokens"). After four rounds the user chose (2026-10-01)
+  exact provider formats only: AC-4 text updated above; generic phrases removed;
+  Gemini format added; generic and negated wording are negative tests
+  (classifier 28/28); the runner stopReason=error overflow test now uses the
+  Anthropic capacity message (pi-subagents 450 passed).
 
 ## Durable deltas
 

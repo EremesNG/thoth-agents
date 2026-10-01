@@ -254,15 +254,12 @@ describe('structured error metadata contract', () => {
   });
 
   it.each([
-    'maximum context length exceeded',
-    'context window exceeded',
-    'too many tokens',
     "This model's maximum context length is 4096 tokens. However, you requested 5000 tokens",
     'prompt is too long: 213462 tokens > 200000 maximum',
-    'context_length_exceeded',
-    'context length exceeds the limit',
-    'input tokens exceed the context window',
-  ])('recognizes explicit context capacity errors: %s', (message) => {
+    'The input token count (1234567) exceeds the maximum number of tokens allowed (1048576).',
+    'Error code: 400 - context_length_exceeded',
+    'context_overflow',
+  ])('recognizes exact provider context capacity errors: %s', (message) => {
     expect(classifyThrownError(new Error(message)).category).toBe(
       'context_overflow',
     );
@@ -279,6 +276,14 @@ describe('structured error metadata contract', () => {
     'Failed to count input tokens: retry budget exceeded.',
     'Context window was not exceeded; invalid JSON in request body.',
     'Input does not exceed the context window; request rejected.',
+    'Input never exceeds the context window; request rejected for invalid JSON.',
+    'Input does not currently exceed the context window; request rejected for invalid JSON.',
+    'There are not too many tokens; request rejected for invalid JSON.',
+    // Generic phrasing is not inferred; only exact provider formats count.
+    'maximum context length exceeded',
+    'context window exceeded',
+    'too many tokens',
+    'input tokens exceed the context window',
   ])('does not infer context overflow from incidental words: %s', (message) => {
     expect(classifyThrownError(new Error(message)).category).toBe(
       'provider_api_error',

@@ -270,17 +270,16 @@ export function deriveErrorString(metadata: SubagentErrorMetadata): string {
     : safeMessage(normalized.category, normalized.details);
 }
 
-// Contiguous, affirmative capacity phrasings only. Proximity matching between
-// words such as "context", "tokens" and "exceeded" misreads unrelated failures
-// (retry budgets, metadata lookups, negated statements) as overflow.
+// Exact provider error codes and capacity messages only. Generic English
+// phrasing ("context window exceeded", "too many tokens") is not inferred: it
+// also appears in negated or unrelated failures, which would be misreported as
+// non-retryable overflow.
 const CONTEXT_OVERFLOW_PATTERNS: readonly RegExp[] = [
-  /\bcontext[_ ](?:length|window)[_ ]exceeded\b/,
-  /\bcontext (?:length|window) exceeds\b/,
-  /(?<!not |n't )\bexceeds? (?:the )?(?:model's )?(?:maximum )?context (?:length|window)\b/,
+  /\bcontext_length_exceeded\b/,
   /\bcontext_overflow\b/,
-  /\btoo many tokens\b/,
   /maximum context length is \d+ tokens\. however, you requested \d+ tokens/,
   /\bprompt is too long: \d+ tokens > \d+ maximum\b/,
+  /\bthe input token count \(\d+\) exceeds the maximum number of tokens allowed \(\d+\)/,
 ];
 
 export function classifyThrownError(

@@ -121,7 +121,7 @@ describe('subagent runner structured errors', () => {
           {
             role: 'assistant',
             stopReason: 'error',
-            errorMessage: 'maximum context length exceeded',
+            errorMessage: 'prompt is too long: 213462 tokens > 200000 maximum',
             content: [],
           },
         ],

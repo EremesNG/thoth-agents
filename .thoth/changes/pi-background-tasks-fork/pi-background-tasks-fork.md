@@ -204,6 +204,16 @@ with verified termination, on every other shutdown, including subagent teardown.
   690-713); a real Windows probe confirmed exit 0 with a live descendant. The user chose
   process-group semantics (Clarifications); AC-3 and the delta were amended accordingly.
 
+- Amended AC-3 implementation (`08bf1ba`): a worker on the previous model timed
+  out mid-way; a fresh worker (operator-switched model) completed it from the preserved
+  partial diff. Natural exits, lost-leader recovery and all watch settlements verify the
+  remaining tree before terminalizing or polling again; finalize and poll release require
+  verified cleanup; empty-tree settlement is one census. Package typecheck 0; suites 216
+  passed / 4 skipped (one full-suite run showed a single failure of the reload
+  single-delivery test with "cleanup failed: a process tree is still running" under load;
+  8/8 isolated reruns and the next full run passed); pi-subagents 525 passed / 1 skipped.
+  Windows test config bounds workers to 2 with a 15 s timeout for real CIM helpers.
+
 ## Durable deltas
 
 - `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session, MUST keep a session's running jobs across that session's reload, and MUST stop every running job of the session, including in-flight watch commands, with verified process-tree termination on any other session shutdown, including subagent teardown, MUST terminate and verify the remaining process tree when a job leader or watch command exits on its own before recording the job terminal, and MUST NOT affect jobs of other sessions.

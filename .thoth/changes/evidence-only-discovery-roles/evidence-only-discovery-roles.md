@@ -207,18 +207,33 @@ review must allow expected Pi provenance-hash changes.
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 772c1062b9a466e1f478ecb75a75b89826d57bd4a008a2448354b555a47b794d
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
+Fresh read-only Oracle subtask_thoth-oracle_1790871392334_59cd2669 returned PASS for
+commits 4fc5b68, 397f579, f6e91a7 (unrelated uncommitted pi-packages edits excluded).
+
+- AC-1: PASS | code + routing/delegation review | canonical contracts, routing descriptions and root delegation list five discovery fields and six Oracle/Worker/Designer fields
+- AC-2: PASS | rendered prompts incl. configured steps | discovery prompts require factual conclusions and questions with options/facts; no nextAction, recommended default or next target
+- AC-3: PASS | 40-case four-harness matrix + regeneration check | all 40 generated assets match fresh rendering, provenance matches, diff limited to contract lines and hashes; Oracle/Worker/Designer unchanged; focused suite 143 passed
+- AC-4: PASS | docs review | three documentation changes agree with AGENTS.md; no active surface asks discovery roles to recommend
+- AC-5: PASS | delta validation + recorded checks | delta valid, non-overlapping, baseline matches; root check:ci/typecheck/build 0, pnpm test 1204 passed / 4 known missing-sibling failures
 - Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:315d62b8e1486723de465ea010dc43b2ff6eed838bf623e5bf090c477eaa4391
+- Source: src/harness/core/agent-pack.ts | sha256:e2afa2272b0970e29f2d1edb599858feddbc45210589bf122fd820c2f27f1a12
+- Source: src/agents/prompt-sections.ts | sha256:748bff44e40a65988e4afbb8b558acab3abbb8cb48f8f43496e6b77895080e5b
+- Source: src/agents/prompt-utils.ts | sha256:1d120fa8ad249ffb635c30eacbf4e4d13885b5725f31d25e28d717311a65810e
+- Source: src/agents/configured-role-prompt.ts | sha256:f71c897fda8424044912f61efbddd9397307d52f39c24bda3e22c0630889320f
+- Source: AGENTS.md | sha256:580653dbeb31ef0b0a9560839dda11a7d9b7f245aa750b1b0a7298d9960daa26
+- Source: docs/agent/agents-and-delegation.md | sha256:1bab284eb6ec0884f56ebf07593d3799b23b63cc0551bbad716a1259f1dfa371
+- Source: docs/agent/task-template.md | sha256:a6d9ff08f70c75e9bd066fc9a818a6a96641eda71a5419db319bdc967f938026
+- Source: pi/agents/thoth-explorer.md | sha256:6bce71c7564fa1ebacc4e728a483467c10ed5d7e74f56f9d39ebb65792d0b89e
+- Source: pi/agents/thoth-librarian.md | sha256:300dc40cc36a8dde0338fa4bd19100b1ae25aec85933fb5a90d57807cb6c134f
+- Source: plugin/agents/explorer.md | sha256:4faa5cf7900d535264e8eb890ab1cb0c8c587d767166153224490798ab530e6f
+- Source: plugin/agents/librarian.md | sha256:56d133c640a3be2707668f601878185eafb7579cecdd767ccbe2bed8bc06de47
+- Source: plugin/agents/orchestrator.md | sha256:8200e6289cebaeea224a87054271d76c4e5771b56587e45055cdf2f0b6abe9e3
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

@@ -569,36 +569,36 @@ Subagent definitions are intentionally user/project configuration, not hard-code
 
 ## Development
 
-The lockfile pins the development Pi SDK and TUI to `0.99.1`. Run focused native SDK and renderer checks with `0.99.0` as well, then restore the locked tree with `npm ci` before final validation.
+This package is a member of the thoth-agents pnpm workspace; the root `pnpm-lock.yaml` pins the development Pi SDK and TUI to `0.99.1`. Run focused native SDK and renderer checks with `0.99.0` as well, then restore the locked tree with `pnpm install --frozen-lockfile` from the repository root before final validation.
 
-Install dependencies once:
+Install dependencies once, from the repository root:
 
 ```bash
-npm install
+pnpm install
 ```
 
 Run tests:
 
 ```bash
-npm test
+pnpm --filter @thoth-agents/pi-subagents run test
 ```
 
 Run typecheck:
 
 ```bash
-npm run typecheck
+pnpm --filter @thoth-agents/pi-subagents run typecheck
 ```
 
-Verify the npm package contents:
+Verify the package contents:
 
 ```bash
-npm run pack:dry-run
+pnpm --filter @thoth-agents/pi-subagents run pack:dry-run
 ```
 
 Run the full local check:
 
 ```bash
-npm run check
+pnpm --filter @thoth-agents/pi-subagents run check
 ```
 
 ## Related project docs

@@ -63,7 +63,7 @@ No build step — the package ships `src` TypeScript as-is (see `files` in `pack
 3. **Commit** — `git commit -m "Release X.Y.Z"` (changelog + package.json only).
 4. **Tag** — `git tag vX.Y.Z` (note the `v` prefix).
 5. **Push commit and tag together** — `git push --follow-tags`. 
-6. **Publish** — `npm login` and `npm publish`.
+6. **Publish** — `pnpm login` and `pnpm publish` (the thoth-agents release workflow and tag rules for Pi packages are not defined yet).
 
 ## Tests
 

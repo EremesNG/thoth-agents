@@ -1,3 +1,8 @@
+import {
+  type Api,
+  getSupportedThinkingLevels,
+  type Model,
+} from '@earendil-works/pi-ai';
 import { loadSubagents, readSubagentsConfig } from '../config.js';
 import type {
   ModelRef,
@@ -35,7 +40,7 @@ import {
   visibleWidth,
 } from './formatting.js';
 
-const EFFORT_CHOICES: Array<ThinkingEffort | 'inherit'> = [
+const FALLBACK_EFFORT_CHOICES: Array<ThinkingEffort | 'inherit'> = [
   'inherit',
   'off',
   'minimal',
@@ -43,7 +48,69 @@ const EFFORT_CHOICES: Array<ThinkingEffort | 'inherit'> = [
   'medium',
   'high',
   'xhigh',
+  'max',
 ];
+
+type EffortChoice = { value: ThinkingEffort | 'inherit'; label: string };
+type ModelContext = {
+  model?: Model<Api>;
+  modelRuntime?: {
+    getModel?: (provider: string, id: string) => Model<Api> | undefined;
+  };
+  modelRegistry?: {
+    find?: (provider: string, id: string) => Model<Api> | undefined;
+  };
+};
+
+function buildEffortChoices(
+  row: ModelProfileRow | undefined,
+  profile: SubagentModelProfile | undefined,
+  availableModels: Model<Api>[],
+  ctx: ModelContext = {},
+): EffortChoice[] {
+  const modelRef =
+    profile?.model ??
+    (row?.explicitProfile.model ? row.inheritedModel : row?.effectiveModel);
+  let model: Model<Api> | undefined;
+  if (modelRef) {
+    const matches = (candidate: ModelRef | undefined) =>
+      candidate?.provider === modelRef.provider &&
+      candidate?.id === modelRef.id;
+    const lookups = [
+      () => ctx.modelRuntime?.getModel?.(modelRef.provider, modelRef.id),
+      () => ctx.modelRegistry?.find?.(modelRef.provider, modelRef.id),
+      () => availableModels.find(matches),
+      () => (matches(ctx.model) ? ctx.model : undefined),
+    ];
+    for (const lookup of lookups) {
+      try {
+        const candidate = lookup();
+        if (candidate && typeof candidate.reasoning === 'boolean') {
+          model = candidate;
+          break;
+        }
+      } catch {
+        // An unavailable lookup must not prevent editing saved profiles.
+      }
+    }
+  }
+  const supported: Array<ThinkingEffort | 'inherit'> = model
+    ? ['inherit', ...getSupportedThinkingLevels(model)]
+    : FALLBACK_EFFORT_CHOICES;
+  const choices: EffortChoice[] = supported.map((value) => ({
+    value,
+    label: value,
+  }));
+  const currentEffort =
+    profile?.effort ??
+    (row?.explicitProfile.effort ? row.inheritedEffort : row?.effectiveEffort);
+  if (currentEffort && !supported.includes(currentEffort))
+    choices.push({
+      value: currentEffort,
+      label: `${currentEffort} (current; unsupported, clamped by Pi)`,
+    });
+  return choices;
+}
 
 export type SubagentModelProfilesModalResult =
   | { action: 'save'; dirtyProfiles: SubagentModelProfiles }
@@ -60,6 +127,7 @@ type ModalComponent = {
 type ModalInput = {
   rows: ModelProfileRow[];
   availableModels?: any[];
+  modelContext?: ModelContext;
   tui?: { requestRender?: () => void };
   theme?: any;
   done: (result: SubagentModelProfilesModalResult) => void;
@@ -146,6 +214,17 @@ export function createSubagentModelProfilesModal(
     resetPickerPosition();
     modelSearch = '';
     selectedProvider = undefined;
+    if (nextView === 'effort') {
+      const row = selectedRow();
+      const current =
+        row && (dirtyProfileFor(row) ?? row.explicitProfile).effort;
+      pickerIndex = Math.max(
+        0,
+        effortChoicesForRow().findIndex(
+          (choice) => choice.value === (current ?? 'inherit'),
+        ),
+      );
+    }
   };
 
   const applyEdit = (edit: {
@@ -174,6 +253,17 @@ export function createSubagentModelProfilesModal(
   const dirtyProfileFor = (
     row: ModelProfileRow,
   ): SubagentModelProfile | undefined => dirtyProfiles[rowKey(row)];
+
+  const effortChoicesForRow = (): EffortChoice[] => {
+    const row = selectedRow();
+    const profile = row && (dirtyProfileFor(row) ?? row.explicitProfile);
+    return buildEffortChoices(
+      row,
+      profile,
+      input.availableModels ?? [],
+      input.modelContext,
+    );
+  };
 
   const rowModelText = (row: ModelProfileRow): string => {
     if (!hasDirtyProfileFor(row)) return row.modelLabel;
@@ -341,12 +431,9 @@ export function createSubagentModelProfilesModal(
       'choose effort · enter: select · esc/q: back',
       '',
     ];
-    const items = [
-      'inherit/reset effort',
-      ...EFFORT_CHOICES.filter(
-        (choice): choice is ThinkingEffort => choice !== 'inherit',
-      ),
-    ];
+    const items = effortChoicesForRow().map((choice) =>
+      choice.value === 'inherit' ? 'inherit/reset effort' : choice.label,
+    );
     for (const [index, item] of items.entries()) {
       const marker =
         index === pickerIndex ? themeAccent(input.theme, '›') : ' ';
@@ -361,7 +448,7 @@ export function createSubagentModelProfilesModal(
         ? 1 + providerNames.length
         : view === 'model-model'
           ? filteredProviderModels().length
-          : 1 + EFFORT_CHOICES.filter((choice) => choice !== 'inherit').length;
+          : effortChoicesForRow().length;
     pickerIndex = Math.min(
       Math.max(pickerIndex + delta, 0),
       Math.max(0, length - 1),
@@ -396,14 +483,9 @@ export function createSubagentModelProfilesModal(
   };
 
   const chooseEffort = () => {
-    const efforts = EFFORT_CHOICES.filter(
-      (choice): choice is ThinkingEffort => choice !== 'inherit',
-    );
-    if (pickerIndex === 0) applyEdit({ reset: 'effort' });
-    else {
-      const effort = efforts[pickerIndex - 1];
-      if (effort) applyEdit({ effort });
-    }
+    const effort = effortChoicesForRow()[pickerIndex]?.value;
+    if (effort === 'inherit') applyEdit({ reset: 'effort' });
+    else if (effort) applyEdit({ effort });
     view = 'main';
   };
 
@@ -547,6 +629,7 @@ export async function runSubagentModelsCommand(ctx: any = {}): Promise<string> {
         createSubagentModelProfilesModal({
           rows,
           availableModels,
+          modelContext: ctx,
           tui,
           theme,
           done,
@@ -639,12 +722,6 @@ export async function runSubagentModelsCommand(ctx: any = {}): Promise<string> {
   else {
     const grouped = groupAvailableModelsByProvider(availableModels);
     const providers = Object.keys(grouped);
-    if (!providers.length) {
-      const message =
-        'No available models found in the current model registry. Reset the saved model or edit the global JSON manually.';
-      ctx.ui.notify?.(message, 'warning');
-      return message;
-    }
     const provider = await ctx.ui.select(`Select provider for ${row.name}:`, [
       ...providers,
       'inherit/reset model',
@@ -681,10 +758,19 @@ export async function runSubagentModelsCommand(ctx: any = {}): Promise<string> {
           model: { provider: selectedModel.provider, id: selectedModel.id },
         });
     }
-    const effort = await ctx.ui.select(
-      `Select effort for ${row.name}:`,
-      EFFORT_CHOICES,
+    const effortChoices = buildEffortChoices(
+      row,
+      staged[row.name],
+      availableModels,
+      ctx,
     );
+    const effortLabel = await ctx.ui.select(
+      `Select effort for ${row.name}:`,
+      effortChoices.map((choice) => choice.label),
+    );
+    const effort = effortChoices.find(
+      (choice) => choice.label === effortLabel,
+    )?.value;
     if (effort === 'inherit')
       staged = stageModelProfileEdit(staged, {
         agentName: row.name,

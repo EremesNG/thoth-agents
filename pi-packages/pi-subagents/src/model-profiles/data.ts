@@ -18,7 +18,9 @@ export type ModelProfileRow = {
   modelLabel: string;
   effortLabel: string;
   effectiveModel?: ModelRef;
+  inheritedModel?: ModelRef;
   effectiveEffort?: ThinkingEffort;
+  inheritedEffort?: ThinkingEffort;
   explicitProfile: SubagentModelProfile;
   scope?: SubagentDefinitionScope;
 };
@@ -106,6 +108,17 @@ export function buildModelProfileRows(input: {
         config: input.config,
         ctx: input.ctx,
       });
+      const inherited = resolveEffectiveSubagentProfile({
+        agentName: definition.name,
+        definition,
+        config: {
+          ...input.config,
+          model_profiles: {},
+          global_model_profiles: {},
+          project_model_profiles: {},
+        },
+        ctx: input.ctx,
+      });
       const unavailable =
         resolved.model.value &&
         available &&
@@ -116,7 +129,9 @@ export function buildModelProfileRows(input: {
         modelLabel: `${resolved.model.label}${unavailable ? ' (unavailable)' : ''}`,
         effortLabel: resolved.effort.label,
         effectiveModel: resolved.model.value,
+        inheritedModel: inherited.model.value,
         effectiveEffort: resolved.effort.value,
+        inheritedEffort: inherited.effort.value,
         explicitProfile: {
           ...((definition.scope === 'project'
             ? input.config.project_model_profiles?.[definition.name]

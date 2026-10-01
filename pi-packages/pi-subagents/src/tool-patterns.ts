@@ -1,3 +1,15 @@
+export const STANDALONE_STAR_TOOL_EXCLUSIONS: ReadonlySet<string> = new Set([
+  'AskClaude',
+  'AskAntigravity',
+  'bg_delegate',
+  'bg_run_pi_attested',
+  'bg_result',
+  'fusion_reason',
+  'fusion_investigate',
+  'fusion_research',
+  'fusion_validate',
+]);
+
 export function hasToolGlob(pattern: string): boolean {
   return pattern.includes('*');
 }
@@ -39,8 +51,7 @@ export function expandToolPatterns(
 
   if (patterns.length === 1 && patterns[0] === '*') {
     for (const toolName of active ?? []) {
-      if (toolName !== 'AskClaude' && toolName !== 'AskAntigravity')
-        add(toolName);
+      if (!STANDALONE_STAR_TOOL_EXCLUSIONS.has(toolName)) add(toolName);
     }
     return expanded;
   }

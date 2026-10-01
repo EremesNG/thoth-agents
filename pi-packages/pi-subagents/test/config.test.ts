@@ -873,6 +873,118 @@ describe('config and workflow loading', () => {
     expect(matchesToolPattern('tool_lookup', 'tool_?')).toBe(false);
   });
 
+  it.each([
+    'bg_delegate',
+    'bg_run_pi_attested',
+    'bg_result',
+    'fusion_reason',
+    'fusion_investigate',
+    'fusion_research',
+    'fusion_validate',
+  ])('excludes %s from standalone * selection', (toolName) => {
+    expect(expandToolPatterns(['*'], ['read', toolName, 'bash'])).toEqual([
+      'read',
+      'bash',
+    ]);
+  });
+
+  it('keeps delegation tools selectable through explicit lists', () => {
+    const delegationTools = [
+      'AskClaude',
+      'AskAntigravity',
+      'bg_delegate',
+      'bg_run_pi_attested',
+      'bg_result',
+      'fusion_reason',
+      'fusion_investigate',
+      'fusion_research',
+      'fusion_validate',
+    ];
+    expect(
+      expandToolPatterns(
+        [...delegationTools, 'subagent_run', 'ask_user_question', 'todo'],
+        [],
+      ),
+    ).toEqual(delegationTools);
+  });
+
+  it.each([
+    {
+      pattern: 'bg_*',
+      expected: ['bg_delegate', 'bg_run_pi_attested', 'bg_result'],
+    },
+    {
+      pattern: 'fusion_*',
+      expected: [
+        'fusion_reason',
+        'fusion_investigate',
+        'fusion_research',
+        'fusion_validate',
+      ],
+    },
+  ])('keeps delegation tools selectable through $pattern', ({
+    pattern,
+    expected,
+  }) => {
+    expect(
+      expandToolPatterns(
+        [pattern],
+        [
+          'read',
+          'bg_delegate',
+          'bg_run_pi_attested',
+          'bg_result',
+          'fusion_reason',
+          'fusion_investigate',
+          'fusion_research',
+          'fusion_validate',
+          'subagent_run',
+          'ask_user_question',
+          'todo',
+        ],
+      ),
+    ).toEqual(expected);
+  });
+
+  it('treats * mixed with other selectors as an ordinary active-only glob', () => {
+    const delegationTools = [
+      'AskClaude',
+      'AskAntigravity',
+      'bg_delegate',
+      'bg_run_pi_attested',
+      'bg_result',
+      'fusion_reason',
+      'fusion_investigate',
+      'fusion_research',
+      'fusion_validate',
+    ];
+    expect(
+      expandToolPatterns(
+        ['*', 'bg_*', 'read'],
+        [
+          'read',
+          ...delegationTools,
+          'subagent_run',
+          'ask_user_question',
+          'todo',
+          'read',
+        ],
+      ),
+    ).toEqual(['read', ...delegationTools]);
+  });
+
+  it.each([
+    'bg_run',
+    'bg_status',
+    'bg_logs',
+    'bg_kill',
+  ])('keeps shell task tool %s selectable under standalone *', (toolName) => {
+    expect(expandToolPatterns(['*'], ['read', toolName])).toEqual([
+      'read',
+      toolName,
+    ]);
+  });
+
   it('preserves removed selectors for an explicit launch diagnostic rather than silently using defaults', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'worker.md'),

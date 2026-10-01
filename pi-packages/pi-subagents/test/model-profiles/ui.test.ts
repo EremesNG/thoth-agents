@@ -952,6 +952,274 @@ describe('model profiles ui', () => {
     ]);
   });
 
+  it('modal offers and saves max when the effective model supports it', () => {
+    const saved: any[] = [];
+    const modal = createSubagentModelProfilesModal({
+      rows: [
+        {
+          name: 'analyst',
+          description: 'analysis agent',
+          modelLabel: 'default: custom/max-model',
+          effortLabel: 'unresolved',
+          effectiveModel: { provider: 'custom', id: 'max-model' },
+          explicitProfile: {},
+        },
+      ],
+      availableModels: [
+        {
+          provider: 'custom',
+          id: 'max-model',
+          reasoning: true,
+          thinkingLevelMap: { max: 'max' },
+        },
+      ],
+      done: (result: any) => saved.push(result),
+    });
+
+    modal.handleInput('e');
+    expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/\bmax\b/);
+    modal.handleInput('end');
+    modal.handleInput('enter');
+    modal.handleInput('s');
+
+    expect(saved).toEqual([
+      { action: 'save', dirtyProfiles: { analyst: { effort: 'max' } } },
+    ]);
+  });
+
+  it.each([
+    {
+      source: 'definition',
+      definitionModel: 'custom/definition-model',
+      defaultModel: 'custom/default-model',
+      expected: ['off'],
+    },
+    {
+      source: 'default',
+      definitionModel: undefined,
+      defaultModel: 'custom/default-model',
+      expected: ['low', 'medium'],
+    },
+    {
+      source: 'orchestrator',
+      definitionModel: undefined,
+      defaultModel: undefined,
+      expected: ['off', 'minimal', 'low', 'medium', 'high'],
+    },
+  ])('modal uses the $source model after resetting a saved model', async ({
+    definitionModel,
+    defaultModel,
+    expected,
+  }) => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'analyst.md'),
+      `---\nname: analyst\ndescription: analysis agent\n${definitionModel ? `model: ${definitionModel}\n` : ''}---\nAnalyze`,
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        default_model: defaultModel,
+        model_profiles: { analyst: { model: 'custom/max-model' } },
+      }),
+    );
+    const models = [
+      {
+        provider: 'custom',
+        id: 'max-model',
+        reasoning: true,
+        thinkingLevelMap: { xhigh: 'xhigh', max: 'max' },
+      },
+      { provider: 'custom', id: 'definition-model', reasoning: false },
+      {
+        provider: 'custom',
+        id: 'default-model',
+        reasoning: true,
+        thinkingLevelMap: { off: null, minimal: null, high: null },
+      },
+      { provider: 'custom', id: 'current-model', reasoning: true },
+    ];
+
+    await runSubagentModelsCommand({
+      cwd: tmp,
+      model: models[3],
+      modelRegistry: { getAvailable: async () => models },
+      ui: {
+        custom: async (factory: any) => {
+          let result: any;
+          const modal = factory({}, {}, {}, (value: any) => {
+            result = value;
+          });
+          modal.handleInput('e');
+          expect(stripAnsi(modal.render(100).join('\n'))).toMatch(/\bmax\b/);
+          modal.handleInput('esc');
+          modal.handleInput('M');
+          modal.handleInput('e');
+          const picker = stripAnsi(modal.render(100).join('\n'));
+          expect(picker).toContain('inherit/reset effort');
+          for (const effort of expected)
+            expect(picker).toMatch(new RegExp(`\\b${effort}\\b`));
+          for (const effort of [
+            'off',
+            'minimal',
+            'low',
+            'medium',
+            'high',
+            'xhigh',
+            'max',
+          ]) {
+            if (!expected.includes(effort))
+              expect(picker).not.toMatch(new RegExp(`\\b${effort}\\b`));
+          }
+          modal.handleInput('esc');
+          modal.handleInput('s');
+          return result;
+        },
+      },
+    });
+  });
+
+  it.each([
+    'registry',
+    'runtime',
+    'current',
+  ] as const)('modal resolves effort capabilities from the %s model when it is not listed as available', async (source) => {
+    writeAgent('analyst');
+    const model = {
+      provider: 'custom',
+      id: 'max-model',
+      reasoning: true,
+      thinkingLevelMap: { max: 'max' },
+    };
+    await runSubagentModelsCommand({
+      cwd: tmp,
+      model:
+        source === 'current' ? model : { provider: 'custom', id: 'max-model' },
+      ...(source === 'runtime'
+        ? { modelRuntime: { getModel: () => model } }
+        : {}),
+      ...(source === 'registry'
+        ? { modelRegistry: { find: () => model, getAvailable: async () => [] } }
+        : {}),
+      ui: {
+        custom: async (factory: any) => {
+          let result: any;
+          const modal = factory({}, {}, {}, (value: any) => {
+            result = value;
+          });
+          modal.handleInput('e');
+          const picker = stripAnsi(modal.render(100).join('\n'));
+          expect(picker).toMatch(/\bmax\b/);
+          expect(picker).not.toMatch(/\bxhigh\b/);
+          modal.handleInput('end');
+          modal.handleInput('enter');
+          modal.handleInput('s');
+          return result;
+        },
+      },
+    });
+    expect(readSubagentsConfig(tmp).project_model_profiles?.analyst).toEqual({
+      effort: 'max',
+    });
+  });
+
+  it.each([
+    ['max', 'max'],
+    ['xhigh', 'xhigh'],
+    ['max', 'high'],
+    ['max', 'inherit'],
+  ] as const)('modal preserves unsupported %s after staging another model unless the user chooses %s', (effort, chosen) => {
+    const saved: any[] = [];
+    const modal = createSubagentModelProfilesModal({
+      rows: [
+        {
+          name: 'analyst',
+          description: 'analysis agent',
+          modelLabel: 'profile: custom/max-model',
+          effortLabel: `profile: ${effort}`,
+          effectiveModel: { provider: 'custom', id: 'max-model' },
+          effectiveEffort: effort,
+          explicitProfile: {
+            model: { provider: 'custom', id: 'max-model' },
+            effort,
+          },
+        },
+      ],
+      availableModels: [
+        { provider: 'custom', id: 'limited-model', reasoning: true },
+        {
+          provider: 'custom',
+          id: 'max-model',
+          reasoning: true,
+          thinkingLevelMap: { xhigh: 'xhigh', max: 'max' },
+        },
+      ],
+      done: (result: any) => saved.push(result),
+    });
+
+    modal.handleInput('m');
+    modal.handleInput('down');
+    modal.handleInput('enter');
+    modal.handleInput('enter');
+    modal.handleInput('e');
+    const picker = stripAnsi(modal.render(100).join('\n'));
+    expect(picker).toMatch(new RegExp(`›\\s+${effort}.*unsupported.*Pi`));
+    expect(picker).not.toMatch(
+      new RegExp(`\\b${effort === 'max' ? 'xhigh' : 'max'}\\b`),
+    );
+    if (chosen === 'high') modal.handleInput('up');
+    else if (chosen === 'inherit') modal.handleInput('home');
+    modal.handleInput('enter');
+    modal.handleInput('s');
+
+    expect(saved).toEqual([
+      {
+        action: 'save',
+        dirtyProfiles: {
+          analyst: {
+            model: { provider: 'custom', id: 'limited-model' },
+            ...(chosen === 'inherit' ? {} : { effort: chosen }),
+          },
+        },
+      },
+    ]);
+  });
+
+  it('modal shows an inherited unsupported effort without pinning it after reset', async () => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'analyst.md'),
+      '---\nname: analyst\ndescription: analysis agent\neffort: max\n---\nAnalyze',
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ model_profiles: { analyst: { effort: 'high' } } }),
+    );
+
+    await runSubagentModelsCommand({
+      cwd: tmp,
+      model: { provider: 'custom', id: 'limited-model', reasoning: true },
+      ui: {
+        custom: async (factory: any) => {
+          let result: any;
+          const modal = factory({}, {}, {}, (value: any) => {
+            result = value;
+          });
+          modal.handleInput('E');
+          modal.handleInput('e');
+          const picker = stripAnsi(modal.render(100).join('\n'));
+          expect(picker).toMatch(/›\s+inherit\/reset effort/);
+          expect(picker).toMatch(/max.*unsupported.*Pi/);
+          modal.handleInput('enter');
+          modal.handleInput('s');
+          return result;
+        },
+      },
+    });
+
+    expect(
+      readSubagentsConfig(tmp).project_model_profiles?.analyst?.effort,
+    ).toBeUndefined();
+  });
+
   it('modal handles main reset hotkeys, effort picker values, nested back, save, and cancel', () => {
     const rows = [
       {
@@ -995,6 +1263,7 @@ describe('model profiles ui', () => {
       'medium',
       'high',
       'xhigh',
+      'max',
     ])
       expect(effortPicker).toContain(label);
     for (let i = 0; i < 5; i += 1) modal.handleInput('down');
@@ -1396,6 +1665,165 @@ describe('model profiles ui', () => {
       },
     });
     expect(fs.existsSync(path.join(agentDir, 'subagents.json'))).toBe(false);
+  });
+
+  it.each([
+    {
+      model: 'max-model',
+      capabilities: { reasoning: true, thinkingLevelMap: { max: 'max' } },
+      savedEffort: undefined,
+      expected: ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'max'],
+      chosen: 'max',
+      persisted: 'max',
+    },
+    {
+      model: 'xhigh-model',
+      capabilities: { reasoning: true, thinkingLevelMap: { xhigh: 'xhigh' } },
+      savedEffort: undefined,
+      expected: ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+      chosen: 'xhigh',
+      persisted: 'xhigh',
+    },
+    {
+      model: 'limited-model',
+      capabilities: { reasoning: true },
+      savedEffort: undefined,
+      expected: ['inherit', 'off', 'minimal', 'low', 'medium', 'high'],
+      chosen: 'high',
+      persisted: 'high',
+    },
+    {
+      model: 'unknown-model',
+      capabilities: {},
+      savedEffort: undefined,
+      expected: [
+        'inherit',
+        'off',
+        'minimal',
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max',
+      ],
+      chosen: 'max',
+      persisted: 'max',
+    },
+    {
+      model: 'limited-model',
+      capabilities: { reasoning: true },
+      savedEffort: 'max',
+      expected: [
+        'inherit',
+        'off',
+        'minimal',
+        'low',
+        'medium',
+        'high',
+        'max (current; unsupported, clamped by Pi)',
+      ],
+      chosen: 'max (current; unsupported, clamped by Pi)',
+      persisted: 'max',
+    },
+  ])('fallback effort choices follow staged $model and preserve $savedEffort', async ({
+    model,
+    capabilities,
+    savedEffort,
+    expected,
+    chosen,
+    persisted,
+  }) => {
+    writeAgent('analyst');
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        default_model: 'custom/previous-model',
+        model_profiles: { analyst: { effort: savedEffort } },
+      }),
+    );
+    const select = async (prompt: string, choices: string[]) => {
+      if (prompt.startsWith('Select subagent')) return choices[0];
+      if (prompt.startsWith('Configure analyst'))
+        return 'Set provider/model/effort';
+      if (prompt.startsWith('Select provider')) return 'custom';
+      if (prompt.startsWith('Select model')) return model;
+      if (prompt.startsWith('Select effort')) {
+        expect(choices).toEqual(expected);
+        return chosen;
+      }
+      if (prompt.startsWith('Save subagent')) return 'Save';
+      throw new Error(`Unexpected prompt: ${prompt}`);
+    };
+
+    await runSubagentModelsCommand({
+      cwd: tmp,
+      modelRegistry: {
+        getAvailable: async () => [
+          { provider: 'custom', id: model, ...capabilities },
+          { provider: 'custom', id: 'previous-model', reasoning: false },
+        ],
+      },
+      ui: { select },
+    });
+
+    expect(readSubagentsConfig(tmp).project_model_profiles?.analyst).toEqual({
+      model: { provider: 'custom', id: model },
+      effort: persisted,
+    });
+  });
+
+  it.each([
+    'missing',
+    'unavailable',
+  ] as const)('fallback offers the full effort list when the registry is %s', async (registry) => {
+    writeAgent('analyst');
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ default_model: 'unknown/model' }),
+    );
+    const select = async (prompt: string, choices: string[]) => {
+      if (prompt.startsWith('Select subagent')) return choices[0];
+      if (prompt.startsWith('Configure analyst'))
+        return 'Set provider/model/effort';
+      if (prompt.startsWith('Select provider')) return 'inherit/reset model';
+      if (prompt.startsWith('Select effort')) {
+        expect(choices).toEqual([
+          'inherit',
+          'off',
+          'minimal',
+          'low',
+          'medium',
+          'high',
+          'xhigh',
+          'max',
+        ]);
+        return 'max';
+      }
+      if (prompt.startsWith('Save subagent')) return 'Save';
+      throw new Error(`Unexpected prompt: ${prompt}`);
+    };
+
+    const message = await runSubagentModelsCommand({
+      cwd: tmp,
+      ...(registry === 'unavailable'
+        ? {
+            modelRegistry: {
+              getAvailable: async () => {
+                throw new Error('registry unavailable');
+              },
+              find: () => {
+                throw new Error('registry unavailable');
+              },
+            },
+          }
+        : {}),
+      ui: { select },
+    });
+
+    expect(message).toContain('Saved subagent model profiles');
+    expect(readSubagentsConfig(tmp).project_model_profiles?.analyst).toEqual({
+      effort: 'max',
+    });
   });
 
   it('fallback select wizard cancel writes nothing and non-tui fallback remains compatible', async () => {

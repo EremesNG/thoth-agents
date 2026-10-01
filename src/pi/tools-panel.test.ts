@@ -1,5 +1,6 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import { describe, expect, test, vi } from 'vitest';
+import { STANDALONE_STAR_TOOL_EXCLUSIONS } from '../../pi-packages/pi-subagents/src/tool-patterns.ts';
 import type {
   PiToolConfigSnapshot,
   PiToolSaveResult,
@@ -7,6 +8,7 @@ import type {
 import { validatePiSpecialistTools } from '../cli/pi-tool-config';
 import {
   createToolsPanel,
+  DYNAMIC_DELEGATION_TOOLS,
   isEligibleTool,
   type ToolsPanelDiscoveredTool,
 } from './tools-panel';
@@ -32,6 +34,16 @@ function sampleSnapshot(): PiToolConfigSnapshot {
     ),
   };
 }
+
+const backgroundDelegationTools = [
+  'bg_delegate',
+  'bg_run_pi_attested',
+  'bg_result',
+  'fusion_reason',
+  'fusion_investigate',
+  'fusion_research',
+  'fusion_validate',
+];
 
 const sampleDiscovered: ToolsPanelDiscoveredTool[] = [
   { name: 'read', description: 'Read file', active: true },
@@ -107,6 +119,52 @@ describe('isEligibleTool', () => {
 });
 
 describe('global Pi tools panel', () => {
+  test('dynamic preview exclusions match the standalone * runtime contract', () => {
+    expect(DYNAMIC_DELEGATION_TOOLS).toEqual(STANDALONE_STAR_TOOL_EXCLUSIONS);
+  });
+
+  test('* preview excludes background delegation tools but keeps ordinary background task tools', () => {
+    const backgroundTaskTools = ['bg_run', 'bg_status', 'bg_logs', 'bg_kill'];
+    const discoveredTools = [
+      ...sampleDiscovered,
+      ...[...backgroundDelegationTools, ...backgroundTaskTools].map((name) => ({
+        name,
+        active: true,
+      })),
+    ];
+    const panel = createToolsPanel({
+      snapshot: sampleSnapshot(),
+      discoveredTools,
+      save: vi.fn(),
+      onDone: vi.fn(),
+    });
+    panel.handleInput('*');
+    panel.handleInput('\r');
+    const pages: string[] = [];
+    for (let index = 0; index < discoveredTools.length; index++) {
+      pages.push(panel.render(300).join('\n'));
+      panel.handleInput('j');
+    }
+    const text = pages.join('\n');
+    for (const name of backgroundDelegationTools) {
+      expect(text).toContain(`[ ] ${name}`);
+      expect(text).not.toContain(`[x] ${name}`);
+    }
+    for (const name of backgroundTaskTools)
+      expect(text).toContain(`[x] ${name}`);
+    expect(text).toContain(
+      `AskClaude, AskAntigravity, ${backgroundDelegationTools.join(', ')}.`,
+    );
+    expect(panel.getState().draft[0]?.tools).toEqual(['*']);
+    panel.handleInput('g');
+    panel.handleInput(' '); // materialize today's preview without read
+    expect(panel.getState().draft[0]?.tools).toEqual([
+      'write',
+      'bash',
+      ...backgroundTaskTools,
+    ]);
+  });
+
   test('* saves the single dynamic active-root selector without selecting inactive or delegation tools', () => {
     const save = vi.fn((_snapshot, draft) => {
       validatePiSpecialistTools(draft[0].tools);
@@ -183,6 +241,7 @@ describe('global Pi tools panel', () => {
     { name: 'custom_inactive', active: false },
     { name: 'AskClaude', active: true },
     { name: 'AskAntigravity', active: true },
+    ...backgroundDelegationTools.map((name) => ({ name, active: true })),
   ])('explicitly toggling $name from * adds it to the current active snapshot', (tool) => {
     const panel = createToolsPanel({
       snapshot: sampleSnapshot(),

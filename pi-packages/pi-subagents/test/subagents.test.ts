@@ -1,17 +1,68 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import extension from '../index.js';
+import { SubagentManager } from '../src/manager.js';
 import { runSubagentModelsCommand } from '../src/model-profiles-ui.js';
 import { buildPrompt } from '../src/runner.js';
+import * as subagentRendering from '../src/thread-view.js';
 import {
   boundThreadSnapshot,
   isValidThreadSnapshot,
   renderThreadBody,
 } from '../src/thread-view.js';
+import type { SubagentTask } from '../src/types.js';
+import { registerSubagentsPanelOpener } from '../src/ui/panel-overlay.js';
 import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
 
+// Reuse the extension module graph with a fresh, complete fake for each test.
+vi.mock('../src/manager.js', () => ({ SubagentManager: vi.fn() }));
+
+function createExtensionManagerFake() {
+  return {
+    reconcileOrphanedTasks: vi.fn(),
+    close: vi.fn(async () => undefined),
+    cancelRunning: vi.fn(),
+    onTaskUpdate: vi.fn((_listener: () => void) => () => undefined),
+    listActiveSessionTasks: vi.fn(() => [] as SubagentTask[]),
+    listSessionTasks: vi.fn(() => [] as SubagentTask[]),
+    getTask: vi.fn((_id: string) => undefined as SubagentTask | undefined),
+    cancel: vi.fn(),
+  };
+}
+
 const env = installSubagentTestEnv();
+let managerInstance: ReturnType<typeof createExtensionManagerFake>;
+let onTerminalBackgroundTask: ((task: any, cwd?: string) => void) | undefined;
+
+beforeEach(() => {
+  managerInstance = createExtensionManagerFake();
+  vi.mocked(SubagentManager).mockImplementation(
+    class {
+      constructor(
+        _runner?: unknown,
+        _history?: unknown,
+        completion?: (task: any, cwd?: string) => void,
+      ) {
+        onTerminalBackgroundTask = completion;
+        Object.assign(this, managerInstance);
+      }
+    } as unknown as typeof SubagentManager,
+  );
+  vi.spyOn(
+    subagentRendering,
+    'preloadPiComponentsForSubagentRendering',
+  ).mockResolvedValue(false);
+});
+
+afterEach(() => {
+  registerSubagentsPanelOpener(undefined);
+  onTerminalBackgroundTask = undefined;
+  vi.mocked(SubagentManager).mockReset();
+  vi.doUnmock('../src/manager.js');
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe('subagents smoke', () => {
   it('keeps root and deep import smoke reachable', () => {
@@ -148,25 +199,7 @@ describe('subagents smoke', () => {
   });
 
   it('reconciles orphaned tasks on session start and closes the manager on session shutdown', async () => {
-    vi.resetModules();
-    const reconcileOrphanedTasks = vi.fn();
-    const close = vi.fn();
-    const managerInstance = {
-      reconcileOrphanedTasks,
-      close,
-      onTaskUpdate: vi.fn(() => () => undefined),
-      listSessionTasks: () => [],
-    };
-    class MockManager {
-      constructor() {
-        Object.assign(this, managerInstance);
-      }
-    }
-    vi.doMock('../src/manager.js', () => ({ SubagentManager: MockManager }));
-    const { default: reloadedExtension } = await import(
-      '../src/extension/subagents-extension.js'
-    );
-
+    const { reconcileOrphanedTasks, close } = managerInstance;
     const handlers = new Map<string, Function>();
     const pi = {
       registerMessageRenderer: vi.fn(),
@@ -178,40 +211,15 @@ describe('subagents smoke', () => {
       }),
     };
 
-    reloadedExtension(pi);
+    extension(pi);
     handlers.get('session_start')?.({}, { cwd: env.tmp, ui: {} });
-    handlers.get('session_shutdown')?.({}, { cwd: env.tmp, ui: {} });
+    await handlers.get('session_shutdown')?.({}, { cwd: env.tmp, ui: {} });
 
     expect(reconcileOrphanedTasks).toHaveBeenCalledWith(env.tmp);
     expect(close).toHaveBeenCalledTimes(1);
   });
 
   it('suppresses stale Pi context errors from delayed background completion delivery', async () => {
-    vi.resetModules();
-    let onTerminalBackgroundTask:
-      | ((task: any, cwd?: string) => void)
-      | undefined;
-    const managerInstance = {
-      reconcileOrphanedTasks: vi.fn(),
-      cancelRunning: vi.fn(),
-      onTaskUpdate: vi.fn(() => () => undefined),
-      listSessionTasks: () => [],
-    };
-    class MockManager {
-      constructor(
-        _runner?: unknown,
-        _max?: unknown,
-        completion?: (task: any, cwd?: string) => void,
-      ) {
-        onTerminalBackgroundTask = completion;
-        Object.assign(this, managerInstance);
-      }
-    }
-    vi.doMock('../src/manager.js', () => ({ SubagentManager: MockManager }));
-    const { default: reloadedExtension } = await import(
-      '../src/extension/subagents-extension.js'
-    );
-
     const pi = {
       sendMessage: vi.fn(() => {
         throw new Error(
@@ -224,7 +232,7 @@ describe('subagents smoke', () => {
       registerTool: vi.fn(),
     };
 
-    reloadedExtension(pi);
+    extension(pi);
 
     expect(() =>
       onTerminalBackgroundTask?.(
@@ -242,32 +250,6 @@ describe('subagents smoke', () => {
   });
 
   it('does not deliver a background completion to a replaced Pi session', async () => {
-    vi.resetModules();
-    let onTerminalBackgroundTask:
-      | ((task: any, cwd?: string) => void)
-      | undefined;
-    const managerInstance = {
-      reconcileOrphanedTasks: vi.fn(),
-      cancelRunning: vi.fn(),
-      onTaskUpdate: vi.fn(() => () => undefined),
-      listActiveSessionTasks: () => [],
-      listSessionTasks: () => [],
-    };
-    class MockManager {
-      constructor(
-        _runner?: unknown,
-        _max?: unknown,
-        completion?: (task: any, cwd?: string) => void,
-      ) {
-        onTerminalBackgroundTask = completion;
-        Object.assign(this, managerInstance);
-      }
-    }
-    vi.doMock('../src/manager.js', () => ({ SubagentManager: MockManager }));
-    const { default: reloadedExtension } = await import(
-      '../src/extension/subagents-extension.js'
-    );
-
     const handlers = new Map<string, Function>();
     const pi = {
       sendMessage: vi.fn(),
@@ -280,7 +262,7 @@ describe('subagents smoke', () => {
       }),
     };
 
-    reloadedExtension(pi);
+    extension(pi);
     handlers.get('session_start')?.(
       {},
       { cwd: env.tmp, sessionId: 'session-new', ui: { setWidget: vi.fn() } },
@@ -314,36 +296,27 @@ describe('subagents smoke', () => {
   });
 
   it('places the Agents widget above input and stops rendering after shutdown', async () => {
-    vi.resetModules();
     vi.useFakeTimers();
     try {
       const listeners: Array<() => void> = [];
-      const close = vi.fn(async () => undefined);
+      const { close, listActiveSessionTasks } = managerInstance;
       let running = false;
       let queued = false;
-      const listActiveSessionTasks = vi.fn(() =>
-        running
-          ? [{ status: 'running' }]
-          : queued
-            ? [{ status: 'queued' }]
-            : [],
+      listActiveSessionTasks.mockImplementation(
+        () =>
+          (running
+            ? [{ status: 'running' }]
+            : queued
+              ? [{ status: 'queued' }]
+              : []) as SubagentTask[],
       );
       const interval = vi.spyOn(global, 'setInterval');
-      class MockManager {
-        reconcileOrphanedTasks() {}
-        onTaskUpdate(listener: () => void) {
-          listeners.push(listener);
-          return () => {
-            listeners.splice(listeners.indexOf(listener), 1);
-          };
-        }
-        listActiveSessionTasks = listActiveSessionTasks;
-        close = close;
-      }
-      vi.doMock('../src/manager.js', () => ({ SubagentManager: MockManager }));
-      const { default: reloadedExtension } = await import(
-        '../src/extension/subagents-extension.js'
-      );
+      managerInstance.onTaskUpdate.mockImplementation((listener) => {
+        listeners.push(listener);
+        return () => {
+          listeners.splice(listeners.indexOf(listener), 1);
+        };
+      });
       const handlers = new Map<string, Function>();
       const setWidget = vi.fn();
       const pi = {
@@ -355,7 +328,7 @@ describe('subagents smoke', () => {
           handlers.set(event, handler),
         ),
       };
-      reloadedExtension(pi);
+      extension(pi);
       handlers.get('session_start')?.(
         {},
         { cwd: env.tmp, sessionId: 'session-new', ui: { setWidget } },
@@ -397,7 +370,6 @@ describe('subagents smoke', () => {
   });
 
   it('opens full history from the widget overflow and retains an active task beyond 100 newer completed tasks', async () => {
-    vi.resetModules();
     const completedTasks = Array.from({ length: 110 }, (_, index) => ({
       id: `completed-${index + 1}`,
       agent: 'finished-worker',
@@ -422,24 +394,18 @@ describe('subagents smoke', () => {
       task: 'OLDER_ACTIVE_TASK_SENTINEL',
       created_at: '2020-01-01T00:00:00.000Z',
     };
-    const allTasks = [...completedTasks, ...activeTasks, olderActiveTask];
-    const managerInstance = {
-      reconcileOrphanedTasks: vi.fn(),
-      onTaskUpdate: vi.fn(() => () => undefined),
-      listActiveSessionTasks: vi.fn(() => [...activeTasks, olderActiveTask]),
-      listSessionTasks: vi.fn(() => allTasks),
-      getTask: vi.fn((id: string) => allTasks.find((task) => task.id === id)),
-      cancel: vi.fn(),
-      close: vi.fn(),
-    };
-    class MockManager {
-      constructor() {
-        Object.assign(this, managerInstance);
-      }
-    }
-    vi.doMock('../src/manager.js', () => ({ SubagentManager: MockManager }));
-    const { default: reloadedExtension } = await import(
-      '../src/extension/subagents-extension.js'
+    const allTasks = [
+      ...completedTasks,
+      ...activeTasks,
+      olderActiveTask,
+    ] as SubagentTask[];
+    managerInstance.listActiveSessionTasks.mockReturnValue([
+      ...activeTasks,
+      olderActiveTask,
+    ] as SubagentTask[]);
+    managerInstance.listSessionTasks.mockReturnValue(allTasks);
+    managerInstance.getTask.mockImplementation((id) =>
+      allTasks.find((task) => task.id === id),
     );
 
     const handlers = new Map<string, Function>();
@@ -468,7 +434,7 @@ describe('subagents smoke', () => {
         handlers.set(event, handler),
       ),
     };
-    reloadedExtension(pi);
+    extension(pi);
     const ctx = {
       cwd: env.tmp,
       sessionId: 'session-overflow-history',
@@ -504,7 +470,6 @@ describe('subagents smoke', () => {
     } finally {
       panelComponent?.handleInput('q');
       await handlers.get('session_shutdown')?.({}, ctx);
-      vi.doUnmock('../src/manager.js');
     }
   });
 });

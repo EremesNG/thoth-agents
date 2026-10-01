@@ -80,11 +80,20 @@ const FALLBACK_KEYS: Record<ToolsPanelKey, readonly string[]> = {
   space: [' '],
 };
 
-const DYNAMIC_DELEGATION_TOOLS = new Set(['AskClaude', 'AskAntigravity']);
+export const DYNAMIC_DELEGATION_TOOLS: ReadonlySet<string> = new Set([
+  'AskClaude',
+  'AskAntigravity',
+  'bg_delegate',
+  'bg_run_pi_attested',
+  'bg_result',
+  'fusion_reason',
+  'fusion_investigate',
+  'fusion_research',
+  'fusion_validate',
+]);
 const DYNAMIC_DESCRIPTION =
   'Dynamic *: tools currently active in the root session.';
-const DYNAMIC_EXCLUSIONS =
-  'Excludes subagent_*, ask_user_question, todo, AskClaude, AskAntigravity.';
+const DYNAMIC_EXCLUSIONS = `Excludes subagent_*, ask_user_question, todo, ${[...DYNAMIC_DELEGATION_TOOLS].join(', ')}.`;
 
 export function isEligibleTool(name: string): boolean {
   if (name === '*') return false;

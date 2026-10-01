@@ -101,7 +101,10 @@
   Global `<agent-dir>/subagents.json` therefore requests
   `session_resources: "lean"` and `enable_continue: false`; lean filters
   `before_agent_start` and `session_start`, while full child resources are
-  unsupported. A project-local `subagents.json` may override global lean
+  unsupported. Trusted packages in `lifecycle_passthrough` (default: the two
+  provider bridges; never thoth-agents) are the exception: they keep their full
+  lifecycle in children, with prompt-shaping events observe-only as defense in
+  depth; that list is a trust list, not a sandbox. A project-local `subagents.json` may override global lean
   settings. The runtime provides no
   enforced depth or tool allowlist, and these role boundaries do not form an OS
   or process sandbox.

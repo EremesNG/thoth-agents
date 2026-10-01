@@ -317,19 +317,33 @@ subtask_thoth-oracle_1790816235399_4020ef16 returned [OKAY].
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 1561f8ec66d78acfbd6c0a252b0df79788ef29b9764a28f6adc0bbe0be7aa482
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
-- AC-6: PENDING | check | evidence
-- AC-7: PENDING | check | evidence
+Fresh read-only Oracle subtask_thoth-oracle_1790819698702_2606416c (round 5) returned
+PASS; rounds 1-4 failed AC-4 (and AC-5 in rounds 1-2) and were repaired in this record.
+
+- AC-1: PASS | config regressions | default list, explicit empty, project replacement, invalid entries warned not coerced
+- AC-2: PASS | real-SDK isolation regressions | listed observers run, unlisted memory hooks stripped, listed injector cannot change prompt, manifest and symlink cases fail closed
+- AC-3: PASS | capture-dependent provider regression | projected capture contains child instructions; without passthrough fails closed
+- AC-4: PASS | classifier probes + tests | 6 exact-format positives, 23 generic/negated/incidental negatives, prompt-capture precedence; classifier 28/28
+- AC-5: PASS | manifests, CI filters, lockfile, active-Markdown sweep | scoped names; recorded boundary for runtime identifiers accepted
+- AC-6: PASS | docs and adapter guidance | key, default, observe-only events, antigravity MCP limitation documented
+- AC-7: PASS | serial checks + live evidence | pi-subagents 450/450, antigravity 542 passed/9 skipped, claude unit 290, check:ci/typecheck/build 0; live claude-bridge child quoted its own role and cancel left no orphaned child claude.exe
+- Source: pi-packages/pi-subagents/src/config.ts | sha256:cf807b1718fb8bd238c299aecf864d5c4586282d99c25c1fd2e57aca5dd33fb2
+- Source: pi-packages/pi-subagents/src/types.ts | sha256:ba357b74d0fb193beaee1c0f53bc562b183892b007b188410966a1c83bb1b779
+- Source: pi-packages/pi-subagents/src/runner/sdk-runner.ts | sha256:a5b6280581d99b426f5e264bba6a5def5d8f3af1dc6a071c882890f42f4f3bbe
+- Source: pi-packages/pi-subagents/src/error-metadata.ts | sha256:13c8b136495b3d0d797f1b794178bac91795d21130fa124e4ad35697a40331f7
+- Source: pi-packages/pi-subagents/README.md | sha256:404947af60898ccf90025af26b6b924a1c2a7df7b003825001175c4e95496f0f
+- Source: pi-packages/pi-subagents/skills/subagents-configuration/SKILL.md | sha256:8878ef789474becb0ce9f9e007bbc59070d0486012902c15f8246a2190d6c743
+- Source: pi-packages/pi-claude-bridge/package.json | sha256:35322498ad4be5d60b8690d9c8ad8137fe7bdde44e040c343322d6beee1e8f2d
+- Source: pi-packages/pi-antigravity-bridge/package.json | sha256:346a0917cdc099527c13d0664858312986dabd4f5de3826368a96c466b62aa91
+- Source: .github/workflows/ci.yml | sha256:fc3654ebccb258a32c0f8a83e1e63a5a5bdf1f4ed151ebcc383519f3e40f4d30
+- Source: docs/agent/testing.md | sha256:d7269d60ea63ffdb41941159fd8f12d2d82c8a1eec404f2d9a0a0d75456ebb8d
+- Source: src/harness/adapters/pi.ts | sha256:074c5662971117a64a8433e8987d5ad3f76b66d800548a319bbe704a83d79283
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

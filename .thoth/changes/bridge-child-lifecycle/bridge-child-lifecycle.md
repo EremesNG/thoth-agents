@@ -310,19 +310,43 @@ plan unchanged for stream-json (scope unchanged; ACP stays a separate line).
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: b5c0b96712d7714ae86dff074ed553d9f79868b6f01130ff0b417296a48ac554
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
-- AC-6: PENDING | check | evidence
-- AC-7: PENDING | check | evidence
+Fresh read-only Oracle subtask_thoth-oracle_1790868194274_4a37b30d returned PASS at
+HEAD 86f288d after round-1 (AC-5 cleanup, AC-6 docs) and round-2 (AC-6 docs) FAIL
+repairs; commits a6bb839, 8302dd5, 00e43d9, 680e310, 45e9b60; no spec delta needed.
+
+- AC-1: PASS | code/fixture review + real-SDK tests | trusted handlers retained, eight prompt-shaping events cloned with returns discarded, opaque members preserved, thoth-agents rejected
+- AC-2: PASS | code review + real-SDK tests | provider replay then tool verification then awaited session_start; nonfatal startup diagnostics; shutdown once per child on every teardown path
+- AC-3: PASS | fresh antigravity tests | unique private discovery, no global registration/suppression by default, dead-owner sweep, one mixed-mode diagnostic, legacy-global compatible
+- AC-4: PASS | fresh antigravity tests | model-gated single-flight start incl. ACP new/load, stream fallback, cache-only load without agy spawn, startup/shutdown races, root new/resume reuse
+- AC-5: PASS | fresh ownership tests (temp HOME) | only acquired instance-unique descriptor caches removed after termination; shared, sibling, old and unacquired caches survive
+- AC-6: PASS | doc scan against code | package docs, AGENTS.md, root adapter guidance/test and root docs match lifecycle, discovery and cleanup; trust-not-sandbox boundary stated
+- AC-7: PASS | frozen checks + live evidence | antigravity typecheck and 560 passed / 9 skipped; subagents 516, claude 290, root check:ci/typecheck/build; live stream-json child/claude/root/cancel checks recorded
+- Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:315d62b8e1486723de465ea010dc43b2ff6eed838bf623e5bf090c477eaa4391
+- Source: pi-packages/pi-subagents/src/runner/sdk-runner.ts | sha256:22d0f6c0217dd782b404bc75fc3802784a738223076eda484cd71e15aabdc01e
+- Source: pi-packages/pi-subagents/src/config.ts | sha256:cefd77710e517540b2a7856c61d61ad99a2e9a8608fe73d140df1171ea0ce6b6
+- Source: pi-packages/pi-subagents/README.md | sha256:e2dc306e46b30d5937f22be7c6ebb6e1a58c50409875b388d9ffe3edfbb9c775
+- Source: pi-packages/pi-subagents/skills/subagents-configuration/SKILL.md | sha256:793f487b535d08556d20fb44ff453865d762b7cd27dfc81d1420436c6c654a4b
+- Source: pi-packages/pi-antigravity-bridge/extensions/index.ts | sha256:3a9e820a9bf11201de8d9c7b5215f14594f8c514bef365cfbedf024294879328
+- Source: pi-packages/pi-antigravity-bridge/src/config.ts | sha256:ffe05e2bad6ecb280d9d8080ea2fae926650377124d27cb496a9c39dc5d30926
+- Source: pi-packages/pi-antigravity-bridge/src/models.ts | sha256:3bb1646b03480b527dd9cc49fe5ef9a4dfeaf93688a1314c25891fe26386ff5a
+- Source: pi-packages/pi-antigravity-bridge/src/mcp-registration.ts | sha256:027ece49b0f45b670129fcdd7d5fadbb5768ae787aa37e2613f9dad5b6c26818
+- Source: pi-packages/pi-antigravity-bridge/src/mcp-server.ts | sha256:003dc5e37f92ddbe361fc431034d66ba8e474a8a6f7556b45c638a707c841e1d
+- Source: pi-packages/pi-antigravity-bridge/src/ask-tool.ts | sha256:8ad8aabbebc8ea885e2c4bf274189b6d375328832e8c6d4db7a444e3bcdbf956
+- Source: pi-packages/pi-antigravity-bridge/src/driver.ts | sha256:bfe658b41c6620af3cc1267bb89de8d7fd293ee924676c4bc6ca3867b980b1ec
+- Source: pi-packages/pi-antigravity-bridge/src/acp/driver.ts | sha256:9a7b564922eede1971813caca9b92a00bc9b49de208eb439da8a19acbfb63249
+- Source: pi-packages/pi-antigravity-bridge/README.md | sha256:606aa24ac014e3836e3a05b29bac7adbc6cad4b07ea3c11191c214a4738f8c13
+- Source: pi-packages/pi-antigravity-bridge/AGENTS.md | sha256:7286fce0a76ca9a8ad4a8a49c145441f8961e246c0961bc6e2431f4c8551aabb
+- Source: pi-packages/pi-antigravity-bridge/docs/BRIDGE-LIFECYCLE.md | sha256:4d200c031d0110fa0ed2d54d848b51aae1972ad71ebe956c9e6d540f84cac698
+- Source: src/harness/adapters/pi.ts | sha256:65991f381c865a4e3d222f47b44606c7c7a554bab254f4933865163dcd1ed8a9
+- Source: docs/agent/harness-packaging.md | sha256:b4210f57fef04d3538d1494a0bcd2e6f713e1aa2494075c0d1895cb855840065
+- Source: docs/agent/agents-and-delegation.md | sha256:023a4a000ffad654adc6e7bd8002c210d1621728d23b5956930c6aa36bb7f876
+- Source: docs/installation.md | sha256:4dac3f23ba55887a267e6b9d5fb8589cb1fdd8f0fc3cc5b04cc6fe3e80d39fa2
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

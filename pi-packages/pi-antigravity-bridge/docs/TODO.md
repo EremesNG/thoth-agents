@@ -8,7 +8,7 @@ round trip: PreToolUse hook -> POST /approval park -> shadow toolUse ->
 decision -> hook stdout -> agy enforces.
 
 - Enable without a third-party extension: `AGY_APPROVALS=shadow AGY_APPROVALS_MODE=ask` (interactive pi; headless denies). Deny path: a fake gate extension that blocks marker calls (`pi.on("tool_call")` + `{block: true, reason}`).
-- Probe artifacts live outside the repo: `~/tmp/pi-antigravity-bridge-probes/` (run scripts via `npx tsx` from the repo cwd - they import src/*.ts).
+- Probe artifacts live outside the repo: `~/tmp/pi-antigravity-bridge-probes/` (run scripts via `pnpm exec tsx` from the package directory `pi-packages/pi-antigravity-bridge`, cwd - they import src/*.ts).
 - Live-behavior risks to watch: hook timeout soft-passes (V3) - the staged timeout must keep exceeding the park budget; denied calls emit no `tool_call` session/update frames on ACP (V2); edit-class arg names beyond `create_file` are docs-attested, never live-captured - check the confirm-dialog text on a real `run_command` and a real `replace_file_content`.
 - On pass: clear the "NOT yet live-verified" notes (AGENTS.md, this file).
 
@@ -28,7 +28,7 @@ against a live agy server. Drive an ACP turn that triggers
 and confirm the server resumes; then repeat the identical request and
 confirm the always-memory answers without a second dialog.
 
-- Probe setup lives outside the repo: `~/tmp/pi-antigravity-bridge-probes/` (run scripts via `npx tsx` from the repo cwd).
+- Probe setup lives outside the repo: `~/tmp/pi-antigravity-bridge-probes/` (run scripts via `pnpm exec tsx` from the package directory `pi-packages/pi-antigravity-bridge`, cwd).
 - Live-behavior risks to watch: how the real server handles a `cancelled`
   outcome (our deny when it offers no reject option), and whether the
   dialog park holds the turn open as long as the fake server does.

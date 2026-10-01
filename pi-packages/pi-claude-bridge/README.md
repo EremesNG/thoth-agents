@@ -98,7 +98,7 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or the project Pi config direc
 
 ## Tests
 
-`npm run test:unit` for offline tests. `npm test` adds integration tests that hit APIs; set `CLAUDE_BRIDGE_TESTING_ALT_MODEL` in `.env.test` for the alt-provider smoke test.
+Install from the thoth-agents repository root with `pnpm install` (this package is a pnpm workspace member). `pnpm --filter pi-claude-bridge run test:unit` runs offline tests. `pnpm --filter pi-claude-bridge run test` adds integration tests that hit APIs; set `CLAUDE_BRIDGE_TESTING_ALT_MODEL` in `.env.test` for the alt-provider smoke test.
 
 Integration tests spawn real `pi` and Claude Code subprocesses and need write access to `~/.claude` — a sandbox that blocks it makes `--resume` fail with `No conversation found with session ID`.
 

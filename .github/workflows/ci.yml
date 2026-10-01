@@ -49,3 +49,19 @@ jobs:
         run: pnpm test
         env:
           THOTH_PLUGINS_ROOT: ${{ github.workspace }}/thoth-plugins
+
+      - name: Check pi-subagents
+        run: |
+          pnpm --filter @thoth-agents/pi-subagents run typecheck
+          pnpm --filter @thoth-agents/pi-subagents run test
+
+      - name: Check pi-antigravity-bridge
+        run: |
+          pnpm --filter @estebanforge/pi-antigravity-bridge run typecheck
+          pnpm --filter @estebanforge/pi-antigravity-bridge run test
+
+      # Offline unit tests only; the package `test` script runs live Claude integrations.
+      - name: Check pi-claude-bridge
+        run: |
+          pnpm --filter pi-claude-bridge run typecheck
+          pnpm --filter pi-claude-bridge run test:unit

@@ -4,31 +4,33 @@ How to build, test, and debug this extension outside pi.
 
 ## Build, test, typecheck
 
+This package is a member of the thoth-agents pnpm workspace; install from the repository root.
+
 ```bash
-npm install
-npm test          # unit tests via vitest (no agy spawn, no network)
-npm run build     # tsc --noEmit type check
+pnpm install                                                   # from the repository root
+pnpm --filter @estebanforge/pi-antigravity-bridge run test       # unit tests via vitest (no agy spawn, no network)
+pnpm --filter @estebanforge/pi-antigravity-bridge run typecheck  # tsc --noEmit type check
 ```
 
-The integration scripts below spawn a real `agy` process and need a logged-in account. The unit tests (`npm test`) need neither.
+The integration scripts below spawn a real `agy` process and need a logged-in account. The unit tests need neither.
 
 ## Standalone scripts
 
-These exercise the pipeline without pi. Useful for isolating where a bug lives (driver? provider? pi loader?).
+These exercise the pipeline without pi. Useful for isolating where a bug lives (driver? provider? pi loader?). Run them from `pi-packages/pi-antigravity-bridge`.
 
 ```bash
 # Drive the provider's streamSimple directly (no pi TUI) and assert the
 # full event lifecycle: start -> text_start -> text_delta -> text_end ->
 # done. The closest thing to a pi turn without pi.
-npx tsx scripts/test-provider.ts
+pnpm exec tsx scripts/test-provider.ts
 
 # Load the extension through a mock ExtensionAPI and assert registerProvider
 # + registerCommand (/agy) fire with the right shape. No agy spawn.
-npx tsx scripts/test-extension.ts
+pnpm exec tsx scripts/test-extension.ts
 
 # Load the extension through pi's REAL loader and confirm the antigravity/*
 # models register. This is the in-pi smoke test.
-npm run smoke:pi
+bash scripts/smoke-in-pi.sh
 
 # Live smoke for the stream-json engine. OPT-IN: spends a little Antigravity
 # quota. Proves the persistent process: init binds a conversation, text deltas
@@ -39,42 +41,42 @@ AGY_LIVE=1 node --experimental-strip-types scripts/smoke-stream-json.mjs
 # little quota. Needs AGY_ACP_BIN (or acp on PATH) and a one-time
 # /agy auth-manual credential setup.
 AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
-  npx tsx scripts/smoke-acp.mjs
+  pnpm exec tsx scripts/smoke-acp.mjs
 
 # Live smoke for the Gate F bridge e2e: the real ACP server lists the bridge
 # catalog and completes a tool call through the registered mcpServers entry.
 AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
-  npx tsx scripts/smoke-acp-bridge.mjs
+  pnpm exec tsx scripts/smoke-acp-bridge.mjs
 
 # Live smoke for image prompts on the ACP engine: builds a 64x64 two-tone PNG
 # in-process and asserts the model identifies both halves through the full
 # driver stack.
 AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
-  npx tsx scripts/smoke-acp-image.mjs
+  pnpm exec tsx scripts/smoke-acp-image.mjs
 
 # Live probe: thought-chunk sparsity, tool_call content[]/rawInput shapes,
 # and the /plan command flow, captured to probe-logs/ (local only).
 AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
-  npx tsx scripts/probe-acp-phase2.mjs
+  pnpm exec tsx scripts/probe-acp-phase2.mjs
 
 # Live probe: does the ACP server deliver MCP tool-result IMAGE content to
 # the model? One bridge tool returns a two-tone PNG in its result; the model
 # must name both halves from the tool result alone.
 AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
-  npx tsx scripts/probe-acp-image-result.mjs
+  pnpm exec tsx scripts/probe-acp-image-result.mjs
 
 # Live probe: same image question for the stream-json engine. AGY
 # bridge tool returns a two-tone PNG in its result; model must name both
 # halves. AGY_PROBE_REG_ONLY=1 skips the turn and dumps MCP registration
 # state (no quota).
-AGY_LIVE=1 npx tsx scripts/probe-stream-json-image.mjs
+AGY_LIVE=1 pnpm exec tsx scripts/probe-stream-json-image.mjs
 
 # Live parity run: the SAME scenario set (streaming, continuity, bridge
 # round-trip, effort switch, serialization, abort+recover, usage) through
 # BOTH engines. Needs the agy CLI AND the ACP binary. Spends ~13 flash-low
 # turns; prints a per-scenario matrix and exits non-zero on any mismatch.
 AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par \
-  npx tsx scripts/parity-live.mjs
+  pnpm exec tsx scripts/parity-live.mjs
 ```
 
 ## Debugging a hang or "stuck" turn

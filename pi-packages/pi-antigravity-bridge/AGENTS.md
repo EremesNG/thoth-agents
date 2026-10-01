@@ -36,13 +36,13 @@ Stack: **TypeScript / Node.js (ESNext / ES2022, ESM module)** targeting Node.js 
 ## COMMANDS
 | Action | Command |
 |--------|---------|
-| Install | `npm install` |
-| Test | `npm test` |
-| Build (typecheck) | `npm run build` |
-| In-pi smoke | `npm run smoke:pi` |
+| Install | `pnpm install` (from the thoth-agents repository root; this package is a pnpm workspace member) |
+| Test | `pnpm --filter @estebanforge/pi-antigravity-bridge run test` |
+| Typecheck | `pnpm --filter @estebanforge/pi-antigravity-bridge run typecheck` |
+| In-pi smoke | `bash scripts/smoke-in-pi.sh` |
 | Live stream-json smoke | `AGY_LIVE=1 node --experimental-strip-types scripts/smoke-stream-json.mjs` (spends quota) |
-| Live ACP smokes (bridge e2e, image) | `AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par npx tsx scripts/smoke-acp-bridge.mjs` / `smoke-acp-image.mjs` |
-| Live parity (both engines) | `AGY_ACP_LIVE=1 ... npx tsx scripts/parity-live.mjs` (7 scenarios × 2 engines) |
+| Live ACP smokes (bridge e2e, image) | `AGY_ACP_LIVE=1 AGY_ACP_BIN=~/.local/opt/agy-acp/current/agy_acp_server.par pnpm exec tsx scripts/smoke-acp-bridge.mjs` / `smoke-acp-image.mjs` |
+| Live parity (both engines) | `AGY_ACP_LIVE=1 ... pnpm exec tsx scripts/parity-live.mjs` (7 scenarios × 2 engines) |
 
 ## CODING STANDARDS
 *   **Language**: TypeScript (Strict mode enabled, `noEmit: true`, module resolution `bundler`).

@@ -45,10 +45,10 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "verify:package": "node scripts/verify-package-files.mjs",
-    "pack:dry-run": "npm pack --dry-run",
-    "check": "npm run typecheck && npm test && npm run verify:package",
+    "pack:dry-run": "pnpm pack --dry-run",
+    "check": "pnpm run typecheck && pnpm test && pnpm run verify:package",
     "release": "semantic-release",
-    "prepublishOnly": "npm run check"
+    "prepublishOnly": "pnpm run check"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.99.0",
@@ -63,6 +63,8 @@
     }
   },
   "devDependencies": {
+    "@earendil-works/pi-agent-core": "0.99.1",
+    "@earendil-works/pi-ai": "0.99.1",
     "@earendil-works/pi-coding-agent": "0.99.1",
     "@earendil-works/pi-tui": "0.99.1",
     "@semantic-release/github": "12.0.8",

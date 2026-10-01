@@ -476,17 +476,17 @@ Pi MUST expose /subagents-model using native profiles and /subagents-tools using
 
 - **GIVEN** explicit or dynamic operator selections and root tools that are inactive, delegation tools or lack a child implementation
 - **WHEN** the panel saves, synchronization runs and a child launches
-- **THEN** operator intent persists, `*` yields the child-loadable active eligible tools without delegation tools and with dropped names reported, explicit lists fail on missing implementations, and nothing is silently widened or omitted 
+- **THEN** operator intent persists, `*` yields the child-loadable active eligible tools without delegation tools and with dropped names reported, explicit lists fail on missing implementations, and nothing is silently widened or omitted
 
 ### Requirement: Run visible background Pi specialists
 
-Omitted mode MUST run specialists in background while respecting explicit modes, and the runtime MUST display truthful live execution metrics in a tree above input. Turns, tool uses, lifetime tokens, available child-context percentage and active elapsed time MUST remain readable even with long task/model text, using compact or separate metric rows as needed and marking absent values without fabrication. Running status MUST use an animated braille indicator and terminal statuses MUST use simple distinguishable completion, cancellation and failure glyphs. Animation MUST remain inactive when no child runs and MUST clean up on task termination or session teardown without blocking root input.
+Omitted mode MUST run specialists in background while respecting explicit modes, and the runtime MUST display truthful live execution metrics in a tree above input. Tool uses, lifetime tokens, available child-context percentage, average output speed in tokens per second (total output tokens over total generation time) and active elapsed time MUST remain readable even with long task/model text, using compact or separate metric rows as needed and marking absent values without fabrication. Running status MUST use an animated braille indicator and terminal statuses MUST use simple distinguishable completion, cancellation and failure glyphs. Animation MUST remain inactive when no child runs and MUST clean up on task termination or session teardown without blocking root input. The widget MUST NOT consume keyboard input unless the root editor holds focus, so overlays, Thoth panels, native dialogs and other custom UIs receive their keys.
 
 #### Scenario: Run visible background Pi specialists
 
-- **GIVEN** a child running or queued and later completing or stopping
-- **WHEN** the UI renders and the session tears down
-- **THEN** metrics and status symbols remain truthful, root stays interactive and no idle animation timer remains
+- **GIVEN** a child running or queued and later completing or stopping, and an overlay possibly open
+- **WHEN** the UI renders, keys are pressed and the session tears down
+- **THEN** metrics including average output speed and status symbols remain truthful, keys reach the focused overlay, dialog or custom UI, root stays interactive and no idle animation timer remains 
 
 ### Requirement: Expose session-owned Pi subagent consumption
 

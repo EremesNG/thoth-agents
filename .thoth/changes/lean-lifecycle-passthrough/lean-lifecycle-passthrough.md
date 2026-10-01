@@ -167,6 +167,19 @@ longer misclassified as context overflow.
   OpenAI-style capacity message as tests (pi-subagents 439/439); antigravity README
   heading and shape reference plus three source comments use
   `@thoth-agents/*`; antigravity 542 passed / 9 skipped; check:ci 0.
+- Final verification round 2 (fresh Oracle subtask_thoth-oracle_1790818638499_8534818b):
+  FAIL on AC-4 (`maximum context length is N tokens ... request` still matched a
+  parse failure) and AC-5 (antigravity README prose line 218). Repairs (root,
+  test-first): maximum-context phrase requires `you requested <n> tokens`; added
+  Anthropic `prompt is too long: <n> tokens > <m> maximum` and
+  `context_length_exceeded` positives and the parse-failure negative (classifier
+  tests 20/20; pi-subagents 440 passed). AC-5 boundary, applied by a full sweep:
+  active Markdown prose (READMEs, docs/, AGENTS.md, issue templates) uses the
+  `@thoth-agents/*` package names; runtime identifiers (global symbols, MCP
+  server/key names, config/data paths, UI strings), source/test comments, test
+  fixtures, CHANGELOG history and CI step display labels keep the product name and
+  are not package-identity references. Updated: antigravity README line 218,
+  `docs/PI-BRIDGE-GAPS.md` heading, claude-bridge issue template.
 
 ## Durable deltas
 

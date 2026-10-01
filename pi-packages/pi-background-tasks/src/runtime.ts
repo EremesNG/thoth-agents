@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendLine, appendWatchResult, retainLogTail, resolveMaxLogBytes } from "./logs.js";
 import { evaluateCondition, validateCondition } from "./conditions.js";
-import { processExists, runCommandOnce, spawnCommand } from "./process.js";
+import { CommandTerminationError, processExists, startCommandOnce, spawnCommand, type RunningCommand } from "./process.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { currentProcessStartToken, readProcessStartToken } from "./process-identity.js";
 import { ensureTaskDir, logPathFor, nextTaskId, readMeta, writeMeta } from "./registry.js";
@@ -65,7 +65,7 @@ export interface WatchTaskParams extends CommandSpec, TaskIntentParams {
   /** Consecutive blind checks before the watch is flagged (#359). Default 3; 0 turns it off. */
   blind_checks?: number;
 }
-interface InFlightPoll { origin: string; controller: AbortController; result: Promise<CommandResult> }
+interface InFlightPoll extends RunningCommand { origin: string }
 const POLL_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.poll-handoff");
 const shared = globalThis as typeof globalThis & { [POLL_HANDOFF_KEY]?: Map<string, InFlightPoll> };
 const inFlightPolls = shared[POLL_HANDOFF_KEY] ??= new Map<string, InFlightPoll>();
@@ -405,11 +405,11 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     const poll = inFlightPolls.get(id);
     if (poll) {
-      poll.controller.abort();
-      try { await poll.result; } catch (error) {
+      try { await poll.terminate(); } catch (error) {
         recordStopError(meta, readableError(error));
         return meta;
       }
+      if (inFlightPolls.get(id) === poll) inFlightPolls.delete(id);
     }
 
     if (meta.kind === "process" && meta.pid) {
@@ -469,16 +469,16 @@ function createTaskRuntime(owner: ExtensionAPI) {
     if (activePolls.has(id)) return;
     activePolls.add(id);
     let checked: FirstWatchCheck | undefined;
+    let poll: InFlightPoll | undefined;
     try {
       const meta = readMeta(id);
       if (!meta || meta.status !== "running" || meta.kind !== "command_watch") return;
       const now = Date.now();
       if (meta.deadlineAt && now >= meta.deadlineAt) {
-        const adopted = inFlightPolls.get(id);
-        if (adopted) {
-          if (adopted.origin !== pollOrigin(meta)) throw new Error("Watch poll belongs to another origin");
-          adopted.controller.abort();
-          try { await adopted.result; } catch (error) {
+        poll = inFlightPolls.get(id);
+        if (poll) {
+          if (poll.origin !== pollOrigin(meta)) throw new Error("Watch poll belongs to another origin");
+          try { await poll.terminate(); } catch (error) {
             recordStopError(meta, readableError(error));
             return;
           }
@@ -487,11 +487,11 @@ function createTaskRuntime(owner: ExtensionAPI) {
         return;
       }
       const timeoutMs = remainingDeadlineMs(meta.deadlineAt);
-      let poll = inFlightPolls.get(id);
+      poll = inFlightPolls.get(id);
       if (poll && poll.origin !== pollOrigin(meta)) throw new Error("Watch poll belongs to another origin");
       if (!poll) {
-        const controller = new AbortController();
-        poll = { origin: pollOrigin(meta), controller, result: runCommandOnce(commandSpecFromMeta(meta), undefined, timeoutMs, controller.signal) };
+        const command = startCommandOnce(commandSpecFromMeta(meta), undefined, timeoutMs);
+        poll = Object.assign(command, { origin: pollOrigin(meta) });
         inFlightPolls.set(id, poll);
       }
       const result = await poll.result;
@@ -586,7 +586,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
       scheduleWatch(pi, id, nextWatchDelayMs(latest), getActiveSession);
     } catch (error) {
       const meta = readMeta(id);
-      if (meta && meta.status === "running" && !meta.stopRequestedAt) {
+      if (meta && meta.status === "running" && (error instanceof CommandTerminationError || poll?.cleanupPending)) {
+        recordStopError(meta, readableError(error));
+      } else if (meta && meta.status === "running" && !meta.stopRequestedAt) {
         const detail = readableError(error);
         const reason = detail;
         recordFailure(meta, "watch-poll", reason, `throw:${meta.lastCheckedAt ?? meta.startedAt}`, { category: "execution" });
@@ -595,7 +597,8 @@ function createTaskRuntime(owner: ExtensionAPI) {
       }
     } finally {
       activePolls.delete(id);
-      inFlightPolls.delete(id);
+      // A rejected result does not prove cleanup: retain the handle for stop/shutdown/reload.
+      if (poll && !poll.cleanupPending && inFlightPolls.get(id) === poll) inFlightPolls.delete(id);
       if (firstCheckWaiters.has(id)) {
         if (checked) settleFirstCheck(id, checked);
         else if (readMeta(id)?.status !== "running") settleFirstCheck(id, undefined);

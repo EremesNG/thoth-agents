@@ -1,4 +1,4 @@
-import { terminateProcessTree } from "./process-termination.js";
+import { createProcessTreeTerminator } from "./process-termination.js";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -157,6 +157,20 @@ export function spawnCommand(spec: CommandSpec, logPath: string, detached: boole
   return { child, pgid: detached && child.pid ? child.pid : undefined };
 }
 
+export class CommandTerminationError extends Error {
+  constructor(error: unknown) {
+    super(error instanceof Error ? error.message : String(error), { cause: error });
+    this.name = "CommandTerminationError";
+  }
+}
+
+export interface RunningCommand {
+  result: Promise<CommandResult>;
+  /** Retry cleanup independently of an already rejected command result. */
+  terminate(): Promise<void>;
+  readonly cleanupPending: boolean;
+}
+
 /** Run a command in its own process group, including any descendants holding output pipes. */
 export function runCommandOnce(
   spec: CommandSpec,
@@ -164,8 +178,21 @@ export function runCommandOnce(
   timeoutMs?: number,
   signal?: AbortSignal,
 ): Promise<CommandResult> {
+  return startCommandOnce(spec, maxBufferBytes, timeoutMs, signal).result;
+}
+
+/** A command result plus retained, retriable ownership of its process tree. */
+export function startCommandOnce(
+  spec: CommandSpec,
+  maxBufferBytes = 1024 * 1024,
+  timeoutMs?: number,
+  signal?: AbortSignal,
+): RunningCommand {
   validateCommandSpec(spec);
-  if (signal?.aborted) return Promise.reject(new Error("Command aborted before launch"));
+  if (signal?.aborted) return {
+    result: Promise.reject(new Error("Command aborted before launch")),
+    terminate: async () => {}, cleanupPending: false,
+  };
   const startedAt = Date.now();
   const child = spawnArgs(spec, true, ["ignore", "pipe", "pipe"]);
   const cap = Math.max(1, Math.floor(maxBufferBytes));
@@ -174,18 +201,29 @@ export function runCommandOnce(
   let timedOut = false;
   child.stdout?.on("data", (chunk: Buffer | string) => captureChunk(stdoutCapture, chunk, cap));
   child.stderr?.on("data", (chunk: Buffer | string) => captureChunk(stderrCapture, chunk, cap));
-  return new Promise((resolve, reject) => {
+  const terminateTree = child.pid ? createProcessTreeTerminator(child.pid, child.pid) : async () => {};
+  let cleanupPending = false;
+  let requestTermination!: () => Promise<void>;
+  const result = new Promise<CommandResult>((resolve, reject) => {
     let termination: Promise<void> | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const cleanup = () => {
       if (timeout) clearTimeout(timeout);
       signal?.removeEventListener("abort", onAbort);
     };
-    const terminate = () => {
-      if (termination || !child.pid) return;
-      termination = terminateProcessTree(child.pid, child.pid);
-      void termination.catch((error) => { cleanup(); reject(error); });
+    requestTermination = () => {
+      if (termination) return termination;
+      cleanupPending = true;
+      termination = terminateTree().then(() => { cleanupPending = false; }, (error) => {
+        termination = undefined;
+        cleanup();
+        const failure = new CommandTerminationError(error);
+        reject(failure);
+        throw failure;
+      });
+      return termination;
     };
+    const terminate = () => { void requestTermination().catch(() => {}); };
     const onAbort = () => terminate();
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal?.aborted) terminate();
@@ -211,6 +249,7 @@ export function runCommandOnce(
       })().catch(reject);
     });
   });
+  return { result, terminate: () => requestTermination(), get cleanupPending() { return cleanupPending; } };
 }
 
 interface CaptureBuffer {

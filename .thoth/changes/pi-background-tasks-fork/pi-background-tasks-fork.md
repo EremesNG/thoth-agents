@@ -55,12 +55,12 @@
 ## Intent
 
 Own a trimmed fork of pi-better-background-tasks as `@thoth-agents/pi-background-tasks`
-for local shell jobs whose process trees are contained by the operating system (Windows
-Job Objects, POSIX process groups), so stopping a job never misses an ordinarily created
-descendant and never touches another job's or session's processes. Jobs survive a
-same-process `/reload` of their owning session and stop, with verified termination, on
-every other shutdown, including subagent teardown and abrupt Pi death on Windows. On
-Windows, command jobs run in PowerShell 7.
+for local shell jobs. On Windows (the operator's platform) every job's process tree is
+contained by a Job Object, so stopping a job never misses an ordinarily created
+descendant and never touches another job's or session's processes, and abrupt Pi death
+kills the jobs. On POSIX the fork's existing process-group handling stays as best-effort.
+Jobs survive a same-process `/reload` of their owning session and stop on every other
+shutdown, including subagent teardown. On Windows, command jobs run in PowerShell 7.
 
 ## Non-goals
 
@@ -70,8 +70,12 @@ Windows, command jobs run in PowerShell 7.
 - No survival of child jobs across a root `/reload` (children close and their jobs
   stop), and no survival across a Pi process restart.
 - No snapshot/census-based descendant tracking and no PID-based tree kill on Windows.
-- No sandbox: work brokered through services, elevation, WSL or remote systems, and POSIX
-  descendants that leave their process group (`setsid`), are documented limits.
+- No sandbox: work brokered through services, elevation, WSL or remote systems is a
+  documented limit.
+- No POSIX containment guarantee: POSIX keeps the fork's process-group handling as
+  best-effort; reuse of a group ID after its leader is reaped, abrupt Pi death and
+  descendants that leave the group (`setsid`) are documented limits; no POSIX anchor,
+  reservation helper or guardian.
 - No Git Bash on Windows for command jobs; no bash fallback when PowerShell 7 is
   missing (fail with a clear error).
 - Standalone-star delegation exclusions stay unchanged as defense.
@@ -131,21 +135,16 @@ Windows, command jobs run in PowerShell 7.
   hidden helper process outside the job (no Node native addon, no downloaded binary)
   that survives extension reload in the same Pi process, is re-attached by the new
   instance, and exits when Pi exits so the OS closes the jobs and kills their trees.
-  No PID-based taskkill or ancestry census remains. POSIX: each job runs under a small
-  anchor process that leads its own process group, starts the command inside that group
-  and stays alive until cleanup finishes, so the group ID cannot be reused while the
-  package may signal it; termination is TERM, bounded wait, KILL to the group, then
-  verification that only the anchor remains, then authority is retired before the anchor
-  exits last. Ownership is never reconstructed from persisted PID/PGID. A persistent
-  POSIX guardian process, outside the job groups and holding a pipe from Pi, kills every
-  registered group (TERM then KILL) when that pipe closes because Pi exited or crashed.
-  Descendants that leave the group (`setsid`) are a documented limit. Tests (Windows and
+  No PID-based taskkill or ancestry census remains on Windows. POSIX (best-effort, per
+  the user): each job keeps the fork's own detached process group; termination is TERM,
+  bounded wait, KILL to the group and the group reporting ESRCH; the ancestry census is
+  removed on POSIX too; the README states the POSIX limits (group-ID reuse after the
+  leader is reaped, no cleanup on abrupt Pi death, `setsid` escapes). Tests (Windows and
   POSIX CI): containment of immediate-exit intermediates, deterministic PID-reuse cases
   (an unrelated process reusing a former descendant PID is never signalled), concurrent
   sessions with same cwd, nested host jobs, denied assignment fail-closed, attempted
-  breakaway, helper death and abrupt parent death killing the jobs, reload re-attach,
-  deterministic POSIX leader/PGID reuse (a reused group ID is never signalled), and the
-  POSIX guardian killing groups when Pi is killed abruptly. The first worker checkpoint
+  breakaway, helper death and abrupt parent death killing the jobs, reload re-attach;
+  POSIX tests cover group TERM then KILL and ESRCH verification. The first worker checkpoint
   proves helper feasibility on the real host (compile once, assignment under the actual
   Pi/Orca job nesting) before rewiring.
 - AC-8: PowerShell 7 on Windows. Command (string) jobs and watch commands run in
@@ -172,9 +171,12 @@ Windows, command jobs run in PowerShell 7.
   sessions): keep this fork as the base, replace snapshot tracking with own OS
   containment (Windows Job Object, POSIX process group), PowerShell 7 for Windows command
   jobs, survival only across same-process `/reload` (any real Pi exit, including a crash,
-  kills the jobs, on Windows and POSIX). pi-background-tasks (ISC) and pi-pwsh-notify (MIT)
+  kills the jobs on Windows). pi-background-tasks (ISC) and pi-pwsh-notify (MIT)
   were compared; only
   PowerShell 7 support is taken from the latter.
+- POSIX guarantee (user, 2026-10-01): Windows gets the full containment guarantee; POSIX
+  keeps what the fork already has (its own process group with TERM then KILL), as
+  best-effort with documented limits.
 
 ## Decisions
 
@@ -191,6 +193,12 @@ Windows, command jobs run in PowerShell 7.
   reconstruction and foreign-owner reassignment with opaque container ownership; child
   teardown must not terminate the shared helper; assert pwsh Core 7+ on windows-latest;
   README (Git Bash, census, crash disclaimer) amended; rerun real-SDK child tests.
+- Replan review round 2 (fresh Oracle subtask_thoth-oracle_1790897535266_55ddb349):
+  REJECT — the POSIX anchor cannot survive a group KILL nor distinguish itself from
+  survivors; a sound POSIX guarantee needs an outside-group reservation helper. The user
+  then scoped POSIX to the fork's existing process-group handling as best-effort
+  (Clarifications); anchor and guardian removed; AC-7, Intent, Non-goals and the delta
+  aligned. Windows keeps the full guarantee.
 - Replan (root, 2026-10-01): plan review and implementation authorization reset because
   scope changed (AC-3 rewritten, AC-6 rewritten, AC-7 containment and AC-8 PowerShell 7
   added; Job Object containment moved from non-goal into scope). Earlier implementation
@@ -281,8 +289,8 @@ Windows, command jobs run in PowerShell 7.
 
 ## Durable deltas
 
-- `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session inside operating-system process containers (Windows Job Objects assigned before the job runs, POSIX process groups), MUST keep a session's running jobs across that session's same-process reload, MUST stop every running job of the session, including in-flight watch commands, on any other session shutdown, subagent teardown or Pi process exit (including a crash), MUST terminate and verify a job's container when its leader or watch command exits on its own before recording it terminal, MUST NOT signal processes outside a job's container, and MUST run Windows command jobs in PowerShell 7.
-  - GIVEN running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild; WHEN one root reloads, the subagent ends, the job leader exits, or the root quits or its process dies; THEN reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched.
+- `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST stop every running job of the session, including in-flight watch commands, on any other session shutdown or subagent teardown and, on Windows, on Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run Windows command jobs in PowerShell 7, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
+  - GIVEN running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild; WHEN one root reloads, the subagent ends, the job leader exits, or the root quits or (on Windows) its process dies; THEN reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched.
 
 ## Plan
 

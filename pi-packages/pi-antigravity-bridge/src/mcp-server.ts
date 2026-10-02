@@ -32,6 +32,7 @@ import {
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from "@modelcontextprotocol/sdk/types.js";
 import { GATED_AGY_TOOL_SET } from "./approval-hook.js";
+import { normalizeToolSchema } from "./tool-schema.js";
 
 /** Tools we do NOT expose to agy: it would just error (the provider is already
  *  antigravity, so the tool's own guard refuses; advertising it is noise). */
@@ -300,9 +301,20 @@ export async function startMcpServer(
 	const serverName = opts.serverName ?? BRIDGE_MCP_KEY;
 	const removeConfig = () => removeBridgeMcpConfig(configDir);
 	const approvalTimeoutMs = opts.approvalTimeoutMs ?? APPROVAL_PARK_TIMEOUT_MS;
+	// The HTTP server belongs to one Pi session. Reloaded tools/list catalogs
+	// (and fresh stateless MCP transports) must not repeat omission warnings.
+	const warnedTools = new Set<string>();
 
 	const listHandler = async () => {
-		const tools = deps.listTools();
+		const tools = deps.listTools().flatMap((tool) => {
+			const inputSchema = normalizeToolSchema(tool.inputSchema);
+			if (inputSchema) return [{ ...tool, inputSchema }];
+			if (!warnedTools.has(tool.name)) {
+				warnedTools.add(tool.name);
+				log("tool-schema-omitted", { name: tool.name, reason: "input schema is not an object or a supported object-only union" });
+			}
+			return [];
+		});
 		log("list-tools", { count: tools.length });
 		return { tools };
 	};

@@ -178,7 +178,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		if (event.startsWith("abort:") || event === "connection-exited") return;
 		const d = (data ?? {}) as Record<string, unknown>;
 		let text: string;
-		if (event === "round-trip-fail") {
+		if (event === "tool-schema-omitted") {
+			text = `Pi tool ${String(d.name ?? "tool")} omitted from Antigravity: ${String(d.reason ?? "unsupported input schema")}`;
+		} else if (event === "round-trip-fail") {
 			text = `Bridge tool call failed: ${String(d.name ?? "tool")} (${String(d.reason ?? "unknown")})`;
 		} else if (event.startsWith("stall:")) {
 			text = "Antigravity stalled with no output; the turn was stopped";
@@ -783,7 +785,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			const failures = new Set([
 				"http-error", "bridge-config-write-failed", "call-tool-fail",
 				"transport-error", "handleRequest-error", "request-error",
-				"request-handler-error", "unauthorized",
+				"request-handler-error", "unauthorized", "tool-schema-omitted",
 			]);
 			// Daily file log gets every bridge event (call-tool/list-tools
 			// traffic included - it is how a parked round-trip is traced); the
@@ -810,7 +812,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 						? "error"
 						: "warn";
 			fileLog.log(s, d, level);
-			if (routineAbort) return;
+			// The warn-tier wrapper above already surfaces schema omissions with
+			// the tool name and reason (stderr headless). Do not warn twice here.
+			if (routineAbort || s === "tool-schema-omitted") return;
 			if (!failures.has(s)) return;
 			const msg = `[antigravity-bridge mcp] ${s}${d !== undefined ? " " + JSON.stringify(d) : ""}`;
 			if (activeUi) activeUi.notify(msg, "warning");

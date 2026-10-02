@@ -41,6 +41,15 @@
   there; `list` succeeded); (A) with only `agent_browser_tools`, enabling `electron` was
   refused as "unavailable in this Pi tool selection" and the tool never appeared. Explicit
   assignment is therefore the only way to give a role a deferred/advanced tool.
+- Live probe (2026-10-01, Antigravity-model `thoth-designer` with all eight
+  `agent_browser*` tools explicitly assigned): the child started without error; Pi-side
+  `agent_browser_tools` reported all five advanced tools active, but agy's MCP server
+  `pi-agy-<instance>` exposed only six of them; `agent_browser_electron` and
+  `agent_browser_network_source` had descriptor files on disk yet agy reported "tool
+  agent_browser_electron is not enabled for server pi-agy-…" when called. The Antigravity
+  bridge forwards schemas unchanged (`pi-packages/pi-antigravity-bridge/extensions/
+  index.ts:827–837`); `agent_browser_electron` has a top-level `anyOf` schema; the
+  network-source schema shape was not inspected.
 - Earlier live failures: a Claude-model child with `agent_browser_electron` failed because
   `pi-packages/pi-claude-bridge/src/mcp-server.ts:51–56,63` rejects any tool whose top-level
   schema is not `type: "object"` (the tool is a top-level `anyOf` of object variants), failing
@@ -67,7 +76,8 @@
 A subagent never fails because of how its tools are selected: explicitly assigned tools,
 including ones inactive in the root, keep reaching the child; selected tools without a child
 implementation are dropped with a visible durable warning (failing only when nothing remains);
-a tool with a non-object schema no longer breaks a Claude-bridge request; deterministic errors
+a tool with a non-object schema no longer breaks a Claude-bridge request nor silently
+vanishes from an Antigravity session; deterministic errors
 are not misclassified as network errors.
 
 ## Non-goals
@@ -98,6 +108,14 @@ are not misclassified as network errors.
   with one warning per tool per session through the bridge's existing warning channel. Unit
   tests cover wrapped unions, omitted schemas, and a mixed catalog where valid tools still
   load. Applies to root and child sessions.
+- AC-7: In pi-antigravity-bridge, the same schema rule as AC-3 applies to the tools it
+  advertises to agy (both private and legacy discovery, stream-json and ACP): object unions
+  are advertised as `{type:"object", anyOf|oneOf:[...]}`, other non-object root schemas
+  are omitted with one warning per tool per session; object schemas are unchanged. Unit
+  tests cover wrapping, omission and a mixed catalog. Live (AC-6): an Antigravity-model
+  child with `agent_browser_electron` and `agent_browser_network_source` assigned sees and
+  calls `agent_browser_electron` `action: "list"`, or, if agy still refuses the wrapped
+  union, the tool is reported as omitted with a warning (recorded truthfully).
 - AC-4: pi-subagents error classification no longer treats substrings inside identifiers or
   serialized payloads as network errors: network rules match whole words or known codes
   (`ECONNRESET`, `ENOTFOUND`, `ETIMEDOUT`, "network", "socket", "connection", "timeout",
@@ -110,7 +128,8 @@ are not misclassified as network errors.
 - AC-6: Checks and live: package typechecks/tests (pi-subagents, claude-bridge `test:unit`),
   root `check:ci`, `typecheck`, `build`, `pnpm test` (only the four known missing-sibling
   failures); after merge and restart, live: a Claude-model subagent with
-  `agent_browser_electron` assigned starts and calls `action: "list"` successfully (or, if
+  `agent_browser_electron` assigned starts and calls `action: "list"` successfully, the AC-7
+  Antigravity check passes (or, if
   the backend rejects the wrapped union, the tool is omitted with a warning and the child
   still works, recorded truthfully); a subagent whose explicit list names a tool absent in the
   child starts, shows the warning in its widget card and result.
@@ -124,6 +143,8 @@ are not misclassified as network errors.
 - Show the dropped-tools warning on the widget card (user).
 - Claude-bridge: wrap object unions, omit other non-object schemas with a warning (user).
 - Include the network misclassification fix (user).
+- Extend the schema rule to the Antigravity bridge in this change (user, after the
+  Antigravity probe).
 
 ## Decisions
 
@@ -143,8 +164,10 @@ are not misclassified as network errors.
    package docs, test-first.
 2. Worker B (sole writer of `pi-packages/pi-claude-bridge/**`): AC-3 and its README note,
    test-first, unit tests only (never the live `test` script).
-3. Root (parallel, disjoint): `docs/installation.md`, `docs/agent/harness-packaging.md`.
-4. Root: frozen checks, commits, merge, restart, AC-6 live, fresh Oracle, archive.
+3. Worker C (sole writer of `pi-packages/pi-antigravity-bridge/**`): AC-7 and its README
+   note, test-first.
+4. Root (parallel, disjoint): `docs/installation.md`, `docs/agent/harness-packaging.md`.
+5. Root: frozen checks, commits, merge, restart, AC-6 live, fresh Oracle, archive.
 
 ## Tasks
 
@@ -184,6 +207,18 @@ are not misclassified as network errors.
   - Focused check and PASS evidence: `pnpm --filter @thoth-agents/pi-claude-bridge run test:unit`
   - Return milestone: unit tests green
   - Stop / reassessment: the in-process SDK server rejects `anyOf` alongside `type: object`
+- [ ] AC-7: Antigravity bridge non-object schemas
+  - Outcome: agy receives wrapped object unions; other non-object schemas omitted with warning
+  - Known entrypoints and skill paths: `pi-packages/pi-antigravity-bridge/extensions/index.ts:827–837`, `src/mcp-server.ts:304–307`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
+  - Inputs: Exploration, Clarifications
+  - Dependencies: none
+  - Output: code + tests + README note
+  - Owner: worker C
+  - Writes: `pi-packages/pi-antigravity-bridge/**`
+  - Interface boundaries: object schemas unchanged; bridge lifecycle unchanged
+  - Focused check and PASS evidence: package typecheck/test
+  - Return milestone: tests green
+  - Stop / reassessment: agy rejects the wrapped union (apply the Decisions fallback)
 - [ ] AC-4: error classification
   - Outcome: no network misclassification from payload substrings
   - Known entrypoints and skill paths: `pi-packages/pi-subagents/src/error-metadata.ts:20–37,283–363`, tdd skill
@@ -211,8 +246,8 @@ are not misclassified as network errors.
 - [ ] AC-6: checks and live
   - Outcome: checks pass; live behavior confirmed
   - Known entrypoints and skill paths: thoth-archive skill
-  - Inputs: AC-1..AC-5
-  - Dependencies: AC-1..AC-5
+  - Inputs: AC-1..AC-5, AC-7
+  - Dependencies: AC-1..AC-5, AC-7
   - Output: evidence
   - Owner: root
   - Writes: operator agent tool lists only through the operator's `/subagents-tools`
@@ -240,6 +275,7 @@ are not misclassified as network errors.
 - AC-4: PENDING | check | evidence
 - AC-5: PENDING | check | evidence
 - AC-6: PENDING | check | evidence
+- AC-7: PENDING | check | evidence
 - Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:0fc837a611cc7040c4fe060bd15201b129a93836fabbe0f5ce88262b366bf4f7
 
 ## Closeout

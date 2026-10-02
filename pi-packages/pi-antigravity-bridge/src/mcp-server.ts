@@ -166,6 +166,41 @@ function isPidAlive(pid: number): boolean {
 	}
 }
 
+/** Process-wide across separately loaded package copies, including the interval
+ * between acquiring a name and writing the private discovery file. */
+const PRIVATE_NAMES = Symbol.for("pi-antigravity-bridge:private-server-names");
+
+export function acquirePrivateBridgeServerName(instanceId: string, preferredName?: string): { name: string; release(): void } {
+	const shared = globalThis as Record<symbol, unknown>;
+	const reservations = (shared[PRIVATE_NAMES] ??= new Set<string>()) as Set<string>;
+	const liveNames = new Set<string>();
+	let entries: string[] = [];
+	try { entries = fs.readdirSync(BRIDGE_BASE); } catch { /* no discovery files yet */ }
+	for (const entry of entries) {
+		const match = /^agy-mcp-(\d+)(?:-[0-9a-f-]+)?$/.exec(entry);
+		if (!match || !isPidAlive(Number(match[1]))) continue;
+		try {
+			const config = JSON.parse(fs.readFileSync(bridgeMcpConfigPath(path.join(BRIDGE_BASE, entry)), "utf8"));
+			if (config.mcpServers && typeof config.mcpServers === "object" && !Array.isArray(config.mcpServers)) {
+				for (const name of Object.keys(config.mcpServers)) liveNames.add(name);
+			}
+		} catch { /* absent or invalid config has no discoverable keys */ }
+	}
+	let name = preferredName ?? `pi-agy-${instanceId.replaceAll("-", "").slice(0, 8)}`;
+	for (let attempt = 0; attempt < 128; attempt++) {
+		if (/^pi-agy-[0-9a-f]{8}$/.test(name) && !reservations.has(name) && !liveNames.has(name)) {
+			reservations.add(name);
+			let released = false;
+			return { name, release: () => {
+				if (!released) reservations.delete(name);
+				released = true;
+			} };
+		}
+		name = `pi-agy-${crypto.randomBytes(4).toString("hex")}`;
+	}
+	throw new Error("Unable to acquire a unique private Antigravity MCP server name");
+}
+
 /** Best-effort cleanup of stale per-pid dirs left by crashed sessions. */
 function sweepStaleBridgeDirs(): void {
 	let entries: string[];
@@ -291,6 +326,9 @@ export async function startMcpServer(
 		configDir?: string;
 		/** Owned discovery key and MCP identity. Defaults to the legacy key. */
 		serverName?: string;
+		/** Name used by the engine to qualify tools; legacy discovery differs
+		 * from the HTTP server identity. Defaults to serverName. */
+		discoveryServerName?: string;
 		log?: (s: string, d?: unknown) => void;
 		/** Test override for the per-park timeout (deny, fail closed). */
 		approvalTimeoutMs?: number;
@@ -299,6 +337,7 @@ export async function startMcpServer(
 	const log = opts.log ?? (() => {});
 	const configDir = opts.configDir ?? bridgeMcpConfigDir();
 	const serverName = opts.serverName ?? BRIDGE_MCP_KEY;
+	const discoveryServerName = opts.discoveryServerName ?? serverName;
 	const removeConfig = () => removeBridgeMcpConfig(configDir);
 	const approvalTimeoutMs = opts.approvalTimeoutMs ?? APPROVAL_PARK_TIMEOUT_MS;
 	// The HTTP server belongs to one Pi session. Reloaded tools/list catalogs
@@ -308,10 +347,16 @@ export async function startMcpServer(
 	const listHandler = async () => {
 		const tools = deps.listTools().flatMap((tool) => {
 			const inputSchema = normalizeToolSchema(tool.inputSchema);
-			if (inputSchema) return [{ ...tool, inputSchema }];
+			const qualifiedName = `mcp_${discoveryServerName}_${tool.name}`;
+			const reason = !inputSchema
+				? "input schema is not an object or a supported object-only union"
+				: qualifiedName.length > 64
+					? `qualified tool name ${qualifiedName} is ${qualifiedName.length} characters (maximum 64)`
+					: null;
+			if (!reason) return [{ ...tool, inputSchema: inputSchema! }];
 			if (!warnedTools.has(tool.name)) {
 				warnedTools.add(tool.name);
-				log("tool-schema-omitted", { name: tool.name, reason: "input schema is not an object or a supported object-only union" });
+				log("tool-schema-omitted", { name: tool.name, reason });
 			}
 			return [];
 		});

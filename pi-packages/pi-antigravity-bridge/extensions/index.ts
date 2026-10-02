@@ -83,7 +83,7 @@ import { agyConversationDir } from "../src/agy-paths.js";
 import { createDailyLogger, type DailyLogger } from "../src/daily-log.js";
 import { registerAskAntigravityTool, toolModelsFromRaw } from "../src/ask-tool.js";
 import { registerWebTools } from "../src/web-tools.js";
-import { bridgeMcpConfigDir, startMcpServer, TOKEN_HEADER, type McpServerHandle } from "../src/mcp-server.js";
+import { acquirePrivateBridgeServerName, bridgeMcpConfigDir, startMcpServer, TOKEN_HEADER, type McpServerHandle } from "../src/mcp-server.js";
 import {
 	bridgeServerName,
 	registerBridgeServer,
@@ -144,8 +144,10 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// kickIdle, and reentry pointing at the other engine (round-7 finding).
 	const engine: Engine = loadConfig().engine;
 	const bridgeDiscovery = loadConfig().bridgeDiscovery;
-	const serverName = bridgeDiscovery === "private" ? `pi-agy-${instanceId.replaceAll("-", "")}` : "pi-antigravity-bridge";
-	const acpServerName = bridgeDiscovery === "private" ? serverName : "pi-bridge";
+	let serverName = bridgeDiscovery === "private" ? `pi-agy-${instanceId.replaceAll("-", "").slice(0, 8)}` : "pi-antigravity-bridge";
+	let acpServerName = bridgeDiscovery === "private" ? serverName : "pi-bridge";
+	let privateNameReservation: ReturnType<typeof acquirePrivateBridgeServerName> | null = null;
+	const releasePrivateName = () => { privateNameReservation?.release(); privateNameReservation = null; };
 	// Engine switching requires a restart, so the catalog-time engine read is
 	// authoritative for input advertising: image attach rides only when turns
 	// will run on the ACP engine (the stream-json CLI prompt is text-only).
@@ -904,18 +906,29 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				isError: !skill,
 			});
 		};
+		if (bridgeDiscovery === "private" && !privateNameReservation) {
+			privateNameReservation = acquirePrivateBridgeServerName(instanceId, serverName);
+			serverName = privateNameReservation.name;
+			acpServerName = serverName;
+		}
 		const r = await startMcpServer(
 			{
 				listTools,
 				onToolCall: bridgeOnToolCall,
 				onApproval: (ticket, payload) => roundTrips.onApproval(ticket, payload),
 			},
-			{ log: mcpLog, configDir: bridgeDir, serverName },
+			{
+				log: mcpLog, configDir: bridgeDir, serverName,
+				discoveryServerName: bridgeDiscovery === "private" ? serverName
+					: engine === "acp" ? acpServerName : bridgeServerName(process.pid, instanceId),
+			},
 		);
 		if (stopped || epoch !== lifecycleEpoch) {
 			await r.handle?.close();
+			releasePrivateName();
 			return;
 		}
+		if (!r.ok || !r.handle) releasePrivateName();
 		if (r.ok && r.handle) {
 			mcpHandle = r.handle;
 			if (bridgeDiscovery === "private") ownedDescriptorCacheName = serverName;
@@ -1087,6 +1100,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				} catch { /* best effort */ }
 				ownedDescriptorCacheName = null;
 			}
+			releasePrivateName();
 			hiddenBridgeTools.clear();
 			// Approval gate: unstage hooks and remove the per-pid script. Pending
 			// approvals already failed closed via handle close (bridge shutdown deny).

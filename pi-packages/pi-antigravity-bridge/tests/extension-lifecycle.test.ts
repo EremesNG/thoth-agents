@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import * as childProcess from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { afterEach, test, vi } from "vitest";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -14,6 +15,10 @@ import { agyConversationDir } from "../src/agy-paths.js";
 import { TOKEN_HEADER } from "../src/mcp-server.js";
 
 vi.mock("../src/patch-cleanup.js", () => ({ patchStatus: () => ({ present: false }), restorePatch: () => ({}) }));
+vi.mock("node:crypto", async (original) => {
+	const actual = await original<typeof import("node:crypto")>();
+	return { ...actual, randomUUID: vi.fn(actual.randomUUID) };
+});
 
 const sessions: Array<{ emit: (name: string, event?: any) => Promise<void> }> = [];
 const dirs: string[] = [];
@@ -96,7 +101,7 @@ test.each([
 	{ engine: "stream-json", discovery: "legacy-global" },
 	{ engine: "acp", discovery: "private" },
 	{ engine: "acp", discovery: "legacy-global" },
-])("$engine/$discovery: schema omission reaches headless stderr once and local/internal tools remain advertised", async ({ engine, discovery }) => {
+])("$engine/$discovery: schema and name omissions reach headless stderr once with the actual discovery name", async ({ engine, discovery }) => {
 	fixture();
 	vi.stubEnv("AGY_ENGINE", engine);
 	vi.stubEnv("AGY_BRIDGE_DISCOVERY", discovery);
@@ -109,14 +114,22 @@ test.each([
 	vi.spyOn(console, "error").mockImplementation((...args) => { stderr.push(args.join(" ")); });
 	const object = { type: "object", properties: { action: { type: "string" } } };
 	const union = { definitions: { action: object }, anyOf: [{ $ref: "#/definitions/action" }, { type: "object" }] };
+	const overlongName = "x".repeat(51);
 	const s = session("antigravity", [
 		{ name: "plain", description: "plain", parameters: object },
 		{ name: "union", description: "union", parameters: union },
 		{ name: "string_tool", description: "unsupported", parameters: { type: "string" } },
+		{ name: "agent_browser_electron", description: "22-char browser tool", parameters: object },
+		{ name: "agent_browser_network_source", description: "28-char browser tool", parameters: object },
+		{ name: overlongName, description: "overlong", parameters: object },
 	]);
 	await extension(s.pi);
 	await s.emit("session_start");
+	const privateName = Object.keys(privateConfigs()[0].servers)[0];
 	const endpoint = Object.values(privateConfigs()[0].servers)[0];
+	const legacyStream = engine === "stream-json" && discovery === "legacy-global";
+	const discoveryName = discovery === "private" ? privateName : legacyStream
+		? Object.keys(JSON.parse(fs.readFileSync(mcpConfigPath(), "utf8")).mcpServers)[0] : "pi-bridge";
 	for (let i = 0; i < 2; i++) {
 		const response = await fetch(endpoint.serverUrl, {
 			method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", [TOKEN_HEADER]: endpoint.headers[TOKEN_HEADER] },
@@ -128,11 +141,20 @@ test.each([
 		assert.equal(tools.some((tool: any) => tool.name === "string_tool"), false);
 		assert.deepEqual(tools.find((tool: any) => tool.name === "plain").inputSchema, object);
 		assert.deepEqual(tools.find((tool: any) => tool.name === "union").inputSchema, { type: "object", definitions: { action: object }, anyOf: [{ $ref: "#/definitions/action" }, { type: "object" }] });
-		assert.equal(tools.find((tool: any) => tool.name === "bridge_poll_result").inputSchema.type, "object");
+		assert.equal(tools.some((tool: any) => tool.name === "agent_browser_electron"), !legacyStream);
+		assert.equal(tools.some((tool: any) => tool.name === "agent_browser_network_source"), !legacyStream);
+		assert.equal(tools.some((tool: any) => tool.name === "bridge_poll_result"), !legacyStream);
+		assert.equal(tools.some((tool: any) => tool.name === overlongName), false);
 	}
-	assert.deepEqual(stderr.filter((text) => text.includes("omitted from Antigravity")), [
-		"[antigravity-bridge] Pi tool string_tool omitted from Antigravity: input schema is not an object or a supported object-only union",
-	]);
+	const omissions = stderr.filter((text) => text.includes("omitted from Antigravity"));
+	assert.equal(omissions[0], "[antigravity-bridge] Pi tool string_tool omitted from Antigravity: input schema is not an object or a supported object-only union");
+	const omittedNames = legacyStream ? ["agent_browser_electron", "agent_browser_network_source", overlongName, "bridge_poll_result"] : [overlongName];
+	assert.equal(omissions.length, omittedNames.length + 1, "one headless warning per omitted tool across catalog requests");
+	for (const name of omittedNames) {
+		const warning = omissions.find((text) => text.includes(`Pi tool ${name} omitted`));
+		assert.ok(warning?.includes(`qualified tool name mcp_${discoveryName}_${name}`), "warning uses the engine's actual discovery name");
+		assert.match(warning!, /characters \(maximum 64\)/);
+	}
 	assert.deepEqual(s.notices, [], "headless output must not depend on UI notifications");
 	assert.equal("type" in union, false, "Pi's validation schema stays original");
 });
@@ -186,12 +208,68 @@ test("private model-at-start writes unique private discovery, no global entries,
 	assert.equal(configs.length, 2);
 	const names = configs.map((c) => Object.keys(c.servers)[0]);
 	assert.notEqual(names[0], names[1]);
-	assert.ok(names.every((name) => /^pi-agy-[a-f0-9]+$/.test(name) && name.length <= 40));
+	assert.ok(names.every((name) => /^pi-agy-[a-f0-9]{8}$/.test(name)), "private discovery uses exactly eight hex digits");
+	assert.ok(configs.every((config) => /^agy-mcp-\d+-[0-9a-f-]{36}$/.test(path.basename(config.dir))), "instance directories retain the full UUID");
 	assert.equal(fs.existsSync(mcpConfigPath()), false);
 	await a.emit("session_start", { reason: "resume" });
 	assert.equal(privateConfigs().length, 2);
 	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("--version")).length, 1);
 	assert.deepEqual(await a.turn(), []);
+});
+
+test("private names avoid live PID-owned keys and reserve across separately loaded factories before config writes", async () => {
+	fixture();
+	const base = path.join(os.homedir(), ".pi", "agent", "antigravity-bridge");
+	const liveDir = path.join(base, `agy-mcp-${process.ppid}-aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa`);
+	const file = path.join(liveDir, ".agents", "mcp_config.json");
+	fs.mkdirSync(path.dirname(file), { recursive: true });
+	const original = JSON.stringify({ mcpServers: { "pi-agy-11111111": {}, "pi-agy-44444444": {} } });
+	fs.writeFileSync(file, original);
+	dirs.push(liveDir);
+	const a = session(); const b = session(); const c = session(); const d = session();
+	vi.mocked(randomUUID).mockReturnValueOnce("11111111-aaaa-4aaa-aaaa-aaaaaaaaaaaa");
+	await extension(a.pi);
+	await a.emit("session_start");
+	const nameA = Object.keys(privateConfigs().find((config) => config.dir !== liveDir)!.servers)[0];
+	assert.notEqual(nameA, "pi-agy-11111111", "a live PID's keys cannot be acquired");
+	assert.equal(fs.readFileSync(file, "utf8"), original, "collision checks never mutate a live config");
+	const cacheRoot = path.join(os.homedir(), ".gemini", "antigravity-cli", "mcp");
+	for (const name of [nameA, "pi-agy-11111111"]) {
+		fs.mkdirSync(path.join(cacheRoot, name), { recursive: true });
+		fs.writeFileSync(path.join(cacheRoot, name, "tool.json"), name);
+		dirs.push(path.join(cacheRoot, name));
+	}
+
+	vi.mocked(randomUUID).mockReturnValueOnce("22222222-aaaa-4aaa-aaaa-aaaaaaaaaaaa");
+	await extension(b.pi);
+	// A separately loaded package copy must share reservations, not just activeInstances.
+	vi.resetModules();
+	const secondExtension = (await import("../extensions/index.js")).default;
+	vi.mocked(randomUUID).mockReturnValueOnce("22222222-bbbb-4bbb-bbbb-bbbbbbbbbbbb");
+	await secondExtension(c.pi);
+	await Promise.all([b.emit("session_start"), c.emit("session_start")]);
+	const names = privateConfigs().filter((config) => config.dir !== liveDir).flatMap((config) => Object.keys(config.servers));
+	assert.equal(new Set(names).size, 3, "concurrent bind/config gaps still reserve names across package copies");
+	assert.ok(names.every((name) => /^pi-agy-[0-9a-f]{8}$/.test(name)));
+	await a.emit("session_shutdown");
+	assert.equal(fs.existsSync(path.join(cacheRoot, nameA)), false, "cleanup uses the acquired fallback key");
+	assert.equal(fs.readFileSync(path.join(cacheRoot, "pi-agy-11111111", "tool.json"), "utf8"), "pi-agy-11111111", "the colliding candidate's cache is not owned");
+	await b.emit("session_shutdown");
+	await c.emit("session_shutdown");
+	const e = session();
+	vi.mocked(randomUUID).mockReturnValueOnce("22222222-eeee-4eee-eeee-eeeeeeeeeeee");
+	await secondExtension(e.pi);
+	await e.emit("session_start");
+	assert.ok(privateConfigs().some((config) => "pi-agy-22222222" in config.servers), "shutdown releases the reservation after owned cleanup");
+
+	const deadDir = path.join(base, "agy-mcp-2147483647-dddddddd-dddd-4ddd-dddd-dddddddddddd");
+	fs.mkdirSync(path.join(deadDir, ".agents"), { recursive: true });
+	fs.writeFileSync(path.join(deadDir, ".agents", "mcp_config.json"), JSON.stringify({ mcpServers: { "pi-agy-33333333": {} } }));
+	dirs.push(deadDir);
+	vi.mocked(randomUUID).mockReturnValueOnce("33333333-cccc-4ccc-cccc-cccccccccccc");
+	await secondExtension(d.pi);
+	await d.emit("session_start");
+	assert.ok(privateConfigs().some((config) => "pi-agy-33333333" in config.servers), "dead PID-owned keys are not live collisions");
 });
 
 test("non-antigravity sessions do no bridge work; model_select starts once with stream-time fallback", async () => {
@@ -247,6 +325,7 @@ test("ACP lazy fallback and resume supply the owned bridge before session/new an
 	assert.deepEqual(opens.map((r) => r.method), ["session/new", "session/load"]);
 	assert.equal(observed.length, 2);
 	const name = Object.keys(observed[0].servers)[0];
+	assert.match(name, /^pi-agy-[0-9a-f]{8}$/);
 	assert.equal(Object.keys(observed[1].servers)[0], name, "resume preserves the instance-owned name");
 	for (const [i, request] of opens.entries()) {
 		const endpoint = observed[i].servers[name];
@@ -347,6 +426,7 @@ test("owned shutdown removes only its descriptor cache after termination, preser
 	await extension(a.pi); await extension(b.pi);
 	await a.emit("session_start");
 	const ownName = Object.keys(privateConfigs()[0].servers)[0];
+	assert.match(ownName, /^pi-agy-[0-9a-f]{8}$/);
 	await b.emit("session_start");
 	const siblingName = privateConfigs().flatMap((config) => Object.keys(config.servers)).find((name) => name !== ownName)!;
 	const cacheRoot = path.join(os.homedir(), ".gemini", "antigravity-cli", "mcp");

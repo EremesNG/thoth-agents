@@ -243,6 +243,13 @@ are not misclassified as network errors.
   dropped-tools warning on the running widget card; completion carried "Dropped tools
   unavailable in the child session (missing implementation: probe_missing_tool)" and
   history `dropped_tools_json` = ["probe_missing_tool"].
+- Final verification round 1 (fresh Oracle subtask_thoth-oracle_1790922137713_03e3ed45):
+  FAIL on AC-3/AC-5/AC-7 — Antigravity's `tool-schema.ts` early return for typed object
+  roots bypassed union eligibility (empty, mixed, dangling and cyclic unions advertised)
+  and one eligible union masked an ineligible sibling union; both bridges rejected local
+  `$ref` pointers traversing array indices (e.g. `#/$defs/shape/allOf/0`). AC-1, AC-2,
+  AC-4, AC-6 PASS; baseline and delta confirmed. Repair assigned to one worker owning both
+  bridges' `tool-schema` modules and tests so the rule stays identical.
 - Backend rule (AC-3): a wrapped union that a backend rejects in the live check is
   switched to omission with a warning in that bridge; the request never fails.
 

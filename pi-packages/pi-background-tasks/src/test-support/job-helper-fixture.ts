@@ -13,6 +13,7 @@ export function fakeJobHelper(basePid:number) {
   const requests:{op:string;key?:string}[]=[];
   let launchCount=0,failTerminations=1,queryError:string|undefined,oneQueryError:string|undefined,ignoreTerminate=false,unavailable=false;
   let onTerminate:(()=>void)|undefined;
+  let launchFault=false;
   const stdout=new PassThrough(),stderr=new PassThrough();
   const child=Object.assign(new EventEmitter(),{pid:basePid+999,stdout,stderr,exitCode:null as number|null,signalCode:null as string|null,unref(){},kill(){this.exitCode=1;(this as unknown as EventEmitter).emit('exit',1,null);return true;}});
   const reply=(id:number,value:Record<string,unknown>)=>stdout.write(JSON.stringify({id,...value})+'\n');
@@ -25,10 +26,11 @@ export function fakeJobHelper(basePid:number) {
         jobs.set(request.key,state);
         // Native output files exist even when the process writes nothing.
         fixtureFiles(request.log,request.stderrLog);
+        if(launchFault){launchFault=false;reply(request.id,{error:'launch acknowledgment lost'});continue;}
         reply(request.id,{pid:[...state.live][0]});continue;
       }
       const state=jobs.get(request.key);
-      if(!state){reply(request.id,{error:'unknown owned container'});continue;}
+      if(!state){reply(request.id,{error:'unknown owned container',errorCode:'UNKNOWN_KEY'});continue;}
       if(request.op==='query'&&(queryError||oneQueryError)) {reply(request.id,{error:queryError||oneQueryError});oneQueryError=undefined;continue;}
       if(request.op==='terminate') {
         state.live.delete([...state.live].find(pid=>pid===basePid) ?? -1);
@@ -56,6 +58,7 @@ export function fakeJobHelper(basePid:number) {
   }};
   return {live:primary.live,child:leader,requests,helper:child,
     get launchCount(){return launchCount;},
+    failLaunch(){launchFault=true;},
     allowCleanup(){failTerminations=0;queryError=undefined;oneQueryError=undefined;ignoreTerminate=false;unavailable=false;},
     failQuery(message?:string){queryError=message;},
     failHelper(value=true){unavailable=value;},

@@ -6,9 +6,22 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { resolvePowerShell } from './powershell.js';
 
-export interface JobLaunch { executable: string; argv: string[]; cwd: string; env: NodeJS.ProcessEnv; log: string; stderrLog?: string; denyAssignment?: boolean; terminationFault?: 'timeout' | 'malformed' | 'protocol-error' }
+export type ResponseFault = 'timeout' | 'malformed' | 'schema' | 'protocol-error';
+export interface JobLaunch { executable: string; argv: string[]; cwd: string; env: NodeJS.ProcessEnv; log: string; stderrLog?: string; denyAssignment?: boolean; terminationFault?: 'timeout' | 'malformed' | 'protocol-error'; responseFaults?: Partial<Record<'launch' | 'terminate' | 'query' | 'release', ResponseFault>> }
 export interface JobState { pid: number; activeProcesses: number; exitCode: number | null; creationTime: string }
-interface Response extends Partial<JobState> { id?: number; event?: string; error?: string; failedPid?: number; neverResumed?: boolean }
+interface Response extends Partial<JobState> { id?: number; event?: string; error?: string; errorCode?: string; released?: boolean; failedPid?: number; neverResumed?: boolean }
+export interface PendingWindowsJob extends Omit<WindowsJob, 'pid'> {
+  readonly pid: number | undefined;
+  readonly ready: Promise<WindowsJob>;
+}
+const unknownKey = (error: unknown) => (error as {code?: string})?.code === 'UNKNOWN_KEY';
+function validateResponse(op:string, value:Response):void {
+  const integer=(n:unknown)=>typeof n==='number' && Number.isSafeInteger(n) && n>=0;
+  const state=integer(value.pid) && value.pid!>0 && integer(value.activeProcesses) &&
+    (value.exitCode===null || integer(value.exitCode)) && typeof value.creationTime==='string' && Boolean(value.creationTime);
+  if (op==='launch' ? !integer(value.pid) || value.pid!<1 : op==='release' ? value.released!==true : !state)
+    throw new Error(`Windows job helper ${op} returned a malformed response`);
+}
 export interface WindowsJob {
   readonly pid: number;
   query(): Promise<JobState>;
@@ -35,7 +48,9 @@ export class WindowsJobClient {
   private sequence=0;
   private pending=new Map<number,{resolve:(value:Response)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
   private stderr='';
-  constructor(private options:{testFaults?:boolean}={}) {}
+  // Retain opaque authority even when launch's public promise rejects.
+  private jobs=new Map<string,PendingWindowsJob>();
+  constructor(private options:{testFaults?:boolean;requestTimeoutMs?:number}={}) {}
   get helperPid():number|undefined {return this.child?.pid;}
   private start():Promise<void> {
     if(this.ready)return this.ready;
@@ -54,7 +69,7 @@ export class WindowsJobClient {
           const pending=value.id===undefined?undefined:this.pending.get(value.id);
           if(!pending)return;
           this.pending.delete(value.id!);clearTimeout(pending.timer);
-          if(value.error)pending.reject(Object.assign(new Error(value.error),{failedPid:value.failedPid,neverResumed:value.neverResumed,launchFailed:true}));else pending.resolve(value);
+          if(value.error)pending.reject(Object.assign(new Error(value.error),{code:value.errorCode,failedPid:value.failedPid,neverResumed:value.neverResumed}));else pending.resolve(value);
         } catch {
           // An unparseable line cannot safely be attributed to a request. Leave
           // requests pending for their own response/deadline; never close shared
@@ -73,39 +88,68 @@ export class WindowsJobClient {
     this.failure ??= error;
     for(const item of this.pending.values()){clearTimeout(item.timer);item.reject(this.failure);}this.pending.clear();
   }
-  private async request(op:string,extra:Record<string,unknown>={}):Promise<Response> {
-    try { await this.start();if(this.failure)throw this.failure; }
-    catch(error) { if(op==='launch')Object.assign(error as Error,{launchFailed:true});throw error; }
-    return new Promise((resolve,reject)=>{
+  private async request(op:string,extra:Record<string,unknown>={},onSend?:()=>void):Promise<Response> {
+    await this.start();if(this.failure)throw this.failure;
+    return new Promise<Response>((resolve,reject)=>{
       const id=++this.sequence;
       // A missing response says nothing about the helper or other jobs. Keep the
       // container's handle owned and let its caller retry through the same helper.
-      const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error(`Windows job helper ${op} timed out`));},10000);timer.unref();
+      const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error(`Windows job helper ${op} timed out`));},this.options.requestTimeoutMs ?? 10000);timer.unref();
       this.pending.set(id,{resolve,reject,timer});
-      this.child!.stdin.write(JSON.stringify({id,op,...extra})+'\n');
-    });
+      try {
+        const line=JSON.stringify({id,op,...extra})+'\n';
+        onSend?.();
+        this.child!.stdin.write(line,error=>{if(error){this.pending.delete(id);clearTimeout(timer);reject(error);}});
+      } catch(error) {this.pending.delete(id);clearTimeout(timer);reject(error);}
+    }).then(value=>{validateResponse(op,value);return value;});
   }
-  async launch(spec:JobLaunch):Promise<WindowsJob> {
+  /** Reserve ownership synchronously, before any launch I/O or acknowledgment. */
+  createJob(spec:JobLaunch):PendingWindowsJob {
     const key=randomUUID();
-    const result=await this.request('launch',{...spec,key,executable:executablePath(spec.executable,spec.env,spec.cwd)}).catch(error=>{
-      error.message = `Could not launch executable ${spec.executable} in ${spec.cwd}. Check the executable path and working directory. ${error.message}`;
-      throw error;
-    });
-    let verified=false, released=false, last:JobState|undefined, stopping:Promise<void>|undefined;
+    let sent=false, acknowledged=false, absent=false, verified=false, released=false;
+    let pid:number|undefined, last:JobState|undefined, stopping:Promise<void>|undefined;
+    let submitted!:()=>void;
+    const submission=new Promise<void>(resolve=>{submitted=resolve;});
     const query=async()=>{
-      if(released)return last!;
-      last=await this.request('query',{key}) as JobState;return last;
+      await submission;
+      if(released && last)return last;
+      last=await this.request('query',{key}) as JobState;pid=last.pid;return last;
     };
-    const job:WindowsJob={pid:result.pid!,query,
+    const job:PendingWindowsJob={get pid(){return pid;},get ready(){return ready;},query,
       terminate:()=>{
         if(verified)return Promise.resolve();if(stopping)return stopping;
-        stopping=(async()=>{await this.request('terminate',{key});const until=performance.now()+3000;for(;;){const state=await query();if(state.activeProcesses===0&&state.exitCode!==null)break;if(performance.now()>=until)throw new Error('Windows job still has active processes');await pause();}verified=true;})().catch(error=>{stopping=undefined;throw error;});return stopping;
+        stopping=(async()=>{
+          // Order after the launch write, not its acknowledgment: teardown must
+          // also work while that response is still pending or permanently lost.
+          await submission;
+          if(!sent){absent=verified=true;return;}
+          try {await this.request('terminate',{key});}
+          catch(error){if(!acknowledged && unknownKey(error)){absent=verified=true;return;}throw error;}
+          const until=performance.now()+3000;
+          for(;;){const state=await query();if(state.activeProcesses===0&&state.exitCode!==null)break;if(performance.now()>=until)throw new Error('Windows job still has active processes');await pause();}
+          verified=true;
+        })().catch(error=>{stopping=undefined;throw error;});return stopping;
       },
-      waitForExit:async()=>{for(;;){const value=await query();if(value.exitCode!==null)return value.exitCode;await pause();}},
-      release:async()=>{if(released)return;if(!verified)throw new Error('Cannot release an unverified Windows job');await this.request('release',{key});released=true;},
+      waitForExit:async()=>{await ready;for(;;){const value=await query();if(value.exitCode!==null)return value.exitCode;await pause();}},
+      release:async()=>{
+        if(released)return;if(!verified)throw new Error('Cannot release an unverified Windows job');
+        if(!absent)try{await this.request('release',{key});}catch(error){if(!unknownKey(error))throw error;}
+        released=true;this.jobs.delete(key);
+      },
     };
+    this.jobs.set(key,job);
+    const ready=Promise.resolve().then(()=>this.request('launch',{...spec,key,executable:executablePath(spec.executable,spec.env,spec.cwd)},()=>{sent=true;submitted();})).then(result=>{
+      acknowledged=true;pid=result.pid!;return job as WindowsJob;
+    }).catch(error=>{
+      error.message = `Could not launch executable ${spec.executable} in ${spec.cwd}. Check the executable path and working directory. ${error.message}`;
+      // Startup/serialization may fail before any write: unblock truthful cleanup.
+      submitted();
+      // Compatibility launch callers can also recover the reserved handle.
+      throw Object.assign(error,{job});
+    });
     return job;
   }
+  async launch(spec:JobLaunch):Promise<WindowsJob> {return this.createJob(spec).ready;}
   /** Explicit private-client teardown for probes/tests; runtime sessions never call this. */
   async close():Promise<void> {
     const child=this.child;if(!child||child.exitCode!==null||child.signalCode!==null)return;

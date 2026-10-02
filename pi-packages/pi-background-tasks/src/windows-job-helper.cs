@@ -135,8 +135,15 @@ public static class WindowsJobPrototype
             if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment);
         }
     }
+    static Container Find(string key) {
+        Container job;
+        if (Jobs.TryGetValue(key, out job)) return job;
+        var error = new KeyNotFoundException("Unknown job key");
+        error.Data["errorCode"] = "UNKNOWN_KEY";
+        throw error;
+    }
     public static object Query(string key) {
-        var job = Jobs[key]; Accounting info;
+        var job = Find(key); Accounting info;
         Check(QueryInformationJobObject(job.Job, 1, out info, (uint)Marshal.SizeOf<Accounting>(), IntPtr.Zero), "QueryInformationJobObject");
         uint? exitCode = null;
         if (WaitForSingleObject(job.Process, 0) == 0) { uint code; Check(GetExitCodeProcess(job.Process, out code), "GetExitCodeProcess"); exitCode = code; }
@@ -144,9 +151,9 @@ public static class WindowsJobPrototype
         Check(GetProcessTimes(job.Process, out creation, out exit, out kernel, out user), "GetProcessTimes");
         return new { pid = job.Pid, activeProcesses = info.ActiveProcesses, totalProcesses = info.TotalProcesses, exitCode, creationTime = DateTime.FromFileTimeUtc(creation).ToString("O") };
     }
-    public static object Terminate(string key) { Check(TerminateJobObject(Jobs[key].Job, 1), "TerminateJobObject"); return Query(key); }
+    public static object Terminate(string key) { Check(TerminateJobObject(Find(key).Job, 1), "TerminateJobObject"); return Query(key); }
     public static object Release(string key) {
-        var job = Jobs[key]; Accounting info;
+        var job = Find(key); Accounting info;
         Check(QueryInformationJobObject(job.Job, 1, out info, (uint)Marshal.SizeOf<Accounting>(), IntPtr.Zero), "QueryInformationJobObject(release)");
         if (info.ActiveProcesses != 0) throw new InvalidOperationException("Cannot release a nonempty job");
         Jobs.Remove(key); CloseHandle(job.Job); CloseHandle(job.Process); return new { released = true };

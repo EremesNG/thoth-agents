@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolvePowerShell } from './powershell.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WindowsJobClient, getWindowsJobClient } from './windows-job-client.js';
+import { WindowsJobClient, getWindowsJobClient, type ResponseFault } from './windows-job-client.js';
 const dirs: string[] = [];
 const clients: WindowsJobClient[] = [];
 const live = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -40,6 +40,34 @@ describe.skipIf(process.platform !== 'win32')('Windows Job Object protocol', () 
     expect((await root.query()).activeProcesses).toBeGreaterThan(0);
     await root.terminate();await root.release();
   }, 30000);
+  it.each(['timeout', 'malformed', 'schema', 'protocol-error'] as const)('retains the pre-launch container after a %s LAUNCH acknowledgment', async fault => {
+    const dir=mkdtempSync(join(tmpdir(),'bg-lost-launch-'));dirs.push(dir);
+    const client=new WindowsJobClient({testFaults:true,requestTimeoutMs:500});clients.push(client);
+    const spec={executable:process.execPath,argv:['-e','setInterval(()=>{},1000)'],cwd:dir,env:process.env,log:join(dir,'lost.log')};
+    const root=await client.launch({...spec,log:join(dir,'root.log')});
+    const failure=await client.launch({...spec,responseFaults:{launch:fault}}).catch(error=>error);
+    expect(failure).toBeInstanceOf(Error);
+    const job=failure.job;
+    expect(job).toBeDefined();
+    expect((await job.query()).activeProcesses).toBeGreaterThan(0);
+    await expect(job.release()).rejects.toThrow(/unverified/);
+    await job.terminate();expect((await job.query()).activeProcesses).toBe(0);await job.release();
+    expect((await root.query()).activeProcesses).toBeGreaterThan(0);await root.terminate();await root.release();
+  });
+  it.each((['terminate', 'query', 'release'] as const).flatMap(op=>(['timeout','malformed','schema','protocol-error'] satisfies ResponseFault[]).map(fault=>({op,fault}))))('retries a $fault $op acknowledgment by the same container key', async ({op,fault}) => {
+    const dir=mkdtempSync(join(tmpdir(),'bg-lost-response-'));dirs.push(dir);
+    const client=new WindowsJobClient({testFaults:true,requestTimeoutMs:500});clients.push(client);
+    const spec={executable:process.execPath,argv:['-e','setInterval(()=>{},1000)'],cwd:dir,env:process.env,log:join(dir,'log')};
+    const job=await client.launch({...spec,responseFaults:{[op]:fault}});
+    const root=await client.launch({...spec,log:join(dir,'root.log')});
+    if(op==='release')await job.terminate();
+    await expect(job[op]()).rejects.toThrow(/timed out|malformed|invalid protocol/);
+    if(op==='query')expect((await job.query()).activeProcesses).toBeGreaterThan(0);
+    await job.terminate();
+    if(op!=='release')expect((await job.query()).activeProcesses).toBe(0);
+    await job.release();expect((await job.query()).activeProcesses).toBe(0);
+    expect((await root.query()).activeProcesses).toBeGreaterThan(0);await root.terminate();await root.release();
+  });
   it('fails assignment closed without ever resuming the suspended child', async () => {
     const {dir,client}=setup(true);const marker=join(dir,'resumed');const script=join(dir,'child.cjs');writeFileSync(script,`require('node:fs').writeFileSync(${JSON.stringify(marker)},'bad')`);
     const error=await client.launch({executable:process.execPath,argv:[script],cwd:dir,env:process.env,log:join(dir,'log'),denyAssignment:true}).catch(e=>e);

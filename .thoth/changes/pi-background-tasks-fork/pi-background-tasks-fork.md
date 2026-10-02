@@ -514,21 +514,41 @@ the reviewer's caution.
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 7979ad8a4de6581b3cacb00c63d706e8d76c477ec6574890d27e384a8c8a4c05
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
-- AC-6: PENDING | check | evidence
-- AC-7: PENDING | check | evidence
-- AC-8: PENDING | check | evidence
+Fresh read-only Oracle subtask_thoth-oracle_1790908903185_b969f84c returned PASS at HEAD
+590ec6f after post-replan rounds 1-2 FAIL repairs (c75e4a0, db9a24d); containment work
+e55ef5e, 7306e4d, a250c01 on top of kept AC-1/2/4/5 commits.
+
+- AC-1: PASS | provenance/MIT, deps, Biome exclusion + fresh typecheck | package 258 passed / 4 skipped; frozen install evidence reused
+- AC-2: PASS | scope review + package suite | local-only jobs retained; remote, sandbox and goal absent
+- AC-3: PASS | independent acknowledgment/lifecycle probes + regressions | reload-gap single delivery, natural-exit verified cleanup, every watch branch, per-instance isolation
+- AC-4: PASS | lost-LAUNCH child-teardown probe + pi-subagents suite | 525 passed / 1 skipped incl. real-SDK disposal, hanging handler and origin isolation
+- AC-5: PASS | docs, adapter guidance/test, passthrough default, CI review | Ubuntu and Windows CI cover the package; usage names PowerShell 7 on Windows
+- AC-6: PASS | recorded live containment evidence + root checks | reload/once, natural exit, /new, children, second session and abrupt Pi death verified by PID and creation time; root only the four known missing-sibling failures
+- AC-7: PASS | 16 real-helper acknowledgment-fault and 16 runtime scenarios | same-key reconciliation, verified release, unrelated origin preserved, breakaway denied, helper-death kills jobs, hidden launches
+- AC-8: PASS | PowerShell regressions | discovery, quoting, capture, UTF-8, exit codes, missing-shell failure
 - Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:038f88e274ae0db74c316f4ccf5341e693c7e06cc80719c4bcdf5222732c4614
+- Source: pi-packages/pi-background-tasks/src/windows-job-client.ts | sha256:747501a932dc273d8f49aa7adce849b1d0b26e1eb276578d505d0a06a0025af2
+- Source: pi-packages/pi-background-tasks/src/windows-job-helper.ps1 | sha256:4f01d9734736003607032ba067f0d686350bb0db3736fe301adc686a5eae7fd9
+- Source: pi-packages/pi-background-tasks/src/windows-job-helper.cs | sha256:e9e4bd8997c3cefa9b18d8526a6f58951330a82f28c754f23b51280f3fe5eaea
+- Source: pi-packages/pi-background-tasks/src/windows-process.ts | sha256:ceff38c01c118df23499301bf147ac78c0f8e40d9af4e18c7eb12a0ef23c6eb5
+- Source: pi-packages/pi-background-tasks/src/powershell.ts | sha256:b4c0ae3e7fe0f7cd0527287eb7b728d7345c2a6feaadbae2635e49b4b9b91215
+- Source: pi-packages/pi-background-tasks/src/process.ts | sha256:e97267ab96efc2ddde3085ed388bb80d6b558559366b80ac871c3537ff9e35eb
+- Source: pi-packages/pi-background-tasks/src/process-termination.ts | sha256:76eca556fa287128c1bdb3c9e89da3de64c1315cb42f0ca3c3699ff6a717f662
+- Source: pi-packages/pi-background-tasks/src/runtime.ts | sha256:f87c814f7c219755c75d4cb6206023731e6ab711f146bc04967dc7bb7eb48f12
+- Source: pi-packages/pi-background-tasks/src/index.ts | sha256:22060d7c22aad15fc350912eb56fe47e3ff8c96efa197ff5d16c36497ec1a45c
+- Source: pi-packages/pi-background-tasks/src/tools.ts | sha256:dbb9da53696df3e28445bddc09d6ea1788b85ed3f057c73a385383b424b97a47
+- Source: pi-packages/pi-background-tasks/README.md | sha256:5ebf0409cf885799965d2162431970c9f769ef787beaac09354dbc9f22aaeaec
+- Source: pi-packages/pi-background-tasks/package.json | sha256:cfcc317c461ae60eb7a45647b8f1a051d4f37658bed8f6d081c52c6d63bb0713
+- Source: pi-packages/pi-subagents/src/config.ts | sha256:d86f8d481700002ec8180233622c6c21d34b061f5fde76496f6349bec57daf51
+- Source: pi-packages/pi-subagents/src/runner/session-teardown.ts | sha256:8dbb3127dff8e41751eaed7be79361f6006a5c3bdc0b0a95f93f1c4789f1519d
+- Source: src/harness/adapters/pi.ts | sha256:24dcb18eb181cafaff9da64258432e7985715ffd35f5385fd713c1944713863c
+- Source: .github/workflows/ci.yml | sha256:09a751383c1d0673f4a66fc9a0a7f3dea1c8bbf64ff7eaa97e11a6316890f248
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

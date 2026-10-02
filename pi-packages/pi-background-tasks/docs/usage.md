@@ -2,7 +2,7 @@
 
 ## Spawn
 
-Use `bg_task_spawn` for a long-running command. Supply either `command` (Bash-compatible shell text) or `shell:false` with `argv` (literal executable and arguments). Optional fields include `name`, `cwd`, `env`, `callback`, `timeout_seconds`, and `max_log_bytes`.
+Use `bg_task_spawn` for a long-running command. Supply either `command` (PowerShell 7 syntax on Windows; the configured POSIX shell's syntax elsewhere, defaulting to `/bin/bash`) or `shell:false` with `argv` (literal executable and arguments). Optional fields include `name`, `cwd`, `env`, `callback`, `timeout_seconds`, and `max_log_bytes`.
 
 ```json
 {"name":"build","shell":false,"argv":["node","build.mjs"],"timeout_seconds":1800}

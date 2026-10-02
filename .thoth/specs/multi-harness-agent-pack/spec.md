@@ -507,3 +507,13 @@ Explorer and Librarian MUST return facts with evidence, verification, risks and 
 - **GIVEN** an Explorer or Librarian assignment that ends with findings and an open choice it cannot settle
 - **WHEN** the specialist returns in any harness
 - **THEN** its return lists facts and the open question with options and their facts, contains no recommendation or next action, and root decides or asks Oracle
+
+### Requirement: Own session-scoped Pi background shell jobs
+
+The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST on Windows stop every running job of the session, including in-flight watch commands, on any other session shutdown, subagent teardown or Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run Windows command jobs in PowerShell 7, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
+
+#### Scenario: Own session-scoped Pi background shell jobs
+
+- **GIVEN** running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild
+- **WHEN** one root reloads, the subagent ends, the job leader exits, or the root quits or (on Windows) its process dies
+- **THEN** on Windows reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched, while on POSIX the non-reload cleanup triggers attempt TERM, a bounded wait, KILL and ESRCH verification of each job's group, subject to the documented limits

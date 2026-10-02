@@ -143,23 +143,33 @@ describe("session-owned background work lifecycle", () => {
     }
   }, 20000);
 
-  it("an adopted watch poll completes once without overlapping execution or duplicate delivery", async () => {
+  it.each([false, true])("an adopted watch poll completes once without overlapping execution or duplicate delivery (settles in reload gap=%s)", async (settlesInGap) => {
     const before = lifecycleHost("completed-poll-reload");
     await before.emit("session_start");
     const directory = mkdtempSync(join(tmpdir(), "bg-completed-poll-"));
     const marker = join(directory, "polls");
     const release = join(directory, "release");
+    const pidFile = join(directory, "pid");
     const launch = before.execute("bg_task_watch", { shell: false, argv: [process.execPath, "-e", `
-      const fs = require('node:fs'); fs.appendFileSync(process.argv[1], 'poll\\n');
+      const fs = require('node:fs'); fs.writeFileSync(process.argv[3], String(process.pid)); fs.appendFileSync(process.argv[1], 'poll\\n');
       const timer = setInterval(() => {
         if (fs.existsSync(process.argv[2])) { clearInterval(timer); console.log('ready'); }
       }, 25);
-    `, marker, release], success_when: {type: "stdout_contains", value: "ready"}, timeout_seconds: 0 });
+    `, marker, release, pidFile], success_when: {type: "stdout_contains", value: "ready"}, timeout_seconds: 0 });
     await expect.poll(() => { try { return readFileSync(marker, "utf8"); } catch { return ""; } }, {timeout: 10000}).toBe("poll\n");
     await before.emit("session_shutdown", "reload");
     const id = (await launch).match(/bg_[a-z0-9_]+/)![0];
     const after = lifecycleHost("completed-poll-reload");
     try {
+      if (settlesInGap) {
+        writeFileSync(release, "finish");
+        const pid = Number(readFileSync(pidFile, "utf8"));
+        await expect.poll(() => processExists(pid), {timeout: 10000}).toBe(false);
+        // Let the exited command's verified settlement run while no instance can consume it.
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        expect((await before.status(id)).status).toBe("running");
+        expect(before.messages).toEqual([]);
+      }
       await after.emit("session_start");
       writeFileSync(release, "finish");
       await expect.poll(() => after.messages.length, {timeout: 10000}).toBe(1);

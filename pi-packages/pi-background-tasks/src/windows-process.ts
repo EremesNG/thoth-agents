@@ -2,25 +2,32 @@ import { EventEmitter } from 'node:events';
 import { closeSync, fstatSync, mkdtempSync, openSync, readSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getWindowsJobClient } from './windows-job-client.js';
+import { getWindowsJobClient, type PendingWindowsJob } from './windows-job-client.js';
 import { commandExecution, CommandTerminationError, completeUtf8Length, type RunningCommand, type SpawnedProcess } from './process.js';
 import type { CommandSpec, CommandResult } from './types.js';
 
 export function spawnWindowsCommand(spec:CommandSpec,log:string,stderrLog?:string):SpawnedProcess {
   const child=Object.assign(new EventEmitter(),{pid:undefined as number|undefined,unref(){}});
-  const ready=Promise.resolve().then(()=>{
-    let execution;
-    try { execution=commandExecution(spec); }
-    catch(error) { throw Object.assign(error as Error,{launchFailed:true}); }
-    return getWindowsJobClient().launch({executable:execution.execPath,argv:execution.execArgs,cwd:spec.cwd || process.cwd(),env:{...process.env,...spec.env},log,stderrLog});
+  let owned:PendingWindowsJob|undefined;
+  const prepared=Promise.resolve().then(()=>{
+    const execution=commandExecution(spec);
+    owned=getWindowsJobClient().createJob({executable:execution.execPath,argv:execution.execArgs,cwd:spec.cwd || process.cwd(),env:{...process.env,...spec.env},log,stderrLog});
+    return owned;
   });
+  const ready=prepared.then(job=>job.ready);
   let exitEmitted=false;
   const emitExit=(code:number|null)=>{if(exitEmitted)return;exitEmitted=true;child.emit('exit',code,null);child.emit('close',code,null);};
   const terminate=async()=>{
-    const job=await ready.catch(error=>{if(error.launchFailed)return undefined;throw error;});
-    if(job){await job.terminate();emitExit((await job.query()).exitCode);await job.release();}
+    await prepared.catch(()=>{});
+    if(owned){
+      await owned.terminate();await owned.release();
+      // Released containers return their verified cached state; no additional
+      // acknowledgment can strand cleanup after a successful release.
+      emitExit(owned.pid ? (await owned.query()).exitCode : null);
+    }else emitExit(null);
   };
   void ready.then(async job=>{
+    if(exitEmitted)return;
     child.pid=job.pid;child.emit('spawn');
     emitExit(await job.waitForExit());
   }).catch(error=>{if(!exitEmitted){child.emit('error',error);emitExit(null);}});

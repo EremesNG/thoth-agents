@@ -196,6 +196,20 @@ Windows, command jobs run in PowerShell 7.
   reconstruction and foreign-owner reassignment with opaque container ownership; child
   teardown must not terminate the shared helper; assert pwsh Core 7+ on windows-latest;
   README (Git Bash, census, crash disclaimer) amended; rerun real-SDK child tests.
+- Final verification after replan, round 2 (fresh Oracle
+  subtask_thoth-oracle_1790906745716_638441e4): every round-1 defect confirmed repaired by
+  independent probes; FAIL on one new path — a lost LAUNCH acknowledgment dropped the
+  client's container key, so stop/shutdown/child teardown sent no termination while the
+  job kept running. Repaired in `db9a24d` (fresh worker, test-first) as an invariant over
+  every helper request: the key is reserved before LAUNCH I/O; lost, timed-out, malformed
+  or protocol-error LAUNCH, TERMINATE, QUERY and RELEASE acknowledgments keep ownership
+  and retry by key; a launch rejected before the job existed reconciles as UNKNOWN_KEY
+  and records failure; teardown no longer waits for the LAUNCH acknowledgment timeout;
+  the shared helper is never killed for these failures. Frozen checks at db9a24d:
+  frozen install 0; background-tasks typecheck 0 and two runs 258 passed / 4 skipped;
+  pi-subagents 525 / 1 skipped; root check:ci, typecheck, build 0 (no generated drift);
+  root test 1208 passed with only the four known missing-sibling failures; no stray
+  helpers.
 - Repair after replan round 1 (`c75e4a0`, fresh worker, test-first): settled watch
   results and cleanup proof survive the reload gap until consumed once (regression failed
   with two poll executions before the fix); per-request timeout, malformed JSON and

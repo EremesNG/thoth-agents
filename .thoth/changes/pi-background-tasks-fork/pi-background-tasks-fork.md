@@ -294,6 +294,29 @@ Windows, command jobs run in PowerShell 7.
   8/8 isolated reruns and the next full run passed); pi-subagents 525 passed / 1 skipped.
   Windows test config bounds workers to 2 with a 15 s timeout for real CIM helpers.
 
+- Replan implementation checkpoint (root, 2026-10-01): one worker on the operator's
+  model, milestone by milestone. Milestone 1 real-host feasibility: nested Job Object
+  assignment works under Pi/Orca (IsProcessInJob true), a grandchild through a
+  short-lived intermediate keeps ActiveProcesses at 1 until TerminateJobObject then 0,
+  killing the helper's real spawning Node parent (no /T) kills helper and tree in
+  ~155 ms, injected assignment failure terminates the suspended child unresumed; cold
+  helper start ~1.7 s (compile ~0.67 s once), warm launch ~35 ms. `e55ef5e` (AC-7:
+  PowerShell 7 Add-Type helper, process-global client singleton, suspended
+  create/assign/resume, TerminateJobObject + ActiveProcesses==0, census and PID taskkill
+  removed, POSIX best-effort groups; 30 census-era tests replaced at a fake-helper seam,
+  three real defects fixed), `7306e4d` (AC-8: pwsh -EncodedCommand inside the job,
+  validated cached discovery, Git Bash resolver/trampoline and their 22 tests removed,
+  13 pwsh tests added, README/tool guidance), `a250c01` (AC-3: reload-stable host
+  identity re-attaching the same containers, dead-host tasks recorded lost without
+  probing stored PIDs, foreign live work never adopted, unverifiable work stays owned,
+  intermediate coverage for jobs and all five watch branches). Frozen checks: frozen
+  install 0; background-tasks 0 / 225 passed, 4 skipped; pi-subagents 0 / 525 passed,
+  1 skipped (unchanged code, real-SDK teardown against containment); antigravity 0 /
+  570 passed, 9 skipped plus one load-induced SessionStore multi-process failure that
+  passed 3/3 in isolation; claude 0 / unit 290; root check:ci, typecheck, build 0 (no
+  generated drift); root test 1207 passed with the 4 missing-sibling failures and one
+  sdd-validator 5 s timeout under load that passed 3/3 in isolation. Live AC-6 follows.
+
 ## Durable deltas
 
 - `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST on Windows stop every running job of the session, including in-flight watch commands, on any other session shutdown, subagent teardown or Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run Windows command jobs in PowerShell 7, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
@@ -335,7 +358,7 @@ Windows, command jobs run in PowerShell 7.
   - Focused check and PASS evidence: suite green on Windows; no remote/sandbox/goal references remain
   - Return milestone: green
   - Stop / reassessment: local paths depend on removed modules beyond simple extraction
-- [ ] AC-3: lifecycle on containment
+- [x] AC-3: lifecycle on containment
   - Outcome: reload keeps and re-attaches jobs; other shutdowns and natural exits terminate containers under AC-7's platform-specific guarantees
   - Known entrypoints and skill paths: `src/index.ts:25-29`, `src/runtime.ts:28-44,130-146,570-614,728-800,830-858,1061-1150`, `src/process.ts:178-259,352-392`, `src/navigator-provider.ts:21-43`, `src/shared-navigator.ts:111,209-238`, tdd skill
   - Inputs: AC-2
@@ -383,7 +406,7 @@ Windows, command jobs run in PowerShell 7.
   - Focused check and PASS evidence: outside-Pi PID and creation-time checks per scenario
   - Return milestone: fresh Oracle PASS
   - Stop / reassessment: a job survives quit or a subagent end
-- [ ] AC-7: OS containment
+- [x] AC-7: OS containment
   - Outcome: on Windows every job and watch command runs in its own Job Object and termination/verification act only on it; POSIX keeps best-effort process groups (AC-7's platform-specific guarantees)
   - Known entrypoints and skill paths: `src/process.ts`, `src/process-termination.ts`, `src/runtime.ts`, `src/process-identity.ts`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
   - Inputs: Exploration, Clarifications, Decisions (ownership-design judgment)
@@ -395,7 +418,7 @@ Windows, command jobs run in PowerShell 7.
   - Focused check and PASS evidence: AC-7 tests on Windows; POSIX tests in CI
   - Return milestone: containment tests green
   - Stop / reassessment: host job restrictions prevent assignment on this machine
-- [ ] AC-8: PowerShell 7 on Windows
+- [x] AC-8: PowerShell 7 on Windows
   - Outcome: Windows command jobs and watches run in pwsh 7; Git Bash trampoline removed
   - Known entrypoints and skill paths: `src/process.ts` launcher, `src/tools.ts` descriptions, reference `oversk7/pi-pwsh-notify` `src/runtime.ts` (MIT), tdd skill
   - Inputs: Clarifications

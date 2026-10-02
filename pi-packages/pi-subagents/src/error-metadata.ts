@@ -304,11 +304,13 @@ export function classifyThrownError(
           : String(error);
   const message = rawMessage || 'Unknown subagent failure';
   const lower = message.toLowerCase();
-  const promptCaptureFailure = lower.includes('prompt-capture:');
+  const nonRetryableApiFailure =
+    lower.includes('prompt-capture:') ||
+    lower.includes('mcp tool parameters must be an object schema');
   const errorClass =
     error instanceof Error ? error.constructor.name : typeof error;
   let category: SubagentErrorCategory = 'unknown';
-  if (promptCaptureFailure) category = 'provider_api_error';
+  if (nonRetryableApiFailure) category = 'provider_api_error';
   else if (!(error instanceof Error) && typeof error !== 'string')
     category = 'malformed_thrown_value';
   else if (
@@ -322,7 +324,7 @@ export function classifyThrownError(
   else if (/rate.?limit|quota|429|too many requests/.test(lower))
     category = 'provider_rate_limit';
   else if (
-    /econnreset|enotfound|network|socket|timeout|timed out|connection/.test(
+    /\b(?:econnreset|enotfound|etimedout|network|socket|connection|timeout|timed out)\b/.test(
       lower,
     )
   )
@@ -331,7 +333,7 @@ export function classifyThrownError(
   return normalizeErrorMetadata({
     category,
     message,
-    retryable: promptCaptureFailure ? false : context.retryable,
+    retryable: nonRetryableApiFailure ? false : context.retryable,
     phase: context.phase,
     source: {
       provider: context.provider,

@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  classifyAssistantFailure,
   classifyFallbackFailure,
   classifyThrownError,
   deriveErrorString,
@@ -234,6 +235,63 @@ describe('structured error metadata contract', () => {
       'primary',
       'fallback',
     ]);
+  });
+
+  it.each([
+    'MCP tool parameters must be an object schema: agent_browser_electron {"anyOf":[{"type":"object","properties":{"timeoutMs":{"type":"number"}}}]}',
+    'MCP tool parameters must be an object schema: {"properties":{"connection":{"type":"string"},"credential":{"type":"string"},"quota":{"type":"number"}}}',
+  ])('classifies deterministic MCP schema rejection before serialized payload words and retry hints: %s', (message) => {
+    expect(
+      classifyThrownError(new Error(message), { retryable: true }),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: false,
+    });
+    expect(
+      classifyAssistantFailure({ stopReason: 'error', errorMessage: message }),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: false,
+      phase: 'assistant_final',
+    });
+  });
+
+  it.each([
+    'request failed: ECONNRESET',
+    'getaddrinfo ENOTFOUND example.invalid',
+    'request failed: ETIMEDOUT',
+    'Network request failed',
+    'socket hang up',
+    'Connection refused',
+    'Request timeout',
+    'Request timed out',
+  ])('keeps genuine network failures retryable: %s', (message) => {
+    expect(classifyThrownError(new Error(message))).toMatchObject({
+      category: 'provider_network_error',
+      retryable: true,
+    });
+  });
+
+  it.each([
+    'timeoutMs',
+    'networkConfig',
+    'socketPath',
+    'connectionId',
+    'reconnection',
+    'ECONNRESETCode',
+    'ENOTFOUNDCount',
+    'ETIMEDOUTHint',
+  ])('does not infer network failure from payload identifier %s', (identifier) => {
+    expect(
+      classifyThrownError(
+        new Error(
+          `Invalid tool schema: {"properties":{"${identifier}":{"type":"number"}}}`,
+        ),
+      ),
+    ).toMatchObject({
+      category: 'provider_api_error',
+      retryable: true,
+    });
   });
 
   it('classifies prompt-capture failures as non-retryable provider API errors even with context words and retry hints', () => {

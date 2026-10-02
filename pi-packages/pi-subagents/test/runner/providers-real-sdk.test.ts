@@ -147,7 +147,23 @@ async function fixture(
   };
 }
 
-it('drops and reports missing active tools only for standalone * in a real SDK child', async () => {
+it.each([
+  { selection: 'standalone *', tools: ['*'], missing: ['*'] },
+  {
+    selection: 'explicit',
+    tools: ['read', 'missing_fixture_tool'],
+    missing: ['missing_fixture_tool'],
+  },
+  { selection: 'glob', tools: ['re*', 'missing_*'], missing: ['missing_*'] },
+  {
+    selection: 'mixed',
+    tools: ['*', 'read'],
+    missing: ['*', 'missing_fixture_tool'],
+  },
+])('drops and reports missing tools for $selection selection in a real SDK child, but rejects all-missing selections', async ({
+  tools,
+  missing,
+}) => {
   const parent = await fixture([captureExtension]);
   const activities: any[] = [];
   const active = ['read', 'missing_fixture_tool'];
@@ -162,7 +178,7 @@ it('drops and reports missing active tools only for standalone * in a real SDK c
       onActivity: (activity) => activities.push(activity),
     });
   try {
-    const result = await run(['*']);
+    const result = await run(tools);
     expect(result).toMatchObject({ dropped_tools: ['missing_fixture_tool'] });
     expect(activities).toContainEqual(
       expect.objectContaining({ dropped_tools: ['missing_fixture_tool'] }),
@@ -175,14 +191,8 @@ it('drops and reports missing active tools only for standalone * in a real SDK c
     ).toBe(true);
     expect(capture.systemPrompt).not.toContain('missing_fixture_tool');
     expect(capture.systemPrompt).not.toContain('AskClaude');
-    await expect(run(['read', 'missing_fixture_tool'])).rejects.toThrow(
-      'missing implementation: missing_fixture_tool',
-    );
-    await expect(run(['missing_*'])).rejects.toThrow(
-      'missing implementation: missing_fixture_tool',
-    );
     active.splice(0, 1);
-    await expect(run(['*'])).rejects.toThrow(
+    await expect(run(missing)).rejects.toThrow(
       'missing implementation: missing_fixture_tool',
     );
   } finally {

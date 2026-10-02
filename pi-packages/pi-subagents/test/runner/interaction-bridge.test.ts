@@ -1151,7 +1151,7 @@ describe('subagent runner interaction-required bridge', () => {
     ).toEqual([['read', 'legacy_extension_tool']]);
   });
 
-  it('reports missing child implementations while permitting registered inactive tools', async () => {
+  it('reports all-missing explicit implementations while permitting root-inactive registered tools', async () => {
     vi.resetModules();
     const missingSession = {
       subscribe: vi.fn(() => vi.fn()),
@@ -1187,13 +1187,13 @@ describe('subagent runner interaction-required bridge', () => {
           description: 'tool user',
           filePath: '/tmp/tool-user.md',
           instructions: 'return a concise result',
-          tools: ['*'],
+          tools: ['inactive_extension_tool'],
         },
-        task: 'use every registered tool',
+        task: 'use explicitly selected inactive tool',
         cwd: '/workspace',
         ctx: {
           model: { provider: 'test', id: 'model' },
-          pi: { getActiveTools: () => [{ name: 'inactive_extension_tool' }] },
+          pi: { getActiveTools: () => [] },
         },
         config: {
           timeout_ms: 10_000,
@@ -1215,7 +1215,7 @@ describe('subagent runner interaction-required bridge', () => {
     expect(inactiveSession.dispose).toHaveBeenCalledOnce();
   });
 
-  it('verifies explicit child selections and rejects unexpected registered tools before prompting', async () => {
+  it('drops missing explicit tools but rejects all-missing and unexpected registrations before prompting', async () => {
     vi.resetModules();
     let registered: string[] = [];
     const session = {
@@ -1255,15 +1255,24 @@ describe('subagent runner interaction-required bridge', () => {
       });
     await expect(run(['read'])).rejects.toThrow('missing implementation: read');
     registered = ['read', 'subagent_run'];
-    await expect(run(['read'])).rejects.toThrow(
+    await expect(run(['read', 'missing_fixture_tool'])).rejects.toThrow(
       'unexpectedly registered: subagent_run',
     );
     expect(session.prompt).not.toHaveBeenCalled();
     expect(session.dispose).toHaveBeenCalledTimes(2);
     registered = ['read'];
     await expect(
-      run(['read', 'subagent_run', 'ask_user_question', 'todo']),
-    ).resolves.toMatchObject({ result: 'done' });
+      run([
+        'read',
+        'missing_fixture_tool',
+        'subagent_run',
+        'ask_user_question',
+        'todo',
+      ]),
+    ).resolves.toMatchObject({
+      result: 'done',
+      dropped_tools: ['missing_fixture_tool'],
+    });
   });
 
   it('detects supported and unsupported Pi versions from the loaded SDK version export', async () => {

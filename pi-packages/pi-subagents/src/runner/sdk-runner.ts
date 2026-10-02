@@ -97,7 +97,6 @@ function resolveConfiguredTools(
 function verifyChildToolSelection(
   session: any,
   selectedToolNames: readonly string[],
-  allowMissing: boolean,
 ): string[] {
   const registered = readToolNames(session, ['getAllTools']);
   if (!registered)
@@ -113,8 +112,7 @@ function verifyChildToolSelection(
   const unexpected = registered.filter((name) => !selectedNames.has(name));
   if (
     unexpected.length ||
-    (missing.length &&
-      (!allowMissing || missing.length === selectedToolNames.length))
+    (missing.length && missing.length === selectedToolNames.length)
   ) {
     const details = [
       missing.length ? `missing implementation: ${missing.join(', ')}` : '',
@@ -462,7 +460,6 @@ async function createSession(
   ctx: any,
   systemPrompt: string,
   nestedSessionPath?: string,
-  allowMissing = false,
   onActivity?: Parameters<SubagentRunner>[0]['onActivity'],
 ) {
   const piSdk = await loadPiSdkModule();
@@ -545,11 +542,7 @@ async function createSession(
       }
       await modelRuntime.refresh({ allowNetwork: false });
     }
-    droppedTools = verifyChildToolSelection(
-      created.session,
-      tools,
-      allowMissing,
-    );
+    droppedTools = verifyChildToolSelection(created.session, tools);
     await emitChildSessionStart(created.session, onActivity);
   } catch (error) {
     await teardownSubagentSession(created.session);
@@ -655,8 +648,6 @@ export const sdkSubagentRunner: SubagentRunner = async ({
     ? definition.tools
     : config.default_tools;
   const tools = resolveConfiguredTools(configuredTools, ctx);
-  const allowMissing =
-    configuredTools.length === 1 && configuredTools[0] === '*';
   const systemPrompt = definition.instructions;
   const prompt =
     continuation?.prompt ?? buildPrompt(definition, task, context, tools);
@@ -691,7 +682,6 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       ctx,
       systemPrompt,
       nested_session_path,
-      allowMissing,
       onActivity,
     );
     const abortBridge = createSessionAbortBridge(session, signal);

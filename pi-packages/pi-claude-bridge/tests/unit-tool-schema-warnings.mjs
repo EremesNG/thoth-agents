@@ -37,7 +37,7 @@ function buildFor(sessionId, catalog = tools) {
 it("headless omission warnings are visible once per tool per session, not per query or globally", (t) => {
 	const warnings = [];
 	t.mock.method(console, "warn", (message) => warnings.push(message));
-	const catalog = [...tools, { name: "mixed_union", description: "", parameters: { anyOf: [{ type: "object" }, { type: "string" }] } }];
+	const catalog = [...tools, { name: "mixed_union", description: "", parameters: { type: "object", anyOf: [{ type: "object" }, { type: "string" }] } }];
 	buildFor("pi-headless-a", catalog);
 	buildFor("pi-headless-a", catalog);
 	buildFor("pi-headless-b", catalog);

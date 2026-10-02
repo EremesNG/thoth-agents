@@ -106,10 +106,13 @@ are not misclassified as network errors.
   completion surfaces). Metrics, editor-focus guards, idle animation and width limits are
   preserved and `entryRowCount` accounts for the extra row. Tests cover rendering, absence
   when empty, narrow width and the running-to-terminal transition.
-- AC-3: In pi-claude-bridge, tool schemas whose root is not `type: "object"` never fail the
-  request: a root `anyOf`/`oneOf` whose variants are all objects is advertised as
-  `{type:"object", anyOf|oneOf:[...]}` with the original variants (Pi still validates against
-  the original schema); any other non-object root schema is omitted from the advertised tools
+- AC-3: In pi-claude-bridge, tool schemas whose root is not a plain object never fail the
+  request nor vanish silently: a root `anyOf`/`oneOf` whose variants are all objects
+  (whether or not the root also declares `type: "object"`) is advertised to Claude as
+  `{type:"object", properties:{input:{anyOf|oneOf:[...]}}, required:["input"]}` with the
+  original variants under `input` and root keywords (`$defs`/`definitions`, `title`,
+  `description`) kept at the root, and the bridge unwraps `input` before handing the
+  arguments to Pi, which validates against the original schema; any other non-object root schema is omitted from the advertised tools
   with one warning per tool per session through the bridge's existing warning channel,
   observable in headless child sessions. Unit tests cover wrapped unions, omitted schemas,
   and a mixed catalog where valid tools still load. Applies to root and child sessions.
@@ -119,13 +122,20 @@ are not misclassified as network errors.
   cyclic references and any other variant cause omission; wrapping preserves root
   keywords such as `$defs`/`definitions`, `title` and `description`. Backend rule: a
   wrapped union PASSES live only by a successful call; if the live check shows the backend
-  rejecting the wrapped union, the bridge switches that union to omission with the warning
-  and the live evidence must show the omission, the warning and a working child.
-- AC-7: In pi-antigravity-bridge, the same schema rule as AC-3 applies to the tools it
+  rejecting or hiding the wrapped form, the bridge switches that union to omission with the
+  warning and the live evidence must show the omission, the warning and a working child.
+- AC-7: In pi-antigravity-bridge, the same eligibility rule as AC-3 applies to the tools it
   advertises to agy (both private and legacy discovery, stream-json and ACP): object unions
-  are advertised as `{type:"object", anyOf|oneOf:[...]}`, other non-object root schemas
-  are omitted with one warning per tool per session; object schemas are unchanged. Unit
-  tests cover wrapping, omission and a mixed catalog. Live (AC-6): an Antigravity-model
+  are advertised as `{type:"object", anyOf|oneOf:[...]}` (agy accepts root unions; live
+  `agent_browser_action`/`_qa` appeared), other non-object root schemas are omitted with
+  one warning per tool per session; object schemas are unchanged. The private MCP server
+  name is shortened from `pi-agy-<32 hex>` to `pi-agy-<8 hex>` (still unique per instance,
+  collision-checked against live entries), so every advertised tool's qualified name
+  `mcp_<server>_<tool>` stays within 64 characters; any tool whose qualified name would
+  still exceed 64 characters is omitted with the same warning instead of vanishing. The
+  first worker checkpoint confirms the 64-character cause live (long vs short server name)
+  before relying on it. Unit tests cover wrapping, omission, name length and a mixed
+  catalog. Live (AC-6): an Antigravity-model
   child with `agent_browser_electron` and `agent_browser_network_source` assigned sees and
   calls `agent_browser_electron` `action: "list"`, under AC-3's shared eligibility and
   backend rules (silent disappearance is never PASS). Antigravity's `mcpLog` must surface
@@ -158,6 +168,10 @@ are not misclassified as network errors.
 - Show the dropped-tools warning on the widget card (user).
 - Claude-bridge: wrap object unions, omit other non-object schemas with a warning (user).
 - Include the network misclassification fix (user).
+- Claude: wrap root unions under a required `input` property and unwrap in the bridge;
+  omit with a visible warning only if that form is also rejected (user, after live AC-6).
+- Antigravity: shorten the private MCP server name so qualified tool names stay within 64
+  characters, and warn on any name still too long (user, after live AC-6).
 - Extend the schema rule to the Antigravity bridge in this change (user, after the
   Antigravity probe).
 
@@ -187,6 +201,35 @@ are not misclassified as network errors.
   adoption, 5/5 isolated and next full run green); background-tasks 0 / 258 passed,
   4 skipped; openai-fast typecheck 0; root check:ci, typecheck, build 0 (no generated
   drift); root test 1208 passed / 4 missing-sibling failures. Live AC-6 follows.
+- Live AC-6, first pass (2026-10-01, main 0.5.0 at 80cd7fa after full restart): (3)
+  explicit `read` + `probe_missing_tool` on thoth-explorer: started, used `read`, completion
+  carried "Dropped tools unavailable in the child session (missing implementation:
+  probe_missing_tool)" and history `dropped_tools_json` = ["probe_missing_tool"] (a first
+  attempt was invalid: root launched the child in parallel with the definition edit, so
+  the child read the old definition). (1) Claude-model designer with all eight
+  `agent_browser*` tools: child started and worked, but `agent_browser_action`, `_qa` and
+  `_electron` were absent with no warning; their exported schemas are already
+  `{type:"object", anyOf:[2|2|4 objects]}` (pi-agent-browser-native params.js), so AC-3
+  wrapping left them unchanged; public Claude Code issues #40075/#44788 report the API
+  rejecting top-level anyOf/oneOf/allOf; the exact Claude Code filtering path was not
+  located. (2) Antigravity-model designer: child started, `_action` and `_qa` (root anyOf)
+  were present, but `_electron` and `_network_source` (plain object) were absent; the
+  pattern matches agy's 64-character limit on `mcp_<server>_<tool>` with the 39-character
+  private server name introduced by bridge-child-lifecycle (a first attempt was invalid:
+  launched in parallel with restoring subagents.json, so it ran on Claude). Operator
+  configs restored by hash. Result: AC-6 FAIL for (1) and (2); AC-3 and AC-7 amended.
+- Amended implementation checkpoint (root, 2026-10-02): `1ac2d60` (worker B: eligible
+  root unions, typed or not, advertised under required `input`; unwrap on streamed and
+  completed tool_use, re-wrap in history, ordinary `input` fields untouched; unit 315),
+  `ff2b78d` (worker C: milestone 1 live with isolated real agy confirmed the cause — agy
+  logged "tool name mcp_pi-agy-<32hex>_agent_browser_electron violates
+  ^[a-zA-Z0-9_-]{1,64}$"; both 22/28-char tools appeared under `pi-agy-<8hex>`; private
+  name shortened with live-config and process-wide collision checks and exact acquired-key
+  cleanup; qualified-name length enforced per discovery mode with omission warning).
+  Frozen checks: frozen install 0; antigravity 0 / two runs 592 passed, 9 skipped;
+  claude-bridge 0 / unit 315; pi-subagents 0 / 555 passed, 1 skipped; background-tasks 0 /
+  258 passed, 4 skipped; root check:ci, typecheck, build 0 (no generated drift); root test
+  1208 passed / 4 missing-sibling failures. Live AC-6 repeat follows.
 - Backend rule (AC-3): a wrapped union that a backend rejects in the live check is
   switched to omission with a warning in that bridge; the request never fails.
 
@@ -298,6 +341,21 @@ are not misclassified as network errors.
 **Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: AUTHORIZED
+
+Scope amended after live AC-6 (AC-3 Claude `input` wrapping, AC-7 short server name and
+name-length warning); plan review and implementation authorization reset. The user
+explicitly selected Review plan with Oracle; fresh Oracle
+subtask_thoth-oracle_1790920495772_88b41398 returned [OKAY] on the amended plan. Cautions:
+unwrap `input` at both Claude argument seams (`src/index.ts:1346` streamed and `:1454`
+completed `tool_use`) and in replay/history conversion (`src/convert.ts`), only for
+advertised wrapped tools; recognize root unions before the `type:"object"` early return;
+fixtures diverge only in advertised shape; 8-hex collision check against live
+`agy-mcp-*/.agents/mcp_config.json` keys plus in-process reservations, exact
+acquired-key cleanup preserved; enforce `4 + server + 1 + tool <= 64` with the actual
+discovery names (legacy `pi-bridge-<pid>-<UUID>`, legacy ACP `pi-bridge`); keep the
+long-vs-short checkpoint; AC-6 must show the running-widget warning. Earlier: the
+user explicitly selected Review plan with Oracle, round 2 returned [OKAY] and the user
+chose Implement; that authorization covered the pre-amendment scope.
 
 The user explicitly selected Review plan with Oracle. Round 1 returned [REJECT]
 (terminal widget cards, contradictory backend fallback), repaired here; round 2 fresh

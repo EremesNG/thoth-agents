@@ -348,8 +348,9 @@ function convertAndImportMessages(
 	messages: Context["messages"],
 	customToolNameToSdk?: Map<string, string>,
 	carried?: readonly CarriedAttachment[],
+	wrappedToolNames?: ReadonlySet<string>,
 ): void {
-	const { anthropicMessages, sanitizedIds, dropped } = convertPiMessages(messages, customToolNameToSdk);
+	const { anthropicMessages, sanitizedIds, dropped } = convertPiMessages(messages, customToolNameToSdk, wrappedToolNames);
 
 	debug(`convertAndImportMessages: ${messages.length} pi msgs → ${anthropicMessages.length} anthropic msgs`);
 	debug(`convertAndImportMessages: imported roles:`, anthropicMessages.map((m, i) => {
@@ -756,6 +757,7 @@ function debugSessionPaths(label: string, cwd: string, jsonlPath: string): void 
 	customToolNameToSdk?: Map<string, string>,
 	modelId?: string,
 	piSessionId?: string | null,
+	wrappedToolNames?: ReadonlySet<string>,
 ): SyncResult {
 	// System messages are pi's transcript representation of prompt and tool state, not
 	// conversation history — they are never imported into a CC session, so exclude them from
@@ -837,7 +839,7 @@ function debugSessionPaths(label: string, cwd: string, jsonlPath: string): void 
 		...(preserveId ? { sessionId: previousSessionId } : {}),
 		...(modelId ? { model: modelId } : {}),
 	});
-	convertAndImportMessages(session, priorMessages, customToolNameToSdk, carried);
+	convertAndImportMessages(session, priorMessages, customToolNameToSdk, carried, wrappedToolNames);
 	session.save();
 	// records, not messages: `messages` filters out the attachment records that
 	// carrying an `@file` expansion across a rebuild writes into the same file.
@@ -943,8 +945,9 @@ const SDK_KEY_RENAMES: Record<string, Record<string, string>> = {
 // Pi's own prepareArguments hooks handle any structural transforms (e.g. edit oldText/newText → edits[]).
 function mapToolArgs(
 	toolName: string, args: Record<string, unknown> | undefined,
+	wrappedToolNames?: ReadonlySet<string>,
 ): Record<string, unknown> {
-	const input = args ?? {};
+	const input = (wrappedToolNames?.has(toolName) ? args?.input as Record<string, unknown> | undefined : args) ?? {};
 	const renames = SDK_KEY_RENAMES[toolName.toLowerCase()];
 	const result: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(input)) {
@@ -1101,17 +1104,24 @@ function resolveMcpTools(context: Context, excludeToolName?: string): {
 	mcpTools: Tool[];
 	customToolNameToSdk: Map<string, string>;
 	customToolNameToPi: Map<string, string>;
+	wrappedToolNames: Set<string>;
 } {
 	const mcpTools: Tool[] = [];
 	const customToolNameToSdk = new Map<string, string>();
 	const customToolNameToPi = new Map<string, string>();
+	const wrappedToolNames = new Set<string>();
 
-	if (!context.tools) return { mcpTools, customToolNameToSdk, customToolNameToPi };
+	if (!context.tools) return { mcpTools, customToolNameToSdk, customToolNameToPi, wrappedToolNames };
 
 	for (const tool of context.tools) {
 		if (tool.name === excludeToolName) continue;
 		mcpTools.push(tool); // Keep omitted tools here so server construction reports them.
-		if (!normalizeToolSchema(tool.parameters)) continue;
+		const advertisedSchema = normalizeToolSchema(tool.parameters);
+		if (!advertisedSchema) continue;
+		if (advertisedSchema !== tool.parameters) {
+			wrappedToolNames.add(tool.name);
+			wrappedToolNames.add(tool.name.toLowerCase());
+		}
 		const sdkName = `${MCP_TOOL_PREFIX}${tool.name}`;
 		customToolNameToSdk.set(tool.name, sdkName);
 		customToolNameToSdk.set(tool.name.toLowerCase(), sdkName);
@@ -1119,7 +1129,7 @@ function resolveMcpTools(context: Context, excludeToolName?: string): {
 		customToolNameToPi.set(sdkName.toLowerCase(), tool.name);
 	}
 
-	return { mcpTools, customToolNameToSdk, customToolNameToPi };
+	return { mcpTools, customToolNameToSdk, customToolNameToPi, wrappedToolNames };
 }
 
 // Creates an MCP server that bridges pi tools to the SDK. Each tool handler
@@ -1344,7 +1354,7 @@ function processStreamEvent(
 		} else if (block.type === "toolCall") {
 			c.turnSawToolCall = true;
 			block.arguments = mapToolArgs(
-				block.name, parsePartialJson(block.partialJson, block.arguments),
+				block.name, parsePartialJson(block.partialJson, block.arguments), c.wrappedToolNames,
 			);
 			delete block.partialJson;
 			c.currentPiStream!.push({ type: "toolcall_end", contentIndex: index, toolCall: block, partial: c.turnOutput });
@@ -1451,7 +1461,7 @@ function processAssistantMessage(message: SDKMessage, model: Model<any>, customT
 			c.turnBlocks.push({
 				type: "toolCall", id: block.id,
 				name: piName,
-				arguments: mapToolArgs(piName, block.input),
+				arguments: mapToolArgs(piName, block.input, c.wrappedToolNames),
 			});
 			const idx = c.turnBlocks.length - 1;
 			const toolBlock = c.turnBlocks[idx];
@@ -1866,7 +1876,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	// Resolved first: an unaccountable system prompt fails this query before anything
 	// is claimed or reset, leaving no half-built query behind — in particular no stream
 	// claimed on the shared context that nobody will ever end.
-	const { mcpTools, customToolNameToSdk, customToolNameToPi } = resolveMcpTools(context, askClaudeToolName);
+	const { mcpTools, customToolNameToSdk, customToolNameToPi, wrappedToolNames } = resolveMcpTools(context, askClaudeToolName);
 	// Build from what Pi loaded for this run, so `--no-context-files` and
 	// `--no-skills` reach Claude Code by leaving nothing to forward. A sub-agent's
 	// custom override embeds its parent's assembled Pi prompt; recursive projection
@@ -1912,6 +1922,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	// contextForToolResults — which now means pushing its steer into this
 	// query's stdin, not just mismatching a map.
 	queryCtx.turnToolCallIds = [];
+	queryCtx.wrappedToolNames = wrappedToolNames;
 	queryCtx.resetTurnState(model);
 	queryCtx.latestCursor = 0;
 	// The served pi session, for rewrite attribution on delivery (issue #101
@@ -1931,7 +1942,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	// Which pi session this query serves — the attribution key for history
 	// rewrites (session_compact / session_tree) and for SessionState above.
 	const piSessionId = options?.sessionId ?? null;
-	const syncResult = syncSharedSession(context.messages, cwd, customToolNameToSdk, cliModel, piSessionId);
+	const syncResult = syncSharedSession(context.messages, cwd, customToolNameToSdk, cliModel, piSessionId, wrappedToolNames);
 	// This query starts from the history pi has now: consume this session's
 	// armed rewrite — a sibling pi session's stays armed for its own queries.
 	if (piSessionId) historyRewrittenBySession.delete(piSessionId);

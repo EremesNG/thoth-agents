@@ -3,6 +3,8 @@ import { it as test } from "node:test";
 import { normalizeToolSchema } from "../src/tool-schema.js";
 
 // The ten eligibility fixtures shared with the Antigravity bridge (AC-3/AC-7).
+// Eligibility is identical; only advertisement differs: Claude requires the
+// union under a required `input` property, while Antigravity accepts it at root.
 test("tool-schema: plain object is unchanged", () => {
 	const schema = { type: "object", properties: { action: { type: "string" } }, required: ["action"] };
 	assert.equal(normalizeToolSchema(schema), schema);
@@ -13,11 +15,11 @@ test("tool-schema: anyOf of two objects is wrapped without changing the variants
 		{ type: "object", properties: { action: { const: "list" } }, required: ["action"] },
 		{ type: "object", properties: { action: { const: "open" }, url: { type: "string" } }, required: ["action", "url"] },
 	] };
-	assert.deepEqual(normalizeToolSchema(schema), { type: "object", anyOf: [
+	assert.deepEqual(normalizeToolSchema(schema), { type: "object", properties: { input: { anyOf: [
 		{ type: "object", properties: { action: { const: "list" } }, required: ["action"] },
 		{ type: "object", properties: { action: { const: "open" }, url: { type: "string" } }, required: ["action", "url"] },
-	] });
-	assert.equal(normalizeToolSchema(schema).anyOf, schema.anyOf);
+	] } }, required: ["input"] });
+	assert.equal(normalizeToolSchema(schema).properties.input.anyOf, schema.anyOf);
 	assert.equal("type" in schema, false, "Pi's original schema must not be mutated");
 });
 
@@ -28,22 +30,23 @@ test("tool-schema: oneOf of objects preserves root $defs, title and description"
 	};
 	assert.deepEqual(normalizeToolSchema(schema), {
 		type: "object", $defs: { label: { type: "string" } }, title: "Choose an action", description: "Action arguments",
-		oneOf: [{ type: "object", properties: { label: { $ref: "#/$defs/label" } } }, { type: "object", properties: {} }],
+		properties: { input: { oneOf: [{ type: "object", properties: { label: { $ref: "#/$defs/label" } } }, { type: "object", properties: {} }] } }, required: ["input"],
 	});
-	assert.equal(normalizeToolSchema(schema).oneOf, schema.oneOf);
+	assert.equal(normalizeToolSchema(schema).properties.input.oneOf, schema.oneOf);
 });
 
 test("tool-schema: anyOf accepts an allOf-of-objects variant", () => {
 	const schema = { anyOf: [{ allOf: [{ type: "object", properties: { action: { type: "string" } } }, { type: "object", properties: { id: { type: "number" } } }] }, { type: "object" }] };
-	assert.deepEqual(normalizeToolSchema(schema), { type: "object", anyOf: [
+	assert.deepEqual(normalizeToolSchema(schema), { type: "object", properties: { input: { anyOf: [
 		{ allOf: [{ type: "object", properties: { action: { type: "string" } } }, { type: "object", properties: { id: { type: "number" } } }] }, { type: "object" },
-	] });
+	] } }, required: ["input"] });
 });
 
 test("tool-schema: anyOf accepts a local $ref to an object definition", () => {
 	const schema = { $defs: { action: { type: "object", properties: { action: { type: "string" } } } }, anyOf: [{ $ref: "#/$defs/action" }, { type: "object" }] };
 	assert.deepEqual(normalizeToolSchema(schema), {
-		type: "object", $defs: { action: { type: "object", properties: { action: { type: "string" } } } }, anyOf: [{ $ref: "#/$defs/action" }, { type: "object" }],
+		type: "object", $defs: { action: { type: "object", properties: { action: { type: "string" } } } },
+		properties: { input: { anyOf: [{ $ref: "#/$defs/action" }, { type: "object" }] } }, required: ["input"],
 	});
 });
 
@@ -68,3 +71,29 @@ test("tool-schema: cyclic local $refs are omitted", () => {
 test("tool-schema: root string is omitted", () => {
 	assert.equal(normalizeToolSchema({ type: "string" }), undefined);
 });
+
+test("tool-schema: both root unions are nested, never leaving a Claude root combinator", () => {
+	const schema = { type: "object", anyOf: [{ type: "object" }], oneOf: [{ type: "object" }] };
+	assert.deepEqual(normalizeToolSchema(schema), {
+		type: "object", properties: { input: { anyOf: [{ type: "object" }], oneOf: [{ type: "object" }] } }, required: ["input"],
+	});
+	assert.equal(normalizeToolSchema({ ...schema, oneOf: [{ type: "string" }] }), undefined);
+});
+
+for (const keyword of ["anyOf", "oneOf"]) {
+	test(`tool-schema: a typed object root ${keyword} is still wrapped`, () => {
+		const variants = [{ type: "object", properties: { action: { const: "list" } } }, { type: "object", properties: { action: { const: "open" } } }];
+		const schema = { type: "object", [keyword]: variants };
+		assert.deepEqual(normalizeToolSchema(schema), {
+			type: "object", properties: { input: { [keyword]: variants } }, required: ["input"],
+		});
+		assert.equal(normalizeToolSchema(schema).properties.input[keyword], variants);
+		assert.deepEqual(schema, { type: "object", [keyword]: variants }, "do not mutate Pi's schema");
+	});
+
+	test(`tool-schema: typed object root does not bypass ineligible ${keyword}`, () => {
+		for (const variants of [[], [{ type: "object" }, { type: "string" }], [{ $ref: "#/$defs/missing" }]]) {
+			assert.equal(normalizeToolSchema({ type: "object", [keyword]: variants }), undefined);
+		}
+	});
+}

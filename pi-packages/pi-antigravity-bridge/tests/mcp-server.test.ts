@@ -120,6 +120,39 @@ test("mcp-server: schema omission warns once per tool per session, including dyn
 	assert.equal(warnings.length, 3, "a new session gets its own warning");
 });
 
+test.each([
+	{ mode: "private stream-json", identity: "pi-agy-12345678", discovery: "pi-agy-12345678", boundary: "x".repeat(44), over: "x".repeat(45), browsersFit: true },
+	{ mode: "private ACP", identity: "pi-agy-12345678", discovery: "pi-agy-12345678", boundary: "x".repeat(44), over: "x".repeat(45), browsersFit: true },
+	{ mode: "legacy stream-json", identity: "pi-antigravity-bridge", discovery: "pi-bridge-4242-12345678-1234-4234-8234-123456789abc", boundary: "boundary", over: "overlimit", browsersFit: false },
+	{ mode: "legacy ACP", identity: "pi-antigravity-bridge", discovery: "pi-bridge", boundary: "x".repeat(50), over: "x".repeat(51), browsersFit: true },
+])("mcp-server: $mode enforces the actual discovery-qualified 64-character limit and shares omission warning dedup", async ({ identity, discovery, boundary, over, browsersFit }) => {
+	const tool = (name: string, inputSchema: object = { type: "object" }) => ({ name, description: name, inputSchema });
+	let catalog = [tool("agent_browser_electron"), tool("agent_browser_network_source"), tool(boundary), tool(over)];
+	const warnings: Array<{ name: string; reason: string }> = [];
+	const opts = { serverName: identity, discoveryServerName: discovery, log: (event: string, data?: unknown) => {
+		if (event === "tool-schema-omitted") warnings.push(data as { name: string; reason: string });
+	} };
+	const deps = fakeDeps({ listTools: () => catalog });
+	handle = (await startMcpServer(deps, opts)).handle!;
+	const expected = browsersFit ? ["agent_browser_electron", "agent_browser_network_source", boundary] : [boundary];
+	assert.deepEqual((await servedTools()).map((entry) => entry.name), expected);
+	assert.deepEqual((await servedTools()).map((entry) => entry.name), expected);
+	const omitted = browsersFit ? [over] : ["agent_browser_electron", "agent_browser_network_source", over];
+	assert.deepEqual(warnings.map((warning) => warning.name), omitted);
+	assert.match(warnings.at(-1)!.reason, /65 characters.*64/);
+	assert.ok(warnings.every((warning) => warning.reason.includes(`mcp_${discovery}_`)));
+	catalog = [tool(over, { type: "string" })];
+	assert.deepEqual(await servedTools(), []);
+	assert.equal(warnings.length, omitted.length, "schema and name omission share once-per-tool dedup");
+	catalog = [tool(over)];
+	assert.deepEqual(await servedTools(), []);
+	assert.equal(warnings.length, omitted.length);
+	await handle.close();
+	handle = (await startMcpServer(deps, opts)).handle!;
+	assert.deepEqual(await servedTools(), []);
+	assert.equal(warnings.length, omitted.length + 1, "new sessions warn again");
+});
+
 test("mcp-server: onToolCall rejection surfaces as an isError result upstream", async () => {
 	const r = await startMcpServer(
 		fakeDeps({

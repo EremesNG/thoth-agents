@@ -29,16 +29,21 @@ function isObjectSchema(schema: unknown, root: Schema, ancestors = new Set<Schem
 	}
 }
 
-/** MCP requires an object root; Pi retains the original schema for validation. */
+/** Claude rejects root unions. Nest them under input; Pi keeps its original schema. */
 export function normalizeToolSchema(schema: unknown): Schema | undefined {
 	if (!isSchema(schema)) return undefined;
-	if (schema.type === "object") return schema;
+	const input: Schema = {};
 	for (const keyword of ["anyOf", "oneOf"] as const) {
+		if (!Object.hasOwn(schema, keyword)) continue;
 		const variants = schema[keyword];
-		if (Array.isArray(variants) && variants.length > 0
-			&& variants.every((variant) => isObjectSchema(variant, schema))) {
-			return { ...schema, type: "object" };
-		}
+		if (!Array.isArray(variants) || variants.length === 0
+			|| !variants.every((variant) => isObjectSchema(variant, schema))) return undefined;
+		input[keyword] = variants;
 	}
-	return undefined;
+	if (Object.keys(input).length) {
+		const { anyOf: _anyOf, oneOf: _oneOf, ...root } = schema;
+		// Local definition refs still resolve: $defs/definitions stay at root.
+		return { ...root, type: "object", properties: { input }, required: ["input"] };
+	}
+	return schema.type === "object" ? schema : undefined;
 }

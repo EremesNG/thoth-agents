@@ -3,6 +3,7 @@ import {
   visibleWidth,
   wrapLineToWidth,
 } from '../render/text-width.js';
+import { toolSelectionWarning } from '../render/tool-selection-warning.js';
 import { statusGlyph } from '../render/tools/progress.js';
 import type { SubagentTask } from '../types.js';
 import {
@@ -19,6 +20,7 @@ type ClaudeBackgroundWidgetEntry = {
   line: string;
   status?: string;
   activity?: string;
+  warning?: string;
   metrics?: string[];
 };
 
@@ -168,6 +170,7 @@ function buildClaudeBackgroundWidgetEntries(
       line: description,
       status: task.status,
       metrics: metricParts,
+      warning: toolSelectionWarning(task, true),
       activity: normalize(
         task.live_activity?.current?.label ?? task.last_activity,
       ),
@@ -187,6 +190,14 @@ function buildClaudeBackgroundWidgetEntries(
       key: queued[0]!.id,
       line: `○ ${queued.length} queued`,
       status: 'queued',
+      warning: toolSelectionWarning(
+        {
+          dropped_tools: [
+            ...new Set(queued.flatMap((task) => task.dropped_tools ?? [])),
+          ],
+        },
+        true,
+      ),
     });
   }
 
@@ -235,7 +246,8 @@ function entryRowCount(
   return (
     1 +
     (entry.metrics ? metricLines(entry.metrics, width).length : 0) +
-    (entry.activity ? 1 : 0)
+    (entry.activity ? 1 : 0) +
+    (entry.warning ? 1 : 0)
   );
 }
 
@@ -312,7 +324,10 @@ export function renderClaudeBackgroundWidgetLines(
 
     if (entry.status === 'queued') {
       const prefix = isSelected ? '● ' : '  ';
-      return [`${prefix}${entry.line}`];
+      return [
+        `${prefix}${entry.line}`,
+        ...(entry.warning ? [`  ╰─ ${entry.warning}`] : []),
+      ];
     }
 
     // Running card
@@ -330,10 +345,15 @@ export function renderClaudeBackgroundWidgetLines(
 
     const headerLine = `${headerPrefix}${glyph} ${entry.line}`;
 
-    if (hasActivity) {
+    if (hasActivity || entry.warning) {
       const metricRows = mLines.map((m) => `${middlePrefix}${m}`);
-      const activityRow = `${activityPrefix}${entry.activity}`;
-      return [headerLine, ...metricRows, activityRow];
+      const warningRows = entry.warning
+        ? [`${hasActivity ? middlePrefix : bottomPrefix}${entry.warning}`]
+        : [];
+      const activityRows = hasActivity
+        ? [`${activityPrefix}${entry.activity}`]
+        : [];
+      return [headerLine, ...metricRows, ...warningRows, ...activityRows];
     }
 
     if (mLines.length <= 1) {
@@ -645,6 +665,10 @@ export class ClaudeBackgroundWidget {
     const isSelected =
       (line.startsWith('● ') && !line.startsWith('● Agents')) ||
       line.startsWith(`${ARCH_ICON} `);
+
+    if (line.includes('⚠ Dropped tools:')) {
+      return themeWarning(this.theme, line);
+    }
 
     if (line.includes('Agents')) {
       return line

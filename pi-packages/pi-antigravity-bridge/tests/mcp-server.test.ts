@@ -56,6 +56,70 @@ function depsListToolsShape(n: number): number {
 	return n;
 }
 
+async function servedTools(): Promise<ReturnType<McpBridgeDeps["listTools"]>> {
+	assert.ok(handle);
+	const response = await fetch(`http://127.0.0.1:${handle.port}/mcp`, {
+		method: "POST",
+		headers: { "content-type": "application/json", accept: "application/json, text/event-stream", [TOKEN_HEADER]: handle.token },
+		body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+	});
+	assert.equal(response.status, 200);
+	const line = (await response.text()).split("\n").find((l) => l.startsWith("data:"));
+	assert.ok(line, "expected an SSE tools/list response");
+	const payload = JSON.parse(line.slice(5));
+	assert.ok(Array.isArray(payload.result?.tools), JSON.stringify(payload));
+	return payload.result.tools;
+}
+
+test("mcp-server: served catalog wraps object unions, omits unsupported schemas and preserves object/internal tools", async () => {
+	const original = [
+		{ name: "plain", description: "plain object", inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
+		{ name: "union", description: "object union", inputSchema: { anyOf: [{ type: "object", properties: { action: { const: "list" } } }, { type: "object", properties: { action: { const: "open" } } }] } },
+		{ name: "unsupported", description: "string root", inputSchema: { type: "string" } },
+		{ name: "activate_skill", description: "bridge-local skill", inputSchema: { type: "object", properties: { name: { type: "string", enum: ["tdd"] } }, required: ["name"] } },
+		{ name: "bridge_poll_result", description: "bridge-local poll", inputSchema: { type: "object", properties: { callId: { type: "string" } }, required: ["callId"] } },
+	];
+	const before = structuredClone(original);
+	const r = await startMcpServer(fakeDeps({ listTools: () => original }));
+	assert.equal(r.ok, true);
+	handle = r.handle!;
+	assert.deepEqual(await servedTools(), [
+		original[0],
+		{ name: "union", description: "object union", inputSchema: { type: "object", anyOf: [{ type: "object", properties: { action: { const: "list" } } }, { type: "object", properties: { action: { const: "open" } } }] } },
+		original[3], original[4],
+	]);
+	assert.deepEqual(original, before, "Pi continues validating the original catalog schemas");
+});
+
+test("mcp-server: schema omission warns once per tool per session, including dynamic catalog reloads", async () => {
+	let catalog = [
+		{ name: "string_tool", description: "unsupported", inputSchema: { type: "string" } as object },
+		{ name: "dangling_tool", description: "unsupported ref", inputSchema: { anyOf: [{ $ref: "#/$defs/missing" }] } },
+	];
+	const warnings: unknown[] = [];
+	const deps = fakeDeps({ listTools: () => catalog });
+	const opts = { log: (event: string, data?: unknown) => { if (event === "tool-schema-omitted") warnings.push(data); } };
+	const r = await startMcpServer(deps, opts);
+	handle = r.handle!;
+	assert.deepEqual(await servedTools(), []);
+	assert.deepEqual(await servedTools(), []);
+	assert.deepEqual(warnings, [
+		{ name: "string_tool", reason: "input schema is not an object or a supported object-only union" },
+		{ name: "dangling_tool", reason: "input schema is not an object or a supported object-only union" },
+	]);
+	catalog = [{ name: "string_tool", description: "now supported", inputSchema: { type: "object" } }];
+	assert.deepEqual(await servedTools(), catalog, "normalization follows the fresh catalog");
+	catalog = [{ name: "string_tool", description: "unsupported again", inputSchema: { type: "string" } }];
+	assert.deepEqual(await servedTools(), []);
+	assert.equal(warnings.length, 2, "a tool is not warned again after temporarily becoming supported");
+	await handle.close();
+	handle = null;
+	const next = await startMcpServer(deps, opts);
+	handle = next.handle!;
+	assert.deepEqual(await servedTools(), []);
+	assert.equal(warnings.length, 3, "a new session gets its own warning");
+});
+
 test("mcp-server: onToolCall rejection surfaces as an isError result upstream", async () => {
 	const r = await startMcpServer(
 		fakeDeps({

@@ -2,7 +2,8 @@
 //
 // Pi declares tool parameters as TypeBox objects, which are already JSON
 // Schema at runtime — the same thing MCP puts on the wire. This serves them
-// verbatim instead of going through the SDK's `createSdkMcpServer`, which only
+// verbatim (wrapping object-only root unions) instead of going through the
+// SDK's `createSdkMcpServer`, which only
 // accepts Zod and therefore forces a JSON Schema → Zod → JSON Schema round
 // trip. That round trip is lossy below the top level: nested objects collapse
 // to open records and `anyOf`/`const` vanish, so Claude saw only the first
@@ -25,6 +26,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { McpResult } from "./extract-tool-results.js";
+import { normalizeToolSchema } from "./tool-schema.js";
 
 // Claude Code stamps every tools/call with the id of the tool_use block it came
 // from. That is the only reliable way to pair a call with its result: call order
@@ -44,25 +46,31 @@ export interface McpToolDef {
 	handler: (toolCallId: string) => Promise<McpResult>;
 }
 
-// MCP requires an object schema. Pi types tool parameters as any TypeBox schema,
-// so a scalar or array one typechecks but cannot go on the wire — that is a bug
-// in the tool, and reporting it at startup names the culprit. Degrading it to
-// "takes no arguments" instead would surface much later as Claude calling the
-// tool with no arguments and pi's own validation rejecting them.
-function assertObjectSchema(tool: McpToolDef): void {
-	const schema = tool.inputSchema as Record<string, unknown> | undefined;
-	if (!schema || schema.type !== "object") {
-		throw new Error(`${tool.name}: MCP tool parameters must be an object schema, got ${JSON.stringify(schema)}`);
-	}
+export function omittedToolSchemaWarning(toolName: string): string {
+	return `Claude bridge: omitted tool "${toolName}" from Claude's tools because its input schema is not an object or an object-only anyOf/oneOf union.`;
 }
 
-export function createToolServer(name: string, tools: McpToolDef[]) {
+export function createToolServer(
+	name: string,
+	tools: McpToolDef[],
+	onOmittedTool: (toolName: string) => void = (toolName) => console.warn(omittedToolSchemaWarning(toolName)),
+) {
 	const server = new McpServer({ name, version: "1.0.0" }, { capabilities: { tools: {} } });
-	const byName = new Map(tools.map((tool) => [tool.name, tool]));
-	for (const tool of tools) assertObjectSchema(tool);
+	const advertised: McpToolDef[] = [];
+	const omitted = new Set<string>();
+	for (const tool of tools) {
+		const inputSchema = normalizeToolSchema(tool.inputSchema);
+		if (inputSchema) {
+			advertised.push({ ...tool, inputSchema });
+		} else if (!omitted.has(tool.name)) {
+			omitted.add(tool.name);
+			onOmittedTool(tool.name);
+		}
+	}
+	const byName = new Map(advertised.map((tool) => [tool.name, tool]));
 
 	server.server.setRequestHandler(ListToolsRequestSchema, () => ({
-		tools: tools.map((tool) => ({
+		tools: advertised.map((tool) => ({
 			name: tool.name,
 			description: tool.description,
 			inputSchema: tool.inputSchema as Record<string, unknown>,

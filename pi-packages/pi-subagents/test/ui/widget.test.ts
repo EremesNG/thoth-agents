@@ -171,6 +171,133 @@ function readJsonl(file: string): any[] {
 }
 
 describe('background widget', () => {
+  it.each([
+    'running',
+    'queued',
+  ] as const)('shows a compact dropped-tools warning on %s cards without changing empty cards', (status) => {
+    const task = {
+      id: 'warned',
+      agent: 'worker',
+      mode: 'background',
+      status,
+      task: 'work',
+      dropped_tools: ['missing_fixture_tool'],
+    } as SubagentTask;
+    const state = new ClaudeBackgroundWidgetState(() => [task]);
+    const widget = new ClaudeBackgroundWidget(state, {});
+    const warned = widget.render(200);
+    expect(warned.join('\n')).toContain(
+      '⚠ Dropped tools: missing_fixture_tool',
+    );
+    task.dropped_tools = [];
+    const empty = widget.render(200);
+    expect(empty.join('\n')).not.toContain('Dropped tools');
+    expect(warned).toHaveLength(empty.length + 1);
+    task.dropped_tools = undefined;
+    expect(widget.render(200).length).toBe(empty.length);
+  });
+  it('keeps dropped-tools warnings compact, metrics intact and mouse rows aligned at narrow widths', () => {
+    const first = {
+      id: 'first',
+      agent: 'first',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+      created_at: '2026-01-01T00:00:02Z',
+      last_activity: 'reading',
+      dropped_tools: [
+        'missing_工具_👩‍💻_tool_with_a_long_name',
+        'another_missing_tool',
+      ],
+      runtime_metrics: { turns: 0, toolUses: 5, contextPercent: 62 },
+    } as SubagentTask;
+    const second = {
+      id: 'second',
+      agent: 'second',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+      created_at: '2026-01-01T00:00:01Z',
+    } as SubagentTask;
+    for (const width of [80, 50, 35, 24, 20, 1]) {
+      const state = new ClaudeBackgroundWidgetState(() => [first, second]);
+      const widget = new ClaudeBackgroundWidget(state, {
+        fg: (_name: string, text: string) => `\u001b[33m${text}\u001b[39m`,
+      });
+      const lines = widget.render(width);
+      expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
+      const raw = state.renderLines({ width });
+      const warningRow = raw.findIndex((line) =>
+        line.includes('⚠ Dropped tools:'),
+      );
+      expect(warningRow).toBeGreaterThan(1);
+      expect(state.handleMouseClick({ row: warningRow })?.action).toEqual({
+        type: 'open-task',
+        taskId: 'first',
+      });
+      const nextHeader = raw.findIndex((line) =>
+        line.includes('second · work'),
+      );
+      expect(state.handleMouseClick({ row: nextHeader })?.action).toEqual({
+        type: 'open-task',
+        taskId: 'second',
+      });
+      if (width >= 50) {
+        const text = lines.map(stripAnsi).join(' ');
+        expect(text).toContain('tools 5');
+        expect(text).toContain('context 62.0%');
+      }
+      if (width >= 24)
+        expect(lines.map(stripAnsi).join(' ')).toContain('Dropped tools:');
+    }
+  });
+
+  it('includes warnings from every queued task in the grouped queue without duplicating names', () => {
+    const tasks = ['first', 'second'].map((id) => ({
+      id,
+      agent: id,
+      mode: 'background',
+      status: 'queued',
+      task: 'work',
+      dropped_tools: id === 'first' ? [] : ['missing_tool', 'missing_tool'],
+    })) as SubagentTask[];
+    const state = new ClaudeBackgroundWidgetState(() => tasks);
+    expect(state.renderLines({ width: 200 })).toEqual([
+      '● Agents  (↑↓ navigate · ↵ open)',
+      '  ○ 2 queued',
+      '  ╰─ ⚠ Dropped tools: missing_tool',
+    ]);
+    expect(state.handleMouseClick({ row: 2 })?.action).toEqual({
+      type: 'open-task',
+      taskId: 'first',
+    });
+  });
+
+  it.each([
+    'completed',
+    'failed',
+    'cancelled',
+  ] as const)('removes the warned running card at %s while retaining terminal warning surfaces', (status) => {
+    const task = {
+      id: 'warned',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+      dropped_tools: ['missing_fixture_tool'],
+    } as SubagentTask;
+    const state = new ClaudeBackgroundWidgetState(() => [task]);
+    expect(state.renderLines().join(' ')).toContain('Dropped tools');
+    state.handleTerminalInput('\u001b[B');
+    task.status = status;
+    expect(state.renderLines({ frame: 1 })).toEqual([]);
+    expect(state.handleTerminalInput('\u001b[B')).toBeUndefined();
+    expect(state.getSelectedKey()).toBe('main');
+    expect(completionMessage(task)).toContain(
+      'missing implementation: missing_fixture_tool',
+    );
+  });
+
   it('keeps running cards and selection stationary while streaming inputs reorder', () => {
     const makeTask = (id: string, created_at: string) =>
       ({

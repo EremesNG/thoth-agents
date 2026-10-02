@@ -75,12 +75,13 @@
   `@active` is rejected with a diagnostic naming `*` as its replacement, never
   accepted as an alias or explicit name. Unsupported overrides remain untouched
   with diagnostics during synchronization. Empty selections and reserved
-  delegation/root-only controls are rejected. `*` resolves at child launch;
-  tools without a child implementation are dropped and reported as durable
-  warnings in status/results/completion while the child uses the available
+  delegation/root-only controls are rejected. `*` resolves at child launch; for
+  every selection form (`*`, explicit lists, globs) tools without a child
+  implementation are dropped and reported as durable warnings on the running
+  widget card and in status/results/completion while the child uses the available
   subset. An all-missing selection or unexpected extra child tools still fail.
-  Runtime explicit lists and glob patterns stay strict on missing implementations;
-  the panel does not accept globs. Native TUI/AI modules are declared public peers and
+  Explicit names reach the child even when inactive in the root (the way to give
+  a role deferred or advanced tools); the panel does not accept globs. Native TUI/AI modules are declared public peers and
   kept external in the build; static imports let Pi's loader resolve its native
   aliases for compiled JS. Lazy imports from a natively loaded compiled extension
   bypass those aliases. Root model and external override precedence remain

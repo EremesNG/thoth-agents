@@ -29,6 +29,8 @@ Use `/model` to select any Claude model in pi-ai's catalog, e.g. `claude-bridge/
 
 Behind the scenes, pi's tools are bridged to Claude Code but everything works like normal in pi. Bash commands get Claude Code's 120-second default timeout since pi's bash has none. Skills are forwarded to Claude Code's system prompt, and steering mid-turn reaches Claude at the next tool boundary.
 
+**Tool schemas:** Object schemas pass through unchanged. Object-only root `anyOf`/`oneOf` unions (including object `allOf` and local `$ref` variants) gain `type: "object"`, preserving variants and root metadata/definitions. Other non-object schemas are omitted rather than failing the request, with one warning per tool per session: a UI notification, or stderr in headless children, also recorded in `claude-bridge-diag.log` in pi's agent dir. Pi still validates calls against the original schema.
+
 The model list comes from pi-ai's Anthropic catalog automatically — when pi-ai adds a new Claude model, it appears in `/model` after updating the package, no bridge update needed. Dated snapshot ids (e.g. `claude-opus-4-5-20251101`) are not shown.
 
 **1M Context:** Fable 5/5.1, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 get 1M context. Opus 4.6 gets 1M only on a Max plan or with Extra Usage, and Sonnet 4.6 only with Extra Usage — set `provider.plan` and/or `provider.longContextExtraUsage` as described in [Configuration](#configuration).

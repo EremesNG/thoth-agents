@@ -11,6 +11,7 @@ import extension from "../extensions/index.js";
 import { saveConfig } from "../src/config.js";
 import { mcpConfigPath } from "../src/mcp-registration.js";
 import { agyConversationDir } from "../src/agy-paths.js";
+import { TOKEN_HEADER } from "../src/mcp-server.js";
 
 vi.mock("../src/patch-cleanup.js", () => ({ patchStatus: () => ({ present: false }), restorePatch: () => ({}) }));
 
@@ -25,7 +26,7 @@ afterEach(async () => {
 	fs.rmSync(mcpConfigPath(), { force: true });
 });
 
-function session(providerName = "antigravity") {
+function session(providerName = "antigravity", tools: Array<{ name: string; description: string; parameters: object }> = []) {
 	const handlers = new Map<string, Array<(...args: any[]) => any>>();
 	const commands = new Map<string, any>();
 	let provider: any;
@@ -36,7 +37,7 @@ function session(providerName = "antigravity") {
 		on: (name: string, fn: (...args: any[]) => any) => handlers.set(name, [...handlers.get(name) ?? [], fn]),
 		registerProvider: (_name: string, config: any) => { provider = config; },
 		registerTool: () => {}, registerCommand: (name: string, command: any) => commands.set(name, command), registerEntryRenderer: () => {},
-		getAllTools: () => [], getActiveTools: () => [],
+		getAllTools: () => tools, getActiveTools: () => tools.map((tool) => tool.name),
 	} as unknown as ExtensionAPI;
 	const s = {
 		pi, ctx, notices,
@@ -89,6 +90,52 @@ function privateConfigs(): Array<{ dir: string; servers: Record<string, any> }> 
 		return fs.existsSync(file) ? [{ dir, servers: JSON.parse(fs.readFileSync(file, "utf8")).mcpServers }] : [];
 	});
 }
+
+test.each([
+	{ engine: "stream-json", discovery: "private" },
+	{ engine: "stream-json", discovery: "legacy-global" },
+	{ engine: "acp", discovery: "private" },
+	{ engine: "acp", discovery: "legacy-global" },
+])("$engine/$discovery: schema omission reaches headless stderr once and local/internal tools remain advertised", async ({ engine, discovery }) => {
+	fixture();
+	vi.stubEnv("AGY_ENGINE", engine);
+	vi.stubEnv("AGY_BRIDGE_DISCOVERY", discovery);
+	if (engine === "acp") {
+		const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
+		fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"));
+		vi.stubEnv("AGY_ACP_BIN", bin);
+	}
+	const stderr: string[] = [];
+	vi.spyOn(console, "error").mockImplementation((...args) => { stderr.push(args.join(" ")); });
+	const object = { type: "object", properties: { action: { type: "string" } } };
+	const union = { definitions: { action: object }, anyOf: [{ $ref: "#/definitions/action" }, { type: "object" }] };
+	const s = session("antigravity", [
+		{ name: "plain", description: "plain", parameters: object },
+		{ name: "union", description: "union", parameters: union },
+		{ name: "string_tool", description: "unsupported", parameters: { type: "string" } },
+	]);
+	await extension(s.pi);
+	await s.emit("session_start");
+	const endpoint = Object.values(privateConfigs()[0].servers)[0];
+	for (let i = 0; i < 2; i++) {
+		const response = await fetch(endpoint.serverUrl, {
+			method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", [TOKEN_HEADER]: endpoint.headers[TOKEN_HEADER] },
+			body: JSON.stringify({ jsonrpc: "2.0", id: i + 1, method: "tools/list", params: {} }),
+		});
+		assert.equal(response.status, 200);
+		const data = JSON.parse((await response.text()).split("\n").find((line) => line.startsWith("data:"))!.slice(5));
+		const tools = data.result.tools;
+		assert.equal(tools.some((tool: any) => tool.name === "string_tool"), false);
+		assert.deepEqual(tools.find((tool: any) => tool.name === "plain").inputSchema, object);
+		assert.deepEqual(tools.find((tool: any) => tool.name === "union").inputSchema, { type: "object", definitions: { action: object }, anyOf: [{ $ref: "#/definitions/action" }, { type: "object" }] });
+		assert.equal(tools.find((tool: any) => tool.name === "bridge_poll_result").inputSchema.type, "object");
+	}
+	assert.deepEqual(stderr.filter((text) => text.includes("omitted from Antigravity")), [
+		"[antigravity-bridge] Pi tool string_tool omitted from Antigravity: input schema is not an object or a supported object-only union",
+	]);
+	assert.deepEqual(s.notices, [], "headless output must not depend on UI notifications");
+	assert.equal("type" in union, false, "Pi's validation schema stays original");
+});
 
 test.each(["artifacts open 0", "artifacts"])("/agy %s hides the detached artifact-opener console", async (args) => {
 	const spawn = fixture();

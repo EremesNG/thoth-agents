@@ -41,6 +41,12 @@
   a trimmed local-jobs fork of pi-better-background-tasks), which the operator adds
   to Pi settings; jobs survive `/reload` of their session and stop on any other
   shutdown, including subagent teardown.
+  The workspace `@thoth-agents/pi-openai-fast` (`pi-packages/pi-openai-fast`,
+  operator-installed, not in `PI_PACKAGE_SPECS`) adds `<id>-fast` virtual models
+  under every provider with `openai-responses`/`openai-codex-responses` models
+  (including extension providers such as `openai-codex-2`); agent-loop requests
+  routed through them send `service_tier: "priority"`, while compaction and
+  other direct requests keep the standard tier.
   Generated definitions use supported `model`, `effort`, and `subagent_mode`
   fields; they do not claim fresh-context or depth enforcement. Omitted run mode
   follows the selected definition and configuration, with background as the

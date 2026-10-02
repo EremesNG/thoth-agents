@@ -65,6 +65,11 @@ jobs:
           pnpm --filter @thoth-agents/pi-background-tasks run typecheck
           pnpm --filter @thoth-agents/pi-background-tasks run test
 
+      - name: Check pi-openai-fast
+        run: |
+          pnpm --filter @thoth-agents/pi-openai-fast run typecheck
+          pnpm --filter @thoth-agents/pi-openai-fast run test
+
       # Offline unit tests only; the package `test` script runs live Claude integrations.
       - name: Check pi-claude-bridge
         run: |
@@ -111,6 +116,12 @@ jobs:
 
       - name: Test pi-background-tasks
         run: pnpm --filter @thoth-agents/pi-background-tasks run test
+
+      - name: Typecheck pi-openai-fast
+        run: pnpm --filter @thoth-agents/pi-openai-fast run typecheck
+
+      - name: Test pi-openai-fast
+        run: pnpm --filter @thoth-agents/pi-openai-fast run test
 
       - name: Typecheck pi-claude-bridge
         run: pnpm --filter @thoth-agents/pi-claude-bridge run typecheck

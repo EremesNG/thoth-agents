@@ -7,13 +7,23 @@ if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt
 Add-Type -Path (Join-Path $PSScriptRoot 'windows-job-helper.cs')
 [WindowsJobPrototype]::WatchParent($ParentPid)
 [Console]::WriteLine((@{ event = 'ready'; pid = $PID; parentPid = $ParentPid } | ConvertTo-Json -Compress))
+$terminationFaults = @{}
 try {
     while ($null -ne ($line = [Console]::ReadLine())) {
         $request = $null
         try {
             $request = ConvertFrom-Json -InputObject $line -AsHashtable
+            # Private test clients can withhold one response without blocking unrelated jobs.
+            if ($TestFaults -and $request.op -eq 'terminate' -and $terminationFaults.ContainsKey($request.key)) {
+                $fault = $terminationFaults[$request.key]
+                $terminationFaults.Remove($request.key)
+                if ($fault -eq 'malformed') { [Console]::WriteLine('{invalid-json') }
+                if ($fault -eq 'protocol-error') { [Console]::WriteLine((@{ id = $request.id; error = 'invalid protocol: injected response error' } | ConvertTo-Json -Compress)) }
+                continue
+            }
             $result = switch ($request.op) {
                 'launch' {
+                    if ($TestFaults -and $request.terminationFault) { $terminationFaults[$request.key] = $request.terminationFault }
                     [string[]]$envBlock = @($request.env.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" })
                     [WindowsJobPrototype]::Launch($request.key, $request.executable, [string[]]$request.argv, $request.cwd, $envBlock, $request.log, ($TestFaults -and $request.denyAssignment), $request.stderrLog)
                 }

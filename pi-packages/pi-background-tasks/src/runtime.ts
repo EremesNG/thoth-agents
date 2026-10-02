@@ -64,7 +64,7 @@ export interface WatchTaskParams extends CommandSpec, TaskIntentParams {
   /** Consecutive blind checks before the watch is flagged (#359). Default 3; 0 turns it off. */
   blind_checks?: number;
 }
-interface InFlightPoll extends RunningCommand { origin: string }
+interface InFlightPoll extends RunningCommand { origin: string; consumed?: boolean }
 const POLL_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.poll-handoff");
 interface OwnedContainer {
   origin: string;
@@ -575,6 +575,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
     activePolls.add(id);
     let checked: FirstWatchCheck | undefined;
     let poll: InFlightPoll | undefined;
+    let consumedHere = false;
     try {
       const meta = readMeta(id);
       if (!meta || meta.status !== "running" || meta.kind !== "command_watch") return;
@@ -588,6 +589,8 @@ function createTaskRuntime(owner: ExtensionAPI) {
             return;
           }
         }
+        if (scheduledWorkSuspended || poll?.consumed) return;
+        if (poll) poll.consumed = consumedHere = true;
         finalize(meta, { status: "timed_out", reason: watchTimeoutReason(meta) }, pi, getActiveSession);
         return;
       }
@@ -605,7 +608,8 @@ function createTaskRuntime(owner: ExtensionAPI) {
         ...(result.timedOut ? { timedOut: true } : {}), stdout: result.stdout, stderr: result.stderr,
       };
       // A poll that was in flight when the session shut down belongs to a stale instance.
-      if (scheduledWorkSuspended) return;
+      if (scheduledWorkSuspended || poll.consumed) return;
+      poll.consumed = consumedHere = true;
       appendWatchResult(meta.logPath, result);
       const latest = readMeta(id);
       if (!latest || latest.status !== "running" || latest.stopRequestedAt) return;
@@ -690,10 +694,12 @@ function createTaskRuntime(owner: ExtensionAPI) {
       scheduleFailureAttention(pi, id, getActiveSession);
       scheduleWatch(pi, id, nextWatchDelayMs(latest), getActiveSession);
     } catch (error) {
+      if (poll?.consumed && !consumedHere) return;
       const meta = readMeta(id);
       if (meta && meta.status === "running" && (error instanceof CommandTerminationError || poll?.cleanupPending)) {
         recordStopError(meta, readableError(error));
-      } else if (meta && meta.status === "running" && !meta.stopRequestedAt) {
+      } else if (!scheduledWorkSuspended && meta && meta.status === "running" && !meta.stopRequestedAt) {
+        if (poll) poll.consumed = true;
         const detail = readableError(error);
         const reason = detail;
         recordFailure(meta, "watch-poll", reason, `throw:${meta.lastCheckedAt ?? meta.startedAt}`, { category: "execution" });
@@ -702,8 +708,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
       }
     } finally {
       activePolls.delete(id);
-      // A rejected result does not prove cleanup: retain the handle for stop/shutdown/reload.
-      if (poll?.cleanupVerified && inFlightPolls.get(id) === poll) inFlightPolls.delete(id);
+      // Keep settled promises and their cleanup proof across the reload gap until an
+      // active instance consumes them. Rejection alone never releases ownership.
+      if (poll?.consumed && poll.cleanupVerified && inFlightPolls.get(id) === poll) inFlightPolls.delete(id);
       if (firstCheckWaiters.has(id)) {
         if (checked) settleFirstCheck(id, checked);
         else if (readMeta(id)?.status !== "running") settleFirstCheck(id, undefined);

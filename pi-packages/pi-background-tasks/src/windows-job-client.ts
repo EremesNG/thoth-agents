@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { resolvePowerShell } from './powershell.js';
 
-export interface JobLaunch { executable: string; argv: string[]; cwd: string; env: NodeJS.ProcessEnv; log: string; stderrLog?: string; denyAssignment?: boolean }
+export interface JobLaunch { executable: string; argv: string[]; cwd: string; env: NodeJS.ProcessEnv; log: string; stderrLog?: string; denyAssignment?: boolean; terminationFault?: 'timeout' | 'malformed' | 'protocol-error' }
 export interface JobState { pid: number; activeProcesses: number; exitCode: number | null; creationTime: string }
 interface Response extends Partial<JobState> { id?: number; event?: string; error?: string; failedPid?: number; neverResumed?: boolean }
 export interface WindowsJob {
@@ -55,7 +55,11 @@ export class WindowsJobClient {
           if(!pending)return;
           this.pending.delete(value.id!);clearTimeout(pending.timer);
           if(value.error)pending.reject(Object.assign(new Error(value.error),{failedPid:value.failedPid,neverResumed:value.neverResumed,launchFailed:true}));else pending.resolve(value);
-        } catch(error){this.fail(new Error(`Windows job helper invalid protocol: ${String(error)}`));child.kill();}
+        } catch {
+          // An unparseable line cannot safely be attributed to a request. Leave
+          // requests pending for their own response/deadline; never close shared
+          // Job Object handles because one response was malformed.
+        }
       });
       const failed=(error:Error)=>{clearTimeout(timeout);this.fail(error);reject(error);};
       child.on('error',error=>failed(new Error(`Windows job helper requires PowerShell Core 7+: ${error.message}`)));
@@ -74,7 +78,9 @@ export class WindowsJobClient {
     catch(error) { if(op==='launch')Object.assign(error as Error,{launchFailed:true});throw error; }
     return new Promise((resolve,reject)=>{
       const id=++this.sequence;
-      const timer=setTimeout(()=>{this.pending.delete(id);const error=new Error(`Windows job helper ${op} timed out`);this.fail(error);this.child?.kill();reject(error);},10000);timer.unref();
+      // A missing response says nothing about the helper or other jobs. Keep the
+      // container's handle owned and let its caller retry through the same helper.
+      const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error(`Windows job helper ${op} timed out`));},10000);timer.unref();
       this.pending.set(id,{resolve,reject,timer});
       this.child!.stdin.write(JSON.stringify({id,op,...extra})+'\n');
     });

@@ -4,10 +4,19 @@ import type {
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
 import { createPriorityGuard } from './payload.ts';
+import { withCodexPriorityPricing } from './pricing.ts';
 import { planVariantSync, type VariantSpec, variantKey } from './variants.ts';
+
+interface PricingMarker {
+  provider: string;
+  modelId: string;
+  api: string;
+}
 
 export default function openAiFast(pi: ExtensionAPI) {
   const guard = createPriorityGuard();
+  let routedRequest: PricingMarker | undefined;
+  let pricingMarker: PricingMarker | undefined;
   // Variants this extension registered; only these are ever unregistered.
   const tracked = new Set<string>();
 
@@ -22,6 +31,8 @@ export default function openAiFast(pi: ExtensionAPI) {
       input: spec.input,
       route(request, ctx: ExtensionContext) {
         guard.disarm();
+        routedRequest = undefined;
+        pricingMarker = undefined;
         const base = ctx.modelRegistry.find(spec.provider, spec.baseId);
         if (!base) {
           throw new Error(
@@ -29,8 +40,14 @@ export default function openAiFast(pi: ExtensionAPI) {
           );
         }
         // Direct requests (compaction summaries, extension calls) keep the standard tier.
-        if (request.reason !== 'direct')
+        if (request.reason !== 'direct') {
           guard.arm({ provider: spec.provider, baseId: spec.baseId });
+          routedRequest = {
+            provider: spec.provider,
+            modelId: spec.baseId,
+            api: base.api,
+          };
+        }
         return {
           model: base,
           thinkingLevel: clampThinkingLevel(base, request.thinkingLevel),
@@ -49,5 +66,29 @@ export default function openAiFast(pi: ExtensionAPI) {
     for (const spec of plan.register) register(spec);
   });
 
-  pi.on('before_provider_request', (event) => guard.apply(event.payload));
+  pi.on('before_provider_request', (event) => {
+    const payload = guard.apply(event.payload);
+    if (payload) pricingMarker = routedRequest;
+    routedRequest = undefined;
+    return payload;
+  });
+
+  pi.on('message_end', (event, ctx) => {
+    const { message } = event;
+    if (message.role !== 'assistant') return;
+    const marker = pricingMarker;
+    pricingMarker = undefined;
+    if (
+      !marker ||
+      message.api !== 'openai-codex-responses' ||
+      message.api !== marker.api ||
+      message.provider !== marker.provider ||
+      message.model !== marker.modelId
+    )
+      return;
+    const base = ctx.modelRegistry.find(marker.provider, marker.modelId);
+    if (!base) return;
+    const replacement = withCodexPriorityPricing(message, base);
+    if (replacement) return { message: replacement };
+  });
 }

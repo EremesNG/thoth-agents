@@ -393,20 +393,37 @@ visible output; workers B and C use identical eligibility fixtures.
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: cb702dd5932c70bf4d1f97d31d1d0f81485e5265e27dc9997a77f69782faba5d
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
-- AC-6: PENDING | check | evidence
-- AC-7: PENDING | check | evidence
+Fresh read-only Oracle subtask_thoth-oracle_1790923031454_5cad8cc9 returned PASS at HEAD
+ba52fff after final round 1 FAIL repair f9a1959; implementation commits 4208aec, 770c340,
+1ac2d60, b656265, ff2b78d, f9a1959, 1aa947f.
+
+- AC-1: PASS | selector/verifier probes + real-SDK tests | tolerant explicit/glob/mixed/* selection; all-missing and unexpected-registration failures kept; inactive explicit tools delivered; exclusions unchanged
+- AC-2: PASS | widget probes + tests | running/queued card warning, absent when empty, metrics, width, row targeting, focus guards and terminal removal preserved
+- AC-3: PASS | 88 independent fixtures in both bridges + in-memory Claude MCP | eligible unions under required input incl. typed roots; invalid unions and ineligible siblings omitted with deduplicated warning; array-index refs and escapes resolve; unwrap and history re-wrap correct
+- AC-4: PASS | classifier probes + tests | schema rejection non-retryable API error; identifier substrings no longer match network rules; genuine network codes do
+- AC-5: PASS | docs review | package, bridge and root docs describe tolerant selection, card warning, inactive-explicit behavior and schema eligibility
+- AC-6: PASS | live repeat + recorded checks | Claude and Antigravity children called agent_browser_electron list successfully; operator saw the running-card warning; completion and history carried probe_missing_tool; all eight installed agent_browser schemas remain eligible
+- AC-7: PASS | fixtures + naming probes | eligible unions kept at root, invalid omitted with headless warning via mcpLog; pi-agy-<8hex> collision reservation and 64/65-character boundaries per discovery mode
 - Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:0fc837a611cc7040c4fe060bd15201b129a93836fabbe0f5ce88262b366bf4f7
+- Source: pi-packages/pi-subagents/src/runner/sdk-runner.ts | sha256:8f9ce43bce9db9c15d7cc5d0e058b2599e9ecee7d5b785423f1777d3553ec1a8
+- Source: pi-packages/pi-subagents/src/ui/background-widget.ts | sha256:7678f630f73e76e95aa5dc79dd307129c156d145d7374d8438d3bec43cc5d425
+- Source: pi-packages/pi-subagents/src/error-metadata.ts | sha256:d91f3055340489ebf0b8fa5a6fd10d353f6ebafcaa2c6999e5d72ca66d0406ad
+- Source: pi-packages/pi-subagents/src/render/tool-selection-warning.ts | sha256:ad9a665b5759100e9db35c95a5c630ddd42857601933cdffe3e4b8bccd50068e
+- Source: pi-packages/pi-claude-bridge/src/tool-schema.ts | sha256:7a4ea15eede9fe0aa7190b73f3cda0ec5aaec1d0b394632737b3fac676247a05
+- Source: pi-packages/pi-claude-bridge/src/mcp-server.ts | sha256:fe8c4e279d7c49616f6dc992731a53b12591cc8675dd138f42705ec66c207234
+- Source: pi-packages/pi-claude-bridge/src/convert.ts | sha256:60a83a75f934f519909d7c4634ffc4a116261b3119c6a343205d38ee2a924f87
+- Source: pi-packages/pi-claude-bridge/src/query-state.ts | sha256:4bca02d44d4b807999c382be4f5ca3f707935be863f22806d6ce38f80e2e50b4
+- Source: pi-packages/pi-antigravity-bridge/src/tool-schema.ts | sha256:7c6d3b0abe550cae822be64066846b43e3439b6646dafb1be5fca64668cb39e5
+- Source: pi-packages/pi-antigravity-bridge/src/mcp-server.ts | sha256:d60934c79b4ceab04e0b1eafec9800102491e0a5d749bf588b72a79a3ab36224
+- Source: pi-packages/pi-antigravity-bridge/extensions/index.ts | sha256:570f81a9eeb2a5c707831e86c0bda3ed1370ffdbaa757c656028b860b3fd1ed1
+- Source: docs/installation.md | sha256:fb22d9e4958b9b1dd5fe474c429d3f60c259e76c35d49cabeca1f78ea732444e
+- Source: docs/agent/harness-packaging.md | sha256:7cdf0d0c7e4fc32e7d069ddd08841838e229e5ac89dfed98b6bec9ae30570710
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

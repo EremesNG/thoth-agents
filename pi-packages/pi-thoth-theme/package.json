@@ -1,0 +1,60 @@
+{
+  "name": "@thoth-agents/pi-thoth-theme",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Modular Thoth theme, status line, tool styling, images, and welcome header for Pi.",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "theme"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "themes": [
+      "./themes"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EremesNG/thoth-agents.git",
+    "directory": "pi-packages/pi-thoth-theme"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "files": [
+    "src/**/*.ts",
+    "!src/**/*.test.ts",
+    "themes/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typebox": "^1.3.4",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.9",
+    "@earendil-works/pi-coding-agent": "^0.99.1",
+    "@earendil-works/pi-tui": "^0.99.1",
+    "@earendil-works/pi-ai": "^0.99.1",
+    "@rolldown/binding-wasm32-wasi": "^1.2.4"
+  },
+  "upstream": {
+    "repository": "https://github.com/QuangThai/pi-omp-theme",
+    "role": "primary source"
+  }
+}

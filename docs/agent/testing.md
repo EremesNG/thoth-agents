@@ -44,11 +44,11 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 build step. The repository is a pnpm workspace: the root install also installs
 `pi-packages/*`, and CI then runs each package's `typecheck` plus offline tests
 through `pnpm --filter` (`test` for `@thoth-agents/pi-subagents`,
-`@thoth-agents/pi-antigravity-bridge`, `@thoth-agents/pi-background-tasks` and
-`@thoth-agents/pi-openai-fast`,
+`@thoth-agents/pi-antigravity-bridge`, `@thoth-agents/pi-background-tasks`,
+`@thoth-agents/pi-openai-fast` and `@thoth-agents/pi-thoth-theme`,
 `test:unit` for `@thoth-agents/pi-claude-bridge`; its live `test` never runs in CI).
 A second job, `pi-packages-windows` on `windows-latest` (same Node, pnpm and frozen
-install), runs only those five package typechecks and offline tests, one step per
+install), runs only those six package typechecks and offline tests, one step per
 command so a failure cannot be masked; the root suite runs only on Ubuntu.
 
 `.github/workflows/release.yml` waits for successful CI for the commit, installs

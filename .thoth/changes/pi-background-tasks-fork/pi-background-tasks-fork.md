@@ -317,6 +317,26 @@ Windows, command jobs run in PowerShell 7.
   generated drift); root test 1207 passed with the 4 missing-sibling failures and one
   sdd-validator 5 s timeout under load that passed 3/3 in isolation. Live AC-6 follows.
 
+- Live AC-6 on containment (2026-10-01, main 0.5.0 at 6e57683; full restart; settings
+  line 15 switched to the fork with backup settings.json.bgfork2-1790904259; pwsh 7 at
+  C:\Program Files\PowerShell\7). All checks from outside Pi by PID and creation time.
+  Every job ran as pwsh -EncodedCommand under the hidden Job Object helper (one per Pi
+  process); no Git Bash. Reload: job bg_1aws_muqa819w_1 (helper 67996, pwsh 67924, node
+  66212, grandchild 67756) kept the same PIDs/creation times across the operator's
+  /reload and delivered exactly once. Natural exit: bg_1aws_muqafauj_2 (leader 67788 ->
+  short-lived intermediate 69092 -> detached grandchild 67096) ended succeeded with leader
+  and grandchild gone (first attempt bg_1aws_muqadnat_1 invalid: root launched it before
+  its script existed, MODULE_NOT_FOUND). /new: bg_1aws_muqafvtb_3 (pwsh 61096, node
+  56956, grandchild 66516) gone after the operator's /new and /resume, meta cancelled.
+  Children (operator temporarily added bg_task_spawn/bg_task_status to thoth-worker): a
+  finishing worker's job (63956 + 68844) and a cancelled worker's job (66680 + 67508)
+  were gone with meta cancelled under their child sessions; root control job (66608 +
+  65840) stayed alive throughout. Second session and abrupt death: a second Pi (node
+  58072) with its own helper 59572 ran job pwsh 66576 -> node 68352 -> grandchild 67120;
+  root killed only PID 58072 (taskkill /F, no /T, with the operator's explicit consent);
+  after 10 s Pi, helper and the whole job tree were gone while this session's Pi 60796,
+  helper 67996 and control job 66608/65840 stayed alive; control job then stopped by root.
+
 ## Durable deltas
 
 - `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST on Windows stop every running job of the session, including in-flight watch commands, on any other session shutdown, subagent teardown or Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run Windows command jobs in PowerShell 7, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
@@ -394,7 +414,7 @@ Windows, command jobs run in PowerShell 7.
   - Focused check and PASS evidence: `pnpm run check:ci`; workflow review
   - Return milestone: committed
   - Stop / reassessment: none
-- [ ] AC-6: live and frozen checks
+- [x] AC-6: live and frozen checks
   - Outcome: live lifecycle verified
   - Known entrypoints and skill paths: thoth-archive skill
   - Inputs: AC-1..AC-5

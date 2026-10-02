@@ -141,7 +141,7 @@ describe('subagent_continue tool', () => {
     expect(result.content[0].text).not.toContain(
       'Ask the user before resuming',
     );
-    const renderedResult = continueTool
+    const renderedCollapsed = continueTool
       .renderResult(
         result,
         { expanded: false, isPartial: false },
@@ -149,10 +149,25 @@ describe('subagent_continue tool', () => {
       )
       .render(160)
       .join('\n');
-    expect(renderedResult).toContain('subagent: analyst');
-    expect(renderedResult).toContain('status: completed');
-    expect(renderedResult).toContain('click to view execution');
-    expect(renderedResult).not.toContain(`id: ${taskId}`);
+    expect(renderedCollapsed).toContain('subagent: analyst');
+    expect(renderedCollapsed).toContain('status: completed');
+    expect(renderedCollapsed).toContain('ctrl+o to expand');
+    expect(renderedCollapsed).not.toContain('click to view execution');
+    expect(renderedCollapsed).not.toContain(`id: ${taskId}`);
+
+    const renderedExpanded = continueTool
+      .renderResult(
+        result,
+        { expanded: true, isPartial: false },
+        { fg: (_name: string, text: string) => text },
+      )
+      .render(160)
+      .join('\n');
+    expect(renderedExpanded).toContain('subagent: analyst');
+    expect(renderedExpanded).toContain('status: completed');
+    expect(renderedExpanded).toContain('click to view execution');
+    expect(renderedExpanded).not.toContain('ctrl+o to expand');
+    expect(renderedExpanded).not.toContain(`id: ${taskId}`);
   });
 
   it('resolves * tools from the current parent Pi session on continuation', async () => {

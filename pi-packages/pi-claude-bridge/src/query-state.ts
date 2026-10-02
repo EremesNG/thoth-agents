@@ -22,6 +22,9 @@ export class QueryContext {
 	latestCursor = 0;
 	pendingToolCalls = new Map<string, PendingToolCall>();
 	pendingResults = new Map<string, McpResult>();
+	/** Pi names whose advertised Claude schema nests a root union under input.
+	 *  Query-scoped: an ordinary tool's own input property must never be unwrapped. */
+	wrappedToolNames = new Set<string>();
 	/** tool_use ids emitted this turn. Sole purpose is routing a delivered result
 	 *  to the owning query when several queries are in flight — pairing a result
 	 *  to its call is done by id from Claude's tools/call _meta, not from here. */

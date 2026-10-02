@@ -102,6 +102,7 @@ export type DroppedContent = {
 export function convertPiMessages(
 	messages: PiMessage[],
 	customToolNameToSdk?: Map<string, string>,
+	wrappedToolNames?: ReadonlySet<string>,
 ): { anthropicMessages: SessionMessage[]; sanitizedIds: Map<string, string>; dropped: DroppedContent } {
 	const anthropicMessages = [];
 	const sanitizedIds = new Map();
@@ -150,7 +151,11 @@ export function convertPiMessages(
 					}
 				} else if (block.type === "toolCall") {
 					const toolName = mapPiToolNameToSdk(block.name, customToolNameToSdk);
-					blocks.push({ type: "tool_use", id: sanitizeToolId(block.id, sanitizedIds), name: toolName, input: block.arguments ?? {} });
+					// Pi stores original arguments; Claude's replay must use the same
+					// input envelope as the currently advertised union schema.
+					const args = block.arguments ?? {};
+					const wrapped = wrappedToolNames?.has(block.name) || wrappedToolNames?.has(block.name.toLowerCase());
+					blocks.push({ type: "tool_use", id: sanitizeToolId(block.id, sanitizedIds), name: toolName, input: wrapped ? { input: args } : args });
 				} else {
 					dropped.other.set(block.type, (dropped.other.get(block.type) ?? 0) + 1);
 				}

@@ -96,12 +96,12 @@ describe("MCP tool schema advertisement", () => {
 		assert.deepStrictEqual(catalog.map((tool) => tool.name), ["valid_tool", "union_tool"]);
 		assert.deepStrictEqual(catalog[0].inputSchema, NESTED_TOOL_SCHEMA);
 		assert.deepStrictEqual(catalog[1].inputSchema, {
-			type: "object", anyOf: [{ type: "object", required: ["a"] }, { type: "object", required: ["b"] }],
+			type: "object", properties: { input: { anyOf: [{ type: "object", required: ["a"] }, { type: "object", required: ["b"] }] } }, required: ["input"],
 		});
 		assert.deepStrictEqual(warnings, ["bad_tool"]);
 		assert.ok(!("type" in union), "Pi still owns the original union schema");
 		assert.equal((await callTool("valid_tool", "toolu_good")).result.content[0].text, "ok");
-		assert.equal((await callTool("union_tool", "toolu_union", { a: 1 })).result.content[0].text, "ok");
+		assert.equal((await callTool("union_tool", "toolu_union", { input: { a: 1 } })).result.content[0].text, "ok");
 		assert.match((await callTool("bad_tool", "toolu_bad")).error.message, /Unknown tool: bad_tool/);
 	});
 
@@ -122,10 +122,10 @@ describe("MCP tool schema advertisement", () => {
 			type: "object",
 			definitions: { "action/shape": { type: "object", properties: { action: { const: "list" } }, required: ["action"] } },
 			title: "Actions", description: "Action variants",
-			oneOf: [
+			properties: { input: { oneOf: [
 				{ allOf: [{ $ref: "#/definitions/action~1shape" }, { $ref: "#/definitions/action~1shape" }] },
 				{ type: "object", properties: { action: { const: "open" } }, required: ["action"] },
-			],
+			] } }, required: ["input"],
 		});
 		assert.ok(!("type" in schema));
 	});

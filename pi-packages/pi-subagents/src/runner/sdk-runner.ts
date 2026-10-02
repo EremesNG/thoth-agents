@@ -295,6 +295,15 @@ function isolateSubagentExtensions(
         ) {
           // Run these once, before generic emission can stall on another package.
           backgroundShutdown.push(...callbacks);
+        } else if (passthrough && event === 'before_provider_request') {
+          // The one mutable observe-only event: a returned payload replaces the request payload.
+          handlers.set(
+            event,
+            callbacks.map(
+              (handler) => (event: any, ctx: any) =>
+                handler(cloneEventData(event), ctx),
+            ),
+          );
         } else if (passthrough && SUBAGENT_OBSERVE_ONLY_EVENTS.has(event)) {
           handlers.set(
             event,

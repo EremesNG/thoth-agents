@@ -1,0 +1,247 @@
+# Change: tolerant-child-tool-selection
+
+**Classification**: substantial
+**Scope**: coordinated
+**Uncertainty**: medium
+**Risk**: medium
+
+## Exploration
+
+- Facts-only Explorer (subtask_thoth-explorer_1790915535327_24acecda): in
+  `pi-packages/pi-subagents`, `src/tool-patterns.ts:28–70` resolves selections: standalone
+  `*` selects the parent's active inventory minus the nine delegation names
+  (`:1–11,51–57`); other globs match active inventory; explicit names are added directly
+  without consulting root activity; `subagent_*` and the two root-only interaction controls are always
+  removed. Child verification (`src/runner/sdk-runner.ts:97–131`, before
+  `emitChildSessionStart` at `:523–556`) compares selections against the child's
+  `getAllTools()`; missing implementations fail with "Selected tools are unavailable in the
+  child session (missing implementation: …)" (`:126`) unless the selection is exactly
+  standalone `*` (`:658–659`) and not every name is missing.
+- Dropped names travel as `dropped_tools` (`src/types.ts:161,441,503`), produced at
+  `sdk-runner.ts:548–560`, persisted in history column `dropped_tools_json`
+  (`src/history.ts:189,510,267,303,353–355,758`) and rendered by
+  `src/render/tool-selection-warning.ts:3–7` in status/task text
+  (`src/render/tools/formatting.ts:111–119`), result text (`src/tools/subagent-result.ts:29`)
+  and completion notification (`src/render/completion-message.ts:87,141`); the background
+  widget (`src/ui/background-widget.ts`) has no dropped-tools rendering.
+- Root panel `src/pi/tools-panel.ts` labels `(inactive)` and `(unavailable)`, retains
+  unavailable explicit names and persists explicit lists or standalone `*`
+  (`src/cli/pi-tool-config.ts:203–235`); runtime still accepts globs/mixed selectors from
+  hand-edited definitions.
+- Tests pinning strict explicit/glob behavior: `test/runner/providers-real-sdk.test.ts:150–186`,
+  `test/runner/interaction-bridge.test.ts:1154,1218–1256`; explicit root-inactive deferred
+  and codemode fixtures stay selectable (`test/runner/tool-selectors-real-sdk.test.ts:90–97,
+  157–191`). Docs: `P/README.md:123,149–155,273`,
+  `P/skills/subagents-configuration/SKILL.md:185–191`, `docs/installation.md:389–437`,
+  `docs/agent/harness-packaging.md:59–83`.
+- Spec `Configure adopted Pi subagents natively` (`.thoth/specs/multi-harness-agent-pack/
+  spec.md:471–479`) requires explicit lists and globs to fail on missing implementations.
+- Live probes (2026-10-01, Codex-model `thoth-worker`): (B) explicitly assigned
+  `agent_browser_electron`, inactive in the root, started and worked in the child (active
+  there; `list` succeeded); (A) with only `agent_browser_tools`, enabling `electron` was
+  refused as "unavailable in this Pi tool selection" and the tool never appeared. Explicit
+  assignment is therefore the only way to give a role a deferred/advanced tool.
+- Earlier live failures: a Claude-model child with `agent_browser_electron` failed because
+  `pi-packages/pi-claude-bridge/src/mcp-server.ts:51–56,63` rejects any tool whose top-level
+  schema is not `type: "object"` (the tool is a top-level `anyOf` of object variants), failing
+  the whole provider request; a child whose explicit list named tools absent after a package
+  swap failed before start.
+- Facts-only Explorer (subtask_thoth-explorer_1790916073433_67d7186d): the MCP SDK requires a
+  root `type: "object"` (`@modelcontextprotocol/sdk/dist/esm/types.js:1236–1247`, catchall
+  allows extra keywords such as `anyOf`); the Anthropic client declares
+  `input_schema.type: 'object'` with arbitrary additional keys
+  (`@anthropic-ai/sdk/resources/messages/messages.d.ts:2536–2541`); backend acceptance of
+  `{type:"object", anyOf:[...]}` is not established. Upstream elidickinson/pi-claude-bridge
+  `9dafd03` keeps the same assertion. Pi core's Anthropic conversion silently turns a root
+  union into an empty object (`@earendil-works/pi-ai/dist/api/anthropic-messages.js:1159–1185`);
+  the Antigravity bridge forwards schemas unchanged. Pi validates arguments against the
+  original `tool.parameters` (`pi-ai/dist/utils/validation.js:280–307`).
+- `pi-packages/pi-subagents/src/error-metadata.ts:283–344` classifies thrown and assistant
+  errors by regexes over the whole lowercased message; the network rule
+  `econnreset|enotfound|network|socket|timeout|timed out|connection` matched `timeoutMs`
+  inside the serialized schema, so the deterministic schema error was classified
+  `provider_network_error` and retryable (`:20–37`); no network-classification tests found.
+
+## Intent
+
+A subagent never fails because of how its tools are selected: explicitly assigned tools,
+including ones inactive in the root, keep reaching the child; selected tools without a child
+implementation are dropped with a visible durable warning (failing only when nothing remains);
+a tool with a non-object schema no longer breaks a Claude-bridge request; deterministic errors
+are not misclassified as network errors.
+
+## Non-goals
+
+- No change to standalone `*` semantics or its delegation exclusions.
+- No filtering of explicitly selected tools by root activity (inactive explicit tools keep
+  reaching the child).
+- No change to the root panel's persistence contract (explicit lists or `*`; it keeps
+  retaining unavailable names).
+- No flattening of union schemas; no change to Pi core's own Anthropic conversion.
+
+## Acceptance
+
+- AC-1: In pi-subagents, explicit lists, globs and mixed selectors drop selected names
+  without a child implementation with the same durable `dropped_tools` warning as standalone
+  `*`; the child fails before start only when no selected tool remains, with the existing
+  truthful diagnostic. Explicit names inactive in the root still reach the child; reserved
+  controls and standalone-`*` delegation exclusions are unchanged. Real-SDK tests replace
+  the strict explicit/glob cases (partial drop for explicit, glob and mixed; all-missing
+  failure; explicit inactive deferred/codemode still selectable).
+- AC-2: The background widget card shows a compact dropped-tools warning for tasks whose
+  `dropped_tools` is non-empty (running and terminal), within width limits, alongside the
+  existing status/result/completion surfaces. Tests cover rendering and absence when empty.
+- AC-3: In pi-claude-bridge, tool schemas whose root is not `type: "object"` never fail the
+  request: a root `anyOf`/`oneOf` whose variants are all objects is advertised as
+  `{type:"object", anyOf|oneOf:[...]}` with the original variants (Pi still validates against
+  the original schema); any other non-object root schema is omitted from the advertised tools
+  with one warning per tool per session through the bridge's existing warning channel. Unit
+  tests cover wrapped unions, omitted schemas, and a mixed catalog where valid tools still
+  load. Applies to root and child sessions.
+- AC-4: pi-subagents error classification no longer treats substrings inside identifiers or
+  serialized payloads as network errors: network rules match whole words or known codes
+  (`ECONNRESET`, `ENOTFOUND`, `ETIMEDOUT`, "network", "socket", "connection", "timeout",
+  "timed out") and the claude-bridge schema rejection is not retryable. Tests cover the
+  observed message (`timeoutMs` in schema) and genuine network errors.
+- AC-5: Docs: pi-subagents README and `skills/subagents-configuration/SKILL.md`,
+  `docs/installation.md`, `docs/agent/harness-packaging.md` describe tolerant explicit/glob
+  selection, the widget warning and inactive-explicit behavior; claude-bridge README notes
+  non-object schema handling. Durable delta below applied at archive.
+- AC-6: Checks and live: package typechecks/tests (pi-subagents, claude-bridge `test:unit`),
+  root `check:ci`, `typecheck`, `build`, `pnpm test` (only the four known missing-sibling
+  failures); after merge and restart, live: a Claude-model subagent with
+  `agent_browser_electron` assigned starts and calls `action: "list"` successfully (or, if
+  the backend rejects the wrapped union, the tool is omitted with a warning and the child
+  still works, recorded truthfully); a subagent whose explicit list names a tool absent in the
+  child starts, shows the warning in its widget card and result.
+
+## Clarifications
+
+- Explicit tools inactive in the root keep reaching the child (user, 2026-10-01, after live
+  probes A/B).
+- Explicit/glob missing implementations: drop with warning, fail only if none remain (user).
+- Globs follow the same rule (user).
+- Show the dropped-tools warning on the widget card (user).
+- Claude-bridge: wrap object unions, omit other non-object schemas with a warning (user).
+- Include the network misclassification fix (user).
+
+## Decisions
+
+- Reuse the existing `dropped_tools` field, persistence and warning formatter; tolerance
+  becomes the rule for every selection form instead of a standalone-`*` special case.
+- If AC-6 shows the Anthropic backend rejects `{type:"object", anyOf}`, fall back to the
+  omit-with-warning path for unions (same AC-3 contract: the request never fails).
+
+## Durable deltas
+
+- `MODIFIED multi-harness-agent-pack` **Configure adopted Pi subagents natively** — Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same UI design with safe tool persistence; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST offer one dynamic selection persisted as standalone `*`, meaning the eligible tools currently active in the root session excluding subagent and delegation tools (`AskClaude`, `AskAntigravity`, `bg_delegate`, `bg_run_pi_attested`, `bg_result` and the `fusion_reason`, `fusion_investigate`, `fusion_research`, `fusion_validate` tools); inactive registered tools MUST NOT be inherited by `*` and `@active` MUST be rejected rather than persisted or treated as a tool name. Explicitly selected tools MUST reach the child even when inactive in the root. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve `*` and child launch MUST resolve its current inventory; for every selection form, selected tools without a child implementation MUST be dropped and reported as a durable warning visible on the task's widget card, status, result and completion, and launch MUST fail with a truthful missing-implementation diagnostic only when no selected tool remains.
+  - GIVEN explicit, glob or dynamic operator selections and root tools that are inactive, delegation tools or lack a child implementation; WHEN the panel saves, synchronization runs and a child launches; THEN operator intent persists, `*` yields the child-loadable active eligible tools without delegation tools, explicit names reach the child even when inactive in the root, missing implementations are dropped and reported for every form, the child fails only when nothing remains, and nothing is silently widened or omitted.
+
+## Plan
+
+1. Worker A (sole writer of `pi-packages/pi-subagents/**`): AC-1, AC-2, AC-4 and its AC-5
+   package docs, test-first.
+2. Worker B (sole writer of `pi-packages/pi-claude-bridge/**`): AC-3 and its README note,
+   test-first, unit tests only (never the live `test` script).
+3. Root (parallel, disjoint): `docs/installation.md`, `docs/agent/harness-packaging.md`.
+4. Root: frozen checks, commits, merge, restart, AC-6 live, fresh Oracle, archive.
+
+## Tasks
+
+- [ ] AC-1: tolerant explicit and glob selection
+  - Outcome: missing implementations dropped with warning for every form; fail only when none remain
+  - Known entrypoints and skill paths: `pi-packages/pi-subagents/src/runner/sdk-runner.ts:97–131,548–560,654–659`, `src/tool-patterns.ts`, `test/runner/providers-real-sdk.test.ts:150–186`, `test/runner/interaction-bridge.test.ts:1154,1218–1256`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
+  - Inputs: Exploration, Clarifications
+  - Dependencies: none
+  - Output: code + tests
+  - Owner: worker A
+  - Writes: `pi-packages/pi-subagents/**`
+  - Interface boundaries: `*` semantics, reserved controls and delegation exclusions unchanged
+  - Focused check and PASS evidence: real-SDK partial drop for explicit/glob/mixed, all-missing failure, inactive explicit still selectable; suite green
+  - Return milestone: tests green
+  - Stop / reassessment: unexpected-registered-tool verification conflicts with dropping
+- [ ] AC-2: widget card warning
+  - Outcome: dropped tools visible on the widget card
+  - Known entrypoints and skill paths: `src/ui/background-widget.ts`, `src/render/tool-selection-warning.ts`, tdd skill
+  - Inputs: AC-1
+  - Dependencies: AC-1 (same writer)
+  - Output: code + tests
+  - Owner: worker A
+  - Writes: `pi-packages/pi-subagents/**`
+  - Interface boundaries: existing card metrics/layout unchanged when no warning
+  - Focused check and PASS evidence: render tests with and without dropped tools, narrow width
+  - Return milestone: tests green
+  - Stop / reassessment: card layout cannot fit the warning without dropping metrics
+- [ ] AC-3: claude-bridge non-object schemas
+  - Outcome: one non-object tool never fails the request
+  - Known entrypoints and skill paths: `pi-packages/pi-claude-bridge/src/mcp-server.ts:51–70`, `src/index.ts:1093–1098,1932`, `tests/unit-*.mjs`, tdd skill
+  - Inputs: Exploration, Clarifications
+  - Dependencies: none
+  - Output: code + unit tests + README note
+  - Owner: worker B
+  - Writes: `pi-packages/pi-claude-bridge/**`
+  - Interface boundaries: object schemas served unchanged; Pi-side validation unchanged
+  - Focused check and PASS evidence: `pnpm --filter @thoth-agents/pi-claude-bridge run test:unit`
+  - Return milestone: unit tests green
+  - Stop / reassessment: the in-process SDK server rejects `anyOf` alongside `type: object`
+- [ ] AC-4: error classification
+  - Outcome: no network misclassification from payload substrings
+  - Known entrypoints and skill paths: `pi-packages/pi-subagents/src/error-metadata.ts:20–37,283–363`, tdd skill
+  - Inputs: Exploration
+  - Dependencies: none
+  - Output: code + tests
+  - Owner: worker A
+  - Writes: `pi-packages/pi-subagents/**`
+  - Interface boundaries: other categories unchanged
+  - Focused check and PASS evidence: tests for the observed message and genuine network errors
+  - Return milestone: tests green
+  - Stop / reassessment: none
+- [ ] AC-5: docs
+  - Outcome: docs describe tolerant selection, widget warning, inactive explicit behavior, schema handling
+  - Known entrypoints and skill paths: package README/SKILL (worker A), claude-bridge README (worker B), `docs/installation.md:389–437`, `docs/agent/harness-packaging.md:59–83` (root)
+  - Inputs: Clarifications
+  - Dependencies: none for root parts
+  - Output: docs
+  - Owner: workers for package docs; root for root docs
+  - Writes: listed docs
+  - Interface boundaries: unrelated docs unchanged
+  - Focused check and PASS evidence: text review; `pnpm run check:ci`
+  - Return milestone: committed
+  - Stop / reassessment: none
+- [ ] AC-6: checks and live
+  - Outcome: checks pass; live behavior confirmed
+  - Known entrypoints and skill paths: thoth-archive skill
+  - Inputs: AC-1..AC-5
+  - Dependencies: AC-1..AC-5
+  - Output: evidence
+  - Owner: root
+  - Writes: operator agent tool lists only through the operator's `/subagents-tools`
+  - Interface boundaries: operator config otherwise preserved
+  - Focused check and PASS evidence: live Claude child with electron; explicit missing tool warning on card
+  - Return milestone: fresh Oracle PASS
+  - Stop / reassessment: backend rejects wrapped unions (apply the Decisions fallback)
+
+## Authorization
+
+**Plan review**: PENDING
+**Plan review selection**: PENDING
+**Implementation**: PENDING
+
+## Verification
+
+**Reviewer**: PENDING
+**Independent from implementer**: PENDING
+**Verdict**: PENDING
+**Reviewed record SHA-256**: PENDING
+
+- AC-1: PENDING | check | evidence
+- AC-2: PENDING | check | evidence
+- AC-3: PENDING | check | evidence
+- AC-4: PENDING | check | evidence
+- AC-5: PENDING | check | evidence
+- AC-6: PENDING | check | evidence
+- Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:0fc837a611cc7040c4fe060bd15201b129a93836fabbe0f5ce88262b366bf4f7
+
+## Closeout
+
+**Archive**: PENDING

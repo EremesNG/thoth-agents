@@ -93,33 +93,49 @@ are not misclassified as network errors.
 
 - AC-1: In pi-subagents, explicit lists, globs and mixed selectors drop selected names
   without a child implementation with the same durable `dropped_tools` warning as standalone
-  `*`; the child fails before start only when no selected tool remains, with the existing
-  truthful diagnostic. Explicit names inactive in the root still reach the child; reserved
+  `*`; for missing-implementation handling, the child fails before start only when no
+  selected tool remains, with the existing truthful diagnostic (unexpected-registration and
+  other startup failures are unchanged). Tolerance is applied after session creation
+  (the SDK already ignores names it does not register), keeping the original explicit names. Explicit names inactive in the root still reach the child; reserved
   controls and standalone-`*` delegation exclusions are unchanged. Real-SDK tests replace
   the strict explicit/glob cases (partial drop for explicit, glob and mixed; all-missing
   failure; explicit inactive deferred/codemode still selectable).
-- AC-2: The background widget card shows a compact dropped-tools warning for tasks whose
-  `dropped_tools` is non-empty (running and terminal), within width limits, alongside the
-  existing status/result/completion surfaces. Tests cover rendering and absence when empty.
+- AC-2: The background widget card of a running or queued task shows a compact
+  dropped-tools warning when its `dropped_tools` is non-empty (the widget does not render
+  terminal tasks; after completion the warning stays on the existing status, result and
+  completion surfaces). Metrics, editor-focus guards, idle animation and width limits are
+  preserved and `entryRowCount` accounts for the extra row. Tests cover rendering, absence
+  when empty, narrow width and the running-to-terminal transition.
 - AC-3: In pi-claude-bridge, tool schemas whose root is not `type: "object"` never fail the
   request: a root `anyOf`/`oneOf` whose variants are all objects is advertised as
   `{type:"object", anyOf|oneOf:[...]}` with the original variants (Pi still validates against
   the original schema); any other non-object root schema is omitted from the advertised tools
-  with one warning per tool per session through the bridge's existing warning channel. Unit
-  tests cover wrapped unions, omitted schemas, and a mixed catalog where valid tools still
-  load. Applies to root and child sessions.
+  with one warning per tool per session through the bridge's existing warning channel,
+  observable in headless child sessions. Unit tests cover wrapped unions, omitted schemas,
+  and a mixed catalog where valid tools still load. Applies to root and child sessions.
+  Shared eligibility rule (identical fixtures in AC-3 and AC-7): a root `anyOf`/`oneOf`
+  is wrapped only when every variant is an object schema (`type: "object"`, or an `allOf`
+  of object schemas, or a local `$ref` resolving to one); empty unions, dangling or
+  cyclic references and any other variant cause omission; wrapping preserves root
+  keywords such as `$defs`/`definitions`, `title` and `description`. Backend rule: a
+  wrapped union PASSES live only by a successful call; if the live check shows the backend
+  rejecting the wrapped union, the bridge switches that union to omission with the warning
+  and the live evidence must show the omission, the warning and a working child.
 - AC-7: In pi-antigravity-bridge, the same schema rule as AC-3 applies to the tools it
   advertises to agy (both private and legacy discovery, stream-json and ACP): object unions
   are advertised as `{type:"object", anyOf|oneOf:[...]}`, other non-object root schemas
   are omitted with one warning per tool per session; object schemas are unchanged. Unit
   tests cover wrapping, omission and a mixed catalog. Live (AC-6): an Antigravity-model
   child with `agent_browser_electron` and `agent_browser_network_source` assigned sees and
-  calls `agent_browser_electron` `action: "list"`, or, if agy still refuses the wrapped
-  union, the tool is reported as omitted with a warning (recorded truthfully).
+  calls `agent_browser_electron` `action: "list"`, under AC-3's shared eligibility and
+  backend rules (silent disappearance is never PASS). Antigravity's `mcpLog` must surface
+  the omission warning instead of suppressing the event.
 - AC-4: pi-subagents error classification no longer treats substrings inside identifiers or
   serialized payloads as network errors: network rules match whole words or known codes
   (`ECONNRESET`, `ENOTFOUND`, `ETIMEDOUT`, "network", "socket", "connection", "timeout",
-  "timed out") and the claude-bridge schema rejection is not retryable. Tests cover the
+  "timed out"); the deterministic schema-rejection signature ("MCP tool parameters must
+  be an object schema") is recognized before payload-sensitive rules and classified as a
+  non-retryable API error (the generic API default is retryable). Tests cover the
   observed message (`timeoutMs` in schema) and genuine network errors.
 - AC-5: Docs: pi-subagents README and `skills/subagents-configuration/SKILL.md`,
   `docs/installation.md`, `docs/agent/harness-packaging.md` describe tolerant explicit/glob
@@ -128,11 +144,10 @@ are not misclassified as network errors.
 - AC-6: Checks and live: package typechecks/tests (pi-subagents, claude-bridge `test:unit`),
   root `check:ci`, `typecheck`, `build`, `pnpm test` (only the four known missing-sibling
   failures); after merge and restart, live: a Claude-model subagent with
-  `agent_browser_electron` assigned starts and calls `action: "list"` successfully, the AC-7
-  Antigravity check passes (or, if
-  the backend rejects the wrapped union, the tool is omitted with a warning and the child
-  still works, recorded truthfully); a subagent whose explicit list names a tool absent in the
-  child starts, shows the warning in its widget card and result.
+  `agent_browser_electron` assigned starts and calls `action: "list"` successfully, and the
+  AC-7 Antigravity check passes, both under AC-3's backend rule; a subagent whose explicit
+  list names `read` plus a tool absent in the child starts, shows the warning on its
+  running widget card and in its result, and uses `read`.
 
 ## Clarifications
 
@@ -150,12 +165,21 @@ are not misclassified as network errors.
 
 - Reuse the existing `dropped_tools` field, persistence and warning formatter; tolerance
   becomes the rule for every selection form instead of a standalone-`*` special case.
-- If AC-6 shows the Anthropic backend rejects `{type:"object", anyOf}`, fall back to the
-  omit-with-warning path for unions (same AC-3 contract: the request never fails).
+- Plan review round 1 (fresh Oracle subtask_thoth-oracle_1790916545355_5bcca9f1): REJECT
+  — AC-2 promised terminal cards the widget never renders; the backend fallback contradicted
+  AC-3/AC-6. Repaired: warning on running/queued cards only (terminal surfaces unchanged);
+  one backend rule for both bridges (live success, or verified rejection followed by
+  omission with warning and a working child). Cautions adopted: shared object-only
+  eligibility fixtures, `$defs` preservation, session-scoped warning dedup observable in
+  headless children, Antigravity `mcpLog` surfacing, deterministic schema error
+  non-retryable, live fixture keeps `read` plus an absent name, tolerance limited to
+  missing implementations.
+- Backend rule (AC-3): a wrapped union that a backend rejects in the live check is
+  switched to omission with a warning in that bridge; the request never fails.
 
 ## Durable deltas
 
-- `MODIFIED multi-harness-agent-pack` **Configure adopted Pi subagents natively** — Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same UI design with safe tool persistence; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST offer one dynamic selection persisted as standalone `*`, meaning the eligible tools currently active in the root session excluding subagent and delegation tools (`AskClaude`, `AskAntigravity`, `bg_delegate`, `bg_run_pi_attested`, `bg_result` and the `fusion_reason`, `fusion_investigate`, `fusion_research`, `fusion_validate` tools); inactive registered tools MUST NOT be inherited by `*` and `@active` MUST be rejected rather than persisted or treated as a tool name. Explicitly selected tools MUST reach the child even when inactive in the root. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve `*` and child launch MUST resolve its current inventory; for every selection form, selected tools without a child implementation MUST be dropped and reported as a durable warning visible on the task's widget card, status, result and completion, and launch MUST fail with a truthful missing-implementation diagnostic only when no selected tool remains.
+- `MODIFIED multi-harness-agent-pack` **Configure adopted Pi subagents natively** — Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same UI design with safe tool persistence; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST offer one dynamic selection persisted as standalone `*`, meaning the eligible tools currently active in the root session excluding subagent and delegation tools (`AskClaude`, `AskAntigravity`, `bg_delegate`, `bg_run_pi_attested`, `bg_result` and the `fusion_reason`, `fusion_investigate`, `fusion_research`, `fusion_validate` tools); inactive registered tools MUST NOT be inherited by `*` and `@active` MUST be rejected rather than persisted or treated as a tool name. Explicitly selected tools MUST reach the child even when inactive in the root. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve `*` and child launch MUST resolve its current inventory; for every selection form, selected tools without a child implementation MUST be dropped and reported as a durable warning visible on the running task's widget card and on its status, result and completion, and launch MUST fail with a truthful missing-implementation diagnostic only when no selected tool remains.
   - GIVEN explicit, glob or dynamic operator selections and root tools that are inactive, delegation tools or lack a child implementation; WHEN the panel saves, synchronization runs and a child launches; THEN operator intent persists, `*` yields the child-loadable active eligible tools without delegation tools, explicit names reach the child even when inactive in the root, missing implementations are dropped and reported for every form, the child fails only when nothing remains, and nothing is silently widened or omitted.
 
 ## Plan
@@ -218,7 +242,7 @@ are not misclassified as network errors.
   - Interface boundaries: object schemas unchanged; bridge lifecycle unchanged
   - Focused check and PASS evidence: package typecheck/test
   - Return milestone: tests green
-  - Stop / reassessment: agy rejects the wrapped union (apply the Decisions fallback)
+  - Stop / reassessment: agy rejects the wrapped union (apply AC-3's backend rule)
 - [ ] AC-4: error classification
   - Outcome: no network misclassification from payload substrings
   - Known entrypoints and skill paths: `pi-packages/pi-subagents/src/error-metadata.ts:20–37,283–363`, tdd skill
@@ -254,7 +278,7 @@ are not misclassified as network errors.
   - Interface boundaries: operator config otherwise preserved
   - Focused check and PASS evidence: live Claude child with electron; explicit missing tool warning on card
   - Return milestone: fresh Oracle PASS
-  - Stop / reassessment: backend rejects wrapped unions (apply the Decisions fallback)
+  - Stop / reassessment: a backend rejects wrapped unions (apply AC-3's backend rule)
 
 ## Authorization
 

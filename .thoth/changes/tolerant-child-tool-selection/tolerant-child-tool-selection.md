@@ -327,7 +327,7 @@ are not misclassified as network errors.
 ## Authorization
 
 **Plan review**: PENDING
-**Plan review selection**: PENDING
+**Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: PENDING
 
 Scope amended after live AC-6 (AC-3 Claude `input` wrapping, AC-7 short server name and

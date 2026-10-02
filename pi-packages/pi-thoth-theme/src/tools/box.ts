@@ -12,6 +12,7 @@ import {
   truncateToWidth,
   visibleWidth,
 } from '@earendil-works/pi-tui';
+import { cachedComponent } from '../shared/cache.ts';
 
 export const BOX_HORIZONTAL = '─';
 export const BOX_VERTICAL = '│';
@@ -222,13 +223,10 @@ export function renderBox(
 export function createComponent(
   renderFn: (width: number) => string[],
 ): Component {
-  return {
-    render(width: number): string[] {
-      const safeWidth = Math.max(0, Math.floor(width));
-      if (safeWidth <= 0) return [];
-      const lines = renderFn(safeWidth);
-      return lines.map((line) => truncateToWidth(line, safeWidth));
-    },
-    invalidate(): void {},
-  };
+  return cachedComponent((width) => {
+    const safeWidth = Math.max(0, Math.floor(width));
+    if (safeWidth <= 0) return [];
+    const lines = renderFn(safeWidth);
+    return lines.map((line) => truncateToWidth(line, safeWidth));
+  });
 }

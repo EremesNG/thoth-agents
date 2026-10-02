@@ -21,9 +21,11 @@ export {
 } from './layout.ts';
 
 /**
- * Registers the single-row footer status line in the pi-omp-theme `claude` preset style.
- * Displays: model+effort, git branch, context usage, cumulative session cost,
- * and compact extension statuses (lowest priority). Never calls setEditorComponent.
+ * Registers the single-row footer status line in the pi-omp-theme `claude` preset style:
+ * model name and effort, git branch, context usage and cumulative session cost.
+ * Session data (cost, context usage) is read only on session events, never per
+ * frame, and the rendered row is cached by input digest and width. Never calls
+ * setEditorComponent.
  */
 export function registerStatusLine(
   pi: ExtensionAPI,
@@ -32,9 +34,26 @@ export function registerStatusLine(
 ): void {
   ctx.ui.setFooter((tui, theme, footerData) => {
     const unsubs: Array<() => void> = [];
+    let session = readSession();
+    let cachedKey = '';
+    let cachedLines: string[] = [];
+
+    function readSession() {
+      const usage = ctx.getContextUsage?.();
+      return {
+        cost: calculateSessionCost(ctx.sessionManager),
+        contextTokens: usage?.tokens ?? null,
+        contextPercent: usage?.percent ?? null,
+        contextWindow: usage?.contextWindow,
+      };
+    }
 
     const requestRender = () => {
       tui.requestRender?.();
+    };
+    const refreshSession = () => {
+      session = readSession();
+      requestRender();
     };
 
     if (footerData?.onBranchChange) {
@@ -42,44 +61,39 @@ export function registerStatusLine(
     }
 
     if (pi?.on) {
-      unsubs.push(pi.on('message_end', requestRender));
-      unsubs.push(pi.on('turn_end', requestRender));
-      unsubs.push(pi.on('model_select', requestRender));
+      unsubs.push(pi.on('message_end', refreshSession));
+      unsubs.push(pi.on('turn_end', refreshSession));
+      unsubs.push(pi.on('agent_end', refreshSession));
+      unsubs.push(pi.on('session_compact', refreshSession));
+      unsubs.push(pi.on('model_select', refreshSession));
       unsubs.push(pi.on('thinking_level_select', requestRender));
-      unsubs.push(pi.on('session_compact', requestRender));
     }
 
     return {
       render(width: number): string[] {
         if (width <= 0) return [];
 
-        const gitBranch = footerData?.getGitBranch
-          ? footerData.getGitBranch()
-          : null;
-        const extensionStatuses = footerData?.getExtensionStatuses
-          ? footerData.getExtensionStatuses()
-          : undefined;
-        const contextUsage = ctx.getContextUsage?.();
-        const cost = calculateSessionCost(ctx.sessionManager);
-
         const data: StatusData = {
-          model: ctx.model?.id,
+          modelName: ctx.model?.name,
+          modelId: ctx.model?.id,
           thinkingLevel: ctx.thinkingLevel,
-          gitBranch,
-          contextUsage,
-          cost,
-          extensionStatuses,
+          gitBranch: footerData?.getGitBranch?.() ?? null,
+          ...session,
         };
+        const key = `${width}\u0000${JSON.stringify(data)}`;
+        if (key === cachedKey) return cachedLines;
 
         const line = renderStatusLine(data, {
           width,
           mode: config.icons,
           theme: theme as ActiveThemeLike,
         });
-
-        return line ? [line] : [];
+        cachedKey = key;
+        cachedLines = line ? [line] : [];
+        return cachedLines;
       },
       invalidate() {
+        cachedKey = '';
         requestRender();
       },
       dispose() {

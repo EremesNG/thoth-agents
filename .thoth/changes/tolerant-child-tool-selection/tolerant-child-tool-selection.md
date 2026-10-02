@@ -174,6 +174,19 @@ are not misclassified as network errors.
   headless children, Antigravity `mcpLog` surfacing, deterministic schema error
   non-retryable, live fixture keeps `read` plus an absent name, tolerance limited to
   missing implementations.
+- Implementation checkpoint (root, 2026-10-01): `4208aec` (worker A: tolerance for every
+  selection form after session creation, unexpected registrations still fail, inactive
+  explicit deferred/codemode kept; running/queued card warning with row targeting;
+  deterministic schema rejection non-retryable and whole-word network rules; package
+  docs), `770c340` (worker B: claude-bridge per-tool normalization, warning on stderr and
+  diag log once per tool/session), `b656265` (worker C: same normalizer, byte-identical
+  module sha256 44e701d7…, served catalog for both engines/discovery modes, stderr
+  warning), `1aa947f` (root docs). Frozen checks: frozen install 0; pi-subagents 0 / 555
+  passed, 1 skipped; claude-bridge 0 / unit 305; antigravity 0 / 587 passed, 9 skipped
+  (one run hit the pre-existing SessionStore multi-process flake, untouched since
+  adoption, 5/5 isolated and next full run green); background-tasks 0 / 258 passed,
+  4 skipped; openai-fast typecheck 0; root check:ci, typecheck, build 0 (no generated
+  drift); root test 1208 passed / 4 missing-sibling failures. Live AC-6 follows.
 - Backend rule (AC-3): a wrapped union that a backend rejects in the live check is
   switched to omission with a warning in that bridge; the request never fails.
 
@@ -195,7 +208,7 @@ are not misclassified as network errors.
 
 ## Tasks
 
-- [ ] AC-1: tolerant explicit and glob selection
+- [x] AC-1: tolerant explicit and glob selection
   - Outcome: missing implementations dropped with warning for every form; fail only when none remain
   - Known entrypoints and skill paths: `pi-packages/pi-subagents/src/runner/sdk-runner.ts:97–131,548–560,654–659`, `src/tool-patterns.ts`, `test/runner/providers-real-sdk.test.ts:150–186`, `test/runner/interaction-bridge.test.ts:1154,1218–1256`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
   - Inputs: Exploration, Clarifications
@@ -207,7 +220,7 @@ are not misclassified as network errors.
   - Focused check and PASS evidence: real-SDK partial drop for explicit/glob/mixed, all-missing failure, inactive explicit still selectable; suite green
   - Return milestone: tests green
   - Stop / reassessment: unexpected-registered-tool verification conflicts with dropping
-- [ ] AC-2: widget card warning
+- [x] AC-2: widget card warning
   - Outcome: dropped tools visible on the widget card
   - Known entrypoints and skill paths: `src/ui/background-widget.ts`, `src/render/tool-selection-warning.ts`, tdd skill
   - Inputs: AC-1
@@ -219,7 +232,7 @@ are not misclassified as network errors.
   - Focused check and PASS evidence: render tests with and without dropped tools, narrow width
   - Return milestone: tests green
   - Stop / reassessment: card layout cannot fit the warning without dropping metrics
-- [ ] AC-3: claude-bridge non-object schemas
+- [x] AC-3: claude-bridge non-object schemas
   - Outcome: one non-object tool never fails the request
   - Known entrypoints and skill paths: `pi-packages/pi-claude-bridge/src/mcp-server.ts:51–70`, `src/index.ts:1093–1098,1932`, `tests/unit-*.mjs`, tdd skill
   - Inputs: Exploration, Clarifications
@@ -231,7 +244,7 @@ are not misclassified as network errors.
   - Focused check and PASS evidence: `pnpm --filter @thoth-agents/pi-claude-bridge run test:unit`
   - Return milestone: unit tests green
   - Stop / reassessment: the in-process SDK server rejects `anyOf` alongside `type: object`
-- [ ] AC-7: Antigravity bridge non-object schemas
+- [x] AC-7: Antigravity bridge non-object schemas
   - Outcome: agy receives wrapped object unions; other non-object schemas omitted with warning
   - Known entrypoints and skill paths: `pi-packages/pi-antigravity-bridge/extensions/index.ts:827–837`, `src/mcp-server.ts:304–307`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
   - Inputs: Exploration, Clarifications
@@ -243,7 +256,7 @@ are not misclassified as network errors.
   - Focused check and PASS evidence: package typecheck/test
   - Return milestone: tests green
   - Stop / reassessment: agy rejects the wrapped union (apply AC-3's backend rule)
-- [ ] AC-4: error classification
+- [x] AC-4: error classification
   - Outcome: no network misclassification from payload substrings
   - Known entrypoints and skill paths: `pi-packages/pi-subagents/src/error-metadata.ts:20–37,283–363`, tdd skill
   - Inputs: Exploration
@@ -255,7 +268,7 @@ are not misclassified as network errors.
   - Focused check and PASS evidence: tests for the observed message and genuine network errors
   - Return milestone: tests green
   - Stop / reassessment: none
-- [ ] AC-5: docs
+- [x] AC-5: docs
   - Outcome: docs describe tolerant selection, widget warning, inactive explicit behavior, schema handling
   - Known entrypoints and skill paths: package README/SKILL (worker A), claude-bridge README (worker B), `docs/installation.md:389–437`, `docs/agent/harness-packaging.md:59–83` (root)
   - Inputs: Clarifications

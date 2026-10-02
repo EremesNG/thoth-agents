@@ -218,6 +218,18 @@ are not misclassified as network errors.
   private server name introduced by bridge-child-lifecycle (a first attempt was invalid:
   launched in parallel with restoring subagents.json, so it ran on Claude). Operator
   configs restored by hash. Result: AC-6 FAIL for (1) and (2); AC-3 and AC-7 amended.
+- Amended implementation checkpoint (root, 2026-10-02): `1ac2d60` (worker B: eligible
+  root unions, typed or not, advertised under required `input`; unwrap on streamed and
+  completed tool_use, re-wrap in history, ordinary `input` fields untouched; unit 315),
+  `ff2b78d` (worker C: milestone 1 live with isolated real agy confirmed the cause — agy
+  logged "tool name mcp_pi-agy-<32hex>_agent_browser_electron violates
+  ^[a-zA-Z0-9_-]{1,64}$"; both 22/28-char tools appeared under `pi-agy-<8hex>`; private
+  name shortened with live-config and process-wide collision checks and exact acquired-key
+  cleanup; qualified-name length enforced per discovery mode with omission warning).
+  Frozen checks: frozen install 0; antigravity 0 / two runs 592 passed, 9 skipped;
+  claude-bridge 0 / unit 315; pi-subagents 0 / 555 passed, 1 skipped; background-tasks 0 /
+  258 passed, 4 skipped; root check:ci, typecheck, build 0 (no generated drift); root test
+  1208 passed / 4 missing-sibling failures. Live AC-6 repeat follows.
 - Backend rule (AC-3): a wrapped union that a backend rejects in the live check is
   switched to omission with a warning in that bridge; the request never fails.
 
@@ -263,7 +275,7 @@ are not misclassified as network errors.
   - Focused check and PASS evidence: render tests with and without dropped tools, narrow width
   - Return milestone: tests green
   - Stop / reassessment: card layout cannot fit the warning without dropping metrics
-- [ ] AC-3: claude-bridge non-object schemas
+- [x] AC-3: claude-bridge non-object schemas
   - Outcome: one non-object tool never fails the request
   - Known entrypoints and skill paths: `pi-packages/pi-claude-bridge/src/mcp-server.ts:51–70`, `src/index.ts:1093–1098,1932`, `tests/unit-*.mjs`, tdd skill
   - Inputs: Exploration, Clarifications
@@ -275,7 +287,7 @@ are not misclassified as network errors.
   - Focused check and PASS evidence: `pnpm --filter @thoth-agents/pi-claude-bridge run test:unit`
   - Return milestone: unit tests green
   - Stop / reassessment: the in-process SDK server rejects `anyOf` alongside `type: object`
-- [ ] AC-7: Antigravity bridge non-object schemas
+- [x] AC-7: Antigravity bridge non-object schemas
   - Outcome: agy receives wrapped object unions; other non-object schemas omitted with warning
   - Known entrypoints and skill paths: `pi-packages/pi-antigravity-bridge/extensions/index.ts:827–837`, `src/mcp-server.ts:304–307`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
   - Inputs: Exploration, Clarifications

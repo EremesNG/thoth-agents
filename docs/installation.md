@@ -404,7 +404,9 @@ maintain a fixed catalog of those tools.
   `pi-background-tasks`, its `bg_run`, `bg_status`, `bg_logs` and `bg_kill`.
   This choice replaces that role's explicit list. Toggling an individual checkbox
   turns it into a current explicit list, ending dynamic inheritance. Registered
-  inactive tools are labeled `(inactive)` and can be selected explicitly; saved
+  inactive tools are labeled `(inactive)` and can be selected explicitly (an explicit
+  selection is how a role receives deferred or advanced tools the root keeps inactive;
+  they reach the child); saved
   explicit names absent from the registry remain `(unavailable)` and can be
   removed individually. These delegation names are also permitted in explicit
   lists, not inherited by `*`.
@@ -429,12 +431,14 @@ maintain a fixed catalog of those tools.
   preserved unchanged with diagnostics during synchronization, without resetting
   them to broader defaults. Fix those definitions explicitly before using them.
 
-For standalone `*`, tools the child cannot load are dropped: the child runs with
-its available subset and reports dropped names as durable warnings in status,
-results and completion messages. If none can load, launch still fails; unexpected
-extra child tools also remain an error. Runtime explicit lists and glob patterns
-stay strict and fail with a missing-implementation diagnostic if a selected tool
-cannot load. The panel itself does not accept glob patterns.
+For every selection form (standalone `*`, explicit lists and glob patterns), tools
+the child cannot load are dropped: the child runs with its available subset and
+reports dropped names as durable warnings on the running task's widget card and in
+status, results and completion messages. If none can load, launch still fails;
+unexpected extra child tools also remain an error. The panel itself does not accept
+glob patterns. The Claude and Antigravity bridges advertise a tool whose schema root
+is a union of object variants as an object with that union, and omit other non-object
+schemas with a warning instead of failing the request.
 
 A selected name does not prove the child's runtime registered or initialized that
 extension, MCP connection or credentials. Verify a real child invocation. Tool

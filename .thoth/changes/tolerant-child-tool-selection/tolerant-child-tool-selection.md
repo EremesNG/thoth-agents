@@ -326,12 +326,22 @@ are not misclassified as network errors.
 
 ## Authorization
 
-**Plan review**: PENDING
+**Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: PENDING
 
 Scope amended after live AC-6 (AC-3 Claude `input` wrapping, AC-7 short server name and
-name-length warning); plan review and implementation authorization reset. Earlier: the
+name-length warning); plan review and implementation authorization reset. The user
+explicitly selected Review plan with Oracle; fresh Oracle
+subtask_thoth-oracle_1790920495772_88b41398 returned [OKAY] on the amended plan. Cautions:
+unwrap `input` at both Claude argument seams (`src/index.ts:1346` streamed and `:1454`
+completed `tool_use`) and in replay/history conversion (`src/convert.ts`), only for
+advertised wrapped tools; recognize root unions before the `type:"object"` early return;
+fixtures diverge only in advertised shape; 8-hex collision check against live
+`agy-mcp-*/.agents/mcp_config.json` keys plus in-process reservations, exact
+acquired-key cleanup preserved; enforce `4 + server + 1 + tool <= 64` with the actual
+discovery names (legacy `pi-bridge-<pid>-<UUID>`, legacy ACP `pi-bridge`); keep the
+long-vs-short checkpoint; AC-6 must show the running-widget warning. Earlier: the
 user explicitly selected Review plan with Oracle, round 2 returned [OKAY] and the user
 chose Implement; that authorization covered the pre-amendment scope.
 

@@ -32,6 +32,12 @@ pi install npm:@thoth-agents/pi-openai-fast
   next `before_provider_request` adds `service_tier: "priority"` to a shallow copy
   of the payload only when `payload.model` equals the routed base id. Any payload
   consumes the token, so a stale token never grants priority to a later request.
+- When priority is applied, a one-shot pricing marker corrects the next matching
+  Codex assistant message's displayed cost to priority pricing (×2, or ×2.5 for
+  exactly `gpt-5.5`). Already-priced usage is left unchanged. Any new route or
+  assistant message clears the marker; the original message is never mutated.
+- OpenAI API pricing follows the service tier the server reports; the extension
+  does not adjust `openai-responses` usage costs.
 - The extension never calls `registerProvider`; existing providers, catalogs, oauth
   and model refresh callbacks are untouched.
 
@@ -41,7 +47,8 @@ pi install npm:@thoth-agents/pi-openai-fast
 - `direct` requests (compaction summaries, extension calls) and requests for other
   models chosen by other packages (for example a compaction-model package) keep the
   standard tier, even when they use the same base model.
-- Variants are not propagated into `pi-subagents` child runtimes.
+- Fast variants and Codex cost correction also work in `pi-subagents` children
+  when this package is enabled for lifecycle passthrough.
 - Priority entitlement and latency are decided by the provider. An unsupported tier
   surfaces as a normal provider error.
 - Models whose id already ends in `-fast`, and bases whose `-fast` id would collide

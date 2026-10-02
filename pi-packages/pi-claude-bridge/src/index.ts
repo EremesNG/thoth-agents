@@ -23,7 +23,8 @@ import {
 	type PromptCapture,
 } from "./prompt-capture.js";
 import { collectCarriedAttachments, placeCarriedAttachments, type CarriedAttachment } from "./attachments.js";
-import { createToolServer } from "./mcp-server.js";
+import { createToolServer, omittedToolSchemaWarning } from "./mcp-server.js";
+import { normalizeToolSchema } from "./tool-schema.js";
 import { buildActionSummary, type ToolCallState } from "./askclaude-ui.js";
 import { askClaudeCallTags, askClaudeToolDescription, buildAskClaudeParams, resolveAskClaudeDefaults, resolveAskClaudeMode, type AskClaudeMode } from "./askclaude-schema.js";
 import { nonSystemMessages, toBridgeContext } from "./transcript.js";
@@ -966,6 +967,46 @@ let piUI: ExtensionUIContext | null = null;
 let piMode: ExtensionContext["mode"] | null = null;
 const activeQueryContexts = new Set<QueryContext>();
 
+// Children may evaluate a fresh module but inherit the parent's pinned stream.
+// Attribute warning dedup to the Pi session, shared across module instances.
+const TOOL_SCHEMA_SESSIONS_KEY = Symbol.for("claude-bridge:toolSchemaSessions");
+interface ToolSchemaSession {
+	warnedTools: Set<string>;
+	ui?: ExtensionUIContext;
+	mode?: ExtensionContext["mode"];
+}
+const toolSchemaSessions: Map<string | null, ToolSchemaSession> =
+	(globalThis as Record<symbol, any>)[TOOL_SCHEMA_SESSIONS_KEY] ??=
+		new Map<string | null, ToolSchemaSession>();
+
+function toolSchemaSessionFor(piSessionId: string | null): ToolSchemaSession {
+	let session = toolSchemaSessions.get(piSessionId);
+	if (!session) {
+		session = { warnedTools: new Set() };
+		toolSchemaSessions.set(piSessionId, session);
+	}
+	return session;
+}
+
+function warnOmittedTool(toolName: string, piSessionId: string | null): void {
+	const session = toolSchemaSessionFor(piSessionId);
+	if (session.warnedTools.has(toolName)) return;
+	session.warnedTools.add(toolName);
+	const message = omittedToolSchemaWarning(toolName);
+	let uiNotified = false;
+	try {
+		session.ui?.notify?.(message, "warning");
+		uiNotified = typeof session.ui?.notify === "function" && (session.mode === "tui" || session.mode === "rpc");
+	} catch { /* A warning must not turn an omitted tool into a failed request. */ }
+	// SDK children can have a no-op UI or never emit session_start. Stderr is
+	// observable without DEBUG, unlike ui.notify alone; do not notify a parent's UI.
+	if (!uiNotified) console.warn(`${message} (session: ${piSessionId ?? "(none)"})`);
+	try {
+		debug(`WARNING ${message} session=${piSessionId ?? "(none)"}`);
+		diagDump("tool_schema_omitted", { piSessionId, toolName, message });
+	} catch { /* UI/stderr still reports the warning if diagnostic storage is unavailable. */ }
+}
+
 // Defaults that silently cost the user something (no Opus 1M on Max, no
 // AskClaude tool) are announced once. Deferred to the first bridge query rather
 // than session_start: the notice persists a flag to the global config, and
@@ -1069,8 +1110,9 @@ function resolveMcpTools(context: Context, excludeToolName?: string): {
 
 	for (const tool of context.tools) {
 		if (tool.name === excludeToolName) continue;
+		mcpTools.push(tool); // Keep omitted tools here so server construction reports them.
+		if (!normalizeToolSchema(tool.parameters)) continue;
 		const sdkName = `${MCP_TOOL_PREFIX}${tool.name}`;
-		mcpTools.push(tool);
 		customToolNameToSdk.set(tool.name, sdkName);
 		customToolNameToSdk.set(tool.name.toLowerCase(), sdkName);
 		customToolNameToPi.set(sdkName, tool.name);
@@ -1109,7 +1151,10 @@ function buildMcpServers(tools: Tool[], queryCtx: QueryContext): Record<string, 
 			});
 		},
 	}));
-	return { [MCP_SERVER_NAME]: createToolServer(MCP_SERVER_NAME, mcpTools) };
+	return {
+		[MCP_SERVER_NAME]: createToolServer(MCP_SERVER_NAME, mcpTools,
+			(toolName) => warnOmittedTool(toolName, queryCtx.piSessionId)),
+	};
 }
 
 // --- Usage helpers ---
@@ -2406,6 +2451,9 @@ export default function (pi: ExtensionAPI) {
 			if (sessionId !== instanceSessionId) clearSession(`session_start:${event.reason}`, sessionId);
 		}
 		instanceSessionId = sessionId;
+		const schemaSession = toolSchemaSessionFor(sessionId);
+		schemaSession.ui = ctx.ui;
+		schemaSession.mode = ctx.mode;
 	});
 	// `--system-prompt` replaces pi's default rather than adding to it, but Claude
 	// Code's preset carries its own tool and permission guidance that the bridge
@@ -2466,6 +2514,7 @@ export default function (pi: ExtensionAPI) {
 		const sessionId = ctx?.sessionManager?.getSessionId() ?? instanceSessionId;
 		if (sessionId) reportLeaks("session_shutdown", sessionId);
 		clearSession("session_shutdown", sessionId);
+		toolSchemaSessions.delete(sessionId);
 		// Only the factory that claimed the process marker may release it for
 		// /reload. A cached child uses the same function but never owned the marker.
 		if (ownsActiveStream && g[ACTIVE_STREAM_SIMPLE_KEY] === streamClaudeAgentSdk) {

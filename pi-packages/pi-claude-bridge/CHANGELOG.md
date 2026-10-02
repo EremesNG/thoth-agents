@@ -1,5 +1,9 @@
 # Changelog
 
+## UNRELEASED
+
+- **Fix: tolerate non-object Pi tool schemas** — Wrap object-only root unions for MCP and omit incompatible tools with session-scoped UI/headless warnings, retaining Pi's original argument validation.
+
 ## 0.9.1 — 2026-09-30
 
 - **Bump: Claude Sonnet 5.5 and pi-ai 0.99.1** — pi-ai update brings `claude-sonnet-5-5` with 1M context. Agent SDK now requires `^0.3.284`.

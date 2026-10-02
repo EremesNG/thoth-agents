@@ -10,6 +10,7 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
 import { createToolServer } from "../src/mcp-server.js";
+import { ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 
 const NESTED_TOOL_SCHEMA = {
 	type: "object",
@@ -79,16 +80,54 @@ async function connectClient(server) {
 describe("MCP tool schema advertisement", () => {
 	let listed;
 
-	// A non-object schema typechecks (pi types parameters as any TypeBox schema)
-	// but cannot go on the wire. Advertising it as "no arguments" instead would
-	// surface much later as pi rejecting the arguments Claude did not send.
-	it("rejects a non-object parameter schema at construction, naming the tool", () => {
-		assert.throws(
-			() => createToolServer("custom-tools", [
-				{ name: "bad_tool", description: "", inputSchema: { type: "string" }, handler: async () => ({ content: [] }) },
-			]),
-			/bad_tool: MCP tool parameters must be an object schema/,
-		);
+	it("a mixed catalog omits incompatible tools without failing valid tools or the request", async () => {
+		const warnings = [];
+		const union = { anyOf: [{ type: "object", required: ["a"] }, { type: "object", required: ["b"] }] };
+		const handler = async () => ({ content: [{ type: "text", text: "ok" }] });
+		const server = createToolServer("custom-tools", [
+			{ name: "bad_tool", description: "", inputSchema: { type: "string" }, handler },
+			{ name: "valid_tool", description: "", inputSchema: NESTED_TOOL_SCHEMA, handler },
+			{ name: "union_tool", description: "", inputSchema: union, handler },
+		], (name) => warnings.push(name));
+		const { request, callTool } = await connectClient(server);
+		const response = await request("tools/list", {});
+		assert.equal(response.error, undefined, "one unsupported schema cannot fail the request");
+		const catalog = ListToolsResultSchema.parse(response.result).tools;
+		assert.deepStrictEqual(catalog.map((tool) => tool.name), ["valid_tool", "union_tool"]);
+		assert.deepStrictEqual(catalog[0].inputSchema, NESTED_TOOL_SCHEMA);
+		assert.deepStrictEqual(catalog[1].inputSchema, {
+			type: "object", anyOf: [{ type: "object", required: ["a"] }, { type: "object", required: ["b"] }],
+		});
+		assert.deepStrictEqual(warnings, ["bad_tool"]);
+		assert.ok(!("type" in union), "Pi still owns the original union schema");
+		assert.equal((await callTool("valid_tool", "toolu_good")).result.content[0].text, "ok");
+		assert.equal((await callTool("union_tool", "toolu_union", { a: 1 })).result.content[0].text, "ok");
+		assert.match((await callTool("bad_tool", "toolu_bad")).error.message, /Unknown tool: bad_tool/);
+	});
+
+	it("advertises oneOf with preserved definitions, escaped local refs and repeated object refs", async () => {
+		const schema = {
+			definitions: { "action/shape": { type: "object", properties: { action: { const: "list" } }, required: ["action"] } },
+			title: "Actions", description: "Action variants",
+			oneOf: [
+				{ allOf: [{ $ref: "#/definitions/action~1shape" }, { $ref: "#/definitions/action~1shape" }] },
+				{ type: "object", properties: { action: { const: "open" } }, required: ["action"] },
+			],
+		};
+		const { request } = await connectClient(createToolServer("custom-tools", [{
+			name: "actions", description: "", inputSchema: schema, handler: async () => ({ content: [] }),
+		}]));
+		const catalog = ListToolsResultSchema.parse((await request("tools/list", {})).result).tools;
+		assert.deepStrictEqual(catalog[0].inputSchema, {
+			type: "object",
+			definitions: { "action/shape": { type: "object", properties: { action: { const: "list" } }, required: ["action"] } },
+			title: "Actions", description: "Action variants",
+			oneOf: [
+				{ allOf: [{ $ref: "#/definitions/action~1shape" }, { $ref: "#/definitions/action~1shape" }] },
+				{ type: "object", properties: { action: { const: "open" } }, required: ["action"] },
+			],
+		});
+		assert.ok(!("type" in schema));
 	});
 
 	before(async () => {

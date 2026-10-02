@@ -328,7 +328,7 @@ are not misclassified as network errors.
 
 **Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
-**Implementation**: PENDING
+**Implementation**: AUTHORIZED
 
 Scope amended after live AC-6 (AC-3 Claude `input` wrapping, AC-7 short server name and
 name-length warning); plan review and implementation authorization reset. The user

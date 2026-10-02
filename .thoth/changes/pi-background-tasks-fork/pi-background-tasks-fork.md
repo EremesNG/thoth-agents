@@ -129,7 +129,9 @@ Windows, command jobs run in PowerShell 7.
   survivor; a subagent's job stops when the subagent ends or is cancelled; jobs of a
   second concurrent Pi session are untouched; killing the Pi process abruptly leaves no
   job process; all verified from outside Pi by PID and creation time. Frozen package and
-  root checks pass.
+  root checks pass (root `pnpm test` with only the four known missing-sibling
+  `publish-marketplace.test.ts` failures, as in prior archived changes; a load-induced
+  timeout must pass on rerun).
 - AC-7: OS containment. Windows: every job and watch poll command is created suspended,
   assigned to its own unnamed Job Object (KILL_ON_JOB_CLOSE, breakaway disabled) and only
   then resumed; assignment failure terminates the suspended process and fails the launch
@@ -194,6 +196,14 @@ Windows, command jobs run in PowerShell 7.
   reconstruction and foreign-owner reassignment with opaque container ownership; child
   teardown must not terminate the shared helper; assert pwsh Core 7+ on windows-latest;
   README (Git Bash, census, crash disclaimer) amended; rerun real-SDK child tests.
+- Final verification after replan, round 1 (fresh Oracle
+  subtask_thoth-oracle_1790905103701_3622f3f5): FAIL — reload-gap loss of a settled watch
+  result (second poll launched); a per-request timeout or protocol error killed the shared
+  helper and with it unrelated root jobs; no CREATE_BREAKAWAY_FROM_JOB test; usage doc
+  claimed Bash-compatible text without platform qualifier; three per-change report files
+  under the package `docs/` violate the constitution; AC-6 did not state the known
+  four-failure root exception. AC-1, AC-2, AC-8 PASS; signal audit found no census or
+  Windows taskkill. AC-6 wording fixed by root; the rest assigned to a fresh worker.
 - Replan review round 3 (fresh Oracle subtask_thoth-oracle_1790897953416_38c9c338):
   REJECT on wording only — POSIX best-effort scope was not carried into the delta, its
   scenario, AC-3, Intent and task outcomes. Applied the reviewer's exact edits: delta

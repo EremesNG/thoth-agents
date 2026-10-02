@@ -2,9 +2,8 @@ import { statSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendLine, appendWatchResult, retainLogTail, resolveMaxLogBytes } from "./logs.js";
 import { evaluateCondition, validateCondition } from "./conditions.js";
-import { processExists, runCommandOnce, spawnCommand } from "./process.js";
-import { terminateProcessTree } from "./process-termination.js";
-import { currentProcessStartToken, readProcessStartToken } from "./process-identity.js";
+import { CommandTerminationError, processExists, startCommandOnce, spawnCommand, type RunningCommand } from "./process.js";
+import { currentProcessInstanceId, currentProcessStartToken, readProcessStartToken } from "./process-identity.js";
 import { ensureTaskDir, logPathFor, nextTaskId, readMeta, writeMeta } from "./registry.js";
 import { failurePath, readTaskIntent, recordExitFailure, recordFailure, recoverDeclaredOperation, recoverFailure, resumeFailureAttention, scheduleFailureAttention, stopFailureAttention, suspendFailureAttention, terminalFailureAttention } from "./failures.js";
 import { markFailureAttentionDelivered } from "./shared-failure-observations.js";
@@ -27,7 +26,7 @@ export const DEFAULT_BLIND_CHECKS = 3;
 /** How long bg_task_watch waits for the first check before returning (#359). */
 export const FIRST_WATCH_CHECK_WAIT_MS = 15_000;
 /** How to fix a false alarm: some tools write progress or warnings to stderr on success. */
-export const BLIND_CHECK_HINT = "If the stderr is expected (progress or warnings), redirect it (2>/dev/null) or set blind_checks:0.";
+export const BLIND_CHECK_HINT = "If the stderr is expected (progress or warnings), redirect it (2>$null on PowerShell; 2>/dev/null on POSIX) or set blind_checks:0.";
 
 /**
  * Why the launch stopped waiting before the first check finished (#359): the bounded wait
@@ -65,11 +64,52 @@ export interface WatchTaskParams extends CommandSpec, TaskIntentParams {
   /** Consecutive blind checks before the watch is flagged (#359). Default 3; 0 turns it off. */
   blind_checks?: number;
 }
-interface InFlightPoll { origin: string; controller: AbortController; result: Promise<CommandResult> }
+interface InFlightPoll extends RunningCommand { origin: string }
 const POLL_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.poll-handoff");
-const shared = globalThis as typeof globalThis & { [POLL_HANDOFF_KEY]?: Map<string, InFlightPoll> };
+interface OwnedContainer {
+  origin: string;
+  terminate(): Promise<void>;
+  readonly cleanupPending: boolean;
+  readonly cleanupVerified: boolean;
+  readonly terminationRequested: boolean;
+}
+const PROCESS_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.process-handoff");
+const shared = globalThis as typeof globalThis & {
+  [POLL_HANDOFF_KEY]?: Map<string, InFlightPoll>;
+  [PROCESS_HANDOFF_KEY]?: Map<string, OwnedContainer>;
+};
 const inFlightPolls = shared[POLL_HANDOFF_KEY] ??= new Map<string, InFlightPoll>();
+const processContainers = shared[PROCESS_HANDOFF_KEY] ??= new Map<string, OwnedContainer>();
 const pollOrigin = (meta: BackgroundTaskMeta) => JSON.stringify([meta.logPath, meta.callbackOrigin?.cwd ?? meta.cwd, meta.callbackOrigin?.sessionId]);
+
+/** Reattach opaque launch-time authority; persisted PID/PGID never grants ownership. */
+function ownedContainerFor(meta: BackgroundTaskMeta, terminateTree?: () => Promise<void>): OwnedContainer | undefined {
+  let tree = processContainers.get(meta.id);
+  if (tree && tree.origin !== pollOrigin(meta)) throw new Error("Process tree belongs to another origin");
+  if (!tree && terminateTree) {
+    let termination: Promise<void> | undefined;
+    let cleanupPending = true;
+    let cleanupVerified = false;
+    let terminationRequested = false;
+    tree = {
+      origin: pollOrigin(meta),
+      get cleanupPending() { return cleanupPending; },
+      get cleanupVerified() { return cleanupVerified; },
+      get terminationRequested() { return terminationRequested; },
+      terminate() {
+        if (termination) return termination;
+        terminationRequested = cleanupPending = true;
+        termination = terminateTree().then(() => { cleanupPending = false; cleanupVerified = true; }, (error) => {
+          termination = undefined;
+          throw error;
+        });
+        return termination;
+      },
+    };
+    processContainers.set(meta.id, tree);
+  }
+  return tree;
+}
 
 function createTaskRuntime(owner: ExtensionAPI) {
 
@@ -191,34 +231,53 @@ function createTaskRuntime(owner: ExtensionAPI) {
       pidStartTime: spawned.child.pid ? readProcessStartToken(spawned.child.pid) : undefined,
       pgid: spawned.pgid,
       spawnPid: process.pid,
+      ownerInstanceId: currentProcessInstanceId(),
       spawnPidStartTime: currentProcessStartToken(),
       ...intent,
     };
     writeMeta(meta);
+    ownedContainerFor(meta, spawned.terminate);
     scheduleLogRetention(id);
+    spawned.child.on("spawn", () => {
+      const latest = readMeta(id);
+      if (!latest) return;
+      latest.pid = meta.pid = spawned.child.pid;
+      writeMeta(latest);
+    });
     spawned.child.unref();
     spawned.child.on("close", (exitCode, signal) => {
-        clearProcessTimeout(id);
-        stopLogRetention(id);
-        const latest = readMeta(id);
-        if (!latest) return;
-        enforceLogRetention(latest);
-        if (isTerminalStatus(latest.status) || latest.stopRequestedAt) return;
-        if (exitCode !== 0) recordExitFailure(latest, "execution", `Process exited with code ${exitCode ?? "unknown"}${signal ? ` (${signal})` : ""}`, exitCode, "close", { at: Date.now() });
-        else {
-          recoverFailure(latest, "execution", "close");
-          recoverDeclaredOperation(latest);
-        }
-        latest.status = exitCode === 0 ? "succeeded" : "failed";
-        latest.endedAt = Date.now();
-        latest.lastExitCode = exitCode;
-        latest.lastSignal = signal;
-        latest.result = { exitCode, signal };
-        writeMeta(latest);
-        void notifyTerminal(pi, latest, getActiveSession);
+      void settleProcessExit(pi, id, exitCode, signal, getActiveSession);
     });
     if (meta.deadlineAt) scheduleProcessTimeout(pi, id, meta.deadlineAt, getActiveSession);
     return meta;
+  }
+
+  async function settleProcessExit(
+    pi: ExtensionAPI, id: string, exitCode: number | null, signal: NodeJS.Signals | null,
+    getActiveSession?: ActiveSessionProvider,
+  ): Promise<void> {
+    const meta = readMeta(id);
+    if (!meta || isTerminalStatus(meta.status)) return;
+    meta.lastExitCode = exitCode;
+    meta.lastSignal = signal;
+    writeMeta(meta);
+    // Requested stop/deadline cleanup owns its final state, even if the leader exits first.
+    if (meta.stopRequestedAt || processContainers.get(id)?.terminationRequested) return;
+    try {
+      const container = ownedContainerFor(meta);
+      if (!container) throw new Error("Container ownership is unavailable; refusing PID-based termination");
+      await container.terminate();
+    } catch (error) {
+      recordStopError(meta, readableError(error));
+      return;
+    }
+    const latest = readMeta(id);
+    if (!latest || isTerminalStatus(latest.status) || latest.stopRequestedAt) return;
+    enforceLogRetention(latest);
+    if (exitCode !== 0) recordExitFailure(latest, "execution", `Process exited with code ${exitCode ?? "unknown"}${signal ? ` (${signal})` : ""}`, exitCode, "close", { at: Date.now() });
+    else recoverFailure(latest, "execution", "close");
+    finalize(latest, { status: exitCode === 0 ? "succeeded" : "failed", reason: "process exited",
+      commandResult: { exitCode, signal, stdout: "", stderr: "", startedAt: latest.startedAt, endedAt: Date.now() } }, pi, getActiveSession);
   }
 
   function startWatchTask(
@@ -258,6 +317,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
       env: params.env,
       maxLogBytes: resolveMaxLogBytes(params.max_log_bytes),
       spawnPid: process.pid,
+      ownerInstanceId: currentProcessInstanceId(),
       spawnPidStartTime: currentProcessStartToken(),
       successWhen: params.success_when,
       failureWhen: params.failure_when,
@@ -300,27 +360,43 @@ function createTaskRuntime(owner: ExtensionAPI) {
     }
     scheduleFailureAttention(pi, meta.id, getActiveSession);
 
-    // Same Pi process: an earlier (reloaded or switched-away) extension instance may
-    const ownedByThisProcess = meta.spawnPid === process.pid && meta.spawnPidStartTime === currentProcessStartToken();
-    if (meta.spawnPid !== process.pid || meta.spawnPidStartTime !== currentProcessStartToken()) {
-      meta.spawnPid = process.pid;
-      meta.spawnPidStartTime = currentProcessStartToken();
-      writeMeta(meta);
+    const sameInstance = !meta.ownerInstanceId || meta.ownerInstanceId === currentProcessInstanceId();
+    const ownedByThisProcess = sameInstance && meta.spawnPid === process.pid && meta.spawnPidStartTime === currentProcessStartToken();
+    if (!ownedByThisProcess) {
+      // Only the supervisor's identity/liveness is inspected, never a stored job PID.
+      const previousHostExited = meta.spawnPid === process.pid
+        ? !!meta.ownerInstanceId && !sameInstance
+        : !processExists(meta.spawnPid);
+      if (previousHostExited) {
+        const reason = process.platform === "win32"
+          ? "owning Pi process exited; its Windows Job Objects were killed by host exit; exit result unavailable"
+          : "owning Pi process exited; work was lost and POSIX descendant cleanup is unverified";
+        meta.error = reason;
+        meta.stopError = undefined;
+        recordFailure(meta, "execution", reason, "host-exit", { incomplete: true });
+        finalize(meta, { status: "failed", reason }, pi, getActiveSession);
+      } else {
+        meta.stopError = "Container belongs to another Pi process; ownership cannot be adopted";
+        writeMeta(meta);
+      }
+      return meta;
     }
 
     if (meta.kind === "command_watch") {
+      if (!meta.ownerInstanceId && !inFlightPolls.has(meta.id)) {
+        recordStopError(meta, "Watch ownership is unavailable; refusing to reconstruct it from persisted metadata");
+        return meta;
+      }
       scheduleWatch(pi, meta.id, 0, getActiveSession);
       return meta;
     }
 
+    ownedContainerFor(meta);
     scheduleLogRetention(meta.id);
     if (ownedByThisProcess) {
       // A dead pid is not yet "lost" here: the earlier instance's close listener may
       // still record the real exit. The handoff marks it lost after a grace period.
       scheduleHandoff(pi, meta.id, getActiveSession);
-    } else if (meta.pid && !processExists(meta.pid)) {
-      markProcessLost(pi, meta, getActiveSession);
-      return meta;
     }
     if (meta.deadlineAt) scheduleProcessTimeout(pi, meta.id, meta.deadlineAt, getActiveSession);
     return meta;
@@ -349,13 +425,15 @@ function createTaskRuntime(owner: ExtensionAPI) {
         void notifyTerminal(pi, meta, getActiveSession);
         return;
       }
-      if (meta.pid && !processExists(meta.pid)) {
+      if (processContainers.get(id)?.terminationRequested || meta.stopRequestedAt) {
+        // The leader may be gone while a captured orphan still needs cleanup.
+        deadSince = undefined;
+        delayMs = Math.min(HANDOFF_MAX_CHECK_MS, delayMs * 2);
+      } else if (meta.pid && !processExists(meta.pid)) {
         deadSince ??= Date.now();
         if (Date.now() - deadSince >= HANDOFF_LOST_GRACE_MS) {
           stopHandoff(id);
-          clearProcessTimeout(id);
-          stopLogRetention(id);
-          markProcessLost(pi, meta, getActiveSession);
+          void markProcessLost(pi, meta, getActiveSession);
           return;
         }
         delayMs = HANDOFF_CHECK_MS;
@@ -379,14 +457,22 @@ function createTaskRuntime(owner: ExtensionAPI) {
     handoffTimers.delete(id);
   }
 
-  function markProcessLost(pi: ExtensionAPI, meta: BackgroundTaskMeta, getActiveSession?: ActiveSessionProvider): void {
-    meta.status = "failed";
-    meta.endedAt = Date.now();
-    meta.error = "process is no longer alive; exit result was not captured by this pi session";
-    meta.result = { reason: meta.error };
-    recordFailure(meta, "execution", meta.error, "lost", { incomplete: true });
-    writeMeta(meta);
-    void notifyTerminal(pi, meta, getActiveSession);
+  async function markProcessLost(pi: ExtensionAPI, meta: BackgroundTaskMeta, getActiveSession?: ActiveSessionProvider): Promise<void> {
+    if (processContainers.get(meta.id)?.terminationRequested || meta.stopRequestedAt) return;
+    // Absence of the leader cannot release captured identities or a surviving POSIX group.
+    try {
+      const container = ownedContainerFor(meta);
+      if (!container) throw new Error("Container ownership is unavailable; refusing PID-based termination");
+      await container.terminate();
+    } catch (error) {
+      recordStopError(meta, readableError(error));
+      return;
+    }
+    const latest = readMeta(meta.id);
+    if (!latest || latest.status !== "running" || latest.stopRequestedAt) return;
+    latest.error = "process is no longer alive; exit result was not captured by this pi session";
+    recordFailure(latest, "execution", latest.error, "lost", { incomplete: true });
+    finalize(latest, { status: "failed", reason: latest.error }, pi, getActiveSession);
   }
 
   async function stopTask(
@@ -397,6 +483,14 @@ function createTaskRuntime(owner: ExtensionAPI) {
     const meta = readMeta(id);
     if (!meta) return undefined;
     if (isTerminalStatus(meta.status)) return meta;
+    if (meta.spawnPid !== process.pid || (meta.ownerInstanceId && meta.ownerInstanceId !== currentProcessInstanceId())) {
+      resumeRunningTask(pi, meta, getActiveSession);
+      return readMeta(id);
+    }
+    if (meta.kind === "command_watch" && !meta.ownerInstanceId && !inFlightPolls.has(id)) {
+      recordStopError(meta, "Watch ownership is unavailable; refusing to reconstruct it from persisted metadata");
+      return meta;
+    }
 
     meta.stopRequestedAt = Date.now();
     writeMeta(meta);
@@ -405,16 +499,21 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     const poll = inFlightPolls.get(id);
     if (poll) {
-      poll.controller.abort();
-      try { await poll.result; } catch (error) {
+      try {
+        if (poll.origin !== pollOrigin(meta)) throw new Error("Watch poll belongs to another origin");
+        await poll.terminate();
+      } catch (error) {
         recordStopError(meta, readableError(error));
         return meta;
       }
+      if (inFlightPolls.get(id) === poll) inFlightPolls.delete(id);
     }
 
-    if (meta.kind === "process" && meta.pid) {
+    if (meta.kind === "process") {
       try {
-        await terminateProcessTree(meta.pid, meta.pgid);
+        const container = ownedContainerFor(meta);
+        if (!container) throw new Error("Container ownership is unavailable; refusing PID-based termination");
+        await container.terminate();
       } catch (error) {
         recordStopError(meta, error instanceof Error ? error.message : String(error));
         if (meta.deadlineAt && meta.deadlineAt > Date.now()) {
@@ -424,18 +523,24 @@ function createTaskRuntime(owner: ExtensionAPI) {
       }
     }
 
+    const latest = readMeta(id);
+    if (!latest || isTerminalStatus(latest.status)) return latest;
+    processContainers.delete(id);
     stopFailureAttention(id, owner);
-    meta.status = "cancelled";
-    meta.stopError = undefined;
-    meta.endedAt = Date.now();
-    meta.result = { reason: "cancelled" };
-    writeMeta(meta);
+    latest.status = "cancelled";
+    latest.stopError = undefined;
+    latest.endedAt = Date.now();
+    latest.result = { reason: "cancelled" };
+    writeMeta(latest);
     stopLogRetention(id);
-    void notifyTerminal(pi, meta, getActiveSession);
-    return meta;
+    void notifyTerminal(pi, latest, getActiveSession);
+    return latest;
   }
 
   function recordStopError(meta: BackgroundTaskMeta, message: string): void {
+    // Preserve leader exit facts written while termination was in flight.
+    const latest = readMeta(meta.id) ?? meta;
+    Object.assign(meta, latest);
     meta.stopRequestedAt = undefined;
     meta.stopError = message;
     meta.error = message;
@@ -469,16 +574,16 @@ function createTaskRuntime(owner: ExtensionAPI) {
     if (activePolls.has(id)) return;
     activePolls.add(id);
     let checked: FirstWatchCheck | undefined;
+    let poll: InFlightPoll | undefined;
     try {
       const meta = readMeta(id);
       if (!meta || meta.status !== "running" || meta.kind !== "command_watch") return;
       const now = Date.now();
       if (meta.deadlineAt && now >= meta.deadlineAt) {
-        const adopted = inFlightPolls.get(id);
-        if (adopted) {
-          if (adopted.origin !== pollOrigin(meta)) throw new Error("Watch poll belongs to another origin");
-          adopted.controller.abort();
-          try { await adopted.result; } catch (error) {
+        poll = inFlightPolls.get(id);
+        if (poll) {
+          if (poll.origin !== pollOrigin(meta)) throw new Error("Watch poll belongs to another origin");
+          try { await poll.terminate(); } catch (error) {
             recordStopError(meta, readableError(error));
             return;
           }
@@ -487,11 +592,11 @@ function createTaskRuntime(owner: ExtensionAPI) {
         return;
       }
       const timeoutMs = remainingDeadlineMs(meta.deadlineAt);
-      let poll = inFlightPolls.get(id);
+      poll = inFlightPolls.get(id);
       if (poll && poll.origin !== pollOrigin(meta)) throw new Error("Watch poll belongs to another origin");
       if (!poll) {
-        const controller = new AbortController();
-        poll = { origin: pollOrigin(meta), controller, result: runCommandOnce(commandSpecFromMeta(meta), undefined, timeoutMs, controller.signal) };
+        const command = startCommandOnce(commandSpecFromMeta(meta), undefined, timeoutMs);
+        poll = Object.assign(command, { origin: pollOrigin(meta) });
         inFlightPolls.set(id, poll);
       }
       const result = await poll.result;
@@ -586,7 +691,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
       scheduleWatch(pi, id, nextWatchDelayMs(latest), getActiveSession);
     } catch (error) {
       const meta = readMeta(id);
-      if (meta && meta.status === "running" && !meta.stopRequestedAt) {
+      if (meta && meta.status === "running" && (error instanceof CommandTerminationError || poll?.cleanupPending)) {
+        recordStopError(meta, readableError(error));
+      } else if (meta && meta.status === "running" && !meta.stopRequestedAt) {
         const detail = readableError(error);
         const reason = detail;
         recordFailure(meta, "watch-poll", reason, `throw:${meta.lastCheckedAt ?? meta.startedAt}`, { category: "execution" });
@@ -595,7 +702,8 @@ function createTaskRuntime(owner: ExtensionAPI) {
       }
     } finally {
       activePolls.delete(id);
-      inFlightPolls.delete(id);
+      // A rejected result does not prove cleanup: retain the handle for stop/shutdown/reload.
+      if (poll?.cleanupVerified && inFlightPolls.get(id) === poll) inFlightPolls.delete(id);
       if (firstCheckWaiters.has(id)) {
         if (checked) settleFirstCheck(id, checked);
         else if (readMeta(id)?.status !== "running") settleFirstCheck(id, undefined);
@@ -630,29 +738,39 @@ function createTaskRuntime(owner: ExtensionAPI) {
     pi: ExtensionAPI,
     getActiveSession?: ActiveSessionProvider,
   ): void {
+    // No result, deadline, or stale close handler may outrun tree verification.
+    if (isTerminalStatus(readMeta(meta.id)?.status ?? meta.status) ||
+        (processContainers.has(meta.id) && !processContainers.get(meta.id)!.cleanupVerified) ||
+        (inFlightPolls.has(meta.id) && !inFlightPolls.get(meta.id)!.cleanupVerified)) return;
     stopFailureAttention(meta.id, owner);
     if (terminal.status === "timed_out") recordFailure(meta, "timeout", terminal.reason, "deadline", { category: "timeout" });
     if (terminal.status === "succeeded") recoverDeclaredOperation(meta);
     meta.status = terminal.status;
     meta.endedAt = Date.now();
-    meta.result = {
-      reason: terminal.reason,
-      matchedCondition: terminal.matchedCondition,
-      matchedValue: terminal.matchedValue,
-      exitCode: terminal.commandResult?.exitCode,
-      signal: terminal.commandResult?.signal,
-    };
+    meta.result = meta.kind === "process" && terminal.commandResult
+      ? { exitCode: terminal.commandResult.exitCode, signal: terminal.commandResult.signal }
+      : {
+        reason: terminal.reason,
+        matchedCondition: terminal.matchedCondition,
+        matchedValue: terminal.matchedValue,
+        exitCode: terminal.commandResult?.exitCode,
+        signal: terminal.commandResult?.signal,
+      };
     if (terminal.commandResult) {
       applyCaptureOverflow(meta, terminal.commandResult);
       meta.lastExitCode = terminal.commandResult.exitCode;
       meta.lastSignal = terminal.commandResult.signal;
-      meta.lastCheckedAt = terminal.commandResult.endedAt;
-      meta.lastState = extractLastState(terminal.commandResult);
+      if (meta.kind === "command_watch") {
+        meta.lastCheckedAt = terminal.commandResult.endedAt;
+        meta.lastState = extractLastState(terminal.commandResult);
+      }
     }
     writeMeta(meta);
+    processContainers.delete(meta.id);
     clearWatchTimer(meta.id);
     clearProcessTimeout(meta.id);
     stopLogRetention(meta.id);
+    stopHandoff(meta.id);
     void notifyTerminal(pi, meta, getActiveSession);
   }
 
@@ -720,9 +838,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     let reason = "timeout";
     {
-      if (meta.pid) {
+      if (processContainers.has(meta.id) || meta.pid) {
         try {
-          await terminateProcessTree(meta.pid, meta.pgid);
+          await ownedContainerFor(meta)!.terminate();
         } catch (error) {
           reason = `timeout; could not terminate local process tree: ${readableError(error)}`;
           // The task is still running: this is a stop failure, reported as such.
@@ -733,7 +851,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
     }
 
     const latest = readMeta(id);
-    if (!latest || latest.status !== "running") return;
+    if (!latest || latest.status !== "running" || latest.stopRequestedAt) return;
     latest.error = meta.error;
     finalize(latest, { status: "timed_out", reason }, pi, getActiveSession);
   }

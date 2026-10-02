@@ -82,7 +82,7 @@ describe("extension e2e", () => {
     // The wrapper's watch action goes through the same first-check wait as bg_task_watch.
     const launch = await harness.execute("bg_task", {
       action: "watch",
-      command: "echo STILL_UNKNOWN; echo 'ERROR: broken format' >&2; exit 0",
+      command: process.platform === "win32" ? "[Console]::WriteLine('STILL_UNKNOWN'); [Console]::Error.WriteLine('ERROR: broken format'); exit 0" : "echo STILL_UNKNOWN; echo 'ERROR: broken format' >&2; exit 0",
       interval_seconds: 60,
       timeout_seconds: 5,
       callback: false,

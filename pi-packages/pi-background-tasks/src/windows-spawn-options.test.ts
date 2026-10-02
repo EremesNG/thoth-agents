@@ -1,68 +1,42 @@
-import { EventEmitter } from "node:events";
-import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { runCommandOnce, spawnCommand } from "./process.js";
-import { terminateProcessTree } from "./process-termination.js";
-
-vi.mock("node:child_process", async (original) => ({
-  ...await original<typeof import("node:child_process")>(),
-  spawn: vi.fn(), spawnSync: vi.fn(), execFileSync: vi.fn(),
-}));
-const realPlatform = process.platform;
-afterEach(() => {
-  Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
-  vi.restoreAllMocks(); vi.clearAllMocks();
-});
-
-function child() {
-  const value = Object.assign(new EventEmitter(), {
-    pid: 777777, stdout: new EventEmitter(), stderr: new EventEmitter(), unref() {},
+vi.mock('./powershell.js', async original => ({...await original<typeof import('./powershell.js')>(), resolvePowerShell: () => 'pwsh.exe'}));
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { runCommandOnce, spawnCommand } from './process.js';
+import { WindowsJobClient } from './windows-job-client.js';
+import { fakeJobHelper } from './test-support/job-helper-fixture.js';
+vi.mock('node:child_process',async original=>({...await original<typeof import('node:child_process')>(),spawn:vi.fn()}));
+const platform=process.platform;const dirs:string[]=[];
+afterEach(()=>{Object.defineProperty(process,'platform',{value:platform,configurable:true});vi.restoreAllMocks();vi.clearAllMocks();for(const d of dirs.splice(0))rmSync(d,{recursive:true,force:true});});
+describe('hidden Windows container launches',()=>{
+  it('jobs and watches share one hidden helper and request separate containers',async()=>{
+    const fixture=fakeJobHelper(980001);fixture.allowCleanup();
+    const dir=mkdtempSync(join(tmpdir(),'bg-hidden-'));dirs.push(dir);
+    const job=spawnCommand({shell:false,argv:[process.execPath,'-e','process.exit(0)']},join(dir,'log'),true);
+    await expect.poll(()=>fixture.launchCount).toBe(1);
+    const result=runCommandOnce({shell:false,argv:[process.execPath,'-e','process.exit(0)']},1024,25);
+    await result;await job.terminate();
+    expect(spawn).toHaveBeenCalledExactlyOnceWith(expect.any(String),expect.arrayContaining(['-NoProfile','-NonInteractive','-WindowStyle','Hidden']),expect.objectContaining({windowsHide:true,stdio:['pipe','pipe','pipe']}));
+    const launches=fixture.requests.filter(r=>r.op==='launch');expect(launches).toHaveLength(2);expect(launches[0]!.key).not.toBe(launches[1]!.key);
+    expect(fixture.requests.filter(r=>r.op==='release')).toHaveLength(2);
   });
-  vi.mocked(spawn).mockReturnValue(value as any);
-  return value;
-}
-
-describe("hidden Windows process launches", () => {
-  it("jobs and one-shot watches hide their detached consoles on win32", async () => {
-    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-    child();
-    spawnCommand({ shell: false, argv: [process.execPath, "-e", "process.exit(0)"] },
-      join(mkdtempSync(join(tmpdir(), "bg-hide-")), "log"), true);
-    expect(spawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array),
-      expect.objectContaining({ detached: true, windowsHide: true }));
-    const watchChild = child();
-    const result = runCommandOnce({ shell: false, argv: [process.execPath, "-e", "process.exit(0)"] });
-    expect(spawn).toHaveBeenLastCalledWith(process.execPath, expect.any(Array),
-      expect.objectContaining({ detached: true, windowsHide: true }));
-    watchChild.emit("close", 0, null);
-    await result;
+  it('a missing helper fails the launch actionably without PID fallback',async()=>{
+    const helper=Object.assign(new EventEmitter(),{stdin:new PassThrough(),stdout:new PassThrough(),stderr:new PassThrough(),unref(){},kill(){(this as unknown as EventEmitter).emit('exit',1,null);}});
+    vi.mocked(spawn).mockImplementation(()=>{queueMicrotask(()=>helper.emit('error',Object.assign(new Error('spawn pwsh ENOENT'),{code:'ENOENT'})));return helper as any;});
+    const kill=vi.spyOn(process,'kill');
+    const client=new WindowsJobClient();
+    await expect(client.launch({executable:'node.exe',argv:[],cwd:process.cwd(),env:process.env,log:'not-created'})).rejects.toThrow(/PowerShell Core 7.*ENOENT/);
+    expect(kill).not.toHaveBeenCalled();
   });
-
-  it("process census and awaited tree kill hide their helper consoles on win32", async () => {
-    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-    vi.mocked(execFileSync).mockReturnValue("[]");
-    let alive = true;
-    vi.spyOn(process, "kill").mockImplementation(() => {
-      if (!alive) throw Object.assign(new Error("gone"), { code: "ESRCH" });
-      return true;
-    });
-    vi.mocked(spawnSync).mockImplementation(() => { alive = false; return { status: 0 } as any; });
-    await terminateProcessTree(777777);
-    expect(execFileSync).toHaveBeenCalledWith("powershell.exe", expect.any(Array),
-      expect.objectContaining({ windowsHide: true }));
-    expect(spawnSync).toHaveBeenCalledWith("taskkill", expect.any(Array),
-      expect.objectContaining({ windowsHide: true }));
-  });
-
-  it("Node descendant fixtures explicitly hide consoles, including embedded scripts", () => {
-    for (const file of ["lifecycle.test.ts", "process.test.ts"]) {
-      const source = readFileSync(new URL(file, import.meta.url), "utf8");
-      const launches = [...source.matchAll(/require\('node:child_process'\)\.spawn\([\s\S]*?\{([^}]+)\}/g)];
-      expect(launches.length).toBeGreaterThan(0);
-      for (const launch of launches) expect(launch[1], file).toMatch(/windowsHide:\s*true/);
+  it('Node descendant fixtures explicitly hide consoles, including embedded scripts',()=>{
+    for(const file of ['lifecycle.test.ts','process.test.ts']){
+      const source=readFileSync(new URL(file,import.meta.url),'utf8');
+      const launches=[...source.matchAll(/require\('node:child_process'\)\.spawn\([\s\S]*?\{(stdio:[^}]+)\}/g)];
+      expect(launches.length).toBeGreaterThan(0);for(const launch of launches)expect(launch[1],file).toMatch(/windowsHide:\s*true/);
     }
   });
 });

@@ -24,6 +24,46 @@ async function startTree(host: ReturnType<typeof lifecycleHost>) {
 }
 
 describe("session-owned background work lifecycle", () => {
+  it.each(["process", "watch"])("a natural %s exit 0 verifies a contained grandchild before recording succeeded", async (kind) => {
+    const host = lifecycleHost(`natural-detached-${kind}`);
+    await host.emit("session_start");
+    const directory = mkdtempSync(join(tmpdir(), "bg-natural-detached-"));
+    const marker = join(directory, "pids.json");
+    const release = join(directory, "release");
+    const descendant = "const child = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 10000)'], {stdio: 'ignore', detached: process.platform === 'win32', windowsHide: true}); child.unref(); require('node:fs').writeFileSync(process.argv[1], JSON.stringify([Number(process.argv[2]), process.pid, child.pid])); setInterval(() => {}, 10000)";
+    const argv = [process.execPath, "-e", `
+      const child = require('node:child_process').spawn(process.execPath,
+        ['-e', ${JSON.stringify(descendant)}, process.argv[1], String(process.pid)],
+        {stdio: 'inherit', windowsHide: true});
+      child.unref();
+      setInterval(() => {
+        if (require('node:fs').existsSync(process.argv[2])) process.exit(0);
+      }, 25);
+    `, marker, release];
+    const controller = new AbortController(); controller.abort();
+    const id = kind === "process" ? await host.spawn({ shell: false, argv }) :
+      (await host.execute("bg_task_watch", { shell: false, argv, timeout_seconds: 0,
+        success_when: { type: "exit_code", equals: 0 } }, controller.signal)).match(/bg_[a-z0-9_]+/)![0];
+    let pids: number[] = [];
+    const live = (pid: number) => {
+      if (process.platform === "win32") return processExists(pid);
+      try { return !execFileSync("ps", ["-p", String(pid), "-o", "stat="], {encoding: "utf8", windowsHide: true}).trim().startsWith("Z"); }
+      catch { return false; }
+    };
+    try {
+      await expect.poll(() => { try { pids = JSON.parse(readFileSync(marker, "utf8")); return pids.length; } catch { return 0; } }, { timeout: 10000 }).toBe(3);
+      expect(pids.map(live)).toEqual([true, true, true]);
+      // Exit immediately after all descendants start; no census grace is needed.
+      writeFileSync(release, "finish");
+      await expect.poll(() => host.status(id).then((meta) => meta.status), { timeout: 10000 }).toBe("succeeded");
+      expect(pids.map(live)).toEqual([false, false, false]);
+      expect((await host.status(id)).lastExitCode).toBe(0);
+    } finally {
+      for (const pid of pids) if (live(pid)) await import("./process-termination.js").then((p) => p.terminateProcessTree(pid, pid));
+      await host.emit("session_shutdown", "quit");
+    }
+  }, 20000);
+
   it.each(["quit", "new", "resume", "fork"])("%s stops and verifies the origin's process tree before recording cancelled", async (reason) => {
     const host = lifecycleHost(`ending-${reason}`);
     await host.emit("session_start");
@@ -203,7 +243,7 @@ describe("session-owned background work lifecycle", () => {
   }, 20000);
 
   // POSIX TERM handlers/process groups do not exist on Windows; Windows tree verification runs above.
-  it.skipIf(process.platform === "win32").each([false, true])("quit escalates TERM-resistant descendants across groups (leader resistant=%s)", async (leaderResistant) => {
+  it.skipIf(process.platform === "win32").each([false, true])("quit escalates TERM-resistant descendants in the owned group (leader resistant=%s)", async (leaderResistant) => {
     const host = lifecycleHost(`term-resistant-${leaderResistant}`);
     await host.emit("session_start");
     const marker = join(mkdtempSync(join(tmpdir(), "bg-term-resistant-")), "pids");
@@ -211,7 +251,7 @@ describe("session-owned background work lifecycle", () => {
       if (process.argv[2] === 'true') process.on('SIGTERM', () => {});
       const child = require('node:child_process').spawn(process.execPath, ['-e',
         "process.on('SIGTERM', () => {}); process.send('ready'); setInterval(() => {}, 10000)"],
-        {stdio: ['ignore', 'ignore', 'ignore', 'ipc'], detached: true, windowsHide: true});
+        {stdio: ['ignore', 'ignore', 'ignore', 'ipc'], detached: false, windowsHide: true});
       child.on('message', () => require('node:fs').writeFileSync(process.argv[1], JSON.stringify([process.pid, child.pid])));
       setInterval(() => {}, 10000);
     `, marker, String(leaderResistant)] });

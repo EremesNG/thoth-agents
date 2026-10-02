@@ -1,52 +1,23 @@
-import { terminateProcessTree } from "./process-termination.js";
-import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, writeSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createProcessTreeTerminator } from "./process-termination.js";
+import { spawn } from "node:child_process";
+import { powerShellArguments, resolvePowerShell } from "./powershell.js";
+import { spawnWindowsCommand, startWindowsCommandOnce } from "./windows-process.js";
+import { appendFileSync, closeSync, mkdirSync, openSync, writeSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ChildProcess } from "node:child_process";
+import type { EventEmitter } from "node:events";
 import type { CommandResult, CommandSpec } from "./types.js";
 
-/** Known Git for Windows locations; `bash -lc` needs a real bash, not the WSL shim. */
-const WINDOWS_BASH_CANDIDATES = [
-  "C:\\Program Files\\Git\\bin\\bash.exe",
-  "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-  "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
-];
-
-/**
- * Resolve the shell used for `command` specs.
- *
- * POSIX keeps `/bin/bash`. Windows has no `/bin/bash`, and the `bash.exe` found
- * on PATH is usually the WSL launcher in System32 or the WindowsApps alias,
- * either of which would run the command inside WSL instead of Windows. Prefer
- * an explicit override, then Git for Windows, then a non-WSL `bash.exe` on PATH.
- *
- * Resolved lazily at spawn time, not module load: env-injection extensions
- * (e.g. pi-env) may apply settings.json `env` values after this module is
- * evaluated, and those overrides must still take effect.
- *
- * Exposed for tests and reuse.
- */
+/** POSIX retains its shell override; Windows requires validated PowerShell Core 7+. */
 export function resolveDefaultShell(): string {
-  const fromEnv = process.env.PI_BETTER_BACKGROUND_TASKS_SHELL;
-  if (fromEnv) return fromEnv;
-  if (process.platform !== "win32") return "/bin/bash";
-  for (const candidate of WINDOWS_BASH_CANDIDATES) {
-    if (existsSync(candidate)) return candidate;
-  }
-  for (const dir of (process.env.PATH ?? "").split(";")) {
-    const trimmed = dir.trim();
-    if (!trimmed || /(^|[\\/])(system32|windowsapps)([\\/]|$)/i.test(trimmed)) continue;
-    const candidate = join(trimmed, "bash.exe");
-    if (existsSync(candidate)) return candidate;
-  }
-  // Nothing usable found: keep the POSIX default so the failure surfaces as a
-  // logged spawn error for the task instead of crashing the whole host process.
-  return "/bin/bash";
+  if (process.platform === "win32") return resolvePowerShell();
+  return process.env.PI_BETTER_BACKGROUND_TASKS_SHELL || "/bin/bash";
 }
 
 export interface SpawnedProcess {
-  child: ChildProcess;
+  child: EventEmitter & { pid?: number; unref(): void };
   pgid?: number;
+  terminate(): Promise<void>;
 }
 
 export function validateCommandSpec(spec: CommandSpec): void {
@@ -61,63 +32,19 @@ export function validateCommandSpec(spec: CommandSpec): void {
   }
 }
 
-/** Convert a Windows path to the `/c/...` form MSYS bash resolves in redirections. Exposed for tests and reuse. */
-export function toMsysPath(path: string): string {
-  const forward = path.replace(/\\/g, "/");
-  const drive = /^([A-Za-z]):(\/.+)$/.exec(forward);
-  return drive ? `/${drive[1].toLowerCase()}${drive[2]}` : forward;
-}
-
-/** Single-quote a value for safe literal use in a bash script line. Exposed for tests and reuse. */
-export function bashSingleQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-/**
- * On Windows, numeric fds above 2 are unusable as child stdio: Node spawns the
- * process, but its output handles end up broken, every write fails, and shell
- * tasks exit 1 having produced nothing. (POSIX inherits the fd normally.)
- *
- * Instead of handing the child a log fd, the shell opens and redirects into the
- * log itself. Output stays durable — written by the detached task directly, so
- * logging continues after pi exits — and the child runs with no inherited
- * stdio. Raw argv specs get a bash trampoline (`exec`) that performs the same
- * redirect before replacing itself with the target program.
- *
- * Exposed for tests and reuse.
- */
-export function withWindowsLogRedirect(spec: CommandSpec, logPath: string): CommandSpec {
-  const redirectLine = `exec >> ${bashSingleQuote(toMsysPath(logPath))} 2>&1`;
-  if (spec.shell === false) {
-    const argvText = spec.argv!.map((arg) => bashSingleQuote(String(arg))).join(" ");
-    return {
-      ...spec,
-      shell: true,
-      // The MSYS2 runtime rewrites POSIX-looking argv (e.g. `/c`, `/opt/x.sh`)
-      // when exec'ing native Windows binaries. Node spawn passed argv verbatim,
-      // so conversion is disabled to keep raw-argv semantics unchanged. The
-      // redirect target is unaffected: bash resolves it itself, already in
-      // `/c/...` form.
-      command: `${redirectLine}\nexport MSYS2_ARG_CONV_EXCL='*'\nexec ${argvText}`,
-    };
-  }
-  return { ...spec, command: `${redirectLine}\n${spec.command}` };
-}
-
 export function spawnCommand(spec: CommandSpec, logPath: string, detached: boolean): SpawnedProcess {
   validateCommandSpec(spec);
   mkdirSync(dirname(logPath), { recursive: true });
-  const windows = process.platform === "win32";
-  const launchSpec = windows ? withWindowsLogRedirect(spec, logPath) : spec;
-  let fd: number | undefined;
-  let stdio: SpawnStdio;
-  if (windows) {
-    stdio = ["ignore", "ignore", "ignore"];
-  } else {
-    fd = openSync(logPath, "a");
-    stdio = ["ignore", fd, fd];
+  if (process.platform === "win32") {
+    const spawned = spawnWindowsCommand(spec, logPath);
+    spawned.child.on("error", (error: Error) => {
+      try { appendFileSync(logPath, `\n--- spawn error ${error.message} ---\n`); } catch { /* logging is best effort */ }
+    });
+    return spawned;
   }
-  const child = spawnArgs(launchSpec, detached, stdio);
+  const fd = openSync(logPath, "a");
+  const stdio: SpawnStdio = ["ignore", fd, fd];
+  const child = spawnArgs(spec, detached, stdio);
   const marker = `\n--- spawn ${new Date().toISOString()} pid=${child.pid ?? "unknown"} ---\n`;
   try {
     if (fd !== undefined) {
@@ -154,7 +81,24 @@ export function spawnCommand(spec: CommandSpec, logPath: string, detached: boole
       // the host; the runtime already finalized the task from meta.
     }
   });
-  return { child, pgid: detached && child.pid ? child.pid : undefined };
+  return { child, pgid: detached && child.pid ? child.pid : undefined,
+    terminate: child.pid ? createProcessTreeTerminator(child.pid, child.pid) : async () => {} };
+}
+
+export class CommandTerminationError extends Error {
+  constructor(error: unknown) {
+    super(error instanceof Error ? error.message : String(error), { cause: error });
+    this.name = "CommandTerminationError";
+  }
+}
+
+export interface RunningCommand {
+  result: Promise<CommandResult>;
+  /** Retry cleanup independently of an already rejected command result. */
+  terminate(): Promise<void>;
+  readonly cleanupPending: boolean;
+  /** True only after tree verification, or when no process was launched. */
+  readonly cleanupVerified: boolean;
 }
 
 /** Run a command in its own process group, including any descendants holding output pipes. */
@@ -164,8 +108,22 @@ export function runCommandOnce(
   timeoutMs?: number,
   signal?: AbortSignal,
 ): Promise<CommandResult> {
+  return startCommandOnce(spec, maxBufferBytes, timeoutMs, signal).result;
+}
+
+/** A command result plus retained, retriable ownership of its process tree. */
+export function startCommandOnce(
+  spec: CommandSpec,
+  maxBufferBytes = 1024 * 1024,
+  timeoutMs?: number,
+  signal?: AbortSignal,
+): RunningCommand {
   validateCommandSpec(spec);
-  if (signal?.aborted) return Promise.reject(new Error("Command aborted before launch"));
+  if (signal?.aborted) return {
+    result: Promise.reject(new Error("Command aborted before launch")),
+    terminate: async () => {}, cleanupPending: false, cleanupVerified: true,
+  };
+  if (process.platform === "win32") return startWindowsCommandOnce(spec, maxBufferBytes, timeoutMs, signal);
   const startedAt = Date.now();
   const child = spawnArgs(spec, true, ["ignore", "pipe", "pipe"]);
   const cap = Math.max(1, Math.floor(maxBufferBytes));
@@ -174,18 +132,31 @@ export function runCommandOnce(
   let timedOut = false;
   child.stdout?.on("data", (chunk: Buffer | string) => captureChunk(stdoutCapture, chunk, cap));
   child.stderr?.on("data", (chunk: Buffer | string) => captureChunk(stderrCapture, chunk, cap));
-  return new Promise((resolve, reject) => {
+  const terminateTree = child.pid ? createProcessTreeTerminator(child.pid, child.pid) : async () => {};
+  let cleanupPending = !!child.pid;
+  let cleanupVerified = !child.pid;
+  let requestTermination!: () => Promise<void>;
+  const result = new Promise<CommandResult>((resolve, reject) => {
     let termination: Promise<void> | undefined;
+    let commandError: Error | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const cleanup = () => {
       if (timeout) clearTimeout(timeout);
       signal?.removeEventListener("abort", onAbort);
     };
-    const terminate = () => {
-      if (termination || !child.pid) return;
-      termination = terminateProcessTree(child.pid, child.pid);
-      void termination.catch((error) => { cleanup(); reject(error); });
+    requestTermination = () => {
+      if (termination) return termination;
+      cleanupPending = true;
+      termination = Promise.resolve().then(terminateTree).then(() => { cleanupPending = false; cleanupVerified = true; }, (error) => {
+        termination = undefined;
+        cleanup();
+        const failure = new CommandTerminationError(error);
+        reject(failure);
+        throw failure;
+      });
+      return termination;
     };
+    const terminate = () => { void requestTermination().catch(() => {}); };
     const onAbort = () => terminate();
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal?.aborted) terminate();
@@ -193,11 +164,19 @@ export function runCommandOnce(
       timeout = setTimeout(() => { timedOut = true; terminate(); }, Math.max(1, timeoutMs));
       timeout.unref();
     }
-    child.on("error", (error) => { cleanup(); reject(error); });
+    child.on("error", (error) => {
+      commandError = error;
+      cleanup();
+      void requestTermination().then(() => reject(error), reject);
+    });
+    // 'close' can wait forever on pipes inherited by a descendant. Leader exit
+    // starts settlement; close/result resolution still awaits that verification.
+    child.on("exit", terminate);
     child.on("close", (exitCode, exitSignal) => {
       cleanup();
       void (async () => {
-        await termination;
+        await requestTermination();
+        if (commandError) throw commandError;
         const stdout = finishCapture(stdoutCapture);
         const stderr = finishCapture(stderrCapture);
         resolve({
@@ -211,6 +190,8 @@ export function runCommandOnce(
       })().catch(reject);
     });
   });
+  return { result, terminate: () => requestTermination(),
+    get cleanupPending() { return cleanupPending; }, get cleanupVerified() { return cleanupVerified; } };
 }
 
 interface CaptureBuffer {
@@ -293,57 +274,24 @@ function finishCapture(target: CaptureBuffer): { text: string; discardedBytes: n
   };
 }
 
-/**
- * Stop a task's process tree.
- *
- * POSIX signals the process group (`-target`), falling back to the direct pid
- * when the group is already gone. Windows has no process groups in libuv, and
- * `process.kill(pid)` would only terminate the spawned `bash.exe` while real
- * work survives in grandchildren — so the tree is terminated with
- * `taskkill /T /F` instead. Windows has no graceful signal delivery, so the
- * requested signal is informational there.
- */
+/** Signal a POSIX group only. Windows requires an opaque launch-time Job Object. */
 export function stopProcessGroup(
   pid: number,
   pgid?: number,
   signal: NodeJS.Signals = "SIGTERM",
 ): void {
-  if (process.platform === "win32") {
-    const result = spawnSync("taskkill", ["/T", "/F", "/PID", String(pid)], {
-      encoding: "utf8",
-      windowsHide: true,
-      timeout: 2000,
-    });
-    if (result.error) {
-      const code = (result.error as NodeJS.ErrnoException).code;
-      throw new Error(`taskkill could not start for PID ${pid}${code ? ` (${code})` : ""}: ${result.error.message}`, {
-        cause: result.error,
-      });
-    }
-    if (result.status === 0) return;
-    // A child can exit between the caller's liveness check and taskkill. That
-    // race is success; any still-live PID means the tree was not terminated.
-    if (!processExists(pid)) return;
-    const detail = String(result.stderr ?? result.stdout ?? "").replace(/\s+/g, " ").trim();
-    throw new Error(
-      `taskkill failed with exit ${result.status ?? "unknown"} for PID ${pid}${detail ? `: ${detail}` : ""}`,
-    );
-  }
-  const target = pgid ?? pid;
-  try {
-    process.kill(-target, signal);
-    return;
-  } catch {
-    process.kill(pid, signal);
-  }
+  if (process.platform === "win32") throw new Error("Windows termination requires an owned Job Object, never a PID");
+  process.kill(-(pgid ?? pid), signal);
 }
 
 export function processExists(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // Only ESRCH proves absence. Permission/unknown probe failures must not
+    // let cleanup declare a possibly-live tree terminated.
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
   }
 }
 
@@ -353,7 +301,7 @@ export function commandExecution(spec: CommandSpec): { execPath: string; execArg
     const [command, ...args] = spec.argv!;
     return { execPath: command!, execArgs: args };
   }
-  return { execPath: resolveDefaultShell(), execArgs: ["-lc", spec.command!] };
+  return { execPath: resolveDefaultShell(), execArgs: process.platform === "win32" ? powerShellArguments(spec.command!) : ["-lc", spec.command!] };
 }
 
 /** Stdio for a spawned task: stdin is always ignored; stdout/stderr are piped (collected) or ignored (redirected into the log by the child itself). */

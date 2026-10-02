@@ -55,8 +55,13 @@
 ## Intent
 
 Own a trimmed fork of pi-better-background-tasks as `@thoth-agents/pi-background-tasks`
-for local shell jobs: jobs survive `/reload` of their owning session and are stopped,
-with verified termination, on every other shutdown, including subagent teardown.
+for local shell jobs. On Windows (the operator's platform) every job's process tree is
+contained by a Job Object, so stopping a job never misses an ordinarily created
+descendant and never touches another job's or session's processes, and abrupt Pi death
+kills the jobs. On POSIX the fork's existing process-group handling stays as best-effort.
+Jobs survive a same-process `/reload` of their owning session and stop on every other
+shutdown, including subagent teardown, under AC-7's platform-specific guarantees. On
+Windows, command jobs run in PowerShell 7.
 
 ## Non-goals
 
@@ -64,9 +69,16 @@ with verified termination, on every other shutdown, including subagent teardown.
   integration.
 - No thoth-agents installer change: the package stays operator-selected in Pi settings.
 - No survival of child jobs across a root `/reload` (children close and their jobs
-  stop).
-- No protection against abrupt Pi death (no hook runs); Job Object containment remains
-  out of scope.
+  stop), and no survival across a Pi process restart.
+- No snapshot/census-based descendant tracking and no PID-based tree kill on Windows.
+- No sandbox: work brokered through services, elevation, WSL or remote systems is a
+  documented limit.
+- No POSIX containment guarantee: POSIX keeps the fork's process-group handling as
+  best-effort; reuse of a group ID after its leader is reaped, abrupt Pi death and
+  descendants that leave the group (`setsid`) are documented limits; no POSIX anchor,
+  reservation helper or guardian.
+- No Git Bash on Windows for command jobs; no bash fallback when PowerShell 7 is
+  missing (fail with a clear error).
 - Standalone-star delegation exclusions stay unchanged as defense.
 
 ## Acceptance
@@ -81,21 +93,22 @@ with verified termination, on every other shutdown, including subagent teardown.
   provider removed with their tool parameters, docs and tests; local spawn, watches,
   logs, list/status/stop, callbacks and the navigator kept. Tests that need POSIX tools
   become node-based or carry an explicit POSIX guard with reason.
-- AC-3: Lifecycle: on `session_shutdown` with reason `reload` the current
-  suspend/handoff behavior is kept; on every other reason the package stops all running
-  jobs of that origin, including in-flight watch commands (tracked and aborted), with
-  verified termination (Windows tree kill awaited; POSIX TERM, bounded wait, then KILL)
-  and records them cancelled. Runtime scheduling state, navigator ownership
-  (`navigator-provider.ts:21-43` `piRef`/active origin, `shared-navigator.ts` global UI
-  state) and failure-attention state are per extension instance or keyed by origin, so
-  a headless child loading or ending never replaces or disposes root UI, navigator or
-  callbacks. On reload, control of an in-flight watch poll is handed off by origin: the
-  new instance adopts (or the old instance finishes and releases) the running poll so
-  no overlapping poll starts and a later quit can abort it; timers stay instance-local.
-  Tests cover quit/new/resume/fork stop, reload survival and single delivery, reload
-  during a blocked poll followed by quit (no overlapping poll, no surviving descendant,
-  single delivery), TERM-resistant POSIX processes (descendants and groups, not only the
-  leader), watch abort, two concurrent origins, and child load/end leaving root UI and
+- AC-3: Lifecycle (termination and verification below follow AC-7: Windows verifies Job
+  Object emptiness; POSIX uses best-effort group cleanup, where ESRCH does not prove that
+  escaped descendants exited): on `session_shutdown` with reason `reload` the jobs keep running
+  and the new instance adopts them (and any in-flight watch poll) by origin in the same Pi
+  process, delivering each completion once; on every other reason the package stops all
+  running jobs of that origin, including in-flight watch commands, terminating their
+  containers (AC-7) and recording them cancelled only after the container reports no
+  live process. When a job leader or a watch poll command exits on its own, its
+  container is terminated and verified empty before the job becomes terminal or the next
+  poll starts. A job whose termination cannot be verified stays running and owned and
+  is retried by stop and by non-reload shutdown. Runtime, navigator and failure-attention
+  state stay per extension instance or keyed by origin (headless children never replace
+  or dispose root UI or callbacks). Tests cover quit/new/resume/fork stop, reload
+  survival and single delivery, reload during a blocked poll then quit, natural exit with
+  a surviving grandchild through a short-lived intermediate (job and every watch
+  branch), watch abort, two concurrent origins, and child load/end leaving root UI and
   callbacks unchanged.
 - AC-4: Children: `@thoth-agents/pi-background-tasks` joins pi-subagents' default
   `lifecycle_passthrough`; a child's jobs stop on child completion, cancellation, error
@@ -110,10 +123,39 @@ with verified termination, on every other shutdown, including subagent teardown.
   (`src/harness/adapters/pi.ts:52`) and its test include the fork; the Ubuntu and Windows
   CI jobs check the package; AGENTS.md CI description updated.
 - AC-6: Live, after merge, operator settings switch (backup first, explicit
-  confirmation) and full Pi restart: a root job survives `/reload` and delivers once;
-  `/quit` (or `/new`) stops a running root job tree (verified from outside Pi by PID and
-  creation time); a subagent's job stops when the subagent ends or is cancelled; frozen
-  package and root checks pass.
+  confirmation) and full Pi restart, with PowerShell 7 jobs on Windows: a root job
+  survives `/reload` and delivers once; `/new` stops a running root job tree; a job
+  whose leader exits leaving a grandchild through a short-lived intermediate leaves no
+  survivor; a subagent's job stops when the subagent ends or is cancelled; jobs of a
+  second concurrent Pi session are untouched; killing the Pi process abruptly leaves no
+  job process; all verified from outside Pi by PID and creation time. Frozen package and
+  root checks pass.
+- AC-7: OS containment. Windows: every job and watch poll command is created suspended,
+  assigned to its own unnamed Job Object (KILL_ON_JOB_CLOSE, breakaway disabled) and only
+  then resumed; assignment failure terminates the suspended process and fails the launch
+  (never runs uncontained). Termination uses TerminateJobObject; verification is
+  QueryInformationJobObject reporting zero active processes. Job handles live in a
+  hidden helper process outside the job (no Node native addon, no downloaded binary)
+  that survives extension reload in the same Pi process, is re-attached by the new
+  instance, and exits when Pi exits so the OS closes the jobs and kills their trees.
+  No PID-based taskkill or ancestry census remains on Windows. POSIX (best-effort, per
+  the user): each job keeps the fork's own detached process group; termination is TERM,
+  bounded wait, KILL to the group and the group reporting ESRCH; the ancestry census is
+  removed on POSIX too; the README states the POSIX limits (group-ID reuse after the
+  leader is reaped, no cleanup on abrupt Pi death, `setsid` escapes). Windows tests: containment of immediate-exit intermediates, deterministic PID-reuse cases
+  (an unrelated process reusing a former descendant PID is never signalled), concurrent
+  sessions with same cwd, nested host jobs, denied assignment fail-closed, attempted
+  breakaway, helper death and abrupt parent death killing the jobs, reload re-attach. POSIX tests (Ubuntu CI) cover group TERM then KILL and ESRCH verification. The first worker checkpoint
+  proves helper feasibility on the real host (compile once, assignment under the actual
+  Pi/Orca job nesting) before rewiring.
+- AC-8: PowerShell 7 on Windows. Command (string) jobs and watch commands run in
+  PowerShell 7 (`pwsh -NoProfile -NonInteractive -Command`, discovered via an explicit
+  override, `where.exe` and standard install paths, validated as Core edition 7+);
+  argv jobs run the executable directly without a shell; the Git Bash trampoline is
+  removed; a missing PowerShell 7 fails the launch with an actionable message. POSIX
+  command jobs keep the existing shell. Tool descriptions tell the model which shell runs
+  on each platform. Tests cover discovery, quoting, exit codes, stdout/stderr capture and
+  UTF-8 on Windows; any code adapted from `oversk7/pi-pwsh-notify` keeps its MIT notice.
 
 ## Clarifications
 
@@ -122,10 +164,57 @@ with verified termination, on every other shutdown, including subagent teardown.
 - Package name `@thoth-agents/pi-background-tasks` (user, 2026-10-01).
 - Jobs survive `/reload`; stopped on any other shutdown (user, 2026-10-01).
 - Child jobs stop with the subagent, including on root `/reload` (user, 2026-10-01).
+- When a job leader or watch poll command exits on its own, kill and verify its remaining
+  descendants before terminalizing (user, 2026-10-01).
 - Standalone-star exclusions stay as defense; docs recommend the fork (user, 2026-10-01).
+- Replan (user, 2026-10-01, after round-4 verification and the ownership-design judgment
+  showed snapshot tracking can miss descendants and misattribute processes across
+  sessions): keep this fork as the base, replace snapshot tracking with own OS
+  containment (Windows Job Object, POSIX process group), PowerShell 7 for Windows command
+  jobs, survival only across same-process `/reload` (any real Pi exit, including a crash,
+  kills the jobs on Windows). pi-background-tasks (ISC) and pi-pwsh-notify (MIT)
+  were compared; only
+  PowerShell 7 support is taken from the latter.
+- POSIX guarantee (user, 2026-10-01): Windows gets the full containment guarantee; POSIX
+  keeps what the fork already has (its own process group with TERM then KILL), as
+  best-effort with documented limits.
 
 ## Decisions
 
+- Replan review round 1 (fresh Oracle subtask_thoth-oracle_1790897170817_f7329559):
+  REJECT on two POSIX contracts — crash cleanup was Windows-only although the user chose
+  any Pi exit, and a reaped leader's PGID could be reused and signalled. Repaired in AC-7
+  (anchor group leader pinning the PGID through cleanup, authority retired before the
+  anchor exits, no reconstruction from persisted PID/PGID; POSIX guardian killing groups
+  when Pi's pipe closes) and the delta. Cautions adopted: one persistent PowerShell 7
+  helper compiled once (not per poll), UTF-8 IPC, CreateProcessW Unicode
+  args/env/cwd, append-mode share-compatible log handles, no inherited job/parent handles,
+  no breakaway, fail closed on assignment restrictions, await ActiveProcesses == 0, parent
+  wait independent of blocked IPC; replace runtime.ts PID-based `processTreeFor`
+  reconstruction and foreign-owner reassignment with opaque container ownership; child
+  teardown must not terminate the shared helper; assert pwsh Core 7+ on windows-latest;
+  README (Git Bash, census, crash disclaimer) amended; rerun real-SDK child tests.
+- Replan review round 3 (fresh Oracle subtask_thoth-oracle_1790897953416_38c9c338):
+  REJECT on wording only — POSIX best-effort scope was not carried into the delta, its
+  scenario, AC-3, Intent and task outcomes. Applied the reviewer's exact edits: delta
+  obligations Windows-scoped and the single scenario split into a Windows outcome and a
+  POSIX best-effort outcome (the validator admits one scenario per delta), AC-3 and Intent
+  qualified by AC-7's platform-specific guarantees, AC-7 test headings split.
+- Replan review round 2 (fresh Oracle subtask_thoth-oracle_1790897535266_55ddb349):
+  REJECT — the POSIX anchor cannot survive a group KILL nor distinguish itself from
+  survivors; a sound POSIX guarantee needs an outside-group reservation helper. The user
+  then scoped POSIX to the fork's existing process-group handling as best-effort
+  (Clarifications); anchor and guardian removed; AC-7, Intent, Non-goals and the delta
+  aligned. Windows keeps the full guarantee.
+- Replan (root, 2026-10-01): plan review and implementation authorization reset because
+  scope changed (AC-3 rewritten, AC-6 rewritten, AC-7 containment and AC-8 PowerShell 7
+  added; Job Object containment moved from non-goal into scope). Earlier implementation
+  commits for AC-1, AC-2, AC-4 and AC-5 stay; the census-based termination in
+  `src/process-termination.ts` and its callers is replaced. Ownership-design judgment
+  (fresh Oracle subtask_thoth-oracle_1790895611444_135db4f4): current census can kill an
+  unrelated process (captured parent absent from the census authorizes its PID's new
+  children) and miss owned ones; recommends Job Objects created suspended and assigned
+  before resume, a helper outside the job, zero-active-process verification.
 - Plan review round 1 (fresh Oracle): REJECT — shared navigator/attention state made
   passthrough unsafe; reload could strand an in-flight watch poll; child teardown is
   best-effort behind other handlers. Repaired in AC-3/AC-4 and Tasks. Cautions adopted:
@@ -153,19 +242,94 @@ with verified termination, on every other shutdown, including subagent teardown.
   on POSIX CI); claude 0 / unit 290; root check:ci, typecheck, build 0 (no generated
   drift); root test 1208 passed / 4 missing-sibling failures. Live AC-6 follows.
 
+- Live AC-6 (2026-10-01, main 0.5.0 at 0272780; full restart; operator settings entry
+  switched from npm:pi-background-tasks to the fork path with backup
+  settings.json.bgfork-1790881896; Pi loaded bg_task_* and no bg_run). Root reload: job
+  bg_1crw_muq0ha8b_1 (node 69736 + grandchild 75308) kept the same PIDs and creation
+  times across the operator's /reload, origin session 01a0f3b8 unchanged, and its
+  completion was delivered exactly once (one background-completion-batch entry in the
+  session). Root /new: job bg_1crw_muq0mpfq_1 (67412 + 31764) — after the operator's /new
+  and /resume both PIDs were gone and meta recorded cancelled at 20:58:12Z. Children (the
+  operator temporarily added bg_task_spawn/bg_task_status to thoth-worker via
+  /subagents-tools): a worker that spawned a job and finished left no job process (45192 +
+  33900 gone; meta cancelled, origin = child session); a worker cancelled while running
+  left no job process (77100 + 18160 gone after 10 s; meta cancelled, child origin); the
+  root control job bg_1crw_muq0q2yt_2 (15776 + 77564) stayed alive throughout and was then
+  stopped by root.
+
+- Final verification round 1 (fresh Oracle subtask_thoth-oracle_1790888523859_eed6d6f8):
+  FAIL only on AC-3 — a failed watch termination dropped poll ownership (a retry recorded
+  cancelled without verifying the live tree) and a failed timeout cleanup marked the watch
+  terminal so shutdown skipped it; AC-1, AC-2, AC-4..AC-6 PASS, spec baseline matched.
+  Repaired in `31fadad` (worker, test-first): command handle and captured
+  descendant/group IDs stay owned and retriable until termination verifies; two
+  fault-injection regressions red then green. Package typecheck 0; two suite runs 192
+  passed / 4 skipped. Deployed Pi needs a full restart to load it.
+
+- Final verification round 2 (fresh Oracle subtask_thoth-oracle_1790889810203_f698208b):
+  FAIL only on AC-3 — the watch repair held, but ordinary jobs lost cleanup ownership after
+  partial termination (retry recorded cancelled with an orphan alive; a delayed leader
+  close recorded failed and quit skipped the survivor). Repaired in `91773a4`
+  (worker, test-first) as a general invariant: every job keeps its terminator and captured
+  descendants across stop/deadline failures, retries, shutdown and reload; leader close
+  only records exit facts while cleanup is still running; handoff/lost-process paths and
+  finalization cannot terminalize unfinished cleanup; worker audited every terminal-status
+  write and terminator release. Six regressions red then green. Package typecheck 0; two
+  suite runs 198 passed / 4 skipped; pi-subagents suite unchanged.
+
+- Final verification round 3 (fresh Oracle subtask_thoth-oracle_1790891116577_ad68839c):
+  FAIL only on AC-3 — requested-stop failure paths now hold, but ownership escaped through
+  natural leader close (runtime.ts:239-260), lost-leader recovery (runtime.ts:351-354,
+  398-404,428-437) and every watch poll settlement (process.ts:237-254; runtime.ts:539-655,
+  690-713); a real Windows probe confirmed exit 0 with a live descendant. The user chose
+  process-group semantics (Clarifications); AC-3 and the delta were amended accordingly.
+
+- Amended AC-3 implementation (`08bf1ba`): a worker on the previous model timed
+  out mid-way; a fresh worker (operator-switched model) completed it from the preserved
+  partial diff. Natural exits, lost-leader recovery and all watch settlements verify the
+  remaining tree before terminalizing or polling again; finalize and poll release require
+  verified cleanup; empty-tree settlement is one census. Package typecheck 0; suites 216
+  passed / 4 skipped (one full-suite run showed a single failure of the reload
+  single-delivery test with "cleanup failed: a process tree is still running" under load;
+  8/8 isolated reruns and the next full run passed); pi-subagents 525 passed / 1 skipped.
+  Windows test config bounds workers to 2 with a 15 s timeout for real CIM helpers.
+
+- Replan implementation checkpoint (root, 2026-10-01): one worker on the operator's
+  model, milestone by milestone. Milestone 1 real-host feasibility: nested Job Object
+  assignment works under Pi/Orca (IsProcessInJob true), a grandchild through a
+  short-lived intermediate keeps ActiveProcesses at 1 until TerminateJobObject then 0,
+  killing the helper's real spawning Node parent (no /T) kills helper and tree in
+  ~155 ms, injected assignment failure terminates the suspended child unresumed; cold
+  helper start ~1.7 s (compile ~0.67 s once), warm launch ~35 ms. `e55ef5e` (AC-7:
+  PowerShell 7 Add-Type helper, process-global client singleton, suspended
+  create/assign/resume, TerminateJobObject + ActiveProcesses==0, census and PID taskkill
+  removed, POSIX best-effort groups; 30 census-era tests replaced at a fake-helper seam,
+  three real defects fixed), `7306e4d` (AC-8: pwsh -EncodedCommand inside the job,
+  validated cached discovery, Git Bash resolver/trampoline and their 22 tests removed,
+  13 pwsh tests added, README/tool guidance), `a250c01` (AC-3: reload-stable host
+  identity re-attaching the same containers, dead-host tasks recorded lost without
+  probing stored PIDs, foreign live work never adopted, unverifiable work stays owned,
+  intermediate coverage for jobs and all five watch branches). Frozen checks: frozen
+  install 0; background-tasks 0 / 225 passed, 4 skipped; pi-subagents 0 / 525 passed,
+  1 skipped (unchanged code, real-SDK teardown against containment); antigravity 0 /
+  570 passed, 9 skipped plus one load-induced SessionStore multi-process failure that
+  passed 3/3 in isolation; claude 0 / unit 290; root check:ci, typecheck, build 0 (no
+  generated drift); root test 1207 passed with the 4 missing-sibling failures and one
+  sdd-validator 5 s timeout under load that passed 3/3 in isolation. Live AC-6 follows.
+
 ## Durable deltas
 
-- `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session, MUST keep a session's running jobs across that session's reload, and MUST stop every running job of the session, including in-flight watch commands, with verified process-tree termination on any other session shutdown, including subagent teardown, without affecting jobs of other sessions.
-  - GIVEN running background jobs in a root session and in a subagent; WHEN the root reloads, the subagent ends, or the root quits; THEN the root jobs survive the reload and deliver once, the subagent jobs stop with it, and on quit no job process of that session survives while other sessions' jobs continue.
+- `ADDED multi-harness-agent-pack` **Own session-scoped Pi background shell jobs** — The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST on Windows stop every running job of the session, including in-flight watch commands, on any other session shutdown, subagent teardown or Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run Windows command jobs in PowerShell 7, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
+  - GIVEN running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild; WHEN one root reloads, the subagent ends, the job leader exits, or the root quits or (on Windows) its process dies; THEN on Windows reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched, while on POSIX the non-reload cleanup triggers attempt TERM, a bounded wait, KILL and ESRCH verification of each job's group, subject to the documented limits.
 
 ## Plan
 
 1. Worker A (sole writer of `pi-packages/pi-background-tasks/**` and root
-   `pnpm-lock.yaml`): AC-1, then AC-2, then AC-3, test-first for behavior.
-2. Worker B (sole writer of `pi-packages/pi-subagents/**`, after AC-3): AC-4.
-3. Root (parallel, disjoint): root `biome.json` exclusion, CI steps, AGENTS.md,
-   `docs/installation.md`, `docs/agent/harness-packaging.md` (AC-1/AC-5 root parts).
-4. Root: frozen checks, commits, merge, operator settings switch with backup, restart,
+   `pnpm-lock.yaml`): AC-7 containment (Windows helper + Job Objects, POSIX groups),
+   then AC-8 PowerShell 7, then AC-3 rewired onto containment, test-first; checkpoints
+   returned within about 10 minutes each.
+2. Root: CI/docs touch-ups if AC-7/AC-8 change requirements (pwsh on windows-latest).
+3. Root: frozen checks, commits, merge, operator settings switch with backup, restart,
    AC-6 live, fresh Oracle, archive.
 
 ## Tasks
@@ -194,11 +358,11 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Focused check and PASS evidence: suite green on Windows; no remote/sandbox/goal references remain
   - Return milestone: green
   - Stop / reassessment: local paths depend on removed modules beyond simple extraction
-- [x] AC-3: lifecycle and verified termination
-  - Outcome: reload keeps jobs; other shutdowns stop them verifiably
+- [x] AC-3: lifecycle on containment
+  - Outcome: reload keeps and re-attaches jobs; other shutdowns and natural exits terminate containers under AC-7's platform-specific guarantees
   - Known entrypoints and skill paths: `src/index.ts:25-29`, `src/runtime.ts:28-44,130-146,570-614,728-800,830-858,1061-1150`, `src/process.ts:178-259,352-392`, `src/navigator-provider.ts:21-43`, `src/shared-navigator.ts:111,209-238`, tdd skill
   - Inputs: AC-2
-  - Dependencies: AC-2
+  - Dependencies: AC-7, AC-8
   - Output: code + tests
   - Owner: worker A
   - Writes: `pi-packages/pi-background-tasks/**`
@@ -242,6 +406,30 @@ with verified termination, on every other shutdown, including subagent teardown.
   - Focused check and PASS evidence: outside-Pi PID and creation-time checks per scenario
   - Return milestone: fresh Oracle PASS
   - Stop / reassessment: a job survives quit or a subagent end
+- [x] AC-7: OS containment
+  - Outcome: on Windows every job and watch command runs in its own Job Object and termination/verification act only on it; POSIX keeps best-effort process groups (AC-7's platform-specific guarantees)
+  - Known entrypoints and skill paths: `src/process.ts`, `src/process-termination.ts`, `src/runtime.ts`, `src/process-identity.ts`, tdd skill `C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md`
+  - Inputs: Exploration, Clarifications, Decisions (ownership-design judgment)
+  - Dependencies: none
+  - Output: helper + code + tests
+  - Owner: worker A
+  - Writes: `pi-packages/pi-background-tasks/**`
+  - Interface boundaries: tool schemas unchanged; no native addon or downloaded binary
+  - Focused check and PASS evidence: AC-7 tests on Windows; POSIX tests in CI
+  - Return milestone: containment tests green
+  - Stop / reassessment: host job restrictions prevent assignment on this machine
+- [x] AC-8: PowerShell 7 on Windows
+  - Outcome: Windows command jobs and watches run in pwsh 7; Git Bash trampoline removed
+  - Known entrypoints and skill paths: `src/process.ts` launcher, `src/tools.ts` descriptions, reference `oversk7/pi-pwsh-notify` `src/runtime.ts` (MIT), tdd skill
+  - Inputs: Clarifications
+  - Dependencies: AC-7
+  - Output: code + tests + README
+  - Owner: worker A
+  - Writes: `pi-packages/pi-background-tasks/**`
+  - Interface boundaries: argv jobs unchanged; POSIX shell unchanged
+  - Focused check and PASS evidence: discovery, quoting, exit codes, capture and UTF-8 tests on Windows
+  - Return milestone: green
+  - Stop / reassessment: pwsh unavailable on windows-latest CI
 
 ## Authorization
 
@@ -249,7 +437,15 @@ with verified termination, on every other shutdown, including subagent teardown.
 **Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: AUTHORIZED
 
-The user explicitly selected Review plan with Oracle. Round 1 returned [REJECT] (shared
+Replan (2026-10-01): the user explicitly selected Review plan with Oracle. Replan rounds
+1-3 returned [REJECT] (POSIX crash/PGID contracts, impossible anchor, then POSIX-scope
+wording), repaired here; round 4 fresh Oracle subtask_thoth-oracle_1790898132864_06ba3783
+returned [OKAY]. Its wording caution (POSIX scenario uses non-reload cleanup triggers) was
+applied. The user then explicitly chose Stop for now (restarting Pi; will confirm
+implementation later). No writer is running; the working tree is clean. Cautions: keep the real-host helper-feasibility checkpoint first; rerun child
+real-SDK tests after containment rewiring.
+
+Before the 2026-10-01 replan: the user explicitly selected Review plan with Oracle. Round 1 returned [REJECT] (shared
 navigator state, reload poll handoff, best-effort child teardown), repaired here; round 2
 fresh Oracle subtask_thoth-oracle_1790873914669_dab9caec returned [OKAY]. The user then
 explicitly chose Implement. Cautions: the AC-4 seam captures the fork's handlers during
@@ -272,6 +468,8 @@ the reviewer's caution.
 - AC-4: PENDING | check | evidence
 - AC-5: PENDING | check | evidence
 - AC-6: PENDING | check | evidence
+- AC-7: PENDING | check | evidence
+- AC-8: PENDING | check | evidence
 - Source: .thoth/specs/multi-harness-agent-pack/spec.md | sha256:038f88e274ae0db74c316f4ccf5341e693c7e06cc80719c4bcdf5222732c4614
 
 ## Closeout

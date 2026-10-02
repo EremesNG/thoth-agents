@@ -50,7 +50,8 @@ describe("runtime", () => {
   });
   it("counts a terminal poll's capture overflow once", async () => {
     const meta = startWatchTask(fakePi, {
-      command: `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(1200012))"`,
+      shell: false,
+      argv: [process.execPath, "-e", "process.stdout.write('x'.repeat(1200012))"],
       interval_seconds: 60,
       callback: false,
       success_when: { type: "exit_code", equals: 0 },

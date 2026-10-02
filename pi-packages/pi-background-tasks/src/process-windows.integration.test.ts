@@ -7,30 +7,33 @@ import { spawnTask } from "./runtime.js";
 
 const windowsDescribe = process.platform === "win32" ? describe : describe.skip;
 const taskIds: string[] = [];
-const originalShell = process.env.PI_BETTER_BACKGROUND_TASKS_SHELL;
+const originalShell = process.env.PI_BACKGROUND_TASKS_PWSH;
 const pi = {} as ExtensionAPI;
 
 afterEach(() => {
-  if (originalShell === undefined) delete process.env.PI_BETTER_BACKGROUND_TASKS_SHELL;
-  else process.env.PI_BETTER_BACKGROUND_TASKS_SHELL = originalShell;
+  if (originalShell === undefined) delete process.env.PI_BACKGROUND_TASKS_PWSH;
+  else process.env.PI_BACKGROUND_TASKS_PWSH = originalShell;
   for (const id of taskIds.splice(0)) rmSync(taskDir(id), { recursive: true, force: true });
 });
 
 windowsDescribe("Windows process integration", () => {
   it("logs a missing-shell spawn error and finalizes task metadata as failed", async () => {
-    process.env.PI_BETTER_BACKGROUND_TASKS_SHELL = "Z:\\missing\\pi-background-bash.exe";
+    process.env.PI_BACKGROUND_TASKS_PWSH = "Z:\\missing\\pi-background-pwsh.exe";
     const meta = spawnTask(pi, { command: "echo unreachable", callback: false }, process.cwd());
     taskIds.push(meta.id);
 
     const terminal = await waitForMeta(meta.id, (value) => value?.status === "failed");
 
     expect(terminal).toMatchObject({ status: "failed" });
-    expect(readFileSync(meta.logPath, "utf8")).toMatch(/spawn error .*code=ENOENT/i);
+    const log = readFileSync(meta.logPath, "utf8");
+    expect(log).toContain('Z:\\missing\\pi-background-pwsh.exe');
+    expect(log).toContain('Install PowerShell 7');
+    expect(log).toContain("PI_BACKGROUND_TASKS_PWSH");
   });
 
   it("delivers POSIX-looking raw argv without MSYS2 rewriting", async () => {
-    delete process.env.PI_BETTER_BACKGROUND_TASKS_SHELL;
-    expect(resolveDefaultShell()).not.toBe("/bin/bash");
+    delete process.env.PI_BACKGROUND_TASKS_PWSH;
+    expect(resolveDefaultShell()).toMatch(/pwsh[.]exe$/i);
     const expected = ["/c", "/opt/x.sh"];
     const meta = spawnTask(pi, {
       shell: false,

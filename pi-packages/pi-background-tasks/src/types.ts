@@ -98,6 +98,8 @@ export interface BackgroundTaskMeta {
   pidStartTime?: string;
   pgid?: number;
   spawnPid: number;
+  /** Same-process reload identity; never grants authority to persisted child PIDs. */
+  ownerInstanceId?: string;
   /** Opaque process-start token used to reject recycled supervisor PIDs. */
   spawnPidStartTime?: string;
   successWhen?: Condition;

@@ -54,11 +54,13 @@ const IntentFields = {
   expected_exit_codes: Type.Optional(Type.Unsafe<number[] | null>({ anyOf: [{ type: "array", items: { type: "integer", minimum: 0, maximum: 255 }, minItems: 1, maxItems: 16 }, { type: "null" }], description: "Optional distinct non-zero exit codes that are intentional for this command (e.g. [1] for a no-match probe). 0 is allowed and ignored: exit 0 is already success. Declared before launch; recorded as expected failures, not incidents needing action. Signals and timeouts are never expected." })),
 };
 
+const SHELL_GUIDANCE = "Commands use PowerShell Core 7+ on Windows and /bin/bash (or the configured shell) on POSIX. Use shell:false with argv for direct executable arguments.";
+
 const CommandFields = {
   name: Type.Optional(Type.String({ description: "Human-readable task label." })),
-  command: Type.Optional(Type.String({ description: "Shell command to run. Required unless shell:false with argv is used." })),
+  command: Type.Optional(Type.String({ description: `Shell command to run. ${SHELL_GUIDANCE} Required unless shell:false with argv is used.` })),
   argv: Type.Optional(Type.Array(Type.String(), { description: "Argument vector. Use with shell:false to avoid shell parsing." })),
-  shell: Type.Optional(Type.Boolean({ description: "Run command through the package's bash-compatible shell. Default true." })),
+  shell: Type.Optional(Type.Boolean({ description: `Default true. ${SHELL_GUIDANCE}` })),
   cwd: Type.Optional(Type.String({ description: "Working directory. Defaults to the current pi cwd." })),
   env: Type.Optional(StringMap("Extra environment variables.")),
   max_log_bytes: Type.Optional(Type.Number({ description: "Maximum retained raw-log bytes. Default 4194304 (4 MiB). Older output is compacted while the task runs." })),
@@ -78,7 +80,7 @@ const BlindChecksField = Type.Optional(Type.Integer({ minimum: 0, description: "
 const WATCH_CHECK_GUIDANCE = "Waits up to 15s for the first check and returns its exit code with stdout and stderr tails; if it is still running, says so. "
   + "Write the check so a broken check is visible: do not end it with `exit 0` or `|| true`, because a check that exits non-zero is recorded and escalates. "
   + "Map an unknown or unparseable state to failure (exit non-zero), not to pending. Prefer structured output, e.g. `--format=json | jq -er '.status'`, over fragile format strings. "
-  + "A check that exits 0 but writes stderr without matching a condition for blind_checks (default 3) checks in a row is flagged as needing action; if that stderr is expected, redirect it (2>/dev/null) or set blind_checks:0.";
+  + "A check that exits 0 but writes stderr without matching a condition for blind_checks (default 3) checks in a row is flagged as needing action; if that stderr is expected, redirect it (2>$null on PowerShell; 2>/dev/null on POSIX) or set blind_checks:0.";
 
 const WatchParams = Type.Object({
   ...CommandFields,
@@ -192,7 +194,7 @@ export function registerTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "bg_task_spawn",
     label: "BG Spawn",
-    description: "Start a long-running background process and return immediately with its task id. Never wait or poll in the foreground.",
+    description: `Start a long-running background process and return immediately with its task id. Never wait or poll in the foreground. ${SHELL_GUIDANCE}`,
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: SpawnParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -206,7 +208,7 @@ export function registerTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "bg_task_watch",
     label: "BG Watch",
-    description: `Poll a command in the background until success_when, failure_when, or timeout matches. Returns its task id once the first check finishes. ${WATCH_CHECK_GUIDANCE} Default timeout 900 seconds; pass timeout_seconds:0 to disable.`,
+    description: `Poll a command in the background until success_when, failure_when, or timeout matches. Returns its task id once the first check finishes. ${WATCH_CHECK_GUIDANCE} ${SHELL_GUIDANCE} Default timeout 900 seconds; pass timeout_seconds:0 to disable.`,
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: WatchParams,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -269,7 +271,7 @@ export function registerTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "bg_task",
     label: "BG Task",
-    description: "Action wrapper for background tasks: spawn, watch, list, status, log, stop, or clear. Spawn returns immediately; do not poll in foreground. For action:watch: " + WATCH_CHECK_GUIDANCE + " For action:status, default compact output and use verbose:true only for full metadata. For action:log, default compact tail and use lines:0 to page retained raw bytes. Standalone tools and these wrappers share the same output assembler. List/status/log default to the current session; pass all:true to override. Stop and clear change only current-session tasks: clear dismisses every owned terminal task, or one task with id (all:true allows another session's task by id).",
+    description: SHELL_GUIDANCE + " Action wrapper for background tasks: spawn, watch, list, status, log, stop, or clear. Spawn returns immediately; do not poll in foreground. For action:watch: " + WATCH_CHECK_GUIDANCE + " For action:status, default compact output and use verbose:true only for full metadata. For action:log, default compact tail and use lines:0 to page retained raw bytes. Standalone tools and these wrappers share the same output assembler. List/status/log default to the current session; pass all:true to override. Stop and clear change only current-session tasks: clear dismisses every owned terminal task, or one task with id (all:true allows another session's task by id).",
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: ActionParams,
     renderResult(result: unknown, options: unknown, theme: unknown) {

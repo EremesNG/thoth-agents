@@ -45,10 +45,10 @@ describe("Windows process termination failures", () => {
 
     expect(stopped).toMatchObject({
       status: "running",
-      error: "taskkill failed with exit 5 for PID 4242: Access is denied.",
+      error: "Container ownership is unavailable; refusing PID-based termination",
     });
-    expect(spawnSync).toHaveBeenCalledWith("taskkill", ["/T", "/F", "/PID", "4242"],
-      expect.objectContaining({ windowsHide: true }));
+    expect(spawnSync).not.toHaveBeenCalled();
+    expect(process.kill).not.toHaveBeenCalled();
     expect(stopped?.stopRequestedAt).toBeUndefined();
     expect(readMeta(id)).toMatchObject({ status: "running", error: stopped!.error });
     expect(readMeta(id)?.result).toBeUndefined();

@@ -45,10 +45,10 @@ export function runTaskMaintenance(options: TaskMaintenanceOptions = {}): TaskMa
       if (meta.status !== "running" || belongsToOrigin(meta, options.activeOrigin)) continue;
       if (identityAlive(meta.spawnPid, meta.spawnPidStartTime, meta.startedAt)) continue;
       if (meta.kind === "process" && identityAlive(meta.pid, meta.pidStartTime, meta.startedAt)) continue;
-      meta.status = "failed";
-      meta.endedAt = now;
+      // Maintenance cannot verify a foreign origin's tree (including captured
+      // poll handles). Leave it owned for that origin to resume/stop; host or
+      // leader absence is only incomplete execution evidence, not termination.
       meta.error = "task supervisor is no longer alive; execution result is unavailable";
-      meta.result = { reason: meta.error };
       recordFailure(meta, "execution", meta.error, "supervisor-lost", { incomplete: true, at: now });
       writeMeta(meta);
       reconciled += 1;

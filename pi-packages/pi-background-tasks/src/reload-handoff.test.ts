@@ -2,6 +2,12 @@
 // extension instance may still own a task's child; the resuming instance must
 // deliver what it records, and must still mark a truly lost process as lost.
 import { rmSync } from "node:fs";
+import * as childProcess from "node:child_process";
+
+vi.mock("node:child_process", async (original) => {
+  const actual = await original<typeof import("node:child_process")>();
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { currentProcessStartToken } from "./process-identity.js";
@@ -57,7 +63,7 @@ describe("reload handoff", () => {
     expect(after.messages.filter((m) => m.includes(meta.id))).toHaveLength(1);
   });
 
-  it("marks a same-process task lost only after the grace period when nobody records its exit", async () => {
+  it("a missing same-process container remains unverified after the lost-leader grace period", async () => {
     const { pi, messages } = host();
     const id = `bg_reload_handoff_lost_${Date.now()}`;
     ids.push(id);
@@ -70,12 +76,17 @@ describe("reload handoff", () => {
     resumeRunningTask(pi, meta, () => origin);
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     expect(readMeta(id)?.status).toBe("running");
-    const lost = await until(() => (readMeta(id)?.status === "failed" ? readMeta(id) : undefined), 10_000);
-    expect(lost?.error).toMatch(/no longer alive/);
-    await until(() => (messages.some((m) => m.includes(id)) ? true : undefined));
+    const lost = await until(() => (readMeta(id)?.stopError ? readMeta(id) : undefined), 10_000);
+    expect(lost?.status).toBe("running");
+    expect(lost?.error).toMatch(/Container ownership is unavailable/);
+    expect(lost?.endedAt).toBeUndefined();
+    expect(messages).toEqual([]);
   }, 15_000);
 
   it("backs its checks off while a same-process task keeps running, and still delivers its exit (#332)", async () => {
+    // This test measures registry scheduling, not OS discovery. A minute of
+    // virtual time must not launch a minute's worth of real census helpers.
+    vi.mocked(childProcess.execFileSync).mockReturnValue(process.platform === "win32" ? "[]" : "");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const { pi, messages } = host();
     const id = `bg_reload_handoff_backoff_${Date.now()}`;

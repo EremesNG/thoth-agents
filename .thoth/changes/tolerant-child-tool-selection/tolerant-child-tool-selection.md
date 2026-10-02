@@ -230,6 +230,19 @@ are not misclassified as network errors.
   claude-bridge 0 / unit 315; pi-subagents 0 / 555 passed, 1 skipped; background-tasks 0 /
   258 passed, 4 skipped; root check:ci, typecheck, build 0 (no generated drift); root test
   1208 passed / 4 missing-sibling failures. Live AC-6 repeat follows.
+- Live AC-6 repeat (2026-10-02, main 0.5.0 at c4f1243 after full restart; every config
+  change applied and verified before launching the child; operator configs restored by
+  hash: subagents.json cfd3ec3e…, thoth-explorer.md 780eb33b…). (1) Claude-model designer
+  (claude-sonnet-5-5) with all eight `agent_browser*`: saw `_action`, `_qa`, `_electron`
+  and `_network_source`; `agent_browser_electron` required `input`; call
+  `{"input":{"action":"list","maxResults":5}}` returned "Electron apps (0 found)" with
+  success observation (Pi validated the unwrapped original arguments). (2)
+  Antigravity-model designer (Gemini 3.8 Flash) via server `pi-agy-7f71e568`: saw all four;
+  call `{"action":"list","maxResults":5}` succeeded the same way. (3) thoth-explorer with
+  `read` + `probe_missing_tool`: started, used `read`; the operator confirmed seeing the
+  dropped-tools warning on the running widget card; completion carried "Dropped tools
+  unavailable in the child session (missing implementation: probe_missing_tool)" and
+  history `dropped_tools_json` = ["probe_missing_tool"].
 - Backend rule (AC-3): a wrapped union that a backend rejects in the live check is
   switched to omission with a warning in that bridge; the request never fails.
 
@@ -323,7 +336,7 @@ are not misclassified as network errors.
   - Focused check and PASS evidence: text review; `pnpm run check:ci`
   - Return milestone: committed
   - Stop / reassessment: none
-- [ ] AC-6: checks and live
+- [x] AC-6: checks and live
   - Outcome: checks pass; live behavior confirmed
   - Known entrypoints and skill paths: thoth-archive skill
   - Inputs: AC-1..AC-5, AC-7

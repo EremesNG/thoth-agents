@@ -9,8 +9,13 @@ function resolveLocalRef(root: Schema, ref: string): unknown {
 	let value: unknown = root;
 	for (const segment of ref.slice(2).split("/")) {
 		const key = segment.replace(/~1/g, "/").replace(/~0/g, "~");
-		if (!isSchema(value) || !Object.hasOwn(value, key)) return undefined;
-		value = value[key];
+		if (Array.isArray(value)) {
+			if (!/^(0|[1-9]\d*)$/.test(key) || !Object.hasOwn(value, key)) return undefined;
+			value = value[Number(key)];
+		} else {
+			if (!isSchema(value) || !Object.hasOwn(value, key)) return undefined;
+			value = value[key];
+		}
 	}
 	return value;
 }
@@ -29,16 +34,20 @@ function isObjectSchema(schema: unknown, root: Schema, ancestors = new Set<Schem
 	}
 }
 
-/** MCP requires an object root; Pi retains the original schema for validation. */
+/** Normalize object-only root unions; Pi retains the original schema for validation. */
 export function normalizeToolSchema(schema: unknown): Schema | undefined {
 	if (!isSchema(schema)) return undefined;
-	if (schema.type === "object") return schema;
+	const input: Schema = {};
 	for (const keyword of ["anyOf", "oneOf"] as const) {
+		if (!Object.hasOwn(schema, keyword)) continue;
 		const variants = schema[keyword];
-		if (Array.isArray(variants) && variants.length > 0
-			&& variants.every((variant) => isObjectSchema(variant, schema))) {
-			return { ...schema, type: "object" };
-		}
+		if (!Array.isArray(variants) || variants.length === 0
+			|| !variants.every((variant) => isObjectSchema(variant, schema))) return undefined;
+		input[keyword] = variants;
 	}
-	return undefined;
+	if (Object.keys(input).length) {
+		// Antigravity accepts eligible unions at root, including typed object roots.
+		return schema.type === "object" ? schema : { ...schema, type: "object" };
+	}
+	return schema.type === "object" ? schema : undefined;
 }

@@ -9,8 +9,13 @@ function resolveLocalRef(root: Schema, ref: string): unknown {
 	let value: unknown = root;
 	for (const segment of ref.slice(2).split("/")) {
 		const key = segment.replace(/~1/g, "/").replace(/~0/g, "~");
-		if (!isSchema(value) || !Object.hasOwn(value, key)) return undefined;
-		value = value[key];
+		if (Array.isArray(value)) {
+			if (!/^(0|[1-9]\d*)$/.test(key) || !Object.hasOwn(value, key)) return undefined;
+			value = value[Number(key)];
+		} else {
+			if (!isSchema(value) || !Object.hasOwn(value, key)) return undefined;
+			value = value[key];
+		}
 	}
 	return value;
 }
@@ -29,7 +34,7 @@ function isObjectSchema(schema: unknown, root: Schema, ancestors = new Set<Schem
 	}
 }
 
-/** Claude rejects root unions. Nest them under input; Pi keeps its original schema. */
+/** Normalize object-only root unions; Pi retains the original schema for validation. */
 export function normalizeToolSchema(schema: unknown): Schema | undefined {
 	if (!isSchema(schema)) return undefined;
 	const input: Schema = {};

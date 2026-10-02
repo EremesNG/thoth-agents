@@ -491,7 +491,7 @@ describe('subagent_run tool', () => {
     expect(result.content[0].text).not.toContain('subagent_continue');
     expect(result.details.results[0].result).toBe(rawResponse);
 
-    const renderedResult = runTool
+    const renderedCollapsed = runTool
       .renderResult(
         result,
         { expanded: false, isPartial: false },
@@ -499,11 +499,28 @@ describe('subagent_run tool', () => {
       )
       .render(90)
       .join('\n');
-    expect(renderedResult).toContain('subagent: analyst');
-    expect(renderedResult).toContain('click to view execution');
-    expect(renderedResult).toContain('Subagent response');
-    expect(renderedResult).toContain('to=functions.memory_get');
-    expect(renderedResult).not.toContain('id: subtask_');
+    expect(renderedCollapsed).toContain('subagent: analyst');
+    expect(renderedCollapsed).toContain('status: completed');
+    expect(renderedCollapsed).toContain('ctrl+o to expand');
+    expect(renderedCollapsed).not.toContain('click to view execution');
+    expect(renderedCollapsed).not.toContain('Subagent response');
+    expect(renderedCollapsed).not.toContain('to=functions.memory_get');
+    expect(renderedCollapsed).not.toContain('id: subtask_');
+
+    const renderedExpanded = runTool
+      .renderResult(
+        result,
+        { expanded: true, isPartial: false },
+        { fg: (_name: string, text: string) => text },
+      )
+      .render(90)
+      .join('\n');
+    expect(renderedExpanded).toContain('subagent: analyst');
+    expect(renderedExpanded).toContain('click to view execution');
+    expect(renderedExpanded).toContain('Subagent response');
+    expect(renderedExpanded).toContain('to=functions.memory_get');
+    expect(renderedExpanded).not.toContain('ctrl+o to expand');
+    expect(renderedExpanded).not.toContain('id: subtask_');
   });
 
   it('returns an error tool result without continuation guidance when continuation is disabled', async () => {
@@ -955,7 +972,7 @@ describe('subagent_run tool', () => {
     expect(result.details.results[0].id).toMatch(/^subtask_analyst_/);
     expect(result.details.results[0].display_name).toBe('Friendly Test Name');
 
-    // Default rendered output uses friendly name and hides raw ID
+    // Default rendered output uses friendly name, hides raw ID, and collapses by default
     const rendered = env.stripAnsi(
       runTool
         .renderResult(
@@ -968,9 +985,25 @@ describe('subagent_run tool', () => {
     );
     expect(rendered).toContain('Friendly Test Name');
     expect(rendered).toContain('subagent: analyst');
-    expect(rendered).toContain('click to view execution');
+    expect(rendered).toContain('ctrl+o to expand');
+    expect(rendered).not.toContain('click to view execution');
     expect(rendered).not.toContain('id: subtask_');
     expect(rendered).not.toContain('subtask_analyst_');
+
+    const renderedExpanded = env.stripAnsi(
+      runTool
+        .renderResult(
+          result,
+          { expanded: true },
+          { fg: (_n: string, t: string) => t },
+        )
+        .render(120)
+        .join('\n'),
+    );
+    expect(renderedExpanded).toContain('Friendly Test Name');
+    expect(renderedExpanded).toContain('subagent: analyst');
+    expect(renderedExpanded).toContain('click to view execution');
+    expect(renderedExpanded).not.toContain('ctrl+o to expand');
 
     // No background fills
     const rawAnsi = runTool

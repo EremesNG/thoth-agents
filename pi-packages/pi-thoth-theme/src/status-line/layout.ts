@@ -1,7 +1,5 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import type { IconMode } from '../shared/config.ts';
-import { iconFor } from '../shared/icons.ts';
-import { formatCost } from './cost.ts';
 
 export interface ContextUsageInfo {
   percent?: number | null;
@@ -10,15 +8,14 @@ export interface ContextUsageInfo {
 }
 
 export interface StatusData {
-  model?: string;
+  modelName?: string;
+  modelId?: string;
   thinkingLevel?: string;
   gitBranch?: string | null;
-  contextUsage?: ContextUsageInfo;
+  contextTokens?: number | null;
+  contextWindow?: number;
+  contextPercent?: number | null;
   cost?: number;
-  extensionStatuses?:
-    | ReadonlyMap<string, string>
-    | Record<string, string>
-    | Iterable<[string, string]>;
 }
 
 export interface ActiveThemeLike {
@@ -41,21 +38,17 @@ function themeFg(
 
 export function formatTokens(count: number): string {
   if (count < 1000) return count.toString();
-  if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
-  if (count < 1000000) return `${Math.round(count / 1000)}k`;
-  if (count < 10000000) return `${(count / 1000000).toFixed(1)}M`;
-  return `${Math.round(count / 1000000)}M`;
+  if (count < 1000000) {
+    const k = (count / 1000).toFixed(1).replace(/\.0$/, '');
+    return `${k}K`;
+  }
+  const m = (count / 1000000).toFixed(1).replace(/\.0$/, '');
+  return `${m}M`;
 }
 
 function thinkingToken(level: string): string {
   const cap = level.charAt(0).toUpperCase() + level.slice(1);
   return `thinking${cap}`;
-}
-
-interface SegmentItem {
-  id: 'model' | 'git' | 'context' | 'cost' | 'extension_statuses';
-  content: string;
-  priority: number; // lower number = lower priority (dropped earlier)
 }
 
 export function renderStatusLine(
@@ -65,140 +58,211 @@ export function renderStatusLine(
   const { width, mode, theme } = options;
   if (width <= 0) return '';
 
-  const segments: SegmentItem[] = [];
+  const isAscii = mode === 'ascii';
+  const sepChar = isAscii ? '|' : '│';
+  const sep = ` ${themeFg(theme, 'border', sepChar)} `;
 
-  // 1. Model + effort
-  if (data.model) {
-    const modelIcon = iconFor('model', mode);
-    const modelName = data.model;
-    let modelText = `${modelIcon} ${modelName}`;
-    if (data.thinkingLevel && data.thinkingLevel !== 'off') {
-      const effort =
-        data.thinkingLevel === 'minimal'
-          ? 'min'
-          : data.thinkingLevel === 'medium'
-            ? 'med'
-            : data.thinkingLevel;
-      const dot = themeFg(theme, 'dim', '·');
-      const effortColored = themeFg(
-        theme,
-        thinkingToken(data.thinkingLevel),
-        effort,
-      );
-      modelText = `${modelText} ${dot} ${effortColored}`;
-    }
-    segments.push({
-      id: 'model',
-      content: themeFg(theme, 'accent', modelText),
-      priority: 100,
-    });
+  // 1. Model
+  const rawModel = data.modelName || data.modelId;
+  const modelIcon = isAscii ? '*' : '●';
+  const modelText = rawModel ? `${modelIcon} ${rawModel}` : '';
+  const modelColored = modelText ? themeFg(theme, 'mdLink', modelText) : '';
+
+  // 1b. Effort
+  let effortColored = '';
+  let dot = '';
+  if (data.thinkingLevel && data.thinkingLevel !== 'off') {
+    const effortIcon = isAscii ? 'o' : '◐';
+    const effortLabel =
+      data.thinkingLevel === 'minimal'
+        ? 'min'
+        : data.thinkingLevel === 'medium'
+          ? 'med'
+          : data.thinkingLevel;
+    dot = themeFg(theme, 'dim', isAscii ? '.' : '·');
+    effortColored = themeFg(
+      theme,
+      thinkingToken(data.thinkingLevel),
+      `${effortIcon} ${effortLabel}`,
+    );
   }
 
-  // 2. Git branch
+  // 2. Git Branch
+  let branchSegment = '';
   if (data.gitBranch) {
-    const gitIcon = iconFor('git', mode);
-    const gitText = `${gitIcon} ${data.gitBranch}`;
-    segments.push({
-      id: 'git',
-      content: themeFg(theme, 'text', gitText),
-      priority: 75,
-    });
+    const branchIcon = isAscii ? 'git' : '⑂';
+    const branchText = `${branchIcon} ${data.gitBranch}`;
+    branchSegment = themeFg(theme, 'success', branchText);
   }
 
-  // 3. Context usage
-  if (data.contextUsage) {
-    const ctxIcon = iconFor('context', mode);
-    const pct = data.contextUsage.percent;
-    const pctStr =
-      pct !== null && pct !== undefined ? `${Math.round(pct)}%` : '?';
-    const windowStr = data.contextUsage.contextWindow
-      ? `/${formatTokens(data.contextUsage.contextWindow)}`
-      : '';
-    const ctxText = `${ctxIcon} ${pctStr}${windowStr}`;
+  // 3. Context Bar
+  let barSegment = '';
+  const hasContext =
+    data.contextPercent !== undefined ||
+    data.contextTokens !== undefined ||
+    data.contextWindow !== undefined;
 
-    let token = 'muted';
-    if (pct !== null && pct !== undefined) {
-      if (pct >= 90) token = 'error';
-      else if (pct >= 70) token = 'warning';
-    }
+  if (hasContext) {
+    if (data.contextPercent !== null && data.contextPercent !== undefined) {
+      const pct = data.contextPercent;
+      let colorToken = 'success';
+      if (pct >= 90) colorToken = 'error';
+      else if (pct >= 70) colorToken = 'warning';
 
-    segments.push({
-      id: 'context',
-      content: themeFg(theme, token, ctxText),
-      priority: 90,
-    });
-  }
-
-  // 4. Cumulative session cost
-  if (data.cost !== undefined) {
-    const costText = formatCost(data.cost, mode);
-    segments.push({
-      id: 'cost',
-      content: themeFg(theme, 'accent', costText),
-      priority: 65,
-    });
-  }
-
-  // 5. Extension statuses
-  if (data.extensionStatuses) {
-    let entries: [string, string][] = [];
-    if (data.extensionStatuses instanceof Map) {
-      entries = Array.from(data.extensionStatuses.entries());
-    } else if (Symbol.iterator in Object(data.extensionStatuses)) {
-      entries = Array.from(
-        data.extensionStatuses as Iterable<[string, string]>,
+      const filledCount = Math.min(
+        10,
+        Math.max(0, Math.round((pct / 100) * 10)),
       );
-    } else if (
-      typeof data.extensionStatuses === 'object' &&
-      data.extensionStatuses !== null
-    ) {
-      entries = Object.entries(data.extensionStatuses);
+      const emptyCount = 10 - filledCount;
+      const fillChar = isAscii ? '#' : '█';
+      const emptyChar = isAscii ? '-' : '░';
+
+      const barContent = `${themeFg(theme, 'dim', '[')}${themeFg(
+        theme,
+        colorToken,
+        fillChar.repeat(filledCount),
+      )}${themeFg(theme, 'dim', emptyChar.repeat(emptyCount))}${themeFg(
+        theme,
+        'dim',
+        ']',
+      )}`;
+      const pctContent = themeFg(theme, colorToken, `${Math.round(pct)}% used`);
+      barSegment = `${barContent} ${pctContent}`;
+    } else if (data.contextPercent === null) {
+      barSegment = themeFg(theme, 'muted', '—');
+    }
+  }
+
+  // 4. Tokens
+  let tokensSegment = '';
+  if (data.contextTokens !== null && data.contextTokens !== undefined) {
+    const usedStr = formatTokens(data.contextTokens);
+    const windowStr = data.contextWindow
+      ? `/${formatTokens(data.contextWindow)}`
+      : '';
+    tokensSegment = themeFg(theme, 'muted', `${usedStr}${windowStr}`);
+  } else if (data.contextTokens === null) {
+    const windowStr = data.contextWindow
+      ? `/${formatTokens(data.contextWindow)}`
+      : '';
+    tokensSegment = themeFg(theme, 'muted', `—${windowStr}`);
+  }
+
+  // 5. Cost
+  let costSegment = '';
+  if (data.cost !== undefined) {
+    const costText = `$${data.cost.toFixed(3)}`;
+    costSegment = themeFg(theme, 'accent', costText);
+  }
+
+  function buildLine(opts: {
+    bar: boolean;
+    tokens: boolean;
+    branch: boolean;
+    effort: boolean;
+  }): string {
+    const parts: string[] = [];
+
+    let modelPart = modelColored;
+    if (modelPart && opts.effort && effortColored) {
+      modelPart = `${modelPart} ${dot} ${effortColored}`;
+    } else if (!modelPart && opts.effort && effortColored) {
+      modelPart = effortColored;
     }
 
-    if (entries.length > 0) {
-      const sorted = entries.sort(([a], [b]) => a.localeCompare(b));
-      const extText = sorted.map(([_, v]) => v).join(' ');
-      if (extText.length > 0) {
-        segments.push({
-          id: 'extension_statuses',
-          content: themeFg(theme, 'muted', extText),
-          priority: 30,
-        });
+    if (modelPart) {
+      parts.push(modelPart);
+    }
+    if (opts.branch && branchSegment) {
+      parts.push(branchSegment);
+    }
+    if (opts.bar && barSegment) {
+      parts.push(barSegment);
+    }
+    if (opts.tokens && tokensSegment) {
+      parts.push(tokensSegment);
+    }
+    if (costSegment) {
+      parts.push(costSegment);
+    }
+
+    return parts.join(sep);
+  }
+
+  // Width degradation order:
+  // 1. All segments
+  let line = buildLine({ bar: true, tokens: true, branch: true, effort: true });
+  if (visibleWidth(line) <= width) return line;
+
+  // 2. Drop bar first
+  if (barSegment) {
+    line = buildLine({
+      bar: false,
+      tokens: true,
+      branch: true,
+      effort: true,
+    });
+    if (visibleWidth(line) <= width) return line;
+  }
+
+  // 3. Drop tokens next
+  if (tokensSegment) {
+    line = buildLine({
+      bar: false,
+      tokens: false,
+      branch: true,
+      effort: true,
+    });
+    if (visibleWidth(line) <= width) return line;
+  }
+
+  // 4. Drop branch next
+  if (branchSegment) {
+    line = buildLine({
+      bar: false,
+      tokens: false,
+      branch: false,
+      effort: true,
+    });
+    if (visibleWidth(line) <= width) return line;
+  }
+
+  // 5. Drop effort next
+  if (effortColored) {
+    line = buildLine({
+      bar: false,
+      tokens: false,
+      branch: false,
+      effort: false,
+    });
+    if (visibleWidth(line) <= width) return line;
+  }
+
+  // 6. Truncate model last, keeping cost high priority
+  if (modelColored && costSegment) {
+    const costW = visibleWidth(costSegment);
+    const sepW = visibleWidth(sep);
+    const availForModel = width - sepW - costW;
+    if (availForModel > 0) {
+      const truncatedModel = truncateToWidth(modelColored, availForModel, '');
+      if (visibleWidth(truncatedModel) > 0) {
+        const candidate = `${truncatedModel}${sep}${costSegment}`;
+        if (visibleWidth(candidate) <= width) return candidate;
       }
     }
+    // Model cannot fit with cost and separator: keep cost if it fits
+    if (costW <= width) return costSegment;
+    return truncateToWidth(costSegment, width, '');
   }
 
-  const sepChar = mode === 'nerd' ? '│' : '|';
-  const sep = ` ${themeFg(theme, 'dim', sepChar)} `;
-
-  // Helper to join active segments
-  const joinSegments = (items: SegmentItem[]): string =>
-    items.map((item) => item.content).join(sep);
-
-  // If already fits, return
-  let currentItems = [...segments];
-  let rendered = joinSegments(currentItems);
-  if (visibleWidth(rendered) <= width) {
-    return rendered;
+  if (modelColored) {
+    return truncateToWidth(modelColored, width, '');
   }
 
-  // Drop lowest priority segments one by one until it fits or only 1 segment remains
-  // Priority order to drop: extension_statuses (30), cost (65), git (75), context (90)
-  const droppable = [...currentItems].sort((a, b) => a.priority - b.priority);
-
-  for (const toDrop of droppable) {
-    if (currentItems.length <= 1) break;
-    currentItems = currentItems.filter((item) => item.id !== toDrop.id);
-    rendered = joinSegments(currentItems);
-    if (visibleWidth(rendered) <= width) {
-      return rendered;
-    }
+  if (costSegment) {
+    if (visibleWidth(costSegment) <= width) return costSegment;
+    return truncateToWidth(costSegment, width, '');
   }
 
-  // If even the remaining segment exceeds width, truncate it to width
-  if (visibleWidth(rendered) > width) {
-    return truncateToWidth(rendered, width, '');
-  }
-
-  return rendered;
+  return truncateToWidth(line, width, '');
 }

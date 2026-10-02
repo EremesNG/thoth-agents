@@ -136,11 +136,10 @@ describe('registerStatusLine', () => {
 
     expect(lines).toHaveLength(1);
     const row = lines[0];
-    expect(row).toContain('test-model');
-    expect(row).toContain('main');
-    expect(row).toContain('25%/200k');
-    expect(row).toContain('\uf1550.300'); // nerd mode cost icon
-    expect(row).toContain('active');
+    expect(row).toBe(
+      '● Test Model · ◐ low │ ⑂ main │ [███░░░░░░░] 25% used │ 50K/200K │ $0.300',
+    );
+    expect(row).not.toContain('active');
   });
 
   it('re-renders on branch change and pi events (message_end, turn_end, model_select)', () => {
@@ -176,6 +175,79 @@ describe('registerStatusLine', () => {
     // Invalidate triggers render
     component.invalidate();
     expect(mocks.tui.requestRender).toHaveBeenCalledTimes(5);
+  });
+
+  it('reads session data once and serves repeat frames from cache', () => {
+    const mocks = createMocks();
+    registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
+    const factory = mocks.getFooterFactory();
+    if (!factory) throw new Error('Footer factory was not registered');
+    const component = factory(mocks.tui, mocks.theme, mocks.footerData);
+
+    const first = component.render(120);
+    for (let i = 0; i < 20; i++) expect(component.render(120)).toEqual(first);
+
+    const sessionManager = (
+      mocks.ctx as unknown as {
+        sessionManager: {
+          getEntries: ReturnType<typeof vi.fn<() => unknown[]>>;
+        };
+      }
+    ).sessionManager;
+    expect(sessionManager.getEntries).toHaveBeenCalledTimes(1);
+    expect(mocks.ctx.getContextUsage).toHaveBeenCalledTimes(1);
+    expect(mocks.theme.fg.mock.calls.length).toBeGreaterThan(0);
+    const fgCalls = mocks.theme.fg.mock.calls.length;
+    component.render(120);
+    expect(mocks.theme.fg.mock.calls.length).toBe(fgCalls);
+  });
+
+  it('refreshes cost and context after session events', () => {
+    const mocks = createMocks();
+    registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
+    const factory = mocks.getFooterFactory();
+    if (!factory) throw new Error('Footer factory was not registered');
+    const component = factory(mocks.tui, mocks.theme, mocks.footerData);
+    expect(component.render(120)[0]).toContain('$0.300');
+
+    const sessionManager = (
+      mocks.ctx as unknown as {
+        sessionManager: {
+          getEntries: ReturnType<typeof vi.fn<() => unknown[]>>;
+        };
+      }
+    ).sessionManager;
+    const [entry] = sessionManager.getEntries();
+    sessionManager.getEntries.mockReturnValue([entry, entry]);
+    (mocks.ctx.getContextUsage as ReturnType<typeof vi.fn>).mockReturnValue({
+      percent: 80,
+      tokens: 160000,
+      contextWindow: 200000,
+    });
+
+    for (const event of ['turn_end', 'agent_end', 'session_compact']) {
+      expect(mocks.eventHandlers.get(event)?.length ?? 0).toBeGreaterThan(0);
+    }
+    for (const h of mocks.eventHandlers.get('agent_end') ?? []) h();
+    const row = component.render(120)[0];
+    expect(row).toContain('$0.600');
+    expect(row).toContain('80% used');
+  });
+
+  it('shows a dash when context usage is not reported', () => {
+    const mocks = createMocks();
+    (mocks.ctx.getContextUsage as ReturnType<typeof vi.fn>).mockReturnValue({
+      percent: null,
+      tokens: null,
+      contextWindow: 200000,
+    });
+    registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
+    const factory = mocks.getFooterFactory();
+    if (!factory) throw new Error('Footer factory was not registered');
+    const component = factory(mocks.tui, mocks.theme, mocks.footerData);
+    const row = component.render(120)[0];
+    expect(row).toContain('—');
+    expect(row).not.toContain('0% used');
   });
 
   it('disposes all event and branch subscriptions on component dispose', () => {

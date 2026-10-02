@@ -498,7 +498,7 @@ describe('tool render helpers', () => {
     expect(rendered).toContain('ctrl+h to send to background');
   });
 
-  it('renders completed subagent_run results as always-expanded width-safe summaries with click hint', () => {
+  it('renders completed subagent_run results collapsed by default and expanded on demand', () => {
     const manager = env.createManager(env.mockRunner());
     let runTool: any;
     const theme = {
@@ -518,48 +518,148 @@ describe('tool render helpers', () => {
         4,
       );
 
-    const renderedLines = runTool
-      .renderResult(
+    const dummyResult = {
+      content: [
         {
-          content: [
-            {
-              type: 'text',
-              text: `Completed 1 subagent task:\n${rawResponse}`,
-            },
-          ],
-          details: {
-            task: {
-              id: 'subtask_sdd-verify_1782157254429_2b614a8e',
-              agent: 'sdd-verify',
-              mode: 'task',
-              status: 'completed',
-              task: 'verify',
-              created_at: new Date().toISOString(),
-              result: rawResponse,
-              usage: {
-                turns: 11,
-                input: 87000,
-                output: 6800,
-                cacheRead: 574000,
-                cost: 0.462,
-                contextTokens: 79000,
-              },
-              model: 'openai-codex/gpt-5.4',
-              effort: 'medium',
-            },
-          },
+          type: 'text',
+          text: `Completed 1 subagent task:\n${rawResponse}`,
         },
-        { isPartial: false },
-        theme,
-      )
-      .render(60);
-    const plain = renderedLines.map(env.stripAnsi);
+      ],
+      details: {
+        task: {
+          id: 'subtask_sdd-verify_1782157254429_2b614a8e',
+          agent: 'sdd-verify',
+          mode: 'task',
+          status: 'completed',
+          task: 'verify',
+          created_at: new Date().toISOString(),
+          result: rawResponse,
+          usage: {
+            turns: 11,
+            input: 87000,
+            output: 6800,
+            cacheRead: 574000,
+            cost: 0.462,
+            contextTokens: 79000,
+          },
+          model: 'openai-codex/gpt-5.4',
+          effort: 'medium',
+        },
+      },
+    };
 
-    expect(plain.join('\n')).toContain('subagent: sdd-verify');
-    expect(plain.join('\n')).toContain('click to view execution');
-    expect(plain.join('\n')).not.toContain('ctrl+o to expand');
-    expect(plain.join('\n')).not.toContain('id: subtask_');
-    expect(plain.every((line: string) => [...line].length <= 60)).toBe(true);
+    // 1. Collapsed by default (options without expanded, or expanded: false)
+    const collapsedLines = runTool
+      .renderResult(dummyResult, { isPartial: false }, theme)
+      .render(60);
+    const plainCollapsed = collapsedLines.map(env.stripAnsi);
+    const collapsedPlain = plainCollapsed.join('\n');
+
+    expect(env.stripAnsi(collapsedLines[0])).toContain(
+      '✓ [subagent] sdd-verify · verify · completed',
+    );
+    expect(collapsedPlain).toContain('subagent: sdd-verify');
+    expect(collapsedPlain).toContain('model: openai-codex/gpt-5.4');
+    expect(collapsedPlain).toContain('effort: medium');
+    expect(collapsedPlain).toContain('status: completed');
+    expect(collapsedPlain).toContain('usage: 11 turns');
+    expect(collapsedPlain).toContain('ctrl+o to expand');
+    expect(collapsedPlain).not.toContain(rawResponse);
+    expect(collapsedPlain).not.toContain('Subagent response');
+    expect(collapsedPlain).not.toContain('click to view execution');
+    expect(collapsedPlain).not.toContain('id: subtask_');
+    expect(plainCollapsed.every((line: string) => [...line].length <= 60)).toBe(
+      true,
+    );
+
+    const unwrappedPlain = env.stripAnsi(
+      runTool
+        .renderResult(dummyResult, { isPartial: false }, theme)
+        .render(120)
+        .join('\n'),
+    );
+    expect(unwrappedPlain).toContain(
+      'subagent: sdd-verify · model: openai-codex/gpt-5.4 · effort: medium · status: completed',
+    );
+
+    // 2. Expanded on demand (expanded: true)
+    const expandedLines = runTool
+      .renderResult(dummyResult, { expanded: true, isPartial: false }, theme)
+      .render(60);
+    const plainExpanded = expandedLines.map(env.stripAnsi);
+    const expandedPlain = plainExpanded.join('\n');
+
+    expect(expandedLines[0]).toContain('subagent result · sdd-verify · verify');
+    expect(expandedPlain).toContain('subagent: sdd-verify');
+    expect(expandedPlain).toContain('model: openai-codex/gpt-5.4');
+    expect(expandedPlain).toContain('usage: 11 turns');
+    expect(expandedPlain).toContain('click to view execution');
+    expect(expandedPlain).toContain('Subagent response');
+    expect(expandedPlain).toContain('functions.memory_get');
+    expect(expandedPlain).not.toContain('ctrl+o to expand');
+    expect(plainExpanded.every((line: string) => [...line].length <= 60)).toBe(
+      true,
+    );
+
+    const wideExpanded = env.stripAnsi(
+      runTool
+        .renderResult(dummyResult, { expanded: true, isPartial: false }, theme)
+        .render(500)
+        .join('\n'),
+    );
+    expect(wideExpanded).toContain(rawResponse);
+  });
+
+  it('renders failed subagent_run results collapsed with essential error line visible', () => {
+    const manager = env.createManager(env.mockRunner());
+    let runTool: any;
+    const theme = {
+      fg: (_name: string, text: string) => text,
+      bold: (text: string) => text,
+    };
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      manager,
+    );
+
+    const failedResult = {
+      isError: true,
+      details: {
+        task: {
+          id: 'subtask_fail_123',
+          agent: 'thoth-worker',
+          status: 'failed',
+          task: 'implement unit tests',
+          error:
+            'Execution failed: process exited with code 1\nStack trace line 1\nStack trace line 2',
+          model: 'mock/model',
+          effort: 'high',
+        },
+      },
+    };
+
+    // Collapsed failed result
+    const collapsedLines = runTool
+      .renderResult(failedResult, { expanded: false, isPartial: false }, theme)
+      .render(80);
+    const collapsedPlain = collapsedLines.map(env.stripAnsi).join('\n');
+
+    expect(collapsedLines[0]).toContain('✗');
+    expect(collapsedLines[0]).toContain(
+      '[subagent] thoth-worker · implement unit tests · failed',
+    );
+    expect(collapsedPlain).toContain(
+      'subagent: thoth-worker · model: mock/model · effort: high · status: failed',
+    );
+    expect(collapsedPlain).toContain(
+      'Execution failed: process exited with code 1',
+    );
+    expect(collapsedPlain).not.toContain('Stack trace line 1');
+    expect(collapsedPlain).toContain('ctrl+o to expand');
   });
 
   it('renders tool calls, progress, and results with boxed frames and zero background fills', async () => {
@@ -868,7 +968,7 @@ describe('tool render helpers', () => {
     );
     expect(renderedWithName).toContain('Security Audit Pass');
     expect(renderedWithName).toContain('subagent: analyst');
-    expect(renderedWithName).toContain('click to view execution');
+    expect(renderedWithName).toContain('ctrl+o to expand');
     expect(renderedWithName).not.toContain('id: subtask_');
     expect(renderedWithName).not.toContain('subtask_analyst_');
 
@@ -896,7 +996,7 @@ describe('tool render helpers', () => {
     );
     expect(renderedWithoutName).toContain('analyst · inspect dependencies');
     expect(renderedWithoutName).toContain('subagent: analyst');
-    expect(renderedWithoutName).toContain('click to view execution');
+    expect(renderedWithoutName).toContain('ctrl+o to expand');
     expect(renderedWithoutName).not.toContain('id: subtask_');
     expect(renderedWithoutName).not.toContain('subtask_analyst_');
   });
@@ -1218,6 +1318,7 @@ describe('tool render helpers', () => {
       subagent_list_agents: {
         details: { agents: [{ name: 'analyst', tools: ['read'] }] },
       },
+      subagent_run: { details: { task: sampleTask } },
       subagent_status: { details: { task: sampleTask } },
       subagent_result: { details: { task: sampleTask } },
       subagent_list_tasks: { details: { tasks: [sampleTask] } },

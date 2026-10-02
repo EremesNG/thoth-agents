@@ -58,10 +58,11 @@ export function renderSubagentRunCall(_args: any, _theme: any) {
 
 export function renderSubagentRunResult(
   result: any,
-  { expanded, isPartial }: any,
+  options: any = {},
   theme: any,
   context?: any,
 ) {
+  const { expanded, isPartial } = options ?? {};
   const task = taskFromDetails(result);
   const taskStatus = task?.status ?? (result?.isError ? 'failed' : 'completed');
   const archPrefix = themeStatus(
@@ -115,6 +116,7 @@ export function renderSubagentRunResult(
       task?.status === 'cancelled',
   );
   const isRunning = task?.status === 'running' || task?.status === 'queued';
+  const isExpanded = Boolean(expanded);
   const status = task
     ? themeStatus(theme, task.status ?? (failed ? 'failed' : 'done'))
     : failed
@@ -128,16 +130,55 @@ export function renderSubagentRunResult(
   if (isRunning) {
     const agentOrName = task?.display_name || task?.agent || 'subagent';
     title = `${archPrefix} ${themeTitle(theme, `subagent · ${agentOrName} · ${task?.status ?? 'running'}${bgSuffix}`)}`;
+  } else if (!isExpanded) {
+    const titleLabel = failed
+      ? themeError(theme, `[subagent] ${taskLabel} · ${taskStatus}`)
+      : themeTitle(theme, `[subagent] ${taskLabel} · ${taskStatus}`);
+    title = `${archPrefix} ${titleLabel}`.trim();
   } else if (hasResp) {
     title = `${archPrefix} ${themeTitle(theme, `subagent result · ${taskLabel}`)}`;
   } else {
     title = `${archPrefix} ${themeTitle(theme, `subagent · ${taskLabel}`)}`;
   }
 
+  const usage = task ? formatUsage(task as SubagentTask) : '';
+
+  if (!isRunning && !isExpanded) {
+    const metaLine = themeDim(
+      theme,
+      `subagent: ${task?.agent ?? 'subagent'} · model: ${task?.model ?? 'default/current'} · effort: ${task?.effort ?? 'default/current'} · status: ${taskStatus}`,
+    );
+    const collapsedLines: string[] = [metaLine];
+    if (usage) {
+      collapsedLines.push(themeDim(theme, `usage: ${usage}`));
+    }
+    if (failed) {
+      const errorRaw =
+        task?.error ||
+        (result?.isError && typeof result?.content?.[0]?.text === 'string'
+          ? result.content[0].text
+          : undefined);
+      if (errorRaw) {
+        const firstLine = errorRaw.split('\n')[0]?.trim();
+        if (firstLine) {
+          collapsedLines.push(themeError(theme, firstLine));
+        }
+      }
+    }
+    collapsedLines.push(
+      themeDim(theme, resolveExpandHint('to expand', context)),
+    );
+    return boxedComponent(collapsedLines, {
+      title,
+      theme,
+      wrapped: true,
+      onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
+    });
+  }
+
   const historyShortcut =
     readSubagentsConfig(process.cwd()).history_panel_shortcut ?? 'ctrl+,';
   const detailsHint = `(click to view execution) · (${historyShortcut} or /subagents for details)`;
-  const usage = task ? formatUsage(task as SubagentTask) : '';
   const metaLines = task
     ? ([
         `subagent: ${themeAccent(theme, task.agent)} · status: ${status} · attempt: ${themeAccent(theme, String(task.attempt ?? 1))} · effort: ${themeAccent(theme, task.effort ?? 'default/current')}`,

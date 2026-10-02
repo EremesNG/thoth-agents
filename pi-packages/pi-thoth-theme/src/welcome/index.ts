@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { VERSION as PI_VERSION } from '@earendil-works/pi-coding-agent';
 import type { Component, TUI } from '@earendil-works/pi-tui';
+import { cachedComponent } from '../shared/cache.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { type ActiveThemeLike, renderWelcomeHeader } from './render.ts';
 import {
@@ -28,8 +29,7 @@ export {
 
 export class WelcomeComponent implements Component {
   private data: WelcomeData;
-  private readonly config: ThemeConfig;
-  private readonly theme: ActiveThemeLike;
+  private readonly renderCache: Component;
   private _disposed = false;
 
   constructor(
@@ -37,9 +37,10 @@ export class WelcomeComponent implements Component {
     config: ThemeConfig,
     initialData: WelcomeData,
   ) {
-    this.theme = theme;
-    this.config = config;
     this.data = initialData;
+    this.renderCache = cachedComponent((width) =>
+      renderWelcomeHeader(theme, this.data, width, config.icons),
+    );
   }
 
   get isDisposed(): boolean {
@@ -49,16 +50,19 @@ export class WelcomeComponent implements Component {
   updateData(newData: WelcomeData): void {
     if (this._disposed) return;
     this.data = newData;
+    this.invalidate();
   }
 
-  invalidate(): void {}
+  invalidate(): void {
+    this.renderCache.invalidate();
+  }
 
   dispose(): void {
     this._disposed = true;
   }
 
   render(width: number): string[] {
-    return renderWelcomeHeader(this.theme, this.data, width, this.config.icons);
+    return this.renderCache.render(width);
   }
 }
 

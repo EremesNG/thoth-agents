@@ -196,6 +196,19 @@ Windows, command jobs run in PowerShell 7.
   reconstruction and foreign-owner reassignment with opaque container ownership; child
   teardown must not terminate the shared helper; assert pwsh Core 7+ on windows-latest;
   README (Git Bash, census, crash disclaimer) amended; rerun real-SDK child tests.
+- Repair after replan round 1 (`c75e4a0`, fresh worker, test-first): settled watch
+  results and cleanup proof survive the reload gap until consumed once (regression failed
+  with two poll executions before the fix); per-request timeout, malformed JSON and
+  protocol errors no longer kill the shared helper (three two-container regressions:
+  unrelated container survives, unverified release refused, retry succeeds); a real
+  CREATE_BREAKAWAY_FROM_JOB attempt was denied (error 5) and the job emptied to zero;
+  usage.md names PowerShell 7 on Windows; the three report files were deleted. Frozen
+  checks at c75e4a0: frozen install 0; background-tasks typecheck 0 and two runs 230
+  passed / 4 skipped; pi-subagents two runs 525 passed / 1 skipped; antigravity 571 /
+  9 skipped; claude unit 290; root check:ci, typecheck, build 0 (no generated drift);
+  root test two runs 1208 passed with only the four known missing-sibling failures; no
+  stray helpers after tests. The operator's running Pi still loads the pre-repair code;
+  repairs touch only failure paths not exercised by the live AC-6 scenarios.
 - Final verification after replan, round 1 (fresh Oracle
   subtask_thoth-oracle_1790905103701_3622f3f5): FAIL — reload-gap loss of a settled watch
   result (second poll launched); a per-request timeout or protocol error killed the shared

@@ -284,7 +284,7 @@ are not misclassified as network errors.
 
 **Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
-**Implementation**: PENDING
+**Implementation**: AUTHORIZED
 
 The user explicitly selected Review plan with Oracle. Round 1 returned [REJECT]
 (terminal widget cards, contradictory backend fallback), repaired here; round 2 fresh

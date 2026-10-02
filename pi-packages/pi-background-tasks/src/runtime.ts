@@ -3,7 +3,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendLine, appendWatchResult, retainLogTail, resolveMaxLogBytes } from "./logs.js";
 import { evaluateCondition, validateCondition } from "./conditions.js";
 import { CommandTerminationError, processExists, startCommandOnce, spawnCommand, type RunningCommand } from "./process.js";
-import { createProcessTreeTerminator } from "./process-termination.js";
 import { currentProcessStartToken, readProcessStartToken } from "./process-identity.js";
 import { ensureTaskDir, logPathFor, nextTaskId, readMeta, writeMeta } from "./registry.js";
 import { failurePath, readTaskIntent, recordExitFailure, recordFailure, recoverDeclaredOperation, recoverFailure, resumeFailureAttention, scheduleFailureAttention, stopFailureAttention, suspendFailureAttention, terminalFailureAttention } from "./failures.js";
@@ -83,12 +82,11 @@ const inFlightPolls = shared[POLL_HANDOFF_KEY] ??= new Map<string, InFlightPoll>
 const processTrees = shared[PROCESS_HANDOFF_KEY] ??= new Map<string, OwnedProcessTree>();
 const pollOrigin = (meta: BackgroundTaskMeta) => JSON.stringify([meta.logPath, meta.callbackOrigin?.cwd ?? meta.cwd, meta.callbackOrigin?.sessionId]);
 
-/** Keep captured descendants/groups through failures and same-origin reloads. */
-function processTreeFor(meta: BackgroundTaskMeta): OwnedProcessTree | undefined {
+/** Reattach opaque launch-time authority; persisted PID/PGID never grants ownership. */
+function processTreeFor(meta: BackgroundTaskMeta, terminateTree?: () => Promise<void>): OwnedProcessTree | undefined {
   let tree = processTrees.get(meta.id);
   if (tree && tree.origin !== pollOrigin(meta)) throw new Error("Process tree belongs to another origin");
-  if (!tree && meta.pid) {
-    const terminateTree = createProcessTreeTerminator(meta.pid, meta.pgid);
+  if (!tree && terminateTree) {
     let termination: Promise<void> | undefined;
     let cleanupPending = true;
     let cleanupVerified = false;
@@ -237,8 +235,14 @@ function createTaskRuntime(owner: ExtensionAPI) {
       ...intent,
     };
     writeMeta(meta);
-    processTreeFor(meta);
+    processTreeFor(meta, spawned.terminate);
     scheduleLogRetention(id);
+    spawned.child.on("spawn", () => {
+      const latest = readMeta(id);
+      if (!latest) return;
+      latest.pid = meta.pid = spawned.child.pid;
+      writeMeta(latest);
+    });
     spawned.child.unref();
     spawned.child.on("close", (exitCode, signal) => {
       void settleProcessExit(pi, id, exitCode, signal, getActiveSession);
@@ -352,10 +356,11 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     // Same Pi process: an earlier (reloaded or switched-away) extension instance may
     const ownedByThisProcess = meta.spawnPid === process.pid && meta.spawnPidStartTime === currentProcessStartToken();
-    if (meta.spawnPid !== process.pid || meta.spawnPidStartTime !== currentProcessStartToken()) {
-      meta.spawnPid = process.pid;
-      meta.spawnPidStartTime = currentProcessStartToken();
+    if (!ownedByThisProcess) {
+      // A process restart never reconstructs launch authority from stored PIDs.
+      meta.stopError = "Container ownership is unavailable in this Pi process";
       writeMeta(meta);
+      return meta;
     }
 
     if (meta.kind === "command_watch") {
@@ -469,9 +474,11 @@ function createTaskRuntime(owner: ExtensionAPI) {
       if (inFlightPolls.get(id) === poll) inFlightPolls.delete(id);
     }
 
-    if (meta.kind === "process" && meta.pid) {
+    if (meta.kind === "process") {
       try {
-        await processTreeFor(meta)!.terminate();
+        const container = processTreeFor(meta);
+        if (!container) throw new Error("Container ownership is unavailable; refusing PID-based termination");
+        await container.terminate();
       } catch (error) {
         recordStopError(meta, error instanceof Error ? error.message : String(error));
         if (meta.deadlineAt && meta.deadlineAt > Date.now()) {
@@ -796,7 +803,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     let reason = "timeout";
     {
-      if (meta.pid) {
+      if (processTrees.has(meta.id) || meta.pid) {
         try {
           await processTreeFor(meta)!.terminate();
         } catch (error) {

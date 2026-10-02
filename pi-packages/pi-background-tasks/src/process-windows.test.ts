@@ -222,80 +222,23 @@ describe("resolveDefaultShell", () => {
 });
 
 describe("stopProcessGroup", () => {
-  it("terminates the whole task tree via taskkill on Windows", () => {
+  it.each(["SIGTERM", "SIGKILL"] as const)("refuses Windows PID cleanup (%s) without signalling any process", signal => {
     fakePlatform("win32");
-    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof spawnSync>);
-    stopProcessGroup(4242);
-    expect(mockSpawnSync).toHaveBeenCalledWith(
-      "taskkill",
-      ["/T", "/F", "/PID", "4242"],
-      expect.objectContaining({ encoding: "utf8", windowsHide: true }),
-    );
+    const kill = vi.spyOn(process, "kill");
+    expect(() => stopProcessGroup(4242, undefined, signal)).toThrow(/owned Job Object/);
+    expect(kill).not.toHaveBeenCalled();
+    expect(mockSpawnSync).not.toHaveBeenCalled();
   });
-
-  it("throws when taskkill cannot be started", () => {
-    fakePlatform("win32");
-    mockSpawnSync.mockReturnValue({
-      error: Object.assign(new Error("spawn taskkill ENOENT"), { code: "ENOENT" }),
-    } as unknown as ReturnType<typeof spawnSync>);
-
-    expect(() => stopProcessGroup(4242)).toThrow(/taskkill.*ENOENT/i);
-  });
-
-  it("throws when taskkill fails and the process is still alive", () => {
-    fakePlatform("win32");
-    mockSpawnSync.mockReturnValue({ status: 5, stderr: "Access is denied." } as ReturnType<typeof spawnSync>);
-    vi.spyOn(process, "kill").mockReturnValue(true);
-
-    expect(() => stopProcessGroup(4242)).toThrow(/taskkill.*exit 5.*Access is denied/i);
-  });
-
-  it("accepts a taskkill race when the process has already exited", () => {
-    fakePlatform("win32");
-    mockSpawnSync.mockReturnValue({ status: 128, stderr: "not found" } as ReturnType<typeof spawnSync>);
-    vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error("process gone"), { code: "ESRCH" }); });
-
-    expect(() => stopProcessGroup(4242)).not.toThrow();
-  });
-
-  it("signals the process group on POSIX and falls back to the direct pid", () => {
+  it("signals only the POSIX group and never falls back to an unrelated PID", () => {
     fakePlatform("linux");
-    const killSpy = vi.spyOn(process, "kill").mockImplementation((p) => {
-      if (typeof p === "number" && p < 0) throw new Error("group gone");
-      return true;
-    });
-    stopProcessGroup(500, 500, "SIGKILL");
-    expect(killSpy).toHaveBeenNthCalledWith(1, -500, "SIGKILL");
-    stopProcessGroup(500, 500, "SIGKILL");
-    expect(killSpy).toHaveBeenLastCalledWith(500, "SIGKILL");
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error("gone"), {code:"ESRCH"}); });
+    expect(() => stopProcessGroup(500,500,"SIGKILL")).toThrow("gone");
+    expect(kill).toHaveBeenCalledExactlyOnceWith(-500,"SIGKILL");
   });
 });
 
 describe("spawnCommand platform gating", () => {
   const fakeChild = { pid: 777, on: () => {}, unref: () => {} } as unknown as ChildProcess;
-
-  it("uses ignore/ignore/ignore stdio, windowsHide, and the redirect on Windows", () => {
-    vi.stubEnv("PI_BETTER_BACKGROUND_TASKS_SHELL", "D:\\shell\\bash.exe");
-    fakePlatform("win32");
-    const log = join(mkdtempSync(join(tmpdir(), "bbt-gate-")), "gate.log");
-    mockSpawn.mockImplementation(() => fakeChild);
-
-    const spawned = spawnCommand({ shell: true, command: "echo hi" }, log, true);
-
-    const call = mockSpawn.mock.calls[0]!;
-    expect(call[0]).toBe("D:\\shell\\bash.exe");
-    const args = call[1] as string[];
-    const options = call[2] as { windowsHide: boolean; detached: boolean; stdio: unknown[] };
-    expect(args[0]).toBe("-lc");
-    expect(args[1]).toContain("exec >> '");
-    expect(options).toMatchObject({
-      windowsHide: true,
-      detached: true,
-      stdio: ["ignore", "ignore", "ignore"],
-    });
-    expect(readFileSync(log, "utf8")).toContain("--- spawn");
-    expect(spawned.pgid).toBe(777);
-  });
 
   it("keeps fd stdio and a verbatim command on POSIX", () => {
     vi.stubEnv("PI_BETTER_BACKGROUND_TASKS_SHELL", "");

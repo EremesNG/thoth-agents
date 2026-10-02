@@ -25,7 +25,10 @@ windowsDescribe("Windows process integration", () => {
     const terminal = await waitForMeta(meta.id, (value) => value?.status === "failed");
 
     expect(terminal).toMatchObject({ status: "failed" });
-    expect(readFileSync(meta.logPath, "utf8")).toMatch(/spawn error .*code=ENOENT/i);
+    const log = readFileSync(meta.logPath, "utf8");
+    expect(log).toContain('Z:\\missing\\pi-background-bash.exe');
+    expect(log).toContain('Check the executable path and working directory');
+    expect(log).toMatch(/CreateProcessW|Win32Exception/);
   });
 
   it("delivers POSIX-looking raw argv without MSYS2 rewriting", async () => {

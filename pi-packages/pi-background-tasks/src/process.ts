@@ -1,8 +1,10 @@
 import { createProcessTreeTerminator } from "./process-termination.js";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { spawnWindowsCommand, startWindowsCommandOnce } from "./windows-process.js";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ChildProcess } from "node:child_process";
+import type { EventEmitter } from "node:events";
 import type { CommandResult, CommandSpec } from "./types.js";
 
 /** Known Git for Windows locations; `bash -lc` needs a real bash, not the WSL shim. */
@@ -45,8 +47,9 @@ export function resolveDefaultShell(): string {
 }
 
 export interface SpawnedProcess {
-  child: ChildProcess;
+  child: EventEmitter & { pid?: number; unref(): void };
   pgid?: number;
+  terminate(): Promise<void>;
 }
 
 export function validateCommandSpec(spec: CommandSpec): void {
@@ -107,8 +110,15 @@ export function withWindowsLogRedirect(spec: CommandSpec, logPath: string): Comm
 export function spawnCommand(spec: CommandSpec, logPath: string, detached: boolean): SpawnedProcess {
   validateCommandSpec(spec);
   mkdirSync(dirname(logPath), { recursive: true });
-  const windows = process.platform === "win32";
-  const launchSpec = windows ? withWindowsLogRedirect(spec, logPath) : spec;
+  if (process.platform === "win32") {
+    const spawned = spawnWindowsCommand(spec, logPath);
+    spawned.child.on("error", (error: Error) => {
+      try { appendFileSync(logPath, `\n--- spawn error ${error.message} ---\n`); } catch { /* logging is best effort */ }
+    });
+    return spawned;
+  }
+  const windows = false;
+  const launchSpec = spec;
   let fd: number | undefined;
   let stdio: SpawnStdio;
   if (windows) {
@@ -154,7 +164,8 @@ export function spawnCommand(spec: CommandSpec, logPath: string, detached: boole
       // the host; the runtime already finalized the task from meta.
     }
   });
-  return { child, pgid: detached && child.pid ? child.pid : undefined };
+  return { child, pgid: detached && child.pid ? child.pid : undefined,
+    terminate: child.pid ? createProcessTreeTerminator(child.pid, child.pid) : async () => {} };
 }
 
 export class CommandTerminationError extends Error {
@@ -195,6 +206,7 @@ export function startCommandOnce(
     result: Promise.reject(new Error("Command aborted before launch")),
     terminate: async () => {}, cleanupPending: false, cleanupVerified: true,
   };
+  if (process.platform === "win32") return startWindowsCommandOnce(spec, maxBufferBytes, timeoutMs, signal);
   const startedAt = Date.now();
   const child = spawnArgs(spec, true, ["ignore", "pipe", "pipe"]);
   const cap = Math.max(1, Math.floor(maxBufferBytes));
@@ -345,49 +357,14 @@ function finishCapture(target: CaptureBuffer): { text: string; discardedBytes: n
   };
 }
 
-/**
- * Stop a task's process tree.
- *
- * POSIX signals the process group (`-target`), falling back to the direct pid
- * when the group is already gone. Windows has no process groups in libuv, and
- * `process.kill(pid)` would only terminate the spawned `bash.exe` while real
- * work survives in grandchildren — so the tree is terminated with
- * `taskkill /T /F` instead. Windows has no graceful signal delivery, so the
- * requested signal is informational there.
- */
+/** Signal a POSIX group only. Windows requires an opaque launch-time Job Object. */
 export function stopProcessGroup(
   pid: number,
   pgid?: number,
   signal: NodeJS.Signals = "SIGTERM",
 ): void {
-  if (process.platform === "win32") {
-    const result = spawnSync("taskkill", ["/T", "/F", "/PID", String(pid)], {
-      encoding: "utf8",
-      windowsHide: true,
-      timeout: 2000,
-    });
-    if (result.error) {
-      const code = (result.error as NodeJS.ErrnoException).code;
-      throw new Error(`taskkill could not start for PID ${pid}${code ? ` (${code})` : ""}: ${result.error.message}`, {
-        cause: result.error,
-      });
-    }
-    if (result.status === 0) return;
-    // A child can exit between the caller's liveness check and taskkill. That
-    // race is success; any still-live PID means the tree was not terminated.
-    if (!processExists(pid)) return;
-    const detail = String(result.stderr ?? result.stdout ?? "").replace(/\s+/g, " ").trim();
-    throw new Error(
-      `taskkill failed with exit ${result.status ?? "unknown"} for PID ${pid}${detail ? `: ${detail}` : ""}`,
-    );
-  }
-  const target = pgid ?? pid;
-  try {
-    process.kill(-target, signal);
-    return;
-  } catch {
-    process.kill(pid, signal);
-  }
+  if (process.platform === "win32") throw new Error("Windows termination requires an owned Job Object, never a PID");
+  process.kill(-(pgid ?? pid), signal);
 }
 
 export function processExists(pid: number): boolean {

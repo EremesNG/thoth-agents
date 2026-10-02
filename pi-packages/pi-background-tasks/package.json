@@ -40,6 +40,8 @@
   },
   "files": [
     "src/**/*.ts",
+    "src/windows-job-helper.ps1",
+    "src/windows-job-helper.cs",
     "!src/**/*.test.ts",
     "!src/test-support/**",
     "README.md",

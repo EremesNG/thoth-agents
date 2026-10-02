@@ -1,54 +1,26 @@
-import { EventEmitter } from "node:events";
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { fakeJobHelper } from "./test-support/job-helper-fixture.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { lifecycleHost } from "./test-support/lifecycle-harness.js";
 import { readMeta, writeMeta } from "./registry.js";
 
 vi.mock("node:child_process", async (original) => ({
   ...await original<typeof import("node:child_process")>(),
-  spawn: vi.fn(), spawnSync: vi.fn(), execFileSync: vi.fn(),
+  spawn: vi.fn(),
 }));
 const platform = process.platform;
 const hosts: ReturnType<typeof lifecycleHost>[] = [];
+let fixture: ReturnType<typeof fakeJobHelper>;
 
 afterEach(async () => {
   vi.useRealTimers();
+  fixture?.allowCleanup();
   for (const host of hosts.splice(0)) await host.emit("session_shutdown", "quit");
   Object.defineProperty(process, "platform", { value: platform, configurable: true });
   vi.restoreAllMocks(); vi.clearAllMocks();
 });
 
-function faultInjectedTree() {
-  Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-  const live = new Set([930001, 930002]);
-  const child = Object.assign(new EventEmitter(), {
-    pid: 930001, stdout: new EventEmitter(), stderr: new EventEmitter(), unref() {},
-  });
-  vi.mocked(spawn).mockReturnValue(child as any);
-  vi.mocked(execFileSync).mockImplementation(() => JSON.stringify([
-    ...(live.has(930001) ? [{ ProcessId: 930001, ParentProcessId: process.pid }] : []),
-    ...(live.has(930002) ? [{ ProcessId: 930002, ParentProcessId: live.has(930001) ? 930001 : 1 }] : []),
-  ]));
-  vi.spyOn(process, "kill").mockImplementation((pid) => {
-    if (!live.has(pid)) throw Object.assign(new Error("gone"), { code: "ESRCH" });
-    return true;
-  });
-  let fail = true;
-  let closed = false;
-  child.on("close", () => { closed = true; });
-  vi.mocked(spawnSync).mockImplementation((_command, args) => {
-    const pid = Number(args?.at(-1));
-    if (fail && pid === 930002) {
-      fail = false;
-      return { status: 5, stderr: "Access is denied." } as any;
-    }
-    // Killing the parent first leaves an orphan if the descendant kill fails.
-    live.delete(pid);
-    if (!live.size && !closed) child.emit("close", 1, null);
-    return { status: 0 } as any;
-  });
-  return { live, child, allowCleanup() { fail = false; } };
-}
+function faultInjectedTree() { return fixture = fakeJobHelper(930001); }
 
 async function launchBlockedWatch(host: ReturnType<typeof lifecycleHost>, timeoutSeconds = 0, params: Record<string, unknown> = {}) {
   const controller = new AbortController();
@@ -58,13 +30,27 @@ async function launchBlockedWatch(host: ReturnType<typeof lifecycleHost>, timeou
     success_when: { type: "exit_code", equals: 0 }, timeout_seconds: timeoutSeconds, ...params,
   }, controller.signal);
   const id = text.match(/bg_[a-z0-9_]+/)![0];
-  await expect.poll(() => vi.mocked(spawn).mock.calls.length).toBe(1);
-  expect(spawn).toHaveBeenCalledWith(process.execPath, expect.any(Array),
-    expect.objectContaining({ windowsHide: true, detached: true }));
+  await expect.poll(() => fixture.launchCount).toBe(1);
+  expect(spawn).toHaveBeenCalledWith(expect.any(String), expect.any(Array),
+    expect.objectContaining({ windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }));
   return id;
 }
 
 describe("watch cleanup ownership after termination failure", () => {
+  it("helper crash mid-cleanup never authorizes a terminal status or another poll", async () => {
+    faultInjectedTree();
+    const host=lifecycleHost("watch-helper-crash");
+    await host.emit("session_start"); const id=await launchBlockedWatch(host);
+    await host.execute("bg_task_stop",{id});
+    fixture.helper.kill(); // Actual transport failure; the client cannot query native emptiness.
+    for(let retry=0;retry<2;retry++) {
+      await expect(host.emit("session_shutdown","quit")).rejects.toThrow("cleanup failed");
+      expect(await host.status(id)).toMatchObject({status:"running",stopError:expect.stringContaining("helper exited")});
+      expect((await host.status(id)).endedAt).toBeUndefined();
+    }
+    expect(fixture.launchCount).toBe(1);expect(host.messages).toEqual([]);
+    await host.emit("session_shutdown","reload"); // Suspend this synthetic unrecoverable owner; no real process was started.
+  });
   it("a naturally settled poll cannot succeed while descendant cleanup is unverified", async () => {
     const { live, child } = faultInjectedTree();
     const host = lifecycleHost("natural-watch-close"); hosts.push(host);
@@ -82,23 +68,21 @@ describe("watch cleanup ownership after termination failure", () => {
     expect(await host.status(id)).toMatchObject({ status: "cancelled" });
   });
 
-  it("a successful taskkill is not verification and cannot start another poll while a descendant remains alive", async () => {
+  it("successful TerminateJobObject is not verification while ActiveProcesses remains nonzero", async () => {
     const { live, child, allowCleanup } = faultInjectedTree();
     allowCleanup();
     const host = lifecycleHost("watch-kill-not-verification"); hosts.push(host);
     await host.emit("session_start");
     const id = await launchBlockedWatch(host, 0, { success_when: { type: "exit_code", equals: 7 }, interval_seconds: 1 });
-    const kill = vi.mocked(spawnSync).getMockImplementation()!;
-    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as any); // OS reports success but does not kill.
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    fixture.leaveActive(); // Terminate responds successfully but queries still report active work.
     live.delete(930001);
     child.emit("close", 0, null);
-    await vi.advanceTimersByTimeAsync(4500);
-    expect(await host.status(id)).toMatchObject({ status: "running", stopError: expect.stringContaining("did not terminate") });
+    await expect.poll(async () => !!(await host.status(id)).stopError, {timeout: 5000}).toBe(true);
+    expect(await host.status(id)).toMatchObject({ status: "running", stopError: expect.stringContaining("active processes") });
     expect((await host.status(id)).endedAt).toBeUndefined();
     expect(spawn).toHaveBeenCalledTimes(1);
     expect([...live]).toEqual([930002]);
-    vi.mocked(spawnSync).mockImplementation(kill);
+    fixture.allowCleanup();
     await host.emit("session_shutdown", "quit");
     expect([...live]).toEqual([]);
     expect(await host.status(id)).toMatchObject({ status: "cancelled" });
@@ -123,7 +107,8 @@ describe("watch cleanup ownership after termination failure", () => {
       if (terminal === "running") {
         await expect.poll(async () => !!(await host.status(id)).lastCheckedAt).toBe(true);
         // Only after the first tree is verified may a new poll be launched.
-        await expect.poll(() => vi.mocked(spawn).mock.calls.length, { timeout: 3000 }).toBe(2);
+        await expect.poll(() => fixture.launchCount, { timeout: 3000 }).toBe(2);
+        expect(fixture.requests.findIndex(r => r.op === "release")).toBeLessThan(fixture.requests.map(r => r.op).lastIndexOf("launch"));
       }
     });
 
@@ -185,7 +170,7 @@ describe("watch cleanup ownership after termination failure", () => {
       const meta = await host.status(id);
       return meta.status !== "running" || !!meta.stopError;
     }).toBe(true);
-    expect(await host.status(id)).toMatchObject({ status: "running", stopError: "taskkill failed with exit 5 for PID 930002: Access is denied." });
+    expect(await host.status(id)).toMatchObject({ status: "running", stopError: "TerminateJobObject: Access is denied" });
     expect((await host.status(id)).endedAt).toBeUndefined();
     expect([...live]).toEqual([930002]);
     expect(host.messages).toEqual([]);
@@ -203,7 +188,7 @@ describe("watch cleanup ownership after termination failure", () => {
     const id = await launchBlockedWatch(host);
 
     await host.execute("bg_task_stop", { id });
-    expect(await host.status(id)).toMatchObject({ status: "running", stopError: "taskkill failed with exit 5 for PID 930002: Access is denied." });
+    expect(await host.status(id)).toMatchObject({ status: "running", stopError: "TerminateJobObject: Access is denied" });
     expect([...live]).toEqual([930002]);
     expect(host.messages).toEqual([]);
 
@@ -211,9 +196,7 @@ describe("watch cleanup ownership after termination failure", () => {
     expect([...live]).toEqual([]);
     expect(await host.status(id)).toMatchObject({ status: "cancelled" });
     expect((await host.status(id)).stopError).toBeUndefined();
-    expect(spawnSync).toHaveBeenCalledWith("taskkill", ["/T", "/F", "/PID", "930002"],
-      expect.objectContaining({ windowsHide: true }));
-    expect(execFileSync).toHaveBeenCalledWith("powershell.exe", expect.any(Array),
-      expect.objectContaining({ windowsHide: true }));
+    expect(fixture.requests.filter(r => r.op === "terminate")).toHaveLength(2);
+    expect(fixture.requests.filter(r => r.op === "release")).toHaveLength(1);
   });
 });

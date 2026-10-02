@@ -250,6 +250,14 @@ are not misclassified as network errors.
   `$ref` pointers traversing array indices (e.g. `#/$defs/shape/allOf/0`). AC-1, AC-2,
   AC-4, AC-6 PASS; baseline and delta confirmed. Repair assigned to one worker owning both
   bridges' `tool-schema` modules and tests so the rule stays identical.
+- Repair after final round 1 (`f9a1959`, one worker owning both bridges' `tool-schema`
+  modules, test-first): every present root union is validated before the object-root
+  shortcut; one eligible union no longer masks an ineligible sibling; local JSON pointers
+  traverse array indices with `~0`/`~1` unescaping, cycles still detected; nine identical
+  regression fixtures in both suites. Root check: eligibility lines 1–47 byte-identical
+  (sha256 7e884617… in both); claude-bridge typecheck 0, unit 324; antigravity typecheck
+  0, 601 passed / 9 skipped; `git diff --check` clean. Live agent_browser behavior is
+  unaffected (their unions are eligible under both versions).
 - Backend rule (AC-3): a wrapped union that a backend rejects in the live check is
   switched to omission with a warning in that bridge; the request never fails.
 

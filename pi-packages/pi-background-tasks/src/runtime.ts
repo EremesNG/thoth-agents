@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendLine, appendWatchResult, retainLogTail, resolveMaxLogBytes } from "./logs.js";
 import { evaluateCondition, validateCondition } from "./conditions.js";
 import { CommandTerminationError, processExists, startCommandOnce, spawnCommand, type RunningCommand } from "./process.js";
-import { currentProcessStartToken, readProcessStartToken } from "./process-identity.js";
+import { currentProcessInstanceId, currentProcessStartToken, readProcessStartToken } from "./process-identity.js";
 import { ensureTaskDir, logPathFor, nextTaskId, readMeta, writeMeta } from "./registry.js";
 import { failurePath, readTaskIntent, recordExitFailure, recordFailure, recoverDeclaredOperation, recoverFailure, resumeFailureAttention, scheduleFailureAttention, stopFailureAttention, suspendFailureAttention, terminalFailureAttention } from "./failures.js";
 import { markFailureAttentionDelivered } from "./shared-failure-observations.js";
@@ -66,7 +66,7 @@ export interface WatchTaskParams extends CommandSpec, TaskIntentParams {
 }
 interface InFlightPoll extends RunningCommand { origin: string }
 const POLL_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.poll-handoff");
-interface OwnedProcessTree {
+interface OwnedContainer {
   origin: string;
   terminate(): Promise<void>;
   readonly cleanupPending: boolean;
@@ -76,15 +76,15 @@ interface OwnedProcessTree {
 const PROCESS_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.process-handoff");
 const shared = globalThis as typeof globalThis & {
   [POLL_HANDOFF_KEY]?: Map<string, InFlightPoll>;
-  [PROCESS_HANDOFF_KEY]?: Map<string, OwnedProcessTree>;
+  [PROCESS_HANDOFF_KEY]?: Map<string, OwnedContainer>;
 };
 const inFlightPolls = shared[POLL_HANDOFF_KEY] ??= new Map<string, InFlightPoll>();
-const processTrees = shared[PROCESS_HANDOFF_KEY] ??= new Map<string, OwnedProcessTree>();
+const processContainers = shared[PROCESS_HANDOFF_KEY] ??= new Map<string, OwnedContainer>();
 const pollOrigin = (meta: BackgroundTaskMeta) => JSON.stringify([meta.logPath, meta.callbackOrigin?.cwd ?? meta.cwd, meta.callbackOrigin?.sessionId]);
 
 /** Reattach opaque launch-time authority; persisted PID/PGID never grants ownership. */
-function processTreeFor(meta: BackgroundTaskMeta, terminateTree?: () => Promise<void>): OwnedProcessTree | undefined {
-  let tree = processTrees.get(meta.id);
+function ownedContainerFor(meta: BackgroundTaskMeta, terminateTree?: () => Promise<void>): OwnedContainer | undefined {
+  let tree = processContainers.get(meta.id);
   if (tree && tree.origin !== pollOrigin(meta)) throw new Error("Process tree belongs to another origin");
   if (!tree && terminateTree) {
     let termination: Promise<void> | undefined;
@@ -106,7 +106,7 @@ function processTreeFor(meta: BackgroundTaskMeta, terminateTree?: () => Promise<
         return termination;
       },
     };
-    processTrees.set(meta.id, tree);
+    processContainers.set(meta.id, tree);
   }
   return tree;
 }
@@ -231,11 +231,12 @@ function createTaskRuntime(owner: ExtensionAPI) {
       pidStartTime: spawned.child.pid ? readProcessStartToken(spawned.child.pid) : undefined,
       pgid: spawned.pgid,
       spawnPid: process.pid,
+      ownerInstanceId: currentProcessInstanceId(),
       spawnPidStartTime: currentProcessStartToken(),
       ...intent,
     };
     writeMeta(meta);
-    processTreeFor(meta, spawned.terminate);
+    ownedContainerFor(meta, spawned.terminate);
     scheduleLogRetention(id);
     spawned.child.on("spawn", () => {
       const latest = readMeta(id);
@@ -261,8 +262,12 @@ function createTaskRuntime(owner: ExtensionAPI) {
     meta.lastSignal = signal;
     writeMeta(meta);
     // Requested stop/deadline cleanup owns its final state, even if the leader exits first.
-    if (meta.stopRequestedAt || processTrees.get(id)?.terminationRequested) return;
-    try { await processTreeFor(meta)?.terminate(); } catch (error) {
+    if (meta.stopRequestedAt || processContainers.get(id)?.terminationRequested) return;
+    try {
+      const container = ownedContainerFor(meta);
+      if (!container) throw new Error("Container ownership is unavailable; refusing PID-based termination");
+      await container.terminate();
+    } catch (error) {
       recordStopError(meta, readableError(error));
       return;
     }
@@ -312,6 +317,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
       env: params.env,
       maxLogBytes: resolveMaxLogBytes(params.max_log_bytes),
       spawnPid: process.pid,
+      ownerInstanceId: currentProcessInstanceId(),
       spawnPidStartTime: currentProcessStartToken(),
       successWhen: params.success_when,
       failureWhen: params.failure_when,
@@ -354,29 +360,43 @@ function createTaskRuntime(owner: ExtensionAPI) {
     }
     scheduleFailureAttention(pi, meta.id, getActiveSession);
 
-    // Same Pi process: an earlier (reloaded or switched-away) extension instance may
-    const ownedByThisProcess = meta.spawnPid === process.pid && meta.spawnPidStartTime === currentProcessStartToken();
+    const sameInstance = !meta.ownerInstanceId || meta.ownerInstanceId === currentProcessInstanceId();
+    const ownedByThisProcess = sameInstance && meta.spawnPid === process.pid && meta.spawnPidStartTime === currentProcessStartToken();
     if (!ownedByThisProcess) {
-      // A process restart never reconstructs launch authority from stored PIDs.
-      meta.stopError = "Container ownership is unavailable in this Pi process";
-      writeMeta(meta);
+      // Only the supervisor's identity/liveness is inspected, never a stored job PID.
+      const previousHostExited = meta.spawnPid === process.pid
+        ? !!meta.ownerInstanceId && !sameInstance
+        : !processExists(meta.spawnPid);
+      if (previousHostExited) {
+        const reason = process.platform === "win32"
+          ? "owning Pi process exited; its Windows Job Objects were killed by host exit; exit result unavailable"
+          : "owning Pi process exited; work was lost and POSIX descendant cleanup is unverified";
+        meta.error = reason;
+        meta.stopError = undefined;
+        recordFailure(meta, "execution", reason, "host-exit", { incomplete: true });
+        finalize(meta, { status: "failed", reason }, pi, getActiveSession);
+      } else {
+        meta.stopError = "Container belongs to another Pi process; ownership cannot be adopted";
+        writeMeta(meta);
+      }
       return meta;
     }
 
     if (meta.kind === "command_watch") {
+      if (!meta.ownerInstanceId && !inFlightPolls.has(meta.id)) {
+        recordStopError(meta, "Watch ownership is unavailable; refusing to reconstruct it from persisted metadata");
+        return meta;
+      }
       scheduleWatch(pi, meta.id, 0, getActiveSession);
       return meta;
     }
 
-    processTreeFor(meta);
+    ownedContainerFor(meta);
     scheduleLogRetention(meta.id);
     if (ownedByThisProcess) {
       // A dead pid is not yet "lost" here: the earlier instance's close listener may
       // still record the real exit. The handoff marks it lost after a grace period.
       scheduleHandoff(pi, meta.id, getActiveSession);
-    } else if (meta.pid && !processExists(meta.pid)) {
-      void markProcessLost(pi, meta, getActiveSession);
-      return meta;
     }
     if (meta.deadlineAt) scheduleProcessTimeout(pi, meta.id, meta.deadlineAt, getActiveSession);
     return meta;
@@ -405,7 +425,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
         void notifyTerminal(pi, meta, getActiveSession);
         return;
       }
-      if (processTrees.get(id)?.terminationRequested || meta.stopRequestedAt) {
+      if (processContainers.get(id)?.terminationRequested || meta.stopRequestedAt) {
         // The leader may be gone while a captured orphan still needs cleanup.
         deadSince = undefined;
         delayMs = Math.min(HANDOFF_MAX_CHECK_MS, delayMs * 2);
@@ -438,9 +458,13 @@ function createTaskRuntime(owner: ExtensionAPI) {
   }
 
   async function markProcessLost(pi: ExtensionAPI, meta: BackgroundTaskMeta, getActiveSession?: ActiveSessionProvider): Promise<void> {
-    if (processTrees.get(meta.id)?.terminationRequested || meta.stopRequestedAt) return;
+    if (processContainers.get(meta.id)?.terminationRequested || meta.stopRequestedAt) return;
     // Absence of the leader cannot release captured identities or a surviving POSIX group.
-    try { await processTreeFor(meta)?.terminate(); } catch (error) {
+    try {
+      const container = ownedContainerFor(meta);
+      if (!container) throw new Error("Container ownership is unavailable; refusing PID-based termination");
+      await container.terminate();
+    } catch (error) {
       recordStopError(meta, readableError(error));
       return;
     }
@@ -459,6 +483,14 @@ function createTaskRuntime(owner: ExtensionAPI) {
     const meta = readMeta(id);
     if (!meta) return undefined;
     if (isTerminalStatus(meta.status)) return meta;
+    if (meta.spawnPid !== process.pid || (meta.ownerInstanceId && meta.ownerInstanceId !== currentProcessInstanceId())) {
+      resumeRunningTask(pi, meta, getActiveSession);
+      return readMeta(id);
+    }
+    if (meta.kind === "command_watch" && !meta.ownerInstanceId && !inFlightPolls.has(id)) {
+      recordStopError(meta, "Watch ownership is unavailable; refusing to reconstruct it from persisted metadata");
+      return meta;
+    }
 
     meta.stopRequestedAt = Date.now();
     writeMeta(meta);
@@ -467,7 +499,10 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     const poll = inFlightPolls.get(id);
     if (poll) {
-      try { await poll.terminate(); } catch (error) {
+      try {
+        if (poll.origin !== pollOrigin(meta)) throw new Error("Watch poll belongs to another origin");
+        await poll.terminate();
+      } catch (error) {
         recordStopError(meta, readableError(error));
         return meta;
       }
@@ -476,7 +511,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     if (meta.kind === "process") {
       try {
-        const container = processTreeFor(meta);
+        const container = ownedContainerFor(meta);
         if (!container) throw new Error("Container ownership is unavailable; refusing PID-based termination");
         await container.terminate();
       } catch (error) {
@@ -490,7 +525,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     const latest = readMeta(id);
     if (!latest || isTerminalStatus(latest.status)) return latest;
-    processTrees.delete(id);
+    processContainers.delete(id);
     stopFailureAttention(id, owner);
     latest.status = "cancelled";
     latest.stopError = undefined;
@@ -705,7 +740,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
   ): void {
     // No result, deadline, or stale close handler may outrun tree verification.
     if (isTerminalStatus(readMeta(meta.id)?.status ?? meta.status) ||
-        (processTrees.has(meta.id) && !processTrees.get(meta.id)!.cleanupVerified) ||
+        (processContainers.has(meta.id) && !processContainers.get(meta.id)!.cleanupVerified) ||
         (inFlightPolls.has(meta.id) && !inFlightPolls.get(meta.id)!.cleanupVerified)) return;
     stopFailureAttention(meta.id, owner);
     if (terminal.status === "timed_out") recordFailure(meta, "timeout", terminal.reason, "deadline", { category: "timeout" });
@@ -731,7 +766,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
       }
     }
     writeMeta(meta);
-    processTrees.delete(meta.id);
+    processContainers.delete(meta.id);
     clearWatchTimer(meta.id);
     clearProcessTimeout(meta.id);
     stopLogRetention(meta.id);
@@ -803,9 +838,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
 
     let reason = "timeout";
     {
-      if (processTrees.has(meta.id) || meta.pid) {
+      if (processContainers.has(meta.id) || meta.pid) {
         try {
-          await processTreeFor(meta)!.terminate();
+          await ownedContainerFor(meta)!.terminate();
         } catch (error) {
           reason = `timeout; could not terminate local process tree: ${readableError(error)}`;
           // The task is still running: this is a stop failure, reported as such.

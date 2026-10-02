@@ -1,4 +1,10 @@
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+
+const HOST_INSTANCE = Symbol.for("thoth-agents.background-tasks.host-instance");
+const host = globalThis as typeof globalThis & { [HOST_INSTANCE]?: string };
+/** Reload-stable identity, distinct even if the OS later recycles Pi's PID. */
+export function currentProcessInstanceId(): string { return host[HOST_INSTANCE] ??= randomUUID(); }
 
 const selfStartToken = readProcessStartToken(process.pid);
 

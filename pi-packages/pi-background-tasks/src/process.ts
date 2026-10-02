@@ -1,49 +1,17 @@
 import { createProcessTreeTerminator } from "./process-termination.js";
 import { spawn } from "node:child_process";
+import { powerShellArguments, resolvePowerShell } from "./powershell.js";
 import { spawnWindowsCommand, startWindowsCommandOnce } from "./windows-process.js";
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, writeSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { appendFileSync, closeSync, mkdirSync, openSync, writeSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ChildProcess } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import type { CommandResult, CommandSpec } from "./types.js";
 
-/** Known Git for Windows locations; `bash -lc` needs a real bash, not the WSL shim. */
-const WINDOWS_BASH_CANDIDATES = [
-  "C:\\Program Files\\Git\\bin\\bash.exe",
-  "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-  "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
-];
-
-/**
- * Resolve the shell used for `command` specs.
- *
- * POSIX keeps `/bin/bash`. Windows has no `/bin/bash`, and the `bash.exe` found
- * on PATH is usually the WSL launcher in System32 or the WindowsApps alias,
- * either of which would run the command inside WSL instead of Windows. Prefer
- * an explicit override, then Git for Windows, then a non-WSL `bash.exe` on PATH.
- *
- * Resolved lazily at spawn time, not module load: env-injection extensions
- * (e.g. pi-env) may apply settings.json `env` values after this module is
- * evaluated, and those overrides must still take effect.
- *
- * Exposed for tests and reuse.
- */
+/** POSIX retains its shell override; Windows requires validated PowerShell Core 7+. */
 export function resolveDefaultShell(): string {
-  const fromEnv = process.env.PI_BETTER_BACKGROUND_TASKS_SHELL;
-  if (fromEnv) return fromEnv;
-  if (process.platform !== "win32") return "/bin/bash";
-  for (const candidate of WINDOWS_BASH_CANDIDATES) {
-    if (existsSync(candidate)) return candidate;
-  }
-  for (const dir of (process.env.PATH ?? "").split(";")) {
-    const trimmed = dir.trim();
-    if (!trimmed || /(^|[\\/])(system32|windowsapps)([\\/]|$)/i.test(trimmed)) continue;
-    const candidate = join(trimmed, "bash.exe");
-    if (existsSync(candidate)) return candidate;
-  }
-  // Nothing usable found: keep the POSIX default so the failure surfaces as a
-  // logged spawn error for the task instead of crashing the whole host process.
-  return "/bin/bash";
+  if (process.platform === "win32") return resolvePowerShell();
+  return process.env.PI_BETTER_BACKGROUND_TASKS_SHELL || "/bin/bash";
 }
 
 export interface SpawnedProcess {
@@ -64,49 +32,6 @@ export function validateCommandSpec(spec: CommandSpec): void {
   }
 }
 
-/** Convert a Windows path to the `/c/...` form MSYS bash resolves in redirections. Exposed for tests and reuse. */
-export function toMsysPath(path: string): string {
-  const forward = path.replace(/\\/g, "/");
-  const drive = /^([A-Za-z]):(\/.+)$/.exec(forward);
-  return drive ? `/${drive[1].toLowerCase()}${drive[2]}` : forward;
-}
-
-/** Single-quote a value for safe literal use in a bash script line. Exposed for tests and reuse. */
-export function bashSingleQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-/**
- * On Windows, numeric fds above 2 are unusable as child stdio: Node spawns the
- * process, but its output handles end up broken, every write fails, and shell
- * tasks exit 1 having produced nothing. (POSIX inherits the fd normally.)
- *
- * Instead of handing the child a log fd, the shell opens and redirects into the
- * log itself. Output stays durable — written by the detached task directly, so
- * logging continues after pi exits — and the child runs with no inherited
- * stdio. Raw argv specs get a bash trampoline (`exec`) that performs the same
- * redirect before replacing itself with the target program.
- *
- * Exposed for tests and reuse.
- */
-export function withWindowsLogRedirect(spec: CommandSpec, logPath: string): CommandSpec {
-  const redirectLine = `exec >> ${bashSingleQuote(toMsysPath(logPath))} 2>&1`;
-  if (spec.shell === false) {
-    const argvText = spec.argv!.map((arg) => bashSingleQuote(String(arg))).join(" ");
-    return {
-      ...spec,
-      shell: true,
-      // The MSYS2 runtime rewrites POSIX-looking argv (e.g. `/c`, `/opt/x.sh`)
-      // when exec'ing native Windows binaries. Node spawn passed argv verbatim,
-      // so conversion is disabled to keep raw-argv semantics unchanged. The
-      // redirect target is unaffected: bash resolves it itself, already in
-      // `/c/...` form.
-      command: `${redirectLine}\nexport MSYS2_ARG_CONV_EXCL='*'\nexec ${argvText}`,
-    };
-  }
-  return { ...spec, command: `${redirectLine}\n${spec.command}` };
-}
-
 export function spawnCommand(spec: CommandSpec, logPath: string, detached: boolean): SpawnedProcess {
   validateCommandSpec(spec);
   mkdirSync(dirname(logPath), { recursive: true });
@@ -117,17 +42,9 @@ export function spawnCommand(spec: CommandSpec, logPath: string, detached: boole
     });
     return spawned;
   }
-  const windows = false;
-  const launchSpec = spec;
-  let fd: number | undefined;
-  let stdio: SpawnStdio;
-  if (windows) {
-    stdio = ["ignore", "ignore", "ignore"];
-  } else {
-    fd = openSync(logPath, "a");
-    stdio = ["ignore", fd, fd];
-  }
-  const child = spawnArgs(launchSpec, detached, stdio);
+  const fd = openSync(logPath, "a");
+  const stdio: SpawnStdio = ["ignore", fd, fd];
+  const child = spawnArgs(spec, detached, stdio);
   const marker = `\n--- spawn ${new Date().toISOString()} pid=${child.pid ?? "unknown"} ---\n`;
   try {
     if (fd !== undefined) {
@@ -384,7 +301,7 @@ export function commandExecution(spec: CommandSpec): { execPath: string; execArg
     const [command, ...args] = spec.argv!;
     return { execPath: command!, execArgs: args };
   }
-  return { execPath: resolveDefaultShell(), execArgs: ["-lc", spec.command!] };
+  return { execPath: resolveDefaultShell(), execArgs: process.platform === "win32" ? powerShellArguments(spec.command!) : ["-lc", spec.command!] };
 }
 
 /** Stdio for a spawned task: stdin is always ignored; stdout/stderr are piped (collected) or ignored (redirected into the log by the child itself). */

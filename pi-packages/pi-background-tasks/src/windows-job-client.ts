@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { resolvePowerShell } from './powershell.js';
 
 export interface JobLaunch { executable: string; argv: string[]; cwd: string; env: NodeJS.ProcessEnv; log: string; stderrLog?: string; denyAssignment?: boolean }
 export interface JobState { pid: number; activeProcesses: number; exitCode: number | null; creationTime: string }
@@ -17,12 +18,6 @@ export interface WindowsJob {
 }
 const pause = () => new Promise<void>(resolve => { const timer=setTimeout(resolve,25);timer.unref(); });
 
-function helperExecutable(): string {
-  const override=process.env.PI_BACKGROUND_TASKS_PWSH;
-  if(override)return override;
-  const standard=join(process.env.ProgramFiles || 'C:/Program Files','PowerShell','7','pwsh.exe');
-  return existsSync(standard) ? standard : 'pwsh.exe';
-}
 function executablePath(executable:string, env:NodeJS.ProcessEnv, cwd:string):string {
   if(isAbsolute(executable))return executable;
   const extensions=/\.[^\\/]+$/.test(executable)?['']:['','.exe','.com'];
@@ -47,7 +42,7 @@ export class WindowsJobClient {
     this.ready=new Promise<void>((resolve,reject)=>{
       const args=['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-File',fileURLToPath(new URL('./windows-job-helper.ps1',import.meta.url)),'-ParentPid',String(process.pid)];
       if(this.options.testFaults)args.push('-TestFaults');
-      const child=this.child=spawn(helperExecutable(),args,{windowsHide:true,stdio:['pipe','pipe','pipe']});
+      const child=this.child=spawn(resolvePowerShell(),args,{windowsHide:true,stdio:['pipe','pipe','pipe']});
       const timeout=setTimeout(()=>{const error=new Error('Windows job helper readiness timed out');this.fail(error);reject(error);child.kill();},15000);
       const lines=createInterface({input:child.stdout});
       child.stderr.on('data',chunk=>{this.stderr=(this.stderr+String(chunk)).slice(-8192);});
@@ -75,7 +70,8 @@ export class WindowsJobClient {
     for(const item of this.pending.values()){clearTimeout(item.timer);item.reject(this.failure);}this.pending.clear();
   }
   private async request(op:string,extra:Record<string,unknown>={}):Promise<Response> {
-    await this.start();if(this.failure)throw this.failure;
+    try { await this.start();if(this.failure)throw this.failure; }
+    catch(error) { if(op==='launch')Object.assign(error as Error,{launchFailed:true});throw error; }
     return new Promise((resolve,reject)=>{
       const id=++this.sequence;
       const timer=setTimeout(()=>{this.pending.delete(id);const error=new Error(`Windows job helper ${op} timed out`);this.fail(error);this.child?.kill();reject(error);},10000);timer.unref();

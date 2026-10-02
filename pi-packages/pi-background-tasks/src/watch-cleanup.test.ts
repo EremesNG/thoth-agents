@@ -1,3 +1,4 @@
+vi.mock('./powershell.js', async original => ({...await original<typeof import('./powershell.js')>(), resolvePowerShell: () => 'pwsh.exe'}));
 import { spawn } from "node:child_process";
 import { fakeJobHelper } from "./test-support/job-helper-fixture.js";
 import { afterEach, describe, expect, it, vi } from "vitest";

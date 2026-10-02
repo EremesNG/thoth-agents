@@ -26,7 +26,7 @@ export const DEFAULT_BLIND_CHECKS = 3;
 /** How long bg_task_watch waits for the first check before returning (#359). */
 export const FIRST_WATCH_CHECK_WAIT_MS = 15_000;
 /** How to fix a false alarm: some tools write progress or warnings to stderr on success. */
-export const BLIND_CHECK_HINT = "If the stderr is expected (progress or warnings), redirect it (2>/dev/null) or set blind_checks:0.";
+export const BLIND_CHECK_HINT = "If the stderr is expected (progress or warnings), redirect it (2>$null on PowerShell; 2>/dev/null on POSIX) or set blind_checks:0.";
 
 /**
  * Why the launch stopped waiting before the first check finished (#359): the bounded wait

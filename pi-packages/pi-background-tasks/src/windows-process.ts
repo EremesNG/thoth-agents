@@ -3,15 +3,17 @@ import { closeSync, fstatSync, mkdtempSync, openSync, readSync, rmSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getWindowsJobClient } from './windows-job-client.js';
-import { bashSingleQuote, toMsysPath, commandExecution, CommandTerminationError, completeUtf8Length, type RunningCommand, type SpawnedProcess } from './process.js';
+import { commandExecution, CommandTerminationError, completeUtf8Length, type RunningCommand, type SpawnedProcess } from './process.js';
 import type { CommandSpec, CommandResult } from './types.js';
 
 export function spawnWindowsCommand(spec:CommandSpec,log:string,stderrLog?:string):SpawnedProcess {
   const child=Object.assign(new EventEmitter(),{pid:undefined as number|undefined,unref(){}});
-  // Temporary legacy Git Bash command support; AC-8 replaces this shell.
-  // MSYS needs to reopen its own stdio instead of using native append-only handles.
-  const execution=commandExecution(spec.shell===false?spec:{...spec,command:`exec >> ${bashSingleQuote(toMsysPath(log))} 2>> ${bashSingleQuote(toMsysPath(stderrLog || log))}\n${spec.command}`});
-  const ready=getWindowsJobClient().launch({executable:execution.execPath,argv:execution.execArgs,cwd:spec.cwd || process.cwd(),env:{...process.env,...spec.env},log,stderrLog});
+  const ready=Promise.resolve().then(()=>{
+    let execution;
+    try { execution=commandExecution(spec); }
+    catch(error) { throw Object.assign(error as Error,{launchFailed:true}); }
+    return getWindowsJobClient().launch({executable:execution.execPath,argv:execution.execArgs,cwd:spec.cwd || process.cwd(),env:{...process.env,...spec.env},log,stderrLog});
+  });
   let exitEmitted=false;
   const emitExit=(code:number|null)=>{if(exitEmitted)return;exitEmitted=true;child.emit('exit',code,null);child.emit('close',code,null);};
   const terminate=async()=>{

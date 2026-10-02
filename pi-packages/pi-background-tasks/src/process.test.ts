@@ -53,10 +53,10 @@ describe("process shell execution", () => {
     chmodSync(fakeShell, 0o755);
     process.env.SHELL = fakeShell;
 
-    const result = await runCommandOnce({ command: "status=ok; printf '%s\\n' \"$status\"" });
+    const result = await runCommandOnce({ command: process.platform === "win32" ? "$status='ok'; [Console]::WriteLine($status)" : "status=ok; printf '%s\\n' \"$status\"" });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("ok\n");
+    expect(result.stdout).toBe(process.platform === "win32" ? "ok\r\n" : "ok\n");
     expect(result.stderr).not.toContain("unexpected login shell");
   });
 

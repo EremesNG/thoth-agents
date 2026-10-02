@@ -382,7 +382,7 @@ it('fails closed without lifecycle passthrough for a parent-only capture-depende
   }
 }, 30_000);
 
-it('clones all listed prompt-shaping events per handler and discards overrides without losing AbortSignals', async () => {
+it('clones all listed prompt-shaping events per handler, honors only before_provider_request replacements and discards other overrides without losing AbortSignals', async () => {
   const parent = await fixture([injectorExtension, captureExtension]);
   const originalPrompt = AgentSession.prototype.prompt;
   vi.spyOn(AgentSession.prototype, 'prompt').mockImplementation(async function (
@@ -397,7 +397,10 @@ it('clones all listed prompt-shaping events per handler and discards overrides w
       signal,
       callback,
     };
-    expect(await runner.emitBeforeProviderRequest(payload)).toBe(payload);
+    // Only before_provider_request returns are honored; in-place clone mutation never escapes.
+    expect(await runner.emitBeforeProviderRequest(payload)).toEqual({
+      messages: ['ROOT REPLACEMENT'],
+    });
     expect(payload.messages).toEqual([{ content: 'CHILD PAYLOAD' }]);
     expect(payload.signal).toBe(signal);
     expect(payload.callback).toBe(callback);
@@ -897,3 +900,38 @@ it('emits default background package shutdown handlers once before ordinary SDK 
     await parent.close();
   }
 }, 30_000);
+
+const codexPayloadExtension = fileURLToPath(
+  new URL('./fixtures/codex-payload-provider.ts', import.meta.url),
+);
+const openAiFastExtension = fileURLToPath(
+  new URL('../../../pi-openai-fast/src/index.ts', import.meta.url),
+);
+
+it.each([
+  ['gpt-fixture-fast', { model: 'gpt-fixture', service_tier: 'priority' }],
+  ['gpt-fixture', { model: 'gpt-fixture' }],
+])(
+  'sends the final provider payload of a child selecting %s through the real pi-openai-fast extension',
+  async (id, expected) => {
+    const parent = await fixture([codexPayloadExtension, openAiFastExtension]);
+    try {
+      const result = await parent.run({
+        definition: {
+          name: 'fast-child',
+          description: 'Fast variant child',
+          filePath: codexPayloadExtension,
+          instructions: 'Reply.',
+          tools: [],
+          model: { provider: 'codex-payload-fixture', id },
+        },
+      });
+      expect(JSON.parse(result.result)).toMatchObject(expected);
+      if (id === 'gpt-fixture')
+        expect(JSON.parse(result.result)).not.toHaveProperty('service_tier');
+    } finally {
+      await parent.close();
+    }
+  },
+  30_000,
+);

@@ -24,6 +24,7 @@ export const DEFAULT_LIFECYCLE_PASSTHROUGH = [
   '@thoth-agents/pi-claude-bridge',
   '@thoth-agents/pi-antigravity-bridge',
   '@thoth-agents/pi-background-tasks',
+  '@thoth-agents/pi-openai-fast',
 ];
 const DEFAULT_MAX_CONCURRENCY = 5;
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;

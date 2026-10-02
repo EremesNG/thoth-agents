@@ -282,9 +282,15 @@ are not misclassified as network errors.
 
 ## Authorization
 
-**Plan review**: PENDING
+**Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
 **Implementation**: PENDING
+
+The user explicitly selected Review plan with Oracle. Round 1 returned [REJECT]
+(terminal widget cards, contradictory backend fallback), repaired here; round 2 fresh
+Oracle subtask_thoth-oracle_1790916773082_1168a320 returned [OKAY]. Cautions: backend
+acceptance stays unproven until the live checks; headless warning evidence must show real
+visible output; workers B and C use identical eligibility fixtures.
 
 ## Verification
 

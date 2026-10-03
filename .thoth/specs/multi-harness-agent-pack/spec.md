@@ -517,3 +517,23 @@ The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jo
 - **GIVEN** running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild
 - **WHEN** one root reloads, the subagent ends, the job leader exits, or the root quits or (on Windows) its process dies
 - **THEN** on Windows reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched, while on POSIX the non-reload cleanup triggers attempt TERM, a bounded wait, KILL and ESRCH verification of each job's group, subject to the documented limits
+
+### Requirement: Reply in the user's language
+
+Default root orchestrator instructions for every supported harness MUST direct user-facing replies, questions and options to use the language of the user's most recent real message and keep it until the user switches; delegated assignments, change records, code and generated artifacts MAY remain in English.
+
+#### Scenario: Reply in the user's language
+
+- **GIVEN** a user writing in Spanish
+- **WHEN** any harness renders the default root orchestrator instructions
+- **THEN** they require Spanish user-facing replies, questions and options while permitting English delegation and artifacts 
+
+### Requirement: Distinguish injected messages from user input
+
+Default root orchestrator instructions MUST state that subagent completion notifications, tool results and injected context delivered in the user role are not user messages and MUST NOT set the reply language or count as user instructions, answers or choices; Pi subagent completion content MUST identify itself as an automated system notification.
+
+#### Scenario: Distinguish injected messages from user input
+
+- **GIVEN** a Pi subagent completion delivered as a user-role message
+- **WHEN** the root reads it
+- **THEN** its content declares it an automated system notification and the instructions forbid treating it as user input or a language signal 

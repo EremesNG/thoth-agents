@@ -19,8 +19,9 @@ of the module toggles below.
   thinking effort, git branch, context usage, cumulative session cost and compact
   extension statuses. It omits the working-directory path and does not claim the
   custom editor slot.
-- **Tools**: boxed calls and results for `read`, `bash`, `ls`, `grep`, `find`,
-  `edit` and `write`, with Nerd Font icons or ASCII alternatives. Execution and
+- **Tools**: boxed calls and results for `read`, `bash`, `powershell`, `ls`,
+  `grep`, `find`, `edit` and `write`, with Nerd Font icons or ASCII
+  alternatives. `bash` and `powershell` show a live elapsed time while running. Execution and
   parameters delegate to Pi's built-in tools; Pi's native output toggle still
   collapses and expands results. Other tools keep their own renderers.
 - **Inline images**: image content from `read` is preserved for Pi's native

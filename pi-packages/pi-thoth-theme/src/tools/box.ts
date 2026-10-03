@@ -166,7 +166,7 @@ export function renderBox(
   options: BoxOptions = {},
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = options.isError ? 'error' : 'borderMuted';
+  const borderColor = options.isError ? 'error' : 'accent';
 
   if (safeWidth <= 0) {
     return [];

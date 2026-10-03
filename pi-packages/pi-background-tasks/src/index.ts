@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getBackgroundTasksNavigator } from "./navigator-provider.js";
 import { resumeScheduledWork, stopTask, suspendScheduledWork } from "./runtime.js";
 import { listMetasForOrigin } from "./registry.js";
+import { COMPLETION_BATCH_TYPE, renderBackgroundMessage, TASK_FAILURE_TYPE } from "./render/messages.js";
 import { registerTools } from "./tools.js";
 
 export default function backgroundTasksExtension(pi: ExtensionAPI): void {
@@ -24,5 +25,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     }
     navigator.dispose(ctx);
   });
+  pi.registerMessageRenderer?.(COMPLETION_BATCH_TYPE, renderBackgroundMessage);
+  pi.registerMessageRenderer?.(TASK_FAILURE_TYPE, renderBackgroundMessage);
   registerTools(pi);
 }

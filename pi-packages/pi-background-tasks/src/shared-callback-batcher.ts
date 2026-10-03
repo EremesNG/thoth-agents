@@ -4,7 +4,7 @@ export type CallbackDetailTool = "subagent_result" | "bg_task_status";
 
 export interface CallbackBatchHost {
   sendMessage(
-    message: { customType: string; content: string; display: boolean },
+    message: { customType: string; content: string; display: boolean; details?: CallbackDisplayDetails },
     options: Record<string, unknown>,
   ): unknown;
 }
@@ -86,6 +86,35 @@ export interface FormattedCallbackBatch {
   text: string;
   represented: CallbackBatchEvent[];
   omitted: number;
+  details: CallbackDisplayDetails;
+}
+
+/** One packed entry as shown (or clipped) in the notification text. */
+export interface CallbackDisplayEntry {
+  source?: string;
+  /** Retrieval id (`inspectId` for urgent failures). */
+  id: string;
+  label: string;
+  status: string;
+  outcome?: string;
+  decision?: string;
+  /** Urgent explanation, clipped. */
+  note?: string;
+  incidents?: { total: number; shown: number; omitted: number };
+  /** Whole incident rows shown in the text; dropped first when over budget. */
+  rows?: string[];
+}
+
+/**
+ * Bounded, JSON-safe display projection of a notification. Never raw events.
+ * `omitted` counts completions left out of the packed text; `unlisted` counts
+ * packed entries dropped from this projection to fit its byte budget.
+ */
+export interface CallbackDisplayDetails {
+  kind: "batch" | "failure";
+  entries: CallbackDisplayEntry[];
+  omitted: number;
+  unlisted: number;
 }
 
 interface PendingEvent {
@@ -209,6 +238,8 @@ function inspectFor(event: Pick<CallbackBatchEvent, "id" | "detailTool">): strin
 
 interface IncidentLines {
   lines: string[];
+  /** Whole rows counted as shown, without indent. */
+  rows: string[];
   shown: number;
   total: number;
 }
@@ -219,13 +250,16 @@ interface IncidentLines {
  */
 function incidentLines(rows: readonly string[], total: number, maxBytes: number, indent: string): IncidentLines {
   const lines: string[] = [];
+  const shownRows: string[] = [];
   let used = 0;
   let shown = 0;
   for (const row of rows) {
-    const line = `${indent}${String(row).replace(/\s+/g, " ").trim()}`;
+    const clean = String(row).replace(/\s+/g, " ").trim();
+    const line = `${indent}${clean}`;
     const size = utf8ByteLength(line) + 1;
     if (used + size <= maxBytes) {
       lines.push(line);
+      shownRows.push(clean);
       used += size;
       shown += 1;
       continue;
@@ -235,7 +269,7 @@ function incidentLines(rows: readonly string[], total: number, maxBytes: number,
     }
     break;
   }
-  return { lines, shown, total: Math.max(total, rows.length) };
+  return { lines, rows: shownRows, shown, total: Math.max(total, rows.length) };
 }
 
 function countsLine(incidents: IncidentLines, inspect: string): string | undefined {
@@ -253,10 +287,10 @@ function eventIncidents(event: CallbackBatchEvent, failureBytes: number): Incide
     const total = event.incidentCount ?? 1;
     const whole = incidentLines([event.failure], 1, failureBytes, "  failure: ");
     const legacyShown = whole.shown ? Math.max(0, total - (event.omittedIncidents ?? 0)) : 0;
-    return { lines: whole.lines, shown: legacyShown, total };
+    return { lines: whole.lines, rows: whole.rows, shown: legacyShown, total };
   }
   const total = event.incidentCount ?? 0;
-  return { lines: [], shown: 0, total };
+  return { lines: [], rows: [], shown: 0, total };
 }
 
 function formatRow(event: CallbackBatchEvent, detailBytes = MAX_FAILURE_BYTES + MAX_DECISION_BYTES): string {
@@ -279,6 +313,72 @@ function formatRow(event: CallbackBatchEvent, detailBytes = MAX_FAILURE_BYTES + 
   const counts = countsLine(incidents, inspect);
   if (counts) lines.push(counts);
   return lines.join("\n");
+}
+
+function incidentCounts(incidents: IncidentLines): CallbackDisplayEntry["incidents"] {
+  if (incidents.total <= 0) return undefined;
+  return { total: incidents.total, shown: incidents.shown, omitted: Math.max(0, incidents.total - incidents.shown) };
+}
+
+/** Mirrors `formatRow`: the same fields under the same clips. */
+function projectEvent(event: CallbackBatchEvent, detailBytes = MAX_FAILURE_BYTES + MAX_DECISION_BYTES): CallbackDisplayEntry {
+  const status = boundedStatus(event.status);
+  const entry: CallbackDisplayEntry = {
+    source: boundedField(event.source, 40),
+    id: boundedField(event.id, MAX_ID_BYTES),
+    label: boundedField(event.label, MAX_LABEL_BYTES),
+    status,
+  };
+  const outcome = event.outcome ? boundedField(event.outcome, 80) : "";
+  if (outcome && outcome !== status) entry.outcome = outcome;
+  const decisionBytes = Math.min(MAX_DECISION_BYTES, Math.floor(detailBytes / 2));
+  if (event.decision && decisionBytes > 24) entry.decision = boundedField(event.decision, decisionBytes);
+  const incidents = eventIncidents(event, Math.max(0, Math.min(MAX_FAILURE_BYTES * 2, detailBytes - decisionBytes)));
+  const counts = incidentCounts(incidents);
+  if (counts) entry.incidents = counts;
+  if (incidents.rows.length) entry.rows = incidents.rows;
+  return entry;
+}
+
+function displayBytes(details: CallbackDisplayDetails): number {
+  return utf8ByteLength(JSON.stringify(details));
+}
+
+/**
+ * Shrink a projection into `maxBytes` of serialized JSON: incident rows first,
+ * then decisions and notes, then long identity fields, then trailing entries
+ * (counted in `unlisted`). Incident counts are kept for every listed entry.
+ */
+function fitDisplayDetails(details: CallbackDisplayDetails, maxBytes: number): CallbackDisplayDetails {
+  const fits = () => displayBytes(details) <= maxBytes;
+  const each = (apply: (entry: CallbackDisplayEntry) => void): boolean => {
+    for (const entry of details.entries) apply(entry);
+    return fits();
+  };
+  if (fits()) return details;
+  if (each((entry) => { delete entry.rows; })) return details;
+  if (each((entry) => { delete entry.decision; delete entry.note; })) return details;
+  if (each((entry) => {
+    entry.label = boundedField(entry.label, 48);
+    entry.status = boundedField(entry.status, 48);
+    entry.id = boundedField(entry.id, 64);
+    delete entry.source;
+    if (entry.outcome) entry.outcome = boundedField(entry.outcome, 32);
+  })) return details;
+  while (details.entries.length > 0 && !fits()) {
+    details.entries.pop();
+    details.unlisted += 1;
+  }
+  return details;
+}
+
+function batchDetails(represented: readonly CallbackBatchEvent[], omitted: number, maxBytes: number, detailBytes?: number): CallbackDisplayDetails {
+  return fitDisplayDetails({
+    kind: "batch",
+    entries: represented.map((event) => projectEvent(event, detailBytes)),
+    omitted,
+    unlisted: 0,
+  }, maxBytes);
 }
 
 function renderBatch(represented: readonly CallbackBatchEvent[], omitted: number, detailBytes?: number): string {
@@ -318,6 +418,13 @@ export function formatUrgentCallback(
   event: UrgentCallbackEvent,
   options: CallbackBatchFormatOptions = {},
 ): string {
+  return packUrgentCallback(event, options).text;
+}
+
+export function packUrgentCallback(
+  event: UrgentCallbackEvent,
+  options: CallbackBatchFormatOptions = {},
+): { text: string; details: CallbackDisplayDetails } {
   const maxBytes = callbackBatchBudget(options.maxBytes);
   const target = event.inspectId ?? event.id;
   const id = boundedField(target, MAX_ID_BYTES);
@@ -361,10 +468,25 @@ export function formatUrgentCallback(
     if (utf8ByteLength(render(body, note, [...shown, line])) + 8 > maxBytes) break;
     shown.push(line);
   }
+  const detailsFor = (shownRows: string[], explanation: string): CallbackDisplayDetails => {
+    const entry: CallbackDisplayEntry = { source: boundedField(event.source, 40), id, label, status };
+    if (explanation) entry.note = boundedField(explanation, 240);
+    if (total > 0) {
+      const omitted = rows.length ? total - shownRows.length : legacyOmitted;
+      entry.incidents = { total, shown: shownRows.length, omitted: Math.max(0, omitted) };
+    }
+    if (shownRows.length) entry.rows = shownRows;
+    return fitDisplayDetails({ kind: "failure", entries: [entry], omitted: 0, unlisted: 0 }, maxBytes);
+  };
   const rendered = render(body, note, shown);
-  if (utf8ByteLength(rendered) <= maxBytes) return rendered;
+  if (utf8ByteLength(rendered) <= maxBytes) return { text: rendered, details: detailsFor(shown, body) };
   const minimal = render("", source ? `omittedBytes=${utf8ByteLength(source)} retrieve: ${inspectTarget}` : undefined, []);
-  return clipRendered(minimal, maxBytes);
+  return { text: clipRendered(minimal, maxBytes), details: detailsFor([], "") };
+}
+
+function urgentMessage(event: UrgentCallbackEvent, maxBytes: number): { content: string; details: CallbackDisplayDetails } {
+  const { text, details } = packUrgentCallback(event, { maxBytes });
+  return { content: text, details };
 }
 
 export function packCallbackBatch(
@@ -373,7 +495,7 @@ export function packCallbackBatch(
 ): FormattedCallbackBatch {
   const maxBytes = callbackBatchBudget(options.maxBytes);
   if (events.length === 0) {
-    return { text: renderBatch([], 0), represented: [], omitted: 0 };
+    return { text: renderBatch([], 0), represented: [], omitted: 0, details: batchDetails([], 0, maxBytes) };
   }
 
   const ranked = events.map((event, index) => ({ event, index }))
@@ -395,13 +517,14 @@ export function packCallbackBatch(
       for (const detail of [MAX_FAILURE_BYTES, 200, 0]) {
         const text = renderBatch([event], events.length - 1, detail);
         if (utf8ByteLength(text) <= maxBytes) {
-          return { text, represented: [event], omitted: events.length - 1 };
+          return { text, represented: [event], omitted: events.length - 1, details: batchDetails([event], events.length - 1, maxBytes, detail) };
         }
       }
       return {
         text: clipRendered(renderBatch([event], events.length - 1, 0), maxBytes),
         represented: [event],
         omitted: events.length - 1,
+        details: batchDetails([event], events.length - 1, maxBytes, 0),
       };
     }
   }
@@ -411,6 +534,7 @@ export function packCallbackBatch(
     text: renderSelected(),
     represented,
     omitted: events.length - represented.length,
+    details: batchDetails(represented, events.length - represented.length, maxBytes),
   };
 }
 
@@ -514,6 +638,7 @@ export function createCallbackBatcher(
           customType: "background-completion-batch",
           content: packed.text,
           display: true,
+          details: packed.details,
         },
         { deliverAs: "followUp", triggerTurn: true },
       );
@@ -575,7 +700,7 @@ export function createCallbackBatcher(
     urgentInFlight.add(key);
     try {
       const handoff = host.sendMessage(
-        { customType: event.customType, content: formatUrgentCallback(event, { maxBytes }), display: true },
+        { customType: event.customType, ...urgentMessage(event, maxBytes), display: true },
         { deliverAs: "followUp", triggerTurn: true },
       );
       if (isPromiseLike(handoff)) {

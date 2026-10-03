@@ -12,6 +12,7 @@ import {
   formatStopResult,
   type OutputOptions,
 } from "./output.js";
+import { framedToolRenderers } from "./render/tools.js";
 import { readOutputControls } from "./shared-log-utils.js";
 import { cancelCallbackBatch } from "./shared-callback-batcher.js";
 import { inspectMeta, listMetasForOrigin, readMeta, writeMeta } from "./registry.js";
@@ -20,6 +21,7 @@ import { runTaskMaintenance } from "./maintenance.js";
 import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta } from "./types.js";
 import { isTerminalStatus } from "./types.js";
 
+export { renderBackgroundTaskLogDisplay } from "./render/tools.js";
 export { formatLaunch } from "./output.js";
 
 const JsonPathSchema = Type.String({
@@ -193,6 +195,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_spawn",
+    ...framedToolRenderers("bg_task_spawn"),
     label: "BG Spawn",
     description: `Start a long-running background process and return immediately with its task id. Never wait or poll in the foreground. ${SHELL_GUIDANCE}`,
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
@@ -207,6 +210,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_watch",
+    ...framedToolRenderers("bg_task_watch"),
     label: "BG Watch",
     description: `Poll a command in the background until success_when, failure_when, or timeout matches. Returns its task id once the first check finishes. ${WATCH_CHECK_GUIDANCE} ${SHELL_GUIDANCE} Default timeout 900 seconds; pass timeout_seconds:0 to disable.`,
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
@@ -221,6 +225,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_list",
+    ...framedToolRenderers("bg_task_list"),
     label: "BG List",
     description: "List durable background tasks as compact rows under a 1 KiB UTF-8 budget (10 entries default), newest first. Current-session only unless all:true. Nonblocking. Pass the returned nextCursor as cursor to page further (every task is reachable), or statusCursor to get a small no-change response or failure-only updates; a higher limit/max_bytes gives a larger explicit page.",
     parameters: ListParams,
@@ -232,6 +237,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_status",
+    ...framedToolRenderers("bg_task_status"),
     label: "BG Status",
     description: "Inspect one background task. Default output is a compact model-facing summary (1 KiB UTF-8) with matched condition, exit/signal, stop error, and failure counts before progress. Current-session only unless all:true; unknown ownership is a gap, not missing or healthy. Pass verbose:true only when full raw metadata is explicitly needed. Environment values are omitted. A raw log nextCursor passed as cursor continues the raw log page; an incidentCursor pages incidents that need action; history:true lists failure history too. After a terminal callback, call this first and call bg_task_log only if the summary is insufficient.",
     parameters: StatusParams,
@@ -243,12 +249,10 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_log",
+    ...framedToolRenderers("bg_task_log"),
     label: "BG Log",
     description: "Read a background task log. Default output is a compact 10-line terminal-aware tail for model ingestion (1 KiB UTF-8). Current-session only unless all:true. Pass lines for a bounded tail (tail_lines is a deprecated alias); lines:0 pages the retained raw log from the oldest retained offset (16 KiB pages, 64 KiB hard cap) with a caller-owned cursor. Capture and retention loss are disclosed; this is not a full-history archive. Nonblocking.",
     parameters: LogParams,
-    renderResult(result: unknown, options: unknown, theme: unknown) {
-      return renderBackgroundTaskLogDisplay(result, options, theme);
-    },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = ctx ? getCallbackOrigin(ctx) : activeSession;
       return logText(params.id, logOptions(params, activeSession));
@@ -257,6 +261,7 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task_stop",
+    ...framedToolRenderers("bg_task_stop"),
     label: "BG Stop",
     description: "Cancel a watcher or terminate a background task. Only a task owned by the current session stops; a foreign-session or unverifiable task is refused unless all:true.",
     parameters: IdParams,
@@ -270,13 +275,11 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_task",
+    ...framedToolRenderers("bg_task"),
     label: "BG Task",
     description: SHELL_GUIDANCE + " Action wrapper for background tasks: spawn, watch, list, status, log, stop, or clear. Spawn returns immediately; do not poll in foreground. For action:watch: " + WATCH_CHECK_GUIDANCE + " For action:status, default compact output and use verbose:true only for full metadata. For action:log, default compact tail and use lines:0 to page retained raw bytes. Standalone tools and these wrappers share the same output assembler. List/status/log default to the current session; pass all:true to override. Stop and clear change only current-session tasks: clear dismisses every owned terminal task, or one task with id (all:true allows another session's task by id).",
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: ActionParams,
-    renderResult(result: unknown, options: unknown, theme: unknown) {
-      return renderBackgroundTaskLogDisplay(result, options, theme);
-    },
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
       return actionText(pi, params, ctx, activeSession, getActiveSession, signal);
@@ -285,12 +288,10 @@ export function registerTools(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "bg_status",
+    ...framedToolRenderers("bg_status"),
     label: "BG Status",
     description: "Action wrapper for inspecting background tasks: list, status, log, stop, or clear. Nonblocking. Status is compact by default; log returns a compact tail by default. Use verbose:true or lines:0 only for explicit full-data recovery. Shares the same output assembler as the standalone tools. Current-session default; pass all:true to override. Stop and clear change only current-session tasks (clear with id and all:true for another session's task).",
     parameters: StatusActionParams,
-    renderResult(result: unknown, options: unknown, theme: unknown) {
-      return renderBackgroundTaskLogDisplay(result, options, theme);
-    },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
       return actionText(pi, params, ctx, activeSession, getActiveSession);
@@ -463,85 +464,9 @@ export function buildBackgroundTaskLogDisplayDetails(body: string) {
   };
 }
 
-export function renderBackgroundTaskLogDisplay(result: unknown, options: unknown = {}, theme: unknown = {}) {
-  const fullText = resultTextContent(result);
-  const details = ((result as { details?: unknown })?.details as ReturnType<typeof buildBackgroundTaskLogDisplayDetails> | undefined);
-  if (!details || details.kind !== "background-task-log-display") return renderLines(fullText.split(/\r?\n/));
-  const expanded = (options as { expanded?: boolean })?.expanded === true;
-  const meta = `${details.fullLineCount} lines`;
-
-  if (expanded) {
-    return renderLines([
-      `${themed(theme, "accent", "bg_task_log")} ${themed(theme, "dim", `· ${meta}`)}`,
-      themed(theme, "dim", "Full displayed log. Click or collapse to fold."),
-      "",
-      ...fullText.split(/\r?\n/),
-    ], "wrap");
-  }
-
-  const folded = details.foldedLineCount > 0
-    ? themed(theme, "dim", `Folded ${details.foldedLineCount} display lines. Click or expand for the requested log payload.`)
-    : themed(theme, "dim", "Compact log. Expand for full display if needed.");
-  return renderLines([
-    `${themed(theme, "accent", "bg_task_log")} ${themed(theme, "dim", `· ${meta}`)}`,
-    details.head,
-    "",
-    themed(theme, "dim", "preview"),
-    ...details.compactLines,
-    folded,
-  ]);
-}
-
-function resultTextContent(result: unknown): string {
-  const content = (result as { content?: Array<{ text?: string }> })?.content;
-  if (Array.isArray(content)) return content.map((part) => part.text ?? "").join("\n");
-  return String(result ?? "");
-}
-
 function nonEmptyPreviewLines(lines: string[]): string[] {
   const nonEmpty = lines.filter((line) => line.trim().length > 0).slice(0, 8);
   return nonEmpty.length ? nonEmpty : lines.slice(0, 3);
-}
-
-function themed(theme: unknown, color: string, value: string): string {
-  const fg = (theme as { fg?: (color: string, text: string) => string })?.fg;
-  return typeof fg === "function" ? fg(color, value) : value;
-}
-
-function renderLines(lines: string[], mode: "truncate" | "wrap" = "truncate") {
-  return {
-    render(width: number = 80) {
-      return mode === "wrap"
-        ? lines.flatMap((line) => wrapLineToVisibleWidth(line, width))
-        : lines.map((line) => truncateToVisibleWidth(line, width));
-    },
-    invalidate() { /* stateless */ },
-  };
-}
-
-function wrapLineToVisibleWidth(line: string, width: number): string[] {
-  const str = String(line ?? "");
-  const max = Math.max(1, Number(width) || 80);
-  if (truncateToVisibleWidth(str, max) === str) return [str];
-  const out: string[] = [];
-  let current = "";
-  let visible = 0;
-  for (const char of str) {
-    if (visible >= max) {
-      out.push(current);
-      current = "";
-      visible = 0;
-    }
-    current += char;
-    visible += 1;
-  }
-  out.push(current);
-  return out;
-}
-
-function truncateToVisibleWidth(value: string, width: number): string {
-  const max = Math.max(0, Math.floor(width || 0));
-  return String(value ?? "").slice(0, max);
 }
 
 async function formatStop(

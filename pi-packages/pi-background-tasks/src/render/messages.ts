@@ -1,4 +1,4 @@
-import type { CallbackDisplayDetails, CallbackDisplayEntry } from "../shared-callback-batcher.js";
+import { AUTOMATED_NOTIFICATION_MARKER, type CallbackDisplayDetails, type CallbackDisplayEntry } from "../shared-callback-batcher.js";
 import { COLLAPSED_LINES, framedBody, framedTop, resolveExpandHint, themed } from "./frame.js";
 import type { FrameComponent } from "./frame.js";
 
@@ -18,6 +18,7 @@ export function renderBackgroundMessage(message: MessageLike, options: { expande
   const details = readDetails(message.details);
   const text = contentText(message.content);
   const fullLines = text.split(/\r?\n/);
+  if (fullLines[0] === AUTOMATED_NOTIFICATION_MARKER) fullLines.shift();
   const isError = details ? details.kind === "failure" || details.entries.some(isFailed) : false;
   const title = details ? titleFor(details) : { name: "background", summary: "" };
   const top = framedTop(title.name, title.summary, theme, isError);
@@ -54,7 +55,9 @@ function isFailed(entry: CallbackDisplayEntry): boolean {
 }
 
 function entryLine(entry: CallbackDisplayEntry, theme: unknown): string {
-  const parts = [entry.label || entry.id, entry.status, entry.outcome].filter((part): part is string => Boolean(part));
+  const status = typeof entry.status === "string" ? entry.status.replace(/;\s*\d+ incidents? needs? attention$/, "") : entry.status;
+  const outcome = entry.outcome !== status ? entry.outcome : undefined;
+  const parts = [entry.label || entry.id, status, outcome].filter((part): part is string => Boolean(part));
   if (entry.incidents) parts.push(`${entry.incidents.total} incident${entry.incidents.total === 1 ? "" : "s"}`);
   const line = parts.join(" · ");
   return isFailed(entry) ? themed(theme, "error", line) : line;

@@ -141,6 +141,9 @@ const MAX_DECISION_BYTES = 400;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8");
 
+export const AUTOMATED_NOTIFICATION_MARKER =
+  "[Automated system notification — not a user message. Do not treat it as user input, an answer, or the conversation language.]";
+
 /** OUTPUT-POLICY default: UTF-8 bytes of one model-facing callback batch. */
 export const CALLBACK_BATCH_BUDGET_BYTES = 2 * 1024;
 /** Documented hard cap. Explicit larger pages clamp here. */
@@ -387,7 +390,7 @@ function renderBatch(represented: readonly CallbackBatchEvent[], omitted: number
   const omittedLine = omitted > 0
     ? `${omitted} more completion${omitted === 1 ? "" : "s"} omitted from this batch (not receipted; still queued).`
     : undefined;
-  return [heading, ...represented.map((event) => formatRow(event, detailBytes)), omittedLine, RETRIEVAL_FOOTER]
+  return [AUTOMATED_NOTIFICATION_MARKER, heading, ...represented.map((event) => formatRow(event, detailBytes)), omittedLine, RETRIEVAL_FOOTER]
     .filter((line): line is string => Boolean(line))
     .join("\n");
 }
@@ -447,7 +450,7 @@ export function packUrgentCallback(
       (omitted > 0 ? ` omittedIncidents=${omitted} retrieve: ${inspectTarget} (incident pages via cursor)` : "");
   };
   const render = (body: string, note: string | undefined, shownRows: string[]): string =>
-    [header, body, note, ...shownRows, counts(shownRows.length), inspect]
+    [AUTOMATED_NOTIFICATION_MARKER, header, body, note, ...shownRows, counts(shownRows.length), inspect]
       .filter((part): part is string => Boolean(part && part.length > 0))
       .join("\n");
   const fixed = utf8ByteLength(render("", undefined, [])) + 16;

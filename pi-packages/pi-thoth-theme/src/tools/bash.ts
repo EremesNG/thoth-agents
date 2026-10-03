@@ -3,10 +3,6 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import {
-  createBashToolDefinition,
-  createPowerShellToolDefinition,
-} from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
 import { createComponent, escapeOutputRow, getResultText } from './box.ts';
 import { getToolIcon } from './file-icons.ts';
@@ -88,34 +84,8 @@ function formatElapsed(ms: number | undefined): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-export function createCustomShellTool<
-  TDef extends {
-    name: string;
-    renderShell?: unknown;
-    renderCall?: unknown;
-    renderResult?: unknown;
-  },
->(
-  shellConfig: ShellConfig,
-  cwdOrConfig: string | ThemeConfig,
-  configOrBase?: ThemeConfig | TDef,
-  maybeBase?: TDef,
-  defaultFactory?: (cwd: string) => TDef,
-) {
-  const config =
-    typeof cwdOrConfig === 'string'
-      ? (configOrBase as ThemeConfig)
-      : cwdOrConfig;
-  const cwd = typeof cwdOrConfig === 'string' ? cwdOrConfig : process.cwd();
-  const baseDef = (maybeBase ??
-    (configOrBase &&
-    typeof configOrBase === 'object' &&
-    'execute' in configOrBase
-      ? (configOrBase as TDef)
-      : defaultFactory?.(cwd))) as TDef;
-
+function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
   return {
-    ...baseDef,
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: ShellContext) {
       syncElapsedTicker(context);
@@ -261,32 +231,10 @@ export function createCustomShellTool<
   };
 }
 
-export function createCustomBashTool(
-  cwdOrConfig: string | ThemeConfig,
-  configOrBase?: ThemeConfig | ReturnType<typeof createBashToolDefinition>,
-  maybeBase?: ReturnType<typeof createBashToolDefinition>,
-) {
-  return createCustomShellTool(
-    BASH_CONFIG,
-    cwdOrConfig,
-    configOrBase,
-    maybeBase,
-    createBashToolDefinition,
-  );
+export function createCustomBashTool(_cwd: string, config: ThemeConfig) {
+  return createCustomShellTool(BASH_CONFIG, config);
 }
 
-export function createCustomPowerShellTool(
-  cwdOrConfig: string | ThemeConfig,
-  configOrBase?:
-    | ThemeConfig
-    | ReturnType<typeof createPowerShellToolDefinition>,
-  maybeBase?: ReturnType<typeof createPowerShellToolDefinition>,
-) {
-  return createCustomShellTool(
-    POWERSHELL_CONFIG,
-    cwdOrConfig,
-    configOrBase,
-    maybeBase,
-    createPowerShellToolDefinition,
-  );
+export function createCustomPowerShellTool(_cwd: string, config: ThemeConfig) {
+  return createCustomShellTool(POWERSHELL_CONFIG, config);
 }

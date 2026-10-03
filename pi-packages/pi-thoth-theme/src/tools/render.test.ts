@@ -249,18 +249,12 @@ describe('Built-in tool renderers', () => {
           join(dir, 'image.png'),
           Buffer.from(imageData, 'base64'),
         );
-        const read = createCustomReadTool(
-          dir,
-          createConfig('nerd'),
-          createReadToolDefinition(dir, { autoResizeImages: false }),
-        );
-        const result = await read.execute(
-          'read-image',
-          { path: 'image.png' },
-          undefined,
-          undefined,
-          { cwd: dir } as ExtensionToolContext,
-        );
+        const read = createCustomReadTool(dir, createConfig('nerd'));
+        const result = await createReadToolDefinition(dir, {
+          autoResizeImages: false,
+        }).execute('read-image', { path: 'image.png' }, undefined, undefined, {
+          cwd: dir,
+        } as ExtensionToolContext);
         const content = result.content;
         const originalContent = structuredClone(content);
         const context = { ...baseContext, expanded };
@@ -1063,30 +1057,23 @@ describe('Built-in tool renderers', () => {
       for (let i = 0; i < tools.length; i++) {
         const tool = tools[i];
         const args = callArgs[i];
+        const context = { ...baseContext, args };
 
         for (const width of testWidths) {
-          const callLines = tool
-            .renderCall(args, theme, { ...baseContext, args })
-            .render(width);
+          const callLines = tool.renderCall(args, theme, context).render(width);
           for (const line of callLines) {
             expect(visibleWidth(line)).toBeLessThanOrEqual(width);
           }
 
           const collapsedLines = tool
-            .renderResult(dummyResult, resultOpts(false), theme, {
-              ...baseContext,
-              args,
-            })
+            .renderResult(dummyResult, resultOpts(false), theme, context)
             .render(width);
           for (const line of collapsedLines) {
             expect(visibleWidth(line)).toBeLessThanOrEqual(width);
           }
 
           const expandedLines = tool
-            .renderResult(dummyResult, resultOpts(true), theme, {
-              ...baseContext,
-              args,
-            })
+            .renderResult(dummyResult, resultOpts(true), theme, context)
             .render(width);
           for (const line of expandedLines) {
             expect(visibleWidth(line)).toBeLessThanOrEqual(width);
@@ -1274,29 +1261,22 @@ describe('Built-in tool renderers', () => {
         for (let i = 0; i < tools.length; i++) {
           const tool = tools[i];
           const args = callArgs[i];
+          const context = { ...baseContext, args };
 
-          const callLines = tool
-            .renderCall(args, theme, { ...baseContext, args })
-            .render(w);
+          const callLines = tool.renderCall(args, theme, context).render(w);
           for (const line of callLines) {
             expect(visibleWidth(line)).toBeLessThanOrEqual(w);
           }
 
           const collapsed = tool
-            .renderResult(dummyResult, resultOpts(false), theme, {
-              ...baseContext,
-              args,
-            })
+            .renderResult(dummyResult, resultOpts(false), theme, context)
             .render(w);
           for (const line of collapsed) {
             expect(visibleWidth(line)).toBeLessThanOrEqual(w);
           }
 
           const exp = tool
-            .renderResult(dummyResult, resultOpts(true), theme, {
-              ...baseContext,
-              args,
-            })
+            .renderResult(dummyResult, resultOpts(true), theme, context)
             .render(w);
           for (const line of exp) {
             expect(visibleWidth(line)).toBeLessThanOrEqual(w);

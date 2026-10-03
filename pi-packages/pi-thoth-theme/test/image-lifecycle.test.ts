@@ -62,15 +62,15 @@ function loadTheme(imagesEnabled: boolean, toolsEnabled: boolean) {
       welcome: { enabled: false },
     }),
   );
-  const tools: string[] = [];
+  const registerTool = vi.fn();
+  const registerToolRenderer = vi.fn<ExtensionAPI['registerToolRenderer']>();
   const subscriptions: Array<{
     event: string;
     handler: LifecycleHandler;
   }> = [];
   const pi = {
-    registerTool(tool: { name: string }) {
-      tools.push(tool.name);
-    },
+    registerTool,
+    registerToolRenderer,
     on(event: string, handler: LifecycleHandler) {
       subscriptions.push({ event, handler });
     },
@@ -88,7 +88,8 @@ function loadTheme(imagesEnabled: boolean, toolsEnabled: boolean) {
   }
 
   return {
-    tools,
+    registerTool,
+    registerToolRenderer,
     start(reason: SessionStartEvent['reason'] = 'startup') {
       return emit({ type: 'session_start', reason });
     },
@@ -101,6 +102,8 @@ function loadTheme(imagesEnabled: boolean, toolsEnabled: boolean) {
 describe('Orca image lifecycle', () => {
   it('restores inline images before the next agent loop after native /reload resets overrides', async () => {
     const session = loadTheme(true, false);
+    expect(session.registerTool).not.toHaveBeenCalled();
+    expect(session.registerToolRenderer).not.toHaveBeenCalled();
     expect(getCapabilities()).toEqual({
       images: null,
       trueColor: false,
@@ -135,18 +138,19 @@ describe('Orca image lifecycle', () => {
   });
 
   it.each([
-    { images: false, tools: true, protocol: null, toolCount: 8 },
-    { images: true, tools: false, protocol: 'kitty', toolCount: 0 },
-    { images: true, tools: true, protocol: 'kitty', toolCount: 8 },
-    { images: false, tools: false, protocol: null, toolCount: 0 },
+    { images: false, tools: true, protocol: null, resolverCount: 1 },
+    { images: true, tools: false, protocol: 'kitty', resolverCount: 0 },
+    { images: true, tools: true, protocol: 'kitty', resolverCount: 1 },
+    { images: false, tools: false, protocol: null, resolverCount: 0 },
   ])('keeps images=$images independent of tools=$tools', async ({
     images,
     tools,
     protocol,
-    toolCount,
+    resolverCount,
   }) => {
     const session = loadTheme(images, tools);
-    expect(session.tools).toHaveLength(toolCount);
+    expect(session.registerTool).not.toHaveBeenCalled();
+    expect(session.registerToolRenderer).toHaveBeenCalledTimes(resolverCount);
     expect(getCapabilities().images).toBeNull();
 
     await session.start();

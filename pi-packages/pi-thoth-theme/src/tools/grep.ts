@@ -4,7 +4,6 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import { createGrepToolDefinition } from '@earendil-works/pi-coding-agent';
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import type { ThemeConfig } from '../shared/config.ts';
 import {
@@ -125,25 +124,8 @@ function groupMatches(matches: GrepMatchItem[]): [string, GrepMatchItem[]][] {
   return groups;
 }
 
-export function createCustomGrepTool(
-  cwdOrConfig: string | ThemeConfig,
-  configOrBase?: ThemeConfig | ReturnType<typeof createGrepToolDefinition>,
-  maybeBase?: ReturnType<typeof createGrepToolDefinition>,
-) {
-  const config =
-    typeof cwdOrConfig === 'string'
-      ? (configOrBase as ThemeConfig)
-      : cwdOrConfig;
-  const cwd = typeof cwdOrConfig === 'string' ? cwdOrConfig : process.cwd();
-  const baseDef = (maybeBase ??
-    (configOrBase && 'execute' in configOrBase
-      ? configOrBase
-      : createGrepToolDefinition(cwd))) as ReturnType<
-    typeof createGrepToolDefinition
-  >;
-
+export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
   return {
-    ...baseDef,
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: GrepContext) {
       const args = (rawArgs ?? {}) as GrepArgs;

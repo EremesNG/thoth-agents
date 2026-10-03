@@ -23,7 +23,11 @@ of the module toggles below.
   `grep`, `find`, `edit` and `write`, with Nerd Font icons or ASCII
   alternatives. `bash` and `powershell` show a live elapsed time while running. Execution and
   parameters delegate to Pi's built-in tools; Pi's native output toggle still
-  collapses and expands results. Other tools keep their own renderers.
+  collapses and expands results. Other tools that bring their own renderers
+  (subagents, Ask* tools, background-task logs) keep them; tools without one,
+  such as MCP tools, get a generic frame with the tool name, a one-line
+  argument summary, a collapsed text preview, error styling and a live elapsed
+  footer. Images keep Pi's native rendering. Requires Pi >= 1.0.1.
 - **Inline images**: image content from `read` is preserved for Pi's native
   inline rendering. In Orca (including Windows), outside tmux and without an
   explicit `PI_IMAGE_PROTOCOL`, the package selects Kitty when Pi has not already

@@ -144,14 +144,15 @@ export function renderSubagentRunResult(
   const usage = task ? formatUsage(task as SubagentTask) : '';
 
   if (!isRunning && !isExpanded) {
+    const costSuffix =
+      typeof task?.usage?.cost === 'number' && task.usage.cost > 0
+        ? ` · $${task.usage.cost.toFixed(2)}`
+        : '';
     const metaLine = themeDim(
       theme,
-      `subagent: ${task?.agent ?? 'subagent'} · model: ${task?.model ?? 'default/current'} · effort: ${task?.effort ?? 'default/current'} · status: ${taskStatus}`,
+      `subagent: ${task?.agent ?? 'subagent'} · model: ${task?.model ?? 'default/current'} · effort: ${task?.effort ?? 'default/current'} · status: ${taskStatus}${costSuffix}`,
     );
     const collapsedLines: string[] = [metaLine];
-    if (usage) {
-      collapsedLines.push(themeDim(theme, `usage: ${usage}`));
-    }
     if (failed) {
       const errorRaw =
         task?.error ||
@@ -171,7 +172,7 @@ export function renderSubagentRunResult(
     return boxedComponent(collapsedLines, {
       title,
       theme,
-      wrapped: true,
+      wrapped: false,
       onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
     });
   }

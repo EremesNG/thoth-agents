@@ -555,14 +555,14 @@ describe('tool render helpers', () => {
     const plainCollapsed = collapsedLines.map(env.stripAnsi);
     const collapsedPlain = plainCollapsed.join('\n');
 
+    // Collapsed completed result: exactly 4 rows (top border with title, ONE metadata line, hint, bottom border)
+    expect(collapsedLines).toHaveLength(4);
     expect(env.stripAnsi(collapsedLines[0])).toContain(
       '✓ [subagent] sdd-verify · verify · completed',
     );
     expect(collapsedPlain).toContain('subagent: sdd-verify');
-    expect(collapsedPlain).toContain('model: openai-codex/gpt-5.4');
-    expect(collapsedPlain).toContain('effort: medium');
-    expect(collapsedPlain).toContain('status: completed');
-    expect(collapsedPlain).toContain('usage: 11 turns');
+    expect(collapsedPlain).not.toContain('usage:');
+    expect(collapsedPlain).not.toContain('11 turns');
     expect(collapsedPlain).toContain('ctrl+o to expand');
     expect(collapsedPlain).not.toContain(rawResponse);
     expect(collapsedPlain).not.toContain('Subagent response');
@@ -572,15 +572,16 @@ describe('tool render helpers', () => {
       true,
     );
 
-    const unwrappedPlain = env.stripAnsi(
-      runTool
-        .renderResult(dummyResult, { isPartial: false }, theme)
-        .render(120)
-        .join('\n'),
-    );
+    const unwrappedLines = runTool
+      .renderResult(dummyResult, { isPartial: false }, theme)
+      .render(120);
+    const unwrappedPlain = env.stripAnsi(unwrappedLines.join('\n'));
+    expect(unwrappedLines).toHaveLength(4);
     expect(unwrappedPlain).toContain(
-      'subagent: sdd-verify · model: openai-codex/gpt-5.4 · effort: medium · status: completed',
+      'subagent: sdd-verify · model: openai-codex/gpt-5.4 · effort: medium · status: completed · $0.46',
     );
+    expect(unwrappedPlain).not.toContain('usage:');
+    expect(unwrappedPlain).toContain('ctrl+o to expand');
 
     // 2. Expanded on demand (expanded: true)
     const expandedLines = runTool
@@ -642,12 +643,13 @@ describe('tool render helpers', () => {
       },
     };
 
-    // Collapsed failed result
+    // Collapsed failed result: exactly 5 rows (top border with title, ONE metadata line, error line, hint, bottom border)
     const collapsedLines = runTool
       .renderResult(failedResult, { expanded: false, isPartial: false }, theme)
       .render(80);
     const collapsedPlain = collapsedLines.map(env.stripAnsi).join('\n');
 
+    expect(collapsedLines).toHaveLength(5);
     expect(collapsedLines[0]).toContain('✗');
     expect(collapsedLines[0]).toContain(
       '[subagent] thoth-worker · implement unit tests · failed',
@@ -659,6 +661,7 @@ describe('tool render helpers', () => {
       'Execution failed: process exited with code 1',
     );
     expect(collapsedPlain).not.toContain('Stack trace line 1');
+    expect(collapsedPlain).not.toContain('usage:');
     expect(collapsedPlain).toContain('ctrl+o to expand');
   });
 

@@ -26,15 +26,17 @@ const SECTION_RANK = new Map<string, number>([
 ]);
 
 /**
- * The map's entries, stably sorted by canonical rank. A name absent from the rank table
- * inherits its replayed predecessor's rank, so an already-canonical replay remains
- * unchanged and custom sections retain their position.
+ * The map's entries, stably sorted by canonical rank. An unknown name inherits the
+ * highest rank seen before it, preserving an already-canonical replay. A newly added
+ * addendum can land after cwd; it must not pull custom sections re-added after it ahead
+ * of project_context/skills/cwd. Every section value is retained byte-for-byte, and
+ * prompt capture still requires an exact match of the complete rendered prompt.
  */
 function stableRanked(sections: Map<string, string>, ranks: Map<string, number>): Map<string, string> {
-	let predecessorRank = -1;
+	let prefixRank = -1;
 	const ranked = [...sections].map(([name, value]) => {
-		const rank = ranks.get(name) ?? predecessorRank;
-		predecessorRank = rank;
+		const rank = ranks.get(name) ?? prefixRank;
+		prefixRank = Math.max(prefixRank, rank);
 		return { name, value, rank };
 	});
 	ranked.sort((a, b) => a.rank - b.rank);

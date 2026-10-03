@@ -196,11 +196,30 @@ export default function thothAgentsPiExtension(
       }
     },
   });
-  pi.on('before_agent_start', (event) => ({
-    systemPrompt: injectPiRoot(
-      typeof event.systemPrompt === 'string' ? event.systemPrompt : '',
-    ),
-  }));
+  pi.on('before_agent_start', (event) => {
+    if (
+      event.systemPromptOptions &&
+      typeof event.systemPromptOptions === 'object'
+    ) {
+      const promptOptions = event.systemPromptOptions as {
+        appendSystemPrompt?: string;
+      };
+      const rootBlock = renderPiRootInstructions();
+      const append = promptOptions.appendSystemPrompt ?? '';
+      if (!append.includes(rootBlock)) {
+        promptOptions.appendSystemPrompt = [append, rootBlock]
+          .filter(Boolean)
+          .join('\n\n');
+      }
+      return;
+    }
+    // Older Pi versions lack mutable prompt options, so retain forced-prompt injection.
+    return {
+      systemPrompt: injectPiRoot(
+        typeof event.systemPrompt === 'string' ? event.systemPrompt : '',
+      ),
+    };
+  });
   pi.on('session_start', () => {
     try {
       const packageRoot =

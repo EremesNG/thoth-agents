@@ -55,7 +55,86 @@ describe('native Pi extension', () => {
       expect.anything(),
     );
   });
-  test('registers one bounded adaptive-root block per turn without import side effects', async () => {
+  test('appends the adaptive-root block without forcing or replacing a custom prompt', async () => {
+    const handlers = new Map<
+      string,
+      (event: Record<string, unknown>) => unknown
+    >();
+    piExtension({ on: (name, handler) => handlers.set(name, handler) });
+    const systemPromptOptions = {
+      customPrompt: 'user replacement prompt',
+      appendSystemPrompt: '',
+    };
+    const event = {
+      systemPrompt: 'user replacement prompt',
+      systemPromptOptions,
+    };
+
+    expect(await handlers.get('before_agent_start')?.(event)).toBeUndefined();
+    expect(systemPromptOptions.appendSystemPrompt).toContain(PI_ROOT_START);
+    expect(systemPromptOptions.appendSystemPrompt).toContain(PI_ROOT_END);
+    expect(systemPromptOptions.appendSystemPrompt).toContain('<pi-runtime>');
+    expect(systemPromptOptions.customPrompt).toBe('user replacement prompt');
+    expect(systemPromptOptions).not.toHaveProperty('forceSystemPrompt');
+    expect(event.systemPrompt).toBe('user replacement prompt');
+  });
+  test('preserves an existing system-prompt append before the adaptive-root block', async () => {
+    const handlers = new Map<
+      string,
+      (event: Record<string, unknown>) => unknown
+    >();
+    piExtension({ on: (name, handler) => handlers.set(name, handler) });
+    const systemPromptOptions = { appendSystemPrompt: 'existing append\n' };
+
+    expect(
+      await handlers.get('before_agent_start')?.({
+        systemPrompt: 'host prompt',
+        systemPromptOptions,
+      }),
+    ).toBeUndefined();
+    expect(
+      systemPromptOptions.appendSystemPrompt.startsWith(
+        `existing append\n\n\n${PI_ROOT_START}`,
+      ),
+    ).toBe(true);
+    expect(systemPromptOptions.appendSystemPrompt).toContain(PI_ROOT_END);
+    expect(systemPromptOptions.appendSystemPrompt).not.toContain('host prompt');
+  });
+  test('appends the adaptive-root block exactly once across turns in the same session', async () => {
+    const handlers = new Map<
+      string,
+      (event: Record<string, unknown>) => unknown
+    >();
+    piExtension({ on: (name, handler) => handlers.set(name, handler) });
+    const injectRoot = handlers.get('before_agent_start');
+    const systemPromptOptions = { appendSystemPrompt: '' };
+
+    expect(
+      await injectRoot?.({ systemPrompt: 'host prompt', systemPromptOptions }),
+    ).toBeUndefined();
+    const firstAppend = systemPromptOptions.appendSystemPrompt;
+    // Another extension can add instructions after Thoth without losing them next turn.
+    systemPromptOptions.appendSystemPrompt += '\n\nother extension append';
+    const expectedAppend = systemPromptOptions.appendSystemPrompt;
+    expect(
+      await injectRoot?.({
+        systemPrompt: `host prompt\n\n${firstAppend}`,
+        systemPromptOptions,
+      }),
+    ).toBeUndefined();
+    expect(
+      systemPromptOptions.appendSystemPrompt.match(
+        new RegExp(PI_ROOT_START, 'g'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      systemPromptOptions.appendSystemPrompt.match(
+        new RegExp(PI_ROOT_END, 'g'),
+      ),
+    ).toHaveLength(1);
+    expect(systemPromptOptions.appendSystemPrompt).toBe(expectedAppend);
+  });
+  test('falls back to one returned adaptive-root block when older Pi omits prompt options', async () => {
     const handlers = new Map<string, (event: unknown) => unknown>();
     const api = {
       on: vi.fn((name: string, handler: (event: unknown) => unknown) =>

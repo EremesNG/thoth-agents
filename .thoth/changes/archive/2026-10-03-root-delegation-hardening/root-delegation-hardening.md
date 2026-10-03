@@ -211,3 +211,9 @@ Verification seams: focused vitest on the prompt, adapter and sdd tests; `pnpm r
 - Authorization provenance: the user explicitly chose Implement after the first OKAY (AC-1 to AC-4), and again after the reopened OKAY (AC-6, AC-5) on 2026-10-03.
 - Final review: fresh read-only Oracle run subtask_thoth-oracle_1791058686915_70e3df50 returned PASS, after the FAIL from subtask_thoth-oracle_1791057806515_4720585f was repaired.
 - Out of scope: rebuilding and deploying C:\DEV\Proyectos\Webstorm\thoth-agents, which Pi loads globally; that needs a separate decision.
+
+## Post-archive correction (2026-10-03)
+
+- AC-6 is superseded. Forwarding forced-prompt prose in pi-claude-bridge leaked Pi's harness preamble and docs into later turns, and the bridge guard refused at `turn_start`. The earlier smokes stopped at the first tool call, so they missed it. The bridge is reverted to df44f8a with its guard intact.
+- Replacement: thoth injects its pi-root block idempotently through `systemPromptOptions.appendSystemPrompt` (src/pi.ts), which the bridge already forwards safely. This follows gentle-shell@a87192e, extensions/gentle-ai.ts:9889-9894.
+- Verification: fresh Oracle PASS (subtask_thoth-oracle_1791063667139_d9004964). Live claude-bridge/claude-opus-5-5 sessions ran to agent_end (the runner then kills the process tree) across 1, 2 and 4 turns. Each had exactly one root block, no harness text and no refusal, and the discovery turn dispatched thoth-explorer first.

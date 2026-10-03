@@ -3,7 +3,6 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import { createReadToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
 import { createComponent, getResultText, hasImageContent } from './box.ts';
 import { getFileIcon } from './file-icons.ts';
@@ -34,25 +33,8 @@ interface ToolContext {
   };
 }
 
-export function createCustomReadTool(
-  cwdOrConfig: string | ThemeConfig,
-  configOrBase?: ThemeConfig | ReturnType<typeof createReadToolDefinition>,
-  maybeBase?: ReturnType<typeof createReadToolDefinition>,
-) {
-  const config =
-    typeof cwdOrConfig === 'string'
-      ? (configOrBase as ThemeConfig)
-      : cwdOrConfig;
-  const cwd = typeof cwdOrConfig === 'string' ? cwdOrConfig : process.cwd();
-  const baseDef = (maybeBase ??
-    (configOrBase && 'execute' in configOrBase
-      ? configOrBase
-      : createReadToolDefinition(cwd))) as ReturnType<
-    typeof createReadToolDefinition
-  >;
-
+export function createCustomReadTool(cwd: string, config: ThemeConfig) {
   return {
-    ...baseDef,
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: ToolContext) {
       const args = (rawArgs ?? {}) as ReadArgs;

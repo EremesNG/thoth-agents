@@ -3,7 +3,6 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import { createFindToolDefinition } from '@earendil-works/pi-coding-agent';
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import type { ThemeConfig } from '../shared/config.ts';
 import {
@@ -54,25 +53,8 @@ function parseFindOutput(
   };
 }
 
-export function createCustomFindTool(
-  cwdOrConfig: string | ThemeConfig,
-  configOrBase?: ThemeConfig | ReturnType<typeof createFindToolDefinition>,
-  maybeBase?: ReturnType<typeof createFindToolDefinition>,
-) {
-  const config =
-    typeof cwdOrConfig === 'string'
-      ? (configOrBase as ThemeConfig)
-      : cwdOrConfig;
-  const cwd = typeof cwdOrConfig === 'string' ? cwdOrConfig : process.cwd();
-  const baseDef = (maybeBase ??
-    (configOrBase && 'execute' in configOrBase
-      ? configOrBase
-      : createFindToolDefinition(cwd))) as ReturnType<
-    typeof createFindToolDefinition
-  >;
-
+export function createCustomFindTool(cwd: string, config: ThemeConfig) {
   return {
-    ...baseDef,
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: FindContext) {
       const args = (rawArgs ?? {}) as FindArgs;

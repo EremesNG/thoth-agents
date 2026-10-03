@@ -1,6 +1,6 @@
 import type {
   ExtensionAPI,
-  ToolDefinition,
+  ToolRendererResolver,
 } from '@earendil-works/pi-coding-agent';
 import {
   initTheme,
@@ -36,11 +36,11 @@ const partialResult = {
 const cleanups: Array<() => void> = [];
 
 function createSession() {
-  const tools = new Map<string, ToolDefinition>();
+  let resolver: ToolRendererResolver | undefined;
   const handlers = new Map<string, Set<() => void>>();
   const pi = {
-    registerTool(tool: ToolDefinition) {
-      tools.set(tool.name, tool);
+    registerToolRenderer(registeredResolver: ToolRendererResolver) {
+      resolver = registeredResolver;
     },
     on(event: string, handler: () => void) {
       const listeners = handlers.get(event) ?? new Set();
@@ -62,7 +62,7 @@ function createSession() {
         toolCallId,
         { command: 'sleep 10' },
         {},
-        tools.get('bash'),
+        resolver?.('bash', () => undefined),
         { requestRender } as unknown as TUI,
         cwd,
       );
@@ -75,7 +75,7 @@ function createSession() {
         toolCallId,
         { command: 'Start-Sleep -Seconds 10' },
         {},
-        tools.get('powershell'),
+        resolver?.('powershell', () => undefined),
         { requestRender } as unknown as TUI,
         cwd,
       );

@@ -1,20 +1,17 @@
 import type { TextContent } from '@earendil-works/pi-ai';
-import type { AgentToolResult } from '@earendil-works/pi-coding-agent';
+import type {
+  AgentToolResult,
+  ExtensionAPI,
+  ToolRendererResolver,
+} from '@earendil-works/pi-coding-agent';
 import {
   initTheme,
   ToolExecutionComponent,
 } from '@earendil-works/pi-coding-agent';
 import { stripTerminalSequences, type TUI } from '@earendil-works/pi-tui';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ThemeConfig } from '../shared/config.ts';
-import { createCustomBashTool } from './bash.ts';
-import { createCustomEditTool } from './edit.ts';
-import { createCustomFindTool } from './find.ts';
-import { createCustomGrepTool } from './grep.ts';
-import { createCustomLsTool } from './ls.ts';
-import { createCustomPowerShellTool } from './powershell.ts';
-import { createCustomReadTool } from './read.ts';
-import { createCustomWriteTool } from './write.ts';
+import { registerTools } from './index.ts';
 
 const config: ThemeConfig = {
   icons: 'nerd',
@@ -26,23 +23,40 @@ const config: ThemeConfig = {
 
 const cwd = process.cwd();
 
+let resolver: ToolRendererResolver | undefined;
+let dispose: () => void;
+
 beforeAll(() => {
   initTheme('dark', false);
+  dispose = registerTools(
+    {
+      registerToolRenderer(registeredResolver: ToolRendererResolver) {
+        resolver = registeredResolver;
+      },
+    } as unknown as ExtensionAPI,
+    config,
+    cwd,
+  );
 });
 
+afterAll(() => dispose());
+
 function createTestComponent(
-  tool: any,
+  toolName: string,
   toolCallId: string,
   args: Record<string, unknown>,
   options = { showImages: true },
 ) {
+  const renderers = resolver?.(toolName, () => undefined);
+  if (!renderers) throw new Error(`No themed renderers for ${toolName}`);
+  expect(renderers.renderShell).toBe('self');
   const ui = { requestRender: () => {} } as TUI;
   return new ToolExecutionComponent(
-    tool.name,
+    toolName,
     toolCallId,
     args,
     options,
-    tool,
+    renderers,
     ui,
     cwd,
   );
@@ -78,10 +92,7 @@ function assertBorderContinuity(lines: string[]) {
 describe('Frame composition with real SDK ToolExecutionComponent', () => {
   describe('read tool', () => {
     it('composes joined frame for text file collapsed and expanded', () => {
-      const read = createCustomReadTool(cwd, config);
-      expect(read.renderShell).toBe('self');
-
-      const component = createTestComponent(read, 'call-read-1', {
+      const component = createTestComponent('read', 'call-read-1', {
         path: 'src/index.ts',
       });
       const result: AgentToolResult<unknown> = {
@@ -105,8 +116,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for empty file collapsed and expanded', () => {
-      const read = createCustomReadTool(cwd, config);
-      const component = createTestComponent(read, 'call-read-empty', {
+      const component = createTestComponent('read', 'call-read-empty', {
         path: 'empty.txt',
       });
       const result: AgentToolResult<unknown> = {
@@ -126,9 +136,8 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for image file note', () => {
-      const read = createCustomReadTool(cwd, config);
       const component = createTestComponent(
-        read,
+        'read',
         'call-read-img',
         { path: 'logo.png' },
         { showImages: false },
@@ -152,8 +161,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for error case', () => {
-      const read = createCustomReadTool(cwd, config);
-      const component = createTestComponent(read, 'call-read-err', {
+      const component = createTestComponent('read', 'call-read-err', {
         path: 'missing.ts',
       });
       const result: AgentToolResult<unknown> = {
@@ -175,10 +183,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
 
   describe('bash tool', () => {
     it('renders real SDK exit 0 with Exit 0 footer and continuity', () => {
-      const bash = createCustomBashTool(cwd, config);
-      expect(bash.renderShell).toBe('self');
-
-      const component = createTestComponent(bash, 'call-bash-exit0', {
+      const component = createTestComponent('bash', 'call-bash-exit0', {
         command: 'echo "hello world"',
       });
 
@@ -205,8 +210,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('renders real SDK exit 7 with Exit 7 footer, error styling, and continuity', () => {
-      const bash = createCustomBashTool(cwd, config);
-      const component = createTestComponent(bash, 'call-bash-exit7', {
+      const component = createTestComponent('bash', 'call-bash-exit7', {
         command: 'curl invalid://url',
       });
 
@@ -242,8 +246,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     // (tool-execution.js:267), so these results carry only the SDK text, built
     // as appendStatus does (bash.js:256,297-305).
     it('ignores a status-like stdout line when the command exits 0', () => {
-      const bash = createCustomBashTool(cwd, config);
-      const component = createTestComponent(bash, 'call-bash-fake-status-0', {
+      const component = createTestComponent('bash', 'call-bash-fake-status-0', {
         command: 'echo "Command exited with code 77"',
       });
 
@@ -264,8 +267,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('reads only the trailing SDK status when stdout also mentions one', () => {
-      const bash = createCustomBashTool(cwd, config);
-      const component = createTestComponent(bash, 'call-bash-fake-status-7', {
+      const component = createTestComponent('bash', 'call-bash-fake-status-7', {
         command: 'echo "Command exited with code 77"; exit 7',
       });
 
@@ -291,8 +293,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('renders real SDK partial result with running footer (no Exit) and continuity', () => {
-      const bash = createCustomBashTool(cwd, config);
-      const component = createTestComponent(bash, 'call-bash-partial', {
+      const component = createTestComponent('bash', 'call-bash-partial', {
         command: 'npm run test:watch',
       });
 
@@ -313,8 +314,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('freezes elapsed time at completion across expand and re-renders', async () => {
-      const bash = createCustomBashTool(cwd, config);
-      const component = createTestComponent(bash, 'call-bash-freeze', {
+      const component = createTestComponent('bash', 'call-bash-freeze', {
         command: 'sleep 0.05',
       });
 
@@ -368,8 +368,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for bash error case', () => {
-      const bash = createCustomBashTool(cwd, config);
-      const component = createTestComponent(bash, 'call-bash-err', {
+      const component = createTestComponent('bash', 'call-bash-err', {
         command: 'invalid_cmd',
       });
 
@@ -394,10 +393,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
 
   describe('powershell tool', () => {
     it('renders real SDK exit 0 with Exit 0 footer and continuity', () => {
-      const ps = createCustomPowerShellTool(cwd, config);
-      expect(ps.renderShell).toBe('self');
-
-      const component = createTestComponent(ps, 'call-ps-exit0', {
+      const component = createTestComponent('powershell', 'call-ps-exit0', {
         command: 'Write-Output "hello world"',
       });
 
@@ -423,8 +419,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('renders real SDK exit 7 with Exit 7 footer, error styling, and continuity', () => {
-      const ps = createCustomPowerShellTool(cwd, config);
-      const component = createTestComponent(ps, 'call-ps-exit7', {
+      const component = createTestComponent('powershell', 'call-ps-exit7', {
         command: 'Invoke-WebRequest invalid://url',
       });
 
@@ -457,10 +452,13 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('ignores a status-like stdout line when the command exits 0', () => {
-      const ps = createCustomPowerShellTool(cwd, config);
-      const component = createTestComponent(ps, 'call-ps-fake-status-0', {
-        command: 'Write-Output "Command exited with code 77"',
-      });
+      const component = createTestComponent(
+        'powershell',
+        'call-ps-fake-status-0',
+        {
+          command: 'Write-Output "Command exited with code 77"',
+        },
+      );
 
       component.updateResult(
         {
@@ -479,10 +477,13 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('reads only the trailing SDK status when stdout also mentions one', () => {
-      const ps = createCustomPowerShellTool(cwd, config);
-      const component = createTestComponent(ps, 'call-ps-fake-status-7', {
-        command: 'Write-Output "Command exited with code 77"; exit 7',
-      });
+      const component = createTestComponent(
+        'powershell',
+        'call-ps-fake-status-7',
+        {
+          command: 'Write-Output "Command exited with code 77"; exit 7',
+        },
+      );
 
       component.updateResult(
         {
@@ -506,8 +507,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('renders real SDK partial result with running footer (no Exit) and continuity', () => {
-      const ps = createCustomPowerShellTool(cwd, config);
-      const component = createTestComponent(ps, 'call-ps-partial', {
+      const component = createTestComponent('powershell', 'call-ps-partial', {
         command: 'Start-Sleep -Seconds 10',
       });
 
@@ -527,8 +527,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('strips ANSI SGR sequences from powershell output while maintaining border continuity', () => {
-      const ps = createCustomPowerShellTool(cwd, config);
-      const component = createTestComponent(ps, 'call-ps-sgr', {
+      const component = createTestComponent('powershell', 'call-ps-sgr', {
         command: 'Get-Process',
       });
 
@@ -556,10 +555,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
 
   describe('ls tool', () => {
     it('composes joined frame for normal directory entries', () => {
-      const ls = createCustomLsTool(cwd, config);
-      expect(ls.renderShell).toBe('self');
-
-      const component = createTestComponent(ls, 'call-ls-1', {
+      const component = createTestComponent('ls', 'call-ls-1', {
         path: 'src',
       });
       const result: AgentToolResult<unknown> = {
@@ -579,8 +575,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for empty directory sentinel', () => {
-      const ls = createCustomLsTool(cwd, config);
-      const component = createTestComponent(ls, 'call-ls-empty', {
+      const component = createTestComponent('ls', 'call-ls-empty', {
         path: 'empty-dir',
       });
       const result: AgentToolResult<unknown> = {
@@ -595,8 +590,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for ls error case', () => {
-      const ls = createCustomLsTool(cwd, config);
-      const component = createTestComponent(ls, 'call-ls-err', {
+      const component = createTestComponent('ls', 'call-ls-err', {
         path: 'non-existent',
       });
       const result: AgentToolResult<unknown> = {
@@ -618,10 +612,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
 
   describe('find tool', () => {
     it('composes joined frame for normal search matches', () => {
-      const find = createCustomFindTool(cwd, config);
-      expect(find.renderShell).toBe('self');
-
-      const component = createTestComponent(find, 'call-find-1', {
+      const component = createTestComponent('find', 'call-find-1', {
         pattern: '*.ts',
       });
       const result: AgentToolResult<unknown> = {
@@ -641,8 +632,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for no matches found sentinel', () => {
-      const find = createCustomFindTool(cwd, config);
-      const component = createTestComponent(find, 'call-find-empty', {
+      const component = createTestComponent('find', 'call-find-empty', {
         pattern: '*.xyz',
       });
       const result: AgentToolResult<unknown> = {
@@ -657,8 +647,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for find error case', () => {
-      const find = createCustomFindTool(cwd, config);
-      const component = createTestComponent(find, 'call-find-err', {
+      const component = createTestComponent('find', 'call-find-err', {
         pattern: '*.ts',
       });
       const result: AgentToolResult<unknown> = {
@@ -680,10 +669,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
 
   describe('grep tool', () => {
     it('composes joined frame for grouped results', () => {
-      const grep = createCustomGrepTool(cwd, config);
-      expect(grep.renderShell).toBe('self');
-
-      const component = createTestComponent(grep, 'call-grep-1', {
+      const component = createTestComponent('grep', 'call-grep-1', {
         pattern: 'renderShell',
       });
       const result: AgentToolResult<unknown> = {
@@ -703,8 +689,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes ONE single joined frame for raw fallback (no second top border)', () => {
-      const grep = createCustomGrepTool(cwd, config);
-      const component = createTestComponent(grep, 'call-grep-raw', {
+      const component = createTestComponent('grep', 'call-grep-raw', {
         pattern: 'something',
       });
       // Content that does not follow normal groupable path:line format triggers raw fallback
@@ -727,8 +712,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for no matches found sentinel', () => {
-      const grep = createCustomGrepTool(cwd, config);
-      const component = createTestComponent(grep, 'call-grep-empty', {
+      const component = createTestComponent('grep', 'call-grep-empty', {
         pattern: 'nonexistent_pattern_12345',
       });
       const result: AgentToolResult<unknown> = {
@@ -743,8 +727,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for grep error case', () => {
-      const grep = createCustomGrepTool(cwd, config);
-      const component = createTestComponent(grep, 'call-grep-err', {
+      const component = createTestComponent('grep', 'call-grep-err', {
         pattern: '[invalid regex',
       });
       const result: AgentToolResult<unknown> = {
@@ -766,10 +749,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
 
   describe('edit tool', () => {
     it('composes joined frame for normal diff collapsed and expanded', () => {
-      const edit = createCustomEditTool(cwd, config);
-      expect(edit.renderShell).toBe('self');
-
-      const component = createTestComponent(edit, 'call-edit-1', {
+      const component = createTestComponent('edit', 'call-edit-1', {
         path: 'src/index.ts',
       });
       const diff = [
@@ -800,8 +780,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for edit error case', () => {
-      const edit = createCustomEditTool(cwd, config);
-      const component = createTestComponent(edit, 'call-edit-err', {
+      const component = createTestComponent('edit', 'call-edit-err', {
         path: 'src/index.ts',
       });
       const result: AgentToolResult<unknown> = {
@@ -823,10 +802,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
 
   describe('write tool', () => {
     it('composes joined frame for normal write collapsed and expanded', () => {
-      const write = createCustomWriteTool(cwd, config);
-      expect(write.renderShell).toBe('self');
-
-      const component = createTestComponent(write, 'call-write-1', {
+      const component = createTestComponent('write', 'call-write-1', {
         path: 'src/created.ts',
         content: 'const a = 1;\nconst b = 2;\nconst c = 3;',
       });
@@ -847,8 +823,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
     });
 
     it('composes joined frame for write error case', () => {
-      const write = createCustomWriteTool(cwd, config);
-      const component = createTestComponent(write, 'call-write-err', {
+      const component = createTestComponent('write', 'call-write-err', {
         path: 'readonly.txt',
       });
       const result: AgentToolResult<unknown> = {

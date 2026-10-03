@@ -3,7 +3,6 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import { createEditToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
 import { createComponent, getResultText } from './box.ts';
 import { getFileIcon, getToolIcon } from './file-icons.ts';
@@ -72,25 +71,8 @@ function colorDiffLine(line: string, theme: Theme): string {
   return theme.fg('toolDiffContext', line);
 }
 
-export function createCustomEditTool(
-  cwdOrConfig: string | ThemeConfig,
-  configOrBase?: ThemeConfig | ReturnType<typeof createEditToolDefinition>,
-  maybeBase?: ReturnType<typeof createEditToolDefinition>,
-) {
-  const config =
-    typeof cwdOrConfig === 'string'
-      ? (configOrBase as ThemeConfig)
-      : cwdOrConfig;
-  const cwd = typeof cwdOrConfig === 'string' ? cwdOrConfig : process.cwd();
-  const baseDef = (maybeBase ??
-    (configOrBase && 'execute' in configOrBase
-      ? configOrBase
-      : createEditToolDefinition(cwd))) as ReturnType<
-    typeof createEditToolDefinition
-  >;
-
+export function createCustomEditTool(cwd: string, config: ThemeConfig) {
   return {
-    ...baseDef,
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: EditContext) {
       const args = (rawArgs ?? {}) as EditArgs;

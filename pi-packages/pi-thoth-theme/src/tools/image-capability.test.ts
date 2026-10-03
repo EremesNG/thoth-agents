@@ -1,4 +1,9 @@
-import type { AgentToolResult, Theme } from '@earendil-works/pi-coding-agent';
+import type {
+  AgentToolResult,
+  ExtensionAPI,
+  Theme,
+  ToolRendererResolver,
+} from '@earendil-works/pi-coding-agent';
 import {
   initTheme,
   ToolExecutionComponent,
@@ -12,9 +17,10 @@ import {
   type TerminalCapabilities,
   type TUI,
 } from '@earendil-works/pi-tui';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { ThemeConfig } from '../shared/config.ts';
 import { applyImageCapability } from './image-capability.ts';
+import { registerTools } from './index.ts';
 import { createCustomReadTool } from './read.ts';
 
 // Valid 1×1 red-pixel fixtures; the JPEG exercises Pi's real PNG conversion.
@@ -174,9 +180,20 @@ describe.each(imageFixtures)('self-shell read of $mimeType', ({
   });
 
   describe('Pi native Kitty image pass', () => {
+    let resolver: ToolRendererResolver | undefined;
+    let dispose: () => void;
     beforeAll(() => {
       initTheme('dark', false);
+      dispose = registerTools(
+        {
+          registerToolRenderer(registeredResolver: ToolRendererResolver) {
+            resolver = registeredResolver;
+          },
+        } as unknown as ExtensionAPI,
+        config,
+      );
     });
+    afterAll(() => dispose());
 
     it('adds and renders an Image child after the self-shell text, honoring showImages', async () => {
       setCapabilities({ images: null, trueColor: true, hyperlinks: true });
@@ -184,7 +201,8 @@ describe.each(imageFixtures)('self-shell read of $mimeType', ({
       expect(getCapabilities().images).toBe('kitty');
 
       const cwd = process.cwd();
-      const read = createCustomReadTool(cwd, config);
+      const read = resolver?.('read', () => undefined);
+      if (!read) throw new Error('Themed read renderers were not registered');
       const result = imageResult(mimeType, data);
       const content = result.content;
       const originalContent = structuredClone(content);
@@ -195,7 +213,7 @@ describe.each(imageFixtures)('self-shell read of $mimeType', ({
       });
       const ui = { requestRender } as TUI;
       const component = new ToolExecutionComponent(
-        read.name,
+        'read',
         'read-image',
         { path: 'image' },
         { showImages: true },

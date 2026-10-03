@@ -3,7 +3,6 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import { createLsToolDefinition } from '@earendil-works/pi-coding-agent';
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import type { ThemeConfig } from '../shared/config.ts';
 import {
@@ -56,25 +55,8 @@ function parseLsOutput(
   };
 }
 
-export function createCustomLsTool(
-  cwdOrConfig: string | ThemeConfig,
-  configOrBase?: ThemeConfig | ReturnType<typeof createLsToolDefinition>,
-  maybeBase?: ReturnType<typeof createLsToolDefinition>,
-) {
-  const config =
-    typeof cwdOrConfig === 'string'
-      ? (configOrBase as ThemeConfig)
-      : cwdOrConfig;
-  const cwd = typeof cwdOrConfig === 'string' ? cwdOrConfig : process.cwd();
-  const baseDef = (maybeBase ??
-    (configOrBase && 'execute' in configOrBase
-      ? configOrBase
-      : createLsToolDefinition(cwd))) as ReturnType<
-    typeof createLsToolDefinition
-  >;
-
+export function createCustomLsTool(cwd: string, config: ThemeConfig) {
   return {
-    ...baseDef,
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: LsContext) {
       const args = (rawArgs ?? {}) as LsArgs;

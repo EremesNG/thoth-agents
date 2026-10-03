@@ -59,7 +59,8 @@ function loadTheme(
     event: string;
     handler: LifecycleHandler;
   }> = [];
-  const registerTool = vi.fn((_tool: { name: string }) => {});
+  const registerTool = vi.fn();
+  const registerToolRenderer = vi.fn<ExtensionAPI['registerToolRenderer']>();
   const registerMarkdownTransformer = vi.fn();
   const on = vi.fn((event: string, handler: LifecycleHandler) => {
     subscriptions.push({ event, handler });
@@ -70,6 +71,7 @@ function loadTheme(
   });
   const pi = {
     registerTool,
+    registerToolRenderer,
     registerMarkdownTransformer,
     on,
     get getSettings() {
@@ -93,6 +95,7 @@ function loadTheme(
 
   return {
     registerTool,
+    registerToolRenderer,
     registerMarkdownTransformer,
     on,
     ui,
@@ -120,18 +123,10 @@ describe('Thoth extension composition', () => {
   it('installs default surfaces without Pi settings or the editor slot', async () => {
     const session = loadTheme();
 
-    expect(
-      session.registerTool.mock.calls.map(([tool]) => tool.name).sort(),
-    ).toEqual([
-      'bash',
-      'edit',
-      'find',
-      'grep',
-      'ls',
-      'powershell',
-      'read',
-      'write',
-    ]);
+    expect(session.registerTool).not.toHaveBeenCalled();
+    expect(session.registerToolRenderer).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Function),
+    );
     expect(session.registerMarkdownTransformer).not.toHaveBeenCalled();
     expect(session.on).toHaveBeenCalledWith(
       'session_start',
@@ -158,7 +153,7 @@ describe('Thoth extension composition', () => {
   it.each([
     {
       disabled: 'statusLine',
-      toolCount: 8,
+      resolverCount: 1,
       footerCount: 0,
       headerCount: 1,
       protocol: 'kitty',
@@ -166,7 +161,7 @@ describe('Thoth extension composition', () => {
     },
     {
       disabled: 'tools',
-      toolCount: 0,
+      resolverCount: 0,
       footerCount: 1,
       headerCount: 1,
       protocol: 'kitty',
@@ -174,7 +169,7 @@ describe('Thoth extension composition', () => {
     },
     {
       disabled: 'welcome',
-      toolCount: 8,
+      resolverCount: 1,
       footerCount: 1,
       headerCount: 0,
       protocol: 'kitty',
@@ -182,7 +177,7 @@ describe('Thoth extension composition', () => {
     },
     {
       disabled: 'images',
-      toolCount: 8,
+      resolverCount: 1,
       footerCount: 1,
       headerCount: 1,
       protocol: null,
@@ -190,7 +185,7 @@ describe('Thoth extension composition', () => {
     },
   ] as const)('leaves native $disabled behavior while retaining other defaults', async ({
     disabled,
-    toolCount,
+    resolverCount,
     footerCount,
     headerCount,
     protocol,
@@ -201,7 +196,8 @@ describe('Thoth extension composition', () => {
     await session.start();
     await session.startAgent();
 
-    expect(session.registerTool).toHaveBeenCalledTimes(toolCount);
+    expect(session.registerTool).not.toHaveBeenCalled();
+    expect(session.registerToolRenderer).toHaveBeenCalledTimes(resolverCount);
     expect(session.registerMarkdownTransformer).toHaveBeenCalledTimes(
       transformerCount,
     );
@@ -223,6 +219,7 @@ describe('Thoth extension composition', () => {
     await session.startAgent();
 
     expect(session.registerTool).not.toHaveBeenCalled();
+    expect(session.registerToolRenderer).not.toHaveBeenCalled();
     expect(session.registerMarkdownTransformer).not.toHaveBeenCalled();
     expect(session.ui.setFooter).not.toHaveBeenCalled();
     expect(session.ui.setHeader).not.toHaveBeenCalled();

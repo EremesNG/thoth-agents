@@ -1,9 +1,12 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   ExtensionAPI,
   ToolRendererResolver,
 } from '@earendil-works/pi-coding-agent';
 import { Text } from '@earendil-works/pi-tui';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { ThemeConfig } from '../shared/config.ts';
 import { registerTools } from './index.ts';
 
@@ -120,5 +123,106 @@ describe('registerTools resolver', () => {
     expect(registerTool).not.toHaveBeenCalled();
     expect(registerToolRenderer).not.toHaveBeenCalled();
     expect(on).not.toHaveBeenCalled();
+  });
+
+  describe('ownership of downstream renderers', () => {
+    const downstream = { renderCall: () => new Text('custom', 0, 0) };
+
+    function loadWith(
+      tools: Array<{ name: string; sourceInfo?: { baseDir?: string } }>,
+    ) {
+      const registerToolRenderer =
+        vi.fn<(resolver: ToolRendererResolver) => void>();
+      const getAllTools = vi.fn(() => tools);
+      const pi = {
+        registerToolRenderer,
+        getAllTools,
+      } as unknown as ExtensionAPI;
+      const dispose = registerTools(pi, config);
+      const resolver = registerToolRenderer.mock.calls[0]?.[0];
+      if (!resolver) throw new Error('no resolver');
+      return { resolver, getAllTools, dispose, tools };
+    }
+
+    const tmp = mkdtempSync(join(tmpdir(), 'thoth-own-'));
+    const write = (dir: string, name: string) => {
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name }));
+      return dir;
+    };
+    const repoRoot = write(join(tmp, 'fork'), 'thoth-agents');
+    const npmRoot = write(join(tmp, 'npm'), '@thoth-agents/pi-thoth-theme');
+    const foreign = write(join(tmp, 'mcp'), 'pi-mcp-adapter');
+    afterAll(() => rmSync(tmp, { recursive: true, force: true }));
+
+    it('respects owned tools at the package root, nested src/ and npm root', () => {
+      const { resolver, dispose } = loadWith([
+        { name: 'a', sourceInfo: { baseDir: repoRoot } },
+        { name: 'b', sourceInfo: { baseDir: join(repoRoot, 'src') } },
+        { name: 'c', sourceInfo: { baseDir: npmRoot } },
+      ]);
+      for (const name of ['a', 'b', 'c']) {
+        expect(resolver(name, () => downstream)).toBe(downstream);
+      }
+      dispose();
+    });
+
+    it('frames third-party tools that ship renderers', () => {
+      const { resolver, dispose } = loadWith([
+        { name: 'g', sourceInfo: { baseDir: join(foreign, 'src') } },
+      ]);
+      expect(resolver('g', () => downstream)).not.toBe(downstream);
+      dispose();
+    });
+
+    it('frames tools whose nearest manifest is malformed', () => {
+      writeFileSync(join(foreign, 'src', 'package.json'), '{bad');
+      const { resolver, dispose } = loadWith([
+        { name: 'm', sourceInfo: { baseDir: join(foreign, 'src') } },
+      ]);
+      expect(resolver('m', () => downstream)).not.toBe(downstream);
+      dispose();
+    });
+
+    it.each([
+      { label: 'no sourceInfo', info: undefined },
+      { label: 'no baseDir', info: {} },
+      {
+        label: 'baseDir without manifest',
+        info: { baseDir: '/nonexistent/zzz' },
+      },
+    ])('frames a registered tool with $label', ({ info }) => {
+      const { resolver, dispose } = loadWith([{ name: 't', sourceInfo: info }]);
+      const r = resolver('t', () => downstream);
+      expect(r).not.toBe(downstream);
+      expect(r?.renderShell).toBe('self');
+      dispose();
+    });
+
+    it('keeps respecting tools absent from the registry', () => {
+      const { resolver, dispose } = loadWith([]);
+      expect(resolver('ghost', () => downstream)).toBe(downstream);
+      dispose();
+    });
+
+    it('re-reads ownership on same-name replacement', () => {
+      const { resolver, tools, dispose } = loadWith([
+        { name: 't', sourceInfo: { baseDir: repoRoot } },
+      ]);
+      expect(resolver('t', () => downstream)).toBe(downstream);
+      tools[0] = { name: 't', sourceInfo: { baseDir: '/nonexistent/zzz' } };
+      expect(resolver('t', () => downstream)).not.toBe(downstream);
+      dispose();
+    });
+
+    it('never consults the registry for built-in names, incl. shadows', () => {
+      const { resolver, getAllTools, dispose } = loadWith([
+        { name: 'bash', sourceInfo: { baseDir: '/nonexistent/zzz' } },
+      ]);
+      const r = resolver('bash', () => downstream);
+      expect(r).not.toBe(downstream);
+      expect(getAllTools).not.toHaveBeenCalled();
+      dispose();
+    });
   });
 });

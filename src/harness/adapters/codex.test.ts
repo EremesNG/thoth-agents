@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import {
+  getAgentPackContract,
+  getImplementationOwnershipInstructions,
+} from '../core/agent-pack';
 import type { HarnessArtifact } from '../types';
 import {
   CODEX_CAPABILITIES,
@@ -27,6 +31,58 @@ function agentContent(name: string): string {
 }
 
 describe('Codex adapter v0.3', () => {
+  test('renders canonical default-first ownership with discovery navigation and a pre-tool check', () => {
+    const root = renderCodexRootInstructions();
+    const ownership =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership;
+    const block =
+      root.match(
+        /<implementation-ownership>\n([\s\S]*?)\n<\/implementation-ownership>/,
+      )?.[1] ?? '';
+    expect(block).toBe(
+      getImplementationOwnershipInstructions(ownership)
+        .map((instruction) => `- ${instruction}`)
+        .join('\n'),
+    );
+    const defaultIndex = block.indexOf('Specialists execute by default');
+    expect(defaultIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      block.indexOf(
+        'Root retains known low-risk mechanical work, including reviewed commits',
+      ),
+    ).toBeGreaterThan(defaultIndex);
+    expect
+      .soft(block)
+      .toMatch(
+        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'no preliminary discovery is needed to prepare that assignment',
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+      );
+    expect
+      .soft(block)
+      .toMatch(
+        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+      );
+    expect
+      .soft(block)
+      .toContain('This self-check is guidance, not runtime enforcement.');
+    for (const phrase of [
+      'If delegating',
+      'Boundaries alone do not require delegation',
+      'net gain',
+      'Otherwise specialists',
+    ]) {
+      expect.soft(root).not.toContain(phrase);
+    }
+  });
   test('reports Codex capabilities and instruction-level boundaries', () => {
     expect(codexAdapter.id).toBe('codex');
     expect(CODEX_CAPABILITIES).toMatchObject({
@@ -53,16 +109,17 @@ describe('Codex adapter v0.3', () => {
     ]);
   });
 
-  test('renders a compact adaptive Codex root', () => {
+  test('renders a compact Codex root coordinator', () => {
     const root = renderCodexRootInstructions();
 
-    expect(root.length).toBeLessThanOrEqual(13_500);
-    expect(root).toContain('adaptive root');
+    // Includes canonical discovery/navigation guidance and the Codex dialect.
+    expect(root.length).toBeLessThanOrEqual(15_000);
+    expect(root).toContain('root coordinator');
     expect(root).toContain(
       'Root retains known low-risk mechanical work, including reviewed commits',
     );
     expect(root).toContain(
-      'specialists execute by default for substantive work',
+      'Specialists execute by default for discovery of unlocated source, external research and substantive implementation',
     );
     expect(root).not.toContain('delegation creates net gain');
     expect(root).toContain('<implementation-ownership>');

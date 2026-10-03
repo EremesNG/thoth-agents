@@ -2470,13 +2470,16 @@ export default function (pi: ExtensionAPI) {
 	// Code's preset carries its own tool and permission guidance that the bridge
 	// still depends on, so both flags are forwarded as an append.
 	//
-	// The options (custom/append/contextFiles/skills) are pi config, stable across a
-	// turn; only the auto-generated tool list in the rendered prompt varies. Stash them
-	// at before_agent_start so the agent_start recording below can reuse them.
+	// Keep Pi's mutable options reference: the runner sets forceSystemPrompt on it
+	// when a later before_agent_start handler returns a prompt. That provenance
+	// distinguishes extension prose from an ordinary tool-list re-render.
 	type RecordOptions = Parameters<typeof recordSystemPrompt>[2];
 	let lastSystemPromptOptions: RecordOptions | undefined;
+	let lastUnforcedSystemPrompt: string | undefined;
+	let readUnforcedSystemPrompt: (() => string) | undefined;
 	function recordSystemPrompt(source: string, systemPrompt: string | undefined, options: {
 		customPrompt?: string;
+		forceSystemPrompt?: string;
 		appendSystemPrompt?: string;
 		contextFiles?: { path: string; content: string }[];
 		skills?: Parameters<typeof promptCaptures.record>[1]["skills"];
@@ -2484,16 +2487,40 @@ export default function (pi: ExtensionAPI) {
 	} | undefined) {
 		if (!systemPrompt) return;
 		const hasRead = !options?.selectedTools || options.selectedTools.includes("read");
-		promptCaptures.record(systemPrompt, {
+		const input = {
 			custom: options?.customPrompt,
 			append: options?.appendSystemPrompt,
 			contextFiles: options?.contextFiles ?? [],
 			skills: hasRead ? options?.skills ?? [] : [],
-		}, source);
+		};
+		if (options?.forceSystemPrompt !== undefined && readUnforcedSystemPrompt) {
+			// Prefer the snapshot if the force still embeds it: later tool widening
+			// can change the options without changing an already-forced prompt. If a
+			// later handler wrapped a fresh render, read that updated baseline instead.
+			const assembled = lastUnforcedSystemPrompt && systemPrompt.includes(lastUnforcedSystemPrompt)
+				? lastUnforcedSystemPrompt : readUnforcedSystemPrompt();
+			promptCaptures.recordForced(systemPrompt, assembled, input, source);
+		} else {
+			promptCaptures.record(systemPrompt, input, source);
+		}
 	}
 	pi.on("before_agent_start", (event) => {
-		lastSystemPromptOptions = event.systemPromptOptions;
-		recordSystemPrompt("before_agent_start", event.systemPrompt, event.systemPromptOptions);
+		const options = event.systemPromptOptions;
+		lastSystemPromptOptions = options;
+		// An earlier handler may already have forced the prompt. Pi renders this
+		// getter from the mutable options, so synchronously suppress only the force
+		// to capture the assembled baseline, then restore it before returning control.
+		readUnforcedSystemPrompt = () => {
+			const forced = options.forceSystemPrompt;
+			try {
+				if (forced !== undefined) options.forceSystemPrompt = undefined;
+				return event.systemPrompt;
+			} finally {
+				if (forced !== undefined) options.forceSystemPrompt = forced;
+			}
+		};
+		lastUnforcedSystemPrompt = readUnforcedSystemPrompt();
+		recordSystemPrompt("before_agent_start", event.systemPrompt, options);
 	});
 	// The prompt the provider actually queries with is the fully-widened one: MCP tool
 	// descriptions merge into the system prompt only after their servers connect, which

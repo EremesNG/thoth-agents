@@ -393,7 +393,7 @@ export const SDD_PHASE_PROTOCOLS = [
       'Focused checks',
     ],
     instructions: [
-      'Use one writer per mutable surface and choose an owner from task shape and net gain.',
+      'Use one writer per mutable surface and choose an owner from task shape.',
       'Work only from accepted inputs and named dependencies within the assigned outcome and interface boundaries.',
       'Return bounded progress for root acceptance before dependent work starts.',
       'Use test-first (TDD); observe red before green for behavior changes, then verify call sites, shared contracts, and edge cases.',

@@ -21,11 +21,12 @@ Every change begins with three proportional reasoning steps, in order:
    decision cannot safely be inferred. An unresolved material decision blocks
    classification and implementation.
 
-The root orchestrator performs these steps at a scale appropriate to the change.
-Do not force a saved document, specialist-agent dispatch, or interview. The
-understanding sequence itself is mandatory; its artifacts and staffing are not.
-Only after all three steps are complete does the orchestrator classify using
-scope, uncertainty, and risk. Scope or risk that increases during implementation
+The root orchestrator owns completing these steps at a scale appropriate to the
+change; discovery ownership follows the root delegation policy. The sequence
+does not itself force a saved document, specialist-agent dispatch, or interview;
+the root delegation policy determines staffing. The understanding sequence is
+mandatory. Only after all three steps are complete does the orchestrator classify
+using scope, uncertainty, and risk. Scope or risk that increases during implementation
 reopens understanding and classification before further work. Never silently
 resolve material product, architecture, security, or destructive choices.
 
@@ -51,9 +52,10 @@ Root owns user intent, scope, material decisions, classification, and final
 acceptance. Root also owns completing understanding, while the specific discovery
 ownership policy determines who gathers evidence; that policy takes precedence
 over generic permission for root to inspect directly. Choose an implementation
-owner from the actual task shape and net gain after classification; no specialist
-is mandatory. Root retains known low-risk mechanical work, including reviewed
-commits, without rediscovery.
+owner from the actual task shape after classification, following
+specialist-default ownership and bounded direct-work exceptions.
+Root retains known low-risk mechanical work, including reviewed commits, without
+rediscovery.
 Explicit direct-work or no-delegation instructions win. Preserve operator-selected
 model and effort, including max. Keep one writer per mutable surface.
 

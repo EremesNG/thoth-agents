@@ -1,8 +1,64 @@
 import { describe, expect, test } from 'vitest';
 import type { PluginConfig } from '../../config';
+import {
+  getAgentPackContract,
+  getImplementationOwnershipInstructions,
+} from '../core/agent-pack';
 import { PI_CAPABILITIES, piAdapter, renderPiRootInstructions } from './pi';
 
 describe('Pi adapter', () => {
+  test('renders canonical default-first ownership with discovery navigation and a pre-tool check', () => {
+    const root = renderPiRootInstructions();
+    const ownership =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership;
+    const block =
+      root.match(
+        /<implementation-ownership>\n([\s\S]*?)\n<\/implementation-ownership>/,
+      )?.[1] ?? '';
+    expect(block).toBe(
+      getImplementationOwnershipInstructions(ownership)
+        .map((instruction) => `- ${instruction}`)
+        .join('\n'),
+    );
+    const defaultIndex = block.indexOf('Specialists execute by default');
+    expect(defaultIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      block.indexOf(
+        'Root retains known low-risk mechanical work, including reviewed commits',
+      ),
+    ).toBeGreaterThan(defaultIndex);
+    expect
+      .soft(block)
+      .toMatch(
+        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'no preliminary discovery is needed to prepare that assignment',
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+      );
+    expect
+      .soft(block)
+      .toMatch(
+        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+      );
+    expect
+      .soft(block)
+      .toContain('This self-check is guidance, not runtime enforcement.');
+    for (const phrase of [
+      'If delegating',
+      'Boundaries alone do not require delegation',
+      'net gain',
+      'Otherwise specialists',
+    ]) {
+      expect.soft(root).not.toContain(phrase);
+    }
+  });
   test.each([
     ['provider/custom-model', 'provider/custom-model'],
     [

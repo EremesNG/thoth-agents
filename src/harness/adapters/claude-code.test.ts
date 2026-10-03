@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import {
+  getAgentPackContract,
+  getImplementationOwnershipInstructions,
+} from '../core/agent-pack';
 import type { HarnessArtifact } from '../types';
 import {
   CLAUDE_CODE_CAPABILITIES,
@@ -23,6 +27,58 @@ function artifact(
 }
 
 describe('Claude Code adapter v0.3', () => {
+  test('renders canonical default-first ownership with discovery navigation and a pre-tool check', () => {
+    const root = renderClaudeCodeRootInstructions();
+    const ownership =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership;
+    const block =
+      root.match(
+        /<implementation-ownership>\n([\s\S]*?)\n<\/implementation-ownership>/,
+      )?.[1] ?? '';
+    expect(block).toBe(
+      getImplementationOwnershipInstructions(ownership)
+        .map((instruction) => `- ${instruction}`)
+        .join('\n'),
+    );
+    const defaultIndex = block.indexOf('Specialists execute by default');
+    expect(defaultIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      block.indexOf(
+        'Root retains known low-risk mechanical work, including reviewed commits',
+      ),
+    ).toBeGreaterThan(defaultIndex);
+    expect
+      .soft(block)
+      .toMatch(
+        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'no preliminary discovery is needed to prepare that assignment',
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+      );
+    expect
+      .soft(block)
+      .toMatch(
+        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+      );
+    expect
+      .soft(block)
+      .toContain('This self-check is guidance, not runtime enforcement.');
+    for (const phrase of [
+      'If delegating',
+      'Boundaries alone do not require delegation',
+      'net gain',
+      'Otherwise specialists',
+    ]) {
+      expect.soft(root).not.toContain(phrase);
+    }
+  });
   test('reports enforcement gaps truthfully', () => {
     expect(claudeCodeAdapter.id).toBe('claude');
     expect(CLAUDE_CODE_CAPABILITIES).toMatchObject({
@@ -112,11 +168,12 @@ describe('Claude Code adapter v0.3', () => {
     }
   });
 
-  test('renders adaptive native root instructions with namespaced roles', () => {
+  test('renders native root coordinator instructions with namespaced roles', () => {
     const instructions = renderClaudeCodeRootInstructions();
 
-    expect(instructions.length).toBeLessThanOrEqual(13_500);
-    expect(instructions).toContain('adaptive root');
+    // Includes canonical discovery/navigation guidance and the Claude dialect.
+    expect(instructions.length).toBeLessThanOrEqual(15_000);
+    expect(instructions).toContain('root coordinator');
     expect(instructions).toContain('<implementation-ownership>');
     expect(instructions).toMatch(
       /specialists execute by default.*root retains/is,
@@ -125,7 +182,7 @@ describe('Claude Code adapter v0.3', () => {
       'Root retains known low-risk mechanical work, including reviewed commits',
     );
     expect(instructions).toContain(
-      'specialists execute by default for substantive work',
+      'Specialists execute by default for discovery of unlocated source, external research and substantive implementation',
     );
     expect(instructions).not.toContain('delegation creates net gain');
     expect(instructions).not.toMatch(/Direct micro-action/i);

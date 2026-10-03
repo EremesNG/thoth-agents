@@ -146,16 +146,16 @@ describe('OpenCode v0.3 defaults', () => {
 });
 
 describe('OpenCode v0.3 prompt boundaries', () => {
-  test('keeps the root compact and adaptive', () => {
+  test('keeps the root compact and coordinator-first', () => {
     const prompt = getAgent('orchestrator')?.config.prompt ?? '';
 
     expect(prompt.length).toBeLessThanOrEqual(13_500);
-    expect(prompt).toContain('adaptive root');
+    expect(prompt).toContain('root coordinator');
     expect(prompt).toContain(
       'Root retains known low-risk mechanical work, including reviewed commits',
     );
     expect(prompt).toContain(
-      'specialists execute by default for substantive work',
+      'Specialists execute by default for discovery of unlocated source, external research and substantive implementation',
     );
     expect(prompt).not.toContain('delegation creates net gain');
     expect(prompt).toContain('<implementation-ownership>');

@@ -101,19 +101,28 @@ describe("agent_start capture — documented gaps", () => {
 		);
 	});
 
-	it("does capture a handler-returned wholesale replacement: it resolves via the agent_start key", () => {
+	it("forwards a handler-returned wholesale replacement alongside the portable parts", () => {
 		const handlers = activateWithMockPi();
-		handlers.get("before_agent_start")({ systemPrompt: "pi rendered prompt", systemPromptOptions: {} });
-		// A before_agent_start handler that RETURNS a system prompt forces it as the request
-		// head, and pi renders ctx.getSystemPrompt() as exactly that forced text
-		// (buildSystemPromptState returns forceSystemPrompt verbatim).
-		handlers.get("agent_start")({}, { getSystemPrompt: () => "forced replacement prompt owning the request head" });
+		const options = {
+			customPrompt: "configured custom instructions",
+			appendSystemPrompt: "configured append instructions",
+			contextFiles: [{ path: "/replacement/AGENTS.md", content: "replacement project rules" }],
+		};
+		handlers.get("before_agent_start")({ systemPrompt: "pi rendered replacement baseline", systemPromptOptions: options });
+		// Pi retains this same options object and sets forceSystemPrompt when a later
+		// before_agent_start handler RETURNS a system prompt.
+		const replacement = "forced replacement prompt owning the request head";
+		options.forceSystemPrompt = replacement;
+		handlers.get("agent_start")({}, { getSystemPrompt: () => replacement });
 
-		const capture = __test.promptCaptures.resolve("forced replacement prompt owning the request head");
-		assert.ok(capture, "the forced text becomes a capture key at agent_start");
-		// Caveat pinned by design: only the portable parts are projected for Claude Code;
-		// the forced text's own novel prose is not forwarded (forwarding pi-harness-shaped
-		// prose would trip the server's third-party gate).
+		const capture = __test.promptCaptures.resolve(replacement);
+		assert.ok(capture, "the forced text becomes an exact capture key at agent_start");
+		const projected = projectPromptCapture(capture, { skillReadTool: "none" });
+		assert.match(projected, /replacement project rules/);
+		assert.match(projected, /configured custom instructions/);
+		assert.match(projected, /configured append instructions/);
+		assert.match(projected, /forced replacement prompt owning the request head/,
+			"the replacement's novel prose must reach Claude Code, not just its capture key");
 	});
 
 	it("does not rescue a prompt composed outside the before_agent_start pipeline (#102 shape)", () => {

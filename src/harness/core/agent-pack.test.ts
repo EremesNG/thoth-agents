@@ -52,7 +52,7 @@ describe('agent-pack contract', () => {
       /known source.*bounded question/i,
     );
     expect(ownership.directException.join(' ')).toMatch(
-      /root retains reviewed commits/i,
+      /bounded direct-work exception.*root retains known low-risk mechanical work.*reviewed commits/i,
     );
     expect(ownership.directException.join(' ')).not.toMatch(
       /another search or dependency.*ends/i,
@@ -94,11 +94,11 @@ describe('agent-pack contract', () => {
     ).not.toBe(anotherConsultation);
   });
 
-  test('routes unknown discovery before root search without imposing an Explorer relay on known work', () => {
+  test('routes unlocated discovery before root tools without imposing an Explorer relay on known work', () => {
     const ownership =
       getAgentPackContract().orchestrationPolicy.implementationOwnership;
     expect(ownership.discovery.join(' ')).toMatch(
-      /unknown.*source.*flow.*responsibility.*Explorer.*before root.*search/i,
+      /unlocated.*source.*flow.*responsibility.*Explorer.*before any root.*search.*file read.*shell\/git inspection.*CodeGraph query/i,
     );
     expect(ownership.discovery.join(' ')).toMatch(/unknown location/i);
     expect(ownership.writerRouting.join(' ')).toMatch(

@@ -33,3 +33,13 @@ Every canonical dispatch MUST support `none`, `recall`, or `observe` authorizati
 - **GIVEN** a project change record, durable specification, or historical artifact
 - **WHEN** memory is used
 - **THEN** `.thoth/` remains canonical and thoth-mem is not used as a mirror of project work
+
+### Requirement: Root coordinates and specialists execute by default
+
+Shipped root instructions on every harness MUST present specialist execution of discovery for unlocated source, external research and substantive implementation as the default, MUST present root direct work only as bounded exceptions, and MUST state that project navigation rules govern the assigned investigator rather than making root the investigator.
+
+#### Scenario: Root coordinates and specialists execute by default
+
+- **GIVEN** a root prompt rendered for any supported harness
+- **WHEN** the task needs discovery of unlocated local source and the project's instructions name navigation tools for the root
+- **THEN** the prompt directs root to dispatch Explorer without preliminary reads, search, shell inspection or CodeGraph queries

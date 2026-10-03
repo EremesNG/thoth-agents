@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
   canEnterSddPhase,
   classifySddChange,
   getSddFinalVerificationDecision,
   getSddPhase,
+  getSddPhaseProtocol,
   getSddRequiredPhaseOrder,
   getSddWorkflowContract,
   SDD_UNDERSTANDING_PHASES,
@@ -114,6 +116,31 @@ describe('proportional SDD classification', () => {
 });
 
 describe('phase and verification contract', () => {
+  test('keeps SDD understanding and implementation ownership subject to root delegation policy', () => {
+    const skill = readFileSync(
+      new URL('../../../skills/thoth-sdd/SKILL.md', import.meta.url),
+      'utf8',
+    );
+    expect
+      .soft(skill)
+      .toMatch(
+        /root orchestrator owns completing these steps.*discovery ownership follows the root delegation policy/is,
+      );
+    expect
+      .soft(skill)
+      .not.toContain('The root orchestrator performs these steps');
+    expect
+      .soft(skill)
+      .toMatch(
+        /specialist-default ownership and\s+bounded direct-work exceptions/i,
+      );
+    expect.soft(skill).not.toMatch(/no specialist\s+is mandatory/i);
+    expect.soft(skill).not.toContain('net gain');
+    expect
+      .soft(getSddPhaseProtocol('implement').instructions.join(' '))
+      .not.toContain('net gain');
+  });
+
   test('uses one ID-named record only after classification establishes substantial work', () => {
     const contract = getSddWorkflowContract();
     expect(contract).toMatchObject({

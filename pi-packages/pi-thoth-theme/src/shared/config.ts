@@ -6,7 +6,10 @@ export type IconMode = 'nerd' | 'ascii';
 
 export interface ThemeConfig {
   icons: IconMode;
-  statusLine: { enabled: boolean };
+  statusLine: {
+    enabled: boolean;
+    subscriptionProviders?: string[];
+  };
   tools: { enabled: boolean };
   images: { enabled: boolean };
   welcome: { enabled: boolean };
@@ -23,6 +26,18 @@ function moduleEnabled(value: unknown): boolean {
   return typeof enabled === 'boolean' ? enabled : true;
 }
 
+function parseSubscriptionProviders(value: unknown): string[] {
+  const obj = asObject(value);
+  const providers = obj.subscriptionProviders;
+  if (Array.isArray(providers)) {
+    return providers.filter(
+      (item): item is string =>
+        typeof item === 'string' && item.trim().length > 0,
+    );
+  }
+  return ['claude-bridge'];
+}
+
 export function loadConfig(
   configPath = join(
     process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent'),
@@ -37,7 +52,10 @@ export function loadConfig(
   }
   return {
     icons: config.icons === 'ascii' ? 'ascii' : 'nerd',
-    statusLine: { enabled: moduleEnabled(config.statusLine) },
+    statusLine: {
+      enabled: moduleEnabled(config.statusLine),
+      subscriptionProviders: parseSubscriptionProviders(config.statusLine),
+    },
     tools: { enabled: moduleEnabled(config.tools) },
     images: { enabled: moduleEnabled(config.images) },
     welcome: { enabled: moduleEnabled(config.welcome) },

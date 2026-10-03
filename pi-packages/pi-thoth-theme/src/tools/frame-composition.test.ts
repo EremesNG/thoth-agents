@@ -12,12 +12,13 @@ import { createCustomEditTool } from './edit.ts';
 import { createCustomFindTool } from './find.ts';
 import { createCustomGrepTool } from './grep.ts';
 import { createCustomLsTool } from './ls.ts';
+import { createCustomPowerShellTool } from './powershell.ts';
 import { createCustomReadTool } from './read.ts';
 import { createCustomWriteTool } from './write.ts';
 
 const config: ThemeConfig = {
   icons: 'nerd',
-  statusLine: { enabled: true },
+  statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
   tools: { enabled: true },
   images: { enabled: true },
   welcome: { enabled: true },
@@ -388,6 +389,168 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
       assertBorderContinuity(lines);
       const plain = lines.map(stripTerminalSequences).join('\n');
       expect(plain).toContain('Exit 127');
+    });
+  });
+
+  describe('powershell tool', () => {
+    it('renders real SDK exit 0 with Exit 0 footer and continuity', () => {
+      const ps = createCustomPowerShellTool(cwd, config);
+      expect(ps.renderShell).toBe('self');
+
+      const component = createTestComponent(ps, 'call-ps-exit0', {
+        command: 'Write-Output "hello world"',
+      });
+
+      const result = {
+        content: [{ type: 'text', text: 'hello world' }],
+        details: { truncation: null, fullOutputPath: null },
+        structuredContent: {
+          output: 'hello world',
+          truncated: false,
+          exit_code: 0,
+          wall_time_seconds: 0.1,
+        },
+        isError: false,
+      };
+
+      component.updateResult(result, false);
+      const lines = component.render(80);
+      assertBorderContinuity(lines);
+
+      const plain = lines.map(stripTerminalSequences).join('\n');
+      expect(plain).toContain('Exit 0');
+      expect(plain).not.toContain('running…');
+    });
+
+    it('renders real SDK exit 7 with Exit 7 footer, error styling, and continuity', () => {
+      const ps = createCustomPowerShellTool(cwd, config);
+      const component = createTestComponent(ps, 'call-ps-exit7', {
+        command: 'Invoke-WebRequest invalid://url',
+      });
+
+      const result = {
+        content: [
+          {
+            type: 'text',
+            text: 'Invoke-WebRequest: Failed to connect\nCommand exited with code 7',
+          },
+        ],
+        details: { truncation: null, fullOutputPath: null },
+        structuredContent: {
+          output:
+            'Invoke-WebRequest: Failed to connect\nCommand exited with code 7',
+          truncated: false,
+          exit_code: 7,
+          wall_time_seconds: 0.2,
+        },
+        isError: true,
+      };
+
+      component.updateResult(result, false);
+      const lines = component.render(80);
+      assertBorderContinuity(lines);
+
+      const plain = lines.map(stripTerminalSequences).join('\n');
+      expect(plain).toContain('Exit 7');
+      expect(plain).not.toContain('Exit 1');
+      expect(plain).not.toContain('running…');
+    });
+
+    it('ignores a status-like stdout line when the command exits 0', () => {
+      const ps = createCustomPowerShellTool(cwd, config);
+      const component = createTestComponent(ps, 'call-ps-fake-status-0', {
+        command: 'Write-Output "Command exited with code 77"',
+      });
+
+      component.updateResult(
+        {
+          content: [{ type: 'text', text: 'Command exited with code 77' }],
+          details: { truncation: null, fullOutputPath: null },
+          isError: false,
+        },
+        false,
+      );
+      const lines = component.render(80);
+      assertBorderContinuity(lines);
+
+      const plain = lines.map(stripTerminalSequences).join('\n');
+      expect(plain).toContain('Exit 0');
+      expect(plain).not.toContain('Exit 77');
+    });
+
+    it('reads only the trailing SDK status when stdout also mentions one', () => {
+      const ps = createCustomPowerShellTool(cwd, config);
+      const component = createTestComponent(ps, 'call-ps-fake-status-7', {
+        command: 'Write-Output "Command exited with code 77"; exit 7',
+      });
+
+      component.updateResult(
+        {
+          content: [
+            {
+              type: 'text',
+              text: 'Command exited with code 77\n\nCommand exited with code 7',
+            },
+          ],
+          details: { truncation: null, fullOutputPath: null },
+          isError: true,
+        },
+        false,
+      );
+      const lines = component.render(80);
+      assertBorderContinuity(lines);
+
+      const plain = lines.map(stripTerminalSequences).join('\n');
+      expect(plain).toContain('Exit 7');
+      expect(plain).not.toContain('Exit 77');
+    });
+
+    it('renders real SDK partial result with running footer (no Exit) and continuity', () => {
+      const ps = createCustomPowerShellTool(cwd, config);
+      const component = createTestComponent(ps, 'call-ps-partial', {
+        command: 'Start-Sleep -Seconds 10',
+      });
+
+      const result = {
+        content: [{ type: 'text', text: 'Sleeping...' }],
+        details: { truncation: null, fullOutputPath: null },
+        isError: false,
+      };
+
+      component.updateResult(result, true);
+      const lines = component.render(80);
+      assertBorderContinuity(lines);
+
+      const plain = lines.map(stripTerminalSequences).join('\n');
+      expect(plain).toContain('running…');
+      expect(plain).not.toContain('Exit');
+    });
+
+    it('strips ANSI SGR sequences from powershell output while maintaining border continuity', () => {
+      const ps = createCustomPowerShellTool(cwd, config);
+      const component = createTestComponent(ps, 'call-ps-sgr', {
+        command: 'Get-Process',
+      });
+
+      const result = {
+        content: [
+          {
+            type: 'text',
+            text: '\x1b[32;1mPS /Users/demo> \x1b[0mGet-Process\nId ProcessName\n\x1b[33m1234\x1b[0m node',
+          },
+        ],
+        details: { truncation: null, fullOutputPath: null },
+        isError: false,
+      };
+
+      component.updateResult(result, false);
+      const lines = component.render(80);
+      assertBorderContinuity(lines);
+
+      const plain = lines.map(stripTerminalSequences).join('\n');
+      expect(plain).toContain('PS /Users/demo> Get-Process');
+      expect(plain).toContain('1234 node');
+      expect(plain).not.toContain('␛[32;1m');
     });
   });
 

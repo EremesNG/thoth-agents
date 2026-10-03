@@ -17,7 +17,7 @@ import { createCustomLsTool } from './ls.ts';
 
 const config: ThemeConfig = {
   icons: 'ascii',
-  statusLine: { enabled: true },
+  statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
   tools: { enabled: true },
   images: { enabled: true },
   welcome: { enabled: true },

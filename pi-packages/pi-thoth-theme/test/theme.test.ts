@@ -257,6 +257,76 @@ describe('Thoth theme JSON', () => {
     expect(resolveVarRef(theme.colors.thinkingMax, vars)).toBe(vars.carnelian);
   });
 
+  it('follows conventional semantic colors with green success/added, red error/removed, amber warning', () => {
+    const vars = theme.vars ?? {};
+
+    // Declares required semantic vars
+    expect(vars.malachite).toBe('#6CBF5A');
+    expect(vars.red).toBe('#E05A4F');
+    expect(vars.amber).toBe('#E0A030');
+
+    // Mappings
+    expect(theme.colors.success).toBe('malachite');
+    expect(theme.colors.toolDiffAdded).toBe('malachite');
+    expect(theme.colors.error).toBe('red');
+    expect(theme.colors.toolDiffRemoved).toBe('red');
+    expect(theme.colors.warning).toBe('amber');
+
+    // Semantic hue dominance: green-dominant for success/added, red-dominant for error/removed
+    const parseRgb = (hex: string) => {
+      const num = Number.parseInt(hex.replace('#', ''), 16);
+      return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+    };
+
+    const successRgb = parseRgb(
+      resolveVarRef(theme.colors.success, vars) as string,
+    );
+    const addedRgb = parseRgb(
+      resolveVarRef(theme.colors.toolDiffAdded, vars) as string,
+    );
+    expect(successRgb.g).toBeGreaterThan(successRgb.r);
+    expect(successRgb.g).toBeGreaterThan(successRgb.b);
+    expect(addedRgb.g).toBeGreaterThan(addedRgb.r);
+    expect(addedRgb.g).toBeGreaterThan(addedRgb.b);
+
+    const errorRgb = parseRgb(
+      resolveVarRef(theme.colors.error, vars) as string,
+    );
+    const removedRgb = parseRgb(
+      resolveVarRef(theme.colors.toolDiffRemoved, vars) as string,
+    );
+    expect(errorRgb.r).toBeGreaterThan(errorRgb.g);
+    expect(errorRgb.r).toBeGreaterThan(errorRgb.b);
+    expect(removedRgb.r).toBeGreaterThan(removedRgb.g);
+    expect(removedRgb.r).toBeGreaterThan(removedRgb.b);
+
+    const warningRgb = parseRgb(
+      resolveVarRef(theme.colors.warning, vars) as string,
+    );
+    expect(warningRgb.r).toBeGreaterThan(warningRgb.b);
+    expect(warningRgb.g).toBeGreaterThan(warningRgb.b);
+
+    // toolSuccessBg and toolErrorBg near-black tints
+    const successBgRgb = parseRgb(
+      resolveVarRef(theme.colors.toolSuccessBg, vars) as string,
+    );
+    const errorBgRgb = parseRgb(
+      resolveVarRef(theme.colors.toolErrorBg, vars) as string,
+    );
+    expect(successBgRgb.g).toBeGreaterThan(successBgRgb.r);
+    expect(successBgRgb.g).toBeGreaterThan(successBgRgb.b);
+    expect(successBgRgb.g).toBeLessThan(40);
+
+    expect(errorBgRgb.r).toBeGreaterThan(errorBgRgb.g);
+    expect(errorBgRgb.r).toBeGreaterThan(errorBgRgb.b);
+    expect(errorBgRgb.r).toBeLessThan(40);
+
+    // Non-status turquoise retention & diff context
+    expect(theme.colors.mdCode).toBe('turquoise');
+    expect(theme.colors.syntaxString).toBe('malachite');
+    expect(theme.colors.toolDiffContext).toBe('sand');
+  });
+
   it('validates cleanly with Pi coding agent validateThemeJson if available', async () => {
     const candidateValidatorPaths = [
       resolve(
@@ -284,8 +354,10 @@ describe('Thoth theme JSON', () => {
       }
     }
 
-    if (validator) {
-      expect(() => validator!('thoth', theme)).not.toThrow();
+    expect(validator).toBeDefined();
+    if (!validator) {
+      throw new Error('validateThemeJson not found');
     }
+    expect(() => validator('thoth', theme)).not.toThrow();
   });
 });

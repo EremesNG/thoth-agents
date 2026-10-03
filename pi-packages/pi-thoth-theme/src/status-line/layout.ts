@@ -15,7 +15,10 @@ export interface StatusData {
   contextTokens?: number | null;
   contextWindow?: number;
   contextPercent?: number | null;
+  /** Parent session cost; subagent cost is accounted for separately. */
   cost?: number;
+  subagentCost?: number;
+  isSubscription?: boolean;
 }
 
 export interface ActiveThemeLike {
@@ -151,7 +154,8 @@ export function renderStatusLine(
   // 5. Cost
   let costSegment = '';
   if (data.cost !== undefined) {
-    const costText = `$${data.cost.toFixed(3)}`;
+    const totalCost = data.cost + (data.subagentCost ?? 0);
+    const costText = `$${totalCost.toFixed(3)}${data.isSubscription ? ' (sub)' : ''}`;
     costSegment = themeFg(theme, 'accent', costText);
   }
 

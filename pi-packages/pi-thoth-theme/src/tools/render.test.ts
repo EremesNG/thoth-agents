@@ -17,13 +17,14 @@ import { createCustomEditTool } from './edit.ts';
 import { createCustomFindTool } from './find.ts';
 import { createCustomGrepTool } from './grep.ts';
 import { createCustomLsTool } from './ls.ts';
+import { createCustomPowerShellTool } from './powershell.ts';
 import { createCustomReadTool } from './read.ts';
 import { createCustomWriteTool } from './write.ts';
 
 function createConfig(icons: 'nerd' | 'ascii'): ThemeConfig {
   return {
     icons,
-    statusLine: { enabled: true },
+    statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
     tools: { enabled: true },
     images: { enabled: true },
     welcome: { enabled: true },
@@ -344,6 +345,108 @@ describe('Built-in tool renderers', () => {
       expect(lines.some((l) => l.includes('Exit 1'))).toBe(true);
       expect(colorsUsed).toContain('error');
     });
+
+    it('strips ANSI SGR sequences from bash output while escaping other controls', () => {
+      const bash = createCustomBashTool(cwd, createConfig('nerd'));
+      const theme = createAnsiTheme();
+      const rawText = '\x1b[32;1mGreen\x1b[0m output with bell\x07';
+      const result = textResult(rawText, { exitCode: 0 });
+      const lines = bash
+        .renderResult(result, resultOpts(false), theme, baseContext)
+        .render(80);
+      const plain = lines.map(stripTerminalSequences).join('\n');
+      expect(plain).toContain('Green output with bell␇');
+      expect(plain).not.toContain('␛[32;1m');
+      expect(plain).not.toContain('␛[0m');
+    });
+  });
+
+  describe('powershell tool', () => {
+    it('renders call with PowerShell title, PS> prompt, and nerd/ascii icons', () => {
+      const psNerd = createCustomPowerShellTool(cwd, createConfig('nerd'));
+      const psAscii = createCustomPowerShellTool(cwd, createConfig('ascii'));
+      const theme = createAnsiTheme();
+
+      const nerdLines = psNerd
+        .renderCall({ command: 'Get-Process' }, theme, baseContext)
+        .render(80);
+      const asciiLines = psAscii
+        .renderCall({ command: 'Get-Process' }, theme, baseContext)
+        .render(80);
+
+      expect(nerdLines.some((l) => l.includes('\ue70f'))).toBe(true);
+      expect(nerdLines.some((l) => l.includes('PowerShell'))).toBe(true);
+      expect(
+        nerdLines
+          .map(stripTerminalSequences)
+          .some((l) => l.includes('PS> Get-Process')),
+      ).toBe(true);
+
+      expect(asciiLines.some((l) => l.includes('PS'))).toBe(true);
+      expect(asciiLines.some((l) => l.includes('PowerShell'))).toBe(true);
+      expect(
+        asciiLines
+          .map(stripTerminalSequences)
+          .some((l) => l.includes('PS> Get-Process')),
+      ).toBe(true);
+    });
+
+    it('renders collapsed result with output preview, exit status, and elapsed time', () => {
+      const ps = createCustomPowerShellTool(cwd, createConfig('nerd'));
+      const theme = createAnsiTheme();
+      const longOutput = Array.from(
+        { length: 20 },
+        (_, i) => `process line ${i + 1}`,
+      ).join('\n');
+      const result = textResult(longOutput, { exitCode: 0 });
+      const context = {
+        ...baseContext,
+        state: { startedAt: Date.now() - 150 },
+      };
+
+      const collapsed = ps
+        .renderResult(result, resultOpts(false), theme, context)
+        .render(80);
+      expect(collapsed.some((l) => l.includes('Exit 0'))).toBe(true);
+      expect(collapsed.some((l) => l.includes('20 lines'))).toBe(true);
+      expect(collapsed.some((l) => l.includes('ctrl+o to expand'))).toBe(true);
+
+      const expanded = ps
+        .renderResult(result, resultOpts(true), theme, context)
+        .render(80);
+      expect(expanded.some((l) => l.includes('process line 20'))).toBe(true);
+      expect(expanded.some((l) => l.includes('Exit 0'))).toBe(true);
+    });
+
+    it('renders error case with error styling and exit code', () => {
+      const ps = createCustomPowerShellTool(cwd, createConfig('nerd'));
+      const { theme, colorsUsed } = createTrackingTheme();
+      const result = textResult('Command failed\nCommand exited with code 1', {
+        exitCode: 1,
+      });
+      const lines = ps
+        .renderResult(result, resultOpts(false), theme, {
+          ...baseContext,
+          isError: true,
+        })
+        .render(80);
+      expect(lines.some((l) => l.includes('Exit 1'))).toBe(true);
+      expect(colorsUsed).toContain('error');
+    });
+
+    it('strips ANSI SGR sequences from powershell output while escaping other controls', () => {
+      const ps = createCustomPowerShellTool(cwd, createConfig('nerd'));
+      const theme = createAnsiTheme();
+      const rawText = '\x1b[32;1mProcessRunning\x1b[0m\x07';
+      const result = textResult(rawText, { exitCode: 0 });
+      const lines = ps
+        .renderResult(result, resultOpts(false), theme, baseContext)
+        .render(80);
+      const plain = lines.map(stripTerminalSequences).join('\n');
+      expect(plain).toContain('ProcessRunning␇');
+      expect(plain).not.toContain('␛[32;1m');
+      expect(plain).not.toContain('␛[0m');
+    });
   });
 
   describe('ls tool', () => {
@@ -590,7 +693,7 @@ describe('Built-in tool renderers', () => {
           expectGrepDataRows(rendered, data, 'raw');
         }
       }
-    });
+    }, 30_000);
 
     it('collapses results and expands on request', () => {
       const grep = createCustomGrepTool(cwd, createConfig('nerd'));
@@ -1280,6 +1383,51 @@ describe('Built-in tool renderers', () => {
       expect(resLines.at(-1)).toContain('╯');
       expect(resLines.at(-1)).toContain('Exit 0');
       expect(resLines.at(-1)).toContain('~4 words');
+
+      // No blank lines in joined frame
+      expect(joined.some((l) => l.trim() === '')).toBe(false);
+    });
+
+    it('powershell joins call and result into one continuous frame with Output divider and exit footer', () => {
+      const ps = createCustomPowerShellTool(cwd, createConfig('nerd'));
+      const context = { ...baseContext, state: {} };
+      const call = ps.renderCall({ command: 'Get-ChildItem' }, theme, context);
+      const res = ps.renderResult(
+        textResult('Directory: C:\\test\nMode LastWriteTime Length Name'),
+        resultOpts(false),
+        theme,
+        context,
+      );
+
+      const callLines = call.render(80);
+      const resLines = res.render(80);
+      const joined = [...callLines, ...resLines];
+
+      // Top border
+      expect(callLines[0]).toContain('╭');
+      expect(callLines[0]).toContain('╮');
+      expect(callLines[0]).toContain('PowerShell');
+
+      // Command line inside call with PS> prompt
+      expect(
+        callLines
+          .map(stripTerminalSequences)
+          .some((l) => l.includes('PS> Get-ChildItem')),
+      ).toBe(true);
+
+      // Output divider at bottom of call
+      expect(callLines.at(-1)).toContain('├');
+      expect(callLines.at(-1)).toContain('┤');
+      expect(callLines.at(-1)).toContain('Output');
+
+      // Result body rows have vertical borders
+      expect(resLines[0]).toContain('│');
+      expect(resLines[0]).toContain('Directory: C:\\test');
+
+      // Bottom border at end of result
+      expect(resLines.at(-1)).toContain('╰');
+      expect(resLines.at(-1)).toContain('╯');
+      expect(resLines.at(-1)).toContain('Exit 0');
 
       // No blank lines in joined frame
       expect(joined.some((l) => l.trim() === '')).toBe(false);

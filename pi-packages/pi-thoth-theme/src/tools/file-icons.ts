@@ -37,6 +37,8 @@ const NERD_FILE_ICONS: Record<string, string> = {
   sh: '\ue795',
   bash: '\ue795',
   zsh: '\ue795',
+  ps1: '\ue70f',
+  psm1: '\ue70f',
   lua: '\ue620',
   php: '\ue73d',
   dart: '\ue798',
@@ -87,6 +89,8 @@ const ASCII_FILE_ICONS: Record<string, string> = {
   sh: '$',
   bash: '$',
   zsh: '$',
+  ps1: 'PS',
+  psm1: 'PS',
   png: '[img]',
   jpg: '[img]',
   jpeg: '[img]',
@@ -126,6 +130,7 @@ export function getToolIcon(
     | 'write'
     | 'edit'
     | 'bash'
+    | 'powershell'
     | 'search'
     | 'folder'
     | 'file'
@@ -133,5 +138,8 @@ export function getToolIcon(
     | 'error',
   mode: IconMode,
 ): string {
+  if (tool === 'powershell') {
+    return mode === 'nerd' ? '\ue70f' : 'PS';
+  }
   return iconFor(tool, mode);
 }

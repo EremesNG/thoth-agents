@@ -64,6 +64,24 @@ export function escapeControlCharacters(text: string): string {
   return escaped;
 }
 
+/**
+ * Strip 7-bit and 8-bit ANSI SGR (Select Graphic Rendition) styling sequences.
+ * Preserves non-SGR sequences and control characters.
+ */
+export function stripSgr(text: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional SGR escape matching
+  return text.replace(/(?:\x1b\[|\x9b)[0-9;:]*m/g, '');
+}
+
+/**
+ * Escape an output row for shell tools (bash/powershell):
+ * strips SGR sequences so color codes do not bleed or display as ␛[...m,
+ * while escaping other control characters to prevent terminal injection.
+ */
+export function escapeOutputRow(text: string): string {
+  return escapeControlCharacters(stripSgr(text));
+}
+
 export function hasImageContent(
   result: AgentToolResult<unknown> | undefined,
 ): boolean {

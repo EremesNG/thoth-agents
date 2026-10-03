@@ -1,0 +1,321 @@
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from '@earendil-works/pi-coding-agent';
+import {
+  initTheme,
+  ToolExecutionComponent,
+} from '@earendil-works/pi-coding-agent';
+import { stripTerminalSequences, type TUI } from '@earendil-works/pi-tui';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import type { ThemeConfig } from '../shared/config.ts';
+import { registerTools } from './index.ts';
+
+const config: ThemeConfig = {
+  icons: 'nerd',
+  statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
+  tools: { enabled: true },
+  images: { enabled: true },
+  welcome: { enabled: true },
+};
+const cwd = process.cwd();
+const partialResult = {
+  content: [{ type: 'text', text: 'Waiting for output...' }],
+  details: {},
+  isError: false,
+};
+
+const cleanups: Array<() => void> = [];
+
+function createSession() {
+  const tools = new Map<string, ToolDefinition>();
+  const handlers = new Map<string, Set<() => void>>();
+  const pi = {
+    registerTool(tool: ToolDefinition) {
+      tools.set(tool.name, tool);
+    },
+    on(event: string, handler: () => void) {
+      const listeners = handlers.get(event) ?? new Set();
+      listeners.add(handler);
+      handlers.set(event, listeners);
+      return () => listeners.delete(handler);
+    },
+  } as unknown as ExtensionAPI;
+  const dispose = registerTools(pi, config, cwd);
+  const session = {
+    dispose,
+    emit(event: string) {
+      for (const handler of handlers.get(event) ?? []) handler();
+    },
+    createBashComponent(toolCallId = 'bash-ticker') {
+      const requestRender = vi.fn();
+      const component = new ToolExecutionComponent(
+        'bash',
+        toolCallId,
+        { command: 'sleep 10' },
+        {},
+        tools.get('bash'),
+        { requestRender } as unknown as TUI,
+        cwd,
+      );
+      return { component, requestRender };
+    },
+    createPowerShellComponent(toolCallId = 'ps-ticker') {
+      const requestRender = vi.fn();
+      const component = new ToolExecutionComponent(
+        'powershell',
+        toolCallId,
+        { command: 'Start-Sleep -Seconds 10' },
+        {},
+        tools.get('powershell'),
+        { requestRender } as unknown as TUI,
+        cwd,
+      );
+      return { component, requestRender };
+    },
+  };
+  cleanups.push(dispose);
+  return session;
+}
+
+function renderText(component: ToolExecutionComponent, width = 80) {
+  return component.render(width).map(stripTerminalSequences).join('\n');
+}
+
+beforeAll(() => {
+  initTheme('dark', false);
+});
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+});
+
+afterEach(() => {
+  for (const cleanup of cleanups) cleanup();
+  cleanups.length = 0;
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+describe('Live tool elapsed through the real SDK', () => {
+  it('shows live elapsed for a started tool before its first output', () => {
+    const { component, requestRender } = createSession().createBashComponent();
+    component.markExecutionStarted();
+    expect(renderText(component)).toContain('running… · 0ms');
+    requestRender.mockClear();
+
+    vi.advanceTimersByTime(1000);
+    expect(requestRender).toHaveBeenCalledTimes(1);
+    expect(renderText(component)).toContain('running… · 1.00s');
+    expect(renderText(component)).not.toContain('Output');
+  });
+
+  it('repaints partial elapsed once per second at the same cached width', () => {
+    const { component, requestRender } = createSession().createBashComponent();
+    component.markExecutionStarted();
+    component.updateResult(partialResult, true);
+    const initialText = renderText(component);
+    expect(initialText).toContain('running… · 0ms');
+
+    // Repeated SDK renderer passes must keep just one interval per tool state.
+    component.setExpanded(true);
+    component.invalidate();
+    component.updateArgs({ command: 'sleep 10' });
+    requestRender.mockClear();
+
+    vi.advanceTimersByTime(999);
+    expect(requestRender).not.toHaveBeenCalled();
+    expect(renderText(component)).toBe(initialText);
+
+    vi.advanceTimersByTime(1);
+    expect(requestRender).toHaveBeenCalledTimes(1);
+    expect(renderText(component)).toContain('running… · 1.00s');
+
+    vi.advanceTimersByTime(2000);
+    expect(requestRender).toHaveBeenCalledTimes(3);
+    expect(renderText(component)).toContain('running… · 3.00s');
+  });
+
+  it.each([
+    { isError: false, text: 'Done', status: 'Exit 0' },
+    {
+      isError: true,
+      text: 'Failed\n\nCommand exited with code 7',
+      status: 'Exit 7',
+    },
+  ])('stops at terminal $status and freezes completed elapsed', ({
+    isError,
+    text,
+    status,
+  }) => {
+    const { component, requestRender } = createSession().createBashComponent();
+    component.markExecutionStarted();
+    component.updateResult(partialResult, true);
+    vi.advanceTimersByTime(2250);
+
+    component.updateResult(
+      { content: [{ type: 'text', text }], isError },
+      false,
+    );
+    expect(renderText(component)).toContain(`${status} · 2.25s`);
+    expect(vi.getTimerCount()).toBe(0);
+    requestRender.mockClear();
+
+    vi.advanceTimersByTime(5000);
+    expect(requestRender).not.toHaveBeenCalled();
+    component.setExpanded(true);
+    component.invalidate();
+    expect(renderText(component, 96)).toContain(`${status} · 2.25s`);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    'agent_end',
+    'session_shutdown',
+    'session_start',
+  ])('clears all interrupted tool intervals on %s without restarting old partial rows', (event) => {
+    const session = createSession();
+    const tools = ['first', 'second'].map((id) =>
+      session.createBashComponent(id),
+    );
+    for (const [index, { component }] of tools.entries()) {
+      component.markExecutionStarted();
+      if (index === 0) component.updateResult(partialResult, true);
+      renderText(component);
+    }
+    expect(vi.getTimerCount()).toBe(2);
+    vi.advanceTimersByTime(1500);
+    for (const { requestRender } of tools) requestRender.mockClear();
+
+    session.emit(event);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(5000);
+    for (const { component, requestRender } of tools) {
+      expect(requestRender).not.toHaveBeenCalled();
+      component.setExpanded(true);
+      component.invalidate();
+      expect(renderText(component)).toContain('running… · 1.50s');
+    }
+    expect(vi.getTimerCount()).toBe(0);
+
+    // A later run/session owns fresh states, which must still tick normally.
+    const next = session.createBashComponent('next-run');
+    next.component.markExecutionStarted();
+    next.component.updateResult(partialResult, true);
+    next.requestRender.mockClear();
+    vi.advanceTimersByTime(1000);
+    expect(next.requestRender).toHaveBeenCalledTimes(1);
+    expect(renderText(next.component)).toContain('running… · 1.00s');
+  });
+
+  it('disposes live intervals and detaches lifecycle cleanup idempotently', () => {
+    const session = createSession();
+    const { component, requestRender } = session.createBashComponent();
+    component.markExecutionStarted();
+    component.updateResult(partialResult, true);
+    vi.advanceTimersByTime(1250);
+    requestRender.mockClear();
+
+    session.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(5000);
+    expect(requestRender).not.toHaveBeenCalled();
+    component.invalidate();
+    expect(renderText(component)).toContain('running… · 1.25s');
+    expect(vi.getTimerCount()).toBe(0);
+
+    const next = createSession().createBashComponent('next-registration');
+    next.component.markExecutionStarted();
+    next.component.updateResult(partialResult, true);
+    next.requestRender.mockClear();
+    session.dispose();
+    for (const event of ['agent_end', 'session_shutdown', 'session_start']) {
+      session.emit(event);
+    }
+    vi.advanceTimersByTime(1000);
+    expect(next.requestRender).toHaveBeenCalledTimes(1);
+    expect(renderText(next.component)).toContain('running… · 1.00s');
+  });
+
+  it.each([
+    'pending',
+    'partial',
+    'completed',
+  ])('does not tick a non-started %s tool call', (phase) => {
+    const { component, requestRender } = createSession().createBashComponent();
+    if (phase !== 'pending') {
+      component.updateResult(partialResult, phase === 'partial');
+    }
+    renderText(component);
+    requestRender.mockClear();
+
+    vi.advanceTimersByTime(5000);
+    expect(requestRender).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    component.setExpanded(true);
+    component.invalidate();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps another tool ticking when one tool completes', () => {
+    const session = createSession();
+    const first = session.createBashComponent('first');
+    const second = session.createBashComponent('second');
+    for (const { component } of [first, second]) {
+      component.markExecutionStarted();
+      component.updateResult(partialResult, true);
+    }
+    vi.advanceTimersByTime(1500);
+    first.component.updateResult(partialResult, false);
+    expect(renderText(first.component)).toContain('Exit 0 · 1.50s');
+    expect(vi.getTimerCount()).toBe(1);
+    first.requestRender.mockClear();
+    second.requestRender.mockClear();
+
+    vi.advanceTimersByTime(500);
+    expect(first.requestRender).not.toHaveBeenCalled();
+    expect(second.requestRender).toHaveBeenCalledTimes(1);
+    expect(renderText(second.component)).toContain('running… · 2.00s');
+    expect(renderText(first.component)).toContain('Exit 0 · 1.50s');
+  });
+
+  it('ticks a running powershell component every second while execution is partial', () => {
+    const session = createSession();
+    const { component, requestRender } =
+      session.createPowerShellComponent('ps-1');
+
+    component.markExecutionStarted();
+    component.updateResult(partialResult, true);
+    expect(renderText(component)).toContain('running… · 0ms');
+    expect(vi.getTimerCount()).toBe(1);
+    requestRender.mockClear();
+
+    vi.advanceTimersByTime(1000);
+    expect(requestRender).toHaveBeenCalledTimes(1);
+    expect(renderText(component)).toContain('running… · 1.00s');
+
+    vi.advanceTimersByTime(1000);
+    expect(requestRender).toHaveBeenCalledTimes(2);
+    expect(renderText(component)).toContain('running… · 2.00s');
+
+    component.updateResult(
+      {
+        content: [{ type: 'text', text: 'done' }],
+        details: {},
+        isError: false,
+      },
+      false,
+    );
+    expect(renderText(component)).toContain('Exit 0 · 2.00s');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

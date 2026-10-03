@@ -43,6 +43,7 @@ import type {
   LiveSteeringBridge,
   ModelRef,
   SendMessageResult,
+  SubagentAssistantAccountingMessage,
   SubagentContinueInput,
   SubagentDefinition,
   SubagentErrorMetadata,
@@ -537,6 +538,11 @@ export class SubagentManager {
     ) => void,
     private onInteractionPromptActive?: (active: boolean) => void,
     private atelierMetadata?: AtelierMetadataWriter,
+    private onAssistantMessage?: (
+      parentSessionId: string | undefined,
+      taskId: string,
+      message: SubagentAssistantAccountingMessage,
+    ) => void,
   ) {}
 
   private atelierRun(
@@ -1517,6 +1523,12 @@ export class SubagentManager {
                   activity.observed_at,
                 );
               }
+              if (activity.assistant_message)
+                this.onAssistantMessage?.(
+                  parentSessionId,
+                  id,
+                  activity.assistant_message,
+                );
               updateRunnerMetrics(activity.runtime_metrics);
               if (task.status === 'stopping' || isTerminalStatus(task.status))
                 return;

@@ -60,6 +60,7 @@ function loadTheme(
     handler: LifecycleHandler;
   }> = [];
   const registerTool = vi.fn((_tool: { name: string }) => {});
+  const registerMarkdownTransformer = vi.fn();
   const on = vi.fn((event: string, handler: LifecycleHandler) => {
     subscriptions.push({ event, handler });
     return () => {};
@@ -69,6 +70,7 @@ function loadTheme(
   });
   const pi = {
     registerTool,
+    registerMarkdownTransformer,
     on,
     get getSettings() {
       return settingsAccess();
@@ -91,6 +93,7 @@ function loadTheme(
 
   return {
     registerTool,
+    registerMarkdownTransformer,
     on,
     ui,
     settingsAccess,
@@ -119,7 +122,17 @@ describe('Thoth extension composition', () => {
 
     expect(
       session.registerTool.mock.calls.map(([tool]) => tool.name).sort(),
-    ).toEqual(['bash', 'edit', 'find', 'grep', 'ls', 'read', 'write']);
+    ).toEqual([
+      'bash',
+      'edit',
+      'find',
+      'grep',
+      'ls',
+      'powershell',
+      'read',
+      'write',
+    ]);
+    expect(session.registerMarkdownTransformer).not.toHaveBeenCalled();
     expect(session.on).toHaveBeenCalledWith(
       'session_start',
       expect.any(Function),
@@ -145,10 +158,11 @@ describe('Thoth extension composition', () => {
   it.each([
     {
       disabled: 'statusLine',
-      toolCount: 7,
+      toolCount: 8,
       footerCount: 0,
       headerCount: 1,
       protocol: 'kitty',
+      transformerCount: 0,
     },
     {
       disabled: 'tools',
@@ -156,20 +170,23 @@ describe('Thoth extension composition', () => {
       footerCount: 1,
       headerCount: 1,
       protocol: 'kitty',
+      transformerCount: 0,
     },
     {
       disabled: 'welcome',
-      toolCount: 7,
+      toolCount: 8,
       footerCount: 1,
       headerCount: 0,
       protocol: 'kitty',
+      transformerCount: 0,
     },
     {
       disabled: 'images',
-      toolCount: 7,
+      toolCount: 8,
       footerCount: 1,
       headerCount: 1,
       protocol: null,
+      transformerCount: 0,
     },
   ] as const)('leaves native $disabled behavior while retaining other defaults', async ({
     disabled,
@@ -177,6 +194,7 @@ describe('Thoth extension composition', () => {
     footerCount,
     headerCount,
     protocol,
+    transformerCount,
   }) => {
     const session = loadTheme({ [disabled]: { enabled: false } });
 
@@ -184,6 +202,9 @@ describe('Thoth extension composition', () => {
     await session.startAgent();
 
     expect(session.registerTool).toHaveBeenCalledTimes(toolCount);
+    expect(session.registerMarkdownTransformer).toHaveBeenCalledTimes(
+      transformerCount,
+    );
     expect(session.ui.setFooter).toHaveBeenCalledTimes(footerCount);
     expect(session.ui.setHeader).toHaveBeenCalledTimes(headerCount);
     expect(getCapabilities().images).toBe(protocol);
@@ -202,6 +223,7 @@ describe('Thoth extension composition', () => {
     await session.startAgent();
 
     expect(session.registerTool).not.toHaveBeenCalled();
+    expect(session.registerMarkdownTransformer).not.toHaveBeenCalled();
     expect(session.ui.setFooter).not.toHaveBeenCalled();
     expect(session.ui.setHeader).not.toHaveBeenCalled();
     expect(getCapabilities().images).toBeNull();

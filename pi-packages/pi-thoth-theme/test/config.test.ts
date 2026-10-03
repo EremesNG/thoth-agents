@@ -8,7 +8,7 @@ import { loadConfig } from '../src/shared/config.ts';
 
 const defaults = {
   icons: 'nerd',
-  statusLine: { enabled: true },
+  statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
   tools: { enabled: true },
   images: { enabled: true },
   welcome: { enabled: true },
@@ -87,11 +87,56 @@ describe('loadConfig', () => {
     );
     expect(loadConfig(configPath)).toEqual({
       icons: 'ascii',
-      statusLine: { enabled: false },
+      statusLine: { enabled: false, subscriptionProviders: ['claude-bridge'] },
       tools: { enabled: false },
       images: { enabled: false },
       welcome: { enabled: false },
     });
+  });
+
+  it('validates statusLine.subscriptionProviders correctly', () => {
+    // Custom valid array
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        statusLine: { subscriptionProviders: ['anthropic', 'openai'] },
+      }),
+    );
+    expect(loadConfig(configPath).statusLine.subscriptionProviders).toEqual([
+      'anthropic',
+      'openai',
+    ]);
+
+    // Empty array should be preserved
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        statusLine: { subscriptionProviders: [] },
+      }),
+    );
+    expect(loadConfig(configPath).statusLine.subscriptionProviders).toEqual([]);
+
+    // Filters non-string or empty items
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        statusLine: { subscriptionProviders: ['custom', 123, null, ''] },
+      }),
+    );
+    expect(loadConfig(configPath).statusLine.subscriptionProviders).toEqual([
+      'custom',
+    ]);
+
+    // Non-array falls back to default ['claude-bridge']
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        statusLine: { subscriptionProviders: 'invalid' },
+      }),
+    );
+    expect(loadConfig(configPath).statusLine.subscriptionProviders).toEqual([
+      'claude-bridge',
+    ]);
   });
 });
 

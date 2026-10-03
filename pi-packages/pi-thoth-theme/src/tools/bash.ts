@@ -3,9 +3,12 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import { createBashToolDefinition } from '@earendil-works/pi-coding-agent';
+import {
+  createBashToolDefinition,
+  createPowerShellToolDefinition,
+} from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
-import { createComponent, getResultText } from './box.ts';
+import { createComponent, escapeOutputRow, getResultText } from './box.ts';
 import { getToolIcon } from './file-icons.ts';
 import {
   hasToolResult,
@@ -14,38 +17,57 @@ import {
   renderFrameRow,
   renderFrameTop,
 } from './frame.ts';
+import {
+  type ElapsedRenderContext,
+  type ElapsedRenderState,
+  getElapsedMs,
+  syncElapsedTicker,
+} from './ticker.ts';
 
 const COLLAPSED_OUTPUT_LINES = 5;
 
-interface BashArgs {
+interface ShellArgs {
   command?: string;
 }
 
-interface BashContext {
-  isError?: boolean;
-  executionStarted?: boolean;
-  isPartial?: boolean;
+interface ShellContext extends ElapsedRenderContext {
   lastComponent?: { invalidate?: () => void };
-  state?: {
-    startedAt?: number;
+  state?: ElapsedRenderState & {
     hasResult?: boolean;
     callComponent?: { invalidate?: () => void };
-    [key: string]: unknown;
   };
 }
 
-interface BashResultStructuredContent {
+interface ShellResultStructuredContent {
   exit_code?: number;
   wall_time_seconds?: number;
 }
 
-function extractBashExitCode(
+interface ShellConfig {
+  toolName: 'bash' | 'powershell';
+  title: string;
+  prompt: string;
+}
+
+const BASH_CONFIG: ShellConfig = {
+  toolName: 'bash',
+  title: 'Bash',
+  prompt: '$ ',
+};
+
+const POWERSHELL_CONFIG: ShellConfig = {
+  toolName: 'powershell',
+  title: 'PowerShell',
+  prompt: 'PS> ',
+};
+
+function extractShellExitCode(
   result: AgentToolResult<unknown>,
   textOutput: string,
   isErr: boolean,
 ): number {
   const structured = (
-    result as { structuredContent?: BashResultStructuredContent }
+    result as { structuredContent?: ShellResultStructuredContent }
   ).structuredContent;
   if (typeof structured?.exit_code === 'number') {
     return structured.exit_code;
@@ -66,10 +88,19 @@ function formatElapsed(ms: number | undefined): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-export function createCustomBashTool(
+export function createCustomShellTool<
+  TDef extends {
+    name: string;
+    renderShell?: unknown;
+    renderCall?: unknown;
+    renderResult?: unknown;
+  },
+>(
+  shellConfig: ShellConfig,
   cwdOrConfig: string | ThemeConfig,
-  configOrBase?: ThemeConfig | ReturnType<typeof createBashToolDefinition>,
-  maybeBase?: ReturnType<typeof createBashToolDefinition>,
+  configOrBase?: ThemeConfig | TDef,
+  maybeBase?: TDef,
+  defaultFactory?: (cwd: string) => TDef,
 ) {
   const config =
     typeof cwdOrConfig === 'string'
@@ -77,35 +108,39 @@ export function createCustomBashTool(
       : cwdOrConfig;
   const cwd = typeof cwdOrConfig === 'string' ? cwdOrConfig : process.cwd();
   const baseDef = (maybeBase ??
-    (configOrBase && 'execute' in configOrBase
-      ? configOrBase
-      : createBashToolDefinition(cwd))) as ReturnType<
-    typeof createBashToolDefinition
-  >;
+    (configOrBase &&
+    typeof configOrBase === 'object' &&
+    'execute' in configOrBase
+      ? (configOrBase as TDef)
+      : defaultFactory?.(cwd))) as TDef;
 
   return {
     ...baseDef,
     renderShell: 'self' as const,
-    renderCall(rawArgs: unknown, theme: Theme, context: BashContext) {
-      if (
-        context?.state &&
-        context.executionStarted &&
-        context.state.startedAt === undefined
-      ) {
-        context.state.startedAt = Date.now();
-      }
+    renderCall(rawArgs: unknown, theme: Theme, context: ShellContext) {
+      syncElapsedTicker(context);
 
-      const args = (rawArgs ?? {}) as BashArgs;
+      const args = (rawArgs ?? {}) as ShellArgs;
       const command = String(args.command ?? '').trim();
-      const icon = getToolIcon('bash', config.icons);
+      const icon = getToolIcon(shellConfig.toolName, config.icons);
       const isErr = Boolean(context?.isError);
+      const elapsedStr = formatElapsed(getElapsedMs(context?.state));
+      const runningFooter =
+        context?.executionStarted && context.isPartial
+          ? [
+              theme.fg('dim', 'running…'),
+              elapsedStr ? theme.fg('dim', elapsedStr) : '',
+            ]
+              .filter(Boolean)
+              .join(theme.fg('dim', ' · '))
+          : undefined;
 
       const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
         const cmdLines = command ? command.split('\n') : [''];
-        const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Bash')) : theme.fg('toolTitle', 'Bash')}`;
+        const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', shellConfig.title)) : theme.fg('toolTitle', shellConfig.title)}`;
         const preview = cmdLines.map(
-          (l) => `${theme.fg('dim', '$ ')}${theme.fg('text', l)}`,
+          (l) => `${theme.fg('dim', shellConfig.prompt)}${theme.fg('text', l)}`,
         );
 
         if (hasToolResult(context)) {
@@ -121,7 +156,7 @@ export function createCustomBashTool(
         return [
           ...renderFrameTop(theme, title, safeWidth, isErr),
           ...preview.flatMap((l) => renderFrameRow(theme, l, safeWidth, isErr)),
-          ...renderFrameBottom(theme, undefined, safeWidth, isErr),
+          ...renderFrameBottom(theme, runningFooter, safeWidth, isErr),
         ];
       });
 
@@ -135,7 +170,7 @@ export function createCustomBashTool(
       result: AgentToolResult<unknown>,
       options: ToolRenderResultOptions,
       theme: Theme,
-      context: BashContext,
+      context: ShellContext,
     ) {
       if (context?.state) {
         context.state.hasResult = true;
@@ -155,31 +190,14 @@ export function createCustomBashTool(
 
       const isErr = Boolean(context?.isError);
       const isPartial = Boolean(options?.isPartial);
+      syncElapsedTicker({ ...context, isPartial });
       const textOutput = getResultText(result);
       const allLines = textOutput ? textOutput.split('\n') : [];
       const lineCount = allLines.length;
 
-      if (!isPartial || isErr) {
-        if (
-          context?.state &&
-          context.state.completedElapsedMs === undefined &&
-          typeof context.state.startedAt === 'number'
-        ) {
-          context.state.completedElapsedMs =
-            Date.now() - context.state.startedAt;
-        }
-      }
+      const elapsedStr = formatElapsed(getElapsedMs(context?.state));
 
-      const startedAt = context?.state?.startedAt;
-      const elapsedMs =
-        typeof context?.state?.completedElapsedMs === 'number'
-          ? (context.state.completedElapsedMs as number)
-          : typeof startedAt === 'number'
-            ? Date.now() - startedAt
-            : undefined;
-      const elapsedStr = formatElapsed(elapsedMs);
-
-      const exitNum = extractBashExitCode(result, textOutput, isErr);
+      const exitNum = extractShellExitCode(result, textOutput, isErr);
       const exitStr = `Exit ${exitNum}`;
 
       const words = textOutput.trim()
@@ -218,9 +236,12 @@ export function createCustomBashTool(
         const visibleLines = options?.expanded
           ? allLines
           : allLines.slice(0, COLLAPSED_OUTPUT_LINES);
-        const bodyLines: string[] = visibleLines.map((l) =>
-          isErr ? theme.fg('error', l) : theme.fg('toolOutput', l),
-        );
+        const bodyLines: string[] = visibleLines.map((l) => {
+          const sanitized = escapeOutputRow(l);
+          return isErr
+            ? theme.fg('error', sanitized)
+            : theme.fg('toolOutput', sanitized);
+        });
 
         if (!options?.expanded && allLines.length > COLLAPSED_OUTPUT_LINES) {
           const remaining = allLines.length - COLLAPSED_OUTPUT_LINES;
@@ -238,4 +259,34 @@ export function createCustomBashTool(
       });
     },
   };
+}
+
+export function createCustomBashTool(
+  cwdOrConfig: string | ThemeConfig,
+  configOrBase?: ThemeConfig | ReturnType<typeof createBashToolDefinition>,
+  maybeBase?: ReturnType<typeof createBashToolDefinition>,
+) {
+  return createCustomShellTool(
+    BASH_CONFIG,
+    cwdOrConfig,
+    configOrBase,
+    maybeBase,
+    createBashToolDefinition,
+  );
+}
+
+export function createCustomPowerShellTool(
+  cwdOrConfig: string | ThemeConfig,
+  configOrBase?:
+    | ThemeConfig
+    | ReturnType<typeof createPowerShellToolDefinition>,
+  maybeBase?: ReturnType<typeof createPowerShellToolDefinition>,
+) {
+  return createCustomShellTool(
+    POWERSHELL_CONFIG,
+    cwdOrConfig,
+    configOrBase,
+    maybeBase,
+    createPowerShellToolDefinition,
+  );
 }

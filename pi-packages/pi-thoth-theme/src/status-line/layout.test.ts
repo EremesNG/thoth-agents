@@ -158,6 +158,45 @@ describe('renderStatusLine - target format and glyphs', () => {
   });
 });
 
+describe('renderStatusLine - subscription cost', () => {
+  it.each([
+    'nerd',
+    'ascii',
+  ] as const)('appends (sub) only for subscription cost in %s mode', (mode) => {
+    const marked = renderStatusLine(
+      { cost: 1.234, isSubscription: true },
+      { width: 100, mode, theme: mockTheme },
+    );
+    expect(marked).toBe('[accent]$1.234 (sub)[/accent]');
+
+    const unmarked = renderStatusLine(
+      { cost: 1.234, isSubscription: false },
+      { width: 100, mode },
+    );
+    expect(unmarked).toBe('$1.234');
+    expect(renderStatusLine({ cost: 1.234 }, { width: 100, mode })).toBe(
+      '$1.234',
+    );
+  });
+
+  it.each([
+    'nerd',
+    'ascii',
+  ] as const)('prioritizes summed subscription cost within narrow widths in %s mode', (mode) => {
+    const data: StatusData = {
+      modelName: 'A very long model display name',
+      cost: 0.3,
+      subagentCost: 0.7,
+      isSubscription: true,
+    };
+    for (let width = 1; width <= 60; width++) {
+      const rendered = renderStatusLine(data, { width, mode });
+      expect(visibleWidth(rendered)).toBeLessThanOrEqual(width);
+      if (width >= 12) expect(rendered).toContain('$1.000 (sub)');
+    }
+  });
+});
+
 describe('renderStatusLine - unreported / null context usage', () => {
   it('shows — when contextPercent and contextTokens are null (no fake 0% or ?)', () => {
     const data: StatusData = {

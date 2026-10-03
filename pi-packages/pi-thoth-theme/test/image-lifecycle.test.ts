@@ -135,9 +135,9 @@ describe('Orca image lifecycle', () => {
   });
 
   it.each([
-    { images: false, tools: true, protocol: null, toolCount: 7 },
+    { images: false, tools: true, protocol: null, toolCount: 8 },
     { images: true, tools: false, protocol: 'kitty', toolCount: 0 },
-    { images: true, tools: true, protocol: 'kitty', toolCount: 7 },
+    { images: true, tools: true, protocol: 'kitty', toolCount: 8 },
     { images: false, tools: false, protocol: null, toolCount: 0 },
   ])('keeps images=$images independent of tools=$tools', async ({
     images,

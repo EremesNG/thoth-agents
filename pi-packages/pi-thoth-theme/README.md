@@ -43,7 +43,10 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
 ```json
 {
   "icons": "nerd",
-  "statusLine": { "enabled": true },
+  "statusLine": {
+    "enabled": true,
+    "subscriptionProviders": ["claude-bridge"]
+  },
   "tools": { "enabled": true },
   "images": { "enabled": true },
   "welcome": { "enabled": true }
@@ -52,9 +55,12 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
 
 `icons` accepts `"nerd"` (default) or `"ascii"`. Each module's `enabled` key
 accepts a boolean and defaults to `true`. Set it to `false` to leave Pi's native
-behavior on that surface. Configuration is read at extension load; use `/reload`
-after edits. Missing, malformed or invalid values use defaults. Pi settings are
-never read for package configuration.
+behavior on that surface. `statusLine.subscriptionProviders` accepts an array of
+provider identifier strings (defaults to `["claude-bridge"]`) to mark
+subscription-backed usage with `(sub)` in the status line cost segment.
+Configuration is read at extension load; use `/reload` after edits. Missing,
+malformed or invalid values use defaults. Pi settings are never read for
+package configuration.
 
 **A Nerd Font is required for the default icons.** Configure your terminal to
 use one, or set `"icons": "ascii"` for plain-text alternatives.
@@ -62,10 +68,11 @@ use one, or set `"icons": "ascii"` for plain-text alternatives.
 ### Fullscreen images in Orca
 
 Pi disables iTerm2 images in fullscreen by design. Setting
-`terminal.images: "iterm2"` in `~/.pi/agent/settings.json` therefore yields no
-images in fullscreen. Remove the `terminal.images` entry, leave
-`PI_IMAGE_PROTOCOL` unset and restart Pi so this package's Orca Kitty fallback
-can apply. Keep the package's `images` module enabled.
+`terminal.images: "iterm2"` in `~/.pi/agent/settings.json` or setting the
+environment variable `PI_IMAGE_PROTOCOL=iterm2` therefore yields no images
+in fullscreen. Remove the `terminal.images` entry, leave `PI_IMAGE_PROTOCOL`
+unset and restart Pi so this package's Orca Kitty fallback can apply. Keep the
+package's `images` module enabled.
 
 Pi's `terminal.showImages` setting must also be `true` (the default). The Orca
 fallback deliberately excludes tmux: it does not apply when `TMUX` is set.

@@ -1,6 +1,7 @@
-import type {
-  ExtensionAPI,
-  ExtensionContext,
+import {
+  createEventBus,
+  type ExtensionAPI,
+  type ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
 import { describe, expect, it, vi } from 'vitest';
 import type { ThemeConfig } from '../shared/config.ts';
@@ -15,11 +16,14 @@ describe('registerStatusLine', () => {
     welcome: { enabled: true },
   };
 
-  function createMocks() {
+  function createMocks(provider = 'anthropic') {
     const eventHandlers = new Map<string, Array<() => void>>();
     const unsubs = new Map<string, ReturnType<typeof vi.fn>>();
+    const events = createEventBus();
+    const emit = vi.spyOn(events, 'emit');
 
     const pi = {
+      events,
       on: vi.fn((event: string, handler: () => void) => {
         if (!eventHandlers.has(event)) {
           eventHandlers.set(event, []);
@@ -40,6 +44,7 @@ describe('registerStatusLine', () => {
     };
 
     const sessionManager = {
+      getSessionId: vi.fn(() => 'parent-session'),
       getEntries: vi.fn(() => [
         {
           type: 'message',
@@ -70,7 +75,7 @@ describe('registerStatusLine', () => {
 
     const ctx = {
       ui,
-      model: { id: 'test-model', name: 'Test Model' },
+      model: { id: 'test-model', name: 'Test Model', provider },
       thinkingLevel: 'low',
       getContextUsage: vi.fn(() => ({
         percent: 25,
@@ -106,6 +111,9 @@ describe('registerStatusLine', () => {
       ui,
       eventHandlers,
       unsubs,
+      events,
+      emit,
+      sessionManager,
       branchCallbacks,
       branchUnsub,
       footerData,
@@ -113,6 +121,16 @@ describe('registerStatusLine', () => {
       theme,
       getFooterFactory: () => footerFactory,
     };
+  }
+
+  function createFooter(
+    mocks: ReturnType<typeof createMocks>,
+    config = defaultConfig,
+  ) {
+    registerStatusLine(mocks.pi, mocks.ctx, config);
+    const factory = mocks.getFooterFactory();
+    if (!factory) throw new Error('Footer factory was not registered');
+    return factory(mocks.tui, mocks.theme, mocks.footerData);
   }
 
   it('sets footer component and never calls setEditorComponent', () => {
@@ -125,13 +143,7 @@ describe('registerStatusLine', () => {
 
   it('renders one status line row with model, git, context, and cumulative cost', () => {
     const mocks = createMocks();
-    registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
-
-    const factory = mocks.getFooterFactory();
-    expect(factory).toBeDefined();
-    if (!factory) throw new Error('Footer factory was not registered');
-
-    const component = factory(mocks.tui, mocks.theme, mocks.footerData);
+    const component = createFooter(mocks);
     const lines = component.render(120);
 
     expect(lines).toHaveLength(1);
@@ -142,13 +154,200 @@ describe('registerStatusLine', () => {
     expect(row).not.toContain('active');
   });
 
+  it('adds the latest cumulative subagent snapshot to session cost, replacing earlier snapshots', () => {
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    expect(component.render(120)[0]).toContain('$0.300');
+
+    mocks.tui.requestRender.mockClear();
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 1,
+    });
+    expect(component.render(120)[0]).toContain('$1.000');
+    expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
+
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 1.2,
+      runCount: 2,
+    });
+    expect(component.render(120)[0]).toContain('$1.500');
+    expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
+
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0,
+      runCount: 0,
+    });
+    expect(component.render(120)[0]).toContain('$0.300');
+  });
+
+  it('ignores subagent snapshots from other parent sessions', () => {
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 1,
+    });
+    const current = component.render(120);
+    mocks.tui.requestRender.mockClear();
+
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'other-session',
+      totalCost: 99,
+      runCount: 5,
+    });
+    expect(component.render(120)).toBe(current);
+    expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+  });
+
+  it('ignores malformed, non-finite, and negative cost snapshots', () => {
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 1,
+    });
+    const current = component.render(120);
+    mocks.tui.requestRender.mockClear();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      for (const snapshot of [
+        null,
+        undefined,
+        'not a snapshot',
+        {},
+        { parentSessionId: 'parent-session', totalCost: '2' },
+        { parentSessionId: 'parent-session', totalCost: Number.NaN },
+        {
+          parentSessionId: 'parent-session',
+          totalCost: Number.POSITIVE_INFINITY,
+        },
+        { parentSessionId: 'parent-session', totalCost: -1 },
+      ]) {
+        mocks.events.emit('thoth:subagent-usage', snapshot);
+        expect(component.render(120)).toBe(current);
+      }
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it('requests a snapshot after subscribing when the footer is created, recovering prior usage', () => {
+    const mocks = createMocks();
+    const snapshot = {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 1,
+    };
+    mocks.events.emit('thoth:subagent-usage', snapshot);
+    mocks.events.on('thoth:subagent-usage:request', () => {
+      mocks.events.emit('thoth:subagent-usage', snapshot);
+    });
+    const component = createFooter(mocks);
+
+    expect(mocks.emit).toHaveBeenCalledWith('thoth:subagent-usage:request', {
+      parentSessionId: 'parent-session',
+    });
+    expect(component.render(120)[0]).toContain('$1.000');
+  });
+
+  it('resets cost and requests the current session snapshot on session start', () => {
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 1,
+    });
+    expect(component.render(120)[0]).toContain('$1.000');
+
+    mocks.sessionManager.getSessionId.mockReturnValue('next-session');
+    mocks.sessionManager.getEntries.mockReturnValue([]);
+    mocks.emit.mockClear();
+    for (const handler of mocks.eventHandlers.get('session_start') ?? [])
+      handler();
+
+    expect(mocks.emit).toHaveBeenCalledWith('thoth:subagent-usage:request', {
+      parentSessionId: 'next-session',
+    });
+    expect(component.render(120)[0]).toContain('$0.000');
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 10,
+      runCount: 2,
+    });
+    expect(component.render(120)[0]).toContain('$0.000');
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'next-session',
+      totalCost: 0.2,
+      runCount: 1,
+    });
+    expect(component.render(120)[0]).toContain('$0.200');
+  });
+
+  it.each([
+    {
+      provider: 'claude-bridge',
+      providers: undefined,
+      expected: '$1.000 (sub)',
+    },
+    { provider: 'anthropic', providers: undefined, expected: '$1.000' },
+    {
+      provider: 'custom-subscription',
+      providers: ['custom-subscription'],
+      expected: '$1.000 (sub)',
+    },
+    { provider: 'claude-bridge', providers: [], expected: '$1.000' },
+  ])('marks cost for provider $provider with configured providers $providers', ({
+    provider,
+    providers,
+    expected,
+  }) => {
+    const mocks = createMocks(provider);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      statusLine: { enabled: true, subscriptionProviders: providers },
+    });
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 1,
+    });
+
+    expect(component.render(120)[0].split(' │ ').at(-1)).toBe(expected);
+  });
+
+  it('updates the cached subscription flag when only the model provider changes', () => {
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    const unmarked = component.render(120);
+    expect(unmarked[0]).not.toContain('(sub)');
+
+    Object.assign(mocks.ctx.model ?? {}, { provider: 'claude-bridge' });
+    for (const handler of mocks.eventHandlers.get('model_select') ?? [])
+      handler();
+    const marked = component.render(120);
+    expect(marked[0]).toContain('$0.300 (sub)');
+    expect(marked).not.toBe(unmarked);
+    expect(component.render(120)).toBe(marked);
+
+    Object.assign(mocks.ctx.model ?? {}, { provider: 'anthropic' });
+    for (const handler of mocks.eventHandlers.get('model_select') ?? [])
+      handler();
+    expect(component.render(120)[0]).not.toContain('(sub)');
+  });
+
   it('re-renders on branch change and pi events (message_end, turn_end, model_select)', () => {
     const mocks = createMocks();
-    registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
-
-    const factory = mocks.getFooterFactory();
-    if (!factory) throw new Error('Footer factory was not registered');
-    const component = factory(mocks.tui, mocks.theme, mocks.footerData);
+    const component = createFooter(mocks);
 
     // Initial render setup does not require requestRender
     mocks.tui.requestRender.mockClear();
@@ -177,46 +376,52 @@ describe('registerStatusLine', () => {
     expect(mocks.tui.requestRender).toHaveBeenCalledTimes(5);
   });
 
-  it('reads session data once and serves repeat frames from cache', () => {
-    const mocks = createMocks();
-    registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
-    const factory = mocks.getFooterFactory();
-    if (!factory) throw new Error('Footer factory was not registered');
-    const component = factory(mocks.tui, mocks.theme, mocks.footerData);
+  it('reads session data once and caches repeat frames with subagent cost and subscription marking', () => {
+    const mocks = createMocks('claude-bridge');
+    const component = createFooter(mocks);
 
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 1,
+    });
     const first = component.render(120);
-    for (let i = 0; i < 20; i++) expect(component.render(120)).toEqual(first);
-
-    const sessionManager = (
-      mocks.ctx as unknown as {
-        sessionManager: {
-          getEntries: ReturnType<typeof vi.fn<() => unknown[]>>;
-        };
-      }
-    ).sessionManager;
-    expect(sessionManager.getEntries).toHaveBeenCalledTimes(1);
-    expect(mocks.ctx.getContextUsage).toHaveBeenCalledTimes(1);
-    expect(mocks.theme.fg.mock.calls.length).toBeGreaterThan(0);
+    expect(first[0]).toContain('$1.000 (sub)');
     const fgCalls = mocks.theme.fg.mock.calls.length;
-    component.render(120);
+    const identityReads = mocks.sessionManager.getSessionId.mock.calls.length;
+    const emissions = mocks.emit.mock.calls.length;
+    for (let i = 0; i < 20; i++) expect(component.render(120)).toBe(first);
+
+    expect(mocks.sessionManager.getEntries).toHaveBeenCalledTimes(1);
+    expect(mocks.ctx.getContextUsage).toHaveBeenCalledTimes(1);
+    expect(mocks.sessionManager.getSessionId).toHaveBeenCalledTimes(
+      identityReads,
+    );
+    expect(mocks.emit).toHaveBeenCalledTimes(emissions);
+    expect(fgCalls).toBeGreaterThan(0);
+    expect(mocks.theme.fg.mock.calls.length).toBe(fgCalls);
+
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 2,
+    });
+    expect(component.render(120)).toBe(first);
     expect(mocks.theme.fg.mock.calls.length).toBe(fgCalls);
   });
 
   it('refreshes cost and context after session events', () => {
     const mocks = createMocks();
-    registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
-    const factory = mocks.getFooterFactory();
-    if (!factory) throw new Error('Footer factory was not registered');
-    const component = factory(mocks.tui, mocks.theme, mocks.footerData);
+    const component = createFooter(mocks);
     expect(component.render(120)[0]).toContain('$0.300');
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 1,
+    });
+    expect(component.render(120)[0]).toContain('$1.000');
 
-    const sessionManager = (
-      mocks.ctx as unknown as {
-        sessionManager: {
-          getEntries: ReturnType<typeof vi.fn<() => unknown[]>>;
-        };
-      }
-    ).sessionManager;
+    const { sessionManager } = mocks;
     const [entry] = sessionManager.getEntries();
     sessionManager.getEntries.mockReturnValue([entry, entry]);
     (mocks.ctx.getContextUsage as ReturnType<typeof vi.fn>).mockReturnValue({
@@ -230,7 +435,7 @@ describe('registerStatusLine', () => {
     }
     for (const h of mocks.eventHandlers.get('agent_end') ?? []) h();
     const row = component.render(120)[0];
-    expect(row).toContain('$0.600');
+    expect(row).toContain('$1.300');
     expect(row).toContain('80% used');
   });
 
@@ -241,30 +446,68 @@ describe('registerStatusLine', () => {
       tokens: null,
       contextWindow: 200000,
     });
-    registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
-    const factory = mocks.getFooterFactory();
-    if (!factory) throw new Error('Footer factory was not registered');
-    const component = factory(mocks.tui, mocks.theme, mocks.footerData);
+    const component = createFooter(mocks);
     const row = component.render(120)[0];
     expect(row).toContain('—');
     expect(row).not.toContain('0% used');
   });
 
+  it('ignores lifecycle callbacks already queued when the footer is disposed', () => {
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    const queued = [
+      ...(mocks.eventHandlers.get('session_start') ?? []),
+      ...(mocks.eventHandlers.get('message_end') ?? []),
+      ...mocks.branchCallbacks,
+    ];
+    component.dispose();
+    mocks.emit.mockClear();
+    mocks.tui.requestRender.mockClear();
+    mocks.sessionManager.getEntries.mockClear();
+    (mocks.ctx.getContextUsage as ReturnType<typeof vi.fn>).mockClear();
+
+    for (const handler of queued) handler();
+    expect(mocks.emit).not.toHaveBeenCalled();
+    expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+    expect(mocks.sessionManager.getEntries).not.toHaveBeenCalled();
+    expect(mocks.ctx.getContextUsage).not.toHaveBeenCalled();
+  });
+
   it('disposes all event and branch subscriptions on component dispose', () => {
     const mocks = createMocks();
-    registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
-
-    const factory = mocks.getFooterFactory();
-    if (!factory) throw new Error('Footer factory was not registered');
-    const component = factory(mocks.tui, mocks.theme, mocks.footerData);
+    const busUnsubs: Array<ReturnType<typeof vi.fn>> = [];
+    const on = mocks.events.on;
+    vi.spyOn(mocks.events, 'on').mockImplementation((channel, handler) => {
+      const off = vi.fn(on(channel, handler));
+      busUnsubs.push(off);
+      return off;
+    });
+    const component = createFooter(mocks);
 
     expect(mocks.branchUnsub).not.toHaveBeenCalled();
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 0.7,
+      runCount: 1,
+    });
+    const current = component.render(120);
 
     component.dispose();
+    component.dispose();
+    mocks.tui.requestRender.mockClear();
+    mocks.events.emit('thoth:subagent-usage', {
+      parentSessionId: 'parent-session',
+      totalCost: 2,
+      runCount: 2,
+    });
+    expect(component.render(120)).toBe(current);
+    expect(mocks.tui.requestRender).not.toHaveBeenCalled();
 
     expect(mocks.branchUnsub).toHaveBeenCalledTimes(1);
     for (const unsub of mocks.unsubs.values()) {
       expect(unsub).toHaveBeenCalledTimes(1);
     }
+    expect(busUnsubs).toHaveLength(1);
+    expect(busUnsubs[0]).toHaveBeenCalledTimes(1);
   });
 });

@@ -23,11 +23,12 @@ of the module toggles below.
   `grep`, `find`, `edit` and `write`, with Nerd Font icons or ASCII
   alternatives. `bash` and `powershell` show a live elapsed time while running. Execution and
   parameters delegate to Pi's built-in tools; Pi's native output toggle still
-  collapses and expands results. Other tools that bring their own renderers
-  (subagents, Ask* tools, background-task logs) keep them; tools without one,
-  such as MCP tools, get a generic frame with the tool name, a one-line
-  argument summary, a collapsed text preview, error styling and a live elapsed
-  footer. Images keep Pi's native rendering. Requires Pi >= 1.0.1.
+  collapses and expands results. Registered non-built-in tools keep their own
+  renderers when their package matches `tools.respectPackages` (including
+  thoth-agents and thoth-mem by default). Other tools get a generic frame with
+  the tool name, a one-line argument summary, a collapsed text preview, error
+  styling and a live elapsed footer. Images keep Pi's native rendering.
+  Requires Pi >= 1.0.1.
 - **Inline images**: image content from `read` is preserved for Pi's native
   inline rendering. In Orca (including Windows), outside tmux and without an
   explicit `PI_IMAGE_PROTOCOL`, the package selects Kitty when Pi has not already
@@ -52,7 +53,10 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
     "enabled": true,
     "subscriptionProviders": ["claude-bridge"]
   },
-  "tools": { "enabled": true },
+  "tools": {
+    "enabled": true,
+    "respectPackages": ["thoth-agents", "@thoth-agents/*", "thoth-mem"]
+  },
   "images": { "enabled": true },
   "welcome": { "enabled": true }
 }
@@ -63,6 +67,18 @@ accepts a boolean and defaults to `true`. Set it to `false` to leave Pi's native
 behavior on that surface. `statusLine.subscriptionProviders` accepts an array of
 provider identifier strings (defaults to `["claude-bridge"]`) to mark
 subscription-backed usage with `(sub)` in the status line cost segment.
+
+`tools.respectPackages` accepts an array of non-empty package-name strings.
+The default is `["thoth-agents", "@thoth-agents/*", "thoth-mem"]`. Entries match
+exact package names or a trailing `/*` scope wildcard: `@scope/*` matches
+`@scope/anything`, but not `@scopex/anything`. No other globs are supported.
+A user list **fully replaces** the default; `[]` gives every registered
+non-built-in tool a generic frame, even if it supplies its own renderers.
+Invalid values (including any empty, whitespace-only or non-string entry) use
+the full default list. Package names come from the nearest `package.json`
+walking upward from the tool's source directory. Built-ins always use the
+themed frames; tools absent from Pi's registry keep their own renderers.
+
 Configuration is read at extension load; use `/reload` after edits. Missing,
 malformed or invalid values use defaults. Pi settings are never read for
 package configuration.

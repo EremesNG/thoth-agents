@@ -3,7 +3,10 @@ import type {
   ToolRenderers,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import type { ThemeConfig } from '../shared/config.ts';
+import {
+  DEFAULT_RESPECT_PACKAGES,
+  type ThemeConfig,
+} from '../shared/config.ts';
 import { createCustomBashTool } from './bash.ts';
 import { createCustomEditTool } from './edit.ts';
 import { createCustomFindTool } from './find.ts';
@@ -38,12 +41,14 @@ export function registerTools(
   ]);
 
   const genericRenderers = new Map<string, ToolRenderers>();
-  const isOwnedBaseDir = createOwnershipResolver();
+  const isOwnedBaseDir = createOwnershipResolver(
+    config.tools.respectPackages ?? DEFAULT_RESPECT_PACKAGES,
+  );
 
   // Tools absent from the registry cannot be attributed and keep respecting
-  // their downstream renderers; registered tools are respected only when a
-  // thoth-agents package owns them. Read at each resolution so replacements
-  // by another package are honored.
+  // their downstream renderers; registered tools are respected only when their
+  // package matches tools.respectPackages. Read at each resolution so
+  // replacements by another package are honored.
   const canRespectDownstream = (toolName: string): boolean => {
     const tool =
       typeof pi.getAllTools === 'function'
@@ -59,7 +64,7 @@ export function registerTools(
     const builtIn = renderers.get(toolName);
     if (builtIn) return builtIn;
 
-    // Respect thoth-owned tools (subagents, task logs) that bring their own renderers.
+    // Respect configured packages' tools that bring their own renderers.
     const downstream = next();
     if (
       (downstream?.renderCall || downstream?.renderResult) &&

@@ -70,6 +70,11 @@ jobs:
           pnpm --filter @thoth-agents/pi-openai-fast run typecheck
           pnpm --filter @thoth-agents/pi-openai-fast run test
 
+      - name: Check pi-orca-images
+        run: |
+          pnpm --filter @thoth-agents/pi-orca-images run typecheck
+          pnpm --filter @thoth-agents/pi-orca-images run test
+
       - name: Check pi-thoth-theme
         run: |
           pnpm --filter @thoth-agents/pi-thoth-theme run typecheck
@@ -127,6 +132,12 @@ jobs:
 
       - name: Test pi-openai-fast
         run: pnpm --filter @thoth-agents/pi-openai-fast run test
+
+      - name: Typecheck pi-orca-images
+        run: pnpm --filter @thoth-agents/pi-orca-images run typecheck
+
+      - name: Test pi-orca-images
+        run: pnpm --filter @thoth-agents/pi-orca-images run test
 
       - name: Typecheck pi-thoth-theme
         run: pnpm --filter @thoth-agents/pi-thoth-theme run typecheck

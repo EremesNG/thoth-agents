@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type {
   AgentStartEvent,
   ExtensionAPI,
@@ -11,9 +8,10 @@ import {
   getCapabilities,
   resetCapabilitiesCache,
   setCapabilityOverrides,
+  TuiAltScreen,
 } from '@earendil-works/pi-tui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import thothTheme from '../src/index.ts';
+import orcaImages from '../src/index.ts';
 
 type LifecycleEvent = SessionStartEvent | AgentStartEvent;
 type LifecycleHandler = (
@@ -22,11 +20,12 @@ type LifecycleHandler = (
 ) => void | Promise<void>;
 
 const settingsOverrides = { trueColor: false, hyperlinks: true };
-let agentDir: string;
+const originalAltScreenPrototype = Object.getOwnPropertyDescriptors(
+  TuiAltScreen.prototype,
+);
+const originalAltScreenKeys = new Set(Reflect.ownKeys(TuiAltScreen.prototype));
 
 beforeEach(() => {
-  agentDir = mkdtempSync(join(tmpdir(), 'pi-thoth-theme-images-'));
-  vi.stubEnv('PI_CODING_AGENT_DIR', agentDir);
   vi.stubEnv('TERM_PROGRAM', 'Orca');
   vi.stubEnv('TERM', 'xterm-256color');
   for (const key of [
@@ -46,24 +45,22 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const key of Reflect.ownKeys(TuiAltScreen.prototype)) {
+    if (!originalAltScreenKeys.has(key))
+      Reflect.deleteProperty(TuiAltScreen.prototype, key);
+  }
+  Object.defineProperties(TuiAltScreen.prototype, originalAltScreenPrototype);
   vi.unstubAllEnvs();
   setCapabilityOverrides({});
   resetCapabilitiesCache();
-  rmSync(agentDir, { recursive: true, force: true });
 });
 
-function loadTheme(imagesEnabled: boolean, toolsEnabled: boolean) {
-  writeFileSync(
-    join(agentDir, 'pi-thoth-theme.json'),
-    JSON.stringify({
-      images: { enabled: imagesEnabled },
-      tools: { enabled: toolsEnabled },
-      statusLine: { enabled: false },
-      welcome: { enabled: false },
-    }),
-  );
+function loadPackage() {
   const registerTool = vi.fn();
   const registerToolRenderer = vi.fn<ExtensionAPI['registerToolRenderer']>();
+  const settingsAccess = vi.fn(() => {
+    throw new Error('Pi settings are unavailable during extension load');
+  });
   const subscriptions: Array<{
     event: string;
     handler: LifecycleHandler;
@@ -71,11 +68,14 @@ function loadTheme(imagesEnabled: boolean, toolsEnabled: boolean) {
   const pi = {
     registerTool,
     registerToolRenderer,
+    get getSettings() {
+      return settingsAccess();
+    },
     on(event: string, handler: LifecycleHandler) {
       subscriptions.push({ event, handler });
     },
   } as unknown as ExtensionAPI;
-  thothTheme(pi);
+  orcaImages(pi);
 
   async function emit(event: LifecycleEvent) {
     for (const subscription of subscriptions) {
@@ -90,6 +90,7 @@ function loadTheme(imagesEnabled: boolean, toolsEnabled: boolean) {
   return {
     registerTool,
     registerToolRenderer,
+    settingsAccess,
     start(reason: SessionStartEvent['reason'] = 'startup') {
       return emit({ type: 'session_start', reason });
     },
@@ -101,9 +102,10 @@ function loadTheme(imagesEnabled: boolean, toolsEnabled: boolean) {
 
 describe('Orca image lifecycle', () => {
   it('restores inline images before the next agent loop after native /reload resets overrides', async () => {
-    const session = loadTheme(true, false);
+    const session = loadPackage();
     expect(session.registerTool).not.toHaveBeenCalled();
     expect(session.registerToolRenderer).not.toHaveBeenCalled();
+    expect(session.settingsAccess).not.toHaveBeenCalled();
     expect(getCapabilities()).toEqual({
       images: null,
       trueColor: false,
@@ -137,36 +139,39 @@ describe('Orca image lifecycle', () => {
     expect(getCapabilities()).toBe(capabilities);
   });
 
-  it.each([
-    { images: false, tools: true, protocol: null, resolverCount: 1 },
-    { images: true, tools: false, protocol: 'kitty', resolverCount: 0 },
-    { images: true, tools: true, protocol: 'kitty', resolverCount: 1 },
-    { images: false, tools: false, protocol: null, resolverCount: 0 },
-  ])('keeps images=$images independent of tools=$tools', async ({
-    images,
-    tools,
-    protocol,
-    resolverCount,
-  }) => {
-    const session = loadTheme(images, tools);
-    expect(session.registerTool).not.toHaveBeenCalled();
-    expect(session.registerToolRenderer).toHaveBeenCalledTimes(resolverCount);
-    expect(getCapabilities().images).toBeNull();
+  it('keeps both fullscreen hooks idempotent across native extension reloads', async () => {
+    const first = loadPackage();
+    const render = Object.getOwnPropertyDescriptor(
+      TuiAltScreen.prototype,
+      'doRender',
+    )?.value;
+    const focus = Object.getOwnPropertyDescriptor(
+      TuiAltScreen.prototype,
+      'handleViewportInput',
+    )?.value;
+    expect(render).not.toBe(originalAltScreenPrototype.doRender.value);
+    expect(focus).not.toBe(
+      originalAltScreenPrototype.handleViewportInput.value,
+    );
+    await first.start();
 
-    await session.start();
-
-    expect(getCapabilities()).toEqual({
-      images: protocol,
-      trueColor: false,
-      hyperlinks: true,
-    });
-
-    await session.start('reload');
+    const reloaded = loadPackage();
+    expect(
+      Object.getOwnPropertyDescriptor(TuiAltScreen.prototype, 'doRender')
+        ?.value,
+    ).toBe(render);
+    expect(
+      Object.getOwnPropertyDescriptor(
+        TuiAltScreen.prototype,
+        'handleViewportInput',
+      )?.value,
+    ).toBe(focus);
+    await reloaded.start('reload');
     setCapabilityOverrides(settingsOverrides);
-    await session.startAgent();
+    await reloaded.startAgent();
 
     expect(getCapabilities()).toEqual({
-      images: protocol,
+      images: 'kitty',
       trueColor: false,
       hyperlinks: true,
     });
@@ -180,7 +185,7 @@ describe('Orca image lifecycle', () => {
     for (const [key, value] of Object.entries(env)) {
       vi.stubEnv(key, value);
     }
-    const session = loadTheme(true, false);
+    const session = loadPackage();
 
     await session.start('reload');
     setCapabilityOverrides(settingsOverrides);
@@ -193,8 +198,38 @@ describe('Orca image lifecycle', () => {
     });
   });
 
+  it.each([
+    'none',
+    'NONE',
+    'nOnE',
+    '0',
+  ])('bypasses all package behaviors with PI_IMAGE_PROTOCOL=%s and explicit Kitty settings', async (protocol) => {
+    vi.stubEnv('PI_IMAGE_PROTOCOL', protocol);
+    const session = loadPackage();
+    await session.start();
+    expect(getCapabilities().images).toBeNull();
+
+    await session.start('reload');
+    setCapabilityOverrides({ ...settingsOverrides, images: 'kitty' });
+    const nativeCapabilities = getCapabilities();
+    await session.startAgent();
+
+    expect(getCapabilities()).toBe(nativeCapabilities);
+    expect(getCapabilities().images).toBe('kitty');
+    expect(
+      Object.getOwnPropertyDescriptor(TuiAltScreen.prototype, 'doRender')
+        ?.value,
+    ).toBe(originalAltScreenPrototype.doRender.value);
+    expect(
+      Object.getOwnPropertyDescriptor(
+        TuiAltScreen.prototype,
+        'handleViewportInput',
+      )?.value,
+    ).toBe(originalAltScreenPrototype.handleViewportInput.value);
+  });
+
   it('preserves a native image protocol selected by reloaded settings', async () => {
-    const session = loadTheme(true, false);
+    const session = loadPackage();
 
     await session.start('reload');
     setCapabilityOverrides({ ...settingsOverrides, images: 'iterm2' });

@@ -27,6 +27,7 @@ import {
   registerSubagentsPanelOpener,
   showSubagentsPanel,
 } from '../ui/panel-overlay.js';
+import { SubagentUsageEvents } from '../usage-events.js';
 
 function currentSessionId(ctx: any): string | undefined {
   const direct = ctx?.sessionManager?.getSessionId?.() ?? ctx?.sessionId;
@@ -65,6 +66,14 @@ export default function subagentsExtension(pi: any): void {
     if (active) widgetInputSuspensions.add(reason);
     else widgetInputSuspensions.delete(reason);
   };
+  const usageEvents = pi.events
+    ? new SubagentUsageEvents(
+        pi.events,
+        typeof pi.appendEntry === 'function'
+          ? (customType, data) => pi.appendEntry(customType, data)
+          : undefined,
+      )
+    : undefined;
   const manager = new SubagentManager(
     undefined,
     undefined,
@@ -89,6 +98,8 @@ export default function subagentsExtension(pi: any): void {
       },
       getCurrentOwner: () => activeSessionOwner,
     }),
+    (parentSessionId, taskId, message) =>
+      usageEvents?.recordAssistantMessage(parentSessionId, taskId, message),
   );
   registerSubagentTools(pi, manager, process.cwd());
 
@@ -243,6 +254,12 @@ export default function subagentsExtension(pi: any): void {
     clearClaudeBackgroundWidget();
     activeSessionId = currentSessionId(ctx);
     activeSessionOwner = captureAtelierSessionOwner(ctx);
+    usageEvents?.startSession(
+      activeSessionId,
+      ctx?.sessionManager?.getEntries?.() ??
+        ctx?.sessionManager?.getBranch?.() ??
+        [],
+    );
     const cwd = ctx?.cwd ?? process.cwd();
     manager.reconcileOrphanedTasks(cwd);
     for (const warning of subagentSourceWarnings(cwd))
@@ -272,6 +289,9 @@ export default function subagentsExtension(pi: any): void {
     if (!installClaudeBackgroundWidget(ctx)) return;
   });
 
+  if (usageEvents && typeof pi.appendEntry === 'function')
+    pi.on?.('agent_end', () => usageEvents.flush());
+
   pi.on?.('session_shutdown', async () => {
     activeSessionId = undefined;
     activeSessionOwner = undefined;
@@ -284,6 +304,8 @@ export default function subagentsExtension(pi: any): void {
         '[pi-subagents] Failed to close subagent history during session shutdown:',
         error,
       );
+    } finally {
+      usageEvents?.dispose();
     }
   });
 

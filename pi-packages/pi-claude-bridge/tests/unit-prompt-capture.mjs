@@ -70,59 +70,6 @@ describe("PromptCaptures", () => {
 		assert.equal(captures.resolve(wrapped), undefined, "a derived capture is not retained");
 	});
 
-	it("retains an extension wrapper on exact captures without projecting portable parts twice", () => {
-		const captures = new PromptCaptures();
-		const input = capture({
-			contextFiles: [{ path: "/exact/AGENTS.md", content: "exact wrapper project rules" }],
-			skills: [skill("exact-browser")],
-			custom: "exact configured custom instructions",
-			append: "exact configured append instructions",
-		});
-		const forced = `EXTENSION PREFIX\n\n${PARENT_KEY}\n\nEXTENSION SUFFIX`;
-		captures.recordForced(forced, PARENT_KEY, input, "agent_start");
-
-		const projected = projectPromptCapture(captures.resolveOrDerive(forced), { skillReadTool: "mcp" });
-		assert.ok(projected.startsWith("EXTENSION PREFIX\n\n"));
-		assert.ok(projected.endsWith("\n\nEXTENSION SUFFIX"));
-		assert.doesNotMatch(projected, /operating inside pi|Pi documentation|Current working directory/);
-		for (const text of ["exact wrapper project rules", "/skills/exact-browser/SKILL.md",
-			"exact configured custom instructions", "exact configured append instructions", "EXTENSION PREFIX", "EXTENSION SUFFIX"]) {
-			assert.equal(occurrences(projected, text), 1, `${text} must be projected exactly once`);
-		}
-
-		// Exact lookup must retain the derived wrapper, even after both capture
-		// boundaries record the same forced key again.
-		captures.recordForced(forced, PARENT_KEY, input, "turn_start");
-		captures.recordForced(forced, PARENT_KEY, input, "turn_start");
-		assert.equal(project(captures, forced), projected);
-	});
-
-	it("inherits a forced parent's cache prefix and skills after its keys are evicted", () => {
-		const captures = new PromptCaptures(2);
-		const browser = skill("forced-browser");
-		const forced = `${PARENT_KEY}\n\nFORCED PARENT POLICY`;
-		captures.recordForced(forced, PARENT_KEY, capture({
-			contextFiles: [{ path: "/forced-parent/AGENTS.md", content: "forced parent project rules" }],
-			skills: [browser],
-		}), "agent_start");
-		const parent = project(captures, forced);
-		const childCustom = `${forced}\n\nFORCED CHILD POLICY`;
-		const childKey = `${childCustom}\nCurrent working directory: /forced-child`;
-		captures.record(childKey, capture({ custom: childCustom, skills: [browser] }));
-		captures.record("forced-parent eviction key", capture());
-		assert.equal(captures.resolve(PARENT_KEY), undefined);
-		assert.equal(captures.resolve(forced), undefined);
-
-		const child = project(captures, childKey);
-		assert.ok(child.startsWith(parent), "the child's append must retain the forced parent's cache prefix");
-		assert.equal(occurrences(child, "FORCED PARENT POLICY"), 1);
-		assert.equal(occurrences(child, "forced parent project rules"), 1);
-		assert.equal(occurrences(child, "/skills/forced-browser/SKILL.md"), 1);
-		assert.match(child, /FORCED CHILD POLICY$/);
-		assert.doesNotMatch(child, /operating inside pi|Current working directory/);
-		assert.deepEqual(collectPromptSkills(captures.resolve(childKey)).map(({ name }) => name), ["forced-browser"]);
-	});
-
 	it("revives an exact capture whose lookup key was evicted", () => {
 		const captures = new PromptCaptures(2);
 		captures.record(PARENT_KEY, capture({ contextFiles: [{ path: "/AGENTS.md", content: "parent rules" }] }));

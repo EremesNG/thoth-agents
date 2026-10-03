@@ -2,7 +2,6 @@
 
 ## UNRELEASED
 
-- **Fix: forward extension-added system instructions** — Preserve before_agent_start prefixes, suffixes, wrappers and full replacements in Claude Code's append, including exact captures. Reconcile exact portable copies already carried by replacements without dropping omitted or distinct instructions, weakening the sendability guard, or changing ordinary tool-list rebuilds.
 - **Fix: tolerate non-object Pi tool schemas** — Wrap object-only root unions for MCP and omit incompatible tools with session-scoped UI/headless warnings, retaining Pi's original argument validation.
 
 ## 0.9.1 — 2026-09-30

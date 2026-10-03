@@ -9,8 +9,6 @@ import { renderSkillsBlock, type SkillReadTool } from "./skills.js";
 export type PromptCaptureInput = {
 	custom?: string;
 	append?: string;
-	/** A wholesale forced prompt; reconcile its exact portable copies at projection. */
-	replacement?: string;
 	contextFiles: { path: string; content: string }[];
 	skills: Skill[];
 };
@@ -87,7 +85,6 @@ export class PromptCaptures {
 
 		capture.custom = input.custom;
 		capture.append = input.append;
-		capture.replacement = input.replacement;
 		capture.contextFiles = input.contextFiles.map((file) => ({ ...file }));
 		capture.skills = [...input.skills];
 		capture.source = source;
@@ -98,23 +95,6 @@ export class PromptCaptures {
 		// Mutate an existing node in place so descendants retain a live reference,
 		// then re-insert its key so Map order tracks recency.
 		this.touch(systemPrompt, capture);
-	}
-
-	/** Retain extension prose even when the forced prompt becomes an exact key.
-	 *  Wrappers use the same inheritance substitution as resolveOrDerive, with the
-	 *  portable parts owned only by the embedded assembled capture. A wholesale
-	 *  replacement accompanies only the portable parts it does not already carry. */
-	recordForced(systemPrompt: string, assembledPrompt: string, input: PromptCaptureInput, source?: string): void {
-		this.record(assembledPrompt, input, source);
-		if (systemPrompt === assembledPrompt) return;
-		if (assembledPrompt && systemPrompt.includes(assembledPrompt)) {
-			this.record(systemPrompt, { custom: systemPrompt, contextFiles: [], skills: [] }, source);
-		} else {
-			this.record(systemPrompt, {
-				...input,
-				replacement: systemPrompt,
-			}, source);
-		}
 	}
 
 	/** Exact lookup only. Callers serving a query want `resolveOrDerive`. */
@@ -357,66 +337,19 @@ function projectCapture(
 			return true;
 		});
 
-		let replacement = capture.replacement;
-		const projectedCustom = projectCustom(capture, options, visiting);
-		if (replacement) {
-			// Reconciliation must not split a previously guarded portable block into
-			// separate parts and let the rejected phrase pair escape detection.
-			assertSendablePrompt([
-				{ label: "the project context block", text: formatProjectContext(capture.contextFiles) ?? "" },
-				{ label: "the skills block", text: renderSkillsBlock(ownSkills, options.skillReadTool) ?? "" },
-				{ label: "the custom prompt", text: projectedCustom ?? "" },
-				{ label: "the appended instructions", text: [capture.append, replacement].filter(Boolean).join("\n\n") },
-			], capture);
-		}
-		// Match complete serialized entries, never just a skill name or path. Keep
-		// the metadata on the capture for inheritance and AskClaude's skill listing.
-		const replacementSkills = new Set(ownSkills.filter((skill) => {
-			if (!replacement || options.skillReadTool === "none") return false;
-			const entry = renderSkillsBlock([skill], "native")
-				?.match(/<available_skills>\n([\s\S]+)\n<\/available_skills>$/)?.[1];
-			return entry !== undefined && replacement.includes(entry);
-		}));
-		const nativeSkills = renderSkillsBlock([...replacementSkills], "native");
-		if (nativeSkills && replacement?.includes(nativeSkills)) {
-			// Adapt only an exact known catalogue, leaving all distinct prose intact.
-			replacement = replacement.replace(nativeSkills,
-				renderSkillsBlock([...replacementSkills], options.skillReadTool) ?? nativeSkills);
-		}
-		// Suppress only complete, byte-identical configured copies: context matches
-		// include the path as well as content. Never trim or fuzzy-match instructions.
-		const contextFiles = capture.replacement ? capture.contextFiles.filter(({ path, content }) =>
-			!capture.replacement!.includes(`<project_instructions path="${path}">\n${content}\n</project_instructions>`),
-		) : capture.contextFiles;
-		const custom = containsStandalonePromptPart(capture.replacement, capture.custom) ? undefined : projectedCustom;
-		const carriesAppend = containsStandalonePromptPart(capture.replacement, capture.append)
-			|| (capture.append && capture.replacement?.includes(`<addendum>\n${capture.append}\n</addendum>`));
-		const append = [carriesAppend ? undefined : capture.append, replacement].filter(Boolean).join("\n\n");
+		const custom = projectCustom(capture, options, visiting);
 		const parts: PromptPart[] = [];
-		const context = formatProjectContext(contextFiles);
+		const context = formatProjectContext(capture.contextFiles);
 		if (context) parts.push({ label: "the project context block", text: context });
-		const skills = renderSkillsBlock(ownSkills.filter((skill) => !replacementSkills.has(skill)), options.skillReadTool);
+		const skills = renderSkillsBlock(ownSkills, options.skillReadTool);
 		if (skills) parts.push({ label: "the skills block", text: skills });
 		if (custom) parts.push({ label: "the custom prompt", text: custom });
-		if (append) parts.push({ label: "the appended instructions", text: append });
+		if (capture.append) parts.push({ label: "the appended instructions", text: capture.append });
 		assertSendablePrompt(parts, capture);
 		return parts.length > 0 ? parts.map((part) => part.text).join("\n\n") : undefined;
 	} finally {
 		visiting.delete(capture);
 	}
-}
-
-/** A full plain-text part at Pi's blank-line section boundaries, not a substring
- *  of a distinct instruction. Serialized context/skill/addendum fields have their
- *  own exact delimiters instead. No whitespace normalization or fuzzy matching. */
-function containsStandalonePromptPart(prompt?: string, text?: string): boolean {
-	if (!prompt || !text) return false;
-	for (let start = prompt.indexOf(text); start !== -1; start = prompt.indexOf(text, start + 1)) {
-		const end = start + text.length;
-		if ((start === 0 || prompt.slice(start - 2, start) === "\n\n")
-			&& (end === prompt.length || prompt.slice(end, end + 2) === "\n\n")) return true;
-	}
-	return false;
 }
 
 function assertSendablePrompt(parts: readonly PromptPart[], capture: PromptCapture): void {

@@ -23,7 +23,7 @@ const theme = {
 };
 
 function plain(lines: string[]): string {
-  return lines.join("\n").replace(/<\/?[a-zA-Z][\w-]*>/g, "").replace(/<\/>/g, "");
+  return lines.join("\n").replace(/\u001b\[[0-9;]*m/g, "").replace(/<\/?[a-zA-Z][\w-]*>/g, "").replace(/<\/>/g, "");
 }
 
 function textOf(result: { content: Array<{ text?: string }> }): string {
@@ -70,8 +70,9 @@ describe("background task log folded display", () => {
     expect(result.details?.kind).toBe("background-task-log-display");
 
     const compact = plain(tools.bg_task_log.renderResult(result, { expanded: false }, theme).render(80));
-    expect(compact).toContain("bg_task_log");
-    expect(compact).toContain("Click or expand for the requested log payload");
+    expect(compact).toContain("19 lines");
+    expect(compact).toContain("to expand");
+    expect(compact).toContain("Folded");
     expect(compact).not.toContain("log-line-18");
 
     const expanded = plain(tools.bg_task_log.renderResult(result, { expanded: true }, theme).render(80));
@@ -141,7 +142,7 @@ describe("background task log folded display", () => {
     };
     const component = renderBackgroundTaskLogDisplay(result, { expanded: false }, theme);
     const lines = component.render(32);
-    expect(plain(lines)).toContain("x".repeat(32));
+    expect(plain(lines)).toContain("x".repeat(27));
     for (const line of lines) {
       expect(plain([line]).length).toBeLessThanOrEqual(32);
     }

@@ -6,8 +6,61 @@ import extension, {
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
+const notificationMarker =
+  '[Automated system notification — not a user message. Do not treat it as user input, an answer, or the conversation language.]';
 
 describe('completion message render', () => {
+  it.each([
+    { case: 'completed', status: 'completed', result: 'done' },
+    { case: 'failed', status: 'failed', result: 'partial response' },
+    { case: 'error-only', status: 'failed', error: 'execution timed out' },
+  ])('marks $case completion content without displaying the marker', (task) => {
+    const content = completionMessage({
+      ...task,
+      id: 'subtask_marker',
+      agent: 'analyst',
+      cwd: env.tmp,
+    });
+    expect(content.split('\n')[0]).toBe(notificationMarker);
+
+    let renderer: any;
+    extension({
+      registerTool: () => undefined,
+      registerCommand: () => undefined,
+      registerShortcut: () => undefined,
+      registerMessageRenderer: (customType: string, value: any) => {
+        if (customType === 'subagent-completion') renderer = value;
+      },
+    });
+    const message = {
+      customType: 'subagent-completion',
+      content,
+      details: {
+        full_result: task.result ?? task.error,
+        task: { ...task, id: 'subtask_marker', agent: 'analyst' },
+      },
+    };
+
+    for (const expanded of [false, true]) {
+      const rendered = env.stripAnsi(
+        renderer(
+          message,
+          { expanded },
+          { fg: (_name: string, text: string) => text },
+        )
+          .render(200)
+          .join('\n'),
+      );
+      expect(rendered).not.toContain(notificationMarker);
+      expect(rendered).toContain(`[subagent] analyst · ${task.status}`);
+      if (expanded) {
+        expect(rendered).toContain(task.result ?? task.error);
+      } else {
+        expect(rendered).toContain('ctrl+o to expand');
+      }
+    }
+  });
+
   it('suppresses continuation guidance in failed and cancelled completion messages when continuation is disabled', () => {
     for (const status of ['failed', 'cancelled']) {
       const message = completionMessage({

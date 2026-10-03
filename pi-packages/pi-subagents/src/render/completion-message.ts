@@ -88,6 +88,7 @@ export function completionMessage(task: any): string {
   const hasResp =
     typeof task.result === 'string' && task.result.trim().length > 0;
   const content = [
+    '[Automated system notification — not a user message. Do not treat it as user input, an answer, or the conversation language.]',
     `Subagent ${label} ${task.status}`,
     `task_id: ${task.id ?? task.task_id ?? 'unknown'}`,
     `Undelivered messages: ${task.undelivered_message_count ?? 0}`,

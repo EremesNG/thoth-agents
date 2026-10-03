@@ -8,6 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { applyLongContext, buildModels, claudeCodeModelId, resolveClaudeCodeRuntimeModel, resolveModel } from "../src/models.js";
+import { updateUsage } from "../src/usage.js";
 import { getModels } from "@earendil-works/pi-ai/compat";
 
 const PRO = { plan: "pro", longContextExtraUsage: false };
@@ -31,19 +32,49 @@ const find = (models, id) => models.find((m) => m.id === id);
 
 describe("MODELS projection", () => {
 	it("driven by pi-ai's real anthropic catalog, minus dated snapshot aliases", () => {
-		const models = buildModels(getModels("anthropic"));
+		const catalog = getModels("anthropic");
+		const models = buildModels(catalog);
 		for (const m of models) {
 			assert.doesNotMatch(m.id, /-20\d{6}$/, "no dated snapshot ids in the picker");
 			assert.equal(m.baseUrl, undefined);
 			assert.equal(m.api, undefined);
 			assert.equal(m.provider, undefined);
 			assert.equal(m.headers, undefined);
-			assert.deepEqual(m.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+			assert.equal(m.promptCache, undefined, "projection does not enable native cache warming");
+			assert.deepEqual(m.cost, find(catalog, m.id).cost, `${m.id} keeps catalog prices`);
+			for (const kind of ["input", "output", "cacheRead", "cacheWrite"]) {
+				assert.ok(m.cost[kind] > 0, `${m.id} has a nonzero ${kind} price`);
+			}
 		}
 		// Spot-check coverage of every current family.
 		assert.ok(find(models, "claude-opus-5"), "opus-5 present");
 		assert.ok(find(models, "claude-fable-5-1"), "fable-5-1 present");
 		assert.ok(find(models, "claude-haiku-4-5"), "haiku present");
+	});
+
+	it("reports API-equivalent usage cost at catalog prices for all four token counters", () => {
+		const catalogModel = find(getModels("anthropic"), "claude-haiku-4-5");
+		const model = find(applyLongContext(buildModels([catalogModel]), PRO), catalogModel.id);
+		const output = {
+			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+		};
+		updateUsage(output, {
+			input_tokens: 2_000, output_tokens: 1_000,
+			cache_read_input_tokens: 5_000, cache_creation_input_tokens: 4_000,
+		}, model);
+
+		// Expected prices come from the source catalog, not the bridge projection.
+		// Rates are USD per million tokens; this sample costs $0.0125 at current Haiku prices.
+		const expectedCost = {
+			input: catalogModel.cost.input / 1_000_000 * 2_000,
+			output: catalogModel.cost.output / 1_000_000 * 1_000,
+			cacheRead: catalogModel.cost.cacheRead / 1_000_000 * 5_000,
+			cacheWrite: catalogModel.cost.cacheWrite * 4_000 / 1_000_000,
+		};
+		expectedCost.total = expectedCost.input + expectedCost.output + expectedCost.cacheRead + expectedCost.cacheWrite;
+		assert.ok(output.usage.cost.total > 0, "subscription usage has a nonzero API-equivalent cost");
+		assert.deepEqual(output.usage.cost, expectedCost);
 	});
 
 	it("sorts newest generation first within each family", () => {

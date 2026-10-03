@@ -10,6 +10,7 @@ import { createCustomFindTool } from './find.ts';
 import { createGenericTool } from './generic.ts';
 import { createCustomGrepTool } from './grep.ts';
 import { createCustomLsTool } from './ls.ts';
+import { createOwnershipResolver } from './ownership.ts';
 import { createCustomPowerShellTool } from './powershell.ts';
 import { createCustomReadTool } from './read.ts';
 import { stopAllElapsedTickers } from './ticker.ts';
@@ -37,15 +38,35 @@ export function registerTools(
   ]);
 
   const genericRenderers = new Map<string, ToolRenderers>();
+  const isOwnedBaseDir = createOwnershipResolver();
+
+  // Tools absent from the registry cannot be attributed and keep respecting
+  // their downstream renderers; registered tools are respected only when a
+  // thoth-agents package owns them. Read at each resolution so replacements
+  // by another package are honored.
+  const canRespectDownstream = (toolName: string): boolean => {
+    const tool =
+      typeof pi.getAllTools === 'function'
+        ? pi.getAllTools().find((t) => t.name === toolName)
+        : undefined;
+    if (!tool) return true;
+    const baseDir = tool.sourceInfo?.baseDir;
+    return baseDir ? isOwnedBaseDir(baseDir) : false;
+  };
 
   pi.registerToolRenderer((toolName, next) => {
     // Built-ins take precedence over Pi 1.0.1's native callbacks.
     const builtIn = renderers.get(toolName);
     if (builtIn) return builtIn;
 
-    // Respect tools (subagents, Ask*, task logs) that bring their own renderers.
+    // Respect thoth-owned tools (subagents, task logs) that bring their own renderers.
     const downstream = next();
-    if (downstream?.renderCall || downstream?.renderResult) return downstream;
+    if (
+      (downstream?.renderCall || downstream?.renderResult) &&
+      canRespectDownstream(toolName)
+    ) {
+      return downstream;
+    }
 
     let generic = genericRenderers.get(toolName);
     if (!generic) {

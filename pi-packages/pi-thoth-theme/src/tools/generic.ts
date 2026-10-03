@@ -26,6 +26,7 @@ import {
 
 const COLLAPSED_OUTPUT_LINES = 8;
 const MAX_ARGS_SUMMARY_LENGTH = 500;
+const NESTED_KEYS_SHOWN = 4;
 
 interface GenericContext extends ElapsedRenderContext {
   lastComponent?: { invalidate?: () => void };
@@ -50,13 +51,35 @@ function formatValue(value: unknown): string {
   }
 }
 
+function summarizeValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.length} items]`;
+  if (value !== null && typeof value === 'object') {
+    const keys = Object.keys(value);
+    const shown = keys.slice(0, NESTED_KEYS_SHOWN).join(', ');
+    return `{${keys.length > NESTED_KEYS_SHOWN ? `${shown}, …` : shown}}`;
+  }
+  return formatValue(value);
+}
+
+/** Pretty-print JSON object/array text; anything else is returned unchanged. */
+function prettifyJson(text: string): string {
+  const trimmed = text.trim();
+  const first = trimmed[0];
+  if (first !== '{' && first !== '[') return text;
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return text;
+  }
+}
+
 /** One-line `key=value` summary; escaping happens at the display boundary. */
 export function summarizeArgs(args: unknown): string {
   if (args === undefined || args === null) return '';
   let summary: string;
   if (typeof args === 'object' && !Array.isArray(args)) {
     summary = Object.entries(args as Record<string, unknown>)
-      .map(([key, value]) => `${key}=${formatValue(value)}`)
+      .map(([key, value]) => `${key}=${summarizeValue(value)}`)
       .join(' ');
   } else {
     summary = formatValue(args);
@@ -124,7 +147,7 @@ export function createGenericTool(
       const isPartial = Boolean(options?.isPartial);
       syncElapsedTicker({ ...context, isPartial });
       const elapsed = formatElapsed(getElapsedMs(context?.state));
-      const text = getResultText(result);
+      const text = prettifyJson(getResultText(result));
       const allLines = text ? text.split('\n') : [];
       const lineCount = allLines.length;
       const hasImage = hasImageContent(result);

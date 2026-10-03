@@ -208,7 +208,55 @@ describe('generic tool frame', () => {
 
   it('summarizes args compactly', () => {
     expect(summarizeArgs(undefined)).toBe('');
-    expect(summarizeArgs({ a: 1, b: 'x', c: [1] })).toBe('a=1 b="x" c=[1]');
+    expect(summarizeArgs({ a: 1, b: 'x', c: [1] })).toBe(
+      'a=1 b="x" c=[1 items]',
+    );
     expect(summarizeArgs('s')).toBe('"s"');
+  });
+
+  it('summarizes arrays, nested objects and long keys', () => {
+    expect(summarizeArgs({ q: [1, 2, 3], o: { a: 1, b: 2 }, n: null })).toBe(
+      'q=[3 items] o={a, b} n=null',
+    );
+    expect(summarizeArgs({ o: { a: 1, b: 2, c: 3, d: 4, e: 5 } })).toBe(
+      'o={a, b, c, d, …}',
+    );
+    expect(summarizeArgs({ [`k${'x'.repeat(600)}`]: 1 })).toHaveLength(500);
+    expect(summarizeArgs({ 'a\u001b': [] })).toBe('a␛=[0 items]');
+  });
+
+  describe('JSON results', () => {
+    function run(body: string, expanded = false) {
+      setup();
+      const { component } = make();
+      component.updateResult({ content: [text(body)], isError: false }, false);
+      component.setExpanded(expanded);
+      return plain(component).join('\n');
+    }
+
+    it('pretty-prints objects and arrays', () => {
+      const obj = run('{"a":1,"b":{"c":2}}', true);
+      expect(obj).toContain('"a": 1');
+      expect(obj).toContain('"c": 2');
+      expect(run('[1,2]', true)).toContain('  1,');
+    });
+
+    it('collapses large JSON to 8 lines with the hint', () => {
+      const out = run(
+        JSON.stringify({ items: Array.from({ length: 30 }, (_, i) => i) }),
+      );
+      expect(out).toContain('more lines');
+    });
+
+    it('leaves invalid JSON and plain text unchanged', () => {
+      expect(run('{"a":1')).toContain('{"a":1');
+      expect(run('hello {"a":1}')).toContain('hello {"a":1}');
+      expect(run('42', true)).toContain('42');
+    });
+
+    it('escapes control characters inside JSON strings', () => {
+      const out = run(JSON.stringify({ a: '\u001b[31mred' }), true);
+      expect(out).not.toContain('\u001b');
+    });
   });
 });

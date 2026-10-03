@@ -55,7 +55,7 @@ export function renderFrameTop(
   isError = false,
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = isError ? 'error' : 'borderMuted';
+  const borderColor = isError ? 'error' : 'accent';
 
   if (safeWidth <= 0) return [];
   if (safeWidth <= 4) {
@@ -85,7 +85,7 @@ export function renderFrameRow(
   isError = false,
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = isError ? 'error' : 'borderMuted';
+  const borderColor = isError ? 'error' : 'accent';
 
   if (safeWidth <= 0) return [];
   if (safeWidth <= 4) {
@@ -107,7 +107,7 @@ export function renderFrameDivider(
   isError = false,
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = isError ? 'error' : 'borderMuted';
+  const borderColor = isError ? 'error' : 'accent';
 
   if (safeWidth <= 0) return [];
   if (safeWidth <= 4) {
@@ -137,7 +137,7 @@ export function renderFrameBottom(
   isError = false,
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = isError ? 'error' : 'borderMuted';
+  const borderColor = isError ? 'error' : 'accent';
 
   if (safeWidth <= 0) return [];
   if (safeWidth <= 4) {

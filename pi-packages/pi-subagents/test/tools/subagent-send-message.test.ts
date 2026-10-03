@@ -396,7 +396,7 @@ describe('subagent_send_message tool', () => {
     const collapsed = sendTool
       .renderResult(queuedResult, { expanded: false }, theme)
       .render(80);
-    expect(collapsed[0]).toContain('┌─');
+    expect(collapsed[0]).toContain('╭─');
     expect(collapsed[0]).toContain('󰣇');
     expect(collapsed[0]).toContain('subagent send message · queued');
     expect(collapsed.join('\n')).toContain('task_id: subtask_123');
@@ -405,7 +405,7 @@ describe('subagent_send_message tool', () => {
     const expanded = sendTool
       .renderResult(queuedResult, { expanded: true }, theme)
       .render(80);
-    expect(expanded[0]).toContain('┌─');
+    expect(expanded[0]).toContain('╭─');
     expect(expanded[0]).toContain('󰣇');
     expect(expanded.join('\n')).toContain('Message');
     expect(expanded.join('\n')).toContain('please steer');

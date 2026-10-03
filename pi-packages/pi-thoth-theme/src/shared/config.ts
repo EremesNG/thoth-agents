@@ -4,13 +4,19 @@ import { join } from 'node:path';
 
 export type IconMode = 'nerd' | 'ascii';
 
+export const DEFAULT_RESPECT_PACKAGES: readonly string[] = [
+  'thoth-agents',
+  '@thoth-agents/*',
+  'thoth-mem',
+];
+
 export interface ThemeConfig {
   icons: IconMode;
   statusLine: {
     enabled: boolean;
     subscriptionProviders?: string[];
   };
-  tools: { enabled: boolean };
+  tools: { enabled: boolean; respectPackages?: string[] };
   images: { enabled: boolean };
   welcome: { enabled: boolean };
 }
@@ -38,6 +44,17 @@ function parseSubscriptionProviders(value: unknown): string[] {
   return ['claude-bridge'];
 }
 
+function parseRespectPackages(value: unknown): string[] {
+  const packages = asObject(value).respectPackages;
+  return Array.isArray(packages) &&
+    packages.every(
+      (item): item is string =>
+        typeof item === 'string' && item.trim().length > 0,
+    )
+    ? packages
+    : [...DEFAULT_RESPECT_PACKAGES];
+}
+
 export function loadConfig(
   configPath = join(
     process.env.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent'),
@@ -56,7 +73,10 @@ export function loadConfig(
       enabled: moduleEnabled(config.statusLine),
       subscriptionProviders: parseSubscriptionProviders(config.statusLine),
     },
-    tools: { enabled: moduleEnabled(config.tools) },
+    tools: {
+      enabled: moduleEnabled(config.tools),
+      respectPackages: parseRespectPackages(config.tools),
+    },
     images: { enabled: moduleEnabled(config.images) },
     welcome: { enabled: moduleEnabled(config.welcome) },
   };

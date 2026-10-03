@@ -9,7 +9,10 @@ import { loadConfig } from '../src/shared/config.ts';
 const defaults = {
   icons: 'nerd',
   statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
-  tools: { enabled: true },
+  tools: {
+    enabled: true,
+    respectPackages: ['thoth-agents', '@thoth-agents/*', 'thoth-mem'],
+  },
   images: { enabled: true },
   welcome: { enabled: true },
 };
@@ -51,7 +54,7 @@ describe('loadConfig', () => {
     expect(loadConfig()).toEqual({
       ...defaults,
       icons: 'ascii',
-      tools: { enabled: false },
+      tools: { ...defaults.tools, enabled: false },
     });
     writeFileSync(configPath, '{}');
     expect(loadConfig()).toEqual(defaults);
@@ -64,13 +67,14 @@ describe('loadConfig', () => {
     );
     expect(loadConfig(configPath)).toEqual({
       ...defaults,
-      tools: { enabled: false },
+      tools: { ...defaults.tools, enabled: false },
     });
   });
 
   it('returns independent defaults for each load', () => {
     const config = loadConfig(configPath);
     config.statusLine.enabled = false;
+    config.tools.respectPackages?.push('custom-package');
     expect(loadConfig(configPath)).toEqual(defaults);
   });
 
@@ -88,9 +92,49 @@ describe('loadConfig', () => {
     expect(loadConfig(configPath)).toEqual({
       icons: 'ascii',
       statusLine: { enabled: false, subscriptionProviders: ['claude-bridge'] },
-      tools: { enabled: false },
+      tools: { ...defaults.tools, enabled: false },
       images: { enabled: false },
       welcome: { enabled: false },
+    });
+  });
+
+  it.each([
+    { respectPackages: ['custom-package', '@scope/*'] },
+    { respectPackages: [] },
+  ])('fully replaces the default tools.respectPackages with $respectPackages', ({
+    respectPackages,
+  }) => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({ tools: { enabled: false, respectPackages } }),
+    );
+    expect(loadConfig(configPath)).toEqual({
+      ...defaults,
+      tools: { enabled: false, respectPackages },
+    });
+  });
+
+  it.each([
+    { value: null },
+    { value: false },
+    { value: 42 },
+    { value: 'thoth-mem' },
+    { value: {} },
+    { value: [''] },
+    { value: ['   '] },
+    { value: ['custom-package', ''] },
+    { value: ['custom-package', 42] },
+    { value: ['custom-package', null] },
+  ])('uses the default tools.respectPackages for invalid value $value', ({
+    value,
+  }) => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({ tools: { enabled: false, respectPackages: value } }),
+    );
+    expect(loadConfig(configPath)).toEqual({
+      ...defaults,
+      tools: { ...defaults.tools, enabled: false },
     });
   });
 

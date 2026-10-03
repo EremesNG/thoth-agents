@@ -1,15 +1,25 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-const OWNER_NAME = 'thoth-agents';
-const OWNER_SCOPE = '@thoth-agents/';
-
 export type ManifestReader = (path: string) => string;
 
-function isOwnedName(name: unknown): boolean {
+function isOwnedName(
+  name: unknown,
+  respectPackages: readonly string[],
+): boolean {
   return (
     typeof name === 'string' &&
-    (name === OWNER_NAME || name.startsWith(OWNER_SCOPE))
+    respectPackages.some((pattern) => {
+      if (name === pattern) return true;
+      if (
+        !pattern.endsWith('/*') ||
+        pattern.indexOf('*') !== pattern.length - 1
+      ) {
+        return false;
+      }
+      const prefix = pattern.slice(0, -1);
+      return name.startsWith(prefix) && name.length > prefix.length;
+    })
   );
 }
 
@@ -19,11 +29,12 @@ function isMissing(error: unknown): boolean {
 }
 
 /**
- * Decides whether a tool's `baseDir` belongs to a thoth-agents package by the
- * nearest `package.json` walking upward. The first manifest found decides, even
- * when foreign, malformed or unreadable. Results are cached per directory.
+ * Matches a tool's nearest `package.json` walking upward against the configured
+ * package patterns. The first manifest found decides, even when unmatched,
+ * malformed or unreadable. Results are cached per directory.
  */
 export function createOwnershipResolver(
+  respectPackages: readonly string[],
   read: ManifestReader = (path) => readFileSync(path, 'utf8'),
 ): (baseDir: string) => boolean {
   const cache = new Map<string, boolean>();
@@ -41,7 +52,10 @@ export function createOwnershipResolver(
       visited.push(dir);
       try {
         const manifest: unknown = JSON.parse(read(join(dir, 'package.json')));
-        owned = isOwnedName((manifest as { name?: unknown } | null)?.name);
+        owned = isOwnedName(
+          (manifest as { name?: unknown } | null)?.name,
+          respectPackages,
+        );
         break;
       } catch (error) {
         if (!(error instanceof Error) || !isMissing(error)) break;

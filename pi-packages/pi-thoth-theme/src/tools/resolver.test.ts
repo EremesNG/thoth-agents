@@ -7,7 +7,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { Text } from '@earendil-works/pi-tui';
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import type { ThemeConfig } from '../shared/config.ts';
+import { loadConfig, type ThemeConfig } from '../shared/config.ts';
 import { registerTools } from './index.ts';
 
 const config: ThemeConfig = {
@@ -127,9 +127,15 @@ describe('registerTools resolver', () => {
 
   describe('ownership of downstream renderers', () => {
     const downstream = { renderCall: () => new Text('custom', 0, 0) };
+    const memoryRenderers = {
+      renderShell: 'self' as const,
+      renderCall: () => new Text('memory call', 0, 0),
+      renderResult: () => new Text('memory result', 0, 0),
+    };
 
     function loadWith(
       tools: Array<{ name: string; sourceInfo?: { baseDir?: string } }>,
+      themeConfig: ThemeConfig = config,
     ) {
       const registerToolRenderer =
         vi.fn<(resolver: ToolRendererResolver) => void>();
@@ -138,7 +144,7 @@ describe('registerTools resolver', () => {
         registerToolRenderer,
         getAllTools,
       } as unknown as ExtensionAPI;
-      const dispose = registerTools(pi, config);
+      const dispose = registerTools(pi, themeConfig);
       const resolver = registerToolRenderer.mock.calls[0]?.[0];
       if (!resolver) throw new Error('no resolver');
       return { resolver, getAllTools, dispose, tools };
@@ -153,6 +159,7 @@ describe('registerTools resolver', () => {
     const repoRoot = write(join(tmp, 'fork'), 'thoth-agents');
     const npmRoot = write(join(tmp, 'npm'), '@thoth-agents/pi-thoth-theme');
     const foreign = write(join(tmp, 'mcp'), 'pi-mcp-adapter');
+    const memoryRoot = write(join(tmp, 'memory'), 'thoth-mem');
     afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
     it('respects owned tools at the package root, nested src/ and npm root', () => {
@@ -164,6 +171,49 @@ describe('registerTools resolver', () => {
       for (const name of ['a', 'b', 'c']) {
         expect(resolver(name, () => downstream)).toBe(downstream);
       }
+      dispose();
+    });
+
+    it('respects thoth-mem tools with their own shell and renderers by default', () => {
+      const { resolver, dispose } = loadWith(
+        [{ name: 'memory', sourceInfo: { baseDir: join(memoryRoot, 'src') } }],
+        loadConfig(join(tmp, 'pi-thoth-theme.json')),
+      );
+      expect(resolver('memory', () => memoryRenderers)).toBe(memoryRenderers);
+      dispose();
+    });
+
+    it.each([
+      { respectPackages: ['thoth-agents', '@thoth-agents/*'] },
+      { respectPackages: [] },
+    ])('frames thoth-mem when the user list is $respectPackages', ({
+      respectPackages,
+    }) => {
+      const { resolver, dispose } = loadWith(
+        [{ name: 'memory', sourceInfo: { baseDir: memoryRoot } }],
+        { ...config, tools: { enabled: true, respectPackages } },
+      );
+      const renderers = resolver('memory', () => memoryRenderers);
+      expect(renderers).not.toBe(memoryRenderers);
+      expect(renderers?.renderShell).toBe('self');
+      expect(typeof renderers?.renderCall).toBe('function');
+      expect(typeof renderers?.renderResult).toBe('function');
+      dispose();
+    });
+
+    it('respects a user-selected package instead of the default packages', () => {
+      const { resolver, dispose } = loadWith(
+        [
+          { name: 'custom', sourceInfo: { baseDir: foreign } },
+          { name: 'thoth', sourceInfo: { baseDir: repoRoot } },
+        ],
+        {
+          ...config,
+          tools: { enabled: true, respectPackages: ['pi-mcp-adapter'] },
+        },
+      );
+      expect(resolver('custom', () => downstream)).toBe(downstream);
+      expect(resolver('thoth', () => downstream)).not.toBe(downstream);
       dispose();
     });
 

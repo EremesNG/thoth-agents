@@ -4,10 +4,16 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import { createEditToolDefinition } from '@earendil-works/pi-coding-agent';
-import { truncateToWidth } from '@earendil-works/pi-tui';
 import type { ThemeConfig } from '../shared/config.ts';
-import { createComponent, getResultText, renderBox } from './box.ts';
+import { createComponent, getResultText } from './box.ts';
 import { getFileIcon, getToolIcon } from './file-icons.ts';
+import {
+  formatDisplayPath,
+  hasToolResult,
+  renderFrameBottom,
+  renderFrameRow,
+  renderFrameTop,
+} from './frame.ts';
 
 const COLLAPSED_DIFF_LINES = 6;
 
@@ -18,6 +24,14 @@ interface EditArgs {
 
 interface EditContext {
   isError?: boolean;
+  cwd?: string;
+  isPartial?: boolean;
+  lastComponent?: { invalidate?: () => void };
+  state?: {
+    hasResult?: boolean;
+    callComponent?: { invalidate?: () => void };
+    [key: string]: unknown;
+  };
 }
 
 interface EditDetails {
@@ -77,20 +91,33 @@ export function createCustomEditTool(
 
   return {
     ...baseDef,
-    renderCall(rawArgs: unknown, theme: Theme, _context: EditContext) {
+    renderShell: 'self' as const,
+    renderCall(rawArgs: unknown, theme: Theme, context: EditContext) {
       const args = (rawArgs ?? {}) as EditArgs;
-      const filePath = String(args.path ?? args.file_path ?? '');
+      const rawPath = String(args.path ?? args.file_path ?? '');
+      const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
       const icon = getFileIcon(filePath, config.icons);
       const editIcon = getToolIcon('edit', config.icons);
+      const isErr = Boolean(context?.isError);
 
-      return createComponent((width: number) => {
+      const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
         const title = `${theme.fg('accent', editIcon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Edit')) : theme.fg('toolTitle', 'Edit')} ${theme.fg('accent', icon)} ${theme.fg('text', filePath)}`;
-        return renderBox(theme, [], safeWidth, {
-          title,
-          isError: Boolean(_context?.isError),
-        });
+
+        if (hasToolResult(context)) {
+          return renderFrameTop(theme, title, safeWidth, isErr);
+        }
+
+        return [
+          ...renderFrameTop(theme, title, safeWidth, isErr),
+          ...renderFrameBottom(theme, undefined, safeWidth, isErr),
+        ];
       });
+
+      if (context?.state) {
+        context.state.callComponent = comp;
+      }
+      return comp;
     },
 
     renderResult(
@@ -99,6 +126,22 @@ export function createCustomEditTool(
       theme: Theme,
       context: EditContext,
     ) {
+      if (context?.state) {
+        context.state.hasResult = true;
+        if (
+          context.state.callComponent &&
+          typeof context.state.callComponent.invalidate === 'function'
+        ) {
+          context.state.callComponent.invalidate();
+        }
+      }
+      if (
+        context?.lastComponent &&
+        typeof context.lastComponent.invalidate === 'function'
+      ) {
+        context.lastComponent.invalidate();
+      }
+
       const isErr = Boolean(context?.isError);
       const details = result.details as EditDetails | undefined;
       const diffText = details?.diff ?? getResultText(result);
@@ -107,7 +150,10 @@ export function createCustomEditTool(
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
           const errText = `${theme.fg('error', '! ')}${theme.fg('error', diffText || 'Edit failed')}`;
-          return [truncateToWidth(errText, safeWidth)];
+          return [
+            ...renderFrameRow(theme, errText, safeWidth, true),
+            ...renderFrameBottom(theme, undefined, safeWidth, true),
+          ];
         });
       }
 
@@ -127,12 +173,15 @@ export function createCustomEditTool(
         const footer = `${addedStr} ${removedStr} · ${theme.fg('dim', '1 file')}`;
 
         if (diffLines.length === 0) {
-          return renderBox(
-            theme,
-            [theme.fg('dim', '(no changes)')],
-            safeWidth,
-            { footer },
-          );
+          return [
+            ...renderFrameRow(
+              theme,
+              theme.fg('dim', '(no changes)'),
+              safeWidth,
+              false,
+            ),
+            ...renderFrameBottom(theme, footer, safeWidth, false),
+          ];
         }
 
         const visibleLines = options?.expanded
@@ -149,7 +198,12 @@ export function createCustomEditTool(
           );
         }
 
-        return renderBox(theme, bodyLines, safeWidth, { footer });
+        return [
+          ...bodyLines.flatMap((l) =>
+            renderFrameRow(theme, l, safeWidth, false),
+          ),
+          ...renderFrameBottom(theme, footer, safeWidth, false),
+        ];
       });
     },
   };

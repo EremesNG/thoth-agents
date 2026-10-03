@@ -17,6 +17,7 @@ interface RegisteredToolShape {
   parameters: unknown;
   execute: unknown;
   description: string;
+  renderShell?: string;
   renderCall?: unknown;
   renderResult?: unknown;
 }
@@ -70,6 +71,7 @@ describe('registerTools delegation', () => {
       expect(reg?.parameters).toBe(sdkDef.parameters);
       expect(reg?.execute).toBe(sdkDef.execute);
       expect(reg?.description).toBe(sdkDef.description);
+      expect(reg?.renderShell).toBe('self');
       expect(typeof reg?.renderCall).toBe('function');
       expect(typeof reg?.renderResult).toBe('function');
     }
@@ -99,6 +101,7 @@ describe('registerTools delegation', () => {
       const reg = registered.get(name);
       expect(reg).toBeDefined();
       expect(reg?.name).toBe(name);
+      expect(reg?.renderShell).toBe('self');
       expect(typeof reg?.execute).toBe('function');
       expect(typeof reg?.parameters).toBe('object');
       expect(typeof reg?.renderCall).toBe('function');

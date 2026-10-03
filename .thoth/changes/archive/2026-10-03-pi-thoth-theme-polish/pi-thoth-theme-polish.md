@@ -173,7 +173,7 @@ pi-subagents, root `check:ci`, manual fullscreen session in Orca.
   - Focused check and PASS evidence: layout tests for segment order, colors, `—` for unreported usage, no path/extension statuses, width degradation
   - Return milestone: tests green
   - Stop / reassessment: model display name unavailable from `ctx.model`
-- [ ] AC-3: Unified framed tool blocks
+- [x] AC-3: Unified framed tool blocks
   - Outcome: each of seven tools renders one continuous framed block
   - Known entrypoints and skill paths: `pi-packages/pi-thoth-theme/src/tools/*.ts`; `pi-subagents/src/tools/subagent-run.ts:84` for `renderShell: "self"` usage
   - Inputs: AC-1 cache helper
@@ -185,7 +185,7 @@ pi-subagents, root `check:ci`, manual fullscreen session in Orca.
   - Focused check and PASS evidence: tests assert top/side/bottom borders join across call and result, bash `Output` divider and exit footer, relative paths, and all prior fidelity tests pass
   - Return milestone: tests green
   - Stop / reassessment: self shell drops image rendering or native expansion
-- [ ] AC-4: Fullscreen images on Orca
+- [x] AC-4: Fullscreen images on Orca
   - Outcome: images visible in fullscreen without explicit iterm2
   - Known entrypoints and skill paths: `pi-packages/pi-thoth-theme/src/tools/image-capability.ts`, `src/tools/read.ts`, `README.md`
   - Inputs: AC-3 read renderer under self shell
@@ -218,17 +218,29 @@ pi-subagents, root `check:ci`, manual fullscreen session in Orca.
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: a7cf66272b076fd9bc7e2e9a61290e84f56c8ee9e321a25489dc65e79f74537b
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
+- Provenance: plan review round 1 REJECT (footer test ownership) repaired, round 2 fresh Oracle OKAY; implementation explicitly authorized by the user. Final verification by fresh read-only thoth-oracle sessions: round 1 FAIL (AC-3 framing for read/ls/find/grep and bash exit status; AC-5 extra usage row), round 2 FAIL (bash status parsed from stdout), each repaired in same intent; round 3 PASS (task subtask_thoth-oracle_1790987425344_a596170a).
+- AC-1: PASS | cache, benchmark and event probes | 500 results exceed 10x; repeat frames do no styling; footer frames do no session traversal; user confirmed lag resolved in a real Pi session
+- AC-2: PASS | layout and palette checks | reference ordering, display-name fallback, dash for unreported usage, thresholds; 322 width cases
+- AC-3: PASS | real SDK execution and composition | seven tools one continuous frame under renderShell self; bash exits 0/7, status-like stdout, CRLF, empty, timeout, abort and partial; archived fidelity rules intact
+- AC-4: PASS | native SDK image composition | PNG and JPEG Kitty rendering under self shell; showImages and expansion honored; README documents iterm2 in fullscreen
+- AC-5: PASS | real SDK composition | collapsed title, one metadata row, hint; full response only expanded
+- Root fresh frozen-input checks: check:ci 0; pi-thoth-theme typecheck 0 and 278 tests; pi-subagents typecheck 0 and 556 pass / 1 skipped; frozen install 0; git diff --check 0
+- Source: pi-packages/pi-thoth-theme/src/shared/cache.ts | sha256:a29f121415cf93dca863326714cc34230fd3f78dbd122889fb698f25a5126d4c
+- Source: pi-packages/pi-thoth-theme/src/tools/box.ts | sha256:03ebf158934fdc4aff3eaf4d987e2dc85818f2513410cbd7dd85a2fa9d660b10
+- Source: pi-packages/pi-thoth-theme/src/tools/frame.ts | sha256:4b76fd008cd8ba699f43e8d1836d1f648ce03f212e7e8621b025614e12e2a579
+- Source: pi-packages/pi-thoth-theme/src/tools/bash.ts | sha256:50a4642490022b9da96315c244c2791c0050a7d5e9801a3f34eadc3fdb168349
+- Source: pi-packages/pi-thoth-theme/src/tools/grep.ts | sha256:4c2bfd43f5f2489414f9f9e87688e85bc8c94d9bd5268a28337fcbd664eecef8
+- Source: pi-packages/pi-thoth-theme/src/status-line/index.ts | sha256:804980d58955b225797597404bd8a166d1e2eee980860a35703f487e3f26b21a
+- Source: pi-packages/pi-thoth-theme/src/status-line/layout.ts | sha256:cebfe2d3cab58683f5305d11e1cbbef0613d49c371fead20d7c4641df4956653
+- Source: pi-packages/pi-thoth-theme/README.md | sha256:3a7f81570199fee25db2dde169bf8da502cdd2062fb2cf6168a5d21bbe331882
+- Source: pi-packages/pi-subagents/src/render/tools/subagent-run.ts | sha256:9ec60c4b39f66135730472d0729eb62ca53d57b7f6ca279b50ea3de2502989b5
+- Residual manual checks (user): Orca fullscreen PNG/JPEG before and after /reload, Ctrl+O, resizing, glyph and palette appearance
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

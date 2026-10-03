@@ -1,28 +1,26 @@
 {
-  "name": "@thoth-agents/pi-thoth-theme",
+  "name": "@thoth-agents/pi-orca-images",
   "version": "0.1.0",
-  "private": false,
-  "description": "Modular Thoth theme, status line, tool styling, and welcome header for Pi.",
+  "description": "Orca fullscreen Kitty image rendering and focus recovery for Pi.",
   "license": "MIT",
   "type": "module",
   "keywords": [
     "pi-package",
     "pi-extension",
     "pi",
-    "theme"
+    "orca",
+    "kitty",
+    "images"
   ],
   "pi": {
     "extensions": [
       "./src/index.ts"
-    ],
-    "themes": [
-      "./themes"
     ]
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/EremesNG/thoth-agents.git",
-    "directory": "pi-packages/pi-thoth-theme"
+    "directory": "pi-packages/pi-orca-images"
   },
   "publishConfig": {
     "access": "public"
@@ -34,27 +32,19 @@
   "files": [
     "src/**/*.ts",
     "!src/**/*.test.ts",
-    "themes/**",
     "README.md",
     "LICENSE"
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=1.0.1",
-    "@earendil-works/pi-tui": "*",
-    "typebox": "*"
+    "@earendil-works/pi-tui": "*"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "typebox": "^1.3.4",
-    "typescript": "^5.8.0",
-    "vitest": "^4.1.9",
     "@earendil-works/pi-coding-agent": "^1.0.1",
     "@earendil-works/pi-tui": "^1.0.1",
-    "@earendil-works/pi-ai": "^1.0.1",
-    "@rolldown/binding-wasm32-wasi": "^1.2.4"
-  },
-  "upstream": {
-    "repository": "https://github.com/QuangThai/pi-omp-theme",
-    "role": "primary source"
+    "@rolldown/binding-wasm32-wasi": "^1.2.4",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.9"
   }
 }

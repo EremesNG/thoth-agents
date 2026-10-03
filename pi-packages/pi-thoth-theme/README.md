@@ -59,6 +59,20 @@ never read for package configuration.
 **A Nerd Font is required for the default icons.** Configure your terminal to
 use one, or set `"icons": "ascii"` for plain-text alternatives.
 
+### Fullscreen images in Orca
+
+Pi disables iTerm2 images in fullscreen by design. Setting
+`terminal.images: "iterm2"` in `~/.pi/agent/settings.json` therefore yields no
+images in fullscreen. Remove the `terminal.images` entry, leave
+`PI_IMAGE_PROTOCOL` unset and restart Pi so this package's Orca Kitty fallback
+can apply. Keep the package's `images` module enabled.
+
+Pi's `terminal.showImages` setting must also be `true` (the default). The Orca
+fallback deliberately excludes tmux: it does not apply when `TMUX` is set.
+
+To verify, run Pi fullscreen in Orca outside tmux and ask `read` to open a PNG
+and a JPEG. Both should appear below the tool's framed text.
+
 ## Attribution
 
 MIT; see [LICENSE](LICENSE). Includes code adapted from the primary upstream,

@@ -10,7 +10,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { createReadToolDefinition } from '@earendil-works/pi-coding-agent';
 import { stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { ThemeConfig } from '../shared/config.ts';
 import { createCustomBashTool } from './bash.ts';
 import { createCustomEditTool } from './edit.ts';
@@ -95,10 +95,12 @@ function expectGrepDataRows(
       .replaceAll('\x07', '␇'),
   );
   if (mode === 'raw') {
-    expect(plain[0]).toMatch(/^╭─+╮$/);
     expect(plain.at(-1)).toMatch(/^╰─+╯$/);
-    expect(plain).toHaveLength(sdkRows.length + 2);
-    const data = plain.slice(1, -1).map((line, i) => {
+    const rawLines = plain[0].startsWith('╭')
+      ? plain.slice(1, -1)
+      : plain.slice(0, -1);
+    expect(rawLines).toHaveLength(sdkRows.length);
+    const data = rawLines.map((line, i) => {
       expect(line.startsWith('│   ')).toBe(true);
       expect(line.endsWith(' │')).toBe(true);
       // Padding is decoration, but SDK whitespace within each row is data.
@@ -112,16 +114,33 @@ function expectGrepDataRows(
   let file: string | undefined;
   const data: string[] = [];
   for (const line of plain) {
-    const header = /^ {2}[├└]─ \S+ (.*) \(\d+ match(?:es)?\)$/.exec(line);
+    if (line.startsWith('╭') || line.startsWith('╰')) continue;
+    const contentLine =
+      line.startsWith('│ ') && line.endsWith(' │') ? line.slice(2, -2) : line;
+    const header = /^(?: {2})?[├└]─ \S+ (.*) \(\d+ match(?:es)?\)/.exec(
+      contentLine.trimEnd(),
+    );
     if (header) {
       file = header[1];
       continue;
     }
-    const row = /^(?: {5}| {2}│ {2}) *(\d+)([:-]) (.*)$/.exec(line);
+    const row = /^(?: {4,5}| {1,2}│ {2}) *(\d+)([:-]) (.*)$/.exec(contentLine);
     if (!row || file === undefined) {
       throw new Error(`Unexpected grouped grep row: ${line}`);
     }
-    const [, lineNumber, separator, content] = row;
+    const [, lineNumber, separator, rawContent] = row;
+    const expected = escapedSdkRows[data.length];
+    const prefix = `${file}${separator}${lineNumber}${separator}`;
+    let content = rawContent;
+    if (expected?.startsWith(prefix)) {
+      const expectedContent = expected.slice(prefix.length);
+      if (
+        content.startsWith(expectedContent) &&
+        /^ *$/.test(content.slice(expectedContent.length))
+      ) {
+        content = expectedContent;
+      }
+    }
     data.push(`${file}${separator}${lineNumber}${separator}${content}`);
   }
   expect(data).toEqual(escapedSdkRows);
@@ -142,6 +161,10 @@ describe('Built-in tool renderers', () => {
     showImages: true,
     isError: false,
   };
+
+  beforeEach(() => {
+    baseContext.state = {};
+  });
 
   describe('read tool', () => {
     it('renders call in nerd and ascii modes', () => {
@@ -164,8 +187,8 @@ describe('Built-in tool renderers', () => {
         )
         .render(80);
 
-      expect(nerdLines.length).toBe(1);
-      expect(asciiLines.length).toBe(1);
+      expect(nerdLines.length).toBe(2);
+      expect(asciiLines.length).toBe(2);
       expect(nerdLines[0]).toContain('\ue628'); // Nerd icon for ts
       expect(asciiLines[0]).toContain('[ts]'); // ASCII icon for ts
       expect(nerdLines[0]).toContain('src/main.ts:1-10');
@@ -181,14 +204,14 @@ describe('Built-in tool renderers', () => {
       const collapsed = read
         .renderResult(result, resultOpts(false), theme, baseContext)
         .render(80);
-      expect(collapsed.length).toBe(1);
+      expect(collapsed.length).toBe(2);
       expect(collapsed[0]).toContain('5 lines');
       expect(collapsed[0]).toContain('ctrl+o to expand');
 
       const expanded = read
         .renderResult(result, resultOpts(true), theme, baseContext)
         .render(80);
-      expect(expanded.length).toBe(5);
+      expect(expanded.length).toBe(6);
       expect(expanded[0]).toContain('line 1');
       expect(expanded[4]).toContain('line 5');
     });
@@ -294,15 +317,16 @@ describe('Built-in tool renderers', () => {
       const collapsed = bash
         .renderResult(result, resultOpts(false), theme, context)
         .render(80);
-      expect(collapsed.some((l) => l.includes('exit 0'))).toBe(true);
+      expect(collapsed.some((l) => l.includes('Exit 0'))).toBe(true);
       expect(collapsed.some((l) => l.includes('20 lines'))).toBe(true);
+      expect(collapsed.some((l) => l.includes('~60 words'))).toBe(true);
       expect(collapsed.some((l) => l.includes('ctrl+o to expand'))).toBe(true);
 
       const expanded = bash
         .renderResult(result, resultOpts(true), theme, context)
         .render(80);
       expect(expanded.some((l) => l.includes('output line 20'))).toBe(true);
-      expect(expanded.some((l) => l.includes('exit 0'))).toBe(true);
+      expect(expanded.some((l) => l.includes('Exit 0'))).toBe(true);
     });
 
     it('renders error case with error styling and exit code', () => {
@@ -317,7 +341,7 @@ describe('Built-in tool renderers', () => {
           isError: true,
         })
         .render(80);
-      expect(lines.some((l) => l.includes('exit 1'))).toBe(true);
+      expect(lines.some((l) => l.includes('Exit 1'))).toBe(true);
       expect(colorsUsed).toContain('error');
     });
   });
@@ -381,7 +405,7 @@ describe('Built-in tool renderers', () => {
       const expanded = ls
         .renderResult(result, resultOpts(true), theme, baseContext)
         .render(80);
-      expect(expanded.length).toBe(25);
+      expect(expanded.length).toBe(26);
     });
 
     it('renders error case', () => {
@@ -657,7 +681,7 @@ describe('Built-in tool renderers', () => {
         false,
       );
       expect(expanded.some((line) => line.includes(notice))).toBe(true);
-      expect(expanded[0]).toContain('╭');
+      expect(expanded[0]).toContain('│');
       expect(expanded.at(-1)).toContain('╯');
       expect(colorsUsed).toContain('toolOutput');
       expect(colorsUsed).toContain('warning');
@@ -735,7 +759,7 @@ describe('Built-in tool renderers', () => {
       const expanded = find
         .renderResult(result, resultOpts(true), theme, baseContext)
         .render(80);
-      expect(expanded.length).toBe(20);
+      expect(expanded.length).toBe(21);
     });
 
     it('renders error case', () => {
@@ -1013,7 +1037,9 @@ describe('Built-in tool renderers', () => {
           )
           .render(300);
         const plain = rendered.map(stripTerminalSequences);
-        expect(plain).toEqual([`! a${displayedControls}b.ts`]);
+        expect(plain[0]).toContain(`! a${displayedControls}b.ts`);
+        expect(plain[0]).toContain('│');
+        expect(plain.at(-1)).toContain('╰');
       }
     });
 
@@ -1176,7 +1202,7 @@ describe('Built-in tool renderers', () => {
       }
     });
 
-    it('ensures consistent framing across the seven tools with read quiet single-line', () => {
+    it('ensures consistent framing across all seven tools', () => {
       const read = createCustomReadTool(cwd, createConfig('nerd'));
       const bash = createCustomBashTool(cwd, createConfig('nerd'));
       const ls = createCustomLsTool(cwd, createConfig('nerd'));
@@ -1185,17 +1211,9 @@ describe('Built-in tool renderers', () => {
       const edit = createCustomEditTool(cwd, createConfig('nerd'));
       const write = createCustomWriteTool(cwd, createConfig('nerd'));
 
-      // Read stays quiet single-line per omp reference, with matching prefix style
-      const readLines = read
-        .renderCall({ path: 'src/index.ts' }, theme, baseContext)
-        .render(80);
-      expect(readLines.length).toBe(1);
-      expect(readLines[0]).toContain('\ue628'); // icon
-      expect(readLines[0]).toContain('Read'); // bold tool title
-      expect(readLines[0]).toContain('src/index.ts');
-
-      // The other 6 tools draw explicit border framing (╭─...─╮ and ╰─...─╯)
+      // All seven tools draw explicit border framing (╭─...─╮ and ╰─...─╯) when call is alone
       const boxedTools = [
+        { tool: read, args: { path: 'src/index.ts' }, name: 'Read' },
         { tool: bash, args: { command: 'pnpm test' }, name: 'Bash' },
         { tool: edit, args: { path: 'src/file.ts' }, name: 'Edit' },
         { tool: write, args: { path: 'src/file.ts' }, name: 'Write' },
@@ -1215,6 +1233,193 @@ describe('Built-in tool renderers', () => {
         expect(lines[lines.length - 1]).toContain('╰');
         expect(lines[lines.length - 1]).toContain('╯');
       }
+    });
+  });
+
+  describe('AC-3: Unified framed tool blocks', () => {
+    const theme = createAnsiTheme();
+
+    it('bash joins call and result into one continuous frame with Output divider and exit footer', () => {
+      const bash = createCustomBashTool(cwd, createConfig('nerd'));
+      const context = { ...baseContext, state: {} };
+      const call = bash.renderCall({ command: 'echo hello' }, theme, context);
+      const res = bash.renderResult(
+        textResult('hello world\nsecond line'),
+        resultOpts(false),
+        theme,
+        context,
+      );
+
+      const callLines = call.render(80);
+      const resLines = res.render(80);
+      const joined = [...callLines, ...resLines];
+
+      // Top border
+      expect(callLines[0]).toContain('╭');
+      expect(callLines[0]).toContain('╮');
+      expect(callLines[0]).toContain('Bash');
+
+      // Command line inside call
+      expect(
+        callLines
+          .map(stripTerminalSequences)
+          .some((l) => l.includes('$ echo hello')),
+      ).toBe(true);
+
+      // Output divider at bottom of call
+      expect(callLines.at(-1)).toContain('├');
+      expect(callLines.at(-1)).toContain('┤');
+      expect(callLines.at(-1)).toContain('Output');
+
+      // Result body rows have vertical borders
+      expect(resLines[0]).toContain('│');
+      expect(resLines[0]).toContain('hello world');
+
+      // Bottom border at end of result
+      expect(resLines.at(-1)).toContain('╰');
+      expect(resLines.at(-1)).toContain('╯');
+      expect(resLines.at(-1)).toContain('Exit 0');
+      expect(resLines.at(-1)).toContain('~4 words');
+
+      // No blank lines in joined frame
+      expect(joined.some((l) => l.trim() === '')).toBe(false);
+    });
+
+    it('edit joins call and result seamlessly into one continuous frame with relative path', () => {
+      const edit = createCustomEditTool(cwd, createConfig('nerd'));
+      const context = { ...baseContext, state: {} };
+      const absPath = join(cwd, 'src', 'box.ts');
+      const diff = '--- a/src/box.ts\n+++ b/src/box.ts\n@@ -1,2 +1,3 @@\n+line';
+      const result: AgentToolResult<unknown> = {
+        content: [{ type: 'text', text: 'applied' } as TextContent],
+        details: { diff },
+      };
+
+      const call = edit.renderCall({ path: absPath }, theme, context);
+      const res = edit.renderResult(result, resultOpts(false), theme, context);
+
+      const callLines = call.render(80);
+      const resLines = res.render(80);
+      const joined = [...callLines, ...resLines];
+
+      // Call is only the top border when result is present
+      expect(callLines.length).toBe(1);
+      expect(callLines[0]).toContain('╭');
+      expect(callLines[0]).toContain('╮');
+      expect(callLines[0]).toContain('Edit');
+      expect(callLines[0]).toContain('src/box.ts');
+      expect(callLines[0]).not.toContain(absPath);
+
+      // Result starts with diff rows and ends with bottom border
+      expect(resLines[0]).toContain('│');
+      expect(resLines.at(-1)).toContain('╰');
+      expect(resLines.at(-1)).toContain('╯');
+      expect(resLines.at(-1)).toContain('1 file');
+
+      // No blank lines between call and result
+      expect(joined.some((l) => l.trim() === '')).toBe(false);
+    });
+
+    it('write joins call and result seamlessly into one continuous frame with relative path', () => {
+      const write = createCustomWriteTool(cwd, createConfig('nerd'));
+      const context = {
+        ...baseContext,
+        state: {},
+        args: { content: 'hello\nworld' },
+      };
+      const absPath = join(cwd, 'src', 'new-file.ts');
+      const result = textResult('Wrote 2 lines');
+
+      const call = write.renderCall({ path: absPath }, theme, context);
+      const res = write.renderResult(result, resultOpts(false), theme, context);
+
+      const callLines = call.render(80);
+      const resLines = res.render(80);
+      const joined = [...callLines, ...resLines];
+
+      // Call is top border only
+      expect(callLines.length).toBe(1);
+      expect(callLines[0]).toContain('╭');
+      expect(callLines[0]).toContain('Write');
+      expect(callLines[0]).toContain('src/new-file.ts');
+
+      // Result has content and bottom border
+      expect(resLines[0]).toContain('│');
+      expect(resLines.at(-1)).toContain('╰');
+      expect(resLines.at(-1)).toContain('+2 lines');
+
+      // Seamless join
+      expect(joined.some((l) => l.trim() === '')).toBe(false);
+    });
+
+    it('running call alone draws a closed frame before any result exists', () => {
+      const bash = createCustomBashTool(cwd, createConfig('nerd'));
+      const edit = createCustomEditTool(cwd, createConfig('nerd'));
+      const write = createCustomWriteTool(cwd, createConfig('nerd'));
+
+      const bashLines = bash
+        .renderCall({ command: 'sleep 10' }, theme, {
+          ...baseContext,
+          state: {},
+        })
+        .render(80);
+      expect(bashLines[0]).toContain('╭');
+      expect(bashLines.at(-1)).toContain('╰');
+      expect(bashLines.some((l) => l.includes('Output'))).toBe(false);
+
+      const editLines = edit
+        .renderCall({ path: 'src/main.ts' }, theme, {
+          ...baseContext,
+          state: {},
+        })
+        .render(80);
+      expect(editLines.length).toBe(2);
+      expect(editLines[0]).toContain('╭');
+      expect(editLines.at(-1)).toContain('╰');
+
+      const writeLines = write
+        .renderCall({ path: 'src/main.ts' }, theme, {
+          ...baseContext,
+          state: {},
+        })
+        .render(80);
+      expect(writeLines.length).toBe(2);
+      expect(writeLines[0]).toContain('╭');
+      expect(writeLines.at(-1)).toContain('╰');
+    });
+
+    it('relativizes paths for read, ls, find, and grep when inside cwd', () => {
+      const read = createCustomReadTool(cwd, createConfig('nerd'));
+      const ls = createCustomLsTool(cwd, createConfig('nerd'));
+      const find = createCustomFindTool(cwd, createConfig('nerd'));
+      const grep = createCustomGrepTool(cwd, createConfig('nerd'));
+
+      const absPath = join(cwd, 'src', 'index.ts');
+      const absDir = join(cwd, 'src');
+
+      const readLines = read
+        .renderCall({ path: absPath }, theme, baseContext)
+        .render(80);
+      expect(readLines[0]).toContain('src/index.ts');
+      expect(readLines[0]).not.toContain(cwd);
+
+      const lsLines = ls
+        .renderCall({ path: absDir }, theme, baseContext)
+        .render(80);
+      expect(lsLines[0]).toContain('src');
+      expect(lsLines[0]).not.toContain(cwd);
+
+      const findLines = find
+        .renderCall({ path: absDir, pattern: '*.ts' }, theme, baseContext)
+        .render(80);
+      expect(findLines[0]).toContain('src');
+      expect(findLines[0]).not.toContain(cwd);
+
+      const grepLines = grep
+        .renderCall({ path: absDir, pattern: 'test' }, theme, baseContext)
+        .render(80);
+      expect(grepLines[0]).toContain('src');
+      expect(grepLines[0]).not.toContain(cwd);
     });
   });
 });

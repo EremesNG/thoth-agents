@@ -15,6 +15,14 @@ import {
   splitResultNotice,
 } from './box.ts';
 import { getFileIcon, getToolIcon } from './file-icons.ts';
+import {
+  formatDisplayPath,
+  hasToolResult,
+  isFramedContext,
+  renderFrameBottom,
+  renderFrameRow,
+  renderFrameTop,
+} from './frame.ts';
 
 interface GrepArgs {
   pattern?: string;
@@ -23,6 +31,15 @@ interface GrepArgs {
 
 interface GrepContext {
   isError?: boolean;
+  cwd?: string;
+  isPartial?: boolean;
+  lastComponent?: { invalidate?: () => void };
+  state?: {
+    hasResult?: boolean;
+    callComponent?: { invalidate?: () => void };
+    [key: string]: unknown;
+  };
+  toolCallId?: string;
 }
 
 interface GrepMatchItem {
@@ -127,22 +144,42 @@ export function createCustomGrepTool(
 
   return {
     ...baseDef,
-    renderCall(rawArgs: unknown, theme: Theme, _context: GrepContext) {
+    renderShell: 'self' as const,
+    renderCall(rawArgs: unknown, theme: Theme, context: GrepContext) {
       const args = (rawArgs ?? {}) as GrepArgs;
       const pattern = escapeControlCharacters(String(args.pattern ?? ''));
-      const searchPath = args.path
-        ? ` in ${escapeControlCharacters(String(args.path))}`
+      const rawPath = args.path ? String(args.path) : '';
+      const searchPath = rawPath
+        ? ` in ${escapeControlCharacters(formatDisplayPath(rawPath, context?.cwd ?? cwd))}`
         : '';
       const icon = getToolIcon('search', config.icons);
+      const isErr = Boolean(context?.isError);
 
-      return createComponent((width: number) => {
+      const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Grep')) : theme.fg('toolTitle', 'Grep')} ${theme.fg('syntaxString', `"${pattern}"`)}${theme.fg('dim', searchPath)}`;
-        return renderBox(theme, [], safeWidth, {
-          title,
-          isError: Boolean(_context?.isError),
-        });
+
+        if (!isFramedContext(context)) {
+          return renderBox(theme, [], safeWidth, {
+            title,
+            isError: isErr,
+          });
+        }
+
+        if (hasToolResult(context)) {
+          return renderFrameTop(theme, title, safeWidth, isErr);
+        }
+
+        return [
+          ...renderFrameTop(theme, title, safeWidth, isErr),
+          ...renderFrameBottom(theme, undefined, safeWidth, isErr),
+        ];
       });
+
+      if (context?.state) {
+        context.state.callComponent = comp;
+      }
+      return comp;
     },
 
     renderResult(
@@ -151,6 +188,22 @@ export function createCustomGrepTool(
       theme: Theme,
       context: GrepContext,
     ) {
+      if (context?.state) {
+        context.state.hasResult = true;
+        if (
+          context.state.callComponent &&
+          typeof context.state.callComponent.invalidate === 'function'
+        ) {
+          context.state.callComponent.invalidate();
+        }
+      }
+      if (
+        context?.lastComponent &&
+        typeof context.lastComponent.invalidate === 'function'
+      ) {
+        context.lastComponent.invalidate();
+      }
+
       const isErr = Boolean(context?.isError);
       const textOutput = getRawResultText(result);
 
@@ -158,7 +211,13 @@ export function createCustomGrepTool(
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
           const errText = `${theme.fg('error', '! ')}${theme.fg('error', escapeControlCharacters(textOutput || 'Grep failed'))}`;
-          return [truncateToWidth(errText, safeWidth)];
+          if (!isFramedContext(context)) {
+            return [truncateToWidth(errText, safeWidth)];
+          }
+          return [
+            ...renderFrameRow(theme, errText, safeWidth, true),
+            ...renderFrameBottom(theme, undefined, safeWidth, true),
+          ];
         });
       }
 
@@ -172,34 +231,54 @@ export function createCustomGrepTool(
           const visibleRawLines = options?.expanded
             ? rawLines
             : rawLines.slice(0, 8);
-          const lines = visibleRawLines.map(
-            (rawLine) =>
-              `  ${theme.fg('toolOutput', escapeControlCharacters(rawLine))}`,
+          const lines = visibleRawLines.map((rawLine) =>
+            theme.fg('toolOutput', escapeControlCharacters(rawLine)),
           );
           if (visibleRawLines.length < rawLines.length) {
             lines.push(
-              `  ${theme.fg('dim', `… ${rawLines.length - visibleRawLines.length} more lines · ctrl+o to expand`)}`,
+              theme.fg(
+                'dim',
+                `… ${rawLines.length - visibleRawLines.length} more lines · ctrl+o to expand`,
+              ),
             );
           }
-          // splitResultNotice removes the SDK's two-newline appendix delimiter.
-          // Restore its blank row while keeping the notice's warning styling.
-          if (notices.length > 0) lines.push('  ');
+          if (notices.length > 0) lines.push('');
           for (const notice of notices) {
-            lines.push(`  ${theme.fg('warning', notice)}`);
+            lines.push(theme.fg('warning', notice));
           }
-          return renderBox(theme, lines, safeWidth);
+          if (!isFramedContext(context)) {
+            const rawWithPrefix = lines.map((l) => (l ? `  ${l}` : '  '));
+            return renderBox(theme, rawWithPrefix, safeWidth);
+          }
+          return [
+            ...lines.flatMap((l) =>
+              renderFrameRow(theme, l ? `  ${l}` : '  ', safeWidth, false),
+            ),
+            ...renderFrameBottom(theme, undefined, safeWidth, false),
+          ];
         }
 
         const { matches } = output;
         const totalItems = matches.length;
         if (totalItems === 0) {
+          if (!isFramedContext(context)) {
+            return [
+              truncateToWidth(theme.fg('dim', 'no matches found'), safeWidth),
+            ];
+          }
           return [
-            truncateToWidth(theme.fg('dim', 'no matches found'), safeWidth),
+            ...renderFrameRow(
+              theme,
+              theme.fg('dim', 'no matches found'),
+              safeWidth,
+              false,
+            ),
+            ...renderFrameBottom(theme, undefined, safeWidth, false),
           ];
         }
 
         const groupEntries = groupMatches(matches);
-        const lines: string[] = [];
+        const rawLines: string[] = [];
 
         const maxGroups = options?.expanded ? groupEntries.length : 3;
         const visibleGroups = groupEntries.slice(0, maxGroups);
@@ -215,8 +294,8 @@ export function createCustomGrepTool(
           const actualMatches = fileMatches.filter((m) => !m.isContext).length;
           const matchCountLabel = `(${actualMatches} ${actualMatches === 1 ? 'match' : 'matches'})`;
 
-          const fileHeader = `  ${theme.fg('dim', groupBranch)} ${theme.fg('accent', fileIcon)} ${theme.fg('toolTitle', escapeControlCharacters(file))} ${theme.fg('dim', matchCountLabel)}`;
-          lines.push(truncateToWidth(fileHeader, safeWidth));
+          const fileHeader = `${theme.fg('dim', groupBranch)} ${theme.fg('accent', fileIcon)} ${theme.fg('toolTitle', escapeControlCharacters(file))} ${theme.fg('dim', matchCountLabel)}`;
+          rawLines.push(fileHeader);
 
           const maxMatches = options?.expanded ? fileMatches.length : 2;
           const visibleMatches = fileMatches.slice(0, maxMatches);
@@ -235,12 +314,7 @@ export function createCustomGrepTool(
               m.isContext ? 'dim' : 'toolOutput',
               escapeControlCharacters(m.content),
             );
-            lines.push(
-              truncateToWidth(
-                `${matchBranchPrefix}${lineNum}${content}`,
-                safeWidth,
-              ),
-            );
+            rawLines.push(`${matchBranchPrefix}${lineNum}${content}`);
           }
 
           if (
@@ -248,11 +322,8 @@ export function createCustomGrepTool(
             !options?.expanded
           ) {
             const moreFileMatches = fileMatches.length - visibleMatches.length;
-            lines.push(
-              truncateToWidth(
-                `${matchBranchPrefix}${theme.fg('dim', `… ${moreFileMatches} more`)}`,
-                safeWidth,
-              ),
+            rawLines.push(
+              `${matchBranchPrefix}${theme.fg('dim', `… ${moreFileMatches} more`)}`,
             );
           }
         }
@@ -263,11 +334,22 @@ export function createCustomGrepTool(
           (groupEntries.length > maxGroups || remainingItems > 0)
         ) {
           const hiddenFiles = groupEntries.length - visibleGroups.length;
-          const summary = `  ${theme.fg('dim', '└─')} ${theme.fg('dim', `… ${remainingItems} more matches across ${hiddenFiles} files · ctrl+o to expand`)}`;
-          lines.push(truncateToWidth(summary, safeWidth));
+          const summary = `${theme.fg('dim', '└─')} ${theme.fg('dim', `… ${remainingItems} more matches across ${hiddenFiles} files · ctrl+o to expand`)}`;
+          rawLines.push(summary);
         }
 
-        return lines;
+        if (!isFramedContext(context)) {
+          return rawLines.map((line) =>
+            truncateToWidth(`  ${line}`, safeWidth),
+          );
+        }
+
+        return [
+          ...rawLines.flatMap((line) =>
+            renderFrameRow(theme, line, safeWidth, false),
+          ),
+          ...renderFrameBottom(theme, undefined, safeWidth, false),
+        ];
       });
     },
   };

@@ -4,10 +4,16 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import { createWriteToolDefinition } from '@earendil-works/pi-coding-agent';
-import { truncateToWidth } from '@earendil-works/pi-tui';
 import type { ThemeConfig } from '../shared/config.ts';
-import { createComponent, getResultText, renderBox } from './box.ts';
+import { createComponent, getResultText } from './box.ts';
 import { getFileIcon, getToolIcon } from './file-icons.ts';
+import {
+  formatDisplayPath,
+  hasToolResult,
+  renderFrameBottom,
+  renderFrameRow,
+  renderFrameTop,
+} from './frame.ts';
 
 const COLLAPSED_WRITE_LINES = 6;
 
@@ -20,6 +26,14 @@ interface WriteArgs {
 interface WriteContext {
   isError?: boolean;
   args?: unknown;
+  cwd?: string;
+  isPartial?: boolean;
+  lastComponent?: { invalidate?: () => void };
+  state?: {
+    hasResult?: boolean;
+    callComponent?: { invalidate?: () => void };
+    [key: string]: unknown;
+  };
 }
 
 export function createCustomWriteTool(
@@ -41,20 +55,33 @@ export function createCustomWriteTool(
 
   return {
     ...baseDef,
-    renderCall(rawArgs: unknown, theme: Theme, _context: WriteContext) {
+    renderShell: 'self' as const,
+    renderCall(rawArgs: unknown, theme: Theme, context: WriteContext) {
       const args = (rawArgs ?? {}) as WriteArgs;
-      const filePath = String(args.path ?? args.file_path ?? '');
+      const rawPath = String(args.path ?? args.file_path ?? '');
+      const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
       const icon = getFileIcon(filePath, config.icons);
       const writeIcon = getToolIcon('write', config.icons);
+      const isErr = Boolean(context?.isError);
 
-      return createComponent((width: number) => {
+      const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
         const title = `${theme.fg('accent', writeIcon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Write')) : theme.fg('toolTitle', 'Write')} ${theme.fg('accent', icon)} ${theme.fg('text', filePath)}`;
-        return renderBox(theme, [], safeWidth, {
-          title,
-          isError: Boolean(_context?.isError),
-        });
+
+        if (hasToolResult(context)) {
+          return renderFrameTop(theme, title, safeWidth, isErr);
+        }
+
+        return [
+          ...renderFrameTop(theme, title, safeWidth, isErr),
+          ...renderFrameBottom(theme, undefined, safeWidth, isErr),
+        ];
       });
+
+      if (context?.state) {
+        context.state.callComponent = comp;
+      }
+      return comp;
     },
 
     renderResult(
@@ -63,6 +90,22 @@ export function createCustomWriteTool(
       theme: Theme,
       context: WriteContext,
     ) {
+      if (context?.state) {
+        context.state.hasResult = true;
+        if (
+          context.state.callComponent &&
+          typeof context.state.callComponent.invalidate === 'function'
+        ) {
+          context.state.callComponent.invalidate();
+        }
+      }
+      if (
+        context?.lastComponent &&
+        typeof context.lastComponent.invalidate === 'function'
+      ) {
+        context.lastComponent.invalidate();
+      }
+
       const isErr = Boolean(context?.isError);
       const textOutput = getResultText(result);
 
@@ -70,7 +113,10 @@ export function createCustomWriteTool(
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
           const errText = `${theme.fg('error', '! ')}${theme.fg('error', textOutput || 'Write failed')}`;
-          return [truncateToWidth(errText, safeWidth)];
+          return [
+            ...renderFrameRow(theme, errText, safeWidth, true),
+            ...renderFrameBottom(theme, undefined, safeWidth, true),
+          ];
         });
       }
 
@@ -87,12 +133,15 @@ export function createCustomWriteTool(
 
         if (contentLines.length === 0) {
           const defaultMsg = textOutput || 'File written';
-          return renderBox(
-            theme,
-            [theme.fg('toolOutput', defaultMsg)],
-            safeWidth,
-            { footer },
-          );
+          return [
+            ...renderFrameRow(
+              theme,
+              theme.fg('toolOutput', defaultMsg),
+              safeWidth,
+              false,
+            ),
+            ...renderFrameBottom(theme, footer, safeWidth, false),
+          ];
         }
 
         const visibleLines = options?.expanded
@@ -109,7 +158,12 @@ export function createCustomWriteTool(
           );
         }
 
-        return renderBox(theme, bodyLines, safeWidth, { footer });
+        return [
+          ...bodyLines.flatMap((l) =>
+            renderFrameRow(theme, l, safeWidth, false),
+          ),
+          ...renderFrameBottom(theme, footer, safeWidth, false),
+        ];
       });
     },
   };

@@ -5,8 +5,15 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { createBashToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
-import { createComponent, getResultText, renderBox } from './box.ts';
+import { createComponent, getResultText } from './box.ts';
 import { getToolIcon } from './file-icons.ts';
+import {
+  hasToolResult,
+  renderFrameBottom,
+  renderFrameDivider,
+  renderFrameRow,
+  renderFrameTop,
+} from './frame.ts';
 
 const COLLAPSED_OUTPUT_LINES = 5;
 
@@ -17,14 +24,40 @@ interface BashArgs {
 interface BashContext {
   isError?: boolean;
   executionStarted?: boolean;
+  isPartial?: boolean;
+  lastComponent?: { invalidate?: () => void };
   state?: {
     startedAt?: number;
+    hasResult?: boolean;
+    callComponent?: { invalidate?: () => void };
     [key: string]: unknown;
   };
 }
 
-interface BashResultDetails {
-  exitCode?: number;
+interface BashResultStructuredContent {
+  exit_code?: number;
+  wall_time_seconds?: number;
+}
+
+function extractBashExitCode(
+  result: AgentToolResult<unknown>,
+  textOutput: string,
+  isErr: boolean,
+): number {
+  const structured = (
+    result as { structuredContent?: BashResultStructuredContent }
+  ).structuredContent;
+  if (typeof structured?.exit_code === 'number') {
+    return structured.exit_code;
+  }
+  // Pi drops structuredContent before rendering, so the SDK status appendix is
+  // the source: on error results only, the last line reads
+  // `Command exited with code N` (bash.js appendStatus). Earlier stdout lines
+  // that look like a status are command output, not the exit status.
+  if (!isErr) return 0;
+  const lastLine = textOutput.trimEnd().split('\n').at(-1) ?? '';
+  const match = /^Command exited with code (\d+)$/.exec(lastLine);
+  return match ? Number.parseInt(match[1], 10) : 1;
 }
 
 function formatElapsed(ms: number | undefined): string {
@@ -52,6 +85,7 @@ export function createCustomBashTool(
 
   return {
     ...baseDef,
+    renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: BashContext) {
       if (
         context?.state &&
@@ -64,8 +98,9 @@ export function createCustomBashTool(
       const args = (rawArgs ?? {}) as BashArgs;
       const command = String(args.command ?? '').trim();
       const icon = getToolIcon('bash', config.icons);
+      const isErr = Boolean(context?.isError);
 
-      return createComponent((width: number) => {
+      const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
         const cmdLines = command ? command.split('\n') : [''];
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Bash')) : theme.fg('toolTitle', 'Bash')}`;
@@ -73,11 +108,27 @@ export function createCustomBashTool(
           (l) => `${theme.fg('dim', '$ ')}${theme.fg('text', l)}`,
         );
 
-        return renderBox(theme, preview, safeWidth, {
-          title,
-          isError: Boolean(context?.isError),
-        });
+        if (hasToolResult(context)) {
+          return [
+            ...renderFrameTop(theme, title, safeWidth, isErr),
+            ...preview.flatMap((l) =>
+              renderFrameRow(theme, l, safeWidth, isErr),
+            ),
+            ...renderFrameDivider(theme, 'Output', safeWidth, isErr),
+          ];
+        }
+
+        return [
+          ...renderFrameTop(theme, title, safeWidth, isErr),
+          ...preview.flatMap((l) => renderFrameRow(theme, l, safeWidth, isErr)),
+          ...renderFrameBottom(theme, undefined, safeWidth, isErr),
+        ];
       });
+
+      if (context?.state) {
+        context.state.callComponent = comp;
+      }
+      return comp;
     },
 
     renderResult(
@@ -86,41 +137,82 @@ export function createCustomBashTool(
       theme: Theme,
       context: BashContext,
     ) {
+      if (context?.state) {
+        context.state.hasResult = true;
+        if (
+          context.state.callComponent &&
+          typeof context.state.callComponent.invalidate === 'function'
+        ) {
+          context.state.callComponent.invalidate();
+        }
+      }
+      if (
+        context?.lastComponent &&
+        typeof context.lastComponent.invalidate === 'function'
+      ) {
+        context.lastComponent.invalidate();
+      }
+
       const isErr = Boolean(context?.isError);
+      const isPartial = Boolean(options?.isPartial);
       const textOutput = getResultText(result);
       const allLines = textOutput ? textOutput.split('\n') : [];
       const lineCount = allLines.length;
 
+      if (!isPartial || isErr) {
+        if (
+          context?.state &&
+          context.state.completedElapsedMs === undefined &&
+          typeof context.state.startedAt === 'number'
+        ) {
+          context.state.completedElapsedMs =
+            Date.now() - context.state.startedAt;
+        }
+      }
+
       const startedAt = context?.state?.startedAt;
       const elapsedMs =
-        typeof startedAt === 'number' ? Date.now() - startedAt : undefined;
+        typeof context?.state?.completedElapsedMs === 'number'
+          ? (context.state.completedElapsedMs as number)
+          : typeof startedAt === 'number'
+            ? Date.now() - startedAt
+            : undefined;
       const elapsedStr = formatElapsed(elapsedMs);
 
-      const exitCode = (result.details as BashResultDetails | undefined)
-        ?.exitCode;
-      const exitStr = isErr
-        ? 'exit 1'
-        : exitCode !== undefined
-          ? `exit ${exitCode}`
-          : 'exit 0';
+      const exitNum = extractBashExitCode(result, textOutput, isErr);
+      const exitStr = `Exit ${exitNum}`;
+
+      const words = textOutput.trim()
+        ? textOutput.trim().split(/\s+/).length
+        : 0;
+      const wordsStr = words > 0 ? `~${words} words` : '';
 
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
 
+        const statusStr = isPartial
+          ? theme.fg('dim', 'running…')
+          : isErr
+            ? theme.fg('error', exitStr)
+            : theme.fg('success', exitStr);
+
         const footerParts = [
-          isErr ? theme.fg('error', exitStr) : theme.fg('success', exitStr),
+          statusStr,
           elapsedStr ? theme.fg('dim', elapsedStr) : '',
           theme.fg('dim', `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`),
+          wordsStr ? theme.fg('dim', wordsStr) : '',
         ].filter(Boolean);
 
         const footer = footerParts.join(theme.fg('dim', ' · '));
 
         if (allLines.length === 0) {
           const emptyBody = [theme.fg('dim', '(no output)')];
-          return renderBox(theme, emptyBody, safeWidth, {
-            footer,
-            isError: isErr,
-          });
+          return [
+            ...emptyBody.flatMap((l) =>
+              renderFrameRow(theme, l, safeWidth, isErr),
+            ),
+            ...renderFrameBottom(theme, footer, safeWidth, isErr),
+          ];
         }
 
         const visibleLines = options?.expanded
@@ -137,10 +229,12 @@ export function createCustomBashTool(
           );
         }
 
-        return renderBox(theme, bodyLines, safeWidth, {
-          footer,
-          isError: isErr,
-        });
+        return [
+          ...bodyLines.flatMap((l) =>
+            renderFrameRow(theme, l, safeWidth, isErr),
+          ),
+          ...renderFrameBottom(theme, footer, safeWidth, isErr),
+        ];
       });
     },
   };

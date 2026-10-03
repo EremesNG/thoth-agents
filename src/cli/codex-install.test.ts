@@ -301,11 +301,11 @@ describe('Codex install setup plan', () => {
       expect(root).toContain('User guidance');
       expect(root).toContain('thoth-agents:codex-root:start');
       expect(root).toContain('thoth-agents:codex-root:start -->\n<role>');
-      expect(root).toContain('adaptive root');
+      expect(root).toContain('root coordinator');
       expect(root).toContain('<implementation-ownership>');
       expect(root).toContain('.thoth/changes/<id>/<id>.md');
       expect(root).toMatch(
-        /unknown local source, flow, or responsibility triggers Explorer before root search/i,
+        /unlocated local source, flow, or responsibility goes to Explorer before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
       );
       expect(root).toContain('native liveness');
       expect(root).toContain('maximum delegation depth is 1');
@@ -320,7 +320,7 @@ describe('Codex install setup plan', () => {
         /root retains known low-risk mechanical work, including reviewed commits/i,
       );
       expect(root).toMatch(
-        /explicit direct-work or no-delegation instruction wins/i,
+        /explicit user direct-work or no-delegation instruction wins/i,
       );
       expect(root).not.toMatch(/another search or dependency ends it/i);
       expect(root).not.toMatch(/sdd-(?:specify|plan|tasks) subagent/);

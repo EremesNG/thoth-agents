@@ -106,12 +106,12 @@
       "expected_code_roots": [],
       "expected_owner": "explorer",
       "forbidden_owners": ["orchestrator", "designer", "worker"],
-      "ownership_rationale": "Unknown local source, flow, or responsibility triggers Explorer before root repository search.",
+      "ownership_rationale": "Unlocated local source, flow, or responsibility goes to Explorer before any root code search, file read, shell/git inspection or CodeGraph query.",
       "decision": {
         "kind": "role-selection",
         "expected": "explorer"
       },
-      "notes": "The discovery envelope may name an unknown location. Root supplies the question, read-only bounds, and sufficient return evidence without exploratory pre-reading."
+      "notes": "The discovery envelope may name an unknown location. Root supplies the question, read-only bounds, and sufficient return evidence without preliminary discovery. Project navigation rules govern Explorer, not root."
     },
     {
       "id": "direct-root-known",
@@ -174,7 +174,7 @@
       "phase": "implement",
       "expected_owner": "designer",
       "forbidden_owners": ["orchestrator", "worker"],
-      "ownership_rationale": "The bounded user-facing surface benefits from designer specialization and isolated visual verification within direct work.",
+      "ownership_rationale": "Material user-facing interaction and visual quality route the bounded implementation to Designer under specialist-default ownership.",
       "decision": {
         "kind": "role-selection",
         "expected": "designer"
@@ -195,7 +195,7 @@
       "phase": "implement",
       "expected_owner": "worker",
       "forbidden_owners": ["orchestrator", "designer"],
-      "ownership_rationale": "The exact file and symbol are known, the edit is isolated, and Worker avoids loading unrelated planning context.",
+      "ownership_rationale": "The exact file and symbol are known and the implementation is bounded; specialist-default execution routes it directly to Worker without an Explorer relay.",
       "decision": {
         "kind": "role-selection",
         "expected": "worker"
@@ -213,7 +213,7 @@
       "phase": "implement",
       "expected_owner": "worker",
       "forbidden_owners": ["orchestrator", "designer"],
-      "ownership_rationale": "A fresh Worker context improves correctness across the coupled contract and adapters even though the work does not need persistence.",
+      "ownership_rationale": "The coupled multi-harness contract is substantive bounded nonvisual work; specialist-default execution routes it to one Worker regardless of persistence.",
       "decision": {
         "kind": "role-selection",
         "expected": "worker"
@@ -262,7 +262,7 @@
       "expected_first_read": "docs/agent/index.md",
       "expected_overlays": ["agents-and-delegation"],
       "expected_code_roots": [],
-      "notes": "Explorer first resolves source and responsibility before root repository search; root then selects worker from localized evidence rather than guessing."
+      "notes": "Explorer resolves source and responsibility before any root code search, file read, shell/git inspection or CodeGraph query; no preliminary discovery is needed. Root then selects Worker from localized evidence rather than guessing."
     },
     {
       "id": "writer-designer-accessibility",

@@ -24,9 +24,10 @@ Keep `docs/agent/` documents on demand at startup.
 
 ## Preferred navigation tools
 
-- Root may dispatch unknown local discovery to Explorer without preliminary
-  CodeGraph queries, native search, or file reads. This dispatch exemption does
-  not permit root discovery.
+- Root dispatches unknown local discovery to Explorer without preliminary
+  CodeGraph queries, native search, file reads, or shell/git inspection. Project
+  navigation instructions govern the assigned investigator; they never make root
+  the investigator.
 - When `.codegraph/` exists, the assigned investigator must use CodeGraph before
   source-code discovery through `webstorm-index`, native search, or file reads.
   Prefer the `codegraph_explore` MCP tool; if it is not exposed, use `codegraph
@@ -84,8 +85,9 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 - Keep changes explicit and limited to the requested behavior. Preserve unrelated
   edits; never revert work you did not make. Ignore backward compatibility.
 - Every change completes proportional explore -> specify -> clarify before
-  classification; these steps do not force a document, specialist, or interview.
-  Investigate repository facts before asking, and leave unresolved material
+  classification; these steps do not force a document or interview. Staffing
+  follows the root delegation policy. Investigate repository facts before asking,
+  and leave unresolved material
   human-owned choices blocked. Only then classify by meaningful coordination and
   contract impact, uncertainty, and risk/failure cost. File count alone does not
   increase scope: a clear, low-risk localized mechanical change may touch several
@@ -127,11 +129,16 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   release consumers after their fresh accepted dependencies, with no global wave barrier.
 - Specialists perform discovery, external research and substantive implementation by default.
 - Use Librarian for external evidence and Oracle for independent judgment; no fixed all-role pipeline.
-- Root directs and accepts work and retains known low-risk mechanical work,
-  including reviewed commits. Root may answer one bounded question about a known
-  source. Unless the user directs root-owned investigation, unknown local source, flow, or responsibility
-  goes to Explorer before root code search/read. The experimental direct-source allowance is at most two
-  fragments and about 200 code lines per user request, cumulatively across files,
+- Root coordinates, directs and accepts work. Direct work is limited to bounded
+  exceptions: known low-risk mechanical work, including reviewed commits, and
+  one bounded question about a known source. Unless the user directs root-owned
+  investigation, unlocated local source, flow, or responsibility goes to Explorer
+  before any root code search, file read, shell/git inspection, or CodeGraph query;
+  no preliminary discovery is needed to prepare the assignment. Before the first
+  read/search/shell call of a turn, root checks for a known bounded source within
+  a direct-work exception; otherwise dispatch the appropriate specialist.
+  The experimental direct-source allowance is at most two fragments and about
+  200 code lines per user request, cumulatively across files,
   tools and subtasks; a new discovery path or exhausted allowance sends missing
   evidence to a specialist. Required instructions and pertinent coordination
   artifacts are excluded, never as a source/log dump. This is prompt guidance,

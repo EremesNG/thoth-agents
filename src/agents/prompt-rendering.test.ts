@@ -11,7 +11,11 @@ import {
 } from '../harness/adapters/codex';
 import { renderOpenCodeAgentConfigs } from '../harness/adapters/opencode';
 import { piAdapter, renderPiRootInstructions } from '../harness/adapters/pi';
-import type { AgentRoleName } from '../harness/core/agent-pack';
+import {
+  type AgentRoleName,
+  getAgentPackContract,
+  getImplementationOwnershipInstructions,
+} from '../harness/core/agent-pack';
 import type { HarnessAdapter } from '../harness/types';
 import {
   CLAUDE_CODE_PROMPT_DIALECT,
@@ -117,6 +121,106 @@ function sectionsFor(role: AgentRoleName) {
 }
 
 describe('AI-first prompt rendering', () => {
+  test.each(
+    ROOT_RENDERERS,
+  )('renders canonical default-first coordinator ownership in %s', (_harness, render) => {
+    const prompt = render();
+    const ownership =
+      getAgentPackContract().orchestrationPolicy.implementationOwnership;
+    const block =
+      prompt.match(
+        /<implementation-ownership>\n([\s\S]*?)\n<\/implementation-ownership>/,
+      )?.[1] ?? '';
+    expect(prompt.match(/<role>\n([\s\S]*?)\n<\/role>/)?.[1]).toBe(
+      'You are the root coordinator. By default, specialists perform discovery of unlocated source, external research and substantive implementation; you direct, decide, accept and synthesize.',
+    );
+    const defaultIndex = block.indexOf('Specialists execute by default');
+    const mechanicalIndex = block.indexOf(
+      'Root retains known low-risk mechanical work, including reviewed commits',
+    );
+    const consultationIndex = block.indexOf(
+      'One known source, one bounded question',
+    );
+    const budgetIndex = block.indexOf(
+      'Experimental cumulative budget: two source fragments, approximately 200 code lines per user request across tools, files, and subtasks.',
+    );
+    const userIndex = block.indexOf(
+      'Explicit user direct-work or no-delegation instruction wins',
+    );
+    expect(defaultIndex).toBeGreaterThanOrEqual(0);
+    expect(mechanicalIndex).toBeGreaterThan(defaultIndex);
+    expect(consultationIndex).toBeGreaterThan(mechanicalIndex);
+    expect(budgetIndex).toBeGreaterThan(consultationIndex);
+    expect(userIndex).toBeGreaterThan(budgetIndex);
+    expect(block).toBe(
+      getImplementationOwnershipInstructions(ownership)
+        .map((instruction) => `- ${instruction}`)
+        .join('\n'),
+    );
+  });
+
+  test.each(
+    ROOT_RENDERERS,
+  )('keeps specialist-default ownership unqualified by lifecycle or routing in %s', (_harness, render) => {
+    const prompt = render();
+    for (const phrase of [
+      'If delegating',
+      'Boundaries alone do not require delegation',
+      'net gain',
+      'Otherwise specialists',
+      'routine mechanical work stays with root unless explicitly delegated',
+    ]) {
+      expect.soft(prompt).not.toContain(phrase);
+    }
+    const lifecycle =
+      prompt.match(
+        /<delegation-lifecycle>([\s\S]*?)<\/delegation-lifecycle>/,
+      )?.[1] ?? '';
+    expect
+      .soft(lifecycle)
+      .toContain(
+        'These are fresh-session boundaries, not permission for root execution',
+      );
+    expect
+      .soft(prompt)
+      .toContain(
+        'root direct work is limited to the bounded implementation-ownership exceptions',
+      );
+  });
+
+  test.each(
+    ROOT_RENDERERS,
+  )('dispatches unlocated discovery before root tools despite project navigation in %s', (_harness, render) => {
+    const prompt = render();
+    const block =
+      prompt.match(
+        /<implementation-ownership>([\s\S]*?)<\/implementation-ownership>/,
+      )?.[1] ?? '';
+    expect
+      .soft(block)
+      .toMatch(
+        /unlocated local source, flow, or responsibility.*Explorer.*before any root code search, file read, shell\/git inspection, or CodeGraph query/i,
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'no preliminary discovery is needed to prepare that assignment',
+      );
+    expect
+      .soft(block)
+      .toContain(
+        'Project navigation instructions (webstorm-index, CodeGraph, rg, docs routers) govern how the assigned investigator searches; they never make root the investigator.',
+      );
+    expect
+      .soft(block)
+      .toMatch(
+        /before the first read\/search\/shell call of a turn, root checks.*known bounded source within a direct-work exception.*if not, dispatch/i,
+      );
+    expect
+      .soft(block)
+      .toContain('This self-check is guidance, not runtime enforcement.');
+  });
+
   test.each(
     ROOT_RENDERERS,
   )("keeps user-facing communication in the real user's language in %s", (_harness, render) => {
@@ -229,7 +333,7 @@ describe('AI-first prompt rendering', () => {
   'renders director-default edge cases in %s', (_harness, render) => {
     const prompt = render();
     expect(prompt).toMatch(
-      /unknown local source, flow, or responsibility.*Explorer.*before root.*search/is,
+      /unlocated local source, flow, or responsibility.*Explorer.*before any root.*search/is,
     );
     expect(prompt).toMatch(/discovery assignment.*unknown location/is);
     expect(prompt).toMatch(
@@ -240,9 +344,11 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(/must not repeat delegated discovery/i);
     expect(prompt).toMatch(/missing support.*targeted evidence/i);
     expect(prompt).toMatch(
-      /delegation failure.*truthful.*no unrestricted root/is,
+      /delegation failure.*truthful.*does not authorize unrestricted root/is,
     );
-    expect(prompt).toMatch(/delegate for a concrete discovery/i);
+    expect(prompt).toMatch(
+      /specialists execute by default for discovery of unlocated source, external research and substantive implementation/i,
+    );
     expect(prompt).toMatch(/one known source.*one bounded question/i);
     expect(prompt).toMatch(
       /new path.*unlocated dependency.*stop and delegate.*acquired context/i,
@@ -255,7 +361,9 @@ describe('AI-first prompt rendering', () => {
       /required operating instructions.*coordination artifacts.*excluded.*source or log dumps/i,
     );
     expect(prompt).toMatch(/not runtime enforcement/i);
-    expect(prompt).toMatch(/independent verification remains mandatory/i);
+    expect(prompt).toMatch(
+      /mandatory independent verification remains intact/i,
+    );
     expect(prompt).toMatch(
       /exploration, research, planning, implementation, and verification.*one independently acceptable outcome/i,
     );
@@ -316,7 +424,9 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toMatch(
       /material human-owned uncertainty blocks classification/i,
     );
-    expect(prompt).not.toMatch(
+    const workflow =
+      prompt.match(/<sdd-workflow>([\s\S]*?)<\/sdd-workflow>/)?.[1] ?? '';
+    expect(workflow).not.toMatch(
       /\b(?:Accelerated|Full)\b|\bDirect:\s*implement|--route|route choice/i,
     );
     expect(prompt).toContain('Review plan with Oracle (Recommended)');
@@ -663,11 +773,11 @@ describe('AI-first prompt rendering', () => {
 
   test('keeps generated roots compact', () => {
     const roots = [
-      String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''),
-      renderCodexRootInstructions(),
-      renderClaudeCodeRootInstructions(),
-    ];
-    // Keep the shared pre-plan guarantees bounded; detailed procedures stay routed.
-    for (const root of roots) expect(root.length).toBeLessThan(13_500);
+      [String(renderOpenCodeAgentConfigs().orchestrator?.prompt ?? ''), 13_500],
+      [renderCodexRootInstructions(), 15_000],
+      [renderClaudeCodeRootInstructions(), 15_000],
+    ] as const;
+    // Bound canonical ownership/navigation guidance plus native dialects; detailed procedures stay routed.
+    for (const [root, limit] of roots) expect(root.length).toBeLessThan(limit);
   });
 });

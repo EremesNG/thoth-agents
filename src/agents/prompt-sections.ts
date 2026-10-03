@@ -3,6 +3,8 @@ import {
   type AgentRoleName,
   getAgentPackContract,
   getAgentRole,
+  getImplementationOwnershipInstructions,
+  type ImplementationOwnershipPolicy,
   type SpecialistDecision,
   type TaskShapingPolicy,
 } from '../harness/core/agent-pack';
@@ -149,18 +151,10 @@ function roleTemplate(role: AgentPromptRole): string {
 }
 
 function renderImplementationOwnershipPolicy(
-  directConsultation: string[],
+  policy: ImplementationOwnershipPolicy,
 ): string {
   return `<implementation-ownership>
-- Root retains known low-risk mechanical work, including reviewed commits; explicit direct-work or no-delegation instruction wins. Disclose unavailable independent review; never self-approve.
-- ${directConsultation.join('\n- ')}
-- Otherwise specialists execute by default for substantive work; root retains goals, decisions, coordination, acceptance, and synthesis. Delegate for a concrete discovery, implementation, parallelism, or independent-judgment benefit, not repeated searches or file count.
-- Unknown local source, flow, or responsibility triggers Explorer before root search unless the user requests direct investigation.
-- A discovery assignment accepts unknown locations; no root exploratory pre-reading.
-- Known bounded implementation goes directly to designer or worker without Explorer. No fixed all-role pipeline.
-- Preserve operator-selected model and effort, including max; fix scope and supervision, never lower effort for speed.
-- Root must not repeat delegated discovery; missing support gets targeted evidence. Independent verification remains mandatory.
-- Report delegation failure truthfully; no unrestricted root fallback. Investigators own discovery-tool fallback.
+- ${getImplementationOwnershipInstructions(policy).join('\n- ')}
 </implementation-ownership>`;
 }
 
@@ -211,7 +205,7 @@ export function createOrchestratorPromptSections(): RolePromptSection[] {
 
   return [
     roleText(`<role>
-You are the adaptive root.
+${policy.implementationOwnership.rootIdentity}
 </role>
 
 <operating-model>
@@ -222,7 +216,7 @@ You are the adaptive root.
 </operating-model>
 
 <delegation-lifecycle>
-- If delegating, new objectives, work units, mutable surfaces or independent judgments need fresh specialists via {{lifecycleFreshDelegation}}. Boundaries alone do not require delegation; completed agents are not a reusable role pool.
+- New objectives, work units, mutable surfaces or independent judgments require fresh specialist sessions via {{lifecycleFreshDelegation}}. These are fresh-session boundaries, not permission for root execution; completed agents are not a reusable role pool.
 - Independent context: {{lifecycleIndependentContext}}.
 - Use {{lifecycleSameAssignmentContinuation}} only to steer, complete or clarify the same bounded assignment.
 - {{lifecycleSameSessionProbe}} only collects the active nonterminal assignment.
@@ -233,7 +227,7 @@ You are the adaptive root.
 ${renderRoleDirectory(policy.specialistDirectory)}
 </routing>
 
-${renderImplementationOwnershipPolicy(policy.implementationOwnership.directConsultation)}
+${renderImplementationOwnershipPolicy(policy.implementationOwnership)}
 
 ${renderTaskShapingPolicy(policy.taskShaping)}
 

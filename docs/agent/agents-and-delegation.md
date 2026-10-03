@@ -4,7 +4,7 @@
 
 The contract has six roles:
 
-- adaptive root: `orchestrator`;
+- root coordinator: `orchestrator`;
 - read-only specialists: `explorer`, `librarian`, `oracle`; and
 - implementation writers: `designer`, `worker`.
 
@@ -13,10 +13,10 @@ definitions and applies overrides; harness adapters translate the same intent.
 
 ## Invariants
 
-- Specialists perform discovery, external research and substantive implementation by default.
-- Root directs and accepts work, owning goals, constraints, decisions,
-  coordination and synthesis. Root retains known low-risk mechanical work
-  (including reviewed commits). Explicit user direction controls ownership.
+- Specialists perform discovery of unlocated source, external research and
+  substantive implementation by default.
+- Root is the coordinator: it directs, decides, accepts and synthesizes, owning
+  goals, constraints, decisions and coordination.
 - Delegation depth is one and each mutable surface has one writer. Treat explicit
   safe user direction as an ownership input.
 - Shape each retained or delegated unit across discovery, research, planning,
@@ -29,20 +29,33 @@ definitions and applies overrides; harness adapters translate the same intent.
   native capacity before another wait. Release each dependent consumer only
   after its required upstream result is terminal, fresh and accepted. Check
   compatible read assumptions, interfaces and shared resources, not only files.
-- Unless the user directs root-owned investigation, unknown local source, flow, or responsibility
-  goes to Explorer before root code search, reads or dependency traversal.
-  Explorer may receive a bounded assignment whose origin is unknown.
-  Root may make one bounded direct consultation only when both the source and
-  question are known. If it exposes another discovery path, stop and delegate the
-  remaining inquiry. The experimental cumulative allowance is at most two source
-  code fragments and about 200 source lines per user request, whichever is reached
-  first, across files, tools and subtasks. Required operating instructions and
-  pertinent coordination artifacts are excluded; this never permits source/log
-  dumps or duplicated specialist discovery. At the limit, route missing evidence
-  to a specialist; the allowance never waives required verification. This is
-  prompt guidance, not runtime enforcement. A full
-  custom `orchestrator.prompt` replacement remains supported and may omit these
-  bundled defaults. A fresh specialist must provide a concrete benefit.
+- Unless the user directs root-owned investigation, unlocated local source,
+  flow or responsibility goes to Explorer before any root code search, file
+  read, shell/git inspection or CodeGraph query. No preliminary discovery is
+  needed to prepare that assignment; its location may be unknown.
+- Project navigation instructions (webstorm-index, CodeGraph, rg and docs
+  routers) govern how the assigned investigator searches; they never make root
+  the investigator. A router naming root does not override discovery ownership.
+- Before the first read/search/shell call of a turn, root checks whether the
+  source is known and bounded within a direct-work exception; if not, dispatch
+  the appropriate specialist. This self-check is guidance, not runtime enforcement.
+- Bounded direct-work exceptions: root retains known low-risk mechanical work,
+  including reviewed commits, without reopening completed discovery. A minimal
+  authorized low-risk edit is allowed only when scope and verification are known
+  and no discovery or independent judgment is needed. Explicit user direct-work
+  or no-delegation instructions control ownership.
+- Root may make one bounded direct consultation only when both the source and
+  question are known. If it exposes another discovery path or unlocated
+  dependency, stop and delegate the remaining inquiry; acquired context does not
+  extend the exception. The experimental cumulative allowance is at most two
+  source code fragments and about 200 source lines per user request, whichever
+  is reached first, across files, tools and subtasks. Required operating
+  instructions and pertinent coordination artifacts are excluded; this never
+  permits source/log dumps or duplicated specialist discovery. At the limit,
+  route missing evidence to a specialist; the allowance never waives required
+  verification. This is prompt guidance, not runtime enforcement. A full custom
+  `orchestrator.prompt` replacement remains supported and may omit these bundled
+  defaults.
 - Explorer, librarian, and oracle never mutate the workspace.
 - Every dispatch carries bounded thoth-mem `none|recall|observe` authorization
   independently of workspace mode. `observe` may permit a durable provider
@@ -135,7 +148,7 @@ observed model results:
 
 | Case | Expected behavior |
 | --- | --- |
-| Source origin is unknown | Assign Explorer before root code reads; begin at zero consulted fragments. |
+| Source origin is unknown | Assign Explorer before any root code search, file read, shell/git inspection or CodeGraph query; no preliminary discovery, even when navigation instructions name root. |
 | A known-source lookup reveals another path | Stop the direct lookup and delegate the new discovery question. |
 | Specialist report has sufficient localized evidence | Accept it without repeating discovery. If a claim lacks support, request that specific evidence from the specialist. |
 | Tiny question has a known source and answer boundary | Root may consult only the needed fragment and stop within the cumulative allowance. |

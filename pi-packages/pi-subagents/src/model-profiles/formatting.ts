@@ -78,16 +78,7 @@ export function frameModal(
     titleText,
     Math.max(1, innerWidth),
   );
-  const chars = theme
-    ? BOX_CHARS
-    : {
-        topLeft: '╭',
-        topRight: '╮',
-        vertical: '│',
-        bottomLeft: '╰',
-        bottomRight: '╯',
-        horizontal: '─',
-      };
+  const chars = BOX_CHARS;
   const borderFn = (char: string) => themeFg(theme, 'accent', char, CYAN);
   const top = `${borderFn(chars.topLeft)}${visibleTitle}${borderFn(chars.horizontal.repeat(Math.max(0, innerWidth - visibleWidth(visibleTitle))))}${borderFn(chars.topRight)}`;
   const bottom = `${borderFn(chars.bottomLeft)}${borderFn(chars.horizontal.repeat(innerWidth))}${borderFn(chars.bottomRight)}`;

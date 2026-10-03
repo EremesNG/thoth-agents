@@ -2441,9 +2441,9 @@ describe('subagents panel and extension ui', () => {
     );
     const rendered = panel.render(120).join('\n');
 
-    // Section headings are boxed/framed with ┌─ ... ─┐
-    expect(rendered).toContain('FG(accent:┌─ )');
-    expect(rendered).toContain('FG(accent:┐)');
+    // Section headings are boxed/framed with ╭─ ... ─╮
+    expect(rendered).toContain('FG(accent:╭─ )');
+    expect(rendered).toContain('FG(accent:╮)');
     expect(rendered).toContain('FG(mdHeading:delegated task)');
     expect(rendered).toContain('FG(mdHeading:execution)');
 

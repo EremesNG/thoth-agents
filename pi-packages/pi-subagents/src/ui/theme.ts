@@ -89,11 +89,11 @@ export const CYBER_SEPARATOR = '┃';
 
 // Electric box-drawing characters:
 export const BOX_CHARS = {
-  topLeft: '┌',
-  topRight: '┐',
+  topLeft: '╭',
+  topRight: '╮',
   vertical: '│',
-  bottomLeft: '└',
-  bottomRight: '┘',
+  bottomLeft: '╰',
+  bottomRight: '╯',
   horizontal: '─',
 } as const;
 

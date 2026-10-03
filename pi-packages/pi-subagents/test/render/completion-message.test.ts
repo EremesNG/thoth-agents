@@ -188,10 +188,10 @@ describe('completion message render', () => {
       },
     ).render(80);
 
-    expect(lines[0]).toMatch(/^┌─+ ✓ \[subagent\] discovery · completed ─+┐$/);
+    expect(lines[0]).toMatch(/^╭─+ ✓ \[subagent\] discovery · completed ─+╮$/);
     expect(lines[1]).toContain('subagent: discovery');
     expect(lines).toContainEqual(expect.stringContaining('ctrl+o to expand'));
-    expect(lines.at(-1)).toMatch(/^└─+┘$/);
+    expect(lines.at(-1)).toMatch(/^╰─+╯$/);
     expect(lines[0]).not.toBe(' '.repeat(80));
     expect(lines.at(-1)).not.toBe(' '.repeat(80));
   });
@@ -287,11 +287,11 @@ describe('completion message render', () => {
       .join('\n');
     expect(rendered).not.toContain('BG(');
     expect(rendered).not.toContain('customMessageBg');
-    expect(rendered).toContain('FG(accent:┌)');
+    expect(rendered).toContain('FG(accent:╭)');
     expect(rendered).toContain('FG(accent:│)');
     expect(rendered).toContain('FG(customMessageLabel:');
     expect(rendered).toContain('[subagent] discovery · completed');
-    expect(rendered).toContain('FG(accent:└)');
+    expect(rendered).toContain('FG(accent:╰)');
   });
 
   it('wraps expanded background completion responses instead of truncating them', () => {

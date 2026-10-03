@@ -343,10 +343,10 @@ describe('tool render helpers', () => {
     const plain = rendered.map(env.stripAnsi);
     const bodyContent = plain
       .slice(1, -1)
-      .map((line: string) => line.replace(/^[┌│└]\s*|\s*[┐│┘]$/g, '').trim())
+      .map((line: string) => line.replace(/^[╭│╰]\s*|\s*[╮│╯]$/g, '').trim())
       .join(' ');
     const unwrappedWord = plain
-      .map((line: string) => line.replace(/^[┌│└]\s*|\s*[┐│┘]$/g, ''))
+      .map((line: string) => line.replace(/^[╭│╰]\s*|\s*[╮│╯]$/g, ''))
       .filter((line: string) => line.includes('_'))
       .join('');
 
@@ -355,9 +355,9 @@ describe('tool render helpers', () => {
     expect(unwrappedWord).toContain(longToolName);
     expect(bodyContent).not.toContain('…');
     expect(plain.every((line: string) => [...line].length <= 30)).toBe(true);
-    expect(plain.some((line: string) => line.includes('┌'))).toBe(true);
+    expect(plain.some((line: string) => line.includes('╭'))).toBe(true);
     expect(plain.some((line: string) => line.includes('│'))).toBe(true);
-    expect(plain.some((line: string) => line.includes('└'))).toBe(true);
+    expect(plain.some((line: string) => line.includes('╰'))).toBe(true);
   });
 
   it('renders the effective continuation mode from explicit override, previous task state, and config fallback', async () => {
@@ -714,12 +714,12 @@ describe('tool render helpers', () => {
         },
       )
       .render(80);
-    expect(resultLines[0]).toContain('┌─');
-    expect(resultLines[0]).toContain('┐');
+    expect(resultLines[0]).toContain('╭─');
+    expect(resultLines[0]).toContain('╮');
     expect(resultLines[0]).toContain('✓');
     expect(resultLines.some((l: string) => l.includes('│'))).toBe(true);
-    expect(resultLines.at(-1)).toContain('└');
-    expect(resultLines.at(-1)).toContain('┘');
+    expect(resultLines.at(-1)).toContain('╰');
+    expect(resultLines.at(-1)).toContain('╯');
     expect(resultLines.join('\n')).not.toContain('\x1b[4');
 
     // Direct renderSubagentResult (single framed box with integrated title)
@@ -731,12 +731,12 @@ describe('tool render helpers', () => {
       { expanded: false },
       { fg: (_name: string, text: string) => text },
     ).render(80);
-    expect(directLines[0]).toContain('┌─');
-    expect(directLines[0]).toContain('┐');
+    expect(directLines[0]).toContain('╭─');
+    expect(directLines[0]).toContain('╮');
     expect(directLines[0]).toContain('✓');
     expect(directLines.some((l: string) => l.includes('│'))).toBe(true);
-    expect(directLines.at(-1)).toContain('└');
-    expect(directLines.at(-1)).toContain('┘');
+    expect(directLines.at(-1)).toContain('╰');
+    expect(directLines.at(-1)).toContain('╯');
     expect(directLines.join('\n')).not.toContain('\x1b[4');
   });
 
@@ -777,10 +777,10 @@ describe('tool render helpers', () => {
         },
       )
       .render(80);
-    expect(lines[0]).toMatch(/^┌─+ .+subagent · sdd-verify · running ─+┐$/);
+    expect(lines[0]).toMatch(/^╭─+ .+subagent · sdd-verify · running ─+╮$/);
     expect(lines[0]).toContain('⠋');
     expect(lines.some((l: string) => l.includes('│'))).toBe(true);
-    expect(lines.at(-1)).toMatch(/^└─+┘$/);
+    expect(lines.at(-1)).toMatch(/^╰─+╯$/);
     expect(lines.join('\n')).not.toContain('\x1b[4');
   });
 
@@ -837,13 +837,13 @@ describe('tool render helpers', () => {
       )
       .render(80);
     expect(lines[0]).toMatch(
-      /^┌─+ .+subagent · sdd-verify · running \(background\) ─+┐$/,
+      /^╭─+ .+subagent · sdd-verify · running \(background\) ─+╮$/,
     );
     expect(lines[0]).toContain('⠋');
     expect(lines[1]).toContain('subagent: sdd-verify');
     expect(lines[1]).toContain('status: running');
     expect(lines.join('\n')).toContain('click to view execution');
-    expect(lines.at(-1)).toMatch(/^└─+┘$/);
+    expect(lines.at(-1)).toMatch(/^╰─+╯$/);
     expect(lines.join('\n')).not.toContain('\x1b[4');
   });
 
@@ -904,8 +904,8 @@ describe('tool render helpers', () => {
         },
       )
       .render(120);
-    expect(resultLines[0]).toContain('┌─');
-    expect(resultLines[0]).toContain('┐');
+    expect(resultLines[0]).toContain('╭─');
+    expect(resultLines[0]).toContain('╮');
     expect(resultLines[0]).toContain('⠋');
     expect(resultLines[0]).toContain(
       'subagent · sdd-verify · running (background)',
@@ -915,8 +915,8 @@ describe('tool render helpers', () => {
     expect(resultLines[1]).toContain('subagent: sdd-verify');
     expect(resultLines[1]).toContain('status: running');
     expect(resultLines.join('\n')).toContain('click to view execution');
-    expect(resultLines.at(-1)).toContain('└');
-    expect(resultLines.at(-1)).toContain('┘');
+    expect(resultLines.at(-1)).toContain('╰');
+    expect(resultLines.at(-1)).toContain('╯');
 
     // 3. No project-owned background fills or ANSI background color escapes
     const renderedFull = resultLines.join('\n');
@@ -1223,8 +1223,8 @@ describe('tool render helpers', () => {
       const collapsedLines = tool
         .renderResult(result, { expanded: false, isPartial: false }, theme)
         .render(80);
-      expect(collapsedLines[0], `${name} collapsed top border`).toContain('┌─');
-      expect(collapsedLines[0], `${name} collapsed top border`).toContain('┐');
+      expect(collapsedLines[0], `${name} collapsed top border`).toContain('╭─');
+      expect(collapsedLines[0], `${name} collapsed top border`).toContain('╮');
       expect(
         collapsedLines[0],
         `${name} collapsed status/brand icon`,
@@ -1245,18 +1245,18 @@ describe('tool render helpers', () => {
       expect(
         collapsedLines.at(-1),
         `${name} collapsed bottom border`,
-      ).toContain('└');
+      ).toContain('╰');
       expect(
         collapsedLines.at(-1),
         `${name} collapsed bottom border`,
-      ).toContain('┘');
+      ).toContain('╯');
 
       // Expanded
       const expandedLines = tool
         .renderResult(result, { expanded: true, isPartial: false }, theme)
         .render(80);
-      expect(expandedLines[0], `${name} expanded top border`).toContain('┌─');
-      expect(expandedLines[0], `${name} expanded top border`).toContain('┐');
+      expect(expandedLines[0], `${name} expanded top border`).toContain('╭─');
+      expect(expandedLines[0], `${name} expanded top border`).toContain('╮');
       expect(expandedLines[0], `${name} expanded status/brand icon`).toContain(
         [
           'subagent_run',
@@ -1272,10 +1272,10 @@ describe('tool render helpers', () => {
         `${name} expanded vertical border`,
       ).toBe(true);
       expect(expandedLines.at(-1), `${name} expanded bottom border`).toContain(
-        '└',
+        '╰',
       );
       expect(expandedLines.at(-1), `${name} expanded bottom border`).toContain(
-        '┘',
+        '╯',
       );
 
       // Narrow width safety

@@ -70,7 +70,7 @@ provider identifier strings (defaults to `["claude-bridge"]`) to mark
 subscription-backed usage with `(sub)` in the status line cost segment.
 
 `inputBox.enabled` defaults to `true` and requires `statusLine.enabled` to be
-`true`. It frames the native editor in a rounded `accent` box with side borders,
+`true`. It frames the native editor in a rounded `muted` (sand) box with side borders,
 a dim `type or / for commands` placeholder, and top-left ready or native working
 status (including elapsed seconds). The bottom border is a plain rounded rule;
 native scroll indicators are preserved. The status line always stays in its

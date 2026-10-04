@@ -18,18 +18,18 @@ const theme = { fg: vi.fn((_token: string, text: string) => text) };
 
 describe('input-box frame', () => {
   it('colors every perimeter edge without changing labels, content, cursor, or line widths', () => {
-    const accentTheme = {
+    const mutedTheme = {
       fg: (_token: string, text: string) => `\x1b[33m${text}\x1b[0m`,
     };
     const label = '\x1b[36m╭ status ─\x1b[0m';
     const cursor = `${CURSOR_MARKER}\x1b[7m界\x1b[0m`;
     const idle = [
-      renderInputTop(40, accentTheme, label, 12),
-      wrapContentRow(cursor, 40, accentTheme),
-      wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, accentTheme),
-      renderInputBottom(40, accentTheme, 34),
+      renderInputTop(40, mutedTheme, label, 12),
+      wrapContentRow(cursor, 40, mutedTheme),
+      wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, mutedTheme),
+      renderInputBottom(40, mutedTheme, 34),
     ];
-    const head = foregroundAnsi(rgbColor(242, 201, 76), 'truecolor');
+    const head = `${foregroundAnsi(rgbColor(242, 201, 76), 'truecolor')}\x1b[1m`;
     // Independent worked perimeter: top 0..39, right 40..41,
     // bottom 42..81 (right to left), left 82..83 (bottom to top).
     for (const [index, row, glyph] of [
@@ -45,14 +45,14 @@ describe('input-box frame', () => {
       const frame = createCometFrame(
         40,
         4,
-        Math.ceil((index * 4000) / 84),
+        Math.ceil((index * 3500) / 84),
         'truecolor',
       );
       const animated = [
-        renderInputTop(40, accentTheme, label, 12, frame),
-        wrapContentRow(cursor, 40, accentTheme, frame, 1),
-        wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, accentTheme, frame, 2),
-        renderInputBottom(40, accentTheme, 34, frame),
+        renderInputTop(40, mutedTheme, label, 12, frame),
+        wrapContentRow(cursor, 40, mutedTheme, frame, 1),
+        wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, mutedTheme, frame, 2),
+        renderInputBottom(40, mutedTheme, 34, frame),
       ];
       expect(animated[row]).toContain(`${head}${glyph}`);
       expect(animated.map(stripTerminalSequences)).toEqual(
@@ -67,7 +67,7 @@ describe('input-box frame', () => {
     }
   });
 
-  it('renders an accent rounded box with a top-left label and cursor intact', () => {
+  it('renders a muted rounded box with a top-left label and cursor intact', () => {
     const cursor = `${CURSOR_MARKER}\x1b[7mA\x1b[0m`;
     const lines = [
       renderInputTop(24, theme, '☥ thoth · ready'),
@@ -79,20 +79,20 @@ describe('input-box frame', () => {
     expect(lines[1]).toBe(`│${cursor}${' '.repeat(21)}│`);
     expect(lines[2]).toBe('╰──────────────────────╯');
     expect(lines.map(visibleWidth)).toEqual([24, 24, 24]);
-    expect(theme.fg.mock.calls.every(([token]) => token === 'accent')).toBe(
+    expect(theme.fg.mock.calls.every(([token]) => token === 'muted')).toBe(
       true,
     );
   });
 
-  it('colors the full-width plain bottom rule and its native scroll indicator in accent', () => {
-    const accentTheme = {
+  it('colors the full-width plain bottom rule and its native scroll indicator in muted', () => {
+    const mutedTheme = {
       fg: (token: string, text: string) =>
-        token === 'accent' ? `\x1b[33m${text}\x1b[0m` : text,
+        token === 'muted' ? `\x1b[33m${text}\x1b[0m` : text,
     };
-    expect(renderInputBottom(24, accentTheme)).toBe(
+    expect(renderInputBottom(24, mutedTheme)).toBe(
       '\x1b[33m╰──────────────────────╯\x1b[0m',
     );
-    const scrolled = renderInputBottom(24, accentTheme, 34);
+    const scrolled = renderInputBottom(24, mutedTheme, 34);
     expect(scrolled).toContain('\x1b[33m↓ 34 more\x1b[0m');
     expect(scrolled.startsWith('\x1b[33m╰─ ')).toBe(true);
     expect(scrolled.endsWith('─╯\x1b[0m')).toBe(true);

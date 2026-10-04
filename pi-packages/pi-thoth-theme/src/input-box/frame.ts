@@ -2,8 +2,8 @@ import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import type { ActiveThemeLike } from '../status-line/layout.ts';
 import { type CometFrame, colorCometBorder } from './gradient.ts';
 
-function accent(theme: ActiveThemeLike, text: string): string {
-  return theme.fg?.('accent', text) ?? text;
+function muted(theme: ActiveThemeLike, text: string): string {
+  return theme.fg?.('muted', text) ?? text;
 }
 
 export function inputLabelWidth(width: number, hiddenLineCount = 0): number {
@@ -25,10 +25,8 @@ function renderBorder(
   width = Math.max(0, Math.floor(width));
   const border = (text: string, column: number) =>
     frame
-      ? colorCometBorder(text, column, row, frame, (text) =>
-          accent(theme, text),
-        )
-      : accent(theme, text);
+      ? colorCometBorder(text, column, row, frame, (text) => muted(theme, text))
+      : muted(theme, text);
   if (width <= 5 || (!label && !overflow)) {
     return truncateToWidth(
       border(`${left}${'─'.repeat(Math.max(0, width - 2))}${right}`, 0),
@@ -40,12 +38,12 @@ function renderBorder(
   if (overflow) {
     const statusWidth = labelWidth - visibleWidth(overflow) - 3;
     if (statusWidth <= 0) {
-      label = accent(theme, overflow);
+      label = muted(theme, overflow);
     } else {
       const fittedStatus = truncateToWidth(label, statusWidth, '');
       const separator = frame
-        ? `${border(' ─ ', 3 + visibleWidth(fittedStatus))}${accent(theme, overflow)}`
-        : accent(theme, ` ─ ${overflow}`);
+        ? `${border(' ─ ', 3 + visibleWidth(fittedStatus))}${muted(theme, overflow)}`
+        : muted(theme, ` ─ ${overflow}`);
       label = fittedStatus + separator;
     }
   }
@@ -72,7 +70,7 @@ export function renderInputBottom(
   frame?: CometFrame,
 ): string {
   const label =
-    hiddenLineCount > 0 ? accent(theme, `↓ ${hiddenLineCount} more`) : '';
+    hiddenLineCount > 0 ? muted(theme, `↓ ${hiddenLineCount} more`) : '';
   return renderBorder(
     width,
     theme,
@@ -93,12 +91,12 @@ export function wrapContentRow(
   row = 1,
 ): string {
   width = Math.max(0, Math.floor(width));
-  if (width < 2) return truncateToWidth(accent(theme, '││'), width, '');
+  if (width < 2) return truncateToWidth(muted(theme, '││'), width, '');
   const content = truncateToWidth(line, width - 2, '', true);
   const side = (column: number) =>
     frame
-      ? colorCometBorder('│', column, row, frame, (text) => accent(theme, text))
-      : accent(theme, '│');
+      ? colorCometBorder('│', column, row, frame, (text) => muted(theme, text))
+      : muted(theme, '│');
   return `${side(0)}${content}${side(width - 1)}`;
 }
 

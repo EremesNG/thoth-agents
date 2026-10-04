@@ -14,7 +14,7 @@ afterEach(() => vi.useRealTimers());
 describe('input-box working status', () => {
   it('colors the native pyramid and sweeps its label without changing visible text or elapsed style', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(400);
+    vi.setSystemTime(1200);
     const capabilities = getCapabilities();
     setCapabilities({ images: null, trueColor: true, hyperlinks: false });
     const state = createWorkingState(() => {});
@@ -23,17 +23,19 @@ describe('input-box working status', () => {
     try {
       expect(state.status(indicator, 30)).toBe(native);
       state.start();
-      const first = state.status(indicator, 30);
+      const muted = (text: string) => `\x1b[38;2;168;154;120m${text}\x1b[39m`;
+      const first = state.status(indicator, 30, muted);
       const bright = foregroundAnsi(rgbColor(242, 201, 76), 'truecolor');
-      expect(first).toContain(`${bright}△`);
-      expect(first).toContain(`${bright}w`);
-      expect(first).not.toContain('\x1b[1m');
+      expect(first).toContain(`${bright}\x1b[1m△\x1b[22m\x1b[39m`);
+      expect(first).toContain(`${bright}\x1b[1mi\x1b[22m\x1b[39m`);
+      expect(first).toContain(muted('w'));
       expect(first).not.toContain('\x1b[38:2::212:175:55m');
-      expect(first.endsWith('\x1b[39m · 0s')).toBe(true);
+      expect(first.endsWith(muted(' · 0s'))).toBe(true);
       expect(stripTerminalSequences(first)).toBe('△ working… · 0s');
       vi.advanceTimersByTime(1200);
-      const next = state.status(indicator, 30);
-      expect(next).toContain(`${bright}g`);
+      const next = state.status(indicator, 30, muted);
+      expect(next).toContain(muted('g'));
+      expect(next.endsWith(muted(' · 1s'))).toBe(true);
       expect(next).not.toBe(first);
       expect(stripTerminalSequences(next)).toBe('△ working… · 1s');
       for (const width of [0, 1, 2, 3, 10, 14]) {

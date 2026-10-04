@@ -1136,6 +1136,7 @@ export class SubagentsHistoryPanel {
     if (
       trimmed.startsWith('subagent:') ||
       trimmed.startsWith('model:') ||
+      trimmed.startsWith('usage:') ||
       trimmed.startsWith('#') ||
       trimmed.startsWith('Preparing for response') ||
       trimmed.startsWith('done') ||
@@ -1379,7 +1380,8 @@ export class SubagentsHistoryPanel {
       typeof task.result === 'string' && task.result.trim().length > 0;
     const parts = [
       `subagent: ${task.agent} · status: ${task.status} · attempt: ${task.attempt ?? 1} · effort: ${task.effort ?? 'default/current'}`,
-      `model: ${task.model ?? 'default/current'}${usage ? ` · usage: ${usage}` : ''}`,
+      `model: ${task.model ?? 'default/current'}`,
+      usage ? `usage: ${usage}` : undefined,
       '',
       hasResp ? 'Preparing for response' : undefined,
       hasResp ? '' : undefined,

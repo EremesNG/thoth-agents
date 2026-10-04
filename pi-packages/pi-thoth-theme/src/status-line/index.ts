@@ -2,6 +2,11 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
+import {
+  decorateEditor,
+  type EditorDecoration,
+} from '../input-box/decorate.ts';
+import { createWorkingState } from '../input-box/state.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { calculateSessionCost } from './cost.ts';
 import {
@@ -21,11 +26,9 @@ export {
 } from './layout.ts';
 
 /**
- * Registers the single-row footer status line in the pi-omp-theme `claude` preset style:
- * model name and effort, git branch, context usage and session + subagent cost.
- * Session data and subscription marking are read only on events, never per frame,
- * and the rendered row is cached by input digest and width. Never calls
- * setEditorComponent.
+ * Renders the cached status row below the input box and discovers editors in place.
+ * Session data is read on events, not per frame; this extension never registers
+ * an editor factory with setEditorComponent.
  */
 export function registerStatusLine(
   pi: ExtensionAPI,
@@ -35,6 +38,7 @@ export function registerStatusLine(
   const subscriptionProviders = config.statusLine.subscriptionProviders ?? [
     'claude-bridge',
   ];
+  const inputBoxEnabled = config.inputBox?.enabled !== false;
   ctx.ui.setFooter((tui, theme, footerData) => {
     const unsubs: Array<() => void> = [];
     let disposed = false;
@@ -59,6 +63,8 @@ export function registerStatusLine(
     const requestRender = () => {
       if (!disposed) tui.requestRender?.();
     };
+    const working = createWorkingState(requestRender);
+    const editorDecorations = new Set<EditorDecoration>();
     const refreshSession = () => {
       if (disposed) return;
       session = readSession();
@@ -100,10 +106,15 @@ export function registerStatusLine(
         pi.on('session_start', () => {
           if (disposed) return;
           subagentCost = 0;
+          if (inputBoxEnabled) working.end();
           refreshSession();
           requestSubagentUsage();
         }),
       );
+      if (inputBoxEnabled) {
+        unsubs.push(pi.on('agent_start', working.start));
+        unsubs.push(pi.on('agent_end', working.end));
+      }
       unsubs.push(pi.on('message_end', refreshSession));
       unsubs.push(pi.on('turn_end', refreshSession));
       unsubs.push(pi.on('agent_end', refreshSession));
@@ -117,8 +128,23 @@ export function registerStatusLine(
 
     return {
       render(width: number): string[] {
+        if (!disposed && inputBoxEnabled) {
+          // Discovery must precede cached-row returns: focus and editor identity
+          // can change without any status data changing.
+          const focusedTui = tui as typeof tui & {
+            getFocusedComponent?: () => unknown;
+          };
+          const editor = focusedTui.getFocusedComponent?.();
+          const decoration = decorateEditor(editor, {
+            theme: theme as ActiveThemeLike,
+            working,
+          });
+          if (decoration && !editorDecorations.has(decoration)) {
+            editorDecorations.add(decoration);
+            requestRender();
+          }
+        }
         if (width <= 0) return [];
-
         const data: StatusData = {
           modelName: ctx.model?.name,
           modelId: ctx.model?.id,
@@ -129,7 +155,6 @@ export function registerStatusLine(
         };
         const key = `${width}\u0000${JSON.stringify(data)}`;
         if (key === cachedKey) return cachedLines;
-
         const line = renderStatusLine(data, {
           width,
           mode: config.icons,
@@ -146,6 +171,9 @@ export function registerStatusLine(
       dispose() {
         // Pi may have snapshotted lifecycle handlers before replacing the footer.
         disposed = true;
+        working.dispose();
+        for (const decoration of editorDecorations) decoration.dispose();
+        editorDecorations.clear();
         for (const unsub of unsubs) {
           try {
             unsub();

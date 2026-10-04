@@ -16,6 +16,8 @@ export interface ThemeConfig {
     enabled: boolean;
     subscriptionProviders?: string[];
   };
+  /** Omission enables the input box, preserving the legacy config shape. */
+  inputBox?: { enabled: boolean };
   tools: { enabled: boolean; respectPackages?: string[] };
   images: { enabled: boolean };
   welcome: { enabled: boolean };
@@ -69,6 +71,9 @@ export function loadConfig(
   }
   return {
     icons: config.icons === 'ascii' ? 'ascii' : 'nerd',
+    ...(config.inputBox === undefined
+      ? {}
+      : { inputBox: { enabled: moduleEnabled(config.inputBox) } }),
     statusLine: {
       enabled: moduleEnabled(config.statusLine),
       subscriptionProviders: parseSubscriptionProviders(config.statusLine),

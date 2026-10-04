@@ -1,8 +1,15 @@
 import {
+  CustomEditor,
   createEventBus,
   type ExtensionAPI,
   type ExtensionContext,
 } from '@earendil-works/pi-coding-agent';
+import {
+  type Component,
+  CURSOR_MARKER,
+  type TUI,
+  visibleWidth,
+} from '@earendil-works/pi-tui';
 import { describe, expect, it, vi } from 'vitest';
 import type { ThemeConfig } from '../shared/config.ts';
 import { registerStatusLine } from './index.ts';
@@ -18,7 +25,7 @@ describe('registerStatusLine', () => {
 
   function createMocks(provider = 'anthropic') {
     const eventHandlers = new Map<string, Array<() => void>>();
-    const unsubs = new Map<string, ReturnType<typeof vi.fn>>();
+    const unsubs: Array<ReturnType<typeof vi.fn>> = [];
     const events = createEventBus();
     const emit = vi.spyOn(events, 'emit');
 
@@ -29,8 +36,12 @@ describe('registerStatusLine', () => {
           eventHandlers.set(event, []);
         }
         eventHandlers.get(event)?.push(handler);
-        const unsub = vi.fn();
-        unsubs.set(event, unsub);
+        const unsub = vi.fn(() => {
+          const handlers = eventHandlers.get(event);
+          const index = handlers?.indexOf(handler) ?? -1;
+          if (index >= 0) handlers?.splice(index, 1);
+        });
+        unsubs.push(unsub);
         return unsub;
       }),
     } as unknown as ExtensionAPI;
@@ -99,6 +110,8 @@ describe('registerStatusLine', () => {
 
     const tui = {
       requestRender: vi.fn(),
+      getFocusedComponent: vi.fn<() => Component | undefined>(),
+      terminal: { rows: 24 },
     };
 
     const theme = {
@@ -133,12 +146,221 @@ describe('registerStatusLine', () => {
     return factory(mocks.tui, mocks.theme, mocks.footerData);
   }
 
-  it('sets footer component and never calls setEditorComponent', () => {
+  it('sets the footer without registering an editor factory', () => {
     const mocks = createMocks();
     registerStatusLine(mocks.pi, mocks.ctx, defaultConfig);
 
     expect(mocks.ui.setFooter).toHaveBeenCalledTimes(1);
     expect(mocks.ui.setEditorComponent).not.toHaveBeenCalled();
+  });
+
+  function createEditor(mocks: ReturnType<typeof createMocks>) {
+    const plain = (text: string) => text;
+    const editor = new CustomEditor(
+      mocks.tui as unknown as TUI,
+      {
+        borderColor: plain,
+        selectList: {
+          selectedPrefix: plain,
+          selectedText: plain,
+          description: plain,
+          scrollInfo: plain,
+          noMatch: plain,
+        },
+      },
+      { matches: () => false } as unknown as ConstructorParameters<
+        typeof CustomEditor
+      >[2],
+      { embedWorkingStatus: true },
+    );
+    editor.focused = true;
+    return editor;
+  }
+
+  it('renders native working/retry status, ticks elapsed seconds, and cleans up lifecycle ownership', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const mocks = createMocks();
+    const editor = createEditor(mocks);
+    const originalRender = editor.render;
+    mocks.tui.getFocusedComponent.mockReturnValue(editor);
+    const component = createFooter(mocks);
+    const attach = (kind: string, text: string) => {
+      editor.setWorkingStatusIndicator({
+        kind,
+        renderInBorder: () => text,
+      } as unknown as Parameters<CustomEditor['setWorkingStatusIndicator']>[0]);
+    };
+    try {
+      component.render(80);
+      attach('working', '◭ working…');
+      const queuedStart = [...(mocks.eventHandlers.get('agent_start') ?? [])];
+      for (const handler of queuedStart) handler();
+      expect(editor.render(80)[0]).toContain('◭ working… · 0s');
+      mocks.tui.requestRender.mockClear();
+      vi.advanceTimersByTime(2500);
+      expect(editor.render(80)[0]).toContain('◭ working… · 2s');
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
+      expect(component.render(80)).toHaveLength(1);
+      attach('retry', 'retrying…');
+      expect(editor.render(80)[0]).toContain('retrying…');
+      expect(editor.render(80)[0]).not.toContain('2s');
+      editor.setWorkingStatusIndicator(undefined);
+      for (const handler of mocks.eventHandlers.get('agent_end') ?? [])
+        handler();
+      expect(editor.render(80)[0]).toContain('☥ thoth · ready');
+      expect(vi.getTimerCount()).toBe(0);
+
+      for (const handler of queuedStart) handler();
+      component.dispose();
+      mocks.tui.requestRender.mockClear();
+      for (const handler of queuedStart) handler();
+      vi.advanceTimersByTime(3000);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
+      expect(editor.render).toBe(originalRender);
+      expect(mocks.eventHandlers.get('agent_start')).toEqual([]);
+      expect(mocks.eventHandlers.get('agent_end')).toEqual([]);
+      for (const unsub of mocks.unsubs) expect(unsub).toHaveBeenCalledTimes(1);
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('discovers focus before cache hits and decorates each replacement once while preserving the footer', () => {
+    const mocks = createMocks();
+    const overlay = { render: () => ['other focus'], invalidate() {} };
+    mocks.tui.getFocusedComponent.mockReturnValue(overlay);
+    const component = createFooter(mocks);
+    const footer = component.render(80);
+    expect(footer).toHaveLength(1);
+    const first = createEditor(mocks);
+    const originalFirstRender = first.render;
+    mocks.tui.getFocusedComponent.mockReturnValue(first);
+    expect(component.render(80)).toBe(footer);
+    expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
+    expect(mocks.tui.getFocusedComponent()).toBe(first);
+    const decoratedFirstRender = first.render;
+    expect(decoratedFirstRender).not.toBe(originalFirstRender);
+    expect(first.render(80)[0]).toContain('╭─ ☥ thoth · ready');
+    expect(component.render(80)).toBe(footer);
+    expect(first.render).toBe(decoratedFirstRender);
+
+    mocks.tui.getFocusedComponent.mockReturnValue(overlay);
+    expect(component.render(80)).toBe(footer);
+    expect(component.render(80)).toBe(footer);
+    expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
+
+    const replacement = createEditor(mocks);
+    const originalReplacementRender = replacement.render;
+    mocks.tui.getFocusedComponent.mockReturnValue(replacement);
+    expect(component.render(80)).toBe(footer);
+    expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
+    expect(replacement.render(80)[0]).toContain('╭─ ☥ thoth · ready');
+    expect(component.render(80)).toBe(footer);
+
+    mocks.tui.getFocusedComponent.mockReturnValue(first);
+    expect(first.render(80)).toHaveLength(3);
+    expect(component.render(80)).toBe(footer);
+    expect(first.render).toBe(decoratedFirstRender);
+    expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
+    first.render(10);
+    expect(component.render(10)).toHaveLength(1);
+    expect(mocks.ui.setEditorComponent).not.toHaveBeenCalled();
+    component.dispose();
+    expect(first.render).toBe(originalFirstRender);
+    expect(replacement.render).toBe(originalReplacementRender);
+  });
+
+  it('falls back to native editor geometry when current padding leaves one content column without changing the footer', () => {
+    const mocks = createMocks();
+    const editor = createEditor(mocks);
+    editor.setText('界');
+    editor.setPaddingX(7);
+    const native = editor.render(17);
+    expect(native.map(visibleWidth)).toEqual([17, 17, 17]);
+    mocks.tui.getFocusedComponent.mockReturnValue(editor);
+    const component = createFooter(mocks);
+    try {
+      const footer = component.render(17);
+      expect(footer).toHaveLength(1);
+      editor.setPaddingX(0);
+      expect(editor.render(17)[0]).toContain('╭');
+      expect(component.render(17)).toBe(footer);
+
+      editor.setPaddingX(7);
+      expect(editor.render(17)).toEqual(native);
+      expect(component.render(17)).toBe(footer);
+      const safeBox = editor.render(18);
+      expect(safeBox[0]).toContain('╭');
+      expect(safeBox.map(visibleWidth)).toEqual([18, 18, 18]);
+      expect(component.render(18)).toHaveLength(1);
+    } finally {
+      component.dispose();
+    }
+  });
+
+  it('retains footer-only behavior and no elapsed ticker when the input box is disabled', () => {
+    vi.useFakeTimers();
+    const mocks = createMocks();
+    const editor = createEditor(mocks);
+    const originalRender = editor.render;
+    mocks.tui.getFocusedComponent.mockReturnValue(editor);
+    const component = createFooter(mocks, {
+      ...defaultConfig,
+      inputBox: { enabled: false },
+    });
+    try {
+      const footer = component.render(120);
+      for (const handler of mocks.eventHandlers.get('agent_start') ?? [])
+        handler();
+      expect(editor.render).toBe(originalRender);
+      expect(editor.render(120)[0]).not.toContain('╭');
+      expect(component.render(120)).toBe(footer);
+      expect(mocks.tui.getFocusedComponent).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(mocks.ui.setEditorComponent).not.toHaveBeenCalled();
+    } finally {
+      component.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the status as a one-row footer below the decorated editor on every render', () => {
+    const mocks = createMocks();
+    const editor = createEditor(mocks);
+    mocks.tui.getFocusedComponent.mockReturnValue(editor);
+    const component = createFooter(mocks);
+    try {
+      const initialFooter = component.render(120);
+      expect(initialFooter).toEqual([
+        '● Test Model · ◐ low │ ⑂ main │ [███░░░░░░░] 25% used │ 50K/200K │ $0.300',
+      ]);
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
+
+      const box = editor.render(120);
+      expect(box[0]).toMatch(/^╭─ ☥ thoth · ready /);
+      expect(box[1]).toContain(
+        `${CURSOR_MARKER}\x1b[7m \x1b[0mtype or / for commands`,
+      );
+      expect(box[2]).toMatch(/^╰─+╯$/);
+      expect(box.map(visibleWidth)).toEqual([120, 120, 120]);
+      expect(component.render(120)).toBe(initialFooter);
+      expect(component.render(120)).toBe(initialFooter);
+
+      mocks.events.emit('thoth:subagent-usage', {
+        parentSessionId: 'parent-session',
+        totalCost: 0.7,
+      });
+      expect(editor.render(120)[2]).toBe(box[2]);
+      expect(component.render(120)).toEqual([
+        '● Test Model · ◐ low │ ⑂ main │ [███░░░░░░░] 25% used │ 50K/200K │ $1.000',
+      ]);
+      expect(mocks.ui.setEditorComponent).not.toHaveBeenCalled();
+    } finally {
+      component.dispose();
+    }
   });
 
   it('renders one status line row with model, git, context, and cumulative cost', () => {

@@ -1672,6 +1672,47 @@ describe('subagents panel and extension ui', () => {
     ).toBe(true);
   });
 
+  it.each<[number, string]>([
+    [-1000, '0s'],
+    [0, '0s'],
+    [499, '0s'],
+    [500, '1s'],
+    [999, '1s'],
+    [12_499, '12s'],
+    [12_500, '13s'],
+    [59_499, '59s'],
+    [59_500, '1m 00s'],
+    [845_499, '14m 05s'],
+    [845_500, '14m 06s'],
+    [3_599_499, '59m 59s'],
+    [3_599_500, '1h 00m'],
+    [7_439_999, '2h 04m'],
+  ])('rounds history duration %s to whole seconds before formatting as %s', (elapsedMs, expected) => {
+    const started_at = '2026-01-01T00:00:00.000Z';
+    const task: SubagentTask = {
+      id: 'duration',
+      agent: 'worker',
+      mode: 'task',
+      status: 'completed',
+      task: 'show duration',
+      created_at: '2025-12-31T23:59:50.000Z',
+      started_at,
+      ended_at: new Date(Date.parse(started_at) + elapsedMs).toISOString(),
+      thread_snapshot: statusSnapshot('thread body'),
+    };
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => text.length,
+      (text, width) => text.slice(0, width),
+    );
+    for (const width of [76, 160]) {
+      expect(panel.render(width).join('\n')).toContain(`duration: ${expected}`);
+    }
+  });
+
   it('preserves panel chrome while rendering selected thread snapshots', () => {
     const task: SubagentTask = {
       id: 'subtask_thread_2',
@@ -1681,7 +1722,7 @@ describe('subagents panel and extension ui', () => {
       task: 'keep shell visible',
       created_at: '2026-01-01T00:00:00.000Z',
       started_at: '2026-01-01T00:00:00.000Z',
-      ended_at: '2026-01-01T00:00:10.000Z',
+      ended_at: '2026-01-01T00:14:05.600Z',
       last_activity: 'rendering snapshot',
       model: 'mock/model',
       effort: 'high',
@@ -1722,14 +1763,14 @@ describe('subagents panel and extension ui', () => {
         contextWindowForTask: () => 200_000,
       },
     );
-    const rendered = panel.render(160).join('\n');
+    const rendered = panel.render(180).join('\n');
 
     expect(rendered).toContain('subagents');
     expect(rendered).toContain('agent: reviewer');
     expect(rendered).toContain('status: running');
     expect(rendered).toContain('effort: high (ctrl+shift+q cancel)');
     expect(rendered).toContain('model: mock/model');
-    expect(rendered).toContain('duration: 10s (timeout 43m20s)');
+    expect(rendered).toContain('duration: 14m 06s (timeout 43m20s)');
     expect(rendered).toContain('usage: 2 turns ↑1.0k ↓500 ctx:50k (25%)');
     expect(rendered).toContain('last: rendering snapshot (stall 2m)');
     expect(rendered).toContain('task: keep shell visible');

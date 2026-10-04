@@ -64,17 +64,17 @@ function formatRuntimeMetrics(task: SubagentTask): {
 } {
   const speed = generationSpeed(task.runtime_metrics);
   const started = Date.parse(task.started_at ?? '');
-  const ended =
+  const isLive =
     task.status === 'queued' ||
     task.status === 'running' ||
-    task.status === 'stopping'
-      ? Date.now()
-      : Date.parse(task.ended_at ?? '');
+    task.status === 'stopping';
+  const ended = isLive ? Date.now() : Date.parse(task.ended_at ?? '');
+  const elapsed = Math.max(0, ended - started);
   return {
     speed: speed !== undefined ? `${Math.round(speed)} tok/s` : '',
     elapsed:
       Number.isFinite(started) && Number.isFinite(ended)
-        ? formatDuration(Math.max(0, ended - started))
+        ? formatDuration(isLive ? Math.floor(elapsed / 1000) * 1000 : elapsed)
         : '',
   };
 }

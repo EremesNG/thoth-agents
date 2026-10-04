@@ -1,4 +1,4 @@
-import { formatTaskLabel } from '../render/tools/formatting.js';
+import { formatDuration, formatTaskLabel } from '../render/tools/formatting.js';
 import {
   isValidThreadSnapshot,
   renderThreadBodyItems,
@@ -52,14 +52,13 @@ function clip(text: string | undefined, limit: number): string {
     : normalized;
 }
 
-function fmtDuration(task: SubagentTask): string {
+function formatTaskDuration(task: SubagentTask): string {
   const start = task.started_at
     ? Date.parse(task.started_at)
     : Date.parse(task.created_at);
   const end = task.ended_at ? Date.parse(task.ended_at) : Date.now();
   if (!Number.isFinite(start) || !Number.isFinite(end)) return '';
-  const seconds = Math.max(0, Math.round((end - start) / 1000));
-  return `${seconds}s`;
+  return formatDuration(Math.round((end - start) / 1000) * 1000);
 }
 
 function formatTokens(count: number): string {
@@ -554,7 +553,7 @@ export class SubagentsHistoryPanel {
       contextWindow = this.displayOptions.contextWindowForTask?.(currentTask);
     } catch {}
     const usage = formatUsage(currentTask.usage, contextWindow);
-    const duration = fmtDuration(currentTask);
+    const duration = formatTaskDuration(currentTask);
     const timeout = formatTimeout(this.displayOptions.timeoutMs);
     const timeoutHint = timeout ? ` (timeout ${timeout})` : '';
     const stall = formatTimeout(this.displayOptions.stallTimeoutMs);
@@ -903,7 +902,7 @@ export class SubagentsHistoryPanel {
 
           const icon = isSelected ? '●' : '○';
           const name = t.display_name?.trim() || t.agent;
-          const dur = fmtDuration(t);
+          const dur = formatTaskDuration(t);
           const durPart = dur ? ` · ${dur}` : '';
           const itemText = `${icon} ${taskIdx + 1}. ${name} · ${t.status}${durPart}`;
           const clipped = this.truncateToWidth(itemText, rightWidth);

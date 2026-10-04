@@ -34,11 +34,15 @@ const FOCUS_INSTALLED = Symbol.for(
 const DEBOUNCE_INSTALLED = Symbol.for(
   '@thoth-agents/pi-orca-images.alt-screen-image-debounce',
 );
+const LATEST_INSTANCE = Symbol.for(
+  '@thoth-agents/pi-orca-images.latest-alt-screen-instance',
+);
 
 interface AltScreenInternals {
   [RENDER_INSTALLED]?: boolean;
   [FOCUS_INSTALLED]?: boolean;
   [DEBOUNCE_INSTALLED]?: WeakMap<AltScreenInternals, ImageRedrawState>;
+  [LATEST_INSTANCE]?: AltScreenInternals;
   prepareKittyScreen?: (screen: string[]) => unknown;
   handleViewportInput?: (data: string, ...args: unknown[]) => unknown;
   requestRender?: (force: boolean) => void;
@@ -53,6 +57,20 @@ interface AltScreenInternals {
   uploadedKittyImages?: { clear?: () => void };
   applyLineResets: (lines: string[]) => string[];
   doRender: (...args: unknown[]) => unknown;
+}
+
+export function requestLatestAltScreenRender(
+  altScreenClass: { prototype: object } | null | undefined = TuiAltScreen,
+): void {
+  const proto = altScreenClass?.prototype as AltScreenInternals | undefined;
+  const tui = proto?.[LATEST_INSTANCE];
+  if (
+    tui &&
+    !tui.stopped &&
+    tui.altScreenActive &&
+    typeof tui.requestRender === 'function'
+  )
+    tui.requestRender(false);
 }
 
 export function installAltScreenImageFocus(
@@ -224,7 +242,13 @@ export function installAltScreenImageOrder(
   );
   if (proto[RENDER_INSTALLED]) return;
   const original = proto.doRender;
+  Object.defineProperty(proto, LATEST_INSTANCE, {
+    value: undefined,
+    writable: true,
+    configurable: true,
+  });
   proto.doRender = function (this: AltScreenInternals, ...args) {
+    proto[LATEST_INSTANCE] = this;
     // Warm Pi's detection cache before substituting the environment.
     if (
       !isOrcaImagesEnabled(env) ||

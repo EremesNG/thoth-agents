@@ -1,17 +1,17 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import type { ActiveThemeLike } from '../status-line/layout.ts';
-import { type CometFrame, colorCometBorder } from './gradient.ts';
+import { type BreathingFrame, colorBreathingBorder } from './gradient.ts';
 
 function muted(theme: ActiveThemeLike, text: string): string {
   return theme.fg?.('muted', text) ?? text;
 }
 
-function borderBase(
+function colorBorder(
   theme: ActiveThemeLike,
   text: string,
-  frame?: CometFrame,
+  frame?: BreathingFrame,
 ): string {
-  return theme.fg?.(frame ? 'dim' : 'muted', text) ?? text;
+  return frame ? colorBreathingBorder(text, frame) : muted(theme, text);
 }
 
 export function inputLabelWidth(width: number, hiddenLineCount = 0): number {
@@ -27,19 +27,13 @@ function renderBorder(
   left: string,
   right: string,
   overflow: string,
-  frame?: CometFrame,
-  row = 0,
+  frame?: BreathingFrame,
 ): string {
   width = Math.max(0, Math.floor(width));
-  const border = (text: string, column: number) =>
-    frame
-      ? colorCometBorder(text, column, row, frame, (text) =>
-          borderBase(theme, text, frame),
-        )
-      : borderBase(theme, text);
+  const border = (text: string) => colorBorder(theme, text, frame);
   if (width <= 5 || (!label && !overflow)) {
     return truncateToWidth(
-      border(`${left}${'─'.repeat(Math.max(0, width - 2))}${right}`, 0),
+      border(`${left}${'─'.repeat(Math.max(0, width - 2))}${right}`),
       width,
       '',
     );
@@ -52,14 +46,14 @@ function renderBorder(
     } else {
       const fittedStatus = truncateToWidth(label, statusWidth, '');
       const separator = frame
-        ? `${border(' ─ ', 3 + visibleWidth(fittedStatus))}${muted(theme, overflow)}`
+        ? `${border(' ─ ')}${muted(theme, overflow)}`
         : muted(theme, ` ─ ${overflow}`);
       label = fittedStatus + separator;
     }
   }
   const fitted = truncateToWidth(label, labelWidth, '');
   const dashes = width - visibleWidth(fitted) - 5;
-  return `${border(`${left}─ `, 0)}${fitted}${border(` ${'─'.repeat(dashes)}${right}`, 3 + visibleWidth(fitted))}`;
+  return `${border(`${left}─ `)}${fitted}${border(` ${'─'.repeat(dashes)}${right}`)}`;
 }
 
 export function renderInputTop(
@@ -67,7 +61,7 @@ export function renderInputTop(
   theme: ActiveThemeLike,
   status: string,
   hiddenLineCount = 0,
-  frame?: CometFrame,
+  frame?: BreathingFrame,
 ): string {
   const overflow = hiddenLineCount > 0 ? `↑ ${hiddenLineCount} more` : '';
   return renderBorder(width, theme, status, '╭', '╮', overflow, frame);
@@ -77,40 +71,25 @@ export function renderInputBottom(
   width: number,
   theme: ActiveThemeLike,
   hiddenLineCount = 0,
-  frame?: CometFrame,
+  frame?: BreathingFrame,
 ): string {
   const label =
     hiddenLineCount > 0 ? muted(theme, `↓ ${hiddenLineCount} more`) : '';
-  return renderBorder(
-    width,
-    theme,
-    label,
-    '╰',
-    '╯',
-    '',
-    frame,
-    frame ? frame.height - 1 : 0,
-  );
+  return renderBorder(width, theme, label, '╰', '╯', '', frame);
 }
 
 export function wrapContentRow(
   line: string,
   width: number,
   theme: ActiveThemeLike,
-  frame?: CometFrame,
-  row = 1,
+  frame?: BreathingFrame,
 ): string {
   width = Math.max(0, Math.floor(width));
   if (width < 2)
-    return truncateToWidth(borderBase(theme, '││', frame), width, '');
+    return truncateToWidth(colorBorder(theme, '││', frame), width, '');
   const content = truncateToWidth(line, width - 2, '', true);
-  const side = (column: number) =>
-    frame
-      ? colorCometBorder('│', column, row, frame, (text) =>
-          borderBase(theme, text, frame),
-        )
-      : borderBase(theme, '│');
-  return `${side(0)}${content}${side(width - 1)}`;
+  const side = colorBorder(theme, '│', frame);
+  return `${side}${content}${side}`;
 }
 
 export function renderPlaceholder(

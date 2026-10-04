@@ -21,12 +21,6 @@ import { createWorkingState } from './state.ts';
 
 const capabilities = getCapabilities();
 const detectedMode = getTerminalColorMode();
-function borderGeometry(line: string): string {
-  return stripTerminalSequences(line).replace(/[━┃┏┓┗┛]/gu, (glyph) =>
-    '─│╭╮╰╯'.charAt('━┃┏┓┗┛'.indexOf(glyph)),
-  );
-}
-
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
@@ -115,7 +109,7 @@ describe('input box with the real Pi Thoth theme', () => {
 
   it.each(
     modes,
-  )('keeps idle borders and the patched color getter muted but dims working borders in $name', async ({
+  )('keeps idle borders and the patched color getter muted but breathes every working border in $name', async ({
     mode,
   }) => {
     const theme = await loadThothTheme(mode);
@@ -142,17 +136,28 @@ describe('input box with the real Pi Thoth theme', () => {
     expect(idle[2]).toBe(`${muted}╰${'─'.repeat(38)}╯\x1b[39m`);
     expect(idle.map(visibleWidth)).toEqual([40, 40, 40]);
     working.start();
-    const animated = editor.render(40);
-    expect(animated[0].startsWith(`${bright}\x1b[1m┏\x1b[22m\x1b[39m`)).toBe(
-      true,
-    );
-    expect(editor.borderColor('│')).toBe(`${muted}│\x1b[39m`);
-    expect(animated[0]).toContain(`${dim} ${'─'.repeat(28)}╮\x1b[39m`);
-    expect(animated[1].endsWith(`${dim}│\x1b[39m`)).toBe(true);
-    expect(animated.map(borderGeometry)).toEqual(
-      idle.map(stripTerminalSequences),
-    );
-    expect(animated.map(visibleWidth)).toEqual([40, 40, 40]);
+    for (const [now, color] of [
+      [0, dim],
+      [600, gold],
+      [1200, bright],
+      [1800, gold],
+      [2400, dim],
+    ] as const) {
+      vi.setSystemTime(now);
+      const animated = editor.render(40);
+      expect(animated[0]).toBe(
+        `${color}╭─ \x1b[39m${muted}▲ ready\x1b[39m${color} ${'─'.repeat(28)}╮\x1b[39m`,
+      );
+      expect(editor.borderColor('│')).toBe(`${muted}│\x1b[39m`);
+      expect(animated[1].startsWith(`${color}│\x1b[39m`)).toBe(true);
+      expect(animated[1].endsWith(`${color}│\x1b[39m`)).toBe(true);
+      expect(animated[2]).toBe(`${color}╰${'─'.repeat(38)}╯\x1b[39m`);
+      expect(animated.join('\n')).not.toMatch(/[━┃┏┓┗┛]/u);
+      expect(animated.map(stripTerminalSequences)).toEqual(
+        idle.map(stripTerminalSequences),
+      );
+      expect(animated.map(visibleWidth)).toEqual([40, 40, 40]);
+    }
     working.end();
     expect(editor.render(40)).toEqual(idle);
     expect(vi.getTimerCount()).toBe(0);
@@ -160,7 +165,7 @@ describe('input box with the real Pi Thoth theme', () => {
 
   it.each(
     modes,
-  )('renders a bold bright-gold pyramid and shimmer peak over muted letters and elapsed seconds in $name', async ({
+  )('pulses the pyramid in the border color and keeps the working text and elapsed seconds muted in $name', async ({
     mode,
   }) => {
     const theme = await loadThothTheme(mode);
@@ -170,28 +175,33 @@ describe('input box with the real Pi Thoth theme', () => {
       trueColor: expectedMode === 'truecolor',
     });
     vi.useFakeTimers();
-    vi.setSystemTime(1200);
-    const working = createWorkingState(() => {});
-    cleanups.push(() => working.dispose());
-    const indicator = {
-      kind: 'working',
-      renderInBorder: () => theme.fg('accent', '△ working…'),
-    };
-    const { muted, bright } = ansi[expectedMode];
-    const status = () =>
-      working.status(indicator, 30, (text) => theme.fg('muted', text));
+    vi.setSystemTime(0);
+    const { editor, working } = themedEditor(theme as ActiveThemeLike);
+    Object.assign(editor, {
+      workingStatusIndicator: {
+        kind: 'working',
+        renderInBorder: () => theme.fg('accent', '△ working…'),
+      },
+    });
+    const { muted, dim, gold, bright } = ansi[expectedMode];
     working.start();
-    const first = status();
-    expect(first.startsWith(`${bright}\x1b[1m△\x1b[22m\x1b[39m`)).toBe(true);
-    expect(first).toContain(`${bright}\x1b[1mi\x1b[22m\x1b[39m`);
-    expect(first).toContain(`${muted}w\x1b[39m`);
-    expect(first.endsWith(`${muted} · 0s\x1b[39m`)).toBe(true);
-    expect(stripTerminalSequences(first)).toBe('△ working… · 0s');
-    expect(visibleWidth(first)).toBe(15);
-    vi.advanceTimersByTime(1200);
-    const next = status();
-    expect(next).toContain(`${muted}i\x1b[39m`);
-    expect(next.endsWith(`${muted} · 1s\x1b[39m`)).toBe(true);
+    for (const [now, color, elapsed] of [
+      [0, dim, 0],
+      [600, gold, 0],
+      [1200, bright, 1],
+      [1800, gold, 1],
+      [2400, dim, 2],
+    ] as const) {
+      vi.setSystemTime(now);
+      const lines = editor.render(40);
+      expect(lines[0]).toBe(
+        `${color}╭─ \x1b[39m${color}△\x1b[39m ${muted}working…\x1b[39m${muted} · ${elapsed}s\x1b[39m${color} ${'─'.repeat(20)}╮\x1b[39m`,
+      );
+      expect(lines[1].startsWith(`${color}│\x1b[39m`)).toBe(true);
+      expect(lines[1].endsWith(`${color}│\x1b[39m`)).toBe(true);
+      expect(lines[2]).toBe(`${color}╰${'─'.repeat(38)}╯\x1b[39m`);
+      expect(lines.map(visibleWidth)).toEqual([40, 40, 40]);
+    }
     working.end();
     expect(vi.getTimerCount()).toBe(0);
   });

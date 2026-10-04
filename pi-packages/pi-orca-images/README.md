@@ -33,6 +33,12 @@ operator-installed package, not installed by the Thoth CLI. Restart Pi or use
 - Retransmits the Kitty payload on redraw instead of relying on retained image
   IDs that Orca may have discarded. Activating Kitty ordering refreshes cached
   image fallbacks and the current frame once.
+- Debounces rapid image redraws during scrolling or changes to image-covered
+  rows: the leading frame emits immediately, then images can go blank briefly
+  while text keeps updating every frame. One full image redraw follows 150 ms
+  of quiet, with a maximum wait of 1000 ms from the first suppressed frame during
+  continuous bursts. Activation, focus recovery, resize and other full redraws
+  always emit immediately and cancel an obsolete trailing redraw.
 - On focus-in (`ESC[I`), requests a full redraw so images recover after window
   restore without scrolling. Pi still consumes focus events and handles its
   mouse/selection state. With Pi mouse support disabled, focus reporting may not
@@ -50,9 +56,9 @@ results use Pi's native image pass, including conversion to PNG.
 
 Start Pi with `PI_IMAGE_PROTOCOL=none` (or `0`, case-insensitive), or uninstall the
 package. The environment switch bypasses **all** package behavior: the capability
-fallback, ordering activation and focus redraw, even if Pi settings still select
-`terminal.images: "kitty"`. It does not override Pi's native settings behavior;
-remove that setting as well if you want no images at all.
+fallback, ordering activation, redraw debounce and focus redraw, even if Pi
+settings still select `terminal.images: "kitty"`. It does not override Pi's native
+settings behavior; remove that setting as well if you want no images at all.
 
 ## Development
 

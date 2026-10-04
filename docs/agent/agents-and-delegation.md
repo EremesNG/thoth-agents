@@ -183,6 +183,25 @@ process or OS sandbox; project-local `subagents.json` can override the global se
 unavailable or unproven, report the degradation and use a truthful sequential
 fallback; do not emulate another runtime.
 
+Pi explorer, librarian, designer and worker definitions explicitly select
+`ask_orchestrator`; Oracle does not. Use concise `kind: "question"` messages only
+for material alignment or clarification ambiguity blocking the assignment, never
+instead of own discovery, to delegate, or to request other agents. The question
+waits for root's reply in the same live child session. Optional brief
+`kind: "progress"` updates return immediately, are recorded on the task, and do
+not trigger a root turn. Explorer and Librarian remain facts-only in both cases.
+If the tool is unavailable, return unresolved questions through `openQuestions`.
+
+Injected `subagent-question` messages trigger a root turn but are not user
+messages: they do not set reply language or count as user instructions, answers,
+choices, or empty human answers. Root answers with
+`subagent_reply({ task_id, request_id?, message })`, including `request_id` when
+several questions are pending for that task. Root may first escalate a material
+human-owned decision through `ask_user_question`; never fabricate human decisions.
+A task-mode child that asks moves to background, and its result arrives later via
+terminal completion, not the question notification. Unanswered questions time out
+according to `ask_timeout_ms` (default 600000); total task timeout still applies.
+
 ## Subagent session lifecycle
 
 A new objective, work phase, mutable surface, or independent judgment is a work

@@ -7,7 +7,7 @@ import {
 } from './pi-agent';
 
 describe('Pi agent writer', () => {
-  test('exposes the exact shared reset defaults for every specialist', () => {
+  test('selects ask_orchestrator explicitly for every specialist except Oracle', () => {
     const roles = [
       'explorer',
       'librarian',
@@ -18,7 +18,7 @@ describe('Pi agent writer', () => {
     expect(
       roles.map((role) => [role, getPiSpecialistDefaultTools(role)]),
     ).toEqual([
-      ['explorer', ['read', 'bash']],
+      ['explorer', ['read', 'bash', 'ask_orchestrator']],
       [
         'librarian',
         [
@@ -31,11 +31,12 @@ describe('Pi agent writer', () => {
           'fetch_content',
           'get_search_content',
           'source_check',
+          'ask_orchestrator',
         ],
       ],
       ['oracle', ['read', 'bash']],
-      ['designer', ['read', 'bash', 'edit', 'write']],
-      ['worker', ['read', 'bash', 'edit', 'write']],
+      ['designer', ['read', 'bash', 'edit', 'write', 'ask_orchestrator']],
+      ['worker', ['read', 'bash', 'edit', 'write', 'ask_orchestrator']],
     ]);
   });
 
@@ -59,14 +60,13 @@ describe('Pi agent writer', () => {
     expect(
       agents.some((artifact) => artifact.path.includes('orchestrator')),
     ).toBe(false);
-    // Explicit tool lists from 54db74b; worker inherits the write-capable list.
     const expectedTools: Record<string, string> = {
-      'agents/thoth-explorer.md': 'read, bash',
+      'agents/thoth-explorer.md': 'read, bash, ask_orchestrator',
       'agents/thoth-librarian.md':
-        'read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
+        'read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check, ask_orchestrator',
       'agents/thoth-oracle.md': 'read, bash',
-      'agents/thoth-designer.md': 'read, bash, edit, write',
-      'agents/thoth-worker.md': 'read, bash, edit, write',
+      'agents/thoth-designer.md': 'read, bash, edit, write, ask_orchestrator',
+      'agents/thoth-worker.md': 'read, bash, edit, write, ask_orchestrator',
     };
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');

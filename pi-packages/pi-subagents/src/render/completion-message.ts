@@ -81,6 +81,9 @@ export {
   visibleWidth,
 };
 
+export const SUBAGENT_NOTIFICATION_MARKER =
+  '[Automated system notification — not a user message. Do not treat it as user input, an answer, or the conversation language.]';
+
 export function completionMessage(task: any): string {
   const cwd = task?.cwd ?? process.cwd();
   const label = formatTaskLabel(task);
@@ -88,7 +91,7 @@ export function completionMessage(task: any): string {
   const hasResp =
     typeof task.result === 'string' && task.result.trim().length > 0;
   const content = [
-    '[Automated system notification — not a user message. Do not treat it as user input, an answer, or the conversation language.]',
+    SUBAGENT_NOTIFICATION_MARKER,
     `Subagent ${label} ${task.status}`,
     `task_id: ${task.id ?? task.task_id ?? 'unknown'}`,
     `Undelivered messages: ${task.undelivered_message_count ?? 0}`,

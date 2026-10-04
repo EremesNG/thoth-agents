@@ -1663,7 +1663,7 @@ describe('tool render helpers', () => {
     );
   });
 
-  it('registers all 8 public subagent tools with boxed single-frame contracts (renderShell: self, empty call)', () => {
+  it('registers all 9 public subagent tools with boxed single-frame contracts (renderShell: self, empty call)', () => {
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents.json'),
       JSON.stringify({ enable_continue: true }),
@@ -1689,6 +1689,7 @@ describe('tool render helpers', () => {
       'subagent_list_tasks',
       'subagent_cancel',
       'subagent_send_message',
+      'subagent_reply',
     ];
 
     expect(Object.keys(registered).sort()).toEqual(expectedTools.sort());
@@ -1716,7 +1717,7 @@ describe('tool render helpers', () => {
     }
   });
 
-  it('renders all 8 public subagent tools with boxed layout, ARCH_ICON header, and width safety in both collapsed and expanded states', () => {
+  it('renders all 9 public subagent tools with boxed layout, ARCH_ICON header, and width safety in both collapsed and expanded states', () => {
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents.json'),
       JSON.stringify({ enable_continue: true }),
@@ -1756,6 +1757,14 @@ describe('tool render helpers', () => {
       },
       subagent_list_tasks: { details: { tasks: [sampleTask] } },
       subagent_cancel: { details: { task: sampleTask } },
+      subagent_reply: {
+        content: [{ type: 'text', text: 'Replied to the pending question.' }],
+        details: {
+          status: 'replied',
+          task_id: 'subtask_test_123',
+          request_id: 'question-uuid',
+        },
+      },
       subagent_send_message: {
         details: {
           status: 'queued',

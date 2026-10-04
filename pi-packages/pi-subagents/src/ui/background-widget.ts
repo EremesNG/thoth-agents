@@ -150,6 +150,10 @@ function buildClaudeBackgroundWidgetEntries(
     const description =
       `${task.agent}${task.model ? ` [${task.model}]` : ''}${summary ? ` · ${summary}` : ''}`.trim();
     const speed = generationSpeed(metrics);
+    const activity = task.pending_questions?.length
+      ? 'awaiting orchestrator reply'
+      : (task.live_activity?.current?.label ?? task.last_activity);
+    const progress = task.progress_updates?.at(-1)?.message;
     const input = task.usage?.input;
     const output = task.usage?.output;
     const cost = task.usage?.cost;
@@ -173,7 +177,14 @@ function buildClaudeBackgroundWidgetEntries(
       metrics: metricParts,
       warning: toolSelectionWarning(task, true),
       activity: normalize(
-        task.live_activity?.current?.label ?? task.last_activity,
+        [
+          activity,
+          progress && activity !== `progress: ${progress}`
+            ? `progress: ${progress}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · '),
       ),
     });
   }

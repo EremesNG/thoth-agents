@@ -10,6 +10,7 @@ import type {
   ModelRef,
   SubagentDefinition,
   SubagentErrorMetadata,
+  SubagentOrchestratorChannel,
   SubagentRunner,
   SubagentsConfig,
   ThinkingEffort,
@@ -19,6 +20,7 @@ import {
   structuredMetadataFromError,
 } from './event-processing.js';
 import { getInteractionSessionRegistry } from './interaction-session-registry.js';
+import { createAskOrchestratorTool } from './orchestrator-tool.js';
 import { detectPiRuntimeSupport, loadPiSdkModule } from './pi-sdk-module.js';
 import { buildPrompt } from './prompt.js';
 import {
@@ -461,6 +463,7 @@ async function createSession(
   systemPrompt: string,
   nestedSessionPath?: string,
   onActivity?: Parameters<SubagentRunner>[0]['onActivity'],
+  orchestratorChannel?: SubagentOrchestratorChannel,
 ) {
   const piSdk = await loadPiSdkModule();
   const { createAgentSession, SessionManager } = piSdk;
@@ -479,7 +482,15 @@ async function createSession(
     cwd,
     model,
     thinkingLevel: effort,
-    tools,
+    tools:
+      config.enable_ask_orchestrator === false
+        ? tools.filter((name) => name !== 'ask_orchestrator')
+        : tools,
+    customTools:
+      config.enable_ask_orchestrator !== false &&
+      tools.includes('ask_orchestrator')
+        ? [createAskOrchestratorTool(orchestratorChannel)]
+        : [],
     sessionManager,
   };
   const modelRuntime =
@@ -632,6 +643,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
   registerLiveBridge,
   clearLiveBridge,
   onQueuedMessageStart,
+  orchestratorChannel,
   onActivity,
 }) => {
   const profile =
@@ -683,6 +695,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
       systemPrompt,
       nested_session_path,
       onActivity,
+      orchestratorChannel,
     );
     const abortBridge = createSessionAbortBridge(session, signal);
     let unregisterInteractionSession = () => {};
@@ -728,6 +741,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
         continuation?.attempt ?? 1,
         onQueuedMessageStart,
         continuation?.previous_snapshot,
+        orchestratorChannel?.onPendingChange,
       );
       if (signal.aborted) {
         await abortBridge.abortSession();
@@ -759,6 +773,7 @@ export const sdkSubagentRunner: SubagentRunner = async ({
           );
     } finally {
       try {
+        orchestratorChannel?.close('child session shutdown');
         clearLiveBridge?.();
         abortBridge.dispose();
         unregisterInteractionSession();

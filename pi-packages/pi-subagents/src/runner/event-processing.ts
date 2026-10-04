@@ -20,6 +20,7 @@ import type {
   SubagentErrorMetadata,
   SubagentLiveActivity,
   SubagentLiveActivityProjection,
+  SubagentOrchestratorChannel,
   SubagentRuntimeMetrics,
   SubagentThreadSnapshot,
   UsageStats,
@@ -344,6 +345,7 @@ export async function promptWithInactivity(
   attempt = 1,
   onQueuedMessageStart?: () => void,
   previousSnapshot?: SubagentThreadSnapshot,
+  onQuestionPendingChange?: SubagentOrchestratorChannel['onPendingChange'],
 ): Promise<{
   result: string;
   usage: UsageStats;
@@ -605,9 +607,19 @@ export async function promptWithInactivity(
           : {}),
       });
     }) ?? (() => {});
+  let questionPending = false;
+  const unsubscribePending = onQuestionPendingChange?.((pending) => {
+    if (questionPending && !pending) {
+      // Answering resumes a fresh inactivity budget, including other active tools.
+      lastActivity = Date.now();
+      for (const tool of activeToolCalls.values())
+        tool.lastUpdate = lastActivity;
+    }
+    questionPending = pending;
+  });
   const interval = setInterval(
     () => {
-      if (stalled) return;
+      if (stalled || questionPending) return;
       if (activeToolCalls.size === 0) {
         if (Date.now() - lastActivity <= stallTimeoutMs) return;
       } else {
@@ -802,6 +814,7 @@ export async function promptWithInactivity(
     };
   } finally {
     clearInterval(interval);
+    unsubscribePending?.();
     unsubscribe();
     await teardownSubagentSession(session);
   }

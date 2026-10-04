@@ -83,6 +83,8 @@ export type SubagentsConfig = {
   history_panel_shortcut?: string;
   detail_cancel_shortcut?: string;
   enable_continue?: boolean;
+  enable_ask_orchestrator?: boolean;
+  ask_timeout_ms?: number;
   debug?: boolean;
   render_debug?: SubagentsRenderDebugConfig;
 };
@@ -425,6 +427,28 @@ export type SendMessageResult =
       message: string;
     };
 
+export type SubagentQuestion = {
+  task_id: string;
+  agent: string;
+  request_id: string;
+  message: string;
+  created_at: string;
+};
+
+export type PendingSubagentQuestion = Pick<
+  SubagentQuestion,
+  'request_id' | 'message' | 'created_at'
+>;
+
+export type SubagentProgressUpdate = { message: string; created_at: string };
+
+export type SubagentOrchestratorChannel = {
+  askQuestion(message: string, signal?: AbortSignal): Promise<string>;
+  reportProgress(message: string): void;
+  onPendingChange(listener: (pending: boolean) => void): () => void;
+  close(reason: string): void;
+};
+
 export type SubagentTask = {
   id: string;
   display_name?: string;
@@ -446,6 +470,8 @@ export type SubagentTask = {
   output_preview?: string;
   pending_message_count?: number;
   undelivered_message_count?: number;
+  pending_questions?: PendingSubagentQuestion[];
+  progress_updates?: SubagentProgressUpdate[];
   live_activity?: SubagentLiveActivityProjection;
   prompt?: string;
   continuation_prompt?: string;
@@ -487,6 +513,7 @@ export type SubagentRunner = (input: {
   registerLiveBridge?: (bridge: LiveSteeringBridge) => void;
   clearLiveBridge?: () => void;
   onQueuedMessageStart?: () => void;
+  orchestratorChannel?: SubagentOrchestratorChannel;
   onActivity?: (activity: SubagentActivity) => void;
 }) => Promise<{
   result: string;

@@ -153,7 +153,7 @@ describe('global Pi tools panel', () => {
     for (const name of backgroundTaskTools)
       expect(text).toContain(`[x] ${name}`);
     expect(text).toContain(
-      `AskClaude, AskAntigravity, ${backgroundDelegationTools.join(', ')}.`,
+      `AskClaude, AskAntigravity, ${backgroundDelegationTools.join(', ')}, ask_orchestrator.`,
     );
     expect(panel.getState().draft[0]?.tools).toEqual(['*']);
     panel.handleInput('g');

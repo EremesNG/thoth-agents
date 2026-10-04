@@ -68,6 +68,15 @@
   eligible. These delegation names remain valid explicit choices;
   the panel marks inactive choices, retains unavailable explicit names, and
   supports role-default reset. Generated defaults remain explicit tool lists.
+  Pi-only defaults explicitly name `ask_orchestrator` for explorer, librarian,
+  designer and worker, not Oracle; shared role permissions and other harnesses
+  are unchanged. The child tool never matches standalone `*` or globs.
+  `enable_ask_orchestrator` defaults to true and gates both the child tool and
+  root's `subagent_reply`; false removes both. `ask_timeout_ms` defaults to
+  600000. Questions block for root's reply; optional brief progress updates are
+  recorded on the task without triggering a root turn. If the channel is
+  unavailable, children use their return contract's `openQuestions`, not a user
+  dialog or delegation.
   The `*` exclusions are not a sandbox: shell and MCP tools can still launch
   agents indirectly.
   `src/cli/pi-tool-config.ts` owns validation and safe persistence; synchronization

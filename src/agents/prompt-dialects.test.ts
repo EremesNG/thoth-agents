@@ -221,6 +221,28 @@ describe('prompt dialects', () => {
     );
   });
 
+  test('keeps Pi question replies in the live assignment without treating waiting as completion', () => {
+    const { lifecycle, backgroundWaitInstruction } = PI_PROMPT_DIALECT.tools;
+    expect(lifecycle.sameAssignmentContinuation).toContain(
+      'subagent_reply({ task_id, request_id?, message })',
+    );
+    expect(lifecycle.sameAssignmentContinuation).toContain(
+      'injected `subagent-question`',
+    );
+    expect(lifecycle.nonterminalState).toContain(
+      'waiting for an orchestrator reply',
+    );
+    expect(lifecycle.nonterminalState).toContain(
+      'injected `subagent-question`',
+    );
+    expect(backgroundWaitInstruction).toContain(
+      'A task-mode child that asks a question is moved to background',
+    );
+    expect(backgroundWaitInstruction).toContain(
+      'collect its result later through terminal completion',
+    );
+  });
+
   test('supports OpenCode, Codex, Claude Code, and Pi prompt dialect ids', () => {
     expect(getPromptDialect('opencode')).toBe(OPENCODE_PROMPT_DIALECT);
     expect(getPromptDialect('codex')).toBe(CODEX_PROMPT_DIALECT);

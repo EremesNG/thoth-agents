@@ -61,6 +61,10 @@ Use this block as the machine-readable source for `.pi/skill-registry.json` gene
       "background_handoff_shortcut",
       "default_mode",
       "enable_continue",
+      "enable_ask_orchestrator",
+      "ask_timeout_ms",
+      "ask_orchestrator",
+      "subagent_reply",
       "subagent_mode",
       "subagent_continue mode",
       "continuation enablement",
@@ -109,6 +113,10 @@ Do not load this skill for ordinary subagent delegation/use (`subagent_run`, tas
 - Subagents config resolves as a cascade: project `.pi/subagents.json` overrides global `$PI_CODING_AGENT_DIR/subagents.json` or `~/.pi/agent/subagents.json`; missing project fields fall back to global config; fields missing from both fall back to built-in defaults. Communicate this precedence to users when explaining config behavior.
 - `enable_continue` is built-in default `false` and follows that same cascade. Project `enable_continue` overrides global only when present; omitting it locally inherits the global value. Continuation guidance and new continuation execution are available only when the effective value is `true`.
 - When effective `enable_continue` is `false`, `subagent_continue` is not registered, direct or stale continuation attempts must be described as generic unavailable behavior, historical task and continuation records remain visible, and failed/cancelled/interrupted/stopping terminal results plus terminal background notifications must not recommend continuation or mention `subagent_continue`.
+- `enable_ask_orchestrator` defaults to `true` and follows the same global/project cascade. It gates both the explicitly selected child `ask_orchestrator` and parent `subagent_reply`; changing parent tool exposure requires `/reload` or restart. Disabled explicit child selections are dropped and reported like other missing implementations (all-missing selections fail).
+- `ask_timeout_ms` defaults to `600000` (10 minutes) and must be a positive integer. Each `ask_orchestrator({ kind: "question", message })` blocks until the exact originating parent session answers via `subagent_reply({ task_id, request_id?, message })`; omit `request_id` only for exactly one pending question. Unknown/stale, ambiguous, anonymous, foreign-session and empty replies are rejected. Questions may repeat in one live session and reject on expiry, cancellation or session shutdown. Waiting suspends `stall_timeout_ms` but counts toward total `timeout_ms`; human escalation can exhaust the total budget.
+- `ask_orchestrator` is child-only and must be named explicitly in the resolved `tools` or `default_tools`. Standalone `*` and every glob, including `ask_*` or a mixed `*`, never match it. The tool is for material alignment questions, not a substitute for discovery, human dialogs, or delegation. Automated `subagent-question` notifications are subagent input, not user messages or approval; the root may escalate a material user decision through its own question tool before replying.
+- `ask_orchestrator({ kind: "progress", message })` returns immediately, stores the latest five `progress_updates`, and never sends a parent message or triggers a turn. `subagent_status` / `subagent_list_tasks` surface progress and outstanding `pending_questions` (UUID `request_id`, message, creation time) and `pending_question_count`; the task widget shows the latest progress. Pending questions cannot be answered across sessions or after the parent ends. This channel is distinct from the existing human interaction bridge.
 - `model_profiles` are scoped to the matching subagent definition source: project-local profile entries in `.pi/subagents.json` apply to project-local definitions, while global profile entries apply to global definitions. If a project definition overrides a global definition with the same normalized name, the project definition and its project-local profile win.
 - Prefer configuring subagent `model` and `effort` under `model_profiles` in the config matching the definition scope: project-local definitions use `.pi/subagents.json`; global definitions use `$PI_CODING_AGENT_DIR/subagents.json` or `~/.pi/agent/subagents.json`. Markdown definitions should usually contain identity, description, tool allowlist, and behavioral instructions only.
 - Nested subagent sessions should use `session_resources: "lean"` by default so the subagent markdown body becomes the nested session system prompt, the delegated user prompt contains only orchestrator context/task, and workflow skills, prompt templates, themes, context files, and startup context injections are not auto-loaded.
@@ -155,6 +163,8 @@ Recommended `subagents.json` starter:
   "background_handoff_shortcut": "ctrl+h",
   "default_mode": "background",
   "enable_continue": false,
+  "enable_ask_orchestrator": true,
+  "ask_timeout_ms": 600000,
   "default_tools": [
     "read",
     "memory_context",

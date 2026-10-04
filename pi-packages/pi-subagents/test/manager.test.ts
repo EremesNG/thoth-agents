@@ -3447,3 +3447,213 @@ describe('manager and history integration', () => {
     expect(continued.results?.[0].attempt).toBe(2);
   });
 });
+
+describe('orchestrator question channel', () => {
+  it('clears abandoned questions before terminal notification without rewriting completed activity', async () => {
+    writeAgent('analyst');
+    let rejected!: Promise<unknown>;
+    const terminalCounts: number[] = [];
+    const terminal = vi.fn((task: SubagentTask) =>
+      terminalCounts.push(task.pending_questions?.length ?? 0),
+    );
+    const manager = createManager(
+      async ({ orchestratorChannel }) => {
+        rejected = orchestratorChannel!
+          .askQuestion('Abandoned question')
+          .catch((error) => error);
+        return { result: 'done' };
+      },
+      undefined,
+      terminal,
+    );
+    const run = await manager.run(
+      { agent: 'analyst', task: 'work', mode: 'background' },
+      { cwd: tmp, sessionId: 'parent-a' },
+    );
+    const id = run.task_ids[0]!;
+    await vi.waitFor(() =>
+      expect(manager.getTask(id)?.status).toBe('completed'),
+    );
+    expect(((await rejected) as Error).message).toContain(
+      'child session shutdown',
+    );
+    expect(manager.getTask(id)?.last_activity).toBe('completed');
+    expect(terminal).toHaveBeenCalledOnce();
+    expect(terminalCounts).toEqual([0]);
+  });
+
+  it.each([
+    'reply timeout',
+    'cancellation',
+    'shutdown',
+    'total timeout',
+    'tool abort',
+    'child shutdown',
+  ])('rejects outstanding questions on %s and clears the registry', async (ending) => {
+    writeAgent('analyst');
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({
+        ask_timeout_ms: ending === 'reply timeout' ? 40 : 2000,
+        timeout_ms: ending === 'total timeout' ? 40 : 2000,
+      }),
+    );
+    let questionReady!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      questionReady = resolve;
+    });
+    let questionError!: (error: Error) => void;
+    const failure = new Promise<Error>((resolve) => {
+      questionError = resolve;
+    });
+    const toolAbort = new AbortController();
+    let closeChild!: () => void;
+    const manager = createManager(
+      async ({ orchestratorChannel }) => {
+        closeChild = () => orchestratorChannel!.close('child session shutdown');
+        try {
+          await orchestratorChannel!.askQuestion(
+            'Need a decision',
+            toolAbort.signal,
+          );
+        } catch (error) {
+          questionError(error as Error);
+        }
+        return { result: 'question ended' };
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => questionReady(),
+    );
+    const run = await manager.run(
+      { agent: 'analyst', task: 'alignment', mode: 'background' },
+      { cwd: tmp, sessionId: 'parent-a' },
+    );
+    const id = run.task_ids[0]!;
+    await ready;
+    if (ending === 'cancellation') manager.cancel(id, 'cancelled by parent');
+    if (ending === 'shutdown') await manager.close();
+    if (ending === 'tool abort') toolAbort.abort();
+    if (ending === 'child shutdown') closeChild();
+    const error = await failure;
+    const expected = {
+      'reply timeout': 'timed out after 40ms without an orchestrator reply',
+      cancellation: 'cancelled by parent',
+      shutdown: 'Pi session shutdown',
+      'total timeout': 'timed out after 40ms',
+      'tool abort': 'cancelled',
+      'child shutdown': 'child session shutdown',
+    }[ending]!;
+    expect(error.message).toContain(expected);
+    expect(manager.getTask(id)?.pending_questions).toEqual([]);
+    expect(() =>
+      manager.replyToQuestion('parent-a', id, undefined, 'late reply'),
+    ).toThrow('stale');
+    if (ending === 'total timeout') {
+      await vi.waitFor(() =>
+        expect(manager.getTask(id)?.status).toBe('failed'),
+      );
+      expect(manager.getTask(id)?.error_metadata?.category).toBe(
+        'total_timeout',
+      );
+    }
+  });
+
+  it('stores the latest five progress updates without notifying the parent or blocking', async () => {
+    writeAgent('analyst');
+    const delivered = vi.fn();
+    const hook = vi.fn();
+    const manager = createManager(
+      async ({ orchestratorChannel }) => {
+        for (let i = 1; i <= 7; i++)
+          orchestratorChannel!.reportProgress(`Step ${i} done`);
+        return { result: 'done' };
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      delivered,
+    );
+    manager.onQuestion(hook);
+    const run = await manager.run(
+      { agent: 'analyst', task: 'progress', mode: 'background' },
+      { cwd: tmp, sessionId: 'parent-a' },
+    );
+    const id = run.task_ids[0]!;
+    await vi.waitFor(() =>
+      expect(manager.getTask(id)?.status).toBe('completed'),
+    );
+    expect(
+      manager.getTask(id)?.progress_updates?.map((update) => update.message),
+    ).toEqual([
+      'Step 3 done',
+      'Step 4 done',
+      'Step 5 done',
+      'Step 6 done',
+      'Step 7 done',
+    ]);
+    expect(delivered).not.toHaveBeenCalled();
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('blocks for the owning reply, can ask again, and awaits onQuestion hooks before delivery', async () => {
+    writeAgent('analyst');
+    const delivered = vi.fn();
+    let releaseHook!: () => void;
+    const hookGate = new Promise<void>((resolve) => {
+      releaseHook = resolve;
+    });
+    const hook = vi.fn(async () => {
+      await hookGate;
+    });
+    const manager = createManager(
+      async ({ orchestratorChannel }) => {
+        const first = await orchestratorChannel!.askQuestion('Which scope?');
+        const second = await orchestratorChannel!.askQuestion('Which check?');
+        return { result: `${first}; ${second}` };
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      delivered,
+    );
+    const unsubscribe = manager.onQuestion(hook);
+    const run = await manager.run(
+      { agent: 'analyst', task: 'alignment', mode: 'background' },
+      { cwd: tmp, sessionId: 'parent-a' },
+    );
+    const id = run.task_ids[0]!;
+    await vi.waitFor(() => expect(hook).toHaveBeenCalledOnce());
+    const first = manager.getTask(id)!.pending_questions![0]!;
+    expect(first).toMatchObject({ message: 'Which scope?' });
+    expect(first.request_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(delivered).not.toHaveBeenCalled();
+    expect(manager.getTask(id)?.status).toBe('running');
+    releaseHook();
+    await vi.waitFor(() => expect(delivered).toHaveBeenCalledOnce());
+    expect(delivered.mock.calls[0][1]).toMatchObject({
+      task_id: id,
+      agent: 'analyst',
+      request_id: first.request_id,
+      message: 'Which scope?',
+    });
+    manager.replyToQuestion('parent-a', id, first.request_id, 'runtime only');
+    await vi.waitFor(() => expect(delivered).toHaveBeenCalledTimes(2));
+    const second = manager.getTask(id)!.pending_questions![0]!;
+    expect(second.request_id).not.toBe(first.request_id);
+    manager.replyToQuestion('parent-a', id, undefined, 'package check');
+    await vi.waitFor(() =>
+      expect(manager.getTask(id)?.status).toBe('completed'),
+    );
+    expect(manager.getTask(id)?.result).toBe('runtime only; package check');
+    expect(manager.getTask(id)?.pending_questions).toEqual([]);
+    unsubscribe();
+  });
+});

@@ -171,6 +171,44 @@ function readJsonl(file: string): any[] {
 }
 
 describe('background widget', () => {
+  it('shows the latest progress update and outstanding-question state even while a tool is active', () => {
+    const task: SubagentTask = {
+      id: 'task-question',
+      agent: 'analyst',
+      mode: 'background',
+      status: 'running',
+      task: 'alignment',
+      created_at: '2026-01-01T00:00:00Z',
+      live_activity: {
+        current: {
+          kind: 'tool_running',
+          label: 'running tool: ask_orchestrator',
+        },
+        trail: [],
+      },
+      pending_questions: [
+        {
+          request_id: 'request-1',
+          message: 'scope?',
+          created_at: '2026-01-01T00:00:01Z',
+        },
+      ],
+      progress_updates: [
+        { message: 'old progress', created_at: '2026-01-01T00:00:00Z' },
+        { message: 'Discovery complete', created_at: '2026-01-01T00:00:01Z' },
+      ],
+    };
+    const state = new ClaudeBackgroundWidgetState(() => [task]);
+    const text = state.renderLines({ width: 200 }).join('\n');
+    expect(text).toContain('awaiting orchestrator reply');
+    expect(text).toContain('progress: Discovery complete');
+    expect(text).not.toContain('old progress');
+    task.pending_questions = [];
+    expect(state.renderLines({ width: 200 }).join('\n')).toContain(
+      'running tool: ask_orchestrator',
+    );
+  });
+
   it.each([
     'running',
     'queued',
@@ -1330,7 +1368,9 @@ describe('background widget', () => {
     expect(visibleWidth(truncated)).toBeLessThanOrEqual(7);
   });
 
-  it('correctly renders whole widget output containing ANSI, CJK, combining characters, and ZWJ emojis without sequence corruption or boundary overflow', ({ onTestFinished }) => {
+  it('correctly renders whole widget output containing ANSI, CJK, combining characters, and ZWJ emojis without sequence corruption or boundary overflow', ({
+    onTestFinished,
+  }) => {
     // Compare styling at the same spinner frame and elapsed-time value.
     vi.useFakeTimers({
       toFake: ['Date'],

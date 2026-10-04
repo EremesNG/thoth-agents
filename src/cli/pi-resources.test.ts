@@ -87,7 +87,9 @@ describe('Pi specialist synchronization', () => {
     expect(readFileSync(worker, 'utf8')).toContain('subagent_mode: "task"');
     expect(readFileSync(worker, 'utf8')).toContain('model: custom/model');
     expect(readFileSync(worker, 'utf8')).toContain('effort: max');
-    expect(readFileSync(explorer, 'utf8')).toContain('tools: "read, bash"');
+    expect(readFileSync(explorer, 'utf8')).toContain(
+      'tools: "read, bash, ask_orchestrator"',
+    );
     expect(readFileSync(explorer, 'utf8')).toContain(
       'subagent_mode: "background"',
     );

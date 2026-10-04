@@ -286,45 +286,190 @@ describe('subagent_run tool', () => {
     expect(result.terminate).not.toBe(true);
   });
 
-  it('streams task-mode progress from lifecycle updates without installing a recurring render timer', async () => {
-    const fs = await import('node:fs');
-    fs.writeFileSync(
-      `${env.tmp}/.pi/subagents.json`,
-      JSON.stringify({ default_mode: 'background' }),
-    );
+  it('keeps task-mode frames and elapsed time advancing without lifecycle updates, then stops on completion', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     env.writeAgent('analyst');
-    const manager = env.createManager(env.mockRunner(0));
+    const manager = env.createManager(env.mockRunner(10_000));
     let runTool: any;
-    const updates: any[] = [];
-    const setIntervalSpy = vi.spyOn(global, 'setInterval');
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      manager,
+    );
+    const rendered: string[] = [];
+    const onUpdate = vi.fn((update: any) => {
+      rendered.push(
+        runTool
+          .renderResult(
+            update,
+            { isPartial: true },
+            { fg: (_name: string, text: string) => text },
+          )
+          .render(240)
+          .join('\n'),
+      );
+    });
+    const resultPromise = runTool.execute(
+      '1',
+      { agent: 'analyst', task: 'long tool', mode: 'task' },
+      undefined,
+      onUpdate,
+      { cwd: env.tmp },
+    );
+
     try {
-      registerSubagentTools(
-        {
-          registerTool: (tool: any) => {
-            if (tool.name === 'subagent_run') runTool = tool;
+      await vi.advanceTimersByTimeAsync(0);
+      const updateCount = onUpdate.mock.calls.length;
+      const runningUpdate = onUpdate.mock.calls.at(-1)![0];
+      expect(runningUpdate.details.tasks).toMatchObject([{ status: 'running' }]);
+      expect(rendered.at(-1)!.split('\n')[0]).toContain(
+        'subagent · analyst · running · 0ms',
+      );
+      expect(rendered.at(-1)).not.toContain('⧗ elapsed');
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(onUpdate).toHaveBeenCalledTimes(updateCount + 4);
+      const heartbeats = onUpdate.mock.calls.slice(updateCount);
+      for (const [index, [update]] of heartbeats.entries()) {
+        expect(update.details.frame).toBe(
+          runningUpdate.details.frame + index + 1,
+        );
+        expect(update.details.tasks).toEqual(runningUpdate.details.tasks);
+        expect(rendered[updateCount + index].split('\n')[0]).toContain(
+          `subagent · analyst · running · ${['250ms', '500ms', '750ms', '1.0s'][index]}`,
+        );
+      }
+      expect(rendered[updateCount].split('\n')[0]).not.toBe(
+        rendered[updateCount - 1].split('\n')[0],
+      );
+      expect(rendered.at(-1)!.split('\n')[0]).toContain(
+        'subagent · analyst · running · 1.0s',
+      );
+      expect(rendered.at(-1)).not.toContain('⧗ elapsed');
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await resultPromise;
+      expect(result.isError).not.toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      const completedUpdateCount = onUpdate.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onUpdate).toHaveBeenCalledTimes(completedUpdateCount);
+    } finally {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await resultPromise;
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops the task-mode heartbeat immediately on abort while runner cleanup is still pending', async () => {
+    vi.useFakeTimers();
+    env.writeAgent('analyst');
+    const manager = env.createManager(env.mockRunner(10_000));
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      manager,
+    );
+    const controller = new AbortController();
+    const onUpdate = vi.fn();
+    const resultPromise = runTool.execute(
+      '1',
+      { agent: 'analyst', task: 'abort a long tool', mode: 'task' },
+      controller.signal,
+      onUpdate,
+      { cwd: env.tmp },
+    );
+
+    try {
+      await vi.advanceTimersByTimeAsync(250);
+      expect(onUpdate.mock.calls.at(-1)![0].details.tasks).toMatchObject([
+        { status: 'running' },
+      ]);
+      const timerCount = vi.getTimerCount();
+      controller.abort();
+      expect(vi.getTimerCount()).toBe(timerCount - 1);
+      const abortedUpdateCount = onUpdate.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onUpdate).toHaveBeenCalledTimes(abortedUpdateCount);
+      expect(manager.listTasks(env.tmp)).toMatchObject([{ status: 'stopping' }]);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await resultPromise;
+      expect(result.isError).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+      const settledUpdateCount = onUpdate.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onUpdate).toHaveBeenCalledTimes(settledUpdateCount);
+    } finally {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await resultPromise;
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops the task-mode heartbeat immediately on ctrl+h handoff and never emits after returning', async () => {
+    vi.useFakeTimers();
+    env.writeAgent('analyst');
+    const manager = env.createManager(env.mockRunner(10_000));
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      manager,
+    );
+    const terminalHandlers: Array<(data: string) => any> = [];
+    const onUpdate = vi.fn();
+    const resultPromise = runTool.execute(
+      '1',
+      { agent: 'analyst', task: 'background a long tool', mode: 'task' },
+      undefined,
+      onUpdate,
+      {
+        cwd: env.tmp,
+        ui: {
+          onTerminalInput: (handler: (data: string) => any) => {
+            terminalHandlers.push(handler);
+            return () => undefined;
           },
         },
-        manager,
-      );
+      },
+    );
 
-      const result = await runTool.execute(
-        '1',
-        { agent: 'analyst', task: 'event progress', mode: 'task' },
-        undefined,
-        (update: any) => updates.push(update),
-        { cwd: env.tmp },
-      );
-
-      expect(result.isError).not.toBe(true);
-      expect(setIntervalSpy).not.toHaveBeenCalled();
-      expect(updates.length).toBeGreaterThan(1);
-      expect(
-        updates.some((update) =>
-          update.content[0].text.includes('status: running'),
-        ),
-      ).toBe(true);
+    try {
+      await vi.advanceTimersByTimeAsync(250);
+      const timerCount = vi.getTimerCount();
+      expect(terminalHandlers.map((handler) => handler('\u0008'))).toContainEqual({
+        consume: true,
+      });
+      expect(vi.getTimerCount()).toBe(timerCount - 1);
+      const handoffUpdateCount = onUpdate.mock.calls.length;
+      const result = await resultPromise;
+      expect(result.terminate).toBe(true);
+      expect(manager.getTask(result.details.task_ids[0], env.tmp)).toMatchObject({
+        mode: 'background',
+        status: 'running',
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onUpdate).toHaveBeenCalledTimes(handoffUpdateCount);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(onUpdate).toHaveBeenCalledTimes(handoffUpdateCount);
+      expect(vi.getTimerCount()).toBe(0);
     } finally {
-      setIntervalSpy.mockRestore();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await resultPromise;
+      vi.useRealTimers();
     }
   });
 

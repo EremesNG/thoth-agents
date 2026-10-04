@@ -382,7 +382,7 @@ Pi root instructions MUST use ask_user_question for material user choices, follo
 
 - **GIVEN** a child needing a user decision while `ask_orchestrator` is selected
 - **WHEN** it calls the tool
-- **THEN** the root receives the question, may escalate through ask_user_question, and replies with `subagent_reply` without the child opening user dialogs 
+- **THEN** the root receives the question, may escalate through ask_user_question, and replies with `subagent_reply` without the child opening user dialogs
 
 ### Requirement: Keep Pi progress session-owned
 
@@ -392,7 +392,7 @@ Pi root instructions MUST use the session-local task-list tool for useful multi-
 
 - **GIVEN** a child with progress and `ask_orchestrator` selected
 - **WHEN** it sends a progress update
-- **THEN** the update is recorded on its task and visible in status without triggering a root turn or editing the root task list 
+- **THEN** the update is recorded on its task and visible in status without triggering a root turn or editing the root task list
 
 ### Requirement: Expose complementary Pi web tools
 
@@ -484,23 +484,23 @@ The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jo
 
 ### Requirement: Reply in the user's language
 
-Default root orchestrator instructions for every supported harness MUST direct user-facing replies, questions and options to use the language of the user's most recent real message and keep it until the user switches; delegated assignments, change records, code and generated artifacts MAY remain in English.
+Default root orchestrator instructions for every supported harness MUST direct user-facing replies, questions and options to use the language of the user's most recent real message and keep it until the user switches; human answers to question tools and explicit language requests count as real user messages, an explicit language request takes precedence over the latest message's language and persists until the human switches, and English tool results, notifications, reminders and injected context never switch the reply language; delegated assignments, change records, code and generated artifacts MAY remain in English.
 
 #### Scenario: Reply in the user's language
 
-- **GIVEN** a user writing in Spanish
+- **GIVEN** a user writing in Spanish who answers a question tool in Spanish
 - **WHEN** any harness renders the default root orchestrator instructions
-- **THEN** they require Spanish user-facing replies, questions and options while permitting English delegation and artifacts
+- **THEN** they require Spanish user-facing replies, count the question answer as a real user message and forbid English tool or notification text from switching the language 
 
 ### Requirement: Distinguish injected messages from user input
 
-Default root orchestrator instructions MUST state that subagent completion notifications, tool results and injected context delivered in the user role are not user messages and MUST NOT set the reply language or count as user instructions, answers or choices; Pi subagent completion content MUST identify itself as an automated system notification.
+Default root orchestrator instructions MUST state that subagent completion notifications, automated tool output and injected context delivered in the user role are not user messages and MUST NOT set the reply language or count as user instructions, answers or choices, while a human's answer returned through a question tool is a real user message; Pi subagent completion content MUST identify itself as an automated system notification.
 
 #### Scenario: Distinguish injected messages from user input
 
-- **GIVEN** a Pi subagent completion delivered as a user-role message
-- **WHEN** the root reads it
-- **THEN** its content declares it an automated system notification and the instructions forbid treating it as user input or a language signal
+- **GIVEN** a Pi subagent completion delivered as a user-role message and a human answer returned through a question tool
+- **WHEN** the root reads them
+- **THEN** the completion is declared an automated system notification and is not a language signal, while the human answer counts as a real user message 
 
 ### Requirement: Pi children query the root orchestrator
 
@@ -510,4 +510,14 @@ When enabled, a Pi specialist other than Oracle may pose to its owning root a bl
 
 - **GIVEN** a running Pi worker child with `enable_ask_orchestrator` true
 - **WHEN** it calls `ask_orchestrator` with a question
-- **THEN** the owning root receives a turn-triggering injected question, the child waits, and the root's `subagent_reply` answer is returned to that same child tool call 
+- **THEN** the owning root receives a turn-triggering injected question, the child waits, and the root's `subagent_reply` answer is returned to that same child tool call
+
+### Requirement: Pi conversation language anchor
+
+The Pi root extension MUST add one non-displayed custom anchor message to each agent run started by real human input (source interactive or rpc) received while the session is natively idle and paired with its own run start, restating in fixed text, without quoting the input or claiming which adjacent text is human, the rule to reply in the language of the human's most recent real message unless the human explicitly requested another reply language, without modifying the system prompt and without anchoring extension-sourced or queued input.
+
+#### Scenario: Pi conversation language anchor
+
+- **GIVEN** a Pi root session
+- **WHEN** the human sends a prompt while idle, queues another while running, and later an extension triggers a turn
+- **THEN** only the idle human-started run receives the anchor, no stale anchor appears later, and the system prompt stays unchanged 

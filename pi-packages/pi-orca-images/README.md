@@ -33,17 +33,6 @@ operator-installed package, not installed by the Thoth CLI. Restart Pi or use
 - Retransmits the Kitty payload on redraw instead of relying on retained image
   IDs that Orca may have discarded. Activating Kitty ordering refreshes cached
   image fallbacks and the current frame once.
-- In Kitty mode, asynchronously downscales PNGs larger than 256 KB of base64 to
-  their displayed pixel box, using Pi's cell geometry and terminal cell
-  dimensions. While resizing, blank rows reserve the original display height
-  without transmitting an image. Only resized PNG output is accepted; its actual
-  encoded dimensions
-  may adjust the height by one row. Larger geometry changes, non-PNG output and
-  resize failures keep the original once, without retrying that component.
-  Smaller PNGs and other source formats keep Pi's native path.
-- Shares in-flight resizes and caches resized PNGs by a SHA-256 digest of the
-  decoded source, bounded by 32 entries and 16 MB of cached base64. Only the
-  display component changes: model-facing tool-result image content is untouched.
 - Debounces rapid image redraws during scrolling or changes to image-covered
   rows: the leading frame emits immediately, then images can go blank briefly
   while text keeps updating every frame. One full image redraw follows 150 ms
@@ -55,23 +44,21 @@ operator-installed package, not installed by the Thoth CLI. Restart Pi or use
   mouse/selection state. With Pi mouse support disabled, focus reporting may not
   be enabled and automatic recovery is unavailable.
 - Non-Orca terminals and tmux are unaffected. Regular mode needs no ordering or
-  focus patch and keeps Pi's native image ordering; fullscreen is supported
+  focus patch and keeps Pi's native image rendering; fullscreen is supported
   without switching to regular mode.
 
 Pi's `terminal.showImages` must be `true` (the default). Pi intentionally disables
 iTerm2 images in fullscreen: remove `terminal.images: "iterm2"` and leave
 `PI_IMAGE_PROTOCOL` unset, or explicitly select Kitty in Pi settings. PNG and JPEG
-results use Pi's native image pass; JPEG conversion to PNG still depends on Pi's
-registered transcoder. Downscaling never substitutes non-PNG output for a PNG.
+results use Pi's native image pass, including conversion to PNG.
 
 ## Off switch
 
 Start Pi with `PI_IMAGE_PROTOCOL=none` (or `0`, case-insensitive), or uninstall the
 package. The environment switch bypasses **all** package behavior: the capability
-fallback, ordering activation, downscaling, redraw debounce and focus redraw,
-even if Pi settings still select `terminal.images: "kitty"`. It does not override
-Pi's native settings behavior; remove that setting as well if you want no images
-at all.
+fallback, ordering activation, redraw debounce and focus redraw, even if Pi
+settings still select `terminal.images: "kitty"`. It does not override Pi's native
+settings behavior; remove that setting as well if you want no images at all.
 
 ## Development
 
@@ -83,10 +70,8 @@ pnpm --filter @thoth-agents/pi-orca-images typecheck
 pnpm --filter @thoth-agents/pi-orca-images test
 ```
 
-The compatibility hooks depend on Pi 1.0.1 image and fullscreen internals.
-Missing methods or display fields are skipped rather than throwing; a future Pi
-update may require adapting them. Pi's resize worker can fall back to in-process
-resizing, which may briefly block the UI.
+The compatibility hooks depend on Pi 1.0.1 fullscreen internals. Missing methods
+are skipped rather than throwing; a future Pi update may require adapting them.
 
 ## License
 

@@ -4,6 +4,7 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
+import { formatDuration } from '../shared/duration.ts';
 import { createComponent, escapeOutputRow, getResultText } from './box.ts';
 import { getToolIcon } from './file-icons.ts';
 import {
@@ -78,12 +79,6 @@ function extractShellExitCode(
   return match ? Number.parseInt(match[1], 10) : 1;
 }
 
-function formatElapsed(ms: number | undefined): string {
-  if (ms === undefined) return '';
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
 function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
   return {
     renderShell: 'self' as const,
@@ -94,7 +89,11 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
       const command = String(args.command ?? '').trim();
       const icon = getToolIcon(shellConfig.toolName, config.icons);
       const isErr = Boolean(context?.isError);
-      const elapsedStr = formatElapsed(getElapsedMs(context?.state));
+      const elapsedMs = getElapsedMs(context?.state);
+      const elapsedStr =
+        elapsedMs === undefined
+          ? ''
+          : formatDuration(Math.floor(elapsedMs / 1000) * 1000);
       const runningFooter =
         context?.executionStarted && context.isPartial
           ? [
@@ -165,7 +164,13 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
       const allLines = textOutput ? textOutput.split('\n') : [];
       const lineCount = allLines.length;
 
-      const elapsedStr = formatElapsed(getElapsedMs(context?.state));
+      const elapsedMs = getElapsedMs(context?.state);
+      const elapsedStr =
+        elapsedMs === undefined
+          ? ''
+          : formatDuration(
+              isPartial ? Math.floor(elapsedMs / 1000) * 1000 : elapsedMs,
+            );
 
       const exitNum = extractShellExitCode(result, textOutput, isErr);
       const exitStr = `Exit ${exitNum}`;

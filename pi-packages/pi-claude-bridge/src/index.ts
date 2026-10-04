@@ -29,6 +29,7 @@ import { buildActionSummary, type ToolCallState } from "./askclaude-ui.js";
 import { askClaudeCallTags, askClaudeToolDescription, buildAskClaudeParams, resolveAskClaudeDefaults, resolveAskClaudeMode, type AskClaudeMode } from "./askclaude-schema.js";
 import { nonSystemMessages, toBridgeContext } from "./transcript.js";
 import { updateUsage, type SdkUsage } from "./usage.js";
+import { formatDuration } from "./format-duration.js";
 
 // --- Debug logging ---
 // CLAUDE_BRIDGE_DEBUG=1 enables debug logging to the bridge log in pi's agent
@@ -2708,7 +2709,7 @@ export default function (pi: ExtensionAPI) {
 					? theme.fg("error", "✗ Claude Code error")
 					: theme.fg("mdLink", "✓ Claude Code");
 
-				if (details?.executionTime) text += ` ${theme.fg("dim", `${(details.executionTime / 1000).toFixed(1)}s`)}`;
+				if (details?.executionTime) text += ` ${theme.fg("dim", formatDuration(details.executionTime))}`;
 				if (details?.actions) text += ` ${theme.fg("muted", details.actions)}`;
 
 				if (expanded) {
@@ -2741,9 +2742,9 @@ export default function (pi: ExtensionAPI) {
 				const start = Date.now();
 
 				const progressInterval = setInterval(() => {
-					const elapsed = ((Date.now() - start) / 1000).toFixed(0);
+					const elapsed = formatDuration(Math.round((Date.now() - start) / 1000) * 1000);
 					const summary = buildActionSummary(toolCalls);
-					const status = summary ? `${elapsed}s — ${summary}` : `${elapsed}s — working...`;
+					const status = `${elapsed} — ${summary || "working..."}`;
 					onUpdate?.({
 						content: [{ type: "text", text: status }],
 						details: { prompt: params.prompt, executionTime: Date.now() - start },

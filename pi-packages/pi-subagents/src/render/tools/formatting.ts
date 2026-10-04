@@ -42,9 +42,17 @@ export function formatTokens(count: number): string {
 }
 
 export function formatDuration(milliseconds: number): string {
-  return milliseconds < 1000
-    ? `${Math.floor(milliseconds)}ms`
-    : `${(milliseconds / 1000).toFixed(1)}s`;
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) return '0s';
+  if (milliseconds < 1000) return `${Math.floor(milliseconds)}ms`;
+  if (milliseconds < 60_000)
+    return `${(milliseconds / 1000).toFixed(1).replace(/\.0$/, '')}s`;
+  const minutes = Math.floor(milliseconds / 60_000);
+  if (milliseconds < 3_600_000) {
+    const seconds = Math.floor(milliseconds / 1000) % 60;
+    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+  }
+  const hours = Math.floor(milliseconds / 3_600_000);
+  return `${hours}h ${String(minutes % 60).padStart(2, '0')}m`;
 }
 
 export function generationSpeed(

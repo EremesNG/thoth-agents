@@ -160,7 +160,7 @@ function buildClaudeBackgroundWidgetEntries(
       `$${finiteNonnegative(cost) ? cost.toFixed(4) : '?'}`,
       `▣ context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
       `${speed !== undefined ? Math.round(speed) : '?'} tok/s`,
-      `⧗ elapsed ${Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '?'}`,
+      `⧗ elapsed ${Number.isFinite(started) ? formatDuration(Math.floor(Math.max(0, now - started) / 1000) * 1000) : '?'}`,
     ];
     if (finiteNonnegative(metrics?.compactions) && metrics.compactions > 0)
       metricParts.push(
@@ -765,6 +765,10 @@ export class ClaudeBackgroundWidget {
       if (!match) return part;
       const icon = match[1]!;
       const rest = match[2]!;
+      if (icon === '⧗' && rest.startsWith('elapsed ')) {
+        const duration = rest.slice('elapsed '.length);
+        return `${icon} ${themeDim(this.theme, 'elapsed')} ${duration}`;
+      }
       const tokens = rest.split(/\s+/);
       if (tokens.length === 2) {
         if (/^\d/.test(tokens[0]!)) {

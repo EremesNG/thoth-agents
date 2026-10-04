@@ -165,7 +165,7 @@ describe('input box with the real Pi Thoth theme', () => {
 
   it.each(
     modes,
-  )('shimmers the working text while the pyramid breathes with the border and elapsed seconds stay muted in $name', async ({
+  )('shimmers the working text while the pyramid breathes with the border and elapsed duration stays muted in $name', async ({
     mode,
   }) => {
     const theme = await loadThothTheme(mode);
@@ -186,29 +186,35 @@ describe('input box with the real Pi Thoth theme', () => {
     const { muted, dim, gold, bright } = ansi[expectedMode];
     const idle = editor.render(40);
     working.start();
-    for (const [now, color, elapsed, unlit] of [
-      [0, dim, 0, 'w'],
-      [600, gold, 0, 'g'],
-      [1200, bright, 1, 'w'],
-      [1800, gold, 1, 'w'],
-      [2400, dim, 2, 'w'],
+    for (const [now, color, elapsed, unlit, dashes] of [
+      [0, dim, '0s', 'w', 20],
+      [600, gold, '0s', 'g', 20],
+      [1200, bright, '1s', 'w', 20],
+      [1800, gold, '1s', 'w', 20],
+      [2400, dim, '2s', 'w', 20],
+      [59400, gold, '59s', null, 19],
+      [60000, dim, '1m 00s', null, 16],
+      [845400, gold, '14m 05s', null, 15],
+      [7380000, dim, '2h 03m', null, 16],
     ] as const) {
       vi.setSystemTime(now);
       const lines = editor.render(40);
       expect(lines[0].startsWith(`${color}╭─ \x1b[39m${color}△\x1b[39m `)).toBe(
         true,
       );
-      expect(lines[0]).toContain(`${muted}${unlit}\x1b[39m`);
+      if (unlit !== null) {
+        expect(lines[0]).toContain(`${muted}${unlit}\x1b[39m`);
+      }
       if (now === 1200) {
         expect(lines[0]).toContain(`${bright}\x1b[1mi\x1b[22m\x1b[39m`);
       }
       expect(
         lines[0].endsWith(
-          `${muted} · ${elapsed}s\x1b[39m${color} ${'─'.repeat(20)}╮\x1b[39m`,
+          `${muted} · ${elapsed}\x1b[39m${color} ${'─'.repeat(dashes)}╮\x1b[39m`,
         ),
       ).toBe(true);
       expect(stripTerminalSequences(lines[0])).toBe(
-        `╭─ △ working… · ${elapsed}s ${'─'.repeat(20)}╮`,
+        `╭─ △ working… · ${elapsed} ${'─'.repeat(dashes)}╮`,
       );
       expect(lines[1].startsWith(`${color}│\x1b[39m`)).toBe(true);
       expect(lines[1].endsWith(`${color}│\x1b[39m`)).toBe(true);

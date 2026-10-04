@@ -26,6 +26,7 @@ import {
 	snapshotConversations,
 } from "./discovery.js";
 import { loadConfig, type AgyMode, type BridgeDiscovery, type ThinkingTier } from "./config.js";
+import { formatDuration } from "./format-duration.js";
 import { redactText } from "./redact.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { acquireBridgeSuppression } from "./mcp-registration.js";
@@ -516,7 +517,7 @@ export async function registerAskAntigravityTool(
 			if (d?.mode && d.mode !== "accept-edits") rTags.push(`mode=${d.mode}`);
 			if (d?.includeContext) rTags.push("context=full");
 			if (rTags.length) text += ` ${theme.fg("accent", `[${rTags.join(", ")}]`)}`;
-			if (d?.durationMs) text += ` ${theme.fg("dim", `${(d.durationMs / 1000).toFixed(1)}s`)}`;
+			if (d?.durationMs) text += ` ${theme.fg("dim", formatDuration(d.durationMs))}`;
 
 			if (expanded) {
 				if (body) text += `\n${theme.fg("toolOutput", body)}`;
@@ -726,9 +727,9 @@ export async function registerAskAntigravityTool(
 
 			const statusInterval = onUpdate
 				? setInterval(() => {
-						const elapsed = Math.floor((Date.now() - start) / 1000);
+						const elapsed = formatDuration(Math.floor((Date.now() - start) / 1000) * 1000);
 						const tail = out.slice(-STATUS_TAIL_CHARS);
-						const text = tail ? `(running ${elapsed}s)\n…${tail}` : `(running ${elapsed}s)`;
+						const text = tail ? `(running ${elapsed})\n…${tail}` : `(running ${elapsed})`;
 						onUpdate({
 							content: [{ type: "text", text }],
 							details: { ...details, durationMs: Date.now() - start },

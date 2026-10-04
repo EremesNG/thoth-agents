@@ -304,7 +304,7 @@ describe('tool render helpers', () => {
           },
         },
         usageLine: '↳ usage: 2 turns ↑1.5k ↓100 · 25 tok/s',
-        duration: '3.0s',
+        duration: '3s',
       },
       { label: 'no usage or runtime', metrics: {}, usageLine: undefined },
       { label: 'empty usage', metrics: { usage: {} }, usageLine: undefined },
@@ -324,9 +324,13 @@ describe('tool render helpers', () => {
         label: 'elapsed only',
         metrics: { started_at: '2026-01-01T00:00:00.000Z' },
         usageLine: undefined,
-        duration: '3.0s',
+        duration: '3s',
       },
-    ])('separates model and usage while highlighting the current activity with $label', ({ metrics, usageLine, duration }) => {
+    ])('separates model and usage while highlighting the current activity with $label', ({
+      metrics,
+      usageLine,
+      duration,
+    }) => {
       let runTool: any;
       registerSubagentTools(
         {
@@ -411,7 +415,7 @@ describe('tool render helpers', () => {
   it.each([
     {
       started_at: '2026-01-01T00:00:00.000Z',
-      title: 'subagent · analyst · running · 85.1s (background)',
+      title: 'subagent · analyst · running · 1m 25s (background)',
     },
     {
       started_at: undefined,
@@ -421,7 +425,10 @@ describe('tool render helpers', () => {
       started_at: 'invalid',
       title: 'subagent · analyst · running (background)',
     },
-  ])('keeps the background suffix after any partial title duration ($started_at)', ({ started_at, title }) => {
+  ])('keeps the background suffix after any partial title duration ($started_at)', ({
+    started_at,
+    title,
+  }) => {
     let runTool: any;
     registerSubagentTools(
       {
@@ -967,11 +974,11 @@ describe('tool render helpers', () => {
           .join('\n');
       const first = render();
       expect(first).toContain(
-        `usage: 9 turns ↑19k ↓803 R61k $0.1051 ctx:19k · 51 tok/s${isPartial ? '' : ' · ⧗ elapsed 131.2s'}`,
+        `usage: 9 turns ↑19k ↓803 R61k $0.1051 ctx:19k · 51 tok/s${isPartial ? '' : ' · ⧗ elapsed 2m 11s'}`,
       );
       if (isPartial) {
         expect(first.split('\n')[0]).toContain(
-          'subagent · worker · running · 131.2s',
+          'subagent · worker · running · 2m 11s',
         );
         expect(first).not.toContain('⧗ elapsed');
       }
@@ -979,11 +986,11 @@ describe('tool render helpers', () => {
       task.runtime_metrics.generationMs = 8000;
       const second = render();
       expect(second).toContain(
-        `ctx:19k · 26 tok/s${isPartial ? '' : ' · ⧗ elapsed 132.2s'}`,
+        `ctx:19k · 26 tok/s${isPartial ? '' : ' · ⧗ elapsed 2m 12s'}`,
       );
       if (isPartial) {
         expect(second.split('\n')[0]).toContain(
-          'subagent · worker · running · 132.2s',
+          'subagent · worker · running · 2m 12s',
         );
         expect(second).not.toContain('⧗ elapsed');
       }
@@ -993,10 +1000,62 @@ describe('tool render helpers', () => {
   });
 
   it.each([
-    ['completed', '2026-01-01T00:02:11.200Z', '⧗ elapsed 131.2s'],
-    ['failed', '2026-01-01T00:02:11.200Z', '⧗ elapsed 131.2s'],
-    ['cancelled', '2026-01-01T00:02:11.200Z', '⧗ elapsed 131.2s'],
-    ['interrupted', '2026-01-01T00:02:11.200Z', '⧗ elapsed 131.2s'],
+    { status: 'running', isPartial: true },
+    { status: 'running', isPartial: false },
+    { status: 'queued', isPartial: true },
+    { status: 'queued', isPartial: false },
+    { status: 'stopping', isPartial: true },
+    { status: 'stopping', isPartial: false },
+  ])('floors live foreground elapsed to seconds for $status (partial: $isPartial)', ({
+    status,
+    isPartial,
+  }) => {
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      env.createManager(env.mockRunner()),
+    );
+    const now = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-01-01T00:00:12.345Z'));
+    try {
+      const rendered = runTool
+        .renderResult(
+          {
+            details: {
+              task: {
+                agent: 'worker',
+                mode: 'task',
+                status,
+                started_at: '2026-01-01T00:00:00.000Z',
+              },
+            },
+          },
+          { isPartial, expanded: true },
+          { fg: (_name: string, text: string) => text },
+        )
+        .render(200)
+        .join('\n');
+      expect(rendered).toContain(
+        isPartial ? 'subagent · worker · running · 12s' : '⧗ elapsed 12s',
+      );
+      expect(rendered).not.toContain('12.3s');
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it.each([
+    ['completed', '2026-01-01T00:00:12.345Z', '⧗ elapsed 12.3s'],
+    ['completed', '2026-01-01T00:02:11.200Z', '⧗ elapsed 2m 11s'],
+    ['failed', '2026-01-01T00:02:11.200Z', '⧗ elapsed 2m 11s'],
+    ['cancelled', '2026-01-01T00:02:11.200Z', '⧗ elapsed 2m 11s'],
+    ['interrupted', '2026-01-01T00:02:11.200Z', '⧗ elapsed 2m 11s'],
+    ['completed', '2026-01-01T02:03:59.999Z', '⧗ elapsed 2h 03m'],
     ['completed', undefined, undefined],
     ['failed', 'invalid', undefined],
   ])('uses a valid ended_at for foreground %s elapsed time (%s)', (status, ended_at, expected) => {
@@ -1104,7 +1163,7 @@ describe('tool render helpers', () => {
       task.started_at = '2026-01-01T00:00:00.000Z';
       const elapsedOnly = render();
       expect(elapsedOnly).toContain(
-        isPartial ? 'subagent · worker · running · 900ms' : '⧗ elapsed 900ms',
+        isPartial ? 'subagent · worker · running · 0s' : '⧗ elapsed 0s',
       );
       expect(elapsedOnly).not.toContain('tok/s');
       if (isPartial) {
@@ -1113,7 +1172,7 @@ describe('tool render helpers', () => {
       }
       task.started_at = '2026-01-01T00:00:01.000Z';
       expect(render()).toContain(
-        isPartial ? 'subagent · worker · running · 0ms' : '⧗ elapsed 0ms',
+        isPartial ? 'subagent · worker · running · 0s' : '⧗ elapsed 0s',
       );
     } finally {
       now.mockRestore();
@@ -1168,7 +1227,7 @@ describe('tool render helpers', () => {
     expect(runningLines.some((line) => line.includes('34 tok/s'))).toBe(true);
     for (const rendered of runningLines) {
       expect(rendered.split('\n')[0]).toMatch(
-        /subagent · worker · running · \d+(?:\.\d+)?(?:ms|s)/,
+        /subagent · worker · running · \d+s/,
       );
       expect(rendered).not.toContain('⧗ elapsed');
     }

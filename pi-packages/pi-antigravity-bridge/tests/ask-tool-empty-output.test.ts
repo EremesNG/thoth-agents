@@ -165,3 +165,61 @@ test("renderResult flips to the error glyph on the empty-output failure", async 
 		calls.some(([style, s]) => style === "error" && s.includes("AskAntigravity error")),
 	).toBe(true);
 });
+
+test.each([
+	[345, "345ms"],
+	[12345, "12.3s"],
+	[45000, "45s"],
+	[845000, "14m 05s"],
+	[7380000, "2h 03m"],
+])("renderResult displays %s ms as %s", async (durationMs, expected) => {
+	const tool = await registerTool("/nonexistent/agy-fake");
+	const theme = { fg: (_style: string, text: string) => text };
+	const rendered = tool.renderResult(
+		{
+			content: [{ type: "text", text: "answer" }],
+			details: { exitCode: 0, aborted: false, timedOut: false, durationMs },
+		},
+		{ expanded: false, isPartial: false },
+		theme,
+	) as { render: (width: number) => string[] };
+	expect(rendered.render(120).join("\n")).toContain(`✓ AskAntigravity ${expected}`);
+});
+
+test("live running counters floor elapsed time to whole seconds", async () => {
+	const bin = path.join(os.tmpdir(), `agy-duration-missing-${process.pid}`);
+	const tool = await registerTool(bin);
+	vi.stubEnv("AGY_BIN", bin);
+	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+	const now = 1700000000000;
+	const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+	try {
+		const updates: string[] = [];
+		const execution = tool.execute(
+			"duration",
+			{ prompt: "noop", cwd: process.cwd(), conversationId: "duration-test" },
+			undefined,
+			(result: ToolResult) => updates.push(result.content[0].text),
+			{},
+		);
+		for (const ms of [-1, 999, 12345, 59999, 60000, 845999, 3599999, 7380999]) {
+			clock.mockReturnValue(now + ms);
+			vi.advanceTimersByTime(1000);
+		}
+		await execution;
+		expect(updates).toEqual([
+			"(running 0s)",
+			"(running 0s)",
+			"(running 12s)",
+			"(running 59s)",
+			"(running 1m 00s)",
+			"(running 14m 05s)",
+			"(running 59m 59s)",
+			"(running 2h 03m)",
+		]);
+	} finally {
+		clock.mockRestore();
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
+	}
+});

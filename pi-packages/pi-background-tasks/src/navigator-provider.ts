@@ -10,6 +10,7 @@ import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { actionableFailures, failureLabel, readFailureState } from "./shared-failure-observations.js";
 import { failurePath, failureView } from "./failures.js";
+import { formatDuration } from "./format-duration.js";
 import { readLog } from "./logs.js";
 import { listMetasForOrigin, onMetaChanged, readMeta, writeMeta } from "./registry.js";
 import { stopTask } from "./runtime.js";
@@ -108,7 +109,7 @@ function rowFromMeta(meta: BackgroundTaskMeta, now: number): BackgroundWorkRow {
   // Only a failure that needs action replaces the row's command; history stays in the detail view (#332).
   const view = failureView(meta.id);
   const failure = view.actionable ? view.text : "";
-  const elapsed = formatDuration((meta.endedAt ?? now) - meta.startedAt);
+  const elapsed = formatDuration(Math.round(((meta.endedAt ?? now) - meta.startedAt) / 1000) * 1000);
   return {
     providerId: "background-tasks",
     id: meta.id,
@@ -138,14 +139,14 @@ function detailFromMeta(meta: BackgroundTaskMeta | undefined, now: number, optio
   const metadata = [
     { label: "provider", value: "Background Tasks" },
     { label: "kind", value: meta.kind === "command_watch" ? "watch" : "process" },
-    { label: "elapsed", value: formatDuration((meta.endedAt ?? now) - meta.startedAt) },
+    { label: "elapsed", value: formatDuration(Math.round(((meta.endedAt ?? now) - meta.startedAt) / 1000) * 1000) },
     { label: "cwd", value: meta.cwd },
     { label: "pid", value: meta.pid != null ? String(meta.pid) : "-" },
     { label: "pgid", value: meta.pgid != null ? String(meta.pgid) : "-" },
     { label: "log", value: meta.logPath },
   ];
-  if (meta.deadlineAt) metadata.push({ label: "deadline", value: formatDuration(meta.deadlineAt - now) });
-  if (meta.lastCheckedAt) metadata.push({ label: "checked", value: `${formatDuration(now - meta.lastCheckedAt)} ago` });
+  if (meta.deadlineAt) metadata.push({ label: "deadline", value: formatDuration(Math.round((meta.deadlineAt - now) / 1000) * 1000) });
+  if (meta.lastCheckedAt) metadata.push({ label: "checked", value: `${formatDuration(Math.round((now - meta.lastCheckedAt) / 1000) * 1000)} ago` });
   if (meta.status === "running") {
     const stall = observeBackgroundTaskStall(meta, now);
     if (stall.state !== "healthy") metadata.push({ label: "activity", value: stall.state });
@@ -220,8 +221,8 @@ function factsForMeta(meta: BackgroundTaskMeta, now: number): string[] {
     if (stall.state === "stalled") facts.push("stalled");
     else if (stall.state === "quiet") facts.push("quiet");
   }
-  if (meta.kind === "command_watch" && meta.intervalMs) facts.push(`every ${formatDuration(meta.intervalMs)}`);
-  if (meta.deadlineAt && meta.status === "running") facts.push(`${formatDuration(meta.deadlineAt - now)} left`);
+  if (meta.kind === "command_watch" && meta.intervalMs) facts.push(`every ${formatDuration(Math.round(meta.intervalMs / 1000) * 1000)}`);
+  if (meta.deadlineAt && meta.status === "running") facts.push(`${formatDuration(Math.round((meta.deadlineAt - now) / 1000) * 1000)} left`);
   if (meta.result && meta.status !== "running") {
     const reason = typeof meta.result === "object" && meta.result && "reason" in meta.result
       ? String((meta.result as { reason?: unknown }).reason)
@@ -229,17 +230,6 @@ function factsForMeta(meta: BackgroundTaskMeta, now: number): string[] {
     facts.push(reason);
   }
   return facts.slice(0, 2);
-}
-
-function formatDuration(ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  if (minutes < 60) return `${minutes}m ${rest.toString().padStart(2, "0")}s`;
-  const hours = Math.floor(minutes / 60);
-  const min = minutes % 60;
-  return `${hours}h ${min.toString().padStart(2, "0")}m`;
 }
 
 function formatBytes(bytes: number): string {

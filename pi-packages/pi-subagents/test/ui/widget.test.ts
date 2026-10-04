@@ -348,7 +348,7 @@ describe('background widget', () => {
           now: Date.parse('2026-01-01T00:00:10Z'),
           width: 200,
         })?.join('\n'),
-      ).toContain(`elapsed ${9 - index}.0s`);
+      ).toContain(`elapsed ${9 - index}s`);
       expect(tasks).toEqual(before);
     }
     state.handleTerminalInput('\u001b[B');
@@ -451,6 +451,53 @@ describe('background widget', () => {
     expect(next?.[1]).toContain('⠙ worker');
     expect(first?.at(-1)).toBe('  ○ 1 queued');
   });
+  it.each<{ started_at?: string; expected: string }>([
+    { started_at: '2026-01-01T02:03:59.099Z', expected: '0s' },
+    { started_at: '2026-01-01T02:03:47.654Z', expected: '12s' },
+    { started_at: '2026-01-01T02:03:14.999Z', expected: '45s' },
+    { started_at: '2026-01-01T02:03:00.000Z', expected: '59s' },
+    { started_at: '2026-01-01T01:49:54.000Z', expected: '14m 05s' },
+    { started_at: '2026-01-01T00:00:00.000Z', expected: '2h 03m' },
+    { started_at: '2026-01-01T02:03:59.999Z', expected: '0s' },
+    { started_at: '2026-01-01T02:04:00.000Z', expected: '0s' },
+    { started_at: 'invalid', expected: '?' },
+    { expected: '?' },
+  ])('shows widget elapsed $expected for start $started_at', ({
+    started_at,
+    expected,
+  }) => {
+    const task: SubagentTask = {
+      id: 'duration',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'show elapsed',
+      created_at: '2026-01-01T00:00:00.000Z',
+      started_at,
+    };
+    const now = Date.parse('2026-01-01T02:03:59.999Z');
+    const rendered = renderClaudeBackgroundWidgetLines([task], undefined, {
+      width: 200,
+      now,
+    })!.join('\n');
+    expect(rendered).toContain(`⧗ elapsed ${expected}`);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const widget = new ClaudeBackgroundWidget(
+        new ClaudeBackgroundWidgetState(() => [task]),
+        {
+          fg: (color: string, text: string) =>
+            color === 'dim' ? `\x1b[2m${text}\x1b[0m` : text,
+        },
+      );
+      expect(widget.render(200).join('\n')).toContain(
+        `⧗ \x1b[2melapsed\x1b[0m ${expected}`,
+      );
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('shows task-average output speed between context and elapsed, not turns or session usage', () => {
     const task: SubagentTask = {
       id: 'speed',
@@ -480,7 +527,7 @@ describe('background widget', () => {
         width: 200,
         now: Date.parse('2026-01-01T00:00:10Z'),
       })!.join(' ');
-    expect(render()).toContain('context 25.0% · 75 tok/s · ⧗ elapsed 10.0s');
+    expect(render()).toContain('context 25.0% · 75 tok/s · ⧗ elapsed 10s');
     expect(render()).not.toContain('turns');
     for (const metrics of [
       undefined,
@@ -724,8 +771,8 @@ describe('background widget', () => {
     expect(lines).toEqual([
       '● Agents  (↑↓ navigate · ↵ open)',
       '  ╭─ ⠋ worker [openai/gpt-6] · Review the migration',
-      '  │  ⚙ tools 5 · ↑20k ↓10k · $0.1051 · ▣ context 62.0% · ? tok/s',
-      '  │  ⧗ elapsed 12.3s · ≋ 1 compaction',
+      '  │  ⚙ tools 5 · ↑20k ↓10k · $0.1051 · ▣ context 62.0% · ? tok/s · ⧗ elapsed 12s',
+      '  │  ≋ 1 compaction',
       '  ╰⎿ editing…',
     ]);
 

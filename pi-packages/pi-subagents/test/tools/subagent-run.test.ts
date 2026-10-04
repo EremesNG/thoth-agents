@@ -327,7 +327,7 @@ describe('subagent_run tool', () => {
       const runningUpdate = onUpdate.mock.calls.at(-1)![0];
       expect(runningUpdate.details.tasks).toMatchObject([{ status: 'running' }]);
       expect(rendered.at(-1)!.split('\n')[0]).toContain(
-        'subagent · analyst · running · 0ms',
+        'subagent · analyst · running · 0s',
       );
       expect(rendered.at(-1)).not.toContain('⧗ elapsed');
 
@@ -341,14 +341,14 @@ describe('subagent_run tool', () => {
         );
         expect(update.details.tasks).toEqual(runningUpdate.details.tasks);
         expect(rendered[updateCount + index].split('\n')[0]).toContain(
-          `subagent · analyst · running · ${['250ms', '500ms', '750ms', '1.0s'][index]}`,
+          `subagent · analyst · running · ${['0s', '0s', '0s', '1s'][index]}`,
         );
       }
       expect(rendered[updateCount].split('\n')[0]).not.toBe(
         rendered[updateCount - 1].split('\n')[0],
       );
       expect(rendered.at(-1)!.split('\n')[0]).toContain(
-        'subagent · analyst · running · 1.0s',
+        'subagent · analyst · running · 1s',
       );
       expect(rendered.at(-1)).not.toContain('⧗ elapsed');
 

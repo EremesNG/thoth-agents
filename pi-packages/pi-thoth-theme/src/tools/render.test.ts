@@ -278,6 +278,84 @@ describe('Built-in tool renderers', () => {
     });
   });
 
+  describe.each([
+    ['bash', createCustomBashTool],
+    ['powershell', createCustomPowerShellTool],
+  ] as const)('%s elapsed footers', (_name, createShellTool) => {
+    it.each([
+      [0, '0s', '0s'],
+      [-1, '0s', '0s'],
+      [Number.NaN, '0s', '0s'],
+      [Infinity, '0s', '0s'],
+      [999.9, '0s', '999ms'],
+      [12345, '12s', '12.3s'],
+      [45000, '45s', '45s'],
+      [845999.9, '14m 05s', '14m 05s'],
+      [7439999.9, '2h 03m', '2h 03m'],
+    ])('formats %s ms as %s live and %s completed without overflowing', (ms, live, completed) => {
+      const tool = createShellTool(cwd, createConfig('nerd'));
+      const theme = createAnsiTheme();
+      const context = {
+        ...baseContext,
+        isPartial: true,
+        state: { completedElapsedMs: ms },
+      };
+      const call = tool.renderCall({ command: 'echo ok' }, theme, context);
+      expect(stripTerminalSequences(call.render(80).at(-1) ?? '')).toContain(
+        ` running… · ${live} `,
+      );
+      for (const width of [0, 1, 2, 5, 10, 20, 80]) {
+        for (const line of call.render(width)) {
+          expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+        }
+      }
+
+      const partial = tool.renderResult(
+        textResult('ok'),
+        resultOpts(false, true),
+        theme,
+        context,
+      );
+      expect(stripTerminalSequences(partial.render(80).at(-1) ?? '')).toContain(
+        ` running… · ${live} · 1 line · ~1 words `,
+      );
+
+      const result = tool.renderResult(
+        textResult('ok'),
+        resultOpts(),
+        theme,
+        context,
+      );
+      expect(stripTerminalSequences(result.render(80).at(-1) ?? '')).toContain(
+        ` Exit 0 · ${completed} · 1 line · ~1 words `,
+      );
+      for (const width of [0, 1, 2, 5, 10, 20, 80]) {
+        for (const line of result.render(width)) {
+          expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+        }
+      }
+    });
+
+    it('omits elapsed when timing is unavailable', () => {
+      const tool = createShellTool(cwd, createConfig('nerd'));
+      const theme = createAnsiTheme();
+      const context = { ...baseContext, isPartial: true, state: undefined };
+      const call = tool.renderCall({ command: 'echo ok' }, theme, context);
+      const callFooter = stripTerminalSequences(call.render(80).at(-1) ?? '');
+      expect(callFooter).toContain(' running… ');
+      expect(callFooter).not.toContain(' · ');
+      const result = tool.renderResult(
+        textResult('ok'),
+        resultOpts(),
+        theme,
+        context,
+      );
+      expect(stripTerminalSequences(result.render(80).at(-1) ?? '')).toContain(
+        ' Exit 0 · 1 line · ~1 words ',
+      );
+    });
+  });
+
   describe('bash tool', () => {
     it('renders call in nerd and ascii modes', () => {
       const bashNerd = createCustomBashTool(cwd, createConfig('nerd'));

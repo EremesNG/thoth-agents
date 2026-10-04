@@ -331,7 +331,7 @@ describe('input-box editor composition', () => {
     expect(editor.getText()).toBe('abc');
     proxy.focused = true;
     const lines = proxy.render(40);
-    expect(lines[0]).toMatch(/^╭─ ☥ thoth · ready /);
+    expect(lines[0]).toMatch(/^╭─ ▲ ready /);
     expect(lines[1]).toContain(`│abc${CURSOR_MARKER}\x1b[7m \x1b[0m`);
     expect(lines[2]).toMatch(/^╰─+╯$/);
     expect(lines.map(visibleWidth)).toEqual([40, 40, 40]);

@@ -32,7 +32,7 @@ export function createWorkingState(requestRender: () => void) {
         !('renderInBorder' in indicator) ||
         typeof indicator.renderInBorder !== 'function'
       ) {
-        return truncateToWidth('☥ thoth · ready', width, '');
+        return truncateToWidth('▲ ready', width, '');
       }
       const working = 'kind' in indicator && indicator.kind === 'working';
       const elapsed =
@@ -42,7 +42,7 @@ export function createWorkingState(requestRender: () => void) {
       const nativeWidth = Math.max(1, width - visibleWidth(elapsed));
       const native = indicator.renderInBorder(nativeWidth);
       if (typeof native !== 'string' || visibleWidth(native) === 0) {
-        return truncateToWidth('☥ thoth · ready', width, '');
+        return truncateToWidth('▲ ready', width, '');
       }
       return truncateToWidth(
         `${truncateToWidth(native, nativeWidth, '')}${elapsed}`,

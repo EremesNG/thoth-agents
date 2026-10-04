@@ -187,14 +187,26 @@ fallback; do not emulate another runtime.
 
 When `enable_ask_orchestrator` is true (default), every Pi child receives
 `ask_orchestrator` regardless of `tools` selection, unless its `disallowed_tools`
-denies it. Thoth Oracle denies it to preserve independent judgment; all five
-specialists deny `ask_user_question`, `todo` and known third-party delegation tools
-by default. `disallowed_tools` accepts a comma-separated string or YAML list of
-exact names; absence or explicit empty means no denial, malformed values fail
-closed, and uninstalled denied names are inert. Synchronization preserves valid
-operator values, including intentional empty values, otherwise uses package
-defaults; malformed definitions stay unchanged with diagnostics. Role behavior
-limits remain instruction-level. Use concise `kind: "question"` messages only
+denies it. All five specialists default to explicit exact-name `tools` lists:
+`read, bash, grep, find, ls` for Explorer and Oracle; Designer and Worker add
+`edit, write` before the search tools; Librarian adds its research tools. These
+lists omit `ask_user_question`, `todo` and third-party delegation tools. Only
+Oracle declares `disallowed_tools`, denying `ask_orchestrator` to preserve
+independent judgment.
+
+Globs, including `*`, are manual advanced selections over all registered root
+tools (active and inactive), minus native `subagent_*` exclusions and the
+role's `disallowed_tools`. `/subagents-tools` edits registered exact names only,
+shows a child-provided `ask_orchestrator` note, and preserves globs and
+unrecognized names read-only, even through defaults reset or partial-save retry.
+Edit `disallowed_tools` manually for injected tools absent from the panel and to
+trim glob results (for example, denying root interaction/progress tools when
+using `*`). It accepts a comma-separated string or YAML list of exact names;
+absence or explicit empty means no denial, malformed values fail closed, and
+uninstalled denied names are inert. Synchronization preserves operator `tools`
+(including globs and `*`) and valid operator denials, including intentional empty
+values; otherwise it uses package values. Malformed definitions stay unchanged
+with diagnostics. Role behavior limits remain instruction-level. Use concise `kind: "question"` messages only
 for material alignment or clarification ambiguity blocking the assignment, never
 instead of own discovery, to delegate, or to request other agents. The question
 waits for root's reply in the same live child session. Optional brief

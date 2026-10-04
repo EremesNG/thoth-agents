@@ -87,7 +87,9 @@ describe('Pi specialist synchronization', () => {
     expect(readFileSync(worker, 'utf8')).toContain('subagent_mode: "task"');
     expect(readFileSync(worker, 'utf8')).toContain('model: custom/model');
     expect(readFileSync(worker, 'utf8')).toContain('effort: max');
-    expect(readFileSync(explorer, 'utf8')).toContain('tools: "read, bash"');
+    expect(readFileSync(explorer, 'utf8')).toContain(
+      'tools: "read, bash, grep, find, ls"',
+    );
     expect(readFileSync(explorer, 'utf8')).toContain(
       'subagent_mode: "background"',
     );
@@ -151,8 +153,23 @@ describe('Pi specialist synchronization', () => {
     expect(readFileSync(target, 'utf8')).toBe(original);
   });
 
-  test('preserves the standalone * selector through specialist synchronization', () => {
-    const selector = '*';
+  test.each([
+    { role: 'worker' as const, tools: ['*'], disallowedTools: [] },
+    {
+      role: 'worker' as const,
+      tools: ['read', '*', 'agent_browser_*', 'retired_tool'],
+      disallowedTools: [],
+    },
+    {
+      role: 'oracle' as const,
+      tools: ['agent_browser_*', 'read'],
+      disallowedTools: ['ask_orchestrator'],
+    },
+  ])('retains operator tools $tools and applies the package denial for $role', ({
+    role,
+    tools,
+    disallowedTools,
+  }) => {
     const options = fixture();
     for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
       .artifacts) {
@@ -161,28 +178,28 @@ describe('Pi specialist synchronization', () => {
         String(artifact.content),
       );
     }
-    const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+    const target = join(options.piRoot, 'agents', `thoth-${role}.md`);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(
       target,
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\n---\nOld worker instructions.\n',
+      `---\nname: thoth-${role}\nmanaged-by: thoth-agents\nmodel: custom/model\n---\nOld instructions.\n`,
     );
 
-    const save = savePiToolConfig(
-      readPiToolConfig(options.piRoot, ['worker']),
-      [{ role: 'worker', tools: [selector] }],
-    );
+    const save = savePiToolConfig(readPiToolConfig(options.piRoot, [role]), [
+      { role, tools },
+    ]);
     expect(save.success).toBe(true);
 
     const synchronized = syncPiSpecialists(options);
     expect(synchronized.success).toBe(true);
     expect(synchronized.changed).toContain(target);
     expect(readFileSync(target, 'utf8')).toContain(
-      `tools: ${JSON.stringify(selector)}`,
+      `tools: ${JSON.stringify(tools.join(', '))}`,
     );
-    expect(
-      readPiToolConfig(options.piRoot, ['worker']).roles[0]?.tools,
-    ).toEqual([selector]);
+    expect(readPiToolConfig(options.piRoot, [role]).roles[0]).toMatchObject({
+      tools,
+      disallowedTools,
+    });
     expect(syncPiSpecialists(options).changed).toEqual([]);
   });
 
@@ -209,18 +226,18 @@ describe('Pi specialist synchronization', () => {
 
     expect(result.success).toBe(true);
     expect(result.changed).not.toContain(target);
-    expect(result.diagnostics.join('\n')).toMatch(/worker.*@active.*\*/);
+    expect(result.diagnostics.join('\n')).toMatch(/worker.*@active.*exact/i);
     expect(readFileSync(target, 'utf8')).toBe(original);
     expect(() => readPiToolConfig(options.piRoot, ['worker'])).toThrow(
-      /@active.*\*/,
+      /@active.*exact/i,
     );
     const repeat = syncPiSpecialists(options);
     expect(repeat.changed).toEqual([]);
-    expect(repeat.diagnostics.join('\n')).toMatch(/worker.*@active.*\*/);
+    expect(repeat.diagnostics.join('\n')).toMatch(/worker.*@active.*exact/i);
     expect(readFileSync(target, 'utf8')).toBe(original);
   });
 
-  test('leaves malformed and unsupported wildcard tool overrides unchanged with diagnostics', () => {
+  test('leaves malformed tool and mode overrides unchanged with diagnostics', () => {
     const options = fixture();
     for (const artifact of piAdapter.render({ projectRoot: process.cwd() })
       .artifacts) {
@@ -233,7 +250,7 @@ describe('Pi specialist synchronization', () => {
     const badMode = join(options.piRoot, 'agents', 'thoth-explorer.md');
     mkdirSync(dirname(target), { recursive: true });
     const legacy =
-      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\ntools: "read*"\nsubagent_mode: task\n---\nKeep this exact file.\n';
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\nmodel: custom/model\ntools: "read,"\nsubagent_mode: task\n---\nKeep this exact file.\n';
     const malformed =
       '---\nname: thoth-explorer\nmanaged-by: thoth-agents\nsubagent_mode: unsupported\n---\nKeep this file too.\n';
     writeFileSync(target, legacy);
@@ -241,9 +258,7 @@ describe('Pi specialist synchronization', () => {
 
     const result = syncPiSpecialists(options);
     expect(result.error).toBeUndefined();
-    expect(result.diagnostics.join(' ')).toMatch(
-      /worker.*wildcard|wildcard.*worker/i,
-    );
+    expect(result.diagnostics.join(' ')).toMatch(/worker.*invalid.*tool/i);
     expect(result.diagnostics.join(' ')).toMatch(
       /explorer.*subagent_mode|subagent_mode.*explorer/i,
     );

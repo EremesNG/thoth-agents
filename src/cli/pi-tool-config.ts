@@ -204,32 +204,24 @@ function sourceRange(node: unknown, source: string): [number, number] {
 
 export function validatePiSpecialistTools(tools: readonly string[]): void {
   if (!Array.isArray(tools) || tools.length === 0)
-    throw new Error('Select at least one explicit Pi tool.');
+    throw new Error('Select at least one Pi tool name or glob.');
 
   if (tools.includes('@active'))
     throw new Error(
-      'Pi tool selector @active is no longer supported; use standalone "*" instead.',
+      'Pi tool selector @active is no longer supported; select exact tool names instead.',
     );
-
-  if (tools.includes('*')) {
-    if (tools.length !== 1)
-      throw new Error('Pi tool selectors must be selected alone.');
-    return;
-  }
 
   const seen = new Set<string>();
   for (const tool of tools) {
-    if (typeof tool === 'string' && /[*?[\]{}]/.test(tool))
-      throw new Error(`Pi tool wildcards are not supported: ${tool}.`);
     if (
       typeof tool !== 'string' ||
       !tool ||
       tool.trim() !== tool ||
       /[\s,]/.test(tool)
     )
-      throw new Error(`Invalid explicit Pi tool name: ${String(tool)}.`);
+      throw new Error(`Invalid Pi tool name or glob: ${String(tool)}.`);
     const normalized = tool.toLowerCase();
-    if (normalized.startsWith('subagent_'))
+    if (!/[*?[\]{}]/.test(tool) && normalized.startsWith('subagent_'))
       throw new Error(`Pi delegation tool names are not allowed: ${tool}.`);
     if (seen.has(tool)) throw new Error(`Duplicate Pi tool name: ${tool}.`);
     seen.add(tool);

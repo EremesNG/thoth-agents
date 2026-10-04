@@ -243,6 +243,16 @@ describe('prompt dialects', () => {
       'Oracle denies `ask_orchestrator`',
     );
     expect(backgroundWaitInstruction).toContain(
+      'Explicit exact-name `tools` lists are the default',
+    );
+    expect(backgroundWaitInstruction).toContain(
+      'all registered root tools (active and inactive)',
+    );
+    expect(backgroundWaitInstruction).toContain('including `*`');
+    expect(backgroundWaitInstruction).toContain(
+      'edit `disallowed_tools` manually',
+    );
+    expect(backgroundWaitInstruction).toContain(
       'A task-mode child that asks a question is moved to background',
     );
     expect(backgroundWaitInstruction).toContain(

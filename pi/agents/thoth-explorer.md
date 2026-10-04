@@ -1,8 +1,7 @@
 ---
 name: thoth-explorer
 description: "Resolve broad or uncertain repository questions and return distilled evidence. Use when: Local source, effective flow, responsibility, repository ownership, or behavior is unknown or uncertain. Do not use when: Not for implementation, edits, or known narrow questions. Escalate when: Send external evidence to librarian and mutation scope to root. Mutation: read-only; never mutate the workspace. Verification: reports inspected paths, confidence, and remaining gaps Return: conclusion, evidence, verification, risks, openQuestions."
-tools: "read, bash"
-disallowed_tools: "ask_user_question, todo, AskClaude, AskAntigravity, bg_delegate, bg_run_pi_attested, bg_result, fusion_reason, fusion_investigate, fusion_research, fusion_validate"
+tools: "read, bash, grep, find, ls"
 model: "openai-codex/gpt-6-luna"
 effort: "low"
 subagent_mode: "background"

@@ -5,7 +5,6 @@ import {
   type PiToolSaveResult,
   validatePiSpecialistTools,
 } from '../cli/pi-tool-config';
-import type { PiSpecialistRole } from '../harness/pi-specialists';
 
 export type ToolsPanelResult =
   | { kind: 'cancelled' }
@@ -61,7 +60,7 @@ export interface ToolsPanelState {
   changedRoles: string[];
 }
 
-export type ToolItemStatus = 'active' | 'inactive' | 'unavailable';
+export type ToolItemStatus = 'active' | 'inactive';
 
 export interface ToolListItem {
   name: string;
@@ -78,17 +77,11 @@ const FALLBACK_KEYS: Record<ToolsPanelKey, readonly string[]> = {
   space: [' '],
 };
 
-// Native subagent_* exclusions are handled by isEligibleTool for every selection.
-export const DYNAMIC_DELEGATION_TOOLS: ReadonlySet<string> = new Set();
-const DYNAMIC_DESCRIPTION =
-  'Dynamic *: tools currently active in the root session plus child-provided ask_orchestrator.';
-const DYNAMIC_EXCLUSIONS =
-  "Excludes subagent_* and this role's disallowed_tools.";
-const ORCHESTRATOR_DESCRIPTION =
-  'child-provided; subject to enable_ask_orchestrator and disallowed_tools.';
+const ORCHESTRATOR_NOTE =
+  'ask_orchestrator: child-provided; subject to enable_ask_orchestrator and disallowed_tools.';
 
 export function isEligibleTool(name: string): boolean {
-  if (name === '*') return false;
+  if (/[*?[\]{}]/.test(name)) return false;
   try {
     validatePiSpecialistTools([name]);
     return true;
@@ -130,25 +123,30 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   let selectedToolIndex = 0;
   let failedSave = false;
 
-  const discoveredTools = options.discoveredTools.map((tool) =>
-    tool.name === 'ask_orchestrator'
-      ? { ...tool, active: true, description: ORCHESTRATOR_DESCRIPTION }
-      : tool,
-  );
-  if (!discoveredTools.some((tool) => tool.name === 'ask_orchestrator'))
-    discoveredTools.push({
-      name: 'ask_orchestrator',
-      active: true,
-      description: ORCHESTRATOR_DESCRIPTION,
+  const toolItems: ToolListItem[] = [];
+  const editableNames = new Set<string>();
+  for (const tool of options.discoveredTools) {
+    if (
+      tool.name === 'ask_orchestrator' ||
+      !isEligibleTool(tool.name) ||
+      editableNames.has(tool.name)
+    )
+      continue;
+    editableNames.add(tool.name);
+    toolItems.push({
+      name: tool.name,
+      description: tool.description,
+      status: tool.active ? 'active' : 'inactive',
     });
-  const initialUnavailable = new Map<PiSpecialistRole, string[]>();
-  const discoveredNames = new Set(discoveredTools.map((tool) => tool.name));
-  for (const role of options.snapshot.roles) {
-    const unavail = [...new Set([...role.tools, ...role.defaultTools])].filter(
-      (name) => !discoveredNames.has(name) && isEligibleTool(name),
-    );
-    initialUnavailable.set(role.role, unavail);
   }
+  const readOnlyTools = (role: RoleToolsDraft): string[] =>
+    role.tools.filter((name) => !editableNames.has(name));
+  const readOnlyLine = (role: RoleToolsDraft): string[] => {
+    const names = readOnlyTools(role);
+    return names.length
+      ? [`Read-only: ${names.join(', ')} (edit manually in the definition)`]
+      : [];
+  };
 
   const isKey = (data: string, key: ToolsPanelKey): boolean =>
     (key === 'escape' && data === '\x03') ||
@@ -162,60 +160,11 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       return !original || !sameTools(role.tools, original.tools);
     });
 
-  const getToolItemsForRole = (role: RoleToolsDraft): ToolListItem[] => {
-    const items: ToolListItem[] = [];
-    const seen = new Set<string>();
-
-    for (const tool of discoveredTools) {
-      if (!isEligibleTool(tool.name)) continue;
-      if (seen.has(tool.name)) continue;
-      seen.add(tool.name);
-      items.push({
-        name: tool.name,
-        description: tool.description,
-        status: tool.active ? 'active' : 'inactive',
-      });
-    }
-
-    const unavail = initialUnavailable.get(role.role) ?? [];
-    for (const name of unavail) {
-      if (!seen.has(name)) {
-        seen.add(name);
-        items.push({
-          name,
-          status: 'unavailable',
-        });
-      }
-    }
-
-    return items;
-  };
-
-  const selectorForRole = (role: RoleToolsDraft): '*' | undefined =>
-    role.tools.length === 1 && role.tools[0] === '*' ? '*' : undefined;
-
-  const visibleSelectedTools = (role: RoleToolsDraft): string[] => {
-    if (!selectorForRole(role)) return role.tools;
-    return getToolItemsForRole(role)
-      .filter(
-        (item) =>
-          item.status === 'active' &&
-          !DYNAMIC_DELEGATION_TOOLS.has(item.name) &&
-          !role.disallowedTools.includes(item.name),
-      )
-      .map((item) => item.name);
-  };
-
   const selectionLabel = (role: RoleToolsDraft): string =>
-    selectorForRole(role)
-      ? 'active (dynamic)'
-      : `${role.tools.length} selected`;
+    `${role.tools.length} selected`;
 
-  const selectionSummary = (role: RoleToolsDraft): string => {
-    const selector = selectorForRole(role);
-    if (selector) return selectionLabel(role);
-    return role.tools.join(', ') || '(none)';
-  };
+  const selectionSummary = (role: RoleToolsDraft): string =>
+    role.tools.join(', ') || '(none)';
 
   const save = (): void => {
     if (!dirty() && !failedSave) {
@@ -242,22 +191,17 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     selectedToolIndex = 0;
   };
 
-  const selectActiveForRole = (role: RoleToolsDraft): void => {
-    role.tools = ['*'];
-  };
-
   const restoreDefaultsForRole = (role: RoleToolsDraft): void => {
-    role.tools = [...role.defaultTools];
+    role.tools = [...new Set([...role.defaultTools, ...readOnlyTools(role)])];
   };
 
   const toggleCurrentTool = (): void => {
     const role = state.draft[state.selectedRole];
     if (!role) return;
-    const items = getToolItemsForRole(role);
-    const item = items[selectedToolIndex];
+    const item = toolItems[selectedToolIndex];
     if (!item) return;
 
-    const currentTools = visibleSelectedTools(role);
+    const currentTools = role.tools;
     if (currentTools.includes(item.name)) {
       role.tools = currentTools.filter((t) => t !== item.name);
     } else {
@@ -284,9 +228,6 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       else options.onDone({ kind: 'cancelled' });
     } else if (data.toLowerCase() === 's') {
       save();
-    } else if (data === '*') {
-      const role = state.draft[state.selectedRole];
-      if (role) selectActiveForRole(role);
     } else if (data.toLowerCase() === 'r') {
       const role = state.draft[state.selectedRole];
       if (role) restoreDefaultsForRole(role);
@@ -296,7 +237,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   const handleTools = (data: string): void => {
     const role = state.draft[state.selectedRole];
     if (!role) return;
-    const items = getToolItemsForRole(role);
+    const items = toolItems;
 
     if (isKey(data, 'up') || data === 'k') {
       if (items.length > 0) {
@@ -313,8 +254,6 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       selectedToolIndex = Math.max(0, items.length - 1);
     } else if (isKey(data, 'space') || data === ' ') {
       toggleCurrentTool();
-    } else if (data === '*') {
-      selectActiveForRole(role);
     } else if (data.toLowerCase() === 'r') {
       restoreDefaultsForRole(role);
     } else if (isKey(data, 'enter') || isKey(data, 'escape') || data === 'q') {
@@ -383,7 +322,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     }).length;
     const lines = [
       `target: global specialist definitions · ${dirtyCount ? `pending: ${dirtyCount} change${dirtyCount === 1 ? '' : 's'}` : 'pending: none'}`,
-      '↑/↓/j/k move · enter/e edit · * active tools · r defaults · s save · esc/q cancel',
+      '↑/↓/j/k move · enter/e edit · r defaults · s save · esc/q cancel',
       '',
     ];
 
@@ -402,10 +341,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         const original = baseline.roles.find((item) => item.role === role.role);
         return original && sameTools(role.tools, original.tools) ? '' : ' *';
       })();
-      const selector = selectorForRole(role);
-      const toolSummary = selector
-        ? 'currently active root tools'
-        : selectionSummary(role);
+      const toolSummary = selectionSummary(role);
       const countLabel = selectionLabel(role);
       const name = `${role.role}${changed}`;
       choices.push(
@@ -426,7 +362,8 @@ export function createToolsPanel(options: ToolsPanelOptions) {
       'Native settings or project definitions may override these global definitions.',
     );
     lines.push('Child specialists do not inherit root tools automatically.');
-    lines.push(DYNAMIC_DESCRIPTION, DYNAMIC_EXCLUSIONS);
+    lines.push(ORCHESTRATOR_NOTE);
+    if (selected) lines.push(...readOnlyLine(selected));
     if (state.error) lines.push(`Save failed: ${state.error}`);
     if (state.changedRoles.length > 0)
       lines.push(`Already changed: ${state.changedRoles.join(', ')}`);
@@ -436,19 +373,14 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   const toolLines = (height: number): string[] => {
     const role = state.draft[state.selectedRole];
     if (!role) return [];
-    const items = getToolItemsForRole(role);
-    const selectedSet = new Set(visibleSelectedTools(role));
+    const items = toolItems;
+    const selectedSet = new Set(role.tools);
 
     const choices = items.map((item, index) => {
       const isCursor = index === selectedToolIndex;
       const marker = isCursor ? '›' : ' ';
       const checked = selectedSet.has(item.name) ? '[x]' : '[ ]';
-      const badge =
-        item.status === 'inactive'
-          ? ' (inactive)'
-          : item.status === 'unavailable'
-            ? ' (unavailable)'
-            : '';
+      const badge = item.status === 'inactive' ? ' (inactive)' : '';
       const desc = item.description ? ` · ${item.description}` : '';
       return `${marker} ${checked} ${item.name}${badge}${desc}`;
     });
@@ -463,9 +395,9 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     );
     const lines = [
       `row: ${role.role} · ${selectionLabel(role)}`,
-      '↑/↓/j/k move · space toggle · * active tools · r defaults · enter/esc/q back',
-      DYNAMIC_DESCRIPTION,
-      DYNAMIC_EXCLUSIONS,
+      '↑/↓/j/k move · space toggle · r defaults · enter/esc/q back',
+      ORCHESTRATOR_NOTE,
+      ...readOnlyLine(role),
       '',
       ...choices.slice(start, start + pageSize),
     ];
@@ -534,8 +466,8 @@ export function createToolsPanel(options: ToolsPanelOptions) {
         line.startsWith('Ambient root') ||
         line.startsWith('Native settings') ||
         line.startsWith('Child specialists') ||
-        line.startsWith('Dynamic *:') ||
-        line.startsWith('Excludes ') ||
+        line.startsWith('ask_orchestrator:') ||
+        line.startsWith('Read-only:') ||
         line.startsWith('  Showing')
       )
         content = fg('muted', content);

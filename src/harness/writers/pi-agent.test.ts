@@ -18,12 +18,15 @@ describe('Pi agent writer', () => {
     expect(
       roles.map((role) => [role, getPiSpecialistDefaultTools(role)]),
     ).toEqual([
-      ['explorer', ['read', 'bash']],
+      ['explorer', ['read', 'bash', 'grep', 'find', 'ls']],
       [
         'librarian',
         [
           'read',
           'bash',
+          'grep',
+          'find',
+          'ls',
           'resolve-library-id',
           'query-docs',
           'mcp',
@@ -33,9 +36,9 @@ describe('Pi agent writer', () => {
           'source_check',
         ],
       ],
-      ['oracle', ['read', 'bash']],
-      ['designer', ['read', 'bash', 'edit', 'write']],
-      ['worker', ['read', 'bash', 'edit', 'write']],
+      ['oracle', ['read', 'bash', 'grep', 'find', 'ls']],
+      ['designer', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
+      ['worker', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
     ]);
   });
 
@@ -60,27 +63,22 @@ describe('Pi agent writer', () => {
       agents.some((artifact) => artifact.path.includes('orchestrator')),
     ).toBe(false);
     const expectedTools: Record<string, string> = {
-      'agents/thoth-explorer.md': 'read, bash',
+      'agents/thoth-explorer.md': 'read, bash, grep, find, ls',
       'agents/thoth-librarian.md':
-        'read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
-      'agents/thoth-oracle.md': 'read, bash',
-      'agents/thoth-designer.md': 'read, bash, edit, write',
-      'agents/thoth-worker.md': 'read, bash, edit, write',
+        'read, bash, grep, find, ls, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
+      'agents/thoth-oracle.md': 'read, bash, grep, find, ls',
+      'agents/thoth-designer.md': 'read, bash, edit, write, grep, find, ls',
+      'agents/thoth-worker.md': 'read, bash, edit, write, grep, find, ls',
     };
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');
       expect(artifact.content.match(/^tools: (.+)$/m)?.[1]).toBe(
         JSON.stringify(expectedTools[artifact.path]),
       );
-      const commonDenials =
-        'ask_user_question, todo, AskClaude, AskAntigravity, bg_delegate, bg_run_pi_attested, bg_result, fusion_reason, fusion_investigate, fusion_research, fusion_validate';
       expect(artifact.content.match(/^disallowed_tools: (.+)$/m)?.[1]).toBe(
-        JSON.stringify(
-          commonDenials +
-            (artifact.path === 'agents/thoth-oracle.md'
-              ? ', ask_orchestrator'
-              : ''),
-        ),
+        artifact.path === 'agents/thoth-oracle.md'
+          ? '"ask_orchestrator"'
+          : undefined,
       );
       expect(artifact.content).toMatch(/^effort: "(?:low|medium|high|max)"$/m);
       expect(artifact.content).toContain('subagent_mode: "background"');

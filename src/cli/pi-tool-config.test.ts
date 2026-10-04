@@ -68,12 +68,15 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
   expect(
     snapshot.roles.map(({ role, defaultTools }) => [role, defaultTools]),
   ).toEqual([
-    ['explorer', ['read', 'bash']],
+    ['explorer', ['read', 'bash', 'grep', 'find', 'ls']],
     [
       'librarian',
       [
         'read',
         'bash',
+        'grep',
+        'find',
+        'ls',
         'resolve-library-id',
         'query-docs',
         'mcp',
@@ -83,9 +86,9 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
         'source_check',
       ],
     ],
-    ['oracle', ['read', 'bash']],
-    ['designer', ['read', 'bash', 'edit', 'write']],
-    ['worker', ['read', 'bash', 'edit', 'write']],
+    ['oracle', ['read', 'bash', 'grep', 'find', 'ls']],
+    ['designer', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
+    ['worker', ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']],
   ]);
   expect(snapshot.roles.find(({ role }) => role === 'explorer')).toMatchObject({
     tools: ['read', 'bash'],
@@ -273,7 +276,7 @@ test('replaces the complete multiline tools list across column-zero comments', (
   ).toMatchObject({ tools: ['lookup_docs'] });
 });
 
-test('rejects empty, duplicate, mixed selector, unsupported pattern, and native delegation names without writing', () => {
+test('rejects empty, duplicate, removed control, and native delegation names without writing', () => {
   const piRoot = fixture();
   const snapshot = readPiToolConfig(piRoot);
   for (const tools of [
@@ -281,12 +284,9 @@ test('rejects empty, duplicate, mixed selector, unsupported pattern, and native 
     [''],
     ['   '],
     ['read', 'read'],
-    ['read', '*'],
     ['read', '@active'],
     ['*', '@active'],
     ['@active', '@active'],
-    ['read*'],
-    ['@act*'],
     ['subagent_run'],
   ]) {
     expect(() => validatePiSpecialistTools(tools)).toThrow();
@@ -299,24 +299,36 @@ test('rejects empty, duplicate, mixed selector, unsupported pattern, and native 
   ).not.toContain('tools:');
 });
 
-test('saves and reloads the standalone * selector as a quoted YAML scalar', () => {
-  const selector = '*';
+test.each([
+  { tools: ['*'] },
+  {
+    tools: [
+      'read',
+      '*',
+      'agent_browser_*',
+      'tool?',
+      'tool[12]',
+      'tool{one}',
+      'retired_extension',
+    ],
+  },
+])('saves and reloads manual globs alongside exact names: $tools', ({
+  tools,
+}) => {
   const piRoot = fixture();
   const snapshot = readPiToolConfig(piRoot, ['worker']);
 
-  const result = savePiToolConfig(snapshot, [
-    { role: 'worker', tools: [selector] },
-  ]);
+  const result = savePiToolConfig(snapshot, [{ role: 'worker', tools }]);
 
   expect(result.success).toBe(true);
   expect(result.changedRoles).toEqual(['worker']);
   expect(
     readFileSync(join(piRoot, 'agents', 'thoth-worker.md'), 'utf8'),
-  ).toContain(`tools: ${JSON.stringify(selector)}`);
+  ).toContain(`tools: ${JSON.stringify(tools.join(', '))}`);
   const reloaded = readPiToolConfig(piRoot);
-  expect(reloaded.roles.find(({ role }) => role === 'worker')?.tools).toEqual([
-    selector,
-  ]);
+  expect(reloaded.roles.find(({ role }) => role === 'worker')?.tools).toEqual(
+    tools,
+  );
   for (const role of reloaded.roles.filter(({ role }) => role !== 'worker'))
     expect(role.tools).toEqual(role.defaultTools);
 });
@@ -331,7 +343,7 @@ test.each([
   const piRoot = fixture();
   const snapshot = readPiToolConfig(piRoot);
 
-  expect(() => validatePiSpecialistTools(tools)).toThrow(/@active.*\*/);
+  expect(() => validatePiSpecialistTools(tools)).toThrow(/@active.*exact/i);
   const result = savePiToolConfig(snapshot, [
     { role: 'explorer', tools: ['new_tool'] },
     { role: 'worker', tools },
@@ -340,7 +352,7 @@ test.each([
   expect(result).toMatchObject({
     success: false,
     changedRoles: [],
-    error: expect.stringMatching(/@active.*\*/),
+    error: expect.stringMatching(/@active.*exact/i),
   });
   expect(result.snapshot).toEqual(snapshot);
   for (const role of PI_SPECIALIST_ROLES)
@@ -355,9 +367,9 @@ test('rejects malformed and duplicate saved fields rather than guessing', () => 
   const original = readFileSync(target, 'utf8');
   writeFileSync(
     target,
-    `${original.replace('---\nInstructions', 'tools: "read*"\n---\nInstructions')}`,
+    original.replace('---\nInstructions', 'tools: "read,"\n---\nInstructions'),
   );
-  expect(() => readPiToolConfig(piRoot)).toThrow(/wildcard/i);
+  expect(() => readPiToolConfig(piRoot)).toThrow(/invalid.*tool/i);
   writeFileSync(
     target,
     original.replace(

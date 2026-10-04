@@ -108,7 +108,7 @@ describe('Pi adapter', () => {
     );
     expect(root).toContain('actual tool name and schema');
     expect(root).toContain('lightweight written progress');
-    expect(root).toContain('deny `ask_user_question`, `todo`');
+    expect(root).toContain('omit `ask_user_question`, `todo`');
     expect(root).not.toContain('rpiv-todo');
     expect(root).toContain('ask_user_question');
     expect(root).toContain('one to four questions');
@@ -167,6 +167,17 @@ describe('Pi adapter', () => {
         'without recommending fixes, designs, defaults, or next actions',
       );
     }
+  });
+
+  test('defaults to explicit lists and documents manual registered-tool globs and denials', () => {
+    const root = renderPiRootInstructions();
+    expect(root).toContain('Explicit exact-name `tools` lists are the default');
+    expect(root).toContain('all registered root tools (active and inactive)');
+    expect(root).toContain('including `*`');
+    expect(root).toContain('edit `disallowed_tools` manually');
+    expect(root).toContain('injected tools and trimming glob results');
+    expect(root).not.toContain('standalone `*`');
+    expect(root).not.toContain('Thoth definitions deny');
   });
 
   test('keeps Oracle independent of the ask_orchestrator channel', () => {
@@ -245,7 +256,9 @@ describe('Pi adapter', () => {
     expect(runtime).toContain('`enable_ask_orchestrator` (default true)');
     expect(runtime).toContain('regardless of `tools` selection');
     expect(runtime).toContain('unless denied by `disallowed_tools`');
-    expect(runtime).toContain('Oracle additionally denies `ask_orchestrator`');
+    expect(runtime).toContain(
+      'Only Oracle declares `disallowed_tools`, denying `ask_orchestrator`',
+    );
     expect(runtime).toContain('runtime-verified registry filtering');
     expect(runtime).toContain('native `subagent_*` exclusions');
     expect(runtime).toContain('`kind: "progress"` returns immediately');

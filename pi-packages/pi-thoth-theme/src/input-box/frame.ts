@@ -1,5 +1,6 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import type { ActiveThemeLike } from '../status-line/layout.ts';
+import { type CometFrame, colorCometBorder } from './gradient.ts';
 
 function accent(theme: ActiveThemeLike, text: string): string {
   return theme.fg?.('accent', text) ?? text;
@@ -18,11 +19,19 @@ function renderBorder(
   left: string,
   right: string,
   overflow: string,
+  frame?: CometFrame,
+  row = 0,
 ): string {
   width = Math.max(0, Math.floor(width));
+  const border = (text: string, column: number) =>
+    frame
+      ? colorCometBorder(text, column, row, frame, (text) =>
+          accent(theme, text),
+        )
+      : accent(theme, text);
   if (width <= 5 || (!label && !overflow)) {
     return truncateToWidth(
-      accent(theme, `${left}${'─'.repeat(Math.max(0, width - 2))}${right}`),
+      border(`${left}${'─'.repeat(Math.max(0, width - 2))}${right}`, 0),
       width,
       '',
     );
@@ -30,14 +39,19 @@ function renderBorder(
   const labelWidth = width - 6;
   if (overflow) {
     const statusWidth = labelWidth - visibleWidth(overflow) - 3;
-    label =
-      statusWidth > 0
-        ? `${truncateToWidth(label, statusWidth, '')}${accent(theme, ` ─ ${overflow}`)}`
-        : accent(theme, overflow);
+    if (statusWidth <= 0) {
+      label = accent(theme, overflow);
+    } else {
+      const fittedStatus = truncateToWidth(label, statusWidth, '');
+      const separator = frame
+        ? `${border(' ─ ', 3 + visibleWidth(fittedStatus))}${accent(theme, overflow)}`
+        : accent(theme, ` ─ ${overflow}`);
+      label = fittedStatus + separator;
+    }
   }
   const fitted = truncateToWidth(label, labelWidth, '');
   const dashes = width - visibleWidth(fitted) - 5;
-  return `${accent(theme, `${left}─ `)}${fitted}${accent(theme, ` ${'─'.repeat(dashes)}${right}`)}`;
+  return `${border(`${left}─ `, 0)}${fitted}${border(` ${'─'.repeat(dashes)}${right}`, 3 + visibleWidth(fitted))}`;
 }
 
 export function renderInputTop(
@@ -45,30 +59,47 @@ export function renderInputTop(
   theme: ActiveThemeLike,
   status: string,
   hiddenLineCount = 0,
+  frame?: CometFrame,
 ): string {
   const overflow = hiddenLineCount > 0 ? `↑ ${hiddenLineCount} more` : '';
-  return renderBorder(width, theme, status, '╭', '╮', overflow);
+  return renderBorder(width, theme, status, '╭', '╮', overflow, frame);
 }
 
 export function renderInputBottom(
   width: number,
   theme: ActiveThemeLike,
   hiddenLineCount = 0,
+  frame?: CometFrame,
 ): string {
   const label =
     hiddenLineCount > 0 ? accent(theme, `↓ ${hiddenLineCount} more`) : '';
-  return renderBorder(width, theme, label, '╰', '╯', '');
+  return renderBorder(
+    width,
+    theme,
+    label,
+    '╰',
+    '╯',
+    '',
+    frame,
+    frame ? frame.height - 1 : 0,
+  );
 }
 
 export function wrapContentRow(
   line: string,
   width: number,
   theme: ActiveThemeLike,
+  frame?: CometFrame,
+  row = 1,
 ): string {
   width = Math.max(0, Math.floor(width));
   if (width < 2) return truncateToWidth(accent(theme, '││'), width, '');
   const content = truncateToWidth(line, width - 2, '', true);
-  return `${accent(theme, '│')}${content}${accent(theme, '│')}`;
+  const side = (column: number) =>
+    frame
+      ? colorCometBorder('│', column, row, frame, (text) => accent(theme, text))
+      : accent(theme, '│');
+  return `${side(0)}${content}${side(width - 1)}`;
 }
 
 export function renderPlaceholder(

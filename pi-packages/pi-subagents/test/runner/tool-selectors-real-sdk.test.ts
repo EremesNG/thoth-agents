@@ -13,6 +13,7 @@ interface PermittedChildRegistryCase {
   expected: string[];
   enabled?: boolean;
   active?: string[];
+  registered?: string[] | null;
   defaultTools?: string[];
   denials?: string;
   dropped?: string[];
@@ -50,7 +51,7 @@ it.each<PermittedChildRegistryCase>([
     expected: ['read'],
   },
   {
-    selection: 'standalone wildcard without root ask tool',
+    selection: '* glob without root ask tool',
     tools: ['*'],
     expected: ['read', 'bash', 'ask_orchestrator'],
   },
@@ -72,10 +73,37 @@ it.each<PermittedChildRegistryCase>([
   },
   { selection: 'empty default', tools: [], expected: ['ask_orchestrator'] },
   {
-    selection: 'empty active inventory',
+    selection: 'empty active inventory with registered tools',
     tools: ['*'],
     active: [],
+    expected: ['read', 'bash', 'ask_orchestrator'],
+  },
+  {
+    selection: 'empty registered inventory',
+    tools: ['*'],
+    registered: [],
     expected: ['ask_orchestrator'],
+  },
+  {
+    selection: 'unavailable registered inventory with *',
+    tools: ['*'],
+    registered: null,
+    expected: ['ask_orchestrator'],
+  },
+  {
+    selection: 'unavailable registered inventory with family glob',
+    tools: ['agent_browser_*'],
+    registered: null,
+    expected: ['ask_orchestrator'],
+  },
+  {
+    selection:
+      'unavailable registered inventory keeps exact names and missing reports',
+    tools: ['*', 'read', 'not_installed_fixture'],
+    registered: null,
+    enabled: false,
+    dropped: ['not_installed_fixture'],
+    expected: ['read'],
   },
   {
     selection: 'denied injected string',
@@ -241,6 +269,7 @@ it.each<PermittedChildRegistryCase>([
   enabled = true,
   expected,
   active = ['read', 'bash'],
+  registered: inventory = ['read', 'bash'],
   defaultTools = [],
   denials = '',
   dropped = [],
@@ -334,7 +363,10 @@ it.each<PermittedChildRegistryCase>([
       ctx: {
         modelRuntime,
         settingsManager: SettingsManager.inMemory({}),
-        pi: { getActiveTools: () => active },
+        pi: {
+          getActiveTools: () => active,
+          ...(inventory === null ? {} : { getAllTools: () => inventory }),
+        },
       },
       config: {
         timeout_ms: 10000,
@@ -391,9 +423,192 @@ it.each<PermittedChildRegistryCase>([
   }
 }, 30_000);
 it.each([
+  {
+    selection: '*',
+    tools: ['*'],
+    expected: [
+      'read',
+      'agent_browser_probe',
+      'agent_browser_action',
+      'ask_orchestrator',
+    ],
+  },
+  {
+    selection: 'agent_browser_*',
+    tools: ['agent_browser_*'],
+    expected: [
+      'agent_browser_probe',
+      'agent_browser_action',
+      'ask_orchestrator',
+    ],
+  },
+  {
+    selection: 'exact inactive name',
+    tools: ['agent_browser_action'],
+    expected: ['agent_browser_action', 'ask_orchestrator'],
+  },
+  {
+    selection: 'default_tools family glob',
+    tools: [],
+    expected: [
+      'agent_browser_probe',
+      'agent_browser_action',
+      'ask_orchestrator',
+    ],
+  },
+])('passes root-inactive registered tools to a real SDK child for $selection', async ({
+  tools,
+  expected,
+}) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'pi-subagents-registered-'),
+  );
+  const agentDir = path.join(root, 'agent');
+  const cwd = path.join(root, 'workspace');
+  const extensionPath = path.join(root, 'browser-tools.ts');
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.mkdirSync(cwd, { recursive: true });
+  fs.writeFileSync(
+    extensionPath,
+    `export default function (pi) {
+      for (const [name, exposure] of [
+        ['agent_browser_probe', 'model'],
+        ['agent_browser_action', 'deferred'],
+        ['agent_browser_denied', 'deferred'],
+        ['subagent_run', 'model-only'],
+      ]) pi.registerTool({
+        name, exposure, label: name, description: 'Returns a fixture marker.',
+        parameters: { type: 'object', properties: {}, additionalProperties: false },
+        execute: async () => ({ content: [{ type: 'text', text: name + ' executed' }] }),
+      });
+    }`,
+  );
+  vi.stubEnv('PI_CODING_AGENT_DIR', agentDir);
+  vi.stubEnv('PI_SUBAGENTS_HISTORY_HOME', path.join(root, 'history'));
+  const {
+    AgentSession,
+    createAgentSession,
+    DefaultResourceLoader,
+    ModelRuntime,
+    SessionManager,
+    SettingsManager,
+  } = await import('@earendil-works/pi-coding-agent');
+  const settingsManager = SettingsManager.inMemory({
+    extensions: [extensionPath],
+  });
+  const modelRuntime = await ModelRuntime.create({
+    modelsPath: null,
+    authPath: path.join(agentDir, 'auth.json'),
+    allowModelNetwork: false,
+  });
+  const loader = new DefaultResourceLoader({
+    cwd,
+    agentDir,
+    settingsManager,
+    noExtensions: true,
+    additionalExtensionPaths: [extensionPath],
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+  });
+  await loader.reload();
+  const parent = await createAgentSession({
+    cwd,
+    agentDir,
+    settingsManager,
+    modelRuntime,
+    resourceLoader: loader,
+    tools: [
+      'read',
+      'agent_browser_probe',
+      'agent_browser_action',
+      'agent_browser_denied',
+      'subagent_run',
+    ],
+    sessionManager: SessionManager.inMemory(cwd),
+  });
+  const registered: string[] = [];
+  let active: string[] = [];
+  let actionResult: unknown;
+  const prompt = vi
+    .spyOn(AgentSession.prototype, 'prompt')
+    .mockImplementation(async function (
+      this: InstanceType<typeof AgentSession>,
+    ) {
+      registered.push(...this.getAllTools().map((tool) => tool.name));
+      this.setActiveToolsByName(['agent_browser_action']);
+      active = this.getActiveToolNames();
+      const action = this.agent.state.tools.find(
+        (tool) => tool.name === 'agent_browser_action',
+      );
+      actionResult = await action?.execute(
+        'action',
+        {},
+        new AbortController().signal,
+      );
+      this.agent.state.messages.push({
+        role: 'assistant',
+        content: [{ type: 'text', text: 'done' }],
+      } as AssistantMessage);
+    });
+  try {
+    expect(parent.extensionsResult.errors).toEqual([]);
+    parent.session.setActiveToolsByName(['read', 'agent_browser_probe']);
+    expect(parent.session.getActiveToolNames()).not.toContain(
+      'agent_browser_action',
+    );
+    expect(parent.session.getAllTools().map((tool) => tool.name)).toContain(
+      'agent_browser_action',
+    );
+    const result = await sdkSubagentRunner({
+      definition: {
+        name: 'browser-child',
+        description: 'Browser child',
+        filePath: path.join(root, 'browser-child.md'),
+        instructions: 'Use selected tools.',
+        tools,
+        disallowed_tools: ['agent_browser_denied'],
+      },
+      task: 'Use browser tools.',
+      cwd,
+      ctx: {
+        modelRuntime,
+        settingsManager,
+        pi: {
+          getActiveTools: () => parent.session.getActiveToolNames(),
+          getAllTools: () => parent.session.getAllTools(),
+        },
+      },
+      config: {
+        timeout_ms: 10000,
+        stall_timeout_ms: 10000,
+        max_concurrency: 1,
+        default_tools: ['agent_browser_*'],
+        model_profiles: {},
+        session_resources: 'lean',
+      },
+      signal: new AbortController().signal,
+    });
+    expect([...registered].sort()).toEqual([...expected].sort());
+    expect(active).toContain('agent_browser_action');
+    expect(actionResult).toMatchObject({
+      content: [{ type: 'text', text: 'agent_browser_action executed' }],
+    });
+    expect(result).toMatchObject({ result: 'done', dropped_tools: [] });
+  } finally {
+    prompt.mockRestore();
+    await parent.session.dispose();
+    vi.unstubAllEnvs();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it.each([
   { enabled: false, tools: ['ask_orchestrator'], denied: [] },
   { enabled: true, tools: ['read'], denied: ['read', 'ask_orchestrator'] },
   { enabled: false, tools: ['*'], denied: [] },
+  { enabled: false, tools: ['agent_browser_*'], denied: [] },
 ])('rejects an empty effective permitted selection before SDK launch: %o', async ({
   enabled,
   tools,
@@ -578,17 +793,15 @@ it.each([
       'AskClaude',
       'AskAntigravity',
     ];
-    rootSession.setActiveToolsByName(
-      selection === '*' ? [...permitted, 'subagent_run'] : [],
+    rootSession.setActiveToolsByName(['fixture_caller']);
+    expect(rootSession.getActiveToolNames()).not.toContain(
+      'inactive_fixture_tool',
     );
-    const rootActiveNames = rootSession.getActiveToolNames();
-    if (selection === 'explicit')
-      expect(rootActiveNames).not.toContain('inactive_fixture_tool');
 
     const selectedTools = expandToolPatterns(
       selection === 'explicit' ? permitted : [selection],
-      rootActiveNames,
-    );
+      rootSession.getAllTools().map((tool: { name: string }) => tool.name),
+    ).filter((name) => name !== 'excluded_fixture_tool');
     expect(
       selectedTools,
       JSON.stringify({ agentDir, errors: root.extensionsResult.errors }),

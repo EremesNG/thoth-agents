@@ -148,7 +148,7 @@ async function fixture(
 }
 
 it.each([
-  { selection: 'standalone *', tools: ['*'], missing: ['*'] },
+  { selection: '* glob', tools: ['*'], missing: ['*'] },
   {
     selection: 'explicit',
     tools: ['read', 'missing_fixture_tool'],
@@ -166,7 +166,7 @@ it.each([
 }) => {
   const parent = await fixture([captureExtension]);
   const activities: any[] = [];
-  const active = ['read', 'missing_fixture_tool'];
+  const registered = ['read', 'missing_fixture_tool'];
   const run = (tools: string[]) =>
     parent.run({
       definition: {
@@ -177,7 +177,7 @@ it.each([
       ctx: {
         modelRegistry: parent.modelRegistry,
         settingsManager: parent.settingsManager,
-        pi: { getActiveTools: () => active },
+        pi: { getActiveTools: () => ['read'], getAllTools: () => registered },
       },
       onActivity: (activity) => activities.push(activity),
     });
@@ -195,7 +195,7 @@ it.each([
     ).toBe(true);
     expect(capture.systemPrompt).not.toContain('missing_fixture_tool');
     expect(capture.systemPrompt).not.toContain('AskClaude');
-    active.splice(0, 1);
+    registered.splice(0, 1);
     await expect(run(missing)).rejects.toThrow(
       'missing implementation: missing_fixture_tool',
     );

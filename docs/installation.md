@@ -393,56 +393,67 @@ maintain a fixed catalog of those tools.
 
 - Use ↑/↓ and Enter to choose a specialist. In its tool list, use Space to toggle
   a selection. Enter or Escape returns to the overview.
-- Press `*` for the single dynamic selector **active root tools** (`*`): tools
-  currently active in the root session when a child starts, excluding
-  `subagent_*`, root-only `ask_user_question`/`todo` controls, and delegation tools
-  `AskClaude`, `AskAntigravity`, `bg_delegate`, `bg_run_pi_attested`, `bg_result`,
-  `fusion_reason`, `fusion_investigate`, `fusion_research` and `fusion_validate`.
-  Inactive registered tools are not inherited. Ordinary shell-job tools remain
-  eligible: those of the vendored `@thoth-agents/pi-background-tasks`
-  (`bg_task_*`, `bg_status`) and, if an operator still uses the npm
-  `pi-background-tasks`, its `bg_run`, `bg_status`, `bg_logs` and `bg_kill`.
-  This choice replaces that role's explicit list. Toggling an individual checkbox
-  turns it into a current explicit list, ending dynamic inheritance. Registered
-  inactive tools are labeled `(inactive)` and can be selected explicitly (an explicit
-  selection is how a role receives deferred or advanced tools the root keeps inactive;
-  they reach the child); saved
-  explicit names absent from the registry remain `(unavailable)` and can be
-  removed individually. These delegation names are also permitted in explicit
-  lists, not inherited by `*`.
-- Press `r` to restore that role's packaged defaults: `read, bash` for Explorer
-  and Oracle; additionally `edit, write` for Designer and Worker; the historical
-  research tools for Librarian. Defaults can include currently unavailable tools.
+- Checkboxes edit registered exact names only. Inactive tools are labeled
+  `(inactive)` and can be selected; they reach the child even while inactive in
+  the root. The child-provided `ask_orchestrator` channel is an informational
+  note, not a checkbox, and is subject to `enable_ask_orchestrator` and
+  `disallowed_tools`.
+- Existing globs (including `*`) and names absent from the registry are shown
+  read-only. Edit them manually in the definition file. Saves, defaults reset
+  and partial-save retries retain these entries unchanged; no `*` hotkey or
+  dynamic mode is offered.
+- Press `r` to restore that role's packaged explicit defaults: `read, bash,
+  grep, find, ls` for Explorer and Oracle; `read, bash, edit, write, grep, find,
+  ls` for Designer and Worker; the read-only list plus research tools for
+  Librarian. Unregistered defaults are shown read-only.
 - Press `s` on the overview to save. Escape or Ctrl-C cancels, with confirmation
   before discarding a dirty draft. Draft edits do not write files.
-- Selections must contain at least one explicit name or standalone `*`.
-  `@active` is rejected with a diagnostic directing you to `*`; it is not an alias
-  or an explicit tool name. Mixed selectors, other patterns, `subagent_*`
-  delegation tools and root-only `ask_user_question`/`todo` controls are excluded.
-  Empty selections are rejected because the runtime can substitute default tools.
+- Selections must contain at least one tool name or retained glob. `@active`
+  is rejected with a diagnostic recommending exact names; it is not an alias
+  or a tool name. Native `subagent_*` delegation controls are not selectable.
+  Empty panel selections are rejected because the runtime can substitute default
+  tools. Generated lists omit `ask_user_question`, `todo` and third-party
+  delegation tools; these names are not a shared runtime denylist.
 - Saved lists remain in `~/.pi/agent/agents/thoth-*.md` (or Pi's configured agent
   directory), survive synchronization/reinstallation and model-panel saves, and
   do not change models, effort, mode or the parent's active tools. Project-local
   definitions may shadow these global definitions. Running children are unchanged.
 - Discovery refreshes when the panel is reopened. Explicit lists stay fixed;
-  `*` resolves current eligible active tools at each child launch.
+  manual globs resolve against the registered inventory at each child launch.
 - Ownership, safe-path, stale-file and recoverable per-file write checks match
   the models panel. Unsupported overrides, including the removed selector, are
   preserved unchanged with diagnostics during synchronization, without resetting
   them to broader defaults. Fix those definitions explicitly before using them.
 
-For every selection form (standalone `*`, explicit lists and glob patterns), tools
+For advanced selections, edit `tools` in the definition frontmatter manually,
+for example `tools: "read, agent_browser_*"`. Every glob, including `*`, selects
+from all registered root tools (active and inactive), minus native `subagent_*`
+exclusions and the definition's `disallowed_tools`. Tools matched while inactive
+in the root reach the child, where they can be activated. Synchronization retains
+operator selections, including `*` and other globs, without migration.
+
+Edit `disallowed_tools` manually as a comma-separated string or YAML list of exact
+names to deny injected tools absent from the panel or trim glob results. For
+example, a broad glob can be paired with
+`disallowed_tools: "ask_user_question, todo"` to keep interaction and progress
+root-owned. Only Oracle's generated definition has this field, denying
+`ask_orchestrator` for independent judgment. Other enabled children receive that
+channel regardless of `tools`. Synchronization keeps operator denials, including
+explicit empty values; absent operator denials acquire the package value (none,
+or `ask_orchestrator` for Oracle).
+
+For every selection form (explicit lists and globs, including `*`), tools
 the child cannot load are dropped: the child runs with its available subset and
 reports dropped names as durable warnings on the running task's widget card and in
 status, results and completion messages. If none can load, launch still fails;
-unexpected extra child tools also remain an error. The panel itself does not accept
-glob patterns. The Claude and Antigravity bridges advertise a tool whose schema root
+unexpected extra child tools also remain an error. The panel does not edit glob
+patterns. The Claude and Antigravity bridges advertise a tool whose schema root
 is a union of object variants as an object with that union, and omit other non-object
 schemas with a warning instead of failing the request.
 
 A selected name does not prove the child's runtime registered or initialized that
 extension, MCP connection or credentials. Verify a real child invocation. Tool
-selection and the `*` exclusions are **not an OS sandbox**: shell and MCP tools
+selection and native exclusions are **not an OS sandbox**: shell and MCP tools
 can still launch agents indirectly. A child with `bash` can also execute installed
 CLIs such as `codegraph` even without a directly exposed CodeGraph MCP tool.
 

@@ -1,8 +1,7 @@
 ---
 name: thoth-librarian
 description: "Gather current authoritative evidence and separate documented facts from inference. Use when: Current authoritative external evidence is required. Do not use when: Not for implementation, edits, or purely local discovery. Escalate when: Report contradictory or insufficient sources to root. Mutation: read-only; never mutate the workspace. Verification: provides direct sources for substantive external claims Return: conclusion, evidence, verification, risks, openQuestions."
-tools: "read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check"
-disallowed_tools: "ask_user_question, todo, AskClaude, AskAntigravity, bg_delegate, bg_run_pi_attested, bg_result, fusion_reason, fusion_investigate, fusion_research, fusion_validate"
+tools: "read, bash, grep, find, ls, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check"
 model: "openai-codex/gpt-6-luna"
 effort: "high"
 subagent_mode: "background"

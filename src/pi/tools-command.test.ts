@@ -175,7 +175,7 @@ describe('subagents-tools command', () => {
       { name: 'write', description: 'Write file' },
       { name: 'bash', description: 'Run bash' },
     ]);
-    const getActiveTools = vi.fn(() => ['read', 'write', 'bash']);
+    const getActiveTools = vi.fn(() => ['read', 'write']);
 
     piExtension(
       {
@@ -223,9 +223,12 @@ describe('subagents-tools command', () => {
             },
           );
           renderedText = component.render(80).join('\n');
-          // overview: select dynamic active-root tools on explorer
-          component.handleInput('*');
-          // overview: press s to save
+          component.handleInput('<enter>');
+          renderedText += component.render(180).join('\n');
+          component.handleInput('<down>');
+          component.handleInput('<down>');
+          component.handleInput('<space>'); // select registered inactive bash
+          component.handleInput('q');
           component.handleInput('s');
           return result;
         },
@@ -236,7 +239,13 @@ describe('subagents-tools command', () => {
     expect(getActiveTools).toHaveBeenCalledTimes(1);
     expect(renderedText).toContain('Global specialist tools');
     expect(saveToolConfig).toHaveBeenCalledTimes(1);
-    expect(saveToolConfig.mock.calls[0]?.[1][0]?.tools).toEqual(['*']);
+    expect(renderedText).toContain('bash (inactive)');
+    expect(renderedText).toContain('ask_orchestrator: child-provided');
+    expect(saveToolConfig.mock.calls[0]?.[1][0]?.tools).toEqual([
+      'read',
+      'write',
+      'bash',
+    ]);
     expect(notify).toHaveBeenCalledWith(
       expect.stringContaining(
         'Saved global Thoth specialist tools. Updated: explorer.',

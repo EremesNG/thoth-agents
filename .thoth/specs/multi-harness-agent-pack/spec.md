@@ -82,7 +82,7 @@ The Pi extension and specialist definitions MUST apply the strongest native root
 
 - **GIVEN** supported @thoth-agents/pi-subagents configuration and an Oracle definition denying `ask_orchestrator`
 - **WHEN** definitions and guidance are generated
-- **THEN** the denial is described as registry filtering, behavioral role limits as instruction-level, and no unsupported control is claimed as enforced 
+- **THEN** the denial is described as registry filtering, behavioral role limits as instruction-level, and no unsupported control is claimed as enforced
 
 ### Requirement: Publish a native Pi package with runtime-autonomous assets
 
@@ -376,21 +376,21 @@ The Pi adapter MUST require the public agent field with one exact canonical spec
 
 ### Requirement: Use Pi interactive questions truthfully
 
-Pi root instructions MUST use ask_user_question for material user choices, follow its supported question schema, handle unavailable UI and partial/cancelled answers truthfully, and MUST NOT infer approval from cancellation or absent answers. Thoth-generated Pi child definitions MUST deny the interactive question tool through `disallowed_tools`, and children MUST route user-facing questions to the root: through `ask_orchestrator` when it is enabled and not denied, otherwise through their return contract; the root decides whether to escalate to the user with ask_user_question before answering with `subagent_reply`.
+Pi root instructions MUST use ask_user_question for material user choices, follow its supported question schema, handle unavailable UI and partial/cancelled answers truthfully, and MUST NOT infer approval from cancellation or absent answers. Thoth-generated Pi child definitions MUST use explicit tool lists that omit the interactive question tool; operators whose selections use globs deny it through `disallowed_tools`. Children MUST route user-facing questions to the root: through `ask_orchestrator` when it is enabled and not denied, otherwise through their return contract; the root decides whether to escalate to the user with ask_user_question before answering with `subagent_reply`.
 
 #### Scenario: Use Pi interactive questions truthfully
 
-- **GIVEN** a Thoth-generated worker child with `tools: "*"` and the interactive question tool active in the root
+- **GIVEN** a Thoth-generated worker child with its default explicit tool list and the interactive question tool active in the root
 - **WHEN** it needs a user decision
-- **THEN** the tool is absent from the child through its generated `disallowed_tools`, and the child routes the question through `ask_orchestrator` 
+- **THEN** the tool is absent from the child and the child routes the question through `ask_orchestrator` 
 
 ### Requirement: Keep Pi progress session-owned
 
-Pi root instructions MUST use the session-local task-list tool for useful multi-step progress, with the extension owning session-local task state. That tool MUST NOT replace Pi-native delegation lifecycle or canonical `.thoth/` project artifacts; child agents MUST report progress to root, and Thoth-generated Pi child definitions MUST deny that tool through `disallowed_tools`. A child MAY report interim progress through `ask_orchestrator` progress updates, which are recorded on its task without triggering a root turn; otherwise it reports through its return contract.
+Pi root instructions MUST use the session-local task-list tool for useful multi-step progress, with the extension owning session-local task state. That tool MUST NOT replace Pi-native delegation lifecycle or canonical `.thoth/` project artifacts; child agents MUST report progress to root, and Thoth-generated Pi child definitions MUST use explicit tool lists that omit that tool, while operators whose selections use globs deny it through `disallowed_tools`. A child MAY report interim progress through `ask_orchestrator` progress updates, which are recorded on its task without triggering a root turn; otherwise it reports through its return contract.
 
 #### Scenario: Keep Pi progress session-owned
 
-- **GIVEN** a Thoth-generated child with `tools: "*"` and the task-list tool active in the root
+- **GIVEN** a Thoth-generated child with its default explicit tool list and the task-list tool active in the root
 - **WHEN** it launches and later has progress
 - **THEN** the task-list tool is absent from the child, and its progress update is recorded on its task without triggering a root turn 
 
@@ -434,13 +434,13 @@ Default roots MUST delegate unlocated local discovery before searching and MUST 
 
 ### Requirement: Configure adopted Pi subagents natively
 
-Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same UI design with safe tool persistence; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST offer one dynamic selection persisted as standalone `*`, meaning the eligible tools currently active in the root session excluding the subagents package's own `subagent_*` tools and the role's `disallowed_tools`; delegation tools from other packages are excluded only through `disallowed_tools`; inactive registered tools MUST NOT be inherited by `*` and `@active` MUST be rejected rather than persisted or treated as a tool name. The panel MUST list the child-provided `ask_orchestrator` as an active item included in the `*` preview. Explicitly selected tools MUST reach the child even when inactive in the root, unless removed by configuration, `disallowed_tools` or reserved exclusions. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve `*` and an operator-set `disallowed_tools`, and child launch MUST resolve its current inventory; for every selection form, selected tools without a child implementation MUST be dropped and reported as a durable warning visible on the running task's widget card and on its status, result and completion, and launch MUST fail with a truthful missing-implementation diagnostic only when no selected tool remains.
+Pi MUST expose /subagents-model using native profiles and /subagents-tools using the same UI design with safe tool persistence; the former Thoth model/tools commands and fork-owned SDD workflow MUST be absent. The tools panel MUST edit exact tool names only, list the root's registered tools (active and inactive) and the child-provided `ask_orchestrator`, offer no dynamic `*` mode, reject `@active`, and preserve glob entries and unrecognized names unchanged on save. Tool selections MAY contain globs, where `*` is an ordinary glob; every glob expands against the root's registered tools, active and inactive, excluding the native `subagent_*` tools and the definition's `disallowed_tools`. Explicitly selected tools MUST reach the child even when inactive in the root, unless removed by configuration, `disallowed_tools` or native exclusions. Existing explicit configurations, defaults, reserved controls, save/cancel, stale/partial recovery and unrelated fields MUST remain protected. Synchronization MUST preserve operator tool selections including globs and an operator-set `disallowed_tools`, and child launch MUST resolve its current inventory; for every selection form, selected tools without a child implementation MUST be dropped and reported as a durable warning visible on the running task's widget card and on its status, result and completion, and launch MUST fail with a truthful missing-implementation diagnostic only when no selected tool remains.
 
 #### Scenario: Configure adopted Pi subagents natively
 
-- **GIVEN** explicit, glob or dynamic operator selections and root tools that are inactive, delegation tools or lack a child implementation
+- **GIVEN** exact names and globs including `*` and `agent_browser_*`, with root tools that are inactive or lack a child implementation
 - **WHEN** the panel saves, synchronization runs and a child launches
-- **THEN** operator intent persists, `*` yields the child-loadable active eligible tools plus the child-provided `ask_orchestrator` (when enabled) minus native `subagent_*` tools and the role's `disallowed_tools`, explicit names reach the child even when inactive in the root, missing implementations are dropped and reported for every form, the child fails only when nothing remains, and nothing else is silently widened or omitted 
+- **THEN** exact names and globs persist unchanged, globs include root-inactive registered tools minus `subagent_*` and `disallowed_tools`, missing implementations are dropped and reported, and the child fails only when nothing remains 
 
 ### Requirement: Run visible background Pi specialists
 
@@ -504,13 +504,13 @@ Default root orchestrator instructions MUST state that subagent completion notif
 
 ### Requirement: Pi children query the root orchestrator
 
-When enabled, every Pi child whose definition does not list it in `disallowed_tools` receives `ask_orchestrator` regardless of its tool selection form, may pose to its owning root a blocking question and continue in the same live session with the root's `subagent_reply` answer; non-blocking progress updates do not trigger a root turn. Pi agent definitions MAY declare `disallowed_tools`, exact tool names removed after `tools` resolution for every selection form including injected tools, while the native `subagent_*` exclusions always apply; denied names that are not installed are ignored and malformed values fail closed. Pi agent definition frontmatter MUST parse as strict YAML; a definition that does not fails to load with a diagnostic and does not fall back to a lower-priority definition. Frontmatter is restricted to plain scalars, sequences and mappings; anchors, aliases, merge keys and explicit tags are errors. A definition's identity is its filename; a `name` that differs from it is an error. Selection-dependent wording elsewhere means this effective permitted selection. Thoth's generated specialist definitions deny the interactive user-question tool, the session-local task-list tool and known third-party delegation tools, and Oracle's also denies `ask_orchestrator` to preserve independent judgment; children still never delegate.
+When enabled, every Pi child whose definition does not list it in `disallowed_tools` receives `ask_orchestrator` regardless of its tool selection form, may pose to its owning root a blocking question and continue in the same live session with the root's `subagent_reply` answer; non-blocking progress updates do not trigger a root turn. Pi agent definitions MAY declare `disallowed_tools`, exact tool names removed after `tools` resolution for every selection form including injected tools, while the native `subagent_*` exclusions always apply; denied names that are not installed are ignored and malformed values fail closed. Explicit exact-name `tools` lists are the default; globs, including `*`, are manual selections over all registered root tools, and `disallowed_tools` is edited manually in the definition file for injected tools and glob trimming. Pi agent definition frontmatter MUST parse as strict YAML; a definition that does not fails to load with a diagnostic and does not fall back to a lower-priority definition. Frontmatter is restricted to plain scalars, sequences and mappings; anchors, aliases, merge keys and explicit tags are errors. A definition's identity is its filename; a `name` that differs from it is an error. Selection-dependent wording elsewhere means this effective permitted selection. Thoth's generated specialist definitions use explicit tool lists, and only Oracle's declares `disallowed_tools`, denying `ask_orchestrator` to preserve independent judgment; children still never delegate.
 
 #### Scenario: Pi children query the root orchestrator
 
-- **GIVEN** `enable_ask_orchestrator` true, a worker child with `tools: "*"` and an Oracle child whose definition sets `disallowed_tools: ask_orchestrator`
+- **GIVEN** `enable_ask_orchestrator` true and Thoth-generated worker and Oracle definitions
 - **WHEN** both launch
-- **THEN** only the worker receives `ask_orchestrator`, and its question returns the root's `subagent_reply` answer to that same child tool call 
+- **THEN** only the worker receives `ask_orchestrator`, Oracle's definition is the only one declaring `disallowed_tools`, and the worker's question returns the root's `subagent_reply` answer to that same child tool call 
 
 ### Requirement: Pi conversation language anchor
 

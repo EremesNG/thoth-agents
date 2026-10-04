@@ -57,25 +57,26 @@
   `/subagents-tools` edits per-role global tool selections. The CLI keeps
   using `src/cli/pi-model-config.ts` for Thoth specialist provenance/path checks,
   stale snapshots, and partial-write recovery. `/subagents-tools` discovers
-  registered tools and edits either explicit per-role lists or the single
-  standalone dynamic selector `*`: tools currently active in the root session
-  plus child-provided `ask_orchestrator`, excluding native `subagent_*` tools and
-  that role's `disallowed_tools`. Inactive registered tools are not inherited;
-  ordinary shell-job tools remain eligible. The panel marks inactive choices,
-  retains unavailable explicit names, and supports role-default reset. Its
-  synthetic active `ask_orchestrator` item is never unavailable and describes
-  the channel as child-provided, subject to `enable_ask_orchestrator` and
-  `disallowed_tools`; the panel does not read runtime configuration or edit denials.
-  Generated defaults remain explicit tool lists without `ask_orchestrator`.
-  Every enabled child receives it regardless of selection form (`*`, globs,
-  explicit lists, or defaults) unless denied. All five Thoth definitions deny
-  `ask_user_question`, `todo`, `AskClaude`, `AskAntigravity`, `bg_delegate`,
-  `bg_run_pi_attested`, `bg_result`, `fusion_reason`, `fusion_investigate`,
-  `fusion_research` and `fusion_validate`; Oracle additionally denies
-  `ask_orchestrator` for independent judgment. Other harnesses are unchanged.
+  registered tools (active and inactive) and edits exact per-role names only.
+  Globs and unrecognized names are shown read-only and retained unchanged on
+  save, including through role-default reset and partial-save retry. There is
+  no `*` control or dynamic mode. A child-provided `ask_orchestrator` note
+  describes the channel as subject to `enable_ask_orchestrator` and
+  `disallowed_tools`; it is not a checkbox. The panel does not read runtime
+  configuration or edit denials.
+  Generated defaults are explicit: `read, bash, grep, find, ls` for Explorer and
+  Oracle; Designer and Worker add `edit, write` before the search tools;
+  Librarian adds its research tools. All omit `ask_user_question`, `todo` and
+  third-party delegation tools. Every enabled child receives `ask_orchestrator`
+  regardless of selection form unless denied. Only Oracle's generated definition
+  declares `disallowed_tools`, denying `ask_orchestrator` for independent judgment.
+  Other harnesses are unchanged. Manual advanced globs, including `*`, expand
+  against all registered root tools (active and inactive), minus native
+  `subagent_*` exclusions and the definition's `disallowed_tools`.
   `disallowed_tools` is a comma-separated string or YAML list of exact names,
-  subtracted after resolution, including injected tools. Absent or explicitly
-  empty means no denial; malformed values fail closed and uninstalled denied
+  subtracted after resolution, including injected tools. Edit it manually for
+  injected tools absent from the panel and for trimming glob results. Absent or
+  explicitly empty means no denial; malformed values fail closed and uninstalled denied
   names are inert. Native exclusions cover only `subagent_*` tools.
   `enable_ask_orchestrator` defaults to true and gates both the child tool and
   root's `subagent_reply`; false removes both. `ask_timeout_ms` defaults to
@@ -83,23 +84,24 @@
   recorded on the task without triggering a root turn. If the channel is
   unavailable, children use their return contract's `openQuestions`, not a user
   dialog or delegation.
-  The `*` exclusions are not a sandbox: shell and MCP tools can still launch
-  agents indirectly.
-  `src/cli/pi-tool-config.ts` owns validation and safe persistence; synchronization
-  preserves valid explicit tools, `*`, modes, model, effort and operator-set
-  `disallowed_tools` (including explicit empty). Otherwise package denials apply
-  even with custom tools; malformed definitions remain unchanged with diagnostics.
-  `@active` is rejected with a diagnostic naming `*` as its replacement, never
-  accepted as an alias or explicit name. Unsupported overrides remain untouched
-  with diagnostics during synchronization. Empty panel selections and native
-  `subagent_*` delegation controls are rejected. `*` resolves at child launch; for
-  every selection form (`*`, explicit lists, globs) tools without a child
+  Tool filtering is not a sandbox: shell and MCP tools can still launch agents
+  indirectly. `src/cli/pi-tool-config.ts` owns validation and safe persistence;
+  synchronization preserves operator tools (including `*` and other globs),
+  modes, model, effort and operator-set `disallowed_tools` (including explicit
+  empty). Otherwise package values apply even with custom tools; malformed
+  definitions remain unchanged with diagnostics. `@active` is rejected with a
+  diagnostic recommending exact names, never accepted as an alias or explicit
+  name. Unsupported overrides remain untouched with diagnostics during
+  synchronization. Empty panel selections and exact native `subagent_*`
+  delegation names are rejected. Globs resolve at child launch; for every
+  selection form (explicit lists or globs, including `*`) tools without a child
   implementation are dropped and reported as durable warnings on the running
   widget card and in status/results/completion while the child uses the available
   subset. An empty effective permitted selection or unexpected extra child tools
   still fails; an injected `ask_orchestrator` alone can keep the selection nonempty.
-  Explicit names reach the child even when inactive in the root (the way to give
-  a role deferred or advanced tools); the panel does not accept globs. Native TUI/AI modules are declared public peers and
+  Explicit names and tools matched by globs reach the child even when inactive
+  in the root, allowing roles to activate deferred or advanced tools. Globs are
+  edited manually in definition frontmatter. Native TUI/AI modules are declared public peers and
   kept external in the build; static imports let Pi's loader resolve its native
   aliases for compiled JS. Lazy imports from a natively loaded compiled extension
   bypass those aliases. Root model and external override precedence remain

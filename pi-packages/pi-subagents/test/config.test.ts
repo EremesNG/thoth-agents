@@ -1033,7 +1033,7 @@ describe('config and workflow loading', () => {
     ]);
   });
 
-  it('keeps wildcard entries in config and expands them only against active tools', () => {
+  it('keeps wildcard entries in config and expands them against registered tools', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'worker.md'),
       `---\nname: worker\ntools: tool_*, read, subagent_*\n---\n# Worker`,
@@ -1098,7 +1098,7 @@ describe('config and workflow loading', () => {
     'fusion_investigate',
     'fusion_research',
     'fusion_validate',
-  ])('keeps non-native tool %s selectable under standalone *', (toolName) => {
+  ])('keeps non-native tool %s selectable under the * glob', (toolName) => {
     expect(expandToolPatterns(['*'], ['read', toolName, 'bash'])).toEqual([
       'read',
       toolName,
@@ -1168,7 +1168,7 @@ describe('config and workflow loading', () => {
     ).toEqual(expected);
   });
 
-  it('treats * mixed with other selectors as an ordinary active-only glob', () => {
+  it('treats * mixed with other selectors as an ordinary registered-tool glob', () => {
     const delegationTools = [
       'AskClaude',
       'AskAntigravity',
@@ -1200,7 +1200,7 @@ describe('config and workflow loading', () => {
     'bg_status',
     'bg_logs',
     'bg_kill',
-  ])('keeps shell task tool %s selectable under standalone *', (toolName) => {
+  ])('keeps shell task tool %s selectable under the * glob', (toolName) => {
     expect(expandToolPatterns(['*'], ['read', toolName])).toEqual([
       'read',
       toolName,
@@ -1219,8 +1219,19 @@ describe('config and workflow loading', () => {
     expect(loadSubagents(tmp)[0].tools).toEqual(['@active']);
     expect(readSubagentsConfig(tmp).default_tools).toEqual(['@active']);
     expect(() => expandToolPatterns(['read', '@active'])).toThrow(
-      /@active.*removed.*\*/,
+      /@active.*removed.*exact tool names.*ordinary glob.*active and inactive/,
     );
+  });
+
+  it.each([
+    '*',
+    'agent_browser_*',
+  ])('keeps exact names when %s has no registered inventory', (glob) => {
+    expect(expandToolPatterns([glob, 'read', 'read', 'subagent_run'])).toEqual([
+      'read',
+    ]);
+    expect(expandToolPatterns([glob, 'read'], [])).toEqual(['read']);
+    expect(expandToolPatterns([glob])).toEqual([]);
   });
 
   it('excludes only native subagent controls from explicit child tool configuration', () => {

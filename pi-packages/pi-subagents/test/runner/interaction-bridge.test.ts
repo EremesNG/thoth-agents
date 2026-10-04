@@ -841,7 +841,7 @@ describe('subagent runner interaction-required bridge', () => {
     expect(result.effort).toBe('high');
   });
 
-  it('expands wildcard tool patterns from active parent-session tools only', async () => {
+  it('expands wildcard tool patterns from all registered parent-session tools', async () => {
     vi.resetModules();
     const session = {
       subscribe: vi.fn(() => vi.fn()),
@@ -849,7 +849,9 @@ describe('subagent runner interaction-required bridge', () => {
       messages: [{ role: 'assistant', content: 'done' }],
       dispose: vi.fn(async () => undefined),
       getAllTools: vi.fn(() =>
-        ['tool_lookup', 'tool_write', 'read'].map((name) => ({ name })),
+        ['tool_lookup', 'tool_write', 'tool_hidden', 'read'].map((name) => ({
+          name,
+        })),
       ),
       getActiveToolNames: vi.fn(() => ['tool_lookup', 'tool_write', 'read']),
     };
@@ -897,16 +899,20 @@ describe('subagent runner interaction-required bridge', () => {
       signal: new AbortController().signal,
     } as any);
 
-    expect(getTools).toHaveBeenCalledTimes(1);
-    expect(getAllTools).not.toHaveBeenCalled();
     expect(createAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        tools: ['tool_lookup', 'tool_write', 'read', 'ask_orchestrator'],
+        tools: [
+          'tool_lookup',
+          'tool_write',
+          'tool_hidden',
+          'read',
+          'ask_orchestrator',
+        ],
       }),
     );
   });
 
-  it('expands wildcard patterns from default_tools using the active parent-session tools', async () => {
+  it('expands wildcard patterns from default_tools using registered parent-session tools', async () => {
     vi.resetModules();
     const session = {
       subscribe: vi.fn(() => vi.fn()),
@@ -919,7 +925,7 @@ describe('subagent runner interaction-required bridge', () => {
       getActiveToolNames: vi.fn(() => ['tool_lookup', 'read']),
     };
     const createAgentSession = vi.fn(() => ({ session }));
-    const getTools = vi.fn(() => ['read', 'tool_lookup']);
+    const getAllTools = vi.fn(() => ['read', 'tool_lookup']);
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
       ModelRuntime: ModelRuntimeFixture,
@@ -938,7 +944,7 @@ describe('subagent runner interaction-required bridge', () => {
       },
       task: 'use tools',
       cwd: '/workspace',
-      ctx: { model: { provider: 'test', id: 'model' }, pi: { getTools } },
+      ctx: { model: { provider: 'test', id: 'model' }, pi: { getAllTools } },
       config: {
         timeout_ms: 10_000,
         stall_timeout_ms: 10_000,
@@ -956,7 +962,7 @@ describe('subagent runner interaction-required bridge', () => {
     );
   });
 
-  it('resolves standalone * from the fresh eligible active inventory', async () => {
+  it('resolves * from the fresh registered inventory regardless of root activation', async () => {
     vi.resetModules();
     let childTools: string[] = [];
     const session = {
@@ -1024,31 +1030,29 @@ describe('subagent runner interaction-required bridge', () => {
 
     await sdkSubagentRunner(input);
     registeredTools.push({ name: 'future_extension_tool' });
-    getActiveTools.mockReturnValue([
-      { name: 'read' },
-      { name: 'future_extension_tool' },
-    ]);
     await sdkSubagentRunner(input);
-
-    expect(getActiveTools).toHaveBeenCalledTimes(2);
-    expect(getAllTools).not.toHaveBeenCalled();
-    expect(getTools).not.toHaveBeenCalled();
     expect(
       createAgentSession.mock.calls.map(([options]) => options.tools),
     ).toEqual([
       [
         'read',
-        'AskClaude',
-        'AskAntigravity',
+        'inactive_extension_tool',
         'ask_user_question',
         'todo',
         'ask_orchestrator',
       ],
-      ['read', 'future_extension_tool', 'ask_orchestrator'],
+      [
+        'read',
+        'inactive_extension_tool',
+        'ask_user_question',
+        'todo',
+        'future_extension_tool',
+        'ask_orchestrator',
+      ],
     ]);
   });
 
-  it('keeps only the injected tool with an empty current active inventory', async () => {
+  it('keeps only the injected tool with an empty registered inventory', async () => {
     vi.resetModules();
     let childTools: string[] = [];
     const session = {
@@ -1063,8 +1067,8 @@ describe('subagent runner interaction-required bridge', () => {
       childTools = options.tools;
       return { session };
     });
-    const getActiveTools = vi.fn(() => []);
-    const getAllTools = vi.fn(() => [{ name: 'read' }]);
+    const getActiveTools = vi.fn(() => ['read']);
+    const getAllTools = vi.fn(() => []);
     const getTools = vi.fn(() => [{ name: 'read' }]);
 
     vi.doMock('@earendil-works/pi-coding-agent', () => ({
@@ -1082,7 +1086,7 @@ describe('subagent runner interaction-required bridge', () => {
         instructions: 'return a concise result',
         tools: ['*'],
       },
-      task: 'use active tools',
+      task: 'use registered tools',
       cwd: '/workspace',
       ctx: {
         model: { provider: 'test', id: 'model' },
@@ -1098,15 +1102,12 @@ describe('subagent runner interaction-required bridge', () => {
       signal: new AbortController().signal,
     } as any);
 
-    expect(getActiveTools).toHaveBeenCalledOnce();
-    expect(getTools).not.toHaveBeenCalled();
-    expect(getAllTools).not.toHaveBeenCalled();
     expect(createAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({ tools: ['ask_orchestrator'] }),
     );
   });
 
-  it('falls back to legacy getTools for standalone selectors', async () => {
+  it('does not substitute legacy active tools when the registered inventory is unavailable', async () => {
     vi.resetModules();
     let childTools: string[] = [];
     const session = {
@@ -1159,10 +1160,9 @@ describe('subagent runner interaction-required bridge', () => {
     await run('*');
     await expect(run('@active')).rejects.toThrow(/@active.*removed.*\*/);
 
-    expect(getTools).toHaveBeenCalledOnce();
     expect(
       createAgentSession.mock.calls.map(([options]) => options.tools),
-    ).toEqual([['read', 'legacy_extension_tool', 'ask_orchestrator']]);
+    ).toEqual([['ask_orchestrator']]);
   });
 
   it('reports all-missing explicit implementations while permitting root-inactive registered tools', async () => {

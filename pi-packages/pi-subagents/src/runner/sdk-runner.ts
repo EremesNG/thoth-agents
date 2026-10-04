@@ -81,18 +81,12 @@ function resolveConfiguredTools(
   disallowedTools: readonly string[],
   enableAskOrchestrator: boolean,
 ): string[] {
-  const selectsActiveTools = patterns.length === 1 && patterns[0] === '*';
-  const active = patterns.some(hasToolGlob)
-    ? readToolNames(context, ['getActiveTools', 'getTools'])
+  const registered = patterns.some(hasToolGlob)
+    ? readToolNames(context, ['getAllTools'])
     : undefined;
 
-  if (selectsActiveTools && !active)
-    throw new NonRetryableSubagentError(
-      "Cannot resolve the standalone '*' tool selector because the parent Pi session exposes neither getActiveTools() nor legacy getTools().",
-    );
-
   try {
-    const expanded = expandToolPatterns(patterns, active);
+    const expanded = expandToolPatterns(patterns, registered);
     if (enableAskOrchestrator) expanded.push('ask_orchestrator');
     const denied = new Set(disallowedTools);
     const permitted = [...new Set(expanded)].filter(

@@ -13,6 +13,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { decorateEditor, type EditorDecoration } from './decorate.ts';
 import { createWorkingState } from './state.ts';
 
+function borderGeometry(line: string): string {
+  return stripTerminalSequences(line).replace(/[━┃┏┓┗┛]/gu, (glyph) =>
+    '─│╭╮╰╯'.charAt('━┃┏┓┗┛'.indexOf(glyph)),
+  );
+}
+
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
@@ -171,7 +177,7 @@ describe('input-box mouse geometry', () => {
     deps.working.start();
     const animated = editor.render(40);
     expect(animated.slice(3)).toEqual(lines.slice(3));
-    expect(animated.map(stripTerminalSequences)).toEqual(
+    expect(animated.map(borderGeometry)).toEqual(
       lines.map(stripTerminalSequences),
     );
     expect(animated.map(visibleWidth)).toEqual([40, 40, 40, 40, 40]);
@@ -235,8 +241,8 @@ describe('input-box editor composition', () => {
     const animated = editor.render(40);
     expect(animated).not.toEqual(idle);
     const head = `${foregroundAnsi(rgbColor(242, 201, 76), getTerminalColorMode())}\x1b[1m`;
-    expect(animated[0].startsWith(`${head}╭`)).toBe(true);
-    expect(animated.map(stripTerminalSequences)).toEqual(
+    expect(animated[0].startsWith(`${head}┏`)).toBe(true);
+    expect(animated.map(borderGeometry)).toEqual(
       idle.map(stripTerminalSequences),
     );
     expect(animated.map(visibleWidth)).toEqual(idle.map(visibleWidth));
@@ -285,12 +291,8 @@ describe('input-box editor composition', () => {
     const idle = editor.render(40);
     deps.working.start();
     const lines = editor.render(40);
-    expect(stripTerminalSequences(lines.at(-1) ?? '')).toMatch(
-      /^╰─ ↓ 14 more ─+╯$/,
-    );
-    expect(lines.map(stripTerminalSequences)).toEqual(
-      idle.map(stripTerminalSequences),
-    );
+    expect(borderGeometry(lines.at(-1) ?? '')).toMatch(/^╰─ ↓ 14 more ─+╯$/);
+    expect(lines.map(borderGeometry)).toEqual(idle.map(stripTerminalSequences));
     expect(lines.every((line) => visibleWidth(line) === 40)).toBe(true);
   });
 

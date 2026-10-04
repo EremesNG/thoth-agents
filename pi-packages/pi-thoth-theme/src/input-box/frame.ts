@@ -6,6 +6,14 @@ function muted(theme: ActiveThemeLike, text: string): string {
   return theme.fg?.('muted', text) ?? text;
 }
 
+function borderBase(
+  theme: ActiveThemeLike,
+  text: string,
+  frame?: CometFrame,
+): string {
+  return theme.fg?.(frame ? 'dim' : 'muted', text) ?? text;
+}
+
 export function inputLabelWidth(width: number, hiddenLineCount = 0): number {
   const overflowWidth =
     hiddenLineCount > 0 ? visibleWidth(`↑ ${hiddenLineCount} more`) + 3 : 0;
@@ -25,8 +33,10 @@ function renderBorder(
   width = Math.max(0, Math.floor(width));
   const border = (text: string, column: number) =>
     frame
-      ? colorCometBorder(text, column, row, frame, (text) => muted(theme, text))
-      : muted(theme, text);
+      ? colorCometBorder(text, column, row, frame, (text) =>
+          borderBase(theme, text, frame),
+        )
+      : borderBase(theme, text);
   if (width <= 5 || (!label && !overflow)) {
     return truncateToWidth(
       border(`${left}${'─'.repeat(Math.max(0, width - 2))}${right}`, 0),
@@ -91,12 +101,15 @@ export function wrapContentRow(
   row = 1,
 ): string {
   width = Math.max(0, Math.floor(width));
-  if (width < 2) return truncateToWidth(muted(theme, '││'), width, '');
+  if (width < 2)
+    return truncateToWidth(borderBase(theme, '││', frame), width, '');
   const content = truncateToWidth(line, width - 2, '', true);
   const side = (column: number) =>
     frame
-      ? colorCometBorder('│', column, row, frame, (text) => muted(theme, text))
-      : muted(theme, '│');
+      ? colorCometBorder('│', column, row, frame, (text) =>
+          borderBase(theme, text, frame),
+        )
+      : borderBase(theme, '│');
   return `${side(0)}${content}${side(width - 1)}`;
 }
 

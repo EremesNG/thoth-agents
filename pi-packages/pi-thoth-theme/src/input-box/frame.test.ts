@@ -16,7 +16,40 @@ import { createCometFrame } from './gradient.ts';
 
 const theme = { fg: vi.fn((_token: string, text: string) => text) };
 
+function borderGeometry(line: string): string {
+  return stripTerminalSequences(line).replace(/[━┃┏┓┗┛]/gu, (glyph) =>
+    '─│╭╮╰╯'.charAt('━┃┏┓┗┛'.indexOf(glyph)),
+  );
+}
+
 describe('input-box frame', () => {
+  it('dims the working border but keeps labels and scroll counts muted', () => {
+    const contrastTheme = {
+      fg: (token: string, text: string) =>
+        `\x1b[${token === 'dim' ? '2' : '33'}m${text}\x1b[0m`,
+    };
+    const label = '\x1b[33mstatus ─ ╭\x1b[0m';
+    const frame = createCometFrame(80, 4, 875, 'truecolor');
+    const top = renderInputTop(80, contrastTheme, label, 12, frame);
+    const content = wrapContentRow(
+      'unchanged ─ │ ╭ ╮ ╰ ╯',
+      80,
+      contrastTheme,
+      frame,
+      1,
+    );
+    const bottom = renderInputBottom(80, contrastTheme, 34, frame);
+    expect(top.startsWith('\x1b[2m╭─ \x1b[0m')).toBe(true);
+    expect(content.startsWith('\x1b[2m│\x1b[0m')).toBe(true);
+    expect(content.endsWith('\x1b[2m│\x1b[0m')).toBe(true);
+    expect(bottom.startsWith('\x1b[2m╰─ \x1b[0m')).toBe(true);
+    expect(bottom.endsWith('─╯\x1b[0m')).toBe(true);
+    expect(top).toContain(label);
+    expect(top).toContain('\x1b[33m↑ 12 more\x1b[0m');
+    expect(bottom).toContain('\x1b[33m↓ 34 more\x1b[0m');
+    expect(content).toContain('unchanged ─ │ ╭ ╮ ╰ ╯');
+  });
+
   it('colors every perimeter edge without changing labels, content, cursor, or line widths', () => {
     const mutedTheme = {
       fg: (_token: string, text: string) => `\x1b[33m${text}\x1b[0m`,
@@ -33,14 +66,14 @@ describe('input-box frame', () => {
     // Independent worked perimeter: top 0..39, right 40..41,
     // bottom 42..81 (right to left), left 82..83 (bottom to top).
     for (const [index, row, glyph] of [
-      [0, 0, '╭'],
-      [39, 0, '╮'],
-      [40, 1, '│'],
-      [41, 2, '│'],
-      [42, 3, '╯'],
-      [81, 3, '╰'],
-      [82, 2, '│'],
-      [83, 1, '│'],
+      [0, 0, '┏'],
+      [39, 0, '┓'],
+      [40, 1, '┃'],
+      [41, 2, '┃'],
+      [42, 3, '┛'],
+      [81, 3, '┗'],
+      [82, 2, '┃'],
+      [83, 1, '┃'],
     ] as const) {
       const frame = createCometFrame(
         40,
@@ -55,7 +88,7 @@ describe('input-box frame', () => {
         renderInputBottom(40, mutedTheme, 34, frame),
       ];
       expect(animated[row]).toContain(`${head}${glyph}`);
-      expect(animated.map(stripTerminalSequences)).toEqual(
+      expect(animated.map(borderGeometry)).toEqual(
         idle.map(stripTerminalSequences),
       );
       expect(animated.map(visibleWidth)).toEqual([40, 40, 40, 40]);
@@ -64,6 +97,38 @@ describe('input-box frame', () => {
       expect(animated[3]).toContain('\x1b[33m↓ 34 more');
       expect(animated[1]).toContain(cursor);
       expect(animated[2]).toContain('content ─ │ ╭ ╮ ╰ ╯');
+    }
+  });
+
+  it('lets the head pass behind status and scroll labels without rewriting their glyphs', () => {
+    const contrastTheme = {
+      fg: (token: string, text: string) =>
+        `\x1b[${token === 'dim' ? '2' : '33'}m${text}\x1b[0m`,
+    };
+    const label = '\x1b[36m╭ status ─\x1b[0m';
+    const idle = [
+      renderInputTop(40, contrastTheme, label, 12),
+      renderInputBottom(40, contrastTheme, 34),
+    ];
+    // These cells lie inside the status, top scroll count, and bottom scroll count.
+    for (const index of [8, 18, 76]) {
+      const frame = createCometFrame(
+        40,
+        3,
+        Math.ceil((index * 3500) / 82),
+        'truecolor',
+      );
+      const animated = [
+        renderInputTop(40, contrastTheme, label, 12, frame),
+        renderInputBottom(40, contrastTheme, 34, frame),
+      ];
+      expect(animated[0]).toContain(label);
+      expect(animated[0]).toContain('\x1b[33m↑ 12 more\x1b[0m');
+      expect(animated[1]).toContain('\x1b[33m↓ 34 more\x1b[0m');
+      expect(animated.map(borderGeometry)).toEqual(
+        idle.map(stripTerminalSequences),
+      );
+      expect(animated.map(visibleWidth)).toEqual([40, 40]);
     }
   });
 
@@ -134,6 +199,27 @@ describe('input-box frame', () => {
           theme,
         ),
       ];
+      const frame = createCometFrame(width, 3, 0, 'truecolor');
+      const animated = [
+        renderInputTop(
+          width,
+          theme,
+          '\x1b[33m☥ thoth · ready\x1b[0m',
+          12,
+          frame,
+        ),
+        renderInputBottom(width, theme, 34, frame),
+        wrapContentRow(
+          `${CURSOR_MARKER}\x1b[7m界\x1b[0m followed by long text`,
+          width,
+          theme,
+          frame,
+        ),
+      ];
+      expect(animated.map(borderGeometry)).toEqual(
+        lines.map(stripTerminalSequences),
+      );
+      expect(animated.map(visibleWidth)).toEqual(lines.map(visibleWidth));
       expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
       if (width >= 16) {
         expect(lines[0]).toContain('↑ 12 more');

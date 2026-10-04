@@ -21,6 +21,12 @@ import { createWorkingState } from './state.ts';
 
 const capabilities = getCapabilities();
 const detectedMode = getTerminalColorMode();
+function borderGeometry(line: string): string {
+  return stripTerminalSequences(line).replace(/[━┃┏┓┗┛]/gu, (glyph) =>
+    '─│╭╮╰╯'.charAt('━┃┏┓┗┛'.indexOf(glyph)),
+  );
+}
+
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
@@ -53,6 +59,28 @@ async function loadThothTheme(mode?: TerminalColorMode) {
   return theme;
 }
 
+function themedEditor(theme: ActiveThemeLike) {
+  const plain = (text: string) => text;
+  const tui = { terminal: { rows: 20 }, requestRender: () => {} };
+  const editor = new Editor(tui as unknown as TUI, {
+    borderColor: plain,
+    selectList: {
+      selectedPrefix: plain,
+      selectedText: plain,
+      description: plain,
+      scrollInfo: plain,
+      noMatch: plain,
+    },
+  });
+  editor.focused = true;
+  const working = createWorkingState(tui.requestRender);
+  cleanups.push(() => working.dispose());
+  const decoration = decorateEditor(editor, { theme, working });
+  if (!decoration) throw new Error('Editor was not decorated');
+  cleanups.push(() => decoration.dispose());
+  return { editor, working };
+}
+
 const modes = [
   { name: 'truecolor', mode: 'truecolor' },
   { name: '256color', mode: '256color' },
@@ -61,20 +89,33 @@ const modes = [
 const ansi = {
   truecolor: {
     muted: '\x1b[38;2;168;154;120m',
+    dim: '\x1b[38;2;115;104;80m',
     gold: '\x1b[38;2;212;175;55m',
     bright: '\x1b[38;2;242;201;76m',
   },
   '256color': {
     muted: '\x1b[38;5;138m',
+    dim: '\x1b[38;5;59m',
     gold: '\x1b[38;5;179m',
     bright: '\x1b[38;5;221m',
   },
 };
 
 describe('input box with the real Pi Thoth theme', () => {
+  it.each([
+    'truecolor',
+    '256color',
+  ] as const)('keeps the pre-impact idle render byte-identical in %s', async (mode) => {
+    const theme = await loadThothTheme(mode);
+    setCapabilities({ ...capabilities, trueColor: mode === 'truecolor' });
+    const { editor } = themedEditor(theme as ActiveThemeLike);
+    editor.setText('content');
+    expect(editor.render(40)).toMatchSnapshot();
+  });
+
   it.each(
     modes,
-  )('uses muted sand for the idle and working border and patched color getter in $name', async ({
+  )('keeps idle borders and the patched color getter muted but dims working borders in $name', async ({
     mode,
   }) => {
     const theme = await loadThothTheme(mode);
@@ -86,29 +127,9 @@ describe('input box with the real Pi Thoth theme', () => {
     });
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    const plain = (text: string) => text;
-    const tui = { terminal: { rows: 20 }, requestRender: () => {} };
-    const editor = new Editor(tui as unknown as TUI, {
-      borderColor: plain,
-      selectList: {
-        selectedPrefix: plain,
-        selectedText: plain,
-        description: plain,
-        scrollInfo: plain,
-        noMatch: plain,
-      },
-    });
-    editor.focused = true;
+    const { editor, working } = themedEditor(theme as ActiveThemeLike);
     editor.setText('content');
-    const working = createWorkingState(tui.requestRender);
-    cleanups.push(() => working.dispose());
-    const decoration = decorateEditor(editor, {
-      theme: theme as ActiveThemeLike,
-      working,
-    });
-    if (!decoration) throw new Error('Editor was not decorated');
-    cleanups.push(() => decoration.dispose());
-    const { muted, gold, bright } = ansi[expectedMode];
+    const { muted, dim, gold, bright } = ansi[expectedMode];
     expect(theme.fg('accent', '╭')).toBe(`${gold}╭\x1b[39m`);
     expect(editor.borderColor('│')).toBe(`${muted}│\x1b[39m`);
     const idle = editor.render(40);
@@ -122,13 +143,13 @@ describe('input box with the real Pi Thoth theme', () => {
     expect(idle.map(visibleWidth)).toEqual([40, 40, 40]);
     working.start();
     const animated = editor.render(40);
-    expect(animated[0].startsWith(`${bright}\x1b[1m╭\x1b[22m\x1b[39m`)).toBe(
+    expect(animated[0].startsWith(`${bright}\x1b[1m┏\x1b[22m\x1b[39m`)).toBe(
       true,
     );
     expect(editor.borderColor('│')).toBe(`${muted}│\x1b[39m`);
-    expect(animated[0]).toContain(`${muted} ${'─'.repeat(28)}╮\x1b[39m`);
-    expect(animated[1].endsWith(`${muted}│\x1b[39m`)).toBe(true);
-    expect(animated.map(stripTerminalSequences)).toEqual(
+    expect(animated[0]).toContain(`${dim} ${'─'.repeat(28)}╮\x1b[39m`);
+    expect(animated[1].endsWith(`${dim}│\x1b[39m`)).toBe(true);
+    expect(animated.map(borderGeometry)).toEqual(
       idle.map(stripTerminalSequences),
     );
     expect(animated.map(visibleWidth)).toEqual([40, 40, 40]);

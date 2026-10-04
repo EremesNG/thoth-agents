@@ -10,10 +10,21 @@ import {
 const GOLD = parseColor('#D4AF37');
 const BRIGHT_GOLD = parseColor('#F2C94C');
 const MUTED = parseColor('#A89A78');
+const DIM = parseColor('#736850');
 const SHIMMER_LAP_MS = 2400;
 const SHIMMER_BAND_CELLS = 3;
 const COMET_LAP_MS = 3500;
-const COMET_TAIL_CELLS = 20;
+const COMET_TAIL_CELLS = 30;
+const CORNER_AFTERGLOW_MS = 700;
+const HEAVY_INTENSITY = 0.6;
+const HEAVY_BORDER_GLYPHS: Record<string, string> = {
+  '─': '━',
+  '│': '┃',
+  '╭': '┏',
+  '╮': '┓',
+  '╰': '┗',
+  '╯': '┛',
+};
 
 export interface CometFrame {
   width: number;
@@ -44,23 +55,46 @@ export function colorCometBorder(
   const length = perimeterLength(frame.width, frame.height);
   for (const glyph of text) {
     const index = perimeterIndex(column++, row, frame.width, frame.height);
-    const intensity =
-      index !== undefined && '─│╭╮╰╯'.includes(glyph)
+    const heavyGlyph = HEAVY_BORDER_GLYPHS[glyph];
+    const tail =
+      index !== undefined && heavyGlyph
         ? cometIntensity(index, length, frame.now)
         : 0;
+    const afterglow =
+      index !== undefined && '╭╮╰╯'.includes(glyph)
+        ? cornerAfterglowIntensity(index, length, frame.now)
+        : 0;
+    const intensity = Math.max(tail, afterglow);
     if (intensity === 0) {
       base += glyph;
       continue;
     }
     if (base) output += styleBase(base);
     base = '';
+    // Hold a heavy corner at bright gold, then fade without weakening its tail.
+    const colorIntensity = Math.max(
+      tail,
+      Math.min(1, afterglow / HEAVY_INTENSITY),
+    );
     output += styleText(
-      glyph,
-      { fg: cometColor(intensity), bold: intensity >= 0.85 },
+      intensity > HEAVY_INTENSITY ? heavyGlyph : glyph,
+      { fg: cometColor(colorIntensity), bold: intensity >= 0.85 },
       frame.mode,
     );
   }
   return output + (base ? styleBase(base) : '');
+}
+
+function cornerAfterglowIntensity(
+  index: number,
+  length: number,
+  now: number,
+): number {
+  const phase = ((now % COMET_LAP_MS) + COMET_LAP_MS) % COMET_LAP_MS;
+  const crossedAt = (index * COMET_LAP_MS) / length;
+  // Modulo also covers the most recent crossing in the previous lap.
+  const age = (phase - crossedAt + COMET_LAP_MS) % COMET_LAP_MS;
+  return Math.max(0, 1 - age / CORNER_AFTERGLOW_MS);
 }
 
 export function cometIntensity(
@@ -76,7 +110,7 @@ export function cometIntensity(
 
 export function cometColor(intensity: number) {
   return intensity <= 0.5
-    ? mixColors(MUTED, GOLD, intensity * 2, 'srgb')
+    ? mixColors(DIM, GOLD, intensity * 2, 'srgb')
     : mixColors(GOLD, BRIGHT_GOLD, (intensity - 0.5) * 2, 'srgb');
 }
 

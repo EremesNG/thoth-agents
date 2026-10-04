@@ -91,6 +91,7 @@ export const DYNAMIC_DELEGATION_TOOLS: ReadonlySet<string> = new Set([
   'fusion_investigate',
   'fusion_research',
   'fusion_validate',
+  'ask_orchestrator',
 ]);
 const DYNAMIC_DESCRIPTION =
   'Dynamic *: tools currently active in the root session.';

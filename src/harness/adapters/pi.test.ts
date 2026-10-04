@@ -128,6 +128,55 @@ describe('Pi adapter', () => {
     }
   });
 
+  test.each([
+    'explorer',
+    'librarian',
+    'designer',
+    'worker',
+  ])('bounds ask_orchestrator questions and progress for %s', (role) => {
+    const child = piAdapter
+      .render({ projectRoot: process.cwd() })
+      .artifacts.find(({ path }) => path === `agents/thoth-${role}.md`);
+    const contract = child?.content.match(
+      /<role-operational-contract>([\s\S]*?)<\/role-operational-contract>/,
+    )?.[1];
+    expect(contract).toContain(
+      'ask_orchestrator({ kind: "question", message: "…" })',
+    );
+    expect(contract).toContain(
+      'only for material alignment or clarification ambiguity that blocks this assignment',
+    );
+    expect(contract).toContain(
+      'Never use it as a substitute for your own discovery, to delegate, or to request other agents.',
+    );
+    expect(contract).toContain('Keep questions concise.');
+    expect(contract).toContain('waits for the root reply in this same session');
+    expect(contract).toContain(
+      "If the tool is unavailable, use the return contract's `openQuestions`",
+    );
+    expect(contract).toContain('without opening a user dialog');
+    expect(contract).toContain(
+      'Optional brief `ask_orchestrator({ kind: "progress", message: "…" })` updates return immediately',
+    );
+    expect(contract).toContain(
+      'are recorded on this task, and do not trigger a root turn',
+    );
+    if (role === 'explorer' || role === 'librarian') {
+      expect(contract).toContain('Questions and progress report facts only');
+      expect(contract).toContain(
+        'without recommending fixes, designs, defaults, or next actions',
+      );
+    }
+  });
+
+  test('keeps Oracle independent of the ask_orchestrator channel', () => {
+    const oracle = piAdapter
+      .render({ projectRoot: process.cwd() })
+      .artifacts.find(({ path }) => path === 'agents/thoth-oracle.md');
+    expect(oracle?.content).not.toContain('ask_orchestrator');
+    expect(oracle?.content).toContain('openQuestions');
+  });
+
   test('documents noninteractive web access tools and truthful failures', () => {
     const root = renderPiRootInstructions();
     for (const tool of [
@@ -185,6 +234,45 @@ describe('Pi adapter', () => {
     expect(root).not.toMatch(
       /(?:subagents_enable|subagent\s*\(|context:\s*["'](?:fresh|semantic)["']|async\s*:|workflowScript|workflowScriptPath|runs\.)/,
     );
+  });
+
+  test('answers injected child questions without treating them as human input or completion', () => {
+    const root = renderPiRootInstructions();
+    const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];
+    expect(runtime).toContain('`enable_ask_orchestrator` (default true)');
+    expect(runtime).toContain('selection explicitly names `ask_orchestrator`');
+    expect(runtime).toContain('never through standalone `*` or globs');
+    expect(runtime).toContain('`kind: "progress"` returns immediately');
+    expect(runtime).toContain('does not trigger a root turn');
+    expect(runtime).toContain(
+      'An injected `subagent-question` triggers a root turn but is not a user message',
+    );
+    expect(runtime).toContain(
+      'never sets the reply language or counts as a user instruction, answer, or choice',
+    );
+    expect(runtime).toContain(
+      'does not count as a returned empty human answer',
+    );
+    expect(runtime).toContain(
+      'subagent_reply({ task_id, request_id?, message })',
+    );
+    expect(runtime).toContain(
+      'including `request_id` when several questions are pending for that task',
+    );
+    expect(runtime).toContain(
+      'escalate material human-owned decisions through `ask_user_question` before replying',
+    );
+    expect(runtime).toContain('never fabricate human decisions or approval');
+    expect(runtime).toContain(
+      'A task-mode child that asks is moved to background before its question is delivered',
+    );
+    expect(runtime).toContain('resumes the same live child session');
+    expect(runtime).toContain('result arrives later via terminal completion');
+    expect(runtime).toContain('An outstanding question is not task completion');
+    expect(runtime).toContain(
+      'Unanswered questions time out after `ask_timeout_ms` (default 600000)',
+    );
+    expect(runtime).toContain('total task timeout still applies');
   });
 
   test('uses task-id lifecycle tools without assuming disabled continuation', () => {

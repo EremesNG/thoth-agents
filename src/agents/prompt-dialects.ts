@@ -280,14 +280,14 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       'subagent_run({ agent, task, mode: "background" })',
     backgroundStatusTool: 'subagent_status({ task_id })',
     backgroundWaitInstruction:
-      'Launch separate background runs with `subagent_run({ agent, task, mode: "background" })` before collecting results. Native terminal notifications (`triggerTurn`/`followUp`) wake the parent. Do not poll status or sleep merely to wait.',
+      'Launch separate background runs with `subagent_run({ agent, task, mode: "background" })` before collecting results. Native terminal notifications (`triggerTurn`/`followUp`) wake the parent. Do not poll status or sleep merely to wait. A task-mode child that asks a question is moved to background; answer it with `subagent_reply` and collect its result later through terminal completion.',
     userQuestionTool: 'ask_user_question',
     hostStatusSurface: 'subagent_status({ task_id })',
     lifecycle: {
       freshDelegation:
         '`subagent_run` with one canonical `agent`, a fresh bounded `task`, and an explicit `mode` of `"task"` or `"background"`',
       sameAssignmentContinuation:
-        '`subagent_send_message` only when exposed and its schema is confirmed; `subagent_continue` is unavailable unless `enable_continue` is explicitly enabled',
+        '`subagent_reply({ task_id, request_id?, message })` for an injected `subagent-question` when exposed; `subagent_send_message` only when exposed and its schema is confirmed; `subagent_continue` is unavailable unless `enable_continue` is explicitly enabled',
       independentContext:
         'a new objective, phase, mutable surface, or independent judgment uses a fresh `subagent_run`; optional `context` is plain supporting text, not a context-mode selector',
       statusAction:
@@ -295,7 +295,7 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       terminalState:
         'a native terminal completion notification or terminal task-id result',
       nonterminalState:
-        'running, queued, timed-out, malformed, message-accepted, or cancellation-acknowledged state',
+        'waiting for an orchestrator reply, an injected `subagent-question`, running, queued, timed-out, malformed, message-accepted, or cancellation-acknowledged state',
       sameSessionProbe:
         '`subagent_status({ task_id })` for the current parent-owned assignment',
       enforcement: 'runtime-supported',

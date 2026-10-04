@@ -31,6 +31,7 @@ export function getPiSpecialistDefaultTools(role: PiSpecialistRole): string[] {
     'bash',
     ...(contract.canMutateWorkspace ? ['edit', 'write'] : []),
     ...(role === 'librarian' ? LIBRARIAN_RESEARCH_TOOLS : []),
+    ...(role !== 'oracle' ? ['ask_orchestrator'] : []),
   ];
 }
 

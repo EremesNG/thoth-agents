@@ -68,7 +68,7 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
   expect(
     snapshot.roles.map(({ role, defaultTools }) => [role, defaultTools]),
   ).toEqual([
-    ['explorer', ['read', 'bash']],
+    ['explorer', ['read', 'bash', 'ask_orchestrator']],
     [
       'librarian',
       [
@@ -81,11 +81,12 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
         'fetch_content',
         'get_search_content',
         'source_check',
+        'ask_orchestrator',
       ],
     ],
     ['oracle', ['read', 'bash']],
-    ['designer', ['read', 'bash', 'edit', 'write']],
-    ['worker', ['read', 'bash', 'edit', 'write']],
+    ['designer', ['read', 'bash', 'edit', 'write', 'ask_orchestrator']],
+    ['worker', ['read', 'bash', 'edit', 'write', 'ask_orchestrator']],
   ]);
   expect(snapshot.roles.find(({ role }) => role === 'explorer')).toMatchObject({
     tools: ['read', 'bash'],

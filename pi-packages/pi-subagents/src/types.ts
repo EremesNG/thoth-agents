@@ -56,6 +56,7 @@ export type SubagentDefinition = {
   effort?: ThinkingEffort;
   subagent_mode?: SubagentMode;
   tools: string[];
+  disallowed_tools?: string[];
   scope?: SubagentDefinitionScope;
 };
 

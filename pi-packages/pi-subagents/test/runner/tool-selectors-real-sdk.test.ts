@@ -3,56 +3,284 @@ import os from 'node:os';
 import path from 'node:path';
 import type { AssistantMessage } from '@earendil-works/pi-ai';
 import { expect, it, vi } from 'vitest';
+import { loadSubagents, subagentSourceWarnings } from '../../src/config.js';
 import { sdkSubagentRunner } from '../../src/runner/sdk-runner.js';
 import { expandToolPatterns } from '../../src/tool-patterns.js';
 
-it.each([
+interface PermittedChildRegistryCase {
+  selection: string;
+  tools: string[];
+  expected: string[];
+  enabled?: boolean;
+  active?: string[];
+  defaultTools?: string[];
+  denials?: string;
+  dropped?: string[];
+  opening?: string;
+  closing?: string;
+  newline?: string;
+  blockedOverride?: {
+    frontmatter: string;
+    diagnostic: string;
+    opening?: string;
+    closing?: string;
+  };
+}
+
+it.each<PermittedChildRegistryCase>([
   {
     selection: 'explicit',
     tools: ['read', 'ask_orchestrator'],
-    enabled: true,
-    present: true,
+    expected: ['read', 'ask_orchestrator'],
   },
   {
     selection: 'only explicit',
     tools: ['ask_orchestrator'],
-    enabled: true,
-    present: true,
+    expected: ['ask_orchestrator'],
+  },
+  {
+    selection: 'explicit omitting',
+    tools: ['read'],
+    expected: ['read', 'ask_orchestrator'],
   },
   {
     selection: 'disabled',
     tools: ['read', 'ask_orchestrator'],
     enabled: false,
-    present: false,
+    expected: ['read'],
   },
   {
-    selection: 'standalone wildcard',
+    selection: 'standalone wildcard without root ask tool',
     tools: ['*'],
-    enabled: true,
-    present: false,
+    expected: ['read', 'bash', 'ask_orchestrator'],
   },
   {
     selection: 'glob',
     tools: ['read', 'ask_*'],
-    enabled: true,
-    present: false,
+    expected: ['read', 'ask_orchestrator'],
   },
   {
     selection: 'mixed explicit',
     tools: ['*', 'ask_orchestrator'],
-    enabled: true,
-    present: true,
+    expected: ['read', 'bash', 'ask_orchestrator'],
   },
-])('injects ask_orchestrator only when explicitly selected and enabled: $selection', async ({
+  {
+    selection: 'defaults',
+    tools: [],
+    defaultTools: ['read'],
+    expected: ['read', 'ask_orchestrator'],
+  },
+  { selection: 'empty default', tools: [], expected: ['ask_orchestrator'] },
+  {
+    selection: 'empty active inventory',
+    tools: ['*'],
+    active: [],
+    expected: ['ask_orchestrator'],
+  },
+  {
+    selection: 'denied injected string',
+    tools: ['*'],
+    denials: 'disallowed_tools: ask_orchestrator',
+    expected: ['read', 'bash'],
+  },
+  ...['--- ', '---\t', '--- # comment', '\uFEFF--- '].flatMap((opening) =>
+    ['\n', '\r\n'].map((newline) => ({
+      selection: `B6 denial with opening ${JSON.stringify(opening)} and newline ${JSON.stringify(newline)}`,
+      opening,
+      newline,
+      tools: ['*'],
+      denials: 'disallowed_tools: ask_orchestrator',
+      expected: ['read', 'bash'],
+    })),
+  ),
+  {
+    selection: 'B6 SDK-visible denial in an adjacent opening comment',
+    opening: '---#disallowed_tools: ask_orchestrator',
+    tools: ['*'],
+    expected: ['read', 'bash'],
+  },
+  {
+    selection: 'B6 denial with a commented closing delimiter',
+    opening: '--- # opening comment',
+    closing: '--- # closing comment',
+    newline: '\r\n',
+    tools: ['*'],
+    denials: 'disallowed_tools: ask_orchestrator',
+    expected: ['read', 'bash'],
+  },
+  ...[
+    {
+      selection: 'invalid opening',
+      opening: '---x',
+      diagnostic: 'invalid YAML frontmatter opening',
+    },
+    {
+      selection: 'unterminated commented opening',
+      opening: '--- # opening comment',
+      closing: '',
+      diagnostic: 'unterminated YAML frontmatter',
+    },
+  ].map(({ selection, ...delimiters }) => ({
+    selection: `B6 ${selection} blocks a permissive filename fallback`,
+    tools: ['*'],
+    denials: 'disallowed_tools: ask_orchestrator',
+    blockedOverride: {
+      ...delimiters,
+      frontmatter:
+        'name: worker\ntools: read\ndisallowed_tools: ask_orchestrator',
+    },
+    expected: ['read', 'bash'],
+  })),
+  {
+    selection:
+      'denial-bearing name mismatch blocks a permissive filename fallback',
+    tools: ['*'],
+    denials: 'disallowed_tools: ask_orchestrator',
+    blockedOverride: {
+      frontmatter:
+        'name: analyst\ntools: "*"\ndisallowed_tools: ask_orchestrator',
+      diagnostic: 'rename the file to analyst.md or change name',
+    },
+    expected: ['read', 'bash'],
+  },
+  {
+    selection:
+      'tagged ordered-map override blocks a permissive filename fallback',
+    tools: ['*'],
+    denials: 'disallowed_tools: ask_orchestrator',
+    blockedOverride: {
+      frontmatter:
+        '!!omap\n- name: worker\n- tools: read\n- disallowed_tools: ask_orchestrator',
+      diagnostic:
+        'agent frontmatter does not support YAML anchors, aliases, merge keys or tags',
+    },
+    expected: ['read', 'bash'],
+  },
+  ...[
+    ['merge-key override', '<<: {disallowed_tools: ask_orchestrator}'],
+    [
+      'alias-key duplicate override',
+      '&key disallowed_tools: ask_orchestrator\n*key : []',
+    ],
+    ['anchored value override', 'disallowed_tools: &deny ask_orchestrator'],
+    ['alias value override', 'disallowed_tools: *missing'],
+    ['custom-tagged value override', 'disallowed_tools: !foo ask_orchestrator'],
+    [
+      'explicit-string-tag override',
+      'disallowed_tools: !!str ask_orchestrator',
+    ],
+  ].map(([selection, fields]) => ({
+    selection: `${selection} blocks a permissive filename fallback`,
+    tools: ['*'],
+    denials: 'disallowed_tools: ask_orchestrator',
+    blockedOverride: {
+      frontmatter: `name: worker\ntools: "*"\n${fields}`,
+      diagnostic:
+        'agent frontmatter does not support YAML anchors, aliases, merge keys or tags',
+    },
+    expected: ['read', 'bash'],
+  })),
+  {
+    selection: 'denied injected YAML list',
+    tools: ['read', 'ask_*'],
+    denials: 'disallowed_tools:\n  - ask_orchestrator',
+    expected: ['read'],
+  },
+  {
+    selection: 'denied ordinary wildcard',
+    tools: ['*'],
+    denials: 'disallowed_tools: bash',
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'denied ordinary glob',
+    tools: ['*ash', 'read'],
+    denials: 'disallowed_tools: bash',
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'denied ordinary explicit',
+    tools: ['read', 'bash'],
+    denials: 'disallowed_tools: bash',
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'denied ordinary default',
+    tools: [],
+    defaultTools: ['read', 'bash'],
+    denials: 'disallowed_tools: bash',
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'uninstalled denied name',
+    tools: ['read'],
+    denials: 'disallowed_tools: not_installed_fixture',
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'uninstalled denied selected name',
+    tools: ['read', 'not_installed_fixture'],
+    denials: 'disallowed_tools: not_installed_fixture',
+    expected: ['read', 'ask_orchestrator'],
+  },
+  {
+    selection: 'missing ordinary tools with injected implementation',
+    tools: ['not_installed_fixture'],
+    dropped: ['not_installed_fixture'],
+    expected: ['ask_orchestrator'],
+  },
+  {
+    selection: 'disabled wildcard with root ask tool',
+    tools: ['*'],
+    enabled: false,
+    active: ['read', 'bash', 'ask_orchestrator'],
+    expected: ['read', 'bash'],
+  },
+])('uses one effective permitted child registry: $selection', async ({
   tools,
-  enabled,
-  present,
+  enabled = true,
+  expected,
+  active = ['read', 'bash'],
+  defaultTools = [],
+  denials = '',
+  dropped = [],
+  opening = '---',
+  closing = '---',
+  newline = '\n',
+  blockedOverride,
 }) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-ask-sdk-'));
   const cwd = path.join(root, 'workspace');
   const agentDir = path.join(root, 'agent');
-  fs.mkdirSync(cwd, { recursive: true });
+  fs.mkdirSync(path.join(cwd, '.pi', 'subagents'), { recursive: true });
   fs.mkdirSync(agentDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(cwd, '.pi', 'subagents', 'analyst.md'),
+    [
+      opening,
+      'name: analyst',
+      `tools: ${JSON.stringify(tools.join(', '))}`,
+      denials,
+      closing,
+      'bounded analysis',
+    ].join(newline),
+  );
+  if (blockedOverride) {
+    fs.mkdirSync(path.join(agentDir, 'subagents'), { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents', 'worker.md'),
+      '---\nname: worker\ntools: read\n---\nPermissive worker fallback',
+    );
+    fs.writeFileSync(
+      path.join(cwd, '.pi', 'subagents', 'worker.md'),
+      [
+        blockedOverride.opening ?? '---',
+        blockedOverride.frontmatter,
+        blockedOverride.closing ?? '---',
+        'Invalid denial-bearing override',
+      ].join('\n'),
+    );
+  }
   const { AgentSession, ModelRuntime, SettingsManager } = await import(
     '@earendil-works/pi-coding-agent'
   );
@@ -90,32 +318,29 @@ it.each([
       } as AssistantMessage);
     });
   try {
+    const definitions = loadSubagents(cwd);
     const modelRuntime = await ModelRuntime.create({
       modelsPath: null,
       authPath: path.join(agentDir, 'auth.json'),
       allowModelNetwork: false,
     });
     const result = await sdkSubagentRunner({
-      definition: {
-        name: 'analyst',
-        description: 'analysis',
-        instructions: 'bounded analysis',
-        filePath: '/analyst.md',
-        tools,
-      },
+      // A leaked worker fallback must be exercised, not hidden by the analyst.
+      definition:
+        definitions.find(({ name }) => name === 'worker') ?? definitions[0],
       task: 'align',
-      taskId: 'subtask_explicit',
+      taskId: 'subtask_effective',
       cwd,
       ctx: {
         modelRuntime,
         settingsManager: SettingsManager.inMemory({}),
-        pi: { getActiveTools: () => ['read', 'ask_orchestrator'] },
+        pi: { getActiveTools: () => active },
       },
       config: {
         timeout_ms: 10000,
         stall_timeout_ms: 10000,
         max_concurrency: 1,
-        default_tools: [],
+        default_tools: defaultTools,
         model_profiles: {},
         session_resources: 'lean',
         enable_ask_orchestrator: enabled,
@@ -128,9 +353,24 @@ it.each([
         onPendingChange: () => () => {},
       },
     });
-    expect(registered.includes('ask_orchestrator')).toBe(present);
-    expect(result.dropped_tools).toEqual(enabled ? [] : ['ask_orchestrator']);
-    if (present) {
+    expect(registered.sort()).toEqual([...expected].sort());
+    if (blockedOverride) {
+      expect(definitions).toEqual([
+        expect.objectContaining({
+          name: 'analyst',
+          filePath: path.join(cwd, '.pi', 'subagents', 'analyst.md'),
+          disallowed_tools: ['ask_orchestrator'],
+        }),
+      ]);
+      expect(subagentSourceWarnings(cwd)).toEqual([
+        expect.stringContaining(blockedOverride.diagnostic),
+      ]);
+      expect(subagentSourceWarnings(cwd)[0]).toContain(
+        path.join(cwd, '.pi', 'subagents', 'worker.md'),
+      );
+    }
+    expect(result.dropped_tools).toEqual(dropped);
+    if (expected.includes('ask_orchestrator')) {
       expect(childResult.content).toContainEqual({
         type: 'text',
         text: 'use runtime scope',
@@ -150,6 +390,40 @@ it.each([
     fs.rmSync(root, { recursive: true, force: true });
   }
 }, 30_000);
+it.each([
+  { enabled: false, tools: ['ask_orchestrator'], denied: [] },
+  { enabled: true, tools: ['read'], denied: ['read', 'ask_orchestrator'] },
+  { enabled: false, tools: ['*'], denied: [] },
+])('rejects an empty effective permitted selection before SDK launch: %o', async ({
+  enabled,
+  tools,
+  denied,
+}) => {
+  await expect(
+    sdkSubagentRunner({
+      definition: {
+        name: 'empty',
+        description: 'empty',
+        filePath: '/empty.md',
+        instructions: 'Reply.',
+        tools,
+        disallowed_tools: denied,
+      },
+      task: 'reply',
+      cwd: '.',
+      ctx: { pi: { getActiveTools: () => [] } },
+      config: {
+        timeout_ms: 1000,
+        stall_timeout_ms: 1000,
+        max_concurrency: 1,
+        default_tools: [],
+        model_profiles: {},
+        enable_ask_orchestrator: enabled,
+      },
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toThrow('effective permitted tool selection is empty');
+});
 
 it('distinguishes queued, extension-handled and rejected steering in the real SDK', async () => {
   const fixtureRoot = fs.mkdtempSync(
@@ -299,18 +573,13 @@ it.each([
       'fixture_caller',
       'inactive_fixture_tool',
       'codemode_fixture_tool',
+      'ask_user_question',
+      'todo',
+      'AskClaude',
+      'AskAntigravity',
     ];
     rootSession.setActiveToolsByName(
-      selection === '*'
-        ? [
-            ...permitted,
-            'subagent_run',
-            'ask_user_question',
-            'todo',
-            'AskClaude',
-            'AskAntigravity',
-          ]
-        : [],
+      selection === '*' ? [...permitted, 'subagent_run'] : [],
     );
     const rootActiveNames = rootSession.getActiveToolNames();
     if (selection === 'explicit')
@@ -380,7 +649,14 @@ it.each([
           afterToolCall: childSession.agent.afterToolCall,
         },
       );
-    const callableNames = ['inactive_fixture_tool', 'codemode_fixture_tool'];
+    const callableNames = [
+      'inactive_fixture_tool',
+      'codemode_fixture_tool',
+      'ask_user_question',
+      'todo',
+      'AskClaude',
+      'AskAntigravity',
+    ];
     for (const name of callableNames) {
       const outcome = await executeNested(name);
       expect(outcome.isError).toBe(false);
@@ -390,14 +666,7 @@ it.each([
         text: `${name} executed`,
       });
     }
-    const rejectedNames = [
-      'subagent_run',
-      'ask_user_question',
-      'todo',
-      'AskClaude',
-      'AskAntigravity',
-      'excluded_fixture_tool',
-    ];
+    const rejectedNames = ['subagent_run', 'excluded_fixture_tool'];
     for (const name of rejectedNames) {
       expect(childRegistered).not.toContain(name);
       const outcome = await executeNested(name);

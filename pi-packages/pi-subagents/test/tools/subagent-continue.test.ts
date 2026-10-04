@@ -356,8 +356,8 @@ describe('subagent_continue tool', () => {
     expect(
       createAgentSession.mock.calls.map(([options]) => options.tools),
     ).toEqual([
-      ['read', 'missing_fixture_tool'],
-      ['read', 'current_extension_tool'],
+      ['read', 'missing_fixture_tool', 'ask_orchestrator'],
+      ['read', 'current_extension_tool', 'ask_orchestrator'],
     ]);
     const attempts = env.createHistoryStore().listTaskAttempts(env.tmp, taskId);
     expect(attempts.map((attempt) => attempt.dropped_tools)).toEqual([

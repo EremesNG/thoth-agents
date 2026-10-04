@@ -78,6 +78,8 @@ function readToolNames(
 function resolveConfiguredTools(
   patterns: readonly string[],
   context: any,
+  disallowedTools: readonly string[],
+  enableAskOrchestrator: boolean,
 ): string[] {
   const selectsActiveTools = patterns.length === 1 && patterns[0] === '*';
   const active = patterns.some(hasToolGlob)
@@ -90,7 +92,20 @@ function resolveConfiguredTools(
     );
 
   try {
-    return expandToolPatterns(patterns, active);
+    const expanded = expandToolPatterns(patterns, active);
+    if (enableAskOrchestrator) expanded.push('ask_orchestrator');
+    const denied = new Set(disallowedTools);
+    const permitted = [...new Set(expanded)].filter(
+      (name) =>
+        (enableAskOrchestrator || name !== 'ask_orchestrator') &&
+        !denied.has(name) &&
+        !name.startsWith('subagent_'),
+    );
+    if (!permitted.length)
+      throw new Error(
+        'The effective permitted tool selection is empty. Check tools, disallowed_tools and enable_ask_orchestrator.',
+      );
+    return permitted;
   } catch (error) {
     throw new NonRetryableSubagentError((error as Error).message);
   }
@@ -482,15 +497,10 @@ async function createSession(
     cwd,
     model,
     thinkingLevel: effort,
-    tools:
-      config.enable_ask_orchestrator === false
-        ? tools.filter((name) => name !== 'ask_orchestrator')
-        : tools,
-    customTools:
-      config.enable_ask_orchestrator !== false &&
-      tools.includes('ask_orchestrator')
-        ? [createAskOrchestratorTool(orchestratorChannel)]
-        : [],
+    tools,
+    customTools: tools.includes('ask_orchestrator')
+      ? [createAskOrchestratorTool(orchestratorChannel)]
+      : [],
     sessionManager,
   };
   const modelRuntime =
@@ -659,7 +669,12 @@ export const sdkSubagentRunner: SubagentRunner = async ({
   const configuredTools = definition.tools?.length
     ? definition.tools
     : config.default_tools;
-  const tools = resolveConfiguredTools(configuredTools, ctx);
+  const tools = resolveConfiguredTools(
+    configuredTools,
+    ctx,
+    definition.disallowed_tools ?? [],
+    config.enable_ask_orchestrator !== false,
+  );
   const systemPrompt = definition.instructions;
   const prompt =
     continuation?.prompt ?? buildPrompt(definition, task, context, tools);

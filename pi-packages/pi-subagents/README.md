@@ -10,7 +10,7 @@ Requires Pi `>=0.99.0`; development SDK/TUI dependencies are pinned to `0.99.1`,
 - `subagent_run` for task-mode or background delegation to one agent per call.
 - Optional `subagent_continue` for resuming the exact persisted nested session with optional mode/model/effort overrides when `enable_continue: true`.
 - `subagent_send_message` for live same-parent steering of owned background tasks on supported Pi runtimes.
-- Explicitly selected child `ask_orchestrator` for blocking questions and non-blocking progress, with parent `subagent_reply` (enabled by default).
+- Child-provided `ask_orchestrator` for blocking questions and non-blocking progress, with parent `subagent_reply` (enabled by default for every child unless denied).
 - Status/result/list/cancel tools for delegated tasks.
 - Isolated in-memory agent sessions for each subagent run.
 - Subagent markdown used as system prompt, with delegated task/context as the user prompt.
@@ -68,7 +68,7 @@ Package installation scope and configuration scope are independent. A globally i
 
 ## Subagent definitions
 
-Subagents are markdown files with optional YAML-like frontmatter.
+Subagents are markdown files with optional strict YAML frontmatter. Each definition's identity is its filename stem, trimmed and normalized to lowercase. If frontmatter `name` is present, it must match that identity case-insensitively; otherwise loading fails with a diagnostic telling you to rename the file or change `name`.
 
 Load order:
 
@@ -77,7 +77,7 @@ Load order:
 3. Project agents from `.pi/agents/*.md`.
 4. Project subagents from `.pi/subagents/*.md`.
 
-Project definitions override global definitions with the same normalized name. Within the same scope, `subagents` definitions override `agents` definitions with the same normalized name and Pi shows a startup warning so the duplicate can be cleaned up.
+Project definitions override global definitions with the same normalized filename identity. Within the same scope, `subagents` definitions override `agents` definitions with that identity and Pi shows a startup warning so the duplicate can be cleaned up. Every failed definition load blocks lower-priority definitions with its filename identity, not a name claimed in invalid frontmatter.
 
 The npm package is the extension runtime only. It does not ship or load subagent definitions from `node_modules/@thoth-agents/pi-subagents/agents`; use the directories above, or run `subagent_list_agents` / `subagent({ action: "list" })` to inspect the definitions Pi actually loaded.
 
@@ -95,7 +95,7 @@ PI_CODING_AGENT_DIR=/path/to/pi-agent-dir
 
 ### Definition format
 
-Example:
+Example (`discovery.md`):
 
 ```md
 ---
@@ -119,9 +119,10 @@ Supported frontmatter:
 
 | Field | Description |
 |---|---|
-| `name` | Subagent name. Defaults to filename stem. Normalized to lowercase. |
+| `name` | Optional name; must match the filename stem after trimming and case-insensitive normalization. Identity always comes from the filename. A mismatch fails loading; rename the file to `<name>.md` or change `name`. |
 | `description` | Short description shown by `subagent_list_agents`. |
-| `tools` | Tool allowlist for the subagent. Accepts either a comma-separated inline list or a multiline YAML list, but never both in one definition. Standalone `*` selects the parent's currently active eligible tools afresh at child launch, excluding root-only controls and delegation tools. Missing child implementations are dropped with a durable warning for every selection form, failing only if every selected tool is missing. Explicit names reach the child even when inactive in the root; globs such as `tool_*` match active tools. When omitted, the definition gets the built-in default tool list. Configured `default_tools` is used by the runner when a definition has an empty tool list. |
+| `tools` | Tool allowlist: a comma-separated inline list or multiline YAML list, never both. Standalone `*` selects current parent-active tools at launch; other globs match active tools, and explicit names work even when root-inactive. The runner then adds enabled `ask_orchestrator`, subtracts `disallowed_tools`, and excludes native `subagent_*` tools. Missing permitted implementations are dropped with a durable warning; launch fails if none remain. Omitted `tools` uses the built-in defaults; an empty definition list uses configured `default_tools`. |
+| `disallowed_tools` | Exact tool names removed after allowlist resolution, including injected tools. Accepts a comma-separated string or YAML list. Absent, empty string/value, or `[]` means no denial. Globs, non-string items, nested values, and ambiguous declarations fail definition loading with a source diagnostic. Uninstalled denied names are inert and produce no warning. |
 | `model` | Optional model as `provider/model-id`. |
 | `effort`, `thinking_level`, `thinkingLevel` | Optional thinking effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
 | `subagent_mode` | Optional default execution mode for this definition: `task` or `background`. |
@@ -145,13 +146,31 @@ tools:
   - bash
 ```
 
-Both examples load the same allowlist: `read`, `write`, and `bash`. Comma splitting applies only to `tools`; scalar fields such as `description` can contain commas without becoming lists.
+Both examples load the same allowlist: `read`, `write`, and `bash`. Comma splitting applies to `tools` and `disallowed_tools`; scalar fields such as `description` can contain commas without becoming lists.
 
-Use standalone `tools: "*"` to follow the parent's currently active eligible tools at each launch (via `getActiveTools()`, falling back to legacy `getTools()`). Inactive registered tools are not inherited. Preserve the compact selector when saving; an empty active inventory stays empty. The former active selector has been removed and is rejected at launch with a diagnostic directing you to `*`.
+Every definition's frontmatter must be a strict YAML mapping with unique keys, regardless of whether it declares `disallowed_tools`. Only plain scalars, sequences and mappings are supported: anchors (`&`), aliases (`*`), merge keys (`<<`) and explicit tags (`!`, `!!` or custom tags) anywhere in the frontmatter fail loading with a diagnostic and block same-filename fallback. Quoted strings containing these characters are ordinary text. Quote the wildcard as `tools: "*"` (or `tools: ["*"]`) and quote values containing `: `, such as `description: "worker: x"`. Unquoted `tools: *` and colon-containing plain descriptions are invalid YAML and are not accepted as legacy syntax.
 
-Standalone `*` excludes `subagent_*`, `ask_user_question`, `todo`, `AskClaude`, `AskAntigravity`, `bg_delegate`, `bg_run_pi_attested`, `bg_result`, `fusion_reason`, `fusion_investigate`, `fusion_research`, and `fusion_validate`. The delegation names may still be selected through explicit lists or other glob patterns; reserved orchestration controls stay blocked. Shell-job tools from `@thoth-agents/pi-background-tasks` (including `bg_task_spawn`, `bg_task_watch`, and `bg_status`) remain selectable under `*`; its lifecycle passes through by default, and child jobs stop with the child.
+YAML parse errors, duplicate keys, non-mapping/null documents, invalid types for supported fields, name mismatches, malformed `disallowed_tools`, and unreadable files fail definition loading with a source diagnostic and block fallback with the same filename identity. Diagnostics for invalid YAML include quoting guidance. A failed `custom.md` claiming `name: worker` blocks `custom`, not a separate `worker.md`; it cannot act as a worker override. Quoted keys and YAML string escapes are supported; `tools` accepts a comma-separated string or a list of strings.
 
-`ask_orchestrator` is a child-only exception: name it explicitly in the definition's `tools` or resolved `default_tools`. Standalone `*` and every glob (including `ask_*` and mixed `*`) never match it. For example, `tools: read, ask_orchestrator` selects it when enabled. If disabled, an explicitly selected name is dropped and reported like any missing implementation; an all-missing selection still fails.
+Use standalone `tools: "*"` to follow the parent's currently active tools at each launch (via `getActiveTools()`, falling back to legacy `getTools()`). Inactive registered tools are not inherited. Preserve the compact selector when saving. The former active selector has been removed and is rejected at launch with a diagnostic directing you to `*`.
+
+The runtime natively excludes only `subagent_*`, for every selection form. Other packages' tools, including `ask_user_question`, `todo` and third-party delegation tools, are selectable unless the definition denies them. Shell-job tools from `@thoth-agents/pi-background-tasks` remain selectable under `*`; its lifecycle passes through by default, and child jobs stop with the child.
+
+With `enable_ask_orchestrator: true` (the default), every child receives the child-provided `ask_orchestrator` unless its `disallowed_tools` denies it. This includes standalone `*`, globs, explicit lists that omit it, and empty/default selections; even an empty root inventory under `*` yields the injected tool alone. Disabled or denied names are removed before SDK registration and verification, never reported as missing implementations. The same effective permitted list controls SDK tools, custom-tool injection and registry verification. An empty effective selection fails launch.
+
+For example, deny injected and ordinary tools with either format:
+
+```yaml
+disallowed_tools: ask_orchestrator, bash
+```
+
+```yaml
+disallowed_tools:
+  - ask_orchestrator
+  - bash
+```
+
+Thoth-generated specialists deny the interactive question tool, task-list tool and known third-party delegation tools through this field; Oracle additionally denies `ask_orchestrator` to preserve independent judgment. The runtime itself is role-agnostic. An explicit empty denial overrides those generated defaults when preserved by Thoth synchronization.
 
 These exclusions are not a sandbox: shell and MCP tools can still launch agents indirectly.
 
@@ -159,7 +178,7 @@ For every selection form—explicit lists, globs, mixed selectors, and standalon
 
 Explicit names reach the child even when inactive in the root. Use explicit selection to give a role deferred/advanced tools: standalone `*` and other globs do not inherit root-inactive tools. All selections are checked against the child's registered implementations, rather than requiring every selected tool to be active in the model tool list. Selected `deferred` and `codemode` tools remain callable through Pi's native nested-tool interface. Excluded and prohibited tools are absent from the child's registered inventory.
 
-Other wildcard patterns such as `tool_*`, including `*` mixed with other entries, retain active-only matching. If a pattern matches no active tool, it expands to nothing. Reserved `subagent_*`, `ask_user_question`, and `todo` controls remain excluded.
+Other wildcard patterns such as `tool_*`, including `*` mixed with other entries, retain active-only matching. If a pattern matches no active tool, it expands to nothing before enabled `ask_orchestrator` is added. Native `subagent_*` controls remain excluded; `disallowed_tools` applies to every form.
 
 Do not mix the formats or declare `tools` more than once:
 
@@ -169,7 +188,7 @@ tools: read, write
   - bash
 ```
 
-Ambiguous definitions are not loaded. On startup or `/reload`, Pi shows a warning with the subagent name and file path and asks you to choose either the inline or multiline format. The parser accepts frontmatter files with either LF or Windows CRLF line endings.
+Invalid definitions are not loaded. On startup or `/reload`, Pi shows a warning with the subagent name, file path, and validation issue. Use either the inline or list format without duplicate keys. The parser accepts frontmatter files with either LF or Windows CRLF line endings.
 
 The markdown body becomes the subagent instructions.
 
@@ -265,7 +284,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `default_effort` | current orchestrator effort | Fallback thinking effort. Also accepts `default_thinking_level` or `thinkingLevel`. |
 | `default_mode` | `background` | Fallback execution mode when neither the invocation nor the selected definition sets one. Accepts `task` or `background`. |
 | `enable_continue` | `false` | Opt-in gate for new continuations and `subagent_continue` tool exposure. Project values override global values; changing it requires `/reload` or restart before tool availability changes. |
-| `enable_ask_orchestrator` | `true` | Gate for explicitly selected child `ask_orchestrator` and parent `subagent_reply`. Follows the global/project cascade; `/reload` or restart after changes to update parent tool exposure. |
+| `enable_ask_orchestrator` | `true` | Gate for always-on child-provided `ask_orchestrator` (unless denied by that definition) and parent `subagent_reply`. Follows the global/project cascade; `/reload` or restart after changes to update parent tool exposure. |
 | `ask_timeout_ms` | `600000` | Positive integer reply timeout per question (10 minutes). Waiting suspends `stall_timeout_ms`, but still counts toward total `timeout_ms`. |
 | `model_profiles` | `{}` | Per-agent model/effort overrides scoped to matching definitions. Project-local profiles apply to project-local definitions; global profiles apply to global definitions. |
 | `timeout_ms` | `1200000` | Total timeout per subagent task (20 minutes). |
@@ -494,7 +513,7 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 { kind: "progress", message: "Discovery complete; implementation is underway." }
 ```
 
-- The tool is injected in-process only when explicitly selected and `enable_ask_orchestrator` is true; it is never inherited through `*` or globs and is not registered for the root.
+- The tool is injected in-process for every child when `enable_ask_orchestrator` is true unless denied by `disallowed_tools`, regardless of `tools` selection; it is not registered for the root.
 - `question` blocks until the parent replies, and the child may ask repeatedly in the same live session. Replies are correlated by task id and UUID request id.
 - Each question rejects on `ask_timeout_ms` expiry, task cancellation, or session shutdown. Waiting suspends stall inactivity (`stall_timeout_ms`); the inactivity budget resumes after the last pending question ends. Total `timeout_ms` continues, so long human escalation can still exhaust the task's total budget.
 - `progress` returns immediately and keeps the latest five `progress_updates` on the task; it never injects a parent message or triggers a turn. The widget shows the latest progress update.

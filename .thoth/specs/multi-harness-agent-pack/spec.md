@@ -376,59 +376,23 @@ The Pi adapter MUST require the public agent field with one exact canonical spec
 
 ### Requirement: Use Pi interactive questions truthfully
 
-Pi root instructions MUST use ask_user_question for material user choices, follow its supported question schema, handle unavailable UI and partial/cancelled answers truthfully, and MUST NOT infer approval from cancellation or absent answers. Pi children MUST escalate user questions to the root and MUST NOT receive the interactive question tool in their allowlists.
+Pi root instructions MUST use ask_user_question for material user choices, follow its supported question schema, handle unavailable UI and partial/cancelled answers truthfully, and MUST NOT infer approval from cancellation or absent answers. Pi children MUST NOT receive the interactive question tool in their allowlists and MUST route user-facing questions to the root: through `ask_orchestrator` when it is enabled and selected, otherwise through their return contract; the root decides whether to escalate to the user with ask_user_question before answering with `subagent_reply`.
 
-#### Scenario: US2 - Ask the user and show progress 1
+#### Scenario: Use Pi interactive questions truthfully
 
-- **GIVEN** a compatible interactive host and a material choice
-- **WHEN** the root asks
-- **THEN** it uses ask_user_question with a supported question/options payload
-
-#### Scenario: US2 - Ask the user and show progress 2
-
-- **GIVEN** cancellation, partial answers, missing tool, or no UI
-- **WHEN** an answer is required
-- **THEN** the root reports the unresolved choice without inventing consent; explicit cancellation is not an answerless default attempt
-
-#### Scenario: US2 - Ask the user and show progress 3
-
-- **GIVEN** multi-step work
-- **WHEN** the root reports progress
-- **THEN** it uses session-local todo without replacing native task execution or canonical `.thoth/` project artifacts
-
-#### Scenario: US2 - Ask the user and show progress 4
-
-- **GIVEN** a child needs user input or has progress
-- **WHEN** it reports to the root
-- **THEN** it escalates through its return contract rather than opening user dialogs or editing the root task list
+- **GIVEN** a child needing a user decision while `ask_orchestrator` is selected
+- **WHEN** it calls the tool
+- **THEN** the root receives the question, may escalate through ask_user_question, and replies with `subagent_reply` without the child opening user dialogs 
 
 ### Requirement: Keep Pi progress session-owned
 
-Pi root instructions MUST use todo for useful multi-step progress, with the extension owning session-local task state. Todo MUST NOT replace Pi-native delegation lifecycle or canonical `.thoth/` project artifacts; child agents MUST report progress to root and MUST NOT receive todo in their allowlists.
+Pi root instructions MUST use the session-local task-list tool for useful multi-step progress, with the extension owning session-local task state. That tool MUST NOT replace Pi-native delegation lifecycle or canonical `.thoth/` project artifacts; child agents MUST report progress to root and MUST NOT receive that tool in their allowlists. A child MAY report interim progress through `ask_orchestrator` progress updates, which are recorded on its task without triggering a root turn; otherwise it reports through its return contract.
 
-#### Scenario: US2 - Ask the user and show progress 1
+#### Scenario: Keep Pi progress session-owned
 
-- **GIVEN** a compatible interactive host and a material choice
-- **WHEN** the root asks
-- **THEN** it uses ask_user_question with a supported question/options payload
-
-#### Scenario: US2 - Ask the user and show progress 2
-
-- **GIVEN** cancellation, partial answers, missing tool, or no UI
-- **WHEN** an answer is required
-- **THEN** the root reports the unresolved choice without inventing consent; explicit cancellation is not an answerless default attempt
-
-#### Scenario: US2 - Ask the user and show progress 3
-
-- **GIVEN** multi-step work
-- **WHEN** the root reports progress
-- **THEN** it uses session-local todo without replacing native task execution or canonical `.thoth/` project artifacts
-
-#### Scenario: US2 - Ask the user and show progress 4
-
-- **GIVEN** a child needs user input or has progress
-- **WHEN** it reports to the root
-- **THEN** it escalates through its return contract rather than opening user dialogs or editing the root task list
+- **GIVEN** a child with progress and `ask_orchestrator` selected
+- **WHEN** it sends a progress update
+- **THEN** the update is recorded on its task and visible in status without triggering a root turn or editing the root task list 
 
 ### Requirement: Expose complementary Pi web tools
 
@@ -526,7 +490,7 @@ Default root orchestrator instructions for every supported harness MUST direct u
 
 - **GIVEN** a user writing in Spanish
 - **WHEN** any harness renders the default root orchestrator instructions
-- **THEN** they require Spanish user-facing replies, questions and options while permitting English delegation and artifacts 
+- **THEN** they require Spanish user-facing replies, questions and options while permitting English delegation and artifacts
 
 ### Requirement: Distinguish injected messages from user input
 
@@ -536,4 +500,14 @@ Default root orchestrator instructions MUST state that subagent completion notif
 
 - **GIVEN** a Pi subagent completion delivered as a user-role message
 - **WHEN** the root reads it
-- **THEN** its content declares it an automated system notification and the instructions forbid treating it as user input or a language signal 
+- **THEN** its content declares it an automated system notification and the instructions forbid treating it as user input or a language signal
+
+### Requirement: Pi children query the root orchestrator
+
+When enabled, a Pi specialist other than Oracle may pose to its owning root a blocking question through `ask_orchestrator` and continue in the same live session with the root's `subagent_reply` answer; non-blocking progress updates do not trigger a root turn; the tool reaches a child only when its resolved selection names `ask_orchestrator` explicitly, never through standalone `*` or globs; children still never delegate.
+
+#### Scenario: Pi children query the root orchestrator
+
+- **GIVEN** a running Pi worker child with `enable_ask_orchestrator` true
+- **WHEN** it calls `ask_orchestrator` with a question
+- **THEN** the owning root receives a turn-triggering injected question, the child waits, and the root's `subagent_reply` answer is returned to that same child tool call 

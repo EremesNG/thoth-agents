@@ -22,7 +22,16 @@ export default function thothTheme(pi: ExtensionAPI): void {
     if (config.images.enabled) applyImageCapability();
 
     if (!ctx.hasUI || !ctx.ui) return;
-    if (config.statusLine.enabled) registerStatusLine(pi, ctx, config);
+    if (config.statusLine.enabled) {
+      if (config.inputBox?.enabled !== false) {
+        ctx.ui.setWorkingIndicator?.({
+          frames: ['△', '◭', '▲', '◮'],
+          intervalMs: 200,
+        });
+        ctx.ui.setWorkingMessage?.('working…');
+      }
+      registerStatusLine(pi, ctx, config);
+    }
     if (config.welcome.enabled) registerWelcome(pi, ctx, config);
   });
 }

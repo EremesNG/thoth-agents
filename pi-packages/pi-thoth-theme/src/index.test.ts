@@ -19,7 +19,7 @@ type LifecycleHandler = (
   event: SessionStartEvent | AgentStartEvent,
   ctx: ExtensionContext,
 ) => void | Promise<void>;
-type ModuleName = 'statusLine' | 'tools' | 'welcome' | 'images';
+type ModuleName = 'statusLine' | 'inputBox' | 'tools' | 'welcome' | 'images';
 
 let agentDir: string;
 
@@ -82,6 +82,8 @@ function loadTheme(
     setFooter: vi.fn<ExtensionContext['ui']['setFooter']>(),
     setHeader: vi.fn<ExtensionContext['ui']['setHeader']>(),
     setEditorComponent: vi.fn<ExtensionContext['ui']['setEditorComponent']>(),
+    setWorkingIndicator: vi.fn<ExtensionContext['ui']['setWorkingIndicator']>(),
+    setWorkingMessage: vi.fn<ExtensionContext['ui']['setWorkingMessage']>(),
   };
   const ctx = {
     hasUI: true,
@@ -120,7 +122,23 @@ function loadTheme(
 }
 
 describe('Thoth extension composition', () => {
-  it('installs default surfaces without Pi settings or the editor slot', async () => {
+  it('configures the native working animation and message only after UI session startup', async () => {
+    const session = loadTheme();
+    expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();
+    expect(session.ui.setWorkingMessage).not.toHaveBeenCalled();
+
+    await session.start();
+    expect(session.ui.setWorkingIndicator).toHaveBeenCalledExactlyOnceWith({
+      frames: ['△', '◭', '▲', '◮'],
+      intervalMs: 200,
+    });
+    expect(session.ui.setWorkingMessage).toHaveBeenCalledExactlyOnceWith(
+      'working…',
+    );
+    expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
+  });
+
+  it('installs default surfaces without Pi settings or registering an editor factory', async () => {
     const session = loadTheme();
 
     expect(session.registerTool).not.toHaveBeenCalled();
@@ -147,6 +165,15 @@ describe('Thoth extension composition', () => {
       expect.any(Function),
     );
     expect(getCapabilities().images).toBe('kitty');
+    expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
+  });
+
+  it('keeps the footer and native indicator settings when the input box is disabled', async () => {
+    const session = loadTheme({ inputBox: { enabled: false } });
+    await session.start();
+    expect(session.ui.setFooter).toHaveBeenCalledTimes(1);
+    expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();
+    expect(session.ui.setWorkingMessage).not.toHaveBeenCalled();
     expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
   });
 
@@ -210,6 +237,7 @@ describe('Thoth extension composition', () => {
   it('leaves every native surface untouched when all modules are disabled', async () => {
     const session = loadTheme({
       statusLine: { enabled: false },
+      inputBox: { enabled: false },
       tools: { enabled: false },
       welcome: { enabled: false },
       images: { enabled: false },
@@ -223,6 +251,8 @@ describe('Thoth extension composition', () => {
     expect(session.registerMarkdownTransformer).not.toHaveBeenCalled();
     expect(session.ui.setFooter).not.toHaveBeenCalled();
     expect(session.ui.setHeader).not.toHaveBeenCalled();
+    expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();
+    expect(session.ui.setWorkingMessage).not.toHaveBeenCalled();
     expect(getCapabilities().images).toBeNull();
     expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
   });

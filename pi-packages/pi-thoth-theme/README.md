@@ -53,6 +53,7 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
     "enabled": true,
     "subscriptionProviders": ["claude-bridge"]
   },
+  "inputBox": { "enabled": true },
   "tools": {
     "enabled": true,
     "respectPackages": ["thoth-agents", "@thoth-agents/*", "thoth-mem"]
@@ -67,6 +68,14 @@ accepts a boolean and defaults to `true`. Set it to `false` to leave Pi's native
 behavior on that surface. `statusLine.subscriptionProviders` accepts an array of
 provider identifier strings (defaults to `["claude-bridge"]`) to mark
 subscription-backed usage with `(sub)` in the status line cost segment.
+
+`inputBox.enabled` defaults to `true` and requires `statusLine.enabled` to be
+`true`. It frames the native editor in a rounded `accent` box with side borders,
+a dim `type or / for commands` placeholder, and top-left ready or native working
+status (including elapsed seconds). The bottom border is a plain rounded rule;
+native scroll indicators are preserved. The status line always stays in its
+separate footer row below the box. Narrow widths use the native editor geometry.
+Disable `inputBox` to keep the native editor and the same footer.
 
 `tools.respectPackages` accepts an array of non-empty package-name strings.
 The default is `["thoth-agents", "@thoth-agents/*", "thoth-mem"]`. Entries match

@@ -68,7 +68,7 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
   expect(
     snapshot.roles.map(({ role, defaultTools }) => [role, defaultTools]),
   ).toEqual([
-    ['explorer', ['read', 'bash', 'ask_orchestrator']],
+    ['explorer', ['read', 'bash']],
     [
       'librarian',
       [
@@ -81,12 +81,11 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
         'fetch_content',
         'get_search_content',
         'source_check',
-        'ask_orchestrator',
       ],
     ],
     ['oracle', ['read', 'bash']],
-    ['designer', ['read', 'bash', 'edit', 'write', 'ask_orchestrator']],
-    ['worker', ['read', 'bash', 'edit', 'write', 'ask_orchestrator']],
+    ['designer', ['read', 'bash', 'edit', 'write']],
+    ['worker', ['read', 'bash', 'edit', 'write']],
   ]);
   expect(snapshot.roles.find(({ role }) => role === 'explorer')).toMatchObject({
     tools: ['read', 'bash'],
@@ -101,6 +100,60 @@ test('reads explicit inline, multiline, and scalar lists and retains unavailable
   expect(snapshot.roles.find(({ role }) => role === 'worker')?.tools).toEqual(
     snapshot.roles.find(({ role }) => role === 'worker')?.defaultTools,
   );
+});
+
+test.each([
+  ['', undefined],
+  ['disallowed_tools: ""', []],
+  ['disallowed_tools: []', []],
+  ['disallowed_tools:', []],
+  ['disallowed_tools: read, ask_orchestrator', ['read', 'ask_orchestrator']],
+  ['disallowed_tools:\n  - todo\n  - AskClaude', ['todo', 'AskClaude']],
+])('reads absent and explicit disallowed_tools: %s', (fields, expected) => {
+  expect(
+    readPiSpecialistToolOverrides(
+      `---\nname: thoth-worker\n${fields}\n---\nBody.\n`,
+    ).disallowedTools,
+  ).toEqual(expected);
+});
+
+test.each([
+  'disallowed_tools: [""]',
+  'disallowed_tools: "read,"',
+  'disallowed_tools: "tool/name"',
+  'disallowed_tools: "read*"',
+  'disallowed_tools: [read, false]',
+  'disallowed_tools: read\n"disallowed_tools": bash',
+])('rejects malformed or duplicate denials: %s', (fields) => {
+  expect(() =>
+    readPiSpecialistToolOverrides(`---\n${fields}\n---\nBody.\n`),
+  ).toThrow(/disallowed_tools/i);
+});
+
+test('carries disallowed_tools into snapshots and preserves its bytes when saving tools', () => {
+  const piRoot = fixture();
+  const target = join(piRoot, 'agents', 'thoth-worker.md');
+  const original = readFileSync(target, 'utf8').replace(
+    '---\nInstructions',
+    'disallowed_tools: [todo, ask_orchestrator] # keep\n---\nInstructions',
+  );
+  writeFileSync(target, original);
+  const snapshot = readPiToolConfig(piRoot, ['worker']);
+  expect(snapshot.roles[0]?.disallowedTools).toEqual([
+    'todo',
+    'ask_orchestrator',
+  ]);
+  const result = savePiToolConfig(snapshot, [
+    { role: 'worker', tools: ['ask_user_question', 'todo', 'AskClaude'] },
+  ]);
+  expect(result.success).toBe(true);
+  expect(readFileSync(target, 'utf8')).toContain(
+    'disallowed_tools: [todo, ask_orchestrator] # keep',
+  );
+  expect(result.snapshot.roles[0]?.disallowedTools).toEqual([
+    'todo',
+    'ask_orchestrator',
+  ]);
 });
 
 test('reads explicit YAML mapping keys and rejects semantic duplicates', () => {
@@ -220,7 +273,7 @@ test('replaces the complete multiline tools list across column-zero comments', (
   ).toMatchObject({ tools: ['lookup_docs'] });
 });
 
-test('rejects empty, duplicate, mixed selector, unsupported pattern, delegation, and root-only names without writing', () => {
+test('rejects empty, duplicate, mixed selector, unsupported pattern, and native delegation names without writing', () => {
   const piRoot = fixture();
   const snapshot = readPiToolConfig(piRoot);
   for (const tools of [
@@ -235,8 +288,6 @@ test('rejects empty, duplicate, mixed selector, unsupported pattern, delegation,
     ['read*'],
     ['@act*'],
     ['subagent_run'],
-    ['ask_user_question'],
-    ['todo'],
   ]) {
     expect(() => validatePiSpecialistTools(tools)).toThrow();
     const result = savePiToolConfig(snapshot, [{ role: 'worker', tools }]);

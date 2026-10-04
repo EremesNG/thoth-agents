@@ -13,6 +13,20 @@ import {
   type ToolsPanelDiscoveredTool,
 } from './tools-panel';
 
+const commonDenials = [
+  'ask_user_question',
+  'todo',
+  'AskClaude',
+  'AskAntigravity',
+  'bg_delegate',
+  'bg_run_pi_attested',
+  'bg_result',
+  'fusion_reason',
+  'fusion_investigate',
+  'fusion_research',
+  'fusion_validate',
+];
+
 const roles = [
   'explorer',
   'librarian',
@@ -28,6 +42,10 @@ function sampleSnapshot(): PiToolConfigSnapshot {
       role,
       tools: ['read', 'write'],
       defaultTools: ['read', 'write'],
+      disallowedTools: [
+        ...commonDenials,
+        ...(role === 'oracle' ? ['ask_orchestrator'] : []),
+      ],
     })),
     contents: Object.fromEntries(
       roles.map((role) => [role, `${role}-content`]),
@@ -65,6 +83,7 @@ const sampleDiscovered: ToolsPanelDiscoveredTool[] = [
     active: true,
   },
   { name: 'todo', description: 'Root progress tool', active: true },
+  { name: 'ask_orchestrator', active: false },
 ];
 
 function successfulSave(
@@ -99,10 +118,10 @@ describe('isEligibleTool', () => {
     expect(isEligibleTool('SUBAGENT_KILL')).toBe(false);
   });
 
-  test('rejects root-only controls', () => {
-    expect(isEligibleTool('ask_user_question')).toBe(false);
-    expect(isEligibleTool('todo')).toBe(false);
-    expect(isEligibleTool('TODO')).toBe(false);
+  test('allows other packages controls; role denials filter the dynamic preview', () => {
+    expect(isEligibleTool('ask_user_question')).toBe(true);
+    expect(isEligibleTool('todo')).toBe(true);
+    expect(isEligibleTool('TODO')).toBe(true);
   });
 
   test('rejects wildcards, whitespace, commas and invalid characters', () => {
@@ -121,6 +140,51 @@ describe('isEligibleTool', () => {
 describe('global Pi tools panel', () => {
   test('dynamic preview exclusions match the standalone * runtime contract', () => {
     expect(DYNAMIC_DELEGATION_TOOLS).toEqual(STANDALONE_STAR_TOOL_EXCLUSIONS);
+  });
+
+  test('shows ask_orchestrator as child-provided active and previews only each role denial', () => {
+    const snapshot = sampleSnapshot();
+    const [explorer, librarian] = snapshot.roles;
+    if (!explorer || !librarian) throw new Error('Missing fixture roles.');
+    explorer.disallowedTools = [];
+    librarian.disallowedTools = ['read', 'ask_orchestrator'];
+    const save = vi.fn((_snapshot, draft) => successfulSave(snapshot, draft));
+    const panel = createToolsPanel({
+      snapshot,
+      discoveredTools: [
+        { name: 'read', active: true },
+        { name: 'AskClaude', active: true },
+        { name: 'todo', active: true },
+        { name: 'subagent_run', active: true },
+      ],
+      save,
+      onDone: vi.fn(),
+    });
+    panel.handleInput('*');
+    panel.handleInput('\r');
+    let text = panel.render(300).join('\n');
+    expect(text).toContain('[x] ask_orchestrator');
+    expect(text).toContain('child-provided');
+    expect(text).toContain('enable_ask_orchestrator');
+    expect(text).toContain('disallowed_tools');
+    expect(text).not.toContain('ask_orchestrator (unavailable)');
+    expect(text).not.toContain('[ ] subagent_run');
+    expect(text).toContain('[x] AskClaude');
+    expect(text).toContain('[x] todo');
+    panel.handleInput('q');
+    panel.handleInput('j');
+    panel.handleInput('*');
+    panel.handleInput('\r');
+    text = panel.render(300).join('\n');
+    expect(text).toContain('[ ] ask_orchestrator');
+    expect(text).toContain('[ ] read');
+    expect(text).toContain('[x] AskClaude');
+    panel.handleInput('q');
+    panel.handleInput('s');
+    expect(save.mock.calls[0]?.[1][1]?.disallowedTools).toEqual([
+      'read',
+      'ask_orchestrator',
+    ]);
   });
 
   test('* preview excludes background delegation tools but keeps ordinary background task tools', () => {
@@ -153,7 +217,7 @@ describe('global Pi tools panel', () => {
     for (const name of backgroundTaskTools)
       expect(text).toContain(`[x] ${name}`);
     expect(text).toContain(
-      `AskClaude, AskAntigravity, ${backgroundDelegationTools.join(', ')}, ask_orchestrator.`,
+      "Excludes subagent_* and this role's disallowed_tools.",
     );
     expect(panel.getState().draft[0]?.tools).toEqual(['*']);
     panel.handleInput('g');
@@ -161,6 +225,7 @@ describe('global Pi tools panel', () => {
     expect(panel.getState().draft[0]?.tools).toEqual([
       'write',
       'bash',
+      'ask_orchestrator',
       ...backgroundTaskTools,
     ]);
   });
@@ -189,7 +254,7 @@ describe('global Pi tools panel', () => {
     expect(wide).toContain('active (dynamic)');
     expect(wide).toContain('tools currently active in the root session');
     expect(wide).toContain(
-      'subagent_*, ask_user_question, todo, AskClaude, AskAntigravity',
+      "Excludes subagent_* and this role's disallowed_tools.",
     );
     expect(wide).not.toContain('a all active');
     expect(wide).not.toContain('@active');
@@ -233,8 +298,12 @@ describe('global Pi tools panel', () => {
     expect(selectorText).toContain('[x] bash');
     expect(selectorText).toContain('[ ] custom_inactive (inactive)');
     panel.handleInput(' '); // remove read from today's active inventory
-    expect(panel.getState().draft[0]?.tools).toEqual(['write', 'bash']);
-    expect(panel.render(100).join('\n')).toContain('2 selected');
+    expect(panel.getState().draft[0]?.tools).toEqual([
+      'write',
+      'bash',
+      'ask_orchestrator',
+    ]);
+    expect(panel.render(100).join('\n')).toContain('3 selected');
   });
 
   test.each([
@@ -251,12 +320,18 @@ describe('global Pi tools panel', () => {
     });
     panel.handleInput('*');
     panel.handleInput('\r');
-    panel.handleInput('G'); // choose the inactive or delegation tool
+    panel.handleInput('g');
+    for (let index = 0; index < sampleDiscovered.length + 1; index++) {
+      if (panel.render(300).join('\n').includes(`selected: ${tool.name}`))
+        break;
+      panel.handleInput('j');
+    }
     panel.handleInput(' ');
     expect(panel.getState().draft[0]?.tools).toEqual([
       'read',
       'write',
       'bash',
+      'ask_orchestrator',
       tool.name,
     ]);
     expect(() =>
@@ -373,6 +448,7 @@ describe('global Pi tools panel', () => {
         'very_long_tool_identifier_four',
       ],
       defaultTools: ['read', 'write'],
+      disallowedTools: [],
     };
     const panel = createToolsPanel({
       snapshot: wideSnapshot,
@@ -426,6 +502,7 @@ describe('global Pi tools panel', () => {
     expect(render()).toContain('space toggle');
     panel.handleInput('k');
     panel.handleInput('k');
+    panel.handleInput('k');
     expect(render()).toContain('› [ ] tool_29');
     panel.handleInput(' ');
     expect(render()).toContain('› [x] tool_29');
@@ -445,7 +522,7 @@ describe('global Pi tools panel', () => {
     expect(render()).toContain('Ambient root tools are unchanged');
   });
 
-  test('filters out delegation tools and root-only controls from selectable list', () => {
+  test('filters out only native delegation tools from selectable list', () => {
     const panel = createToolsPanel({
       snapshot: sampleSnapshot(),
       discoveredTools: sampleDiscovered,
@@ -459,8 +536,8 @@ describe('global Pi tools panel', () => {
     expect(text).toContain('bash');
     expect(text).toContain('custom_inactive');
     expect(text).not.toContain('[ ] subagent_run');
-    expect(text).not.toContain('[ ] ask_user_question');
-    expect(text).not.toContain('[ ] todo');
+    expect(text).toContain('[ ] ask_user_question');
+    expect(text).toContain('[ ] todo');
   });
 
   test('clearly marks registered inactive tools and allows selecting them', () => {
@@ -488,6 +565,7 @@ describe('global Pi tools panel', () => {
       role: 'explorer',
       tools: ['read'],
       defaultTools: ['read', 'default_extension'],
+      disallowedTools: [],
     };
     const panel = createToolsPanel({
       snapshot,
@@ -500,7 +578,7 @@ describe('global Pi tools panel', () => {
     expect(panel.render(100).join('\n')).toContain(
       '[x] default_extension (unavailable)',
     );
-    panel.handleInput('\x1b[B');
+    panel.handleInput('G'); // unavailable default follows the child-provided item
     panel.handleInput(' ');
     expect(panel.getState().draft[0]?.tools).toEqual(['read']);
   });
@@ -511,6 +589,7 @@ describe('global Pi tools panel', () => {
       role: 'explorer',
       tools: ['read', 'write', 'legacy_mcp_tool'],
       defaultTools: ['read', 'write'],
+      disallowedTools: [],
     };
     const panel = createToolsPanel({
       snapshot: snapshotWithUnavailable,
@@ -523,8 +602,8 @@ describe('global Pi tools panel', () => {
     expect(text).toContain('legacy_mcp_tool (unavailable)');
     expect(text).toContain('[x] legacy_mcp_tool');
 
-    // legacy_mcp_tool is index 4 (read, write, bash, custom_inactive, legacy_mcp_tool)
-    for (let i = 0; i < 4; i++) panel.handleInput('\x1b[B');
+    // Unavailable explicit names follow registered and child-provided items.
+    panel.handleInput('G');
     panel.handleInput(' '); // toggle off
     expect(panel.getState().draft[0]?.tools).not.toContain('legacy_mcp_tool');
 
@@ -559,6 +638,7 @@ describe('global Pi tools panel', () => {
       role: 'explorer',
       tools: ['read', 'custom_inactive', 'saved_mcp'],
       defaultTools: ['read'],
+      disallowedTools: [],
     };
     const panel = createToolsPanel({
       snapshot,
@@ -692,6 +772,7 @@ describe('global Pi tools panel', () => {
       role: 'explorer',
       tools: ['read', 'write', 'bash'],
       defaultTools: ['read', 'write'],
+      disallowedTools: [],
     };
     const save = vi
       .fn()
@@ -736,7 +817,7 @@ describe('global Pi tools panel', () => {
     });
     panel.handleInput('\r'); // edit explorer
     const text = panel.render(80).join('\n');
-    expect(text).toContain('Showing 1–10 of 27');
+    expect(text).toContain('Showing 1–10 of 28');
 
     // Scroll down 12 times
     for (let i = 0; i < 12; i++) panel.handleInput('\x1b[B');

@@ -22,6 +22,7 @@ export interface PiToolRoleSnapshot {
   role: PiSpecialistRole;
   tools: string[];
   defaultTools: string[];
+  disallowedTools: string[];
 }
 
 export interface PiToolConfigSnapshot {
@@ -45,6 +46,7 @@ export interface PiToolSaveResult {
 
 export interface PiSpecialistToolOverrides {
   tools?: string[];
+  disallowedTools?: string[];
   subagentMode?: 'task' | 'background';
 }
 
@@ -71,7 +73,7 @@ function parseFrontmatter(content: string): ParsedFrontmatter {
   });
   const mapping = document.contents;
   if (isMap(mapping)) {
-    for (const name of ['tools', 'subagent_mode']) {
+    for (const name of ['tools', 'disallowed_tools', 'subagent_mode']) {
       const occurrences = mapping.items.filter(
         ({ key }) => isScalar(key) && key.value === name,
       );
@@ -142,7 +144,7 @@ function assertSupportedYamlFeatures(node: unknown): void {
 
 function fieldPair(
   mapping: YAMLMap,
-  name: 'tools' | 'subagent_mode',
+  name: 'tools' | 'disallowed_tools' | 'subagent_mode',
 ): Pair | undefined {
   return mapping.items.find(({ key }) => isScalar(key) && key.value === name);
 }
@@ -229,8 +231,6 @@ export function validatePiSpecialistTools(tools: readonly string[]): void {
     const normalized = tool.toLowerCase();
     if (normalized.startsWith('subagent_'))
       throw new Error(`Pi delegation tool names are not allowed: ${tool}.`);
-    if (normalized === 'ask_user_question' || normalized === 'todo')
-      throw new Error(`Root-only Pi tools are not allowed: ${tool}.`);
     if (seen.has(tool)) throw new Error(`Duplicate Pi tool name: ${tool}.`);
     seen.add(tool);
   }
@@ -259,6 +259,35 @@ function parseToolsField(
   return { present: true, tools };
 }
 
+function parseDisallowedToolsField(
+  mapping: YAMLMap,
+  source: string,
+): string[] | undefined {
+  const pair = fieldPair(mapping, 'disallowed_tools');
+  if (!pair) return undefined;
+  if (
+    isScalar(pair.value) &&
+    pair.value.value === null &&
+    pair.value.source === ''
+  )
+    return [];
+  const value = isSeq(pair.value)
+    ? pair.value.items.map((item) =>
+        scalarString(item, 'disallowed_tools', source),
+      )
+    : scalarString(pair.value, 'disallowed_tools', source);
+  const names =
+    typeof value === 'string' ? (value === '' ? [] : value.split(',')) : value;
+  const tools = names.map((name) => name.trim());
+  for (const tool of tools) {
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(tool))
+      throw new Error(
+        `disallowed_tools must contain exact Pi tool names: ${tool}.`,
+      );
+  }
+  return [...new Set(tools)];
+}
+
 function parseModeField(
   mapping: YAMLMap,
   source: string,
@@ -276,16 +305,13 @@ export function readPiSpecialistToolOverrides(
 ): PiSpecialistToolOverrides {
   const { mapping, source } = parseFrontmatter(content);
   const parsedTools = parseToolsField(mapping, source);
+  const disallowedTools = parseDisallowedToolsField(mapping, source);
   const subagentMode = parseModeField(mapping, source);
   return {
     ...(parsedTools.present ? { tools: parsedTools.tools } : {}),
+    ...(disallowedTools !== undefined ? { disallowedTools } : {}),
     ...(subagentMode ? { subagentMode } : {}),
   };
-}
-
-function readTools(content: string, role: PiSpecialistRole): string[] {
-  const parsed = readPiSpecialistToolOverrides(content);
-  return parsed.tools ?? getPiSpecialistDefaultTools(role);
 }
 
 export function readPiToolConfig(
@@ -305,10 +331,12 @@ export function readPiToolConfig(
     seen.add(role);
     const content = readOwnedPiSpecialistDefinition(snapshot.piRoot, role);
     snapshot.contents[role] = content;
+    const parsed = readPiSpecialistToolOverrides(content);
     snapshot.roles.push({
       role,
-      tools: readTools(content, role),
+      tools: parsed.tools ?? getPiSpecialistDefaultTools(role),
       defaultTools: getPiSpecialistDefaultTools(role),
+      disallowedTools: parsed.disallowedTools ?? [],
     });
   }
   return snapshot;

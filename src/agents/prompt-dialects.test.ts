@@ -236,6 +236,13 @@ describe('prompt dialects', () => {
       'injected `subagent-question`',
     );
     expect(backgroundWaitInstruction).toContain(
+      'regardless of `tools` selection',
+    );
+    expect(backgroundWaitInstruction).toContain('`disallowed_tools`');
+    expect(backgroundWaitInstruction).toContain(
+      'Oracle denies `ask_orchestrator`',
+    );
+    expect(backgroundWaitInstruction).toContain(
       'A task-mode child that asks a question is moved to background',
     );
     expect(backgroundWaitInstruction).toContain(

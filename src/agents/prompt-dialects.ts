@@ -135,7 +135,7 @@ function piCapabilityDisclosure(
 ): string | undefined {
   const status = PI_PROMPT_CAPABILITIES[capability];
   if (status === 'supported') return undefined;
-  return `${capability}: ${status} in Pi; Pi extensions run with the invoking user's system permissions, and child tool allowlists are role controls rather than an OS, filesystem, process, network, or credential sandbox.`;
+  return `${capability}: ${status} in Pi; Pi extensions run with the invoking user's system permissions, and child selection through tools, disallowed_tools, configuration and native subagent_* exclusions is runtime-verified registry filtering; behavioral role limits are instruction-level, not an OS, filesystem, process, network, or credential sandbox.`;
 }
 
 export const OPENCODE_PROMPT_DIALECT: HarnessPromptDialect = {
@@ -280,7 +280,7 @@ export const PI_PROMPT_DIALECT: HarnessPromptDialect = {
       'subagent_run({ agent, task, mode: "background" })',
     backgroundStatusTool: 'subagent_status({ task_id })',
     backgroundWaitInstruction:
-      'Launch separate background runs with `subagent_run({ agent, task, mode: "background" })` before collecting results. Native terminal notifications (`triggerTurn`/`followUp`) wake the parent. Do not poll status or sleep merely to wait. A task-mode child that asks a question is moved to background; answer it with `subagent_reply` and collect its result later through terminal completion.',
+      'Launch separate background runs with `subagent_run({ agent, task, mode: "background" })` before collecting results. Native terminal notifications (`triggerTurn`/`followUp`) wake the parent. Do not poll status or sleep merely to wait. When `enable_ask_orchestrator` is true, children receive `ask_orchestrator` regardless of `tools` selection unless denied by `disallowed_tools`; Thoth Oracle denies `ask_orchestrator` for independent judgment. A task-mode child that asks a question is moved to background; answer it with `subagent_reply` and collect its result later through terminal completion.',
     userQuestionTool: 'ask_user_question',
     hostStatusSurface: 'subagent_status({ task_id })',
     lifecycle: {

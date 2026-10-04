@@ -7,7 +7,7 @@ import {
 } from './pi-agent';
 
 describe('Pi agent writer', () => {
-  test('selects ask_orchestrator explicitly for every specialist except Oracle', () => {
+  test('keeps specialist allowlists independent of injected ask_orchestrator', () => {
     const roles = [
       'explorer',
       'librarian',
@@ -18,7 +18,7 @@ describe('Pi agent writer', () => {
     expect(
       roles.map((role) => [role, getPiSpecialistDefaultTools(role)]),
     ).toEqual([
-      ['explorer', ['read', 'bash', 'ask_orchestrator']],
+      ['explorer', ['read', 'bash']],
       [
         'librarian',
         [
@@ -31,12 +31,11 @@ describe('Pi agent writer', () => {
           'fetch_content',
           'get_search_content',
           'source_check',
-          'ask_orchestrator',
         ],
       ],
       ['oracle', ['read', 'bash']],
-      ['designer', ['read', 'bash', 'edit', 'write', 'ask_orchestrator']],
-      ['worker', ['read', 'bash', 'edit', 'write', 'ask_orchestrator']],
+      ['designer', ['read', 'bash', 'edit', 'write']],
+      ['worker', ['read', 'bash', 'edit', 'write']],
     ]);
   });
 
@@ -61,17 +60,27 @@ describe('Pi agent writer', () => {
       agents.some((artifact) => artifact.path.includes('orchestrator')),
     ).toBe(false);
     const expectedTools: Record<string, string> = {
-      'agents/thoth-explorer.md': 'read, bash, ask_orchestrator',
+      'agents/thoth-explorer.md': 'read, bash',
       'agents/thoth-librarian.md':
-        'read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check, ask_orchestrator',
+        'read, bash, resolve-library-id, query-docs, mcp, web_search, fetch_content, get_search_content, source_check',
       'agents/thoth-oracle.md': 'read, bash',
-      'agents/thoth-designer.md': 'read, bash, edit, write, ask_orchestrator',
-      'agents/thoth-worker.md': 'read, bash, edit, write, ask_orchestrator',
+      'agents/thoth-designer.md': 'read, bash, edit, write',
+      'agents/thoth-worker.md': 'read, bash, edit, write',
     };
     for (const artifact of agents) {
       expect(artifact.content).toContain('managed-by: thoth-agents');
       expect(artifact.content.match(/^tools: (.+)$/m)?.[1]).toBe(
         JSON.stringify(expectedTools[artifact.path]),
+      );
+      const commonDenials =
+        'ask_user_question, todo, AskClaude, AskAntigravity, bg_delegate, bg_run_pi_attested, bg_result, fusion_reason, fusion_investigate, fusion_research, fusion_validate';
+      expect(artifact.content.match(/^disallowed_tools: (.+)$/m)?.[1]).toBe(
+        JSON.stringify(
+          commonDenials +
+            (artifact.path === 'agents/thoth-oracle.md'
+              ? ', ask_orchestrator'
+              : ''),
+        ),
       );
       expect(artifact.content).toMatch(/^effort: "(?:low|medium|high|max)"$/m);
       expect(artifact.content).toContain('subagent_mode: "background"');

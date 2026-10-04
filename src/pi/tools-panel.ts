@@ -1,6 +1,7 @@
 import {
   type PiToolConfigSnapshot,
   type PiToolRoleInput,
+  type PiToolRoleSnapshot,
   type PiToolSaveResult,
   validatePiSpecialistTools,
 } from '../cli/pi-tool-config';
@@ -48,11 +49,7 @@ export interface ToolsPanelOptions {
   theme?: ToolsPanelTheme;
 }
 
-export interface RoleToolsDraft {
-  role: PiSpecialistRole;
-  tools: string[];
-  defaultTools: string[];
-}
+export type RoleToolsDraft = PiToolRoleSnapshot;
 
 export type ToolsPanelScreen = 'overview' | 'tools' | 'discard';
 
@@ -81,21 +78,14 @@ const FALLBACK_KEYS: Record<ToolsPanelKey, readonly string[]> = {
   space: [' '],
 };
 
-export const DYNAMIC_DELEGATION_TOOLS: ReadonlySet<string> = new Set([
-  'AskClaude',
-  'AskAntigravity',
-  'bg_delegate',
-  'bg_run_pi_attested',
-  'bg_result',
-  'fusion_reason',
-  'fusion_investigate',
-  'fusion_research',
-  'fusion_validate',
-  'ask_orchestrator',
-]);
+// Native subagent_* exclusions are handled by isEligibleTool for every selection.
+export const DYNAMIC_DELEGATION_TOOLS: ReadonlySet<string> = new Set();
 const DYNAMIC_DESCRIPTION =
-  'Dynamic *: tools currently active in the root session.';
-const DYNAMIC_EXCLUSIONS = `Excludes subagent_*, ask_user_question, todo, ${[...DYNAMIC_DELEGATION_TOOLS].join(', ')}.`;
+  'Dynamic *: tools currently active in the root session plus child-provided ask_orchestrator.';
+const DYNAMIC_EXCLUSIONS =
+  "Excludes subagent_* and this role's disallowed_tools.";
+const ORCHESTRATOR_DESCRIPTION =
+  'child-provided; subject to enable_ask_orchestrator and disallowed_tools.';
 
 export function isEligibleTool(name: string): boolean {
   if (name === '*') return false;
@@ -140,10 +130,19 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   let selectedToolIndex = 0;
   let failedSave = false;
 
-  const initialUnavailable = new Map<PiSpecialistRole, string[]>();
-  const discoveredNames = new Set(
-    options.discoveredTools.map((tool) => tool.name),
+  const discoveredTools = options.discoveredTools.map((tool) =>
+    tool.name === 'ask_orchestrator'
+      ? { ...tool, active: true, description: ORCHESTRATOR_DESCRIPTION }
+      : tool,
   );
+  if (!discoveredTools.some((tool) => tool.name === 'ask_orchestrator'))
+    discoveredTools.push({
+      name: 'ask_orchestrator',
+      active: true,
+      description: ORCHESTRATOR_DESCRIPTION,
+    });
+  const initialUnavailable = new Map<PiSpecialistRole, string[]>();
+  const discoveredNames = new Set(discoveredTools.map((tool) => tool.name));
   for (const role of options.snapshot.roles) {
     const unavail = [...new Set([...role.tools, ...role.defaultTools])].filter(
       (name) => !discoveredNames.has(name) && isEligibleTool(name),
@@ -167,7 +166,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     const items: ToolListItem[] = [];
     const seen = new Set<string>();
 
-    for (const tool of options.discoveredTools) {
+    for (const tool of discoveredTools) {
       if (!isEligibleTool(tool.name)) continue;
       if (seen.has(tool.name)) continue;
       seen.add(tool.name);
@@ -200,7 +199,9 @@ export function createToolsPanel(options: ToolsPanelOptions) {
     return getToolItemsForRole(role)
       .filter(
         (item) =>
-          item.status === 'active' && !DYNAMIC_DELEGATION_TOOLS.has(item.name),
+          item.status === 'active' &&
+          !DYNAMIC_DELEGATION_TOOLS.has(item.name) &&
+          !role.disallowedTools.includes(item.name),
       )
       .map((item) => item.name);
   };

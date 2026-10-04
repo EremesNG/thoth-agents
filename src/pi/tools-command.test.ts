@@ -16,6 +16,7 @@ function sampleSnapshot() {
       role,
       tools: ['read', 'write'],
       defaultTools: ['read', 'write'],
+      disallowedTools: [],
     })),
     contents: Object.fromEntries(
       roles.map((role) => [role, `${role}-content`]),

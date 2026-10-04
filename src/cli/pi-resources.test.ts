@@ -87,13 +87,68 @@ describe('Pi specialist synchronization', () => {
     expect(readFileSync(worker, 'utf8')).toContain('subagent_mode: "task"');
     expect(readFileSync(worker, 'utf8')).toContain('model: custom/model');
     expect(readFileSync(worker, 'utf8')).toContain('effort: max');
-    expect(readFileSync(explorer, 'utf8')).toContain(
-      'tools: "read, bash, ask_orchestrator"',
-    );
+    expect(readFileSync(explorer, 'utf8')).toContain('tools: "read, bash"');
     expect(readFileSync(explorer, 'utf8')).toContain(
       'subagent_mode: "background"',
     );
     expect(syncPiSpecialists(options).changed).toEqual([]);
+  });
+
+  test.each([
+    ['', ['todo', 'AskClaude']],
+    ['disallowed_tools: ""', []],
+    ['disallowed_tools: []', []],
+    [
+      'disallowed_tools: "read, ask_orchestrator"',
+      ['read', 'ask_orchestrator'],
+    ],
+    [
+      'disallowed_tools:\n  - read\n  - ask_orchestrator',
+      ['read', 'ask_orchestrator'],
+    ],
+  ])('preserves operator disallowed_tools or applies package value with custom tools: %s', (override, expected) => {
+    const options = fixture();
+    const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+    const source = join(options.packageRoot, 'pi', 'agents', 'thoth-worker.md');
+    writeFileSync(
+      source,
+      '---\nname: thoth-worker\nmanaged-by: thoth-agents\ndisallowed_tools: "todo, AskClaude"\n---\nNew body.\n',
+    );
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(
+      target,
+      `---\nname: thoth-worker\nmanaged-by: thoth-agents\ntools: "*"\n${override}\n---\nOld body.\n`,
+    );
+    const result = syncPiSpecialists(options);
+    expect(result.success).toBe(true);
+    expect(result.diagnostics).toEqual([]);
+    expect(readPiToolConfig(options.piRoot, ['worker']).roles[0]).toMatchObject(
+      { tools: ['*'], disallowedTools: expected },
+    );
+    expect(readFileSync(target, 'utf8')).toContain('New body.');
+    expect(syncPiSpecialists(options).changed).toEqual([]);
+  });
+
+  test.each([
+    'true',
+    '42',
+    'null',
+    '{read: true}',
+    '[read, 42]',
+    '[[read]]',
+    '"read*"',
+    '["tool?"]',
+  ])('leaves malformed disallowed_tools %s unchanged with a diagnostic', (value) => {
+    const options = fixture();
+    const target = join(options.piRoot, 'agents', 'thoth-worker.md');
+    mkdirSync(dirname(target), { recursive: true });
+    const original = `---\nname: thoth-worker\nmanaged-by: thoth-agents\ntools: "*"\ndisallowed_tools: ${value}\n---\nKeep exactly.\n`;
+    writeFileSync(target, original);
+    const result = syncPiSpecialists(options);
+    expect(result.success).toBe(true);
+    expect(result.changed).not.toContain(target);
+    expect(result.diagnostics.join('\n')).toMatch(/worker.*disallowed_tools/i);
+    expect(readFileSync(target, 'utf8')).toBe(original);
   });
 
   test('preserves the standalone * selector through specialist synchronization', () => {

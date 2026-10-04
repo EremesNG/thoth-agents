@@ -1,7 +1,5 @@
 import {
   CURSOR_MARKER,
-  foregroundAnsi,
-  rgbColor,
   stripTerminalSequences,
   visibleWidth,
 } from '@earendil-works/pi-tui';
@@ -12,45 +10,19 @@ import {
   renderPlaceholder,
   wrapContentRow,
 } from './frame.ts';
-import { createCometFrame } from './gradient.ts';
+import { createBreathingFrame } from './gradient.ts';
 
 const theme = { fg: vi.fn((_token: string, text: string) => text) };
 
-function borderGeometry(line: string): string {
-  return stripTerminalSequences(line).replace(/[━┃┏┓┗┛]/gu, (glyph) =>
-    '─│╭╮╰╯'.charAt('━┃┏┓┗┛'.indexOf(glyph)),
-  );
-}
-
 describe('input-box frame', () => {
-  it('dims the working border but keeps labels and scroll counts muted', () => {
-    const contrastTheme = {
-      fg: (token: string, text: string) =>
-        `\x1b[${token === 'dim' ? '2' : '33'}m${text}\x1b[0m`,
-    };
-    const label = '\x1b[33mstatus ─ ╭\x1b[0m';
-    const frame = createCometFrame(80, 4, 875, 'truecolor');
-    const top = renderInputTop(80, contrastTheme, label, 12, frame);
-    const content = wrapContentRow(
-      'unchanged ─ │ ╭ ╮ ╰ ╯',
-      80,
-      contrastTheme,
-      frame,
-      1,
-    );
-    const bottom = renderInputBottom(80, contrastTheme, 34, frame);
-    expect(top.startsWith('\x1b[2m╭─ \x1b[0m')).toBe(true);
-    expect(content.startsWith('\x1b[2m│\x1b[0m')).toBe(true);
-    expect(content.endsWith('\x1b[2m│\x1b[0m')).toBe(true);
-    expect(bottom.startsWith('\x1b[2m╰─ \x1b[0m')).toBe(true);
-    expect(bottom.endsWith('─╯\x1b[0m')).toBe(true);
-    expect(top).toContain(label);
-    expect(top).toContain('\x1b[33m↑ 12 more\x1b[0m');
-    expect(bottom).toContain('\x1b[33m↓ 34 more\x1b[0m');
-    expect(content).toContain('unchanged ─ │ ╭ ╮ ╰ ╯');
-  });
-
-  it('colors every perimeter edge without changing labels, content, cursor, or line widths', () => {
+  it.each([
+    ['truecolor', 0, '\x1b[38;2;115;104;80m'],
+    ['truecolor', 600, '\x1b[38;2;212;175;55m'],
+    ['truecolor', 1200, '\x1b[38;2;242;201;76m'],
+    ['256color', 0, '\x1b[38;5;59m'],
+    ['256color', 600, '\x1b[38;5;179m'],
+    ['256color', 1200, '\x1b[38;5;221m'],
+  ] as const)('colors every border cell uniformly in %s at %i ms without changing labels, content, cursor, or widths', (mode, now, color) => {
     const mutedTheme = {
       fg: (_token: string, text: string) => `\x1b[33m${text}\x1b[0m`,
     };
@@ -62,74 +34,31 @@ describe('input-box frame', () => {
       wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, mutedTheme),
       renderInputBottom(40, mutedTheme, 34),
     ];
-    const head = `${foregroundAnsi(rgbColor(242, 201, 76), 'truecolor')}\x1b[1m`;
-    // Independent worked perimeter: top 0..39, right 40..41,
-    // bottom 42..81 (right to left), left 82..83 (bottom to top).
-    for (const [index, row, glyph] of [
-      [0, 0, '┏'],
-      [39, 0, '┓'],
-      [40, 1, '┃'],
-      [41, 2, '┃'],
-      [42, 3, '┛'],
-      [81, 3, '┗'],
-      [82, 2, '┃'],
-      [83, 1, '┃'],
-    ] as const) {
-      const frame = createCometFrame(
-        40,
-        4,
-        Math.ceil((index * 3500) / 84),
-        'truecolor',
-      );
-      const animated = [
-        renderInputTop(40, mutedTheme, label, 12, frame),
-        wrapContentRow(cursor, 40, mutedTheme, frame, 1),
-        wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, mutedTheme, frame, 2),
-        renderInputBottom(40, mutedTheme, 34, frame),
-      ];
-      expect(animated[row]).toContain(`${head}${glyph}`);
-      expect(animated.map(borderGeometry)).toEqual(
-        idle.map(stripTerminalSequences),
-      );
-      expect(animated.map(visibleWidth)).toEqual([40, 40, 40, 40]);
-      expect(animated[0]).toContain(label);
-      expect(animated[0]).toContain('\x1b[33m↑ 12 more');
-      expect(animated[3]).toContain('\x1b[33m↓ 34 more');
-      expect(animated[1]).toContain(cursor);
-      expect(animated[2]).toContain('content ─ │ ╭ ╮ ╰ ╯');
-    }
-  });
-
-  it('lets the head pass behind status and scroll labels without rewriting their glyphs', () => {
-    const contrastTheme = {
-      fg: (token: string, text: string) =>
-        `\x1b[${token === 'dim' ? '2' : '33'}m${text}\x1b[0m`,
-    };
-    const label = '\x1b[36m╭ status ─\x1b[0m';
-    const idle = [
-      renderInputTop(40, contrastTheme, label, 12),
-      renderInputBottom(40, contrastTheme, 34),
+    const frame = createBreathingFrame(now, mode);
+    const animated = [
+      renderInputTop(40, mutedTheme, label, 12, frame),
+      wrapContentRow(cursor, 40, mutedTheme, frame),
+      wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, mutedTheme, frame),
+      renderInputBottom(40, mutedTheme, 34, frame),
     ];
-    // These cells lie inside the status, top scroll count, and bottom scroll count.
-    for (const index of [8, 18, 76]) {
-      const frame = createCometFrame(
-        40,
-        3,
-        Math.ceil((index * 3500) / 82),
-        'truecolor',
-      );
-      const animated = [
-        renderInputTop(40, contrastTheme, label, 12, frame),
-        renderInputBottom(40, contrastTheme, 34, frame),
-      ];
-      expect(animated[0]).toContain(label);
-      expect(animated[0]).toContain('\x1b[33m↑ 12 more\x1b[0m');
-      expect(animated[1]).toContain('\x1b[33m↓ 34 more\x1b[0m');
-      expect(animated.map(borderGeometry)).toEqual(
-        idle.map(stripTerminalSequences),
-      );
-      expect(animated.map(visibleWidth)).toEqual([40, 40]);
-    }
+
+    expect(animated[0]).toBe(
+      `${color}╭─ \x1b[39m${label}${color} ─ \x1b[39m\x1b[33m↑ 12 more\x1b[0m${color} ${'─'.repeat(13)}╮\x1b[39m`,
+    );
+    expect(animated[1]).toBe(
+      `${color}│\x1b[39m${cursor}${' '.repeat(36)}${color}│\x1b[39m`,
+    );
+    expect(animated[2]).toBe(
+      `${color}│\x1b[39mcontent ─ │ ╭ ╮ ╰ ╯${' '.repeat(19)}${color}│\x1b[39m`,
+    );
+    expect(animated[3]).toBe(
+      `${color}╰─ \x1b[39m\x1b[33m↓ 34 more\x1b[0m${color} ${'─'.repeat(26)}╯\x1b[39m`,
+    );
+    expect(animated.join('\n')).not.toMatch(/[━┃┏┓┗┛]/u);
+    expect(animated.map(stripTerminalSequences)).toEqual(
+      idle.map(stripTerminalSequences),
+    );
+    expect(animated.map(visibleWidth)).toEqual([40, 40, 40, 40]);
   });
 
   it('renders a muted rounded box with a top-left label and cursor intact', () => {
@@ -199,7 +128,7 @@ describe('input-box frame', () => {
           theme,
         ),
       ];
-      const frame = createCometFrame(width, 3, 0, 'truecolor');
+      const frame = createBreathingFrame(0, 'truecolor');
       const animated = [
         renderInputTop(
           width,
@@ -216,7 +145,7 @@ describe('input-box frame', () => {
           frame,
         ),
       ];
-      expect(animated.map(borderGeometry)).toEqual(
+      expect(animated.map(stripTerminalSequences)).toEqual(
         lines.map(stripTerminalSequences),
       );
       expect(animated.map(visibleWidth)).toEqual(lines.map(visibleWidth));

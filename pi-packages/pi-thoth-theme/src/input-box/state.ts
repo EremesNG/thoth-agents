@@ -1,5 +1,9 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
-import { renderWorkingIndicator } from './gradient.ts';
+import {
+  type BreathingFrame,
+  createBreathingFrame,
+  renderWorkingIndicator,
+} from './gradient.ts';
 
 export function createWorkingState(requestRender: () => void) {
   let startedAt: number | undefined;
@@ -33,6 +37,7 @@ export function createWorkingState(requestRender: () => void) {
       indicator: unknown,
       width: number,
       styleMuted: (text: string) => string = (text) => text,
+      frame?: BreathingFrame,
     ): string {
       if (
         !indicator ||
@@ -43,7 +48,7 @@ export function createWorkingState(requestRender: () => void) {
         return styleMuted(truncateToWidth('▲ ready', width, ''));
       }
       const working = 'kind' in indicator && indicator.kind === 'working';
-      const now = Date.now();
+      const now = frame?.now ?? Date.now();
       const elapsed =
         working && startedAt !== undefined
           ? ` · ${Math.max(0, Math.floor((now - startedAt) / 1000))}s`
@@ -56,7 +61,11 @@ export function createWorkingState(requestRender: () => void) {
       const fitted = truncateToWidth(native, nativeWidth, '');
       const label =
         working && startedAt !== undefined
-          ? renderWorkingIndicator(fitted, now)
+          ? renderWorkingIndicator(
+              fitted,
+              frame ?? createBreathingFrame(now),
+              styleMuted,
+            )
           : fitted;
       return truncateToWidth(
         `${label}${elapsed ? styleMuted(elapsed) : ''}`,

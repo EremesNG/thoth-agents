@@ -44,12 +44,14 @@ operator-installed package, not installed by the Thoth CLI. Restart Pi or use
 - Shares in-flight resizes and caches resized PNGs by a SHA-256 digest of the
   decoded source, bounded by 32 entries and 16 MB of cached base64. Only the
   display component changes: model-facing tool-result image content is untouched.
-- Debounces rapid image redraws during scrolling or changes to image-covered
-  rows: the leading frame emits immediately, then images can go blank briefly
-  while text keeps updating every frame. One full image redraw follows 150 ms
-  of quiet, with a maximum wait of 1000 ms from the first suppressed frame during
-  continuous bursts. Activation, focus recovery, resize and other full redraws
-  always emit immediately and cancel an obsolete trailing redraw.
+- Suppresses image transmission on every ordinary redraw, including scrolling,
+  changes to image-covered rows, newly added images and completed downscales.
+  Images are blank while scrolling; text keeps updating every frame. A single
+  trailing full redraw restores images about 400 ms after scrolling or image-row
+  changes stop, with a maximum wait of 3000 ms from the first suppressed frame
+  during continuous bursts. There is no leading-edge transmission. Activation,
+  focus recovery, resize and other full redraws always emit immediately and
+  cancel an obsolete trailing redraw.
 - On focus-in (`ESC[I`), requests a full redraw so images recover after window
   restore without scrolling. Pi still consumes focus events and handles its
   mouse/selection state. With Pi mouse support disabled, focus reporting may not

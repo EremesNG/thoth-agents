@@ -5,6 +5,7 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
+import { formatDuration } from '../shared/duration.ts';
 import {
   createComponent,
   escapeControlCharacters,
@@ -34,12 +35,6 @@ interface GenericContext extends ElapsedRenderContext {
     hasResult?: boolean;
     callComponent?: { invalidate?: () => void };
   };
-}
-
-function formatElapsed(ms: number | undefined): string {
-  if (ms === undefined) return '';
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
 }
 
 function formatValue(value: unknown): string {
@@ -101,7 +96,11 @@ export function createGenericTool(
       syncElapsedTicker(context);
       const isErr = Boolean(context?.isError);
       const argsSummary = summarizeArgs(rawArgs);
-      const elapsed = formatElapsed(getElapsedMs(context?.state));
+      const elapsedMs = getElapsedMs(context?.state);
+      const elapsed =
+        elapsedMs === undefined
+          ? ''
+          : formatDuration(Math.floor(elapsedMs / 1000) * 1000);
       const runningFooter =
         context?.executionStarted && context.isPartial
           ? [
@@ -146,7 +145,13 @@ export function createGenericTool(
       const isErr = Boolean(context?.isError);
       const isPartial = Boolean(options?.isPartial);
       syncElapsedTicker({ ...context, isPartial });
-      const elapsed = formatElapsed(getElapsedMs(context?.state));
+      const elapsedMs = getElapsedMs(context?.state);
+      const elapsed =
+        elapsedMs === undefined
+          ? ''
+          : formatDuration(
+              isPartial ? Math.floor(elapsedMs / 1000) * 1000 : elapsedMs,
+            );
       const text = prettifyJson(getResultText(result));
       const allLines = text ? text.split('\n') : [];
       const lineCount = allLines.length;

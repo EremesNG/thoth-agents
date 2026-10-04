@@ -1,4 +1,5 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import { formatDuration } from '../shared/duration.ts';
 import {
   type BreathingFrame,
   createBreathingFrame,
@@ -51,7 +52,7 @@ export function createWorkingState(requestRender: () => void) {
       const now = frame?.now ?? Date.now();
       const elapsed =
         working && startedAt !== undefined
-          ? ` · ${Math.max(0, Math.floor((now - startedAt) / 1000))}s`
+          ? ` · ${formatDuration(Math.floor((now - startedAt) / 1000) * 1000)}`
           : '';
       const nativeWidth = Math.max(1, width - visibleWidth(elapsed));
       const native = indicator.renderInBorder(nativeWidth);

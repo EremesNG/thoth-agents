@@ -92,6 +92,39 @@ describe('input-box working status', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it.each([
+    [-1000, '0s'],
+    [999, '0s'],
+    [12345, '12s'],
+    [45000, '45s'],
+    [59999, '59s'],
+    [60000, '1m 00s'],
+    [845999, '14m 05s'],
+    [3599999, '59m 59s'],
+    [3600000, '1h 00m'],
+    [7439999, '2h 03m'],
+  ])('keeps elapsed duration muted and floored at %s ms within the status width', (now, expected) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const state = createWorkingState(() => {});
+    const indicator = { kind: 'working', renderInBorder: () => '△ working…' };
+    const muted = (text: string) => `\x1b[2m${text}\x1b[22m`;
+    try {
+      state.start();
+      vi.setSystemTime(now);
+      const status = state.status(indicator, 40, muted);
+      expect(stripTerminalSequences(status)).toBe(`△ working… · ${expected}`);
+      expect(status.endsWith(muted(` · ${expected}`))).toBe(true);
+      for (const width of [0, 1, 2, 3, 10, 14, 20, 40]) {
+        expect(
+          visibleWidth(state.status(indicator, width, muted)),
+        ).toBeLessThanOrEqual(width);
+      }
+    } finally {
+      state.dispose();
+    }
+  });
+
   it('preserves retry and compaction messages and falls back for unsupported or empty indicators', () => {
     vi.useFakeTimers();
     const state = createWorkingState(() => {});

@@ -14,7 +14,7 @@ describe('input-box working status', () => {
       renderInBorder: vi.fn(() => '△ working…'),
     };
 
-    expect(state.status(undefined, 30)).toBe('☥ thoth · ready');
+    expect(state.status(undefined, 30)).toBe('▲ ready');
     state.start();
     expect(state.status(indicator, 30)).toBe('△ working… · 0s');
     expect(indicator.renderInBorder).toHaveBeenLastCalledWith(25);
@@ -23,7 +23,7 @@ describe('input-box working status', () => {
     expect(state.status(indicator, 30)).toBe('△ working… · 2s');
     expect(requestRender).toHaveBeenCalledTimes(2);
     state.end();
-    expect(state.status(undefined, 30)).toBe('☥ thoth · ready');
+    expect(state.status(undefined, 30)).toBe('▲ ready');
     requestRender.mockClear();
     vi.advanceTimersByTime(3000);
     expect(requestRender).not.toHaveBeenCalled();
@@ -46,7 +46,7 @@ describe('input-box working status', () => {
       { renderInBorder: 1 },
       { renderInBorder: () => '' },
     ]) {
-      expect(state.status(indicator, 30)).toBe('☥ thoth · ready');
+      expect(state.status(indicator, 30)).toBe('▲ ready');
     }
     state.dispose();
   });

@@ -208,7 +208,7 @@ describe('registerStatusLine', () => {
       editor.setWorkingStatusIndicator(undefined);
       for (const handler of mocks.eventHandlers.get('agent_end') ?? [])
         handler();
-      expect(editor.render(80)[0]).toContain('☥ thoth · ready');
+      expect(editor.render(80)[0]).toContain('▲ ready');
       expect(vi.getTimerCount()).toBe(0);
 
       for (const handler of queuedStart) handler();
@@ -243,7 +243,7 @@ describe('registerStatusLine', () => {
     expect(mocks.tui.getFocusedComponent()).toBe(first);
     const decoratedFirstRender = first.render;
     expect(decoratedFirstRender).not.toBe(originalFirstRender);
-    expect(first.render(80)[0]).toContain('╭─ ☥ thoth · ready');
+    expect(first.render(80)[0]).toContain('╭─ ▲ ready');
     expect(component.render(80)).toBe(footer);
     expect(first.render).toBe(decoratedFirstRender);
 
@@ -257,7 +257,7 @@ describe('registerStatusLine', () => {
     mocks.tui.getFocusedComponent.mockReturnValue(replacement);
     expect(component.render(80)).toBe(footer);
     expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
-    expect(replacement.render(80)[0]).toContain('╭─ ☥ thoth · ready');
+    expect(replacement.render(80)[0]).toContain('╭─ ▲ ready');
     expect(component.render(80)).toBe(footer);
 
     mocks.tui.getFocusedComponent.mockReturnValue(first);
@@ -340,7 +340,7 @@ describe('registerStatusLine', () => {
       expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
 
       const box = editor.render(120);
-      expect(box[0]).toMatch(/^╭─ ☥ thoth · ready /);
+      expect(box[0]).toMatch(/^╭─ ▲ ready /);
       expect(box[1]).toContain(
         `${CURSOR_MARKER}\x1b[7m \x1b[0mtype or / for commands`,
       );

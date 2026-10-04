@@ -38,6 +38,7 @@ import {
   type VerbatimPage,
 } from "./shared-log-utils.js";
 import { failurePath } from "./failures.js";
+import { formatDuration } from "./format-duration.js";
 import { captureGapsFor, pageTaskLog, readLog, type LogRead } from "./logs.js";
 import { belongsToOrigin, inspectMeta, listTaskRecords, originOf, type MetaInspection } from "./registry.js";
 import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta, Condition, FirstWatchCheck } from "./types.js";
@@ -104,14 +105,6 @@ function oneLine(value: unknown, maxLength: number): string {
   const raw = typeof value === "string" ? value : JSON.stringify(value);
   const single = String(raw ?? "").replace(/\s+/g, " ").trim();
   return single.length <= maxLength ? single : `${single.slice(0, Math.max(0, maxLength - 1))}…`;
-}
-
-function formatDuration(ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  return `${minutes}m${rest.toString().padStart(2, "0")}s`;
 }
 
 function stringifyObserved(value: unknown): string {
@@ -268,11 +261,11 @@ function formatDiagnostics(meta: BackgroundTaskMeta, extra: string[] = []): stri
 function formatProgress(meta: BackgroundTaskMeta): string | undefined {
   const lines = [`kind: ${meta.kind}`];
   if (meta.name) lines.push(`name: ${oneLine(meta.name, 80)}`);
-  lines.push(`elapsed: ${formatDuration((meta.endedAt ?? Date.now()) - meta.startedAt)}`);
+  lines.push(`elapsed: ${formatDuration(Math.round(((meta.endedAt ?? Date.now()) - meta.startedAt) / 1000) * 1000)}`);
   if (meta.deadlineAt && meta.status === "running") {
-    lines.push(`deadline: ${formatDuration(meta.deadlineAt - Date.now())} left`);
+    lines.push(`deadline: ${formatDuration(Math.round((meta.deadlineAt - Date.now()) / 1000) * 1000)} left`);
   }
-  if (meta.lastCheckedAt) lines.push(`last check: ${formatDuration(Date.now() - meta.lastCheckedAt)} ago`);
+  if (meta.lastCheckedAt) lines.push(`last check: ${formatDuration(Math.round((Date.now() - meta.lastCheckedAt) / 1000) * 1000)} ago`);
   if (meta.lastState !== undefined) lines.push(`last state: ${oneLine(meta.lastState, 120)}`);
   return lines.join("\n");
 }
@@ -477,7 +470,7 @@ function pendingFirstCheckText(check: FirstCheckPending): string {
     case "suspended":
       return "First check still running when the session shut down. The watch continues when its session resumes; check it later with bg_task_status.";
     default:
-      return `First check still running after ${formatDuration(check.waitedMs)}; the watch continues in the background. Check it later with bg_task_status.`;
+      return `First check still running after ${formatDuration(Math.round(check.waitedMs / 1000) * 1000)}; the watch continues in the background. Check it later with bg_task_status.`;
   }
 }
 
@@ -490,8 +483,8 @@ export function formatFirstWatchCheck(meta: BackgroundTaskMeta, check: FirstWatc
   if ("pending" in check) return pendingFirstCheckText(check);
   if (check.error) return `First check could not run: ${oneLine(check.error, 300)}`;
   const outcome = check.timedOut ? "timed out" : check.signal ? `signal ${check.signal}` : `exit ${check.exitCode ?? "unknown"}`;
-  const took = check.durationMs < 1000 ? `${check.durationMs}ms` : formatDuration(check.durationMs);
-  const header = `First check: ${outcome} in ${took}.`;
+  const durationMs = check.durationMs >= 1000 ? Math.round(check.durationMs / 1000) * 1000 : check.durationMs;
+  const header = `First check: ${outcome} in ${formatDuration(durationMs)}.`;
   const stdout = tailLines(check.stdout);
   const stderr = tailLines(check.stderr);
   const warning = check.exitCode === 0 && stderr.length && meta.status === "running"
@@ -732,7 +725,7 @@ export function formatLog(id: string, options: OutputOptions = {}): string {
 }
 
 function compactRow(meta: BackgroundTaskMeta, incidents: number): string {
-  const age = formatDuration((meta.endedAt ?? Date.now()) - meta.startedAt);
+  const age = formatDuration(Math.round(((meta.endedAt ?? Date.now()) - meta.startedAt) / 1000) * 1000);
   const incident = incidents > 0 ? ` · ${incidents} incident${incidents === 1 ? "" : "s"}` : "";
   const label = meta.name ? ` ${oneLine(meta.name, 60)}` : "";
   return `${meta.id} ${meta.status} ${meta.kind} ${age}${incident}${label}`;

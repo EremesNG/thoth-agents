@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { afterEach, describe, expect, it } from "vitest";
+import { visibleWidth, type Component } from "@earendil-works/pi-tui";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { recordFailure } from "./failures.js";
 import { packCallbackBatch } from "./shared-callback-batcher.js";
 import { pageTaskLog, readLog, retainLogTail } from "./logs.js";
@@ -8,6 +9,7 @@ import {
   BACKGROUND_OUTPUT_HARD_CAP_BYTES,
   backgroundBudget,
   formatCallbackFacts,
+  formatFirstWatchCheck,
   formatLaunch,
   formatList,
   formatLog,
@@ -17,6 +19,7 @@ import {
 import { inspectMeta, logPathFor, metaPathFor, taskDir, writeMeta } from "./registry.js";
 import { registerTools } from "./tools.js";
 import { getBackgroundTasksNavigator } from "./navigator-provider.js";
+import { MAIN_LIST_WIDGET_KEY } from "./shared-navigator.js";
 import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta, Condition } from "./types.js";
 
 const createdIds: string[] = [];
@@ -24,6 +27,7 @@ const origin: BackgroundTaskCallbackOrigin = { cwd: "/tmp/output-scope", session
 const otherOrigin: BackgroundTaskCallbackOrigin = { cwd: "/tmp/output-scope", sessionId: "session-b" };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const id of createdIds.splice(0)) rmSync(taskDir(id), { recursive: true, force: true });
 });
 
@@ -69,6 +73,167 @@ const ctx = {
   cwd: origin.cwd,
   sessionManager: { getSessionId: () => origin.sessionId },
 };
+
+const roundedDurationCases: [number, string][] = [
+  [499, "0s"],
+  [500, "1s"],
+  [12_499, "12s"],
+  [12_500, "13s"],
+  [59_499, "59s"],
+  [59_500, "1m 00s"],
+  [845_499, "14m 05s"],
+  [845_500, "14m 06s"],
+  [3_599_500, "1h 00m"],
+  [7_380_456, "2h 03m"],
+];
+
+describe("background output durations", () => {
+  it.each(roundedDurationCases)("keeps whole-second status and list counters for %s ms", (ms, expected) => {
+    const now = 20_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const meta = fixture({
+      status: "running",
+      endedAt: undefined,
+      startedAt: now - ms,
+      deadlineAt: now + ms,
+      lastCheckedAt: now - ms,
+    });
+    const status = formatStatus(meta, { origin });
+    expect(status).toContain(`elapsed: ${expected}`);
+    expect(status).toContain(`deadline: ${expected} left`);
+    expect(status).toContain(`last check: ${expected} ago`);
+    expect(formatList({ origin })).toContain(`${meta.id} running command_watch ${expected}`);
+  });
+
+  it("uses the end time for completed elapsed durations", () => {
+    const meta = fixture({ startedAt: 1_000, endedAt: 7_381_456 });
+    expect(formatStatus(meta, { origin })).toContain("elapsed: 2h 03m");
+    expect(formatList({ origin })).toContain(`${meta.id} succeeded command_watch 2h 03m`);
+  });
+
+  it.each<[number, string]>([
+    [0, "0s"],
+    [123.999, "123ms"],
+    [900, "900ms"],
+    [999.999, "999ms"],
+    [1_000, "1s"],
+    [1_200, "1s"],
+    [1_499, "1s"],
+    [1_500, "2s"],
+    [12_345, "12s"],
+    [59_500, "1m 00s"],
+    [845_999, "14m 06s"],
+    [3_599_500, "1h 00m"],
+    [7_439_999, "2h 04m"],
+  ])("preserves first-check duration %s as %s", (ms, expected) => {
+    const meta = fixture();
+    const check = {
+      exitCode: 0, signal: null, durationMs: ms, stdout: "", stderr: "",
+    };
+    expect(formatFirstWatchCheck(meta, check)).toContain(`First check: exit 0 in ${expected}.`);
+    expect(formatLaunch(meta, check)).toContain(`First check: exit 0 in ${expected}.`);
+  });
+
+  it.each<[number, string]>([
+    [12_345, "12s"],
+    [59_500, "1m 00s"],
+    [7_380_456, "2h 03m"],
+  ])("keeps pending first-check waits in whole seconds for %s ms", (ms, expected) => {
+    const text = formatFirstWatchCheck(fixture(), { pending: "timeout", waitedMs: ms });
+    expect(text).toContain(`First check still running after ${expected};`);
+  });
+});
+
+describe("background navigator durations", () => {
+  it.each(roundedDurationCases)("keeps whole-second row, detail and watch facts for %s ms", (ms, expected) => {
+    const now = 20_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const meta = fixture({
+      status: "running",
+      endedAt: undefined,
+      startedAt: now - ms,
+      deadlineAt: now + ms,
+      lastCheckedAt: now - ms,
+      lastProgressAt: now,
+      intervalMs: ms,
+    });
+    const navigator = getBackgroundTasksNavigator({} as any);
+    navigator.ensure({ ...ctx, hasUI: false } as any);
+    try {
+      const row = navigator.provider.listRows(now).find((item) => item.id === meta.id)!;
+      expect(row.elapsed).toBe(expected);
+      expect(row.facts).toEqual([`every ${expected}`, `${expected} left`]);
+      const detail = navigator.provider.detail(meta.id, now)!;
+      expect(detail.metadata).toEqual(expect.arrayContaining([
+        { label: "elapsed", value: expected },
+        { label: "deadline", value: expected },
+        { label: "checked", value: `${expected} ago` },
+      ]));
+    } finally {
+      navigator.dispose();
+    }
+  });
+
+  it("normalizes non-finite navigator clock durations", () => {
+    const meta = fixture({
+      status: "running", endedAt: undefined, startedAt: 1_000, deadlineAt: 20_000, lastCheckedAt: 5_000,
+    });
+    const navigator = getBackgroundTasksNavigator({} as any);
+    navigator.ensure({ ...ctx, hasUI: false } as any);
+    try {
+      const row = navigator.provider.listRows(Number.NaN).find((item) => item.id === meta.id)!;
+      expect(row.elapsed).toBe("0s");
+      expect(row.facts).toContain("0s left");
+      const detail = navigator.provider.detail(meta.id, Number.NaN)!;
+      expect(detail.metadata).toEqual(expect.arrayContaining([
+        { label: "elapsed", value: "0s" },
+        { label: "deadline", value: "0s" },
+        { label: "checked", value: "0s ago" },
+      ]));
+    } finally {
+      navigator.dispose();
+    }
+  });
+
+  it("fits rounded duration strings into width-constrained navigator rows", () => {
+    const now = 20_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    for (const ms of [12_499, 845_499, 7_380_456]) {
+      fixture({ status: "running", endedAt: undefined, startedAt: now - ms, lastProgressAt: now });
+    }
+    let widgetFactory: ((tui: unknown, theme: unknown) => Component) | undefined;
+    const uiCtx = {
+      ...ctx,
+      hasUI: true,
+      mode: "tui",
+      ui: {
+        theme: { fg: (_color: string, value: string) => value },
+        setStatus() {},
+        setWidget(key: string, value: unknown) {
+          if (key === MAIN_LIST_WIDGET_KEY) widgetFactory = value as typeof widgetFactory;
+        },
+        getEditorComponent() {},
+        setEditorComponent() {},
+      },
+    };
+    const navigator = getBackgroundTasksNavigator({} as any);
+    navigator.ensure(uiCtx as any);
+    try {
+      expect(widgetFactory).toBeTypeOf("function");
+      const widget = widgetFactory!({}, uiCtx.ui.theme);
+      for (const width of [1, 24, 32, 80]) {
+        const lines = widget.render(width);
+        for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+        if (width >= 24) {
+          const text = lines.join("\n");
+          for (const duration of ["12s", "14m 05s", "2h 03m"]) expect(text).toContain(duration);
+        }
+      }
+    } finally {
+      navigator.dispose(uiCtx as any);
+    }
+  });
+});
 
 describe("background output budgets", () => {
   it("uses revised consumer defaults and clamps explicit pages to the core hard cap", () => {

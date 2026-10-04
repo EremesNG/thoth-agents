@@ -1,15 +1,5 @@
-export const STANDALONE_STAR_TOOL_EXCLUSIONS: ReadonlySet<string> = new Set([
-  'ask_orchestrator',
-  'AskClaude',
-  'AskAntigravity',
-  'bg_delegate',
-  'bg_run_pi_attested',
-  'bg_result',
-  'fusion_reason',
-  'fusion_investigate',
-  'fusion_research',
-  'fusion_validate',
-]);
+// No standalone-only exclusions; native subagent_* prefixes apply to every selector.
+export const STANDALONE_STAR_TOOL_EXCLUSIONS: ReadonlySet<string> = new Set();
 
 export function hasToolGlob(pattern: string): boolean {
   return pattern.includes('*');
@@ -25,8 +15,7 @@ function wildcardToRegExp(pattern: string): RegExp {
 
 export function matchesToolPattern(toolName: string, pattern: string): boolean {
   return hasToolGlob(pattern)
-    ? toolName !== 'ask_orchestrator' &&
-        wildcardToRegExp(pattern).test(toolName)
+    ? wildcardToRegExp(pattern).test(toolName)
     : toolName === pattern;
 }
 
@@ -41,20 +30,12 @@ export function expandToolPatterns(
   const active = activeToolNames ? [...new Set(activeToolNames)] : undefined;
   const expanded: string[] = [];
   const add = (name: string) => {
-    if (
-      name.startsWith('subagent_') ||
-      name === 'ask_user_question' ||
-      name === 'todo' ||
-      expanded.includes(name)
-    )
-      return;
+    if (name.startsWith('subagent_') || expanded.includes(name)) return;
     expanded.push(name);
   };
 
   if (patterns.length === 1 && patterns[0] === '*') {
-    for (const toolName of active ?? []) {
-      if (!STANDALONE_STAR_TOOL_EXCLUSIONS.has(toolName)) add(toolName);
-    }
+    for (const toolName of active ?? []) add(toolName);
     return expanded;
   }
 

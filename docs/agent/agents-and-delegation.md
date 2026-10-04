@@ -174,8 +174,10 @@ dependencies, and acceptance. Use
 `task_id`; terminal notifications wake the parent, so do not poll. A cancellation
 acknowledgement alone is not proof of termination, and `enable_continue: false`
 means continuation must not be assumed. These instructions are not runtime
-permissions: the runtime provides no enforced delegation depth, tool allowlist,
-or `PI_SUBAGENT_CHILD` marker. The required `session_resources: "lean"` setting
+permissions: delegation depth and behavioral role limits remain instruction-level.
+Child `tools`, `disallowed_tools`, configuration and native `subagent_*` exclusions
+provide runtime-verified registry filtering, not an OS sandbox; there is no
+`PI_SUBAGENT_CHILD` marker. The required `session_resources: "lean"` setting
 filters `before_agent_start` and `session_start` (except for trusted
 `lifecycle_passthrough` packages, which keep their full lifecycle and may replace
 the `before_provider_request` payload) but is not a
@@ -183,8 +185,16 @@ process or OS sandbox; project-local `subagents.json` can override the global se
 unavailable or unproven, report the degradation and use a truthful sequential
 fallback; do not emulate another runtime.
 
-Pi explorer, librarian, designer and worker definitions explicitly select
-`ask_orchestrator`; Oracle does not. Use concise `kind: "question"` messages only
+When `enable_ask_orchestrator` is true (default), every Pi child receives
+`ask_orchestrator` regardless of `tools` selection, unless its `disallowed_tools`
+denies it. Thoth Oracle denies it to preserve independent judgment; all five
+specialists deny `ask_user_question`, `todo` and known third-party delegation tools
+by default. `disallowed_tools` accepts a comma-separated string or YAML list of
+exact names; absence or explicit empty means no denial, malformed values fail
+closed, and uninstalled denied names are inert. Synchronization preserves valid
+operator values, including intentional empty values, otherwise uses package
+defaults; malformed definitions stay unchanged with diagnostics. Role behavior
+limits remain instruction-level. Use concise `kind: "question"` messages only
 for material alignment or clarification ambiguity blocking the assignment, never
 instead of own discovery, to delegate, or to request other agents. The question
 waits for root's reply in the same live child session. Optional brief

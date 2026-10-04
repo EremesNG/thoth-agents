@@ -95,6 +95,12 @@ function preserveOverrides(next: string, current: string): string {
       'tools',
       JSON.stringify(toolOverrides.tools.join(', ')),
     );
+  if (toolOverrides.disallowedTools !== undefined)
+    frontmatter = replaceField(
+      frontmatter,
+      'disallowed_tools',
+      JSON.stringify(toolOverrides.disallowedTools.join(', ')),
+    );
   if (toolOverrides.subagentMode)
     frontmatter = replaceField(
       frontmatter,
@@ -173,7 +179,7 @@ export function syncPiSpecialists(
           content = preserveOverrides(content, current);
         } catch (error) {
           diagnostics.push(
-            `Preserved ${name} unchanged because its tool or mode override is malformed: ${error instanceof Error ? error.message : String(error)}. Fix the frontmatter explicitly before synchronizing this role.`,
+            `Preserved ${name} unchanged because its tool, disallowed_tools, or mode override is malformed: ${error instanceof Error ? error.message : String(error)}. Fix the frontmatter explicitly before synchronizing this role.`,
           );
           continue;
         }

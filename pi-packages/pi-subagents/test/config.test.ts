@@ -201,6 +201,149 @@ describe('config and workflow loading', () => {
     ).toEqual(['read', 'write', 'bash']);
   });
 
+  it.each([
+    ['absent', '', []],
+    ['empty value', 'disallowed_tools:\n', []],
+    ['empty string', 'disallowed_tools: ""\n', []],
+    ['empty list', 'disallowed_tools: []\n', []],
+    ['quoted-key empty string', '"disallowed_tools": ""\n', []],
+    ['quoted-key empty list', '"disallowed_tools": []\n', []],
+    [
+      'comma string',
+      'disallowed_tools: ask_orchestrator, bash\n',
+      ['ask_orchestrator', 'bash'],
+    ],
+    [
+      'quoted comma string',
+      'disallowed_tools: "ask_orchestrator, bash"\n',
+      ['ask_orchestrator', 'bash'],
+    ],
+    [
+      'quoted-key string',
+      '"disallowed_tools": ask_orchestrator\n',
+      ['ask_orchestrator'],
+    ],
+    [
+      'quoted-key YAML list',
+      '"disallowed_tools":\n  - ask_orchestrator\n  - bash\n',
+      ['ask_orchestrator', 'bash'],
+    ],
+    [
+      'single-quoted-key string',
+      "'disallowed_tools': ask_orchestrator, bash\n",
+      ['ask_orchestrator', 'bash'],
+    ],
+    [
+      'single-quoted-key YAML list',
+      "'disallowed_tools':\n  - ask_orchestrator\n  - bash\n",
+      ['ask_orchestrator', 'bash'],
+    ],
+    [
+      'YAML list',
+      'disallowed_tools:\n  - ask_orchestrator\n  - bash\n',
+      ['ask_orchestrator', 'bash'],
+    ],
+    [
+      'flow list',
+      'disallowed_tools: ["ask_orchestrator", bash]\n',
+      ['ask_orchestrator', 'bash'],
+    ],
+    ['plain flow list', 'disallowed_tools: [a, b]\n', ['a', 'b']],
+    [
+      'commented list',
+      'disallowed_tools: # exact names\n  - ask_orchestrator # child tool\n  - bash\n',
+      ['ask_orchestrator', 'bash'],
+    ],
+    [
+      'commented string with trailing colon',
+      'disallowed_tools: ask_orchestrator # child tool:\n',
+      ['ask_orchestrator'],
+    ],
+    [
+      'CRLF list',
+      'disallowed_tools:\r\n  - ask_orchestrator\r\n  - bash\r\n',
+      ['ask_orchestrator', 'bash'],
+    ],
+  ])('loads %s disallowed_tools as exact denials', (_label, frontmatter, expected) => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'worker.md'),
+      `---\nname: worker\ntools: read\n${frontmatter}---\n# Worker`,
+    );
+
+    expect(loadSubagents(tmp)[0]).toMatchObject({ disallowed_tools: expected });
+    expect(subagentSourceWarnings(tmp)).toEqual([]);
+  });
+
+  it.each([
+    ['*', ['*']],
+    ['read, ask_*', ['read', 'ask_*']],
+  ])('preserves tools %s from valid YAML values', (tools, expected) => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents', 'worker.md'),
+      `---\nname: worker\ndescription: "worker: reads and reviews"\ntools: ${JSON.stringify(tools)}\n"disallowed_tools": [ask_orchestrator]\n---\n# Worker`,
+    );
+
+    expect(loadSubagents(tmp)[0]).toMatchObject({
+      description: 'worker: reads and reviews',
+      tools: expected,
+      disallowed_tools: ['ask_orchestrator'],
+    });
+    expect(subagentSourceWarnings(tmp)).toEqual([]);
+  });
+
+  it.each([
+    'disallowed_tools: 42',
+    'disallowed_tools: 0xFF',
+    'disallowed_tools: .inf',
+    'disallowed_tools: false',
+    '"disallowed_tools": false',
+    '"disallowed_tools": 42',
+    '"disallowed_tools": null',
+    '"disallowed_tools": {}',
+    '"disallowed_tools": [ask_orchestrator, false]',
+    '"disallowed_tools":\n  - ask_orchestrator:',
+    '"disallowed_tools": ask_*',
+    '"disallowed_tools": ["ask_*"]',
+    "'disallowed_tools': false",
+    'disallowed_tools: null',
+    'disallowed_tools: {}',
+    'disallowed_tools: ask_*',
+    'disallowed_tools: [read, 42]',
+    'disallowed_tools:\n  - read\n  - false',
+    'disallowed_tools:\n  - read\n  - [bash]',
+    'disallowed_tools:\n  - read\n  - nested: bash',
+    'disallowed_tools:\n  - ask_orchestrator:',
+    'disallowed_tools:\n  nested: bash',
+    'disallowed_tools:\n  - read\n    nested: bash',
+    'disallowed_tools: read\n  - bash',
+    'disallowed_tools: read\ndisallowed_tools: bash',
+    'disallowed_tools:\n  -',
+    'disallowed_tools: "[read]"',
+    'disallowed_tools: "read',
+    'disallowed_tools:\n  - read\n    - bash',
+    'disallowed_tools:\n  - null',
+  ])('fails closed with a source diagnostic for malformed denials: %s', (frontmatter) => {
+    const agentDir = path.join(tmp, 'global-agent');
+    fs.mkdirSync(path.join(agentDir, 'subagents'), { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents', 'worker.md'),
+      '---\nname: worker\ntools: read\n---\nGlobal worker',
+    );
+    const file = path.join(tmp, '.pi', 'subagents', 'worker.md');
+    fs.writeFileSync(
+      file,
+      `---\nname: worker\n${frontmatter}\n---\nProject worker`,
+    );
+    withAgentDir(agentDir, () => {
+      expect(loadSubagents(tmp)).toEqual([]);
+      expect(subagentSourceWarnings(tmp)).toEqual([
+        expect.stringContaining('invalid frontmatter'),
+      ]);
+      expect(subagentSourceWarnings(tmp)[0]).toContain(file);
+      expect(subagentSourceWarnings(tmp)[0]).toContain('worker');
+    });
+  });
+
   it('parses Windows CRLF frontmatter', () => {
     const parsed = parseFrontmatter(
       '---\r\nname: analyst\r\ntools: read, write\r\n---\r\n# Body',
@@ -926,7 +1069,13 @@ describe('config and workflow loading', () => {
           'subagent_run',
         ],
       ),
-    ).toEqual(['read']);
+    ).toEqual([
+      'read',
+      'AskClaude',
+      'AskAntigravity',
+      'ask_user_question',
+      'todo',
+    ]);
     expect(expandToolPatterns(['*'], [])).toEqual([]);
     expect(expandToolPatterns(['AskClaude', 'AskAntigravity'])).toEqual([
       'AskClaude',
@@ -937,6 +1086,11 @@ describe('config and workflow loading', () => {
   });
 
   it.each([
+    'ask_orchestrator',
+    'ask_user_question',
+    'todo',
+    'AskClaude',
+    'AskAntigravity',
     'bg_delegate',
     'bg_run_pi_attested',
     'bg_result',
@@ -944,10 +1098,15 @@ describe('config and workflow loading', () => {
     'fusion_investigate',
     'fusion_research',
     'fusion_validate',
-  ])('excludes %s from standalone * selection', (toolName) => {
+  ])('keeps non-native tool %s selectable under standalone *', (toolName) => {
     expect(expandToolPatterns(['*'], ['read', toolName, 'bash'])).toEqual([
       'read',
+      toolName,
       'bash',
+    ]);
+    expect(expandToolPatterns(['*', 'read'], [toolName])).toEqual([
+      toolName,
+      'read',
     ]);
   });
 
@@ -968,7 +1127,7 @@ describe('config and workflow loading', () => {
         [...delegationTools, 'subagent_run', 'ask_user_question', 'todo'],
         [],
       ),
-    ).toEqual(delegationTools);
+    ).toEqual([...delegationTools, 'ask_user_question', 'todo']);
   });
 
   it.each([
@@ -1033,7 +1192,7 @@ describe('config and workflow loading', () => {
           'read',
         ],
       ),
-    ).toEqual(['read', ...delegationTools]);
+    ).toEqual(['read', ...delegationTools, 'ask_user_question', 'todo']);
   });
 
   it.each([
@@ -1064,7 +1223,7 @@ describe('config and workflow loading', () => {
     );
   });
 
-  it('excludes root-only controls from explicit child tool configuration', () => {
+  it('excludes only native subagent controls from explicit child tool configuration', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents', 'worker.md'),
       `---\nname: worker\ntools: ask_user_question, todo, read, subagent_run\n---\n# Worker`,
@@ -1076,8 +1235,16 @@ describe('config and workflow loading', () => {
       }),
     );
 
-    expect(loadSubagents(tmp)[0].tools).toEqual(['read']);
-    expect(readSubagentsConfig(tmp).default_tools).toEqual(['read']);
+    expect(loadSubagents(tmp)[0].tools).toEqual([
+      'ask_user_question',
+      'todo',
+      'read',
+    ]);
+    expect(readSubagentsConfig(tmp).default_tools).toEqual([
+      'ask_user_question',
+      'todo',
+      'read',
+    ]);
   });
 
   it('keeps orchestrator context in the delegated user prompt when supplied', () => {

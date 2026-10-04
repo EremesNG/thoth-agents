@@ -108,7 +108,7 @@ describe('Pi adapter', () => {
     );
     expect(root).toContain('actual tool name and schema');
     expect(root).toContain('lightweight written progress');
-    expect(root).not.toContain('`todo`');
+    expect(root).toContain('deny `ask_user_question`, `todo`');
     expect(root).not.toContain('rpiv-todo');
     expect(root).toContain('ask_user_question');
     expect(root).toContain('one to four questions');
@@ -173,7 +173,10 @@ describe('Pi adapter', () => {
     const oracle = piAdapter
       .render({ projectRoot: process.cwd() })
       .artifacts.find(({ path }) => path === 'agents/thoth-oracle.md');
-    expect(oracle?.content).not.toContain('ask_orchestrator');
+    expect(oracle?.content.match(/^disallowed_tools: (.+)$/m)?.[1]).toContain(
+      'ask_orchestrator',
+    );
+    expect(oracle?.content).not.toContain('ask_orchestrator({');
     expect(oracle?.content).toContain('openQuestions');
   });
 
@@ -240,8 +243,11 @@ describe('Pi adapter', () => {
     const root = renderPiRootInstructions();
     const runtime = root.match(/<pi-runtime>([\s\S]*?)<\/pi-runtime>/)?.[1];
     expect(runtime).toContain('`enable_ask_orchestrator` (default true)');
-    expect(runtime).toContain('selection explicitly names `ask_orchestrator`');
-    expect(runtime).toContain('never through standalone `*` or globs');
+    expect(runtime).toContain('regardless of `tools` selection');
+    expect(runtime).toContain('unless denied by `disallowed_tools`');
+    expect(runtime).toContain('Oracle additionally denies `ask_orchestrator`');
+    expect(runtime).toContain('runtime-verified registry filtering');
+    expect(runtime).toContain('native `subagent_*` exclusions');
     expect(runtime).toContain('`kind: "progress"` returns immediately');
     expect(runtime).toContain('does not trigger a root turn');
     expect(runtime).toContain(

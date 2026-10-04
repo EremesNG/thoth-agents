@@ -58,19 +58,25 @@
   using `src/cli/pi-model-config.ts` for Thoth specialist provenance/path checks,
   stale snapshots, and partial-write recovery. `/subagents-tools` discovers
   registered tools and edits either explicit per-role lists or the single
-  standalone dynamic selector `*`: tools currently active in the root session,
-  excluding `subagent_*`, root-only `ask_user_question`/`todo` controls, and
-  delegation tools `AskClaude`, `AskAntigravity`, `bg_delegate`,
+  standalone dynamic selector `*`: tools currently active in the root session
+  plus child-provided `ask_orchestrator`, excluding native `subagent_*` tools and
+  that role's `disallowed_tools`. Inactive registered tools are not inherited;
+  ordinary shell-job tools remain eligible. The panel marks inactive choices,
+  retains unavailable explicit names, and supports role-default reset. Its
+  synthetic active `ask_orchestrator` item is never unavailable and describes
+  the channel as child-provided, subject to `enable_ask_orchestrator` and
+  `disallowed_tools`; the panel does not read runtime configuration or edit denials.
+  Generated defaults remain explicit tool lists without `ask_orchestrator`.
+  Every enabled child receives it regardless of selection form (`*`, globs,
+  explicit lists, or defaults) unless denied. All five Thoth definitions deny
+  `ask_user_question`, `todo`, `AskClaude`, `AskAntigravity`, `bg_delegate`,
   `bg_run_pi_attested`, `bg_result`, `fusion_reason`, `fusion_investigate`,
-  `fusion_research` and `fusion_validate`. Inactive registered tools are not
-  inherited; ordinary shell-job tools (`bg_task_*` and `bg_status` of the vendored
-  fork, or `bg_run`, `bg_status`, `bg_logs`, `bg_kill` of the npm package) remain
-  eligible. These delegation names remain valid explicit choices;
-  the panel marks inactive choices, retains unavailable explicit names, and
-  supports role-default reset. Generated defaults remain explicit tool lists.
-  Pi-only defaults explicitly name `ask_orchestrator` for explorer, librarian,
-  designer and worker, not Oracle; shared role permissions and other harnesses
-  are unchanged. The child tool never matches standalone `*` or globs.
+  `fusion_research` and `fusion_validate`; Oracle additionally denies
+  `ask_orchestrator` for independent judgment. Other harnesses are unchanged.
+  `disallowed_tools` is a comma-separated string or YAML list of exact names,
+  subtracted after resolution, including injected tools. Absent or explicitly
+  empty means no denial; malformed values fail closed and uninstalled denied
+  names are inert. Native exclusions cover only `subagent_*` tools.
   `enable_ask_orchestrator` defaults to true and gates both the child tool and
   root's `subagent_reply`; false removes both. `ask_timeout_ms` defaults to
   600000. Questions block for root's reply; optional brief progress updates are
@@ -80,15 +86,18 @@
   The `*` exclusions are not a sandbox: shell and MCP tools can still launch
   agents indirectly.
   `src/cli/pi-tool-config.ts` owns validation and safe persistence; synchronization
-  preserves valid explicit tools, `*`, modes, model, and effort.
+  preserves valid explicit tools, `*`, modes, model, effort and operator-set
+  `disallowed_tools` (including explicit empty). Otherwise package denials apply
+  even with custom tools; malformed definitions remain unchanged with diagnostics.
   `@active` is rejected with a diagnostic naming `*` as its replacement, never
   accepted as an alias or explicit name. Unsupported overrides remain untouched
-  with diagnostics during synchronization. Empty selections and reserved
-  delegation/root-only controls are rejected. `*` resolves at child launch; for
+  with diagnostics during synchronization. Empty panel selections and native
+  `subagent_*` delegation controls are rejected. `*` resolves at child launch; for
   every selection form (`*`, explicit lists, globs) tools without a child
   implementation are dropped and reported as durable warnings on the running
   widget card and in status/results/completion while the child uses the available
-  subset. An all-missing selection or unexpected extra child tools still fail.
+  subset. An empty effective permitted selection or unexpected extra child tools
+  still fails; an injected `ask_orchestrator` alone can keep the selection nonempty.
   Explicit names reach the child even when inactive in the root (the way to give
   a role deferred or advanced tools); the panel does not accept globs. Native TUI/AI modules are declared public peers and
   kept external in the build; static imports let Pi's loader resolve its native
@@ -128,9 +137,10 @@
   `before_provider_request` return replaces the provider payload (so `-fast`
   variants send `service_tier: "priority"` in children); that list is a trust
   list, not a sandbox. A project-local `subagents.json` may override global lean
-  settings. The runtime provides no
-  enforced depth or tool allowlist, and these role boundaries do not form an OS
-  or process sandbox.
+  settings. Child `tools`, `disallowed_tools`, configuration and native
+  `subagent_*` exclusions provide runtime-verified registry filtering. Delegation
+  depth and behavioral role limits are instruction-level; neither these role
+  boundaries nor registry filtering form an OS or process sandbox.
 - Pi's Context7 and web-access integrations are native extensions. Only grep.app
   uses `pi-mcp-adapter`, through the exact attributable global server entry.
 - Pi safely merges `session_resources: "lean"` and `enable_continue: false`

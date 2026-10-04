@@ -1,6 +1,8 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { parseFrontmatter as parseYamlFrontmatter } from '@earendil-works/pi-coding-agent';
 import type {
   ModelRef,
   SubagentDefinition,
@@ -37,34 +39,8 @@ const DEFAULT_RENDER_DEBUG_LOG_PATH = path.join(
   os.tmpdir(),
   'pi-subagents-render.jsonl',
 );
-const BLOCKED_SUBAGENT_TOOLS = new Set([
-  'ask_user_question',
-  'todo',
-  'subagent_run',
-  'subagent_continue',
-  'subagent_list_agents',
-  'subagent_status',
-  'subagent_result',
-  'subagent_list_tasks',
-  'subagent_cancel',
-]);
-
 function sanitizeTools(tools: string[]): string[] {
-  return tools
-    .map(String)
-    .filter(
-      (tool) =>
-        !BLOCKED_SUBAGENT_TOOLS.has(tool) && !tool.startsWith('subagent_'),
-    );
-}
-
-function parseScalar(value: string): any {
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  if (trimmed === 'true') return true;
-  if (trimmed === 'false') return false;
-  if (/^\d+$/.test(trimmed)) return Number(trimmed);
-  return trimmed.replace(/^['"]|['"]$/g, '');
+  return tools.map(String).filter((tool) => !tool.startsWith('subagent_'));
 }
 
 interface ParsedFrontmatter {
@@ -81,55 +57,145 @@ const SUBAGENT_MODE_ISSUE =
 function parseInlineTools(value: string): string[] {
   return value
     .split(',')
-    .map((item) => String(parseScalar(item)))
+    .map((item) => item.trim().replace(/^['"]|['"]$/g, ''))
     .filter(Boolean);
 }
 
-function parseFrontmatterWithIssues(text: string): ParsedFrontmatter {
-  const opening = text.match(/^---\r?\n/);
-  if (!opening) return { data: {}, body: text, issues: [] };
-  const remainder = text.slice(opening[0].length);
-  const closing = /(?:^|\r?\n)---(?=\r?\n|$)/.exec(remainder);
-  if (!closing) return { data: {}, body: text, issues: [] };
-  const raw = remainder.slice(0, closing.index).trim();
-  const body = remainder
-    .slice(closing.index + closing[0].length)
-    .replace(/^\r?\n/, '');
-  const data: Record<string, any> = {};
-  let currentKey: string | undefined;
-  let toolsDeclarationCount = 0;
-  let toolsFormat: 'inline' | 'multiline' | undefined;
-  let ambiguousTools = false;
-  for (const line of raw.split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    const list = line.match(/^\s*-\s+(.+)$/);
-    if (list && currentKey) {
-      if (currentKey === 'tools') {
-        if (toolsFormat === 'inline') ambiguousTools = true;
-        toolsFormat ??= 'multiline';
-      }
-      if (!Array.isArray(data[currentKey])) data[currentKey] = [];
-      data[currentKey].push(parseScalar(list[1]));
-      continue;
-    }
-    const m = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
-    if (!m) continue;
-    currentKey = m[1];
-    const value = m[2];
-    if (currentKey === 'tools') {
-      const format = value.trim() ? 'inline' : 'multiline';
-      if (toolsDeclarationCount > 0 || (toolsFormat && toolsFormat !== format))
-        ambiguousTools = true;
-      toolsDeclarationCount += 1;
-      toolsFormat = format;
-      data[currentKey] = format === 'inline' ? parseInlineTools(value) : [];
-    } else if (!value) {
-      data[currentKey] = [];
-    } else {
-      data[currentKey] = parseScalar(value);
-    }
+const DISALLOWED_TOOLS_ISSUE =
+  'disallowed_tools must be a comma-separated string or YAML list of exact tool names (no globs or nested values)';
+const UNSUPPORTED_YAML_ISSUE =
+  'agent frontmatter does not support YAML anchors, aliases, merge keys or tags';
+
+// Resolve the same YAML implementation as the SDK, including under pnpm's
+// isolated dependency layout; the package does not add its own parser dependency.
+const yaml = createRequire(
+  import.meta.resolve('@earendil-works/pi-coding-agent'),
+)('yaml') as typeof import('yaml');
+
+function parseDisallowedTools(value: unknown): string[] | undefined {
+  if (value === undefined || value === '') return [];
+  const names = typeof value === 'string' ? value.split(',') : value;
+  if (
+    !Array.isArray(names) ||
+    names.some(
+      (name) =>
+        typeof name !== 'string' || !/^[a-zA-Z0-9_.:-]+$/.test(name.trim()),
+    )
+  )
+    return undefined;
+  return [...new Set(names.map((name: string) => name.trim()))];
+}
+
+function parseYamlMapping(raw: string): Record<string, unknown> {
+  const document = yaml.parseDocument(raw);
+  // Inspect all keys and values before conversion can resolve aliases or tags.
+  yaml.visit(document, (_key, node) => {
+    if (
+      yaml.isAlias(node) ||
+      (yaml.isNode(node) && (node.anchor || node.tag)) ||
+      (yaml.isPair(node) && yaml.isScalar(node.key) && node.key.value === '<<')
+    )
+      throw new Error(UNSUPPORTED_YAML_ISSUE);
+  });
+  if (document.errors.length) throw document.errors[0];
+  if (!yaml.isMap(document.contents))
+    throw new Error('Expected a YAML mapping');
+  const { frontmatter: data, body } = parseYamlFrontmatter(`---\n${raw}\n---`);
+  // Retain the SDK's delimiter rules, but never accept its truncated parse.
+  if (body) throw new Error('Expected the entire YAML frontmatter');
+  if (!isPlainObject(data)) throw new Error('Expected a YAML mapping');
+  const denials = document.get('disallowed_tools', true);
+  if (yaml.isScalar(denials) && denials.value === null && denials.source === '')
+    data.disallowed_tools = [];
+  return data;
+}
+
+function validateDefinitionFrontmatter(
+  data: Record<string, unknown>,
+): string[] {
+  const issues: string[] = [];
+  for (const field of [
+    'name',
+    'description',
+    'effort',
+    'thinking_level',
+    'thinkingLevel',
+  ]) {
+    if (Object.hasOwn(data, field) && typeof data[field] !== 'string')
+      issues.push(`${field} must be a YAML string`);
   }
-  return { data, body, issues: ambiguousTools ? [AMBIGUOUS_TOOLS_ISSUE] : [] };
+  if (
+    Object.hasOwn(data, 'model') &&
+    typeof data.model !== 'string' &&
+    !(
+      isPlainObject(data.model) &&
+      typeof data.model.provider === 'string' &&
+      typeof data.model.id === 'string'
+    )
+  )
+    issues.push(
+      'model must be a string or a mapping with string provider and id',
+    );
+  if (Object.hasOwn(data, 'tools')) {
+    if (
+      typeof data.tools !== 'string' &&
+      !(
+        Array.isArray(data.tools) &&
+        data.tools.every((tool) => typeof tool === 'string')
+      )
+    )
+      issues.push(
+        'tools must be a comma-separated string or YAML list of strings',
+      );
+    else if (
+      typeof data.tools === 'string' &&
+      parseInlineTools(data.tools).some((tool) => /\s/.test(tool))
+    )
+      issues.push(AMBIGUOUS_TOOLS_ISSUE);
+  }
+  return issues;
+}
+
+function parseFrontmatterWithIssues(text: string): ParsedFrontmatter {
+  const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  if (!normalized.startsWith('---'))
+    return { data: {}, body: text, issues: [] };
+  if (!/^---[^\S\n]*(?:#[^\n]*)?(?:\n|$)/.test(normalized))
+    return {
+      data: {},
+      body: text,
+      issues: [
+        'invalid YAML frontmatter opening; use --- followed only by whitespace or a comment',
+      ],
+    };
+  const closing = /\n---[^\S\n]*(?:#[^\n]*)?(?=\n|$)/.exec(normalized);
+  if (!closing)
+    return {
+      data: {},
+      body: text,
+      issues: ['unterminated YAML frontmatter; close it with ---'],
+    };
+  // Use the SDK's exact YAML slice: skipping the opening line can hide fields.
+  const raw = normalized.slice(4, closing.index);
+  const body = normalized
+    .slice(closing.index + closing[0].length)
+    .replace(/^\n/, '');
+  try {
+    const data = parseYamlMapping(raw);
+    const issues = validateDefinitionFrontmatter(data);
+    if (typeof data.tools === 'string')
+      data.tools = parseInlineTools(data.tools);
+    return { data, body, issues };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      data: {},
+      body,
+      issues: [
+        `YAML frontmatter must parse as a mapping with unique keys: ${message}. For a wildcard, quote it: tools: "*"; for values containing ": ", quote the value (e.g. description: "worker: x")`,
+      ],
+    };
+  }
 }
 
 export function parseFrontmatter(text: string): {
@@ -159,7 +225,10 @@ function readJson(file: string): any {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function positiveNumber(value: any, fallback: number): number {
@@ -584,14 +653,34 @@ function loadSubagentsFromDir(
     .sort()
     .flatMap((file) => {
       const filePath = path.join(dir, file);
-      const { data, body, issues } = parseFrontmatterWithIssues(
-        fs.readFileSync(filePath, 'utf8'),
-      );
-      const name = String(data.name || path.basename(file, '.md'))
-        .trim()
-        .toLowerCase();
+      const name = path.basename(file, '.md').trim().toLowerCase();
+      let text: string;
+      try {
+        text = fs.readFileSync(filePath, 'utf8');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        onBlocked?.({
+          name,
+          filePath,
+          issues: [`could not read definition: ${message}`],
+        });
+        return [];
+      }
+      const { data, body, issues } = parseFrontmatterWithIssues(text);
+      if (
+        typeof data.name === 'string' &&
+        data.name.trim().toLowerCase() !== name
+      )
+        issues.push(
+          `name must match the filename identity "${name}"; rename the file to ${data.name.trim()}.md or change name to "${name}"`,
+        );
       if (issues.length > 0) {
         onBlocked?.({ name, filePath, issues });
+        return [];
+      }
+      const disallowedTools = parseDisallowedTools(data.disallowed_tools);
+      if (!disallowedTools) {
+        onBlocked?.({ name, filePath, issues: [DISALLOWED_TOOLS_ISSUE] });
         return [];
       }
       const description = String(data.description || `${name} subagent`).trim();
@@ -619,6 +708,7 @@ function loadSubagentsFromDir(
           ),
           subagent_mode: rawSubagentMode,
           tools,
+          disallowed_tools: disallowedTools,
           scope,
         },
       ];
@@ -652,7 +742,7 @@ function agentsDirSources(cwd: string): Array<{
 }
 
 function blockedSubagentWarning(blocked: BlockedSubagentDefinition): string {
-  return `Subagent "${blocked.name}" in ${blocked.filePath} has ambiguous tools frontmatter: ${blocked.issues.join('; ')}. The subagent was not loaded.`;
+  return `Subagent "${blocked.name}" in ${blocked.filePath} has invalid frontmatter: ${blocked.issues.join('; ')}. The subagent was not loaded.`;
 }
 
 export function subagentSourceWarnings(cwd: string): string[] {

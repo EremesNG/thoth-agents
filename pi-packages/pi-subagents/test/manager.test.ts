@@ -2014,9 +2014,13 @@ describe('manager and history integration', () => {
     );
     const cancelled = manager.cancel(result.task_ids[1]);
     expect(cancelled.status).toBe('cancelled');
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    expect(manager.getTask(result.task_ids[0])?.status).toBe('completed');
-    expect(manager.getTask(result.task_ids[2])?.status).toBe('completed');
+    await vi.waitFor(
+      () => {
+        expect(manager.getTask(result.task_ids[0])?.status).toBe('completed');
+        expect(manager.getTask(result.task_ids[2])?.status).toBe('completed');
+      },
+      { timeout: 2000 },
+    );
   });
 
   it('throttles noisy activity persistence and update notifications while always flushing terminal state', async () => {

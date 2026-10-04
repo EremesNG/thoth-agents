@@ -1283,7 +1283,15 @@ describe('background widget', () => {
     expect(visibleWidth(truncated)).toBeLessThanOrEqual(7);
   });
 
-  it('correctly renders whole widget output containing ANSI, CJK, combining characters, and ZWJ emojis without sequence corruption or boundary overflow', () => {
+  it('correctly renders whole widget output containing ANSI, CJK, combining characters, and ZWJ emojis without sequence corruption or boundary overflow', ({ onTestFinished }) => {
+    // Compare styling at the same spinner frame and elapsed-time value.
+    vi.useFakeTimers({
+      toFake: ['Date'],
+      now: Date.parse('2026-10-03T00:00:12.300Z'),
+    });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const taskCjkZwj = {
       id: 'task-cjk-zwj',
       agent: 'worker-🚀',

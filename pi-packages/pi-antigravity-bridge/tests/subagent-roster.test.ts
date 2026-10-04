@@ -5,7 +5,7 @@
 // name-matched) shapes. Never persisted; error-swallowing fold is pinned.
 
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import {
 	formatSubagentRoster,
 	SubagentRoster,
@@ -135,6 +135,35 @@ test("formatSubagentRoster: header counts and per-entry lines", () => {
 
 test("formatSubagentRoster: empty roster renders the zero header", () => {
 	assert.match(formatSubagentRoster([]), /0 tracked, 0 running/);
+});
+
+test.each([
+	[-500, "0s"],
+	[499, "0s"],
+	[500, "1s"],
+	[12345, "12s"],
+	[12999, "13s"],
+	[59499, "59s"],
+	[59500, "1m 00s"],
+	[845499, "14m 05s"],
+	[845500, "14m 06s"],
+	[3599499, "59m 59s"],
+	[3599500, "1h 00m"],
+	[7380000, "2h 03m"],
+])("formatSubagentRoster: %s ms rounds to whole seconds in %s", (ms, expected) => {
+	const now = 1700000000000;
+	const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+	try {
+		const r = new SubagentRoster();
+		r.fold(start("invoke_subagent", { name: "reviewer" }, 1));
+		clock.mockReturnValue(now + ms);
+		assert.equal(
+			formatSubagentRoster(r.snapshot()),
+			`antigravity subagents: 1 tracked, 1 running\n- reviewer · running · ${expected}`,
+		);
+	} finally {
+		clock.mockRestore();
+	}
 });
 
 test("roster: invoke_subagent extracts Role and Prompt from Subagents array", () => {

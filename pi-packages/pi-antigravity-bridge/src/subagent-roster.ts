@@ -19,6 +19,7 @@
 //   name-based routing cannot tell them apart.
 
 import type { DriverActivity } from "./driver-types.js";
+import { formatDuration } from "./format-duration.js";
 
 /** Tools whose start opens a roster entry and whose done/error closes it. */
 const SPAWN_TOOLS = new Set(["invoke_subagent", "run_subagent", "browser_subagent"]);
@@ -231,8 +232,7 @@ export function formatSubagentRoster(entries: SubagentEntry[]): string {
 	const running = entries.filter((e) => e.status === "running").length;
 	const lines = [`antigravity subagents: ${entries.length} tracked, ${running} running`];
 	for (const entry of entries) {
-		const secs = Math.max(0, Math.round((Date.now() - entry.spawnedAtMs) / 1000));
-		const dur = secs >= 60 ? `${Math.floor(secs / 60)}m${String(secs % 60).padStart(2, "0")}s` : `${secs}s`;
+		const dur = formatDuration(Math.round((Date.now() - entry.spawnedAtMs) / 1000) * 1000);
 		const parts = [
 			`${entry.name} · ${entry.status} · ${dur}`,
 			entry.messages > 0 ? `${entry.messages} msg` : undefined,

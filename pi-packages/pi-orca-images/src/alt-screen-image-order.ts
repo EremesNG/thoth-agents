@@ -5,23 +5,6 @@ interface AltScreenImageDependencies {
   env: NodeJS.ProcessEnv;
   altScreenClass: { prototype: object } | null | undefined;
   getCapabilities: typeof getCapabilities;
-  now?: () => number;
-  setTimeout?: (callback: () => void, delay: number) => ImageRedrawTimer;
-  clearTimeout?: (timer: ImageRedrawTimer) => void;
-}
-
-interface ImageRedrawTimer {
-  unref: () => void;
-}
-
-export const IMAGE_REDRAW_DEBOUNCE_MS = 150;
-export const IMAGE_REDRAW_MAX_WAIT_MS = 1000;
-
-interface ImageRedrawState {
-  fullRedraw: boolean;
-  lastEmission?: number;
-  firstSuppressed?: number;
-  timer?: ImageRedrawTimer;
 }
 
 // Keep installation idempotent even across native /reload module instances.
@@ -31,24 +14,14 @@ const RENDER_INSTALLED = Symbol.for(
 const FOCUS_INSTALLED = Symbol.for(
   '@thoth-agents/pi-orca-images.alt-screen-image-focus',
 );
-const DEBOUNCE_INSTALLED = Symbol.for(
-  '@thoth-agents/pi-orca-images.alt-screen-image-debounce',
-);
 
 interface AltScreenInternals {
   [RENDER_INSTALLED]?: boolean;
   [FOCUS_INSTALLED]?: boolean;
-  [DEBOUNCE_INSTALLED]?: WeakMap<AltScreenInternals, ImageRedrawState>;
-  prepareKittyScreen?: (screen: string[]) => unknown;
   handleViewportInput?: (data: string, ...args: unknown[]) => unknown;
   requestRender?: (force: boolean) => void;
   imageProtocol?: string | null;
   previousScreen?: string[];
-  previousScreenWidth?: number;
-  previousScreenHeight?: number;
-  terminal?: { columns: number; rows: number };
-  stopped?: boolean;
-  altScreenActive?: boolean;
   invalidate?: () => void;
   uploadedKittyImages?: { clear?: () => void };
   applyLineResets: (lines: string[]) => string[];
@@ -98,109 +71,11 @@ export function installAltScreenImageFocus(
   });
 }
 
-function getImageRedrawState(
-  states: WeakMap<AltScreenInternals, ImageRedrawState>,
-  tui: AltScreenInternals,
-): ImageRedrawState {
-  let state = states.get(tui);
-  if (!state) {
-    state = { fullRedraw: false };
-    states.set(tui, state);
-  }
-  return state;
-}
-
-function isKittyImageLine(line: unknown): boolean {
-  // Pi 1.0.1 does not export its image-line helper; fall back to Kitty APC.
-  return typeof line === 'string' && line.includes('\x1b_G');
-}
-
-function installImageRedrawDebounce(
-  proto: AltScreenInternals,
-  env: NodeJS.ProcessEnv,
-  readCapabilities: typeof getCapabilities,
-  now: () => number,
-  scheduleTimeout: (callback: () => void, delay: number) => ImageRedrawTimer,
-  cancelTimeout: (timer: ImageRedrawTimer) => void,
-): void {
-  if (
-    proto[DEBOUNCE_INSTALLED] ||
-    typeof proto.prepareKittyScreen !== 'function'
-  )
-    return;
-  const original = proto.prepareKittyScreen;
-  const states = new WeakMap<AltScreenInternals, ImageRedrawState>();
-  proto.prepareKittyScreen = function (this: AltScreenInternals, screen) {
-    const result = original.call(this, screen);
-    if (
-      !isOrcaImagesEnabled(env) ||
-      readCapabilities().images !== 'kitty' ||
-      typeof this.requestRender !== 'function' ||
-      !result ||
-      typeof result !== 'object' ||
-      !('lines' in result) ||
-      !Array.isArray(result.lines)
-    )
-      return result;
-    if (!result.lines.some(isKittyImageLine)) return result;
-    const state = getImageRedrawState(states, this);
-    const time = now();
-    if (
-      !state.fullRedraw &&
-      (state.firstSuppressed !== undefined ||
-        (state.lastEmission !== undefined &&
-          time - state.lastEmission < IMAGE_REDRAW_DEBOUNCE_MS))
-    ) {
-      state.firstSuppressed ??= time;
-      if (state.timer) cancelTimeout(state.timer);
-      const deadline = Math.min(
-        time + IMAGE_REDRAW_DEBOUNCE_MS,
-        state.firstSuppressed + IMAGE_REDRAW_MAX_WAIT_MS,
-      );
-      state.timer = scheduleTimeout(
-        () => {
-          state.timer = undefined;
-          state.firstSuppressed = undefined;
-          if (
-            this.stopped ||
-            !this.altScreenActive ||
-            !isOrcaImagesEnabled(env) ||
-            readCapabilities().images !== 'kitty' ||
-            typeof this.requestRender !== 'function'
-          )
-            return;
-          this.requestRender(true);
-        },
-        Math.max(0, deadline - time),
-      );
-      state.timer.unref();
-      return {
-        ...result,
-        lines: result.lines.map((line) => (isKittyImageLine(line) ? '' : line)),
-      };
-    }
-    if (state.timer) cancelTimeout(state.timer);
-    state.timer = undefined;
-    state.firstSuppressed = undefined;
-    state.lastEmission = time;
-    return result;
-  };
-  // Existing render wrappers can also find a prepare hook added after /reload.
-  Object.defineProperty(proto, DEBOUNCE_INSTALLED, {
-    value: states,
-    configurable: true,
-  });
-}
-
 export function installAltScreenImageOrder(
   {
     env,
     altScreenClass,
     getCapabilities: readCapabilities,
-    now = () => performance.now(),
-    setTimeout: scheduleTimeout = globalThis.setTimeout,
-    clearTimeout: cancelTimeout = (timer) =>
-      globalThis.clearTimeout(timer as NodeJS.Timeout),
   }: AltScreenImageDependencies = {
     env: process.env,
     altScreenClass: TuiAltScreen,
@@ -210,19 +85,11 @@ export function installAltScreenImageOrder(
   if (!isOrcaImagesEnabled(env) || !altScreenClass?.prototype) return;
   const proto = altScreenClass.prototype as AltScreenInternals;
   if (
+    proto[RENDER_INSTALLED] ||
     typeof proto.doRender !== 'function' ||
     typeof proto.applyLineResets !== 'function'
   )
     return;
-  installImageRedrawDebounce(
-    proto,
-    env,
-    readCapabilities,
-    now,
-    scheduleTimeout,
-    cancelTimeout,
-  );
-  if (proto[RENDER_INSTALLED]) return;
   const original = proto.doRender;
   proto.doRender = function (this: AltScreenInternals, ...args) {
     // Warm Pi's detection cache before substituting the environment.
@@ -237,15 +104,6 @@ export function installAltScreenImageOrder(
       this.imageProtocol = 'kitty';
       this.invalidate?.();
       this.previousScreen = [];
-    }
-    const states = proto[DEBOUNCE_INSTALLED];
-    const redrawState = states && getImageRedrawState(states, this);
-    if (redrawState) {
-      redrawState.fullRedraw =
-        this.previousScreen?.length === 0 ||
-        (this.terminal !== undefined &&
-          (this.previousScreenWidth !== Math.max(1, this.terminal.columns) ||
-            this.previousScreenHeight !== Math.max(1, this.terminal.rows)));
     }
     // Orca can delete retained payloads when clears erase the last image tile.
     if (typeof this.uploadedKittyImages?.clear === 'function') {
@@ -262,7 +120,6 @@ export function installAltScreenImageOrder(
     try {
       return original.apply(this, args);
     } finally {
-      if (redrawState) redrawState.fullRedraw = false;
       Reflect.deleteProperty(this, 'applyLineResets');
       if (ownReset) Object.defineProperty(this, 'applyLineResets', ownReset);
       if (previousPane === undefined) delete env.WEZTERM_PANE;

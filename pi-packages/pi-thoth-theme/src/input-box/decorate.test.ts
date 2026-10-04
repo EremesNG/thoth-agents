@@ -255,7 +255,7 @@ describe('input-box editor composition', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('uses one phase for the pyramid and every border even when native rendering advances the clock', () => {
+  it('uses one time sample for the shimmer, pyramid, and every border even when native rendering advances the clock', () => {
     vi.useFakeTimers();
     vi.setSystemTime(600);
     const { editor, deps, decorate } = setup();
@@ -271,11 +271,23 @@ describe('input-box editor composition', () => {
     decorate();
     deps.working.start();
     const lines = editor.render(40);
-    const gold = foregroundAnsi(rgbColor(212, 175, 55), getTerminalColorMode());
+    const mode = getTerminalColorMode();
+    const gold = foregroundAnsi(rgbColor(212, 175, 55), mode);
+    const highlight = foregroundAnsi(rgbColor(230, 193, 83), mode);
 
     expect(renderInBorder).toHaveBeenCalledTimes(1);
-    expect(lines[0]).toBe(
-      `${gold}╭─ \x1b[39m${gold}△\x1b[39m ${muted('working…')}${muted(' · 0s')}${gold} ${'─'.repeat(20)}╮\x1b[39m`,
+    expect(lines[0].startsWith(`${gold}╭─ \x1b[39m${gold}△\x1b[39m `)).toBe(
+      true,
+    );
+    // At 600 ms w/o share the bold head; resampling at 1200 would peak on i.
+    expect(lines[0]).toContain(
+      `${highlight}\x1b[1mw\x1b[22m\x1b[39m${highlight}\x1b[1mo\x1b[22m\x1b[39m`,
+    );
+    expect(
+      lines[0].endsWith(`${muted(' · 0s')}${gold} ${'─'.repeat(20)}╮\x1b[39m`),
+    ).toBe(true);
+    expect(stripTerminalSequences(lines[0])).toBe(
+      `╭─ △ working… · 0s ${'─'.repeat(20)}╮`,
     );
     expect(lines[1].startsWith(`${gold}│\x1b[39m`)).toBe(true);
     expect(lines[1].endsWith(`${gold}│\x1b[39m`)).toBe(true);

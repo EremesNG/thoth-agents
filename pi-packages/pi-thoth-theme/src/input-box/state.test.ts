@@ -12,7 +12,7 @@ import { createWorkingState } from './state.ts';
 afterEach(() => vi.useRealTimers());
 
 describe('input-box working status', () => {
-  it('pulses the native pyramid while keeping the working label and elapsed seconds muted', () => {
+  it('pulses the native pyramid and shimmers the label while preserving native text and muted elapsed seconds', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1200);
     const capabilities = getCapabilities();
@@ -26,16 +26,19 @@ describe('input-box working status', () => {
       const muted = (text: string) => `\x1b[38;2;168;154;120m${text}\x1b[39m`;
       const first = state.status(indicator, 30, muted);
       const bright = foregroundAnsi(rgbColor(242, 201, 76), 'truecolor');
-      expect(first).toBe(
-        `${bright}△\x1b[39m ${muted('working…')}${muted(' · 0s')}`,
-      );
+      expect(first.startsWith(`${bright}△\x1b[39m `)).toBe(true);
+      expect(first).toContain(`${bright}\x1b[1mi\x1b[22m\x1b[39m`);
+      expect(first).toContain(muted('w'));
+      expect(first).not.toContain('\x1b[38:2::212:175:55m');
+      expect(first.endsWith(muted(' · 0s'))).toBe(true);
       expect(stripTerminalSequences(first)).toBe('△ working… · 0s');
       vi.advanceTimersByTime(1200);
       const next = state.status(indicator, 30, muted);
       const dim = foregroundAnsi(rgbColor(115, 104, 80), 'truecolor');
-      expect(next).toBe(
-        `${dim}△\x1b[39m ${muted('working…')}${muted(' · 1s')}`,
-      );
+      expect(next.startsWith(`${dim}△\x1b[39m `)).toBe(true);
+      expect(next).toContain(muted('g'));
+      expect(next).not.toContain('\x1b[1m');
+      expect(next.endsWith(muted(' · 1s'))).toBe(true);
       expect(next).not.toBe(first);
       expect(stripTerminalSequences(next)).toBe('△ working… · 1s');
       for (const width of [0, 1, 2, 3, 10, 14]) {

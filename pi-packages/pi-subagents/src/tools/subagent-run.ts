@@ -24,6 +24,8 @@ import {
 } from './result-details.js';
 import { fail, ok } from './tool-response.js';
 
+const FOREGROUND_RENDER_INTERVAL_MS = 250;
+
 export function installDoubleEscapeCancel(
   ctx: any,
   manager: SubagentManager,
@@ -125,6 +127,35 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
             resolveBackground = resolve;
           })
         : undefined;
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
+      const stopHeartbeat = () => {
+        if (heartbeat === undefined) return;
+        clearInterval(heartbeat);
+        heartbeat = undefined;
+      };
+      const syncHeartbeat = () => {
+        const hasActiveForegroundTask =
+          active &&
+          !isBackground &&
+          !_signal?.aborted &&
+          latestTasks.some(
+            (task) =>
+              task.mode === 'task' &&
+              (task.status === 'queued' ||
+                task.status === 'running' ||
+                task.status === 'stopping'),
+          );
+        if (!hasActiveForegroundTask) {
+          stopHeartbeat();
+          return;
+        }
+        if (heartbeat !== undefined) return;
+        heartbeat = setInterval(() => {
+          syncHeartbeat();
+          if (heartbeat !== undefined) emit();
+        }, FOREGROUND_RENDER_INTERVAL_MS);
+        heartbeat.unref?.();
+      };
       const emit = () => {
         if (!active || isBackground) return;
         try {
@@ -148,6 +179,7 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
         } catch {
           active = false;
         }
+        syncHeartbeat();
       };
       const uninstallCancel = isBackground
         ? () => {}
@@ -166,6 +198,7 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
             () => latestTasks.map((task) => task.id),
             (tasks) => {
               active = false;
+              stopHeartbeat();
               resolveBackground?.({
                 mode: 'background',
                 task_ids: tasks.map((task) => task.id),
@@ -174,6 +207,8 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
           )
         : () => {};
       try {
+        if (!isBackground)
+          _signal?.addEventListener('abort', stopHeartbeat, { once: true });
         emit();
         const runPromise = manager.run(
           params,
@@ -244,6 +279,9 @@ export function createSubagentRunTool(manager: SubagentManager, pi: any) {
         );
       } finally {
         active = false;
+        stopHeartbeat();
+        if (!isBackground)
+          _signal?.removeEventListener('abort', stopHeartbeat);
         uninstallCancel();
         uninstallBackground();
       }

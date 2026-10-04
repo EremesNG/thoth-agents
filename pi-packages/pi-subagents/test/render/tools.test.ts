@@ -288,6 +288,187 @@ describe('tool render helpers', () => {
     expect(plain).not.toContain('�');
   });
 
+  describe.each([
+    true,
+    false,
+  ])('foreground partial progress (backgroundable: %s)', (backgroundable) => {
+    it.each([
+      {
+        label: 'usage and runtime',
+        metrics: {
+          started_at: '2026-01-01T00:00:00.000Z',
+          usage: { turns: 2, input: 1500, output: 100 },
+          runtime_metrics: {
+            generationOutputTokens: 100,
+            generationMs: 4000,
+          },
+        },
+        usageLine: '↳ usage: 2 turns ↑1.5k ↓100 · 25 tok/s',
+        duration: '3.0s',
+      },
+      { label: 'no usage or runtime', metrics: {}, usageLine: undefined },
+      { label: 'empty usage', metrics: { usage: {} }, usageLine: undefined },
+      {
+        label: 'usage without runtime',
+        metrics: { usage: { turns: 1 } },
+        usageLine: '↳ usage: 1 turn',
+      },
+      {
+        label: 'speed only',
+        metrics: {
+          runtime_metrics: { generationOutputTokens: 100, generationMs: 4000 },
+        },
+        usageLine: '↳ usage: 25 tok/s',
+      },
+      {
+        label: 'elapsed only',
+        metrics: { started_at: '2026-01-01T00:00:00.000Z' },
+        usageLine: undefined,
+        duration: '3.0s',
+      },
+    ])('separates model and usage while highlighting the current activity with $label', ({ metrics, usageLine, duration }) => {
+      let runTool: any;
+      registerSubagentTools(
+        {
+          registerTool: (tool: any) => {
+            if (tool.name === 'subagent_run') runTool = tool;
+          },
+        },
+        env.createManager(env.mockRunner()),
+      );
+      const fg = vi.fn((_name: string, text: string) => text);
+      const bold = vi.fn((text: string) => text);
+      const now = vi
+        .spyOn(Date, 'now')
+        .mockReturnValue(Date.parse('2026-01-01T00:00:03.000Z'));
+      try {
+        const lines = runTool
+          .renderResult(
+            {
+              details: {
+                backgroundable,
+                backgroundShortcut: 'ctrl+b',
+                tasks: [
+                  {
+                    agent: 'analyst',
+                    status: 'running',
+                    mode: 'task',
+                    effort: 'high',
+                    model: 'mock/model',
+                    live_activity: {
+                      trail: [
+                        { kind: 'thinking', label: 'thinking' },
+                        { kind: 'tool_running', label: 'running tool: read' },
+                      ],
+                      current: {
+                        kind: 'tool_running',
+                        label: 'running tool: read',
+                      },
+                    },
+                    ...metrics,
+                  },
+                ],
+              },
+            },
+            { isPartial: true },
+            { fg, bold },
+          )
+          .render(200);
+        expect(lines[0]).toContain(
+          `subagent · analyst · running${duration ? ` · ${duration}` : ''}`,
+        );
+        if (!duration) expect(lines[0]).not.toContain('running ·');
+        expect(lines.join('\n')).not.toContain('⧗ elapsed');
+        const body = lines
+          .slice(1, -1)
+          .map((line: string) => line.replace(/^│\s*|\s*│$/g, '').trim());
+        expect(body).toEqual([
+          '⠋ agent: analyst · status: running · attempt: 1 · effort: high',
+          '↳ model: mock/model',
+          ...(usageLine ? [usageLine] : []),
+          '↳ thinking',
+          '↳ running tool: read',
+          ...(backgroundable ? ['↳ ctrl+b to send to background'] : []),
+        ]);
+        expect(fg).toHaveBeenCalledWith('warning', body[0]);
+        for (const line of [
+          '↳ model: mock/model',
+          ...(usageLine ? [usageLine] : []),
+          '↳ thinking',
+          ...(backgroundable ? ['↳ ctrl+b to send to background'] : []),
+        ]) {
+          expect(fg).toHaveBeenCalledWith('dim', line);
+          expect(bold).not.toHaveBeenCalledWith(line);
+        }
+        expect(fg).toHaveBeenCalledWith('accent', '↳ running tool: read');
+        expect(bold).toHaveBeenCalledWith('↳ running tool: read');
+      } finally {
+        now.mockRestore();
+      }
+    });
+  });
+
+  it.each([
+    {
+      started_at: '2026-01-01T00:00:00.000Z',
+      title: 'subagent · analyst · running · 85.1s (background)',
+    },
+    {
+      started_at: undefined,
+      title: 'subagent · analyst · running (background)',
+    },
+    {
+      started_at: 'invalid',
+      title: 'subagent · analyst · running (background)',
+    },
+  ])('keeps the background suffix after any partial title duration ($started_at)', ({ started_at, title }) => {
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      env.createManager(env.mockRunner()),
+    );
+    const now = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-01-01T00:01:25.100Z'));
+    try {
+      const lines = runTool
+        .renderResult(
+          {
+            details: {
+              task: {
+                agent: 'analyst',
+                status: 'running',
+                mode: 'background',
+                started_at,
+                usage: { turns: 1 },
+                runtime_metrics: {
+                  generationOutputTokens: 100,
+                  generationMs: 4000,
+                },
+              },
+            },
+          },
+          { isPartial: true },
+          {
+            fg: (_name: string, text: string) => text,
+            bold: (text: string) => text,
+          },
+        )
+        .render(200);
+      const rendered = lines.join('\n');
+      expect(lines[0]).toContain(title);
+      expect(rendered).toContain('↳ usage: 1 turn');
+      expect(rendered).not.toContain('tok/s');
+      expect(rendered).not.toContain('⧗ elapsed');
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('renders current-last foreground activity without clipping complete tool names', () => {
     const manager = env.createManager(env.mockRunner());
     let runTool: any;
@@ -784,12 +965,28 @@ describe('tool render helpers', () => {
           )
           .render(240)
           .join('\n');
-      expect(render()).toContain(
-        'usage: 9 turns ↑19k ↓803 R61k $0.1051 ctx:19k · 51 tok/s · ⧗ elapsed 131.2s',
+      const first = render();
+      expect(first).toContain(
+        `usage: 9 turns ↑19k ↓803 R61k $0.1051 ctx:19k · 51 tok/s${isPartial ? '' : ' · ⧗ elapsed 131.2s'}`,
       );
+      if (isPartial) {
+        expect(first.split('\n')[0]).toContain(
+          'subagent · worker · running · 131.2s',
+        );
+        expect(first).not.toContain('⧗ elapsed');
+      }
       now.mockReturnValue(Date.parse('2026-01-01T00:02:12.200Z'));
       task.runtime_metrics.generationMs = 8000;
-      expect(render()).toContain('ctx:19k · 26 tok/s · ⧗ elapsed 132.2s');
+      const second = render();
+      expect(second).toContain(
+        `ctx:19k · 26 tok/s${isPartial ? '' : ' · ⧗ elapsed 132.2s'}`,
+      );
+      if (isPartial) {
+        expect(second.split('\n')[0]).toContain(
+          'subagent · worker · running · 132.2s',
+        );
+        expect(second).not.toContain('⧗ elapsed');
+      }
     } finally {
       now.mockRestore();
     }
@@ -890,22 +1087,34 @@ describe('tool render helpers', () => {
       const text = render();
       expect(text).not.toContain('tok/s');
       expect(text).not.toContain('elapsed');
+      expect(text.split('\n')[0]).not.toContain('running ·');
       expect(text).not.toContain('?');
     }
     task.runtime_metrics = { generationOutputTokens: 0, generationMs: 1000 };
     task.started_at = 'invalid';
-    expect(render()).toContain('0 tok/s');
-    expect(render()).not.toContain('elapsed');
+    const invalidStart = render();
+    expect(invalidStart).toContain('0 tok/s');
+    expect(invalidStart).not.toContain('elapsed');
+    expect(invalidStart.split('\n')[0]).not.toContain('running ·');
     const now = vi
       .spyOn(Date, 'now')
       .mockReturnValue(Date.parse('2026-01-01T00:00:00.900Z'));
     try {
       task.runtime_metrics = undefined;
       task.started_at = '2026-01-01T00:00:00.000Z';
-      expect(render()).toContain('⧗ elapsed 900ms');
-      expect(render()).not.toContain('tok/s');
+      const elapsedOnly = render();
+      expect(elapsedOnly).toContain(
+        isPartial ? 'subagent · worker · running · 900ms' : '⧗ elapsed 900ms',
+      );
+      expect(elapsedOnly).not.toContain('tok/s');
+      if (isPartial) {
+        expect(elapsedOnly).not.toContain('↳ usage:');
+        expect(elapsedOnly).not.toContain('⧗ elapsed');
+      }
       task.started_at = '2026-01-01T00:00:01.000Z';
-      expect(render()).toContain('⧗ elapsed 0ms');
+      expect(render()).toContain(
+        isPartial ? 'subagent · worker · running · 0ms' : '⧗ elapsed 0ms',
+      );
     } finally {
       now.mockRestore();
     }
@@ -955,12 +1164,14 @@ describe('tool render helpers', () => {
       },
       { cwd: env.tmp },
     );
-    expect(
-      runningLines.some((line) => line.includes('51 tok/s · ⧗ elapsed ')),
-    ).toBe(true);
-    expect(
-      runningLines.some((line) => line.includes('34 tok/s · ⧗ elapsed ')),
-    ).toBe(true);
+    expect(runningLines.some((line) => line.includes('51 tok/s'))).toBe(true);
+    expect(runningLines.some((line) => line.includes('34 tok/s'))).toBe(true);
+    for (const rendered of runningLines) {
+      expect(rendered.split('\n')[0]).toMatch(
+        /subagent · worker · running · \d+(?:\.\d+)?(?:ms|s)/,
+      );
+      expect(rendered).not.toContain('⧗ elapsed');
+    }
   });
 
   it.each([

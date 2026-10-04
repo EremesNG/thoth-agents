@@ -58,10 +58,11 @@ export function renderSubagentRunCall(_args: any, _theme: any) {
   return emptyComponent();
 }
 
-function formatRuntimeMetrics(task: SubagentTask): string {
-  const parts: string[] = [];
+function formatRuntimeMetrics(task: SubagentTask): {
+  speed: string;
+  elapsed: string;
+} {
   const speed = generationSpeed(task.runtime_metrics);
-  if (speed !== undefined) parts.push(`${Math.round(speed)} tok/s`);
   const started = Date.parse(task.started_at ?? '');
   const ended =
     task.status === 'queued' ||
@@ -69,9 +70,13 @@ function formatRuntimeMetrics(task: SubagentTask): string {
     task.status === 'stopping'
       ? Date.now()
       : Date.parse(task.ended_at ?? '');
-  if (Number.isFinite(started) && Number.isFinite(ended))
-    parts.push(`⧗ elapsed ${formatDuration(Math.max(0, ended - started))}`);
-  return parts.join(' · ');
+  return {
+    speed: speed !== undefined ? `${Math.round(speed)} tok/s` : '',
+    elapsed:
+      Number.isFinite(started) && Number.isFinite(ended)
+        ? formatDuration(Math.max(0, ended - started))
+        : '',
+  };
 }
 
 export function renderSubagentRunResult(
@@ -88,7 +93,8 @@ export function renderSubagentRunResult(
     task?.effective_mode === 'background' ||
     result?.details?.mode === 'background';
   const isRunning = task?.status === 'running' || task?.status === 'queued';
-  const runtime = task && !isBg ? formatRuntimeMetrics(task) : '';
+  const runtime =
+    task && (isPartial || !isBg) ? formatRuntimeMetrics(task) : undefined;
   const archPrefix = themeStatus(
     theme,
     taskStatus,
@@ -100,21 +106,16 @@ export function renderSubagentRunResult(
 
   if (isPartial) {
     const frame = result?.details?.frame ?? 0;
-    const raw = task
-      ? progressText([task], frame, {
-          backgroundable: Boolean(result?.details?.backgroundable),
-          backgroundShortcut: result?.details?.backgroundShortcut,
-        })
-      : progressText([], frame, {
-          backgroundable: Boolean(result?.details?.backgroundable),
-          backgroundShortcut: result?.details?.backgroundShortcut,
-        });
+    const backgroundable = Boolean(result?.details?.backgroundable);
+    const raw = progressText(task ? [task] : [], frame, {
+      backgroundable,
+      backgroundShortcut: result?.details?.backgroundShortcut,
+      runtime: isBg ? undefined : runtime?.speed,
+    });
     const lines = raw.split('\n');
-    if (runtime && lines[1]) lines[1] += ` · ${runtime}`;
-    const activityCount = task?.live_activity?.trail?.length ?? 0;
-    const activityStartIndex = 2;
-    const currentActivityIndex = activityCount
-      ? activityStartIndex + activityCount - 1
+    // Current activity is last in the trail, before the optional background hint.
+    const currentActivityIndex = task?.live_activity?.trail?.length
+      ? lines.length - (backgroundable ? 2 : 1)
       : -1;
     const styled = lines
       .map((line: string, index: number) => {
@@ -125,7 +126,8 @@ export function renderSubagentRunResult(
       })
       .filter(Boolean) as string[];
     const agentOrName = task?.display_name || task?.agent || 'subagent';
-    const title = `${archPrefix} ${themeTitle(theme, `subagent · ${agentOrName} · running${bgSuffix}`)}`;
+    const elapsedSuffix = runtime?.elapsed ? ` · ${runtime.elapsed}` : '';
+    const title = `${archPrefix} ${themeTitle(theme, `subagent · ${agentOrName} · running${elapsedSuffix}${bgSuffix}`)}`;
     return boxedComponent(styled, {
       title,
       theme,
@@ -164,7 +166,11 @@ export function renderSubagentRunResult(
   }
 
   const usage = task ? formatUsage(task as SubagentTask) : '';
-  const usageLine = [usage ? `usage: ${usage}` : undefined, runtime]
+  const usageLine = [
+    usage ? `usage: ${usage}` : undefined,
+    runtime?.speed,
+    runtime?.elapsed ? `⧗ elapsed ${runtime.elapsed}` : undefined,
+  ]
     .filter(Boolean)
     .join(' · ');
 

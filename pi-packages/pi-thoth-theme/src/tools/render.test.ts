@@ -26,6 +26,7 @@ function createConfig(icons: 'nerd' | 'ascii'): ThemeConfig {
     icons,
     statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
     tools: { enabled: true },
+    images: { enabled: true },
     welcome: { enabled: true },
   };
 }

@@ -17,6 +17,7 @@ export interface ThemeConfig {
     subscriptionProviders?: string[];
   };
   tools: { enabled: boolean; respectPackages?: string[] };
+  images: { enabled: boolean };
   welcome: { enabled: boolean };
 }
 
@@ -76,6 +77,7 @@ export function loadConfig(
       enabled: moduleEnabled(config.tools),
       respectPackages: parseRespectPackages(config.tools),
     },
+    images: { enabled: moduleEnabled(config.images) },
     welcome: { enabled: moduleEnabled(config.welcome) },
   };
 }

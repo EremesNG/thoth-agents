@@ -9,14 +9,17 @@ import {
   ToolExecutionComponent,
 } from '@earendil-works/pi-coding-agent';
 import {
+  getCapabilities,
   Image,
   resetCapabilitiesCache,
   setCapabilities,
   setCapabilityOverrides,
+  type TerminalCapabilities,
   type TUI,
 } from '@earendil-works/pi-tui';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { ThemeConfig } from '../shared/config.ts';
+import { applyImageCapability } from './image-capability.ts';
 import { registerTools } from './index.ts';
 import { createCustomReadTool } from './read.ts';
 
@@ -36,6 +39,7 @@ const config: ThemeConfig = {
   icons: 'ascii',
   statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
   tools: { enabled: true },
+  images: { enabled: true },
   welcome: { enabled: true },
 };
 
@@ -52,6 +56,82 @@ function imageResult(mimeType: string, data: string): AgentToolResult<unknown> {
 afterEach(() => {
   setCapabilityOverrides({});
   resetCapabilitiesCache();
+});
+
+describe('Orca image capability', () => {
+  it.each([
+    'Orca',
+    'orca',
+    'ORCA',
+    'oRcA',
+  ])('enables Kitty in %s and preserves other flags', (terminal) => {
+    setCapabilities({ images: null, trueColor: false, hyperlinks: true });
+
+    applyImageCapability({ TERM_PROGRAM: terminal });
+    resetCapabilitiesCache();
+
+    expect(getCapabilities()).toEqual({
+      images: 'kitty',
+      trueColor: false,
+      hyperlinks: true,
+    });
+  });
+
+  it('leaves unrecognized terminals on the native text fallback', () => {
+    const capabilities = { images: null, trueColor: true, hyperlinks: false };
+    setCapabilities(capabilities);
+
+    applyImageCapability({ TERM_PROGRAM: 'unknown' });
+
+    expect(getCapabilities()).toBe(capabilities);
+  });
+
+  it.each([
+    '/tmp/tmux-1000/default,123,0',
+    '',
+  ])('leaves Orca unchanged with TMUX=%j', (tmux) => {
+    const capabilities = { images: null, trueColor: true, hyperlinks: false };
+    setCapabilities(capabilities);
+
+    applyImageCapability({ TERM_PROGRAM: 'Orca', TMUX: tmux });
+
+    expect(getCapabilities()).toBe(capabilities);
+  });
+
+  it.each([
+    'kitty',
+    'iterm2',
+    'none',
+    '0',
+    '',
+    'unknown',
+  ])('respects explicit PI_IMAGE_PROTOCOL=%j', (protocol) => {
+    const capabilities = { images: null, trueColor: true, hyperlinks: false };
+    setCapabilities(capabilities);
+
+    applyImageCapability({
+      TERM_PROGRAM: 'Orca',
+      PI_IMAGE_PROTOCOL: protocol,
+    });
+
+    expect(getCapabilities()).toBe(capabilities);
+  });
+
+  it.each([
+    'kitty',
+    'iterm2',
+  ] as const)('preserves detected %s protocol', (protocol) => {
+    const capabilities: TerminalCapabilities = {
+      images: protocol,
+      trueColor: false,
+      hyperlinks: true,
+    };
+    setCapabilities(capabilities);
+
+    applyImageCapability({ TERM_PROGRAM: 'Orca' });
+
+    expect(getCapabilities()).toBe(capabilities);
+  });
 });
 
 describe.each(imageFixtures)('self-shell read of $mimeType', ({
@@ -116,7 +196,9 @@ describe.each(imageFixtures)('self-shell read of $mimeType', ({
     afterAll(() => dispose());
 
     it('adds and renders an Image child after the self-shell text, honoring showImages', async () => {
-      setCapabilities({ images: 'kitty', trueColor: true, hyperlinks: true });
+      setCapabilities({ images: null, trueColor: true, hyperlinks: true });
+      applyImageCapability({ TERM_PROGRAM: 'Orca' });
+      expect(getCapabilities().images).toBe('kitty');
 
       const cwd = process.cwd();
       const read = resolver?.('read', () => undefined);

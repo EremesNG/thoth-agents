@@ -13,6 +13,7 @@ const defaults = {
     enabled: true,
     respectPackages: ['thoth-agents', '@thoth-agents/*', 'thoth-mem'],
   },
+  images: { enabled: true },
   welcome: { enabled: true },
 };
 
@@ -40,8 +41,8 @@ describe('loadConfig', () => {
     '[]',
     '42',
     '"ascii"',
-    '{"icons":"emoji","statusLine":{"enabled":"false"},"tools":{"enabled":0},"welcome":false}',
-    '{"statusLine":[],"tools":"off","welcome":{"enabled":[]}}',
+    '{"icons":"emoji","statusLine":{"enabled":"false"},"tools":{"enabled":0},"images":{"enabled":null},"welcome":false}',
+    '{"statusLine":[],"tools":"off","images":null,"welcome":{"enabled":[]}}',
   ])('uses defaults for malformed or invalid configuration: %s', (contents) => {
     writeFileSync(configPath, contents);
     expect(loadConfig(configPath)).toEqual(defaults);
@@ -62,7 +63,7 @@ describe('loadConfig', () => {
   it('keeps valid fields when neighboring fields are invalid or omitted', () => {
     writeFileSync(
       configPath,
-      '{"icons":"nerd","tools":{"enabled":false},"unknown":true}',
+      '{"icons":"nerd","tools":{"enabled":false},"images":{"enabled":"false"},"unknown":true}',
     );
     expect(loadConfig(configPath)).toEqual({
       ...defaults,
@@ -84,6 +85,7 @@ describe('loadConfig', () => {
         icons: 'ascii',
         statusLine: { enabled: false },
         tools: { enabled: false },
+        images: { enabled: false },
         welcome: { enabled: false },
       }),
     );
@@ -91,6 +93,7 @@ describe('loadConfig', () => {
       icons: 'ascii',
       statusLine: { enabled: false, subscriptionProviders: ['claude-bridge'] },
       tools: { ...defaults.tools, enabled: false },
+      images: { enabled: false },
       welcome: { enabled: false },
     });
   });

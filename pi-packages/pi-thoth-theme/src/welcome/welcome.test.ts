@@ -347,6 +347,7 @@ describe('registerWelcome', () => {
       icons: 'nerd',
       statusLine: { enabled: true },
       tools: { enabled: true },
+      images: { enabled: true },
       welcome: { enabled: true },
     };
 
@@ -377,6 +378,7 @@ describe('registerWelcome', () => {
       icons: 'nerd',
       statusLine: { enabled: true },
       tools: { enabled: true },
+      images: { enabled: true },
       welcome: { enabled: true },
     };
 
@@ -421,6 +423,7 @@ describe('registerWelcome', () => {
       icons: 'nerd',
       statusLine: { enabled: true },
       tools: { enabled: true },
+      images: { enabled: true },
       welcome: { enabled: true },
     };
 

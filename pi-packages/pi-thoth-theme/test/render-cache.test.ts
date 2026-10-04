@@ -20,6 +20,7 @@ const config: ThemeConfig = {
   icons: 'ascii',
   statusLine: { enabled: true },
   tools: { enabled: true },
+  images: { enabled: true },
   welcome: { enabled: true },
 };
 

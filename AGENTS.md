@@ -218,9 +218,8 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 The current `.github/workflows/ci.yml` installs with
 `pnpm install --frozen-lockfile` and runs `pnpm run check:ci`,
 `pnpm run typecheck`, and `pnpm test` on Node `22.19`/pnpm `11.2.2`; it does not
-run the build. A separate `windows-latest` job runs only the seven `pi-packages/*`
-typechecks and offline tests (including `@thoth-agents/pi-orca-images`,
-`test:unit` for the Claude bridge). The release workflow waits for that CI and then runs
+run the build. A separate `windows-latest` job runs only the six `pi-packages/*`
+typechecks and offline tests (`test:unit` for the Claude bridge). The release workflow waits for that CI and then runs
 `pnpm run build` and the focused test for the built runtime. For large changes
 and before a PR, keep this applicable local pre-merge order:
 `pnpm run check:ci`, `pnpm run typecheck`, `pnpm run build`, `pnpm test`.

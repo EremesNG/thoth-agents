@@ -31,17 +31,18 @@
 
 ## Intent
 
-Restyle the Pi input area in the Thoth theme as one rounded `accent` box:
+Restyle the Pi input area in the Thoth theme as one rounded `muted` box:
 
 ```
-╭─ ☥ thoth · ready ───────────────────────────────────────╮
+╭─ ▲ ready ───────────────────────────────────────────────╮
 │ type or / for commands                                   │
 ╰──────────────────────────────────────────────────────────╯
 ● Model · ◐ med │ ⑂ branch │ [██░░] 11% used │ 112.3K/1M │ $1.971 (sub)
 ```
 
-- Top-left status: idle `☥ thoth · ready`; while the agent works, the native indicator with
-  frames `△ ◭ ▲ ◮` and message `working…` plus ` · <elapsed>s`. Other native indicator kinds
+- Top-left status: idle `▲ ready` in `muted`; while the agent works, the native indicator with
+  frames `△ ◭ ▲ ◮` and message `working…` plus ` · <elapsed>s` (text muted). While working, the
+  whole border and the pyramid glyph breathe together between `dim` and brightGold. Other native indicator kinds
   (retry, compaction, extension messages) still render in the same place.
 - Side borders `│` around content lines.
 - Dim placeholder `type or / for commands` when the editor is empty.
@@ -50,17 +51,18 @@ Restyle the Pi input area in the Thoth theme as one rounded `accent` box:
 
 ## Non-goals
 
-- No changes to pi-subagents or pi-background-tasks behavior or their editor wrappers.
+- No changes to pi-subagents behavior or editor wrappers. The only pi-background-tasks change is
+  enabling `embedWorkingStatus` on its fallback editor (AC-8).
 - No new editor factory registration by the theme (no `setEditorComponent`).
-- No glyph size control, images, or hieroglyph ornaments beyond `☥`.
+- No glyph size control, images, or hieroglyph ornaments.
 - No changes to tool-call or subagent box rendering.
 
 ## Acceptance
 
 - AC-1: When the active editor is decorated, its render output is a rounded box using theme
-  `accent`: `╭`/`╮` top, `│ … │` content rows, `╰`/`╯` bottom, every line within the given width,
+  `muted` (idle base): `╭`/`╮` top, `│ … │` content rows, `╰`/`╯` bottom, every line within the given width,
   cursor marker preserved, autocomplete lines kept below the box.
-- AC-2: Top-left status shows `☥ thoth · ready` when idle; when a native status indicator is
+- AC-2: Top-left status shows `▲ ready` in theme `muted` when idle; when a native status indicator is
   attached it renders that indicator (configured frames `△ ◭ ▲ ◮`, message `working…`) followed by
   ` · <n>s` elapsed since `agent_start` for the working kind; returns to ready on `agent_end`.
   Scroll indicators (`↑/↓ n more`) remain visible.
@@ -76,6 +78,13 @@ Restyle the Pi input area in the Thoth theme as one rounded `accent` box:
 - AC-6: Mouse clicks inside the decorated box (text and autocomplete) land on the same column as
   the native undecorated editor (clicking the first displayed character selects column 0);
   undecorated fallback forwards events unchanged.
+- AC-7: While working (agent_start..agent_end), every border cell uses one uniform color per
+  frame that breathes sinusoidally (~2.4s) between theme dimSand `#736850` and brightGold
+  `#F2C94C`; the pyramid glyph uses the same color in the same frame; `working…` and elapsed stay
+  muted; light glyphs only; geometry and labels unchanged; idle output unchanged; the render
+  ticker (50ms) runs only while working and leaves no timers after end/dispose.
+- AC-8: pi-background-tasks' fallback editor is created with `{ embedWorkingStatus: true }`, so
+  Pi's working indicator embeds in the editor top border instead of a separate line.
 
 ## Clarifications
 
@@ -88,6 +97,10 @@ Restyle the Pi input area in the Thoth theme as one rounded `accent` box:
   status does not fit, and accept clipping under extreme vertical pressure.
 - After comparing with gentle-shell, the user explicitly chose to keep the status line as a
   separate footer row below the box instead of embedding it in the bottom border.
+- After live testing, the user explicitly chose: idle label `▲ ready` (no `☥`), muted idle label
+  and muted border base, and after trying a traveling comet (too distracting) the "Respiración"
+  breathing border while working. The working indicator showing above the box was traced to
+  pi-background-tasks' fallback editor lacking `embedWorkingStatus` and fixed there (AC-8).
 
 ## Decisions
 
@@ -116,10 +129,12 @@ Restyle the Pi input area in the Thoth theme as one rounded `accent` box:
   guarded by feature checks with a ready-text fallback.
 - Working animation uses the public `setWorkingIndicator({ frames: ['△','◭','▲','◮'], intervalMs })`
   and `setWorkingMessage('working…')`; elapsed time comes from `agent_start`/`agent_end`
-  with a 1s render tick following `src/tools/ticker.ts`.
+  with a 50ms render tick only while working, driving the breathing color.
 - Do not use Pi's private layout protocol (`layout-node`, `getMountedRoots`, container patches,
   footer allocation changes). The only runtime-private access remains `workingStatusIndicator`.
-- Border color is always theme `accent` while decorated, overriding Pi's thinking-level color.
+- Border color is theme `muted` while idle and the breathing color while working, always
+  overriding Pi's thinking-level color; colors come from public pi-tui helpers
+  (`parseColor`, `mixColors`, `foregroundAnsi`, `getTerminalColorMode`).
 - Feature gated by the theme's existing configuration (new `inputBox` flag, default enabled);
   disabled restores the current footer-only behavior.
 - Narrow widths: the top-border status truncates to fit;
@@ -221,6 +236,30 @@ pi-background-tasks; `pnpm run check:ci` at root; manual check in a restarted Pi
   - Focused check and PASS evidence: test clicking first displayed char selects column 0; autocomplete click selects the clicked item; fallback unchanged
   - Return milestone: tests green
   - Stop / reassessment: mouse handler not reachable on the instance
+- [x] AC-7: Breathing working border
+  - Outcome: uniform breathing border + synchronized pyramid while working, muted idle base
+  - Known entrypoints and skill paths: `pi-packages/pi-thoth-theme/src/input-box/{gradient,frame,decorate,state}.ts`; skills `tdd`, `simplify`
+  - Inputs: accepted AC-1..AC-6 implementation; user design choices
+  - Dependencies: AC-1..AC-6 accepted
+  - Output: `gradient.ts` + updated frame/decorate/state and tests, real-theme idle snapshots
+  - Owner: thoth-worker
+  - Writes: `pi-packages/pi-thoth-theme/src/**`
+  - Interface boundaries: public pi-tui color helpers
+  - Focused check and PASS evidence: input-box tests + full package suite pass
+  - Return milestone: tests green and live check by user
+  - Stop / reassessment: animation needs private APIs or other packages
+- [x] AC-8: Embedded working status in background-tasks fallback editor
+  - Outcome: fallback editor passes `{ embedWorkingStatus: true }`
+  - Known entrypoints and skill paths: `pi-packages/pi-background-tasks/src/navigator-provider.ts`; skill `tdd`
+  - Inputs: live symptom and explorer root cause
+  - Dependencies: none
+  - Output: one-line fix + `navigator-provider.test.ts`
+  - Owner: thoth-worker
+  - Writes: `pi-packages/pi-background-tasks/src/**`
+  - Interface boundaries: Pi `isWorkingStatusEditor` eligibility
+  - Focused check and PASS evidence: regression red→green; package suite passes
+  - Return milestone: tests green
+  - Stop / reassessment: fix requires Pi changes
 - [x] AC-5: Independent final verification
   - Outcome: fresh Oracle verdict against this record, diff and checks
   - Known entrypoints and skill paths: this record; diff of `pi-packages/pi-thoth-theme`
@@ -245,30 +284,38 @@ pi-background-tasks; `pnpm run check:ci` at root; manual check in a restarted Pi
 **Reviewer**: oracle
 **Independent from implementer**: Yes
 **Verdict**: PASS
-**Reviewed record SHA-256**: 7a9ea02e29835b16817bdb8fc99d4e0b63013f634ec122d3e839ff4577598e47
+**Reviewed record SHA-256**: 5b4ba47b3327c6d42bf06452e5e334b33bce3239d9788e72e1bfe6b7619acf1a
 
-- Provenance (root summary of session history): plan review EXPLICIT_REVIEW, fresh Oracle round 1 REJECT then round 2 OKAY; implementation explicitly authorized by the user; final verification by fresh read-only thoth-oracle instances: rounds 1-4 FAIL (B1 padding crash, B2 stale render ack, B3 clipping, private layout protocol) converged via user decisions "Simplificar" and gentle-shell-style separate footer; round 5 PASS on AC-1..AC-6 with record-only inconsistencies fixed and re-reviewed PASS; closeout confirmations PASS (LF prefix 7a9ea02e… independently confirmed identical to reviewed CRLF prefix c945a6a6… apart from line endings; 13 source digests confirmed).
-- Root checks: pi-thoth-theme typecheck PASS, 427 tests/23 files; pi-subagents 588 passed/1 skipped; pi-background-tasks 323 passed/4 skipped; root check:ci 0 errors.
-- Residual manual check (user): real-terminal appearance after restarting Pi. Accepted: native one-column wide-grapheme RangeError is pre-existing upstream behavior.
-- AC-1: PASS | Rounded geometry, cursor/autocomplete preservation; 17,717-case sweep | pi-packages/pi-thoth-theme/src/input-box/decorate.ts:130–166; pi-packages/pi-thoth-theme/src/input-box/frame.ts:43–71
-- AC-2: PASS | Ready/native status, elapsed lifecycle, configured frames/message | pi-packages/pi-thoth-theme/src/input-box/state.ts:15–55; pi-packages/pi-thoth-theme/src/index.ts:26–33
-- AC-3: PASS | Dim placeholder appears only for empty input | pi-packages/pi-thoth-theme/src/input-box/frame.ts:74–88
-- AC-4: PASS | Separate footer and plain bottom border; 20 layout scenarios + 640 footer checks | pi-packages/pi-thoth-theme/src/status-line/index.ts:130–165; pi-packages/pi-thoth-theme/src/input-box/frame.ts:53–60
-- AC-5: PASS | Proxy-safe capture, identity/idempotence, replacement and disposal | pi-packages/pi-thoth-theme/src/input-box/decorate.ts:53–106,222–239; pi-packages/pi-thoth-theme/src/status-line/index.ts:171–184
-- AC-6: PASS | Mouse translation and unchanged fallback; 2,911 click checks | pi-packages/pi-thoth-theme/src/input-box/decorate.ts:200–211
-- Source: pi-packages/pi-thoth-theme/README.md | sha256:9a8337c1e48d7df24148fa1e81451d970435dc0b9a6c4369822527cb882c196b
+- AC-1: PASS | Rounded geometry, widths, cursor and autocomplete preserved | pi-packages/pi-thoth-theme/src/input-box/decorate.test.ts:131
+- AC-2: PASS | Muted ready label, configured frames, elapsed status and lifecycle transitions | pi-packages/pi-thoth-theme/src/status-line/status-line.test.ts:181
+- AC-3: PASS | Dim placeholder follows cursor; nonempty text hides it | pi-packages/pi-thoth-theme/src/input-box/frame.test.ts:96
+- AC-4: PASS | Footer remains separate and unsuppressed; bottom border stays plain | pi-packages/pi-thoth-theme/src/status-line/status-line.test.ts:341
+- AC-5: PASS | Proxy interception, identity, idempotence and replacement discovery preserved | pi-packages/pi-thoth-theme/src/input-box/decorate.test.ts:391; pi-packages/pi-thoth-theme/src/status-line/status-line.test.ts:237
+- AC-6: PASS | Mouse translation and autocomplete work; fallback forwards unchanged | pi-packages/pi-thoth-theme/src/input-box/decorate.test.ts:82
+- AC-7: PASS | Uniform breathing, synchronized pyramid, muted text, unchanged idle snapshots and timer cleanup | pi-packages/pi-thoth-theme/src/input-box/real-theme.test.ts:110; pi-packages/pi-thoth-theme/src/input-box/state.test.ts:54
+- AC-8: PASS | Fallback editor embeds native working status; regression test passes | pi-packages/pi-background-tasks/src/navigator-provider.ts:35; pi-packages/pi-background-tasks/src/navigator-provider.test.ts:6
+- Provenance: plan review EXPLICIT_REVIEW (round 1 REJECT, round 2 OKAY); implementation explicitly authorized by the user; earlier verification rounds converged via explicit user decisions; final fresh read-only thoth-oracle PASS on HEAD 1f7c7a8 covering the amended record.
+- Oracle checks: theme typecheck + 453 tests; background-tasks typecheck + 324 passed/4 skipped; subagents 588 passed/1 skipped; root check:ci 0 errors; idle snapshots match pre-breathing commit 0bebc6a.
+- Residual: guarded runtime-private `workingStatusIndicator` dependency; live appearance accepted by the user.
+- Source: pi-packages/pi-background-tasks/src/navigator-provider.test.ts | sha256:6a59d5554769335f4c758f65fe1ea3df180a13d1e3afcf0ec9ca5e7caa7b1e40
+- Source: pi-packages/pi-background-tasks/src/navigator-provider.ts | sha256:60c4af51ebb36b640337d2b7dd20c3f8b1b52ae75877455f2a11e8df1150332b
+- Source: pi-packages/pi-thoth-theme/README.md | sha256:b3e56e1529c9396dc8e1df773d50bd5b661a446daf24e52524c90b30913cb1a4
 - Source: pi-packages/pi-thoth-theme/src/index.test.ts | sha256:a33055ef9cf5abd6f5396b3df2a7bc8078563f9e5cd1b17b01341a12fbbb6092
 - Source: pi-packages/pi-thoth-theme/src/index.ts | sha256:5ab23009997351478c34d5f71a5b2d49f9b6d71fc7aa5404ebb6ddd5a72b18cd
-- Source: pi-packages/pi-thoth-theme/src/input-box/decorate.test.ts | sha256:d2de121d4158d6a61496e653af398f77d6119c52cda179dcbc5286286363b6e3
-- Source: pi-packages/pi-thoth-theme/src/input-box/decorate.ts | sha256:8b00f5d0feabe44f09b4a6bfcf4a18e8ff93fb97c39aabad739fcc03e76c5341
-- Source: pi-packages/pi-thoth-theme/src/input-box/frame.test.ts | sha256:8f9f73e21195f4ce148375858041c5ab0956eb680f4ce1055604d9a6a6a224c1
-- Source: pi-packages/pi-thoth-theme/src/input-box/frame.ts | sha256:02954b154e7606d0317ac5ea4bebeae05838bbc997c709a6f96f13de6eb7e409
-- Source: pi-packages/pi-thoth-theme/src/input-box/state.test.ts | sha256:1e970432245dc13a7887caf1258e494687062fa3bfa9d26f60eef5ac2c40249f
-- Source: pi-packages/pi-thoth-theme/src/input-box/state.ts | sha256:04b3b1acb2abc99ad1724af3da80baf1cb954c2fabeae828ccc2e9a9297723d3
+- Source: pi-packages/pi-thoth-theme/src/input-box/__snapshots__/real-theme.test.ts.snap | sha256:74fb26f2437b806412b774916ae18b293048a779d344e5f27d2f3ab4ac0f2267
+- Source: pi-packages/pi-thoth-theme/src/input-box/decorate.test.ts | sha256:6f7c94d793a27ece1d859f805826223e817c6eae43a99557cccd722dc7918f92
+- Source: pi-packages/pi-thoth-theme/src/input-box/decorate.ts | sha256:eddf33f811e55792bc6d940d80897a927458af65e0ebd13d50123cd52a06888d
+- Source: pi-packages/pi-thoth-theme/src/input-box/frame.test.ts | sha256:0837e891fe74779bcff27f742209393e4fc82598d0cafb760d7422f783772741
+- Source: pi-packages/pi-thoth-theme/src/input-box/frame.ts | sha256:b21f7994e744bfc67422747c8f3e4c443a2024853242d534e877d03ddbc9000c
+- Source: pi-packages/pi-thoth-theme/src/input-box/gradient.test.ts | sha256:e6ddff1ed67e8f4b3ff6c66bf7ee3a6867f74ddd4aa74d3013489cb1ca01088d
+- Source: pi-packages/pi-thoth-theme/src/input-box/gradient.ts | sha256:8034d20969eb9319ee1f3c2afdfbbac2d9d2f074b572eeb204322032f95097b5
+- Source: pi-packages/pi-thoth-theme/src/input-box/real-theme.test.ts | sha256:b1871c703518e4793b27f022e6914ec73ed1d949725a5987d173f515067c2935
+- Source: pi-packages/pi-thoth-theme/src/input-box/state.test.ts | sha256:116d067e37d09ee65815ade43171bf3194a98caeddde5934e1d265de2ba82cd4
+- Source: pi-packages/pi-thoth-theme/src/input-box/state.ts | sha256:384d5a9ae70f846a66bb503098627422775040eb1c637fc943dc4728d7ad4df4
 - Source: pi-packages/pi-thoth-theme/src/shared/config.test.ts | sha256:3689faec2a6f005139d9b6166f85530347ffae9764c1f9cd226995a535dcba0a
 - Source: pi-packages/pi-thoth-theme/src/shared/config.ts | sha256:581973426e45be6784c02db0d28f56c04ca1ad206ea58d91a25d734c0b1f6dda
 - Source: pi-packages/pi-thoth-theme/src/status-line/index.ts | sha256:22ec4413d52411f5f40f02b61dd496d5e24e08790397ac032de58121b56acef2
-- Source: pi-packages/pi-thoth-theme/src/status-line/status-line.test.ts | sha256:fd6d190e1f103ae6249b64303b1587f44655c768f968638631fa47b0f3a3c6d8
+- Source: pi-packages/pi-thoth-theme/src/status-line/status-line.test.ts | sha256:5cbb99bfecb511e92afd10c234c9f33fdaf95b8440b4cf469884089874776320
 
 ## Closeout
 

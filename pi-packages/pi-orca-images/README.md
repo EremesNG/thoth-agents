@@ -47,7 +47,7 @@ operator-installed package, not installed by the Thoth CLI. Restart Pi or use
 - Suppresses image transmission on every ordinary redraw, including scrolling,
   changes to image-covered rows, newly added images and completed downscales.
   Images are blank while scrolling; text keeps updating every frame. A single
-  trailing full redraw restores images about 0.8 s after scrolling or image-row
+  trailing full redraw restores images about 400 ms after scrolling or image-row
   changes stop, with a maximum wait of 3000 ms from the first suppressed frame
   during continuous bursts. There is no leading-edge transmission. Activation,
   focus recovery, resize and other full redraws always emit immediately and

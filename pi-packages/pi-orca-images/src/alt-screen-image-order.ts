@@ -14,7 +14,7 @@ interface ImageRedrawTimer {
   unref: () => void;
 }
 
-export const IMAGE_REDRAW_DEBOUNCE_MS = 800;
+export const IMAGE_REDRAW_DEBOUNCE_MS = 400;
 export const IMAGE_REDRAW_MAX_WAIT_MS = 3000;
 
 interface ImageRedrawState {

@@ -121,15 +121,15 @@ Supported frontmatter:
 |---|---|
 | `name` | Optional name; must match the filename stem after trimming and case-insensitive normalization. Identity always comes from the filename. A mismatch fails loading; rename the file to `<name>.md` or change `name`. |
 | `description` | Short description shown by `subagent_list_agents`. |
-| `tools` | Tool allowlist: a comma-separated inline list or multiline YAML list, never both. Standalone `*` selects current parent-active tools at launch; other globs match active tools, and explicit names work even when root-inactive. The runner then adds enabled `ask_orchestrator`, subtracts `disallowed_tools`, and excludes native `subagent_*` tools. Missing permitted implementations are dropped with a durable warning; launch fails if none remain. Omitted `tools` uses the built-in defaults; an empty definition list uses configured `default_tools`. |
-| `disallowed_tools` | Exact tool names removed after allowlist resolution, including injected tools. Accepts a comma-separated string or YAML list. Absent, empty string/value, or `[]` means no denial. Globs, non-string items, nested values, and ambiguous declarations fail definition loading with a source diagnostic. Uninstalled denied names are inert and produce no warning. |
+| `tools` | Tool allowlist: a comma-separated inline list or multiline YAML list, never both. Explicit exact-name lists are the recommended default. Manual advanced globs, including `*`, match all registered root tools (active and inactive); exact names also work when root-inactive. The runner then adds enabled `ask_orchestrator`, subtracts `disallowed_tools`, and excludes native `subagent_*` tools. Missing permitted implementations are dropped with a durable warning; launch fails if none remain. Omitted `tools` uses the built-in defaults; an empty definition list uses configured `default_tools`. |
+| `disallowed_tools` | Manually configured exact tool names removed after allowlist resolution, for injected tools and trimming glob results. Accepts a comma-separated string or YAML list. Absent, empty string/value, or `[]` means no denial. Globs, non-string items, nested values, and ambiguous declarations fail definition loading with a source diagnostic. Uninstalled denied names are inert and produce no warning. |
 | `model` | Optional model as `provider/model-id`. |
 | `effort`, `thinking_level`, `thinkingLevel` | Optional thinking effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. |
 | `subagent_mode` | Optional default execution mode for this definition: `task` or `background`. |
 
 ### Tool allowlist formats
 
-Choose exactly one `tools` format per subagent definition.
+Use an explicit exact-name list by default, and choose exactly one `tools` format per subagent definition.
 
 Comma-separated inline list:
 
@@ -152,13 +152,13 @@ Every definition's frontmatter must be a strict YAML mapping with unique keys, r
 
 YAML parse errors, duplicate keys, non-mapping/null documents, invalid types for supported fields, name mismatches, malformed `disallowed_tools`, and unreadable files fail definition loading with a source diagnostic and block fallback with the same filename identity. Diagnostics for invalid YAML include quoting guidance. A failed `custom.md` claiming `name: worker` blocks `custom`, not a separate `worker.md`; it cannot act as a worker override. Quoted keys and YAML string escapes are supported; `tools` accepts a comma-separated string or a list of strings.
 
-Use standalone `tools: "*"` to follow the parent's currently active tools at each launch (via `getActiveTools()`, falling back to legacy `getTools()`). Inactive registered tools are not inherited. Preserve the compact selector when saving. The former active selector has been removed and is rejected at launch with a diagnostic directing you to `*`.
+Globs are manual advanced selections, not the default. Every glob, including `tools: "*"` and `agent_browser_*`, expands at launch against all tools registered in the root session via `getAllTools()` (active and inactive). `*` is an ordinary glob, alone or mixed with exact names; this is broader than the previous active-only behavior. Preserve glob entries when saving or synchronizing rather than expanding them. The removed `@active` selector is rejected with a diagnostic recommending exact names.
 
 The runtime natively excludes only `subagent_*`, for every selection form. Other packages' tools, including `ask_user_question`, `todo` and third-party delegation tools, are selectable unless the definition denies them. Shell-job tools from `@thoth-agents/pi-background-tasks` remain selectable under `*`; its lifecycle passes through by default, and child jobs stop with the child.
 
-With `enable_ask_orchestrator: true` (the default), every child receives the child-provided `ask_orchestrator` unless its `disallowed_tools` denies it. This includes standalone `*`, globs, explicit lists that omit it, and empty/default selections; even an empty root inventory under `*` yields the injected tool alone. Disabled or denied names are removed before SDK registration and verification, never reported as missing implementations. The same effective permitted list controls SDK tools, custom-tool injection and registry verification. An empty effective selection fails launch.
+With `enable_ask_orchestrator: true` (the default), every child receives the child-provided `ask_orchestrator` unless its `disallowed_tools` denies it. This includes globs (including `*`), explicit lists that omit it, and empty/default selections; even an empty or unavailable root inventory under `*` yields the injected tool alone. Disabled or denied names are removed before SDK registration and verification, never reported as missing implementations. The same effective permitted list controls SDK tools, custom-tool injection and registry verification. An empty effective selection fails launch.
 
-For example, deny injected and ordinary tools with either format:
+Edit `disallowed_tools` manually in the definition file to deny injected tools or trim glob results. For example, either format removes injected `ask_orchestrator` and ordinary `bash`:
 
 ```yaml
 disallowed_tools: ask_orchestrator, bash
@@ -170,15 +170,15 @@ disallowed_tools:
   - bash
 ```
 
-Thoth-generated specialists deny the interactive question tool, task-list tool and known third-party delegation tools through this field; Oracle additionally denies `ask_orchestrator` to preserve independent judgment. The runtime itself is role-agnostic. An explicit empty denial overrides those generated defaults when preserved by Thoth synchronization.
+Thoth-generated specialists use explicit lists that omit the interactive question tool, task-list tool and third-party delegation tools. Only Oracle declares `disallowed_tools`, denying `ask_orchestrator` to preserve independent judgment. The runtime itself is role-agnostic. Thoth synchronization preserves operator `tools` (including globs) and operator `disallowed_tools`, including an explicit empty denial.
 
 These exclusions are not a sandbox: shell and MCP tools can still launch agents indirectly.
 
-For every selection form—explicit lists, globs, mixed selectors, and standalone `*`—a selected tool without a child-loadable implementation is dropped after session creation, and the child runs with the remaining tools. Dropped names are persisted as `dropped_tools` in task and attempt history and shown as a compact warning on running/queued widget cards and in status, result, and completion notifications; they are never listed in the child prompt. If every selected tool is missing, launch fails with the missing-implementation diagnostic. All selections still reject unexpected extra child tools, and unrelated startup failures remain errors.
+For every selection form—explicit lists and globs (including `*`), alone or mixed—a selected tool without a child-loadable implementation is dropped after session creation, and the child runs with the remaining tools. Dropped names are persisted as `dropped_tools` in task and attempt history and shown as a compact warning on running/queued widget cards and in status, result, and completion notifications; they are never listed in the child prompt. If every selected tool is missing, launch fails with the missing-implementation diagnostic. All selections still reject unexpected extra child tools, and unrelated startup failures remain errors.
 
-Explicit names reach the child even when inactive in the root. Use explicit selection to give a role deferred/advanced tools: standalone `*` and other globs do not inherit root-inactive tools. All selections are checked against the child's registered implementations, rather than requiring every selected tool to be active in the model tool list. Selected `deferred` and `codemode` tools remain callable through Pi's native nested-tool interface. Excluded and prohibited tools are absent from the child's registered inventory.
+Exact names and tools matched by globs reach the child even when inactive in the root. For example, `agent_browser_*` includes root-inactive registered browser capabilities that the child may activate. All selections are checked against the child's registered implementations, rather than requiring every selected tool to be active in the model tool list. Selected `deferred` and `codemode` tools remain callable through Pi's native nested-tool interface. Excluded and prohibited tools are absent from the child's registered inventory.
 
-Other wildcard patterns such as `tool_*`, including `*` mixed with other entries, retain active-only matching. If a pattern matches no active tool, it expands to nothing before enabled `ask_orchestrator` is added. Native `subagent_*` controls remain excluded; `disallowed_tools` applies to every form.
+If the registered inventory is unavailable or a glob matches no registered tool, that glob contributes nothing; exact names and enabled `ask_orchestrator` still apply. There is no fallback to the root's active inventory. Native `subagent_*` controls remain excluded, and `disallowed_tools` applies to every form. Missing child implementations use the same durable warning rules; launch fails only when no permitted implemented tool remains.
 
 Do not mix the formats or declare `tools` more than once:
 
@@ -296,7 +296,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `history_panel_shortcut` | `ctrl+,` | Shortcut used to open the subagents history/detail panel. Accepts modified Pi-style shortcuts such as `ctrl+<letter>`, `ctrl+,`, `ctrl+shift+,`, or `shift+alt+,`, and also accepts camelCase `historyPanelShortcut`. |
 | `detail_cancel_shortcut` | `x` | Shortcut for the subagents history/detail panel to cancel only the currently selected queued/running subagent. `ctrl+...` values are also registered as a Pi shortcut scoped by the active panel, so they still work when the TUI captures control keys; single-letter values are handled by the panel input. Accepts `ctrl+<letter>`, `ctrl+shift+<letter>`, `ctrl+,`, or one lowercase letter, and also accepts camelCase `detailCancelShortcut`. It is ignored when the panel is not active or the selected subagent is already finished. |
 | `background_handoff_shortcut` | `ctrl+h` | Shortcut used to send a running task-mode subagent to the background. Accepts `ctrl+<letter>` and also accepts camelCase `backgroundHandoffShortcut`. |
-| `default_tools` | see below | Fallback tool allowlist used by the runner when an agent definition has an empty tool list. Supports the same standalone `*` active-tool selector, explicit lists, and other wildcard patterns as frontmatter `tools`; all forms drop missing child implementations with a durable warning, failing only if every selected tool is missing. Omitted frontmatter `tools` uses the built-in default list. |
+| `default_tools` | see below | Fallback tool allowlist used by the runner when an agent definition has an empty tool list. Explicit exact-name lists are recommended; supports the same manual globs (including ordinary `*`) over all registered root tools as frontmatter `tools`; all forms drop missing child implementations with a durable warning, failing only if every selected tool is missing. Omitted frontmatter `tools` uses the built-in default list. |
 
 Default tools:
 

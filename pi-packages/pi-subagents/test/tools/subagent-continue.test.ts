@@ -265,7 +265,7 @@ describe('subagent_continue tool', () => {
     }
   });
 
-  it('resolves * tools from the current parent Pi session on continuation', async () => {
+  it('resolves * tools from the current registered parent inventory on continuation', async () => {
     const fs = await import('node:fs');
     fs.writeFileSync(
       `${env.tmp}/.pi/subagents.json`,
@@ -308,11 +308,12 @@ describe('subagent_continue tool', () => {
     }));
     const { sdkSubagentRunner } = await import('../../src/runner.js');
     const manager = env.createManager(sdkSubagentRunner);
-    let activeTools = ['read', 'missing_fixture_tool'];
+    let registeredTools = ['read', 'missing_fixture_tool'];
     let runTool: any;
     let continueTool: any;
     const pi = {
-      getActiveTools: vi.fn(() => activeTools),
+      getActiveTools: vi.fn(() => ['read']),
+      getAllTools: vi.fn(() => registeredTools),
       registerTool: (tool: any) => {
         if (tool.name === 'subagent_run') runTool = tool;
         if (tool.name === 'subagent_continue') continueTool = tool;
@@ -333,7 +334,7 @@ describe('subagent_continue tool', () => {
       'missing_fixture_tool',
     ]);
     const taskId = first.details.task_ids[0];
-    activeTools = ['read', 'current_extension_tool'];
+    registeredTools = ['read', 'current_extension_tool'];
 
     const result = await continueTool.execute(
       '2',

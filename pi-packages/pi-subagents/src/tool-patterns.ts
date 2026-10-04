@@ -1,6 +1,3 @@
-// No standalone-only exclusions; native subagent_* prefixes apply to every selector.
-export const STANDALONE_STAR_TOOL_EXCLUSIONS: ReadonlySet<string> = new Set();
-
 export function hasToolGlob(pattern: string): boolean {
   return pattern.includes('*');
 }
@@ -21,28 +18,22 @@ export function matchesToolPattern(toolName: string, pattern: string): boolean {
 
 export function expandToolPatterns(
   patterns: readonly string[],
-  activeToolNames?: readonly string[],
+  registeredToolNames?: readonly string[],
 ): string[] {
   if (patterns.includes('@active'))
     throw new Error(
-      "The '@active' tool selector was removed; use standalone '*' instead.",
+      "The '@active' tool selector was removed; use exact tool names. '*' is an ordinary glob over all registered tools (active and inactive).",
     );
-  const active = activeToolNames ? [...new Set(activeToolNames)] : undefined;
+  const registered = [...new Set(registeredToolNames ?? [])];
   const expanded: string[] = [];
   const add = (name: string) => {
     if (name.startsWith('subagent_') || expanded.includes(name)) return;
     expanded.push(name);
   };
 
-  if (patterns.length === 1 && patterns[0] === '*') {
-    for (const toolName of active ?? []) add(toolName);
-    return expanded;
-  }
-
   for (const pattern of patterns) {
     if (hasToolGlob(pattern)) {
-      if (!active) continue;
-      for (const toolName of active) {
+      for (const toolName of registered) {
         if (matchesToolPattern(toolName, pattern)) add(toolName);
       }
       continue;

@@ -179,6 +179,7 @@ export function decorateEditor(
         const status = deps.working.status(
           this.workingStatusIndicator,
           inputLabelWidth(outerWidth, hidden),
+          (text) => deps.theme.fg?.('muted', text) ?? text,
         );
         top = renderInputTop(outerWidth, deps.theme, status, hidden);
         return top;

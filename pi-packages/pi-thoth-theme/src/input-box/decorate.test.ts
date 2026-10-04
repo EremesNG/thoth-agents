@@ -255,6 +255,13 @@ describe('input-box editor composition', () => {
     expect(decorateEditor(frozen, deps)).toBeUndefined();
   });
 
+  it('renders the idle ready label in the muted color', () => {
+    const { editor, deps, decorate } = setup();
+    deps.theme.fg.mockImplementation((token, text) => `<${token}:${text}>`);
+    decorate();
+    expect(editor.render(40)[0]).toContain('<muted:▲ ready>');
+  });
+
   it('ignores later thinking-border colors, renders natively at narrow widths, and restores on disposal', () => {
     const { editor, deps, decorate } = setup();
     editor.setText('abcdef');

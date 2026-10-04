@@ -1,19 +1,19 @@
 import {
-  foregroundAnsi,
   getTerminalColorMode,
   mixColors,
   parseColor,
   stripTerminalSequences,
+  styleText,
   type TerminalColorMode,
 } from '@earendil-works/pi-tui';
 
 const GOLD = parseColor('#D4AF37');
 const BRIGHT_GOLD = parseColor('#F2C94C');
-const SHIMMER_BASE = mixColors(parseColor('#A89A78'), GOLD, 0.35, 'srgb');
+const MUTED = parseColor('#A89A78');
 const SHIMMER_LAP_MS = 2400;
-const SHIMMER_BAND_CELLS = 2;
-const COMET_LAP_MS = 4000;
-const COMET_TAIL_CELLS = 16;
+const SHIMMER_BAND_CELLS = 3;
+const COMET_LAP_MS = 3500;
+const COMET_TAIL_CELLS = 20;
 
 export interface CometFrame {
   width: number;
@@ -54,7 +54,11 @@ export function colorCometBorder(
     }
     if (base) output += styleBase(base);
     base = '';
-    output += `${foregroundAnsi(cometColor(intensity), frame.mode)}${glyph}\x1b[39m`;
+    output += styleText(
+      glyph,
+      { fg: cometColor(intensity), bold: intensity >= 0.85 },
+      frame.mode,
+    );
   }
   return output + (base ? styleBase(base) : '');
 }
@@ -71,7 +75,9 @@ export function cometIntensity(
 }
 
 export function cometColor(intensity: number) {
-  return mixColors(GOLD, BRIGHT_GOLD, intensity, 'srgb');
+  return intensity <= 0.5
+    ? mixColors(MUTED, GOLD, intensity * 2, 'srgb')
+    : mixColors(GOLD, BRIGHT_GOLD, (intensity - 0.5) * 2, 'srgb');
 }
 
 export function shimmerIntensity(
@@ -87,7 +93,7 @@ export function shimmerIntensity(
 }
 
 export function shimmerColor(intensity: number) {
-  return mixColors(SHIMMER_BASE, BRIGHT_GOLD, intensity, 'srgb');
+  return mixColors(MUTED, BRIGHT_GOLD, intensity, 'srgb');
 }
 
 export function renderWorkingIndicator(
@@ -98,16 +104,20 @@ export function renderWorkingIndicator(
   const plain = stripTerminalSequences(native);
   const pyramid = plain.match(/^([△◭▲◮])(\s*)/u);
   const prefix = pyramid
-    ? `${foregroundAnsi(BRIGHT_GOLD, mode)}${pyramid[1]}\x1b[39m${pyramid[2]}`
+    ? styleText(pyramid[1], { fg: BRIGHT_GOLD, bold: true }, mode) + pyramid[2]
     : '';
   const letters = Array.from(plain.slice(pyramid?.[0].length ?? 0));
   const label = letters
-    .map(
-      (letter, index) =>
-        `${foregroundAnsi(shimmerColor(shimmerIntensity(index, letters.length, now)), mode)}${letter}`,
-    )
+    .map((letter, index) => {
+      const intensity = shimmerIntensity(index, letters.length, now);
+      return styleText(
+        letter,
+        { fg: shimmerColor(intensity), bold: intensity >= 0.65 },
+        mode,
+      );
+    })
     .join('');
-  return prefix + label + (letters.length ? '\x1b[39m' : '');
+  return prefix + label;
 }
 
 export function perimeterLength(width: number, height: number): number {

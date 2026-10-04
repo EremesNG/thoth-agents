@@ -32,7 +32,7 @@ export function createWorkingState(requestRender: () => void) {
     status(
       indicator: unknown,
       width: number,
-      styleIdle: (text: string) => string = (text) => text,
+      styleMuted: (text: string) => string = (text) => text,
     ): string {
       if (
         !indicator ||
@@ -40,7 +40,7 @@ export function createWorkingState(requestRender: () => void) {
         !('renderInBorder' in indicator) ||
         typeof indicator.renderInBorder !== 'function'
       ) {
-        return styleIdle(truncateToWidth('▲ ready', width, ''));
+        return styleMuted(truncateToWidth('▲ ready', width, ''));
       }
       const working = 'kind' in indicator && indicator.kind === 'working';
       const now = Date.now();
@@ -51,14 +51,18 @@ export function createWorkingState(requestRender: () => void) {
       const nativeWidth = Math.max(1, width - visibleWidth(elapsed));
       const native = indicator.renderInBorder(nativeWidth);
       if (typeof native !== 'string' || visibleWidth(native) === 0) {
-        return styleIdle(truncateToWidth('▲ ready', width, ''));
+        return styleMuted(truncateToWidth('▲ ready', width, ''));
       }
       const fitted = truncateToWidth(native, nativeWidth, '');
       const label =
         working && startedAt !== undefined
           ? renderWorkingIndicator(fitted, now)
           : fitted;
-      return truncateToWidth(`${label}${elapsed}`, width, '');
+      return truncateToWidth(
+        `${label}${elapsed ? styleMuted(elapsed) : ''}`,
+        width,
+        '',
+      );
     },
     dispose() {
       disposed = true;

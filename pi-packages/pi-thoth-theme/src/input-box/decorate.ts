@@ -116,7 +116,7 @@ export function decorateEditor(
   let bottomHidden = 0;
   // Mouse hit-testing follows the last render's boxed or native geometry.
   let boxRendered = false;
-  const accent = (text: string) => deps.theme.fg?.('accent', text) ?? text;
+  const muted = (text: string) => deps.theme.fg?.('muted', text) ?? text;
 
   function nativeRender(receiver: EditorLike, width: number): string[] {
     fallback = true;
@@ -242,7 +242,7 @@ export function decorateEditor(
     },
     borderColor: {
       configurable: true,
-      get: () => (fallback ? originals.borderColor : accent),
+      get: () => (fallback ? originals.borderColor : muted),
       set: () => {},
     },
   };

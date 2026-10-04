@@ -222,7 +222,7 @@ describe('input-box editor composition', () => {
     vi.setSystemTime(0);
     const { editor, deps, decorate } = setup();
     deps.theme.fg.mockImplementation(
-      (token, text) => `\x1b[${token === 'accent' ? '33' : '2'}m${text}\x1b[0m`,
+      (token, text) => `\x1b[${token === 'muted' ? '33' : '2'}m${text}\x1b[0m`,
     );
     editor.setPaddingX(2);
     editor.setText('界 ─ │ ╭ ╮ ╰ ╯');
@@ -230,17 +230,17 @@ describe('input-box editor composition', () => {
     decorate();
     const idle = editor.render(40);
     expect(idle[0]).toContain('\x1b[33m╭─ ');
-    expect(idle[0]).toContain('\x1b[2m▲ ready\x1b[0m');
+    expect(idle[0]).toContain('\x1b[33m▲ ready\x1b[0m');
     deps.working.start();
     const animated = editor.render(40);
     expect(animated).not.toEqual(idle);
-    const head = foregroundAnsi(rgbColor(242, 201, 76), getTerminalColorMode());
+    const head = `${foregroundAnsi(rgbColor(242, 201, 76), getTerminalColorMode())}\x1b[1m`;
     expect(animated[0].startsWith(`${head}╭`)).toBe(true);
     expect(animated.map(stripTerminalSequences)).toEqual(
       idle.map(stripTerminalSequences),
     );
     expect(animated.map(visibleWidth)).toEqual(idle.map(visibleWidth));
-    expect(animated[0]).toContain('\x1b[2m▲ ready\x1b[0m');
+    expect(animated[0]).toContain('\x1b[33m▲ ready\x1b[0m');
     expect(animated[1]).toContain(
       `界 ─ │ ╭ ╮ ╰ ╯${CURSOR_MARKER}\x1b[7m \x1b[0m`,
     );

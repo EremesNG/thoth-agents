@@ -14,11 +14,12 @@ interface ImageRedrawTimer {
   unref: () => void;
 }
 
-export const IMAGE_REDRAW_DEBOUNCE_MS = 400;
-export const IMAGE_REDRAW_MAX_WAIT_MS = 3000;
+export const IMAGE_REDRAW_DEBOUNCE_MS = 150;
+export const IMAGE_REDRAW_MAX_WAIT_MS = 1000;
 
 interface ImageRedrawState {
   fullRedraw: boolean;
+  lastEmission?: number;
   firstSuppressed?: number;
   timer?: ImageRedrawTimer;
 }
@@ -161,10 +162,13 @@ function installImageRedrawDebounce(
       return result;
     if (!result.lines.some(isKittyImageLine)) return result;
     const state = getImageRedrawState(states, this);
-    // Ordinary redraws never transmit, even after a quiet gap. A trailing full
-    // redraw restores images without slowing the intervening scroll frames.
-    if (!state.fullRedraw) {
-      const time = now();
+    const time = now();
+    if (
+      !state.fullRedraw &&
+      (state.firstSuppressed !== undefined ||
+        (state.lastEmission !== undefined &&
+          time - state.lastEmission < IMAGE_REDRAW_DEBOUNCE_MS))
+    ) {
       state.firstSuppressed ??= time;
       if (state.timer) cancelTimeout(state.timer);
       const deadline = Math.min(
@@ -196,6 +200,7 @@ function installImageRedrawDebounce(
     if (state.timer) cancelTimeout(state.timer);
     state.timer = undefined;
     state.firstSuppressed = undefined;
+    state.lastEmission = time;
     return result;
   };
   // Existing render wrappers can also find a prepare hook added after /reload.

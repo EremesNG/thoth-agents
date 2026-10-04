@@ -317,9 +317,8 @@ function startScrollImageTui(clock: RedrawClock) {
   // Pi's follow-end view needs its first layout before scrollToTop takes effect.
   tui.renderNow();
   tui.scrollToTop();
-  // Establish a full top-of-content frame so measured scrolls are ordinary
-  // redraws, including when another instance already has the hooks installed.
-  tui.renderNow(true);
+  // Establish a native frame so the measured leading frame is a one-row scroll.
+  tui.renderNow();
   installAltScreenImageOrder({
     env: process.env,
     altScreenClass: TuiAltScreen,
@@ -637,11 +636,11 @@ describe('Orca fullscreen image ordering', () => {
 });
 
 describe('Orca fullscreen image redraw debounce', () => {
-  it('suppresses even the first ordinary transmission and placement while preserving text, eviction and native preparation', () => {
+  it('emits the leading frame, then suppresses transmission and placement while preserving text, eviction and native preparation', () => {
     const { tui, clock } = startDebounceScreen();
     const lines = ['text', kittyTransmission, '', kittyPlacement];
 
-    expect(tui.doRender(lines).lines).toEqual(['text', '', '', '']);
+    expect(tui.doRender(lines).lines).toEqual(lines);
     clock.advanceTo(50);
     const suppressed = tui.doRender(lines);
 
@@ -652,16 +651,17 @@ describe('Orca fullscreen image redraw debounce', () => {
     expect(tui.uploadedKittyImages.get(42)).toBe('prepared payload');
   });
 
-  it('keeps a burst suppressed and reschedules exactly one trailing forced redraw after 400 ms of quiet', () => {
+  it('keeps a burst suppressed beyond 150 ms and reschedules exactly one trailing forced redraw after quiet', () => {
     const { tui, clock } = startDebounceScreen();
-    for (const time of [0, 50, 140, 280]) {
+    tui.doRender();
+    for (const time of [50, 140, 280]) {
       clock.advanceTo(time);
       expect(tui.doRender().lines).toEqual(['text', '', '', '']);
       expect(clock.timers.size).toBe(1);
     }
-    clock.advanceTo(679);
+    clock.advanceTo(429);
     expect(tui.forcedRedraws).toEqual([]);
-    clock.advanceTo(680);
+    clock.advanceTo(430);
     expect(tui.forcedRedraws).toEqual([true]);
     expect(clock.timers.size).toBe(0);
     expect(tui.doRender().lines).toEqual([
@@ -674,28 +674,24 @@ describe('Orca fullscreen image redraw debounce', () => {
     expect(tui.forcedRedraws).toEqual([true]);
   });
 
-  it('bounds a continuous burst at 3000 ms from the first suppressed frame, not the previous full emission', () => {
+  it('bounds a continuous burst at 1000 ms from the first suppressed frame, not the leading emission', () => {
     const { tui, clock } = startDebounceScreen();
-    tui.previousScreen = [];
-    expect(tui.doRender().lines).toContain(kittyTransmission);
-    for (const time of [
-      ...Array.from({ length: 30 }, (_, index) => 10 + index * 100),
-      2999,
-    ]) {
+    tui.doRender();
+    for (const time of [10, 110, 210, 310, 410, 510, 610, 710, 810, 910, 999]) {
       clock.advanceTo(time);
       expect(tui.doRender().lines).toEqual(['text', '', '', '']);
       expect(clock.timers.size).toBe(1);
     }
-    clock.advanceTo(3009);
+    clock.advanceTo(1009);
     expect(tui.forcedRedraws).toEqual([]);
-    clock.advanceTo(3010);
+    clock.advanceTo(1010);
     expect(tui.forcedRedraws).toEqual([true]);
     expect(tui.doRender().lines).toContain(kittyTransmission);
-    clock.advanceTo(3020);
+    clock.advanceTo(1020);
     expect(tui.doRender().lines).not.toContain(kittyTransmission);
-    clock.advanceTo(3419);
+    clock.advanceTo(1169);
     expect(tui.forcedRedraws).toEqual([true]);
-    clock.advanceTo(3420);
+    clock.advanceTo(1170);
     expect(tui.forcedRedraws).toEqual([true, true]);
   });
 
@@ -753,7 +749,7 @@ describe('Orca fullscreen image redraw debounce', () => {
 
     expect(tui.doRender().lines).toContain(kittyTransmission);
     expect(clock.timers.size).toBe(0);
-    clock.advanceTo(1000);
+    clock.advanceTo(200);
     expect(tui.forcedRedraws).toEqual(forcedRequests);
     // The bypass belongs only to the full frame, not every later render.
     expect(tui.doRender().lines).not.toContain(kittyTransmission);
@@ -773,7 +769,7 @@ describe('Orca fullscreen image redraw debounce', () => {
         tui.altScreenActive = false;
       },
     },
-  ])('drops the trailing redraw when $reason and starts a fresh trailing settle on ordinary resume', ({
+  ])('drops the trailing redraw when $reason and permits a fresh leading frame on resume', ({
     pause,
   }) => {
     const { tui, clock } = startDebounceScreen();
@@ -781,24 +777,19 @@ describe('Orca fullscreen image redraw debounce', () => {
     clock.advanceTo(50);
     tui.doRender();
     pause(tui);
-    clock.advanceTo(450);
+    clock.advanceTo(200);
 
     expect(tui.forcedRedraws).toEqual([]);
     expect(clock.timers.size).toBe(0);
     tui.stopped = false;
     tui.altScreenActive = true;
-    clock.advanceTo(460);
-    expect(tui.doRender().lines).not.toContain(kittyTransmission);
-    expect(clock.timers.size).toBe(1);
-    clock.advanceTo(859);
-    expect(tui.forcedRedraws).toEqual([]);
-    clock.advanceTo(860);
-    expect(tui.forcedRedraws).toEqual([true]);
+    clock.advanceTo(210);
     expect(tui.doRender().lines).toContain(kittyTransmission);
   });
 
-  it('unrefs the first and every replacement timer while keeping only one pending per instance', () => {
+  it('unrefs every replacement timer while keeping only one pending per instance', () => {
     const { tui, clock } = startDebounceScreen();
+    tui.doRender();
     for (const time of [10, 20, 30]) {
       clock.advanceTo(time);
       tui.doRender();
@@ -831,7 +822,7 @@ describe('Orca fullscreen image redraw debounce', () => {
 
     expect(tui.doRender()).toBe(tui.lastPrepared);
     expect(tui.lastPrepared?.lines).toContain(kittyTransmission);
-    clock.advanceTo(450);
+    clock.advanceTo(200);
     expect(tui.forcedRedraws).toEqual([]);
     expect(clock.timers.size).toBe(0);
   });
@@ -848,35 +839,26 @@ describe('Orca fullscreen image redraw debounce', () => {
     clock.advanceTo(60);
 
     expect(tui.doRender()).toBe(tui.lastPrepared);
-    expect(() => clock.advanceTo(450)).not.toThrow();
+    expect(() => clock.advanceTo(200)).not.toThrow();
     expect(tui.forcedRedraws).toEqual([]);
-    expect(clock.timers.size).toBe(0);
   });
 
   it('exports the documented quiet and maximum wait intervals', () => {
     expect([IMAGE_REDRAW_DEBOUNCE_MS, IMAGE_REDRAW_MAX_WAIT_MS]).toEqual([
-      400, 3000,
+      150, 1000,
     ]);
   });
 
-  it('never emits a leading frame, even 400 ms or long after a full redraw', () => {
+  it('emits a fresh leading frame at the 150 ms boundary without opening a burst', () => {
     const { tui, clock } = startDebounceScreen();
-    tui.previousScreen = [];
-    expect(tui.doRender().lines).toContain(kittyTransmission);
-    clock.advanceTo(400);
+    tui.doRender();
+    clock.advanceTo(150);
 
-    expect(tui.doRender().lines).not.toContain(kittyTransmission);
-    expect(clock.timers.size).toBe(1);
-    tui.previousScreen = [];
     expect(tui.doRender().lines).toContain(kittyTransmission);
     expect(clock.timers.size).toBe(0);
-    clock.advanceTo(2000);
-    expect(tui.doRender().lines).not.toContain(kittyTransmission);
-    expect(clock.timers.size).toBe(1);
-    clock.advanceTo(2399);
-    expect(tui.forcedRedraws).toEqual([]);
-    clock.advanceTo(2400);
-    expect(tui.forcedRedraws).toEqual([true]);
+    clock.advanceTo(300);
+    expect(tui.doRender().lines).toContain(kittyTransmission);
+    expect(clock.timers.size).toBe(0);
   });
 
   it('keeps frames without image lines untouched, without postponing or cancelling an image burst', () => {
@@ -885,7 +867,7 @@ describe('Orca fullscreen image redraw debounce', () => {
     expect(tui.doRender(text)).toBe(tui.lastPrepared);
     expect(clock.timers.size).toBe(0);
     clock.advanceTo(10);
-    expect(tui.doRender().lines).not.toContain(kittyTransmission);
+    expect(tui.doRender().lines).toContain(kittyTransmission);
     clock.advanceTo(50);
     tui.doRender();
     clock.advanceTo(100);
@@ -894,20 +876,18 @@ describe('Orca fullscreen image redraw debounce', () => {
     expect(tui.doRender(text)).toBe(tui.lastPrepared);
     expect(tui.lastPrepared?.lines).toBe(text);
     expect(clock.timers.size).toBe(1);
-    clock.advanceTo(449);
-    expect(tui.forcedRedraws).toEqual([]);
-    clock.advanceTo(450);
+    clock.advanceTo(200);
     expect(tui.forcedRedraws).toEqual([true]);
   });
 
-  it('keeps suppression, burst deadlines and cancellation independent between instances', () => {
+  it('keeps leading emissions, burst deadlines and cancellation independent between instances', () => {
     const { tui: first, clock, deps } = startDebounceScreen();
     const second = new deps.altScreenClass();
-    expect(first.doRender().lines).not.toContain(kittyTransmission);
+    first.doRender();
     clock.advanceTo(50);
     first.doRender();
     clock.advanceTo(75);
-    expect(second.doRender().lines).not.toContain(kittyTransmission);
+    expect(second.doRender().lines).toContain(kittyTransmission);
     clock.advanceTo(100);
     expect(second.doRender().lines).not.toContain(kittyTransmission);
     expect(clock.timers.size).toBe(2);
@@ -915,10 +895,10 @@ describe('Orca fullscreen image redraw debounce', () => {
     first.previousScreen = [];
     expect(first.doRender().lines).toContain(kittyTransmission);
     expect(clock.timers.size).toBe(1);
-    clock.advanceTo(499);
+    clock.advanceTo(200);
     expect(first.forcedRedraws).toEqual([]);
     expect(second.forcedRedraws).toEqual([]);
-    clock.advanceTo(500);
+    clock.advanceTo(250);
     expect(first.forcedRedraws).toEqual([]);
     expect(second.forcedRedraws).toEqual([true]);
     expect(second.doRender().lines).toContain(kittyTransmission);
@@ -1008,7 +988,7 @@ describe('Orca fullscreen image redraw debounce', () => {
     tui.doRender();
     clock.advanceTo(50);
     tui.doRender();
-    clock.advanceTo(450);
+    clock.advanceTo(200);
     expect(tui.forcedRedraws).toEqual([true]);
     expect(tui.prepareCalls).toBe(2);
   });
@@ -1212,144 +1192,65 @@ describe('Orca fullscreen focus recovery', () => {
 });
 
 describe('real fullscreen scroll-burst image transmissions', () => {
-  it.each([
-    { sequence: '6 scrolls 300 ms apart', count: 6, interval: 300, sets: 1 },
-    { sequence: '6 scrolls 600 ms apart', count: 6, interval: 600, sets: 6 },
-    {
-      sequence: '30 rapid scrolls in 580 ms',
-      count: 30,
-      interval: 20,
-      sets: 1,
-    },
-  ])('emits zero images on $sequence and $sets trailing transmission sets', async ({
-    sequence,
-    count,
-    interval,
-    sets,
-  }) => {
+  it('emits four images only on the leading scroll and one trailing redraw across 30 one-row frames spanning 580 ms', async () => {
     const clock = new RedrawClock();
     const { tui, scrollFrame, scheduledFrame } = startScrollImageTui(clock);
-    const fullRedraws = tui.fullRedraws;
-    const frames: string[] = [];
-    const beforeDeadline: string[] = [];
-    const trailing: string[] = [];
-    for (let row = 0; row < count; row++) {
-      const time = row * interval;
-      clock.advanceTo(time);
-      frames.push(scrollFrame());
-      if (interval > 400 || row === count - 1) {
-        clock.advanceTo(time + 399);
-        beforeDeadline.push(await scheduledFrame());
-        clock.advanceTo(time + 400);
-        trailing.push(await scheduledFrame());
-      }
-    }
-    const lastScroll = (count - 1) * interval;
-    process.stdout.write(
-      `${sequence}: scroll a=T ${frames.map(kittyTransmissions).join(',')}; trailing a=T ${trailing.map(kittyTransmissions).join(',')}\n`,
-    );
-
-    expect(frames.map(kittyTransmissions)).toEqual(Array(count).fill(0));
-    expect(frames.join('')).not.toContain('\x1b_Ga=p');
-    expect(frames[count - 1]).toContain('\x1b[2K');
-    expect(frames[count - 1]).toContain(`before-${count}`);
-    expect(tui.getScreenLines()[0]).toContain(`before-${count}`);
-    expect(beforeDeadline).toEqual(Array(sets).fill(''));
-    expect(trailing.map(kittyTransmissions)).toEqual(Array(sets).fill(4));
-    expect(trailing.join('')).not.toContain('\x1b_Ga=p');
-    expect(tui.fullRedraws).toBe(fullRedraws + sets);
-    clock.advanceTo(lastScroll + 4000);
-    expect(await scheduledFrame()).toBe('');
-    expect(clock.timers.size).toBe(0);
-  });
-
-  it('emits all four images at 3000 ms maximum wait during continuous scrolling, then once after stopping', async () => {
-    const clock = new RedrawClock();
-    const { tui, scrollFrame, scheduledFrame } = startScrollImageTui(clock);
-    const fullRedraws = tui.fullRedraws;
     const frames: string[] = [];
     for (let row = 0; row < 30; row++) {
-      clock.advanceTo(row * 100);
+      clock.advanceTo(row * 20);
       frames.push(scrollFrame());
     }
-    clock.advanceTo(2999);
-    const beforeMaximumWait = await scheduledFrame();
-    clock.advanceTo(3000);
-    const maximumWaitFrame = await scheduledFrame();
-    for (const time of [3000, 3100, 3200, 3300, 3400, 3500]) {
-      clock.advanceTo(time);
-      frames.push(scrollFrame());
-    }
-    clock.advanceTo(3899);
-    const beforeQuiet = await scheduledFrame();
-    clock.advanceTo(3900);
-    const trailing = await scheduledFrame();
-    process.stdout.write(
-      `Continuous scroll: scroll a=T ${frames.map(kittyTransmissions).join(',')}; max-wait a=T ${kittyTransmissions(maximumWaitFrame)}; trailing a=T ${kittyTransmissions(trailing)}\n`,
-    );
 
-    expect(frames.map(kittyTransmissions)).toEqual(Array(36).fill(0));
+    expect(tui.getScreenLines()[0]).toContain('before-30');
+    expect(frames.map(kittyTransmissions)).toEqual([4, ...Array(29).fill(0)]);
     expect(frames.join('')).not.toContain('\x1b_Ga=p');
-    expect(beforeMaximumWait).toBe('');
-    expect(kittyTransmissions(maximumWaitFrame)).toBe(4);
-    expect(maximumWaitFrame).not.toContain('\x1b_Ga=p');
-    expect(beforeQuiet).toBe('');
+    expect(frames[29]).toContain('\x1b[2K');
+    expect(frames[29]).toContain('before-30');
+    const fullRedraws = tui.fullRedraws;
+    clock.advanceTo(729);
+    expect(await scheduledFrame()).toBe('');
+    clock.advanceTo(730);
+    const trailing = await scheduledFrame();
+
     expect(kittyTransmissions(trailing)).toBe(4);
     expect(trailing).not.toContain('\x1b_Ga=p');
-    expect(tui.getScreenLines()[0]).toContain('before-36');
-    expect(tui.fullRedraws).toBe(fullRedraws + 2);
-    clock.advanceTo(7000);
+    expect(tui.fullRedraws).toBe(fullRedraws + 1);
+    clock.advanceTo(2000);
     expect(await scheduledFrame()).toBe('');
     expect(clock.timers.size).toBe(0);
   });
 
-  it('keeps trailing redraw deadlines independent for two real fullscreen instances', async () => {
+  it('forces all four images by maximum wait during a scroll burst longer than 1000 ms, then restores once after quiet', async () => {
     const clock = new RedrawClock();
-    const first = startScrollImageTui(clock);
-    const second = startScrollImageTui(clock);
-    const fullRedraws = [first.tui.fullRedraws, second.tui.fullRedraws];
-    const frames = [first.scrollFrame()];
-    clock.advanceTo(100);
-    frames.push(second.scrollFrame());
-    clock.advanceTo(300);
-    frames.push(first.scrollFrame());
-    clock.advanceTo(499);
-    // Drain both terminals together; a nextTick for one can render the other.
-    const beforeDeadline = await Promise.all([
-      first.scheduledFrame(),
-      second.scheduledFrame(),
-    ]);
-    clock.advanceTo(500);
-    const atSecondDeadline = await Promise.all([
-      first.scheduledFrame(),
-      second.scheduledFrame(),
-    ]);
-    clock.advanceTo(699);
-    const beforeFirstDeadline = await first.scheduledFrame();
-    clock.advanceTo(700);
-    const atFirstDeadline = await Promise.all([
-      first.scheduledFrame(),
-      second.scheduledFrame(),
-    ]);
-    process.stdout.write(
-      `Independent instances: scroll a=T ${frames.map(kittyTransmissions).join(',')}; 500 ms a=T ${atSecondDeadline.map(kittyTransmissions).join(',')}; 700 ms a=T ${atFirstDeadline.map(kittyTransmissions).join(',')}\n`,
-    );
+    const { tui, scrollFrame, scheduledFrame } = startScrollImageTui(clock);
+    const frames: string[] = [];
+    for (let row = 0; row < 26; row++) {
+      clock.advanceTo(row * 40);
+      frames.push(scrollFrame());
+    }
+    expect(frames.map(kittyTransmissions)).toEqual([4, ...Array(25).fill(0)]);
+    const fullRedraws = tui.fullRedraws;
+    clock.advanceTo(1039);
+    expect(await scheduledFrame()).toBe('');
+    // The first suppressed scroll was at 40 ms: max wait expires at 1040.
+    clock.advanceTo(1040);
+    const maximumWaitFrame = await scheduledFrame();
 
-    expect(frames.map(kittyTransmissions)).toEqual([0, 0, 0]);
-    expect(frames.join('')).not.toContain('\x1b_Ga=p');
-    expect(beforeDeadline).toEqual(['', '']);
-    expect(atSecondDeadline.map(kittyTransmissions)).toEqual([0, 4]);
-    expect(beforeFirstDeadline).toBe('');
-    expect(atFirstDeadline.map(kittyTransmissions)).toEqual([4, 0]);
-    expect([...atSecondDeadline, ...atFirstDeadline].join('')).not.toContain(
-      '\x1b_Ga=p',
-    );
-    expect(first.tui.fullRedraws).toBe(fullRedraws[0] + 1);
-    expect(second.tui.fullRedraws).toBe(fullRedraws[1] + 1);
-    clock.advanceTo(4000);
-    expect(
-      await Promise.all([first.scheduledFrame(), second.scheduledFrame()]),
-    ).toEqual(['', '']);
+    expect(kittyTransmissions(maximumWaitFrame)).toBe(4);
+    expect(maximumWaitFrame).not.toContain('\x1b_Ga=p');
+    expect(tui.fullRedraws).toBe(fullRedraws + 1);
+    for (const time of [1040, 1080, 1120, 1160, 1200]) {
+      clock.advanceTo(time);
+      expect(kittyTransmissions(scrollFrame())).toBe(0);
+    }
+    expect(tui.getScreenLines()[0]).toContain('before-31');
+    clock.advanceTo(1349);
+    expect(await scheduledFrame()).toBe('');
+    clock.advanceTo(1350);
+    expect(kittyTransmissions(await scheduledFrame())).toBe(4);
+    expect(tui.fullRedraws).toBe(fullRedraws + 2);
+    clock.advanceTo(3000);
+    expect(await scheduledFrame()).toBe('');
     expect(clock.timers.size).toBe(0);
   });
 });

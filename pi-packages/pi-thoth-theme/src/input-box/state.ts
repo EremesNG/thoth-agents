@@ -1,4 +1,5 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import { renderWorkingIndicator } from './gradient.ts';
 
 export function createWorkingState(requestRender: () => void) {
   let startedAt: number | undefined;
@@ -12,11 +13,14 @@ export function createWorkingState(requestRender: () => void) {
   }
 
   return {
+    get isWorking() {
+      return startedAt !== undefined;
+    },
     start() {
       if (disposed) return;
       stop();
       startedAt = Date.now();
-      ticker = setInterval(requestRender, 1000);
+      ticker = setInterval(requestRender, 50);
       ticker.unref?.();
       requestRender();
     },
@@ -39,20 +43,22 @@ export function createWorkingState(requestRender: () => void) {
         return styleIdle(truncateToWidth('▲ ready', width, ''));
       }
       const working = 'kind' in indicator && indicator.kind === 'working';
+      const now = Date.now();
       const elapsed =
         working && startedAt !== undefined
-          ? ` · ${Math.max(0, Math.floor((Date.now() - startedAt) / 1000))}s`
+          ? ` · ${Math.max(0, Math.floor((now - startedAt) / 1000))}s`
           : '';
       const nativeWidth = Math.max(1, width - visibleWidth(elapsed));
       const native = indicator.renderInBorder(nativeWidth);
       if (typeof native !== 'string' || visibleWidth(native) === 0) {
         return styleIdle(truncateToWidth('▲ ready', width, ''));
       }
-      return truncateToWidth(
-        `${truncateToWidth(native, nativeWidth, '')}${elapsed}`,
-        width,
-        '',
-      );
+      const fitted = truncateToWidth(native, nativeWidth, '');
+      const label =
+        working && startedAt !== undefined
+          ? renderWorkingIndicator(fitted, now)
+          : fitted;
+      return truncateToWidth(`${label}${elapsed}`, width, '');
     },
     dispose() {
       disposed = true;

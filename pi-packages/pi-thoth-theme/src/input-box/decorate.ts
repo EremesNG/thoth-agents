@@ -12,6 +12,7 @@ import {
   renderPlaceholder,
   wrapContentRow,
 } from './frame.ts';
+import { createCometFrame } from './gradient.ts';
 import type { WorkingState } from './state.ts';
 
 export const MIN_INPUT_BOX_WIDTH = 16;
@@ -110,6 +111,9 @@ export function decorateEditor(
   let fallback = false;
   let top: string | undefined;
   let bottom: string | undefined;
+  let topStatus = '';
+  let topHidden = 0;
+  let bottomHidden = 0;
   // Mouse hit-testing follows the last render's boxed or native geometry.
   let boxRendered = false;
   const accent = (text: string) => deps.theme.fg?.('accent', text) ?? text;
@@ -131,7 +135,8 @@ export function decorateEditor(
         boxRendered = false;
         if (!active || width < MIN_INPUT_BOX_WIDTH)
           return nativeRender(this, width);
-        const innerWidth = Math.floor(width) - 2;
+        const boxWidth = Math.floor(width);
+        const innerWidth = boxWidth - 2;
         const maxPadding = Math.max(0, Math.floor((innerWidth - 1) / 2));
         const paddingX = Math.min(originals.getPaddingX.call(this), maxPadding);
         const contentWidth = Math.max(1, innerWidth - paddingX * 2);
@@ -139,7 +144,7 @@ export function decorateEditor(
         // Native word wrapping recurses on a wide grapheme at width 1. Keep
         // its original geometry when the box plus current padding is unsafe.
         if (layoutWidth < 2) return nativeRender(this, width);
-        outerWidth = Math.floor(width);
+        outerWidth = boxWidth;
         top = undefined;
         bottom = undefined;
         let lines: string[];
@@ -153,14 +158,34 @@ export function decorateEditor(
         if (top === undefined || lines[0] !== top || bottomIndex < 2)
           return nativeRender(this, width);
         const text = originals.getText.call(this);
+        // Height is known after native layout. Reuse the captured status so the
+        // native indicator is not rendered a second time just to color the box.
+        const frame = deps.working.isWorking
+          ? createCometFrame(boxWidth, bottomIndex + 1, Date.now())
+          : undefined;
         lines = lines.map((line, index) => {
-          if (index === 0 || index === bottomIndex) return line;
+          if (index === 0)
+            return frame
+              ? renderInputTop(
+                  boxWidth,
+                  deps.theme,
+                  topStatus,
+                  topHidden,
+                  frame,
+                )
+              : line;
+          if (index === bottomIndex)
+            return frame
+              ? renderInputBottom(boxWidth, deps.theme, bottomHidden, frame)
+              : line;
           if (index > bottomIndex)
             return ` ${truncateToWidth(line, width - 2, '', true)} `;
           return wrapContentRow(
             renderPlaceholder(line, width - 2, deps.theme, text),
             width,
             deps.theme,
+            frame,
+            index,
           );
         });
         boxRendered = true;
@@ -181,6 +206,8 @@ export function decorateEditor(
           inputLabelWidth(outerWidth, hidden),
           (text) => deps.theme.fg?.('muted', text) ?? text,
         );
+        topStatus = status;
+        topHidden = hidden;
         top = renderInputTop(outerWidth, deps.theme, status, hidden);
         return top;
       },
@@ -194,6 +221,7 @@ export function decorateEditor(
           (hidden > 0 && visibleWidth(`↓ ${hidden} more`) > outerWidth - 6)
         )
           return originals.renderBottomBorder.call(this, width, hidden);
+        bottomHidden = hidden;
         bottom = renderInputBottom(outerWidth, deps.theme, hidden);
         return bottom;
       },

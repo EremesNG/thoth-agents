@@ -1,6 +1,10 @@
 import {
   CURSOR_MARKER,
   Editor,
+  foregroundAnsi,
+  getTerminalColorMode,
+  rgbColor,
+  stripTerminalSequences,
   type TUI,
   type TuiMouseEvent,
   visibleWidth,
@@ -75,8 +79,9 @@ describe('input-box mouse geometry', () => {
     expect(editor.handleMouse(event)).toBeUndefined();
   });
 
-  it('translates only local column/width, preserves results, and forwards fallback events unchanged', () => {
-    const { editor, decorate } = setup();
+  it('translates only local column/width, preserves results, and forwards working fallback events unchanged', () => {
+    vi.useFakeTimers();
+    const { editor, deps, decorate } = setup();
     const result = {
       handled: true,
       capture: true,
@@ -86,6 +91,7 @@ describe('input-box mouse geometry', () => {
     const handler = vi.fn((_event: TuiMouseEvent) => result);
     editor.handleMouse = handler;
     const decoration = decorate();
+    deps.working.start();
     const event = {
       ...mouse({
         type: 'wheel',
@@ -122,8 +128,8 @@ describe('input-box mouse geometry', () => {
     expect(editor.handleMouse).toBe(handler);
   });
 
-  it('keeps autocomplete below the box, aligned with text, and selects the clicked item', async () => {
-    const { editor, tui, decorate } = setup();
+  it('keeps autocomplete unchanged below the animated box and selects the clicked item', async () => {
+    const { editor, tui, deps, decorate } = setup();
     editor.setPaddingX(2);
     decorate();
     const shown = new Promise<void>((resolve) =>
@@ -162,6 +168,13 @@ describe('input-box mouse geometry', () => {
         .every((line) => !line.startsWith('│') && !line.endsWith('│')),
     ).toBe(true);
     expect(lines.map(visibleWidth)).toEqual([40, 40, 40, 40, 40]);
+    deps.working.start();
+    const animated = editor.render(40);
+    expect(animated.slice(3)).toEqual(lines.slice(3));
+    expect(animated.map(stripTerminalSequences)).toEqual(
+      lines.map(stripTerminalSequences),
+    );
+    expect(animated.map(visibleWidth)).toEqual([40, 40, 40, 40, 40]);
     expect(editor.handleMouse(mouse({ x: 5, y: 4, height: 5 }))).toEqual({
       handled: true,
       focus: true,
@@ -204,6 +217,43 @@ describe('input-box mouse geometry', () => {
 });
 
 describe('input-box editor composition', () => {
+  it('animates only the working box, preserving native fallback and byte-identical idle output', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { editor, deps, decorate } = setup();
+    deps.theme.fg.mockImplementation(
+      (token, text) => `\x1b[${token === 'accent' ? '33' : '2'}m${text}\x1b[0m`,
+    );
+    editor.setPaddingX(2);
+    editor.setText('界 ─ │ ╭ ╮ ╰ ╯');
+    const nativeNarrow = editor.render(10);
+    decorate();
+    const idle = editor.render(40);
+    expect(idle[0]).toContain('\x1b[33m╭─ ');
+    expect(idle[0]).toContain('\x1b[2m▲ ready\x1b[0m');
+    deps.working.start();
+    const animated = editor.render(40);
+    expect(animated).not.toEqual(idle);
+    const head = foregroundAnsi(rgbColor(242, 201, 76), getTerminalColorMode());
+    expect(animated[0].startsWith(`${head}╭`)).toBe(true);
+    expect(animated.map(stripTerminalSequences)).toEqual(
+      idle.map(stripTerminalSequences),
+    );
+    expect(animated.map(visibleWidth)).toEqual(idle.map(visibleWidth));
+    expect(animated[0]).toContain('\x1b[2m▲ ready\x1b[0m');
+    expect(animated[1]).toContain(
+      `界 ─ │ ╭ ╮ ╰ ╯${CURSOR_MARKER}\x1b[7m \x1b[0m`,
+    );
+    expect(editor.render(10)).toEqual(nativeNarrow);
+    vi.advanceTimersByTime(1000);
+    expect(editor.render(40)).not.toEqual(animated);
+    deps.working.end();
+    expect(editor.render(40)).toEqual(idle);
+    vi.advanceTimersByTime(1000);
+    expect(editor.render(40)).toEqual(idle);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('falls back rather than clipping a large scroll count at the minimum width', () => {
     const { editor, decorate } = setup();
     editor.setText(Array.from({ length: 1006 }, () => 'x').join('\n'));
@@ -223,16 +273,24 @@ describe('input-box editor composition', () => {
     expect(editor.render).toBe(replacement);
   });
 
-  it('keeps native scroll indicators in full-width rounded borders', () => {
-    const { editor, decorate } = setup();
+  it('keeps native scroll indicators in full-width animated rounded borders', () => {
+    vi.useFakeTimers();
+    const { editor, deps, decorate } = setup();
     editor.setText(
       Array.from({ length: 20 }, (_, index) => `line ${index}`).join('\n'),
     );
     decorate();
     expect(editor.render(40)[0]).toContain('↑ 14 more');
     for (let index = 0; index < 20; index++) editor.handleInput('\x1b[A');
+    const idle = editor.render(40);
+    deps.working.start();
     const lines = editor.render(40);
-    expect(lines.at(-1)).toMatch(/^╰─ ↓ 14 more ─+╯$/);
+    expect(stripTerminalSequences(lines.at(-1) ?? '')).toMatch(
+      /^╰─ ↓ 14 more ─+╯$/,
+    );
+    expect(lines.map(stripTerminalSequences)).toEqual(
+      idle.map(stripTerminalSequences),
+    );
     expect(lines.every((line) => visibleWidth(line) === 40)).toBe(true);
   });
 

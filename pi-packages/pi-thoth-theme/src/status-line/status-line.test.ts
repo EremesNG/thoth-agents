@@ -7,6 +7,7 @@ import {
 import {
   type Component,
   CURSOR_MARKER,
+  stripTerminalSequences,
   type TUI,
   visibleWidth,
 } from '@earendil-works/pi-tui';
@@ -177,7 +178,7 @@ describe('registerStatusLine', () => {
     return editor;
   }
 
-  it('renders native working/retry status, ticks elapsed seconds, and cleans up lifecycle ownership', () => {
+  it('animates working status at twenty fps, preserves native retry, and cleans up lifecycle ownership', () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     const mocks = createMocks();
@@ -192,16 +193,21 @@ describe('registerStatusLine', () => {
       } as unknown as Parameters<CustomEditor['setWorkingStatusIndicator']>[0]);
     };
     try {
-      component.render(80);
+      const footer = component.render(80);
       attach('working', '◭ working…');
       const queuedStart = [...(mocks.eventHandlers.get('agent_start') ?? [])];
       for (const handler of queuedStart) handler();
-      expect(editor.render(80)[0]).toContain('◭ working… · 0s');
+      expect(stripTerminalSequences(editor.render(80)[0])).toContain(
+        '◭ working… · 0s',
+      );
       mocks.tui.requestRender.mockClear();
       vi.advanceTimersByTime(2500);
-      expect(editor.render(80)[0]).toContain('◭ working… · 2s');
-      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
-      expect(component.render(80)).toHaveLength(1);
+      expect(stripTerminalSequences(editor.render(80)[0])).toContain(
+        '◭ working… · 2s',
+      );
+      expect(mocks.tui.requestRender).toHaveBeenCalledTimes(50);
+      expect(component.render(80)).toBe(footer);
+      expect(mocks.sessionManager.getEntries).toHaveBeenCalledTimes(1);
       attach('retry', 'retrying…');
       expect(editor.render(80)[0]).toContain('retrying…');
       expect(editor.render(80)[0]).not.toContain('2s');
@@ -306,6 +312,7 @@ describe('registerStatusLine', () => {
     const mocks = createMocks();
     const editor = createEditor(mocks);
     const originalRender = editor.render;
+    const native = editor.render(120);
     mocks.tui.getFocusedComponent.mockReturnValue(editor);
     const component = createFooter(mocks, {
       ...defaultConfig,
@@ -316,7 +323,11 @@ describe('registerStatusLine', () => {
       for (const handler of mocks.eventHandlers.get('agent_start') ?? [])
         handler();
       expect(editor.render).toBe(originalRender);
-      expect(editor.render(120)[0]).not.toContain('╭');
+      expect(editor.render(120)).toEqual(native);
+      mocks.tui.requestRender.mockClear();
+      vi.advanceTimersByTime(2500);
+      expect(editor.render(120)).toEqual(native);
+      expect(mocks.tui.requestRender).not.toHaveBeenCalled();
       expect(component.render(120)).toBe(footer);
       expect(mocks.tui.getFocusedComponent).not.toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);

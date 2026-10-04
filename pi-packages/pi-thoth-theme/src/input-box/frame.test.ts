@@ -1,4 +1,10 @@
-import { CURSOR_MARKER, visibleWidth } from '@earendil-works/pi-tui';
+import {
+  CURSOR_MARKER,
+  foregroundAnsi,
+  rgbColor,
+  stripTerminalSequences,
+  visibleWidth,
+} from '@earendil-works/pi-tui';
 import { describe, expect, it, vi } from 'vitest';
 import {
   renderInputBottom,
@@ -6,10 +12,61 @@ import {
   renderPlaceholder,
   wrapContentRow,
 } from './frame.ts';
+import { createCometFrame } from './gradient.ts';
 
 const theme = { fg: vi.fn((_token: string, text: string) => text) };
 
 describe('input-box frame', () => {
+  it('colors every perimeter edge without changing labels, content, cursor, or line widths', () => {
+    const accentTheme = {
+      fg: (_token: string, text: string) => `\x1b[33m${text}\x1b[0m`,
+    };
+    const label = '\x1b[36m╭ status ─\x1b[0m';
+    const cursor = `${CURSOR_MARKER}\x1b[7m界\x1b[0m`;
+    const idle = [
+      renderInputTop(40, accentTheme, label, 12),
+      wrapContentRow(cursor, 40, accentTheme),
+      wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, accentTheme),
+      renderInputBottom(40, accentTheme, 34),
+    ];
+    const head = foregroundAnsi(rgbColor(242, 201, 76), 'truecolor');
+    // Independent worked perimeter: top 0..39, right 40..41,
+    // bottom 42..81 (right to left), left 82..83 (bottom to top).
+    for (const [index, row, glyph] of [
+      [0, 0, '╭'],
+      [39, 0, '╮'],
+      [40, 1, '│'],
+      [41, 2, '│'],
+      [42, 3, '╯'],
+      [81, 3, '╰'],
+      [82, 2, '│'],
+      [83, 1, '│'],
+    ] as const) {
+      const frame = createCometFrame(
+        40,
+        4,
+        Math.ceil((index * 4000) / 84),
+        'truecolor',
+      );
+      const animated = [
+        renderInputTop(40, accentTheme, label, 12, frame),
+        wrapContentRow(cursor, 40, accentTheme, frame, 1),
+        wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, accentTheme, frame, 2),
+        renderInputBottom(40, accentTheme, 34, frame),
+      ];
+      expect(animated[row]).toContain(`${head}${glyph}`);
+      expect(animated.map(stripTerminalSequences)).toEqual(
+        idle.map(stripTerminalSequences),
+      );
+      expect(animated.map(visibleWidth)).toEqual([40, 40, 40, 40]);
+      expect(animated[0]).toContain(label);
+      expect(animated[0]).toContain('\x1b[33m↑ 12 more');
+      expect(animated[3]).toContain('\x1b[33m↓ 34 more');
+      expect(animated[1]).toContain(cursor);
+      expect(animated[2]).toContain('content ─ │ ╭ ╮ ╰ ╯');
+    }
+  });
+
   it('renders an accent rounded box with a top-left label and cursor intact', () => {
     const cursor = `${CURSOR_MARKER}\x1b[7mA\x1b[0m`;
     const lines = [

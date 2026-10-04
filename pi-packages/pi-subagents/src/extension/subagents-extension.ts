@@ -12,6 +12,10 @@ import {
   sendSubagentCompletionMessage,
 } from '../render/completion-message.js';
 import {
+  renderSubagentQuestionMessage,
+  sendSubagentQuestionMessage,
+} from '../render/question-message.js';
+import {
   preloadPiComponentsForSubagentRendering,
   registerSubagentExternalToolDefinition,
 } from '../thread-view.js';
@@ -59,6 +63,10 @@ export default function subagentsExtension(pi: any): void {
     'subagent-completion',
     renderSubagentCompletionMessage,
   );
+  pi.registerMessageRenderer?.(
+    'subagent-question',
+    renderSubagentQuestionMessage,
+  );
   const widgetInputSuspensions = new Set<string>();
   let activeSessionId: string | undefined;
   let activeSessionOwner: AtelierSessionOwner | undefined;
@@ -100,6 +108,21 @@ export default function subagentsExtension(pi: any): void {
     }),
     (parentSessionId, taskId, message) =>
       usageEvents?.recordAssistantMessage(parentSessionId, taskId, message),
+    (task, question) => {
+      if (!task.session_id || task.session_id !== activeSessionId)
+        throw new Error(
+          'The originating parent Pi session is no longer active.',
+        );
+      try {
+        sendSubagentQuestionMessage(pi, task, question);
+      } catch (error) {
+        if (isStaleContextError(error))
+          throw new Error(
+            'Parent Pi session shutdown or replacement prevents question delivery.',
+          );
+        throw error;
+      }
+    },
   );
   registerSubagentTools(pi, manager, process.cwd());
 

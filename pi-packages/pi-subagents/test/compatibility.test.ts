@@ -113,7 +113,10 @@ describe('compatibility smoke', () => {
 
       extension(pi);
 
-      expect(calls[0]).toBe('renderer:subagent-completion');
+      expect(calls.slice(0, 2)).toEqual([
+        'renderer:subagent-completion',
+        'renderer:subagent-question',
+      ]);
       expect(tools).toEqual([
         'subagent_list_agents',
         'subagent_run',
@@ -122,6 +125,7 @@ describe('compatibility smoke', () => {
         'subagent_list_tasks',
         'subagent_cancel',
         'subagent_send_message',
+        'subagent_reply',
       ]);
       expect(events).toEqual(['session_start', 'session_shutdown']);
       for (const tool of definitions) {
@@ -165,6 +169,7 @@ describe('compatibility smoke', () => {
           'subagent_list_tasks',
           'subagent_cancel',
           'subagent_send_message',
+          'subagent_reply',
         ]);
         expect(
           definitions.every((tool) => tool.exposure === 'model-only'),

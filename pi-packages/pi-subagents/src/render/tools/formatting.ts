@@ -132,6 +132,18 @@ export function taskResponseText(
   return '';
 }
 
+function formatOrchestratorUpdates(task: SubagentTask): string[] {
+  return [
+    ...(task.pending_questions ?? []).map(
+      (question) =>
+        `pending question · request_id: ${question.request_id} · ${clip(question.message)}`,
+    ),
+    ...(task.progress_updates ?? [])
+      .slice(-5)
+      .map((update) => `progress: ${clip(update.message)}`),
+  ];
+}
+
 export function formatTask(task: SubagentTask): string {
   const when = task.last_activity_at ?? task.started_at ?? task.created_at;
   const usage = formatUsage(task);
@@ -148,6 +160,7 @@ export function formatTask(task: SubagentTask): string {
       ? `pending messages: ${task.pending_message_count ?? 0}`
       : `undelivered messages: ${task.undelivered_message_count ?? 0}`,
     `last: ${task.last_activity ?? 'n/a'}${when ? ` at ${when}` : ''}`,
+    ...formatOrchestratorUpdates(task),
   ].filter(Boolean) as string[];
   const response = taskResponseText(task);
   if (response) {
@@ -167,6 +180,7 @@ function formatTaskListItem(task: SubagentTask): string {
   const lines = [
     `subagent: ${task.agent} · task: ${taskLabel} · status: ${task.status} · attempt: ${task.attempt ?? 1}`,
     modelEffortLine(task),
+    ...formatOrchestratorUpdates(task),
     usage ? `usage: ${usage}` : undefined,
     `last: ${task.last_activity ?? 'n/a'}${when ? ` at ${when}` : ''}`,
     hasPreview
@@ -196,6 +210,10 @@ export function formatTaskListSummary(
     `Listed ${tasks.length} subagent task(s).`,
     `Most recent: ${formatTaskLabel(mostRecent)} · task_id: ${mostRecent.id} · model: ${mostRecent.model ?? 'default/current'} · effort: ${mostRecent.effort ?? 'default/current'} · status: ${mostRecent.status}`,
     `List view: collapsed · ${resolveExpandHint('to expand', context)}`,
+    ...tasks.flatMap((task) => {
+      const updates = formatOrchestratorUpdates(task);
+      return updates.length ? [`task_id: ${task.id}`, ...updates] : [];
+    }),
   ].join('\n');
 }
 

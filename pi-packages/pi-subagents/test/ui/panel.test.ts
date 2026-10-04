@@ -2408,52 +2408,49 @@ describe('subagents panel and extension ui', () => {
     else delete (process.stdout as any).rows;
   });
 
-  it.each([160, 76, 40])(
-    'renders fallback model and usage on separate width-bounded lines at width %i',
-    (width) => {
-      const task: SubagentTask = {
-        id: 'subtask_fallback_model_usage',
-        agent: 'analyst',
-        mode: 'task',
-        status: 'completed',
-        task: 'show execution metadata',
-        created_at: '2026-01-01T00:00:00.000Z',
-        ended_at: '2026-01-01T00:00:10.000Z',
-        model: 'mock/model',
-        usage: {
-          input: 1000,
-          output: 500,
-          cacheRead: 0,
-          cacheWrite: 0,
-          cost: 0,
-          contextTokens: 0,
-          turns: 2,
-        },
-      };
-      const panel = new SubagentsHistoryPanel(
-        [task],
-        { fg: (_name: string, text: string) => text },
-        () => undefined,
-        () => false,
-        (text) => stripAnsi(text).length,
-        (text, limit) => (text.length > limit ? text.slice(0, limit) : text),
-        {},
-        40,
-      );
-      const rendered = panel.render(width).map(stripAnsi);
-      const modelRow = rendered.findIndex((line) =>
-        line.includes('│ model: mock/model'),
-      );
+  it.each([
+    160, 76, 40,
+  ])('renders fallback model and usage on separate width-bounded lines at width %i', (width) => {
+    const task: SubagentTask = {
+      id: 'subtask_fallback_model_usage',
+      agent: 'analyst',
+      mode: 'task',
+      status: 'completed',
+      task: 'show execution metadata',
+      created_at: '2026-01-01T00:00:00.000Z',
+      ended_at: '2026-01-01T00:00:10.000Z',
+      model: 'mock/model',
+      usage: {
+        input: 1000,
+        output: 500,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0,
+        contextTokens: 0,
+        turns: 2,
+      },
+    };
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => stripAnsi(text).length,
+      (text, limit) => (text.length > limit ? text.slice(0, limit) : text),
+      {},
+      40,
+    );
+    const rendered = panel.render(width).map(stripAnsi);
+    const modelRow = rendered.findIndex((line) =>
+      line.includes('│ model: mock/model'),
+    );
 
-      expect(modelRow).toBeGreaterThan(0);
-      expect(rendered[modelRow]).toMatch(/│ model: mock\/model\s+│$/);
-      expect(rendered[modelRow + 1]).toMatch(
-        /│ usage: 2 turns ↑1\.0k ↓500\s+│$/,
-      );
-      expect(rendered).toHaveLength(40);
-      expect(rendered.every((line) => line.length <= width)).toBe(true);
-    },
-  );
+    expect(modelRow).toBeGreaterThan(0);
+    expect(rendered[modelRow]).toMatch(/│ model: mock\/model\s+│$/);
+    expect(rendered[modelRow + 1]).toMatch(/│ usage: 2 turns ↑1\.0k ↓500\s+│$/);
+    expect(rendered).toHaveLength(40);
+    expect(rendered.every((line) => line.length <= width)).toBe(true);
+  });
 
   it.each([
     undefined,
@@ -2466,37 +2463,34 @@ describe('subagents panel and extension ui', () => {
       contextTokens: 0,
       turns: 0,
     },
-  ])(
-    'omits empty fallback usage and keeps the default model (case %#)',
-    (usage) => {
-      const task: SubagentTask = {
-        id: 'subtask_fallback_without_usage',
-        agent: 'analyst',
-        mode: 'task',
-        status: 'queued',
-        task: 'show default model',
-        created_at: '2026-01-01T00:00:00.000Z',
-        usage,
-      };
-      const panel = new SubagentsHistoryPanel(
-        [task],
-        { fg: (_name: string, text: string) => text },
-        () => undefined,
-        () => false,
-        (text) => stripAnsi(text).length,
-        (text, width) => (text.length > width ? text.slice(0, width) : text),
-      );
-      const rendered = panel.render(120).map(stripAnsi);
-      const modelRow = rendered.findIndex((line) =>
-        line.includes('│ model: default/current'),
-      );
+  ])('omits empty fallback usage and keeps the default model (case %#)', (usage) => {
+    const task: SubagentTask = {
+      id: 'subtask_fallback_without_usage',
+      agent: 'analyst',
+      mode: 'task',
+      status: 'queued',
+      task: 'show default model',
+      created_at: '2026-01-01T00:00:00.000Z',
+      usage,
+    };
+    const panel = new SubagentsHistoryPanel(
+      [task],
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      () => false,
+      (text) => stripAnsi(text).length,
+      (text, width) => (text.length > width ? text.slice(0, width) : text),
+    );
+    const rendered = panel.render(120).map(stripAnsi);
+    const modelRow = rendered.findIndex((line) =>
+      line.includes('│ model: default/current'),
+    );
 
-      expect(modelRow).toBeGreaterThan(0);
-      expect(rendered[modelRow]).toMatch(/│ model: default\/current\s+│$/);
-      expect(rendered[modelRow + 1]).toContain('╭─ delegated task');
-      expect(rendered.join('\n')).not.toContain('usage:');
-    },
-  );
+    expect(modelRow).toBeGreaterThan(0);
+    expect(rendered[modelRow]).toMatch(/│ model: default\/current\s+│$/);
+    expect(rendered[modelRow + 1]).toContain('╭─ delegated task');
+    expect(rendered.join('\n')).not.toContain('usage:');
+  });
 
   it('renders fallback execution flow with boxed section headers and no background fills for tool lines', () => {
     const task: SubagentTask = {
@@ -2582,91 +2576,88 @@ describe('subagents panel and extension ui', () => {
     expect(rendered).not.toContain('Preparing for response');
   });
 
-  it.each([160, 76])(
-    'keeps fallback usage non-clickable and preserves scrolled execution links at width %i',
-    (width) => {
-      const tasks: SubagentTask[] = [
-        {
-          id: 'subtask_fallback_parent',
-          agent: 'analyst',
-          mode: 'task',
-          status: 'completed',
-          task: 'coordinate pipeline',
-          created_at: '2026-01-01T00:00:00.000Z',
-          ended_at: '2026-01-01T00:00:10.000Z',
-          model: 'mock/model',
-          usage: {
-            input: 1000,
-            output: 500,
-            cacheRead: 0,
-            cacheWrite: 0,
-            cost: 0,
-            contextTokens: 0,
-            turns: 2,
-          },
-          transcript: [
-            ...Array.from({ length: 25 }, (_, i) => `execution line ${i}`),
-            'subagent usage started',
-          ].join('\n'),
+  it.each([
+    160, 76,
+  ])('keeps fallback usage non-clickable and preserves scrolled execution links at width %i', (width) => {
+    const tasks: SubagentTask[] = [
+      {
+        id: 'subtask_fallback_parent',
+        agent: 'analyst',
+        mode: 'task',
+        status: 'completed',
+        task: 'coordinate pipeline',
+        created_at: '2026-01-01T00:00:00.000Z',
+        ended_at: '2026-01-01T00:00:10.000Z',
+        model: 'mock/model',
+        usage: {
+          input: 1000,
+          output: 500,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
+          contextTokens: 0,
+          turns: 2,
         },
-        {
-          id: 'subtask_fallback_usage_agent',
-          agent: 'usage',
-          display_name: 'Usage Reporter',
-          mode: 'task',
-          status: 'running',
-          task: 'report execution usage',
-          created_at: '2026-01-01T00:00:00.000Z',
-        },
-      ];
-      const panel = new SubagentsHistoryPanel(
-        tasks,
-        { fg: (_name: string, text: string) => text },
-        () => undefined,
-        (data, key) => data === key,
-        (text) => stripAnsi(text).length,
-        (text, limit) => (text.length > limit ? text.slice(0, limit) : text),
-        {},
-        20,
-      );
-      const tail = panel.render(width).map(stripAnsi);
-      expect(tail).toHaveLength(20);
-      expect(tail.join('\n')).toContain('subagent usage started');
-      if (width === 160) expect(tail.at(-1)).toContain('[22-36/36]');
+        transcript: [
+          ...Array.from({ length: 25 }, (_, i) => `execution line ${i}`),
+          'subagent usage started',
+        ].join('\n'),
+      },
+      {
+        id: 'subtask_fallback_usage_agent',
+        agent: 'usage',
+        display_name: 'Usage Reporter',
+        mode: 'task',
+        status: 'running',
+        task: 'report execution usage',
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+    const panel = new SubagentsHistoryPanel(
+      tasks,
+      { fg: (_name: string, text: string) => text },
+      () => undefined,
+      (data, key) => data === key,
+      (text) => stripAnsi(text).length,
+      (text, limit) => (text.length > limit ? text.slice(0, limit) : text),
+      {},
+      20,
+    );
+    const tail = panel.render(width).map(stripAnsi);
+    expect(tail).toHaveLength(20);
+    expect(tail.join('\n')).toContain('subagent usage started');
+    if (width === 160) expect(tail.at(-1)).toContain('[22-36/36]');
 
-      panel.handleInput('home');
-      const start = panel.render(width).map(stripAnsi);
-      const modelRow = start.findIndex((line) =>
-        line.includes('│ model: mock/model'),
-      );
-      expect(modelRow).toBeGreaterThan(0);
-      expect(start[modelRow + 1]).toMatch(
-        /│ usage: 2 turns ↑1\.0k ↓500\s+│$/,
-      );
-      expect(start.join('\n')).not.toContain('subagent usage started');
-      expect(panel.handleMouse({ type: 'click', row: modelRow + 1 })).toEqual({
-        handled: true,
-        focus: true,
-      });
-      expect(panel.getRenderDebugState().selectedIndex).toBe(0);
+    panel.handleInput('home');
+    const start = panel.render(width).map(stripAnsi);
+    const modelRow = start.findIndex((line) =>
+      line.includes('│ model: mock/model'),
+    );
+    expect(modelRow).toBeGreaterThan(0);
+    expect(start[modelRow + 1]).toMatch(/│ usage: 2 turns ↑1\.0k ↓500\s+│$/);
+    expect(start.join('\n')).not.toContain('subagent usage started');
+    expect(panel.handleMouse({ type: 'click', row: modelRow + 1 })).toEqual({
+      handled: true,
+      focus: true,
+    });
+    expect(panel.getRenderDebugState().selectedIndex).toBe(0);
 
-      panel.handleInput('end');
-      const end = panel.render(width).map(stripAnsi);
-      expect(end).toHaveLength(20);
-      expect(end.every((line) => line.length <= width)).toBe(true);
-      const flowRow = end.findIndex((line) =>
-        line.includes('subagent usage started'),
-      );
-      expect(flowRow).toBeGreaterThan(0);
-      expect(panel.handleMouse({ type: 'click', row: flowRow })).toEqual({
-        handled: true,
-        focus: true,
-        render: true,
-      });
-      expect(panel.getRenderDebugState().selectedIndex).toBe(1);
-      expect(panel.render(width).join('\n')).toContain('Usage Reporter');
-    },
-  );
+    panel.handleInput('end');
+    const end = panel.render(width).map(stripAnsi);
+    expect(end).toHaveLength(20);
+    expect(end.every((line) => line.length <= width)).toBe(true);
+    const flowRow = end.findIndex((line) =>
+      line.includes('subagent usage started'),
+    );
+    expect(flowRow).toBeGreaterThan(0);
+    expect(panel.handleMouse({ type: 'click', row: flowRow })).toEqual({
+      handled: true,
+      focus: true,
+      render: true,
+    });
+    expect(panel.getRenderDebugState().selectedIndex).toBe(1);
+    expect(panel.render(width).join('\n')).toContain('Usage Reporter');
+  });
 
   it('navigates to referenced subagent execution on mouse click from a fallback flow row', () => {
     const now = new Date().toISOString();

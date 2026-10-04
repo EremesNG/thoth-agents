@@ -23,6 +23,21 @@ function compactErrorMetadataForDetails(
   return safeErrorMetadataDetails(task.error_metadata as any);
 }
 
+function orchestratorDetails(task: SubagentTask): Record<string, unknown> {
+  const pending = task.pending_questions ?? [];
+  return {
+    pending_question_count: pending.length,
+    pending_questions: pending.map(({ request_id, message, created_at }) => ({
+      request_id,
+      message,
+      created_at,
+    })),
+    progress_updates: (task.progress_updates ?? [])
+      .slice(-5)
+      .map((update) => ({ ...update })),
+  };
+}
+
 export function compactTaskForToolResult(
   task: SubagentTask,
 ): Record<string, any> {
@@ -32,7 +47,11 @@ export function compactTaskForToolResult(
     ...compact
   } = task;
   const error_metadata = compactErrorMetadataForDetails(task);
-  return error_metadata ? { ...compact, error_metadata } : compact;
+  return {
+    ...compact,
+    ...orchestratorDetails(task),
+    ...(error_metadata ? { error_metadata } : {}),
+  };
 }
 
 export function compactTaskWithoutFinalText(
@@ -47,7 +66,11 @@ export function compactTaskWithoutFinalText(
     ...compact
   } = task;
   const error_metadata = compactErrorMetadataForDetails(task);
-  return error_metadata ? { ...compact, error_metadata } : compact;
+  return {
+    ...compact,
+    ...orchestratorDetails(task),
+    ...(error_metadata ? { error_metadata } : {}),
+  };
 }
 
 export function compactResultDetails<T extends Record<string, any>>(

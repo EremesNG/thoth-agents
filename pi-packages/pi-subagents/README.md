@@ -10,6 +10,7 @@ Requires Pi `>=0.99.0`; development SDK/TUI dependencies are pinned to `0.99.1`,
 - `subagent_run` for task-mode or background delegation to one agent per call.
 - Optional `subagent_continue` for resuming the exact persisted nested session with optional mode/model/effort overrides when `enable_continue: true`.
 - `subagent_send_message` for live same-parent steering of owned background tasks on supported Pi runtimes.
+- Explicitly selected child `ask_orchestrator` for blocking questions and non-blocking progress, with parent `subagent_reply` (enabled by default).
 - Status/result/list/cancel tools for delegated tasks.
 - Isolated in-memory agent sessions for each subagent run.
 - Subagent markdown used as system prompt, with delegated task/context as the user prompt.
@@ -150,6 +151,8 @@ Use standalone `tools: "*"` to follow the parent's currently active eligible too
 
 Standalone `*` excludes `subagent_*`, `ask_user_question`, `todo`, `AskClaude`, `AskAntigravity`, `bg_delegate`, `bg_run_pi_attested`, `bg_result`, `fusion_reason`, `fusion_investigate`, `fusion_research`, and `fusion_validate`. The delegation names may still be selected through explicit lists or other glob patterns; reserved orchestration controls stay blocked. Shell-job tools from `@thoth-agents/pi-background-tasks` (including `bg_task_spawn`, `bg_task_watch`, and `bg_status`) remain selectable under `*`; its lifecycle passes through by default, and child jobs stop with the child.
 
+`ask_orchestrator` is a child-only exception: name it explicitly in the definition's `tools` or resolved `default_tools`. Standalone `*` and every glob (including `ask_*` and mixed `*`) never match it. For example, `tools: read, ask_orchestrator` selects it when enabled. If disabled, an explicitly selected name is dropped and reported like any missing implementation; an all-missing selection still fails.
+
 These exclusions are not a sandbox: shell and MCP tools can still launch agents indirectly.
 
 For every selection form—explicit lists, globs, mixed selectors, and standalone `*`—a selected tool without a child-loadable implementation is dropped after session creation, and the child runs with the remaining tools. Dropped names are persisted as `dropped_tools` in task and attempt history and shown as a compact warning on running/queued widget cards and in status, result, and completion notifications; they are never listed in the child prompt. If every selected tool is missing, launch fails with the missing-implementation diagnostic. All selections still reject unexpected extra child tools, and unrelated startup failures remain errors.
@@ -222,6 +225,8 @@ The same JSON shape is valid globally or project-locally; place it only in the s
   "default_effort": "medium",
   "default_mode": "background",
   "enable_continue": false,
+  "enable_ask_orchestrator": true,
+  "ask_timeout_ms": 600000,
   "timeout_ms": 1200000,
   "stall_timeout_ms": 240000,
   "max_concurrency": 5,
@@ -260,6 +265,8 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `default_effort` | current orchestrator effort | Fallback thinking effort. Also accepts `default_thinking_level` or `thinkingLevel`. |
 | `default_mode` | `background` | Fallback execution mode when neither the invocation nor the selected definition sets one. Accepts `task` or `background`. |
 | `enable_continue` | `false` | Opt-in gate for new continuations and `subagent_continue` tool exposure. Project values override global values; changing it requires `/reload` or restart before tool availability changes. |
+| `enable_ask_orchestrator` | `true` | Gate for explicitly selected child `ask_orchestrator` and parent `subagent_reply`. Follows the global/project cascade; `/reload` or restart after changes to update parent tool exposure. |
+| `ask_timeout_ms` | `600000` | Positive integer reply timeout per question (10 minutes). Waiting suspends `stall_timeout_ms`, but still counts toward total `timeout_ms`. |
 | `model_profiles` | `{}` | Per-agent model/effort overrides scoped to matching definitions. Project-local profiles apply to project-local definitions; global profiles apply to global definitions. |
 | `timeout_ms` | `1200000` | Total timeout per subagent task (20 minutes). |
 | `stall_timeout_ms` | `240000` | Inactivity timeout for a subagent session (4 minutes). |
@@ -348,6 +355,7 @@ Useful event names:
 | `subagent_continue` | Enabled only when `enable_continue: true`. Resumes a completed, failed, or cancelled task in the same persisted nested Pi session, with an optional continuation-mode override. |
 | `subagent_status` | Get status for a delegated task. |
 | `subagent_send_message` | Queue a live message for an owned running background task. |
+| `subagent_reply` | When `enable_ask_orchestrator: true`, answer an outstanding child question owned by the current parent Pi session. |
 | `subagent_result` | Read the result for a delegated task. |
 | `subagent_list_tasks` | List active and persisted delegated tasks for the current cwd. |
 | `subagent_cancel` | Cancel a running delegated task. |
@@ -466,6 +474,32 @@ Live-message requirements, visibility, and lifecycle:
 - Pending queue entries are discarded on completion, cancellation, shutdown, restart, or continuation; they are not replayed into a new attempt.
 - Message text is private to the owning task detail timeline and persisted task-detail snapshot. Lists, widgets, completion notifications, result summaries, logs, and unrelated parent sessions expose only safe counts/metadata.
 - Live task-mode rendering shows the latest three safe activity labels; live background rendering shows one current activity only.
+
+### `subagent_reply`
+
+```ts
+{ task_id: "subtask_analyst_...", request_id: "question-uuid", message: "Keep runtime scope only." }
+```
+
+Only the exact originating parent Pi session may reply. `request_id` may be omitted only when that task has exactly one pending question. Unknown tasks, unknown/stale requests, ambiguous replies, unavailable caller identity, foreign sessions, and empty replies return clear errors without consuming a question. A successful reply resolves that child tool call with the reply text; it is not a steering message or a new child session.
+
+Questions arrive as automated `subagent-question` messages with task id, agent, UUID request id, and question text. They trigger a parent turn using follow-up delivery, like completion notifications. They are subagent input, **not user messages or user authorization**. The orchestrator may ask the human a material decision with its own user-question tool before answering through `subagent_reply`.
+
+## Tool exposed only to selected children
+
+### `ask_orchestrator`
+
+```ts
+{ kind: "question", message: "Does the approved scope include a migration?" }
+{ kind: "progress", message: "Discovery complete; implementation is underway." }
+```
+
+- The tool is injected in-process only when explicitly selected and `enable_ask_orchestrator` is true; it is never inherited through `*` or globs and is not registered for the root.
+- `question` blocks until the parent replies, and the child may ask repeatedly in the same live session. Replies are correlated by task id and UUID request id.
+- Each question rejects on `ask_timeout_ms` expiry, task cancellation, or session shutdown. Waiting suspends stall inactivity (`stall_timeout_ms`); the inactivity budget resumes after the last pending question ends. Total `timeout_ms` continues, so long human escalation can still exhaust the task's total budget.
+- `progress` returns immediately and keeps the latest five `progress_updates` on the task; it never injects a parent message or triggers a turn. The widget shows the latest progress update.
+- `subagent_status` and `subagent_list_tasks` expose `pending_question_count`, `pending_questions` (`request_id`, `message`, `created_at`), and recent `progress_updates` in compact details and text. Pending questions are live-only and cannot be answered after the parent session ends.
+- Use questions for material alignment or decisions, not as a substitute for the child's own discovery, and never to delegate. This channel does not change the separate human interaction bridge described below.
 
 ## Commands and shortcuts
 

@@ -392,6 +392,47 @@ describe('config and workflow loading', () => {
     ).toBe('task');
   });
 
+  it('enables orchestrator questions by default and cascades the reply timeout and feature gate', () => {
+    expect(readSubagentsConfig(tmp)).toMatchObject({
+      enable_ask_orchestrator: true,
+      ask_timeout_ms: 600000,
+    });
+    const agentDir = path.join(tmp, 'global-agent');
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents.json'),
+      JSON.stringify({ enable_ask_orchestrator: false, ask_timeout_ms: 12000 }),
+    );
+    withAgentDir(agentDir, () => {
+      expect(readSubagentsConfig(tmp)).toMatchObject({
+        enable_ask_orchestrator: false,
+        ask_timeout_ms: 12000,
+      });
+      fs.writeFileSync(
+        path.join(tmp, '.pi', 'subagents.json'),
+        JSON.stringify({ enable_ask_orchestrator: true, ask_timeout_ms: 2500 }),
+      );
+      expect(readSubagentsConfig(tmp)).toMatchObject({
+        enable_ask_orchestrator: true,
+        ask_timeout_ms: 2500,
+      });
+    });
+  });
+
+  it.each([
+    0,
+    -1,
+    1.5,
+    'invalid',
+    null,
+  ])('falls back for invalid ask_timeout_ms %s', (value) => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ ask_timeout_ms: value }),
+    );
+    expect(readSubagentsConfig(tmp).ask_timeout_ms).toBe(600000);
+  });
+
   it('loads enable_continue through the global/project config cascade with a default of false', () => {
     expect(readSubagentsConfig(tmp).enable_continue).toBe(false);
 

@@ -1,4 +1,5 @@
 export const STANDALONE_STAR_TOOL_EXCLUSIONS: ReadonlySet<string> = new Set([
+  'ask_orchestrator',
   'AskClaude',
   'AskAntigravity',
   'bg_delegate',
@@ -24,7 +25,8 @@ function wildcardToRegExp(pattern: string): RegExp {
 
 export function matchesToolPattern(toolName: string, pattern: string): boolean {
   return hasToolGlob(pattern)
-    ? wildcardToRegExp(pattern).test(toolName)
+    ? toolName !== 'ask_orchestrator' &&
+        wildcardToRegExp(pattern).test(toolName)
     : toolName === pattern;
 }
 

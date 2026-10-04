@@ -9,6 +9,7 @@ import {
   captureAtelierSessionOwner,
 } from './atelier-metadata.js';
 import {
+  DEFAULT_ASK_TIMEOUT_MS,
   loadSubagents,
   parseEffort,
   parseModel,
@@ -47,6 +48,7 @@ import type {
   SubagentContinueInput,
   SubagentDefinition,
   SubagentErrorMetadata,
+  SubagentQuestion,
   SubagentRunInput,
   SubagentRunner,
   SubagentRunResult,
@@ -493,6 +495,16 @@ type SendMessageInput = {
   session_id?: string;
 };
 
+type QuestionListener = (
+  task: SubagentTask,
+  question: SubagentQuestion,
+) => void | Promise<void>;
+
+type PendingQuestionEntry = {
+  question: SubagentQuestion;
+  settle(reply: string | Error): void;
+};
+
 type LaunchAttemptInput = {
   definition: SubagentDefinition;
   taskText: string;
@@ -525,6 +537,16 @@ export class SubagentManager {
   private stopDispositions = new Map<string, StopDisposition>();
   private liveStates = new Map<string, LiveTaskState>();
   private taskUpdateListeners = new Set<() => void>();
+  private pendingQuestions = new Map<
+    string,
+    Map<string, PendingQuestionEntry>
+  >();
+  private askTimeouts = new Map<string, number>();
+  private questionListeners = new Set<QuestionListener>();
+  private questionPendingListeners = new Map<
+    string,
+    Set<(pending: boolean) => void>
+  >();
   private closePromise?: Promise<void>;
   private closing = false;
   private atelierRuns = new Map<string, AtelierMetadataRun>();
@@ -543,6 +565,7 @@ export class SubagentManager {
       taskId: string,
       message: SubagentAssistantAccountingMessage,
     ) => void,
+    private onOrchestratorQuestion?: QuestionListener,
   ) {}
 
   private atelierRun(
@@ -631,6 +654,218 @@ export class SubagentManager {
     };
   }
 
+  /** Awaited before parent delivery; task-mode handoff must use this hook. */
+  onQuestion(listener: QuestionListener): () => void {
+    this.questionListeners.add(listener);
+    return () => {
+      this.questionListeners.delete(listener);
+    };
+  }
+
+  private onQuestionPendingChange(
+    taskId: string,
+    listener: (pending: boolean) => void,
+  ): () => void {
+    let listeners = this.questionPendingListeners.get(taskId);
+    if (!listeners) {
+      listeners = new Set();
+      this.questionPendingListeners.set(taskId, listeners);
+    }
+    listeners.add(listener);
+    listener(Boolean(this.pendingQuestions.get(taskId)?.size));
+    return () => {
+      listeners.delete(listener);
+      if (!listeners.size) this.questionPendingListeners.delete(taskId);
+    };
+  }
+
+  private publishPendingQuestions(task: SubagentTask): void {
+    const entries = [...(this.pendingQuestions.get(task.id)?.values() ?? [])];
+    task.pending_questions = entries.map(({ question }) => ({
+      request_id: question.request_id,
+      message: question.message,
+      created_at: question.created_at,
+    }));
+    for (const listener of this.questionPendingListeners.get(task.id) ?? [])
+      listener(entries.length > 0);
+    const cwd = this.taskCwds.get(task.id);
+    if (cwd) this.record(cwd, task, task.last_activity ?? 'running', true);
+    this.notifyTaskUpdate(task.id, undefined, true);
+  }
+
+  private async deliverQuestion(
+    task: SubagentTask,
+    question: SubagentQuestion,
+  ): Promise<void> {
+    for (const listener of this.questionListeners)
+      await listener(task, question);
+    // A reply, timeout or cancellation may have settled it during the hook.
+    if (this.pendingQuestions.get(task.id)?.has(question.request_id))
+      await this.onOrchestratorQuestion?.(task, question);
+  }
+
+  async askOrchestrator(
+    taskId: string,
+    message: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Subagent task not found: ${taskId}`);
+    if (this.closing)
+      throw new Error('ask_orchestrator unavailable: parent session shutdown.');
+    if (task.status !== 'running')
+      throw new Error(
+        `ask_orchestrator unavailable: task ${taskId} is not running.`,
+      );
+    if (!this.askTimeouts.has(taskId))
+      throw new Error('ask_orchestrator is disabled for this task.');
+    const taskSignal = this.controllers.get(taskId)?.signal;
+    if (signal?.aborted || taskSignal?.aborted)
+      throw new Error('ask_orchestrator question cancelled.');
+    const text = sanitizeInteractionTransportText(message ?? '');
+    if (!text.trim())
+      throw new Error('ask_orchestrator message must not be empty.');
+    const question: SubagentQuestion = {
+      task_id: taskId,
+      agent: task.agent,
+      request_id: randomUUID(),
+      message: text,
+      created_at: nowIso(),
+    };
+    const timeoutMs = this.askTimeouts.get(taskId) ?? DEFAULT_ASK_TIMEOUT_MS;
+    return new Promise<string>((resolve, reject) => {
+      let settled = false;
+      const settle = (result: string | Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        taskSignal?.removeEventListener('abort', onAbort);
+        const pending = this.pendingQuestions.get(taskId);
+        pending?.delete(question.request_id);
+        if (!pending?.size) this.pendingQuestions.delete(taskId);
+        task.last_activity =
+          result instanceof Error
+            ? 'orchestrator question rejected'
+            : 'orchestrator question answered';
+        task.last_activity_at = nowIso();
+        this.publishPendingQuestions(task);
+        if (result instanceof Error) reject(result);
+        else resolve(result);
+      };
+      const onAbort = () =>
+        settle(
+          new Error(
+            `ask_orchestrator question ${question.request_id} cancelled: ${task.stop_reason ?? 'task cancellation'}`,
+          ),
+        );
+      const timer = setTimeout(
+        () =>
+          settle(
+            new Error(
+              `ask_orchestrator question ${question.request_id} timed out after ${timeoutMs}ms without an orchestrator reply.`,
+            ),
+          ),
+        timeoutMs,
+      );
+      let pending = this.pendingQuestions.get(taskId);
+      if (!pending) {
+        pending = new Map();
+        this.pendingQuestions.set(taskId, pending);
+      }
+      pending.set(question.request_id, { question, settle });
+      signal?.addEventListener('abort', onAbort, { once: true });
+      taskSignal?.addEventListener('abort', onAbort, { once: true });
+      task.last_activity = 'awaiting orchestrator reply';
+      task.last_activity_at = question.created_at;
+      this.publishPendingQuestions(task);
+      void this.deliverQuestion(task, question).catch((error) =>
+        settle(
+          new Error(
+            `ask_orchestrator question delivery failed: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        ),
+      );
+    });
+  }
+
+  replyToQuestion(
+    sessionId: string | undefined,
+    taskId: string,
+    requestId: string | undefined,
+    message: string,
+  ): { task_id: string; request_id: string; status: 'replied' } {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Subagent task not found: ${taskId}`);
+    if (!sessionId)
+      throw new Error(
+        'Unable to verify the calling Pi session for this reply.',
+      );
+    if (!task.session_id || task.session_id !== sessionId)
+      throw new Error(
+        'Only the exact originating parent Pi session may reply to this task.',
+      );
+    const pending = this.pendingQuestions.get(taskId);
+    if (!pending?.size)
+      throw new Error(
+        `No pending question for task ${taskId}; the request is unknown or stale.`,
+      );
+    if (requestId === undefined && pending.size !== 1)
+      throw new Error(
+        `Ambiguous reply: task ${taskId} has ${pending.size} pending questions; specify request_id.`,
+      );
+    const entry =
+      requestId === undefined
+        ? pending.values().next().value
+        : pending.get(requestId);
+    if (!entry)
+      throw new Error(`Unknown or stale question request_id: ${requestId}`);
+    const text = sanitizeInteractionTransportText(message ?? '');
+    if (!text.trim())
+      throw new Error(
+        'Orchestrator replies must not be empty or whitespace-only.',
+      );
+    entry.settle(text);
+    return {
+      task_id: taskId,
+      request_id: entry.question.request_id,
+      status: 'replied',
+    };
+  }
+
+  reportProgress(taskId: string, message: string): void {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Subagent task not found: ${taskId}`);
+    if (this.closing || task.status !== 'running')
+      throw new Error(
+        'ask_orchestrator progress unavailable: task is not running.',
+      );
+    const text = sanitizeInteractionTransportText(message ?? '');
+    if (!text.trim())
+      throw new Error('ask_orchestrator message must not be empty.');
+    const created_at = nowIso();
+    task.progress_updates = [
+      ...(task.progress_updates ?? []),
+      { message: text, created_at },
+    ].slice(-5);
+    task.last_activity = `progress: ${compactOutput(text)}`;
+    task.last_activity_at = created_at;
+    const cwd = this.taskCwds.get(taskId);
+    if (cwd) this.record(cwd, task, task.last_activity, true);
+    this.notifyTaskUpdate(taskId, undefined, true);
+  }
+
+  private rejectPendingQuestions(taskId: string, reason: string): void {
+    for (const entry of [
+      ...(this.pendingQuestions.get(taskId)?.values() ?? []),
+    ])
+      entry.settle(
+        new Error(
+          `ask_orchestrator question ${entry.question.request_id} rejected: ${reason}`,
+        ),
+      );
+  }
+
   getTask(id: string, cwd?: string) {
     return (
       this.tasks.get(id) ?? (cwd ? this.history.getTask(cwd, id) : undefined)
@@ -650,6 +885,7 @@ export class SubagentManager {
         last_activity: 'interrupted at startup',
         ended_at: interruptedAt,
         pending_message_count: 0,
+        pending_questions: [],
         undelivered_message_count:
           (task.undelivered_message_count ?? 0) +
           (task.pending_message_count ?? 0),
@@ -749,7 +985,11 @@ export class SubagentManager {
     delete state.bridge;
   }
 
-  private closeTaskLiveState(task: SubagentTask): void {
+  private closeTaskLiveState(
+    task: SubagentTask,
+    reason = task.stop_reason ?? 'child session shutdown',
+  ): void {
+    this.rejectPendingQuestions(task.id, reason);
     const state = this.liveStates.get(task.id);
     closeLiveState(task, state);
     this.liveStates.delete(task.id);
@@ -1253,7 +1493,7 @@ export class SubagentManager {
     cwd?: string,
   ): void {
     if (task.status === 'stopping' || isTerminalStatus(task.status)) return;
-    this.closeTaskLiveState(task);
+    this.closeTaskLiveState(task, reason);
     task.status = 'stopping';
     task.stop_reason = reason;
     task.last_activity = reason;
@@ -1393,6 +1633,8 @@ export class SubagentManager {
     this.tasks.set(id, task);
     this.taskCwds.set(id, cwd);
     this.controllers.set(id, controller);
+    if (config.enable_ask_orchestrator !== false)
+      this.askTimeouts.set(id, config.ask_timeout_ms ?? DEFAULT_ASK_TIMEOUT_MS);
     this.liveStates.set(id, {
       attempt: task.attempt ?? 1,
       parentSessionId,
@@ -1510,6 +1752,18 @@ export class SubagentManager {
               ),
             clearLiveBridge: () => this.clearLiveBridge(id, task.attempt ?? 1),
             onQueuedMessageStart: () => this.consumeQueuedMessage(id),
+            orchestratorChannel:
+              config.enable_ask_orchestrator !== false
+                ? {
+                    askQuestion: (message, signal) =>
+                      this.askOrchestrator(id, message, signal),
+                    reportProgress: (message) =>
+                      this.reportProgress(id, message),
+                    onPendingChange: (listener) =>
+                      this.onQuestionPendingChange(id, listener),
+                    close: (reason) => this.rejectPendingQuestions(id, reason),
+                  }
+                : undefined,
             onActivity: (activity) => {
               if (
                 activity.assistant_message &&
@@ -1824,6 +2078,11 @@ export class SubagentManager {
           this.onTerminalBackgroundTask?.(task, cwd);
       } finally {
         if (timeout) clearTimeout(timeout);
+        this.rejectPendingQuestions(
+          id,
+          task.stop_reason ?? 'child session shutdown',
+        );
+        this.askTimeouts.delete(id);
         await activeRunnerSettlement?.catch(() => undefined);
         const finalAtelierStatus = atelierStatus(task.status);
         if (atelierRun) {

@@ -29,6 +29,7 @@ export const DEFAULT_LIFECYCLE_PASSTHROUGH = [
 const DEFAULT_MAX_CONCURRENCY = 5;
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
 const DEFAULT_STALL_TIMEOUT_MS = 4 * 60 * 1000;
+export const DEFAULT_ASK_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_BACKGROUND_HANDOFF_SHORTCUT = 'ctrl+h';
 const DEFAULT_HISTORY_PANEL_SHORTCUT = 'ctrl+,';
 const DEFAULT_DETAIL_CANCEL_SHORTCUT = 'x';
@@ -454,6 +455,11 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
     detail_cancel_shortcut: parseDetailShortcut(
       raw.detail_cancel_shortcut ?? raw.detailCancelShortcut,
     ),
+    enable_ask_orchestrator: parseBoolean(raw.enable_ask_orchestrator, true),
+    ask_timeout_ms:
+      Number.isInteger(raw.ask_timeout_ms) && raw.ask_timeout_ms > 0
+        ? raw.ask_timeout_ms
+        : DEFAULT_ASK_TIMEOUT_MS,
     enable_continue: parseBoolean(
       raw.enable_continue ?? raw.enableContinue,
       false,

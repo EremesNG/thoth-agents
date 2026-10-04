@@ -2,8 +2,154 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { AssistantMessage } from '@earendil-works/pi-ai';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import { sdkSubagentRunner } from '../../src/runner/sdk-runner.js';
 import { expandToolPatterns } from '../../src/tool-patterns.js';
+
+it.each([
+  {
+    selection: 'explicit',
+    tools: ['read', 'ask_orchestrator'],
+    enabled: true,
+    present: true,
+  },
+  {
+    selection: 'only explicit',
+    tools: ['ask_orchestrator'],
+    enabled: true,
+    present: true,
+  },
+  {
+    selection: 'disabled',
+    tools: ['read', 'ask_orchestrator'],
+    enabled: false,
+    present: false,
+  },
+  {
+    selection: 'standalone wildcard',
+    tools: ['*'],
+    enabled: true,
+    present: false,
+  },
+  {
+    selection: 'glob',
+    tools: ['read', 'ask_*'],
+    enabled: true,
+    present: false,
+  },
+  {
+    selection: 'mixed explicit',
+    tools: ['*', 'ask_orchestrator'],
+    enabled: true,
+    present: true,
+  },
+])('injects ask_orchestrator only when explicitly selected and enabled: $selection', async ({
+  tools,
+  enabled,
+  present,
+}) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-ask-sdk-'));
+  const cwd = path.join(root, 'workspace');
+  const agentDir = path.join(root, 'agent');
+  fs.mkdirSync(cwd, { recursive: true });
+  fs.mkdirSync(agentDir, { recursive: true });
+  const { AgentSession, ModelRuntime, SettingsManager } = await import(
+    '@earendil-works/pi-coding-agent'
+  );
+  const askQuestion = vi.fn(async () => 'use runtime scope');
+  const reportProgress = vi.fn();
+  const close = vi.fn();
+  const registered: string[] = [];
+  let childResult: any;
+  vi.stubEnv('PI_CODING_AGENT_DIR', agentDir);
+  vi.stubEnv('PI_SUBAGENTS_HISTORY_HOME', path.join(root, 'history'));
+  const prompt = vi
+    .spyOn(AgentSession.prototype, 'prompt')
+    .mockImplementation(async function (
+      this: InstanceType<typeof AgentSession>,
+    ) {
+      registered.push(...this.getAllTools().map((tool) => tool.name));
+      const tool = this.agent.state.tools.find(
+        (tool) => tool.name === 'ask_orchestrator',
+      );
+      if (tool) {
+        childResult = await tool.execute(
+          'question',
+          { kind: 'question', message: 'Which scope?' },
+          new AbortController().signal,
+        );
+        await tool.execute(
+          'progress',
+          { kind: 'progress', message: 'Scope selected' },
+          new AbortController().signal,
+        );
+      }
+      this.agent.state.messages.push({
+        role: 'assistant',
+        content: [{ type: 'text', text: 'done' }],
+      } as AssistantMessage);
+    });
+  try {
+    const modelRuntime = await ModelRuntime.create({
+      modelsPath: null,
+      authPath: path.join(agentDir, 'auth.json'),
+      allowModelNetwork: false,
+    });
+    const result = await sdkSubagentRunner({
+      definition: {
+        name: 'analyst',
+        description: 'analysis',
+        instructions: 'bounded analysis',
+        filePath: '/analyst.md',
+        tools,
+      },
+      task: 'align',
+      taskId: 'subtask_explicit',
+      cwd,
+      ctx: {
+        modelRuntime,
+        settingsManager: SettingsManager.inMemory({}),
+        pi: { getActiveTools: () => ['read', 'ask_orchestrator'] },
+      },
+      config: {
+        timeout_ms: 10000,
+        stall_timeout_ms: 10000,
+        max_concurrency: 1,
+        default_tools: [],
+        model_profiles: {},
+        session_resources: 'lean',
+        enable_ask_orchestrator: enabled,
+      },
+      signal: new AbortController().signal,
+      orchestratorChannel: {
+        askQuestion,
+        reportProgress,
+        close,
+        onPendingChange: () => () => {},
+      },
+    });
+    expect(registered.includes('ask_orchestrator')).toBe(present);
+    expect(result.dropped_tools).toEqual(enabled ? [] : ['ask_orchestrator']);
+    if (present) {
+      expect(childResult.content).toContainEqual({
+        type: 'text',
+        text: 'use runtime scope',
+      });
+      expect(askQuestion).toHaveBeenCalledWith(
+        'Which scope?',
+        expect.any(AbortSignal),
+      );
+      expect(reportProgress).toHaveBeenCalledWith('Scope selected');
+    } else {
+      expect(askQuestion).not.toHaveBeenCalled();
+      expect(reportProgress).not.toHaveBeenCalled();
+    }
+  } finally {
+    prompt.mockRestore();
+    vi.unstubAllEnvs();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}, 30_000);
 
 it('distinguishes queued, extension-handled and rejected steering in the real SDK', async () => {
   const fixtureRoot = fs.mkdtempSync(

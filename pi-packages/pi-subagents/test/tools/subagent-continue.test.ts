@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { sendSubagentQuestionMessage } from '../../src/render/question-message.js';
 import { registerSubagentTools } from '../../src/tools.js';
 import { ModelRuntimeFixture } from '../helpers/model-runtime-fixture.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
@@ -168,6 +169,100 @@ describe('subagent_continue tool', () => {
     expect(renderedExpanded).toContain('click to view execution');
     expect(renderedExpanded).not.toContain('ctrl+o to expand');
     expect(renderedExpanded).not.toContain(`id: ${taskId}`);
+  });
+
+  it('returns the continued task-mode question handoff before delivering the question', async () => {
+    await enableContinue();
+    env.writeAgent('analyst');
+    const nestedSessionPath = `${env.tmp}/question-resume-session.jsonl`;
+    const fs = await import('node:fs');
+    fs.writeFileSync(nestedSessionPath, '{"type":"session"}\n');
+    const events: string[] = [];
+    const deliverQuestion = vi.fn(() => {
+      events.push('question');
+    });
+    const manager = env.createManager(
+      async ({ continuation, orchestratorChannel, signal }) => {
+        if (continuation)
+          await orchestratorChannel!.askQuestion(
+            'Approve the resumed approach?',
+            signal,
+          );
+        return {
+          result: 'finished',
+          model: 'mock/model',
+          fallback_used: false,
+          nested_session_path: nestedSessionPath,
+        };
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (task, question) =>
+        sendSubagentQuestionMessage(
+          { sendMessage: deliverQuestion },
+          task,
+          question,
+        ),
+    );
+    const ctx = { cwd: env.tmp, sessionId: 'parent' };
+    const initial = await manager.run(
+      { agent: 'analyst', task: 'initial execution', mode: 'task' },
+      ctx,
+    );
+    const taskId = initial.task_ids[0]!;
+    let continueTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_continue') continueTool = tool;
+        },
+      },
+      manager,
+      env.tmp,
+    );
+    const continued = continueTool
+      .execute(
+        '2',
+        { task_id: taskId, prompt: 'Resume with a question.' },
+        undefined,
+        undefined,
+        ctx,
+      )
+      .then((result: any) => {
+        events.push('result');
+        return result;
+      });
+    try {
+      await vi.waitFor(() => expect(deliverQuestion).toHaveBeenCalledOnce());
+      expect(events).toEqual(['result', 'question']);
+      expect(deliverQuestion).toHaveBeenCalledWith(
+        expect.objectContaining({ customType: 'subagent-question' }),
+        { triggerTurn: true, deliverAs: 'followUp' },
+      );
+      const result = await continued;
+      expect(result.isError).not.toBe(true);
+      expect(result.terminate).toBe(true);
+      expect(result.details).toMatchObject({
+        mode: 'background',
+        task_ids: [taskId],
+      });
+      expect(result.content[0].text).toContain('question is pending');
+      expect(result.content[0].text).toContain('subagent_reply');
+      expect(result.content[0].text).toContain(taskId);
+      expect(manager.getTask(taskId, env.tmp)).toMatchObject({
+        mode: 'background',
+        effective_mode: 'background',
+        attempt: 2,
+        status: 'running',
+      });
+      manager.replyToQuestion('parent', taskId, undefined, 'Approved.');
+    } finally {
+      await manager.close();
+      await continued;
+    }
   });
 
   it('resolves * tools from the current parent Pi session on continuation', async () => {

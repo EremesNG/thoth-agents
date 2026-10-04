@@ -4,6 +4,7 @@ import {
   normalizeErrorMetadata,
   SubagentStructuredError,
 } from '../../src/error-metadata.js';
+import { sendSubagentQuestionMessage } from '../../src/render/question-message.js';
 import { registerSubagentTools } from '../../src/tools.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
@@ -325,7 +326,9 @@ describe('subagent_run tool', () => {
       await vi.advanceTimersByTimeAsync(0);
       const updateCount = onUpdate.mock.calls.length;
       const runningUpdate = onUpdate.mock.calls.at(-1)![0];
-      expect(runningUpdate.details.tasks).toMatchObject([{ status: 'running' }]);
+      expect(runningUpdate.details.tasks).toMatchObject([
+        { status: 'running' },
+      ]);
       expect(rendered.at(-1)!.split('\n')[0]).toContain(
         'subagent · analyst · running · 0ms',
       );
@@ -400,7 +403,9 @@ describe('subagent_run tool', () => {
       const abortedUpdateCount = onUpdate.mock.calls.length;
       await vi.advanceTimersByTimeAsync(1000);
       expect(onUpdate).toHaveBeenCalledTimes(abortedUpdateCount);
-      expect(manager.listTasks(env.tmp)).toMatchObject([{ status: 'stopping' }]);
+      expect(manager.listTasks(env.tmp)).toMatchObject([
+        { status: 'stopping' },
+      ]);
 
       await vi.advanceTimersByTimeAsync(10_000);
       const result = await resultPromise;
@@ -450,14 +455,18 @@ describe('subagent_run tool', () => {
     try {
       await vi.advanceTimersByTimeAsync(250);
       const timerCount = vi.getTimerCount();
-      expect(terminalHandlers.map((handler) => handler('\u0008'))).toContainEqual({
+      expect(
+        terminalHandlers.map((handler) => handler('\u0008')),
+      ).toContainEqual({
         consume: true,
       });
       expect(vi.getTimerCount()).toBe(timerCount - 1);
       const handoffUpdateCount = onUpdate.mock.calls.length;
       const result = await resultPromise;
       expect(result.terminate).toBe(true);
-      expect(manager.getTask(result.details.task_ids[0], env.tmp)).toMatchObject({
+      expect(
+        manager.getTask(result.details.task_ids[0], env.tmp),
+      ).toMatchObject({
         mode: 'background',
         status: 'running',
       });
@@ -562,6 +571,228 @@ describe('subagent_run tool', () => {
       mode: 'task',
       status: 'completed',
     });
+  });
+
+  it('releases only the asking concurrent task-mode run before delivering its question', async () => {
+    const fs = await import('node:fs');
+    fs.writeFileSync(
+      `${env.tmp}/.pi/subagents.json`,
+      JSON.stringify({ default_mode: 'task' }),
+    );
+    env.writeAgent('analyst');
+    env.writeAgent('reviewer');
+    let ask!: () => void;
+    const askGate = new Promise<void>((resolve) => {
+      ask = resolve;
+    });
+    let finishReviewer!: () => void;
+    const reviewerGate = new Promise<void>((resolve) => {
+      finishReviewer = resolve;
+    });
+    const events: string[] = [];
+    const deliverQuestion = vi.fn(() => {
+      events.push('question');
+    });
+    const manager = env.createManager(
+      async ({ definition, orchestratorChannel, signal }) => {
+        if (definition.name === 'analyst') {
+          await askGate;
+          await orchestratorChannel!.askQuestion('Which approach?', signal);
+        } else {
+          await reviewerGate;
+        }
+        return {
+          result: 'finished',
+          model: 'mock/model',
+          fallback_used: false,
+        };
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (task, question) =>
+        sendSubagentQuestionMessage(
+          { sendMessage: deliverQuestion },
+          task,
+          question,
+        ),
+    );
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      manager,
+      env.tmp,
+    );
+    const ctx = { cwd: env.tmp, sessionId: 'parent' };
+    const first = runTool
+      .execute(
+        '1',
+        { agent: 'analyst', task: 'asking' },
+        undefined,
+        undefined,
+        ctx,
+      )
+      .then((result: any) => {
+        events.push('result');
+        return result;
+      });
+    let reviewerReturned = false;
+    const second = runTool
+      .execute(
+        '2',
+        { agent: 'reviewer', task: 'waiting' },
+        undefined,
+        undefined,
+        ctx,
+      )
+      .then((result: any) => {
+        reviewerReturned = true;
+        return result;
+      });
+
+    try {
+      await vi.waitFor(() =>
+        expect(
+          manager
+            .listTasks(env.tmp)
+            .filter((task) => task.status === 'running'),
+        ).toHaveLength(2),
+      );
+      ask();
+      await vi.waitFor(() => expect(deliverQuestion).toHaveBeenCalledOnce());
+      expect(events).toEqual(['result', 'question']);
+      expect(deliverQuestion).toHaveBeenCalledWith(
+        expect.objectContaining({ customType: 'subagent-question' }),
+        { triggerTurn: true, deliverAs: 'followUp' },
+      );
+      expect(reviewerReturned).toBe(false);
+      const result = await first;
+      const askingTask = manager
+        .listTasks(env.tmp)
+        .find((task) => task.agent === 'analyst')!;
+      expect(result.terminate).toBe(true);
+      expect(result.details).toMatchObject({
+        mode: 'background',
+        task_ids: [askingTask.id],
+      });
+      expect(result.content[0].text).toContain('question is pending');
+      expect(result.content[0].text).toContain('subagent_reply');
+      expect(result.content[0].text).toContain(askingTask.id);
+      expect(askingTask).toMatchObject({
+        mode: 'background',
+        effective_mode: 'background',
+        status: 'running',
+      });
+      expect(
+        manager.listTasks(env.tmp).find((task) => task.agent === 'reviewer'),
+      ).toMatchObject({ mode: 'task', status: 'running' });
+      manager.replyToQuestion(
+        'parent',
+        askingTask.id,
+        undefined,
+        'Use the safe approach.',
+      );
+    } finally {
+      ask();
+      finishReviewer();
+      await manager.close();
+      await Promise.all([first, second]);
+    }
+  });
+
+  it('leaves an unrelated task-mode call blocked when a background child asks a question', async () => {
+    env.writeAgent('analyst');
+    env.writeAgent('reviewer');
+    let finishReviewer!: () => void;
+    const reviewerGate = new Promise<void>((resolve) => {
+      finishReviewer = resolve;
+    });
+    const deliverQuestion = vi.fn();
+    const manager = env.createManager(
+      async ({ definition, orchestratorChannel, signal }) => {
+        if (definition.name === 'analyst') {
+          await orchestratorChannel!.askQuestion('Which approach?', signal);
+        } else {
+          await reviewerGate;
+        }
+        return {
+          result: 'finished',
+          model: 'mock/model',
+          fallback_used: false,
+        };
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (task, question) =>
+        sendSubagentQuestionMessage(
+          { sendMessage: deliverQuestion },
+          task,
+          question,
+        ),
+    );
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      manager,
+      env.tmp,
+    );
+    const ctx = { cwd: env.tmp, sessionId: 'parent' };
+    let foregroundReturned = false;
+    const foreground = runTool
+      .execute(
+        '1',
+        { agent: 'reviewer', task: 'waiting', mode: 'task' },
+        undefined,
+        undefined,
+        ctx,
+      )
+      .then((result: any) => {
+        foregroundReturned = true;
+        return result;
+      });
+    try {
+      const background = await runTool.execute(
+        '2',
+        { agent: 'analyst', task: 'asking', mode: 'background' },
+        undefined,
+        undefined,
+        ctx,
+      );
+      expect(background.terminate).not.toBe(true);
+      expect(background.content[0].text).not.toContain('question is pending');
+      await vi.waitFor(() => expect(deliverQuestion).toHaveBeenCalledOnce());
+      expect(foregroundReturned).toBe(false);
+      expect(
+        manager.listTasks(env.tmp).find((task) => task.agent === 'reviewer'),
+      ).toMatchObject({ mode: 'task', status: 'running' });
+      expect(manager.getTask(background.details.task_ids[0])).toMatchObject({
+        mode: 'background',
+        status: 'running',
+      });
+      manager.replyToQuestion(
+        'parent',
+        background.details.task_ids[0],
+        undefined,
+        'Use the safe approach.',
+      );
+    } finally {
+      finishReviewer();
+      await manager.close();
+      await foreground;
+    }
   });
 
   it('keeps subagent_run command results compact when tasks include large thread snapshots', async () => {

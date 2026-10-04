@@ -4,6 +4,11 @@ import {
   wrapLineToWidth,
 } from '../render/text-width.js';
 import { toolSelectionWarning } from '../render/tool-selection-warning.js';
+import {
+  formatDuration,
+  formatTokens,
+  generationSpeed,
+} from '../render/tools/formatting.js';
 import { statusGlyph } from '../render/tools/progress.js';
 import type { SubagentTask } from '../types.js';
 import {
@@ -144,21 +149,17 @@ function buildClaudeBackgroundWidgetEntries(
     const summary = formatTaskSummary(task);
     const description =
       `${task.agent}${task.model ? ` [${task.model}]` : ''}${summary ? ` · ${summary}` : ''}`.trim();
-    const speed =
-      finiteNonnegative(metrics?.generationOutputTokens) &&
-      finiteNonnegative(metrics?.generationMs) &&
-      metrics.generationMs > 0
-        ? (metrics.generationOutputTokens * 1000) / metrics.generationMs
-        : undefined;
-    const tokens = task.usage
-      ? task.usage.input + task.usage.output + task.usage.cacheWrite
-      : undefined;
+    const speed = generationSpeed(metrics);
+    const input = task.usage?.input;
+    const output = task.usage?.output;
+    const cost = task.usage?.cost;
     const started = task.started_at ? Date.parse(task.started_at) : NaN;
     const metricParts = [
       `⚙ tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
-      `◈ tokens ${finiteNonnegative(tokens) ? formatTokens(tokens) : '?'}`,
+      `↑${finiteNonnegative(input) ? formatTokens(input) : '?'} ↓${finiteNonnegative(output) ? formatTokens(output) : '?'}`,
+      `$${finiteNonnegative(cost) ? cost.toFixed(4) : '?'}`,
       `▣ context ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
-      `${finiteNonnegative(speed) ? Math.round(speed) : '?'} tok/s`,
+      `${speed !== undefined ? Math.round(speed) : '?'} tok/s`,
       `⧗ elapsed ${Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : '?'}`,
     ];
     if (finiteNonnegative(metrics?.compactions) && metrics.compactions > 0)
@@ -206,16 +207,6 @@ function buildClaudeBackgroundWidgetEntries(
 
 function finiteNonnegative(value: number | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
-}
-
-function formatTokens(value: number): string {
-  return value < 1000 ? String(value) : `${(value / 1000).toFixed(1)}k`;
-}
-
-function formatDuration(milliseconds: number): string {
-  return milliseconds < 1000
-    ? `${Math.floor(milliseconds)}ms`
-    : `${(milliseconds / 1000).toFixed(1)}s`;
 }
 
 function metricLines(
@@ -764,9 +755,13 @@ export class ClaudeBackgroundWidget {
     const parts = text.split(' · ');
     const sep = themeDim(this.theme, ' · ');
     const decoratedParts = parts.map((part) => {
+      if (part.startsWith('↑'))
+        return part.replace(/[↑↓]/gu, (arrow) => themeDim(this.theme, arrow));
+      if (part.startsWith('$'))
+        return `${themeDim(this.theme, '$')}${part.slice(1)}`;
       const speed = part.match(/^(\d+|\?) tok\/s$/);
       if (speed) return `${speed[1]} ${themeDim(this.theme, 'tok/s')}`;
-      const match = part.match(/^([↻⚙◈▣⧗≋])\s+(.+)$/u);
+      const match = part.match(/^([↻⚙▣⧗≋])\s+(.+)$/u);
       if (!match) return part;
       const icon = match[1]!;
       const rest = match[2]!;

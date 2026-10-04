@@ -34,11 +34,35 @@ export function clip(text: string | undefined, limit = 240): string {
   return truncateToWidth(normalized, limit, '…');
 }
 
-function formatTokens(count: number): string {
+export function formatTokens(count: number): string {
   if (count < 1000) return count.toString();
   if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
   if (count < 1000000) return `${Math.round(count / 1000)}k`;
   return `${(count / 1000000).toFixed(1)}M`;
+}
+
+export function formatDuration(milliseconds: number): string {
+  return milliseconds < 1000
+    ? `${Math.floor(milliseconds)}ms`
+    : `${(milliseconds / 1000).toFixed(1)}s`;
+}
+
+export function generationSpeed(
+  metrics: SubagentTask['runtime_metrics'],
+): number | undefined {
+  const output = metrics?.generationOutputTokens;
+  const milliseconds = metrics?.generationMs;
+  if (
+    typeof output !== 'number' ||
+    !Number.isFinite(output) ||
+    output < 0 ||
+    typeof milliseconds !== 'number' ||
+    !Number.isFinite(milliseconds) ||
+    milliseconds <= 0
+  )
+    return undefined;
+  const speed = (output * 1000) / milliseconds;
+  return Number.isFinite(speed) ? speed : undefined;
 }
 
 export function formatUsage(task: SubagentTask): string {

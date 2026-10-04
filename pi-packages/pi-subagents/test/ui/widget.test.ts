@@ -497,6 +497,117 @@ describe('background widget', () => {
     expect(render()).toContain('0 tok/s');
   });
 
+  it.each([
+    { cost: 0.1051, expected: '$0.1051' },
+    { cost: 0, expected: '$0.0000' },
+    { cost: 0.00006, expected: '$0.0001' },
+  ])('shows estimated cost $expected after tokens with only the currency label dimmed', ({
+    cost,
+    expected,
+  }) => {
+    const task = {
+      id: 'cost',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+      usage: { input: 19000, output: 803, cost },
+    } as SubagentTask;
+    const text = renderClaudeBackgroundWidgetLines([task], undefined, {
+      width: 200,
+    })!.join(' ');
+    expect(text).toContain(`↑19k ↓803 · ${expected} · ▣ context ?`);
+    const widget = new ClaudeBackgroundWidget(
+      new ClaudeBackgroundWidgetState(() => [task]),
+      {
+        fg: (color: string, value: string) =>
+          color === 'dim' ? `\x1b[2m${value}\x1b[0m` : value,
+      },
+    );
+    expect(widget.render(200).join(' ')).toContain(
+      `\x1b[2m$\x1b[0m${expected.slice(1)}`,
+    );
+  });
+
+  it.each([
+    undefined,
+    {},
+    { cost: undefined },
+    { cost: -1 },
+    { cost: NaN },
+    { cost: Infinity },
+    { cost: -Infinity },
+    { cost: '0.1051' },
+    { cost: null },
+  ])('marks missing or invalid estimated cost as $? (%j)', (usage) => {
+    const task = {
+      id: 'unknown-cost',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+      usage,
+    } as SubagentTask;
+    const text = renderClaudeBackgroundWidgetLines([task], undefined, {
+      width: 200,
+    })!.join(' ');
+    expect(text).toContain('↑? ↓? · $? · ▣ context ?');
+    const widget = new ClaudeBackgroundWidget(
+      new ClaudeBackgroundWidgetState(() => [task]),
+      {
+        fg: (color: string, value: string) =>
+          color === 'dim' ? `\x1b[2m${value}\x1b[0m` : value,
+      },
+    );
+    expect(widget.render(200).join(' ')).toContain('\x1b[2m$\x1b[0m?');
+  });
+
+  it.each([
+    [29000, 6000, '↑29k ↓6.0k'],
+    [60000, 7700, '↑60k ↓7.7k'],
+    [999, 1000, '↑999 ↓1.0k'],
+    [1000000, 0, '↑1.0M ↓0'],
+    [0, 0, '↑0 ↓0'],
+    [-1, 500, '↑? ↓500'],
+    [100, -1, '↑100 ↓?'],
+    [NaN, 500, '↑? ↓500'],
+    [100, NaN, '↑100 ↓?'],
+    [Infinity, 500, '↑? ↓500'],
+    [100, Infinity, '↑100 ↓?'],
+    [undefined, 500, '↑? ↓500'],
+    [100, undefined, '↑100 ↓?'],
+  ])('shows separate token counts without caches (%s input, %s output)', (input, output, expected) => {
+    const task = {
+      id: 'usage',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+      usage: {
+        input,
+        output,
+        cacheRead: 90000,
+        cacheWrite: 3800,
+        cost: 0,
+        contextTokens: 0,
+        turns: 5,
+      },
+    } as SubagentTask;
+    const render = () =>
+      renderClaudeBackgroundWidgetLines([task], undefined, {
+        width: 200,
+        frame: 0,
+        now: 0,
+      })!.join(' ');
+    const text = render();
+    expect(text).toContain(`⚙ tools ? · ${expected} · $0.0000 · ▣ context ?`);
+    expect(text).not.toContain('◈');
+    expect(text).not.toContain('tokens');
+    task.usage!.cacheRead = 0;
+    task.usage!.cacheWrite = 0;
+    expect(render()).toBe(text);
+  });
+
   it('keeps live metrics visible beside a long task at narrow widths and marks absent values', () => {
     const task = {
       id: 'long',
@@ -510,6 +621,7 @@ describe('background widget', () => {
       usage: {
         input: 20000,
         output: 10000,
+        cost: 0.1051,
         cacheWrite: 3800,
         cacheRead: 90000,
         turns: 0,
@@ -526,7 +638,8 @@ describe('background widget', () => {
     for (const width of [100, 80, 50]) {
       const lines = widget.render(width);
       expect(lines.some((line) => line.includes('tools 5'))).toBe(true);
-      expect(lines.join(' ')).toContain('tokens 33.8k');
+      expect(lines.join(' ')).toContain('↑20k ↓10k');
+      expect(lines.join(' ')).toContain('$0.1051');
       expect(lines.join(' ')).toContain('context 62.0%');
       expect(lines.join(' ')).toContain('compaction');
       expect(lines.every((line) => line.length <= width)).toBe(true);
@@ -536,7 +649,8 @@ describe('background widget', () => {
     const unknown = widget.render(50).join(' ');
     expect(unknown).toContain('? tok/s');
     expect(unknown).toContain('tools ?');
-    expect(unknown).toContain('tokens ?');
+    expect(unknown).toContain('↑? ↓?');
+    expect(unknown).toContain('$?');
     expect(unknown).toContain('context ?');
     expect(unknown).toMatch(/elapsed \d/);
   });
@@ -568,15 +682,13 @@ describe('background widget', () => {
     );
     const lines = widget.render(50);
     expect(lines.filter((line) => line.includes('? tok/s'))).toHaveLength(2);
-    expect(lines.filter((line) => line.includes('tokens 1.5k'))).toHaveLength(
-      2,
-    );
+    expect(lines.filter((line) => line.includes('↑1.0k ↓500'))).toHaveLength(2);
     expect(lines.every((line) => line.length <= 50)).toBe(true);
     widget.handleMouse({ row: 3, type: 'click' });
     expect(actions).toEqual([{ type: 'open-task', taskId: 'one' }]);
   });
 
-  it('shows minimalist child metrics with dim labels without counting cache reads', () => {
+  it('shows minimalist child metrics with dim labels without counting cache reads or writes', () => {
     const task = {
       id: 'metric-task',
       agent: 'worker',
@@ -589,6 +701,7 @@ describe('background widget', () => {
       usage: {
         input: 20000,
         output: 10000,
+        cost: 0.1051,
         cacheWrite: 3800,
         cacheRead: 90000,
         turns: 5,
@@ -611,8 +724,8 @@ describe('background widget', () => {
     expect(lines).toEqual([
       '● Agents  (↑↓ navigate · ↵ open)',
       '  ╭─ ⠋ worker [openai/gpt-6] · Review the migration',
-      '  │  ⚙ tools 5 · ◈ tokens 33.8k · ▣ context 62.0% · ? tok/s · ⧗ elapsed 12.3s',
-      '  │  ≋ 1 compaction',
+      '  │  ⚙ tools 5 · ↑20k ↓10k · $0.1051 · ▣ context 62.0% · ? tok/s',
+      '  │  ⧗ elapsed 12.3s · ≋ 1 compaction',
       '  ╰⎿ editing…',
     ]);
 
@@ -627,7 +740,8 @@ describe('background widget', () => {
     for (const metric of [
       '? \x1b[2mtok/s\x1b[0m',
       '⚙ \x1b[2mtools\x1b[0m 5',
-      '◈ \x1b[2mtokens\x1b[0m 33.8k',
+      '\x1b[2m↑\x1b[0m20k \x1b[2m↓\x1b[0m10k',
+      '\x1b[2m$\x1b[0m0.1051',
       '▣ \x1b[2mcontext\x1b[0m 62.0%',
       '⧗ \x1b[2melapsed\x1b[0m ',
       '≋ 1 \x1b[2mcompaction\x1b[0m',
@@ -1134,7 +1248,7 @@ describe('background widget', () => {
     expect(normalLines.length).toBeLessThanOrEqual(14);
     expect(normalLines.join(' ')).toContain('? tok/s');
     expect(normalLines.join(' ')).toContain('tools 2');
-    expect(normalLines.join(' ')).toContain('tokens 1.5k');
+    expect(normalLines.join(' ')).toContain('↑1.0k ↓500');
     expect(normalLines.join(' ')).toContain('context 25.5%');
     expect(normalLines.join(' ')).toContain('+7 more active · /subagents');
 
@@ -1227,7 +1341,8 @@ describe('background widget', () => {
       .join('\n');
     expect(styledOutput).toContain(`\u001b[36m${ARCH_ICON}\u001b[39m`);
     expect(styledOutput).toContain('\u001b[36mtools\u001b[39m');
-    expect(styledOutput).toContain('\u001b[36mtokens\u001b[39m');
+    expect(styledOutput).toContain('\u001b[36m↑\u001b[39m1.0k');
+    expect(styledOutput).toContain('\u001b[36m↓\u001b[39m500');
     expect(stripAnsi(styledOutput)).toBe(plainOutput);
     expect(styledOutput).not.toMatch(
       /[\uD800-\uDBFF]\u001b\[[0-9;]*m[\uDC00-\uDFFF]/,

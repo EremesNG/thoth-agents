@@ -7,6 +7,7 @@ import {
 } from '../../src/render/tools/expansion-hint.js';
 import { statusGlyph } from '../../src/render/tools/progress.js';
 import { registerSubagentTools } from '../../src/tools.js';
+import type { SubagentTask } from '../../src/types.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
@@ -740,7 +741,235 @@ describe('tool render helpers', () => {
     expect(directLines.join('\n')).not.toContain('\x1b[4');
   });
 
-  it('renders active subagent running state as a single framed box with integrated top-border title and Arch icon', () => {
+  it.each([
+    true,
+    false,
+  ])('shows foreground generation speed and live elapsed time (partial: %s)', (isPartial) => {
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      env.createManager(env.mockRunner()),
+    );
+    const now = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-01-01T00:02:11.200Z'));
+    try {
+      const task = {
+        agent: 'worker',
+        status: 'running',
+        mode: 'task',
+        model: 'openai-codex-2/gpt-6.1-sol-fast',
+        started_at: '2026-01-01T00:00:00.000Z',
+        usage: {
+          turns: 9,
+          input: 19000,
+          output: 803,
+          cacheRead: 61000,
+          cacheWrite: 0,
+          cost: 0.1051,
+          contextTokens: 19000,
+        },
+        runtime_metrics: { generationOutputTokens: 204, generationMs: 4000 },
+      };
+      const render = () =>
+        runTool
+          .renderResult(
+            { details: { tasks: [task] } },
+            { isPartial },
+            { fg: (_name: string, text: string) => text },
+          )
+          .render(240)
+          .join('\n');
+      expect(render()).toContain(
+        'usage: 9 turns ↑19k ↓803 R61k $0.1051 ctx:19k · 51 tok/s · ⧗ elapsed 131.2s',
+      );
+      now.mockReturnValue(Date.parse('2026-01-01T00:02:12.200Z'));
+      task.runtime_metrics.generationMs = 8000;
+      expect(render()).toContain('ctx:19k · 26 tok/s · ⧗ elapsed 132.2s');
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it.each([
+    ['completed', '2026-01-01T00:02:11.200Z', '⧗ elapsed 131.2s'],
+    ['failed', '2026-01-01T00:02:11.200Z', '⧗ elapsed 131.2s'],
+    ['cancelled', '2026-01-01T00:02:11.200Z', '⧗ elapsed 131.2s'],
+    ['interrupted', '2026-01-01T00:02:11.200Z', '⧗ elapsed 131.2s'],
+    ['completed', undefined, undefined],
+    ['failed', 'invalid', undefined],
+  ])('uses a valid ended_at for foreground %s elapsed time (%s)', (status, ended_at, expected) => {
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      env.createManager(env.mockRunner()),
+    );
+    const now = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-01-01T00:05:00.000Z'));
+    try {
+      const render = () =>
+        runTool
+          .renderResult(
+            {
+              details: {
+                task: {
+                  agent: 'worker',
+                  mode: 'task',
+                  status,
+                  started_at: '2026-01-01T00:00:00.000Z',
+                  ended_at,
+                },
+              },
+            },
+            { expanded: true },
+            { fg: (_name: string, text: string) => text },
+          )
+          .render(200)
+          .join('\n');
+      const first = render();
+      if (expected) expect(first).toContain(expected);
+      else expect(first).not.toContain('elapsed');
+      now.mockReturnValue(Date.parse('2026-01-01T00:10:00.000Z'));
+      expect(render()).toBe(first);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it.each([
+    true,
+    false,
+  ])('omits unavailable foreground speed and elapsed independently (partial: %s)', (isPartial) => {
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      env.createManager(env.mockRunner()),
+    );
+    const task: SubagentTask = {
+      id: 'running',
+      agent: 'worker',
+      mode: 'task',
+      status: 'running',
+      task: 'work',
+      created_at: '2026-01-01T00:00:00.000Z',
+    };
+    const render = () =>
+      runTool
+        .renderResult(
+          { details: { task } },
+          { isPartial },
+          { fg: (_name: string, text: string) => text },
+        )
+        .render(200)
+        .join('\n');
+    for (const metrics of [
+      undefined,
+      {},
+      { generationOutputTokens: 100 },
+      { generationOutputTokens: 0, generationMs: 0 },
+      { generationOutputTokens: NaN, generationMs: 1000 },
+      { generationOutputTokens: -1, generationMs: 1000 },
+      { generationOutputTokens: 100, generationMs: -1 },
+      { generationOutputTokens: 100, generationMs: Infinity },
+      { generationOutputTokens: Number.MAX_VALUE, generationMs: 1 },
+    ]) {
+      task.runtime_metrics = metrics;
+      const text = render();
+      expect(text).not.toContain('tok/s');
+      expect(text).not.toContain('elapsed');
+      expect(text).not.toContain('?');
+    }
+    task.runtime_metrics = { generationOutputTokens: 0, generationMs: 1000 };
+    task.started_at = 'invalid';
+    expect(render()).toContain('0 tok/s');
+    expect(render()).not.toContain('elapsed');
+    const now = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-01-01T00:00:00.900Z'));
+    try {
+      task.runtime_metrics = undefined;
+      task.started_at = '2026-01-01T00:00:00.000Z';
+      expect(render()).toContain('⧗ elapsed 900ms');
+      expect(render()).not.toContain('tok/s');
+      task.started_at = '2026-01-01T00:00:01.000Z';
+      expect(render()).toContain('⧗ elapsed 0ms');
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('refreshes foreground runtime metrics from execution partial updates', async () => {
+    env.writeAgent('worker');
+    const manager = env.createManager(async ({ onActivity }) => {
+      onActivity?.({
+        message: 'first generation measured',
+        diagnostic: true,
+        runtime_metrics: { generationOutputTokens: 204, generationMs: 4000 },
+      });
+      onActivity?.({
+        message: 'second generation measured',
+        diagnostic: true,
+        runtime_metrics: { generationOutputTokens: 408, generationMs: 12000 },
+      });
+      return { result: 'done' };
+    });
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      manager,
+    );
+    const runningLines: string[] = [];
+    await runTool.execute(
+      '1',
+      { agent: 'worker', task: 'work', mode: 'task' },
+      undefined,
+      (partial: any) => {
+        if (partial.details.tasks[0]?.status !== 'running') return;
+        runningLines.push(
+          runTool
+            .renderResult(
+              partial,
+              { isPartial: true },
+              { fg: (_name: string, text: string) => text },
+            )
+            .render(200)
+            .join('\n'),
+        );
+      },
+      { cwd: env.tmp },
+    );
+    expect(
+      runningLines.some((line) => line.includes('51 tok/s · ⧗ elapsed ')),
+    ).toBe(true);
+    expect(
+      runningLines.some((line) => line.includes('34 tok/s · ⧗ elapsed ')),
+    ).toBe(true);
+  });
+
+  it.each([
+    { frame: 0, glyph: '⠋' },
+    { frame: 1, glyph: '⠙' },
+  ])('renders foreground running state as a single framed box with spinner frame $frame', ({
+    frame,
+    glyph,
+  }) => {
     let runTool: any;
     registerSubagentTools(
       {
@@ -753,11 +982,12 @@ describe('tool render helpers', () => {
 
     const activePartial = {
       details: {
-        frame: 0,
+        frame,
         tasks: [
           {
             agent: 'sdd-verify',
             status: 'running',
+            mode: 'task',
             attempt: 1,
             effort: 'medium',
             model: 'mock/model',
@@ -778,13 +1008,59 @@ describe('tool render helpers', () => {
       )
       .render(80);
     expect(lines[0]).toMatch(/^╭─+ .+subagent · sdd-verify · running ─+╮$/);
-    expect(lines[0]).toContain('⠋');
+    expect(lines[0]).toContain(glyph);
+    expect(lines[0]).not.toContain('⤓');
     expect(lines.some((l: string) => l.includes('│'))).toBe(true);
     expect(lines.at(-1)).toMatch(/^╰─+╯$/);
     expect(lines.join('\n')).not.toContain('\x1b[4');
   });
 
-  it('renders background running execution state as a single framed box with (background) integrated in top-border title', async () => {
+  it.each([
+    { status: 'completed', glyph: '✓' },
+    { status: 'failed', glyph: '✗' },
+    { status: 'cancelled', glyph: '■' },
+  ])('keeps the $status glyph in background subagent_run headers', ({
+    status,
+    glyph,
+  }) => {
+    let runTool: any;
+    registerSubagentTools(
+      {
+        registerTool: (tool: any) => {
+          if (tool.name === 'subagent_run') runTool = tool;
+        },
+      },
+      env.createManager(env.mockRunner()),
+    );
+
+    const lines = runTool
+      .renderResult(
+        {
+          details: {
+            task: {
+              id: 'subtask_123',
+              agent: 'sdd-verify',
+              mode: 'background',
+              status,
+              task: 'verify',
+            },
+          },
+        },
+        { expanded: false, isPartial: false },
+        {
+          fg: (_name: string, text: string) => text,
+          bold: (text: string) => text,
+        },
+      )
+      .render(80);
+    expect(lines[0]).toContain(glyph);
+    expect(lines[0]).not.toContain('⤓');
+  });
+
+  it.each([
+    'running',
+    'queued',
+  ])('renders background %s execution state as a single framed box with (background) integrated in top-border title', async (status) => {
     env.writeAgent('sdd-verify');
     const manager = env.createManager(env.mockRunner());
     let runTool: any;
@@ -804,7 +1080,7 @@ describe('tool render helpers', () => {
         task: {
           id: 'subtask_123',
           agent: 'sdd-verify',
-          status: 'running',
+          status,
           mode: 'background',
           model: 'mock/model',
           effort: 'medium',
@@ -836,12 +1112,14 @@ describe('tool render helpers', () => {
         },
       )
       .render(80);
-    expect(lines[0]).toMatch(
-      /^╭─+ .+subagent · sdd-verify · running \(background\) ─+╮$/,
+    expect(lines[0]).toMatch(/^╭─+ .+ ─+╮$/);
+    expect(lines[0]).toContain(
+      `subagent · sdd-verify · ${status} (background)`,
     );
-    expect(lines[0]).toContain('⠋');
+    expect(lines[0]).toContain('⤓');
+    expect(lines[0]).not.toContain('⠋');
     expect(lines[1]).toContain('subagent: sdd-verify');
-    expect(lines[1]).toContain('status: running');
+    expect(lines[1]).toContain(`status: ${status}`);
     expect(lines.join('\n')).toContain('click to view execution');
     expect(lines.at(-1)).toMatch(/^╰─+╯$/);
     expect(lines.join('\n')).not.toContain('\x1b[4');
@@ -906,7 +1184,8 @@ describe('tool render helpers', () => {
       .render(120);
     expect(resultLines[0]).toContain('╭─');
     expect(resultLines[0]).toContain('╮');
-    expect(resultLines[0]).toContain('⠋');
+    expect(resultLines[0]).toContain('⤓');
+    expect(resultLines[0]).not.toContain('⠋');
     expect(resultLines[0]).toContain(
       'subagent · sdd-verify · running (background)',
     );

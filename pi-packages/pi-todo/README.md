@@ -26,6 +26,10 @@ Open-task reinjection uses the append-only approach demonstrated by
   the editor or footer. Tasks are isolated by session; the foreground widget
   never displays another session's tasks. Headless sessions retain the tool,
   replay, context reinjection, and state publication without creating a widget.
+- Renders `todo` calls/results and the above-editor widget through the theme's
+  Render KIT when present, discovered through `@thoth-agents/pi-core` at render
+  time. Without the kit, it keeps native Pi rendering; there is no dependency on
+  `@thoth-agents/pi-thoth-theme`.
 - Publishes full `TodoSnapshot` envelopes through `@thoth-agents/pi-core` on
   `thoth:todo:state` after mutations and replay on `session_start`, `session_tree`,
   and `session_compact`. Snapshots include tombstones, status counts, `nextId`,

@@ -1,3 +1,4 @@
+import { getRenderKit, type RenderKitTheme } from '@thoth-agents/pi-core';
 import {
   truncateToWidth,
   visibleWidth,
@@ -220,17 +221,23 @@ function finiteNonnegative(value: number | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
-function metricLines(
-  parts: string[] = [],
-  width = 80,
-  prefixWidth = 5,
-): string[] {
+function widgetMetricContentWidth(
+  width: number,
+  theme?: RenderKitTheme,
+): number {
+  const kit = theme ? getRenderKit() : undefined;
+  if (!kit || !theme) return Math.max(10, width - 5);
+  // Empty text exposes the actual rail plus selection gutter, including ANSI styling.
+  const rail = kit.treeRow(theme, { text: '', depth: 1 }, width);
+  return Math.max(0, Math.floor(width) - visibleWidth(rail));
+}
+
+function metricLines(parts: string[] = [], contentWidth = 75): string[] {
   const lines: string[] = [];
-  const effectiveWidth = Math.max(10, width - prefixWidth);
   for (const part of parts) {
     const previous = lines.at(-1);
     const joined = previous ? `${previous} · ${part}` : part;
-    if (previous && visibleWidth(joined) > effectiveWidth) {
+    if (previous && visibleWidth(joined) > contentWidth) {
       lines.push(part);
     } else if (previous) {
       lines[lines.length - 1] = joined;
@@ -243,11 +250,11 @@ function metricLines(
 
 function entryRowCount(
   entry: ClaudeBackgroundWidgetEntry,
-  width: number,
+  contentWidth: number,
 ): number {
   return (
     1 +
-    (entry.metrics ? metricLines(entry.metrics, width).length : 0) +
+    (entry.metrics ? metricLines(entry.metrics, contentWidth).length : 0) +
     (entry.activity ? 1 : 0) +
     (entry.warning ? 1 : 0)
   );
@@ -295,6 +302,7 @@ export function renderClaudeBackgroundWidgetLines(
     now?: number;
     width?: number;
     navigationActive?: boolean;
+    theme?: any;
   } = {},
 ): string[] | undefined {
   const entries = buildClaudeBackgroundWidgetEntries(tasks, options.now);
@@ -303,17 +311,98 @@ export function renderClaudeBackgroundWidgetLines(
     selectedKey === undefined
       ? undefined
       : coerceClaudeBackgroundSelection(entries, selectedKey);
-  const useNeon = Boolean(options.archIndicator || options.neonRunning);
+  const useArchIndicator = Boolean(
+    options.archIndicator || options.neonRunning,
+  );
   const width = options.width ?? 80;
   const isNavActive = Boolean(
     options.navigationActive || (selectedKey && selectedKey !== 'main'),
   );
 
+  const theme = options.theme;
+  const kit = theme ? getRenderKit() : undefined;
+  const contentWidth = widgetMetricContentWidth(width, theme);
   return entries.flatMap((entry) => {
     const isSelected = entry.key === current;
+    if (kit) {
+      if (entry.key === 'main')
+        return [
+          kit.widgetHeading(
+            theme,
+            {
+              title: entry.line,
+              suffix: headerKeyboardHints(width, isNavActive).trim(),
+            },
+            width,
+          ),
+        ];
+      if (entry.status === 'overflow' || entry.status === 'queued') {
+        return [
+          kit.treeRow(
+            theme,
+            {
+              text: `${entry.line}${entry.status === 'overflow' ? overflowKeyboardHint(width) : ''}`,
+              selected: isSelected,
+              last: entry === entries.at(-1),
+            },
+            width,
+          ),
+          ...(entry.warning
+            ? [
+                kit.treeRow(
+                  theme,
+                  {
+                    text: kit.fg(theme, 'warning', entry.warning),
+                    depth: 1,
+                    last: true,
+                  },
+                  width,
+                ),
+              ]
+            : []),
+        ];
+      }
+      const indicator = kit.indicator(
+        theme,
+        { isPartial: true },
+        {
+          status: 'running',
+          frame: options.frame ?? Math.floor(Date.now() / 100),
+        },
+      );
+      const children = [
+        ...metricLines(entry.metrics, contentWidth).map((line) =>
+          kit.fg(theme, 'dim', line),
+        ),
+        ...(entry.warning ? [kit.fg(theme, 'warning', entry.warning)] : []),
+        ...(entry.activity ? [kit.fg(theme, 'dim', entry.activity)] : []),
+      ];
+      return [
+        kit.treeRow(
+          theme,
+          {
+            text: `${indicator.glyph} ${entry.line}`,
+            selected: isSelected,
+            last: entry === entries.at(-1),
+          },
+          width,
+        ),
+        ...children.map((text, index) =>
+          kit.treeRow(
+            theme,
+            {
+              text,
+              depth: 1,
+              last: index === children.length - 1,
+            },
+            width,
+          ),
+        ),
+      ];
+    }
 
     if (entry.key === 'main') {
-      const bullet = isSelected && useNeon ? ARCH_ICON : '●';
+      const bullet = isSelected && useArchIndicator ? ARCH_ICON : '●';
       const hints = headerKeyboardHints(width, isNavActive);
       return [`${bullet} ${entry.line}${hints}`];
     }
@@ -337,7 +426,9 @@ export function renderClaudeBackgroundWidgetLines(
       'running',
       options.frame ?? Math.floor(Date.now() / 100),
     );
-    const mLines = entry.metrics ? metricLines(entry.metrics, width) : [];
+    const mLines = entry.metrics
+      ? metricLines(entry.metrics, contentWidth)
+      : [];
     const hasActivity = Boolean(entry.activity);
 
     const headerPrefix = isSelected ? '● ┏━ ' : '  ╭─ ';
@@ -376,7 +467,7 @@ export class ClaudeBackgroundWidgetState {
   private selectedKey = 'main';
   private selectedIndex = 0;
   private navigationActive = false;
-  private renderWidth = 80;
+  private renderMetricContentWidth = 75;
 
   constructor(
     private getTasks: () => SubagentTask[],
@@ -420,8 +511,12 @@ export class ClaudeBackgroundWidgetState {
     neonRunning?: boolean;
     frame?: number;
     width?: number;
+    theme?: any;
   }): string[] {
-    this.renderWidth = options?.width ?? this.renderWidth;
+    this.renderMetricContentWidth = widgetMetricContentWidth(
+      options?.width ?? 80,
+      options?.theme,
+    );
     return (
       renderClaudeBackgroundWidgetLines(
         this.getTasks(),
@@ -460,13 +555,14 @@ export class ClaudeBackgroundWidgetState {
       row >= 0 &&
       row <
         entries.reduce(
-          (count, entry) => count + entryRowCount(entry, this.renderWidth),
+          (count, entry) =>
+            count + entryRowCount(entry, this.renderMetricContentWidth),
           0,
         )
     ) {
       let offset = 0;
       for (const entry of entries) {
-        const rowCount = entryRowCount(entry, this.renderWidth);
+        const rowCount = entryRowCount(entry, this.renderMetricContentWidth);
         if (row < offset + rowCount) {
           targetKey = entry.key;
           break;
@@ -614,21 +710,25 @@ export class ClaudeBackgroundWidget {
   invalidate(): void {}
 
   render(width: number): string[] {
-    const isNeon = Boolean(
+    const useArchIndicator = Boolean(
       this.options.archIndicator ||
         this.options.neonRunning ||
         typeof this.theme?.bg === 'function',
     );
 
-    const renderOptions = isNeon
+    const renderOptions = useArchIndicator
       ? { archIndicator: true, neonRunning: true, ...this.options }
       : this.options;
 
-    const lines = isNeon
-      ? this.state.renderLines({ ...renderOptions, width })
-      : this.state.renderLines({ width });
-
-    return lines.map((line) => truncateToWidth(this.decorate(line), width));
+    const lines = this.state.renderLines({
+      ...renderOptions,
+      width,
+      theme: this.theme,
+    });
+    const kit = getRenderKit();
+    return lines.map((line) =>
+      truncateToWidth(kit ? line : this.decorate(line), width),
+    );
   }
 
   handleInput(data: string): void {

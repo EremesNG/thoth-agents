@@ -59,7 +59,8 @@
     }
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@thoth-agents/pi-core": "workspace:^"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.0.2",

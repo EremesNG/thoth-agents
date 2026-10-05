@@ -30,15 +30,25 @@ let dispose: () => void;
 const disposers: Array<() => void> = [];
 
 function setup(icons: ThemeConfig['icons'] = 'nerd') {
+  const starts: Array<() => void> = [];
   dispose = registerTools(
     {
       registerToolRenderer(r: ToolRendererResolver) {
         resolver = r;
       },
+      on(
+        event: string,
+        handler: (event: unknown, ctx: { hasUI: boolean }) => void,
+      ) {
+        if (event === 'session_start')
+          starts.push(() => handler({ type: event }, { hasUI: true }));
+        return () => {};
+      },
     } as unknown as ExtensionAPI,
     { ...config, icons },
     process.cwd(),
   );
+  for (const start of starts) start();
   disposers.push(dispose);
 }
 

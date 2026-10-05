@@ -16,6 +16,7 @@ import type {
   Theme,
 } from '@earendil-works/pi-coding-agent';
 import { type TUI, truncateToWidth } from '@earendil-works/pi-tui';
+import { getRenderKit } from '@thoth-agents/pi-core';
 import {
   selectHasActive,
   selectOverlayLayout,
@@ -148,6 +149,7 @@ export class TodoOverlay {
   }
 
   private renderWidget(theme: Theme, width: number): string[] {
+    const kit = getRenderKit();
     const snapshot = this.getSnapshot();
     const overlayTasks = this.selectOverlayTasks(snapshot);
     if (overlayTasks.length === 0) return [];
@@ -162,9 +164,23 @@ export class TodoOverlay {
     const headingColor = hasActive ? 'accent' : 'dim';
     const headingIcon = hasActive ? '●' : '○';
     const headingText = `Todos (${counts.completed}/${counts.total})`;
-    const heading = truncate(
-      `${theme.fg(headingColor, headingIcon)} ${theme.fg(headingColor, headingText)}`,
-    );
+    const heading = kit
+      ? kit.widgetHeading(
+          theme,
+          {
+            title: 'Todos',
+            counts: { completed: counts.completed, total: counts.total },
+            status: hasActive ? 'running' : 'completed',
+          },
+          width,
+        )
+      : truncate(
+          `${theme.fg(headingColor, headingIcon)} ${theme.fg(headingColor, headingText)}`,
+        );
+    const treeRow = (text: string, last: boolean): string =>
+      kit
+        ? kit.treeRow(theme, { text, last }, width)
+        : truncate(`${theme.fg('dim', last ? '└─' : '├─')} ${text}`);
 
     // Collapsed tasks were not displayed, so they must not be queued for hiding
     // on the next turn. Keep this before completed-display tracking below.
@@ -172,7 +188,7 @@ export class TodoOverlay {
       const hint = 'ctrl+shift+t to expand';
       return this.withTrailingSpacer([
         heading,
-        truncate(`${theme.fg('dim', '└─')} ${theme.fg('dim', hint)}`),
+        treeRow(theme.fg('dim', hint), true),
       ]);
     }
 
@@ -187,10 +203,12 @@ export class TodoOverlay {
         ? overlayTasks.length
         : MAX_WIDGET_LINES - 1;
     const layout = selectOverlayLayout(overlayState, bodyBudget);
-    for (const task of layout.visible) {
+    const hasOverflow = layout.hiddenCompleted > 0 || layout.truncatedTail > 0;
+    for (const [index, task] of layout.visible.entries()) {
       lines.push(
-        truncate(
-          `${theme.fg('dim', '├─')} ${formatOverlayTaskLine(task, theme, showIds)}`,
+        treeRow(
+          formatOverlayTaskLine(task, theme, showIds, kit),
+          !hasOverflow && index === layout.visible.length - 1,
         ),
       );
     }
@@ -207,11 +225,7 @@ export class TodoOverlay {
       this.completedTaskIdsPendingHide.add(taskId);
     }
 
-    if (layout.hiddenCompleted === 0 && layout.truncatedTail === 0) {
-      const last = lines.length - 1;
-      lines[last] = lines[last].replace('├─', '└─');
-      return this.withTrailingSpacer(lines);
-    }
+    if (!hasOverflow) return this.withTrailingSpacer(lines);
 
     const totalHidden = layout.hiddenCompleted + layout.truncatedTail;
     const overflowParts: string[] = [];
@@ -228,9 +242,7 @@ export class TodoOverlay {
       overflowParts.length > 0
         ? `+${totalHidden} ${more} (${overflowParts.join(', ')})`
         : `+${totalHidden} ${more}`;
-    lines.push(
-      truncate(`${theme.fg('dim', '└─')} ${theme.fg('dim', summary)}`),
-    );
+    lines.push(treeRow(theme.fg('dim', summary), true));
     return this.withTrailingSpacer(lines);
   }
 

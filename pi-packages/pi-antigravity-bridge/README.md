@@ -79,6 +79,11 @@ colored diff lines, the command line, or the captured output - streamed as the
 steps start and complete. The stream-json engine keeps its native re-exec
 cards for read-only steps.
 
+`AskAntigravity` calls/results and the `agy-native-event` display-only messages
+render through the theme's Render KIT when present, discovered through
+`@thoth-agents/pi-core` at render time. Without the kit, they keep native Pi
+rendering; there is no dependency on `@thoth-agents/pi-thoth-theme`.
+
 ## Approval gate (agy native tools)
 
 agy runs its own agent loop with native tools (`run_command`, `create_file`, `edit_file`, ...), which pi's permission extensions never saw. The optional approval gate routes those calls through a pi-side approval: a staged PreToolUse hook parks the call, the provider surfaces it as a shadow `bash`/`write`/`edit` toolUse, and your permission extension (or the built-in ask/allow/deny fallback) decides before agy executes it. Off by default (`approvals.gateMode: auto` enables it only when a pi permission extension is detected); denials fail closed; read-only agy tools stay ungated. On ACP turns the server has its own per-tool permission ask: when one fires (`skipPermissions` off), the request parks on a real pi dialog instead of a silent deny, and allow-always choices are remembered per connection.

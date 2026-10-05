@@ -87,6 +87,7 @@ export function registerTodoTool(pi: ExtensionAPI): void {
     promptSnippet: DEFAULT_PROMPT_SNIPPET,
     promptGuidelines: DEFAULT_PROMPT_GUIDELINES,
     parameters: TodoParamsSchema,
+    renderShell: 'self',
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const id = sid(ctx);
@@ -119,12 +120,12 @@ export function registerTodoTool(pi: ExtensionAPI): void {
     // foreground lookup and falls back to `#<id>` (see renderTodoCall). That is the
     // safe outcome: per-session ids restart at 1, so searching sibling slots could
     // surface the WRONG subject — the `#<id>` fallback is intentional, not a gap.
-    renderCall(args, theme, _context) {
-      return renderTodoCall(args as never, theme, getRenderState());
+    renderCall(args, theme, context) {
+      return renderTodoCall(args as never, theme, getRenderState(), context);
     },
 
-    renderResult(result, _opts, theme, _context) {
-      return renderTodoResult(result, theme);
+    renderResult(result, opts, theme, context) {
+      return renderTodoResult(result, theme, opts, context);
     },
   });
 }

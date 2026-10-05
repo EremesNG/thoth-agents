@@ -50,7 +50,10 @@ describe('Pi ecosystem package manifests', () => {
     }
 
     expect(core.main).toBe('./src/index.ts');
-    expect(core.exports).toBe('./src/index.ts');
+    expect(core.exports).toEqual({
+      '.': './src/index.ts',
+      './testing': './src/testing.ts',
+    });
     expect(core.files).toEqual([
       'src/**/*.ts',
       '!src/**/*.test.ts',
@@ -61,7 +64,22 @@ describe('Pi ecosystem package manifests', () => {
     expect(core.pi?.extensions).toBeUndefined();
     expect(core.peerDependenciesMeta).toEqual({
       '@earendil-works/pi-coding-agent': { optional: true },
+      '@earendil-works/pi-tui': { optional: true },
     });
+    expect(core.peerDependencies['@earendil-works/pi-tui']).toBe('>=0.99.0');
+    for (const name of [
+      'pi-thoth-theme',
+      'pi-background-tasks',
+      'pi-subagents',
+      'pi-claude-bridge',
+      'pi-antigravity-bridge',
+    ]) {
+      expect(
+        manifest(`../../${name}/package.json`).dependencies[
+          '@thoth-agents/pi-core'
+        ],
+      ).toBe('workspace:^');
+    }
     expect(todo.dependencies).toEqual({
       '@thoth-agents/pi-core': 'workspace:^',
     });

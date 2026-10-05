@@ -47,6 +47,10 @@ Opt-in: set `askClaude.enabled` to `true` (see [Configuration](#configuration)).
 
 Delegated calls don't read global `CLAUDE.md` files or Claude Code's skill listing, and always get Claude Code's own system prompt.
 
+`AskClaude` calls/results render through the theme's Render KIT when present,
+discovered through `@thoth-agents/pi-core` at render time. Without the kit, they
+keep native Pi rendering; there is no dependency on `@thoth-agents/pi-thoth-theme`.
+
 ### Parameters
 
 - **`prompt`** — the question or task for Claude Code

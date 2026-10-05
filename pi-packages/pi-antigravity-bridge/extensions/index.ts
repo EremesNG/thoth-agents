@@ -82,6 +82,7 @@ import { showTasksBrowser } from "../src/tasks-ui.js";
 import { agyConversationDir } from "../src/agy-paths.js";
 import { createDailyLogger, type DailyLogger } from "../src/daily-log.js";
 import { registerAskAntigravityTool, toolModelsFromRaw } from "../src/ask-tool.js";
+import { renderNativeEvent } from "../src/native-event-render.js";
 import { registerWebTools } from "../src/web-tools.js";
 import { acquirePrivateBridgeServerName, bridgeMcpConfigDir, startMcpServer, TOKEN_HEADER, type McpServerHandle } from "../src/mcp-server.js";
 import {
@@ -409,27 +410,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// titles and optional diffs. Unlike a synthetic Pi toolCall this does not
 	// re-execute edits, park the turn, or add tool results to model context.
 	if (engine === "acp") {
-		pi.registerEntryRenderer<NativeDisplayEvent>("agy-native-event", (entry, { expanded }, theme) => {
-			const event = entry.data;
-			// Collapsed detail: most-specific signal wins (path, command, agy's own
-			// display text). The name is NOT a fallback here - it rendered "ls ls"
-			// duplication whenever the event carried neither path nor command.
-			const firstLine = (value: string | undefined): string | undefined => value?.split(/\r?\n/, 1)[0].trim() || undefined;
-			const detail = event?.path ? path.basename(event.path) : firstLine(event?.command) ?? firstLine(event?.output);
-			const status = event?.status === "failed" ? theme.fg("error", "✗") : theme.fg("success", "✓");
-			const lines = [`${status} ${theme.fg("toolTitle", event?.name ?? "Antigravity")}${detail ? ` ${theme.fg("muted", detail.slice(0, 160))}` : ""}`];
-			if (expanded) {
-				if (event?.path) lines.push(theme.fg("dim", event.path));
-				if (event?.diff) {
-					for (const line of event.diff.split("\n")) {
-						const color = line.startsWith("+") ? "toolDiffAdded" : line.startsWith("-") ? "toolDiffRemoved" : "toolDiffContext";
-						lines.push(theme.fg(color, line));
-					}
-				}
-				if (event?.output && (!event.diff || event.status === "failed")) lines.push(theme.fg("toolOutput", event.output));
-			}
-			return new Text(lines.join("\n"), 0, 0);
-		});
+		pi.registerEntryRenderer<NativeDisplayEvent>("agy-native-event", renderNativeEvent);
 	}
 	let pendingNativeTools = 0;
 	const onNativeEvent = (event: NativeDisplayEvent): void => {

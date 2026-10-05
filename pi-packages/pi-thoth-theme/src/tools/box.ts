@@ -160,7 +160,7 @@ export function splitResultNotice(
 }
 
 export function renderBox(
-  theme: Theme,
+  theme: Pick<Theme, 'fg'>,
   bodyLines: string[],
   width: number,
   options: BoxOptions = {},

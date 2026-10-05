@@ -329,7 +329,7 @@ describe('subagent_run tool', () => {
       expect(runningUpdate.details.tasks).toMatchObject([
         { status: 'running' },
       ]);
-      expect(rendered.at(-1)!.split('\n')[0]).toContain(
+      expect(rendered.at(-1)!.split('\n')[1]).toContain(
         'subagent · analyst · running · 0s',
       );
       expect(rendered.at(-1)).not.toContain('⧗ elapsed');
@@ -343,14 +343,14 @@ describe('subagent_run tool', () => {
           runningUpdate.details.frame + index + 1,
         );
         expect(update.details.tasks).toEqual(runningUpdate.details.tasks);
-        expect(rendered[updateCount + index].split('\n')[0]).toContain(
+        expect(rendered[updateCount + index].split('\n')[1]).toContain(
           `subagent · analyst · running · ${['0s', '0s', '0s', '1s'][index]}`,
         );
       }
-      expect(rendered[updateCount].split('\n')[0]).not.toBe(
-        rendered[updateCount - 1].split('\n')[0],
+      expect(rendered[updateCount].split('\n')[1]).not.toBe(
+        rendered[updateCount - 1].split('\n')[1],
       );
-      expect(rendered.at(-1)!.split('\n')[0]).toContain(
+      expect(rendered.at(-1)!.split('\n')[1]).toContain(
         'subagent · analyst · running · 1s',
       );
       expect(rendered.at(-1)).not.toContain('⧗ elapsed');

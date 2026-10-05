@@ -148,6 +148,7 @@ test("renderResult flips to the error glyph on the empty-output failure", async 
 			calls.push([style, s]);
 			return s;
 		},
+		bg: (_style: string, s: string) => s,
 	};
 	const rendered = tool.renderResult(
 		{
@@ -174,7 +175,10 @@ test.each([
 	[7380000, "2h 03m"],
 ])("renderResult displays %s ms as %s", async (durationMs, expected) => {
 	const tool = await registerTool("/nonexistent/agy-fake");
-	const theme = { fg: (_style: string, text: string) => text };
+	const theme = {
+		fg: (_style: string, text: string) => text,
+		bg: (_style: string, text: string) => text,
+	};
 	const rendered = tool.renderResult(
 		{
 			content: [{ type: "text", text: "answer" }],

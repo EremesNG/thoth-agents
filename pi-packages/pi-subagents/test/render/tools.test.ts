@@ -12,6 +12,13 @@ import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
 
 const env = installSubagentTestEnv();
 
+function expectNativeShell(lines: string[], width: number) {
+  expect(env.stripAnsi(lines[0])).toBe(' '.repeat(width));
+  expect(env.stripAnsi(lines.at(-1)!)).toBe(' '.repeat(width));
+  expect(lines.join('')).not.toContain('╭');
+  expect(lines.join('')).not.toContain('╯');
+}
+
 describe('tool render helpers', () => {
   it('uses distinct task state glyphs', () => {
     expect(
@@ -378,13 +385,13 @@ describe('tool render helpers', () => {
             { fg, bold },
           )
           .render(200);
-        expect(lines[0]).toContain(
+        expect(lines[1]).toContain(
           `subagent · analyst · running${duration ? ` · ${duration}` : ''}`,
         );
-        if (!duration) expect(lines[0]).not.toContain('running ·');
+        if (!duration) expect(lines[1]).not.toContain('running ·');
         expect(lines.join('\n')).not.toContain('⧗ elapsed');
         const body = lines
-          .slice(1, -1)
+          .slice(2, -1)
           .map((line: string) => line.replace(/^│\s*|\s*│$/g, '').trim());
         expect(body).toEqual([
           '⠋ agent: analyst · status: running · attempt: 1 · effort: high',
@@ -467,7 +474,7 @@ describe('tool render helpers', () => {
         )
         .render(200);
       const rendered = lines.join('\n');
-      expect(lines[0]).toContain(title);
+      expect(lines[1]).toContain(title);
       expect(rendered).toContain('↳ usage: 1 turn');
       expect(rendered).not.toContain('tok/s');
       expect(rendered).not.toContain('⧗ elapsed');
@@ -531,11 +538,12 @@ describe('tool render helpers', () => {
       .render(30);
     const plain = rendered.map(env.stripAnsi);
     const bodyContent = plain
-      .slice(1, -1)
+      .slice(2, -1)
       .map((line: string) => line.replace(/^[╭│╰]\s*|\s*[╮│╯]$/g, '').trim())
       .join(' ');
     const unwrappedWord = plain
       .map((line: string) => line.replace(/^[╭│╰]\s*|\s*[╮│╯]$/g, ''))
+      .map((line: string) => line.trim())
       .filter((line: string) => line.includes('_'))
       .join('');
 
@@ -544,9 +552,7 @@ describe('tool render helpers', () => {
     expect(unwrappedWord).toContain(longToolName);
     expect(bodyContent).not.toContain('…');
     expect(plain.every((line: string) => [...line].length <= 30)).toBe(true);
-    expect(plain.some((line: string) => line.includes('╭'))).toBe(true);
-    expect(plain.some((line: string) => line.includes('│'))).toBe(true);
-    expect(plain.some((line: string) => line.includes('╰'))).toBe(true);
+    expectNativeShell(plain, 30);
   });
 
   it('renders the effective continuation mode from explicit override, previous task state, and config fallback', async () => {
@@ -744,9 +750,9 @@ describe('tool render helpers', () => {
     const plainCollapsed = collapsedLines.map(env.stripAnsi);
     const collapsedPlain = plainCollapsed.join('\n');
 
-    // Collapsed completed result: exactly 4 rows (top border with title, ONE metadata line, hint, bottom border)
-    expect(collapsedLines).toHaveLength(4);
-    expect(env.stripAnsi(collapsedLines[0])).toContain(
+    // Collapsed completed result: 5 rows (top padding, title, metadata, hint, bottom padding)
+    expect(collapsedLines).toHaveLength(5);
+    expect(env.stripAnsi(collapsedLines[1])).toContain(
       '✓ [subagent] sdd-verify · verify · completed',
     );
     expect(collapsedPlain).toContain('subagent: sdd-verify');
@@ -765,7 +771,7 @@ describe('tool render helpers', () => {
       .renderResult(dummyResult, { isPartial: false }, theme)
       .render(120);
     const unwrappedPlain = env.stripAnsi(unwrappedLines.join('\n'));
-    expect(unwrappedLines).toHaveLength(4);
+    expect(unwrappedLines).toHaveLength(5);
     expect(unwrappedPlain).toContain(
       'subagent: sdd-verify · model: openai-codex/gpt-5.4 · effort: medium · status: completed · $0.46',
     );
@@ -779,7 +785,7 @@ describe('tool render helpers', () => {
     const plainExpanded = expandedLines.map(env.stripAnsi);
     const expandedPlain = plainExpanded.join('\n');
 
-    expect(expandedLines[0]).toContain('subagent result · sdd-verify · verify');
+    expect(expandedLines[1]).toContain('subagent result · sdd-verify · verify');
     expect(expandedPlain).toContain('subagent: sdd-verify');
     expect(expandedPlain).toContain('model: openai-codex/gpt-5.4');
     expect(expandedPlain).toContain('usage: 11 turns');
@@ -832,15 +838,15 @@ describe('tool render helpers', () => {
       },
     };
 
-    // Collapsed failed result: exactly 5 rows (top border with title, ONE metadata line, error line, hint, bottom border)
+    // Collapsed failed result: 6 rows (top padding, title, metadata, error line, hint, bottom padding)
     const collapsedLines = runTool
       .renderResult(failedResult, { expanded: false, isPartial: false }, theme)
       .render(80);
     const collapsedPlain = collapsedLines.map(env.stripAnsi).join('\n');
 
-    expect(collapsedLines).toHaveLength(5);
-    expect(collapsedLines[0]).toContain('✗');
-    expect(collapsedLines[0]).toContain(
+    expect(collapsedLines).toHaveLength(6);
+    expect(collapsedLines[1]).toContain('✗');
+    expect(collapsedLines[1]).toContain(
       '[subagent] thoth-worker · implement unit tests · failed',
     );
     expect(collapsedPlain).toContain(
@@ -854,7 +860,7 @@ describe('tool render helpers', () => {
     expect(collapsedPlain).toContain('ctrl+o to expand');
   });
 
-  it('renders tool calls, progress, and results with boxed frames and zero background fills', async () => {
+  it('renders tool calls, progress, and results with one native SDK shell and empty call renderers', async () => {
     env.writeAgent('analyst');
     const manager = env.createManager(async () => ({
       result: 'completed response',
@@ -903,12 +909,8 @@ describe('tool render helpers', () => {
         },
       )
       .render(80);
-    expect(resultLines[0]).toContain('╭─');
-    expect(resultLines[0]).toContain('╮');
-    expect(resultLines[0]).toContain('✓');
-    expect(resultLines.some((l: string) => l.includes('│'))).toBe(true);
-    expect(resultLines.at(-1)).toContain('╰');
-    expect(resultLines.at(-1)).toContain('╯');
+    expectNativeShell(resultLines, 80);
+    expect(resultLines[1]).toContain('✓');
     expect(resultLines.join('\n')).not.toContain('\x1b[4');
 
     // Direct renderSubagentResult (single framed box with integrated title)
@@ -920,12 +922,8 @@ describe('tool render helpers', () => {
       { expanded: false },
       { fg: (_name: string, text: string) => text },
     ).render(80);
-    expect(directLines[0]).toContain('╭─');
-    expect(directLines[0]).toContain('╮');
-    expect(directLines[0]).toContain('✓');
-    expect(directLines.some((l: string) => l.includes('│'))).toBe(true);
-    expect(directLines.at(-1)).toContain('╰');
-    expect(directLines.at(-1)).toContain('╯');
+    expectNativeShell(directLines, 80);
+    expect(directLines[1]).toContain('✓');
     expect(directLines.join('\n')).not.toContain('\x1b[4');
   });
 
@@ -977,7 +975,7 @@ describe('tool render helpers', () => {
         `usage: 9 turns ↑19k ↓803 R61k $0.1051 ctx:19k · 51 tok/s${isPartial ? '' : ' · ⧗ elapsed 2m 11s'}`,
       );
       if (isPartial) {
-        expect(first.split('\n')[0]).toContain(
+        expect(first.split('\n')[1]).toContain(
           'subagent · worker · running · 2m 11s',
         );
         expect(first).not.toContain('⧗ elapsed');
@@ -989,7 +987,7 @@ describe('tool render helpers', () => {
         `ctx:19k · 26 tok/s${isPartial ? '' : ' · ⧗ elapsed 2m 12s'}`,
       );
       if (isPartial) {
-        expect(second.split('\n')[0]).toContain(
+        expect(second.split('\n')[1]).toContain(
           'subagent · worker · running · 2m 12s',
         );
         expect(second).not.toContain('⧗ elapsed');
@@ -1146,7 +1144,7 @@ describe('tool render helpers', () => {
       const text = render();
       expect(text).not.toContain('tok/s');
       expect(text).not.toContain('elapsed');
-      expect(text.split('\n')[0]).not.toContain('running ·');
+      expect(text.split('\n')[1]).not.toContain('running ·');
       expect(text).not.toContain('?');
     }
     task.runtime_metrics = { generationOutputTokens: 0, generationMs: 1000 };
@@ -1154,7 +1152,7 @@ describe('tool render helpers', () => {
     const invalidStart = render();
     expect(invalidStart).toContain('0 tok/s');
     expect(invalidStart).not.toContain('elapsed');
-    expect(invalidStart.split('\n')[0]).not.toContain('running ·');
+    expect(invalidStart.split('\n')[1]).not.toContain('running ·');
     const now = vi
       .spyOn(Date, 'now')
       .mockReturnValue(Date.parse('2026-01-01T00:00:00.900Z'));
@@ -1226,7 +1224,7 @@ describe('tool render helpers', () => {
     expect(runningLines.some((line) => line.includes('51 tok/s'))).toBe(true);
     expect(runningLines.some((line) => line.includes('34 tok/s'))).toBe(true);
     for (const rendered of runningLines) {
-      expect(rendered.split('\n')[0]).toMatch(
+      expect(rendered.split('\n')[1]).toMatch(
         /subagent · worker · running · \d+s/,
       );
       expect(rendered).not.toContain('⧗ elapsed');
@@ -1236,7 +1234,7 @@ describe('tool render helpers', () => {
   it.each([
     { frame: 0, glyph: '⠋' },
     { frame: 1, glyph: '⠙' },
-  ])('renders foreground running state as a single framed box with spinner frame $frame', ({
+  ])('renders foreground running state as one native shell with spinner frame $frame', ({
     frame,
     glyph,
   }) => {
@@ -1277,11 +1275,10 @@ describe('tool render helpers', () => {
         },
       )
       .render(80);
-    expect(lines[0]).toMatch(/^╭─+ .+subagent · sdd-verify · running ─+╮$/);
-    expect(lines[0]).toContain(glyph);
-    expect(lines[0]).not.toContain('⤓');
-    expect(lines.some((l: string) => l.includes('│'))).toBe(true);
-    expect(lines.at(-1)).toMatch(/^╰─+╯$/);
+    expectNativeShell(lines, 80);
+    expect(lines[1]).toContain('subagent · sdd-verify · running');
+    expect(lines[1]).toContain(glyph);
+    expect(lines[1]).not.toContain('⤓');
     expect(lines.join('\n')).not.toContain('\x1b[4');
   });
 
@@ -1323,14 +1320,14 @@ describe('tool render helpers', () => {
         },
       )
       .render(80);
-    expect(lines[0]).toContain(glyph);
-    expect(lines[0]).not.toContain('⤓');
+    expect(lines[1]).toContain(glyph);
+    expect(lines[1]).not.toContain('⤓');
   });
 
   it.each([
     'running',
     'queued',
-  ])('renders background %s execution state as a single framed box with (background) integrated in top-border title', async (status) => {
+  ])('renders background %s execution state as one native shell with (background) in its title', async (status) => {
     env.writeAgent('sdd-verify');
     const manager = env.createManager(env.mockRunner());
     let runTool: any;
@@ -1382,20 +1379,19 @@ describe('tool render helpers', () => {
         },
       )
       .render(80);
-    expect(lines[0]).toMatch(/^╭─+ .+ ─+╮$/);
-    expect(lines[0]).toContain(
+    expectNativeShell(lines, 80);
+    expect(lines[1]).toContain(
       `subagent · sdd-verify · ${status} (background)`,
     );
-    expect(lines[0]).toContain('⤓');
-    expect(lines[0]).not.toContain('⠋');
-    expect(lines[1]).toContain('subagent: sdd-verify');
-    expect(lines[1]).toContain(`status: ${status}`);
+    expect(lines[1]).toContain('⤓');
+    expect(lines[1]).not.toContain('⠋');
+    expect(lines[2]).toContain('subagent: sdd-verify');
+    expect(lines[2]).toContain(`status: ${status}`);
     expect(lines.join('\n')).toContain('click to view execution');
-    expect(lines.at(-1)).toMatch(/^╰─+╯$/);
     expect(lines.join('\n')).not.toContain('\x1b[4');
   });
 
-  it('produces one transparent single frame for background running execution with all info inside and zero project-owned background escapes', async () => {
+  it('produces one native shell for background running execution with IDs kept in details', async () => {
     env.writeAgent('sdd-verify');
     const manager = env.createManager(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -1452,20 +1448,17 @@ describe('tool render helpers', () => {
         },
       )
       .render(120);
-    expect(resultLines[0]).toContain('╭─');
-    expect(resultLines[0]).toContain('╮');
-    expect(resultLines[0]).toContain('⤓');
-    expect(resultLines[0]).not.toContain('⠋');
-    expect(resultLines[0]).toContain(
+    expectNativeShell(resultLines, 120);
+    expect(resultLines[1]).toContain('⤓');
+    expect(resultLines[1]).not.toContain('⠋');
+    expect(resultLines[1]).toContain(
       'subagent · sdd-verify · running (background)',
     );
 
     // Interior lines:
-    expect(resultLines[1]).toContain('subagent: sdd-verify');
-    expect(resultLines[1]).toContain('status: running');
+    expect(resultLines[2]).toContain('subagent: sdd-verify');
+    expect(resultLines[2]).toContain('status: running');
     expect(resultLines.join('\n')).toContain('click to view execution');
-    expect(resultLines.at(-1)).toContain('╰');
-    expect(resultLines.at(-1)).toContain('╯');
 
     // 3. No project-owned background fills or ANSI background color escapes
     const renderedFull = resultLines.join('\n');
@@ -1717,7 +1710,7 @@ describe('tool render helpers', () => {
     }
   });
 
-  it('renders all 9 public subagent tools with boxed layout, ARCH_ICON header, and width safety in both collapsed and expanded states', () => {
+  it('renders all 9 public subagent tools with native layout, status/brand header, and width safety in both collapsed and expanded states', () => {
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents.json'),
       JSON.stringify({ enable_continue: true }),
@@ -1781,10 +1774,9 @@ describe('tool render helpers', () => {
       const collapsedLines = tool
         .renderResult(result, { expanded: false, isPartial: false }, theme)
         .render(80);
-      expect(collapsedLines[0], `${name} collapsed top border`).toContain('╭─');
-      expect(collapsedLines[0], `${name} collapsed top border`).toContain('╮');
+      expectNativeShell(collapsedLines, 80);
       expect(
-        collapsedLines[0],
+        collapsedLines[1],
         `${name} collapsed status/brand icon`,
       ).toContain(
         [
@@ -1796,26 +1788,12 @@ describe('tool render helpers', () => {
           ? '✓'
           : '󰣇',
       );
-      expect(
-        collapsedLines.some((l: string) => l.includes('│')),
-        `${name} collapsed vertical border`,
-      ).toBe(true);
-      expect(
-        collapsedLines.at(-1),
-        `${name} collapsed bottom border`,
-      ).toContain('╰');
-      expect(
-        collapsedLines.at(-1),
-        `${name} collapsed bottom border`,
-      ).toContain('╯');
-
       // Expanded
       const expandedLines = tool
         .renderResult(result, { expanded: true, isPartial: false }, theme)
         .render(80);
-      expect(expandedLines[0], `${name} expanded top border`).toContain('╭─');
-      expect(expandedLines[0], `${name} expanded top border`).toContain('╮');
-      expect(expandedLines[0], `${name} expanded status/brand icon`).toContain(
+      expectNativeShell(expandedLines, 80);
+      expect(expandedLines[1], `${name} expanded status/brand icon`).toContain(
         [
           'subagent_run',
           'subagent_continue',
@@ -1825,17 +1803,6 @@ describe('tool render helpers', () => {
           ? '✓'
           : '󰣇',
       );
-      expect(
-        expandedLines.some((l: string) => l.includes('│')),
-        `${name} expanded vertical border`,
-      ).toBe(true);
-      expect(expandedLines.at(-1), `${name} expanded bottom border`).toContain(
-        '╰',
-      );
-      expect(expandedLines.at(-1), `${name} expanded bottom border`).toContain(
-        '╯',
-      );
-
       // Narrow width safety
       const narrowLines = tool
         .renderResult(result, { expanded: false, isPartial: false }, theme)
@@ -1933,7 +1900,7 @@ describe('tool render helpers', () => {
     }
   });
 
-  it('renders subagent_status and subagent_send_message error and rejected states with boxed frames', () => {
+  it('renders subagent_status and subagent_send_message error and rejected states with native shells', () => {
     fs.writeFileSync(
       path.join(env.tmp, '.pi', 'subagents.json'),
       JSON.stringify({ enable_continue: true }),
@@ -1959,8 +1926,8 @@ describe('tool render helpers', () => {
     const statusErrorLines = registered.subagent_status
       .renderResult(statusErrorResult, { expanded: false }, theme)
       .render(80);
-    expect(statusErrorLines[0]).toContain('subagent status · failed');
-    expect(statusErrorLines[1]).toContain('Subagent task not found');
+    expect(statusErrorLines[1]).toContain('subagent status · failed');
+    expect(statusErrorLines[2]).toContain('Subagent task not found');
 
     // subagent_status: background task running
     const bgTask = {
@@ -1974,7 +1941,7 @@ describe('tool render helpers', () => {
     const statusBgLines = registered.subagent_status
       .renderResult({ details: { task: bgTask } }, { expanded: false }, theme)
       .render(80);
-    expect(statusBgLines[0]).toContain(
+    expect(statusBgLines[1]).toContain(
       'subagent status · analyst · running (background)',
     );
 
@@ -1990,9 +1957,9 @@ describe('tool render helpers', () => {
     const sendRejectedLines = registered.subagent_send_message
       .renderResult(rejectedResult, { expanded: false }, theme)
       .render(80);
-    expect(sendRejectedLines[0]).toContain('subagent send message · rejected');
-    expect(sendRejectedLines[1]).toContain('status: rejected');
-    expect(sendRejectedLines[1]).toContain('task_id: t_1');
+    expect(sendRejectedLines[1]).toContain('subagent send message · rejected');
+    expect(sendRejectedLines[2]).toContain('status: rejected');
+    expect(sendRejectedLines[2]).toContain('task_id: t_1');
 
     const sendRejectedExpanded = registered.subagent_send_message
       .renderResult(rejectedResult, { expanded: true }, theme)

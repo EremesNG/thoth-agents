@@ -1,9 +1,8 @@
 import { createAssistantMessageEventStream, type AssistantMessage, type AssistantMessageEventStream, type Context, type ImageContent, type Model, type SimpleStreamOptions, type TextContent, type Tool, type UserMessage } from "@earendil-works/pi-ai";
 import { getModels } from "@earendil-works/pi-ai/compat";
-import { buildSessionContext, compact, generateBranchSummary, keyHint, type BranchSummaryResult, type CompactionEntry, type ExtensionAPI, type ExtensionContext, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import { buildSessionContext, compact, generateBranchSummary, type BranchSummaryResult, type CompactionEntry, type ExtensionAPI, type ExtensionContext, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { query, type EffortLevel, type SDKMessage, type SettingSource } from "@anthropic-ai/claude-agent-sdk";
 import type { Base64ImageSource, ContentBlockParam } from "@anthropic-ai/sdk/resources";
-import { Text } from "@earendil-works/pi-tui";
 import { createSession, deleteSession, openSession, repairToolPairing } from "cc-session-io";
 import { appendFileSync, mkdirSync, realpathSync, statSync } from "fs";
 import { dirname, join } from "path";
@@ -26,10 +25,11 @@ import { collectCarriedAttachments, placeCarriedAttachments, type CarriedAttachm
 import { createToolServer, omittedToolSchemaWarning } from "./mcp-server.js";
 import { normalizeToolSchema } from "./tool-schema.js";
 import { buildActionSummary, type ToolCallState } from "./askclaude-ui.js";
-import { askClaudeCallTags, askClaudeToolDescription, buildAskClaudeParams, resolveAskClaudeDefaults, resolveAskClaudeMode, type AskClaudeMode } from "./askclaude-schema.js";
+import { askClaudeToolDescription, buildAskClaudeParams, resolveAskClaudeDefaults, resolveAskClaudeMode, type AskClaudeMode } from "./askclaude-schema.js";
 import { nonSystemMessages, toBridgeContext } from "./transcript.js";
 import { updateUsage, type SdkUsage } from "./usage.js";
-import { formatDuration } from "./format-duration.js";
+import { formatDuration } from "@thoth-agents/pi-core";
+import { createAskClaudeRenderers } from "./askclaude-render.js";
 
 // --- Debug logging ---
 // CLAUDE_BRIDGE_DEBUG=1 enables debug logging to the bridge log in pi's agent
@@ -2405,9 +2405,6 @@ async function promptAndWait(
 
 // --- Extension registration ---
 
-const PREVIEW_MAX_CHARS = 1000;
-const PREVIEW_MAX_LINES = 6;
-
 let askClaudeToolName = "AskClaude";
 
 export default function (pi: ExtensionAPI) {
@@ -2686,46 +2683,7 @@ export default function (pi: ExtensionAPI) {
 			label: askConf?.label ?? "Ask Claude Code",
 			description: askClaudeToolDescription(askDefaults, askConf?.description),
 			parameters: askClaudeParams,
-			renderCall(args, theme) {
-				let text = theme.fg("mdLink", theme.bold("AskClaude "));
-				const tags = askClaudeCallTags(args, askDefaults);
-				if (tags.length) text += `${theme.fg("accent", `[${tags.join(", ")}]`)} `;
-				const truncated = args.prompt.length > PREVIEW_MAX_CHARS ? args.prompt.substring(0, PREVIEW_MAX_CHARS) : args.prompt;
-				const lines = truncated.split("\n").slice(0, PREVIEW_MAX_LINES);
-				text += theme.fg("muted", `"${lines.join("\n")}"`);
-				if (args.prompt.length > PREVIEW_MAX_CHARS || args.prompt.split("\n").length > PREVIEW_MAX_LINES) text += theme.fg("dim", " …");
-				return new Text(text, 0, 0);
-			},
-			renderResult(result, { expanded, isPartial }, theme) {
-				if (isPartial) {
-					const status = result.content[0]?.type === "text" ? result.content[0].text : "working...";
-					return new Text(theme.fg("mdLink", "◉ Claude Code ") + theme.fg("muted", status), 0, 0);
-				}
-
-				const details = result.details as { prompt?: string; executionTime?: number; actions?: string; error?: boolean } | undefined;
-				const body = result.content[0]?.type === "text" ? result.content[0].text : "";
-
-				let text = details?.error
-					? theme.fg("error", "✗ Claude Code error")
-					: theme.fg("mdLink", "✓ Claude Code");
-
-				if (details?.executionTime) text += ` ${theme.fg("dim", formatDuration(details.executionTime))}`;
-				if (details?.actions) text += ` ${theme.fg("muted", details.actions)}`;
-
-				if (expanded) {
-					if (details?.prompt) text += `\n${theme.fg("dim", `Prompt: ${details.prompt}`)}`;
-					if (details?.prompt && body) text += `\n${theme.fg("dim", "─".repeat(40))}`;
-					if (body) text += `\n${theme.fg("toolOutput", body)}`;
-				} else {
-					const truncated = body.length > PREVIEW_MAX_CHARS ? body.substring(0, PREVIEW_MAX_CHARS) : body;
-					const lines = truncated.split("\n").slice(0, PREVIEW_MAX_LINES);
-					if (lines.length) text += `\n${theme.fg("toolOutput", lines.join("\n"))}`;
-					if (body.length > PREVIEW_MAX_CHARS || body.split("\n").length > PREVIEW_MAX_LINES) text += `\n${theme.fg("dim", `… (${keyHint("app.tools.expand", "to expand")})`)}`;
-
-				}
-
-				return new Text(text, 0, 0);
-			},
+			...createAskClaudeRenderers(askDefaults),
 			async execute(_id, params, signal, onUpdate, ctx) {
 				// Guard: circular delegation
 				if (ctx.model?.baseUrl === "claude-bridge") {

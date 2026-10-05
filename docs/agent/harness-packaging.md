@@ -35,8 +35,9 @@
   `>=22.19.0`. Features requiring newer Pi APIs are runtime-guarded; the theme's
   tool renderers need Pi `>=1.0.1` and are inert on older supported versions.
   The workspace `@thoth-agents/pi-core` (`pi-packages/pi-core`) is a library of
-  typed, versioned `pi.events` channels and session-state publish/request/subscribe
-  helpers, not a standalone extension. The first-party `@thoth-agents/pi-todo`
+  typed, versioned `pi.events` channels, session-state publish/request/subscribe
+  helpers, the Render KIT contract/registry and pure `formatDuration`, not a
+  standalone extension. The first-party `@thoth-agents/pi-todo`
   (`pi-packages/pi-todo`) is a fork of `@juicesharp/rpiv-todo` `2.12.0`, providing
   the `todo` tool, `/todos`, and a current-session widget. It replays branch state,
   publishes full task snapshots through pi-core, and reinjects open tasks before
@@ -168,6 +169,38 @@
   Only root and librarian receive `web_search`, `fetch_content`,
   `get_search_content`, and `source_check` guidance, and package presence remains
   distinct from live UI/provider availability.
+
+## Pi Render KIT and workspace releases
+
+`@thoth-agents/pi-core` defines `ThothRenderKit` v1 and the process-wide
+`registerRenderKit` / `getRenderKit` / `withdrawRenderKit` registry. It has no
+runtime UI dependencies. `@thoth-agents/pi-thoth-theme` implements the kit's
+cards, collapse hints, per-width caching, working/elapsed indicators, status
+glyphs and widget primitives. It registers on `session_start` only for its
+interactive UI session while `tools.enabled` is true, and withdraws only its own
+registration on `session_shutdown`. Headless children do not replace or withdraw
+the parent kit, or stop its indicators.
+
+pi-todo, pi-background-tasks, pi-subagents, pi-claude-bridge and
+pi-antigravity-bridge discover `getRenderKit()` inside each render of their tool
+calls/results, custom messages and above-editor widgets where provided, never
+at extension load or component creation. A missing or incompatible kit means
+native Pi rendering. These producers depend on pi-core, not pi-thoth-theme;
+extension load order does not matter.
+
+Every migrated tool declares a stable `renderShell: 'self'`: the SDK fixes the
+shell when constructing the tool component, so kit availability must not choose
+it. Each render draws either the KIT frame or native output equivalent to the
+SDK's default pi-tui `Box(1, 1, bg)`, with `toolPendingBg`, `toolSuccessBg` or
+`toolErrorBg`, without nested frames. Message/widget fallbacks retain native
+presentation. See [pi-core's KIT contract](../../pi-packages/pi-core/README.md#render-kit-v1).
+
+Publish pi-core before pi-subagents, pi-todo and the other KIT consumers (theme,
+background tasks and both bridges). Use `pnpm pack` / `pnpm publish` to convert
+`workspace:^` dependencies to semver ranges. pi-subagents semantic-release keeps
+`@semantic-release/npm` with `npmPublish: false` for version preparation and uses
+`@semantic-release/exec` to run `pnpm publish --no-git-checks`, including
+`prepublishOnly`.
 
 ## Verification
 

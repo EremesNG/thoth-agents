@@ -69,5 +69,8 @@
     "repository": "https://github.com/1aboveio/pi-better-harness",
     "commit": "86876e8369a673892a10c4e8df15460386ad0132",
     "directory": "packages/pi-better-background-tasks"
+  },
+  "dependencies": {
+    "@thoth-agents/pi-core": "workspace:^"
   }
 }

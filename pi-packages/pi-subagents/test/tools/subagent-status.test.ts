@@ -135,7 +135,7 @@ describe('subagent_status tool', () => {
     });
   });
 
-  it('renders subagent_status with boxed layout in collapsed and expanded states', async () => {
+  it('renders subagent_status with native SDK layout in collapsed and expanded states', async () => {
     const task: any = {
       id: 'subtask_status_render',
       agent: 'analyst',
@@ -174,9 +174,10 @@ describe('subagent_status tool', () => {
     const collapsed = statusTool
       .renderResult(result, { expanded: false }, theme)
       .render(80);
-    expect(collapsed[0]).toContain('╭─');
-    expect(collapsed[0]).toContain('✓');
-    expect(collapsed[0]).toContain(
+    expect(collapsed[0]).toBe(' '.repeat(80));
+    expect(collapsed.at(-1)).toBe(' '.repeat(80));
+    expect(collapsed[1]).toContain('✓');
+    expect(collapsed[1]).toContain(
       'subagent status · analyst · analyze report · completed',
     );
     expect(collapsed.join('\n')).toContain('subagent: analyst');
@@ -186,8 +187,9 @@ describe('subagent_status tool', () => {
     const expanded = statusTool
       .renderResult(result, { expanded: true }, theme)
       .render(80);
-    expect(expanded[0]).toContain('╭─');
-    expect(expanded[0]).toContain('✓');
+    expect(expanded[0]).toBe(' '.repeat(80));
+    expect(expanded.at(-1)).toBe(' '.repeat(80));
+    expect(expanded[1]).toContain('✓');
     expect(expanded.join('\n')).toContain('Subagent response');
     expect(expanded.join('\n')).toContain('analysis completed cleanly');
     expect(expanded.join('\n')).toContain('usage:');

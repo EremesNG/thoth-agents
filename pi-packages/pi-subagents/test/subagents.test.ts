@@ -6,6 +6,8 @@ import {
   ExtensionSelectorComponent,
   initTheme,
 } from '@earendil-works/pi-coding-agent';
+import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import extension from '../index.js';
 import { SubagentManager } from '../src/manager.js';
@@ -301,8 +303,15 @@ describe('subagents smoke', () => {
     expect(pi.sendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('places the Agents widget above input and stops rendering after shutdown', async () => {
+  it.each([
+    false,
+    true,
+  ])('animates the Agents widget only while running and cleans up on shutdown (KIT=%s)', async (withKit) => {
+    const token = withKit
+      ? registerRenderKit(createTestRenderKit(), {})
+      : undefined;
     vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     try {
       const listeners: Array<() => void> = [];
       const { close, listActiveSessionTasks } = managerInstance;
@@ -311,9 +320,25 @@ describe('subagents smoke', () => {
       listActiveSessionTasks.mockImplementation(
         () =>
           (running
-            ? [{ status: 'running' }]
+            ? [
+                {
+                  id: 'running',
+                  agent: 'worker',
+                  mode: 'background',
+                  status: 'running',
+                  task: 'work',
+                },
+              ]
             : queued
-              ? [{ status: 'queued' }]
+              ? [
+                  {
+                    id: 'queued',
+                    agent: 'worker',
+                    mode: 'background',
+                    status: 'queued',
+                    task: 'wait',
+                  },
+                ]
               : []) as SubagentTask[],
       );
       const interval = vi.spyOn(global, 'setInterval');
@@ -350,19 +375,41 @@ describe('subagents smoke', () => {
       expect(interval).not.toHaveBeenCalled();
       const requestRender = vi.fn();
       const widgetFactory = setWidget.mock.calls[0]?.[1];
-      widgetFactory({ requestRender }, {});
+      const widget = widgetFactory(
+        { requestRender },
+        { fg: (_role: string, text: string) => text },
+      );
+      const queuedLines = widget.render(80);
+      expect(queuedLines.join('')).not.toMatch(/[\u2800-\u28ff]/u);
       queued = false;
       running = true;
       listeners[0]?.();
+      expect(widget.render(80).join('')).toContain('⠋');
       vi.advanceTimersByTime(100);
+      expect(widget.render(80).join('')).toContain('⠙');
       expect(requestRender).toHaveBeenCalledTimes(2);
       running = false;
       listeners[0]?.();
       vi.advanceTimersByTime(2000);
       expect(requestRender).toHaveBeenCalledTimes(3);
+      expect(widget.render(80)).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+      queued = true;
+      listeners[0]?.();
+      const queueRequests = requestRender.mock.calls.length;
+      vi.advanceTimersByTime(1000);
+      expect(widget.render(80)).toEqual(queuedLines);
+      expect(requestRender).toHaveBeenCalledTimes(queueRequests);
+      expect(vi.getTimerCount()).toBe(0);
+      queued = false;
+      running = true;
+      listeners[0]?.();
+      expect(vi.getTimerCount()).toBe(1);
+      const beforeShutdown = requestRender.mock.calls.length;
       await handlers.get('session_shutdown')?.();
       vi.advanceTimersByTime(2000);
-      expect(requestRender).toHaveBeenCalledTimes(3);
+      expect(requestRender).toHaveBeenCalledTimes(beforeShutdown);
+      expect(vi.getTimerCount()).toBe(0);
       expect(setWidget).toHaveBeenLastCalledWith(
         'subagents-claude-background',
         undefined,
@@ -370,6 +417,7 @@ describe('subagents smoke', () => {
       expect(close).toHaveBeenCalledOnce();
       expect(listeners).toHaveLength(0);
     } finally {
+      if (token) withdrawRenderKit(token);
       vi.restoreAllMocks();
       vi.useRealTimers();
     }

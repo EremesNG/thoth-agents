@@ -49,7 +49,7 @@ export function isFramedContext(context?: {
 }
 
 export function renderFrameTop(
-  theme: Theme,
+  theme: Pick<Theme, 'fg'>,
   title: string,
   width: number,
   isError = false,
@@ -79,7 +79,7 @@ export function renderFrameTop(
 }
 
 export function renderFrameRow(
-  theme: Theme,
+  theme: Pick<Theme, 'fg'>,
   line: string,
   width: number,
   isError = false,
@@ -101,7 +101,7 @@ export function renderFrameRow(
 }
 
 export function renderFrameDivider(
-  theme: Theme,
+  theme: Pick<Theme, 'fg'>,
   title: string,
   width: number,
   isError = false,
@@ -131,7 +131,7 @@ export function renderFrameDivider(
 }
 
 export function renderFrameBottom(
-  theme: Theme,
+  theme: Pick<Theme, 'fg'>,
   footer: string | undefined,
   width: number,
   isError = false,

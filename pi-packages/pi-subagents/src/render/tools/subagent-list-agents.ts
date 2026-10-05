@@ -1,12 +1,11 @@
 import {
   ARCH_ICON,
-  CYAN,
   themeDim,
   themeFg,
   themeTitle,
 } from '../completion-message.js';
 import type { ModelRef, ThinkingEffort } from '../types.js';
-import { boxedComponent } from './components.js';
+import { boxedComponent, toolRenderState } from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
 
 export type ListedSubagent = {
@@ -44,6 +43,7 @@ export function renderSubagentListResult(
   theme: any,
   context?: any,
 ) {
+  const renderState = toolRenderState(result, options, context);
   const expanded = Boolean(
     typeof options === 'object' && options !== null
       ? options.expanded
@@ -52,13 +52,14 @@ export function renderSubagentListResult(
   const agents: ListedSubagent[] = Array.isArray(result?.details?.agents)
     ? result.details.agents
     : [];
-  const archPrefix = themeFg(theme, 'accent', ARCH_ICON, CYAN);
+  const archPrefix = themeFg(theme, 'accent', ARCH_ICON);
   const title = `${archPrefix} ${themeTitle(theme, agents.length ? `subagents · ${agents.length} available` : 'subagents')}`;
 
   if (!agents.length) {
     return boxedComponent([themeDim(theme, 'No subagents available.')], {
       title,
       theme,
+      ...renderState,
       wrapped: true,
     });
   }
@@ -71,6 +72,7 @@ export function renderSubagentListResult(
     return boxedComponent(lines, {
       title,
       theme,
+      ...renderState,
       wrapped: true,
     });
   }
@@ -90,6 +92,7 @@ export function renderSubagentListResult(
   return boxedComponent(lines, {
     title,
     theme,
+    ...renderState,
     wrapped: true,
   });
 }

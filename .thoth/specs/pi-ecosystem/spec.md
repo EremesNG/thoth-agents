@@ -14,7 +14,7 @@ Durable behavior for pi-ecosystem.
 
 - **GIVEN** a producer and a consumer using pi-core in one Pi session
 - **WHEN** the consumer subscribes and then requests the snapshot
-- **THEN** it receives the current full snapshot for its session and later snapshots after each change, while malformed or other-version payloads are ignored 
+- **THEN** it receives the current full snapshot for its session and later snapshots after each change, while malformed or other-version payloads are ignored
 
 ### Requirement: Thoth Pi task-list extension
 
@@ -24,4 +24,14 @@ The Thoth Pi task-list package (published under the `@thoth-agents` scope as a f
 
 - **GIVEN** a session with open tasks in the task-list tool
 - **WHEN** the session is compacted and the agent starts again
-- **THEN** the list is reconstructed, the open tasks are present in the model context, and a fresh state snapshot is published on the pi-core task-list state channel 
+- **THEN** the list is reconstructed, the open tasks are present in the model context, and a fresh state snapshot is published on the pi-core task-list state channel
+
+### Requirement: Thoth Pi render kit
+
+`@thoth-agents/pi-core` MUST define a versioned render-kit contract and a process-wide registry for it; `@thoth-agents/pi-thoth-theme` MUST implement and register that kit for its own session while its tool styling is enabled and MUST withdraw only its own registration; first-party Pi packages MUST look up the kit at render time for their tool calls, tool results, custom messages and above-editor widgets, MUST keep a render shell that does not depend on kit availability, MUST render through the kit when present, MUST render native output equivalent to the Pi default tool shell without nested frames when it is absent, and MUST NOT depend on the theme package.
+
+#### Scenario: Thoth Pi render kit
+
+- **GIVEN** a Pi session with the theme and a first-party producer
+- **WHEN** a producer tool, message or widget renders with the theme active and again with the theme absent
+- **THEN** it shows the theme frame and roles in the first case and native unframed output in the second, regardless of extension load order 

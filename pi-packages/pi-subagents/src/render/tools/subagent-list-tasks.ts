@@ -1,6 +1,6 @@
-import { ARCH_ICON, CYAN, themeFg, themeTitle } from '../completion-message.js';
+import { ARCH_ICON, themeFg, themeTitle } from '../completion-message.js';
 import type { SubagentTask } from '../types.js';
-import { boxedComponent } from './components.js';
+import { boxedComponent, toolRenderState } from './components.js';
 import { formatTaskListRender } from './formatting.js';
 
 export function renderSubagentListTasksResult(
@@ -9,6 +9,7 @@ export function renderSubagentListTasksResult(
   theme: any,
   context?: any,
 ) {
+  const renderState = toolRenderState(result, options, context);
   const isExpanded = Boolean(
     typeof options === 'object' && options !== null
       ? options.expanded
@@ -17,7 +18,7 @@ export function renderSubagentListTasksResult(
   const tasks: SubagentTask[] = Array.isArray(result?.details?.tasks)
     ? result.details.tasks
     : [];
-  const archPrefix = themeFg(theme, 'accent', ARCH_ICON, CYAN);
+  const archPrefix = themeFg(theme, 'accent', ARCH_ICON);
   const title = `${archPrefix} ${themeTitle(theme, tasks.length ? `subagent tasks · ${tasks.length} listed` : 'subagent tasks')}`;
 
   const text = formatTaskListRender(tasks, isExpanded, context);
@@ -28,6 +29,7 @@ export function renderSubagentListTasksResult(
   return boxedComponent(lines, {
     title,
     theme,
+    ...renderState,
     wrapped: true,
   });
 }

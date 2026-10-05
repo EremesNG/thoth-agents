@@ -17,16 +17,16 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildSessionContext, getAgentDir, keyHint } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import { contentText, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { formatDuration } from "@thoth-agents/pi-core";
 import {
 	CONVERSATIONS_DIR,
 	newConversationId,
 	snapshotConversations,
 } from "./discovery.js";
 import { loadConfig, type AgyMode, type BridgeDiscovery, type ThinkingTier } from "./config.js";
-import { formatDuration } from "./format-duration.js";
+import { renderToolCard } from "./render-tool-card.js";
 import { redactText } from "./redact.js";
 import { terminateProcessTree } from "./process-termination.js";
 import { acquireBridgeSuppression } from "./mcp-registration.js";
@@ -401,6 +401,7 @@ export async function registerAskAntigravityTool(
 	pi.registerTool({
 		name: "AskAntigravity",
 		label: "Ask Antigravity",
+		renderShell: "self",
 		description: AGY_DESCRIPTION,
 		parameters: Type.Object({
 			prompt: Type.String({
@@ -459,7 +460,7 @@ export async function registerAskAntigravityTool(
 				}),
 			),
 		}),
-		renderCall(args, theme, _context) {
+		renderCall(args, theme, context) {
 			// Show RESOLVED model/thinking/mode (config defaults applied) so the
 			// row identifies what will actually run, not just explicit args.
 			const cfg = loadConfig();
@@ -494,18 +495,35 @@ export async function registerAskAntigravityTool(
 			if (prompt.length > PREVIEW_MAX_CHARS || prompt.split("\n").length > PREVIEW_MAX_LINES) {
 				text += theme.fg("dim", " …");
 			}
-			return new Text(text, 0, 0);
+			return renderToolCard(
+				theme,
+				text,
+				() => ({ title: "AskAntigravity", body: text.split("\n") }),
+				"start",
+				context,
+			);
 		},
-		renderResult(result, { expanded, isPartial }, theme) {
+		renderResult(result, { expanded, isPartial }, theme, context) {
 			const d = result.details as AgyDetails | undefined;
 			if (isPartial) {
 				const status = result.content[0]?.type === "text" ? result.content[0].text : "working...";
-				return new Text(theme.fg("mdLink", "◉ AskAntigravity ") + theme.fg("muted", status), 0, 0);
+				const text = theme.fg("mdLink", "◉ AskAntigravity ") + theme.fg("muted", status);
+				return renderToolCard(
+					theme,
+					text,
+					(kit) => ({
+						title: "AskAntigravity",
+						body: text.split("\n"),
+						footer: kit.indicator(theme, context, { status: "running" }).text,
+					}),
+					"end",
+					context,
+				);
 			}
 
 			const body = result.content[0]?.type === "text" ? result.content[0].text : "";
 			const errored =
-		d?.exitCode !== 0 || !!d?.aborted || !!d?.timedOut || !!d?.empty;
+				d?.exitCode !== 0 || !!d?.aborted || !!d?.timedOut || !!d?.empty;
 
 			let text = errored
 				? theme.fg("error", "✗ AskAntigravity error")
@@ -529,7 +547,22 @@ export async function registerAskAntigravityTool(
 					text += `\n${theme.fg("dim", `… (${keyHint("app.tools.expand", "to expand")})`)}`;
 				}
 			}
-			return new Text(text, 0, 0);
+			return renderToolCard(
+				theme,
+				text,
+				(kit) => ({
+					title: "AskAntigravity",
+					body: text.split("\n"),
+					isError: errored || context?.isError,
+					footer: kit.indicator(theme, context, {
+						status: errored || context?.isError ? "failed" : "completed",
+						elapsedMs: d?.durationMs,
+					}).text,
+				}),
+				"end",
+				context,
+				{ isPartial: false, isError: errored },
+			);
 		},
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			// Circular-delegation guard: refuse if already running through the

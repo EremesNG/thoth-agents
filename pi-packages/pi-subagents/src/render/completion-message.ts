@@ -1,12 +1,10 @@
+import { getRenderKit } from '@thoth-agents/pi-core';
 import { safeErrorMetadataDetails } from '../error-metadata.js';
 import {
   ARCH_ICON,
   BOX_CHARS,
-  CYAN,
-  electricBorder,
-  LIME,
+  frameBox,
   padToWidth,
-  RED,
   themeAccent,
   themeBg,
   themeBold,
@@ -62,10 +60,7 @@ function formatErrorMetadataLines(task: any): string[] {
 export {
   ARCH_ICON,
   BOX_CHARS,
-  CYAN,
-  LIME,
-  RED,
-  electricBorder,
+  frameBox,
   padToWidth,
   themeAccent,
   themeBg,
@@ -174,7 +169,6 @@ export function renderSubagentCompletionMessage(
     theme,
     failed ? 'error' : 'customMessageLabel',
     `[subagent] ${taskLabel} · ${status}`,
-    failed ? RED : CYAN,
   );
   const title = `${archPrefix} ${titleLabel}`.trim();
   const sections: Array<{
@@ -234,19 +228,9 @@ export function renderSubagentCompletionMessage(
     text: string,
   ) => {
     if (section.style === 'label')
-      return themeFg(
-        theme,
-        failed ? 'error' : 'customMessageLabel',
-        text,
-        failed ? RED : CYAN,
-      );
+      return themeFg(theme, failed ? 'error' : 'customMessageLabel', text);
     if (section.style === 'status')
-      return themeFg(
-        theme,
-        failed ? 'error' : 'success',
-        text,
-        failed ? RED : LIME,
-      );
+      return themeFg(theme, failed ? 'error' : 'success', text);
     if (section.style === 'dim') return themeDim(theme, text);
     if (section.style === 'heading') return themeTitle(theme, text);
     if (section.style === 'body')
@@ -257,6 +241,42 @@ export function renderSubagentCompletionMessage(
     invalidate() {},
     render(width: number) {
       const safeWidth = Math.max(1, Math.floor(width || 1));
+      const kit = getRenderKit();
+      if (kit) {
+        const divider = sections.findIndex(
+          (section) => section.text === BOX_CHARS.horizontal.repeat(24),
+        );
+        const styledRows = (items: typeof sections, contentWidth: number) =>
+          items.flatMap((section) =>
+            wrapLineToWidth(section.text, contentWidth).map((line) =>
+              color(section, line),
+            ),
+          );
+        return kit.card(
+          theme,
+          {
+            title,
+            isError: failed,
+            body: (contentWidth) =>
+              styledRows(
+                divider < 0 ? sections : sections.slice(0, divider),
+                contentWidth,
+              ),
+            sections:
+              divider < 0
+                ? undefined
+                : [
+                    {
+                      title: sections[divider + 1]?.text,
+                      rows: (contentWidth) =>
+                        styledRows(sections.slice(divider + 2), contentWidth),
+                    },
+                  ],
+            wrap: true,
+          },
+          safeWidth,
+        );
+      }
       if (safeWidth < 10) {
         return [
           title,
@@ -265,7 +285,7 @@ export function renderSubagentCompletionMessage(
       }
       const innerWidth = safeWidth - 2;
       const contentWidth = Math.max(1, innerWidth - 2);
-      const borderFn = (t: string) => themeFg(theme, 'accent', t, CYAN);
+      const borderFn = (t: string) => themeFg(theme, 'accent', t);
 
       const maxTitleWidth = Math.max(0, innerWidth - 4);
       const clippedTitle = truncateToWidth(title, maxTitleWidth, '…');

@@ -213,3 +213,15 @@ describe("webTools config gate", () => {
 		}
 	});
 });
+
+test("throwing lifecycle sinks do not change web results or leak the temporary agent", async () => {
+	const before = listBridgeDirs();
+	const seen: string[] = [];
+	const run = await runFixture("ok", { log: event => {
+		seen.push(event);
+		throw new Error("web sink failed");
+	} });
+	expect(run.ok).toBe(true);
+	expect(seen).toEqual(["web-run-start", "web-run-ok"]);
+	expect(listBridgeDirs()).toEqual(before);
+});

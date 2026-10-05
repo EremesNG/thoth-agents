@@ -5,6 +5,7 @@ import { describe, test } from "vitest";
 import assert from "node:assert/strict";
 import { JsonRpcResponseError, JsonRpcSession } from "../src/acp/jsonrpc.js";
 import { MAX_FRAME_BYTES } from "../src/frame-guard.js";
+import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
 
 function makeSession(handlers: Partial<ConstructorParameters<typeof JsonRpcSession>[0]> = {}) {
 	const sent: unknown[] = [];
@@ -189,3 +190,24 @@ describe("acp/jsonrpc frame ceiling and stdout noise", () => {
 		assert.equal(parseErrors, 1);
 	});
 });
+
+for (const sink of ["onNotification", "onParseError", "onOverflow", "send"] as const) {
+ test(`acp/jsonrpc: a rejecting ${sink} sink is contained`, async () => {
+	let calls = 0;
+	await withoutUnhandledRejections(async () => {
+		const { session } = makeSession({ [sink]: async () => { calls++; throw new Error(`${sink} sink failed`); } });
+		if (sink === "onOverflow") session.feed("x".repeat(MAX_FRAME_BYTES + 1));
+		else if (sink === "onParseError") {
+			session.feed("bad frame\n");
+			session.feed("Opening in existing browser session.{bad frame}\n");
+		} else if (sink === "onNotification") session.feed('{"method":"auth_required"}\n');
+		else {
+			const response = session.request("ping");
+			session.feed('{"id":1,"result":"pong"}\n');
+			assert.equal(await response, "pong");
+			session.feed('{"id":2,"method":"unsupported"}\n');
+		}
+		assert.equal(calls, sink === "onParseError" || sink === "send" ? 2 : 1);
+	});
+ });
+}

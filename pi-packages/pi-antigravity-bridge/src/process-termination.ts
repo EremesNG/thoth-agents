@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { emitLifecycle } from "./lifecycle.js";
 
 export interface TerminationOptions {
 	timeoutMs?: number;
@@ -12,8 +13,10 @@ export function terminateProcessTree(child: ChildProcess, opts: TerminationOptio
 	const timeoutMs = Math.max(1, opts.timeoutMs ?? 3_000);
 	const warn = (reason: string) => {
 		const data = { pid: child.pid, reason, timeoutMs };
-		if (opts.log) opts.log("termination-warning", data);
-		else console.warn("[antigravity-bridge] termination-warning", data);
+		emitLifecycle(() => {
+			if (opts.log) return opts.log("termination-warning", data);
+			console.warn("[antigravity-bridge] termination-warning", data);
+		});
 	};
 	return new Promise<void>((resolve) => {
 		let exited = false;

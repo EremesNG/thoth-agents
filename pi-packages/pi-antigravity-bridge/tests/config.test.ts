@@ -137,7 +137,7 @@ test("config: turn caps default TTY-aware (headless 20m) and round-trip", () => 
 		stubTTY(false, () => {
 			const c = loadConfig(p);
 			assert.equal(c.turnTimeoutMin, 20);
-			assert.equal(c.inactivityTimeoutMin, 5);
+			assert.equal(c.inactivityTimeoutMin, 3);
 		});
 		saveConfig({ turnTimeoutMin: 45, inactivityTimeoutMin: 0 }, p);
 		const next = loadConfig(p);
@@ -193,7 +193,7 @@ test("config: invalid turn cap values fall back to the defaults, 0 stays disable
 			saveConfig({ turnTimeoutMin: -3, inactivityTimeoutMin: "abc" as never }, p);
 			const c = loadConfig(p);
 			assert.equal(c.turnTimeoutMin, 20);
-			assert.equal(c.inactivityTimeoutMin, 5);
+			assert.equal(c.inactivityTimeoutMin, 3);
 		});
 	} finally {
 		if (prev === undefined) delete process.env.AGY_TURN_TIMEOUT_MIN;
@@ -244,4 +244,28 @@ test("config: bridgeDiscovery defaults private, round-trips and honors env prece
   else process.env.AGY_BRIDGE_DISCOVERY = prev;
   fs.rmSync(path.dirname(p), { recursive: true, force: true });
  }
+});
+
+test("config: startup and queue deadlines default to 120000ms, env overrides and zero disable", () => {
+	const p = tmpConfig();
+	const startup = process.env.AGY_STARTUP_TIMEOUT_MS;
+	const queue = process.env.AGY_QUEUE_TIMEOUT_MS;
+	try {
+		delete process.env.AGY_STARTUP_TIMEOUT_MS;
+		delete process.env.AGY_QUEUE_TIMEOUT_MS;
+		assert.equal(loadConfig(p).startupTimeoutMs, 120000);
+		assert.equal(loadConfig(p).queueTimeoutMs, 120000);
+		saveConfig({ startupTimeoutMs: 25, queueTimeoutMs: 40 }, p);
+		assert.equal(loadConfig(p).startupTimeoutMs, 25);
+		process.env.AGY_STARTUP_TIMEOUT_MS = "0";
+		process.env.AGY_QUEUE_TIMEOUT_MS = "17";
+		assert.equal(loadConfig(p).startupTimeoutMs, 0);
+		assert.equal(loadConfig(p).queueTimeoutMs, 17);
+		process.env.AGY_QUEUE_TIMEOUT_MS = "garbage";
+		assert.equal(loadConfig(p).queueTimeoutMs, 120000);
+	} finally {
+		if (startup === undefined) delete process.env.AGY_STARTUP_TIMEOUT_MS; else process.env.AGY_STARTUP_TIMEOUT_MS = startup;
+		if (queue === undefined) delete process.env.AGY_QUEUE_TIMEOUT_MS; else process.env.AGY_QUEUE_TIMEOUT_MS = queue;
+		fs.rmSync(path.dirname(p), { recursive: true, force: true });
+	}
 });

@@ -14,6 +14,8 @@
 // toolUse round-trips and injects bridge_call activities via
 // handle.pushExternal(). This keeps the driver testable with a fake child.
 
+import { DEFAULT_WAIT_TIMEOUT_MS, waitWithDeadline } from "./waits.js";
+import { TurnQueue } from "./turn-queue.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { parseAgyLine } from "./stream-events.js";
@@ -23,6 +25,7 @@ import { gateHooksStaged } from "./approval-hook.js";
 import { parkedTurnAnswer } from "./parked-turn.js";
 import { redactText } from "./redact.js";
 import { terminateProcessTree } from "./process-termination.js";
+import { emitLifecycle } from "./lifecycle.js";
 import type {
 	AgyUsage,
 	DriverActivity,
@@ -165,7 +168,7 @@ export class StreamDriver implements TurnDriver {
 	#profile: DriverProfile | undefined;
 	#boundConversation: string | undefined;
 	#active: ActiveTurn | undefined;
-	#queueTail: Promise<void> = Promise.resolve();
+	#queue = new TurnQueue();
 	#stderrTail = "";
 	// Frames can split across pipe chunks; the trailing partial line lives here
 	// until its newline arrives (same scheme as JsonRpcSession.feed). Dropping
@@ -202,11 +205,11 @@ export class StreamDriver implements TurnDriver {
 		if (!turn || turn.closed) return;
 		if (turn.parks > 0) turn.parks -= 1;
 		if (turn.parks === 0 && !turn.idleTimer) {
-			const idleMin = turn.request.inactivityMin ?? 5;
+			const idleMin = turn.request.inactivityMin ?? 3;
 			// 0 disables the stall guard (config inactivityTimeoutMin: 0).
 			if (idleMin > 0) {
 				turn.idleTimer = setTimeout(() => {
-					void this.#turnDeadlineGuard(turn, "stall", `agy stalled for ${idleMin}m with no output`);
+					void this.#turnDeadlineGuard(turn, "stall", `agy activity inactivity wait stalled for ${idleMin}m with no recognized frame`);
 				}, idleMin * 60_000);
 			}
 		}
@@ -234,19 +237,7 @@ export class StreamDriver implements TurnDriver {
 	 *  round-trip stays open; the continuation path uses reentry(), which does
 	 *  not queue, so parking cannot deadlock the queue. */
 	run(request: DriverTurnRequest): Promise<TurnHandle> {
-		let release!: () => void;
-		const prev = this.#queueTail;
-		this.#queueTail = new Promise<void>((r) => (release = r));
-		return prev
-			.then(() => this.#runExclusive(request))
-			.then((handle) => {
-				void handle.outcome.catch(() => {}).then(() => release());
-				return handle;
-			})
-			.catch((err) => {
-				release();
-				throw err;
-			});
+		return this.#queue.run(request, () => this.#runExclusive(request));
 	}
 
 	/** Re-attach to the active turn (pi toolUse continuation). */
@@ -259,44 +250,58 @@ export class StreamDriver implements TurnDriver {
 		// /fork (not only process exit), so a closed driver must respawn on the
 		// next turn instead of rejecting forever. Parity with the ACP driver
 		// fix (regression 2026-09-07).
-		await this.#termination;
+		await waitWithDeadline(this.#termination, request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "exclusive termination");
 		request.assertCurrent?.();
 		if (request.signal?.aborted) throw new Error("aborted before start");
 
 		const cause = this.#recycleCause(request);
-		if (cause) await this.close("recycle", cause);
+		if (cause) await waitWithDeadline(this.close("recycle", cause), request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "exclusive recycling");
 		else if (this.#child) this.#stats.reused += 1;
 		request.assertCurrent?.();
-		if (!this.#child) this.#start(request);
 
 		const turn = this.#createTurn(request);
 		this.#active = turn;
-		this.#state = "running";
 		this.#stats.turns += 1;
-		this.#log("turn-start", {
-			model: request.model,
-			effort: request.effort,
-			mode: request.mode,
-			conversation: request.conversationId ?? null,
-			images: request.images?.length ?? 0,
-		});
-		this.#armTimers(turn);
-
-		const line = `${JSON.stringify({
-			event: "user",
-			message: { role: "user", content: request.prompt },
-		})}\n`;
-		const stdin = this.#child?.stdin;
+		const previousChild = this.#child;
 		try {
-			if (!stdin) throw new Error("agy driver stdin unavailable");
-			stdin.write(line);
+			if (!this.#child) this.#start(request);
+			this.#state = "running";
+			this.#wireAbort(turn);
+			const sinkFailure = this.#log("turn-start", {
+				model: request.model,
+				effort: request.effort,
+				mode: request.mode,
+				conversation: request.conversationId ?? null,
+				images: request.images?.length ?? 0,
+			});
+			// Only synchronous startup may turn a sink failure into a turn error:
+			// the catch below owns the unpublished handle and its rollback.
+			if (sinkFailure) throw sinkFailure.error;
+			this.#armTimers(turn);
+
+			const line = `${JSON.stringify({
+				event: "user",
+				message: { role: "user", content: request.prompt },
+			})}\n`;
+			const stdin = this.#child?.stdin;
+			try {
+				if (!stdin) throw new Error("agy driver stdin unavailable");
+				stdin.write(line);
+			} catch (err) {
+				throw new Error(`failed to write to agy driver: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+			}
+			return makeHandle(turn);
 		} catch (err) {
-			this.#failTurn(
-				turn,
-				`failed to write to agy driver: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			// Until the handle returns, only the driver can roll back ownership.
+			// Fence cleanup to this turn and child, never a replacement or park.
+			try {
+				if (this.#active === turn && this.#child !== previousChild) this.#killChild();
+			} finally {
+				this.#failTurn(turn, `agy startup failed: ${err instanceof Error ? err.message : String(err)}`);
+			}
+			await turn.outcome;
+			throw err;
 		}
-		return makeHandle(turn);
 	}
 
 	#createTurn(request: DriverTurnRequest): ActiveTurn {
@@ -317,9 +322,14 @@ export class StreamDriver implements TurnDriver {
 			parks: 0,
 			startedAt: Date.now(),
 		};
+		return turn;
+	}
+
+	#wireAbort(turn: ActiveTurn): void {
+		const { request } = turn;
 		if (request.signal) {
 			turn.onAbort = async () => {
-				if (turn.closed) return;
+				if (turn.closed || this.#active !== turn) return;
 				this.#log(`abort:${turn.id}`);
 				const termination = this.#killChild();
 				this.#settle(turn, {
@@ -335,7 +345,6 @@ export class StreamDriver implements TurnDriver {
 			};
 			request.signal.addEventListener("abort", turn.onAbort, { once: true });
 		}
-		return turn;
 	}
 
 	#armTimers(turn: ActiveTurn): void {
@@ -347,10 +356,10 @@ export class StreamDriver implements TurnDriver {
 				void this.#turnDeadlineGuard(turn, "timeout", `agy exceeded the ${totalMin}m turn timeout`);
 			}, totalMin * 60_000);
 		}
-		const idleMin = turn.request.inactivityMin ?? 5;
+		const idleMin = turn.request.inactivityMin ?? 3;
 		if (idleMin > 0) {
 			turn.idleTimer = setTimeout(() => {
-				void this.#turnDeadlineGuard(turn, "stall", `agy stalled for ${idleMin}m with no output`);
+				void this.#turnDeadlineGuard(turn, "stall", `agy activity inactivity wait stalled for ${idleMin}m with no recognized frame`);
 			}, idleMin * 60_000);
 		}
 	}
@@ -408,6 +417,15 @@ export class StreamDriver implements TurnDriver {
 		this.#child = child;
 		this.#stdoutBuf = "";
 		this.#stats.spawns += 1;
+		// Guard process errors before any fallible pipe wiring or lifecycle sink.
+		child.on("error", (err) => {
+			if (generation !== this.#generation) return;
+			const turn = this.#active;
+			this.#child = undefined;
+			this.#state = "dead";
+			this.#log("spawn-error", { message: redactText(err.message) });
+			if (turn && !turn.closed) this.#failTurn(turn, `agy spawn failed: ${err.message}`);
+		});
 		// Pipe write failures surface asynchronously as stream 'error' events;
 		// the sync try/catch around stdin.write cannot see them. Without this
 		// listener an EPIPE (agy died mid-write) is uncaught and kills pi.
@@ -416,7 +434,8 @@ export class StreamDriver implements TurnDriver {
 			const turn = this.#active;
 			if (turn && !turn.closed) this.#failTurn(turn, `agy stdin write failed: ${err.message}`);
 		});
-		this.#log(`spawn:${child.pid ?? "?"}:${request.conversationId ? "resume" : "fresh"}`);
+		const sinkFailure = this.#log(`spawn:${child.pid ?? "?"}:${request.conversationId ? "resume" : "fresh"}`);
+		if (sinkFailure) throw sinkFailure.error; // #runExclusive owns startup rollback
 		this.#state = "ready";
 
 		child.stdout!.setEncoding("utf8");
@@ -454,13 +473,6 @@ export class StreamDriver implements TurnDriver {
 				}
 			}
 		});
-		child.on("error", (err) => {
-			if (generation !== this.#generation) return;
-			const turn = this.#active;
-			this.#child = undefined;
-			this.#state = "dead";
-			if (turn && !turn.closed) this.#failTurn(turn, `agy spawn failed: ${err.message}`);
-		});
 	}
 
 	#onStdout(chunk: string): void {
@@ -484,7 +496,6 @@ export class StreamDriver implements TurnDriver {
 		this.#stdoutBuf = lines.pop() ?? "";
 		const turn = this.#active;
 		if (!turn || turn.closed) return;
-		if (turn.idleTimer) turn.idleTimer.refresh();
 		for (const line of lines) {
 			if (!line.trim()) continue;
 			// Known foreign noise (e.g. the Chromium launcher behind a browser
@@ -499,6 +510,7 @@ export class StreamDriver implements TurnDriver {
 				const repaired = stripGluedNoise(line);
 				if (repaired) parsed = parseAgyLine(repaired);
 			}
+			if (parsed.kind !== "unknown" && turn.idleTimer) turn.idleTimer.refresh();
 			this.#applyParsed(turn, parsed);
 			if (turn.closed) return;
 		}
@@ -649,8 +661,10 @@ export class StreamDriver implements TurnDriver {
 		if (turn.onAbort && turn.request.signal) {
 			turn.request.signal.removeEventListener("abort", turn.onAbort);
 		}
-		this.#active = undefined;
-		this.#state = this.#child ? "ready" : "dead";
+		if (this.#active === turn) {
+			this.#active = undefined;
+			this.#state = this.#child ? "ready" : "dead";
+		}
 		for (const wake of turn.wake) wake();
 		turn.wake = [];
 		// Evidence fields every consumer can rely on. modelOutputSeen separates a
@@ -666,12 +680,11 @@ export class StreamDriver implements TurnDriver {
 				outcome.response.length > 0 ||
 				hasTokenEvidence(usage),
 		};
-		void this.#termination.then(() => turn.resolve(enriched));
-		try {
-			this.#onTurnEnd?.(enriched);
-		} catch {
-			/* listener errors must not break settling */
-		}
+		void waitWithDeadline(this.#termination, turn.request.startupTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS, "outcome termination").then(
+			() => turn.resolve(enriched),
+			err => turn.resolve({ ...enriched, status: "ERROR", error: `${enriched.error ? `${enriched.error}; ` : ""}${err.message}` }),
+		);
+		emitLifecycle(() => this.#onTurnEnd?.(enriched));
 	}
 
 	/** Stall / total-timeout guard shared by both timer sites. Kills the
@@ -775,10 +788,12 @@ export class StreamDriver implements TurnDriver {
 		return this.#termination;
 	}
 
-	#log(msg: string, data?: unknown): void {
-		const line = `${nowIso()} ${msg}${data !== undefined ? ` ${JSON.stringify(data)}` : ""}`;
-		this.#lifecycle.push(line);
-		if (this.#lifecycle.length > LIFECYCLE_LIMIT) this.#lifecycle.shift();
-		this.log?.(msg, data);
+	#log(msg: string, data?: unknown): ReturnType<typeof emitLifecycle> {
+		return emitLifecycle(() => {
+			const line = `${nowIso()} ${msg}${data !== undefined ? ` ${JSON.stringify(data)}` : ""}`;
+			this.#lifecycle.push(line);
+			if (this.#lifecycle.length > LIFECYCLE_LIMIT) this.#lifecycle.shift();
+			return this.log?.(msg, data);
+		});
 	}
 }

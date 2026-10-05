@@ -40,6 +40,7 @@ import path from "node:path";
 import os from "node:os";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { emitLifecycle } from "./lifecycle.js";
 
 const PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 const BRIDGE_BASE = path.join(os.homedir(), ".pi", "agent", "antigravity-bridge");
@@ -476,7 +477,7 @@ export type PatchAction =
 /** Decide the session_start patch action. Precedence:
  *  live > on-disk-needs-restart > declined > interactive-ask > headless-skip. */
 export function restorePatch(opts: PatchOpts = {}): RestoreResult {
-	const log = opts.log ?? (() => {});
+	const log: Logger = (...args) => { emitLifecycle(() => opts.log?.(...args)); };
 	const found = resolveRoot(opts);
 	if (!found) {
 		return { ok: false, restoredFiles: [], reason: "could not locate the running pi package root to restore into." };

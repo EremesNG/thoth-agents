@@ -8,6 +8,34 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 import { AcpConnection } from "../src/acp/connection.js";
+import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
+
+test("acp connection: rejecting update and exit sinks cannot escape the stdout reader", async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-acp-sink-"));
+	let updates = 0;
+	let exits = 0;
+	const conn = new AcpConnection({
+		cwd: dir, bin: process.execPath,
+		binArgs: [path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs")],
+		extraEnv: { ACP_FAKE_SCENARIO: "happy" },
+		log: () => {},
+		onUpdate: async () => { updates++; throw new Error("update sink failed"); },
+		onExit: async () => { exits++; throw new Error("exit sink failed"); },
+	});
+	try {
+		await withoutUnhandledRejections(async () => {
+			await conn.start();
+			const info = await conn.newSession(dir);
+			assert.equal((await conn.prompt(info.sessionId, "hello")).stopReason, "end_turn");
+			assert.ok(updates > 0);
+			await conn.kill();
+			assert.equal(exits, 1);
+		});
+	} finally {
+		await conn.kill();
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
 
 test("acp connection: stderr tail and exit info are redacted", async () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-acp-conn-"));

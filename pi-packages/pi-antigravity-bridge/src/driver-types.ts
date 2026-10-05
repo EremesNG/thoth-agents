@@ -45,8 +45,12 @@ export interface DriverTurnRequest extends DriverProfile {
 	/** Overall turn cap in minutes (default 10). Fractional values are valid
 	 *  (tests use sub-minute caps). 0 disables the cap. */
 	timeoutMin?: number;
-	/** Stdout-inactivity cap in minutes (default 5). 0 disables the cap. */
+	/** Recognized-progress inactivity cap in minutes (default 3). 0 disables the cap. */
 	inactivityMin?: number;
+	/** Absolute startup-type wait cap in ms (default 120000). 0 disables. */
+	startupTimeoutMs?: number;
+	/** Requester-only run queue wait cap in ms (default 120000). 0 disables. */
+	queueTimeoutMs?: number;
 }
 
 export type AgyUsage = {

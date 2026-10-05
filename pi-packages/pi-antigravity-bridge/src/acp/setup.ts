@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { emitLifecycle } from "../lifecycle.js";
 
 export const REGISTRY_URL =
 	"https://raw.githubusercontent.com/agentclientprotocol/registry/main/antigravity-acp/agent.json";
@@ -157,7 +158,7 @@ async function downloadTo(
 			const pct = Math.floor((done / total) * 100);
 			if (pct >= lastPct + 10) {
 				lastPct = pct;
-				onProgress?.(`downloading ACP server: ${pct}%`);
+				emitLifecycle(() => onProgress?.(`downloading ACP server: ${pct}%`));
 			}
 		}
 		if (!out.write(buf)) await new Promise<void>((r) => out.once("drain", r));
@@ -195,9 +196,9 @@ export async function installAcpBinary(opts: SetupOptions = {}): Promise<Install
 	fs.mkdirSync(root, { recursive: true });
 	fs.mkdirSync(dir, { recursive: true });
 	const tmpZip = path.join(root, `.download-${build}.zip`);
-	opts.onProgress?.(`downloading ACP server (build ${build})…`);
+	emitLifecycle(() => opts.onProgress?.(`downloading ACP server (build ${build})…`));
 	const sha = await downloadTo(entry.archive, tmpZip, opts.fetchImpl ?? fetch, opts.onProgress);
-	opts.onProgress?.("unpacking ACP server…");
+	emitLifecycle(() => opts.onProgress?.("unpacking ACP server…"));
 	const unpack = opts.unpack ?? defaultUnpack;
 	await unpack(tmpZip, dir);
 	fs.rmSync(tmpZip, { force: true });
@@ -209,7 +210,7 @@ export async function installAcpBinary(opts: SetupOptions = {}): Promise<Install
 	const link = path.join(root, "current");
 	fs.rmSync(link, { force: true });
 	fs.symlinkSync(build, link);
-	opts.onProgress?.("ACP server installed.");
+	emitLifecycle(() => opts.onProgress?.("ACP server installed."));
 	return { bin, build, sha256: sha, downloaded: true };
 }
 

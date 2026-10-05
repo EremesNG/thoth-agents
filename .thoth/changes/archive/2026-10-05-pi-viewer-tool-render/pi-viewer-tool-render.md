@@ -45,6 +45,7 @@ Opening the subagents viewer must not stall to re-evaluate already-loaded extens
 - User reported noticeable pauses opening the panel and on first visit of a subagent, and asked to use pi-core and the pi-thoth-theme kit for viewer tool renders.
 - With the kit present, renderer selection follows the theme's configured respected-package ownership and the availability of a cheap downstream definition (registry or cache). User chose "Tarjeta genérica del kit (Recommended)": a respected tool whose definition is not available cheaply (e.g. `thoth-mem`, which does not publish to the registry) renders with the generic kit card in the viewer instead of re-evaluating its extension. With the kit absent, the existing jiti path is kept to preserve native behavior.
 - Second fresh Oracle plan review returned OKAY (user selected review explicitly); implementation authorized by explicit user choice "Implement (Recommended)".
+- AC-6 confirmation: user reported viewer navigation "se sintió muy fluido" and explicitly confirmed "Sí, se ven con el tema" for tool cards inside the subagents viewer.
 - First Oracle plan review returned REJECT (incorrect renderer mapping, registry lifecycle under lean children/multiple sessions, missing kit-without-resolver path); record repaired as below.
 
 ## Decisions
@@ -153,7 +154,7 @@ Verification seams: pi-core unit tests; theme parity tests; viewer tests with fa
   - Focused check and PASS evidence: package checks exit 0; root `pnpm run typecheck` exit 0; root `check:ci`/`pnpm test` failures only in the baseline
   - Return milestone: results classified
   - Stop / reassessment: any root failure attributable to the diff
-- [ ] AC-6: user re-profile confirms no viewer stall and themed cards
+- [x] AC-6: user re-profile confirms no viewer stall and themed cards
   - Outcome: measured absence of re-evaluation and user confirmation
   - Known entrypoints and skill paths: user profiling procedure; analysis script outside the repo
   - Inputs: accepted AC-5; merge to `0.5.0`
@@ -174,19 +175,19 @@ Verification seams: pi-core unit tests; theme parity tests; viewer tests with fa
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: f395ee95c30b78a9307a502cb1ea3885754e20bbea8ca3be4ae2d6fe50f2abc2
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
-- AC-6: PENDING | check | evidence
+- AC-1: PASS | pi-core typecheck + 172/172 tests; fresh Oracle review | handle-scoped registry, latest live publication, versioning, optional kit member with legacy v1 kits valid
+- AC-2: PASS | pi-thoth-theme typecheck + 618/618 tests incl. 28 parity cases; fresh Oracle review | one createToolRendererResolver shared by registerToolRenderer and the kit; main transcript unchanged
+- AC-3: PASS | package typechecks + publication lifecycle tests (antigravity 745/9 skip, claude test:unit 396/0, background 427/4 skip, todo 229/229, subagents 1169/1 skip); fresh Oracle review | UI-gated publication, late registrations, scoped withdrawal in all five packages
+- AC-4: PASS | pi-subagents typecheck + 1169 tests incl. panel-level registry/kit transition tests; Oracle reran 120 panel/thread tests | registry first, kit-resolved renderers, no source re-evaluation with a kit, no-kit path unchanged, panel cache follows registry version and kit identity (fixed after first final-verification FAIL)
+- AC-5: PASS | all touched package checks green incl. two consecutive full antigravity runs 745/9 skip; root typecheck exit 0 | root check:ci/pnpm test failures only in the known unchanged baseline
+- AC-6: PASS | user CPU profile C:	mp\piprof5 (resume + viewer, several subagents incl. Antigravity) | loadExternalToolSource 4.857 s -> 0 samples; renderToolItem 0.72 s total; user reports viewer navigation very fluid and explicitly confirms themed tool cards in the viewer
 - Source: .thoth/specs/pi-ecosystem/spec.md | sha256:4e32f6b2e6c579dd14f796fdeaa5e2fa5e4fc4f5e04a6fb216ec7b07a78b9b32
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

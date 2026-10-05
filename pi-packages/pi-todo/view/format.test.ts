@@ -1,8 +1,14 @@
 import type { Theme } from '@earendil-works/pi-coding-agent';
+import { visibleWidth } from '@earendil-works/pi-tui';
 import { describe, expect, it } from 'vitest';
 import { makeTheme } from '../test/helpers.js';
 import type { Task } from '../tool/types.js';
-import { formatOverlayTaskLine } from './format.js';
+import {
+  ACTION_GLYPH,
+  formatOverlayTaskLine,
+  overlayStatusGlyph,
+  STATUS_GLYPH,
+} from './format.js';
 
 const recordingTheme = makeTheme({
   fg: (color, text) => `<${color}>${text}</${color}>`,
@@ -17,6 +23,21 @@ function task(overrides: Partial<Task> = {}): Task {
     ...overrides,
   };
 }
+
+it('uses single-cell action, status, overlay and dependency glyphs', () => {
+  const theme = makeTheme();
+  const overlayGlyphs = (
+    ['pending', 'in_progress', 'completed', 'deleted'] as const
+  ).map((status) => overlayStatusGlyph(status, theme));
+  for (const glyph of [
+    ...Object.values(ACTION_GLYPH),
+    ...Object.values(STATUS_GLYPH),
+    ...overlayGlyphs,
+    '⛓',
+  ]) {
+    expect(visibleWidth(glyph), glyph).toBe(1);
+  }
+});
 
 describe('formatOverlayTaskLine — semantic color hierarchy', () => {
   it('keeps pending subjects primary while rendering IDs quietly', () => {

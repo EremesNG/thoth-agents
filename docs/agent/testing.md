@@ -72,12 +72,13 @@ For large changes and before a PR, the preserved local pre-merge order is:
 
 Use the combination applicable to the scope; the absence of build in `ci.yml`
 does not remove the human obligation to validate the build when appropriate.
+Pi verification requires Pi `>=0.99.0` and Node.js `>=22.19.0`.
 Every real Pi observation must set `PI_CODING_AGENT_DIR` to a disposable
 directory and use `--no-extensions` plus the installed and observer extensions
 explicitly. Never aim a package smoke at the operator's real Pi home.
 For packed local candidates, also record the relative configured source returned
 by `pi list --no-approve` and its resolved absolute path; byte-equality with the
-absolute install command is not valid Pi 0.86.1 evidence.
+absolute install command is not valid Pi package identity evidence.
 
 ## Common failures
 

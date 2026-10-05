@@ -59,11 +59,12 @@ execution does not.
 - Claude requires native marketplace add/install before its plugin surfaces
   exist; then the CLI installs external skills and requests provider setup
   without editing Claude's cache.
-- Pi first rejects unowned/conflicting first-party state, then installs either
-  `npm:thoth-agents@<executing-version> --no-approve` or an explicit normalized
-  absolute `--local-package-root` with `--agent=pi`, proves configured,
-  loadable, and receipt-bound observed state, and atomically commits
-  `pi-package.json`. The receipt keeps Pi's canonical configured `source`
+- Pi setup requires Pi `>=0.99.0` and Node.js `>=22.19.0`, rejecting older
+  hosts before changing Pi state. It rejects unowned/conflicting first-party
+  state, then installs either `npm:thoth-agents@<executing-version> --no-approve`
+  or an explicit normalized absolute `--local-package-root` with `--agent=pi`,
+  proves configured, loadable, and receipt-bound observed state, and atomically
+  commits `pi-package.json`. The receipt keeps Pi's canonical configured `source`
   separately from the command-safe `installSource`: npm values are identical,
   while a packed absolute local input is matched through Pi's reported relative
   source plus its exact resolved installed path. Rollback always uses the prior
@@ -90,10 +91,11 @@ execution does not.
   object-form resource filters and unrelated settings survive; a detected
   downgrade fails setup and triggers restoration, verified against a fresh
   listing and manifest; unverifiable recovery exposes manual guidance. The
-  first-party thoth-agents source and ownership receipt remain exact. Pi 0.86.1
-  compatibility is based on an isolated native package-manager probe: it parses
-  `>=` as an unpinned valid range and preserves object-form filters while
-  replacing a source. Setup merges `session_resources: "lean"` and
+  first-party thoth-agents source and ownership receipt remain exact. Historical
+  evidence only: an isolated native package-manager probe on Pi 0.86.1 showed
+  that it parses `>=` as an unpinned valid range and preserves object-form
+  filters while replacing a source; this does not establish support below the
+  current minimum. Setup merges `session_resources: "lean"` and
   `enable_continue: false` into global `subagents.json`, synchronizes five
   specialists, installs four external skills, runs provider setup, and commits
   the unchanged last-complete ledger. Project-local `subagents.json` can

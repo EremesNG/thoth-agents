@@ -37,7 +37,7 @@ import {
 import { type PiPathOptions, type PiPaths, resolvePiPaths } from './pi-paths';
 import { syncPiSpecialists } from './pi-resources';
 
-export const PI_MINIMUM_VERSION = '0.86.1';
+export const PI_MINIMUM_VERSION = '0.99.0';
 export const PI_NODE_MINIMUM = '22.19.0';
 export const PI_COMMAND_TIMEOUT_MS = 120_000;
 export const PI_PACKAGE_SPECS = [
@@ -503,7 +503,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
   const items: PiSetupPlanItem[] = [
     {
       kind: 'preflight',
-      description: 'Verify Node.js >=22.19 and Pi >=0.86.1 before mutation',
+      description: `Verify Node.js >=22.19 and Pi >=${PI_MINIMUM_VERSION} before mutation`,
       target: 'node/pi runtime',
     },
     {

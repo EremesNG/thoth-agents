@@ -1,4 +1,6 @@
 import type { ExtensionUIContext } from '@earendil-works/pi-coding-agent';
+import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockCtx, createMockPi, createMockUI } from './test/helpers.js';
 import {
@@ -8,6 +10,8 @@ import {
   type TaskAction,
 } from './todo.js';
 import { TodoOverlay } from './todo-overlay.js';
+
+let kitToken: ReturnType<typeof registerRenderKit> | undefined;
 
 const identityTheme = {
   fg: (_c: string, s: string) => s,
@@ -54,6 +58,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   __resetState();
+  if (kitToken) withdrawRenderKit(kitToken);
+  kitToken = undefined;
   vi.restoreAllMocks();
 });
 
@@ -382,4 +388,74 @@ describe('TodoOverlay — width truncation', () => {
     expect(out2).toContain('first');
     expect(out2).toContain('second');
   });
+});
+
+describe('TodoOverlay — render kit', () => {
+  it('uses kit heading, tree rails and status glyphs and switches on the same widget', async () => {
+    const { widget } = await setup([
+      { action: 'create', subject: 'first' },
+      { action: 'create', subject: 'second', activeForm: 'Working' },
+      { action: 'update', id: 2, status: 'in_progress' },
+    ]);
+    const native = widget.render(200);
+    expect(native).toEqual([
+      '● Todos (0/2)',
+      '├─ ○ first',
+      '└─ ◐ second (Working)',
+      '',
+    ]);
+    const kit = createTestRenderKit();
+    kit.statusGlyph = (_theme, status) => `[${status}]`;
+    const treeRow = kit.treeRow;
+    kit.treeRow = (theme, options, width) =>
+      treeRow(theme, options, width)
+        .replace('├─', 'BRANCH')
+        .replace('└─', 'END');
+    kitToken = registerRenderKit(kit, {});
+    expect(widget.render(200)).toEqual([
+      '[running] Todos (0/2)',
+      '  BRANCH [pending] first',
+      '  END [in_progress] second (Working)',
+      '',
+    ]);
+    withdrawRenderKit(kitToken);
+    expect(widget.render(200)).toEqual(native);
+  });
+});
+
+it('keeps kit overflow rows and respects tool-output expansion', async () => {
+  kitToken = registerRenderKit(createTestRenderKit(), {});
+  let expanded = false;
+  const actions: Array<{ action: TaskAction; [k: string]: unknown }> = [];
+  for (let id = 1; id <= 12; id++)
+    actions.push({ action: 'create', subject: `task ${id}` });
+  const { widget } = await setup(actions, { getToolsExpanded: () => expanded });
+  const folded = widget.render(200);
+  expect(folded).toHaveLength(13);
+  expect(folded.at(-2)).toBe('  └─ +2 more (2 pending)');
+  expect(folded[10]).toBe('  ├─ ○ task 10');
+  expanded = true;
+  const full = widget.render(200);
+  expect(full).toHaveLength(14);
+  expect(full.at(-2)).toBe('  └─ ○ task 12');
+  expect(full.at(-1)).toBe('');
+});
+
+it('keeps completed tasks visible while kit widget is collapsed, then hides them next turn', async () => {
+  kitToken = registerRenderKit(createTestRenderKit(), {});
+  const { widget, overlay } = await setup([
+    { action: 'create', subject: 'done' },
+    { action: 'update', id: 1, status: 'completed' },
+  ]);
+  overlay.toggleCollapse();
+  expect(widget.render(80)).toEqual([
+    '✓ Todos (1/1)',
+    '  └─ ctrl+shift+t to expand',
+    '',
+  ]);
+  overlay.hideCompletedTasksFromPreviousTurn();
+  overlay.toggleCollapse();
+  expect(widget.render(80)).toEqual(['✓ Todos (1/1)', '  └─ ✓ done', '']);
+  overlay.hideCompletedTasksFromPreviousTurn();
+  expect(widget.render(80)).toEqual([]);
 });

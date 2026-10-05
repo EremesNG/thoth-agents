@@ -1,5 +1,11 @@
 import type { Theme } from '@earendil-works/pi-coding-agent';
-import { Text } from '@earendil-works/pi-tui';
+import { Box, type Component, Text } from '@earendil-works/pi-tui';
+import {
+  getRenderKit,
+  type RenderIndicatorContext,
+  type RenderStatus,
+  type ThothRenderKit,
+} from '@thoth-agents/pi-core';
 import { selectTaskSubjectById } from '../state/selectors.js';
 import type { TaskState } from '../state/state.js';
 import { sanitizeTerminalText } from '../tool/sanitize.js';
@@ -81,8 +87,11 @@ export function formatOverlayTaskLine(
   t: Task,
   theme: Theme,
   showId: boolean,
+  kit?: ThothRenderKit,
 ): string {
-  const glyph = overlayStatusGlyph(t.status, theme);
+  const glyph = kit
+    ? kit.statusGlyph(theme, t.status)
+    : overlayStatusGlyph(t.status, theme);
   const subjectColor =
     t.status === 'in_progress'
       ? 'accent'
@@ -124,19 +133,50 @@ export function formatCommandTaskLine(t: Task, glyph: string): string {
 // Tool render hooks — wrapped so `todo.ts` becomes a thin call-site.
 // ---------------------------------------------------------------------------
 
-/**
- * `renderCall` body. Receives the parsed args, the theme, and the live
- * `TaskState` (resolved by the caller via `getState()`). Returns a `Text`
- * node identical to pre-refactor `todo.ts:507-525`.
- */
+const HAS_RESULT = 'todoHasResult';
+
+function executionStatus(
+  context: RenderIndicatorContext | undefined,
+  isPartial: boolean,
+): RenderStatus {
+  if (!(context?.isPartial ?? isPartial)) {
+    return context?.isError ? 'failed' : 'completed';
+  }
+  return context?.executionStarted === false ? 'pending' : 'running';
+}
+
+/** Split the SDK's one Box across its stacked call/result renderer slots. */
+function renderNative(
+  text: string,
+  theme: Theme,
+  width: number,
+  status: RenderStatus,
+  part: 'full' | 'start' | 'end',
+): string[] {
+  const role =
+    status === 'pending' || status === 'running'
+      ? 'toolPendingBg'
+      : status === 'failed'
+        ? 'toolErrorBg'
+        : 'toolSuccessBg';
+  const bg = (line: string) => theme.bg(role, line);
+  const box = new Box(1, part === 'full' ? 1 : 0, bg);
+  box.addChild(new Text(text, 0, 0));
+  const rows = box.render(width);
+  if (part === 'full') return rows;
+  const padding = bg(' '.repeat(Math.max(0, width)));
+  return part === 'start' ? [padding, ...rows] : [...rows, padding];
+}
+
+/** Read kit availability inside render(), including for an already mounted row. */
 export function renderTodoCall(
   args: TaskMutationParams & { action: TaskAction },
   theme: Theme,
   state: TaskState,
-): Text {
+  context?: RenderIndicatorContext,
+): Component {
   const glyph = ACTION_GLYPH[args.action] ?? args.action;
-  let text =
-    theme.fg('toolTitle', theme.bold('todo ')) + theme.fg('muted', glyph);
+  let text = theme.fg('muted', glyph);
 
   if (args.action === 'create' && args.subject) {
     text += ` ${theme.fg('dim', sanitizeTerminalText(args.subject))}`;
@@ -151,19 +191,47 @@ export function renderTodoCall(
   } else if (args.action === 'list' && args.status) {
     text += ` ${theme.fg('muted', formatStatusLabel(args.status))}`;
   }
-  return new Text(text, 0, 0);
+  return {
+    render(width) {
+      const kit = getRenderKit();
+      const status = executionStatus(context, true);
+      // SDK constructs both slots before rendering either; renderResult marks
+      // the shared state, so the first completed render has no duplicate padding.
+      const part = context?.state?.[HAS_RESULT] ? 'start' : 'full';
+      if (kit) {
+        return kit.card(
+          theme,
+          {
+            title: 'todo',
+            body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
+            status,
+            footer: kit.indicator(theme, context, { status }).text,
+            isError: context?.isError,
+            part,
+          },
+          width,
+        );
+      }
+      return renderNative(
+        theme.fg('toolTitle', theme.bold('todo ')) + text,
+        theme,
+        width,
+        status,
+        part,
+      );
+    },
+    invalidate() {},
+  };
 }
 
-/**
- * `renderResult` body. Inspects `details` to pick the per-action status echo
- * (only `create`/`update`/`delete` advertise a status; `list`/`get`/`clear`
- * fall back to plain `✓`). Identical visual output to pre-refactor
- * `todo.ts:533-565`.
- */
+/** Preserve the current task-status echo, with a kit or native shell. */
 export function renderTodoResult(
   result: { details?: unknown },
   theme: Theme,
-): Text {
+  options: { isPartial?: boolean } = {},
+  context?: RenderIndicatorContext,
+): Component {
+  if (context?.state) context.state[HAS_RESULT] = true;
   const details = result.details as TaskDetails | undefined;
   let status: TaskStatus | undefined;
   if (details) {
@@ -186,15 +254,31 @@ export function renderTodoResult(
         break;
     }
   }
-  if (status) {
-    return new Text(
-      theme.fg(
-        STATUS_COLOR[status],
-        `${STATUS_GLYPH[status]} ${formatStatusLabel(status)}`,
-      ),
-      0,
-      0,
-    );
-  }
-  return new Text(theme.fg('success', '✓'), 0, 0);
+  return {
+    render(width) {
+      const kit = getRenderKit();
+      const toolStatus = executionStatus(context, options.isPartial ?? false);
+      const text = status
+        ? theme.fg(
+            STATUS_COLOR[status],
+            `${kit ? kit.statusGlyph(theme, status) : STATUS_GLYPH[status]} ${formatStatusLabel(status)}`,
+          )
+        : theme.fg('success', '✓');
+      if (kit) {
+        return kit.card(
+          theme,
+          {
+            body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
+            status: toolStatus,
+            footer: kit.indicator(theme, context, { status: toolStatus }).text,
+            isError: context?.isError,
+            part: 'end',
+          },
+          width,
+        );
+      }
+      return renderNative(text, theme, width, toolStatus, 'end');
+    },
+    invalidate() {},
+  };
 }

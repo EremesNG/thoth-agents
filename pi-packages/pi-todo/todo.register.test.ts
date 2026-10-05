@@ -1,5 +1,4 @@
 import type { Theme } from '@earendil-works/pi-coding-agent';
-import { Text } from '@earendil-works/pi-tui';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createMockCtx, createMockPi, makeTheme } from './test/helpers.js';
 import {
@@ -97,9 +96,8 @@ describe('registerTodoTool — renderCall', () => {
       { action: 'create', subject: 'hello' } as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect(node).toBeInstanceOf(Text);
-    const text = (node as unknown as { text: string }).text;
+    );
+    const text = node?.render(120).join(' ');
     expect(text).toContain('todo ');
     expect(text).toContain('+');
     expect(text).toContain('hello');
@@ -111,8 +109,8 @@ describe('registerTodoTool — renderCall', () => {
       { action: 'update', id: 42 } as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect((node as unknown as { text: string }).text).toContain('#42');
+    );
+    expect(node?.render(120).join(' ')).toContain('#42');
   });
 
   it('update action renders the task subject when seeded', async () => {
@@ -122,10 +120,8 @@ describe('registerTodoTool — renderCall', () => {
       { action: 'update', id: 1 } as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect((node as unknown as { text: string }).text).toContain(
-      'seeded-subject',
     );
+    expect(node?.render(120).join(' ')).toContain('seeded-subject');
   });
 
   it('list action with a status filter renders the humanized status label', () => {
@@ -134,8 +130,8 @@ describe('registerTodoTool — renderCall', () => {
       { action: 'list', status: 'in_progress' } as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect((node as unknown as { text: string }).text).toContain('in progress');
+    );
+    expect(node?.render(120).join(' ')).toContain('in progress');
   });
 
   it('clear action renders only the base prefix + glyph', () => {
@@ -144,8 +140,8 @@ describe('registerTodoTool — renderCall', () => {
       { action: 'clear' } as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect((node as unknown as { text: string }).text).toContain('∅');
+    );
+    expect(node?.render(120).join(' ')).toContain('∅');
   });
 });
 
@@ -158,9 +154,9 @@ describe('registerTodoTool — renderResult', () => {
       {} as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect((node as unknown as { text: string }).text).toContain('pending');
-    expect((node as unknown as { text: string }).text).toContain('○');
+    );
+    expect(node?.render(120).join(' ')).toContain('pending');
+    expect(node?.render(120).join(' ')).toContain('○');
   });
 
   it('update renders the transitioned status (in progress)', async () => {
@@ -176,8 +172,8 @@ describe('registerTodoTool — renderResult', () => {
       {} as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    const text = (node as unknown as { text: string }).text;
+    );
+    const text = node?.render(120).join(' ');
     expect(text).toContain('in progress');
     expect(text).toContain('◐');
   });
@@ -191,8 +187,8 @@ describe('registerTodoTool — renderResult', () => {
       {} as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    const text = (node as unknown as { text: string }).text;
+    );
+    const text = node?.render(120).join(' ');
     expect(text).toContain('deleted');
     expect(text).toContain('⊘');
   });
@@ -206,8 +202,8 @@ describe('registerTodoTool — renderResult', () => {
       {} as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect((node as unknown as { text: string }).text).toContain('✓');
+    );
+    expect(node?.render(120).join(' ')).toContain('✓');
   });
 
   it("get renders the plain '✓' fallback", async () => {
@@ -219,8 +215,8 @@ describe('registerTodoTool — renderResult', () => {
       {} as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect((node as unknown as { text: string }).text).toContain('✓');
+    );
+    expect(node?.render(120).join(' ')).toContain('✓');
   });
 
   it("clear renders the plain '✓' fallback", async () => {
@@ -232,8 +228,8 @@ describe('registerTodoTool — renderResult', () => {
       {} as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect((node as unknown as { text: string }).text).toContain('✓');
+    );
+    expect(node?.render(120).join(' ')).toContain('✓');
   });
 
   it("missing details falls back to plain '✓'", () => {
@@ -243,7 +239,7 @@ describe('registerTodoTool — renderResult', () => {
       {} as never,
       theme,
       undefined as never,
-    ) as unknown as Text;
-    expect((node as unknown as { text: string }).text).toContain('✓');
+    );
+    expect(node?.render(120).join(' ')).toContain('✓');
   });
 });

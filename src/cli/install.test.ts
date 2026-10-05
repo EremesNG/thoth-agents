@@ -214,6 +214,7 @@ describe('install', () => {
       'package:npm:pi-web-access@>=0.27.0',
       'package:npm:pi-mcp-adapter@>=2.32.1',
       'package:npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+      'package:npm:@thoth-agents/pi-todo@>=0.1.0',
       'external:simplify',
       'external:tdd',
       'external:progressive-context-router',
@@ -307,6 +308,62 @@ describe('install', () => {
     ).toBe('missing');
     expect(existsSync(join(homeDir, '.pi'))).toBe(false);
     rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  test.each([
+    false,
+    true,
+  ])('Pi install reports the incumbent todo blocker without changing settings or completion (dryRun=%s)', async (dryRun) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-top-todo-blocker-'));
+    const settingsPath = join(homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(join(homeDir, '.pi', 'agent'), { recursive: true });
+    const settings = JSON.stringify({
+      packages: [{ source: 'npm:@juicesharp/rpiv-todo@2.12.0', skills: [] }],
+      theme: 'operator-theme',
+    });
+    writeFileSync(settingsPath, settings);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const commands: string[] = [];
+    let providerCalls = 0;
+    try {
+      const result = await install(
+        { tui: false, agent: 'pi', dryRun },
+        {
+          homeDir,
+          resolveExecutingPackageVersion: () => ({
+            ok: true,
+            version: '0.6.0',
+            packageRoot: process.cwd(),
+          }),
+          piCommandExecutor: (command, args) => {
+            commands.push(`${command} ${args.join(' ')}`);
+            return { exitCode: 0, stdout: '', stderr: '' };
+          },
+          runThothMemSetup: ({ harness }) => {
+            providerCalls += 1;
+            return providerResult(harness);
+          },
+          installLedgerOptions: { configRoot: join(homeDir, '.config') },
+        },
+      );
+
+      expect(result).toBe(1);
+      expect(
+        [...log.mock.calls, ...error.mock.calls].flat().join('\n'),
+      ).toContain('pi remove npm:@juicesharp/rpiv-todo --no-approve');
+      expect(commands).toEqual([]);
+      expect(providerCalls).toBe(0);
+      expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+      expect(
+        readInstallLedger({ configRoot: join(homeDir, '.config') }).status,
+      ).toBe('missing');
+      expect(existsSync(join(homeDir, '.config'))).toBe(false);
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+      rmSync(homeDir, { recursive: true, force: true });
+    }
   });
 
   test('Pi dry-run plans the explicit local package root', async () => {

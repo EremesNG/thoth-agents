@@ -203,6 +203,12 @@ describe('Pi operations', () => {
           observed: '1.0.0',
         }),
         expect.objectContaining({
+          kind: 'package',
+          path: 'npm:@thoth-agents/pi-todo@>=0.1.0',
+          state: 'installed',
+          observed: '0.1.0',
+        }),
+        expect.objectContaining({
           kind: 'file',
           path: configPath,
           state: 'installed',
@@ -376,6 +382,302 @@ describe('Pi operations', () => {
     );
   });
 
+  test.each([
+    {
+      scope: 'User',
+      source: '../operator-task-list',
+      removalCommand: 'pi remove ../operator-task-list --no-approve',
+    },
+    {
+      scope: 'Project',
+      source: '../operator-task-list',
+      packagePath: 'operator-task-list',
+      removalCommand: 'pi remove ../operator-task-list --local --approve',
+    },
+    {
+      scope: 'User',
+      source: 'git+https://example.test/operator/rpiv-todo.git',
+      removalCommand:
+        'pi remove git+https://example.test/operator/rpiv-todo.git --no-approve',
+    },
+    {
+      scope: 'Project',
+      source: 'git:https://example.test/operator/tasks.git@v2.12.0',
+      packagePath: '.pi/git/example.test/operator/tasks',
+      removalCommand:
+        'pi remove git:https://example.test/operator/tasks.git@v2.12.0 --local --approve',
+    },
+    ...[
+      'https://github.com/operator/tasks.git/',
+      'https://www.github.com/operator/tasks',
+    ].map((source) => ({
+      scope: 'Project',
+      source,
+      packagePath: '.pi/git/github.com/operator/tasks',
+      removalCommand: `pi remove ${source} --local --approve`,
+    })),
+    {
+      scope: 'Project',
+      source: 'git:https://example.test/operator/rpiv-todo.git',
+      packagePath: '.pi/git/example.test/operator/rpiv-todo',
+      removalCommand:
+        'pi remove git:https://example.test/operator/rpiv-todo.git --local --approve',
+    },
+  ])('identifies a local/Git todo incumbent by manifest, not source spelling alone ($scope, $source)', ({
+    scope,
+    source,
+    packagePath,
+    removalCommand,
+  }) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-local-todo-status-'));
+    roots.push(homeDir);
+    const installedPath = join(homeDir, packagePath ?? 'operator-package');
+    mkdirSync(installedPath, { recursive: true });
+    if (scope === 'Project') {
+      const settingsPath = join(homeDir, '.pi', 'settings.json');
+      mkdirSync(dirname(settingsPath), { recursive: true });
+      writeFileSync(
+        settingsPath,
+        JSON.stringify({ packages: [{ source, extensions: [] }] }),
+      );
+    }
+    const manifestPath = join(installedPath, 'package.json');
+    const runtime = installedRuntime(homeDir);
+    const commands: string[] = [];
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        const result = runtime(command, args);
+        // Native --no-approve never lists project packages.
+        return args[0] === 'list' && scope === 'User'
+          ? {
+              ...result,
+              stdout: `${result.stdout}\nUser packages:\n  ${source}\n    ${installedPath}`,
+            }
+          : result;
+      },
+    };
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ name: '@juicesharp/rpiv-todo', version: '2.12.0' }),
+    );
+    expect(getPiStatus(context).targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi incumbent task-list package',
+          path: source,
+          state: 'drift',
+          description: expect.stringContaining(`${removalCommand}.`),
+        }),
+      ]),
+    );
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan).toMatchObject({
+        canApply: false,
+        blockerTargets: expect.arrayContaining([
+          expect.objectContaining({
+            label: 'Pi task-list package blocker',
+            observed: expect.stringContaining(`${removalCommand}.`),
+          }),
+        ]),
+      });
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(
+      commands.some((call) => /pi (install|remove)|--approve/.test(call)),
+    ).toBe(false);
+
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ name: 'operator-task-tools', version: '1.0.0' }),
+    );
+    expect(getPiStatus(context).targets).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Pi incumbent task-list package' }),
+      ]),
+    );
+    expect(buildPiUpdatePlan(context).canApply).toBe(true);
+  });
+
+  test.each([
+    {
+      packagePath: '.pi/git/unknown.test/nested/operator/tasks',
+      settings: undefined,
+    },
+    { packagePath: '.pi/npm/node_modules/operator-tasks', settings: undefined },
+    {
+      packagePath: '.pi/git/github.com/operator/tasks',
+      settings: JSON.stringify({
+        packages: ['git:unrecognized-layout'],
+        npmCommand: ['must-not-run-project-code'],
+      }),
+    },
+    {
+      packagePath: '.pi/npm/node_modules/@vendor/renamed-tasks',
+      settings: '{ malformed settings',
+    },
+  ])('reports an unmapped installed todo and blocks Install/Update ($packagePath, settings=$settings)', ({
+    packagePath,
+    settings,
+  }) => {
+    const homeDir = mkdtempSync(
+      join(tmpdir(), 'thoth-pi-scanned-todo-status-'),
+    );
+    roots.push(homeDir);
+    const cwd = join(homeDir, 'project');
+    const installedPath = join(cwd, packagePath);
+    mkdirSync(installedPath, { recursive: true });
+    const settingsPath = join(cwd, '.pi', 'settings.json');
+    if (settings !== undefined) writeFileSync(settingsPath, settings);
+    const manifestPath = join(installedPath, 'package.json');
+    const manifest = JSON.stringify({
+      name: '@juicesharp/rpiv-todo',
+      main: 'must-not-execute.js',
+      scripts: { preinstall: 'must-not-run-project-code' },
+    });
+    writeFileSync(manifestPath, manifest);
+    writeFileSync(
+      join(installedPath, 'must-not-execute.js'),
+      'throw new Error("Project code executed");',
+    );
+    const commands: string[] = [];
+    const runtime = installedRuntime(homeDir);
+    const context = {
+      cwd,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        return runtime(command, args);
+      },
+    };
+
+    const report = getPiStatus(context);
+    const incumbents = report.targets.filter(
+      ({ label }) => label === 'Pi incumbent task-list package',
+    );
+    expect(incumbents).toHaveLength(1);
+    expect(incumbents[0]).toMatchObject({
+      path: installedPath,
+      state: 'drift',
+      description: expect.stringContaining(
+        'pi remove <source> --local --approve.',
+      ),
+    });
+    expect(incumbents[0].description).toContain(
+      'pi remove npm:@juicesharp/rpiv-todo --local --approve.',
+    );
+    expect(incumbents[0].description).toContain('Review the project');
+    expect(incumbents[0].description).not.toContain(
+      `pi remove ${installedPath}`,
+    );
+    expect(
+      report.diagnostics.map(({ message }) => message).join('\n'),
+    ).toContain(installedPath);
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(false);
+      expect(plan.blockerTargets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: 'Pi task-list package blocker',
+            observed: expect.stringContaining(installedPath),
+          }),
+        ]),
+      );
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(
+      commands.some((call) => /pi (install|remove)|--approve/.test(call)),
+    ).toBe(false);
+    expect(readFileSync(manifestPath, 'utf8')).toBe(manifest);
+    if (settings !== undefined)
+      expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+    else expect(existsSync(settingsPath)).toBe(false);
+    expect(existsSync(join(homeDir, '.pi', 'agent'))).toBe(false);
+    expect(existsSync(join(homeDir, '.config'))).toBe(false);
+  });
+
+  test.each([
+    'missing',
+    'invalid',
+  ])('reports read-only identity limitations for a project Git todo source with a %s manifest', (manifestState) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-unresolved-todo-'));
+    roots.push(homeDir);
+    const source = 'git:https://example.test/operator/rpiv-todo.git@v2.12.0';
+    const settingsPath = join(homeDir, '.pi', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = JSON.stringify({ packages: [source] });
+    writeFileSync(settingsPath, settings);
+    if (manifestState === 'invalid') {
+      const packageRoot = join(
+        homeDir,
+        '.pi',
+        'git',
+        'example.test',
+        'operator',
+        'rpiv-todo',
+      );
+      mkdirSync(packageRoot, { recursive: true });
+      writeFileSync(join(packageRoot, 'package.json'), 'invalid JSON');
+    }
+    const commands: string[] = [];
+    const runtime = installedRuntime(homeDir);
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        return runtime(command, args);
+      },
+    };
+    const report = getPiStatus(context);
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Pi incumbent task-list package',
+          path: source,
+          state: 'drift',
+          description: expect.stringContaining(
+            'manifest identity is unavailable',
+          ),
+        }),
+      ]),
+    );
+    expect(
+      report.diagnostics.map(({ message }) => message).join('\n'),
+    ).toContain('read-only inspection cannot confirm its installed identity');
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(false);
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(
+      commands.some((call) => /pi (install|remove)|--approve/.test(call)),
+    ).toBe(false);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+  });
+
   test('reports provider evidence without treating an absent Exa key as a web failure', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-status-'));
     roots.push(homeDir);
@@ -395,13 +697,35 @@ describe('Pi operations', () => {
     );
   });
 
-  test('ignores an outdated user-owned todo extension while reporting question support', () => {
+  test.each([
+    {
+      scope: 'User',
+      removalCommand: 'pi remove npm:@juicesharp/rpiv-todo --no-approve',
+    },
+    {
+      scope: 'Project',
+      removalCommand: 'pi remove npm:@juicesharp/rpiv-todo --local --approve',
+    },
+  ])('reports an incumbent todo conflict and blocks update while reporting question support ($scope)', ({
+    scope,
+    removalCommand,
+  }) => {
     const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-rpiv-status-'));
     roots.push(homeDir);
     const askPath = join(homeDir, 'ask');
-    const todoPath = join(homeDir, 'todo');
+    const todoPath =
+      scope === 'Project'
+        ? join(
+            homeDir,
+            '.pi',
+            'npm',
+            'node_modules',
+            '@juicesharp',
+            'rpiv-todo',
+          )
+        : join(homeDir, 'todo');
     mkdirSync(askPath);
-    mkdirSync(todoPath);
+    mkdirSync(todoPath, { recursive: true });
     writeFileSync(
       join(askPath, 'package.json'),
       JSON.stringify({
@@ -413,11 +737,21 @@ describe('Pi operations', () => {
       join(todoPath, 'package.json'),
       JSON.stringify({ name: '@juicesharp/rpiv-todo', version: '0.0.1' }),
     );
-    const report = getPiStatus({
+    if (scope === 'Project') {
+      const settingsPath = join(homeDir, '.pi', 'settings.json');
+      mkdirSync(dirname(settingsPath), { recursive: true });
+      writeFileSync(
+        settingsPath,
+        JSON.stringify({ packages: ['npm:@juicesharp/rpiv-todo@>=2.9.0'] }),
+      );
+    }
+    const commands: string[] = [];
+    const context = {
       cwd: homeDir,
       homeDir,
       env: {},
-      piCommandExecutor: (command, args) => {
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
@@ -425,27 +759,141 @@ describe('Pi operations', () => {
         return {
           exitCode: 0,
           stdout: [
-            'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+            'User packages:',
+            '  npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
             `    ${askPath}`,
-            'npm:@juicesharp/rpiv-todo@>=2.9.0',
-            `    ${todoPath}`,
+            ...(scope === 'User'
+              ? ['  npm:@juicesharp/rpiv-todo@>=2.9.0', `    ${todoPath}`]
+              : []),
           ].join('\n'),
           stderr: '',
         };
       },
-    });
-    const rpiv = report.targets.filter(({ path }) =>
-      path?.includes('@juicesharp/rpiv-'),
+    };
+    const report = getPiStatus(context);
+    expect(report.targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'npm:@thoth-agents/pi-todo@>=0.1.0',
+          state: 'missing',
+        }),
+        expect.objectContaining({
+          path: 'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+          state: 'installed',
+          description: expect.stringContaining(
+            'does not prove live tool availability',
+          ),
+        }),
+        expect.objectContaining({
+          label: 'Pi incumbent task-list package',
+          path: 'npm:@juicesharp/rpiv-todo@>=2.9.0',
+          state: 'drift',
+          description: expect.stringContaining(`${removalCommand}.`),
+        }),
+      ]),
     );
-    expect(rpiv.map(({ state }) => state)).toEqual(['installed']);
-    expect(report.targets.some(({ path }) => path?.includes('rpiv-todo'))).toBe(
+    expect(report.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code:
+            scope === 'Project'
+              ? 'pi-preflight-blocked'
+              : 'pi-incumbent-todo-conflict',
+          severity: 'critical',
+          message: expect.stringContaining(`${removalCommand}.`),
+        }),
+      ]),
+    );
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(false);
+      expect(plan.blockerTargets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: 'Pi task-list package blocker',
+            observed: expect.stringContaining(`${removalCommand}.`),
+          }),
+        ]),
+      );
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(commands.some((call) => /pi (install|remove)/.test(call))).toBe(
       false,
     );
-    expect(
-      rpiv.every(({ description }) =>
-        description?.includes('does not prove live tool availability'),
-      ),
-    ).toBe(true);
+  });
+
+  test.each([
+    false,
+    true,
+  ])('reports both todo scopes in status and update (user settings=%s)', (userSettings) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-todo-scopes-'));
+    roots.push(homeDir);
+    const source = 'npm:@juicesharp/rpiv-todo@2.12.0';
+    if (userSettings) {
+      const path = join(homeDir, '.pi', 'agent', 'settings.json');
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, JSON.stringify({ packages: [source] }));
+    }
+    const projectSettingsPath = join(homeDir, '.pi', 'settings.json');
+    mkdirSync(dirname(projectSettingsPath), { recursive: true });
+    writeFileSync(projectSettingsPath, JSON.stringify({ packages: [source] }));
+    const runtime = installedRuntime(homeDir);
+    const commands: string[] = [];
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        const result = runtime(command, args);
+        return args[0] === 'list'
+          ? {
+              ...result,
+              stdout: `${result.stdout}\nUser packages:\n  ${source}`,
+            }
+          : result;
+      },
+    };
+    const removalCommands = [
+      'pi remove npm:@juicesharp/rpiv-todo --no-approve.',
+      'pi remove npm:@juicesharp/rpiv-todo --local --approve.',
+    ];
+    const report = getPiStatus(context);
+    for (const command of removalCommands) {
+      expect(
+        report.targets
+          .filter(({ label }) => label === 'Pi incumbent task-list package')
+          .map(({ description }) => description)
+          .join('\n'),
+      ).toContain(command);
+      expect(
+        report.diagnostics.map(({ message }) => message).join('\n'),
+      ).toContain(command);
+    }
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(false);
+      const recovery = plan.blockerTargets
+        .filter(({ label }) => label === 'Pi task-list package blocker')
+        .map(({ observed }) => observed)
+        .join('\n');
+      for (const command of removalCommands)
+        expect(recovery).toContain(command);
+      expect(applyPiPlan(plan)).toMatchObject({
+        applied: false,
+        changedTargets: [],
+      });
+    }
+    expect(commands.some((call) => /pi (install|remove)/.test(call))).toBe(
+      false,
+    );
   });
 
   test('reports installed web access as unverified without live runtime evidence', () => {

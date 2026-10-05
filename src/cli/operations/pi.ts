@@ -32,6 +32,7 @@ import {
   applyPiSetup,
   buildPiSetupPlan,
   findPiIncumbentDelegation,
+  findPiIncumbentTodos,
   getPiExternalPackageSpecs,
   getPiFirstPartyPackages,
   hasExactInstalledPiPackage,
@@ -40,10 +41,12 @@ import {
   PI_NODE_MINIMUM,
   PI_PACKAGE_SPECS,
   type PiCommandExecutor,
+  type PiConfiguredPackage,
   type PiIncumbentDelegation,
   type PiSetupPlan,
   parsePiPackageList,
   piIncumbentDelegationRecovery,
+  piIncumbentTodoRecovery,
   writePiManagedText,
 } from '../pi-install';
 import { migrateLegacyPiResources } from '../pi-migration';
@@ -303,6 +306,10 @@ function incumbentDelegationRecovery(incumbent: PiIncumbentDelegation): string {
   return `Incumbent Pi delegation runtime ${incumbent.candidate.source} conflicts with ${PI_PACKAGE_SPECS[0].source}. ${piIncumbentDelegationRecovery(incumbent)}`;
 }
 
+function incumbentTodoRecovery(incumbent: PiConfiguredPackage): string {
+  return `Incumbent Pi task-list package ${incumbent.source} conflicts with @thoth-agents/pi-todo. ${piIncumbentTodoRecovery(incumbent.source, incumbent.scope, incumbent.identityLimitation, incumbent.unmappedSource)}`;
+}
+
 function runtimeDiagnostic(
   provider: PiResearchProviderId,
   evidence: PiResearchRuntimeEvidence,
@@ -412,6 +419,10 @@ function statusFromPlan(
   const configuredPackages =
     packages.exitCode === 0 ? parsePiPackageList(packages.stdout) : [];
   const incumbentDelegation = findPiIncumbentDelegation(configuredPackages);
+  const incumbentTodos = [
+    ...findPiIncumbentTodos(configuredPackages),
+    ...(plan.projectIncumbentTodos ?? []),
+  ];
   const packageSpecs = getPiExternalPackageSpecs(plan.options);
   for (const target of targets.filter(
     (candidate) =>
@@ -458,6 +469,16 @@ function statusFromPlan(
       expected: `not configured alongside ${PI_PACKAGE_SPECS[0].packageName}`,
       observed: incumbentDelegation.candidate.source,
       description: incumbentDelegationRecovery(incumbentDelegation),
+    });
+  for (const incumbentTodo of incumbentTodos)
+    targets.push({
+      kind: 'package',
+      path: incumbentTodo.source,
+      label: 'Pi incumbent task-list package',
+      state: 'drift',
+      expected: 'not configured alongside @thoth-agents/pi-todo',
+      observed: incumbentTodo.source,
+      description: incumbentTodoRecovery(incumbentTodo),
     });
   const receiptOptions = context.installLedgerOptions ?? {
     env: context.env,
@@ -646,6 +667,29 @@ function statusFromPlan(
           ),
         ]
       : []),
+    ...incumbentTodos
+      .filter(
+        (incumbentTodo) =>
+          !plan.blockers.some(
+            (message) =>
+              message.includes(incumbentTodo.source) &&
+              message.includes(
+                piIncumbentTodoRecovery(
+                  incumbentTodo.source,
+                  incumbentTodo.scope,
+                  incumbentTodo.identityLimitation,
+                  incumbentTodo.unmappedSource,
+                ),
+              ),
+          ),
+      )
+      .map((incumbentTodo) =>
+        warning(
+          incumbentTodoRecovery(incumbentTodo),
+          'pi-incumbent-todo-conflict',
+          'critical',
+        ),
+      ),
     ...plan.diagnostics.map((message) =>
       warning(message, 'pi-resource-shadowing'),
     ),
@@ -861,6 +905,17 @@ function piPlan(
         },
       ]
     : [];
+  const todoBlockers: ManagedTarget[] = status.targets
+    .filter(({ label }) => label === 'Pi incumbent task-list package')
+    .map((incumbentTodo) => ({
+      kind: 'package',
+      path: incumbentTodo.path,
+      label: 'Pi task-list package blocker',
+      state: 'drift',
+      observed:
+        incumbentTodo.description ??
+        `${incumbentTodo.observed} conflicts with @thoth-agents/pi-todo. Remove it manually before applying ${action}.`,
+    }));
   const syncSkillsUnavailable =
     action === 'sync' &&
     (!configuredPackageRoot ||
@@ -894,6 +949,7 @@ function piPlan(
       (!complete || version.ok) &&
       ownershipBlockers.length === 0 &&
       delegationBlockers.length === 0 &&
+      todoBlockers.length === 0 &&
       syncSkillBlockers.length === 0,
     targets: status.targets,
     blockerTargets: [
@@ -905,6 +961,7 @@ function piPlan(
       })),
       ...ownershipBlockers,
       ...delegationBlockers,
+      ...todoBlockers,
       ...syncSkillBlockers,
     ],
     surfaces: setup.items

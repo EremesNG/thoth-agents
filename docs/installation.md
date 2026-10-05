@@ -34,7 +34,7 @@ npm's `codex.cmd` shim. Linux and macOS execute those commands directly.
 | OpenCode | `npx thoth-agents@latest install --agent=opencode` configures thoth-agents, globally synchronizes owned and external skills, and sets up thoth-mem | Restart, then `/thoth-init` in each repository for minimum `.thoth/` governance |
 | Codex | `npx thoth-agents@latest install --agent=codex` registers the marketplace and installs the plugin through Codex's native manager | The same command applies the global layer, external skills, and thoth-mem; restart, then `$thoth-init` per repository |
 | Claude Code | Add the central marketplace and install `thoth-agents@thoth-plugins` | `npx thoth-agents@latest install --agent=claude` installs external skills and thoth-mem; restart, then `/thoth-agents:thoth-init` per repository |
-| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=1.0.0` and the research packages | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
+| Pi | `npx thoth-agents@latest install --agent=pi` installs and proves the executing first-party package before `npm:@thoth-agents/pi-subagents@>=1.0.0`, the research/interaction packages, and `npm:@thoth-agents/pi-todo@>=0.1.0` | The package injects one bounded adaptive-root block, configures lean child resources with continuation disabled, synchronizes five Thoth specialist definitions, exposes its owned skills, and the CLI invokes provider-owned `thoth-mem setup pi` |
 
 ## Common CLI options
 
@@ -222,14 +222,50 @@ The CLI installs and verifies these Pi packages in order:
 5. `pi-mcp-adapter@2.32.1` only for the anonymous grep.app MCP endpoint;
 6. `@juicesharp/rpiv-ask-user-question@2.9.0` for the root's interactive
    `ask_user_question` dialog;
+7. `npm:@thoth-agents/pi-todo@>=0.1.0` for the first-party session task list:
+   the `todo` tool, `/todos`, and current-session editor widget.
 
-Task/progress extensions are optional and operator-owned. Thoth uses an available
-task tool according to its actual name and schema, or lightweight written progress
-if none is available; missing tooling never blocks the workflow. Setup and update
-do not install or remove task extensions, and status does not require them.
-Previously installed `@juicesharp/rpiv-todo` remains untouched; users decide whether
-to keep it. Progress tracking never replaces native delegation or `.thoth/`
-change records.
+The task-list extension is the sixth selected package after first-party
+verification. Install and applied Update install and individually verify it;
+status reports it as a managed target. Progress tracking never replaces native
+delegation or `.thoth/` change records. Unrelated task extensions remain
+operator-owned and untouched.
+
+An installed `@juicesharp/rpiv-todo` conflicts with the first-party task list.
+Preflight stops before any mutation when it is declared in Pi's settings or
+identified from its installed manifest. Pi 1.0.2's `pi list --no-approve` omits
+project packages, so setup, status, and Update also inspect the project's
+`.pi/settings.json` packages and resolved npm, local-path, and Git manifests
+read-only. This never executes project code or grants/persists trust. Local
+paths are resolved relative to `.pi`; project Git checkouts are under
+`.pi/git/<host>/<repository>`, using Pi SDK 1.0.2's Git normalization. A read-only
+scan of `.pi/git` and `.pi/npm` also detects incumbent manifests even when no
+settings source maps to them. Linked package manifests are inspected without
+recursively following links outside the install root. When a manifest is
+unavailable, an incumbent-looking source blocks with an explicit identity
+limitation; arbitrary source names alone cannot prove package identity. Apply
+rechecks settings and install roots before mutation.
+Dry-run reports configured blockers without mutation; status and Update previews
+expose the conflict with manual removal instructions. Review ownership and
+remove it explicitly:
+
+```bash
+pi remove npm:@juicesharp/rpiv-todo --no-approve
+```
+
+This command targets user scope. For project scope, first review the project's
+ownership and trust, then run
+`pi remove npm:@juicesharp/rpiv-todo --local --approve` from that project.
+`--approve` trusts project-local settings for this command only without saving
+a trust decision. If present in both scopes, run both commands.
+
+Verify with `pi list`, then rerun setup or apply Update. The CLI never removes
+this package automatically or migrates its task state; for a local/Git install,
+use the additional removal command for the actual configured source. If the
+source cannot be mapped, diagnostics name the installed directory. After
+reviewing ownership, find the matching settings entry and remove it with
+`pi remove <source> --local --approve`; the diagnostic directory is not itself
+necessarily a configured source.
 
 The incumbent `pi-subagents` runtime and the former `pi-subagents-j0k3r`
 package are not supported beside `@thoth-agents/pi-subagents`. When setup detects
@@ -547,7 +583,7 @@ Applied Update is installation-equivalent for the selected harness:
 | OpenCode | Exact plugin pin and managed configuration, global thoth-owned skills, required external skills, provider setup, then the CLI record |
 | Codex | Native plugin-manager setup, global agent pack/configuration, required external skills, provider setup, then the CLI record |
 | Claude Code | Native marketplace/plugin refresh, required external skills, provider setup, then the CLI record |
-| Pi | Receipt-bound first-party package proof, five specialist synchronization, five minimum-constrained native/adapter packages, exact grep.app entry, required external skills, provider setup, then the CLI record |
+| Pi | Receipt-bound first-party package proof, five specialist synchronization, six minimum-constrained selected packages (including the first-party task list), exact grep.app entry, required external skills, provider setup, then the CLI record |
 
 The versioned CLI-owned ledger is located at
 `${XDG_CONFIG_HOME:-~/.config}/thoth-agents/install-state.json`. It keeps

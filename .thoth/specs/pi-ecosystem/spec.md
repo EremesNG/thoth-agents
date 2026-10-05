@@ -74,4 +74,24 @@ First-party Pi transcript tool-call, tool-result and custom-message renderers wh
 
 - **GIVEN** a completed kit-rendered transcript tool or message card
 - **WHEN** the host renders it repeatedly at the same width with the same registered kit
-- **THEN** the card body is built once and identical lines are returned until invalidation, a width change, or a kit change 
+- **THEN** the card body is built once and identical lines are returned until invalidation, a width change, or a kit change
+
+### Requirement: Thoth Pi tool definition registry
+
+`@thoth-agents/pi-core` MUST provide a process-wide registry where first-party Pi packages publish the tool definitions they register, returning a per-instance handle, resolving a tool name to its most recent live publication, and letting a handle withdraw only its own entries; first-party packages that register tools MUST publish them only from interactive sessions with a UI and withdraw them on session shutdown.
+
+#### Scenario: Thoth Pi tool definition registry
+
+- **GIVEN** a first-party package registered a tool with Pi
+- **WHEN** another first-party package looks the tool up by name in the registry
+- **THEN** it receives the full definition including its renderers without re-evaluating the owning extension 
+
+### Requirement: Subagent viewer tool rendering
+
+The subagents thread viewer MUST resolve tool definitions from the tool definition registry before re-evaluating any extension source; when a render kit is registered it MUST NOT re-evaluate extension sources and MUST render tool calls and results through the kit's tool-renderer resolution when the kit provides it, following the theme's respected-package ownership for tools whose definitions are cheaply available and using the generic kit card otherwise; when no kit is registered it MUST keep native rendering.
+
+#### Scenario: Subagent viewer tool rendering
+
+- **GIVEN** a render kit is registered and a subagent used a tool from an already-loaded extension
+- **WHEN** the user opens that subagent in the viewer
+- **THEN** the tool card renders through the kit without re-evaluating the extension source 

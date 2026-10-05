@@ -51,6 +51,45 @@ test("toPiUsage: maps reported counts, leaves cost zero", () => {
 	assert.equal(usage.cost.total, 0);
 });
 
+test("toPiUsage: includes cached prompt tokens when total_tokens is omitted", () => {
+	const usage = newBlocks().partial.usage;
+	toPiUsage({ input_tokens: 3690, output_tokens: 162, cache_read_tokens: 16294 }, usage);
+	assert.equal(usage.cacheRead, 16294);
+	assert.equal(usage.totalTokens, 20146);
+});
+
+test("toPiUsage: context totals grow across cold and cached turns", () => {
+	const turns: AgyUsage[] = [
+		{ input_tokens: 19000, output_tokens: 120 },
+		{ input_tokens: 3690, output_tokens: 162, cache_read_tokens: 16294 },
+		{ input_tokens: 20500, output_tokens: 150 },
+		{ input_tokens: 4500, output_tokens: 200, cache_read_tokens: 17000 },
+	];
+	const totals = turns.map((turn) => {
+		const usage = newBlocks().partial.usage;
+		toPiUsage(turn, usage);
+		return usage.totalTokens;
+	});
+	assert.deepEqual(totals, [19120, 20146, 20650, 21700]);
+});
+
+test("toPiUsage: fallback includes retained cache-write tokens", () => {
+	const usage = newBlocks().partial.usage;
+	usage.cacheWrite = 1000;
+	toPiUsage({ input_tokens: 3690, output_tokens: 162, cache_read_tokens: 16294 }, usage);
+	assert.equal(usage.cacheWrite, 1000);
+	assert.equal(usage.totalTokens, 21146);
+});
+
+test("toPiUsage: explicit total_tokens wins over cached counts, including zero", () => {
+	for (const total_tokens of [42, 0]) {
+		const usage = newBlocks().partial.usage;
+		usage.cacheWrite = 1000;
+		toPiUsage({ input_tokens: 3690, output_tokens: 162, cache_read_tokens: 16294, total_tokens }, usage);
+		assert.equal(usage.totalTokens, total_tokens);
+	}
+});
+
 test("native mapping: view_file becomes read with offset/limit", () => {
 	const m = mapAgyToolToNative("view_file", { path: "/x", StartLine: 3, EndLine: 9 });
 	assert.deepEqual(m, { tool: "read", args: { path: "/x", offset: 3, limit: 7 } });

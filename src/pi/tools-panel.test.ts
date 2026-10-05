@@ -109,7 +109,7 @@ describe('isEligibleTool', () => {
 });
 
 describe('global Pi tools panel', () => {
-  test('edits registered exact names only and retains manual entries through defaults and save', () => {
+  test('edits registered exact names only and retains manual entries through normal save', () => {
     const snapshot = sampleSnapshot();
     snapshot.roles[0] = {
       role: 'explorer',
@@ -146,19 +146,9 @@ describe('global Pi tools panel', () => {
       'agent_browser_*',
       'retired_tool',
     ]);
-    panel.handleInput('r');
-    expect(panel.getState().draft[0]?.tools).toEqual([
-      'read',
-      'bash',
-      '*',
-      'agent_browser_*',
-      'retired_tool',
-    ]);
     panel.handleInput('q');
     panel.handleInput('s');
     expect(save.mock.calls[0]?.[1][0]?.tools).toEqual([
-      'read',
-      'bash',
       '*',
       'agent_browser_*',
       'retired_tool',
@@ -387,7 +377,7 @@ describe('global Pi tools panel', () => {
     expect(panel.getState().draft[0]?.tools).toEqual(['default_extension']);
   });
 
-  test('retains unrecognized exact names read-only while editing registered choices', () => {
+  test('retains unrecognized exact names while editing but removes them on defaults reset', () => {
     const snapshotWithUnavailable = sampleSnapshot();
     snapshotWithUnavailable.roles[0] = {
       role: 'explorer',
@@ -410,11 +400,7 @@ describe('global Pi tools panel', () => {
     panel.handleInput(' '); // toggle the last registered choice, not the unknown name
     expect(panel.getState().draft[0]?.tools).toContain('legacy_mcp_tool');
     panel.handleInput('r');
-    expect(panel.getState().draft[0]?.tools).toEqual([
-      'read',
-      'write',
-      'legacy_mcp_tool',
-    ]);
+    expect(panel.getState().draft[0]?.tools).toEqual(['read', 'write']);
   });
 
   test('removed active-selection keys do not edit or persist in either screen', () => {
@@ -553,7 +539,10 @@ describe('global Pi tools panel', () => {
     expect(done).toHaveBeenCalledWith({ kind: 'saved', changedRoles: [] });
   });
 
-  test('preserves manual entries through defaults reset and partial-save retry', () => {
+  test.each([
+    false,
+    true,
+  ])('partial-save retry preserves the draft (defaults reset: %s)', (reset) => {
     const base = sampleSnapshot();
     const explorer = base.roles[0];
     if (!explorer) throw new Error('Missing fixture role.');
@@ -594,16 +583,12 @@ describe('global Pi tools panel', () => {
     expect(panel.render(100).join('\n')).toContain('Already changed: explorer');
 
     expect(panel.getState().draft[0]?.tools).toEqual(retry.roles[0]?.tools);
-    panel.handleInput('r'); // reset exact defaults without dropping manual entries
+    if (reset) panel.handleInput('r');
     panel.handleInput('s'); // retry save
     expect(save.mock.calls[1]?.[0]).toBe(retry);
-    expect(save.mock.calls[1]?.[1][0]?.tools).toEqual([
-      'read',
-      'write',
-      '*',
-      'agent_browser_*',
-      'retired_tool',
-    ]);
+    expect(save.mock.calls[1]?.[1][0]?.tools).toEqual(
+      reset ? ['read', 'write'] : retry.roles[0]?.tools,
+    );
   });
 
   test('handles pagination for long tool lists', () => {

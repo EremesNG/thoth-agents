@@ -399,9 +399,10 @@ maintain a fixed catalog of those tools.
   note, not a checkbox, and is subject to `enable_ask_orchestrator` and
   `disallowed_tools`.
 - Existing globs (including `*`) and names absent from the registry are shown
-  read-only. Edit them manually in the definition file. Saves, defaults reset
-  and partial-save retries retain these entries unchanged; no `*` hotkey or
-  dynamic mode is offered.
+  read-only. Edit them manually in the definition file. Saves and partial-save
+  retries retain these entries unchanged unless defaults reset replaces the
+  selection with exactly the role's packaged defaults; no `*` hotkey or dynamic
+  mode is offered.
 - Press `r` to restore that role's packaged explicit defaults: `read, bash,
   grep, find, ls` for Explorer and Oracle; `read, bash, edit, write, grep, find,
   ls` for Designer and Worker; the read-only list plus research tools for

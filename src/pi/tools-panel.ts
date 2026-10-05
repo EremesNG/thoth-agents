@@ -192,7 +192,7 @@ export function createToolsPanel(options: ToolsPanelOptions) {
   };
 
   const restoreDefaultsForRole = (role: RoleToolsDraft): void => {
-    role.tools = [...new Set([...role.defaultTools, ...readOnlyTools(role)])];
+    role.tools = [...role.defaultTools];
   };
 
   const toggleCurrentTool = (): void => {

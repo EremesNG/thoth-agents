@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { PI_SPECIALIST_ROLES } from '../harness/pi-specialists';
+import { getPiSpecialistDefaultTools } from '../harness/writers/pi-agent';
+import { createToolsPanel } from '../pi/tools-panel';
 import * as managedWrite from './pi-managed-write';
 import {
   readPiSpecialistToolOverrides,
@@ -333,6 +335,46 @@ test.each([
     expect(role.tools).toEqual(role.defaultTools);
 });
 
+test.each(
+  PI_SPECIALIST_ROLES.flatMap((role) =>
+    ['overview', 'tools'].map((screen) => ({ role, screen })),
+  ),
+)('defaults reset and save persist only packaged defaults for $role from $screen', ({
+  role,
+  screen,
+}) => {
+  const piRoot = fixture();
+  const target = join(piRoot, 'agents', `thoth-${role}.md`);
+  const original = readFileSync(target, 'utf8').replace(
+    '---\nInstructions',
+    'tools: "*, read, agent_browser_*, mystery_tool"\n---\nInstructions',
+  );
+  writeFileSync(target, original);
+  const snapshot = readPiToolConfig(piRoot, [role]);
+  const done = vi.fn();
+  const panel = createToolsPanel({
+    snapshot,
+    discoveredTools: [{ name: 'read', active: true }],
+    save: savePiToolConfig,
+    onDone: done,
+  });
+
+  if (screen === 'tools') panel.handleInput('\r');
+  panel.handleInput('r');
+  if (screen === 'tools') panel.handleInput('q');
+  panel.handleInput('s');
+
+  const defaults = getPiSpecialistDefaultTools(role);
+  expect(done).toHaveBeenCalledWith({ kind: 'saved', changedRoles: [role] });
+  expect(readPiToolConfig(piRoot, [role]).roles[0]?.tools).toEqual(defaults);
+  expect(readFileSync(target, 'utf8')).toBe(
+    original.replace(
+      'tools: "*, read, agent_browser_*, mystery_tool"',
+      `tools: ${JSON.stringify(defaults.join(', '))}`,
+    ),
+  );
+});
+
 test.each([
   { tools: ['@active'] },
   { tools: ['read', '@active'] },
@@ -622,6 +664,72 @@ test('preflights all roles for stale content and rejects symlinked managed paths
   mkdirSync(linked);
   symlinkSync(join(piRoot, 'agents'), join(linked, 'agents'), 'junction');
   expect(() => readPiToolConfig(linked)).toThrow(/symlink/i);
+});
+
+test.each([
+  false,
+  true,
+])('panel partial-save retry persists the draft without restoring extras (defaults reset: %s)', (reset) => {
+  const piRoot = fixture();
+  const roles = ['explorer', 'librarian'] as const;
+  const manualTools = ['*', 'read', 'agent_browser_*', 'mystery_tool'];
+  for (const role of roles) {
+    const target = join(piRoot, 'agents', `thoth-${role}.md`);
+    writeFileSync(
+      target,
+      readFileSync(target, 'utf8').replace(
+        '---\nInstructions',
+        'tools: "*, read, agent_browser_*, mystery_tool"\n---\nInstructions',
+      ),
+    );
+  }
+  const done = vi.fn();
+  const panel = createToolsPanel({
+    snapshot: readPiToolConfig(piRoot, roles),
+    discoveredTools: [
+      { name: 'read', active: true },
+      { name: 'bash', active: true },
+    ],
+    save: savePiToolConfig,
+    onDone: done,
+  });
+  roles.forEach(() => {
+    panel.handleInput('\r');
+    if (reset) panel.handleInput('r');
+    else {
+      panel.handleInput('j');
+      panel.handleInput(' '); // add registered bash without resetting
+    }
+    panel.handleInput('q');
+    panel.handleInput('j');
+  });
+  const expected = roles.map((role) =>
+    reset ? getPiSpecialistDefaultTools(role) : [...manualTools, 'bash'],
+  );
+  const originalWrite = managedWrite.writePiManagedText;
+  const spy = vi
+    .spyOn(managedWrite, 'writePiManagedText')
+    .mockImplementation((path, content, expectedBefore) => {
+      if (path.endsWith('thoth-librarian.md')) throw new Error('File locked');
+      return originalWrite(path, content, expectedBefore);
+    });
+
+  panel.handleInput('s');
+  expect(done).not.toHaveBeenCalled();
+  expect(panel.render(180).join('\n')).toContain('File locked');
+  expect(
+    readPiToolConfig(piRoot, roles).roles.map(({ tools }) => tools),
+  ).toEqual([expected[0], manualTools]);
+  spy.mockRestore();
+
+  panel.handleInput('s');
+  expect(done).toHaveBeenCalledWith({
+    kind: 'saved',
+    changedRoles: [...roles],
+  });
+  expect(
+    readPiToolConfig(piRoot, roles).roles.map(({ tools }) => tools),
+  ).toEqual(expected);
 });
 
 test('reports partial writes with a refreshed retry snapshot', () => {

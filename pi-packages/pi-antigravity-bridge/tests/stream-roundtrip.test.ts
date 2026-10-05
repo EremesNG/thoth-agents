@@ -60,10 +60,10 @@ test("toPiUsage: includes cached prompt tokens when total_tokens is omitted", ()
 
 test("toPiUsage: context totals grow across cold and cached turns", () => {
 	const turns: AgyUsage[] = [
-		{ input_tokens: 19000, output_tokens: 120 },
-		{ input_tokens: 3690, output_tokens: 162, cache_read_tokens: 16294 },
-		{ input_tokens: 20500, output_tokens: 150 },
-		{ input_tokens: 4500, output_tokens: 200, cache_read_tokens: 17000 },
+		{ input_tokens: 19000, output_tokens: 120, cache_read_tokens: 0, total_tokens: 19120 },
+		{ input_tokens: 3690, output_tokens: 162, cache_read_tokens: 16294, total_tokens: 3852 },
+		{ input_tokens: 20500, output_tokens: 150, cache_read_tokens: 0, total_tokens: 20650 },
+		{ input_tokens: 4500, output_tokens: 200, cache_read_tokens: 17000, total_tokens: 4700 },
 	];
 	const totals = turns.map((turn) => {
 		const usage = newBlocks().partial.usage;
@@ -73,21 +73,18 @@ test("toPiUsage: context totals grow across cold and cached turns", () => {
 	assert.deepEqual(totals, [19120, 20146, 20650, 21700]);
 });
 
-test("toPiUsage: fallback includes retained cache-write tokens", () => {
+test("toPiUsage: includes retained cache-write tokens despite agy's reported total", () => {
 	const usage = newBlocks().partial.usage;
 	usage.cacheWrite = 1000;
-	toPiUsage({ input_tokens: 3690, output_tokens: 162, cache_read_tokens: 16294 }, usage);
+	toPiUsage({ input_tokens: 3690, output_tokens: 162, cache_read_tokens: 16294, total_tokens: 3852 }, usage);
 	assert.equal(usage.cacheWrite, 1000);
 	assert.equal(usage.totalTokens, 21146);
 });
 
-test("toPiUsage: explicit total_tokens wins over cached counts, including zero", () => {
-	for (const total_tokens of [42, 0]) {
-		const usage = newBlocks().partial.usage;
-		usage.cacheWrite = 1000;
-		toPiUsage({ input_tokens: 3690, output_tokens: 162, cache_read_tokens: 16294, total_tokens }, usage);
-		assert.equal(usage.totalTokens, total_tokens);
-	}
+test("toPiUsage: live agy total_tokens excludes cache reads, but Pi's context total includes them", () => {
+	const usage = newBlocks().partial.usage;
+	toPiUsage({ input_tokens: 4928, output_tokens: 124, cache_read_tokens: 16299, total_tokens: 5052 }, usage);
+	assert.equal(usage.totalTokens, 21351);
 });
 
 test("native mapping: view_file becomes read with offset/limit", () => {

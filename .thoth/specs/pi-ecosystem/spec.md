@@ -64,4 +64,14 @@ A pi-subagents stall failure MUST report time since the last session event, the 
 
 - **GIVEN** a resumed Claude Code session whose large appended instructions changed in one small block after it started
 - **WHEN** the next prompt runs through the bridge
-- **THEN** the model receives that changed block inline in its context, unchanged blocks are not resent, and the recorded system prompt and its cache prefix stay unchanged 
+- **THEN** the model receives that changed block inline in its context, unchanged blocks are not resent, and the recorded system prompt and its cache prefix stay unchanged
+
+### Requirement: Render kit output reuse
+
+First-party Pi transcript tool-call, tool-result and custom-message renderers whose inputs are fixed at component creation and that render through the Thoth render kit MUST reuse their rendered lines for repeated renders at the same width while the same kit remains registered, and MUST recompute after `invalidate()`, a width change, or a kit change, without altering rendered output; live above-editor widgets and overlays are excluded.
+
+#### Scenario: Render kit output reuse
+
+- **GIVEN** a completed kit-rendered transcript tool or message card
+- **WHEN** the host renders it repeatedly at the same width with the same registered kit
+- **THEN** the card body is built once and identical lines are returned until invalidation, a width change, or a kit change 

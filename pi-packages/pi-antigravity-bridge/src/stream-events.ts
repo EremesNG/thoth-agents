@@ -120,5 +120,6 @@ export function toPiUsage(
 	piUsage.input = u.input_tokens ?? piUsage.input;
 	piUsage.output = u.output_tokens ?? piUsage.output;
 	piUsage.cacheRead = u.cache_read_tokens ?? piUsage.cacheRead;
-	piUsage.totalTokens = u.total_tokens ?? piUsage.input + piUsage.output;
+	piUsage.totalTokens =
+		u.total_tokens ?? piUsage.input + piUsage.output + piUsage.cacheRead + piUsage.cacheWrite;
 }

@@ -2,7 +2,7 @@
 
 ## UNRELEASED
 
-- **Fix: refresh appended instructions on resumed provider queries** — Deliver changed projected instructions once through query-scoped hook context, explicitly superseding earlier versions without replacing the recorded system prompt. Track effective delivery per CC recording epoch, retry skipped/failed hooks, isolate child sessions, and reset on rebuild/compaction. Add offline regressions and an opt-in live recording/reuse probe.
+- **Fix: refresh appended instructions inline on resumed provider queries** — Deliver only changed/added keyed blocks and removed keys through new-turn hook context, with full replacement for ambiguous segmentation or changed order. Split framed values into ≤9,000 string-length units across one-shot callbacks; commit only after all parts return and force full replacement after partial delivery. Preserve the recorded system prompt and prior conversation/cache prefix, epoch resets, retries and child isolation. Add offline request-content, segmentation and multipart regressions plus a large-append opt-in live recording/reuse probe.
 
 - **Rendering: use the theme Render KIT for AskClaude** — Discover the kit through pi-core at render time, with native Pi fallback and no theme dependency; use pi-core's shared `formatDuration`.
 - **Fix: match resumed structured prompt captures** — Keep re-added custom sections after earlier built-ins when a new addendum lands at the replay tail, retaining every section byte and exact capture lookup. Offline Pi-renderer regressions cover resume, append-once turns and same-length instruction changes.

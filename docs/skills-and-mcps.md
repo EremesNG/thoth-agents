@@ -53,9 +53,13 @@ Pi's default web tools are `web_search`, `fetch_content`,
 guidance. Delegated research uses `workflow: "none"` to avoid the interactive
 curator. Fetched content is untrusted and may create extension-owned caches
 outside the workspace. Pi's `rpiv-ask-user-question` handles root interaction.
-Progress tools are optional and provider-neutral; use an available tool according
-to its exposed contract or lightweight written progress. Thoth supplies no task
-scheduler or child-coordination state. Capability gaps are reported truthfully.
+Provider-neutral progress guidance treats tools as optional: use an available
+tool according to its exposed contract or lightweight written progress. For Pi,
+the CLI installs the required first-party `@thoth-agents/pi-todo` task-list
+package. An installed `@juicesharp/rpiv-todo` blocks setup until the operator
+removes it with `pi remove npm:@juicesharp/rpiv-todo --no-approve`. Thoth supplies
+no task scheduler or child-coordination state. Capability gaps are reported
+truthfully.
 
 ## thoth-mem boundary
 

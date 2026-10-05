@@ -3,7 +3,11 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { writeSubagentsDebugLog } from './debug.js';
-import { wrapLineToWidth } from './render/text-width.js';
+import {
+  truncateToWidth as terminalTruncateToWidth,
+  visibleWidth as terminalVisibleWidth,
+  wrapLineToWidth,
+} from './render/text-width.js';
 
 import type {
   SubagentAssistantItem,
@@ -606,13 +610,6 @@ function renderComponent(
     : undefined;
 }
 
-const TERMINAL_ESCAPE_RE =
-  /\u001b\][^\u001b\u0007]*(?:\u001b\\|\u0007)|\u001b\[[0-?]*[ -/]*[@-~]/g;
-
-function terminalVisibleWidth(text: string): number {
-  return [...text.replace(TERMINAL_ESCAPE_RE, '')].length;
-}
-
 function fitsWidth(
   context: SubagentThreadRenderContext,
   text: string,
@@ -633,9 +630,7 @@ function safeTruncate(
   try {
     return context.truncateToWidth(text, width);
   } catch {
-    return text.length > width
-      ? `${text.slice(0, Math.max(0, width - 1))}…`
-      : text;
+    return terminalTruncateToWidth(text, width);
   }
 }
 
@@ -645,12 +640,14 @@ function truncateLines(
   width = DEFAULT_RENDER_WIDTH,
 ): string[] {
   const out: string[] = [];
-  for (const line of lines)
-    out.push(
-      fitsWidth(context, line, width)
-        ? line
-        : context.truncateToWidth(line, width),
-    );
+  // Fallback assistant/tool text must be split before clipping, not after.
+  for (const text of lines)
+    for (const line of text.split(/\r?\n|\r/))
+      out.push(
+        fitsWidth(context, line, width)
+          ? line
+          : context.truncateToWidth(line, width),
+      );
   return out;
 }
 

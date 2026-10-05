@@ -1,3 +1,7 @@
+import {
+  truncateToWidth as terminalTruncateToWidth,
+  visibleWidth as terminalVisibleWidth,
+} from '../render/text-width.js';
 import { formatDuration, formatTaskLabel } from '../render/tools/formatting.js';
 import {
   isValidThreadSnapshot,
@@ -122,13 +126,6 @@ type SubagentsHistoryPanelDisplayOptions = {
   stallTimeoutMs?: number;
   contextWindowForTask?: (task: SubagentTask) => number | undefined;
 };
-
-const TERMINAL_ESCAPE_RE =
-  /\u001b\][^\u001b\u0007]*(?:\u001b\\|\u0007)|\u001b\[[0-?]*[ -/]*[@-~]/g;
-
-function terminalVisibleWidth(text: string): number {
-  return [...text.replace(TERMINAL_ESCAPE_RE, '')].length;
-}
 
 function fitsWidth(
   text: string,
@@ -1357,6 +1354,13 @@ export class SubagentsHistoryPanel {
       ) {
         entries.push({ text: '' }, { text: '# error' }, { text: task.error });
       }
+      // Cache physical rows so both layouts use the same scroll offsets.
+      entries = entries.flatMap((entry) =>
+        entry.text.split(/\r?\n|\r/).map((text) => ({
+          ...entry,
+          text: terminalTruncateToWidth(text.replace(/\t/g, '  '), width),
+        })),
+      );
     } else {
       entries = this.executionFlowEntriesFor(task);
     }

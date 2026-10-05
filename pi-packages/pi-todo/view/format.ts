@@ -49,14 +49,15 @@ export const STATUS_COLOR: Record<
 
 /**
  * Per-action prefix glyph for renderCall. `+` create, `→` update, `×` delete,
- * `›` get, `☰` list, `∅` clear..
+ * `›` get, `≣` list, `∅` clear..
  */
 export const ACTION_GLYPH: Record<TaskAction, string> = {
   create: '+',
   update: '→',
   delete: '×',
   get: '›',
-  list: '☰',
+  // ☰ measures two cells in newer Unicode tables but one in older terminals.
+  list: '≣',
   clear: '∅',
 };
 

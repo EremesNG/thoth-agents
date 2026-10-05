@@ -1,6 +1,5 @@
 import {
   ARCH_ICON,
-  CYAN,
   themeAccent,
   themeDim,
   themeError,
@@ -11,7 +10,11 @@ import {
 import { openSubagentsPanel } from '../panel-opener.js';
 import { taskFromDetails } from '../result-details.js';
 import type { SubagentTask } from '../types.js';
-import { boxedComponent, emptyComponent } from './components.js';
+import {
+  boxedComponent,
+  emptyComponent,
+  toolRenderState,
+} from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
 import {
   clip,
@@ -33,6 +36,7 @@ export function renderSubagentStatusResult(
   theme: any,
   context?: any,
 ) {
+  const renderState = toolRenderState(result, options, context);
   const expanded = Boolean(
     typeof options === 'object' && options !== null
       ? options.expanded
@@ -40,13 +44,13 @@ export function renderSubagentStatusResult(
   );
   const task = taskFromDetails(result);
   const failed = Boolean(
-    result?.isError ||
+    renderState.context.isError ||
       task?.status === 'failed' ||
       task?.status === 'cancelled',
   );
   const archPrefix = task
     ? themeStatus(theme, task.status, statusGlyph(task.status))
-    : themeFg(theme, 'accent', ARCH_ICON, CYAN);
+    : themeFg(theme, 'accent', ARCH_ICON);
 
   if (!task) {
     const title = `${archPrefix} ${themeTitle(theme, failed ? 'subagent status · failed' : 'subagent status')}`;
@@ -57,6 +61,7 @@ export function renderSubagentStatusResult(
       {
         title,
         theme,
+        ...renderState,
         wrapped: true,
       },
     );
@@ -83,6 +88,7 @@ export function renderSubagentStatusResult(
     return boxedComponent(lines, {
       title,
       theme,
+      ...renderState,
       wrapped: true,
     });
   }
@@ -131,6 +137,7 @@ export function renderSubagentStatusResult(
   return boxedComponent(contentLines, {
     title,
     theme,
+    ...renderState,
     wrapped: true,
     onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
   });

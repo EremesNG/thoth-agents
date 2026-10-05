@@ -1,0 +1,442 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { Box } from '@earendil-works/pi-tui';
+import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import extension from '../../index.js';
+import { renderSubagentRunResult } from '../../src/render/tools/subagent-run.js';
+import { createSubagentListAgentsTool } from '../../src/tools/subagent-list-agents.js';
+import { registerSubagentTools } from '../../src/tools.js';
+import type { SubagentTask } from '../../src/types.js';
+import {
+  ClaudeBackgroundWidget,
+  ClaudeBackgroundWidgetState,
+} from '../../src/ui/background-widget.js';
+import {
+  themeAccent,
+  themeDim,
+  themeError,
+  themeSuccess,
+  themeTitle,
+  themeWarning,
+} from '../../src/ui/theme.js';
+import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
+
+const env = installSubagentTestEnv();
+const theme = {
+  fg: (_role: string, text: string) => text,
+  bg: (role: string, text: string) => `\u001b]${role}\u0007${text}`,
+  bold: (text: string) => text,
+};
+
+describe('render kit discovery', () => {
+  it('switches a list result between one native SDK shell and the current KIT on the same component', () => {
+    const tool = createSubagentListAgentsTool({} as any);
+    const component = tool.renderResult({ details: { agents: [] } }, {}, theme);
+    const native = component.render(80);
+    const expected = new Box(1, 1, (text) => theme.bg('toolSuccessBg', text));
+    expected.addChild({
+      invalidate() {},
+      render: () => ['󰣇 subagents', 'No subagents available.'],
+    });
+    expect(native).toEqual(expected.render(80));
+    expect(tool.renderCall().render(80)).toEqual([]);
+    expect(tool.renderShell).toBe('self');
+    const token = registerRenderKit(createTestRenderKit(), {});
+    try {
+      expect(component.render(80)[0]).toBe('╭─ 󰣇 subagents');
+      expect(component.render(80).at(-1)).toContain('╰─');
+    } finally {
+      withdrawRenderKit(token);
+    }
+    expect(component.render(80)).toEqual(native);
+  });
+});
+
+describe('public subagent tool shells', () => {
+  it.each(
+    [
+      { isPartial: true, isError: false, role: 'toolPendingBg' },
+      { isPartial: false, isError: true, role: 'toolErrorBg' },
+      { isPartial: false, isError: false, role: 'toolSuccessBg' },
+      { isPartial: true, isError: true, role: 'toolPendingBg' },
+    ].flatMap((state) =>
+      [false, true].map((expanded) => ({ ...state, expanded })),
+    ),
+  )('renders all nine tools with one uniform $role shell and discovers KIT on every render', ({
+    isPartial,
+    isError,
+    role,
+    expanded,
+  }) => {
+    fs.writeFileSync(
+      path.join(env.tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ enable_continue: true }),
+    );
+    const tools: any[] = [];
+    registerSubagentTools(
+      { registerTool: (tool: any) => tools.push(tool) },
+      env.createManager(env.mockRunner()),
+      env.tmp,
+    );
+    expect(tools).toHaveLength(9);
+    const task = {
+      id: 't1',
+      agent: 'worker',
+      status: isPartial ? 'running' : isError ? 'failed' : 'completed',
+      mode: 'task',
+      result: 'response',
+      model: 'provider/model',
+      effort: 'high',
+    };
+    // SDK passes isError only in the render context, not in the result payload.
+    const result = {
+      content: [{ type: 'text', text: 'output' }],
+      details: {
+        task,
+        tasks: [task],
+        agents: [{ name: 'worker', tools: ['read'] }],
+        task_id: 't1',
+        message: 'steer',
+        status: 'queued',
+      },
+    };
+    for (const tool of tools) {
+      const context = { isPartial, isError, state: {} };
+      const call = tool.renderCall({}, theme, context);
+      const component = tool.renderResult(
+        result,
+        { isPartial, expanded },
+        theme,
+        context,
+      );
+      const native = [...call.render(120), ...component.render(120)];
+      const marker = `\u001b]${role}\u0007`;
+      expect(native[0], tool.name).toBe(marker + ' '.repeat(120));
+      expect(native.at(-1), tool.name).toBe(marker + ' '.repeat(120));
+      // Expanded content may itself include deliberate blank separator rows.
+      if (!expanded)
+        expect(
+          native.filter((line: string) => line === marker + ' '.repeat(120)),
+          tool.name,
+        ).toHaveLength(2);
+      expect(
+        native.every((line: string) => line.startsWith(marker)),
+        tool.name,
+      ).toBe(true);
+      expect(native.join(''), tool.name).not.toContain('╭');
+      const token = registerRenderKit(createTestRenderKit(), {});
+      try {
+        const themed = component.render(120);
+        expect(themed[0], tool.name).toContain(isError ? '╭─ !' : '╭─');
+        expect(themed.at(-1), tool.name).toContain('╰─');
+        if (
+          isPartial &&
+          [
+            'subagent_run',
+            'subagent_continue',
+            'subagent_status',
+            'subagent_result',
+          ].includes(tool.name)
+        )
+          expect(themed.join(''), tool.name).toContain('◐');
+        expect(call.render(120), tool.name).toEqual([]);
+      } finally {
+        withdrawRenderKit(token);
+      }
+      expect(component.render(120), tool.name).toEqual(native);
+    }
+  });
+});
+
+describe('message render kit discovery', () => {
+  it.each([
+    'subagent-completion',
+    'subagent-question',
+  ])('switches %s on re-render without changing its native frame or content', (type) => {
+    const renderers: Record<string, any> = {};
+    extension({
+      registerTool() {},
+      registerCommand() {},
+      registerShortcut() {},
+      registerMessageRenderer: (name: string, render: any) => {
+        renderers[name] = render;
+      },
+    });
+    const message = {
+      details: {
+        task: { agent: 'worker', status: 'completed', result: 'answer' },
+        full_result: 'answer',
+        agent: 'worker',
+        question: 'Which scope?',
+        task_id: 't1',
+        request_id: 'q1',
+      },
+    };
+    for (const expanded of [true, false]) {
+      const component = renderers[type](message, { expanded }, theme);
+      const native = component.render(120);
+      expect(native[0]).toContain('╭');
+      expect(native.join('')).not.toContain('toolSuccessBg');
+      const kit = createTestRenderKit();
+      const card = kit.card;
+      kit.card = (renderTheme, options, width) =>
+        card(renderTheme, { ...options, title: `KIT ${options.title}` }, width);
+      const token = registerRenderKit(kit, {});
+      try {
+        const themed = component.render(120).join('\n');
+        expect(themed).toContain('╭─ KIT');
+        expect(themed).toContain(
+          expanded
+            ? type === 'subagent-question'
+              ? 'Which scope?'
+              : 'answer'
+            : 'ctrl+o to expand',
+        );
+      } finally {
+        withdrawRenderKit(token);
+      }
+      expect(component.render(120)).toEqual(native);
+    }
+  });
+});
+
+describe('widget render kit discovery', () => {
+  it('preserves metrics, animation, row hit targets and selection when KIT is installed and withdrawn', () => {
+    const tasks: any[] = [
+      {
+        id: 'first',
+        agent: 'first',
+        mode: 'background',
+        status: 'running',
+        task: 'work',
+        created_at: '2026-01-01T00:00:02Z',
+        started_at: '2026-01-01T00:00:00Z',
+        runtime_metrics: {
+          toolUses: 5,
+          contextPercent: 62,
+          generationMs: 4000,
+          generationOutputTokens: 100,
+        },
+        usage: { input: 1000, output: 100 },
+        last_activity: 'reading',
+        dropped_tools: ['missing_tool'],
+      },
+      {
+        id: 'second',
+        agent: 'second',
+        mode: 'background',
+        status: 'running',
+        task: 'work',
+        created_at: '2026-01-01T00:00:01Z',
+      },
+    ];
+    const state = new ClaudeBackgroundWidgetState(() => tasks);
+    const widget = new ClaudeBackgroundWidget(state, theme, { frame: 0 });
+    const native = widget.render(120);
+    expect(native.join('')).toContain('⠋');
+    expect(
+      new ClaudeBackgroundWidget(state, theme, { frame: 1 })
+        .render(120)
+        .join(''),
+    ).toContain('⠙');
+    const kit = createTestRenderKit();
+    const heading = vi.spyOn(kit, 'widgetHeading');
+    const tree = vi.spyOn(kit, 'treeRow');
+    const indicator = vi.spyOn(kit, 'indicator');
+    const token = registerRenderKit(kit, {});
+    try {
+      const lines = widget.render(120);
+      expect(heading).toHaveBeenCalled();
+      expect(tree).toHaveBeenCalled();
+      expect(indicator).toHaveBeenCalled();
+      expect(lines.join('')).toContain('⠋');
+      const nextFrame = new ClaudeBackgroundWidget(state, theme, {
+        frame: 1,
+      }).render(120);
+      expect(nextFrame.join('')).toContain('⠙');
+      expect(nextFrame[1]).not.toBe(lines[1]);
+      expect(lines).toHaveLength(native.length);
+      expect(lines.join(' ')).toContain('tools 5');
+      expect(lines.join(' ')).toContain('context 62.0%');
+      expect(lines.join(' ')).toContain('25 tok/s');
+      const warningRow = lines.findIndex((line) =>
+        line.includes('Dropped tools:'),
+      );
+      expect(state.handleMouseClick({ row: warningRow })?.action).toEqual({
+        type: 'open-task',
+        taskId: 'first',
+      });
+      const secondRow = lines.findIndex((line) =>
+        line.includes('second · work'),
+      );
+      expect(state.handleMouseClick({ row: secondRow })?.action).toEqual({
+        type: 'open-task',
+        taskId: 'second',
+      });
+      expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
+      widget.render(120);
+      expect(tree.mock.calls.some(([, options]) => options.selected)).toBe(
+        true,
+      );
+      expect(state.handleTerminalInput('\r')?.action).toEqual({
+        type: 'open-task',
+        taskId: 'second',
+      });
+    } finally {
+      withdrawRenderKit(token);
+    }
+    expect(widget.render(120)).toEqual(native);
+    tasks.forEach((task) => {
+      task.status = 'completed';
+    });
+    expect(widget.render(120)).toEqual([]);
+  });
+});
+
+describe('widget metric content width', () => {
+  it.each([
+    46, 50,
+  ])('keeps every metric and mouse row at width %i through KIT registration and withdrawal', (width) => {
+    const clock = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-01-01T00:00:02Z'));
+    onTestFinished(() => clock.mockRestore());
+    const tasks = [
+      {
+        id: 'first',
+        agent: 'first',
+        mode: 'background',
+        status: 'running',
+        task: 'work',
+        created_at: '2026-01-01T00:00:02Z',
+        started_at: '2026-01-01T00:00:00Z',
+        runtime_metrics: {
+          toolUses: 5,
+          contextPercent: 62,
+          generationMs: 4000,
+          generationOutputTokens: 100,
+        },
+        usage: { input: 1000, output: 100 },
+        last_activity: 'reading',
+        dropped_tools: ['missing_tool'],
+      },
+      {
+        id: 'second',
+        agent: 'second',
+        mode: 'background',
+        status: 'running',
+        task: 'work',
+        created_at: '2026-01-01T00:00:01Z',
+      },
+    ] as SubagentTask[];
+    const state = new ClaudeBackgroundWidgetState(() => tasks);
+    const widget = new ClaudeBackgroundWidget(state, theme, { frame: 0 });
+    const native = widget.render(width);
+    const metrics = [
+      'tools 5',
+      '↑1.0k ↓100',
+      '$?',
+      'context 62.0%',
+      '25 tok/s',
+      'elapsed 2s',
+    ];
+    for (const metric of metrics) expect(native.join('\n')).toContain(metric);
+    const token = registerRenderKit(createTestRenderKit(), {});
+    try {
+      const lines = widget.render(width);
+      for (const metric of metrics) expect(lines.join('\n')).toContain(metric);
+      const secondRow = lines.findIndex((line) =>
+        line.includes('second · work'),
+      );
+      expect(secondRow).toBeGreaterThan(1);
+      expect(state.handleMouseClick({ row: 0 })?.action).toEqual({
+        type: 'focus-editor',
+      });
+      for (let row = 1; row < lines.length; row++) {
+        expect(state.handleMouseClick({ row })?.action).toEqual({
+          type: 'open-task',
+          taskId: row < secondRow ? 'first' : 'second',
+        });
+      }
+      state.handleTerminalInput('\u001b[B');
+      const selected = widget.render(width);
+      for (const metric of metrics)
+        expect(selected.join('\n')).toContain(metric);
+      state.handleTerminalInput('\u001b');
+    } finally {
+      withdrawRenderKit(token);
+    }
+    expect(widget.render(width)).toEqual(native);
+  });
+});
+
+describe('theme roles', () => {
+  it('has plain legible fallback without ANSI colors and uses KIT role styling when available', () => {
+    const roles = [
+      themeAccent,
+      themeDim,
+      themeError,
+      themeSuccess,
+      themeTitle,
+      themeWarning,
+    ];
+    expect(roles.map((style) => style({}, 'label'))).toEqual(
+      Array(6).fill('label'),
+    );
+    const kit = createTestRenderKit();
+    const fg = vi.spyOn(kit, 'fg');
+    const token = registerRenderKit(kit, {});
+    try {
+      for (const style of roles) style(theme, 'label');
+      expect(fg).toHaveBeenCalledTimes(6);
+    } finally {
+      withdrawRenderKit(token);
+    }
+  });
+});
+
+it('replaces only generated working prefixes, not braille in the task activity', () => {
+  const component = renderSubagentRunResult(
+    {
+      details: {
+        task: {
+          agent: 'worker',
+          status: 'running',
+          mode: 'task',
+          last_activity: 'keep ⠋ verbatim',
+        },
+      },
+    },
+    { isPartial: true },
+    theme,
+  );
+  const token = registerRenderKit(createTestRenderKit(), {});
+  try {
+    const lines = component.render(120);
+    expect(lines[0]).toContain('◐ subagent');
+    expect(lines.join('')).toContain('◐ agent: worker');
+    expect(lines.join('')).toContain('keep ⠋ verbatim');
+  } finally {
+    withdrawRenderKit(token);
+  }
+});
+
+it('uses the same compact task precedence for the KIT status and visible task content', () => {
+  const result = {
+    details: {
+      results: [{ agent: 'worker', status: 'running', mode: 'task' }],
+      task: { agent: 'stale', status: 'completed' },
+    },
+  };
+  const component = renderSubagentRunResult(result, {}, theme);
+  const token = registerRenderKit(createTestRenderKit(), {});
+  try {
+    const lines = component.render(120);
+    expect(lines[0]).toContain('◐ subagent · worker · running');
+    expect(lines.at(-1)).toBe('╰─ running');
+  } finally {
+    withdrawRenderKit(token);
+  }
+});

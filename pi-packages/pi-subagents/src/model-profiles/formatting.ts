@@ -1,11 +1,5 @@
 import type { SubagentModelProfile } from '../types.js';
-import {
-  BOX_CHARS,
-  CYAN,
-  themeDim,
-  themeFg,
-  themeWarning,
-} from '../ui/theme.js';
+import { BOX_CHARS, themeDim, themeFg, themeWarning } from '../ui/theme.js';
 import { globalSubagentsConfigPath } from './data.js';
 
 export function buildNoChangesModelProfilesMessage(agentDir?: string): string {
@@ -79,7 +73,7 @@ export function frameModal(
     Math.max(1, innerWidth),
   );
   const chars = BOX_CHARS;
-  const borderFn = (char: string) => themeFg(theme, 'accent', char, CYAN);
+  const borderFn = (char: string) => themeFg(theme, 'accent', char);
   const top = `${borderFn(chars.topLeft)}${visibleTitle}${borderFn(chars.horizontal.repeat(Math.max(0, innerWidth - visibleWidth(visibleTitle))))}${borderFn(chars.topRight)}`;
   const bottom = `${borderFn(chars.bottomLeft)}${borderFn(chars.horizontal.repeat(innerWidth))}${borderFn(chars.bottomRight)}`;
   return [

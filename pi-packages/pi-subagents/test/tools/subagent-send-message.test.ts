@@ -368,7 +368,7 @@ describe('subagent_send_message tool', () => {
     });
   }, 5000);
 
-  it('renders subagent_send_message with boxed layout in collapsed and expanded states', () => {
+  it('renders subagent_send_message with native SDK layout in collapsed and expanded states', () => {
     let sendTool: any;
     registerSubagentTools(
       {
@@ -396,17 +396,19 @@ describe('subagent_send_message tool', () => {
     const collapsed = sendTool
       .renderResult(queuedResult, { expanded: false }, theme)
       .render(80);
-    expect(collapsed[0]).toContain('╭─');
-    expect(collapsed[0]).toContain('󰣇');
-    expect(collapsed[0]).toContain('subagent send message · queued');
+    expect(collapsed[0]).toBe(' '.repeat(80));
+    expect(collapsed.at(-1)).toBe(' '.repeat(80));
+    expect(collapsed[1]).toContain('󰣇');
+    expect(collapsed[1]).toContain('subagent send message · queued');
     expect(collapsed.join('\n')).toContain('task_id: subtask_123');
     expect(collapsed.join('\n')).toContain('ctrl+o to expand');
 
     const expanded = sendTool
       .renderResult(queuedResult, { expanded: true }, theme)
       .render(80);
-    expect(expanded[0]).toContain('╭─');
-    expect(expanded[0]).toContain('󰣇');
+    expect(expanded[0]).toBe(' '.repeat(80));
+    expect(expanded.at(-1)).toBe(' '.repeat(80));
+    expect(expanded[1]).toContain('󰣇');
     expect(expanded.join('\n')).toContain('Message');
     expect(expanded.join('\n')).toContain('please steer');
     expect(expanded.join('\n')).toContain('pending messages: 1');

@@ -16,7 +16,12 @@ import {
 import { openSubagentsPanel } from '../panel-opener.js';
 import { taskFromDetails } from '../result-details.js';
 import type { SubagentMode, SubagentTask } from '../types.js';
-import { boxedComponent, emptyComponent, textComponent } from './components.js';
+import {
+  boxedComponent,
+  emptyComponent,
+  textComponent,
+  toolRenderState,
+} from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
 import {
   collapsedResultHint,
@@ -85,9 +90,11 @@ export function renderSubagentRunResult(
   theme: any,
   context?: any,
 ) {
+  const renderState = toolRenderState(result, options, context);
   const { expanded, isPartial } = options ?? {};
   const task = taskFromDetails(result);
-  const taskStatus = task?.status ?? (result?.isError ? 'failed' : 'completed');
+  const taskStatus =
+    task?.status ?? (renderState.context.isError ? 'failed' : 'completed');
   const isBg =
     task?.mode === 'background' ||
     task?.effective_mode === 'background' ||
@@ -131,12 +138,14 @@ export function renderSubagentRunResult(
     return boxedComponent(styled, {
       title,
       theme,
+      ...renderState,
+      workingRow: 0,
       wrapped: true,
       onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
     });
   }
   const failed = Boolean(
-    result?.isError ||
+    renderState.context.isError ||
       task?.status === 'failed' ||
       task?.status === 'cancelled',
   );
@@ -187,7 +196,8 @@ export function renderSubagentRunResult(
     if (failed) {
       const errorRaw =
         task?.error ||
-        (result?.isError && typeof result?.content?.[0]?.text === 'string'
+        (renderState.context.isError &&
+        typeof result?.content?.[0]?.text === 'string'
           ? result.content[0].text
           : undefined);
       if (errorRaw) {
@@ -203,6 +213,7 @@ export function renderSubagentRunResult(
     return boxedComponent(collapsedLines, {
       title,
       theme,
+      ...renderState,
       wrapped: false,
       onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
     });
@@ -234,6 +245,7 @@ export function renderSubagentRunResult(
   return boxedComponent(contentLines, {
     title,
     theme,
+    ...renderState,
     wrapped: true,
     onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
   });

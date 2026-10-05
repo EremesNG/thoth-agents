@@ -24,6 +24,17 @@ Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies ar
 - Tool allowlist filtering that prevents subagents from delegating to other subagents.
 - Generic subagent-to-parent interaction handoff so human decisions happen on the main thread.
 
+## Rendering
+
+Tool calls/results, completion/question messages and the above-editor widget
+render through the theme's Render KIT when present, discovered through
+`@thoth-agents/pi-core` at render time. Without the kit, they keep native Pi
+rendering; there is no dependency on `@thoth-agents/pi-thoth-theme`.
+
+The visual palette uses theme roles instead of hardcoded neon colors or RGB
+cycling. The background widget's braille animation is preserved; kit-rendered
+working states use the theme-owned indicator.
+
 ## Install as a Pi package
 
 This fork is an installable Pi package named `@thoth-agents/pi-subagents`,
@@ -672,6 +683,14 @@ Run the full local check:
 ```bash
 pnpm --filter @thoth-agents/pi-subagents run check
 ```
+
+### Workspace releases
+
+Publish `@thoth-agents/pi-core` before the next pi-subagents release. Use
+`pnpm pack` / `pnpm publish` so the `workspace:^` dependency becomes a semver
+range in the published manifest. Semantic-release keeps `@semantic-release/npm`
+with `npmPublish: false` for version preparation; `@semantic-release/exec` runs
+`pnpm publish --no-git-checks`, including `prepublishOnly`.
 
 ## Related project docs
 

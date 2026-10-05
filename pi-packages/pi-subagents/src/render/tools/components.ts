@@ -1,12 +1,16 @@
+import { Box } from '@earendil-works/pi-tui';
 import {
-  BOX_CHARS,
-  CYAN,
-  electricBorder,
-  padToWidth,
+  getRenderKit,
+  type RenderIndicatorContext,
+  type RenderStatus,
+} from '@thoth-agents/pi-core';
+import {
+  frameBox,
+  themeBg,
   themeFg,
   truncateToWidth,
-  visibleWidth,
 } from '../completion-message.js';
+import { taskFromDetails } from '../result-details.js';
 import { wrapLineToWidth } from '../text-width.js';
 
 const TERMINAL_ESCAPE_RE =
@@ -73,9 +77,13 @@ export function wrappedTextComponent(text: string) {
 export interface BoxedComponentOptions {
   title?: string;
   theme?: any;
-  borderFn?: (text: string) => string;
   wrapped?: boolean;
   onClick?: () => void;
+  status?: RenderStatus;
+  context?: RenderIndicatorContext;
+  message?: boolean;
+  /** Index of the generated progress row, never a user response row. */
+  workingRow?: number;
 }
 
 export function boxedComponent(
@@ -97,45 +105,109 @@ export function boxedComponent(
       return undefined;
     },
     render(width: number): string[] {
-      const borderFn =
-        options?.borderFn ??
-        ((text: string) => {
-          if (options?.theme)
-            return themeFg(options.theme, 'accent', text, CYAN);
-          return electricBorder(text);
-        });
+      const theme = options?.theme;
+      const kit = getRenderKit();
       const rawLines = Array.isArray(linesOrText)
-        ? linesOrText.flatMap((l) => l.split('\n'))
+        ? linesOrText.flatMap((line) => line.split('\n'))
         : linesOrText.split('\n');
       const safeWidth = Math.max(1, Math.floor(width || 1));
-      if (safeWidth < 10) {
-        const all = options?.title ? [options.title, ...rawLines] : rawLines;
-        return all.map((l) => truncateToWidth(l, safeWidth, '…'));
-      }
-      const innerWidth = safeWidth - 2;
-      const contentWidth = Math.max(1, innerWidth - 2);
-
-      let top: string;
-      if (options?.title) {
-        const maxTitleWidth = Math.max(0, innerWidth - 4);
-        const clippedTitle = truncateToWidth(options.title, maxTitleWidth, '…');
-        const titleVisWidth = visibleWidth(clippedTitle);
-        const filler = Math.max(0, innerWidth - titleVisWidth - 3);
-        top = `${borderFn(BOX_CHARS.topLeft + BOX_CHARS.horizontal)} ${clippedTitle} ${borderFn(BOX_CHARS.horizontal.repeat(filler))}${borderFn(BOX_CHARS.topRight)}`;
-      } else {
-        top = `${borderFn(BOX_CHARS.topLeft)}${borderFn(BOX_CHARS.horizontal.repeat(innerWidth))}${borderFn(BOX_CHARS.topRight)}`;
-      }
-
-      const formattedLines = options?.wrapped
-        ? rawLines.flatMap((l) => wrapLineToWidth(l, contentWidth))
-        : rawLines.map((l) => truncateToWidth(l, contentWidth, '…'));
-      const middle = formattedLines.map(
-        (l) =>
-          `${borderFn(BOX_CHARS.vertical)} ${padToWidth(l, contentWidth)} ${borderFn(BOX_CHARS.vertical)}`,
-      );
-      const bottom = `${borderFn(BOX_CHARS.bottomLeft)}${borderFn(BOX_CHARS.horizontal.repeat(innerWidth))}${borderFn(BOX_CHARS.bottomRight)}`;
-
-      return [top, ...middle, bottom];
+      const status =
+        options?.status ??
+        (options?.context?.isPartial
+          ? 'running'
+          : options?.context?.isError
+            ? 'failed'
+            : 'completed');
+      const indicator = kit?.indicator(theme, options?.context, { status });
+      // Working glyphs are theme-owned whenever a KIT is available.
+      const workingGlyph = (text: string) =>
+        indicator && status === 'running'
+          ? text.replace(
+              /^((?:\u001b\[[0-9;]*m)*)[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u,
+              (_match, style) => `${style}${indicator.glyph}`,
+            )
+          : text;
+      const title = workingGlyph(options?.title ?? '');
+      const rows = (contentWidth: number) =>
+        rawLines.flatMap((line, index) => {
+          const text =
+            index === options?.workingRow ? workingGlyph(line) : line;
+          return options?.wrapped
+            ? wrapLineToWidth(text, contentWidth)
+            : [truncateToWidth(text, contentWidth, '…')];
+        });
+      if (kit)
+        return kit.card(
+          theme,
+          {
+            title,
+            body: rows,
+            status: options?.message ? undefined : status,
+            isError: options?.context?.isError,
+            wrap: options?.wrapped,
+          },
+          safeWidth,
+        );
+      if (options?.message)
+        return frameBox(
+          title,
+          safeWidth < 10 ? rawLines : rows(safeWidth - 4),
+          safeWidth,
+          {
+            borderFn: (text) => themeFg(theme, 'accent', text),
+          },
+        );
+      const role = options?.context?.isPartial
+        ? 'toolPendingBg'
+        : options?.context?.isError
+          ? 'toolErrorBg'
+          : 'toolSuccessBg';
+      // Calls are intentionally empty: the result owns the full SDK-equivalent shell.
+      const box = new Box(1, 1, (text) => themeBg(theme, role, text));
+      box.addChild({
+        invalidate() {},
+        render(contentWidth: number) {
+          return [
+            ...(title ? [truncateToWidth(title, contentWidth, '…')] : []),
+            ...rows(contentWidth),
+          ];
+        },
+      });
+      return box.render(safeWidth);
     },
   };
+}
+
+/** The SDK strips result.isError; the render context is authoritative when present. */
+export function toolRenderState(result: any, options: any, context?: any) {
+  const task = taskFromDetails(result);
+  const isError = context?.isError ?? Boolean(result?.isError);
+  const isPartial = context?.isPartial ?? Boolean(options?.isPartial);
+  return {
+    context: { ...context, isError, isPartial },
+    status: renderStatus(
+      task?.status ??
+        (isPartial ? 'running' : isError ? 'failed' : 'completed'),
+    ),
+  };
+}
+
+function renderStatus(status: string): RenderStatus {
+  const statuses: RenderStatus[] = [
+    'pending',
+    'queued',
+    'in_progress',
+    'running',
+    'completed',
+    'failed',
+    'cancelled',
+    'interrupted',
+    'stopping',
+    'deleted',
+    'blocked',
+    'unknown',
+  ];
+  return statuses.includes(status as RenderStatus)
+    ? (status as RenderStatus)
+    : 'unknown';
 }

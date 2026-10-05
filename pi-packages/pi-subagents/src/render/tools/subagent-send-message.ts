@@ -1,13 +1,16 @@
 import {
   ARCH_ICON,
-  CYAN,
   themeDim,
   themeError,
   themeFg,
   themeSuccess,
   themeTitle,
 } from '../completion-message.js';
-import { boxedComponent, emptyComponent } from './components.js';
+import {
+  boxedComponent,
+  emptyComponent,
+  toolRenderState,
+} from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
 import { clip } from './formatting.js';
 
@@ -21,15 +24,18 @@ export function renderSubagentSendMessageResult(
   theme: any,
   context?: any,
 ) {
+  const renderState = toolRenderState(result, options, context);
   const expanded = Boolean(
     typeof options === 'object' && options !== null
       ? options.expanded
       : options,
   );
   const details = result?.details ?? {};
-  const status = details?.status ?? (result?.isError ? 'rejected' : 'queued');
-  const isRejected = status === 'rejected' || Boolean(result?.isError);
-  const archPrefix = themeFg(theme, 'accent', ARCH_ICON, CYAN);
+  const status =
+    details?.status ?? (renderState.context.isError ? 'rejected' : 'queued');
+  const isRejected =
+    status === 'rejected' || Boolean(renderState.context.isError);
+  const archPrefix = themeFg(theme, 'accent', ARCH_ICON);
   const statusStyled = isRejected
     ? themeError(theme, status)
     : themeSuccess(theme, status);
@@ -50,6 +56,7 @@ export function renderSubagentSendMessageResult(
     return boxedComponent(lines, {
       title,
       theme,
+      ...renderState,
       wrapped: true,
     });
   }
@@ -75,6 +82,7 @@ export function renderSubagentSendMessageResult(
   return boxedComponent(contentLines, {
     title,
     theme,
+    ...renderState,
     wrapped: true,
   });
 }

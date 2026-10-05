@@ -1,12 +1,7 @@
-import {
-  ARCH_ICON,
-  CYAN,
-  themeFg,
-  themeStatus,
-} from '../completion-message.js';
+import { ARCH_ICON, themeFg, themeStatus } from '../completion-message.js';
 import { openSubagentsPanel } from '../panel-opener.js';
 import { taskFromDetails } from '../result-details.js';
-import { boxedComponent } from './components.js';
+import { boxedComponent, toolRenderState } from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
 import {
   formatTaskLabel,
@@ -19,13 +14,15 @@ import { statusGlyph } from './progress.js';
 
 export function renderSubagentResult(
   result: any,
-  { expanded }: any,
+  options: any,
   theme: any,
   context?: any,
 ) {
+  const renderState = toolRenderState(result, options, context);
+  const { expanded } = options ?? {};
   const task = taskFromDetails(result);
   const failed = Boolean(
-    result?.isError ||
+    renderState.context.isError ||
       task?.status === 'failed' ||
       task?.status === 'cancelled',
   );
@@ -34,7 +31,7 @@ export function renderSubagentResult(
   const responseText = taskResponseText(task, result);
   const archPrefix = task
     ? themeStatus(theme, task.status, statusGlyph(task.status))
-    : themeFg(theme, 'accent', ARCH_ICON, CYAN);
+    : themeFg(theme, 'accent', ARCH_ICON);
 
   if (!task) {
     const text =
@@ -46,6 +43,7 @@ export function renderSubagentResult(
     return boxedComponent([text], {
       title,
       theme,
+      ...renderState,
       wrapped: true,
     });
   }
@@ -79,6 +77,7 @@ export function renderSubagentResult(
     return boxedComponent(lines, {
       title,
       theme,
+      ...renderState,
       wrapped: true,
     });
   }
@@ -114,6 +113,7 @@ export function renderSubagentResult(
   return boxedComponent(contentLines, {
     title,
     theme,
+    ...renderState,
     wrapped: true,
     onClick: task?.id ? () => openSubagentsPanel(task.id) : undefined,
   });

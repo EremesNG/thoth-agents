@@ -10,14 +10,9 @@ import type {
   UsageStats,
 } from '../types.js';
 import {
-  AMBER,
   ARCH_ICON,
   BOX_CHARS,
-  CYAN,
   CYBER_SEPARATOR,
-  electricBorder,
-  LIME,
-  RED,
   themeAccent,
   themeBold,
   themeDim,
@@ -27,7 +22,6 @@ import {
   themeSuccess,
   themeTitle,
   themeWarning,
-  VIOLET,
 } from './theme.js';
 
 export const ROUNDED_BOX_CHARS = {
@@ -493,7 +487,7 @@ export class SubagentsHistoryPanel {
     const accent = (s: string) => themeAccent(th, s);
     const dim = (s: string) => themeDim(th, s);
     const title = (s: string) => themeTitle(th, s);
-    const border = (text: string) => themeFg(th, 'accent', text, CYAN);
+    const border = (text: string) => themeFg(th, 'accent', text);
     const status = (task: SubagentTask) => themeStatus(th, task.status);
 
     const isSplit = w >= 90;
@@ -518,9 +512,9 @@ export class SubagentsHistoryPanel {
       this.selected = Math.max(0, tasks.length - 1);
 
     const rawLines: string[] = [];
-    const archPrefix = themeFg(th, 'accent', ARCH_ICON, CYAN);
+    const archPrefix = themeFg(th, 'accent', ARCH_ICON);
     const closeBtnText = '[✕ Cerrar]';
-    const closeBtn = themeFg(th, 'error', closeBtnText, RED);
+    const closeBtn = themeFg(th, 'error', closeBtnText);
     const closeVis = this.visibleWidth(closeBtn);
 
     if (!tasks.length) {
@@ -633,7 +627,7 @@ export class SubagentsHistoryPanel {
         usage ? `usage: ${usage}` : undefined,
       ]
         .filter(Boolean)
-        .join(` ${themeFg(th, 'accent', CYBER_SEPARATOR, VIOLET)} `);
+        .join(` ${themeFg(th, 'accent', CYBER_SEPARATOR)} `);
 
       const subheaderLine1 = `${border(ROUNDED_BOX_CHARS.vertical)} ${this.padToWidth(leftSubHeader1, sidebarWidth)} ${border(ROUNDED_BOX_CHARS.vertical)} ${this.padToWidth(rightSubHeader1, rightWidth)} ${border(ROUNDED_BOX_CHARS.vertical)}`;
       rawLines.push(subheaderLine1);
@@ -650,7 +644,7 @@ export class SubagentsHistoryPanel {
           : undefined,
       ]
         .filter(Boolean)
-        .join(` ${themeFg(th, 'accent', CYBER_SEPARATOR, VIOLET)} `);
+        .join(` ${themeFg(th, 'accent', CYBER_SEPARATOR)} `);
 
       const subheaderLine2 = `${border(ROUNDED_BOX_CHARS.vertical)} ${this.padToWidth(leftSubHeader2, sidebarWidth)} ${border(ROUNDED_BOX_CHARS.vertical)} ${this.padToWidth(rightSubHeader2, rightWidth)} ${border(ROUNDED_BOX_CHARS.vertical)}`;
       rawLines.push(subheaderLine2);
@@ -714,7 +708,7 @@ export class SubagentsHistoryPanel {
           const itemLabel = `${icon} ${name}:${statusText}${effortTag}`;
           const clippedItem = this.truncateToWidth(itemLabel, sidebarWidth);
           leftCellText = isSelected
-            ? themeFg(th, 'warning', clippedItem, AMBER)
+            ? themeFg(th, 'warning', clippedItem)
             : dim(clippedItem);
         }
         const leftCell = this.padToWidth(leftCellText, sidebarWidth);
@@ -779,7 +773,7 @@ export class SubagentsHistoryPanel {
           : undefined,
       ]
         .filter(Boolean)
-        .join(` ${themeFg(th, 'accent', CYBER_SEPARATOR, VIOLET)} `);
+        .join(` ${themeFg(th, 'accent', CYBER_SEPARATOR)} `);
       const clippedSub1 = this.truncateToWidth(subItems, rightWidth);
       rawLines.push(
         `${border(ROUNDED_BOX_CHARS.vertical)} ${this.padToWidth(clippedSub1, rightWidth)} ${border(ROUNDED_BOX_CHARS.vertical)}`,
@@ -809,7 +803,7 @@ export class SubagentsHistoryPanel {
         currentTask.model ? `model: ${dim(currentTask.model)}` : undefined,
       ]
         .filter(Boolean)
-        .join(` ${themeFg(th, 'accent', CYBER_SEPARATOR, VIOLET)} `);
+        .join(` ${themeFg(th, 'accent', CYBER_SEPARATOR)} `);
       if (sub2Parts) {
         const clippedSub2 = this.truncateToWidth(sub2Parts, rightWidth);
         rawLines.push(
@@ -907,7 +901,7 @@ export class SubagentsHistoryPanel {
           const itemText = `${icon} ${taskIdx + 1}. ${name} · ${t.status}${durPart}`;
           const clipped = this.truncateToWidth(itemText, rightWidth);
           lineContent = isSelected
-            ? themeFg(th, 'warning', clipped, AMBER)
+            ? themeFg(th, 'warning', clipped)
             : dim(clipped);
         }
         const padded = this.padToWidth(lineContent, rightWidth);
@@ -987,7 +981,7 @@ export class SubagentsHistoryPanel {
       return th?.fg?.('dim', text) ?? text;
     }
     if (this.isToolLikeLine(raw)) {
-      const border = (t: string) => themeFg(th, 'accent', t, CYAN);
+      const border = (t: string) => themeFg(th, 'accent', t);
       const prefix = border(`${BOX_CHARS.vertical} `);
       const maxTextWidth = Math.max(0, width - 2);
       const clipped = this.truncateToWidth(raw, maxTextWidth);
@@ -1007,7 +1001,7 @@ export class SubagentsHistoryPanel {
       raw.startsWith('## ') ||
       raw.startsWith('### ')
     ) {
-      const border = (t: string) => themeFg(th, 'accent', t, CYAN);
+      const border = (t: string) => themeFg(th, 'accent', t);
       const titleText = raw.replace(/^#+\s*/, '');
       const maxTitle = Math.max(4, width - 8);
       const clippedTitle = this.truncateToWidth(titleText, maxTitle);
@@ -1153,7 +1147,7 @@ export class SubagentsHistoryPanel {
     if (rawIdMatch) {
       taskId = rawIdMatch[1];
       cleanLine = cleanLine
-        .replace(/\s*[\(\[]?subtask_[a-zA-Z0-9_-]+[\)\]]?/g, '')
+        .replace(/\s*[([]?subtask_[a-zA-Z0-9_-]+[)\]]?/g, '')
         .replace(/\s{2,}/g, ' ')
         .trimEnd();
     }

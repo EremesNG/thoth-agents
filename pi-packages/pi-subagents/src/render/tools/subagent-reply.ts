@@ -1,12 +1,15 @@
 import {
   ARCH_ICON,
-  CYAN,
   themeDim,
   themeError,
   themeFg,
   themeTitle,
 } from '../completion-message.js';
-import { boxedComponent, emptyComponent } from './components.js';
+import {
+  boxedComponent,
+  emptyComponent,
+  toolRenderState,
+} from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
 import { clip } from './formatting.js';
 
@@ -20,13 +23,14 @@ export function renderSubagentReplyResult(
   theme: any,
   context?: any,
 ) {
+  const renderState = toolRenderState(result, options, context);
   const expanded = Boolean(
     typeof options === 'object' && options !== null
       ? options.expanded
       : options,
   );
   const details = result?.details ?? {};
-  const rejected = Boolean(result?.isError);
+  const rejected = Boolean(renderState.context.isError);
   const status = rejected ? 'rejected' : 'replied';
   const text = result?.content?.[0]?.text ?? '';
   const lines = [
@@ -46,8 +50,9 @@ export function renderSubagentReplyResult(
       : undefined,
   ].filter(Boolean) as string[];
   return boxedComponent(lines, {
-    title: `${themeFg(theme, 'accent', ARCH_ICON, CYAN)} ${themeTitle(theme, `subagent reply · ${status}`)}`,
+    title: `${themeFg(theme, 'accent', ARCH_ICON)} ${themeTitle(theme, `subagent reply · ${status}`)}`,
     theme,
+    ...renderState,
     wrapped: true,
   });
 }

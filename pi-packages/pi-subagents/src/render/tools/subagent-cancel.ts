@@ -1,6 +1,5 @@
 import {
   ARCH_ICON,
-  CYAN,
   themeAccent,
   themeDim,
   themeError,
@@ -9,7 +8,11 @@ import {
   themeTitle,
 } from '../completion-message.js';
 import { taskFromDetails } from '../result-details.js';
-import { boxedComponent, emptyComponent } from './components.js';
+import {
+  boxedComponent,
+  emptyComponent,
+  toolRenderState,
+} from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
 import { formatTaskLabel, formatUsage, modelEffortLine } from './formatting.js';
 
@@ -19,20 +22,22 @@ export function renderSubagentCancelCall(_args: any, _theme: any) {
 
 export function renderSubagentCancelResult(
   result: any,
-  { expanded }: any,
+  options: any,
   theme: any,
   context?: any,
 ) {
+  const renderState = toolRenderState(result, options, context);
+  const { expanded } = options ?? {};
   const task = taskFromDetails(result);
-  const failed = Boolean(result?.isError);
-  const archPrefix = themeFg(theme, 'accent', ARCH_ICON, CYAN);
+  const failed = Boolean(renderState.context.isError);
+  const archPrefix = themeFg(theme, 'accent', ARCH_ICON);
 
   if (!task) {
     const title = `${archPrefix} ${themeTitle(theme, failed ? 'subagent cancel · failed' : 'subagent cancel')}`;
     const text = result?.content?.[0]?.text ?? '';
     return boxedComponent(
       [failed ? themeError(theme, text) : themeDim(theme, text)],
-      { title, theme, wrapped: true },
+      { title, theme, ...renderState, wrapped: true },
     );
   }
 
@@ -58,5 +63,10 @@ export function renderSubagentCancelResult(
     lines.push(themeDim(theme, resolveExpandHint('to expand', context)));
   }
 
-  return boxedComponent(lines.filter(Boolean), { title, theme, wrapped: true });
+  return boxedComponent(lines.filter(Boolean), {
+    title,
+    theme,
+    ...renderState,
+    wrapped: true,
+  });
 }

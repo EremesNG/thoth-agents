@@ -1,5 +1,5 @@
 import type { SubagentQuestion, SubagentTask } from '../types.js';
-import { CYAN, themeDim, themeFg, themeTitle } from '../ui/theme.js';
+import { themeDim, themeFg, themeTitle } from '../ui/theme.js';
 import { SUBAGENT_NOTIFICATION_MARKER } from './completion-message.js';
 import { boxedComponent } from './tools/components.js';
 import { formatTaskLabel } from './tools/formatting.js';
@@ -74,9 +74,9 @@ export function renderSubagentQuestionMessage(
       theme,
       'customMessageLabel',
       `? [subagent] ${label} · question`,
-      CYAN,
     ),
     theme,
+    message: true,
     wrapped: true,
   });
 }

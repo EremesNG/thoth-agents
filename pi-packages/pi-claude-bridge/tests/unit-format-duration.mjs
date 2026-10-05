@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { formatDuration } from "../src/format-duration.js";
+import { formatDuration } from "@thoth-agents/pi-core";
 
 describe("formatDuration", () => {
 	it("treats zero, negative, and non-finite durations as zero seconds", () => {

@@ -2,6 +2,7 @@
 
 ## UNRELEASED
 
+- **Rendering: use the theme Render KIT for AskClaude** — Discover the kit through pi-core at render time, with native Pi fallback and no theme dependency; use pi-core's shared `formatDuration`.
 - **Fix: match resumed structured prompt captures** — Keep re-added custom sections after earlier built-ins when a new addendum lands at the replay tail, retaining every section byte and exact capture lookup. Offline Pi-renderer regressions cover resume, append-once turns and same-length instruction changes.
 - **Fix: tolerate non-object Pi tool schemas** — Wrap object-only root unions for MCP and omit incompatible tools with session-scoped UI/headless warnings, retaining Pi's original argument validation.
 

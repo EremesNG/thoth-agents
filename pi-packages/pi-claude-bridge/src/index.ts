@@ -2435,7 +2435,7 @@ export default function (pi: ExtensionAPI) {
 	}
 	const registeredModels = applyLongContext(MODELS, longContextSettings);
 	if (registeredModels.length === 0) {
-		console.error("claude-bridge: no models available from pi-ai's anthropic catalog — update @earendil-works/pi-ai (requires >=0.86.1)");
+		console.error("claude-bridge: no models available from pi-ai's anthropic catalog — update @earendil-works/pi-ai (requires >=0.99.0)");
 	}
 
 	if (configureStream && !config.startupNoticeShown) {

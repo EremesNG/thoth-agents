@@ -51,7 +51,7 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": ">=0.99.0"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-coding-agent": {
@@ -62,9 +62,9 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.99.1",
-    "@earendil-works/pi-coding-agent": "^0.99.1",
-    "@earendil-works/pi-tui": "^0.99.1",
+    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.0.2",
+    "@earendil-works/pi-tui": "1.0.2",
     "@rolldown/binding-wasm32-wasi": "^1.2.4",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
@@ -73,6 +73,6 @@
     "vitest": "^4.1.9"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.19.0"
   }
 }

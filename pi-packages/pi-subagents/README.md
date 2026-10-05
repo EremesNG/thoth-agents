@@ -2,7 +2,7 @@
 
 Pi extension for delegating work to markdown-defined subagents. Continuation is unavailable by default: `subagent_continue` is exposed only when effective `enable_continue` is explicitly `true`. The extension registers tools for the orchestrator, runs subagents in isolated in-memory Pi sessions, tracks task history, provides a TUI history panel, and supports per-subagent model/thinking-effort profiles.
 
-Requires Pi `>=0.99.0`; development SDK/TUI dependencies are pinned to `0.99.1`, with native compatibility checks on both `0.99.0` and `0.99.1`. This fork delegates LLM subagents. Background shell jobs belong to the separate `@thoth-agents/pi-background-tasks` package; its lifecycle passes through by default, and child jobs stop with the child. Existing configuration, model/tool commands, run-mode defaults, and continuation policy are preserved.
+Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies are pinned to `1.0.2`. This fork delegates LLM subagents. Background shell jobs belong to the separate `@thoth-agents/pi-background-tasks` package; its lifecycle passes through by default, and child jobs stop with the child. Existing configuration, model/tool commands, run-mode defaults, and continuation policy are preserved.
 
 ## What it provides
 
@@ -641,7 +641,7 @@ Subagent definitions are intentionally user/project configuration, not hard-code
 
 ## Development
 
-This package is a member of the thoth-agents pnpm workspace; the root `pnpm-lock.yaml` pins the development Pi SDK and TUI to `0.99.1`. Run focused native SDK and renderer checks with `0.99.0` as well, then restore the locked tree with `pnpm install --frozen-lockfile` from the repository root before final validation.
+This package is a member of the thoth-agents pnpm workspace; the root `pnpm-lock.yaml` pins the development Pi SDK and TUI to `1.0.2`. Run focused native SDK and renderer checks with `0.99.0` as well, then restore the locked tree with `pnpm install --frozen-lockfile` from the repository root before final validation.
 
 Install dependencies once, from the repository root:
 

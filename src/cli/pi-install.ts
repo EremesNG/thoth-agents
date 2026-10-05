@@ -1,7 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lt } from 'semver';
 import { piAdapter } from '../harness/adapters/pi';
@@ -20,6 +27,7 @@ import {
   inspectPiExternalPackage,
   piExternalSourceMatches,
 } from './pi-external-package';
+import { projectGitPackagePath } from './pi-git-source';
 import {
   assertSafePiManagedPath,
   writePiManagedText,
@@ -70,6 +78,12 @@ export const PI_PACKAGE_SPECS = [
     source: 'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
     packageName: '@juicesharp/rpiv-ask-user-question',
     version: '2.9.0',
+  },
+  {
+    id: 'todo',
+    source: 'npm:@thoth-agents/pi-todo@>=0.1.0',
+    packageName: '@thoth-agents/pi-todo',
+    version: '0.1.0',
   },
 ] as const;
 
@@ -125,6 +139,7 @@ export interface PiSetupPlan {
   blockers: string[];
   diagnostics: string[];
   disclaimers: string[];
+  projectIncumbentTodos?: PiConfiguredPackage[];
   options: PiSetupOptions;
 }
 
@@ -302,20 +317,160 @@ export function getPiExternalPackageSpecs(
   );
 }
 
-function configuredIncumbentDelegationSource(
-  settings: Record<string, unknown>,
-): string | undefined {
-  if (!Array.isArray(settings.packages)) return undefined;
-  for (const entry of settings.packages) {
+const PI_INCUMBENT_TODO_NAME = '@juicesharp/rpiv-todo';
+
+function isPiIncumbentTodoSource(source: string): boolean {
+  return /^npm:@juicesharp\/rpiv-todo(?:@|$)/.test(source);
+}
+
+export function piIncumbentTodoRecovery(
+  source: string,
+  scope: PiConfiguredPackage['scope'],
+  identityLimitation?: string,
+  unmappedSource = false,
+): string {
+  const flags = scope === 'project' ? '--local --approve' : '--no-approve';
+  const review =
+    scope === 'project'
+      ? "Review the project's ownership and trust first; --approve trusts project-local settings for this command only without saving a trust decision. Then run:"
+      : 'Review its ownership, then run:';
+  const localRecovery = unmappedSource
+    ? ' Find the matching project settings entry; after reviewing its ownership, remove it with: pi remove <source> --local --approve.'
+    : isPiIncumbentTodoSource(source)
+      ? ''
+      : ` For the actual configured source, run: pi remove ${source} ${flags}.`;
+  return `${identityLimitation ? `${identityLimitation} ` : ''}${review} pi remove npm:${PI_INCUMBENT_TODO_NAME} ${flags}.${localRecovery} Verify with pi list, then rerun setup.`;
+}
+
+function configuredPackageSources(settings: Record<string, unknown>): string[] {
+  if (!Array.isArray(settings.packages)) return [];
+  return settings.packages.flatMap((entry: unknown) => {
     const source =
       typeof entry === 'string'
         ? entry
         : isRecord(entry) && typeof entry.source === 'string'
           ? entry.source
           : undefined;
-    if (source && isPiIncumbentDelegationSource(source)) return source;
+    return source ? [source] : [];
+  });
+}
+
+function configuredPackageSource(
+  settings: Record<string, unknown>,
+  matches: (source: string) => boolean,
+): string | undefined {
+  return configuredPackageSources(settings).find(matches);
+}
+
+function projectLocalPackagePath(
+  source: string,
+  projectRoot: string,
+  homeDir: string,
+): string {
+  let path = source.trim();
+  if (
+    process.platform === 'win32' &&
+    !path.startsWith('//') &&
+    !path.includes('\\')
+  ) {
+    const drivePath = path.match(
+      /^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i,
+    );
+    if (drivePath)
+      path = `${drivePath[1]?.toUpperCase()}:\\${drivePath[2]?.replaceAll('/', '\\') ?? ''}`;
   }
-  return undefined;
+  if (path === '~') path = homeDir;
+  else if (
+    path.startsWith('~/') ||
+    (process.platform === 'win32' && path.startsWith('~\\'))
+  )
+    path = join(homeDir, path.slice(2));
+  else if (path.startsWith('file://')) path = fileURLToPath(path);
+  return resolve(projectRoot, path);
+}
+
+function readPiProjectPackages(options: PiPathOptions): PiConfiguredPackage[] {
+  const projectRoot = join(resolve(options.cwd ?? process.cwd()), '.pi');
+  const settings = readJsonObject(join(projectRoot, 'settings.json'));
+  const { homeDir } = resolvePiPaths(options);
+  const packages: PiConfiguredPackage[] = [];
+  for (const source of configuredPackageSources(settings)) {
+    const npmSpec = source.startsWith('npm:')
+      ? source.slice(4).trim()
+      : undefined;
+    const npmName =
+      npmSpec?.match(/^(@?[^@]+(?:\/[^@]+)?)(?:@(.+))?$/)?.[1] ?? npmSpec;
+    // Pi 1.0.2 resolves project-local paths relative to .pi, not cwd.
+    // Inspect data only: its package manager requires trust to expose these.
+    const path = npmName
+      ? join(projectRoot, 'npm', 'node_modules', npmName)
+      : (projectGitPackagePath(source, projectRoot) ??
+        projectLocalPackagePath(source, projectRoot, homeDir));
+    packages.push({
+      scope: 'project',
+      source,
+      installedPath: existsSync(path) ? path : undefined,
+    });
+  }
+  return packages;
+}
+
+function scanPiProjectInstalledTodos(
+  options: PiPathOptions,
+  configuredPackages: readonly PiConfiguredPackage[],
+): PiConfiguredPackage[] {
+  const projectRoot = join(resolve(options.cwd ?? process.cwd()), '.pi');
+  const incumbents: PiConfiguredPackage[] = [];
+  const visited = new Set<string>();
+  const pathKey = (path: string) =>
+    process.platform === 'win32' ? path.toLowerCase() : path;
+  const knownPaths = new Set(
+    configuredPackages.flatMap(({ installedPath }) =>
+      installedPath ? [pathKey(realpathSync(installedPath))] : [],
+    ),
+  );
+  // SDK 1.0.2 dist/core/package-manager.js:getGitInstallRoot/getNpmInstallRoot.
+  // Inspect only filesystem data, including orphaned/renamed packages; never
+  // resolve extensions, execute npm hooks, or invoke the project-trust gate.
+  for (const root of [join(projectRoot, 'git'), join(projectRoot, 'npm')]) {
+    if (!existsSync(root)) continue;
+    const rootKey = pathKey(realpathSync(root));
+    const pending = [root];
+    while (pending.length > 0) {
+      const path = pending.pop();
+      if (!path || !statSync(path, { throwIfNoEntry: false })?.isDirectory())
+        continue;
+      const key = pathKey(realpathSync(path));
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const manifestPath = join(path, 'package.json');
+      if (existsSync(manifestPath) && statSync(manifestPath).isFile()) {
+        const candidate: PiConfiguredPackage = {
+          scope: 'project',
+          source: path,
+          installedPath: path,
+          unmappedSource: true,
+        };
+        const identity = configuredPackageIdentity(candidate);
+        if (
+          identity.packageName === PI_INCUMBENT_TODO_NAME &&
+          !knownPaths.has(key)
+        )
+          incumbents.push({
+            ...candidate,
+            ...identity,
+            identityLimitation: `Installed manifest at ${path} identifies ${PI_INCUMBENT_TODO_NAME}, but no configured settings source maps to this directory.`,
+          });
+      }
+      // Read a linked package's manifest, but do not walk links outside the
+      // install root. Canonical visited paths also prevent in-root link cycles.
+      if (key !== rootKey && !key.startsWith(`${rootKey}${sep}`)) continue;
+      for (const entry of readdirSync(path, { withFileTypes: true }))
+        if (entry.isDirectory() || entry.isSymbolicLink())
+          pending.push(join(path, entry.name));
+    }
+  }
+  return incumbents;
 }
 
 export function mergePiSubagentsConfig(
@@ -467,11 +622,25 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
   let mcpContent: string | undefined;
   try {
     const userSettings = readJsonObject(paths.settingsPath);
-    const incumbentSource = configuredIncumbentDelegationSource(userSettings);
+    const incumbentSource = configuredPackageSource(
+      userSettings,
+      isPiIncumbentDelegationSource,
+    );
+    const incumbentBlockers: string[] = [];
     if (incumbentSource)
-      throw new Error(
+      incumbentBlockers.push(
         `Incumbent delegation runtime ${incumbentSource} is configured in ${paths.settingsPath}. Review its ownership, then run: pi remove ${incumbentSource} --no-approve. Rerun setup after removing it; ${PI_PACKAGE_SPECS[0].source} cannot be loaded beside it.`,
       );
+    const incumbentTodoSource = configuredPackageSource(
+      userSettings,
+      isPiIncumbentTodoSource,
+    );
+    if (incumbentTodoSource)
+      incumbentBlockers.push(
+        `Incumbent Pi task-list package ${incumbentTodoSource} is configured in ${paths.settingsPath} and conflicts with @thoth-agents/pi-todo. ${piIncumbentTodoRecovery(incumbentTodoSource, 'user')}`,
+      );
+    if (incumbentBlockers.length > 0)
+      throw new Error(incumbentBlockers.join('\n'));
     subagentsConfigContent = `${JSON.stringify(
       mergePiSubagentsConfig(readJsonObject(paths.subagentsConfigPath)),
       null,
@@ -484,6 +653,41 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
     )}\n`;
   } catch (error) {
     blockers.push(error instanceof Error ? error.message : String(error));
+  }
+  const projectSettingsPath = join(
+    resolve(options.cwd ?? process.cwd()),
+    '.pi',
+    'settings.json',
+  );
+  let projectPackages: PiConfiguredPackage[] = [];
+  try {
+    projectPackages = readPiProjectPackages(options);
+  } catch (error) {
+    blockers.push(error instanceof Error ? error.message : String(error));
+  }
+  const projectIncumbentTodos = findPiIncumbentTodos(projectPackages);
+  try {
+    // Scan independently so malformed/missing settings cannot hide installed
+    // incumbents from status. Inspection failures still block mutation.
+    projectIncumbentTodos.push(
+      ...scanPiProjectInstalledTodos(options, projectPackages),
+    );
+  } catch (error) {
+    blockers.push(error instanceof Error ? error.message : String(error));
+  }
+  for (const incumbent of projectIncumbentTodos) {
+    const location = incumbent.unmappedSource
+      ? 'was found in the project install roots'
+      : `is configured in ${projectSettingsPath}`;
+    const recovery = piIncumbentTodoRecovery(
+      incumbent.source,
+      'project',
+      incumbent.identityLimitation,
+      incumbent.unmappedSource,
+    );
+    blockers.push(
+      `Incumbent Pi task-list package ${incumbent.source} ${location} and conflicts with @thoth-agents/pi-todo. ${recovery}`,
+    );
   }
   for (const path of [...paths.projectAgentRoots, ...paths.projectMcpPaths]) {
     if (existsSync(path))
@@ -558,6 +762,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
     items,
     blockers,
     diagnostics,
+    projectIncumbentTodos,
     disclaimers: [
       "Pi extensions execute with the invoking user's system permissions; package minimums and tool allowlists are not a security sandbox.",
       'Context7 and web access are native Pi extensions; only grep.app uses pi-mcp-adapter and directTools is intentionally omitted.',
@@ -610,6 +815,9 @@ export interface PiConfiguredPackage {
   installedPath?: string;
   packageName?: string;
   packageVersion?: string;
+  identityLimitation?: string;
+  /** Directory-only evidence; source is a display path, not a removal source. */
+  unmappedSource?: boolean;
 }
 
 export function parsePiPackageList(output: string): PiConfiguredPackage[] {
@@ -654,14 +862,14 @@ const incumbentDelegationNames = new Set([
   'pi-subagents-j0k3r',
 ]);
 
+function isPiLocalOrGitSource(source: string): boolean {
+  return /^(?:git\+|https?:\/\/|ssh:\/\/|git@|github:|file:|\.\.?[\\/]|[a-z]:[\\/]|\/)/i.test(
+    source,
+  );
+}
+
 function sourceSuggestsIncumbentDelegation(source: string): boolean {
-  if (
-    !/^(?:git\+|https?:\/\/|ssh:\/\/|git@|github:|file:|\.\.?[\\/]|[a-z]:[\\/]|\/)/i.test(
-      source,
-    )
-  ) {
-    return false;
-  }
+  if (!isPiLocalOrGitSource(source)) return false;
   return /(?:^|[\\/:@?#._-])pi-subagents(?:-j0k3r)?(?:$|[\\/:@?#._-])/i.test(
     source,
   );
@@ -703,6 +911,36 @@ export function findPiIncumbentDelegation(
     }
   }
   return undefined;
+}
+
+export function findPiIncumbentTodos(
+  packages: readonly PiConfiguredPackage[],
+): PiConfiguredPackage[] {
+  const incumbents: PiConfiguredPackage[] = [];
+  for (const candidate of packages) {
+    const { packageName: installedName } = configuredPackageIdentity(candidate);
+    const matches =
+      installedName === PI_INCUMBENT_TODO_NAME ||
+      isPiIncumbentTodoSource(candidate.source) ||
+      (!installedName &&
+        !npmPackageName(candidate.source) &&
+        (isPiLocalOrGitSource(candidate.source) ||
+          candidate.scope === 'project') &&
+        /(?:^|[\\/:@?#._-])rpiv-todo(?:$|[\\/:@?#._-])/i.test(
+          candidate.source,
+        ));
+    if (!matches) continue;
+    incumbents.push(
+      candidate.scope === 'project' && !installedName
+        ? {
+            ...candidate,
+            identityLimitation:
+              'Project package manifest identity is unavailable; detection relies on its source and read-only inspection cannot confirm its installed identity.',
+          }
+        : candidate,
+    );
+  }
+  return incumbents;
 }
 
 export function piIncumbentDelegationRecovery(
@@ -868,16 +1106,57 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
     const receipt = readPiPackageReceipt(receiptOptions);
     const configuredBefore = parsePiPackageList(before.stdout);
     const incumbentDelegation = findPiIncumbentDelegation(configuredBefore);
-    if (incumbentDelegation)
+    let configuredProjectPackages: PiConfiguredPackage[];
+    try {
+      configuredProjectPackages = readPiProjectPackages(plan.options);
+      configuredProjectPackages.push(
+        ...scanPiProjectInstalledTodos(plan.options, configuredProjectPackages),
+      );
+    } catch (error) {
       return {
         success: false,
         changed,
         diagnostics,
-        error: `Pi delegation runtime preflight blocked ${incumbentDelegation.candidate.source}: ${incumbentDelegation.reason}. Loading it beside ${PI_PACKAGE_SPECS[0].source} is unsupported.`,
+        error: error instanceof Error ? error.message : String(error),
         failedStep: 'preflight',
         installedPackages,
-        manualRecovery: `Manual recovery: ${piIncumbentDelegationRecovery(incumbentDelegation)}`,
       };
+    }
+    const incumbentTodos = findPiIncumbentTodos([
+      ...configuredBefore,
+      ...configuredProjectPackages,
+    ]);
+    if (incumbentDelegation || incumbentTodos.length > 0) {
+      const incumbentBlockers: string[] = [];
+      const recovery: string[] = [];
+      if (incumbentDelegation) {
+        incumbentBlockers.push(
+          `Pi delegation runtime preflight blocked ${incumbentDelegation.candidate.source}: ${incumbentDelegation.reason}. Loading it beside ${PI_PACKAGE_SPECS[0].source} is unsupported.`,
+        );
+        recovery.push(piIncumbentDelegationRecovery(incumbentDelegation));
+      }
+      for (const incumbentTodo of incumbentTodos) {
+        const todoRecovery = piIncumbentTodoRecovery(
+          incumbentTodo.source,
+          incumbentTodo.scope,
+          incumbentTodo.identityLimitation,
+          incumbentTodo.unmappedSource,
+        );
+        incumbentBlockers.push(
+          `Pi task-list preflight blocked ${incumbentTodo.source}: it conflicts with @thoth-agents/pi-todo. ${todoRecovery}`,
+        );
+        recovery.push(todoRecovery);
+      }
+      return {
+        success: false,
+        changed,
+        diagnostics,
+        error: incumbentBlockers.join('\n'),
+        failedStep: 'preflight',
+        installedPackages,
+        manualRecovery: `Manual recovery: ${recovery.join(' ')}`,
+      };
+    }
     const knownReceiptSource =
       receipt.status === 'valid' ? receipt.receipt.source : undefined;
     const firstPartyBefore = getPiFirstPartyPackages(

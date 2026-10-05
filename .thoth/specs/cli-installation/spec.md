@@ -502,4 +502,14 @@ The Pi installer MUST reject a detected Pi older than `0.99.0` with a diagnostic
 
 - **GIVEN** a Pi installation reporting version 0.98.x
 - **WHEN** the user runs the Pi install
-- **THEN** it fails with the `Pi >=0.99.0` diagnostic without changing Pi state, while a Pi reporting 0.99.0 or 1.0.2 proceeds 
+- **THEN** it fails with the `Pi >=0.99.0` diagnostic without changing Pi state, while a Pi reporting 0.99.0 or 1.0.2 proceeds
+
+### Requirement: Install the first-party Pi task-list extension
+
+Complete Pi installation and applied Update MUST install and individually verify the Thoth Pi task-list package at its configured minimum version as an additional selected Pi package, and preflight MUST reject an installed juicesharp rpiv task-list package before changing any Pi state with a diagnostic containing the native `pi remove` command for that package; the installer MUST NOT remove it automatically. This requirement extends the selected inventory of "Install selected Pi interaction and web extensions"; its prohibition on installing the juicesharp rpiv task-list package remains in force.
+
+#### Scenario: Install the first-party Pi task-list extension
+
+- **GIVEN** a Pi installation containing the juicesharp rpiv task-list package
+- **WHEN** the operator runs Install
+- **THEN** preflight fails with its `pi remove` instruction and no Pi state changes, while an installation without it receives and verifies the Thoth Pi task-list package 

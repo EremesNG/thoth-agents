@@ -29,8 +29,8 @@ execution does not.
 - Install and applied Update share the complete selected-harness orchestration:
   OpenCode refreshes exact plugin/config plus owned skills; Codex performs
   native plugin setup before its global pack; Claude performs native plugin
-  refresh; Pi installs the exact executing first-party package before five
-  minimum-constrained external packages and attributable resources. Every
+  refresh; Pi installs the exact executing first-party package before six
+  minimum-constrained selected packages and attributable resources. Every
   harness then installs required external skills. Published installs require provider-complete
   evidence before recording CLI completion last; an explicit local Pi package
   install omits provider setup and records only thoth-agents completion.
@@ -77,14 +77,16 @@ execution does not.
   beneath that validated configured root; they are diagnostic evidence, not
   globally synchronized or changed targets. Sync blocks when that root or any
   declared skill is unavailable. Only
-  then may it migrate attributable legacy root/skill copies and install the five
-  external sources as `npm:@thoth-agents/pi-subagents@>=1.0.0`,
+  then may it migrate attributable legacy root/skill copies and install the six
+  selected sources as `npm:@thoth-agents/pi-subagents@>=1.0.0`,
   `@upstash/context7-pi@>=0.1.2`, `pi-web-access@>=0.27.0`,
-  `pi-mcp-adapter@>=2.32.1`, and
-  `@juicesharp/rpiv-ask-user-question@>=2.9.0`. Task/progress extensions are
-  optional and operator-owned; setup never installs or removes them and status
-  does not require them. Pi's native manager owns installation and subsequent
-  independent updates within these open-ended stable ranges. Setup validates
+  `pi-mcp-adapter@>=2.32.1`, `@juicesharp/rpiv-ask-user-question@>=2.9.0`, and
+  `@thoth-agents/pi-todo@>=0.1.0`. The first-party task-list extension supplies
+  the session-owned `todo` tool, `/todos`, and current-session editor widget.
+  Setup and applied Update install and individually verify it; status treats it
+  as a managed package. Unrelated task extensions remain operator-owned. Pi's
+  native manager owns installation and subsequent independent updates within
+  these open-ended stable ranges. Setup validates
   each resolved package manifest's exact name and SemVer floor, accepts newer
   stable versions, and does not reinstall an already satisfying managed range.
   Legacy exact sources are migrated through Pi's native install command so
@@ -104,6 +106,35 @@ execution does not.
   entry blocks mutation. A configured incumbent `pi-subagents` or former
   `pi-subagents-j0k3r` runtime also blocks before mutation and returns manual
   recovery guidance; setup never deletes it or loads both delegation runtimes.
+  The incumbent `@juicesharp/rpiv-todo` also blocks preflight before mutation,
+  whether declared in string/object-form settings or identified by Pi's package
+  listing and installed manifest. Pi 1.0.2's `pi list --no-approve` omits project
+  packages, so setup, status, and Update inspect `<cwd>/.pi/settings.json` and
+  resolved manifests read-only: npm packages under `.pi/npm/node_modules`, local
+  paths relative to `.pi` (including absolute paths, home paths, and file URLs),
+  and Git checkouts under `.pi/git/<host>/<repository>` regardless of ref.
+  Git normalization is ported from the SDK's `parseGitUrl` using the same exact
+  `hosted-git-info` version, with differential tests against SDK 1.0.2's parser
+  and install-path resolver. A defense-in-depth scan of `.pi/git` and `.pi/npm`
+  also identifies installed incumbent manifests even without a mapped settings
+  source. It reads linked package manifests without recursively walking links
+  outside the install root, and avoids directory cycles. Apply repeats both
+  inspections before mutation. No project code is executed and no trust is
+  granted or persisted. An incumbent-looking source with an unavailable manifest
+  blocks with an explicit identity limitation; an unrelated source cannot be
+  identified as an incumbent without its manifest.
+  Dry-run reports configured blockers without mutation; status and Update
+  previews expose the conflict and manual removal:
+  `pi remove npm:@juicesharp/rpiv-todo --no-approve` for user scope. For project
+  scope, first review the project's ownership and trust, then use
+  `pi remove npm:@juicesharp/rpiv-todo --local --approve` from that project.
+  Approval trusts project-local settings for this command only without saving
+  a trust decision. Run both commands if present in both scopes. The CLI never
+  removes it automatically. For an unmapped manifest, diagnostics name the
+  installed directory; after reviewing ownership, find and remove the matching
+  settings entry with `pi remove <source> --local --approve` rather than using
+  the diagnostic directory as a configured source. Verify removal with `pi list`
+  and rerun the complete flow.
   Partial native package state remains
   visible and is recovered by resolving the blocker and rerunning the complete
   flow.
@@ -115,7 +146,8 @@ execution does not.
 ## Verification
 
 - parser/help/runtime: `parser.test.ts`, `commands.test.ts`, `index.test.ts`
-- install/config: install, path, and operation tests
+- install/config: install, path, and operation tests; `pi-git-source.test.ts`
+  compares Git install paths with the pinned Pi SDK 1.0.2
 - external skill command construction: `skills.test.ts`
 - provider command/result contract: `thoth-mem-install.test.ts`
 - TUI: `src/cli/tui/**/*.test.tsx`

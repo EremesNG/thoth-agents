@@ -827,6 +827,65 @@ describe('explicit operation commands', () => {
     }
   });
 
+  test('Pi status and dry-run Update report the todo transition and applied Update refuses mutation', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-cli-todo-'));
+    const commands: string[] = [];
+    const services: TestModelServices = {
+      operationContext: () =>
+        ({
+          cwd: homeDir,
+          homeDir,
+          env: {},
+          piCommandExecutor: (command: string, args: readonly string[]) => {
+            commands.push(`${command} ${args.join(' ')}`);
+            if (command === 'node')
+              return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
+            if (args[0] === '--version')
+              return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+            return {
+              exitCode: 0,
+              stdout: 'User packages:\n  npm:@juicesharp/rpiv-todo@2.12.0',
+              stderr: '',
+            };
+          },
+        }) as never,
+      modelRoles: () => [],
+      modelOptions: async () => [],
+    };
+
+    try {
+      const status = await captureCommand(['status', '--harness=pi'], services);
+      expect(status.code).toBe(0);
+      expect(status.output).toContain('npm:@thoth-agents/pi-todo@>=0.1.0');
+      expect(status.output).toContain('[pi-incumbent-todo-conflict]');
+      const preview = await captureCommand(
+        ['update', '--harness=pi', '--dry-run'],
+        services,
+      );
+      expect(preview.code).toBe(0);
+      expect(preview.output).toContain('Can apply: no');
+      expect(preview.output).toContain('Pi task-list package blocker');
+      for (const result of [status, preview])
+        expect(result.output).toContain(
+          'pi remove npm:@juicesharp/rpiv-todo --no-approve',
+        );
+
+      const applied = await captureCommand(
+        ['update', '--harness=pi', '--apply'],
+        services,
+      );
+      expect(applied.code).toBe(1);
+      expect(applied.output).toContain('Applied: no');
+      expect(commands.some((call) => /pi (install|remove)/.test(call))).toBe(
+        false,
+      );
+      expect(existsSync(join(homeDir, '.pi'))).toBe(false);
+      expect(existsSync(join(homeDir, '.config'))).toBe(false);
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
   test('sync renders a dry-run plan for an explicit harness', async () => {
     const result = await captureCommand(['sync', '--harness=codex']);
 

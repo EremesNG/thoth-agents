@@ -30,10 +30,18 @@
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=1.0.0`.
-  The root package and all six `pi-packages/*` members declare Pi SDK peers
+  The root package and all eight `pi-packages/*` members declare Pi SDK peers
   `>=0.99.0`, pin development SDK/TUI dependencies to `1.0.2`, and require Node
   `>=22.19.0`. Features requiring newer Pi APIs are runtime-guarded; the theme's
   tool renderers need Pi `>=1.0.1` and are inert on older supported versions.
+  The workspace `@thoth-agents/pi-core` (`pi-packages/pi-core`) is a library of
+  typed, versioned `pi.events` channels and session-state publish/request/subscribe
+  helpers, not a standalone extension. The first-party `@thoth-agents/pi-todo`
+  (`pi-packages/pi-todo`) is a fork of `@juicesharp/rpiv-todo` `2.12.0`, providing
+  the `todo` tool, `/todos`, and a current-session widget. It replays branch state,
+  publishes full task snapshots through pi-core, and reinjects open tasks before
+  agent start, including after compaction. The CLI installs pi-todo as its sixth
+  selected Pi package; pi-core is its library dependency.
   The delegation fork verifies native registry, rendering, and steering.
   Selected registered deferred/codemode tools can be callable while inactive;
   excluded tools are absent from the child registry.
@@ -153,9 +161,10 @@
   incumbent `pi-subagents` or former `pi-subagents-j0k3r` packages block before
   mutation with manual recovery; setup never removes them or installs both
   delegation runtimes.
-- Pi requires RPIV `ask_user_question` for root-owned interaction, but no task
-  extension. Progress instructions use any available task tool through its actual
-  contract, or written progress when unavailable; children report to root.
+- Pi requires RPIV `ask_user_question` for root-owned interaction; the CLI also
+  installs the first-party `@thoth-agents/pi-todo` task extension. Progress
+  instructions use any available task tool through its actual contract, or
+  written progress when unavailable; children report to root.
   Only root and librarian receive `web_search`, `fetch_content`,
   `get_search_content`, and `source_check` guidance, and package presence remains
   distinct from live UI/provider availability.

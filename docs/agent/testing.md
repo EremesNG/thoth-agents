@@ -42,13 +42,17 @@ Replace `path/to/test` with a real test; do not literally run the placeholder.
 `.github/workflows/ci.yml` uses Node `22.19`, pnpm `11.2.2`, frozen installation,
 `pnpm run check:ci`, `pnpm run typecheck`, and `pnpm test`. It currently has no
 build step. The repository is a pnpm workspace: the root install also installs
-`pi-packages/*`, and CI then runs each package's `typecheck` plus offline tests
-through `pnpm --filter` (`test` for `@thoth-agents/pi-subagents`,
+all eight `pi-packages/*` members, and CI then runs each package's `typecheck`
+plus offline tests through `pnpm --filter` (`test` for `@thoth-agents/pi-core`,
+`@thoth-agents/pi-todo`, `@thoth-agents/pi-subagents`,
 `@thoth-agents/pi-antigravity-bridge`, `@thoth-agents/pi-background-tasks`,
 `@thoth-agents/pi-openai-fast` and `@thoth-agents/pi-thoth-theme`,
 `test:unit` for `@thoth-agents/pi-claude-bridge`; its live `test` never runs in CI).
+Pi-core provides typed, versioned `pi.events` channels. Pi-todo is a first-party
+fork of `@juicesharp/rpiv-todo` `2.12.0` with session-state publication through
+pi-core and open-task reinjection.
 A second job, `pi-packages-windows` on `windows-latest` (same Node, pnpm and frozen
-install), runs only those six package typechecks and offline tests, one step per
+install), runs only those eight package typechecks and offline tests, one step per
 command so a failure cannot be masked; the root suite runs only on Ubuntu.
 
 `.github/workflows/release.yml` waits for successful CI for the commit, installs

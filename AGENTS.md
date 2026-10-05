@@ -218,10 +218,14 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
 The current `.github/workflows/ci.yml` installs with
 `pnpm install --frozen-lockfile` and runs `pnpm run check:ci`,
 `pnpm run typecheck`, and `pnpm test` on Node `22.19`/pnpm `11.2.2`; it does not
-run the build. A separate `windows-latest` job runs only the six `pi-packages/*`
-typechecks and offline tests (`test:unit` for the Claude bridge). The release workflow waits for that CI and then runs
-`pnpm run build` and the focused test for the built runtime. For large changes
-and before a PR, keep this applicable local pre-merge order:
+run the build. A separate `windows-latest` job runs only the eight `pi-packages/*`
+typechecks and offline tests (`test:unit` for the Claude bridge). These include
+`@thoth-agents/pi-core`, a library of typed, versioned `pi.events` channels, and
+`@thoth-agents/pi-todo`, a first-party `@juicesharp/rpiv-todo` `2.12.0` fork with
+state publication through pi-core and open-task reinjection. The release workflow
+waits for that CI and then runs `pnpm run build` and the focused test for the built
+runtime. For large changes and before a PR, keep this applicable local pre-merge
+order:
 `pnpm run check:ci`, `pnpm run typecheck`, `pnpm run build`, `pnpm test`.
 
 ## Pull requests and sharp edges

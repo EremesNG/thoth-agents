@@ -186,3 +186,26 @@ export function getRenderKit(): ThothRenderKit | undefined {
   }
   return undefined;
 }
+
+/** Memoize input-stable transcript lines; look up the kit even on cache hits. */
+export function createKitRenderMemo() {
+  let cached:
+    | { width: number; kit: ThothRenderKit | undefined; lines: string[] }
+    | undefined;
+
+  return {
+    render(
+      width: number,
+      build: (kit: ThothRenderKit | undefined) => string[],
+    ): string[] {
+      const kit = getRenderKit();
+      if (!cached || cached.width !== width || cached.kit !== kit) {
+        cached = { width, kit, lines: build(kit) };
+      }
+      return cached.lines;
+    },
+    invalidate(): void {
+      cached = undefined;
+    },
+  };
+}

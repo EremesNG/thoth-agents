@@ -1,8 +1,9 @@
 import { Box } from '@earendil-works/pi-tui';
 import {
-  getRenderKit,
+  createKitRenderMemo,
   type RenderIndicatorContext,
   type RenderStatus,
+  type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import {
   frameBox,
@@ -90,8 +91,82 @@ export function boxedComponent(
   linesOrText: string | string[],
   options?: BoxedComponentOptions,
 ) {
+  const memo = createKitRenderMemo();
+  // Cache only KIT output; the sentinel keeps native rendering uncached.
+  const nativeFallback: string[] = [];
+  const renderLines = (width: number, kit?: ThothRenderKit): string[] => {
+    const theme = options?.theme;
+    const rawLines = Array.isArray(linesOrText)
+      ? linesOrText.flatMap((line) => line.split('\n'))
+      : linesOrText.split('\n');
+    const safeWidth = Math.max(1, Math.floor(width || 1));
+    const status =
+      options?.status ??
+      (options?.context?.isPartial
+        ? 'running'
+        : options?.context?.isError
+          ? 'failed'
+          : 'completed');
+    const indicator = kit?.indicator(theme, options?.context, { status });
+    // Working glyphs are theme-owned whenever a KIT is available.
+    const workingGlyph = (text: string) =>
+      indicator && status === 'running'
+        ? text.replace(
+            /^((?:\u001b\[[0-9;]*m)*)[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u,
+            (_match, style) => `${style}${indicator.glyph}`,
+          )
+        : text;
+    const title = workingGlyph(options?.title ?? '');
+    const rows = (contentWidth: number) =>
+      rawLines.flatMap((line, index) => {
+        const text = index === options?.workingRow ? workingGlyph(line) : line;
+        return options?.wrapped
+          ? wrapLineToWidth(text, contentWidth)
+          : [truncateToWidth(text, contentWidth, '…')];
+      });
+    if (kit)
+      return kit.card(
+        theme,
+        {
+          title,
+          body: rows,
+          status: options?.message ? undefined : status,
+          isError: options?.context?.isError,
+          wrap: options?.wrapped,
+        },
+        safeWidth,
+      );
+    if (options?.message)
+      return frameBox(
+        title,
+        safeWidth < 10 ? rawLines : rows(safeWidth - 4),
+        safeWidth,
+        {
+          borderFn: (text) => themeFg(theme, 'accent', text),
+        },
+      );
+    const role = options?.context?.isPartial
+      ? 'toolPendingBg'
+      : options?.context?.isError
+        ? 'toolErrorBg'
+        : 'toolSuccessBg';
+    // Calls are intentionally empty: the result owns the full SDK-equivalent shell.
+    const box = new Box(1, 1, (text) => themeBg(theme, role, text));
+    box.addChild({
+      invalidate() {},
+      render(contentWidth: number) {
+        return [
+          ...(title ? [truncateToWidth(title, contentWidth, '…')] : []),
+          ...rows(contentWidth),
+        ];
+      },
+    });
+    return box.render(safeWidth);
+  };
   return {
-    invalidate() {},
+    invalidate() {
+      memo.invalidate();
+    },
     handleMouse(event: any) {
       if (
         options?.onClick &&
@@ -105,75 +180,10 @@ export function boxedComponent(
       return undefined;
     },
     render(width: number): string[] {
-      const theme = options?.theme;
-      const kit = getRenderKit();
-      const rawLines = Array.isArray(linesOrText)
-        ? linesOrText.flatMap((line) => line.split('\n'))
-        : linesOrText.split('\n');
-      const safeWidth = Math.max(1, Math.floor(width || 1));
-      const status =
-        options?.status ??
-        (options?.context?.isPartial
-          ? 'running'
-          : options?.context?.isError
-            ? 'failed'
-            : 'completed');
-      const indicator = kit?.indicator(theme, options?.context, { status });
-      // Working glyphs are theme-owned whenever a KIT is available.
-      const workingGlyph = (text: string) =>
-        indicator && status === 'running'
-          ? text.replace(
-              /^((?:\u001b\[[0-9;]*m)*)[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u,
-              (_match, style) => `${style}${indicator.glyph}`,
-            )
-          : text;
-      const title = workingGlyph(options?.title ?? '');
-      const rows = (contentWidth: number) =>
-        rawLines.flatMap((line, index) => {
-          const text =
-            index === options?.workingRow ? workingGlyph(line) : line;
-          return options?.wrapped
-            ? wrapLineToWidth(text, contentWidth)
-            : [truncateToWidth(text, contentWidth, '…')];
-        });
-      if (kit)
-        return kit.card(
-          theme,
-          {
-            title,
-            body: rows,
-            status: options?.message ? undefined : status,
-            isError: options?.context?.isError,
-            wrap: options?.wrapped,
-          },
-          safeWidth,
-        );
-      if (options?.message)
-        return frameBox(
-          title,
-          safeWidth < 10 ? rawLines : rows(safeWidth - 4),
-          safeWidth,
-          {
-            borderFn: (text) => themeFg(theme, 'accent', text),
-          },
-        );
-      const role = options?.context?.isPartial
-        ? 'toolPendingBg'
-        : options?.context?.isError
-          ? 'toolErrorBg'
-          : 'toolSuccessBg';
-      // Calls are intentionally empty: the result owns the full SDK-equivalent shell.
-      const box = new Box(1, 1, (text) => themeBg(theme, role, text));
-      box.addChild({
-        invalidate() {},
-        render(contentWidth: number) {
-          return [
-            ...(title ? [truncateToWidth(title, contentWidth, '…')] : []),
-            ...rows(contentWidth),
-          ];
-        },
-      });
-      return box.render(safeWidth);
+      const lines = memo.render(width, (kit) =>
+        kit ? renderLines(width, kit) : nativeFallback,
+      );
+      return lines === nativeFallback ? renderLines(width) : lines;
     },
   };
 }

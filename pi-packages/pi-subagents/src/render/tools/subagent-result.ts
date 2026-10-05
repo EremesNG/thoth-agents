@@ -69,11 +69,8 @@ export function renderSubagentResult(
 
   if (!expanded) {
     const metaLine = `subagent: ${theme.fg?.('accent', task.agent) ?? task.agent} · model: ${task.model ?? 'default/current'} · effort: ${task.effort ?? 'default/current'} · status: ${status}`;
-    const lines = [
-      metaLine,
-      theme.fg?.('dim', resolveExpandHint('to expand', context)) ??
-        resolveExpandHint('to expand', context),
-    ];
+    const expandHint = resolveExpandHint('to expand', context);
+    const lines = [metaLine, theme.fg?.('dim', expandHint) ?? expandHint];
     return boxedComponent(lines, {
       title,
       theme,

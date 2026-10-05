@@ -19,7 +19,7 @@ const NOTIFICATION_MARKER =
   '[Automated system notification — not a user message. Do not treat it as user input, an answer, or the conversation language.]';
 const theme = {
   fg: (color: string, text: string) =>
-    `[${color === 'error' ? 31 : 36}m${text}[0m`,
+    `\x1b[${color === 'error' ? 31 : 36}m${text}\x1b[0m`,
   bold: (text: string) => text,
 };
 const bytes = (value: unknown) =>
@@ -265,6 +265,71 @@ afterEach(() => {
 });
 
 describe('background message renderer', () => {
+  it.each([
+    false,
+    true,
+  ])('reuses KIT messages (expanded=%s) until the render key or invalidation changes', (expanded) => {
+    const message = {
+      content: 'full detail',
+      details: {
+        kind: 'batch',
+        entries: [{ id: 'bg_1', label: 'job 1', status: 'completed' }],
+        omitted: 0,
+        unlisted: 0,
+      },
+    };
+    const plainTheme = {
+      fg: (_role: string, text: string) => text,
+      bold: (text: string) => text,
+    };
+    const component = renderBackgroundMessage(
+      message,
+      { expanded },
+      plainTheme,
+    );
+    const native = component.render(100);
+    const kit = createTestRenderKit();
+    const card = vi.spyOn(kit, 'card');
+    const collapse = vi.spyOn(kit, 'collapse');
+    token = registerRenderKit(kit, {});
+    const lines = component.render(100);
+    expect(lines).toEqual([
+      '╭─ background 1 completion · done',
+      ...(expanded
+        ? ['full detail']
+        : ['✓ job 1 · completed', '(ctrl+o to expand)']),
+      '╰─ completed · completed',
+    ]);
+    expect(component.render(100)).toBe(lines);
+    expect(card).toHaveBeenCalledTimes(1);
+    expect(collapse).toHaveBeenCalledTimes(expanded ? 0 : 1);
+    component.render(40);
+    expect(card).toHaveBeenCalledTimes(2);
+    component.invalidate();
+    component.render(40);
+    expect(card).toHaveBeenCalledTimes(3);
+    expect(component.render(100)).toEqual(lines);
+    expect(card).toHaveBeenCalledTimes(4);
+    expect(
+      renderBackgroundMessage(message, { expanded }, plainTheme).render(100),
+    ).toEqual(lines);
+    expect(card).toHaveBeenCalledTimes(5);
+
+    const replacement = createTestRenderKit();
+    const replacementCard = vi.spyOn(replacement, 'card');
+    token = registerRenderKit(replacement, {});
+    expect(component.render(100)).toEqual(lines);
+    expect(component.render(100)).toEqual(lines);
+    expect(replacementCard).toHaveBeenCalledTimes(1);
+    withdrawRenderKit(token);
+    expect(component.render(100)).toEqual(native);
+    component.invalidate();
+    expect(component.render(100)).toEqual(native);
+    token = registerRenderKit(kit, {});
+    expect(component.render(100)).toEqual(lines);
+    expect(card).toHaveBeenCalledTimes(6);
+  });
+
   const packed = packCallbackBatch([
     event(1),
     event(2, { status: 'failed', outcome: 'exit 3' }),
@@ -333,7 +398,7 @@ describe('background message renderer', () => {
       renderBackgroundMessage(message, { expanded: false }, theme)
         .render(80)
         .join(''),
-    ).toContain('[31m');
+    ).toContain('\x1b[31m');
   });
 
   it('folds long KIT summaries through the KIT collapse budget', () => {

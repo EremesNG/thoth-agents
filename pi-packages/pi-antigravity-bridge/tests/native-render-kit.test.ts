@@ -69,6 +69,72 @@ function entry(
 	return { data } as Parameters<EntryRenderer<NativeDisplayEvent>>[0];
 }
 
+test.each([
+	false,
+	true,
+])("agy-native-event reuses KIT lines (expanded=%s) until width, invalidation or registration changes", async (expanded) => {
+	const render = await nativeRenderer();
+	const data: NativeDisplayEvent = {
+		name: "bash",
+		status: "completed",
+		command: "run\nverify",
+		output: "done",
+	};
+	const create = () => {
+		const component = render(entry(data), { expanded }, theme);
+		assert.ok(component);
+		return component;
+	};
+	const component = create();
+	const native = component.render(100);
+	const kit = createTestRenderKit();
+	const card = vi.spyOn(kit, "card");
+	tokens.push(registerRenderKit(kit, {}));
+	const lines = component.render(100);
+	expect(lines).toEqual([
+		"╭─ bash",
+		...(expanded
+			? [
+					"├─ Command",
+					"«toolOutput:run»",
+					"«toolOutput:verify»",
+					"├─ Output",
+					"«toolOutput:done»",
+				]
+			: ["«muted:run»"]),
+		"╰─ completed",
+	]);
+	expect(component.render(100)).toBe(lines);
+	expect(card).toHaveBeenCalledTimes(1);
+	component.render(40);
+	expect(card).toHaveBeenCalledTimes(2);
+	component.invalidate();
+	component.render(40);
+	expect(card).toHaveBeenCalledTimes(3);
+	expect(component.render(100)).toEqual(lines);
+	expect(card).toHaveBeenCalledTimes(4);
+	expect(create().render(100)).toEqual(lines);
+	expect(card).toHaveBeenCalledTimes(5);
+
+	const replacement = createTestRenderKit();
+	const replacementCard = vi.spyOn(replacement, "card");
+	const replacementToken = registerRenderKit(replacement, {});
+	tokens.push(replacementToken);
+	expect(component.render(100)).toEqual(lines);
+	expect(component.render(100)).toEqual(lines);
+	expect(replacementCard).toHaveBeenCalledTimes(1);
+	withdrawRenderKit(replacementToken);
+	expect(component.render(100)).toEqual(native);
+	const nativeInvalidate = vi.spyOn(Text.prototype, "invalidate");
+	component.invalidate();
+	expect(nativeInvalidate).toHaveBeenCalledTimes(1);
+	expect(component.render(100)).toEqual(native);
+	nativeInvalidate.mockRestore();
+	tokens.push(registerRenderKit(kit, {}));
+	expect(component.render(100)).toEqual(lines);
+	expect(card).toHaveBeenCalledTimes(6);
+});
+
 test("agy-native-event switches KIT sections and unchanged native Text on the same entry component", async () => {
 	const render = await nativeRenderer();
 	const component = render(

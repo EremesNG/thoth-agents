@@ -1,4 +1,7 @@
-import { getRenderKit } from '@thoth-agents/pi-core';
+import {
+  createKitRenderMemo,
+  type ThothRenderKit,
+} from '@thoth-agents/pi-core';
 import { safeErrorMetadataDetails } from '../error-metadata.js';
 import {
   ARCH_ICON,
@@ -243,74 +246,84 @@ export function renderSubagentCompletionMessage(
       return themeFg(theme, 'customMessageText', text);
     return text;
   };
-  return {
-    invalidate() {},
-    render(width: number) {
-      const safeWidth = Math.max(1, Math.floor(width || 1));
-      const kit = getRenderKit();
-      if (kit) {
-        const divider = sections.findIndex(
-          (section) => section.text === BOX_CHARS.horizontal.repeat(24),
-        );
-        const styledRows = (items: typeof sections, contentWidth: number) =>
-          items.flatMap((section) =>
-            wrapLineToWidth(section.text, contentWidth).map((line) =>
-              color(section, line),
-            ),
-          );
-        return kit.card(
-          theme,
-          {
-            title,
-            isError: failed,
-            body: (contentWidth) =>
-              styledRows(
-                divider < 0 ? sections : sections.slice(0, divider),
-                contentWidth,
-              ),
-            sections:
-              divider < 0
-                ? undefined
-                : [
-                    {
-                      title: sections[divider + 1]?.text,
-                      rows: (contentWidth) =>
-                        styledRows(sections.slice(divider + 2), contentWidth),
-                    },
-                  ],
-            wrap: true,
-          },
-          safeWidth,
-        );
-      }
-      if (safeWidth < 10) {
-        return [
-          title,
-          ...sections.flatMap((s) => wrapLineToWidth(s.text, safeWidth)),
-        ].map((l) => truncateToWidth(l, safeWidth, '…'));
-      }
-      const innerWidth = safeWidth - 2;
-      const contentWidth = Math.max(1, innerWidth - 2);
-      const borderFn = (t: string) => themeFg(theme, 'accent', t);
-
-      const maxTitleWidth = Math.max(0, innerWidth - 4);
-      const clippedTitle = truncateToWidth(title, maxTitleWidth, '…');
-      const titleVisWidth = visibleWidth(clippedTitle);
-      const filler = Math.max(0, innerWidth - titleVisWidth - 3);
-      const top = `${borderFn(BOX_CHARS.topLeft)}${borderFn(BOX_CHARS.horizontal)} ${clippedTitle} ${borderFn(BOX_CHARS.horizontal.repeat(filler))}${borderFn(BOX_CHARS.topRight)}`;
-      const middle = sections.flatMap((section) =>
-        wrapLineToWidth(section.text, contentWidth).map((line) => {
-          const styled = color(section, line);
-          const lineVisWidth = visibleWidth(line);
-          const rightPadding = ' '.repeat(
-            Math.max(0, contentWidth - lineVisWidth),
-          );
-          return `${borderFn(BOX_CHARS.vertical)} ${styled}${rightPadding} ${borderFn(BOX_CHARS.vertical)}`;
-        }),
+  const memo = createKitRenderMemo();
+  // Cache only KIT output; the sentinel keeps native rendering uncached.
+  const nativeFallback: string[] = [];
+  const renderLines = (width: number, kit?: ThothRenderKit): string[] => {
+    const safeWidth = Math.max(1, Math.floor(width || 1));
+    if (kit) {
+      const divider = sections.findIndex(
+        (section) => section.text === BOX_CHARS.horizontal.repeat(24),
       );
-      const bottom = `${borderFn(BOX_CHARS.bottomLeft)}${borderFn(BOX_CHARS.horizontal.repeat(innerWidth))}${borderFn(BOX_CHARS.bottomRight)}`;
+      const styledRows = (items: typeof sections, contentWidth: number) =>
+        items.flatMap((section) =>
+          wrapLineToWidth(section.text, contentWidth).map((line) =>
+            color(section, line),
+          ),
+        );
+      return kit.card(
+        theme,
+        {
+          title,
+          isError: failed,
+          body: (contentWidth) =>
+            styledRows(
+              divider < 0 ? sections : sections.slice(0, divider),
+              contentWidth,
+            ),
+          sections:
+            divider < 0
+              ? undefined
+              : [
+                  {
+                    title: sections[divider + 1]?.text,
+                    rows: (contentWidth) =>
+                      styledRows(sections.slice(divider + 2), contentWidth),
+                  },
+                ],
+          wrap: true,
+        },
+        safeWidth,
+      );
+    }
+    if (safeWidth < 10) {
+      return [
+        title,
+        ...sections.flatMap((s) => wrapLineToWidth(s.text, safeWidth)),
+      ].map((l) => truncateToWidth(l, safeWidth, '…'));
+    }
+    const innerWidth = safeWidth - 2;
+    const contentWidth = Math.max(1, innerWidth - 2);
+    const borderFn = (t: string) => themeFg(theme, 'accent', t);
 
-      return [top, ...middle, bottom];
+    const maxTitleWidth = Math.max(0, innerWidth - 4);
+    const clippedTitle = truncateToWidth(title, maxTitleWidth, '…');
+    const titleVisWidth = visibleWidth(clippedTitle);
+    const filler = Math.max(0, innerWidth - titleVisWidth - 3);
+    const top = `${borderFn(BOX_CHARS.topLeft)}${borderFn(BOX_CHARS.horizontal)} ${clippedTitle} ${borderFn(BOX_CHARS.horizontal.repeat(filler))}${borderFn(BOX_CHARS.topRight)}`;
+    const middle = sections.flatMap((section) =>
+      wrapLineToWidth(section.text, contentWidth).map((line) => {
+        const styled = color(section, line);
+        const lineVisWidth = visibleWidth(line);
+        const rightPadding = ' '.repeat(
+          Math.max(0, contentWidth - lineVisWidth),
+        );
+        return `${borderFn(BOX_CHARS.vertical)} ${styled}${rightPadding} ${borderFn(BOX_CHARS.vertical)}`;
+      }),
+    );
+    const bottom = `${borderFn(BOX_CHARS.bottomLeft)}${borderFn(BOX_CHARS.horizontal.repeat(innerWidth))}${borderFn(BOX_CHARS.bottomRight)}`;
+
+    return [top, ...middle, bottom];
+  };
+  return {
+    invalidate() {
+      memo.invalidate();
+    },
+    render(width: number) {
+      const lines = memo.render(width, (kit) =>
+        kit ? renderLines(width, kit) : nativeFallback,
+      );
+      return lines === nativeFallback ? renderLines(width) : lines;
     },
   };
 }

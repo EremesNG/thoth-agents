@@ -103,6 +103,7 @@ export function resolveExpandKeyText(context?: any): string {
   return 'ctrl+o';
 }
 
+/** Resolve while constructing component rows, not on each render frame. */
 export function resolveExpandHint(action = 'to expand', context?: any): string {
   return `${resolveExpandKeyText(context)} ${action}`;
 }

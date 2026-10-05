@@ -14,7 +14,7 @@ Durable behavior for pi-ecosystem.
 
 - **GIVEN** a producer and a consumer using pi-core in one Pi session
 - **WHEN** the consumer subscribes and then requests the snapshot
-- **THEN** it receives the current full snapshot for its session and later snapshots after each change, while malformed or other-version payloads are ignored 
+- **THEN** it receives the current full snapshot for its session and later snapshots after each change, while malformed or other-version payloads are ignored
 
 ### Requirement: Thoth Pi task-list extension
 
@@ -24,4 +24,24 @@ The Thoth Pi task-list package (published under the `@thoth-agents` scope as a f
 
 - **GIVEN** a session with open tasks in the task-list tool
 - **WHEN** the session is compacted and the agent starts again
-- **THEN** the list is reconstructed, the open tasks are present in the model context, and a fresh state snapshot is published on the pi-core task-list state channel 
+- **THEN** the list is reconstructed, the open tasks are present in the model context, and a fresh state snapshot is published on the pi-core task-list state channel
+
+### Requirement: Antigravity bridge terminal stream guarantee
+
+Every Antigravity bridge provider stream MUST end with exactly one terminal event (stop, toolUse or error), MUST fail with an explicit error instead of waiting silently beyond its configured startup, queue and inactivity bounds (disabled caps stay disabled), and MUST deliver the final outcome of an agy turn that settled while a replay round trip was outstanding to the matching continuation call.
+
+#### Scenario: Antigravity bridge terminal stream guarantee
+
+- **GIVEN** an Antigravity-backed Pi turn
+- **WHEN** the driver task throws, an internal wait exceeds its bound, or agy settles during a outstanding replay
+- **THEN** the stream ends once with an explicit error or the retained final response, and the next call is not blocked 
+
+### Requirement: Subagent stall diagnostics
+
+A pi-subagents stall failure MUST report time since the last session event, the last event type, active tracked tools with their idle time, whether the agent settled after its last start, and outstanding orchestrator questions; the agent-settled status MUST NOT be presented as success and the orchestrator-response heading MUST be shown only for completed tasks.
+
+#### Scenario: Subagent stall diagnostics
+
+- **GIVEN** a child whose prompt does not resolve after it emitted agent_settled
+- **WHEN** the stall watchdog fires
+- **THEN** the structured error contains those diagnostics, the settled status is shown neutrally, and the result heading marks any text as partial 

@@ -6,6 +6,27 @@ export {
   request,
   subscribe,
 } from './channels.js';
+export { formatDuration } from './duration.js';
+export type {
+  RenderCardOptions,
+  RenderCardSection,
+  RenderCollapseOptions,
+  RenderIndicator,
+  RenderIndicatorContext,
+  RenderIndicatorOptions,
+  RenderKitTheme,
+  RenderKitToken,
+  RenderRows,
+  RenderStatus,
+  RenderTreeRowOptions,
+  RenderWidgetHeadingOptions,
+  ThothRenderKit,
+} from './render-kit.js';
+export {
+  getRenderKit,
+  registerRenderKit,
+  withdrawRenderKit,
+} from './render-kit.js';
 export type {
   TodoCounts,
   TodoSnapshot,

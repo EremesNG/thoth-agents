@@ -59,5 +59,8 @@
   "upstream": {
     "repository": "https://github.com/QuangThai/pi-omp-theme",
     "role": "primary source"
+  },
+  "dependencies": {
+    "@thoth-agents/pi-core": "workspace:^"
   }
 }

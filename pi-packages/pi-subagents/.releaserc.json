@@ -6,7 +6,13 @@
     [
       "@semantic-release/npm",
       {
-        "npmPublish": true
+        "npmPublish": false
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "publishCmd": "node -e \"const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),cp=require('node:child_process');const env={...process.env};let temp;try{if(env.NPM_TOKEN){const config=JSON.parse(cp.execSync('pnpm config list --json',{encoding:'utf8'}));const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));const registry=pkg.publishConfig?.registry||env.NPM_CONFIG_REGISTRY||config[pkg.name.split('/')[0]+':registry']||config.registry||'https://registry.npmjs.org/';const url=new URL(registry);const scope='//'+url.host+(url.pathname.endsWith('/')?url.pathname:url.pathname+'/');if(!config[scope+':_authToken']&&!config[scope+':_auth']&&!config[scope+':_password']&&!config._auth){temp=fs.mkdtempSync(path.join(os.tmpdir(),'thoth-publish-'));const source=env.NPM_CONFIG_USERCONFIG||env.npm_config_userconfig||path.join(os.homedir(),'.npmrc');const existing=fs.existsSync(source)?fs.readFileSync(source,'utf8'):'';env.NPM_CONFIG_USERCONFIG=path.join(temp,'.npmrc');env.npm_config_userconfig=env.NPM_CONFIG_USERCONFIG;fs.writeFileSync(env.NPM_CONFIG_USERCONFIG,existing+String.fromCharCode(10)+scope+':_authToken='+String.fromCharCode(36)+'{NPM_TOKEN}'+String.fromCharCode(10),{mode:0o600});}}const result=cp.spawnSync('pnpm publish --no-git-checks',{shell:true,stdio:'inherit',env});if(result.error)throw result.error;process.exitCode=result.status??1;}finally{if(temp)fs.rmSync(temp,{recursive:true,force:true});}\""
       }
     ],
     "@semantic-release/github"

@@ -55,3 +55,13 @@ A pi-subagents stall failure MUST report time since the last session event, the 
 - **GIVEN** a child whose prompt does not resolve after it emitted agent_settled
 - **WHEN** the stall watchdog fires
 - **THEN** the structured error contains those diagnostics, the settled status is shown neutrally, and the result heading marks any text as partial 
+
+### Requirement: Claude bridge keeps appended instructions current
+
+`@thoth-agents/pi-claude-bridge` MUST, for a resumed Claude Code session within one recording epoch, deliver the full current appended system instructions through Claude Code's conversation-context channel whenever they differ from the latest appended instructions the model has been given (including a return to the recorded value or an empty value), labeled as superseding earlier versions, MUST deliver nothing extra when they are unchanged, and MUST NOT disable Claude Code system prompt recording or replace the recorded system prompt.
+
+#### Scenario: Claude bridge keeps appended instructions current
+
+- **GIVEN** a resumed Claude Code session and appended instructions that changed after it started
+- **WHEN** the next prompt runs through the bridge
+- **THEN** the model receives the current appended instructions with that prompt while the recorded system prompt and its cache prefix stay unchanged 

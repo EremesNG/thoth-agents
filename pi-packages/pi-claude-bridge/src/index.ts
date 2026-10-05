@@ -30,6 +30,7 @@ import { nonSystemMessages, toBridgeContext } from "./transcript.js";
 import { updateUsage, type SdkUsage } from "./usage.js";
 import { formatDuration } from "@thoth-agents/pi-core";
 import { createAskClaudeRenderers } from "./askclaude-render.js";
+import { AppendInstructions } from "./append-instructions.js";
 
 // --- Debug logging ---
 // CLAUDE_BRIDGE_DEBUG=1 enables debug logging to the bridge log in pi's agent
@@ -254,6 +255,7 @@ function sessionKey(piSessionId: string | null | undefined): string {
  *  reassigned the parent's conversation). Keyed lookup removes the fight: each
  *  session's reads, writes and teardown marks touch only its own mirror. */
 const sharedSessions = new Map<string, SessionState>();
+const appendInstructions = new AppendInstructions();
 
 /** The mirror for `piSessionId`, or null when this session has none yet. */
 function sessionStateFor(piSessionId: string | null | undefined): SessionState | null {
@@ -262,6 +264,8 @@ function sessionStateFor(piSessionId: string | null | undefined): SessionState |
 
 /** Replace (or plant) the mirror for `piSessionId`. */
 function setSessionStateFor(piSessionId: string | null | undefined, state: SessionState | null): void {
+	const previous = sessionStateFor(piSessionId);
+	if (previous && previous.sessionId !== state?.sessionId) appendInstructions.forget(previous.sessionId);
 	if (state === null) sharedSessions.delete(sessionKey(piSessionId));
 	else sharedSessions.set(sessionKey(piSessionId), state);
 }
@@ -308,6 +312,7 @@ function markRebuildForSession(piSession: string | null, event: string): void {
 	if (!state) {
 		debug(`${event}: history rewritten, no session to mark yet`);
 	} else {
+		appendInstructions.forget(state.sessionId);
 		sharedSessions.set(key, { ...state, needsRebuild: true });
 		debug(`${event}: marking needsRebuild on session ${state.sessionId.slice(0, 8)}`);
 	}
@@ -842,6 +847,8 @@ function debugSessionPaths(label: string, cwd: string, jsonlPath: string): void 
 	});
 	convertAndImportMessages(session, priorMessages, customToolNameToSdk, carried, wrappedToolNames);
 	session.save();
+	// Rebuilding replaces the recorded system prompt even when the UUID survives.
+	appendInstructions.forget(session.sessionId);
 	// records, not messages: `messages` filters out the attachment records that
 	// carrying an `@file` expansion across a rebuild writes into the same file.
 	verifyWrittenSession(session.jsonlPath, session.sessionId, session.records.length, cwd);
@@ -871,8 +878,10 @@ export const __test = {
 	},
 	resetSharedSession(piSessionId?: string | null) {
 		// No id: full reset (the pre-map semantics — tests start from a blank slate).
-		if (piSessionId === undefined) sharedSessions.clear();
-		else setSessionStateFor(piSessionId, null);
+		if (piSessionId === undefined) {
+			sharedSessions.clear();
+			appendInstructions.clear();
+		} else setSessionStateFor(piSessionId, null);
 		historyRewrittenBySession.clear();
 	},
 	markRebuildForSession,
@@ -1496,6 +1505,7 @@ async function consumeQuery(
 	model: Model<any>,
 	wasAborted: () => boolean,
 	queryCtx: QueryContext,
+	recordingAppend?: string,
 ): Promise<{ capturedSessionId?: string }> {
 	let capturedSessionId: string | undefined;
 
@@ -1565,6 +1575,15 @@ async function consumeQuery(
 			}
 			continue;
 		}
+		// Epoch events matter even while Pi has no stream parked on this query.
+		if (message.type === "system" && !abandonedQueries.has(sdkQuery) && !queryCtx.historyStale) {
+			if (message.subtype === "init") {
+				capturedSessionId = message.session_id;
+				if (recordingAppend !== undefined) appendInstructions.ensure(capturedSessionId, recordingAppend);
+			} else if (message.subtype === "compact_boundary" && recordingAppend !== undefined) {
+				appendInstructions.start(message.session_id, recordingAppend);
+			}
+		}
 		if (!queryCtx.currentPiStream || !queryCtx.turnOutput) continue;
 
 		switch (message.type) {
@@ -1590,9 +1609,6 @@ async function consumeQuery(
 				break;
 			}
 			case "system":
-				if ((message as any).subtype === "init" && (message as any).session_id) {
-					capturedSessionId = (message as any).session_id;
-				}
 				break;
 			case "user":
 				// SDK echo of the user prompt — no stream events to emit. Note it
@@ -1982,10 +1998,23 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	// that `isSingleUserTurn` is false, so the SDK no longer closes stdin on the
 	// first result — consumeQuery ends the stream explicitly instead, or the
 	// query would never terminate.
-	const promptStream = makePromptStream();
-	void promptStream.push(userMessage(promptBlocks ?? [{ type: "text", text: promptText }]))
-		.catch((error) => debug(`provider: initial prompt push rejected:`, error));
-	queryCtx.promptStream = promptStream;
+	const initialPrompt = userMessage(promptBlocks ?? [{ type: "text", text: promptText }]);
+	let inputSubmitted = false;
+	const makeQueryPromptStream = () => {
+		const input = makePromptStream();
+		const stream = (async function* () {
+			for await (const message of input.stream) {
+				// Yielding hands input to the SDK: a failed write/ack cannot prove
+				// the CLI did not accept it. Count steers as well as the initial input.
+				inputSubmitted = true;
+				yield message;
+			}
+		})();
+		const promptStream = { ...input, stream };
+		queryCtx.promptStream = promptStream;
+		return promptStream;
+	};
+	let promptStream = makeQueryPromptStream();
 	const mcpServers = buildMcpServers(mcpTools, queryCtx);
 
 	// MCP auto-loading suppression: CC reads MCP servers from ~/.claude.json (top-level
@@ -2028,6 +2057,13 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	// threshold with CC's, including CC's anti-thrashing guard (issue #8).
 	// Manual /compact in CC still works (we never invoke it).
 	const childEnv = { ...process.env, ...CC_CHILD_ENV };
+	// Test-only control for the opt-in recording probe; not a user configuration.
+	const appendRefreshEnabled = process.env.CLAUDE_BRIDGE_TESTING_DISABLE_APPEND_REFRESH !== "1";
+	let appendRefreshActive = true;
+	const appendRefreshHooks = resumeSessionId && appendRefreshEnabled
+		? appendInstructions.hooks(resumeSessionId, systemPromptAppend ?? "", () => appendRefreshActive)
+		: undefined;
+	debug(`append-refresh: enabled=${appendRefreshEnabled} registered=${Boolean(appendRefreshHooks)} sessionId=${resumeSessionId ?? "none"}`);
 	const queryOptions: NonNullable<Parameters<typeof query>[0]["options"]> = {
 		cwd,
 		env: childEnv,
@@ -2056,6 +2092,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		...(effort ? { effort } : {}),
 		...(mcpServers ? { mcpServers } : {}),
 		...(resumeSessionId ? { resume: resumeSessionId } : {}),
+		...(appendRefreshHooks ? { hooks: appendRefreshHooks } : {}),
 		...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
 		...makeCliDebugOptions("provider"),
 	};
@@ -2068,7 +2105,21 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 
 	// 3. Start SDK query and claim it for this context
 	let wasAborted = false;
-	const sdkQuery = queryImpl({ prompt: promptStream.stream, options: queryOptions });
+	const withoutHooks = { ...queryOptions };
+	delete withoutHooks.hooks;
+	let sdkQuery: ReturnType<typeof query>;
+	let registeredHooks = Boolean(queryOptions.hooks);
+	try {
+		sdkQuery = queryImpl({ prompt: promptStream.stream, options: queryOptions });
+	} catch (error) {
+		appendRefreshActive = false;
+		if (!registeredHooks || inputSubmitted) throw error;
+		debug("provider: hook registration failed; proceeding without append refresh", error);
+		registeredHooks = false;
+		promptStream.fail(error instanceof Error ? error : new Error(String(error)));
+		promptStream = makeQueryPromptStream();
+		sdkQuery = queryImpl({ prompt: promptStream.stream, options: withoutHooks });
+	}
 	queryCtx.activeQuery = sdkQuery;
 	activeQueryContexts.add(queryCtx);
 
@@ -2083,6 +2134,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	};
 	const onAbort = () => {
 		wasAborted = true;
+		appendRefreshActive = false;
 		drainForAbort(abortCtx, promptStream);
 		requestAbort();
 	};
@@ -2091,8 +2143,29 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		else options.signal.addEventListener("abort", onAbort, { once: true });
 	}
 
+	// The SDK pumps input after writing initialize, BEFORE its acknowledgement.
+	// Withhold the initial prompt until hooks are ready. A hookless retry is safe
+	// only if no input (including a racing steer) has been handed to the SDK.
+	const initializeHooks = async () => {
+		if (registeredHooks && sdkQuery.initializationResult) {
+			try {
+				await sdkQuery.initializationResult();
+			} catch (error) {
+				appendRefreshActive = false;
+				if (wasAborted || abandonedQueries.has(sdkQuery) || inputSubmitted) throw error;
+				debug("provider: hook initialization failed; proceeding without append refresh", error);
+				try { sdkQuery.close(); } catch {}
+				promptStream.fail(error instanceof Error ? error : new Error(String(error)));
+				promptStream = makeQueryPromptStream();
+				sdkQuery = queryImpl({ prompt: promptStream.stream, options: withoutHooks });
+				queryCtx.activeQuery = sdkQuery;
+			}
+		}
+		void promptStream.push(initialPrompt).catch((error) => debug(`provider: initial prompt push rejected:`, error));
+	};
+
 	// Background consumer — runs until query ends
-	consumeQuery(sdkQuery, customToolNameToPi, model, () => wasAborted, queryCtx)
+	initializeHooks().then(() => consumeQuery(sdkQuery, customToolNameToPi, model, () => wasAborted, queryCtx, systemPromptAppend ?? ""))
 		.then(async ({ capturedSessionId }) => {
 			debug(`provider: consumeQuery completed, stopReason=${queryCtx.turnOutput?.stopReason}, error=${queryCtx.turnOutput?.errorMessage}, aborted=${wasAborted}`);
 
@@ -2129,6 +2202,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 			if (syncResult.preserveSharedSession) {
 				const state = sessionStateFor(queryCtx.piSessionId);
 				if (capturedSessionId && capturedSessionId !== state?.sessionId) {
+					appendInstructions.forget(capturedSessionId);
 					deleteSession(capturedSessionId, cwd, process.env.CLAUDE_CONFIG_DIR);
 					debug(`provider: query done, deleted ephemeral session ${capturedSessionId.slice(0, 8)} to preserve shared session`);
 				}
@@ -2185,6 +2259,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 			queryCtx.currentPiStream = null;
 		})
 		.finally(() => {
+			appendRefreshActive = false;
 			if (options?.signal) options.signal.removeEventListener("abort", onAbort);
 			// Settle any ack still parked in the generator — the CLI is gone, so
 			// nothing will resume it. Clear the handle only if a later query

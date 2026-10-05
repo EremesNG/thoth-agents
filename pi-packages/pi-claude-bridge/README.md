@@ -30,11 +30,28 @@ Use `/model` to select any Claude model in pi-ai's catalog, e.g. `claude-bridge/
 
 Behind the scenes, pi's tools are bridged to Claude Code but everything works like normal in pi. Bash commands get Claude Code's 120-second default timeout since pi's bash has none. Skills are forwarded to Claude Code's system prompt, and steering mid-turn reaches Claude at the next tool boundary.
 
+**Dynamic appended instructions:** On a resumed provider query, changed projected append content (extension instructions, context files, or skills) is sent once with that prompt through Claude Code's `UserPromptSubmit` hook context. The delimited block explicitly supersedes all earlier appended-instructions versions, including restoration to a previous value or removal of all appended instructions. Unchanged content adds nothing. The recorded system prompt and its cache prefix are not replaced; recording stays enabled. Delivery state advances only when the callback returns context, so skipped or failed hooks retry on the next query. Steering within the same query does not replay the block. New CC sessions, transcript rebuilds (even with the same UUID), and compaction start new recording epochs; child and ephemeral sessions remain isolated. If hook registration fails, the query proceeds without refresh. This refresh applies between provider queries, not between tool turns or to AskClaude's separate native-tool prompt.
+
 **Tool schemas:** Plain object schemas pass through unchanged. Object-only root `anyOf`/`oneOf` unions (including roots already declaring `type: "object"`, object `allOf` variants and local `$ref` variants) are advertised under a required `input` property, preserving variants and root metadata/definitions. The bridge unwraps that envelope before passing arguments to Pi and re-wraps Pi history for Claude; an ordinary tool's own `input` field is untouched. Other non-object schemas are omitted rather than failing the request, with one warning per tool per session: a UI notification, or stderr in headless children, also recorded in `claude-bridge-diag.log` in pi's agent dir. Pi still validates calls against the original schema.
 
 The model list comes from pi-ai's Anthropic catalog automatically — when pi-ai adds a new Claude model, it appears in `/model` after updating the package, no bridge update needed. Dated snapshot ids (e.g. `claude-opus-4-5-20251101`) are not shown.
 
 **1M Context:** Fable 5/5.1, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 get 1M context. Opus 4.6 gets 1M only on a Max plan or with Extra Usage, and Sonnet 4.6 only with Extra Usage — set `provider.plan` and/or `provider.longContextExtraUsage` as described in [Configuration](#configuration).
+
+### Opt-in live append-refresh test
+
+Requires installed workspace dependencies, writable Claude Code session state, and the operator's Claude login. The probe activates the real bridge provider in-process and runs real SDK queries; it needs no global Pi CLI/shim and supports Windows. From the repository root in PowerShell:
+
+```powershell
+$env:CLAUDE_BRIDGE_TESTING_PROMPT_REFRESH = "1"
+pnpm --filter @thoth-agents/pi-claude-bridge exec node --import tsx tests/int-append-instructions.mjs
+Remove-Item Env:CLAUDE_BRIDGE_TESTING_PROMPT_REFRESH
+```
+
+In Bash, use `CLAUDE_BRIDGE_TESTING_PROMPT_REFRESH=1 pnpm --filter @thoth-agents/pi-claude-bridge exec node --import tsx tests/int-append-instructions.mjs`.
+Optional: `CLAUDE_BRIDGE_TESTING_PROMPT_REFRESH_MODEL=<model-id>` (e.g. `claude-sonnet-4-6`, without a provider prefix) selects the probe model (default Haiku 4.5); `CLAUDE_BRIDGE_TEST_LOG_DIR` selects the retained log directory. No alternate provider is needed.
+
+The probe uses real lifecycle captures in a temporary working directory and three prompts: initial A, changed B with delivery disabled by the test-only `CLAUDE_BRIDGE_TESTING_DISABLE_APPEND_REFRESH` seam, then B with delivery enabled. It checks SDK session IDs and bridge REUSE markers to rule out rebuild or compaction. PASS requires the disabled prompt to still report A (active recording) and the enabled prompt to report B. Recording inactive, unreliable answers in the control, or unproven reuse report **INCONCLUSIVE**, exit 2; AC-3 remains unrun, not passed. A proven control followed by failed delivery exits 1. Without opt-in it skips and makes no model calls. Do not set the delivery-disable seam in normal use.
 
 ## AskClaude Tool
 

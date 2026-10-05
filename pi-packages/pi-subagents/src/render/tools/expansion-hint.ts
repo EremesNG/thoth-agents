@@ -1,62 +1,8 @@
-import fs from 'node:fs';
-import { createRequire } from 'node:module';
-import path from 'node:path';
+import { keyText } from '@earendil-works/pi-coding-agent';
 
 export type KeybindingResolver = (keybinding: string) => string | undefined;
 
 let customKeybindingResolver: KeybindingResolver | undefined;
-let cachedNativeKeyText: ((id: string) => string) | undefined;
-let triedNativeLoad = false;
-
-function runningPiEntrypoint(): string | undefined {
-  if (!process.argv[1]) return undefined;
-  const resolved = path.resolve(process.argv[1]);
-  try {
-    return fs.realpathSync(resolved);
-  } catch {
-    return resolved;
-  }
-}
-
-function findRunningPiPackageRoot(): string | undefined {
-  let current = runningPiEntrypoint();
-  if (!current) return undefined;
-  if (!fs.existsSync(current)) return undefined;
-  current = fs.statSync(current).isDirectory()
-    ? current
-    : path.dirname(current);
-  while (true) {
-    const packageJson = path.join(current, 'package.json');
-    if (fs.existsSync(packageJson)) {
-      try {
-        const parsed = JSON.parse(fs.readFileSync(packageJson, 'utf8')) as {
-          name?: string;
-        };
-        if (parsed.name === '@earendil-works/pi-coding-agent') return current;
-      } catch {}
-    }
-    const parent = path.dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
-}
-
-function getNativePiKeyTextFn(): ((id: string) => string) | undefined {
-  if (triedNativeLoad) return cachedNativeKeyText;
-  triedNativeLoad = true;
-  try {
-    const packageRoot = findRunningPiPackageRoot();
-    if (packageRoot) {
-      const piRequire = createRequire(path.join(packageRoot, 'package.json'));
-      const agent = piRequire('./dist/index.js');
-      if (typeof agent?.keyText === 'function') {
-        cachedNativeKeyText = agent.keyText;
-        return cachedNativeKeyText;
-      }
-    }
-  } catch {}
-  return undefined;
-}
 
 export function setExpandKeybindingProviderForTests(
   resolver: KeybindingResolver | undefined,
@@ -71,7 +17,7 @@ export function resetExpandKeybindingProviderForTests(): void {
 export function resolveExpandKeyText(context?: any): string {
   if (customKeybindingResolver) {
     const custom = customKeybindingResolver('app.tools.expand');
-    if (custom) return custom;
+    if (typeof custom === 'string' && custom.trim()) return custom.trim();
   }
 
   const contextKb = context?.keybindings ?? context?.ui?.keybindings;
@@ -90,14 +36,13 @@ export function resolveExpandKeyText(context?: any): string {
     }
   }
 
-  const nativeFn = getNativePiKeyTextFn();
-  if (nativeFn) {
-    try {
-      const text = nativeFn('app.tools.expand');
-      if (typeof text === 'string' && text.trim()) {
-        return text.trim();
-      }
-    } catch {}
+  try {
+    const text = keyText('app.tools.expand');
+    if (typeof text === 'string' && text.trim()) {
+      return text.trim();
+    }
+  } catch {
+    // Keybindings may not be initialized outside the TUI.
   }
 
   return 'ctrl+o';

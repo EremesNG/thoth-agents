@@ -160,20 +160,38 @@ describe('subagent runner structured errors', () => {
     });
   });
 
-  it('classifies stall timeout as terminal structured metadata', async () => {
+  it('reports pre-abort diagnostics when a settled prompt never resolves', async () => {
     vi.useFakeTimers();
     try {
+      let subscriber: ((event: unknown) => void) | undefined;
       let resolvePrompt: (() => void) | undefined;
       const { promise } = await runStructuredSession(
         () => ({
-          subscribe: vi.fn(() => vi.fn()),
-          prompt: vi.fn(
-            async () =>
-              new Promise<void>((resolve) => {
-                resolvePrompt = resolve;
-              }),
-          ),
+          subscribe: vi.fn((callback: (event: unknown) => void) => {
+            subscriber = callback;
+            return vi.fn();
+          }),
+          prompt: vi.fn(async () => {
+            subscriber?.({ type: 'agent_start' });
+            subscriber?.({
+              type: 'tool_execution_start',
+              toolCallId: 'read-1',
+              toolName: 'read',
+              args: { path: 'SECRET_FILE_BODY' },
+            });
+            subscriber?.({ type: 'agent_settled', reason: 'completed' });
+            return new Promise<void>((resolve) => {
+              resolvePrompt = resolve;
+            });
+          }),
           abort: vi.fn(async () => {
+            subscriber?.({
+              type: 'tool_execution_end',
+              toolCallId: 'read-1',
+              toolName: 'read',
+              isError: true,
+            });
+            subscriber?.({ type: 'agent_start' });
             resolvePrompt?.();
           }),
           messages: [],
@@ -192,9 +210,146 @@ describe('subagent runner structured errors', () => {
         version: 1,
         category: 'stall_timeout',
         phase: 'runner_session',
+        retryable: false,
+        details: {
+          stall_timeout_ms: '20',
+          ms_since_last_session_event: '500',
+          last_session_event_type: 'agent_settled',
+          active_tools: 'read (500ms since update)',
+          settled_after_last_start: 'true',
+          outstanding_orchestrator_questions: '0',
+        },
       });
+      expect(error.message).toContain(
+        'Subagent stalled for 20ms without final response.',
+      );
+      expect(error.message).toContain('last_event=agent_settled');
+      expect(error.message).toContain('last_event_age_ms=500');
+      expect(error.message).toContain('active_tools=read (500ms since update)');
+      expect(error.message).toContain('settled_after_last_start=true');
+      expect(error.message).toContain('outstanding_orchestrator_questions=0');
+      expect(error.error_metadata.message).toBe(error.message);
+      expect(error.message).not.toContain('SECRET_FILE_BODY');
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('persists settled-prompt stall diagnostics in task.error across history reopen', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagent-stall-'));
+    const oldAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const oldHistoryPath = process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
+    process.env.PI_CODING_AGENT_DIR = path.join(cwd, 'agent-home');
+    process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(cwd, 'history.sqlite');
+    fs.mkdirSync(path.join(cwd, '.pi', 'subagents'), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, '.pi', 'subagents', 'sdd-apply.md'),
+      '---\nname: sdd-apply\ndescription: implementation executor\ntools: [read]\n---\nreturn a concise result',
+    );
+    fs.writeFileSync(
+      path.join(cwd, '.pi', 'subagents.json'),
+      JSON.stringify({
+        ...config,
+        stall_timeout_ms: 20,
+        enable_ask_orchestrator: false,
+      }),
+    );
+    vi.useFakeTimers();
+    vi.resetModules();
+    let subscriber: ((event: unknown) => void) | undefined;
+    let resolvePrompt: (() => void) | undefined;
+    vi.doMock('@earendil-works/pi-coding-agent', async (importOriginal) => ({
+      ...(await importOriginal<Record<string, unknown>>()),
+      ModelRuntime: ModelRuntimeFixture,
+      SessionManager: { inMemory: () => ({}) },
+      createAgentSession: () => ({
+        session: {
+          getAllTools: () => [{ name: 'read' }],
+          subscribe: (callback: (event: unknown) => void) => {
+            subscriber = callback;
+            return () => {};
+          },
+          prompt: async () => {
+            subscriber?.({ type: 'agent_start' });
+            subscriber?.({ type: 'agent_settled' });
+            return new Promise<void>((resolve) => {
+              resolvePrompt = resolve;
+            });
+          },
+          abort: async () => resolvePrompt?.(),
+          messages: [{ role: 'assistant', content: 'partial text' }],
+          dispose: async () => {},
+        },
+      }),
+    }));
+    const { sdkSubagentRunner } = await import('../../src/runner.js');
+    const { SubagentManager } = await import('../../src/manager.js');
+    const { SubagentHistoryStore } = await import('../../src/history.js');
+    let thrownMessage: string | undefined;
+    const manager = new SubagentManager(async (input) => {
+      try {
+        return await sdkSubagentRunner(input);
+      } catch (error) {
+        if (error instanceof Error) thrownMessage = error.message;
+        throw error;
+      }
+    });
+    const reopened = new SubagentHistoryStore();
+    try {
+      const resultPromise = manager.run(
+        {
+          agent: 'sdd-apply',
+          task: 'never resolves after settlement',
+          mode: 'task',
+        },
+        { cwd },
+      );
+      const outcome = resultPromise.then(
+        (result) => ({ result, error: undefined }),
+        (error) => ({ result: undefined, error }),
+      );
+      await vi.dynamicImportSettled();
+      await vi.advanceTimersByTimeAsync(600);
+      const settled = await outcome;
+      expect(settled.error).toBeUndefined();
+      const task = settled.result?.results?.[0];
+      if (!task) throw new Error('Expected a persisted failed task');
+      expect(task.status).toBe('failed');
+      expect(task.error).toBe(thrownMessage);
+      expect(task.error).toContain('last_event=agent_settled');
+      expect(task.error).toContain('last_event_age_ms=500');
+      expect(task.error).toContain('active_tools=none');
+      expect(task.error).toContain('settled_after_last_start=true');
+      expect(task.error).toContain('outstanding_orchestrator_questions=0');
+      expect(task.error_metadata).toMatchObject({
+        category: 'stall_timeout',
+        phase: 'runner_session',
+        retryable: false,
+        details: {
+          last_session_event_type: 'agent_settled',
+          ms_since_last_session_event: '500',
+          active_tools: 'none',
+          settled_after_last_start: 'true',
+          outstanding_orchestrator_questions: '0',
+        },
+      });
+      await manager.close();
+      const persisted = reopened.getTask(cwd, task.id);
+      expect(persisted?.error).toBe(thrownMessage);
+      expect(persisted?.error_metadata?.details).toEqual(
+        task.error_metadata?.details,
+      );
+    } finally {
+      resolvePrompt?.();
+      await manager.close();
+      reopened.close();
+      vi.useRealTimers();
+      if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = oldAgentDir;
+      if (oldHistoryPath === undefined)
+        delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
+      else process.env.PI_SUBAGENTS_HISTORY_DB_PATH = oldHistoryPath;
+      fs.rmSync(cwd, { recursive: true, force: true });
     }
   });
 

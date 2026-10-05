@@ -76,7 +76,10 @@ function redactText(
   limit: number,
 ): string | undefined {
   if (!value) return undefined;
-  let text = sanitizeInteractionTransportText(String(value));
+  let text = sanitizeInteractionTransportText(String(value)).replace(
+    /\x1b\[[0-?]*[ -/]*[@-~]/g,
+    '',
+  );
   text = text
     .replace(
       /authorization\s*:\s*bearer\s+[A-Za-z0-9._\-]+/gi,
@@ -95,6 +98,7 @@ function redactText(
     .replace(/\b(?:system|user|assistant)\s*:[^|\n\r]*/gi, '[redacted]')
     .replace(/SECRET_FILE_BODY[\w-]*/g, '[redacted]')
     .replace(/file contents?[^|\n\r]*/gi, '[redacted]')
+    .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return limitCodePoints(text, limit);
@@ -162,10 +166,23 @@ function safeMessage(
       return details?.timeout_ms
         ? `timed out after ${details.timeout_ms}ms`
         : 'timed out';
-    case 'stall_timeout':
-      return details?.stall_timeout_ms
-        ? `Subagent stalled for ${details.stall_timeout_ms}ms without final response.`
+    case 'stall_timeout': {
+      const base = details?.stall_timeout_ms
+        ? `Subagent stalled for ${limitCodePoints(details.stall_timeout_ms, 32)}ms without final response.`
         : 'Subagent stalled without final response.';
+      if (!details?.last_session_event_type) return base;
+      // Bound each field so long tool/event names cannot hide later diagnostics.
+      const diagnostics = [
+        `last_event=${limitCodePoints(details.last_session_event_type, 80)}`,
+        `last_event_age_ms=${limitCodePoints(details.ms_since_last_session_event, 32) ?? 'unknown'}`,
+        `active_tools=${limitCodePoints(details.active_tools, 512) ?? 'none'}`,
+        `settled_after_last_start=${limitCodePoints(details.settled_after_last_start, 8) ?? 'unknown'}`,
+        `outstanding_orchestrator_questions=${limitCodePoints(details.outstanding_orchestrator_questions, 32) ?? 'unknown'}`,
+      ].join('; ');
+      return (
+        redactText(`${base} Diagnostics: ${diagnostics}`, MESSAGE_LIMIT) ?? base
+      );
+    }
     case 'cancelled':
       return `Subagent cancelled: ${details?.cancel_reason ?? 'cancelled'}`;
     case 'interrupted':

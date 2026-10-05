@@ -545,7 +545,7 @@ export class SubagentManager {
   private questionListeners = new Set<QuestionListener>();
   private questionPendingListeners = new Map<
     string,
-    Set<(pending: boolean) => void>
+    Set<(pending: boolean, count?: number) => void>
   >();
   private closePromise?: Promise<void>;
   private closing = false;
@@ -664,7 +664,7 @@ export class SubagentManager {
 
   private onQuestionPendingChange(
     taskId: string,
-    listener: (pending: boolean) => void,
+    listener: (pending: boolean, count?: number) => void,
   ): () => void {
     let listeners = this.questionPendingListeners.get(taskId);
     if (!listeners) {
@@ -672,7 +672,8 @@ export class SubagentManager {
       this.questionPendingListeners.set(taskId, listeners);
     }
     listeners.add(listener);
-    listener(Boolean(this.pendingQuestions.get(taskId)?.size));
+    const count = this.pendingQuestions.get(taskId)?.size ?? 0;
+    listener(count > 0, count);
     return () => {
       listeners.delete(listener);
       if (!listeners.size) this.questionPendingListeners.delete(taskId);
@@ -687,7 +688,7 @@ export class SubagentManager {
       created_at: question.created_at,
     }));
     for (const listener of this.questionPendingListeners.get(task.id) ?? [])
-      listener(entries.length > 0);
+      listener(entries.length > 0, entries.length);
     const cwd = this.taskCwds.get(task.id);
     if (cwd) this.record(cwd, task, task.last_activity ?? 'running', true);
     this.notifyTaskUpdate(task.id, undefined, true);

@@ -134,7 +134,8 @@ function eventTranscript(event: any): string {
     return '\n\nPreparing for response\n\n';
   if (event?.type === 'auto_retry_start') return '\n\nauto retry start\n';
   if (event?.type === 'auto_retry_end') return '\n\nauto retry end\n';
-  if (event?.type === 'agent_settled') return '\n\nagent settled\n';
+  if (event?.type === 'agent_settled')
+    return '\n\nagent settled (awaiting result)\n';
   return '';
 }
 
@@ -155,7 +156,7 @@ function activityMessage(
   if (event?.type === 'tool_execution_update') return 'tool update';
   if (event?.type === 'auto_retry_start') return 'auto retry start';
   if (event?.type === 'auto_retry_end') return 'auto retry end';
-  if (event?.type === 'agent_settled') return 'agent settled';
+  if (event?.type === 'agent_settled') return 'agent settled (awaiting result)';
   return undefined;
 }
 
@@ -368,6 +369,10 @@ export async function promptWithInactivity(
   let usage = runtimeMetricsTracker.snapshot().usage ?? emptyUsage();
   let transcript = `${systemPrompt ? `# system prompt\n\n${systemPrompt}\n\n` : ''}# ${promptLabel === 'continuation' ? 'continuation prompt' : 'delegated prompt'}\n\n${prompt}\n\n# subagent execution\n`;
   let lastActivity = Date.now();
+  let lastSessionEventAt = lastActivity;
+  let lastSessionEventType = 'none';
+  let settledAfterLastStart = false;
+  let stallDetails: Record<string, string> | undefined;
   let stalled = false;
   const initialMessagesLength =
     promptLabel === 'continuation' && Array.isArray(session.messages)
@@ -378,7 +383,7 @@ export async function promptWithInactivity(
   let sawInitialUserMessage = false;
   const activeToolCalls = new Map<
     string,
-    { startTime: number; lastUpdate: number }
+    { name: string; startTime: number; lastUpdate: number }
   >();
   const emitActivity = (activity: SubagentActivity): void => {
     const snapshot = runtimeMetricsTracker.snapshot();
@@ -404,6 +409,11 @@ export async function promptWithInactivity(
   const unsubscribe =
     session.subscribe?.((event: any) => {
       lastActivity = Date.now();
+      lastSessionEventAt = lastActivity;
+      lastSessionEventType =
+        typeof event?.type === 'string' ? event.type : 'unknown';
+      if (event?.type === 'agent_start') settledAfterLastStart = false;
+      if (event?.type === 'agent_settled') settledAfterLastStart = true;
       const observedAt = lastActivity;
       debugLog(cwd, 'runner_event', {
         type: event?.type,
@@ -440,8 +450,9 @@ export async function promptWithInactivity(
         const toolCallId = eventToolCallId(event);
         if (event.type === 'tool_execution_start' && toolCallId)
           activeToolCalls.set(toolCallId, {
-            startTime: Date.now(),
-            lastUpdate: Date.now(),
+            name: event.toolName ?? event.name ?? 'tool',
+            startTime: observedAt,
+            lastUpdate: observedAt,
           });
         if (event.type === 'tool_execution_update' && toolCallId) {
           const toolCall = activeToolCalls.get(toolCallId);
@@ -608,7 +619,8 @@ export async function promptWithInactivity(
       });
     }) ?? (() => {});
   let questionPending = false;
-  const unsubscribePending = onQuestionPendingChange?.((pending) => {
+  let outstandingQuestions = 0;
+  const unsubscribePending = onQuestionPendingChange?.((pending, count) => {
     if (questionPending && !pending) {
       // Answering resumes a fresh inactivity budget, including other active tools.
       lastActivity = Date.now();
@@ -616,6 +628,7 @@ export async function promptWithInactivity(
         tool.lastUpdate = lastActivity;
     }
     questionPending = pending;
+    outstandingQuestions = count ?? Number(pending);
   });
   const interval = setInterval(
     () => {
@@ -628,6 +641,22 @@ export async function promptWithInactivity(
         );
         if (Date.now() - oldestToolUpdate <= stallTimeoutMs) return;
       }
+      // Capture before abort: cleanup can emit events and clear tracked tools.
+      const stalledAt = Date.now();
+      stallDetails = {
+        stall_timeout_ms: String(stallTimeoutMs),
+        ms_since_last_session_event: String(stalledAt - lastSessionEventAt),
+        last_session_event_type: lastSessionEventType,
+        active_tools:
+          [...activeToolCalls.values()]
+            .map(
+              (tool) =>
+                `${tool.name} (${stalledAt - tool.lastUpdate}ms since update)`,
+            )
+            .join(', ') || 'none',
+        settled_after_last_start: String(settledAfterLastStart),
+        outstanding_orchestrator_questions: String(outstandingQuestions),
+      };
       stalled = true;
       transcript += `\n\n--- stall ---\nstalled for ${stallTimeoutMs}ms; aborting session\n`;
       emitActivity({
@@ -678,11 +707,10 @@ export async function promptWithInactivity(
       const metadata = normalizeErrorMetadata({
         category: 'stall_timeout',
         phase: 'runner_session',
-        message: `Subagent stalled for ${stallTimeoutMs}ms without final response.`,
         partial_result_available: Boolean(
           output.trim() || thread_snapshot?.items?.length,
         ),
-        details: { stall_timeout_ms: String(stallTimeoutMs) },
+        details: stallDetails,
       });
       transcript += `\n\n# subagent failure\n\n${metadata.message}`;
       emitActivity({

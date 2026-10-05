@@ -189,6 +189,37 @@ describe('structured error metadata contract', () => {
     ).toBe('Subagent cancelled: parent abort');
   });
 
+  it('keeps every stall diagnostic in a bounded sanitized error suffix', () => {
+    const metadata = normalizeErrorMetadata({
+      category: 'stall_timeout',
+      phase: 'runner_session',
+      details: {
+        stall_timeout_ms: '20',
+        ms_since_last_session_event: '500',
+        last_session_event_type: `agent_settled\u001b[31m ${'x'.repeat(1400)}`,
+        active_tools: `read Bearer sk-fake-secret-token\u0000 (500ms since update), ${'y'.repeat(1400)}`,
+        settled_after_last_start: 'true',
+        outstanding_orchestrator_questions: '0',
+      },
+    });
+    const error = new SubagentStructuredError(metadata);
+    expect(error.message.length).toBeLessThanOrEqual(1024);
+    expect(error.message).toContain('last_event=agent_settled');
+    expect(error.message).toContain('last_event_age_ms=500');
+    expect(error.message).toContain('active_tools=read Bearer [redacted]');
+    expect(error.message).toContain('settled_after_last_start=true');
+    expect(error.message).toContain('outstanding_orchestrator_questions=0');
+    expect(error.message).toBe(metadata.message);
+    expect(error.message).toBe(deriveErrorString(metadata));
+    expect(JSON.stringify(metadata)).not.toContain('sk-fake-secret-token');
+    expect(metadata.details?.last_session_event_type).not.toMatch(
+      /[\u0000-\u001f\u007f-\u009f]/,
+    );
+    expect(metadata.details?.active_tools).not.toMatch(
+      /[\u0000-\u001f\u007f-\u009f]/,
+    );
+  });
+
   it('classifies conservative thrown errors and fallback attempts', () => {
     const auth = classifyThrownError(
       new Error('401 invalid api key Bearer sk-fake-secret-token'),

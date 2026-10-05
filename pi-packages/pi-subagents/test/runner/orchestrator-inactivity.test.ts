@@ -1,6 +1,62 @@
 import { expect, it, vi } from 'vitest';
 import { promptWithInactivity } from '../../src/runner/event-processing.js';
 
+it('distinguishes session-event age from tool-update age and resets settlement on the next start', async () => {
+  vi.useFakeTimers();
+  let event: (event: any) => void = () => {};
+  let finishPrompt: () => void = () => {};
+  const session = {
+    messages: [],
+    subscribe: (listener: typeof event) => {
+      event = listener;
+      return () => {};
+    },
+    prompt: async () => {
+      event({ type: 'agent_start' });
+      event({
+        type: 'tool_execution_start',
+        toolCallId: 'read-1',
+        toolName: 'read',
+      });
+      event({ type: 'agent_settled' });
+      await new Promise<void>((resolve) => {
+        finishPrompt = resolve;
+      });
+    },
+    abort: async () => finishPrompt(),
+    dispose: () => {},
+  };
+  const outcome = promptWithInactivity(
+    session,
+    'work',
+    200,
+    new AbortController().signal,
+  ).catch((error) => error);
+  try {
+    await vi.advanceTimersByTimeAsync(100);
+    event({ type: 'agent_start' });
+    await vi.advanceTimersByTimeAsync(100);
+    event({
+      type: 'tool_execution_update',
+      toolCallId: 'read-1',
+      toolName: 'read',
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    event({ type: 'message_update' });
+    await vi.advanceTimersByTimeAsync(200);
+    expect((await outcome).error_metadata.details).toMatchObject({
+      last_session_event_type: 'message_update',
+      ms_since_last_session_event: '200',
+      active_tools: 'read (300ms since update)',
+      settled_after_last_start: 'false',
+    });
+  } finally {
+    finishPrompt();
+    await outcome;
+    vi.useRealTimers();
+  }
+});
+
 it('suspends inactivity for pending questions and resumes it after the last answer', async () => {
   vi.useFakeTimers();
   let event: (event: any) => void = () => {};

@@ -16,7 +16,11 @@ import { createCustomLsTool } from './ls.ts';
 import { createOwnershipResolver } from './ownership.ts';
 import { createCustomPowerShellTool } from './powershell.ts';
 import { createCustomReadTool } from './read.ts';
-import { stopAllElapsedTickers } from './ticker.ts';
+import {
+  activateElapsedTickerOwner,
+  releaseElapsedTickerOwner,
+  stopElapsedTickers,
+} from './ticker.ts';
 import { createCustomWriteTool } from './write.ts';
 
 /** Register themed renderers and return an idempotent ticker/subscription disposer. */
@@ -24,6 +28,7 @@ export function registerTools(
   pi: ExtensionAPI,
   config: ThemeConfig,
   cwd = process.cwd(),
+  owner: object = {},
 ): () => void {
   if (!config.tools.enabled || typeof pi?.registerToolRenderer !== 'function') {
     return () => {};
@@ -83,16 +88,33 @@ export function registerTools(
 
   const unsubs: Array<() => void> = [];
   if (typeof pi?.on === 'function') {
-    unsubs.push(pi.on('agent_end', stopAllElapsedTickers));
-    unsubs.push(pi.on('session_shutdown', stopAllElapsedTickers));
-    unsubs.push(pi.on('session_start', stopAllElapsedTickers));
+    unsubs.push(
+      pi.on('agent_end', (_event, ctx) => {
+        if (ctx.hasUI) stopElapsedTickers(owner);
+      }),
+    );
+    unsubs.push(
+      pi.on('session_shutdown', (_event, ctx) => {
+        if (!ctx.hasUI) return;
+        stopElapsedTickers(owner);
+        releaseElapsedTickerOwner(owner);
+      }),
+    );
+    unsubs.push(
+      pi.on('session_start', (_event, ctx) => {
+        if (!ctx.hasUI) return;
+        stopElapsedTickers(owner);
+        activateElapsedTickerOwner(owner);
+      }),
+    );
   }
 
   let disposed = false;
   return () => {
     if (disposed) return;
     disposed = true;
-    stopAllElapsedTickers();
+    stopElapsedTickers(owner);
+    releaseElapsedTickerOwner(owner);
     for (const unsub of unsubs) unsub();
     unsubs.length = 0;
   };

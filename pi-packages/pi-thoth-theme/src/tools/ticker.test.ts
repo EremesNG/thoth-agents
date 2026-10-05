@@ -35,14 +35,20 @@ const partialResult = {
 
 const cleanups: Array<() => void> = [];
 
-function createSession() {
+function createSession(hasUI = true) {
   let resolver: ToolRendererResolver | undefined;
-  const handlers = new Map<string, Set<() => void>>();
+  const handlers = new Map<
+    string,
+    Set<(event: unknown, ctx: { hasUI: boolean }) => void>
+  >();
   const pi = {
     registerToolRenderer(registeredResolver: ToolRendererResolver) {
       resolver = registeredResolver;
     },
-    on(event: string, handler: () => void) {
+    on(
+      event: string,
+      handler: (event: unknown, ctx: { hasUI: boolean }) => void,
+    ) {
       const listeners = handlers.get(event) ?? new Set();
       listeners.add(handler);
       handlers.set(event, listeners);
@@ -50,11 +56,14 @@ function createSession() {
     },
   } as unknown as ExtensionAPI;
   const dispose = registerTools(pi, config, cwd);
+  const emit = (event: string) => {
+    for (const handler of handlers.get(event) ?? [])
+      handler({ type: event }, { hasUI });
+  };
+  emit('session_start');
   const session = {
     dispose,
-    emit(event: string) {
-      for (const handler of handlers.get(event) ?? []) handler();
-    },
+    emit,
     createBashComponent(toolCallId = 'bash-ticker') {
       const requestRender = vi.fn();
       const component = new ToolExecutionComponent(
@@ -107,6 +116,46 @@ afterEach(() => {
 });
 
 describe('Live tool elapsed through the real SDK', () => {
+  it('keeps parent tickers live across headless child start/end/shutdown and disposal', () => {
+    const parent = createSession();
+    const { component, requestRender } = parent.createBashComponent();
+    component.markExecutionStarted();
+    renderText(component);
+    const child = createSession(false);
+    for (const event of ['session_start', 'agent_end', 'session_shutdown']) {
+      requestRender.mockClear();
+      child.emit(event);
+      vi.advanceTimersByTime(1000);
+      expect(requestRender).toHaveBeenCalledTimes(1);
+    }
+    child.dispose();
+    requestRender.mockClear();
+    vi.advanceTimersByTime(1000);
+    expect(requestRender).toHaveBeenCalledTimes(1);
+    expect(renderText(component)).toContain('running… · 4s');
+    parent.emit('agent_end');
+    requestRender.mockClear();
+    vi.advanceTimersByTime(1000);
+    expect(requestRender).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not let an older UI cleanup freeze a newer UI ticker', () => {
+    const older = createSession();
+    const oldTool = older.createBashComponent('old-ui');
+    oldTool.component.markExecutionStarted();
+    const newer = createSession();
+    const newTool = newer.createBashComponent('new-ui');
+    newTool.component.markExecutionStarted();
+    older.emit('session_shutdown');
+    newTool.requestRender.mockClear();
+    vi.advanceTimersByTime(1000);
+    expect(newTool.requestRender).toHaveBeenCalledTimes(1);
+    expect(renderText(newTool.component)).toContain('running… · 1s');
+    newer.emit('session_shutdown');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('shows live elapsed for a started tool before its first output', () => {
     const { component, requestRender } = createSession().createBashComponent();
     component.markExecutionStarted();
@@ -231,6 +280,7 @@ describe('Live tool elapsed through the real SDK', () => {
     expect(vi.getTimerCount()).toBe(0);
 
     // A later run/session owns fresh states, which must still tick normally.
+    if (event === 'session_shutdown') session.emit('session_start');
     const next = session.createBashComponent('next-run');
     next.component.markExecutionStarted();
     next.component.updateResult(partialResult, true);

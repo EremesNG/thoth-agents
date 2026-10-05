@@ -1,4 +1,10 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import {
+  type RenderKitToken,
+  registerRenderKit,
+  withdrawRenderKit,
+} from '@thoth-agents/pi-core';
+import { createRenderKit } from './render-kit/index.ts';
 import { loadConfig } from './shared/config.ts';
 import { registerStatusLine } from './status-line/index.ts';
 import { applyImageCapability } from './tools/image-capability.ts';
@@ -7,7 +13,15 @@ import { registerWelcome } from './welcome/index.ts';
 
 export default function thothTheme(pi: ExtensionAPI): void {
   const config = loadConfig();
-  if (config.tools.enabled) registerTools(pi, config);
+  const owner = {};
+  let kitToken: RenderKitToken | undefined;
+  if (config.tools.enabled) registerTools(pi, config, process.cwd(), owner);
+
+  pi.on('session_shutdown', (_event, ctx) => {
+    if (!ctx.hasUI || kitToken === undefined) return;
+    withdrawRenderKit(kitToken);
+    kitToken = undefined;
+  });
 
   if (config.images.enabled) {
     // Native /reload resets overrides after session_start. agent_start is
@@ -21,7 +35,11 @@ export default function thothTheme(pi: ExtensionAPI): void {
     // Pi replaces capability overrides after loading extensions.
     if (config.images.enabled) applyImageCapability();
 
-    if (!ctx.hasUI || !ctx.ui) return;
+    if (!ctx.hasUI) return;
+    if (config.tools.enabled) {
+      kitToken = registerRenderKit(createRenderKit(owner), owner);
+    }
+    if (!ctx.ui) return;
     if (config.statusLine.enabled) {
       if (config.inputBox?.enabled !== false) {
         ctx.ui.setWorkingIndicator?.({

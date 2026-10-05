@@ -16,7 +16,17 @@ export interface ElapsedRenderContext {
   state?: ElapsedRenderState;
 }
 
-const tickerStates = new Set<ElapsedRenderState>();
+const tickerStates = new Map<ElapsedRenderState, object>();
+let activeOwner: object | undefined;
+
+/** Only interactive session_start callbacks may claim the rendering ticker owner. */
+export function activateElapsedTickerOwner(owner: object): void {
+  activeOwner = owner;
+}
+
+export function releaseElapsedTickerOwner(owner: object): void {
+  if (activeOwner === owner) activeOwner = undefined;
+}
 
 function freezeElapsed(state: ElapsedRenderState): void {
   if (
@@ -44,16 +54,20 @@ function stopElapsedTicker(state: ElapsedRenderState): void {
   tickerStates.delete(state);
 }
 
-/** Freeze interrupted rows too: Pi may drop them without a terminal render. */
-export function stopAllElapsedTickers(): void {
-  for (const state of tickerStates) {
+/** Freeze only this owner's interrupted rows: children share the module state. */
+export function stopElapsedTickers(owner: object): void {
+  for (const [state, stateOwner] of tickerStates) {
+    if (stateOwner !== owner) continue;
     freezeElapsed(state);
     stopElapsedTicker(state);
   }
 }
 
 /** Keep one public renderer invalidation interval per running tool state. */
-export function syncElapsedTicker(context: ElapsedRenderContext): void {
+export function syncElapsedTicker(
+  context: ElapsedRenderContext,
+  owner = activeOwner,
+): void {
   const state = context?.state;
   if (!state) return;
   if (context.executionStarted && state.startedAt === undefined) {
@@ -68,8 +82,13 @@ export function syncElapsedTicker(context: ElapsedRenderContext): void {
     stopElapsedTicker(state);
     return;
   }
-  if (context.invalidate && state.elapsedTicker === undefined) {
+  if (
+    owner === activeOwner &&
+    owner !== undefined &&
+    context.invalidate &&
+    state.elapsedTicker === undefined
+  ) {
     state.elapsedTicker = setInterval(context.invalidate, 1000);
-    tickerStates.add(state);
+    tickerStates.set(state, owner);
   }
 }

@@ -45,6 +45,20 @@ of the module toggles below.
   tool providers, and recent sessions. Resource and session details load
   best-effort through public APIs.
 
+## Render KIT
+
+Provides the Render KIT v1 contract defined by `@thoth-agents/pi-core` for
+first-party tools, custom messages and above-editor widgets. The kit shares this
+package's frames, theme roles, collapse hints and working/elapsed indicators.
+Producers discover it at render time, so extension load order does not matter;
+they do not depend on this package and keep native Pi rendering when it is absent.
+
+The theme registers the kit on `session_start` only in interactive UI sessions
+with `tools.enabled: true`, and withdraws only its own registration on
+`session_shutdown`. Headless children neither replace nor withdraw the parent
+kit, and their lifecycle does not stop the parent's indicators. Theme selection
+alone does not enable the kit when tool styling is disabled.
+
 ## Configuration
 
 Edit `~/.pi/agent/pi-thoth-theme.json` (or

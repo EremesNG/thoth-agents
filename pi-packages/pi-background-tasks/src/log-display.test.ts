@@ -1,9 +1,12 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
+import { registerRenderKit, withdrawRenderKit, type RenderKitToken } from "@thoth-agents/pi-core";
+import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
 import { logPathFor, taskDir, writeMeta } from "./registry.js";
 import { renderBackgroundTaskLogDisplay, registerTools } from "./tools.js";
 
 const createdIds: string[] = [];
+let token: RenderKitToken | undefined;
 
 const TypeStub = {
   Object: (value: unknown) => value,
@@ -23,6 +26,7 @@ const theme = {
 };
 
 function plain(lines: string[]): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: Strip terminal ANSI styling.
   return lines.join("\n").replace(/\u001b\[[0-9;]*m/g, "").replace(/<\/?[a-zA-Z][\w-]*>/g, "").replace(/<\/>/g, "");
 }
 
@@ -50,10 +54,30 @@ function makeCompletedTask(id: string, logLines: string[]): void {
 }
 
 afterEach(() => {
+  if (token) withdrawRenderKit(token);
+  token = undefined;
   for (const id of createdIds.splice(0)) rmSync(taskDir(id), { recursive: true, force: true });
 });
 
 describe("background task log folded display", () => {
+  it("switches compact and full log components between KIT and native at render time", () => {
+    const result = {
+      content: [{ type: "text", text: "full-first\nfull-last" }],
+      details: { kind: "background-task-log-display", head: "[log]", fullLineCount: 2, compactLines: ["preview-only"], foldedLineCount: 1 },
+    };
+    for (const expanded of [false, true]) {
+      const component = renderBackgroundTaskLogDisplay(result, { expanded }, theme);
+      const native = plain(component.render(100));
+      expect(native).toContain(expanded ? "full-last" : "preview-only");
+      expect(native).not.toContain(expanded ? "preview-only" : "full-last");
+      token = registerRenderKit(createTestRenderKit(), {});
+      const framed = plain(component.render(100));
+      expect(framed).toContain("╰─ completed");
+      expect(framed).toContain(expanded ? "full-last" : "preview-only");
+      withdrawRenderKit(token);
+      expect(plain(component.render(100))).toBe(native);
+    }
+  });
   it("keeps full log content for the model while folding large explicit TUI tails", async () => {
     const id = `bg_log_display_${Date.now()}`;
     makeCompletedTask(id, Array.from({ length: 18 }, (_, index) => `log-line-${String(index + 1).padStart(2, "0")}`));

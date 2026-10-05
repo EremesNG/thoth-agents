@@ -1,4 +1,14 @@
-import { framedBody, framedTop, resolveExpandHint, themed } from "./frame.js";
+import {
+  getRenderKit,
+  type RenderIndicatorContext,
+} from '@thoth-agents/pi-core';
+import {
+  collapseNative,
+  nativeToolRows,
+  renderTheme,
+  resolveExpandHint,
+  themed,
+} from './native.js';
 
 interface LogDisplayDetails {
   kind: string;
@@ -8,21 +18,71 @@ interface LogDisplayDetails {
   foldedLineCount: number;
 }
 
-interface RenderContext {
+interface RenderContext extends RenderIndicatorContext {
   args?: Record<string, unknown>;
-  isError?: boolean;
 }
 
 const SUMMARY_COMMAND_CELLS = 60;
+const RESULT_PRESENT = 'backgroundTasksResultPresent';
 
-/** Framed renderers shared by every background-task tool. */
-export function framedToolRenderers(toolName: string) {
+/** Stable self shell: KIT parts or a single, split native SDK box. */
+export function backgroundToolRenderers(toolName: string) {
   return {
-    renderShell: "self" as const,
+    renderShell: 'self' as const,
     renderCall(args: unknown, theme: unknown, context?: RenderContext) {
-      return framedTop(toolName, summarizeArgs(args), theme, context?.isError === true);
+      if (context?.state) context.state[RESULT_PRESENT] = false;
+      const summary = summarizeArgs(args);
+      return {
+        invalidate() {},
+        render(width: number) {
+          const kit = getRenderKit();
+          const hasResult = context?.state?.[RESULT_PRESENT] === true;
+          const pending = context?.isPartial ?? !hasResult;
+          const isError = context?.isError === true;
+          if (kit) {
+            const t = renderTheme(theme);
+            const status = pending
+              ? 'running'
+              : isError
+                ? 'failed'
+                : 'completed';
+            const indicator = kit.indicator(t, context, { status });
+            return kit.card(
+              t,
+              {
+                title: [
+                  kit.fg(t, 'toolTitle', toolName),
+                  kit.fg(t, 'muted', summary),
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+                body: hasResult ? [] : [indicator.text],
+                isError,
+                part: 'start',
+              },
+              width,
+            );
+          }
+          return nativeToolRows(
+            [`${toolName}${summary ? ` ${summary}` : ''}`],
+            width,
+            theme,
+            {
+              pending,
+              isError,
+              top: true,
+              bottom: !hasResult,
+            },
+          );
+        },
+      };
     },
-    renderResult(result: unknown, options: unknown, theme: unknown, context?: RenderContext) {
+    renderResult(
+      result: unknown,
+      options: unknown,
+      theme: unknown,
+      context?: RenderContext,
+    ) {
       return renderBackgroundTaskLogDisplay(result, options, theme, context);
     },
   };
@@ -31,42 +91,112 @@ export function framedToolRenderers(toolName: string) {
 /** Call summary: action, id, name or command on one line. */
 export function summarizeArgs(args: unknown): string {
   const a = (args ?? {}) as Record<string, unknown>;
-  const command = typeof a.command === "string" ? a.command.replace(/\s+/g, " ").trim() : "";
-  const parts = [a.action, a.id, a.name, command.length > SUMMARY_COMMAND_CELLS ? `${command.slice(0, SUMMARY_COMMAND_CELLS)}…` : command, a.all === true ? "all" : ""];
-  return parts.filter((part): part is string => typeof part === "string" && part.length > 0).join(" · ");
+  const command =
+    typeof a.command === 'string' ? a.command.replace(/\s+/g, ' ').trim() : '';
+  const parts = [
+    a.action,
+    a.id,
+    a.name,
+    command.length > SUMMARY_COMMAND_CELLS
+      ? `${command.slice(0, SUMMARY_COMMAND_CELLS)}…`
+      : command,
+    a.all === true ? 'all' : '',
+  ];
+  return parts
+    .filter(
+      (part): part is string => typeof part === 'string' && part.length > 0,
+    )
+    .join(' · ');
 }
 
-/** Framed result body: the compact log preview for log results, the text otherwise. */
-export function renderBackgroundTaskLogDisplay(result: unknown, options: unknown = {}, theme: unknown = {}, context?: RenderContext) {
+/** The compact log preview stays display-only; expanded output uses the model's full text. */
+export function renderBackgroundTaskLogDisplay(
+  result: unknown,
+  options: unknown = {},
+  theme: unknown = {},
+  context?: RenderContext,
+) {
+  if (context?.state) context.state[RESULT_PRESENT] = true;
+  const opts = options as
+    | { expanded?: boolean; isPartial?: boolean }
+    | undefined;
+  const expanded = opts?.expanded === true;
   const fullText = resultTextContent(result).split(/\r?\n/);
-  const details = (result as { details?: LogDisplayDetails } | undefined)?.details;
-  const expanded = (options as { expanded?: boolean } | undefined)?.expanded === true;
-  const base = { expanded, theme, isError: context?.isError === true, context };
-  if (details?.kind !== "background-task-log-display") {
-    return framedBody({ ...base, lines: trimTrailingBlank(fullText) });
-  }
-
-  const meta = themed(theme, "dim", `${details.fullLineCount} lines`);
-  const hint = resolveExpandHint(context);
-  const folded = details.foldedLineCount > 0
-    ? themed(theme, "dim", `Folded ${details.foldedLineCount} display lines (${hint}).`)
-    : themed(theme, "dim", `Compact log (${hint} for full display).`);
-  return framedBody({
-    ...base,
-    lines: [meta, details.head, "", themed(theme, "dim", "preview"), ...details.compactLines, folded],
-    fullLines: [meta, themed(theme, "dim", "Full displayed log."), "", ...fullText],
-    maxLines: Number.POSITIVE_INFINITY,
-  });
+  const details = (result as { details?: LogDisplayDetails } | undefined)
+    ?.details;
+  return {
+    invalidate() {},
+    render(width: number) {
+      const kit = getRenderKit();
+      const t = renderTheme(theme);
+      const pending = context?.isPartial ?? opts?.isPartial === true;
+      const isError = context?.isError === true;
+      let rows: string[];
+      if (details?.kind === 'background-task-log-display') {
+        const meta = themed(theme, 'dim', `${details.fullLineCount} lines`);
+        const hint = resolveExpandHint(context);
+        const folded =
+          details.foldedLineCount > 0
+            ? themed(
+                theme,
+                'dim',
+                `Folded ${details.foldedLineCount} display lines (${hint}).`,
+              )
+            : themed(theme, 'dim', `Compact log (${hint} for full display).`);
+        rows = expanded
+          ? [meta, themed(theme, 'dim', 'Full displayed log.'), '', ...fullText]
+          : [
+              meta,
+              details.head,
+              '',
+              themed(theme, 'dim', 'preview'),
+              ...details.compactLines,
+              folded,
+            ];
+      } else {
+        const allRows = trimTrailingBlank(fullText);
+        rows = kit
+          ? kit.collapse(t, allRows, {
+              expanded,
+              expandHint: resolveExpandHint(context),
+            })
+          : collapseNative(allRows, expanded, theme, context);
+      }
+      if (kit) {
+        const status = pending ? 'running' : isError ? 'failed' : 'completed';
+        const indicator = kit.indicator(t, context, { status });
+        return kit.card(
+          t,
+          {
+            body: rows,
+            footer: indicator.text,
+            status,
+            isError,
+            wrap: expanded,
+            part: 'end',
+          },
+          width,
+        );
+      }
+      return nativeToolRows(rows, width, theme, {
+        pending,
+        isError,
+        bottom: true,
+        wrap: expanded,
+      });
+    },
+  };
 }
 
 function resultTextContent(result: unknown): string {
   const content = (result as { content?: Array<{ text?: string }> })?.content;
-  if (Array.isArray(content)) return content.map((part) => part.text ?? "").join("\n");
-  return String(result ?? "");
+  if (Array.isArray(content))
+    return content.map((part) => part.text ?? '').join('\n');
+  return String(result ?? '');
 }
 
 function trimTrailingBlank(lines: string[]): string[] {
   let end = lines.length;
-  while (end > 0 && lines[end - 1].trim() === "") end--;
+  while (end > 0 && lines[end - 1].trim() === '') end--;
   return lines.slice(0, end);
 }

@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth as piTruncateToWidth, visibleWidth as piVisibleWidth } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
+import { getRenderKit, type RenderKitTheme, type RenderStatus } from "@thoth-agents/pi-core";
 import { createRenderScheduler, type RenderScheduler } from "./shared-render-scheduler.ts";
 
 export default function navigatorExtension(): void {
@@ -450,6 +451,8 @@ function buildMainListLines(
   options: { selectedId?: string; focused?: boolean } = {},
 ): string[] {
   const lines: string[] = [];
+  const kit = getRenderKit();
+  const theme: RenderKitTheme = { fg };
   const grouped = new Map<string, InternalRow[]>();
   for (const row of rows) {
     const existing = grouped.get(row.providerLabel) ?? [];
@@ -462,10 +465,19 @@ function buildMainListLines(
     const label = orderedLabels[i]!;
     const group = grouped.get(label)!;
     if (i > 0) lines.push("");
-    lines.push(providerGroupLabel(label, fg));
-    for (const row of group) {
+    lines.push(kit ? kit.widgetHeading(theme, {
+      title: singleLine(label).toLowerCase(),
+      counts: { completed: group.filter((row) => row.statusTone === "success").length, total: group.length },
+    }, width) : providerGroupLabel(label, fg));
+    for (const [index, row] of group.entries()) {
       const selected = options.focused && row.navigatorId === options.selectedId;
-      lines.push(formatMainListRow(row, selected === true, fg, width));
+      lines.push(kit ? kit.treeRow(theme, {
+        text: [rowDisplayName(row), rowSummary(row), singleLine(row.elapsed || "-")].filter(Boolean).join(" · "),
+        depth: row.parentRow ? 0 : 1,
+        last: index === group.length - 1,
+        selected: selected === true,
+        status: renderStatus(row),
+      }, width) : formatMainListRow(row, selected === true, fg, width));
     }
   }
   lines.push("");
@@ -503,6 +515,16 @@ function formatMainListRow(row: InternalRow, selected: boolean, fg: (color: stri
   const right = `${dim(fitRight(rowSummary(row), summaryWidth), fg)} ${fitRight(elapsed, elapsedWidth)}`;
   const gap = Math.max(1, available - visibleWidth(left) - visibleWidth(right));
   return `${left}${" ".repeat(gap)}${right}`;
+}
+
+function renderStatus(row: InternalRow): RenderStatus {
+  if (row.statusTone === "running") return "running";
+  if (row.statusTone === "success") return "completed";
+  if (row.statusTone === "failed") return "failed";
+  if (row.status === "cancelled" || row.status === "interrupted" || row.status === "stopping") return row.status;
+  if (row.statusTone === "warning") return "blocked";
+  if (row.status === "pending" || row.status === "queued") return row.status;
+  return "unknown";
 }
 
 function statusGlyph(row: InternalRow): string {

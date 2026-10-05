@@ -123,7 +123,7 @@ describe('Pi operations', () => {
       if (command === 'node')
         return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
       if (args[0] === '--version')
-        return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+        return { exitCode: 0, stdout: '1.0.2', stderr: '' };
       return { exitCode: 0, stdout: packageList, stderr: '' };
     };
   };
@@ -250,7 +250,7 @@ describe('Pi operations', () => {
         command === 'node'
           ? { exitCode: 0, stdout: 'v24.20.0', stderr: '' }
           : args[0] === '--version'
-            ? { exitCode: 0, stdout: '0.86.1', stderr: '' }
+            ? { exitCode: 0, stdout: '1.0.2', stderr: '' }
             : { exitCode: 0, stdout: packageList, stderr: '' },
     };
     const report = getPiStatus(context);
@@ -421,7 +421,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: [
@@ -532,7 +532,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return { exitCode: 0, stdout: '', stderr: '' };
       },
     });
@@ -897,7 +897,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -943,7 +943,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: configured
@@ -978,7 +978,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -1030,7 +1030,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,
@@ -1076,7 +1076,7 @@ describe('Pi operations', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v24.20.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         return {
           exitCode: 0,
           stdout: `User packages:\n  ${source}\n    ${configuredRoot}`,

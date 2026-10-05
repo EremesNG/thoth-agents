@@ -7,7 +7,7 @@ orchestration layer that its plugin manifest cannot provide.
 
 ## Requirements
 
-- Node.js `>=22.19`
+- Node.js `>=22.19.0`
 - One supported harness installed separately
 - Permission to install/trust the selected plugin
 - Network access during installation for the plugin, external skills, and
@@ -161,9 +161,9 @@ defaults; thoth-agents never edits that cache.
 
 ## Pi
 
-Pi requires `@earendil-works/pi-coding-agent` `0.86.1` or a compatible
-evidenced release and Node.js `>=22.19`. Preview the complete global setup
-before applying it:
+Pi requires `@earendil-works/pi-coding-agent` `>=0.99.0` and Node.js
+`>=22.19.0`. The installer rejects older Pi versions before changing Pi state.
+Preview the complete global setup before applying it:
 
 ```bash
 npx thoth-agents@latest install --agent=pi --dry-run

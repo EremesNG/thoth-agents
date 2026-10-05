@@ -216,7 +216,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'install') installed = true;
         if (args[0] === 'list')
           return {
@@ -265,7 +265,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'install') installed = true;
         if (args[0] === 'list')
           return {
@@ -364,7 +364,8 @@ describe('Pi setup', () => {
       'npm:pi-mcp-adapter@>=2.32.1',
       'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
     ]);
-    expect(PI_MINIMUM_VERSION).toBe('0.86.1');
+    expect(PI_MINIMUM_VERSION).toBe('0.99.0');
+    expect(plan.items[0]?.description).toContain('Pi >=0.99.0');
     expect(PI_PACKAGE_SPECS).toHaveLength(5);
     expect(PI_PACKAGE_SPECS.map(({ source }) => source)).not.toEqual(
       expect.arrayContaining([
@@ -440,7 +441,10 @@ describe('Pi setup', () => {
     ).toContain(invalidRoot);
   });
 
-  test('installs and verifies the explicit local runtime through its configured source', () => {
+  test.each([
+    '0.99.0',
+    '1.0.2',
+  ])('accepts Pi %s for local setup', (piVersion) => {
     const paths = fixture();
     const runtimeRoot = mkdtempSync(join(tmpdir(), 'thoth-pi-runtime-apply-'));
     roots.push(runtimeRoot);
@@ -465,7 +469,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: piVersion, stderr: '' };
         if (args[0] === 'install') {
           const source = args[1] ?? '';
           installedSources.push(source);
@@ -498,7 +502,7 @@ describe('Pi setup', () => {
     expect(applied.installedPackages).toContain(runtimeRoot);
   });
 
-  test('rejects Pi hosts below the upstream 0.86.1 minimum before installation', () => {
+  test('rejects Pi hosts below the 0.99.0 minimum before changing Pi state', () => {
     const paths = fixture();
     const calls: string[] = [];
     const plan = buildPiSetupPlan({
@@ -508,16 +512,19 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.0', stderr: '' };
+          return { exitCode: 0, stdout: '0.98.9', stderr: '' };
         return { exitCode: 0, stdout: '', stderr: '' };
       },
     });
     expect(applyPiSetup(plan)).toMatchObject({
       success: false,
-      error: expect.stringContaining('Pi >=0.86.1 is required'),
+      error: expect.stringContaining('Pi >=0.99.0 is required'),
+      changed: [],
       installedPackages: [],
+      receiptCommitted: false,
     });
-    expect(calls.some((call) => call.includes('pi install'))).toBe(false);
+    expect(calls.some((call) => /pi (install|remove)/.test(call))).toBe(false);
+    expect(readdirSync(paths.homeDir)).toEqual([]);
   });
 
   test.each([
@@ -579,7 +586,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'list') {
           listCalls += 1;
           if (listCalls === 3) {
@@ -755,7 +762,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'list')
           return {
             exitCode: 0,
@@ -795,7 +802,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'install') {
           installCalls.push(args[1] ?? '');
           if (args[1] === 'npm:thoth-agents@0.3.12') firstPartyInstalled = true;
@@ -853,7 +860,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'list')
           return {
             exitCode: 0,
@@ -895,7 +902,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'list')
           return {
             exitCode: 0,
@@ -939,7 +946,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'list')
           return {
             exitCode: 0,
@@ -1001,7 +1008,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'list')
           return {
             exitCode: 0,
@@ -1194,7 +1201,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'install') {
           installed = true;
           return { exitCode: 0, stdout: '', stderr: '' };
@@ -1256,7 +1263,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'install')
           configured =
             args[1] === previous.installSource
@@ -1291,7 +1298,7 @@ describe('Pi setup', () => {
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
-          return { exitCode: 0, stdout: '0.86.1', stderr: '' };
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
         if (args[0] === 'install') {
           installed = true;
           return { exitCode: 0, stdout: '', stderr: '' };

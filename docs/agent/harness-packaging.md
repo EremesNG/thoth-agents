@@ -30,10 +30,13 @@
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=1.0.0`.
-  The delegation fork supports Pi `>=0.99.0`, pins its development SDK/TUI to
-  `0.99.1`, and verifies native registry, rendering, and steering on both
-  `0.99.0` and `0.99.1`. Selected registered deferred/codemode tools can be
-  callable while inactive; excluded tools are absent from the child registry.
+  The root package and all six `pi-packages/*` members declare Pi SDK peers
+  `>=0.99.0`, pin development SDK/TUI dependencies to `1.0.2`, and require Node
+  `>=22.19.0`. Features requiring newer Pi APIs are runtime-guarded; the theme's
+  tool renderers need Pi `>=1.0.1` and are inert on older supported versions.
+  The delegation fork verifies native registry, rendering, and steering.
+  Selected registered deferred/codemode tools can be callable while inactive;
+  excluded tools are absent from the child registry.
   Delegation controls use native `model-only` exposure. Live messaging
   distinguishes queued, extension-handled, rejected, and model-consumed input.
   Its responsibility remains LLM subagent delegation; non-LLM shell jobs belong to

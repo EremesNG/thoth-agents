@@ -2,6 +2,9 @@
 
 Modular Thoth styling for Pi, with a gold-on-black Egyptian dark theme.
 
+Requires Pi `>=0.99.0` and Node `>=22.19.0`. Development Pi SDK/TUI
+dependencies are pinned to `1.0.2` in the root workspace lockfile.
+
 ## Install
 
 From the thoth-agents repository root:
@@ -28,7 +31,8 @@ of the module toggles below.
   thoth-agents and thoth-mem by default). Other tools get a generic frame with
   the tool name, a one-line argument summary, a collapsed text preview, error
   styling and a live elapsed footer. Images keep Pi's native rendering.
-  Requires Pi >= 1.0.1.
+  Tool renderers require Pi `>=1.0.1`; they are runtime-guarded and inert on
+  older supported Pi versions.
 - **Inline images**: image content from `read` is preserved for Pi's native
   inline rendering. In Orca (including Windows), outside tmux and without an
   explicit `PI_IMAGE_PROTOCOL`, the package selects Kitty when Pi has not already

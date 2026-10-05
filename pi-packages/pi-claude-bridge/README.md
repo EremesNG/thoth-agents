@@ -21,7 +21,8 @@ Pi extension that integrates Claude Code via the [Agent SDK](https://github.com/
 pi install npm:@thoth-agents/pi-claude-bridge
 ```
 
-Requires pi 0.86.1 or newer.
+Requires Pi `>=0.99.0` and Node `>=22.19.0`. Development Pi SDK/TUI
+dependencies are pinned to `1.0.2` in the root workspace lockfile.
 
 ## Provider
 

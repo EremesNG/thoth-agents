@@ -34,7 +34,7 @@ The Thoth Pi task-list package (published under the `@thoth-agents` scope as a f
 
 - **GIVEN** a Pi session with the theme and a first-party producer
 - **WHEN** a producer tool, message or widget renders with the theme active and again with the theme absent
-- **THEN** it shows the theme frame and roles in the first case and native unframed output in the second, regardless of extension load order 
+- **THEN** it shows the theme frame and roles in the first case and native unframed output in the second, regardless of extension load order
 
 ### Requirement: Antigravity bridge terminal stream guarantee
 
@@ -44,7 +44,7 @@ Every Antigravity bridge provider stream MUST end with exactly one terminal even
 
 - **GIVEN** an Antigravity-backed Pi turn
 - **WHEN** the driver task throws, an internal wait exceeds its bound, or agy settles during a outstanding replay
-- **THEN** the stream ends once with an explicit error or the retained final response, and the next call is not blocked 
+- **THEN** the stream ends once with an explicit error or the retained final response, and the next call is not blocked
 
 ### Requirement: Subagent stall diagnostics
 
@@ -54,14 +54,14 @@ A pi-subagents stall failure MUST report time since the last session event, the 
 
 - **GIVEN** a child whose prompt does not resolve after it emitted agent_settled
 - **WHEN** the stall watchdog fires
-- **THEN** the structured error contains those diagnostics, the settled status is shown neutrally, and the result heading marks any text as partial 
+- **THEN** the structured error contains those diagnostics, the settled status is shown neutrally, and the result heading marks any text as partial
 
 ### Requirement: Claude bridge keeps appended instructions current
 
-`@thoth-agents/pi-claude-bridge` MUST, for a resumed Claude Code session within one recording epoch, deliver the full current appended system instructions through Claude Code's conversation-context channel whenever they differ from the latest appended instructions the model has been given (including a return to the recorded value or an empty value), labeled as superseding earlier versions, MUST deliver nothing extra when they are unchanged, and MUST NOT disable Claude Code system prompt recording or replace the recorded system prompt.
+`@thoth-agents/pi-claude-bridge` MUST, for a resumed Claude Code session within one recording epoch, deliver through Claude Code's conversation-context channel the appended system instructions that changed since the latest ones the model has been given (including a return to the recorded value or an empty value) as the added, changed and removed top-level blocks labeled as superseding the same blocks of earlier versions, falling back to the full current appended instructions when blocks cannot be identified unambiguously, MUST keep every delivered context value within Claude Code's inline limit by splitting larger updates, MUST deliver nothing extra when they are unchanged, and MUST NOT disable Claude Code system prompt recording or replace the recorded system prompt.
 
 #### Scenario: Claude bridge keeps appended instructions current
 
-- **GIVEN** a resumed Claude Code session and appended instructions that changed after it started
+- **GIVEN** a resumed Claude Code session whose large appended instructions changed in one small block after it started
 - **WHEN** the next prompt runs through the bridge
-- **THEN** the model receives the current appended instructions with that prompt while the recorded system prompt and its cache prefix stay unchanged 
+- **THEN** the model receives that changed block inline in its context, unchanged blocks are not resent, and the recorded system prompt and its cache prefix stay unchanged 

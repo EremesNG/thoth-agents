@@ -3320,6 +3320,143 @@ describe('subagents panel and extension ui', () => {
     expect(rendered.join('\n')).toContain('executions [1-1/1]');
   });
 
+  it.each([76, 120])(
+    'keeps multiline snapshot fallback rows inside the frame while scrolling at width %i',
+    async (width) => {
+      const { truncateToWidth: realTruncate, visibleWidth: realVisible } =
+        await import('@earendil-works/pi-tui');
+      resetPiComponentCacheForTests();
+      try {
+        // No Pi message components: exercise the real snapshot fallback renderers.
+        setPiComponentProviderForSubagentRendering({});
+        const maxLines = 16;
+        const task: SubagentTask = {
+          id: 'subtask_multiline_fallback',
+          agent: 'worker',
+          mode: 'task',
+          status: 'failed',
+          task: 'Review registration and delivery',
+          created_at: new Date().toISOString(),
+          error:
+            'panel boundary first\r\npanel\tboundary second\rEND OF HISTORY',
+          thread_snapshot: {
+            version: 1,
+            source: 'events',
+            items: [
+              {
+                type: 'assistant',
+                message: {
+                  role: 'assistant',
+                  content: [
+                    {
+                      type: 'text',
+                      text: [
+                        '## conclusion',
+                        '**conclusion:** Replaced list glyph `☰` with `≡`',
+                        '[REJECT] Registration alone is insufficient',
+                        '### 1. Registration is not delivery',
+                        ...Array.from(
+                          { length: 20 },
+                          (_, i) => `review row ${i}`,
+                        ),
+                        `\x1b[36m${'界☰'.repeat(30)}\x1b[0m`,
+                      ].join('\n'),
+                    },
+                  ],
+                },
+              },
+              {
+                type: 'tool',
+                name: 'fallback_probe',
+                status: 'completed',
+                result: {
+                  content: [
+                    {
+                      type: 'text',
+                      text: 'tool first\r\ntool\tsecond\rtool third',
+                    },
+                  ],
+                  isError: false,
+                },
+              },
+              {
+                type: 'tool_result',
+                name: 'fallback_probe',
+                result: {
+                  content: [
+                    { type: 'text', text: 'result first\nresult\tsecond' },
+                    { type: 'text', text: 'result third' },
+                  ],
+                  isError: false,
+                },
+              },
+            ],
+          },
+        };
+        const panel = new SubagentsHistoryPanel(
+          [task],
+          {
+            fg: (_name: string, text: string) => `\x1b[36m${text}\x1b[0m`,
+            bold: (text: string) => `\x1b[1m${text}\x1b[0m`,
+          },
+          () => {},
+          (data, key) => data === key,
+          realVisible,
+          realTruncate,
+          {},
+          maxLines,
+        );
+        const renderFrame = () => {
+          const lines = panel.render(width);
+          expect(lines.length).toBeLessThanOrEqual(maxLines);
+          for (const line of lines) {
+            expect(line).not.toMatch(/[\n\r\t]/);
+            expect(realVisible(line)).toBeLessThanOrEqual(width);
+          }
+          const bodyRows = lines.slice(4, width >= 90 ? -1 : -3);
+          expect(bodyRows.length).toBeGreaterThan(0);
+          for (const row of bodyRows) {
+            expect(stripAnsi(row).startsWith('│')).toBe(true);
+            expect(stripAnsi(row).trimEnd().endsWith('│')).toBe(true);
+          }
+          expect(stripAnsi(lines.at(-1)!).endsWith('─╯')).toBe(true);
+          return lines.join('\n');
+        };
+
+        expect(renderFrame()).toContain('END OF HISTORY');
+        panel.handleInput('home');
+        const frames = [renderFrame()];
+        for (let i = 0; i < 50; i++) {
+          panel.handleInput('down');
+          frames.push(renderFrame());
+        }
+        const history = frames.join('\n');
+        for (const text of [
+          '## conclusion',
+          '**conclusion:** Replaced list glyph `☰` with `≡`',
+          '[REJECT] Registration alone is insufficient',
+          '### 1. Registration is not delivery',
+          'tool first',
+          'tool  second',
+          'tool third',
+          'result first',
+          'result  second',
+          'result third',
+          'panel boundary first',
+          'panel  boundary second',
+        ]) {
+          expect(history).toContain(text);
+        }
+        panel.handleInput('home');
+        expect(renderFrame()).not.toContain('END OF HISTORY');
+        panel.handleInput('end');
+        expect(renderFrame()).toContain('END OF HISTORY');
+      } finally {
+        resetPiComponentCacheForTests();
+      }
+    },
+  );
+
   it('renders narrow stacked view with intact borders and clean task description', async () => {
     const { truncateToWidth: realTruncate, visibleWidth: realVisible } =
       await import('../../src/render/text-width.js');

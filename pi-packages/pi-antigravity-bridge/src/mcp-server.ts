@@ -33,6 +33,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { GATED_AGY_TOOL_SET } from "./approval-hook.js";
 import { normalizeToolSchema } from "./tool-schema.js";
+import { emitLifecycle } from "./lifecycle.js";
 
 /** Tools we do NOT expose to agy: it would just error (the provider is already
  *  antigravity, so the tool's own guard refuses; advertising it is noise). */
@@ -289,7 +290,7 @@ export function registerExitCleanup(
 ): () => void {
 	const signals = opts.signals ?? ["SIGINT", "SIGTERM"];
 	const hasHostListener = opts.hasHostListener ?? ((sig) => process.listenerCount(sig) > 0);
-	const onExit = (): void => cleanup();
+	const onExit = (): void => { emitLifecycle(cleanup); };
 	process.once("exit", onExit);
 
 	const installed: Array<{ sig: NodeJS.Signals; handler: () => void }> = [];
@@ -298,7 +299,7 @@ export function registerExitCleanup(
 		// cover the abrupt-death gap without racing the host's handler.
 		if (hasHostListener(sig)) continue;
 		const handler = (): void => {
-			cleanup();
+			emitLifecycle(cleanup);
 			process.removeListener(sig, handler);
 			// Re-raise so default termination runs with the right exit code, BUT
 			// only if no host listener has appeared since install (ours is removed
@@ -334,7 +335,9 @@ export async function startMcpServer(
 		approvalTimeoutMs?: number;
 	} = {},
 ): Promise<McpStartResult> {
-	const log = opts.log ?? (() => {});
+	const log = (message: string, data?: unknown) => {
+		emitLifecycle(() => opts.log?.(message, data));
+	};
 	const configDir = opts.configDir ?? bridgeMcpConfigDir();
 	const serverName = opts.serverName ?? BRIDGE_MCP_KEY;
 	const discoveryServerName = opts.discoveryServerName ?? serverName;
@@ -507,13 +510,13 @@ export async function startMcpServer(
 			}, approvalTimeoutMs);
 			parks.set(ticket, { name: payload.toolCall.name, since: Date.now(), timer });
 			log("approval-parked", { ticket, name: payload.toolCall.name });
-			try {
-				deps.onApproval(ticket, payload);
-			} catch (e) {
-				// A throwing provider must never hang the hook: settle deny now.
-				log("approval-onapproval-fail", { ticket, msg: e instanceof Error ? e.message : String(e) });
+			const denyFailedApproval = (error: unknown) => {
+				// A throwing or rejecting provider must never hang the hook.
+				log("approval-onapproval-fail", { ticket, msg: error instanceof Error ? error.message : String(error) });
 				settlePark(ticket, { allow: false, reason: "approval gate internal error" });
-			}
+			};
+			const failure = emitLifecycle(() => Promise.resolve(deps.onApproval?.(ticket, payload)).catch(denyFailedApproval));
+			if (failure) denyFailedApproval(failure.error);
 			res.writeHead(200, { "content-type": "application/json" });
 			res.end(JSON.stringify({ ticket }));
 			return;

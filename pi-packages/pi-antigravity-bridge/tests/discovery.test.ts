@@ -18,6 +18,8 @@ import {
 	type OpenDbResolver,
 } from "../src/discovery.js";
 
+import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
+
 /** Fresh temp conversations dir seeded with `ids`. Returns its path. */
 function seed(ids: string[]): string {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-disc-"));
@@ -140,6 +142,17 @@ test("newConversationId: onAmbiguous NOT called when the resolver succeeds", () 
 	);
 	assert.equal(calls, 0);
 	fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("newConversationId: a rejecting ambiguity sink remains fail-safe with no unhandled rejection", async () => {
+	const dir = seed(["ours", "theirs"]);
+	let calls = 0;
+	try {
+		await withoutUnhandledRejections(async () => {
+			assert.equal(newConversationId(dir, new Set(), { onAmbiguous: async () => { calls++; throw new Error("ambiguity sink failed"); } }), null);
+			assert.equal(calls, 1);
+		});
+	} finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("newConversationId: onAmbiguous IS called when ambiguous and unresolved", () => {

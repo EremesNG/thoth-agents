@@ -16,6 +16,7 @@
 // doctor, auth, patch-cleanup, and session clear. Config persists to
 // ~/.pi/agent/antigravity-bridge/config.json so toggles survive restarts.
 
+import { waitWithDeadline } from "../src/waits.js";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
@@ -81,6 +82,7 @@ import { listAgyTasks, tailAgyTaskLog } from "../src/tasks.js";
 import { showTasksBrowser } from "../src/tasks-ui.js";
 import { agyConversationDir } from "../src/agy-paths.js";
 import { createDailyLogger, type DailyLogger } from "../src/daily-log.js";
+import { emitLifecycle } from "../src/lifecycle.js";
 import { registerAskAntigravityTool, toolModelsFromRaw } from "../src/ask-tool.js";
 import { renderNativeEvent } from "../src/native-event-render.js";
 import { registerWebTools } from "../src/web-tools.js";
@@ -114,6 +116,15 @@ const ACTIVE_BRIDGE = Symbol.for("pi-antigravity-bridge:active");
 
 function resolveAgyBinary(): string {
 	return process.env.AGY_BIN || "agy";
+}
+
+// UI sinks are best-effort, even when a void-typed implementation is async.
+function notifyUi(ui: ExtensionUIContext | null | undefined, ...args: Parameters<ExtensionUIContext["notify"]>): void {
+	emitLifecycle(() => ui?.notify(...args));
+}
+
+function setUiStatus(ui: ExtensionUIContext | null | undefined, ...args: Parameters<ExtensionUIContext["setStatus"]>): void {
+	emitLifecycle(() => ui?.setStatus(...args));
 }
 
 export default async function (pi: ExtensionAPI): Promise<void> {
@@ -176,28 +187,30 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// to stderr.
 	const rawFileLog = fileLog.log.bind(fileLog);
 	fileLog.log = (event, data, level) => {
-		rawFileLog(event, data, level);
-		if (level !== "warn") return;
-		if (event.startsWith("abort:") || event === "connection-exited") return;
-		const d = (data ?? {}) as Record<string, unknown>;
-		let text: string;
-		if (event === "tool-schema-omitted") {
-			text = `Pi tool ${String(d.name ?? "tool")} omitted from Antigravity: ${String(d.reason ?? "unsupported input schema")}`;
-		} else if (event === "round-trip-fail") {
-			text = `Bridge tool call failed: ${String(d.name ?? "tool")} (${String(d.reason ?? "unknown")})`;
-		} else if (event.startsWith("stall:")) {
-			text = "Antigravity stalled with no output; the turn was stopped";
-		} else if (event.startsWith("timeout:")) {
-			text = "Antigravity turn timed out";
-		} else if (event.startsWith("exit:") && event !== "exit:0") {
-			text = "Antigravity process exited unexpectedly";
-		} else if (event === "turn-error") {
-			text = `Antigravity turn issue: ${String(d.reason ?? "unknown")}`;
-		} else {
-			text = `Antigravity warning: ${event}`;
-		}
-		if (activeUi) activeUi.notify(text, "warning");
-		else console.error(`[antigravity-bridge] ${text}`);
+		emitLifecycle(() => {
+			rawFileLog(event, data, level);
+			if (level !== "warn") return;
+			if (event.startsWith("abort:") || event === "connection-exited") return;
+			const d = (data ?? {}) as Record<string, unknown>;
+			let text: string;
+			if (event === "tool-schema-omitted") {
+				text = `Pi tool ${String(d.name ?? "tool")} omitted from Antigravity: ${String(d.reason ?? "unsupported input schema")}`;
+			} else if (event === "round-trip-fail") {
+				text = `Bridge tool call failed: ${String(d.name ?? "tool")} (${String(d.reason ?? "unknown")})`;
+			} else if (event.startsWith("stall:")) {
+				text = "Antigravity stalled with no output; the turn was stopped";
+			} else if (event.startsWith("timeout:")) {
+				text = "Antigravity turn timed out";
+			} else if (event.startsWith("exit:") && event !== "exit:0") {
+				text = "Antigravity process exited unexpectedly";
+			} else if (event === "turn-error") {
+				text = `Antigravity turn issue: ${String(d.reason ?? "unknown")}`;
+			} else {
+				text = `Antigravity warning: ${event}`;
+			}
+			if (activeUi) notifyUi(activeUi, text, "warning");
+			else console.error(`[antigravity-bridge] ${text}`);
+		});
 	};
 	fileLog.log(
 		"extension-load",
@@ -228,8 +241,13 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		assertCurrent();
 		if (!bridgeReady) {
 			if (!startFlight) {
-				const flight = Promise.resolve().then(() => startBridge(epoch)).then(() => {
+				const flight = waitWithDeadline(Promise.resolve().then(() => startBridge(epoch)), loadConfig().startupTimeoutMs, "startFlight").then(() => {
 					if (!stopped && epoch === lifecycleEpoch) bridgeReady = true;
+				}).catch(error => {
+					// Fence late startup work at its existing epoch checks. A retry
+					// gets a new generation; the expired flight cannot publish readiness.
+					if (epoch === lifecycleEpoch) lifecycleEpoch++;
+					throw error;
 				}).finally(() => { if (startFlight === flight) startFlight = null; });
 				startFlight = flight;
 			}
@@ -333,7 +351,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				);
 			}
 			const text = parts.join("\n");
-			if (activeUi) activeUi.notify(text, "warning");
+			if (activeUi) notifyUi(activeUi, text, "warning");
 			else console.error(`[antigravity-bridge acp] ${text}`);
 			return;
 		}
@@ -419,13 +437,13 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		// only native Antigravity / other MCP events need display-only entries.
 		if (event.status === "started") {
 			pendingNativeTools++;
-			activeUi?.setStatus("agy-native", `agy ${event.name}… (${pendingNativeTools})`);
+			setUiStatus(activeUi, "agy-native", `agy ${event.name}… (${pendingNativeTools})`);
 			return;
 		}
 		pendingNativeTools = Math.max(0, pendingNativeTools - 1);
-		if (pendingNativeTools === 0) activeUi?.setStatus("agy-native", undefined);
+		if (pendingNativeTools === 0) setUiStatus(activeUi, "agy-native", undefined);
 		// Bound persisted session size; the ACP result and diff may be megabytes.
-		pi.appendEntry<NativeDisplayEvent>("agy-native-event", {
+		return pi.appendEntry<NativeDisplayEvent>("agy-native-event", {
 			...event,
 			output: event.output?.slice(0, 4000),
 			diff: event.diff?.slice(0, 12000),
@@ -468,22 +486,22 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			const status = `ACP ≈ ${input} in / ${output} out`;
 			if (status !== lastUsageStatus) {
 				lastUsageStatus = status;
-				ctx.ui.setStatus("agy-usage", status);
+				setUiStatus(ctx.ui, "agy-usage", status);
 			}
 		});
 		const clearUsageStatus = (_event: unknown, ctx: { hasUI: boolean; ui: ExtensionUIContext }) => {
 			lastUsageStatus = "";
-			if (ctx.hasUI) ctx.ui.setStatus("agy-usage", undefined);
+			if (ctx.hasUI) setUiStatus(ctx.ui, "agy-usage", undefined);
 		};
 		pi.on("agent_end", (event, ctx) => {
 			clearUsageStatus(event, ctx);
 			pendingNativeTools = 0;
-			if (ctx.hasUI) ctx.ui.setStatus("agy-native", undefined);
+			if (ctx.hasUI) setUiStatus(ctx.ui, "agy-native", undefined);
 		});
 		pi.on("session_shutdown", (event, ctx) => {
 			clearUsageStatus(event, ctx);
 			pendingNativeTools = 0;
-			if (ctx.hasUI) ctx.ui.setStatus("agy-native", undefined);
+			if (ctx.hasUI) setUiStatus(ctx.ui, "agy-native", undefined);
 		});
 	}
 	const streamSimple = createStreamSimple({
@@ -582,7 +600,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	async function runAcpPickSetup(ctx: { ui: ExtensionUIContext }): Promise<void> {
 		acpSelfHealRan = true;
 		let lastPhase = "";
-		ctx.ui.setStatus("agy-acp", "downloading ACP server…");
+		setUiStatus(ctx.ui, "agy-acp", "downloading ACP server…");
 		try {
 			const status = await ensureAcpReady({
 				configBin: loadConfig().acp.bin,
@@ -592,14 +610,14 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 					// milestones only (download start, unpacking, installed) - same
 					// line-in-chat feel as other extensions' notify() notices. The
 					// percent variant updates every chunk and would spam the chat.
-					ctx.ui.setStatus("agy-acp", m);
+					setUiStatus(ctx.ui, "agy-acp", m);
 					if (m !== lastPhase && !/\d+%/.test(m)) {
-						ctx.ui.notify(m, "info");
+						notifyUi(ctx.ui, m, "info");
 						lastPhase = m;
 					}
 				},
 			});
-			ctx.ui.setStatus("agy-acp", undefined);
+			setUiStatus(ctx.ui, "agy-acp", undefined);
 			fileLog.log(
 				"acp-setup",
 				status.ok
@@ -608,17 +626,17 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				status.ok ? "info" : "warn",
 			);
 			if (!status.ok) {
-				ctx.ui.notify(`ACP auto-setup failed (${status.error}).\n${status.manual}`, "warning");
+				notifyUi(ctx.ui, `ACP auto-setup failed (${status.error}).\n${status.manual}`, "warning");
 				return;
 			}
 			// Spread, not a bare acp patch: a bare {bin} patch would drop
 			// sibling keys (usageEstimate) from the file.
 			saveConfig({ acp: { ...loadConfig().acp, bin: status.bin } });
 			if (!status.needsLogin) {
-				ctx.ui.notify(`ACP server ready (auth: ${status.auth}). Restart applies the engine.`, "info");
+				notifyUi(ctx.ui, `ACP server ready (auth: ${status.auth}). Restart applies the engine.`, "info");
 				return;
 			}
-			ctx.ui.notify(
+			notifyUi(ctx.ui,
 				"ACP server ready. Signing in: the Google sign-in opens in your browser and completes when you finish it.",
 				"info",
 			);
@@ -628,12 +646,12 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				log: acpLog,
 			});
 			fileLog.log("acp-auth", r.ok ? { ok: true } : { ok: false, error: r.error }, r.ok ? "info" : "warn");
-			if (r.ok) ctx.ui.notify("Signed in. The ACP engine is ready; restart applies it.", "info");
-			else ctx.ui.notify(`ACP sign-in failed (${r.error}).\nRun /agy auth to retry; /agy auth-manual has manual steps.`, "warning");
+			if (r.ok) notifyUi(ctx.ui, "Signed in. The ACP engine is ready; restart applies it.", "info");
+			else notifyUi(ctx.ui, `ACP sign-in failed (${r.error}).\nRun /agy auth to retry; /agy auth-manual has manual steps.`, "warning");
 		} catch (err) {
-			ctx.ui.setStatus("agy-acp", undefined);
+			setUiStatus(ctx.ui, "agy-acp", undefined);
 			fileLog.log("acp-setup", { error: String(err) }, "warn");
-			ctx.ui.notify(`ACP setup failed (${String(err)}). /agy auth retries; /agy doctor inspects.`, "warning");
+			notifyUi(ctx.ui, `ACP setup failed (${String(err)}). /agy auth retries; /agy doctor inspects.`, "warning");
 		}
 	}
 
@@ -665,8 +683,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				const picked = await showEnginePicker(ctx.ui);
 				if (picked) {
 					saveConfig({ engine: picked });
-					ctx.ui.notify(savedEngineMessage(picked), "info");
-					if (picked === "acp") void runAcpPickSetup(ctx);
+					notifyUi(ctx.ui, savedEngineMessage(picked), "info");
+					if (picked === "acp") emitLifecycle(() => runAcpPickSetup(ctx));
 				}
 			} catch (err) {
 				fileLog.log("engine-picker", { error: String(err) }, "warn");
@@ -683,7 +701,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				// is never silently dropped.
 				const msg =
 					"Your pi install still carries the old pi.invokeTool patch. It is unused and harmless; a pi update also removes it. To restore the original files from the backup now: /agy patch-cleanup";
-				if (ctx.hasUI) ctx.ui.notify(msg, "info");
+				if (ctx.hasUI) notifyUi(ctx.ui, msg, "info");
 				else console.error(`[antigravity-bridge] ${msg}`);
 				saveConfig({ patchCleanupNotified: true });
 			}
@@ -708,7 +726,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		if (engine === "stream-json" && !agyMissingWarned && !isAgyInstalled(binary)) {
 			agyMissingWarned = true;
 			const msg = agyMissingMessage();
-			if (activeUi) activeUi.notify(msg, "warning");
+			if (activeUi) notifyUi(activeUi, msg, "warning");
 			else console.error(`[antigravity-bridge] ${msg}`);
 		}
 		// Version gate (stream-json): an agy older than MIN_AGY_VERSION fails
@@ -721,7 +739,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 				if (agyVersionWarned || check.status !== "unsupported") return;
 				agyVersionWarned = true;
 				const msg = `agy ${check.version} is too old; install ${MIN_AGY_VERSION} or newer. Stream-json turns may fail in confusing ways until then (/agy doctor inspects).`;
-				if (activeUi) activeUi.notify(msg, "warning");
+				if (activeUi) notifyUi(activeUi, msg, "warning");
 				else console.error(`[antigravity-bridge] ${msg}`);
 			});
 		}
@@ -732,7 +750,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		// must not delay session start (and nothing spawns until the first turn).
 		if (engine === "acp" && !acpSelfHealRan) {
 			acpSelfHealRan = true;
-			void ensureAcpReady({ configBin: loadConfig().acp.bin }).then((status) => {
+			emitLifecycle(() => ensureAcpReady({ configBin: loadConfig().acp.bin }).then((status) => {
 				fileLog.log(
 					"acp-self-heal",
 					status.ok
@@ -746,15 +764,15 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 					}
 					if (status.needsLogin) {
 						const msg = acpLoginPending();
-						if (activeUi) activeUi.notify(msg, "warning");
+						if (activeUi) notifyUi(activeUi, msg, "warning");
 						else console.error(`[antigravity-bridge] ${msg}`);
 					}
 					return;
 				}
 				const msg = `ACP auto-setup failed (${status.error}).\n${status.manual}`;
-				if (activeUi) activeUi.notify(msg, "warning");
+				if (activeUi) notifyUi(activeUi, msg, "warning");
 				else console.error(`[antigravity-bridge] ${msg}`);
-			});
+			}));
 		}
 		await refreshModelCatalogIfNeeded(binary);
 		if (stopped || epoch !== lifecycleEpoch) return;
@@ -800,7 +818,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			if (routineAbort || s === "tool-schema-omitted") return;
 			if (!failures.has(s)) return;
 			const msg = `[antigravity-bridge mcp] ${s}${d !== undefined ? " " + JSON.stringify(d) : ""}`;
-			if (activeUi) activeUi.notify(msg, "warning");
+			if (activeUi) notifyUi(activeUi, msg, "warning");
 			else console.error(msg);
 		};
 		// Start the bridge unless the user turned it off. No patch gate, no
@@ -924,7 +942,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 			if (bridgeDiscovery === "private" && swept.live.length > 0 && !mixedDiscoveryWarned) {
 				mixedDiscoveryWarned = true;
 				const message = "Private Antigravity discovery found a live legacy-global pi-bridge server. Mixed discovery modes are not isolated; restart all sessions in private mode.";
-				if (activeUi) activeUi.notify(message, "warning");
+				if (activeUi) notifyUi(activeUi, message, "warning");
 				else console.error(`[antigravity-bridge] ${message}`);
 			}
 			if (bridgeDiscovery === "legacy-global") healBridgeSuppression();
@@ -1051,6 +1069,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		stopped = true;
 		lifecycleEpoch++;
 		bridgeReady = false;
+		roundTrips.clearReplayTurns();
 		const flight = (async () => {
 			await startFlight?.catch(() => {});
 			// The UI is going away; a later auth-url must fall back to stderr
@@ -1202,13 +1221,13 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 			// Direct subcommands work everywhere (headless + TUI).
 			if (sub === "clear") {
 				ctx.store.clear();
-				ui?.notify("Cleared all antigravity session bindings.", "info");
+				notifyUi(ui, "Cleared all antigravity session bindings.", "info");
 				return;
 			}
 			if (sub === "patch-cleanup") {
 				const st = patchStatus();
 				if (!st.present) {
-					ui?.notify(
+					notifyUi(ui,
 						st.root
 							? `No invokeTool patch detected on pi ${st.version}. Nothing to clean.`
 							: "Could not locate the installed pi package. Nothing cleaned.",
@@ -1217,7 +1236,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					return;
 				}
 				const r = restorePatch();
-				ui?.notify(
+				notifyUi(ui,
 					r.ok
 						? `Restored ${r.restoredFiles.length} file(s) from ${r.backupDir}. The running session is unaffected; the files on disk are clean again.`
 						: `patch-cleanup failed: ${r.reason}`,
@@ -1232,7 +1251,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				const live = loadConfig();
 				const cur = live.turnTimeoutMin;
 				if (!val) {
-					ui?.notify(
+					notifyUi(ui,
 						`Turn time cap: ${cur === 0 ? "off (no cap)" : `${cur}m`}. Usage: /agy timeout <1-${MAX_TURN_CAP_MIN}|off>. Default: off on an interactive pi, 20m headless.`,
 						"info",
 					);
@@ -1240,11 +1259,11 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				}
 				const parsed = val === "off" ? 0 : parseCapMinutes(val, Number.NaN);
 				if (Number.isNaN(parsed)) {
-					ui?.notify(`Invalid turn cap "${val}". Use 1-${MAX_TURN_CAP_MIN} minutes, or off/0 to disable.`, "error");
+					notifyUi(ui, `Invalid turn cap "${val}". Use 1-${MAX_TURN_CAP_MIN} minutes, or off/0 to disable.`, "error");
 					return;
 				}
 				saveConfig({ turnTimeoutMin: parsed });
-				ui?.notify(
+				notifyUi(ui,
 					parsed === 0
 						? `Turn time cap disabled. The inactivity stall guard (${live.inactivityTimeoutMin}m silence) still applies.`
 						: `Turn time cap set to ${parsed}m. Takes effect next turn.`,
@@ -1255,21 +1274,21 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 			if (sub === "engine") {
 				if (val === "acp" || val === "stream-json") {
 					if (val === "acp" && loadConfig().mode === "plan") {
-						ui?.notify("mode is plan; the ACP engine has no plan mode. /agy mode accept-edits first.", "warning");
+						notifyUi(ui, "mode is plan; the ACP engine has no plan mode. /agy mode accept-edits first.", "warning");
 						return;
 					}
 					const next = saveConfig({ engine: val });
 					if (next.engine !== "acp") {
-						ui?.notify("engine set to stream-json. Takes effect on the next pi start (or /reload).", "info");
+						notifyUi(ui, "engine set to stream-json. Takes effect on the next pi start (or /reload).", "info");
 						return;
 					}
 					// Self-service setup: install the server from the official
 					// registry and bootstrap auth now, so the restart just works.
 					// Manual instructions only when a step fails.
-					ui?.notify("engine set to acp. Preparing the server (binary + auth)…", "info");
+					notifyUi(ui, "engine set to acp. Preparing the server (binary + auth)…", "info");
 					const status = await ensureAcpReady({
 						configBin: loadConfig().acp.bin,
-						onProgress: (m) => ui?.notify(m, "info"),
+						onProgress: (m) => notifyUi(ui, m, "info"),
 					});
 					ctx.fileLog.log(
 						"acp-setup",
@@ -1279,17 +1298,17 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 						status.ok ? "info" : "warn",
 					);
 					if (!status.ok) {
-						ui?.notify(`ACP auto-setup failed (${status.error}).\n${status.manual}`, "warning");
+						notifyUi(ui, `ACP auto-setup failed (${status.error}).\n${status.manual}`, "warning");
 						return;
 					}
 					saveConfig({ acp: { ...loadConfig().acp, bin: status.bin } });
 					if (status.needsLogin) {
-						ui?.notify(
+						notifyUi(ui,
 							`ACP engine set. ${acpLoginPending()}`,
 							"warning",
 						);
 					} else {
-						ui?.notify(`ACP engine ready (auth: ${status.auth}). Takes effect on the next pi start (or /reload).`, "info");
+						notifyUi(ui, `ACP engine ready (auth: ${status.auth}). Takes effect on the next pi start (or /reload).`, "info");
 					}
 				} else if (!val && mode === "tui" && ui) {
 					// Same modal as the first-run wizard: switching engines deserves
@@ -1299,22 +1318,22 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					const current = loadConfig().engine;
 					const picked = await showEnginePicker(ui);
 					if (picked === null) {
-						ui.notify(`engine unchanged: ${current}.`, "info");
+						notifyUi(ui, `engine unchanged: ${current}.`, "info");
 						return;
 					}
 					if (picked === current) {
-						ui.notify(`engine is already ${current}. Restart applies it if set this session.`, "info");
+						notifyUi(ui, `engine is already ${current}. Restart applies it if set this session.`, "info");
 						return;
 					}
 					if (picked === "acp" && loadConfig().mode === "plan") {
-						ui.notify("mode is plan; the ACP engine has no plan mode. /agy mode accept-edits first.", "warning");
+						notifyUi(ui, "mode is plan; the ACP engine has no plan mode. /agy mode accept-edits first.", "warning");
 						return;
 					}
 					saveConfig({ engine: picked });
-					ui.notify(savedEngineMessage(picked), "info");
-					if (picked === "acp") void ctx.runAcpPickSetup({ ui });
+					notifyUi(ui, savedEngineMessage(picked), "info");
+					if (picked === "acp") emitLifecycle(() => ctx.runAcpPickSetup({ ui }));
 				} else {
-					ui?.notify(`current engine: ${loadConfig().engine}\nusage: /agy engine stream-json|acp`, "info");
+					notifyUi(ui, `current engine: ${loadConfig().engine}\nusage: /agy engine stream-json|acp`, "info");
 				}
 				return;
 			}
@@ -1323,11 +1342,11 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				// /agy engine acp followed by /agy auth in the same session works,
 				// no restart needed before signing in.
 				if (loadConfig().engine !== "acp") {
-					ui?.notify(`the selected engine is ${loadConfig().engine}. /agy engine acp first, then /agy auth.`, "warning");
+					notifyUi(ui, `the selected engine is ${loadConfig().engine}. /agy engine acp first, then /agy auth.`, "warning");
 					return;
 				}
-				ui?.notify("Preparing the ACP server (binary + auth settings)…", "info");
-				const status = await ensureAcpReady({ configBin: loadConfig().acp.bin, onProgress: (m) => ui?.notify(m, "info") });
+				notifyUi(ui, "Preparing the ACP server (binary + auth settings)…", "info");
+				const status = await ensureAcpReady({ configBin: loadConfig().acp.bin, onProgress: (m) => notifyUi(ui, m, "info") });
 				ctx.fileLog.log(
 					"acp-setup",
 					status.ok
@@ -1336,15 +1355,15 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					status.ok ? "info" : "warn",
 				);
 				if (!status.ok) {
-					ui?.notify(`ACP auto-setup failed (${status.error}).\n${status.manual}`, "warning");
+					notifyUi(ui, `ACP auto-setup failed (${status.error}).\n${status.manual}`, "warning");
 					return;
 				}
 				saveConfig({ acp: { ...loadConfig().acp, bin: status.bin } });
 				if (!status.needsLogin) {
-					ui?.notify(`Already signed in (auth: ${status.auth}). Nothing to do.`, "info");
+					notifyUi(ui, `Already signed in (auth: ${status.auth}). Nothing to do.`, "info");
 					return;
 				}
-				ui?.notify(
+				notifyUi(ui,
 					"Signing in: the Google sign-in opens in your browser and completes when you finish it (minutes-scale). If no browser opens, pi shows the sign-in URL to copy.",
 					"info",
 				);
@@ -1356,9 +1375,9 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				});
 				ctx.fileLog.log("acp-auth", r.ok ? { ok: true } : { ok: false, error: r.error }, r.ok ? "info" : "warn");
 				if (r.ok) {
-					ui?.notify("Signed in. The ACP engine is ready; takes effect on the next pi start (or /reload).", "info");
+					notifyUi(ui, "Signed in. The ACP engine is ready; takes effect on the next pi start (or /reload).", "info");
 				} else {
-					ui?.notify(`ACP sign-in failed (${r.error}).\nRun /agy auth to retry; /agy auth-manual has manual steps.`, "warning");
+					notifyUi(ui, `ACP sign-in failed (${r.error}).\nRun /agy auth to retry; /agy auth-manual has manual steps.`, "warning");
 				}
 				return;
 			}
@@ -1370,7 +1389,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					// Spread, not a bare acp patch: a bare {bin} object
 					// would drop sibling keys (usageEstimate) from the file.
 					saveConfig({ acp: { ...loadConfig().acp, bin } });
-					ui?.notify(
+					notifyUi(ui,
 						bin
 							? `acp.bin set to ${bin}. The next ACP turn (re)connects with it.`
 							: "acp.bin cleared. Auto-setup (or AGY_ACP_BIN) picks the binary on the next ACP turn.",
@@ -1378,12 +1397,12 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					);
 				} else {
 					const cur = loadConfig().acp.bin;
-					ui?.notify(`acp.bin: ${cur || "(auto: setup installs, or AGY_ACP_BIN)"}\nusage: /agy acp-bin <path|auto>`, "info");
+					notifyUi(ui, `acp.bin: ${cur || "(auto: setup installs, or AGY_ACP_BIN)"}\nusage: /agy acp-bin <path|auto>`, "info");
 				}
 				return;
 			}
 			if (sub === "auth-manual") {
-				ui?.notify(
+				notifyUi(ui,
 					[
 						"ACP engine authentication (one-time; usually automatic -",
 						"/agy engine acp and session start set this up for you):",
@@ -1467,19 +1486,19 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				// The config surface lives here too, so doctor is the ONE status
 				// surface (former /agy status is gone).
 				lines.push("", "settings:", ...settingsRows(ctx));
-				ui?.notify(lines.join("\n"), "info");
+				notifyUi(ui, lines.join("\n"), "info");
 				return;
 			}
 			if (sub === "mode") {
 				if (val === "plan" || val === "accept-edits") {
 					if (val === "plan" && ctx.engine === "acp") {
-						ui?.notify("the ACP engine has no plan mode (RC01). /agy engine stream-json first, or /agy mode accept-edits.", "warning");
+						notifyUi(ui, "the ACP engine has no plan mode (RC01). /agy engine stream-json first, or /agy mode accept-edits.", "warning");
 						return;
 					}
 					const next = saveConfig({ mode: val as AgyMode });
-					ui?.notify(`mode set to ${next.mode}`, "info");
+					notifyUi(ui, `mode set to ${next.mode}`, "info");
 				} else {
-					ui?.notify(`current mode: ${loadConfig().mode}\nusage: /agy mode plan|accept-edits`, "info");
+					notifyUi(ui, `current mode: ${loadConfig().mode}\nusage: /agy mode plan|accept-edits`, "info");
 				}
 				return;
 			}
@@ -1488,7 +1507,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				const snap = (engine === "acp" ? ctx.acpDriver : ctx.driver).snapshot();
 				const conversationId = snap.conversationId ?? undefined;
 				if (!conversationId) {
-					ui?.notify("no Antigravity conversation bound yet; run a turn first.", "warning");
+					notifyUi(ui, "no Antigravity conversation bound yet; run a turn first.", "warning");
 					return;
 				}
 				const dir = agyConversationDir(engine, conversationId);
@@ -1500,30 +1519,30 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				if (rest[0]?.toLowerCase() === "tail") {
 					const id = Number(rest[1]);
 					if (!Number.isInteger(id) || id < 0) {
-						ui?.notify("usage: /agy tasks tail <id>. /agy tasks lists them.", "warning");
+						notifyUi(ui, "usage: /agy tasks tail <id>. /agy tasks lists them.", "warning");
 						return;
 					}
 					const tasks = await listAgyTasks(dir);
 					const task = tasks.find((t) => t.id === id);
 					if (!task) {
-						ui?.notify(`no task #${id} in this conversation. /agy tasks lists them.`, "warning");
+						notifyUi(ui, `no task #${id} in this conversation. /agy tasks lists them.`, "warning");
 						return;
 					}
 					const tail = await tailAgyTaskLog(task.logPath);
 					if (tail === "") {
-						ui?.notify(`task #${id} has no readable log.`, "warning");
+						notifyUi(ui, `task #${id} has no readable log.`, "warning");
 						return;
 					}
 					const lines = tail.split("\n");
 					const body = lines.length > 40 ? `…\n${lines.slice(-40).join("\n")}` : tail;
-					ui?.notify(`task #${id} tail:\n${body}`, "info");
+					notifyUi(ui, `task #${id} tail:\n${body}`, "info");
 					return;
 				}
 
 				// Dashboard form; r rescans by re-listing fresh.
 				let tasks = await listAgyTasks(dir);
 				if (tasks.length === 0) {
-					ui?.notify("no background tasks recorded for this conversation.", "info");
+					notifyUi(ui, "no background tasks recorded for this conversation.", "info");
 					return;
 				}
 				if (!ui) {
@@ -1539,7 +1558,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					if (action.type === "rescan") {
 						tasks = await listAgyTasks(dir);
 						if (tasks.length === 0) {
-							ui?.notify("no background tasks recorded for this conversation.", "info");
+							notifyUi(ui, "no background tasks recorded for this conversation.", "info");
 						}
 						continue;
 					}
@@ -1552,7 +1571,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				const snap = (engine === "acp" ? ctx.acpDriver : ctx.driver).snapshot();
 				const conversationId = snap.conversationId ?? undefined;
 				if (!conversationId) {
-					ui?.notify("no Antigravity conversation bound yet; run a turn first.", "warning");
+					notifyUi(ui, "no Antigravity conversation bound yet; run a turn first.", "warning");
 					return;
 				}
 				const dir = agyConversationDir(engine, conversationId);
@@ -1563,12 +1582,12 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				if (openWord === "open") {
 					const artifacts = await listAgyArtifacts(dir);
 					if (artifacts.length === 0) {
-						ui?.notify("no artifacts in this conversation.", "info");
+						notifyUi(ui, "no artifacts in this conversation.", "info");
 						return;
 					}
 					const target = rest.slice(1).join(" ").trim();
 					if (target === "") {
-						ui?.notify("usage: /agy artifacts open <name|index>. /agy artifacts lists them.", "warning");
+						notifyUi(ui, "usage: /agy artifacts open <name|index>. /agy artifacts lists them.", "warning");
 						return;
 					}
 					const byIndex = /^\d+$/.test(target) ? Number(target) : undefined;
@@ -1580,16 +1599,16 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 									? artifacts.find((a) => a.name.toLowerCase().includes(target.toLowerCase()))
 									: undefined); // ambiguous or no match
 					if (!artifact) {
-						ui?.notify(`no unique artifact matches ${JSON.stringify(target)}. /agy artifacts lists them.`, "warning");
+						notifyUi(ui, `no unique artifact matches ${JSON.stringify(target)}. /agy artifacts lists them.`, "warning");
 						return;
 					}
 					const openCmd = artifactOpenCommand();
 					if (!openCmd) {
-						ui?.notify(`no file-open handler for ${process.platform}; the file is at ${artifact.absolutePath}`, "warning");
+						notifyUi(ui, `no file-open handler for ${process.platform}; the file is at ${artifact.absolutePath}`, "warning");
 						return;
 					}
 					spawn(openCmd.cmd, [artifact.absolutePath], { detached: true, stdio: "ignore", shell: false, windowsHide: true }).unref();
-					ui?.notify(`opened ${artifact.name}`, "info");
+					notifyUi(ui, `opened ${artifact.name}`, "info");
 					return;
 				}
 
@@ -1597,7 +1616,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				// reused so the emptiness gate does not cost a second readdir pass.
 				let artifacts = await listAgyArtifacts(dir);
 				if (artifacts.length === 0) {
-					ui?.notify("no artifacts in this conversation (media dirs appear once agy generates or receives files).", "info");
+					notifyUi(ui, "no artifacts in this conversation (media dirs appear once agy generates or receives files).", "info");
 					return;
 				}
 				if (!ui) {
@@ -1615,7 +1634,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					if (action.type === "open") {
 						const openCmd = artifactOpenCommand();
 						if (!openCmd) {
-							ui.notify(`no file-open handler for ${process.platform}.`, "warning");
+							notifyUi(ui, `no file-open handler for ${process.platform}.`, "warning");
 							continue;
 						}
 						spawn(openCmd.cmd, [action.artifact.absolutePath], { detached: true, stdio: "ignore", shell: false, windowsHide: true }).unref();
@@ -1630,7 +1649,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				// of rendering a fetch failure.
 				const bin = resolveAgyBinary();
 				if (!isAgyInstalled(bin)) {
-					ui?.notify(
+					notifyUi(ui,
 						"quota comes from the agy CLI, which is not installed. ACP-only setups can install the CLI separately (same Google account) to see subscription quota (/agy doctor shows what IS available).",
 						"warning",
 					);
@@ -1638,33 +1657,33 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				}
 				// /usage answers in ~10s live; surface the wait instead of a dead
 				// command line.
-				ui?.setStatus("agy-quota", "checking agy quota…");
+				setUiStatus(ui, "agy-quota", "checking agy quota…");
 				try {
 					const report = await fetchAgyQuota(bin);
 					if (report === undefined) {
-						ui?.notify("quota unavailable: agy did not return a /usage payload (see /agy doctor for binary health).", "warning");
+						notifyUi(ui, "quota unavailable: agy did not return a /usage payload (see /agy doctor for binary health).", "warning");
 						return;
 					}
-					ui?.notify(formatAgyQuotaReport(report), "info");
+					notifyUi(ui, formatAgyQuotaReport(report), "info");
 				} finally {
-					ui?.setStatus("agy-quota", undefined);
+					setUiStatus(ui, "agy-quota", undefined);
 				}
 				return;
 			}
 			if (sub === "subagents") {
 				const entries = ctx.roster.snapshot();
 				if (entries.length === 0) {
-					ui?.notify("antigravity subagents: none tracked this session\n\nagy spawns subagents as ordinary tool steps; they appear here once a turn uses them.", "info");
+					notifyUi(ui, "antigravity subagents: none tracked this session\n\nagy spawns subagents as ordinary tool steps; they appear here once a turn uses them.", "info");
 					return;
 				}
-				ui?.notify(formatSubagentRoster(entries), "info");
+				notifyUi(ui, formatSubagentRoster(entries), "info");
 				return;
 			}
 			if (sub === "agent") {
 				// ACP has no agent slot in the protocol (RC01): refuse instead of
 				// silently ignoring a configured agent.
 				if (ctx.engine === "acp") {
-					ui?.notify("the ACP engine has no agent selection (RC01). /agy engine stream-json first.", "warning");
+					notifyUi(ui, "the ACP engine has no agent selection (RC01). /agy engine stream-json first.", "warning");
 					return;
 				}
 				const name = (args ?? "").trim().split(/\s+/).slice(1).join(" ").trim();
@@ -1675,43 +1694,43 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 						agents.length > 0
 							? agents.map((a) => `${a === current ? ">" : " "} ${a}`).join("\n")
 							: "(no custom agents defined)";
-					ui?.notify(`current agent: ${current ?? "(agy default)"}\n\n${agentList}\n\nusage: /agy agent <name|off>`, "info");
+					notifyUi(ui, `current agent: ${current ?? "(agy default)"}\n\n${agentList}\n\nusage: /agy agent <name|off>`, "info");
 					return;
 				}
 				if (name === "off" || name === "none" || name === "default") {
 					saveConfig({ agent: undefined });
-					ui?.notify("agent cleared: agy default", "info");
+					notifyUi(ui, "agent cleared: agy default", "info");
 					return;
 				}
 				if (!isValidAgyAgentName(name)) {
-					ui?.notify(`invalid agent name: ${name} (use letters, digits, dot, dash, underscore)`, "warning");
+					notifyUi(ui, `invalid agent name: ${name} (use letters, digits, dot, dash, underscore)`, "warning");
 					return;
 				}
 				saveConfig({ agent: name });
-				ui?.notify(`agent set: ${name} (takes effect on the next stream-json turn)`, "info");
+				notifyUi(ui, `agent set: ${name} (takes effect on the next stream-json turn)`, "info");
 				return;
 			}
 			if (sub === "permissions") {
 				if (val === "on" || val === "off") {
 					const next = saveConfig({ skipPermissions: val === "on" });
 					const warn = next.skipPermissions ? "\nWARNING: agy can now run arbitrary commands without review." : "";
-					ui?.notify(`permissions: ${next.skipPermissions ? "auto-approved (DANGEROUS)" : "prompt"}${warn}`, next.skipPermissions ? "warning" : "info");
+					notifyUi(ui, `permissions: ${next.skipPermissions ? "auto-approved (DANGEROUS)" : "prompt"}${warn}`, next.skipPermissions ? "warning" : "info");
 				} else {
-					ui?.notify(`permissions: ${loadConfig().skipPermissions ? "auto-approved (DANGEROUS)" : "prompt"}\nusage: /agy permissions on|off\n(off hangs any run_command in non-interactive mode)`, "info");
+					notifyUi(ui, `permissions: ${loadConfig().skipPermissions ? "auto-approved (DANGEROUS)" : "prompt"}\nusage: /agy permissions on|off\n(off hangs any run_command in non-interactive mode)`, "info");
 				}
 				return;
 			}
 			if (sub === "bridge") {
 				if (val === "all" || val === "mcp" || val === "none") {
 					const next = saveConfig({ bridgeTools: val });
-					ui?.notify(
+					notifyUi(ui,
 						ctx.getMcpPort() === null
 							? `bridge ${next.bridgeTools}. The bridge server is not running; /reload to apply.`
 							: `bridge ${next.bridgeTools}. The active catalog and call guard update now; ACP may retain cached schemas until the next session/load.`,
 						"info",
 					);
 				} else {
-					ui?.notify(`bridge: ${loadConfig().bridgeTools}\nusage: /agy bridge all|mcp|none\n  all: active non-builtin pi tools. mcp: active pi-mcp-adapter tools + skills. none: bridge off.`, "info");
+					notifyUi(ui, `bridge: ${loadConfig().bridgeTools}\nusage: /agy bridge all|mcp|none\n  all: active non-builtin pi tools. mcp: active pi-mcp-adapter tools + skills. none: bridge off.`, "info");
 				}
 				return;
 			}
@@ -1719,82 +1738,82 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				const name = (args ?? "").trim().split(/\s+/).slice(2).join(" ");
 				if (val === "reset") {
 					ctx.hiddenBridgeTools.clear();
-					ui?.notify("Antigravity tool visibility reset for this Pi session. Pi's active tools are unchanged.", "info");
+					notifyUi(ui, "Antigravity tool visibility reset for this Pi session. Pi's active tools are unchanged.", "info");
 				} else if ((val === "hide" || val === "show") && name) {
 					if (!pi.getAllTools().some((tool) => tool.name === name)) {
-						ui?.notify(`Unknown Pi tool: ${name}`, "error");
+						notifyUi(ui, `Unknown Pi tool: ${name}`, "error");
 						return;
 					}
 					if (val === "hide") ctx.hiddenBridgeTools.add(name);
 					else ctx.hiddenBridgeTools.delete(name);
-					ui?.notify(`${name}: ${val === "hide" ? "hidden from Antigravity" : "visible if active in Pi"}. No MCP config changed.`, "info");
+					notifyUi(ui, `${name}: ${val === "hide" ? "hidden from Antigravity" : "visible if active in Pi"}. No MCP config changed.`, "info");
 				} else {
-					ui?.notify(`Exposed active Pi tools: ${ctx.bridgeTools().map((tool) => tool.name).join(", ") || "(none)"}\nHidden in this session: ${[...ctx.hiddenBridgeTools].join(", ") || "(none)"}\n/agy tools hide|show <exact Pi tool name> | reset\nUse Pi's /mcp or pi.setActiveTools() to change the underlying active tools.`, "info");
+					notifyUi(ui, `Exposed active Pi tools: ${ctx.bridgeTools().map((tool) => tool.name).join(", ") || "(none)"}\nHidden in this session: ${[...ctx.hiddenBridgeTools].join(", ") || "(none)"}\n/agy tools hide|show <exact Pi tool name> | reset\nUse Pi's /mcp or pi.setActiveTools() to change the underlying active tools.`, "info");
 				}
 				return;
 			}
 			if (sub === "model") {
 				if (val && val.length > 0) {
 					const next = saveConfig({ defaultModel: val });
-					ui?.notify(`AskAntigravity default model set to ${next.defaultModel}`, "info");
+					notifyUi(ui, `AskAntigravity default model set to ${next.defaultModel}`, "info");
 				} else {
-					ui?.notify(`AskAntigravity model: ${loadConfig().defaultModel} (fallback; callers may override per call)\nusage: /agy model flash|pro|gemini|<exact>`, "info");
+					notifyUi(ui, `AskAntigravity model: ${loadConfig().defaultModel} (fallback; callers may override per call)\nusage: /agy model flash|pro|gemini|<exact>`, "info");
 				}
 				return;
 			}
 			if (sub === "ask") {
 				if (val === "on" || val === "off") {
 					const next = saveConfig({ askTool: val === "on" });
-					ui?.notify(
+					notifyUi(ui,
 						next.askTool
 							? "AskAntigravity tool on. Registered on the next pi start (or /reload)."
 							: "AskAntigravity tool off. It is removed from the model's tool list on the next pi start (or /reload). Provider and models stay.",
 						"info",
 					);
 				} else {
-					ui?.notify(`AskAntigravity tool: ${loadConfig().askTool ? "on" : "off"}\nusage: /agy ask on|off`, "info");
+					notifyUi(ui, `AskAntigravity tool: ${loadConfig().askTool ? "on" : "off"}\nusage: /agy ask on|off`, "info");
 				}
 				return;
 			}
 			if (sub === "web") {
 				if (val === "on" || val === "off") {
 					const next = saveConfig({ webTools: val === "on" });
-					ui?.notify(
+					notifyUi(ui,
 						next.webTools
 							? "Web tools on: agy_web_search and agy_read_url register on the next pi start (or /reload). Each call spends Antigravity quota."
 							: "Web tools off: agy_web_search and agy_read_url will not register on the next pi start (or /reload).",
 						"info",
 					);
 				} else {
-					ui?.notify(`Web tools: ${loadConfig().webTools ? "on" : "off"}\nusage: /agy web on|off\nExposes agy_web_search + agy_read_url as Pi tools for ANY provider (Antigravity sessions already have native web tools). Default off; each call spends Antigravity quota.`, "info");
+					notifyUi(ui, `Web tools: ${loadConfig().webTools ? "on" : "off"}\nusage: /agy web on|off\nExposes agy_web_search + agy_read_url as Pi tools for ANY provider (Antigravity sessions already have native web tools). Default off; each call spends Antigravity quota.`, "info");
 				}
 				return;
 			}
 			if (sub === "digest") {
 				if (val === "on" || val === "off") {
 					const next = saveConfig({ digest: val === "on" });
-					ui?.notify(
+					notifyUi(ui,
 						next.digest
 							? "digest on. pi-side context (compaction summaries, other-provider turns) is injected into each agy prompt. Note: this defeats agy's prompt cache (~25-30k tokens re-billed per turn)."
 							: "digest off. agy prompts contain only your message; agy's prompt cache stays stable. Enable when mixing providers in one session and agy must see pi-side context.",
 						"info",
 					);
 				} else {
-					ui?.notify(`digest: ${loadConfig().digest ? "on" : "off"}\nusage: /agy digest on|off`, "info");
+					notifyUi(ui, `digest: ${loadConfig().digest ? "on" : "off"}\nusage: /agy digest on|off`, "info");
 				}
 				return;
 			}
 			if (sub === "system-prompt") {
 				if (val === "on" || val === "off") {
 					const next = saveConfig({ systemPrompt: val === "on" });
-					ui?.notify(
+					notifyUi(ui,
 						next.systemPrompt
 							? "system-prompt on. pi's system prompt (incl. global and project AGENTS.md) is prepended to the first prompt of each new agy conversation. Existing conversations keep the version they started with."
 							: "system-prompt off. agy runs on its own system prompt; pi instructions and AGENTS.md files are not sent.",
 						"info",
 					);
 				} else {
-					ui?.notify(`system-prompt: ${loadConfig().systemPrompt ? "on" : "off"}\nusage: /agy system-prompt on|off`, "info");
+					notifyUi(ui, `system-prompt: ${loadConfig().systemPrompt ? "on" : "off"}\nusage: /agy system-prompt on|off`, "info");
 				}
 				return;
 			}
@@ -1802,9 +1821,9 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 			if (sub === "thinking") {
 				if (val === "low" || val === "medium" || val === "high") {
 					const next = saveConfig({ defaultThinking: val as ThinkingTier });
-					ui?.notify(`AskAntigravity default thinking set to ${next.defaultThinking}`, "info");
+					notifyUi(ui, `AskAntigravity default thinking set to ${next.defaultThinking}`, "info");
 				} else {
-					ui?.notify(`AskAntigravity thinking: ${loadConfig().defaultThinking} (fallback; callers may override per call)\nusage: /agy thinking low|medium|high`, "info");
+					notifyUi(ui, `AskAntigravity thinking: ${loadConfig().defaultThinking} (fallback; callers may override per call)\nusage: /agy thinking low|medium|high`, "info");
 				}
 				return;
 			}
@@ -1814,12 +1833,12 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 			// "status" alias is retired; /agy doctor is the one status surface.
 			if (sub) {
 				const pointer = sub === "status" ? "/agy status was removed; use /agy doctor.\n" : "";
-				ui?.notify(`${pointer}unknown subcommand: ${sub}\n${statusText(ctx)}`, "warning");
+				notifyUi(ui, `${pointer}unknown subcommand: ${sub}\n${statusText(ctx)}`, "warning");
 				return;
 			}
 
 			if (mode !== "tui" || !ui) {
-				ui?.notify(statusText(ctx), "info");
+				notifyUi(ui, statusText(ctx), "info");
 				return;
 			}
 
@@ -1972,7 +1991,7 @@ async function openAgyPicker(ui: ExtensionUIContext, ctx: AgyCommandCtx): Promis
 	// has no review-only mode (RC01); refuse the combination.
 	const nextMode = pending.mode ?? config.mode;
 	if (nextMode === "plan" && ctx.engine === "acp") {
-		ui.notify(
+		notifyUi(ui,
 			"plan + acp is not supported (RC01): the ACP engine has no review-only mode. /agy engine stream-json first, or /agy mode accept-edits.",
 			"warning",
 		);
@@ -1997,9 +2016,9 @@ async function openAgyPicker(ui: ExtensionUIContext, ctx: AgyCommandCtx): Promis
 		]
 			.filter(Boolean)
 			.join(", ");
-		ui.notify(`Saved: ${changed}`, "info");
+		notifyUi(ui, `Saved: ${changed}`, "info");
 	} catch (err) {
-		ui.notify(
+		notifyUi(ui,
 			`Failed to save config: ${err instanceof Error ? err.message : String(err)}`,
 			"error",
 		);

@@ -13,6 +13,8 @@ describe('completion message render', () => {
   it.each([
     { case: 'completed', status: 'completed', result: 'done' },
     { case: 'failed', status: 'failed', result: 'partial response' },
+    { case: 'cancelled', status: 'cancelled', result: 'partial response' },
+    { case: 'running', status: 'running', result: 'partial response' },
     { case: 'error-only', status: 'failed', error: 'execution timed out' },
   ])('marks $case completion content without displaying the marker', (task) => {
     const content = completionMessage({
@@ -22,6 +24,17 @@ describe('completion message render', () => {
       cwd: env.tmp,
     });
     expect(content.split('\n')[0]).toBe(notificationMarker);
+    const responseHeading =
+      task.status === 'completed'
+        ? 'response sent to the orchestrator'
+        : 'partial response (task not completed)';
+    if (task.result) {
+      expect(content).toContain(`## ${responseHeading}`);
+      if (task.status !== 'completed') {
+        expect(content).not.toContain('response sent to the orchestrator');
+        expect(content).not.toContain('Read only this final response');
+      }
+    }
 
     let renderer: any;
     extension({
@@ -55,6 +68,12 @@ describe('completion message render', () => {
       expect(rendered).toContain(`[subagent] analyst · ${task.status}`);
       if (expanded) {
         expect(rendered).toContain(task.result ?? task.error);
+        if (task.result) {
+          expect(rendered).toContain(responseHeading);
+          if (task.status !== 'completed') {
+            expect(rendered).not.toContain('response sent to the orchestrator');
+          }
+        }
       } else {
         expect(rendered).toContain('ctrl+o to expand');
       }

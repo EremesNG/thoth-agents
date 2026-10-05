@@ -23,6 +23,7 @@ import path from "node:path";
 import { Type } from "typebox";
 import { redactText } from "./redact.js";
 import { terminateProcessTree } from "./process-termination.js";
+import { emitLifecycle } from "./lifecycle.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export const WEB_AGENT_PREFIX = "pi-bridge-web-";
@@ -144,7 +145,7 @@ export async function runWebAgent(opts: WebRunOptions): Promise<WebRunResult> {
 		"--output-format", "stream-json",
 		"--disable-slash-commands",
 	];
-	opts.log?.("web-run-start", { agent: agentName, gatedTool: opts.gatedTool });
+	emitLifecycle(() => opts.log?.("web-run-start", { agent: agentName, gatedTool: opts.gatedTool }));
 
 	const child = spawn(bin, args, {
 		cwd: opts.cwd ?? process.cwd(), stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
@@ -191,14 +192,14 @@ export async function runWebAgent(opts: WebRunOptions): Promise<WebRunResult> {
 		if (!failed && !allowedToolUsed) failed = `Antigravity returned an answer without an observed ${opts.gatedTool} step; refusing it as unverified`;
 		if (!failed && response === "") failed = "Antigravity web run produced no answer";
 		if (failed) {
-			opts.log?.("web-run-failed", { agent: agentName, error: failed }, "warn");
+			emitLifecycle(() => opts.log?.("web-run-failed", { agent: agentName, error: failed }, "warn"));
 			return { ok: false, error: failed };
 		}
-		opts.log?.("web-run-ok", { agent: agentName });
+		emitLifecycle(() => opts.log?.("web-run-ok", { agent: agentName }));
 		return { ok: true, response };
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		opts.log?.("web-run-failed", { agent: agentName, error: message }, "warn");
+		emitLifecycle(() => opts.log?.("web-run-failed", { agent: agentName, error: message }, "warn"));
 		return { ok: false, error: message };
 	} finally {
 		clearTimeout(timer);

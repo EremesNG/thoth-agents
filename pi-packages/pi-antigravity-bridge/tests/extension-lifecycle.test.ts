@@ -13,6 +13,7 @@ import { saveConfig } from "../src/config.js";
 import { mcpConfigPath } from "../src/mcp-registration.js";
 import { agyConversationDir } from "../src/agy-paths.js";
 import { TOKEN_HEADER } from "../src/mcp-server.js";
+import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
 
 vi.mock("../src/patch-cleanup.js", () => ({ patchStatus: () => ({ present: false }), restorePatch: () => ({}) }));
 vi.mock("node:crypto", async (original) => {
@@ -37,7 +38,7 @@ function session(providerName = "antigravity", tools: Array<{ name: string; desc
 	let provider: any;
 	const notices: string[] = [];
 	const ctx = { hasUI: false, mode: "rpc", model: { provider: providerName }, isProjectTrusted: () => false,
-		ui: { notify: (message: string) => notices.push(message) } };
+		ui: { notify: (message: string): void => { notices.push(message); }, setStatus: (_key: string, _text?: string): void => {} } };
 	const pi = {
 		on: (name: string, fn: (...args: any[]) => any) => handlers.set(name, [...handlers.get(name) ?? [], fn]),
 		registerProvider: (_name: string, config: any) => { provider = config; },
@@ -591,4 +592,76 @@ test("root /new and resume recycle drivers and restage the same owned bridge wit
 	const resumeArgs = launches[2][1]!;
 	assert.equal(resumeArgs[resumeArgs.indexOf("--conversation") + 1], "conv-lazy");
 	assert.equal(spawn.mock.calls.filter(([, args]) => args?.includes("--version")).length, 1);
+});
+
+test("lazy startFlight has an absolute deadline and late completion cannot publish bridge readiness", async () => {
+	const spawn = fixture();
+	spawn.mockImplementation((...args: any[]) => {
+		if (args[1]?.includes("--version")) return spawnProcess(process.execPath, ["-e", "setTimeout(() => console.log('1.2.14'), 250)"], { stdio: ["ignore", "pipe", "pipe"] });
+		return (spawnProcess as any)(...args);
+	});
+	vi.stubEnv("AGY_STARTUP_TIMEOUT_MS", "20");
+	const s = session();
+	await extension(s.pi);
+	await Promise.race([
+		assert.rejects(s.emit("session_start"), /startFlight.*20ms/),
+		new Promise((_, reject) => setTimeout(() => reject(new Error("startFlight remained silent")), 200)),
+	]);
+	await new Promise(r => setTimeout(r, 350));
+	assert.deepEqual(privateConfigs(), [], "timed-out startup must not publish discovery after its late check resolves");
+});
+
+test("ACP status and native-entry sinks may reject without leaking from event callbacks", async () => {
+	const spawn = fixture();
+	const bin = path.join(path.dirname(process.env.AGY_BIN!), "acp.mjs");
+	fs.writeFileSync(bin, "// pi-test-node-fixture\n" + fs.readFileSync(path.join(import.meta.dirname, "helpers", "fake-acp-server.mjs"), "utf8"));
+	vi.stubEnv("AGY_ENGINE", "acp");
+	vi.stubEnv("AGY_ACP_BIN", bin);
+	vi.stubEnv("ACP_FAKE_SCENARIO", "tool-diff");
+	const s = session();
+	s.ctx.hasUI = true;
+	let statuses = 0;
+	let entries = 0;
+	s.ctx.ui.setStatus = async () => { statuses++; throw new Error("status sink failed"); };
+	s.pi.appendEntry = async () => { entries++; throw new Error("entry sink failed"); };
+	await withoutUnhandledRejections(async () => {
+		await extension(s.pi);
+		await s.emit("session_start");
+		assert.deepEqual(await s.turn("rejecting-native-ui"), []);
+		assert.ok(statuses > 0);
+		assert.equal(entries, 1, "the native entry must reach the rejecting Pi sink");
+		await s.emit("message_update", { message: { role: "assistant", provider: "antigravity", usage: { input: 10, output: 20 } } });
+		await s.emit("agent_end");
+		await s.emit("session_shutdown");
+		for (const result of spawn.mock.results) if (result.type === "return") {
+			const child = result.value as childProcess.ChildProcess;
+			assert.ok(child.exitCode !== null || child.signalCode !== null, "no owned child survives");
+		}
+	});
+});
+
+test("rejecting active UI notifications do not leak unhandled rejections or fail healthy turns", async () => {
+	fixture();
+	const bin = process.env.AGY_BIN!;
+	fs.writeFileSync(bin, fs.readFileSync(bin, "utf8").replace("status:'SUCCESS'", "status:'ERROR'"));
+	const globalFile = mcpConfigPath();
+	fs.mkdirSync(path.dirname(globalFile), { recursive: true });
+	fs.writeFileSync(globalFile, JSON.stringify({ mcpServers: { [`pi-bridge-${process.pid}-deadbeef`]: {} } }));
+	const s = session();
+	s.ctx.hasUI = true;
+	let notices = 0;
+	s.ctx.ui.notify = async () => { notices++; throw new Error("notification sink failed"); };
+	await withoutUnhandledRejections(async () => {
+		await extension(s.pi);
+		await s.emit("session_start");
+		assert.ok(notices > 0, "the warning must reach the rejecting UI sink");
+		assert.equal((await s.turn("rejecting-notification")).length, 1);
+		assert.ok(notices >= 2, "both startup and turn-end log warnings must reach the sink");
+		fs.writeFileSync(bin, fs.readFileSync(bin, "utf8").replace("status:'ERROR'", "status:'SUCCESS'"));
+		assert.deepEqual(await s.turn("rejecting-notification"), []);
+		const beforeCommand = notices;
+		await s.command("clear");
+		assert.equal(notices, beforeCommand + 1, "command notifications are contained too");
+		await s.emit("session_shutdown");
+	});
 });

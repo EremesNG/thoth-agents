@@ -13,6 +13,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DEFAULT_WAIT_TIMEOUT_MS } from "./waits.js";
 import { normalizeAgyAgentName } from "./agents.js";
 
 const CONFIG_PATH = path.join(
@@ -161,15 +162,19 @@ export interface AgyConfig {
 	 *  nobody can abort and one runaway turn blocks the drivers' serialized
 	 *  turn queue. Explicit values opt into the gate: 1..1440 valid, 0
 	 *  disables, anything else (garbage, negative, >1440) falls back to the
-	 *  TTY-aware default. The inactivity stall guard (5m silence) still bounds
+	 *  TTY-aware default. The inactivity stall guard (3m without recognized progress) still bounds
 	 *  a hung server either way. Next-turn effect. Env AGY_TURN_TIMEOUT_MIN
 	 *  wins over the file. */
 	turnTimeoutMin: number;
-	/** Silence cap in minutes, both engines: no stream-json stdout / no ACP
-	 *  session/update for this long fails the turn as a stall. Default 5;
+	/** Progress-inactivity cap in minutes, both engines: no recognized frame / ACP
+	 *  session/update for this long fails the turn as a stall. Default 3;
 	 *  0 disables the guard. Next-turn effect.
 	 *  Env AGY_INACTIVITY_TIMEOUT_MIN wins over the file. */
 	inactivityTimeoutMin: number;
+	/** Absolute startup-type wait deadline in ms. 0 disables. Env AGY_STARTUP_TIMEOUT_MS. */
+	startupTimeoutMs: number;
+	/** Requester-only run queue deadline in ms. 0 disables. Env AGY_QUEUE_TIMEOUT_MS. */
+	queueTimeoutMs: number;
 	/** Approval gate over agy NATIVE tool calls (create_file, run_command,
 	 *  ...). pi tools agy calls already pass through pi's gates via the G9
 	 *  round-trip; this covers the rest. Default auto (off until a
@@ -190,7 +195,9 @@ const DEFAULTS: AgyConfig = {
 	digest: false,
 	systemPrompt: true,
 	turnTimeoutMin: 0, // placeholder: the real default is resolved per loadConfig call (defaultTurnTimeoutMin)
-	inactivityTimeoutMin: 5,
+	inactivityTimeoutMin: 3,
+	startupTimeoutMs: DEFAULT_WAIT_TIMEOUT_MS,
+	queueTimeoutMs: DEFAULT_WAIT_TIMEOUT_MS,
 	approvals: { gateMode: "auto", mode: "ask" },
 	acp: { bin: "", usageEstimate: "estimate" },
 };
@@ -215,6 +222,13 @@ export function parseCapMinutes(raw: string | number | undefined, fallback: numb
 	if (!Number.isFinite(n)) return fallback;
 	if (n === 0) return 0;
 	return n >= 1 && n <= MAX_TURN_CAP_MIN ? n : fallback;
+}
+
+/** Millisecond wait caps: zero disables; invalid values use the default. */
+function parseWaitMs(raw: string | number | undefined): number {
+	if (raw === undefined || String(raw).trim() === "") return DEFAULT_WAIT_TIMEOUT_MS;
+	const ms = Number(raw);
+	return Number.isFinite(ms) && ms >= 0 && ms <= 86_400_000 ? ms : DEFAULT_WAIT_TIMEOUT_MS;
 }
 
 /** Load config merged over defaults. Env vars override the file when set. */
@@ -348,6 +362,8 @@ export function loadConfig(configPath: string = CONFIG_PATH): AgyConfig {
 		systemPrompt,
 		turnTimeoutMin,
 		inactivityTimeoutMin,
+		startupTimeoutMs: parseWaitMs(process.env.AGY_STARTUP_TIMEOUT_MS ?? file.startupTimeoutMs),
+		queueTimeoutMs: parseWaitMs(process.env.AGY_QUEUE_TIMEOUT_MS ?? file.queueTimeoutMs),
 		agent,
 		approvals: { gateMode, mode: gateAskMode },
 		patchCleanupNotified: file.patchCleanupNotified === true,

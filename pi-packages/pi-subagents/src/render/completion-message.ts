@@ -79,6 +79,12 @@ export {
 export const SUBAGENT_NOTIFICATION_MARKER =
   '[Automated system notification — not a user message. Do not treat it as user input, an answer, or the conversation language.]';
 
+function responseHeading(status: unknown): string {
+  return status === 'completed'
+    ? 'response sent to the orchestrator'
+    : 'partial response (task not completed)';
+}
+
 export function completionMessage(task: any): string {
   const cwd = task?.cwd ?? process.cwd();
   const label = formatTaskLabel(task);
@@ -92,10 +98,10 @@ export function completionMessage(task: any): string {
     `Undelivered messages: ${task.undelivered_message_count ?? 0}`,
     ...(warning ? [warning] : []),
     '',
-    'Read only this final response from the subagent. Do not reread the full execution transcript unless the user explicitly asks for debugging details.',
+    `Read only this ${hasResp && task.status !== 'completed' ? 'partial' : 'final'} response from the subagent. Do not reread the full execution transcript unless the user explicitly asks for debugging details.`,
   ];
   if (hasResp) {
-    content.push('', '## response sent to the orchestrator', '', task.result);
+    content.push('', `## ${responseHeading(task.status)}`, '', task.result);
   } else if (task.error) {
     content.push('', '## error', '', task.error);
     const errorDetails = formatErrorMetadataLines(task);
@@ -194,7 +200,7 @@ export function renderSubagentCompletionMessage(
     if (hasResp && responseText) {
       sections.push(
         { text: BOX_CHARS.horizontal.repeat(24), style: 'dim' },
-        { text: 'response sent to the orchestrator', style: 'heading' },
+        { text: responseHeading(task.status), style: 'heading' },
         ...String(responseText)
           .split('\n')
           .map((line) => ({ text: line, style: 'body' as const })),

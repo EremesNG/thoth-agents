@@ -29,6 +29,7 @@ import { loadConfig, type AgyMode, type BridgeDiscovery, type ThinkingTier } fro
 import { renderToolCard } from "./render-tool-card.js";
 import { redactText } from "./redact.js";
 import { terminateProcessTree } from "./process-termination.js";
+import { emitLifecycle } from "./lifecycle.js";
 import { acquireBridgeSuppression } from "./mcp-registration.js";
 import { AGY_EFFORT_ORDER, spawnAgyModelsRaw, toAgyEffort } from "./models.js";
 import { sweepStaleWebAgents, webAgentsRoot } from "./web-tools.js";
@@ -391,6 +392,9 @@ export async function registerAskAntigravityTool(
 	log?: (event: string, data?: unknown, level?: "debug" | "info" | "warn" | "error") => void,
 	bridgeDiscovery: BridgeDiscovery = loadConfig().bridgeDiscovery,
 ): Promise<void> {
+	const emitLog = (...args: Parameters<NonNullable<typeof log>>) => {
+		emitLifecycle(() => log?.(...args));
+	};
 	// Orphan sweep for the plan-mode reviewer agents (SIGKILL can skip the
 	// run's finally): same pid-marker doctrine as the web delegates.
 	try {
@@ -687,7 +691,7 @@ export async function registerAskAntigravityTool(
 				: finalPrompt;
 
 			const args: string[] = ["--add-dir", cwd];
-			log?.(
+			emitLog(
 				"ask-start",
 				{ model: resolved.model, thinking: resolved.effort ?? config.defaultThinking, mode, digest: useDigest, continue: isContinuation, timeoutMin },
 				"info",
@@ -763,10 +767,10 @@ export async function registerAskAntigravityTool(
 						const elapsed = formatDuration(Math.floor((Date.now() - start) / 1000) * 1000);
 						const tail = out.slice(-STATUS_TAIL_CHARS);
 						const text = tail ? `(running ${elapsed})\n…${tail}` : `(running ${elapsed})`;
-						onUpdate({
+						emitLifecycle(() => onUpdate({
 							content: [{ type: "text", text }],
 							details: { ...details, durationMs: Date.now() - start },
-						});
+						}));
 					}, STATUS_INTERVAL_MS)
 				: null;
 
@@ -880,7 +884,7 @@ export async function registerAskAntigravityTool(
 				details.timedOut = outcome.timedOut;
 				details.durationMs = Date.now() - start;
 				const text = out.trim();
-				log?.(
+				emitLog(
 					"ask-end",
 					{ exitCode: outcome.exitCode, aborted: outcome.aborted, timedOut: outcome.timedOut, empty: !text, durationMs: details.durationMs, conversationId: details.conversationId },
 					outcome.exitCode !== 0 || outcome.aborted || outcome.timedOut || !text ? "warn" : "info",
@@ -950,7 +954,7 @@ export async function registerAskAntigravityTool(
 					return { content: [{ type: "text", text: note }], details };
 				}
 
-				onUpdate?.({ content: [{ type: "text", text: "" }], details: { ...details } });
+				emitLifecycle(() => onUpdate?.({ content: [{ type: "text", text: "" }], details: { ...details } }));
 				const footer = details.conversationId
 					? `\n\n[agy conversationId: ${details.conversationId} - pass as conversationId to continue this conversation]`
 					: "";
@@ -959,7 +963,7 @@ export async function registerAskAntigravityTool(
 				if (statusInterval) clearInterval(statusInterval);
 				details.durationMs = Date.now() - start;
 				const msg = err instanceof Error ? err.message : String(err);
-				log?.("ask-fail", { error: msg, durationMs: details.durationMs }, "error");
+				emitLog("ask-fail", { error: msg, durationMs: details.durationMs }, "error");
 				return { content: [{ type: "text", text: `failed to run agy: ${msg}` }], details };
 			}
 			finally {

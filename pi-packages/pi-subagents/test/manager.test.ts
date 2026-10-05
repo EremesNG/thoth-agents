@@ -3453,17 +3453,25 @@ describe('manager and history integration', () => {
 });
 
 describe('orchestrator question channel', () => {
-  it('clears abandoned questions before terminal notification without rewriting completed activity', async () => {
+  it('publishes exact pending counts and clears abandoned questions before terminal notification', async () => {
     writeAgent('analyst');
     let rejected!: Promise<unknown>;
+    let secondRejected!: Promise<unknown>;
+    const pendingCounts: Array<[boolean, number | undefined]> = [];
     const terminalCounts: number[] = [];
     const terminal = vi.fn((task: SubagentTask) =>
       terminalCounts.push(task.pending_questions?.length ?? 0),
     );
     const manager = createManager(
       async ({ orchestratorChannel }) => {
+        orchestratorChannel!.onPendingChange((pending, count) => {
+          pendingCounts.push([pending, count]);
+        });
         rejected = orchestratorChannel!
           .askQuestion('Abandoned question')
+          .catch((error) => error);
+        secondRejected = orchestratorChannel!
+          .askQuestion('Second abandoned question')
           .catch((error) => error);
         return { result: 'done' };
       },
@@ -3481,6 +3489,16 @@ describe('orchestrator question channel', () => {
     expect(((await rejected) as Error).message).toContain(
       'child session shutdown',
     );
+    expect(((await secondRejected) as Error).message).toContain(
+      'child session shutdown',
+    );
+    expect(pendingCounts).toEqual([
+      [false, 0],
+      [true, 1],
+      [true, 2],
+      [true, 1],
+      [false, 0],
+    ]);
     expect(manager.getTask(id)?.last_activity).toBe('completed');
     expect(terminal).toHaveBeenCalledOnce();
     expect(terminalCounts).toEqual([0]);

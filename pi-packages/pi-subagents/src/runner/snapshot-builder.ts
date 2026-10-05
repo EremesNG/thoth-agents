@@ -455,11 +455,11 @@ export class ThreadSnapshotBuilder {
           ? 'auto retry start'
           : event.type === 'auto_retry_end'
             ? 'auto retry end'
-            : 'agent settled';
+            : 'agent settled (awaiting result)';
       this.items.push({
         type: 'status',
         text,
-        severity: event.type === 'agent_settled' ? 'success' : 'info',
+        severity: 'info',
       });
       return { snapshotChanged: true };
     }

@@ -532,7 +532,12 @@ describe('subagent runner thread snapshots', () => {
       .join('\n');
     expect(transcript).toContain('auto retry start');
     expect(transcript).toContain('auto retry end');
-    expect(transcript).toContain('agent settled');
+    expect(transcript).toContain('agent settled (awaiting result)');
+    expect(activities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: 'agent settled (awaiting result)' }),
+      ]),
+    );
     expect(result.thread_snapshot?.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: 'attempt', attempt: 1 }),
@@ -546,7 +551,8 @@ describe('subagent runner thread snapshots', () => {
         }),
         expect.objectContaining({
           type: 'status',
-          text: expect.stringContaining('agent settled'),
+          text: 'agent settled (awaiting result)',
+          severity: 'info',
         }),
       ]),
     );

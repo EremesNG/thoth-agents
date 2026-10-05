@@ -38,12 +38,14 @@ import { toPiUsage } from "./stream-events.js";
 import { mapAgyToolToNative } from "./native-tools.js";
 import { toAgyEffort, type AgyModelEntry } from "./models.js";
 import { SessionStore } from "./sessions.js";
+import { DEFAULT_WAIT_TIMEOUT_MS, waitWithDeadline } from "./waits.js";
 import { loadConfig } from "./config.js";
 import { GATE_MARKER, mapNativeToShadow, stripMarkerFields } from "./approval-gate.js";
 import type { ApprovalDecision, ApprovalPayload, ApprovalParkApi } from "./mcp-server.js";
 import path from "node:path";
 import { TurnDiffContext, createExecGitOps, formatInlineDiff, parseEditToolInput } from "./diff-render.js";
 import { stageSyspromptAgent } from "./sysprompt-agent.js";
+import { emitLifecycle } from "./lifecycle.js";
 
 const DEFAULT_TIMEOUT_MIN = 10;
 
@@ -376,6 +378,7 @@ export interface BlockState {
 	textIdx: number | null;
 	thinkingIdx: number | null;
 	started: boolean;
+	ended?: boolean;
 }
 
 export interface NativeDisplayEvent {
@@ -632,6 +635,11 @@ export class ToolRoundTrips {
 	#dead = new Map<string, { name: string; reason: string }>();
 	#escalations = new EscalationRegistry();
 	#escalateAfterMs: number;
+	#replayTtlMs: number;
+	#replayEpoch = 0;
+	// Original handles own unread buffers even after the driver clears active.
+	#replayTurns = new Map<string, { handle: TurnHandle; ids: Set<string>; timer?: NodeJS.Timeout }>();
+	#replayIds = new Map<string, string>();
 	#getDriver: () => TurnDriver;
 	#log: (s: string, d?: unknown, level?: "debug" | "info" | "warn" | "error") => void;
 	/** Approval park controls (mcp-server handle). Assigned by the extension
@@ -644,15 +652,60 @@ export class ToolRoundTrips {
 	constructor(
 		driver: TurnDriver | (() => TurnDriver),
 		log?: (s: string, d?: unknown, level?: "debug" | "info" | "warn" | "error") => void,
-		opts: { escalateAfterMs?: number } = {},
+		opts: { escalateAfterMs?: number; replayTtlMs?: number } = {},
 	) {
 		this.#getDriver = typeof driver === "function" ? driver : () => driver;
-		this.#log = log ?? (() => {});
+		this.#log = (...args) => { emitLifecycle(() => log?.(...args)); };
 		this.#escalateAfterMs = opts.escalateAfterMs ?? ESCALATE_AFTER_MS;
+		this.#replayTtlMs = opts.replayTtlMs ?? 10 * 60_000;
 	}
 
 	get pendingIds(): string[] {
 		return [...this.#pending.keys()];
+	}
+
+	get replayEpoch(): number {
+		return this.#replayEpoch;
+	}
+
+	/** Pending parks plus settled replay markers, for continuation matching. */
+	get continuationIds(): string[] {
+		return [...new Set([...this.#pending.keys(), ...this.#replayIds.keys()])];
+	}
+
+	/** Take the original handle for a matching replay, active or settled. */
+	takeReplay(ids: string[]): TurnHandle | undefined {
+		const turnId = ids.map(id => this.#replayIds.get(id)).find(id => id !== undefined);
+		if (turnId === undefined) return undefined;
+		const turn = this.#replayTurns.get(turnId);
+		if (!turn) return undefined;
+		for (const id of ids) {
+			if (this.#replayIds.get(id) !== turnId) continue;
+			this.#replayIds.delete(id);
+			turn.ids.delete(id);
+		}
+		if (turn.ids.size === 0) {
+			if (turn.timer) clearTimeout(turn.timer);
+			this.#replayTurns.delete(turnId);
+		}
+		return turn.handle;
+	}
+
+	#dropReplay(turnId: string): void {
+		const turn = this.#replayTurns.get(turnId);
+		if (!turn) return;
+		if (turn.timer) clearTimeout(turn.timer);
+		for (const id of turn.ids) {
+			this.#replayIds.delete(id);
+			this.#pending.delete(id);
+		}
+		this.#replayTurns.delete(turnId);
+	}
+
+	/** Session shutdown must not carry replay handles into the next session. */
+	clearReplayTurns(): void {
+		this.#replayEpoch++;
+		for (const id of this.#replayTurns.keys()) this.#dropReplay(id);
 	}
 
 	/** Call ids whose park already failed (tombstones). */
@@ -844,8 +897,29 @@ export class ToolRoundTrips {
 
 	/** Track a native re-exec or wrapper round-trip: pi executes the tool in
 	 *  its own loop; the arriving toolResult only confirms continuation. */
-	track(id: string, name: string): void {
+	track(id: string, name: string, handle?: TurnHandle, epoch = this.#replayEpoch): void {
+		if (epoch !== this.#replayEpoch) return;
 		this.#pending.set(id, { kind: "rt", name });
+		if (!handle) return;
+		let turn = this.#replayTurns.get(handle.id);
+		if (!turn) {
+			turn = { handle, ids: new Set() };
+			this.#replayTurns.set(handle.id, turn);
+			const retained = turn;
+			const settled = () => {
+				if (this.#replayTurns.get(handle.id) !== retained) return;
+				retained.timer = setTimeout(() => this.#dropReplay(handle.id), this.#replayTtlMs);
+				retained.timer.unref?.();
+			};
+			void handle.outcome.then(settled, settled);
+		}
+		turn.ids.add(id);
+		this.#replayIds.set(id, handle.id);
+		while (this.#replayTurns.size > MAX_PARK_TOMBSTONES) {
+			const oldest = this.#replayTurns.keys().next().value;
+			if (oldest === undefined) break;
+			this.#dropReplay(oldest);
+		}
 	}
 
 	/** Complete a parked call from a pi toolResult message. Returns false when
@@ -997,6 +1071,8 @@ export interface DriverDeps {
 /** Map one DriverActivity onto the open pi stream. Returns "parked" when the
  *  activity ended the pi call with a toolUse round-trip. */
 export interface ActivityFeatures {
+	handle?: TurnHandle;
+	replayEpoch?: number;
 	replay?: WrapperReplay;
 	nativeActive?: (name: string) => boolean;
 	roundTrips?: ToolRoundTrips;
@@ -1021,6 +1097,8 @@ function emitToolUse(
 	name: string,
 	args: Record<string, JsonValue>,
 ): void {
+	if (blocks.ended) return;
+	blocks.ended = true;
 	const partial = blocks.partial;
 	closeThinking(stream, blocks);
 	closeText(stream, blocks);
@@ -1071,9 +1149,7 @@ export function consumeActivity(
 			// Transient status while Antigravity executes; no Pi tool call or
 			// model-facing result is produced. Persist a card only on completion.
 			if (feats.engine === "acp" && feats.onNativeEvent) {
-				try {
-					feats.onNativeEvent({ name: activity.name, mcpServer: activity.mcpServer, status: "started" });
-				} catch { /* UI failure must not fail the generation. */ }
+				emitLifecycle(() => feats.onNativeEvent?.({ name: activity.name, mcpServer: activity.mcpServer, status: "started" }));
 			}
 			return "continue";
 /** File-path argument of an ACP edit tool (observed: `file_path`); other
@@ -1109,14 +1185,11 @@ function acpEditFileArg(args: Record<string, unknown>): string | undefined {
 					diffText = diffCtx.diffEdit(file, disk).text;
 				}
 				const command = ["CommandLine", "command_line", "command"].map((k) => activity.args[k]).find((v): v is string => typeof v === "string" && v.length > 0);
-				let displayed = false;
-				try {
-					if (feats.onNativeEvent) {
-						feats.onNativeEvent({ name: activity.name, mcpServer: activity.mcpServer, status: "completed", path: file, command, output: activity.output, diff: diffText });
-						displayed = true;
-					}
-				} catch { /* A stale renderer must never fail the model turn. */ }
-				if (displayed) return "continue";
+				// Keep the synchronous renderer fallback; asynchronous display is
+				// best-effort and must never block or reject the model turn.
+				if (feats.onNativeEvent && !emitLifecycle(() => feats.onNativeEvent?.({ name: activity.name, mcpServer: activity.mcpServer, status: "completed", path: file, command, output: activity.output, diff: diffText }))) {
+					return "continue";
+				}
 				if (file) {
 					appendThinking(stream, blocks, `[agy edit: ${path.basename(file)}]\n`);
 					if (diffText) appendThinking(stream, blocks, `${diffText}\n`);
@@ -1152,7 +1225,7 @@ function acpEditFileArg(args: Record<string, unknown>): string | undefined {
 			const mapped = mapAgyToolToNative(activity.name, activity.args);
 			if (mapped && (!feats.nativeActive || feats.nativeActive(mapped.tool))) {
 				const id = nextRtId("nat");
-				feats.roundTrips.track(id, mapped.tool);
+				feats.roundTrips.track(id, mapped.tool, feats.handle, feats.replayEpoch);
 				// pi requires a reasoning argument on read/edit-class builtin calls
 				// (validated against the wrapped schema); harmless where absent.
 				emitToolUse(stream, blocks, id, mapped.tool, {
@@ -1164,17 +1237,14 @@ function acpEditFileArg(args: Record<string, unknown>): string | undefined {
 			{
 				const id = nextRtId("wrap");
 				feats.replay.set(id, activity.output ?? "(agy recorded no output)");
-				feats.roundTrips.track(id, activity.name);
+				feats.roundTrips.track(id, activity.name, feats.handle, feats.replayEpoch);
 				emitToolUse(stream, blocks, id, "antigravity", { tool: activity.name, key: id });
 				return "parked";
 			}
 		}
 		case "tool_error":
-			if (feats.engine === "acp" && feats.onNativeEvent) {
-				try {
-					feats.onNativeEvent({ name: activity.name, mcpServer: activity.mcpServer, status: "failed", output: activity.message });
-					return "continue";
-				} catch { /* Fall back to a thinking label. */ }
+			if (feats.engine === "acp" && feats.onNativeEvent && !emitLifecycle(() => feats.onNativeEvent?.({ name: activity.name, mcpServer: activity.mcpServer, status: "failed", output: activity.message }))) {
+				return "continue";
 			}
 			appendThinking(stream, blocks, `[agy tool: ${activity.name} failed: ${activity.message}]\n`);
 			return "continue";
@@ -1202,287 +1272,311 @@ async function runTurnDriver(
 	const partial = newAssistant(model);
 	const blocks: BlockState = { partial, textIdx: null, thinkingIdx: null, started: false };
 
-	const cwd = (options as { cwd?: string } | undefined)?.cwd ?? process.cwd();
-	const key = sessionKey(options, cwd, deps.engine);
-	const existing = store.get(key);
-	const messageCount = context.messages.length;
-	const config = loadConfig();
+	let handle: TurnHandle | undefined;
+	let startupTimeoutMs = DEFAULT_WAIT_TIMEOUT_MS;
+	const replayEpoch = deps.roundTrips.replayEpoch;
+	try {
+		const cwd = (options as { cwd?: string } | undefined)?.cwd ?? process.cwd();
+		const key = sessionKey(options, cwd, deps.engine);
+		const existing = store.get(key);
+		const messageCount = context.messages.length;
+		const config = loadConfig();
+		startupTimeoutMs = config.startupTimeoutMs;
 
-	// Continuation: resolve parked round-trips from pi's toolResult messages,
-	// then re-attach to the still-running agy turn. No new user event is sent:
-	// agy receives the result via the bridge's MCP HTTP response.
-	const results = collectToolResults(context.messages, deps.roundTrips.pendingIds);
-	const isContinuation = results.length > 0;
-	// Escalated calls answer through bridge_poll_result, not through an agy
-	// turn waiting on the park, so note them before resolving.
-	const escalatedNames = results
-		.map((r) => deps.roundTrips.poll(r.toolCallId)?.name)
-		.filter((n): n is string => Boolean(n));
-	// Images ride tool results on BOTH engines (ACP probe 2026-09-05;
-	// stream-json probe 2026-09-07: the CLI's MCP client delivers tool-result
-	// image content to the model — two-tone PNG named from the result alone,
-	// no decoders in the frame trail). The late-delivery prompt and the
-	// stream-json prompt attachments stay text-only by design.
-	for (const r of results)
-		deps.roundTrips.resolve(r.toolCallId, r.text, r.isError, r.images);
+		// Continuation: resolve parked round-trips from pi's toolResult messages,
+		// then re-attach to the still-running agy turn. No new user event is sent:
+		// agy receives the result via the bridge's MCP HTTP response.
+		const results = collectToolResults(context.messages, deps.roundTrips.continuationIds);
+		const isContinuation = results.length > 0;
+		const replayHandle = deps.roundTrips.takeReplay(results.map(r => r.toolCallId));
+		// Escalated calls answer through bridge_poll_result, not through an agy
+		// turn waiting on the park, so note them before resolving.
+		const escalatedNames = results
+			.map((r) => deps.roundTrips.poll(r.toolCallId)?.name)
+			.filter((n): n is string => Boolean(n));
+		// Images ride tool results on BOTH engines (ACP probe 2026-09-05;
+		// stream-json probe 2026-09-07: the CLI's MCP client delivers tool-result
+		// image content to the model — two-tone PNG named from the result alone,
+		// no decoders in the frame trail). The late-delivery prompt and the
+		// stream-json prompt attachments stay text-only by design.
+		for (const r of results)
+			deps.roundTrips.resolve(r.toolCallId, r.text, r.isError, r.images);
 
-	// Late delivery: a toolResult whose park already failed (the abort/timeout
-	// path failed the park while the pi tool kept running). The work is done,
-	// so re-route the result to agy as a new prompt in the same conversation
-	// instead of dropping it. Both drivers serialize run(), so delivery queues
-	// behind agy's own salvaged turn when one is still active.
-	// A pass that anchors a still-pending park (isContinuation) has nowhere to
-	// put a late result: it can neither ride the pending call's HTTP response
-	// nor start a new prompt. Leave the tombstone for the next fresh pass
-	// instead of consuming it blind.
-	const late: LateToolResult[] = [];
-	if (!isContinuation) {
-		for (const r of collectToolResults(context.messages, deps.roundTrips.deadIds)) {
-			const dead = deps.roundTrips.consumeDead(r.toolCallId);
-			if (dead) late.push({ name: dead.name, reason: dead.reason, text: r.text, isError: r.isError });
+		// Late delivery: a toolResult whose park already failed (the abort/timeout
+		// path failed the park while the pi tool kept running). The work is done,
+		// so re-route the result to agy as a new prompt in the same conversation
+		// instead of dropping it. Both drivers serialize run(), so delivery queues
+		// behind agy's own salvaged turn when one is still active.
+		// A pass that anchors a still-pending park (isContinuation) has nowhere to
+		// put a late result: it can neither ride the pending call's HTTP response
+		// nor start a new prompt. Leave the tombstone for the next fresh pass
+		// instead of consuming it blind.
+		const late: LateToolResult[] = [];
+		if (!isContinuation) {
+			for (const r of collectToolResults(context.messages, deps.roundTrips.deadIds)) {
+				const dead = deps.roundTrips.consumeDead(r.toolCallId);
+				if (dead) late.push({ name: dead.name, reason: dead.reason, text: r.text, isError: r.isError });
+			}
+			if (late.length > 0) {
+				deps.log?.("late-result", { tools: late.map((l) => l.name), freshConversation: !existing?.conversationId }, "info");
+			}
+		} else if (deps.roundTrips.deadIds.length > 0) {
+			deps.log?.("late-result-deferred", { count: deps.roundTrips.deadIds.length }, "info");
 		}
-		if (late.length > 0) {
-			deps.log?.("late-result", { tools: late.map((l) => l.name), freshConversation: !existing?.conversationId }, "info");
-		}
-	} else if (deps.roundTrips.deadIds.length > 0) {
-		deps.log?.("late-result-deferred", { count: deps.roundTrips.deadIds.length }, "info");
-	}
 
-	let handle: TurnHandle;
-	// Name of the carrier agent staged for THIS turn's fresh conversation, if
-	// any. Recorded into stagedAgentByConversation once the outcome binds the
-	// conversation id, so later gate-closed turns pass the same agent.
-	let stagedAgentName: string | undefined;
-	if (isContinuation) {
-		const active = deps.driver.reentry();
-		if (!active) {
-			// Escalated calls have no turn to re-enter BY DESIGN: agy already
-			// got the poll handle and the result lives in the registry. Settle
-			// quietly instead of erroring the turn.
-			if (escalatedNames.length > 0) {
-				appendText(stream, blocks, `[bridge] ${escalatedNames.join(", ")} finished; the result is available via ${POLL_TOOL_NAME}.`);
-				finalize(stream, blocks, "stop");
+		// Name of the carrier agent staged for THIS turn's fresh conversation, if
+		// any. Recorded into stagedAgentByConversation once the outcome binds the
+		// conversation id, so later gate-closed turns pass the same agent.
+		let stagedAgentName: string | undefined;
+		if (isContinuation) {
+			const active = replayHandle ?? deps.driver.reentry();
+			if (!active) {
+				// Escalated calls have no turn to re-enter BY DESIGN: agy already
+				// got the poll handle and the result lives in the registry. Settle
+				// quietly instead of erroring the turn.
+				if (escalatedNames.length > 0) {
+					appendText(stream, blocks, `[bridge] ${escalatedNames.join(", ")} finished; the result is available via ${POLL_TOOL_NAME}.`);
+					finalize(stream, blocks, "stop");
+					return;
+				}
+				deps.log?.("turn-error", { reason: "tool-result-no-active-turn" }, "warn");
+				finalize(stream, blocks, "error", "tool result arrived but no antigravity turn is running");
 				return;
 			}
-			deps.log?.("turn-error", { reason: "tool-result-no-active-turn" }, "warn");
-			finalize(stream, blocks, "error", "tool result arrived but no antigravity turn is running");
-			return;
-		}
-		handle = active;
-	} else {
-		// Only stream-json aggregates the final user suffix. ACP keeps its
-		// existing last-user behavior until its own prompt contract changes.
-		const prompt = deps.engine === "stream-json" ? extractStreamJsonPrompt(context) : extractUserPrompt(context);
-		const images = extractImages(context);
-		// An image-only message (no text) is valid on the ACP engine; only fail
-		// when there is nothing at all to send (no text, no images, no late
-		// tool results to deliver).
-		if (!prompt && images.length === 0 && late.length === 0) {
-			deps.log?.("turn-error", { reason: "no-user-message" }, "debug");
-			finalize(stream, blocks, "error", "No user message to send to agy.");
-			return;
-		}
-		const entry = entries.find((e) => e.id === model.id) ?? null;
-		const agyModel = entry?.full ?? model.id;
-		const effort = entry?.efforts?.length ? toAgyEffort(options?.reasoning, entry.efforts) : undefined;
-		const watermark = existing?.lastMessageCount ?? 0;
-		// Late turns re-open the conversation with a synthetic prompt; the digest
-		// would re-send context agy already holds, so skip it. Stream-json sends
-		// the whole final user suffix below, so exclude that same suffix from the
-		// digest. ACP keeps buildContextDigest's legacy last-message behavior.
-		const digest =
-			config.digest && late.length === 0
-				? buildContextDigest(
-						context.messages,
-						watermark,
-						deps.engine === "stream-json" ? { excludeTrailingUserSuffix: true } : undefined,
-					)
-				: "";
-		// G1 delivery per engine. stream-json: digest rides inline in the prompt
-		// (the CLI has no context channel). ACP: the server advertises
-		// `embeddedContext`, so the digest ships as a native resource block
-		// instead of prompt text (plan phase 3). The preamble framing goes INTO
-		// the block: an unlabeled blob of other-agent turns is a mild injection
-		// surface, and the model needs the use-for-continuity-only instruction.
-		// The uri is suffixed per turn so a deduping server cannot serve stale
-		// content on turn 2+.
-		const embeddedDigest = deps.engine === "acp" && digest ? digest : undefined;
-		// G10, fresh conversations only (bound conversations ride agy's own
-		// history; re-sending would bloat every prompt and bust the cache).
-		// stream-json delivery is a staged agent file, NOT prompt text: agy's
-		// stream-json path silently drops any turn past a ~25KB input cap and
-		// the dropped turn leaves the conversation permanently unresponsive
-		// (issue #2, probed 2026-09-30), and the block routinely crossed it.
-		// ACP keeps the inline block (JSON-RPC transport; --agent is a CLI
-		// feature). A user-configured agent always wins: never clobber it.
-		const gateOpen = config.systemPrompt && !existing?.conversationId;
-		const rawSysPrompt = gateOpen ? getCurrentSystemPrompt(context.messages) || undefined : undefined;
-		let sysPrompt = rawSysPrompt;
-		let agent = config.agent;
-		if (deps.engine !== "acp") {
-			if (rawSysPrompt && !config.agent) {
-				const stagedName = stageSyspromptAgent(
-					[SYSTEM_PROMPT_PREAMBLE, rawSysPrompt, TOOL_PRIORITY_NOTE].join("\n\n"),
-				);
-				if (stagedName) {
-					agent = stagedName;
-					sysPrompt = undefined;
-					stagedAgentName = stagedName;
+			handle = active;
+		} else {
+			// Only stream-json aggregates the final user suffix. ACP keeps its
+			// existing last-user behavior until its own prompt contract changes.
+			const prompt = deps.engine === "stream-json" ? extractStreamJsonPrompt(context) : extractUserPrompt(context);
+			const images = extractImages(context);
+			// An image-only message (no text) is valid on the ACP engine; only fail
+			// when there is nothing at all to send (no text, no images, no late
+			// tool results to deliver).
+			if (!prompt && images.length === 0 && late.length === 0) {
+				deps.log?.("turn-error", { reason: "no-user-message" }, "debug");
+				finalize(stream, blocks, "error", "No user message to send to agy.");
+				return;
+			}
+			const entry = entries.find((e) => e.id === model.id) ?? null;
+			const agyModel = entry?.full ?? model.id;
+			const effort = entry?.efforts?.length ? toAgyEffort(options?.reasoning, entry.efforts) : undefined;
+			const watermark = existing?.lastMessageCount ?? 0;
+			// Late turns re-open the conversation with a synthetic prompt; the digest
+			// would re-send context agy already holds, so skip it. Stream-json sends
+			// the whole final user suffix below, so exclude that same suffix from the
+			// digest. ACP keeps buildContextDigest's legacy last-message behavior.
+			const digest =
+				config.digest && late.length === 0
+					? buildContextDigest(
+							context.messages,
+							watermark,
+							deps.engine === "stream-json" ? { excludeTrailingUserSuffix: true } : undefined,
+						)
+					: "";
+			// G1 delivery per engine. stream-json: digest rides inline in the prompt
+			// (the CLI has no context channel). ACP: the server advertises
+			// `embeddedContext`, so the digest ships as a native resource block
+			// instead of prompt text (plan phase 3). The preamble framing goes INTO
+			// the block: an unlabeled blob of other-agent turns is a mild injection
+			// surface, and the model needs the use-for-continuity-only instruction.
+			// The uri is suffixed per turn so a deduping server cannot serve stale
+			// content on turn 2+.
+			const embeddedDigest = deps.engine === "acp" && digest ? digest : undefined;
+			// G10, fresh conversations only (bound conversations ride agy's own
+			// history; re-sending would bloat every prompt and bust the cache).
+			// stream-json delivery is a staged agent file, NOT prompt text: agy's
+			// stream-json path silently drops any turn past a ~25KB input cap and
+			// the dropped turn leaves the conversation permanently unresponsive
+			// (issue #2, probed 2026-09-30), and the block routinely crossed it.
+			// ACP keeps the inline block (JSON-RPC transport; --agent is a CLI
+			// feature). A user-configured agent always wins: never clobber it.
+			const gateOpen = config.systemPrompt && !existing?.conversationId;
+			const rawSysPrompt = gateOpen ? getCurrentSystemPrompt(context.messages) || undefined : undefined;
+			let sysPrompt = rawSysPrompt;
+			let agent = config.agent;
+			if (deps.engine !== "acp") {
+				if (rawSysPrompt && !config.agent) {
+					const stagedName = stageSyspromptAgent(
+						[SYSTEM_PROMPT_PREAMBLE, rawSysPrompt, TOOL_PRIORITY_NOTE].join("\n\n"),
+					);
+					if (stagedName) {
+						agent = stagedName;
+						sysPrompt = undefined;
+						stagedAgentName = stagedName;
+					}
+					// Staging failed: inline fallback. The silent-drop guard below
+					// keeps the resulting cap failure visible instead of quiet.
+				} else if (rawSysPrompt && config.agent && !warnedUserAgentConflict) {
+					warnedUserAgentConflict = true;
+					deps.log?.(
+						"sysprompt-agent-conflict",
+						{ agent: config.agent, effect: "system prompt ships inline in the prompt (over-cap drop risk)" },
+						"warn",
+					);
+				} else if (!rawSysPrompt && !config.agent && existing?.conversationId) {
+					// Gate closed (bound conversation): pass the carrier staged for
+					// THIS conversation, if any, so the driver profile never drifts on
+					// "agent" and a respawned process reloads its own instructions.
+					agent = stagedAgentByConversation.get(existing.conversationId);
 				}
-				// Staging failed: inline fallback. The silent-drop guard below
-				// keeps the resulting cap failure visible instead of quiet.
-			} else if (rawSysPrompt && config.agent && !warnedUserAgentConflict) {
-				warnedUserAgentConflict = true;
-				deps.log?.(
-					"sysprompt-agent-conflict",
-					{ agent: config.agent, effect: "system prompt ships inline in the prompt (over-cap drop risk)" },
-					"warn",
-				);
-			} else if (!rawSysPrompt && !config.agent && existing?.conversationId) {
-				// Gate closed (bound conversation): pass the carrier staged for
-				// THIS conversation, if any, so the driver profile never drifts on
-				// "agent" and a respawned process reloads its own instructions.
-				agent = stagedAgentByConversation.get(existing.conversationId);
+			}
+			const fullPrompt =
+				late.length > 0
+					? buildLateResultPrompt(late, prompt || undefined)
+					: buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "");
+			try {
+				const assertReady = await waitWithDeadline(Promise.resolve(deps.beforeStart?.()), startupTimeoutMs, "beforeStart");
+				assertReady?.();
+				handle = await deps.driver.run({
+					assertCurrent: assertReady ?? undefined,
+					cwd,
+					model: agyModel,
+					effort,
+					mode: config.mode,
+					skipPermissions: config.skipPermissions,
+					timeoutMin: config.turnTimeoutMin,
+					inactivityMin: config.inactivityTimeoutMin,
+					startupTimeoutMs,
+					queueTimeoutMs: config.queueTimeoutMs,
+					conversationId: existing?.conversationId ?? null,
+					prompt: fullPrompt,
+					images: images.length > 0 ? images : undefined,
+					agent,
+					contextBlock: embeddedDigest
+						? {
+								uri: `urn:pi-bridge:context-digest/${messageCount}`,
+								text: `${DIGEST_PREAMBLE}\n\n${embeddedDigest}`,
+							}
+						: undefined,
+					signal: options?.signal,
+				});
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				deps.log?.("turn-error", { reason: "driver-start-failed", error: msg }, "error");
+				finalize(stream, blocks, "error", `agy failed to start: ${msg}`);
+				return;
 			}
 		}
-		const fullPrompt =
-			late.length > 0
-				? buildLateResultPrompt(late, prompt || undefined)
-				: buildFullPrompt(sysPrompt, embeddedDigest ? "" : digest, prompt ?? "");
-		try {
-			const assertReady = await deps.beforeStart?.();
-			assertReady?.();
-			handle = await deps.driver.run({
-				assertCurrent: assertReady ?? undefined,
-				cwd,
-				model: agyModel,
-				effort,
-				mode: config.mode,
-				skipPermissions: config.skipPermissions,
-				timeoutMin: config.turnTimeoutMin,
-				inactivityMin: config.inactivityTimeoutMin,
-				conversationId: existing?.conversationId ?? null,
-				prompt: fullPrompt,
-				images: images.length > 0 ? images : undefined,
-				agent,
-				contextBlock: embeddedDigest
-					? {
-							uri: `urn:pi-bridge:context-digest/${messageCount}`,
-							text: `${DIGEST_PREAMBLE}\n\n${embeddedDigest}`,
-						}
-					: undefined,
-				signal: options?.signal,
-			});
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			deps.log?.("turn-error", { reason: "driver-start-failed", error: msg }, "error");
-			finalize(stream, blocks, "error", `agy failed to start: ${msg}`);
+
+		ensureStarted(stream, blocks);
+		const diffCtx = new TurnDiffContext(createExecGitOps());
+		const feats: ActivityFeatures = {
+			handle,
+			replayEpoch,
+			replay: deps.replay,
+			nativeActive: deps.nativeActive,
+			roundTrips: deps.roundTrips,
+			engine: deps.engine,
+			onNativeEvent: deps.onNativeEvent,
+			roster: deps.roster,
+		};
+
+		// A rejected outcome must also interrupt an outstanding next() wait.
+		const outcomeFailure = handle.outcome.then(() => new Promise<never>(() => {}));
+		for (;;) {
+			const activity = await Promise.race([handle.next(), outcomeFailure]);
+			if (!activity) break;
+			if (consumeActivity(stream, blocks, activity, diffCtx, cwd, feats) === "parked") return;
+		}
+
+		const outcome = await handle.outcome;
+		// Issue #2 recovery paths. agy's stream-json prompt path silently drops an
+		// over-cap turn (SUCCESS, empty response, zero usage, NO model step) and a
+		// dropped turn leaves the conversation permanently unresponsive, so both
+		// failures clear the binding instead of settling a quiet empty reply —
+		// settling OK here would persist a dead conversation for every later turn
+		// (probe 2026-09-30: resume of a dropped-turn conversation never returns
+		// a result frame). stream-json only: the ACP driver leaves the evidence
+		// fields undefined.
+		const silentDrop = outcome.status === "OK" && outcome.modelOutputSeen === false;
+		const poisonedResume =
+			outcome.status === "ERROR" &&
+			outcome.deadline !== undefined &&
+			outcome.sawResult === false &&
+			Boolean(existing?.conversationId);
+		if (silentDrop || poisonedResume) {
+			if (existing?.conversationId || outcome.conversationId) {
+				store.delete(key);
+				if (outcome.conversationId) stagedAgentByConversation.delete(outcome.conversationId);
+			}
+			deps.log?.(
+				"turn-error",
+				{
+					reason: silentDrop ? "silent-overcap-drop" : "poisoned-conversation",
+					conversation: outcome.conversationId ?? null,
+				},
+				"error",
+			);
+			// A deadline with no model output is a stall/timeout, not the over-cap
+			// signature: label it by its real cause (the deadline guard's recovered-
+			// answer probe can settle OK with an empty response after the kill).
+			const dropCause = outcome.deadline
+				? "the turn hit its time limit and produced no model output"
+				: "the prompt was silently dropped (agy discards prompts past ~25KB with no error)";
+			finalize(
+				stream,
+				blocks,
+				"error",
+				silentDrop
+					? `agy returned success but produced no model output: ${dropCause}. Common cause: a very large pasted prompt. The conversation binding was cleared; retry with a smaller prompt.`
+					: "agy stopped responding on the resumed conversation (no response frame before the deadline; the conversation is dead). The binding was cleared, so the next antigravity turn starts a fresh conversation.",
+			);
 			return;
 		}
-	}
-
-	ensureStarted(stream, blocks);
-	const diffCtx = new TurnDiffContext(createExecGitOps());
-	const feats: ActivityFeatures = {
-		replay: deps.replay,
-		nativeActive: deps.nativeActive,
-		roundTrips: deps.roundTrips,
-		engine: deps.engine,
-		onNativeEvent: deps.onNativeEvent,
-		roster: deps.roster,
-	};
-
-	for (;;) {
-		const activity = await handle.next();
-		if (!activity) break;
-		if (consumeActivity(stream, blocks, activity, diffCtx, cwd, feats) === "parked") return;
-	}
-
-	const outcome = await handle.outcome;
-	// Issue #2 recovery paths. agy's stream-json prompt path silently drops an
-	// over-cap turn (SUCCESS, empty response, zero usage, NO model step) and a
-	// dropped turn leaves the conversation permanently unresponsive, so both
-	// failures clear the binding instead of settling a quiet empty reply —
-	// settling OK here would persist a dead conversation for every later turn
-	// (probe 2026-09-30: resume of a dropped-turn conversation never returns
-	// a result frame). stream-json only: the ACP driver leaves the evidence
-	// fields undefined.
-	const silentDrop = outcome.status === "OK" && outcome.modelOutputSeen === false;
-	const poisonedResume =
-		outcome.status === "ERROR" &&
-		outcome.deadline !== undefined &&
-		outcome.sawResult === false &&
-		Boolean(existing?.conversationId);
-	if (silentDrop || poisonedResume) {
-		if (existing?.conversationId || outcome.conversationId) {
-			store.delete(key);
-			if (outcome.conversationId) stagedAgentByConversation.delete(outcome.conversationId);
+		if (outcome.conversationId) {
+			// A different id than the stored one means the driver recreated the
+			// conversation under us (ACP session-load fallback, stream-json CLI
+			// dropping a stale --conversation). The recreated conversation has seen
+			// NOTHING, so the record's watermark would starve the digest forever and
+			// its bound id would keep the sysPrompt gate closed. Drop the record:
+			// the next turn resumes from watermark 0 with the gate re-armed (issue
+			// #1). The recreation turn itself is past the gate, so it is the
+			// documented residual; recovery starts on the next turn.
+			if (existing?.conversationId && outcome.conversationId !== existing.conversationId) {
+				store.delete(key);
+				stagedAgentByConversation.delete(existing.conversationId);
+			} else if (outcome.status === "OK" && !outcome.aborted) {
+				store.set(key, {
+					conversationId: outcome.conversationId,
+					lastStepIdx: -1,
+					lastMessageCount: messageCount,
+				});
+				if (stagedAgentName) stagedAgentByConversation.set(outcome.conversationId, stagedAgentName);
+			}
+			// A failed or aborted turn on the SAME conversation keeps the pre-turn
+			// record: whether the prompt actually landed in agy's DB is not
+			// observable from here. Keeping the watermark re-delivers the missed
+			// turn in the next digest (bounded by the digest cap); advancing it
+			// would starve the conversation of context it may never have received.
 		}
-		deps.log?.(
-			"turn-error",
-			{
-				reason: silentDrop ? "silent-overcap-drop" : "poisoned-conversation",
-				conversation: outcome.conversationId ?? null,
-			},
-			"error",
-		);
-		// A deadline with no model output is a stall/timeout, not the over-cap
-		// signature: label it by its real cause (the deadline guard's recovered-
-		// answer probe can settle OK with an empty response after the kill).
-		const dropCause = outcome.deadline
-			? "the turn hit its time limit and produced no model output"
-			: "the prompt was silently dropped (agy discards prompts past ~25KB with no error)";
-		finalize(
-			stream,
-			blocks,
-			"error",
-			silentDrop
-				? `agy returned success but produced no model output: ${dropCause}. Common cause: a very large pasted prompt. The conversation binding was cleared; retry with a smaller prompt.`
-				: "agy stopped responding on the resumed conversation (no response frame before the deadline; the conversation is dead). The binding was cleared, so the next antigravity turn starts a fresh conversation.",
-		);
-		return;
-	}
-	if (outcome.conversationId) {
-		// A different id than the stored one means the driver recreated the
-		// conversation under us (ACP session-load fallback, stream-json CLI
-		// dropping a stale --conversation). The recreated conversation has seen
-		// NOTHING, so the record's watermark would starve the digest forever and
-		// its bound id would keep the sysPrompt gate closed. Drop the record:
-		// the next turn resumes from watermark 0 with the gate re-armed (issue
-		// #1). The recreation turn itself is past the gate, so it is the
-		// documented residual; recovery starts on the next turn.
-		if (existing?.conversationId && outcome.conversationId !== existing.conversationId) {
-			store.delete(key);
-			stagedAgentByConversation.delete(existing.conversationId);
-		} else if (outcome.status === "OK" && !outcome.aborted) {
-			store.set(key, {
-				conversationId: outcome.conversationId,
-				lastStepIdx: -1,
-				lastMessageCount: messageCount,
-			});
-			if (stagedAgentName) stagedAgentByConversation.set(outcome.conversationId, stagedAgentName);
+		if (outcome.aborted) {
+			finalize(stream, blocks, "aborted", "Operation aborted");
+			return;
 		}
-		// A failed or aborted turn on the SAME conversation keeps the pre-turn
-		// record: whether the prompt actually landed in agy's DB is not
-		// observable from here. Keeping the watermark re-delivers the missed
-		// turn in the next digest (bounded by the digest cap); advancing it
-		// would starve the conversation of context it may never have received.
+		if (outcome.status === "ERROR") {
+			finalize(stream, blocks, "error", outcome.error ?? "agy turn failed");
+			return;
+		}
+		if (blocks.textIdx === null && outcome.response) {
+			appendText(stream, blocks, outcome.response);
+		}
+		if (blocks.textIdx === null && blocks.thinkingIdx === null) {
+			ensureTextOpen(stream, blocks);
+		}
+		finalize(stream, blocks, "stop");
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		// Only recycle the handle owned by this call, never a predecessor or a
+		// legitimately parked turn. close() settles its outcome/queue tail.
+		try {
+			if (handle && deps.driver.activeHandle?.id === handle.id) {
+				await waitWithDeadline(deps.driver.close("recycle", "provider turn failed"), startupTimeoutMs, "provider cleanup termination");
+			}
+		} catch { /* Cleanup failure must not leave the Pi stream open. */ }
+		finalize(stream, blocks, "error", `agy turn failed: ${message}`);
+	} finally {
+		if (!blocks.ended) finalize(stream, blocks, "error", "agy turn ended without an outcome");
 	}
-	if (outcome.aborted) {
-		finalize(stream, blocks, "aborted", "Operation aborted");
-		return;
-	}
-	if (outcome.status === "ERROR") {
-		finalize(stream, blocks, "error", outcome.error ?? "agy turn failed");
-		return;
-	}
-	if (blocks.textIdx === null && outcome.response) {
-		appendText(stream, blocks, outcome.response);
-	}
-	if (blocks.textIdx === null && blocks.thinkingIdx === null) {
-		ensureTextOpen(stream, blocks);
-	}
-	finalize(stream, blocks, "stop");
 }
 
 /** Build the streamSimple closure. Captures the model catalog + session store
@@ -1493,6 +1587,9 @@ export function createStreamSimple(
 	deps: StreamSimpleDeps,
 ): (model: Model<Api>, context: TranscriptContext, options?: SimpleStreamOptions) => AssistantMessageEventStream {
 	const { entries, store, roundTrips } = deps;
+	const log = (...args: Parameters<NonNullable<StreamSimpleDeps["log"]>>) => {
+		emitLifecycle(() => deps.log?.(...args));
+	};
 
 	return function streamSimple(model, context, options) {
 		const stream = createAssistantMessageEventStream();
@@ -1508,7 +1605,7 @@ export function createStreamSimple(
 		if (selected === deps.acpDriver && config.mode === "plan") {
 			const partial = newAssistant(model);
 			const blocks: BlockState = { partial, textIdx: null, thinkingIdx: null, started: false };
-			deps.log?.("turn-error", { reason: "acp-plan-refused" }, "warn");
+			log("turn-error", { reason: "acp-plan-refused" }, "warn");
 			finalize(stream, blocks, "error", "ACP engine has no plan mode. /agy mode accept-edits, or /agy engine stream-json.");
 			return stream;
 		}
@@ -1526,14 +1623,14 @@ export function createStreamSimple(
 				// and keying the session as @acp would store a stream
 				// conversationId under the wrong engine scope.
 				engine: selected === deps.acpDriver ? "acp" : "stream-json",
-				log: deps.log,
+				log,
 			});
 		} else {
 			// Miswired extension: no driver means no engine. Fail the turn visibly
 			// instead of silently producing an empty assistant message.
 			const partial = newAssistant(model);
 			const blocks: BlockState = { partial, textIdx: null, thinkingIdx: null, started: false };
-			deps.log?.("turn-error", { reason: "driver-not-configured" }, "warn");
+			log("turn-error", { reason: "driver-not-configured" }, "warn");
 			finalize(stream, blocks, "error", "antigravity driver not configured");
 		}
 		return stream;
@@ -1616,6 +1713,8 @@ function finalize(
 	reason: "stop" | "error" | "aborted",
 	message?: string,
 ): void {
+	if (b.ended) return;
+	b.ended = true;
 	closeText(stream, b);
 	closeThinking(stream, b);
 	if (reason === "stop") {

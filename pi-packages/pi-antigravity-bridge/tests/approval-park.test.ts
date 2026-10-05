@@ -15,6 +15,7 @@ import {
 } from "../src/provider.js";
 import { GATE_MARKER } from "../src/approval-gate.js";
 import type { StreamDriver, DriverActivity, DriverTurnRequest } from "../src/driver.js";
+import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
 
 // --- shared harness -----------------------------------------------------------
 
@@ -46,6 +47,25 @@ function approvalUrl(port: number, path: string): string {
 }
 
 // --- endpoints ------------------------------------------------------------------
+
+for (const kind of ["throwing", "rejecting"] as const) {
+ test(`approval: a ${kind} approval sink denies without unhandled rejections`, async () => {
+	await withoutUnhandledRejections(async () => {
+		let called = false;
+		const fail = () => { called = true; throw new Error("approval sink failed"); };
+		const r = await startMcpServer(deps({ onApproval: kind === "throwing" ? fail : async () => fail() }));
+		handle = r.handle!;
+		const res = await fetch(approvalUrl(handle.port, "/approval"), {
+			method: "POST", headers: { "content-type": "application/json", [TOKEN_HEADER]: handle.token }, body: hookPayload(),
+		});
+		const { ticket } = await res.json() as { ticket: string };
+		const poll = await fetch(approvalUrl(handle.port, `/approval/${ticket}`), { headers: { [TOKEN_HEADER]: handle.token } });
+		assert.equal(called, true);
+		assert.deepEqual(await poll.json(), { decision: "deny", reason: "approval gate internal error" });
+		await handle.close();
+	});
+ });
+}
 
 test("approval: POST parks and early-acks a ticket; onApproval gets the payload", async () => {
 	const seen: Array<{ ticket: string; name: string }> = [];

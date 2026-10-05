@@ -15,6 +15,7 @@ import { test, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildFinalPrompt, resolveModel, reviewerAgentMd, stageReviewerAgent, toolModelsFromRaw } from "../src/ask-tool.js";
 import { toAgyEffort } from "../src/models.js";
+import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
 
 vi.mock("../src/mcp-registration.js", () => ({
 	acquireBridgeSuppression: () => () => {},
@@ -283,6 +284,35 @@ function withEnvs(
 		}
 	})();
 }
+
+test("execute: rejecting periodic and final update sinks do not escape or fail delegation", async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ask-update-sink-"));
+	const release = path.join(dir, "release");
+	// The child completes only after the periodic update reaches the sink.
+	const binary = makeNodeFixture(`import fs from 'node:fs';
+const deadline = setTimeout(() => process.exit(2), 4000);
+const watcher = fs.watch(${JSON.stringify(dir)}, () => {
+ if (fs.existsSync(${JSON.stringify(release)})) { watcher.close(); clearTimeout(deadline); console.log('answer'); }
+});`);
+	let updates = 0;
+	try {
+		await withEnvs({ AGY_BIN: binary }, async () => {
+			await withoutUnhandledRejections(async () => {
+				const tool = await registerTool();
+				const result = await tool.execute("update-sink", { prompt: "hello", mode: "accept-edits", conversationId: "sink-conversation", cwd: dir }, undefined, async () => {
+					updates++;
+					if (updates === 1) fs.writeFileSync(release, "done");
+					throw new Error("update sink failed");
+				}, { cwd: dir });
+				assert.match(result.content[0].text, /^answer/);
+				assert.equal(updates, 2, "periodic and final updates must both reach the rejecting sink");
+			});
+		});
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+		fs.rmSync(path.dirname(binary), { recursive: true, force: true });
+	}
+});
 
 test("execute: plan run passes --agent and the skip flag, prompt carries the review guard, agent dir cleaned up", () =>
 	withEnvs(

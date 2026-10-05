@@ -17,6 +17,8 @@ import {
 	writeAuthType,
 } from "../src/acp/setup.js";
 
+import { withoutUnhandledRejections } from "./helpers/unhandled-rejections.js";
+
 const BUILD = "agy_acp_server_20991231_01_TEST";
 const ARCHIVE = `https://dl.google.com/agy-extensions/releases/x/agy-acp-server-${BUILD}-${platformKey().replace("aarch64", "arm64")}.zip`;
 
@@ -103,6 +105,28 @@ describe("acp/setup auth state", () => {
 });
 
 describe("acp/setup ensureAcpReady", () => {
+	test("rejecting progress sinks do not fail installation or leak unhandled rejections", async () => {
+		const root = tmpDir();
+		const gdir = tmpDir();
+		const progress: string[] = [];
+		try {
+			await withoutUnhandledRejections(async () => {
+				const status = await ensureAcpReady({
+					installRoot: root, geminiDir: gdir, env: {}, unpack: fakeUnpack,
+					fetchImpl: (async (url) => String(url).endsWith(".zip")
+						? new Response("zip", { headers: { "content-length": "3" } })
+						: new Response(JSON.stringify(REGISTRY))) as typeof fetch,
+					onProgress: async (message) => { progress.push(message); throw new Error("progress sink failed"); },
+				});
+				assert.equal(status.ok, true);
+				assert.equal(progress.length, 4, "phase and download-percent progress must all reach the sink");
+			});
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+			fs.rmSync(gdir, { recursive: true, force: true });
+		}
+	});
+
 	test("ready installation is a no-op with no network", async () => {
 		const root = tmpDir();
 		const gdir = tmpDir();

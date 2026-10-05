@@ -21,6 +21,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { emitLifecycle } from "./lifecycle.js";
 
 /** Default conversations dir. Override with AGY_CONVERSATIONS_DIR. */
 export const CONVERSATIONS_DIR =
@@ -186,7 +187,7 @@ export function newConversationId(
 		const hit = resolve(opts.pid, dir, new Set(created));
 		if (hit && created.includes(hit)) return hit;
 	}
-	opts.onAmbiguous?.();
+	emitLifecycle(() => opts.onAmbiguous?.());
 	return null;
 }
 

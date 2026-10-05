@@ -17,6 +17,7 @@
 //     survives a killed connection).
 
 import { isKnownNoiseLine, MAX_FRAME_BYTES, stripGluedNoise } from "../frame-guard.js";
+import { emitLifecycle } from "../lifecycle.js";
 
 export interface JsonRpcErrorShape {
 	code: number;
@@ -105,7 +106,7 @@ export class JsonRpcSession {
 						msg = JSON.parse(repaired) as JsonRpcIncoming;
 					} catch {
 						this.parseErrors += 1;
-						this.#opts.onParseError?.(line.slice(0, 200));
+						emitLifecycle(() => this.#opts.onParseError?.(line.slice(0, 200)));
 						continue;
 					}
 				} else {
@@ -113,7 +114,7 @@ export class JsonRpcSession {
 					// parseAgyLine lesson: a chatty banner must not kill the reader
 					// loop).
 					this.parseErrors += 1;
-					this.#opts.onParseError?.(line.slice(0, 200));
+					emitLifecycle(() => this.#opts.onParseError?.(line.slice(0, 200)));
 					continue;
 				}
 			}
@@ -127,7 +128,7 @@ export class JsonRpcSession {
 		// Aborting first gives pending requests the typed overflow reason; the
 		// transport's own teardown afterwards is a no-op on the empty map.
 		this.abortAll(`stdout frame overflow: ${detail}`);
-		this.#opts.onOverflow?.(detail);
+		emitLifecycle(() => this.#opts.onOverflow?.(detail));
 	}
 
 	#handleMessage(msg: JsonRpcIncoming): void {
@@ -145,7 +146,8 @@ export class JsonRpcSession {
 			}
 			return;
 		}
-		if (msg.method === undefined) return;
+		const method = msg.method;
+		if (method === undefined) return;
 		// Server-to-client request: must be answered with the same id. The
 		// handler is always invoked through Promise.resolve() so a synchronous
 		// throw can never escape into the reader loop.
@@ -153,29 +155,35 @@ export class JsonRpcSession {
 			const id = msg.id;
 			const handler = this.#opts.onRequest;
 			if (!handler) {
-				this.#sendError(id, -32601, `client does not support method: ${msg.method}`);
+				this.#sendError(id, -32601, `client does not support method: ${method}`);
 				return;
 			}
-			void Promise.resolve()
-				.then(() => handler(msg.method as string, msg.params))
+			emitLifecycle(() => Promise.resolve()
+				.then(() => handler(method, msg.params))
 				.then((result) => {
 					if (this.#aborted) return;
-					this.#send(JSON.stringify({ jsonrpc: "2.0", id, result: result ?? {} }));
+					this.#sendFrame(JSON.stringify({ jsonrpc: "2.0", id, result: result ?? {} }));
 				})
 				.catch((err: unknown) => {
 					if (this.#aborted) return;
 					const message = err instanceof Error ? err.message : String(err);
 					this.#sendError(id, -32000, message);
-				});
+				}));
 			return;
 		}
 		// Notification.
-		this.#opts.onNotification?.(msg.method, msg.params);
+		emitLifecycle(() => this.#opts.onNotification?.(method, msg.params));
+	}
+
+	#sendFrame(frame: string): void {
+		const failure = emitLifecycle(() => this.#send(frame));
+		// Preserve synchronous transport errors for the request's caller.
+		if (failure) throw failure.error;
 	}
 
 	#sendError(id: number | string, code: number, message: string): void {
 		if (this.#aborted) return;
-		this.#send(JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }));
+		this.#sendFrame(JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }));
 	}
 
 	/** Send a request. Resolves with the result value; rejects on error
@@ -193,7 +201,7 @@ export class JsonRpcSession {
 				}, effective);
 			}
 			this.#pending.set(id, pending);
-			this.#send(JSON.stringify({ jsonrpc: "2.0", id, method, params: params ?? {} }));
+			this.#sendFrame(JSON.stringify({ jsonrpc: "2.0", id, method, params: params ?? {} }));
 		});
 	}
 

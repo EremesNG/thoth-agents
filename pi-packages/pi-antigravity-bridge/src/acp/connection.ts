@@ -29,6 +29,7 @@ import { frameCarriesUsage } from "./events.js";
 import type { AgyUsage } from "../driver-types.js";
 import { redactText } from "../redact.js";
 import { terminateProcessTree } from "../process-termination.js";
+import { emitLifecycle } from "../lifecycle.js";
 import { JsonRpcResponseError, JsonRpcSession } from "./jsonrpc.js";
 
 export interface AcpMcpServer {
@@ -190,6 +191,11 @@ export class AcpConnection {
 			...(this.#opts.extraEnv ? { env: { ...process.env, ...this.#opts.extraEnv } } : {}),
 		});
 		this.#child = child;
+		// Guard process errors even if subsequent transport setup throws.
+		child.on("error", (err) => {
+			this.#log("spawn-error", { message: redactText(err.message) });
+			this.#finish(redactText(err.message));
+		});
 		if (this.#opts.authUrlFile) this.#watchAuthUrl();
 		child.stdout?.setEncoding("utf8");
 		child.stderr?.setEncoding("utf8");
@@ -197,7 +203,7 @@ export class AcpConnection {
 		// try/catch in #write cannot see them. Without this listener an EPIPE
 		// (server died mid-handshake) is uncaught and kills pi.
 		child.stdin?.on("error", (err) => {
-			this.#opts.log("stdin-error", { message: redactText(err.message) });
+			this.#log("stdin-error", { message: redactText(err.message) });
 			if (!this.#exited && !this.#killed) this.#finish(redactText(err.message));
 		});
 
@@ -205,12 +211,12 @@ export class AcpConnection {
 			send: (frame) => this.#write(frame),
 			onRequest: (method, params) => this.#onServerRequest(method, params),
 			onNotification: (method, params) => this.#onNotification(method, params),
-			onParseError: (line) => this.#opts.log("parse-error", { line }),
+			onParseError: (line) => this.#log("parse-error", { line }),
 			onOverflow: (detail) => {
 				// The session already rejected pending requests with the typed
 				// reason. Finish owns bounded process-tree termination before
 				// reporting logical exit, including wrapper descendants.
-				this.#opts.log("frame-overflow", { detail });
+				this.#log("frame-overflow", { detail });
 				this.#finish(`stdout frame overflow: ${detail}`);
 			},
 		});
@@ -220,12 +226,8 @@ export class AcpConnection {
 		child.stderr?.on("data", (chunk: string) => {
 			this.#stderrTail = (this.#stderrTail + chunk).slice(-8192);
 		});
-		child.on("error", (err) => {
-			this.#opts.log("spawn-error", { message: redactText(err.message) });
-			this.#finish(redactText(err.message));
-		});
 		child.on("exit", (code, signal) => {
-			this.#opts.log("exit", { code: code ?? signal ?? "?" });
+			this.#log("exit", { code: code ?? signal ?? "?" });
 			// The reason rides into pending-request rejections, so it must be
 			// redacted here (server stderr can carry auth material).
 			this.#finish(redactText(this.#stderrTail.trim()));
@@ -241,7 +243,7 @@ export class AcpConnection {
 		)) as Record<string, unknown> | undefined;
 		const info = result?.agentInfo;
 		if (typeof info === "object" && info !== null) this.agentInfo = info as Record<string, unknown>;
-		this.#opts.log("initialized", { version: this.serverVersion() });
+		this.#log("initialized", { version: this.serverVersion() });
 	}
 
 	serverVersion(): string | undefined {
@@ -365,7 +367,7 @@ export class AcpConnection {
 		}
 		// fs/* and terminal/* are declined: our client capabilities are off and
 		// agy keeps executing its own tools (plan §8 capability posture).
-		this.#opts.log("unsupported-server-request", { method });
+		this.#log("unsupported-server-request", { method });
 		return Promise.reject(new Error(`client capability not enabled: ${method}`));
 	}
 
@@ -382,12 +384,12 @@ export class AcpConnection {
 		const policy = this.#opts.permissions?.() ?? "deny";
 		if (policy === "auto") {
 			const chosen = (allow ?? options[0])?.optionId;
-			this.#opts.log("permission", { optionId: chosen, policy });
+			this.#log("permission", { optionId: chosen, policy });
 			return Promise.resolve({ outcome: { outcome: "selected", optionId: chosen } });
 		}
 		const handler = this.#opts.onPermissionRequest;
 		if (!handler) {
-			this.#opts.log("permission", { optionId: denyId, policy });
+			this.#log("permission", { optionId: denyId, policy });
 			return Promise.resolve(
 				denyId !== undefined
 					? { outcome: { outcome: "selected", optionId: denyId } }
@@ -399,7 +401,7 @@ export class AcpConnection {
 		const memKey = params?.toolCall?.title ? `${params.toolCall.kind ?? ""}|${params.toolCall.title}` : undefined;
 		const remembered = memKey !== undefined ? this.#permissionMemory.get(memKey) : undefined;
 		if (remembered !== undefined && options.some((o) => o.optionId === remembered)) {
-			this.#opts.log("permission", { optionId: remembered, policy: "memory" });
+			this.#log("permission", { optionId: remembered, policy: "memory" });
 			return Promise.resolve({ outcome: { outcome: "selected", optionId: remembered } });
 		}
 		const parkMs = this.#opts.permissionParkMs ?? PERMISSION_PARK_MS;
@@ -413,7 +415,7 @@ export class AcpConnection {
 				settled = true;
 				if (timer) clearTimeout(timer);
 				this.#permissionPending.delete(settleDeny);
-				this.#opts.log("permission", { optionId, policy: why });
+				this.#log("permission", { optionId, policy: why });
 				// undefined optionId (no reject option on the table) cancels
 				// instead of selecting nothing.
 				resolve(
@@ -424,7 +426,7 @@ export class AcpConnection {
 			};
 			const settleDeny = (): void => settle(denyId, "dialog-deny");
 			timer = setTimeout(() => {
-				this.#opts.log("permission-timeout", { parkMs });
+				this.#log("permission-timeout", { parkMs });
 				settleDeny();
 			}, parkMs);
 			this.#permissionPending.add(settleDeny);
@@ -443,7 +445,7 @@ export class AcpConnection {
 					settle(chosen.optionId, "dialog");
 				})
 				.catch((err: unknown) => {
-					this.#opts.log("permission-error", { message: err instanceof Error ? err.message : String(err) });
+					this.#log("permission-error", { message: err instanceof Error ? err.message : String(err) });
 					settle(denyId, "dialog-error");
 				});
 		});
@@ -457,14 +459,14 @@ export class AcpConnection {
 			if (this.#suppressUpdates) return; // load replay: history, not live text
 			const p = typeof params === "object" && params !== null ? (params as Record<string, unknown>) : {};
 			const sessionId = typeof p.sessionId === "string" ? p.sessionId : this.#updateSessionId;
-			this.#opts.onUpdate(sessionId, p.update);
+			emitLifecycle(() => this.#opts.onUpdate(sessionId, p.update));
 			return;
 		}
 		if (method === "auth_required") {
-			this.#opts.log("auth-required", params);
+			this.#log("auth-required", params);
 			return;
 		}
-		this.#opts.log("notification", { method });
+		this.#log("notification", { method });
 	}
 
 	/** Wrap a request: -32000 family becomes AcpAuthError with the remediation
@@ -503,7 +505,7 @@ export class AcpConnection {
 		try {
 			stdin.write(frame + "\n");
 		} catch (err) {
-			this.#opts.log("write-failed", { message: err instanceof Error ? err.message : String(err) });
+			this.#log("write-failed", { message: err instanceof Error ? err.message : String(err) });
 			this.#finish("connection closed");
 		}
 	}
@@ -517,10 +519,17 @@ export class AcpConnection {
 		if (this.#killed) return this.#termination;
 		this.#killed = true;
 		this.abortAll("connection killed");
+		this.#authUrlWatcher?.close();
+		this.#authUrlWatcher = undefined;
 		const child = this.#child;
 		if (!child) return this.#termination;
-		this.#opts.log("kill", { pid: child.pid ?? "?" });
-		this.#termination = terminateProcessTree(child, { log: this.#opts.log });
+		// Startup can fail after registering only some transport listeners.
+		// Stop consuming this owned process even when no exit handler was wired.
+		child.stdout?.removeAllListeners("data");
+		child.stderr?.removeAllListeners("data");
+		const log = (message: string, data?: unknown) => this.#log(message, data);
+		log("kill", { pid: child.pid ?? "?" });
+		this.#termination = terminateProcessTree(child, { log });
 		return this.#termination;
 	}
 
@@ -546,7 +555,11 @@ export class AcpConnection {
 		const url = readLastUrl(this.#opts.authUrlFile!);
 		if (!url || url === this.#lastAuthUrl) return;
 		this.#lastAuthUrl = url;
-		this.#opts.log("auth-url", { url, port: parseAuthPort(url) });
+		this.#log("auth-url", { url, port: parseAuthPort(url) });
+	}
+
+	#log(message: string, data?: unknown): void {
+		emitLifecycle(() => this.#opts.log(message, data));
 	}
 
 	#finish(reason: string): void {
@@ -565,7 +578,7 @@ export class AcpConnection {
 		this.#permissionPending.clear();
 		for (const deny of pendings) deny();
 		this.abortAll(`connection exited: ${reason || "process gone"}`);
-		this.#opts.onExit({ code: null, signal: null, stderrTail: redactText(this.#stderrTail) });
+		emitLifecycle(() => this.#opts.onExit({ code: null, signal: null, stderrTail: redactText(this.#stderrTail) }));
 	}
 }
 

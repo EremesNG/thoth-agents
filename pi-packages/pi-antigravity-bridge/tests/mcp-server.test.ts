@@ -245,3 +245,18 @@ test("mcp-server: owned private names are unique in config and MCP identity", as
   fs.rmSync(root, { recursive: true, force: true });
  }
 });
+
+test("mcp-server: throwing lifecycle sink does not change catalog results or block close", async () => {
+	const seen: string[] = [];
+	const r = await startMcpServer(fakeDeps(), { log: event => {
+		seen.push(event);
+		if (event === "list-tools") throw new Error("catalog sink failed");
+	} });
+	assert.equal(r.ok, true);
+	handle = r.handle!;
+	assert.equal((await servedTools())[0].name, "mem_search");
+	await handle.close();
+	handle = null;
+	assert.ok(seen.includes("list-tools"));
+	assert.ok(seen.includes("closed"));
+});

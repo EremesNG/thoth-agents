@@ -446,7 +446,9 @@ export type SubagentProgressUpdate = { message: string; created_at: string };
 export type SubagentOrchestratorChannel = {
   askQuestion(message: string, signal?: AbortSignal): Promise<string>;
   reportProgress(message: string): void;
-  onPendingChange(listener: (pending: boolean) => void): () => void;
+  onPendingChange(
+    listener: (pending: boolean, count?: number) => void,
+  ): () => void;
   close(reason: string): void;
 };
 

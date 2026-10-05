@@ -4,7 +4,15 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const frame = (event, body) => process.stdout.write(JSON.stringify({event, [event]: body}) + '\n');
 const lines = readline.createInterface({input: process.stdin})[Symbol.asyncIterator]();
 const line = (await lines.next()).value ?? '';
-if (line.includes('SILENT-DROP')) {
+if (line.includes('CHECKPOINT-PROGRESS') || line.includes('GARBAGE-PROGRESS')) {
+  frame('init', {});
+  for (let i = 0; i < 12; i++) {
+    await sleep(100);
+    if (line.includes('CHECKPOINT-PROGRESS')) frame('step_update', {step_type:'checkpoint',state:'DONE',step_index:i});
+    else { console.log('unrecognized noise'); console.log('{"event":"unknown-progress"}'); }
+  }
+  frame('result', {status:'SUCCESS',response:'finished after progress'});
+} else if (line.includes('SILENT-DROP')) {
   frame('init', {conversation_id:'conv-drop'});
   await sleep(100);
   frame('result', {status:'SUCCESS', response:'', conversation_id:'conv-drop', usage:{input_tokens:0, output_tokens:0, thinking_tokens:0, cache_read_tokens:0, total_tokens:0}});

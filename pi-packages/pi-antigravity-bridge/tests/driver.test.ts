@@ -313,3 +313,28 @@ describe("stream-json driver plan-mode skip-permission gating", () => {
 		await driver.close("shutdown");
 	});
 });
+
+describe("stream-json progress-aware inactivity", () => {
+	test("checkpoint-only work can exceed the inactivity budget without an absolute activity deadline", async () => {
+		process.env.PATH = `${FAKE_BIN_DIR}${path.delimiter}${process.env.PATH}`;
+		const driver = new StreamDriver();
+		try {
+			const handle = await driver.run({ cwd: process.cwd(), model: "gemini-3.8-flash", mode: "accept-edits", skipPermissions: true, prompt: "CHECKPOINT-PROGRESS", timeoutMin: 0, inactivityMin: 0.005 });
+			const outcome = await handle.outcome;
+			assert.equal(outcome.status, "OK");
+			assert.equal(outcome.response, "finished after progress");
+			assert.equal(await handle.next(), null, "checkpoints produce no synthetic provider activity");
+		} finally { await driver.close("shutdown"); }
+	});
+
+	test("unrecognized stdout does not refresh activity inactivity", async () => {
+		process.env.PATH = `${FAKE_BIN_DIR}${path.delimiter}${process.env.PATH}`;
+		const driver = new StreamDriver();
+		try {
+			const handle = await driver.run({ cwd: process.cwd(), model: "gemini-3.8-flash", mode: "accept-edits", skipPermissions: true, prompt: "GARBAGE-PROGRESS", timeoutMin: 0, inactivityMin: 0.005 });
+			const outcome = await handle.outcome;
+			assert.equal(outcome.status, "ERROR");
+			assert.match(outcome.error ?? "", /activity inactivity/);
+		} finally { await driver.close("shutdown"); }
+	});
+});

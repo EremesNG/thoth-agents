@@ -1,5 +1,6 @@
 import type {
   ExtensionAPI,
+  ToolRendererResolver,
   ToolRenderers,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
@@ -23,17 +24,12 @@ import {
 } from './ticker.ts';
 import { createCustomWriteTool } from './write.ts';
 
-/** Register themed renderers and return an idempotent ticker/subscription disposer. */
-export function registerTools(
-  pi: ExtensionAPI,
+/** Resolve themed renderers using this theme instance's live tool ownership. */
+export function createToolRendererResolver(
+  pi: Pick<ExtensionAPI, 'getAllTools'>,
   config: ThemeConfig,
   cwd = process.cwd(),
-  owner: object = {},
-): () => void {
-  if (!config.tools.enabled || typeof pi?.registerToolRenderer !== 'function') {
-    return () => {};
-  }
-
+): ToolRendererResolver {
   const renderers = new Map<string, ToolRenderers>([
     ['read', createCustomReadTool(cwd, config)],
     ['bash', createCustomBashTool(cwd, config)],
@@ -64,7 +60,7 @@ export function registerTools(
     return baseDir ? isOwnedBaseDir(baseDir) : false;
   };
 
-  pi.registerToolRenderer((toolName, next) => {
+  return (toolName, next) => {
     // Built-ins take precedence over Pi 1.0.1's native callbacks.
     const builtIn = renderers.get(toolName);
     if (builtIn) return builtIn;
@@ -84,7 +80,24 @@ export function registerTools(
       genericRenderers.set(toolName, generic);
     }
     return generic;
-  });
+  };
+}
+
+/** Register themed renderers and return an idempotent ticker/subscription disposer. */
+export function registerTools(
+  pi: ExtensionAPI,
+  config: ThemeConfig,
+  cwd = process.cwd(),
+  owner: object = {},
+  resolveToolRenderers?: ToolRendererResolver,
+): () => void {
+  if (!config.tools.enabled || typeof pi?.registerToolRenderer !== 'function') {
+    return () => {};
+  }
+
+  pi.registerToolRenderer(
+    resolveToolRenderers ?? createToolRendererResolver(pi, config, cwd),
+  );
 
   const unsubs: Array<() => void> = [];
   if (typeof pi?.on === 'function') {

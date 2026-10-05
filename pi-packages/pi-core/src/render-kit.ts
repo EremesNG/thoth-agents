@@ -4,6 +4,7 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import type { Component } from '@earendil-works/pi-tui';
+import type { ToolRenderersLike } from './tool-registry.js';
 
 /** Minimal structural theme; Pi Theme satisfies this without a runtime import. */
 export type RenderKitTheme = Pick<Theme, 'fg'> &
@@ -102,6 +103,11 @@ export interface RenderTreeRowOptions {
 /** Version 1. Only the theme implements visuals and owner-scoped ticker lifecycle. */
 export interface ThothRenderKit {
   readonly version: 1;
+  /** Compose tool renderers like the host resolver; legacy v1 kits may omit this. */
+  resolveToolRenderers?(
+    toolName: string,
+    next: () => ToolRenderersLike | undefined,
+  ): ToolRenderersLike | undefined;
   card(
     theme: RenderKitTheme,
     options: RenderCardOptions,
@@ -167,6 +173,8 @@ export function getRenderKit(): ThothRenderKit | undefined {
     const kit = shared[registryKey]?.kit;
     if (
       kit?.version === 1 &&
+      (!('resolveToolRenderers' in kit) ||
+        typeof kit.resolveToolRenderers === 'function') &&
       [
         'card',
         'collapse',

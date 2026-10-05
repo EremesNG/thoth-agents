@@ -108,6 +108,7 @@ import { bridgedPiTools } from "../src/bridge-catalog.js";
 import { Type } from "typebox";
 import { patchStatus, restorePatch } from "../src/patch-cleanup.js";
 import { withDialogLock } from "../src/dialog-lock.js";
+import { createPublishedToolRegistrar } from "../src/tool-publication.js";
 
 // Only the process-wide tool-claim marker is shared. Drivers, UI and bridge
 // endpoints belong to an extension factory, including in-process children.
@@ -128,6 +129,7 @@ function setUiStatus(ui: ExtensionUIContext | null | undefined, ...args: Paramet
 }
 
 export default async function (pi: ExtensionAPI): Promise<void> {
+	const registerTool = createPublishedToolRegistrar(pi);
 	// Claim the AskAntigravity tool for this process. pi-ask-antigravity (if also
 	// installed) checks this in-process flag OR the bridge's package.json on disk
 	// and defers. See that extension's isBridgeInstalled().
@@ -565,16 +567,16 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	// Note: the active flag below is set regardless of askTool, so
 	// pi-ask-antigravity keeps deferring even then: off means NO delegation
 	// tool from either package, not a fallback to pi-ask-antigravity.
-	if (loadConfig().askTool) await registerAskAntigravityTool(pi, toolModels, fileLog.log.bind(fileLog), bridgeDiscovery);
+	if (loadConfig().askTool) await registerAskAntigravityTool({ registerTool }, toolModels, fileLog.log.bind(fileLog), bridgeDiscovery);
 	// Web tools are opt-in (config.webTools, default off): Antigravity sessions
 	// already have native web tools; these serve NON-Antigravity providers.
-	if (loadConfig().webTools) registerWebTools(pi, { log: fileLog.log.bind(fileLog) });
+	if (loadConfig().webTools) registerWebTools({ registerTool }, { log: fileLog.log.bind(fileLog) });
 
 	// Display-only wrapper tool: the provider emits mutating agy steps as
 	// toolCalls against it (never re-executed - execute() replays the output
 	// agy already recorded). Empty description on purpose: no model should
 	// call it, it exists so pi renders proper toolCall/toolResult cards.
-	pi.registerTool({
+	registerTool({
 		name: "antigravity",
 		label: "Antigravity",
 		description: "",
@@ -1050,7 +1052,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 					};
 					const handle = r.handle;
 					for (const [name, base] of Object.entries(bases)) {
-						pi.registerTool(
+						registerTool(
 							createShadowTool(base, policy, { verifyTicket: (t) => handle.approvals.has(t) }),
 						);
 					}

@@ -1,5 +1,10 @@
 import { CustomEditor } from '@earendil-works/pi-coding-agent';
 import {
+  publishToolDefinitions,
+  type ToolDefinitionHandle,
+  type ToolDefinitionLike,
+} from '@thoth-agents/pi-core';
+import {
   AtelierMetadataWriter,
   type AtelierSessionOwner,
   captureAtelierSessionOwner,
@@ -49,6 +54,8 @@ function isStaleContextError(error: unknown): boolean {
 }
 
 export default function subagentsExtension(pi: any): void {
+  const definitions: ToolDefinitionLike[] = [];
+  let publication: ToolDefinitionHandle | undefined;
   const originalRegisterTool =
     typeof pi.registerTool === 'function'
       ? pi.registerTool.bind(pi)
@@ -56,7 +63,10 @@ export default function subagentsExtension(pi: any): void {
   if (originalRegisterTool) {
     pi.registerTool = (tool: any) => {
       registerSubagentExternalToolDefinition(tool?.name, tool);
-      return originalRegisterTool(tool);
+      const result = originalRegisterTool(tool);
+      definitions.push(tool);
+      publication?.publish([tool]);
+      return result;
     };
   }
   pi.registerMessageRenderer?.(
@@ -273,6 +283,8 @@ export default function subagentsExtension(pi: any): void {
   };
 
   pi.on?.('session_start', (_event: unknown, ctx: any) => {
+    if (ctx.hasUI && !publication)
+      publication = publishToolDefinitions(definitions);
     void preloadPiComponentsForSubagentRendering();
     clearClaudeBackgroundWidget();
     activeSessionId = currentSessionId(ctx);
@@ -316,6 +328,8 @@ export default function subagentsExtension(pi: any): void {
     pi.on?.('agent_end', () => usageEvents.flush());
 
   pi.on?.('session_shutdown', async () => {
+    publication?.withdraw();
+    publication = undefined;
     activeSessionId = undefined;
     activeSessionOwner = undefined;
     registerSubagentsPanelOpener(undefined);

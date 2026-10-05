@@ -4,6 +4,11 @@ import type {
   ExtensionAPI,
   ExtensionUIContext,
 } from '@earendil-works/pi-coding-agent';
+import {
+  publishToolDefinitions,
+  type ToolDefinitionHandle,
+  type ToolDefinitionLike,
+} from '@thoth-agents/pi-core';
 import { TodoStatePublisher } from './state/publish.js';
 import { reinjectOpenTasks } from './state/reinjection.js';
 import { replayFromBranch } from './state/replay.js';
@@ -91,6 +96,15 @@ export default function (
   pi: ExtensionAPI,
   importOverlay: TodoOverlayImporter = () => import('./todo-overlay.js'),
 ) {
+  const definitions: ToolDefinitionLike[] = [];
+  let publication: ToolDefinitionHandle | undefined;
+  const registerTool = pi.registerTool.bind(pi);
+  pi.registerTool = (tool) => {
+    const result = registerTool(tool);
+    definitions.push(tool);
+    publication?.publish([tool]);
+    return result;
+  };
   const statePublisher = new TodoStatePublisher(pi.events);
   let todoOverlay: TodoOverlay | undefined;
   const loadTodoOverlay = makeTodoOverlayLoader(importOverlay);
@@ -165,6 +179,7 @@ export default function (
     }
     statePublisher.replayed(id);
     if (!ctx.hasUI) return;
+    publication ??= publishToolDefinitions(definitions);
     // First UI-bearing session_start claims the foreground (the interactive
     // launcher, by spawn-ordering) without eagerly loading the overlay.
     if (getActiveRenderSession() === '') setActiveRenderSession(id);
@@ -185,6 +200,8 @@ export default function (
   });
 
   pi.on('session_shutdown', async (_event, ctx) => {
+    publication?.withdraw();
+    publication = undefined;
     // Best-effort sid: disposal can race a stale ctx (like compact). An
     // unknown/stale sid resolves to "" and is treated as foreground — the
     // safe pre-isolation default that disposes as before.

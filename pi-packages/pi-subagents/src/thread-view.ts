@@ -2,6 +2,13 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {
+  getPublishedToolDefinition,
+  getRenderKit,
+  getToolDefinitionRegistryVersion,
+  type ThothRenderKit,
+  type ToolRenderersLike,
+} from '@thoth-agents/pi-core';
 import { writeSubagentsDebugLog } from './debug.js';
 import {
   truncateToWidth as terminalTruncateToWidth,
@@ -348,6 +355,7 @@ export function resetPiComponentCacheForTests(): void {
   piComponents = undefined;
   builtInToolDefinitionCache.clear();
   externalToolDefinitions.clear();
+  externalToolSourceDefinitions.clear();
   externalToolSourcesLoaded.clear();
   runtimeToolDefinitionsByTask.clear();
   toolComponentCacheByTask.clear();
@@ -369,6 +377,12 @@ function hasToolRenderer(definition: unknown): boolean {
       typeof definition.renderResult === 'function' ||
       definition.renderShell === 'self')
   );
+}
+
+function toolRenderers(definition: unknown): ToolRenderersLike | undefined {
+  if (!isRecord(definition) || !hasToolRenderer(definition)) return undefined;
+  const { renderCall, renderResult, renderShell } = definition;
+  return { renderCall, renderResult, renderShell } as ToolRenderersLike;
 }
 
 function sourcePathFromToolInfo(info: unknown): string | undefined {
@@ -447,8 +461,10 @@ function loadExternalToolSource(sourcePath: string): void {
     const maybePromise = register(createToolCapturePi(captured));
     if (maybePromise && typeof maybePromise.then === 'function') return;
     for (const tool of captured) {
-      if (isRecord(tool) && typeof tool.name === 'string')
-        registerSubagentExternalToolDefinition(tool.name, tool);
+      if (isRecord(tool) && typeof tool.name === 'string') {
+        externalToolSourceDefinitions.set(tool.name, tool);
+        toolComponentCacheByTask.clear();
+      }
     }
   } catch {}
 }
@@ -457,19 +473,36 @@ export function resolveSubagentExternalToolDefinitionFromInfo(
   name: string,
   info: unknown,
 ): unknown {
+  const kit = refreshToolDefinitionCaches();
+  const published = getPublishedToolDefinition(name);
+  if (published) return published;
   if (hasToolRenderer(info)) return info;
-  const existing = externalToolDefinitions.get(name);
+  const existing =
+    externalToolDefinitions.get(name) ??
+    externalToolSourceDefinitions.get(name);
   if (existing) return existing;
+  if (kit) return undefined;
   const sourcePath = sourcePathFromToolInfo(info);
   if (sourcePath) loadExternalToolSource(sourcePath);
-  return externalToolDefinitions.get(name);
+  return externalToolSourceDefinitions.get(name);
 }
 
 function renderableToolDefinition(
   name: string,
   candidates: unknown[],
   cwd: string,
+  kit: ThothRenderKit | undefined,
 ): unknown {
+  if (kit) {
+    const definition =
+      candidates.find(isRecord) ?? builtInToolDefinition(name, cwd);
+    const base = isRecord(definition) ? definition : { name };
+    const downstream = candidates.find(hasToolRenderer) ?? base;
+    const renderers = kit.resolveToolRenderers
+      ? kit.resolveToolRenderers(name, () => toolRenderers(downstream))
+      : toolRenderers(downstream);
+    return { ...base, ...renderers };
+  }
   for (const candidate of candidates) {
     if (!candidate) continue;
     if (hasToolRenderer(candidate)) return candidate;
@@ -774,10 +807,29 @@ function renderAttemptItem(
 }
 
 const builtInToolDefinitionCache = new Map<string, unknown>();
+// Explicit/captured registrations are source facts, not memoized resolutions.
 const externalToolDefinitions = new Map<string, unknown>();
-const externalToolSourcesLoaded = new Set<string>();
 const runtimeToolDefinitionsByTask = new Map<string, Map<string, unknown>>();
+// Source rehydration is memoized only for the current registry/kit environment.
+const externalToolSourceDefinitions = new Map<string, unknown>();
+const externalToolSourcesLoaded = new Set<string>();
 const toolComponentCacheByTask = new Map<string, Map<string, unknown>>();
+let cachedToolRegistryVersion = getToolDefinitionRegistryVersion();
+let cachedToolRenderKit = getRenderKit();
+
+function refreshToolDefinitionCaches(): ThothRenderKit | undefined {
+  const version = getToolDefinitionRegistryVersion();
+  const kit = getRenderKit();
+  if (version !== cachedToolRegistryVersion || kit !== cachedToolRenderKit) {
+    cachedToolRegistryVersion = version;
+    cachedToolRenderKit = kit;
+    toolComponentCacheByTask.clear();
+    builtInToolDefinitionCache.clear();
+    externalToolSourceDefinitions.clear();
+    externalToolSourcesLoaded.clear();
+  }
+  return kit;
+}
 
 export function registerSubagentRuntimeToolDefinition(
   taskId: string | undefined,
@@ -975,15 +1027,25 @@ function renderToolItem(
   context: SubagentThreadRenderContext,
   width: number,
 ): string[] {
-  const toolDefinition = renderableToolDefinition(
-    item.name,
-    [
-      context.getToolDefinition?.(item.name),
-      externalToolDefinitions.get(item.name),
-      runtimeToolDefinition(context.taskId, item.name),
-    ],
-    context.cwd,
-  );
+  const kit = refreshToolDefinitionCaches();
+  const published = getPublishedToolDefinition(item.name);
+  const toolDefinition =
+    !kit && published
+      ? published
+      : renderableToolDefinition(
+          item.name,
+          [
+            published,
+            hasToolRenderer(published)
+              ? undefined
+              : context.getToolDefinition?.(item.name),
+            externalToolDefinitions.get(item.name),
+            externalToolSourceDefinitions.get(item.name),
+            runtimeToolDefinition(context.taskId, item.name),
+          ],
+          context.cwd,
+          kit,
+        );
   const componentCtor = loadPiComponents()?.ToolExecutionComponent;
   if (typeof componentCtor === 'function' && context.tui && toolDefinition) {
     try {

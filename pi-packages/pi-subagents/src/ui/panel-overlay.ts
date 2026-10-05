@@ -1,3 +1,7 @@
+import {
+  getPublishedToolDefinition,
+  getRenderKit,
+} from '@thoth-agents/pi-core';
 import { readSubagentsConfig } from '../config.js';
 import type { SubagentManager } from '../manager.js';
 import { truncateToWidth, visibleWidth } from '../render/text-width.js';
@@ -69,6 +73,7 @@ function toolsFromAccessor(owner: any, name: string): unknown {
   if (typeof owner?.getAllTools !== 'function') return undefined;
   try {
     const info = toolFromRegistry(owner.getAllTools(), name);
+    if (getRenderKit()) return info;
     return info
       ? (resolveSubagentExternalToolDefinitionFromInfo(name, info) ?? info)
       : undefined;
@@ -77,11 +82,44 @@ function toolsFromAccessor(owner: any, name: string): unknown {
   }
 }
 
+function hasToolRenderers(tool: unknown): boolean {
+  if (!tool || typeof tool !== 'object') return false;
+  const definition = tool as Record<string, unknown>;
+  return (
+    typeof definition.renderCall === 'function' ||
+    typeof definition.renderResult === 'function' ||
+    definition.renderShell === 'self'
+  );
+}
+
 export function resolveRegisteredToolDefinition(
   ctx: any,
   pi: any,
   name: string,
 ): unknown {
+  const published = getPublishedToolDefinition(name);
+  const kit = getRenderKit();
+  if (published && (!kit || hasToolRenderers(published))) return published;
+  if (kit) {
+    const candidates = [
+      published,
+      ctx?.pi?.getToolDefinition?.(name),
+      pi?.getToolDefinition?.(name),
+      ctx?.getToolDefinition?.(name),
+      toolFromRegistry(ctx?.pi?.tools, name),
+      toolFromRegistry(pi?.tools, name),
+      toolFromRegistry(ctx?.tools, name),
+      toolsFromAccessor(ctx?.pi, name),
+      toolsFromAccessor(pi, name),
+      toolsFromAccessor(ctx, name),
+    ];
+    const rendered = candidates.find(hasToolRenderers);
+    if (published && rendered) {
+      const { renderCall, renderResult, renderShell } = rendered;
+      return { ...published, renderCall, renderResult, renderShell };
+    }
+    return rendered ?? candidates.find(Boolean);
+  }
   return (
     ctx?.pi?.getToolDefinition?.(name) ??
     pi?.getToolDefinition?.(name) ??

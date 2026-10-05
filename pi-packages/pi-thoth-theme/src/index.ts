@@ -8,14 +8,20 @@ import { createRenderKit } from './render-kit/index.ts';
 import { loadConfig } from './shared/config.ts';
 import { registerStatusLine } from './status-line/index.ts';
 import { applyImageCapability } from './tools/image-capability.ts';
-import { registerTools } from './tools/index.ts';
+import { createToolRendererResolver, registerTools } from './tools/index.ts';
 import { registerWelcome } from './welcome/index.ts';
 
 export default function thothTheme(pi: ExtensionAPI): void {
   const config = loadConfig();
   const owner = {};
+  const cwd = process.cwd();
+  const resolveToolRenderers = config.tools.enabled
+    ? createToolRendererResolver(pi, config, cwd)
+    : undefined;
   let kitToken: RenderKitToken | undefined;
-  if (config.tools.enabled) registerTools(pi, config, process.cwd(), owner);
+  if (resolveToolRenderers) {
+    registerTools(pi, config, cwd, owner, resolveToolRenderers);
+  }
 
   pi.on('session_shutdown', (_event, ctx) => {
     if (!ctx.hasUI || kitToken === undefined) return;
@@ -37,7 +43,10 @@ export default function thothTheme(pi: ExtensionAPI): void {
 
     if (!ctx.hasUI) return;
     if (config.tools.enabled) {
-      kitToken = registerRenderKit(createRenderKit(owner), owner);
+      kitToken = registerRenderKit(
+        createRenderKit(owner, resolveToolRenderers),
+        owner,
+      );
     }
     if (!ctx.ui) return;
     if (config.statusLine.enabled) {

@@ -298,13 +298,13 @@ Native wait and status operations MUST remain scoped to collecting a nonterminal
 
 ### Requirement: Native lifecycle translation
 
-Pi root guidance MUST use one direct subagent_run with explicit canonical agent and bounded task per fresh assignment; omitted mode MUST use the configured agent/config mode or otherwise background, and explicit task/background modes MUST remain supported. Native status/result/cancel or supported live messaging MUST be used only for a known task ID. Queued delivery, nonterminal state and cancellation requests MUST NOT prove termination or acceptance. New objectives, phases, mutable surfaces and independent judgments MUST receive fresh assignments. Thoth MUST NOT use subagent orchestration APIs or claim instruction-only policy is runtime enforcement. Terminal notifications drive collection without polling; children MUST remain scoped to the parent Pi lifetime. The adopted delegation runtime MUST support Pi 0.99.0/0.99.1 registry and model-only exposure semantics, restrict child registered tools to the selected permitted implementations, and distinguish queued, extension-handled, rejected, and model-consumed live input. Updating this runtime MUST preserve its responsibility for LLM subagent delegation; non-LLM background task execution remains external.
+Pi root guidance MUST use one direct subagent_run with explicit canonical agent and bounded task per fresh assignment; omitted mode MUST use the configured agent/config mode or otherwise background, and explicit task/background modes MUST remain supported. Native status/result/cancel or supported live messaging MUST be used only for a known task ID. Queued delivery, nonterminal state and cancellation requests MUST NOT prove termination or acceptance. New objectives, phases, mutable surfaces and independent judgments MUST receive fresh assignments. Thoth MUST NOT use subagent orchestration APIs or claim instruction-only policy is runtime enforcement. Terminal notifications drive collection without polling; children MUST remain scoped to the parent Pi lifetime. The adopted delegation runtime MUST support Pi `>=0.99.0` through the `1.0.2` development pin with its registry and model-only exposure semantics, restrict child registered tools to the selected permitted implementations, and distinguish queued, extension-handled, rejected, and model-consumed live input. Updating this runtime MUST preserve its responsibility for LLM subagent delegation; non-LLM background task execution remains external.
 
 #### Scenario: Native lifecycle translation
 
-- **GIVEN** an active root using the adopted fork on Pi 0.99.0 or 0.99.1
+- **GIVEN** an active root using the adopted fork on Pi 0.99.0 or 1.0.2
 - **WHEN** it launches an LLM subagent, selects tools, or sends live input
-- **THEN** native delegation controls remain model-only, child callability respects the permitted registry, and reported message/terminal states retain their actual meanings without adding generic task responsibilities
+- **THEN** native delegation controls remain model-only, child callability respects the permitted registry, and reported message/terminal states retain their actual meanings without adding generic task responsibilities 
 
 ### Requirement: Expose routable role contracts
 
@@ -382,7 +382,7 @@ Pi root instructions MUST use ask_user_question for material user choices, follo
 
 - **GIVEN** a Thoth-generated worker child with its default explicit tool list and the interactive question tool active in the root
 - **WHEN** it needs a user decision
-- **THEN** the tool is absent from the child and the child routes the question through `ask_orchestrator` 
+- **THEN** the tool is absent from the child and the child routes the question through `ask_orchestrator`
 
 ### Requirement: Keep Pi progress session-owned
 
@@ -392,7 +392,7 @@ Pi root instructions MUST use the session-local task-list tool for useful multi-
 
 - **GIVEN** a Thoth-generated child with its default explicit tool list and the task-list tool active in the root
 - **WHEN** it launches and later has progress
-- **THEN** the task-list tool is absent from the child, and its progress update is recorded on its task without triggering a root turn 
+- **THEN** the task-list tool is absent from the child, and its progress update is recorded on its task without triggering a root turn
 
 ### Requirement: Expose complementary Pi web tools
 
@@ -440,7 +440,7 @@ Pi MUST expose /subagents-model using native profiles and /subagents-tools using
 
 - **GIVEN** exact names and globs including `*` and `agent_browser_*`, with root tools that are inactive or lack a child implementation
 - **WHEN** the panel saves, synchronization runs and a child launches
-- **THEN** exact names and globs persist unchanged, globs include root-inactive registered tools minus `subagent_*` and `disallowed_tools`, missing implementations are dropped and reported, and the child fails only when nothing remains 
+- **THEN** exact names and globs persist unchanged, globs include root-inactive registered tools minus `subagent_*` and `disallowed_tools`, missing implementations are dropped and reported, and the child fails only when nothing remains
 
 ### Requirement: Run visible background Pi specialists
 
@@ -490,7 +490,7 @@ Default root orchestrator instructions for every supported harness MUST direct u
 
 - **GIVEN** a user writing in Spanish who answers a question tool in Spanish
 - **WHEN** any harness renders the default root orchestrator instructions
-- **THEN** they require Spanish user-facing replies, count the question answer as a real user message and forbid English tool or notification text from switching the language 
+- **THEN** they require Spanish user-facing replies, count the question answer as a real user message and forbid English tool or notification text from switching the language
 
 ### Requirement: Distinguish injected messages from user input
 
@@ -500,7 +500,7 @@ Default root orchestrator instructions MUST state that subagent completion notif
 
 - **GIVEN** a Pi subagent completion delivered as a user-role message and a human answer returned through a question tool
 - **WHEN** the root reads them
-- **THEN** the completion is declared an automated system notification and is not a language signal, while the human answer counts as a real user message 
+- **THEN** the completion is declared an automated system notification and is not a language signal, while the human answer counts as a real user message
 
 ### Requirement: Pi children query the root orchestrator
 
@@ -510,7 +510,7 @@ When enabled, every Pi child whose definition does not list it in `disallowed_to
 
 - **GIVEN** `enable_ask_orchestrator` true and Thoth-generated worker and Oracle definitions
 - **WHEN** both launch
-- **THEN** only the worker receives `ask_orchestrator`, Oracle's definition is the only one declaring `disallowed_tools`, and the worker's question returns the root's `subagent_reply` answer to that same child tool call 
+- **THEN** only the worker receives `ask_orchestrator`, Oracle's definition is the only one declaring `disallowed_tools`, and the worker's question returns the root's `subagent_reply` answer to that same child tool call
 
 ### Requirement: Pi conversation language anchor
 
@@ -520,4 +520,14 @@ The Pi root extension MUST add one non-displayed custom anchor message to each a
 
 - **GIVEN** a Pi root session
 - **WHEN** the human sends a prompt while idle, queues another while running, and later an extension triggers a turn
-- **THEN** only the idle human-started run receives the anchor, no stale anchor appears later, and the system prompt stays unchanged 
+- **THEN** only the idle human-started run receives the anchor, no stale anchor appears later, and the system prompt stays unchanged
+
+### Requirement: Uniform Pi SDK compatibility floor
+
+The root thoth-agents package and every Pi package under pi-packages MUST declare each Pi SDK peer dependency (`@earendil-works/*`) with the same minimum `>=0.99.0`, MUST develop and test against one shared Pi SDK development version (currently `1.0.2`), and MUST declare an `engines.node` floor of Node 22.19 (`>=22.19` or `>=22.19.0`); features that need a newer Pi API MUST detect it at runtime and degrade without failing on the minimum.
+
+#### Scenario: Uniform Pi SDK compatibility floor
+
+- **GIVEN** the repository manifests and root lockfile
+- **WHEN** Pi SDK dependencies are inspected
+- **THEN** every Pi peer range is `>=0.99.0`, every Pi development dependency resolves to the single shared version, and every manifest requires Node 22.19 or newer 

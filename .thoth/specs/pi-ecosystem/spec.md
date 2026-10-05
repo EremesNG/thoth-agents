@@ -34,4 +34,14 @@ The Thoth Pi task-list package (published under the `@thoth-agents` scope as a f
 
 - **GIVEN** a Pi session with the theme and a first-party producer
 - **WHEN** a producer tool, message or widget renders with the theme active and again with the theme absent
-- **THEN** it shows the theme frame and roles in the first case and native unframed output in the second, regardless of extension load order 
+- **THEN** it shows the theme frame and roles in the first case and native unframed output in the second, regardless of extension load order
+
+### Requirement: Claude bridge keeps appended instructions current
+
+`@thoth-agents/pi-claude-bridge` MUST, for a resumed Claude Code session within one recording epoch, deliver the full current appended system instructions through Claude Code's conversation-context channel whenever they differ from the latest appended instructions the model has been given (including a return to the recorded value or an empty value), labeled as superseding earlier versions, MUST deliver nothing extra when they are unchanged, and MUST NOT disable Claude Code system prompt recording or replace the recorded system prompt.
+
+#### Scenario: Claude bridge keeps appended instructions current
+
+- **GIVEN** a resumed Claude Code session and appended instructions that changed after it started
+- **WHEN** the next prompt runs through the bridge
+- **THEN** the model receives the current appended instructions with that prompt while the recorded system prompt and its cache prefix stay unchanged 

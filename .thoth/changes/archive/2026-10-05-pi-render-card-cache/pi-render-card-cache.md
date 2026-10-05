@@ -46,6 +46,8 @@ Make the editor stay responsive in long and resumed sessions by ensuring histori
 - User selected "Planificar el arreglo (Recommended)": plan a cache-based fix across all affected packages after profiling evidence.
 - User chose "Aceptar excepción de base (Recommended)" after final Oracle found AC-5 unmet only by pre-existing, diff-independent root check failures; AC-5 amended accordingly.
 - User chose to verify first, then commit and merge to `0.5.0` (their Pi loads `C:\DEV\Proyectos\Webstorm\thoth-agents` on `0.5.0`) before re-profiling for AC-6.
+- Plan review: first fresh Oracle returned REJECT (non-equivalent renderBox predicate; live widgets inside the delta); record repaired; second fresh Oracle returned OKAY with the note to keep expand-hint memoization per-instance or reload-invalidated.
+- Implementation authorized by explicit user choice "Implement (Recommended)" after OKAY.
 - No human-owned decision remains: expanded output stays complete (non-goal on budgets), caching is internal and output-preserving.
 
 ## Decisions
@@ -125,8 +127,8 @@ Verification seams: per-package vitest/node tests with a spy on `kit.card`/build
   - Focused check and PASS evidence: each package `typecheck` and tests (`test:unit` for pi-claude-bridge) pass
   - Return milestone: tests green
   - Stop / reassessment: a renderer that reads live mutable state without recreation
-- [x] AC-5: repository checks pass
-  - Outcome: green repo-level checks
+- [x] AC-5: package checks pass and root checks show no new failures
+  - Outcome: touched-package checks and root typecheck green; root check:ci/test failures limited to the user-authorized pre-existing baseline
   - Known entrypoints and skill paths: root `package.json` scripts
   - Inputs: accepted AC-1..AC-4 diffs
   - Dependencies: AC-1, AC-2, AC-3, AC-4 units accepted
@@ -134,10 +136,10 @@ Verification seams: per-package vitest/node tests with a spy on `kit.card`/build
   - Owner: root
   - Writes: none
   - Interface boundaries: none
-  - Focused check and PASS evidence: `pnpm run check:ci`, `pnpm run typecheck`, `pnpm test` exit 0
-  - Return milestone: all checks green
-  - Stop / reassessment: failures outside touched surfaces
-- [ ] AC-6: user re-profile confirms smooth typing
+  - Focused check and PASS evidence: each touched package `typecheck` + tests exit 0; root `pnpm run typecheck` exit 0; root `pnpm run check:ci` and `pnpm test` fail only on the baseline (unchanged `panel.test.ts` formatting; `src/cli` Codex tests via inherited `CODEX_HOME`; `src/harness/publish-marketplace.test.ts` missing sibling checkout), none under the diff
+  - Return milestone: package checks green and root failures classified
+  - Stop / reassessment: any root failure attributable to the diff
+- [x] AC-6: user re-profile confirms smooth typing
   - Outcome: measured render-time reduction in a resumed long session
   - Known entrypoints and skill paths: user profiling procedure (NODE_OPTIONS `--cpu-prof`), analysis script outside the repo
   - Inputs: accepted AC-5
@@ -152,25 +154,25 @@ Verification seams: per-package vitest/node tests with a spy on `kit.card`/build
 
 ## Authorization
 
-**Plan review**: OKAY (first fresh Oracle REJECT: non-equivalent renderBox predicate and live widgets in delta; record repaired; second fresh Oracle OKAY; note: keep expand-hint memo per-instance or reload-invalidated)
+**Plan review**: OKAY
 **Plan review selection**: EXPLICIT_REVIEW
-**Implementation**: AUTHORIZED (explicit user choice "Implement (Recommended)" after OKAY)
+**Implementation**: AUTHORIZED
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 91922d47cebb14e3550c377de2978c0aa3a44098c60382cccbec91f8ddc57e41
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
-- AC-6: PENDING | check | evidence
+- AC-1: PASS | pi-core typecheck + 156/156 tests; Oracle memo/export review | width/kit reuse, kit looked up every render, invalidation and kit registration transitions covered
+- AC-2: PASS | pi-thoth-theme typecheck + 590/590 tests incl. box.test.ts; Oracle equivalence review | 4,608 byte-equivalence comparisons vs frozen original incl. escape-split ZWJ; only fitting printable ASCII bypasses truncation
+- AC-3: PASS | pi-subagents typecheck + 1121 pass/1 skip; Oracle review + real-SDK ticker probe | tool, completion and question cards reuse/recompute; expansion hints resolve at construction
+- AC-4: PASS | task-list 225/225, background-tasks 423+4 skip, antigravity 738+9 skip, claude-bridge test:unit 389/0; Oracle review | reuse, recomputation, native fallback equivalence; antigravity invalidate forwards to native Text
+- AC-5: PASS | package typechecks/tests and root pnpm run typecheck exit 0; root check:ci/test classified | failures limited to user-authorized pre-existing baseline (panel.test.ts formatting, CODEX_HOME, missing thoth-plugins checkout), none under the diff
+- AC-6: PASS | user CPU profiles before/after, same long session with /resume | doRender 44.424 s -> 2.722 s, kit.card 41.529 s -> 0.204 s, renderBox 35.828 s -> 0.161 s; user reports typing smooth like a fresh session
 - Source: .thoth/specs/pi-ecosystem/spec.md | sha256:d9809a10645b2edc66d8b076e6c661d42ea139138193af1c509be3a170111d3e
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

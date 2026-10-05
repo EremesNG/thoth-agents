@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Opt-in only: activate the real bridge in-process and run real SDK queries.
 // No global Pi CLI/shim dependency; works on Windows as well as Unix.
-// Exit 2 means INCONCLUSIVE (AC-3 remains unrun), never PASS.
+// Exit 2 means INCONCLUSIVE (live acceptance remains unrun), never PASS.
+import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 
 if (process.env.CLAUDE_BRIDGE_TESTING_PROMPT_REFRESH !== "1") {
 	console.log("SKIP: set CLAUDE_BRIDGE_TESTING_PROMPT_REFRESH=1 to run the live append-refresh probe");
@@ -34,6 +36,8 @@ async function run() {
 	process.chdir(cwd);
 	const A = `alpha_${randomUUID().replaceAll("-", "")}`;
 	const B = `beta_${randomUUID().replaceAll("-", "")}`;
+	const staticAppend = `<bridge-probe-static>\n${"This is unchanged static probe guidance, not a probe value. Follow the current value block.\n".repeat(150)}</bridge-probe-static>`;
+	assert.ok(staticAppend.length > 10_000);
 	const piSessionId = randomUUID();
 	const messages = [];
 	const handlers = new Map();
@@ -44,13 +48,38 @@ async function run() {
 	};
 	let provider;
 	let turnNumber = 0;
+	let bridgeTest;
+	let deliveredContexts = [];
+	let deliveryError;
 	const sessionIds = new Set();
 	const inconclusive = (reason) => {
-		console.log(`INCONCLUSIVE: ${reason}; AC-3 remains unrun`);
+		console.log(`INCONCLUSIVE: ${reason}; live acceptance remains unrun`);
 		process.exitCode = 2;
 	};
 	try {
-		const { default: activate } = await import("../src/index.js");
+		const { default: activate, __test } = await import("../src/index.js");
+		bridgeTest = __test;
+		// Observe real SDK hook deliveries without changing bridge query semantics.
+		__test.setQuery(({ prompt, options }) => {
+			if (!options.hooks) return sdkQuery({ prompt, options });
+			const hooks = {
+				...options.hooks,
+				UserPromptSubmit: options.hooks.UserPromptSubmit.map((matcher) => ({
+					...matcher,
+					hooks: matcher.hooks.map((hook) => async (...args) => {
+						const output = await hook(...args);
+						const context = output.hookSpecificOutput?.additionalContext;
+						if (context !== undefined) {
+							deliveredContexts.push(context);
+							if (context.length > 9_000)
+								deliveryError = new Error(`Delivered context exceeded 9,000 units: ${context.length}`);
+						}
+						return output;
+					}),
+				})),
+			};
+			return sdkQuery({ prompt, options: { ...options, hooks } });
+		});
 		activate({
 			on: (name, handler) => handlers.set(name, handler),
 			registerProvider: (_name, config) => {
@@ -67,7 +96,11 @@ async function run() {
 			const debugOffset = readFileSync(debugLog, "utf8").length;
 			const sdkOffset = readFileSync(sdkLog, "utf8").length;
 			process.env.CLAUDE_BRIDGE_TESTING_DISABLE_APPEND_REFRESH = deliveryEnabled ? "0" : "1";
-			const append = `The current bridge_probe_value is ${value}. When asked for bridge_probe_value, report only the value from your current appended instructions, not earlier conversation answers. A newer appended-instructions version supersedes the old value.`;
+			deliveredContexts = [];
+			deliveryError = undefined;
+			const valueBlock = `<bridge-probe-value>\nThe current bridge_probe_value is ${value}. When asked for bridge_probe_value, report only the value from your current appended instructions, not earlier conversation answers. A newer appended-instructions version supersedes the old value.\n</bridge-probe-value>`;
+			const append = `${staticAppend}\n\n${valueBlock}`;
+			assert.ok(append.indexOf(valueBlock) > 2_000, "changed sentinel must be outside CC's persisted-output preview");
 			// Exercise the real lifecycle captures and the shared-options mutation
 			// used by extensions running after the bridge's before_agent_start.
 			const basePrompt = `Live probe prompt state ${++turnNumber}`;
@@ -94,6 +127,8 @@ async function run() {
 					},
 				)
 				.result();
+			if (deliveryError) throw deliveryError;
+			assert.ok(deliveredContexts.every((context) => context.length <= 9_000));
 			messages.push(response);
 			// Let the bridge's completion/finally release its query before the next prompt.
 			await new Promise((done) => setImmediate(done));
@@ -114,6 +149,7 @@ async function run() {
 			if (response.errorMessage) console.log(`Query error: ${response.errorMessage}`);
 			return {
 				text,
+				contexts: [...deliveredContexts],
 				debug,
 				sessionId,
 				compacted: sdkMessages.some((m) => m.type === "system" && m.subtype === "compact_boundary"),
@@ -168,13 +204,29 @@ async function run() {
 		}
 		if (!enabled.debug.includes("append-refresh: enabled=true registered=true"))
 			throw new Error("refresh hook was not registered");
+		assert.ok(enabled.contexts.length > 0, "registered refresh must actually deliver context");
+		assert.ok(
+			enabled.contexts.every((context) => context.length <= 9_000),
+			"every delivered context must stay inline",
+		);
+		assert.ok(
+			enabled.contexts.some((context) => context.includes("<bridge-probe-value>")),
+			"changed sentinel block must be delivered",
+		);
+		assert.ok(
+			enabled.contexts.every((context) => !context.includes("<bridge-probe-static>")),
+			"unchanged large block must not be resent",
+		);
 		if (enabled.text !== B) throw new Error(`Expected refreshed value ${B}, got ${enabled.text}`);
-		console.log("PASS: active recording + same-session reuse established; changed append delivered through the hook");
+		console.log(
+			"PASS: active recording + same-epoch reuse established; model reported new sentinel beyond the large static append; every hook value ≤9,000 units",
+		);
 	} catch (error) {
 		process.exitCode = 1;
 		console.error(`FAIL: ${error.message}`);
 	} finally {
 		handlers.get("session_shutdown")?.({}, sessionCtx);
+		bridgeTest?.setQuery(null);
 		delete process.env.CLAUDE_BRIDGE_TESTING_DISABLE_APPEND_REFRESH;
 		const { deleteSession } = await import("cc-session-io");
 		for (const sessionId of sessionIds) deleteSession(sessionId, cwd, process.env.CLAUDE_CONFIG_DIR);

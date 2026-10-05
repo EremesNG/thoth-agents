@@ -18,8 +18,8 @@
 // - Parallel spawns with the same agent name are separate entries, but
 //   name-based routing cannot tell them apart.
 
+import { formatDuration } from "@thoth-agents/pi-core";
 import type { DriverActivity } from "./driver-types.js";
-import { formatDuration } from "./format-duration.js";
 
 /** Tools whose start opens a roster entry and whose done/error closes it. */
 const SPAWN_TOOLS = new Set(["invoke_subagent", "run_subagent", "browser_subagent"]);

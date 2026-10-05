@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { formatDuration } from "../src/format-duration.js";
+import { formatDuration } from "@thoth-agents/pi-core";
 
 test.each([0, -0, -0.01, -1, -Number.MAX_VALUE, NaN, Infinity, -Infinity])(
 	"formatDuration: zero or invalid %s ms is displayed as 0s",

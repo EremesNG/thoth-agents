@@ -1,7 +1,7 @@
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { createMockCtx, createMockPi, makeTheme } from './test/helpers.js';
 import { registerTodoTool, setActiveRenderSession } from './todo.js';
 
@@ -108,6 +108,63 @@ it.each([
       (row) => `<${role}>${row.padEnd(40)}</${role}>`,
     ),
   );
+});
+
+it.each([
+  'call',
+  'result',
+])('reuses %s KIT lines until width, invalidation or registration changes', async (slot) => {
+  const tool = setup();
+  const ctx = context();
+  const result = await tool.execute(
+    'tc',
+    ctx.args,
+    undefined,
+    undefined,
+    createMockCtx(),
+  );
+  const call = tool.renderCall(ctx.args, makeTheme(), ctx);
+  const output = tool.renderResult(
+    result,
+    { expanded: false, isPartial: false },
+    makeTheme(),
+    ctx,
+  );
+  const component = slot === 'call' ? call : output;
+  const native = component.render(80);
+  const kit = createTestRenderKit();
+  const card = vi.spyOn(kit, 'card');
+  token = registerRenderKit(kit, {});
+  const lines = component.render(80);
+  expect(lines.map((row) => row.trimEnd())).toEqual(
+    slot === 'call'
+      ? ['╭─ todo', '+ write tests']
+      : ['○ pending', '╰─ completed · completed'],
+  );
+  expect(component.render(80)).toBe(lines);
+  expect(card).toHaveBeenCalledTimes(1);
+  component.render(40);
+  expect(card).toHaveBeenCalledTimes(2);
+  component.invalidate();
+  component.render(40);
+  expect(card).toHaveBeenCalledTimes(3);
+  expect(component.render(80)).toEqual(lines);
+  expect(card).toHaveBeenCalledTimes(4);
+
+  const replacement = createTestRenderKit();
+  const replacementCard = vi.spyOn(replacement, 'card');
+  token = registerRenderKit(replacement, {});
+  expect(component.render(80)).toEqual(lines);
+  expect(replacementCard).toHaveBeenCalledTimes(1);
+  expect(component.render(80)).toEqual(lines);
+  expect(replacementCard).toHaveBeenCalledTimes(1);
+  withdrawRenderKit(token);
+  expect(component.render(80)).toEqual(native);
+  component.invalidate();
+  expect(component.render(80)).toEqual(native);
+  token = registerRenderKit(kit, {});
+  expect(component.render(80)).toEqual(lines);
+  expect(card).toHaveBeenCalledTimes(5);
 });
 
 it('looks up the kit again on the same call and result components without invalidation', async () => {

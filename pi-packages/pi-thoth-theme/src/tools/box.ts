@@ -159,6 +159,14 @@ export function splitResultNotice(
   return { text, notices: [] };
 }
 
+function truncateBoxLine(line: string, limit: number): string {
+  // Only fitting printable ASCII is guaranteed byte-preserving. ANSI and
+  // graphemes must retain every SDK truncation pass, even if they appear to fit.
+  return line.length <= limit && !/[^\x20-\x7e]/.test(line)
+    ? line
+    : truncateToWidth(line, limit);
+}
+
 export function renderBox(
   theme: Pick<Theme, 'fg'>,
   bodyLines: string[],
@@ -177,7 +185,7 @@ export function renderBox(
       (l): l is string => typeof l === 'string' && l.length > 0,
     );
     const lines = raw.length > 0 ? raw : bodyLines;
-    return lines.map((l) => truncateToWidth(l, safeWidth));
+    return lines.map((l) => truncateBoxLine(l, safeWidth));
   }
 
   const result: string[] = [];
@@ -206,10 +214,10 @@ export function renderBox(
   // Body lines
   const contentWidth = Math.max(1, innerWidth - 2);
   for (const line of bodyLines) {
-    const truncated = truncateToWidth(line, contentWidth);
+    const truncated = truncateBoxLine(line, contentWidth);
     const pad = Math.max(0, contentWidth - visibleWidth(truncated));
     const framed = `${theme.fg(borderColor, `${BOX_VERTICAL} `)}${truncated}${' '.repeat(pad)}${theme.fg(borderColor, ` ${BOX_VERTICAL}`)}`;
-    result.push(truncateToWidth(framed, safeWidth));
+    result.push(truncateBoxLine(framed, safeWidth));
   }
 
   // Footer / Bottom border
@@ -235,7 +243,7 @@ export function renderBox(
     result.push(truncateToWidth(bottom, safeWidth));
   }
 
-  return result.map((l) => truncateToWidth(l, safeWidth));
+  return result.map((l) => truncateBoxLine(l, safeWidth));
 }
 
 export function createComponent(

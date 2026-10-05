@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import { initTheme } from '@earendil-works/pi-coding-agent';
 import { Box, Text } from '@earendil-works/pi-tui';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
@@ -27,6 +27,7 @@ let token;
 afterEach(() => {
   if (token) withdrawRenderKit(token);
   token = undefined;
+  mock.restoreAll();
 });
 function withKit() {
   token = registerRenderKit(createTestRenderKit(), {});
@@ -71,6 +72,67 @@ function sdkBox(text, role, width) {
 }
 
 describe('AskClaude rendering', () => {
+  for (const slot of ['call', 'partial', 'collapsed', 'expanded']) {
+    it(`reuses ${slot} KIT lines until width, invalidation or kit registration changes`, () => {
+      const shared = context({ isPartial: slot === 'partial' });
+      const create = () =>
+        slot === 'call'
+          ? tool.renderCall({ prompt: 'Review' }, theme, shared)
+          : tool.renderResult(
+              {
+                content: [{ type: 'text', text: 'Done' }],
+                details: { prompt: 'Review', executionTime: 1000 },
+              },
+              { expanded: slot === 'expanded', isPartial: slot === 'partial' },
+              theme,
+              shared,
+            );
+      const component = create();
+      const native = component.render(100);
+      const kit = createTestRenderKit();
+      const card = mock.method(kit, 'card');
+      token = registerRenderKit(kit, {});
+      const lines = component.render(100);
+      assert.deepEqual(
+        lines,
+        slot === 'call'
+          ? ['╭─ AskClaude', '"Review"', '╰─ completed · Claude Code']
+          : [
+              ...(slot === 'expanded'
+                ? ['├─ Prompt', 'Review', '├─ Output']
+                : []),
+              'Done',
+              `╰─ ${slot === 'partial' ? 'running' : 'completed'} · Claude Code · 1s`,
+            ],
+      );
+      assert.strictEqual(component.render(100), lines);
+      assert.equal(card.mock.callCount(), 1);
+      component.render(40);
+      assert.equal(card.mock.callCount(), 2);
+      component.invalidate();
+      component.render(40);
+      assert.equal(card.mock.callCount(), 3);
+      assert.deepEqual(component.render(100), lines);
+      assert.equal(card.mock.callCount(), 4);
+      assert.deepEqual(create().render(100), lines);
+      assert.equal(card.mock.callCount(), 5);
+
+      const replacement = createTestRenderKit();
+      const replacementCard = mock.method(replacement, 'card');
+      token = registerRenderKit(replacement, {});
+      assert.deepEqual(component.render(100), lines);
+      assert.deepEqual(component.render(100), lines);
+      assert.equal(replacementCard.mock.callCount(), 1);
+      withdrawRenderKit(token);
+      assert.deepEqual(component.render(100), native);
+      component.invalidate();
+      assert.deepEqual(component.render(100), native);
+      token = registerRenderKit(kit, {});
+      assert.deepEqual(component.render(100), lines);
+      assert.equal(card.mock.callCount(), 6);
+    });
+  }
+
   it('uses a single KIT card for call tags, prompt, result and status/duration footer', () => {
     withKit();
     const shared = context();
@@ -95,8 +157,12 @@ describe('AskClaude rendering', () => {
       theme,
       shared,
     );
+    // SDK updates recreate both renderer slots before drawing them.
+    const updatedCall = tool.renderCall(args, theme, shared);
+    call.invalidate();
+    assert.deepEqual(call.render(100), updatedCall.render(100));
     assert.deepEqual(
-      [...call.render(100), ...result.render(100)],
+      [...updatedCall.render(100), ...result.render(100)],
       [
         '╭─ AskClaude',
         '[mode=full, model=sonnet, isolated]',

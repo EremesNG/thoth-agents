@@ -1,5 +1,5 @@
 import {
-  getRenderKit,
+  createKitRenderMemo,
   type RenderIndicatorContext,
 } from '@thoth-agents/pi-core';
 import {
@@ -32,48 +32,52 @@ export function backgroundToolRenderers(toolName: string) {
     renderCall(args: unknown, theme: unknown, context?: RenderContext) {
       if (context?.state) context.state[RESULT_PRESENT] = false;
       const summary = summarizeArgs(args);
+      const memo = createKitRenderMemo();
       return {
-        invalidate() {},
+        invalidate() {
+          memo.invalidate();
+        },
         render(width: number) {
-          const kit = getRenderKit();
-          const hasResult = context?.state?.[RESULT_PRESENT] === true;
-          const pending = context?.isPartial ?? !hasResult;
-          const isError = context?.isError === true;
-          if (kit) {
-            const t = renderTheme(theme);
-            const status = pending
-              ? 'running'
-              : isError
-                ? 'failed'
-                : 'completed';
-            const indicator = kit.indicator(t, context, { status });
-            return kit.card(
-              t,
-              {
-                title: [
-                  kit.fg(t, 'toolTitle', toolName),
-                  kit.fg(t, 'muted', summary),
-                ]
-                  .filter(Boolean)
-                  .join(' '),
-                body: hasResult ? [] : [indicator.text],
-                isError,
-                part: 'start',
-              },
+          return memo.render(width, (kit) => {
+            const hasResult = context?.state?.[RESULT_PRESENT] === true;
+            const pending = context?.isPartial ?? !hasResult;
+            const isError = context?.isError === true;
+            if (kit) {
+              const t = renderTheme(theme);
+              const status = pending
+                ? 'running'
+                : isError
+                  ? 'failed'
+                  : 'completed';
+              const indicator = kit.indicator(t, context, { status });
+              return kit.card(
+                t,
+                {
+                  title: [
+                    kit.fg(t, 'toolTitle', toolName),
+                    kit.fg(t, 'muted', summary),
+                  ]
+                    .filter(Boolean)
+                    .join(' '),
+                  body: hasResult ? [] : [indicator.text],
+                  isError,
+                  part: 'start',
+                },
+                width,
+              );
+            }
+            return nativeToolRows(
+              [`${toolName}${summary ? ` ${summary}` : ''}`],
               width,
+              theme,
+              {
+                pending,
+                isError,
+                top: true,
+                bottom: !hasResult,
+              },
             );
-          }
-          return nativeToolRows(
-            [`${toolName}${summary ? ` ${summary}` : ''}`],
-            width,
-            theme,
-            {
-              pending,
-              isError,
-              top: true,
-              bottom: !hasResult,
-            },
-          );
+          });
         },
       };
     },
@@ -124,65 +128,74 @@ export function renderBackgroundTaskLogDisplay(
   const fullText = resultTextContent(result).split(/\r?\n/);
   const details = (result as { details?: LogDisplayDetails } | undefined)
     ?.details;
+  const memo = createKitRenderMemo();
   return {
-    invalidate() {},
+    invalidate() {
+      memo.invalidate();
+    },
     render(width: number) {
-      const kit = getRenderKit();
-      const t = renderTheme(theme);
-      const pending = context?.isPartial ?? opts?.isPartial === true;
-      const isError = context?.isError === true;
-      let rows: string[];
-      if (details?.kind === 'background-task-log-display') {
-        const meta = themed(theme, 'dim', `${details.fullLineCount} lines`);
-        const hint = resolveExpandHint(context);
-        const folded =
-          details.foldedLineCount > 0
-            ? themed(
-                theme,
-                'dim',
-                `Folded ${details.foldedLineCount} display lines (${hint}).`,
-              )
-            : themed(theme, 'dim', `Compact log (${hint} for full display).`);
-        rows = expanded
-          ? [meta, themed(theme, 'dim', 'Full displayed log.'), '', ...fullText]
-          : [
-              meta,
-              details.head,
-              '',
-              themed(theme, 'dim', 'preview'),
-              ...details.compactLines,
-              folded,
-            ];
-      } else {
-        const allRows = trimTrailingBlank(fullText);
-        rows = kit
-          ? kit.collapse(t, allRows, {
-              expanded,
-              expandHint: resolveExpandHint(context),
-            })
-          : collapseNative(allRows, expanded, theme, context);
-      }
-      if (kit) {
-        const status = pending ? 'running' : isError ? 'failed' : 'completed';
-        const indicator = kit.indicator(t, context, { status });
-        return kit.card(
-          t,
-          {
-            body: rows,
-            footer: indicator.text,
-            status,
-            isError,
-            wrap: expanded,
-            part: 'end',
-          },
-          width,
-        );
-      }
-      return nativeToolRows(rows, width, theme, {
-        pending,
-        isError,
-        bottom: true,
-        wrap: expanded,
+      return memo.render(width, (kit) => {
+        const t = renderTheme(theme);
+        const pending = context?.isPartial ?? opts?.isPartial === true;
+        const isError = context?.isError === true;
+        let rows: string[];
+        if (details?.kind === 'background-task-log-display') {
+          const meta = themed(theme, 'dim', `${details.fullLineCount} lines`);
+          const hint = resolveExpandHint(context);
+          const folded =
+            details.foldedLineCount > 0
+              ? themed(
+                  theme,
+                  'dim',
+                  `Folded ${details.foldedLineCount} display lines (${hint}).`,
+                )
+              : themed(theme, 'dim', `Compact log (${hint} for full display).`);
+          rows = expanded
+            ? [
+                meta,
+                themed(theme, 'dim', 'Full displayed log.'),
+                '',
+                ...fullText,
+              ]
+            : [
+                meta,
+                details.head,
+                '',
+                themed(theme, 'dim', 'preview'),
+                ...details.compactLines,
+                folded,
+              ];
+        } else {
+          const allRows = trimTrailingBlank(fullText);
+          rows = kit
+            ? kit.collapse(t, allRows, {
+                expanded,
+                expandHint: resolveExpandHint(context),
+              })
+            : collapseNative(allRows, expanded, theme, context);
+        }
+        if (kit) {
+          const status = pending ? 'running' : isError ? 'failed' : 'completed';
+          const indicator = kit.indicator(t, context, { status });
+          return kit.card(
+            t,
+            {
+              body: rows,
+              footer: indicator.text,
+              status,
+              isError,
+              wrap: expanded,
+              part: 'end',
+            },
+            width,
+          );
+        }
+        return nativeToolRows(rows, width, theme, {
+          pending,
+          isError,
+          bottom: true,
+          wrap: expanded,
+        });
       });
     },
   };

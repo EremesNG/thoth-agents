@@ -10,8 +10,8 @@ import {
   wrapTextWithAnsi,
 } from '@earendil-works/pi-tui';
 import {
+  createKitRenderMemo,
   formatDuration,
-  getRenderKit,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import {
@@ -66,27 +66,31 @@ function renderComponent(
   call: boolean,
   renderCard: (kit: ThothRenderKit, width: number) => string[],
 ): Component {
+  const memo = createKitRenderMemo();
   return {
     render(width) {
-      if (width <= 0) return [];
-      const kit = getRenderKit();
-      if (kit) return renderCard(kit, width);
-      const role = state.isPartial
-        ? 'toolPendingBg'
-        : state.isError
-          ? 'toolErrorBg'
-          : 'toolSuccessBg';
-      const bg = (line: string) => theme.bg(role, line);
-      const box = new Box(1, 0, bg);
-      box.addChild(new Text(text, 0, 0));
-      const padding = bg(' '.repeat(width));
-      return [
-        ...(call ? [padding] : []),
-        ...box.render(width),
-        ...(!call || !state.hasResult ? [padding] : []),
-      ];
+      return memo.render(width, (kit) => {
+        if (width <= 0) return [];
+        if (kit) return renderCard(kit, width);
+        const role = state.isPartial
+          ? 'toolPendingBg'
+          : state.isError
+            ? 'toolErrorBg'
+            : 'toolSuccessBg';
+        const bg = (line: string) => theme.bg(role, line);
+        const box = new Box(1, 0, bg);
+        box.addChild(new Text(text, 0, 0));
+        const padding = bg(' '.repeat(width));
+        return [
+          ...(call ? [padding] : []),
+          ...box.render(width),
+          ...(!call || !state.hasResult ? [padding] : []),
+        ];
+      });
     },
-    invalidate() {},
+    invalidate() {
+      memo.invalidate();
+    },
   };
 }
 

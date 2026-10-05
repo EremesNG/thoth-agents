@@ -1,5 +1,8 @@
 import type { Component } from '@earendil-works/pi-tui';
-import { getRenderKit, type ThothRenderKit } from '@thoth-agents/pi-core';
+import {
+  createKitRenderMemo,
+  type ThothRenderKit,
+} from '@thoth-agents/pi-core';
 import {
   AUTOMATED_NOTIFICATION_MARKER,
   type CallbackDisplayDetails,
@@ -40,59 +43,64 @@ export function renderBackgroundMessage(
   const title = details
     ? titleFor(details)
     : { name: 'background', summary: '' };
+  const memo = createKitRenderMemo();
   return {
-    invalidate() {},
+    invalidate() {
+      memo.invalidate();
+    },
     render(width) {
-      const kit = getRenderKit();
-      const t = renderTheme(theme);
-      let lines = fullLines;
-      if (details && !expanded) {
-        const rows = details.entries.map((entry) =>
-          entryLine(entry, theme, kit),
-        );
-        const extra = details.omitted + details.unlisted;
-        if (extra > 0)
-          rows.push(themed(theme, 'dim', `+${extra} more not shown`));
-        const room = COLLAPSED_LINES - 1;
-        if (kit) {
-          lines = kit.collapse(t, rows, {
-            budget: room,
-            expandHint: resolveExpandHint(),
-          });
-          if (rows.length <= room)
+      return memo.render(width, (kit) => {
+        const t = renderTheme(theme);
+        let lines = fullLines;
+        if (details && !expanded) {
+          const rows = details.entries.map((entry) =>
+            entryLine(entry, theme, kit),
+          );
+          const extra = details.omitted + details.unlisted;
+          if (extra > 0)
+            rows.push(themed(theme, 'dim', `+${extra} more not shown`));
+          const room = COLLAPSED_LINES - 1;
+          if (kit) {
+            const expandHint = resolveExpandHint();
+            lines = kit.collapse(t, rows, {
+              budget: room,
+              expandHint,
+            });
+            if (rows.length <= room)
+              lines.push(themed(theme, 'dim', `(${expandHint})`));
+          } else {
+            lines =
+              rows.length > room
+                ? [
+                    ...rows.slice(0, room - 1),
+                    themed(theme, 'dim', `+${rows.length - room + 1} more`),
+                  ]
+                : rows;
             lines.push(themed(theme, 'dim', `(${resolveExpandHint()})`));
-        } else {
-          lines =
-            rows.length > room
-              ? [
-                  ...rows.slice(0, room - 1),
-                  themed(theme, 'dim', `+${rows.length - room + 1} more`),
-                ]
-              : rows;
-          lines.push(themed(theme, 'dim', `(${resolveExpandHint()})`));
+          }
         }
-      }
-      const label = [title.name, title.summary].filter(Boolean).join(' ');
-      if (kit) {
-        const status = isError ? 'failed' : 'completed';
-        const indicator = kit.indicator(t, undefined, { status });
-        return kit.card(
-          t,
-          {
-            title: label,
-            body: lines,
-            footer: indicator.text,
-            status,
-            isError,
-            wrap: expanded,
-          },
-          width,
-        );
-      }
-      return [
-        ...nativeRows([label], width),
-        ...nativeRows(lines, width, expanded),
-      ];
+        const label = [title.name, title.summary].filter(Boolean).join(' ');
+        if (kit) {
+          const status = isError ? 'failed' : 'completed';
+          const indicator = kit.indicator(t, undefined, { status });
+          return kit.card(
+            t,
+            {
+              title: label,
+              body: lines,
+              footer: indicator.text,
+              status,
+              isError,
+              wrap: expanded,
+            },
+            width,
+          );
+        }
+        return [
+          ...nativeRows([label], width),
+          ...nativeRows(lines, width, expanded),
+        ];
+      });
     },
   };
 }

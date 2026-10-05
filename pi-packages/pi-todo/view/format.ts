@@ -1,7 +1,7 @@
 import type { Theme } from '@earendil-works/pi-coding-agent';
 import { Box, type Component, Text } from '@earendil-works/pi-tui';
 import {
-  getRenderKit,
+  createKitRenderMemo,
   type RenderIndicatorContext,
   type RenderStatus,
   type ThothRenderKit,
@@ -192,36 +192,40 @@ export function renderTodoCall(
   } else if (args.action === 'list' && args.status) {
     text += ` ${theme.fg('muted', formatStatusLabel(args.status))}`;
   }
+  const memo = createKitRenderMemo();
   return {
     render(width) {
-      const kit = getRenderKit();
-      const status = executionStatus(context, true);
-      // SDK constructs both slots before rendering either; renderResult marks
-      // the shared state, so the first completed render has no duplicate padding.
-      const part = context?.state?.[HAS_RESULT] ? 'start' : 'full';
-      if (kit) {
-        return kit.card(
+      return memo.render(width, (kit) => {
+        const status = executionStatus(context, true);
+        // SDK constructs both slots before rendering either; renderResult marks
+        // the shared state, so the first completed render has no duplicate padding.
+        const part = context?.state?.[HAS_RESULT] ? 'start' : 'full';
+        if (kit) {
+          return kit.card(
+            theme,
+            {
+              title: 'todo',
+              body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
+              status,
+              footer: kit.indicator(theme, context, { status }).text,
+              isError: context?.isError,
+              part,
+            },
+            width,
+          );
+        }
+        return renderNative(
+          theme.fg('toolTitle', theme.bold('todo ')) + text,
           theme,
-          {
-            title: 'todo',
-            body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
-            status,
-            footer: kit.indicator(theme, context, { status }).text,
-            isError: context?.isError,
-            part,
-          },
           width,
+          status,
+          part,
         );
-      }
-      return renderNative(
-        theme.fg('toolTitle', theme.bold('todo ')) + text,
-        theme,
-        width,
-        status,
-        part,
-      );
+      });
     },
-    invalidate() {},
+    invalidate() {
+      memo.invalidate();
+    },
   };
 }
 
@@ -255,31 +259,36 @@ export function renderTodoResult(
         break;
     }
   }
+  const memo = createKitRenderMemo();
   return {
     render(width) {
-      const kit = getRenderKit();
-      const toolStatus = executionStatus(context, options.isPartial ?? false);
-      const text = status
-        ? theme.fg(
-            STATUS_COLOR[status],
-            `${kit ? kit.statusGlyph(theme, status) : STATUS_GLYPH[status]} ${formatStatusLabel(status)}`,
-          )
-        : theme.fg('success', '✓');
-      if (kit) {
-        return kit.card(
-          theme,
-          {
-            body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
-            status: toolStatus,
-            footer: kit.indicator(theme, context, { status: toolStatus }).text,
-            isError: context?.isError,
-            part: 'end',
-          },
-          width,
-        );
-      }
-      return renderNative(text, theme, width, toolStatus, 'end');
+      return memo.render(width, (kit) => {
+        const toolStatus = executionStatus(context, options.isPartial ?? false);
+        const text = status
+          ? theme.fg(
+              STATUS_COLOR[status],
+              `${kit ? kit.statusGlyph(theme, status) : STATUS_GLYPH[status]} ${formatStatusLabel(status)}`,
+            )
+          : theme.fg('success', '✓');
+        if (kit) {
+          return kit.card(
+            theme,
+            {
+              body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
+              status: toolStatus,
+              footer: kit.indicator(theme, context, { status: toolStatus })
+                .text,
+              isError: context?.isError,
+              part: 'end',
+            },
+            width,
+          );
+        }
+        return renderNative(text, theme, width, toolStatus, 'end');
+      });
     },
-    invalidate() {},
+    invalidate() {
+      memo.invalidate();
+    },
   };
 }

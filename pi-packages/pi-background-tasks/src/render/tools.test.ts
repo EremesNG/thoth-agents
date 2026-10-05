@@ -9,8 +9,20 @@ import {
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { registerTools } from '../tools.js';
+import {
+  backgroundToolRenderers,
+  renderBackgroundTaskLogDisplay,
+} from './tools.js';
 
 const TOOL_NAMES = [
   'bg_task_spawn',
@@ -130,6 +142,97 @@ describe('native tool shells', () => {
       }
     });
   }
+});
+
+it.each([
+  { slot: 'call', expanded: false },
+  { slot: 'result', expanded: false },
+  { slot: 'result', expanded: true },
+  { slot: 'compact-result', expanded: false },
+  { slot: 'compact-result', expanded: true },
+])('reuses $slot KIT output (expanded=$expanded), including the per-instance expand hint', ({
+  slot,
+  expanded,
+}) => {
+  const theme = {
+    fg: (_role: string, text: string) => text,
+    bold: (text: string) => text,
+  };
+  const getKeys = vi.fn(() => ['alt+o']);
+  const context = { state: {}, isPartial: false, keybindings: { getKeys } };
+  const result = {
+    content: [{ type: 'text', text: 'full log' }],
+    details:
+      slot === 'compact-result'
+        ? {
+            kind: 'background-task-log-display',
+            head: '[log] bg_abc',
+            fullLineCount: 20,
+            compactLines: ['tail'],
+            foldedLineCount: 15,
+          }
+        : undefined,
+  };
+  const create = () =>
+    slot === 'call'
+      ? backgroundToolRenderers('bg_task_log').renderCall(
+          { id: 'bg_abc' },
+          theme,
+          context,
+        )
+      : renderBackgroundTaskLogDisplay(result, { expanded }, theme, context);
+  const component = create();
+  const native = component.render(100);
+  getKeys.mockClear();
+  const kit = createTestRenderKit();
+  const card = vi.spyOn(kit, 'card');
+  token = registerRenderKit(kit, {});
+  const lines = component.render(100);
+  const body =
+    slot === 'compact-result'
+      ? expanded
+        ? ['20 lines', 'Full displayed log.', '', 'full log']
+        : [
+            '20 lines',
+            '[log] bg_abc',
+            '',
+            'preview',
+            'tail',
+            'Folded 15 display lines (alt+o to expand).',
+          ]
+      : ['full log'];
+  expect(lines).toEqual(
+    slot === 'call'
+      ? ['╭─ bg_task_log bg_abc', 'completed']
+      : [...body, '╰─ completed · completed'],
+  );
+  expect(component.render(100)).toBe(lines);
+  expect(card).toHaveBeenCalledTimes(1);
+  expect(getKeys).toHaveBeenCalledTimes(slot === 'call' ? 0 : 1);
+  component.render(40);
+  expect(card).toHaveBeenCalledTimes(2);
+  component.invalidate();
+  component.render(40);
+  expect(card).toHaveBeenCalledTimes(3);
+  expect(component.render(100)).toEqual(lines);
+  expect(card).toHaveBeenCalledTimes(4);
+  expect(getKeys).toHaveBeenCalledTimes(slot === 'call' ? 0 : 4);
+  expect(create().render(100)).toEqual(lines);
+  expect(card).toHaveBeenCalledTimes(5);
+
+  const replacement = createTestRenderKit();
+  const replacementCard = vi.spyOn(replacement, 'card');
+  token = registerRenderKit(replacement, {});
+  expect(component.render(100)).toEqual(lines);
+  expect(component.render(100)).toEqual(lines);
+  expect(replacementCard).toHaveBeenCalledTimes(1);
+  withdrawRenderKit(token);
+  expect(component.render(100)).toEqual(native);
+  component.invalidate();
+  expect(component.render(100)).toEqual(native);
+  token = registerRenderKit(kit, {});
+  expect(component.render(100)).toEqual(lines);
+  expect(card).toHaveBeenCalledTimes(6);
 });
 
 describe('KIT tool renderers', () => {

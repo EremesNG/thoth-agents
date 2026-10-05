@@ -23,6 +23,7 @@ export type {
   ThothRenderKit,
 } from './render-kit.js';
 export {
+  createKitRenderMemo,
   getRenderKit,
   registerRenderKit,
   withdrawRenderKit,

@@ -1,7 +1,10 @@
 import path from "node:path";
 import type { EntryRenderer } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { getRenderKit, type RenderCardSection } from "@thoth-agents/pi-core";
+import {
+	createKitRenderMemo,
+	type RenderCardSection,
+} from "@thoth-agents/pi-core";
 import type { NativeDisplayEvent } from "./provider.js";
 
 export const renderNativeEvent: EntryRenderer<NativeDisplayEvent> = (
@@ -64,24 +67,27 @@ export const renderNativeEvent: EntryRenderer<NativeDisplayEvent> = (
 		}
 	} else if (detail) body.push(theme.fg("muted", detail.slice(0, 160)));
 	const native = new Text(lines.join("\n"), 0, 0);
+	const memo = createKitRenderMemo();
 	return {
 		render(width) {
-			const kit = getRenderKit();
-			return kit
-				? kit.card(
-						theme,
-						{
-							title: event?.name ?? "Antigravity",
-							body,
-							sections,
-							status: failed ? "failed" : "completed",
-							isError: failed,
-						},
-						width,
-					)
-				: native.render(width);
+			return memo.render(width, (kit) =>
+				kit
+					? kit.card(
+							theme,
+							{
+								title: event?.name ?? "Antigravity",
+								body,
+								sections,
+								status: failed ? "failed" : "completed",
+								isError: failed,
+							},
+							width,
+						)
+					: native.render(width),
+			);
 		},
 		invalidate() {
+			memo.invalidate();
 			native.invalidate();
 		},
 	};

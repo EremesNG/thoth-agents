@@ -1,4 +1,8 @@
 import {
+  getRenderKit,
+  getToolDefinitionRegistryVersion,
+} from '@thoth-agents/pi-core';
+import {
   truncateToWidth as terminalTruncateToWidth,
   visibleWidth as terminalVisibleWidth,
 } from '../render/text-width.js';
@@ -225,6 +229,8 @@ export class SubagentsHistoryPanel {
     string,
     Array<{ text: string; taskId?: string }>
   >();
+  private cachedToolRegistryVersion = getToolDefinitionRegistryVersion();
+  private cachedToolRenderKit = getRenderKit();
   private rowTaskMap = new Map<number, string>();
   private lastSidebarWidth = 26;
   private lastRenderWidth = 100;
@@ -470,6 +476,17 @@ export class SubagentsHistoryPanel {
   }
 
   render(width: number): string[] {
+    const version = getToolDefinitionRegistryVersion();
+    const kit = getRenderKit();
+    if (
+      version !== this.cachedToolRegistryVersion ||
+      kit !== this.cachedToolRenderKit
+    ) {
+      this.cachedToolRegistryVersion = version;
+      this.cachedToolRenderKit = kit;
+      // Completed body entries can bypass the thread renderer's cache refresh.
+      this.invalidate();
+    }
     const w = Math.max(40, width);
     this.lastRenderWidth = w;
     const configuredMaxLines =

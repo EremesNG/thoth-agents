@@ -251,7 +251,7 @@ const toolError = (text: string) => ({ content: [{ type: "text" as const, text }
 /** Register agy_web_search + agy_read_url. Call only when config.webTools is
  *  on - registration is the opt-in. */
 export function registerWebTools(
-	pi: ExtensionAPI,
+	pi: Pick<ExtensionAPI, "registerTool">,
 	opts: { bin?: string; cwd?: string; timeoutMs?: number; log?: WebRunOptions["log"] } = {},
 ): void {
 	sweepStaleWebAgents();

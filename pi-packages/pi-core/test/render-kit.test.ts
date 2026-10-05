@@ -1,4 +1,8 @@
-import type { Theme, ToolDefinition } from '@earendil-works/pi-coding-agent';
+import type {
+  Theme,
+  ToolDefinition,
+  ToolRendererResolver,
+} from '@earendil-works/pi-coding-agent';
 import { createKitRenderMemo } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
@@ -8,6 +12,7 @@ import {
   type RenderKitTheme,
   registerRenderKit,
   type ThothRenderKit,
+  type ToolRenderersLike,
   withdrawRenderKit,
 } from '../src/index.js';
 
@@ -24,6 +29,56 @@ describe('render kit registry', () => {
     type Context = Parameters<NonNullable<ToolDefinition['renderCall']>>[2];
     expectTypeOf<Theme>().toExtend<RenderKitTheme>();
     expectTypeOf<Context>().toExtend<RenderIndicatorContext>();
+  });
+
+  it('accepts legacy v1 kits without a tool resolver', () => {
+    expect('resolveToolRenderers' in kit).toBe(false);
+    registerRenderKit(kit, {});
+    expect(getRenderKit()).toBe(kit);
+  });
+
+  it('accepts a host-compatible tool resolver and preserves its downstream renderers', () => {
+    const downstream: ToolRenderersLike = { renderShell: 'self' };
+    const extended: ThothRenderKit = {
+      ...kit,
+      resolveToolRenderers: (_name, next) => next(),
+    };
+    expectTypeOf<
+      NonNullable<ThothRenderKit['resolveToolRenderers']>
+    >().toExtend<ToolRendererResolver>();
+    expectTypeOf<ToolRendererResolver>().toExtend<
+      NonNullable<ThothRenderKit['resolveToolRenderers']>
+    >();
+    registerRenderKit(extended, {});
+    expect(getRenderKit()).toBe(extended);
+    expect(
+      getRenderKit()?.resolveToolRenderers?.('read', () => downstream),
+    ).toBe(downstream);
+  });
+
+  it.each([
+    undefined,
+    null,
+    false,
+    42,
+    'resolver',
+    {},
+  ])('rejects a present non-callable tool resolver: %s', (resolveToolRenderers) => {
+    registerRenderKit({ ...kit, resolveToolRenderers } as ThothRenderKit, {});
+    expect(getRenderKit()).toBeUndefined();
+  });
+
+  it('ignores tool resolvers with a throwing accessor', () => {
+    registerRenderKit(
+      {
+        ...kit,
+        get resolveToolRenderers(): never {
+          throw new Error('foreign accessor');
+        },
+      },
+      {},
+    );
+    expect(getRenderKit()).toBeUndefined();
   });
 
   it('shares registrations across independently loaded copies of pi-core', async () => {

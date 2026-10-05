@@ -384,7 +384,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** Register the AskAntigravity tool. Call once from the extension entry.
  *  `entries` is the merged live+overlay catalog discovered at load. */
 export async function registerAskAntigravityTool(
-	pi: ExtensionAPI,
+	pi: Pick<ExtensionAPI, "registerTool">,
 	entries: ModelEntry[],
 	/** Daily file log sink (src/daily-log.ts). Records lifecycle, never
 	 *  prompt text. Level matches DailyLogger: debug is the AGY_DEBUG-only

@@ -31,6 +31,7 @@ import { updateUsage, type SdkUsage } from "./usage.js";
 import { formatDuration } from "@thoth-agents/pi-core";
 import { createAskClaudeRenderers } from "./askclaude-render.js";
 import { AppendInstructions } from "./append-instructions.js";
+import { createPublishedToolRegistrar } from "./tool-publication.js";
 
 // --- Debug logging ---
 // CLAUDE_BRIDGE_DEBUG=1 enables debug logging to the bridge log in pi's agent
@@ -2483,6 +2484,7 @@ async function promptAndWait(
 let askClaudeToolName = "AskClaude";
 
 export default function (pi: ExtensionAPI) {
+	const registerTool = createPublishedToolRegistrar(pi);
 	// Disable non-essential Claude Code traffic (update checks, MCP registry, telemetry)
 	process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
 
@@ -2753,7 +2755,7 @@ export default function (pi: ExtensionAPI) {
 
 	if (askConf?.enabled) {
 		const askClaudeParams = buildAskClaudeParams(askDefaults);
-		pi.registerTool<typeof askClaudeParams>({
+		registerTool<typeof askClaudeParams>({
 			name: askConf?.name ?? "AskClaude",
 			label: askConf?.label ?? "Ask Claude Code",
 			description: askClaudeToolDescription(askDefaults, askConf?.description),

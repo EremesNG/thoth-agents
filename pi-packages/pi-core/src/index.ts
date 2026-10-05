@@ -41,3 +41,13 @@ export {
   TODO_STATE_CHANNEL,
   TODO_STATE_REQUEST,
 } from './todo.js';
+export type {
+  ToolDefinitionHandle,
+  ToolDefinitionLike,
+  ToolRenderersLike,
+} from './tool-registry.js';
+export {
+  getPublishedToolDefinition,
+  getToolDefinitionRegistryVersion,
+  publishToolDefinitions,
+} from './tool-registry.js';

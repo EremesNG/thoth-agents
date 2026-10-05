@@ -98,9 +98,13 @@ function card(
 }
 
 /** Theme primitives exposed structurally; producers never import this package. */
-export function createRenderKit(owner: object): ThothRenderKit {
+export function createRenderKit(
+  owner: object,
+  resolveToolRenderers?: ThothRenderKit['resolveToolRenderers'],
+): ThothRenderKit {
   return {
     version: 1,
+    ...(resolveToolRenderers ? { resolveToolRenderers } : {}),
     card,
     collapse(theme, rows, options = {}) {
       const budget = Math.max(0, Math.floor(options.budget ?? 8));

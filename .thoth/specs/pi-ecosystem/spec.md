@@ -84,7 +84,7 @@ First-party Pi transcript tool-call, tool-result and custom-message renderers wh
 
 - **GIVEN** a first-party package registered a tool with Pi
 - **WHEN** another first-party package looks the tool up by name in the registry
-- **THEN** it receives the full definition including its renderers without re-evaluating the owning extension 
+- **THEN** it receives the full definition including its renderers without re-evaluating the owning extension
 
 ### Requirement: Subagent viewer tool rendering
 
@@ -94,4 +94,14 @@ The subagents thread viewer MUST resolve tool definitions from the tool definiti
 
 - **GIVEN** a render kit is registered and a subagent used a tool from an already-loaded extension
 - **WHEN** the user opens that subagent in the viewer
-- **THEN** the tool card renders through the kit without re-evaluating the extension source 
+- **THEN** the tool card renders through the kit without re-evaluating the extension source
+
+### Requirement: Render kit result borders
+
+Themed tool and notification cards that render through the Thoth render kit or the theme's tool renderers and draw an error-colored border for failed results MUST draw the theme `success` color for affirmative terminal success, the theme `error` color wherever an error border is drawn today (including cancellation where it is red), except that the still-running shell/generic rule in the next sentence takes precedence over this error-color rule, and the theme `accent` color for every other non-error state, consistently across every part of the same card. A shell or generic tool card (bash, PowerShell, generic renderer) that is still running, even with partial output or a partial error flag, MUST show its running footer/state and the `accent` border until it finishes, and only completion changes its footer and border; in the subagents thread viewer, tool items that are still running MUST be rendered as running, with or without a kit. Cards without a result-driven error border are unchanged.
+
+#### Scenario: Render kit result borders
+
+- **GIVEN** a themed bash card that has already produced output
+- **WHEN** it is still running and then completes, in the chat or in the subagents thread viewer
+- **THEN** it shows the running footer and the accent border while running, and after completion the exit footer with the success border for exit code 0 or the error border for a failure 

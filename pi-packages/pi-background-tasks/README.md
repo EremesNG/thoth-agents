@@ -29,16 +29,16 @@ On POSIX, command strings keep `/bin/bash`; `PI_BETTER_BACKGROUND_TASKS_SHELL` o
 
 A watch repeatedly executes a command until `success_when`, `failure_when`, or timeout matches. Its first result is returned after at most 15 seconds. Watch timeout defaults to 900 seconds; `timeout_seconds:0` disables it. Spawned processes have no default timeout. Logs retain a bounded tail (4 MiB by default), and terminal artifacts are retained for seven days. List/status/log default to the current session; `all:true` explicitly opts into cross-session inspection.
 
-Completion callbacks are session-origin scoped and delivered as Pi follow-ups. Cancelled tasks do not wake the agent. Failed checks remain visible in status and can receive failure-attention callbacks. The navigator shows local work and its evidence.
+Completion callbacks are session-origin scoped and delivered as Pi follow-ups. Cancelled tasks do not wake the agent. Failed checks remain visible in status and can receive failure-attention callbacks. The Work panel's Background section shows local work and its evidence.
 
-Tool calls/results, completion/failure messages and the above-editor navigator
-widget render through the theme's Render KIT when present, discovered through
+Tool calls/results, completion/failure messages and the Work panel's Background
+section render through the theme's Render KIT when present, discovered through
 `@thoth-agents/pi-core` at render time. Without the kit, they keep native Pi
 rendering; there is no dependency on `@thoth-agents/pi-thoth-theme`.
 
 ## Lifecycle and limits
 
-A session's `/reload` suspends that instance's scheduling without stopping its jobs. The next instance adopts work of the same origin, including an in-flight watch poll: it does not start an overlapping poll, and completion is delivered once. Runtime timers, navigator UI and failure-attention state belong to each extension instance; loading or ending a headless child does not change root-session work or UI.
+A session's `/reload` suspends that instance's scheduling without stopping its jobs. The next instance adopts work of the same origin, including an in-flight watch poll: it does not start an overlapping poll, and completion is delivered once. Runtime timers, the Work panel Background section and failure-attention state belong to each extension instance; loading or ending a headless child does not change root-session work or UI.
 
 Every other `session_shutdown` reason (including quit, new, resume and fork) stops the origin's running jobs and in-flight watch commands, subject to the platform guarantees below. Cancelled jobs do not send completion callbacks.
 

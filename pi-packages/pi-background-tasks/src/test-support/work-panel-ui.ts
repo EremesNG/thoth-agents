@@ -14,7 +14,7 @@ export function workPanelUI() {
   let detail: Component | undefined;
   let finishDetail: (() => void) | undefined;
   const tui = {
-    terminal: { rows: 50 },
+    terminal: { rows: 50, columns: 120 },
     requestRender() {},
     getFocusedComponent: () => focused,
     hasOverlay: () => overlay,

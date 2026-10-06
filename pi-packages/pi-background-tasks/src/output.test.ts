@@ -995,7 +995,9 @@ describe("#332 navigator rows", () => {
     let row = provider.listRows(Date.now()).find((x: any) => x.id === quiet.id);
     expect(row!.primary).toBe("stalled");
     expect(row!.facts!.join("\n")).not.toMatch(/Expected failure|No failures need action/);
-    expect(provider.detail(quiet.id, Date.now())!.subtitle).toBe("rg needle src");
+    const quietDetail = provider.detail(quiet.id, Date.now())!;
+    expect(quietDetail.subtitle).toBeUndefined();
+    expect(quietDetail.foldedSections).toContainEqual(expect.objectContaining({ label: "Command", text: "rg needle src" }));
     const loud = fixture({ status: "running", endedAt: undefined, command: "npm test" });
     recordFailure(loud, "exit", "exited with code 2", "l1");
     row = provider.listRows(Date.now()).find((x: any) => x.id === loud.id);

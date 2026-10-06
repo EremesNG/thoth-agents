@@ -182,8 +182,8 @@ function detailFromMeta(meta: BackgroundTaskMeta | undefined, now: number, optio
     { label: "kind", value: meta.kind === "command_watch" ? "watch" : "process" },
     { label: "elapsed", value: formatDuration(Math.round(((meta.endedAt ?? now) - meta.startedAt) / 1000) * 1000) },
     { label: "cwd", value: meta.cwd },
-    { label: "pid", value: meta.pid != null ? String(meta.pid) : "-" },
-    { label: "pgid", value: meta.pgid != null ? String(meta.pgid) : "-" },
+    ...(meta.pid != null ? [{ label: "pid", value: String(meta.pid) }] : []),
+    ...(meta.pgid != null ? [{ label: "pgid", value: String(meta.pgid) }] : []),
     { label: "log", value: meta.logPath },
   ];
   if (meta.deadlineAt) metadata.push({ label: "deadline", value: formatDuration(Math.round((meta.deadlineAt - now) / 1000) * 1000) });
@@ -204,17 +204,16 @@ function detailFromMeta(meta: BackgroundTaskMeta | undefined, now: number, optio
     title: meta.name || meta.id,
     status: meta.status,
     statusTone: toneForStatus(meta.status),
-    subtitle: view.actionable ? failure.split("\n")[0]! : compactCommandLabel(meta),
     metadata,
     foldedSections: [{
       id: "command",
-      label: "command",
+      label: "Command",
       text: command,
       collapsedText: compactCommandLabel(meta),
       expandedByDefault: true,
     }],
     evidence: {
-      label: log.truncated ? "log tail" : "log",
+      label: log.truncated ? "Log tail" : "Log",
       text: [failure, log.text || "(log is empty)"].filter(Boolean).join("\n"),
     },
     footerActions: [meta.status === "running" ? "x stop" : "x dismiss"],

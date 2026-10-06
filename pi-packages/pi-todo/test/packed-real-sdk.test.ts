@@ -113,7 +113,7 @@ it('loads the packed todo extension with its packed core dependency through Pi S
     for (const resource of [
       'index.ts',
       'todo.ts',
-      'todo-overlay.ts',
+      'todo-work-panel.ts',
       'state/replay.ts',
       'state/publish.ts',
       'tool/types.ts',

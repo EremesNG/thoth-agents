@@ -1,16 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, type vi } from 'vitest';
 import registerTodo from './index.js';
 import { EMPTY_STATE } from './state/state.js';
-import {
-  getActiveRenderSession,
-  getRenderState,
-  getState,
-} from './state/store.js';
+import { getRenderState, getState } from './state/store.js';
 import { createMockCtx, createMockPi } from './test/helpers.js';
 import { __resetState } from './todo.js';
 
 // Capture the extension's registered handlers + tool + command. Each registerTodo()
-// call builds a fresh closure (fresh module-level `todoOverlay`), so isolation
+// call builds a fresh extension lifecycle, so isolation
 // between tests is automatic given __resetState() clears the store.
 function setup() {
   __resetState();
@@ -130,7 +126,7 @@ describe('rpiv-todo — per-session todo store isolation (Phase 1 baseline)', ()
     );
 
     // Creator-ownership: the render slot is still the parent's. The first UI
-    // session claims the pointer before lazy overlay loading, and a child cannot
+    // session claims the pointer before work-panel installation, and a child cannot
     // re-set it.
     expect(getRenderState().tasks.map((t) => t.subject)).toEqual([
       'parent-task',
@@ -162,209 +158,5 @@ describe('rpiv-todo — per-session todo store isolation (Phase 1 baseline)', ()
     expect(after.tasks).toEqual([]);
     expect(after.nextId).toBe(1);
     expect(after.tasks).not.toBe(EMPTY_STATE.tasks);
-  });
-});
-
-describe('rpiv-todo — foreground overlay policy (Slice 2)', () => {
-  const PARENT = 'parent-session';
-  const CHILD = 'child-session';
-  const WIDGET_KEY = 'thoth-todos';
-
-  function widgetSpy(ctx: ReturnType<typeof createMockCtx>) {
-    return ctx.ui.setWidget as unknown as ReturnType<typeof vi.fn>;
-  }
-
-  function setup() {
-    const { pi, captured } = createMockPi();
-    registerTodo(pi);
-    const start = captured.events.get('session_start')?.[0] as
-      | ((e: unknown, ctx: unknown) => Promise<void>)
-      | undefined;
-    const shutdown = captured.events.get('session_shutdown')?.[0] as
-      | ((e: unknown, ctx: unknown) => Promise<void>)
-      | undefined;
-    const toolEnd = captured.events.get('tool_execution_end')?.[0] as
-      | ((event: { toolName: string; isError: boolean }) => Promise<void>)
-      | undefined;
-    const tool = captured.tools.get('todo');
-    return { captured, start, shutdown, toolEnd, tool };
-  }
-
-  it('first hasUI session_start claims the foreground and renders its slot', async () => {
-    const { start, toolEnd, tool } = setup();
-    const parentCtx = createMockCtx({ hasUI: true, sessionId: PARENT });
-
-    await start?.({}, parentCtx);
-    expect(getActiveRenderSession()).toBe(PARENT);
-
-    // Create a parent task; pump tool_execution_end so the overlay renders it.
-    await tool?.execute?.(
-      'tc',
-      { action: 'create', subject: 'parent task' } as never,
-      undefined as never,
-      undefined as never,
-      parentCtx as never,
-    );
-    await toolEnd?.({ toolName: 'todo', isError: false });
-
-    // Overlay registered a widget on the parent ui and renders the parent slot.
-    expect(widgetSpy(parentCtx)).toHaveBeenCalled();
-    expect(getRenderState().tasks.map((t) => t.subject)).toEqual([
-      'parent task',
-    ]);
-  });
-
-  it('a child session_start (distinct sid, hasUI) does not claim foreground or rebind the overlay', async () => {
-    const { start, toolEnd, tool } = setup();
-    const parentCtx = createMockCtx({ hasUI: true, sessionId: PARENT });
-    const childCtx = createMockCtx({ hasUI: true, sessionId: CHILD });
-
-    await start?.({}, parentCtx);
-    await tool?.execute?.(
-      'tc',
-      { action: 'create', subject: 'parent task' } as never,
-      undefined as never,
-      undefined as never,
-      parentCtx as never,
-    );
-    await toolEnd?.({ toolName: 'todo', isError: false });
-
-    // Child session_start — distinct sid, hasUI true. Gate skips it.
-    await start?.({}, childCtx);
-
-    // Foreground unchanged; overlay still renders the parent slot.
-    expect(getActiveRenderSession()).toBe(PARENT);
-    expect(getRenderState().tasks.map((t) => t.subject)).toEqual([
-      'parent task',
-    ]);
-    // Child ui was never bound — setUICtx/update skipped by the sid gate.
-    expect(widgetSpy(childCtx)).not.toHaveBeenCalled();
-  });
-
-  it("a child todo call writes the child's slot; the overlay still shows the parent's todos", async () => {
-    const { start, toolEnd, tool } = setup();
-    const parentCtx = createMockCtx({ hasUI: true, sessionId: PARENT });
-    const childCtx = createMockCtx({ hasUI: true, sessionId: CHILD });
-
-    await start?.({}, parentCtx);
-    await tool?.execute?.(
-      'tc',
-      { action: 'create', subject: 'parent task' } as never,
-      undefined as never,
-      undefined as never,
-      parentCtx as never,
-    );
-    await toolEnd?.({ toolName: 'todo', isError: false });
-
-    // Child starts (skipped by the gate) and runs its own todo.
-    await start?.({}, childCtx);
-    await tool?.execute?.(
-      'tc',
-      { action: 'create', subject: 'child task' } as never,
-      undefined as never,
-      undefined as never,
-      childCtx as never,
-    );
-    await toolEnd?.({ toolName: 'todo', isError: false });
-
-    // Child slot holds the child task; the overlay (foreground = parent) shows parent's.
-    expect(getState(CHILD).tasks.map((t) => t.subject)).toEqual(['child task']);
-    expect(getRenderState().tasks.map((t) => t.subject)).toEqual([
-      'parent task',
-    ]);
-  });
-
-  it('a child session_shutdown does not dispose the foreground overlay', async () => {
-    const { start, shutdown, toolEnd, tool } = setup();
-    const parentCtx = createMockCtx({ hasUI: true, sessionId: PARENT });
-    const childCtx = createMockCtx({ hasUI: true, sessionId: CHILD });
-
-    await start?.({}, parentCtx);
-    await tool?.execute?.(
-      'tc',
-      { action: 'create', subject: 'parent task' } as never,
-      undefined as never,
-      undefined as never,
-      parentCtx as never,
-    );
-    await toolEnd?.({ toolName: 'todo', isError: false });
-
-    // Child shuts down — distinct sid; the teardown gate skips it.
-    await shutdown?.({}, childCtx);
-
-    // Foreground pointer + parent slot intact; no dispose call on the parent ui.
-    expect(getActiveRenderSession()).toBe(PARENT);
-    expect(getRenderState().tasks.map((t) => t.subject)).toEqual([
-      'parent task',
-    ]);
-    expect(widgetSpy(parentCtx)).not.toHaveBeenCalledWith(
-      WIDGET_KEY,
-      undefined,
-    );
-  });
-
-  it("the foreground's own session_shutdown disposes the overlay and clears foreground", async () => {
-    const { start, shutdown, toolEnd, tool } = setup();
-    const parentCtx = createMockCtx({ hasUI: true, sessionId: PARENT });
-
-    await start?.({}, parentCtx);
-    await tool?.execute?.(
-      'tc',
-      { action: 'create', subject: 'parent task' } as never,
-      undefined as never,
-      undefined as never,
-      parentCtx as never,
-    );
-    await toolEnd?.({ toolName: 'todo', isError: false });
-
-    await shutdown?.({}, parentCtx);
-
-    // Dispose path fires setWidget(KEY, undefined); pointer cleared; slot evicted.
-    expect(widgetSpy(parentCtx)).toHaveBeenCalledWith(WIDGET_KEY, undefined);
-    expect(getActiveRenderSession()).toBe('');
-    expect(getState(PARENT).tasks).toEqual([]);
-  });
-
-  it('foreground shutdown still clears the pointer + evicts the slot when dispose() throws (try/finally)', async () => {
-    const { start, shutdown, toolEnd, tool } = setup();
-    const parentCtx = createMockCtx({ hasUI: true, sessionId: PARENT });
-    // dispose()'s first act is setWidget(KEY, undefined); simulate a stale ui
-    // proxy by throwing there (registration passes a factory fn → no throw).
-    widgetSpy(parentCtx).mockImplementation(
-      (_key: string, factory: unknown) => {
-        if (factory === undefined) throw new Error('stale ui proxy');
-      },
-    );
-
-    await start?.({}, parentCtx);
-    await tool?.execute?.(
-      'tc',
-      { action: 'create', subject: 'parent task' } as never,
-      undefined as never,
-      undefined as never,
-      parentCtx as never,
-    );
-    await toolEnd?.({ toolName: 'todo', isError: false });
-
-    // The dispose throw propagates (genuine errors are not swallowed), but the
-    // finally guarantees the foreground pointer is cleared and the slot evicted —
-    // so the next hasUI session_start can reclaim a clean foreground.
-    await expect(shutdown?.({}, parentCtx)).rejects.toThrow('stale ui proxy');
-    expect(getActiveRenderSession()).toBe('');
-    expect(getState(PARENT).tasks).toEqual([]);
-  });
-
-  it('a headless launcher (hasUI:false) never constructs an overlay, nor does a headless child', async () => {
-    const { start } = setup();
-    const headlessCtx = createMockCtx({ hasUI: false, sessionId: PARENT });
-    const childHeadlessCtx = createMockCtx({ hasUI: false, sessionId: CHILD });
-
-    await start?.({}, headlessCtx);
-    await start?.({}, childHeadlessCtx);
-
-    // No foreground claimed; no widget registered on either ui.
-    expect(getActiveRenderSession()).toBe('');
-    expect(widgetSpy(headlessCtx)).not.toHaveBeenCalled();
-    expect(widgetSpy(childHeadlessCtx)).not.toHaveBeenCalled();
   });
 });

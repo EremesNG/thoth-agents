@@ -80,8 +80,18 @@ execution does not.
   then may it migrate attributable legacy root/skill copies and install the six
   selected sources as `npm:@thoth-agents/pi-subagents@>=1.0.0`,
   `@upstash/context7-pi@>=0.1.2`, `pi-web-access@>=0.27.0`,
-  `pi-mcp-adapter@>=2.32.1`, `@juicesharp/rpiv-ask-user-question@>=2.9.0`, and
-  `@thoth-agents/pi-todo@>=0.1.0`. The first-party task-list extension supplies
+  `pi-mcp-adapter@>=2.32.1`, `@thoth-agents/pi-questions-user@>=0.1.0`, and
+  `@thoth-agents/pi-todo@>=0.1.0`. The first-party question extension supplies
+  root-owned `ask_user_question` with stable ids, single/multi/text/confirm types,
+  previews, recommendations and structured answers. Setup and applied Update
+  remove an installed user-scope `@juicesharp/rpiv-ask-user-question` through
+  native `pi remove <configured-source> --no-approve` after root-package
+  verification and before selected-package installation. Removal is verified;
+  failure stops completion. Project-scope question conflicts block before
+  mutation with manual `pi remove <configured-source> --local --approve`
+  guidance, requiring the operator to review ownership and trust first.
+  Dry-run previews configured user removals and project blockers without
+  executing commands or changing settings. The first-party task-list extension supplies
   the session-owned `todo` tool, `/todos`, and current-session editor widget.
   Setup and applied Update install and individually verify it; status treats it
   as a managed package. Unrelated task extensions remain operator-owned. Pi's

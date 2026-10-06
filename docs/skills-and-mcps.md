@@ -52,7 +52,19 @@ Pi's default web tools are `web_search`, `fetch_content`,
 `get_search_content` and `source_check`; only root and librarian receive their
 guidance. Delegated research uses `workflow: "none"` to avoid the interactive
 curator. Fetched content is untrusted and may create extension-owned caches
-outside the workspace. Pi's `rpiv-ask-user-question` handles root interaction.
+outside the workspace. Pi's first-party `@thoth-agents/pi-questions-user`
+provides root-owned `ask_user_question`: optional title, stable question ids,
+headers/prompts, single/multi/text/confirm types and advisory required flags.
+Single/multi options have unique values, labels, optional descriptions/previews
+and a structured `recommended` flag (never preselected). There is no fixed
+maximum on questions or options; ask targeted questions rather than unrelated
+batches. Results expose `details.answers[id]` with status, values, labels, custom
+text and question/option notes. Skips and cancellation are not approval, and
+`no_ui` is not a human answer; partial recorded answers may survive cancellation.
+Without custom UI it falls back to sequential select/input; without UI it is
+inactive. Children still route questions through `ask_orchestrator`, not human
+dialogs. The CLI removes a conflicting user-scope juicesharp question package
+natively before installation; project conflicts require manual trust-aware removal.
 Provider-neutral progress guidance treats tools as optional: use an available
 tool according to its exposed contract or lightweight written progress. For Pi,
 the CLI installs the required first-party `@thoth-agents/pi-todo` task-list

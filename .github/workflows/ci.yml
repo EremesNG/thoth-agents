@@ -60,6 +60,11 @@ jobs:
           pnpm --filter @thoth-agents/pi-todo run typecheck
           pnpm --filter @thoth-agents/pi-todo run test
 
+      - name: Check pi-questions-user
+        run: |
+          pnpm --filter @thoth-agents/pi-questions-user run typecheck
+          pnpm --filter @thoth-agents/pi-questions-user run test
+
       - name: Check pi-subagents
         run: |
           pnpm --filter @thoth-agents/pi-subagents run typecheck
@@ -125,6 +130,12 @@ jobs:
 
       - name: Test pi-todo
         run: pnpm --filter @thoth-agents/pi-todo run test
+
+      - name: Typecheck pi-questions-user
+        run: pnpm --filter @thoth-agents/pi-questions-user run typecheck
+
+      - name: Test pi-questions-user
+        run: pnpm --filter @thoth-agents/pi-questions-user run test
 
       - name: Typecheck pi-subagents
         run: pnpm --filter @thoth-agents/pi-subagents run typecheck

@@ -220,6 +220,15 @@ choices, or empty human answers. Root answers with
 `subagent_reply({ task_id, request_id?, message })`, including `request_id` when
 several questions are pending for that task. Root may first escalate a material
 human-owned decision through `ask_user_question`; never fabricate human decisions.
+The first-party `@thoth-agents/pi-questions-user` supplies this root-only dialog
+with stable ids and single/multi/text/confirm questions; there are no fixed
+question/option maximums. Recommendations are structured flags, never preselected;
+options can include previews, and users can add question/option notes. Read
+`details.answers[id]` (status, values, labels, custom text and notes), not guessed
+selections. Cancellation can retain partial answers; skipped/unanswered questions,
+`no_ui` and failed calls never imply approval or count as returned empty human
+answers. Shared targeted-question guidance and child `ask_orchestrator` routing
+remain unchanged.
 A task-mode child that asks moves to background, and its result arrives later via
 terminal completion, not the question notification. Unanswered questions time out
 according to `ask_timeout_ms` (default 600000); total task timeout still applies.

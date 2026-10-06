@@ -10,7 +10,7 @@ import {
   setCustomText,
   toggleOption,
 } from './answers.js';
-import { FREE_TEXT_LABEL } from './schema.js';
+import { resolveLabels } from './schema.js';
 
 export async function runRpcQuestions(
   initialState: AnswerState,
@@ -18,6 +18,7 @@ export async function runRpcQuestions(
   signal?: AbortSignal,
 ): Promise<QuestionResult> {
   let state = initialState;
+  const L = resolveLabels(state.labels);
   try {
     signal?.throwIfAborted();
     for (const question of state.questions) {
@@ -37,16 +38,16 @@ export async function runRpcQuestions(
       while (true) {
         const labels = options.map((option, index) => {
           if (question.type === 'confirm') return option.label;
-          const label = `${index + 1}. ${option.label}${option.recommended ? ' (recommended)' : ''}${option.description ? ` — ${option.description}` : ''}`;
+          const label = `${index + 1}. ${option.label}${option.recommended ? ` (${L.recommended})` : ''}${option.description ? ` — ${option.description}` : ''}`;
           return multi
             ? `[${getAnswer(state, question.id).values.includes(option.value) ? 'x' : ' '}] ${label}`
             : label;
         });
         const rows = [
           ...labels,
-          ...(question.type === 'confirm' ? [] : [FREE_TEXT_LABEL]),
-          ...(multi ? ['Done'] : []),
-          'Skip',
+          ...(question.type === 'confirm' ? [] : [L.typeSomething]),
+          ...(multi ? [L.done] : []),
+          L.skip,
         ];
         const choice = await waitForUI(
           () => ui.select(title, rows, { signal }),
@@ -54,12 +55,12 @@ export async function runRpcQuestions(
         );
         if (choice === undefined)
           return buildResult(state, { cancelled: true });
-        if (choice === 'Skip') {
+        if (choice === L.skip) {
           state = markSkipped(state, question.id);
           break;
         }
-        if (multi && choice === 'Done') break;
-        if (choice === FREE_TEXT_LABEL && question.type !== 'confirm') {
+        if (multi && choice === L.done) break;
+        if (choice === L.typeSomething && question.type !== 'confirm') {
           const text = await input();
           if (text === undefined)
             return buildResult(state, { cancelled: true });

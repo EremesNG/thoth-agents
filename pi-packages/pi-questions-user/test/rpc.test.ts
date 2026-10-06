@@ -360,3 +360,57 @@ it('asks single, text and confirm sequentially and maps labels back to stable va
     expect.anything(),
   );
 });
+
+it('uses localized control rows and maps them back', async () => {
+  const seen: string[][] = [];
+  const ui: RpcUI = {
+    select: vi.fn<RpcUI['select']>(async (_title, options) => {
+      seen.push(options);
+      return ['Escribe algo.', 'Listo', 'Saltar'][seen.length - 1];
+    }),
+    input: vi.fn(async () => 'mi texto'),
+  };
+  const labels = {
+    typeSomething: 'Escribe algo.',
+    skip: 'Saltar',
+    done: 'Listo',
+  };
+  const result = await runRpcQuestions(
+    createState({
+      labels,
+      questions: [
+        { ...single, type: 'multi' as const },
+        { id: 'c', header: 'C', prompt: 'Ok?', type: 'confirm' as const },
+      ],
+    }),
+    ui,
+  );
+  expect(seen[0]).toEqual(
+    expect.arrayContaining(['Escribe algo.', 'Listo', 'Saltar']),
+  );
+  expect(result.details.answers.plan.customText).toBe('mi texto');
+  expect(result.details.answers.c.status).toBe('skipped');
+});
+
+it('asks confirm with localized Yes/No and stable values', async () => {
+  const ui: RpcUI = {
+    select: vi.fn<RpcUI['select']>(async (_t, options) => {
+      expect(options.slice(0, 2)).toEqual(['Sí', 'No']);
+      return 'Sí';
+    }),
+    input: vi.fn(),
+  };
+  const result = await runRpcQuestions(
+    createState({
+      labels: { yes: 'Sí' },
+      questions: [
+        { id: 'c', header: 'C', prompt: 'Ok?', type: 'confirm' as const },
+      ],
+    }),
+    ui,
+  );
+  expect(result.details.answers.c).toMatchObject({
+    values: ['yes'],
+    labels: ['Sí'],
+  });
+});

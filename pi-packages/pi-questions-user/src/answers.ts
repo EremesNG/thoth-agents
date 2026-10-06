@@ -1,5 +1,10 @@
 import { getOwn } from './records.js';
-import type { Question, Questionnaire, QuestionOption } from './schema.js';
+import {
+  type Question,
+  type Questionnaire,
+  type QuestionOption,
+  resolveLabels,
+} from './schema.js';
 import type { ValidationIssue } from './validate.js';
 
 export interface QuestionAnswer {
@@ -36,13 +41,14 @@ export interface QuestionResult {
 }
 
 export function createState(questionnaire: Questionnaire): AnswerState {
+  const labels = resolveLabels(questionnaire.labels);
   const questions = structuredClone(questionnaire.questions).map((question) =>
     question.type === 'confirm'
       ? {
           ...question,
           options: [
-            { value: 'yes', label: 'Yes' },
-            { value: 'no', label: 'No' },
+            { value: 'yes', label: labels.yes },
+            { value: 'no', label: labels.no },
           ],
         }
       : question,
@@ -50,6 +56,9 @@ export function createState(questionnaire: Questionnaire): AnswerState {
   return {
     ...(questionnaire.title !== undefined
       ? { title: questionnaire.title }
+      : {}),
+    ...(questionnaire.labels !== undefined
+      ? { labels: structuredClone(questionnaire.labels) }
       : {}),
     questions,
     answers: Object.fromEntries(

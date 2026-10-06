@@ -29,14 +29,37 @@ development SDK/TUI 1.0.2. Install this package as a Pi extension.
 }
 ```
 
-`title`, `type`, `required`, `description`, `preview`, and `recommended` are optional.
+`title`, `labels`, `type`, `required`, `description`, `preview`, and `recommended` are optional.
 Type defaults to `single`; types are `single`, `multi`, `text`, `confirm`. There
 are no declared maximum counts or string lengths. At least one question is
 required. IDs and option values must be unique (values within each question),
 non-blank strings; headers, prompts and labels must be non-blank. Single/multi
 need options. Text/confirm accept no options (an empty array is also allowed).
-Confirm synthesizes `{value: "yes", label: "Yes"}` and `{value: "no", label: "No"}`.
-`Type something.` is a reserved option label.
+Confirm synthesizes `{value: "yes", label: "Yes"}` and `{value: "no", label: "No"}`
+(values are stable; only the labels localize). `Type something.` and the
+localized `typeSomething` label are reserved option labels.
+
+### Localizable UI labels
+
+Every fixed UI string is English by default. The optional top-level `labels`
+object overrides any of them; each value must be a non-blank string, omitted keys
+keep the English default, and unknown keys are ignored. The tool's prompt guideline
+asks models to send `labels` (and headers/prompts/option labels) in the user's
+language. Keys: `askUser`, `yes`, `no`, `typeSomething`, `yourAnswer`, `submit`,
+`backToEdit`, `cancel`, `review`, `reviewHeading`, `required`, `unanswered`,
+`requiredPending`, `skipped`, `skip`, `done`, `recommended`, `preview`,
+`noDescription`, `typeOwn`, `noTextYet`, `note`, `noteForQuestion`, `noteFor`,
+`cancelled`, `cancelledKept`, `error`, `answered`, and the key-hint verbs `move`,
+`pick`, `select`, `toggle`, `next`, `optionNote`, `questionNote`, `clear`,
+`scrollPreview`, `switchTab`, `save`, `newline`, `keepDraft`. The native
+questionnaire, the sequential RPC fallback, synthesized confirm options and the
+transcript result card all use them. When supplied, `labels` is echoed in
+`details.labels` so the result card renders in the same language; it is absent
+otherwise.
+
+```json
+{ "labels": { "yes": "Sí", "no": "No", "submit": "Enviar respuestas" }, "questions": [] }
+```
 
 `required` is advisory: a user may skip any question. Recommendations are markers,
 never selected or submitted automatically. Single/multi offer a free-text entry;
@@ -105,8 +128,21 @@ question tabs, windowed option lists, free-text and note editors, previews besid
 the options on wide terminals (below on narrow ones), and a review tab for multiple
 questions. A single question may submit directly.
 
+The questionnaire is drawn in the thoth frame: a rounded border with the title,
+a tabs row, dividers around the question/option/preview area and a two-row hint
+footer. The frame comes from the pi-core render kit resolved at render time and
+falls back to the same glyphs drawn natively when no kit is registered (the theme
+package is never a dependency). Its height is fixed for a given width and terminal
+size: it is derived from the whole questionnaire (longest prompt, option count,
+longest preview) and capped at 40% of the terminal rows (never below 12 rows), so
+it never jumps while navigating and the chat history above stays visible and
+scrollable. Option lists and previews scroll inside the reserved area.
+
 The registered tool includes call/result renderers using the pi-core render kit
-when available, with native Pi rendering as fallback. UI sessions publish the full
+when available, with native Pi rendering as fallback. The call and result parts
+share one final border tone (success/error/neutral) so the whole card reflects the
+outcome; the result card lists each question's header in an aligned column with its
+answer (✓ options, quoted custom text, ○ skipped) and indented ✎ notes. UI sessions publish the full
 tool definition to the pi-core tool registry on `session_start`; shutdown withdraws
 only that session's publication. Headless sessions do not publish it.
 

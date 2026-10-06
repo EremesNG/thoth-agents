@@ -226,3 +226,46 @@ it('accepts an unbounded questionnaire and defaults omitted types to single', ()
   const schema = JSON.stringify(questionParameters);
   expect(schema).not.toMatch(/maxItems|maxLength/);
 });
+
+it('accepts partial labels and carries them into the questionnaire', () => {
+  const result = validateQuestions({
+    labels: { yes: 'Sí', no: 'No', submit: 'Enviar' },
+    questions: [choice],
+  });
+  expect(result).toMatchObject({
+    valid: true,
+    value: { labels: { yes: 'Sí', no: 'No', submit: 'Enviar' } },
+  });
+  expect(validateQuestions({ questions: [choice] })).not.toHaveProperty(
+    'value.labels',
+  );
+});
+
+it.each([
+  [{ yes: '  ' }, 'labels.yes', 'blank'],
+  [{ yes: 3 }, 'labels.yes', 'invalid_type'],
+  ['si', 'labels', 'invalid_type'],
+])('rejects invalid labels %j', (labels, path, code) => {
+  expect(validateQuestions({ labels, questions: [choice] })).toEqual({
+    valid: false,
+    issues: [{ path, code, message: expect.any(String) }],
+  });
+});
+
+it('reserves both the default and the localized free-text label', () => {
+  for (const label of ['Type something.', 'Escribe algo.']) {
+    expect(
+      validateQuestions({
+        labels: { typeSomething: 'Escribe algo.' },
+        questions: [{ ...choice, options: [{ value: 'x', label }] }],
+      }),
+    ).toMatchObject({
+      valid: false,
+      issues: [{ code: 'reserved_label' }],
+    });
+  }
+});
+
+it('advertises labels in the tool schema', () => {
+  expect(questionParameters.properties.labels.properties.yes).toBeDefined();
+});

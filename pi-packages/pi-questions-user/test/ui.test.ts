@@ -4,7 +4,9 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { initTheme } from '@earendil-works/pi-coding-agent';
 import { type TUI, visibleWidth } from '@earendil-works/pi-tui';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   type AnswerState,
   createState,
@@ -118,6 +120,45 @@ const two: Questionnaire = {
 };
 
 beforeAll(() => initTheme('dark'));
+
+let kitToken: symbol | undefined;
+afterEach(() => {
+  if (kitToken) withdrawRenderKit(kitToken);
+  kitToken = undefined;
+});
+
+const lines = (n: number, prefix = 'line') =>
+  Array.from({ length: n }, (_, i) => `${prefix} ${i}`).join('\n\n');
+
+/** Previews of 0, 3 and 40 lines plus a confirm and a text question. */
+const uneven: Questionnaire = {
+  title: 'Uneven',
+  questions: [
+    {
+      id: 'a',
+      header: 'Mixed',
+      prompt:
+        'A prompt that is long enough to wrap onto a second line at eighty columns wide.',
+      type: 'single',
+      required: true,
+      options: [
+        { value: 'none', label: 'No preview' },
+        { value: 'short', label: 'Short', preview: lines(2) },
+        { value: 'long', label: 'Long', preview: lines(40) },
+        ...options(12).map((o) => ({ ...o, value: `x${o.value}` })),
+      ],
+    },
+    {
+      id: 'b',
+      header: 'Many',
+      prompt: 'Pick',
+      type: 'multi',
+      options: options(3),
+    },
+    { id: 'c', header: 'Sure', prompt: 'Proceed?', type: 'confirm' },
+    { id: 'd', header: 'Why', prompt: 'Explain', type: 'text' },
+  ],
+};
 
 describe('questionnaire UI', () => {
   it('shows title, tabs, header and prompt', () => {
@@ -294,7 +335,8 @@ describe('questionnaire UI', () => {
     const optionRow = narrow.findIndex((l) => l.includes('Option 1'));
     const previewRow = narrow.findIndex((l) => l.includes('Preview one'));
     expect(previewRow).toBeGreaterThan(optionRow);
-    expect(narrow.some((l) => l.includes('│'))).toBe(false);
+    // Only the two frame sides: no list/preview column separator.
+    expect(narrow[optionRow].split('│')).toHaveLength(3);
     const wide = component.render(140);
     const line = wide.find((l) => l.includes('Option 1'));
     expect(line).toContain('Preview');
@@ -513,5 +555,144 @@ describe('questionnaire UI', () => {
       send(KEY.down);
     }
     expect(performance.now() - start).toBeLessThan(1500);
+  });
+
+  describe('frame', () => {
+    it('draws the kit frame when a render kit is registered at render time', () => {
+      const host = setup(two);
+      expect(host.text()).toContain('╭── Planning');
+      kitToken = registerRenderKit(createTestRenderKit(), {});
+      const out = host.component.render(80);
+      expect(out[0]).toBe('╭─ Planning');
+      expect(out.some((l) => l.startsWith('├─ 0/2 answered'))).toBe(true);
+      expect(out.at(-1)).toBe('╰─');
+      expect(out.join('\n')).toContain('Esc cancel');
+    });
+
+    it('falls back to a native rounded frame, dividers and a hint row without a kit', () => {
+      const out = setup(two).component.render(80);
+      expect(out[0]).toMatch(/^╭── Planning ─+╮$/);
+      expect(out.filter((l) => l.startsWith('├'))).toHaveLength(2);
+      expect(out.at(-1)).toMatch(/^╰─+╯$/);
+      expect(out.filter((l) => l.startsWith('│ ↑↓ move'))).toHaveLength(1);
+      for (const l of out) expect(visibleWidth(l)).toBe(80);
+    });
+
+    it.each([
+      80, 140,
+    ])('keeps one height across options, tabs and editors at %i columns', (width) => {
+      for (const kit of [false, true]) {
+        if (kit) kitToken = registerRenderKit(createTestRenderKit(), {});
+        const host = setup(uneven, 40);
+        const heights = new Set<number>();
+        const seen = () => heights.add(host.component.render(width).length);
+        seen();
+        for (let i = 0; i < 14; i++) {
+          host.send(KEY.down);
+          seen();
+        }
+        host.send(KEY.pageDown);
+        seen();
+        host.send('n');
+        seen();
+        host.send('a', 'b', KEY.enter, 'N', 'c', KEY.esc);
+        seen();
+        for (let i = 0; i < 5; i++) {
+          host.send(KEY.tab);
+          seen();
+        }
+        expect(heights.size).toBe(1);
+        // Whole component stays under half the terminal so chat history stays visible.
+        expect([...heights][0]).toBeLessThanOrEqual(Math.floor(40 * 0.4));
+        if (kit) {
+          withdrawRenderKit(kitToken as symbol);
+          kitToken = undefined;
+        }
+      }
+    });
+
+    it('scales the height budget with the terminal but never past 40% of it', () => {
+      const height = (rows: number) =>
+        setup(uneven, rows).component.render(80).length;
+      expect(height(60)).toBeLessThanOrEqual(24);
+      expect(height(60)).toBeGreaterThan(height(30));
+      expect(height(100)).toBeLessThanOrEqual(40);
+    });
+  });
+
+  describe('labels', () => {
+    const labelled: Questionnaire = {
+      labels: {
+        yes: 'Sí',
+        no: 'No',
+        review: 'Revisión',
+        reviewHeading: 'Revisa tus respuestas',
+        submit: 'Enviar respuestas',
+        backToEdit: 'Volver a editar',
+        cancel: 'Cancelar',
+        typeSomething: 'Escribe algo.',
+        select: 'elegir',
+        required: 'obligatoria',
+        unanswered: 'sin responder',
+        answered: 'respondidas',
+        requiredPending:
+          'pregunta(s) obligatoria(s) sin responder; puedes enviar.',
+      },
+      questions: [
+        {
+          id: 'c',
+          header: 'Ok',
+          prompt: '¿Seguimos?',
+          type: 'confirm',
+          required: true,
+        },
+        {
+          id: 'o',
+          header: 'Otro',
+          prompt: 'Elige',
+          type: 'single',
+          options: options(2),
+        },
+      ],
+    };
+
+    it('renders confirm, free text, hints and tabs in the supplied language', () => {
+      const host = setup(labelled);
+      const out = host.text(140);
+      expect(out).toContain('Sí');
+      expect(out).toContain('0/2 respondidas');
+      expect(out).toContain('(obligatoria)');
+      expect(out).toContain('Enter elegir');
+      expect(out).toContain('Esc cancelar');
+      expect(out).toContain('Revisión');
+      expect(out).not.toContain('Yes');
+      host.send(KEY.tab);
+      expect(host.text(140)).toContain('Escribe algo.');
+      expect(host.text(140)).not.toContain('Type something.');
+    });
+
+    it('localizes review warnings for unanswered required questions', () => {
+      const host = setup(labelled);
+      host.send(KEY.tab, KEY.tab);
+      const out = host.text(140);
+      expect(out).toContain('⚠ obligatoria — sin responder');
+      expect(out).toContain('1 pregunta(s) obligatoria(s)');
+      expect(out).not.toContain('unanswered');
+    });
+
+    it('localizes the review tab while confirm values stay yes/no', () => {
+      const host = setup(labelled);
+      host.send('1');
+      expect(host.session.state.answers.c).toMatchObject({
+        values: ['yes'],
+        labels: ['Sí'],
+      });
+      host.send(KEY.tab);
+      const out = host.text(140);
+      expect(out).toContain('Revisa tus respuestas');
+      expect(out).toContain('Enviar respuestas');
+      expect(out).toContain('Volver a editar');
+      expect(out).toContain('Cancelar');
+    });
   });
 });

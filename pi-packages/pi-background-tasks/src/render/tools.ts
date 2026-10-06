@@ -1,6 +1,7 @@
 import {
   createKitRenderMemo,
   type RenderIndicatorContext,
+  renderToolFooter,
 } from '@thoth-agents/pi-core';
 import {
   collapseNative,
@@ -44,12 +45,12 @@ export function backgroundToolRenderers(toolName: string) {
             const isError = context?.isError === true;
             if (kit) {
               const t = renderTheme(theme);
-              const status = pending
-                ? 'running'
-                : isError
-                  ? 'failed'
-                  : 'completed';
-              const indicator = kit.indicator(t, context, { status });
+              const status =
+                !hasResult || pending
+                  ? 'running'
+                  : isError
+                    ? 'failed'
+                    : 'completed';
               return kit.card(
                 t,
                 {
@@ -59,13 +60,17 @@ export function backgroundToolRenderers(toolName: string) {
                   ]
                     .filter(Boolean)
                     .join(' '),
-                  body: hasResult ? [] : [indicator.text],
+                  status,
+                  context,
+                  footer: hasResult
+                    ? undefined
+                    : renderToolFooter(kit, t, { status, context }),
                   isSuccess:
                     status === 'completed' &&
                     hasResult &&
                     context?.executionStarted !== false,
                   isError,
-                  part: 'start',
+                  part: hasResult ? 'start' : 'full',
                 },
                 width,
               );
@@ -180,13 +185,13 @@ export function renderBackgroundTaskLogDisplay(
         }
         if (kit) {
           const status = pending ? 'running' : isError ? 'failed' : 'completed';
-          const indicator = kit.indicator(t, context, { status });
           return kit.card(
             t,
             {
               body: rows,
-              footer: indicator.text,
+              footer: renderToolFooter(kit, t, { status, context }),
               status,
+              context,
               isSuccess:
                 status === 'completed' && context?.executionStarted !== false,
               isError,

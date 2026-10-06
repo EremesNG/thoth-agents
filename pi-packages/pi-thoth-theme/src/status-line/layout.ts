@@ -1,3 +1,4 @@
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import type { IconMode } from '../shared/config.ts';
 
@@ -12,6 +13,8 @@ export interface StatusData {
   modelId?: string;
   thinkingLevel?: string;
   gitBranch?: string | null;
+  /** Working directory formatted for display, including home abbreviation. */
+  cwd?: string;
   contextTokens?: number | null;
   contextWindow?: number;
   contextPercent?: number | null;
@@ -39,6 +42,19 @@ function themeFg(
   return theme?.fg ? theme.fg(token, text) : text;
 }
 
+export function formatCwd(cwd: string, home?: string): string {
+  if (!home) return cwd;
+  const relativeToHome = relative(resolve(home), resolve(cwd));
+  if (
+    relativeToHome === '..' ||
+    relativeToHome.startsWith(`..${sep}`) ||
+    isAbsolute(relativeToHome)
+  ) {
+    return cwd;
+  }
+  return relativeToHome === '' ? '~' : `~${sep}${relativeToHome}`;
+}
+
 export function formatTokens(count: number): string {
   if (count < 1000) return count.toString();
   if (count < 1000000) {
@@ -62,7 +78,7 @@ export function renderStatusLine(
   if (width <= 0) return '';
 
   const isAscii = mode === 'ascii';
-  const sepChar = isAscii ? '|' : '│';
+  const sepChar = isAscii ? '|' : '◆';
   const sep = ` ${themeFg(theme, 'border', sepChar)} `;
 
   // 1. Model
@@ -90,13 +106,17 @@ export function renderStatusLine(
     );
   }
 
-  // 2. Git Branch
-  let branchSegment = '';
+  // 2. Working directory and Git branch
+  let branchOnlyText = '';
+  let branchText = data.cwd || '';
   if (data.gitBranch) {
     const branchIcon = isAscii ? 'git' : '⑂';
-    const branchText = `${branchIcon} ${data.gitBranch}`;
-    branchSegment = themeFg(theme, 'success', branchText);
+    branchOnlyText = `${branchIcon} ${data.gitBranch}`;
+    branchText = data.cwd
+      ? `${branchIcon} ${data.cwd} (${data.gitBranch})`
+      : branchOnlyText;
   }
+  let branchSegment = branchText ? themeFg(theme, 'success', branchText) : '';
 
   // 3. Context Bar
   let barSegment = '';
@@ -198,7 +218,14 @@ export function renderStatusLine(
   let line = buildLine({ bar: true, tokens: true, branch: true, effort: true });
   if (visibleWidth(line) <= width) return line;
 
-  // 2. Drop bar first
+  // 2. Fall back to branch-only before dropping segments
+  if (data.cwd && branchOnlyText) {
+    branchSegment = themeFg(theme, 'success', branchOnlyText);
+    line = buildLine({ bar: true, tokens: true, branch: true, effort: true });
+    if (visibleWidth(line) <= width) return line;
+  }
+
+  // 3. Drop bar first
   if (barSegment) {
     line = buildLine({
       bar: false,
@@ -209,7 +236,7 @@ export function renderStatusLine(
     if (visibleWidth(line) <= width) return line;
   }
 
-  // 3. Drop tokens next
+  // 4. Drop tokens next
   if (tokensSegment) {
     line = buildLine({
       bar: false,
@@ -220,7 +247,7 @@ export function renderStatusLine(
     if (visibleWidth(line) <= width) return line;
   }
 
-  // 4. Drop branch next
+  // 5. Drop branch next
   if (branchSegment) {
     line = buildLine({
       bar: false,
@@ -231,7 +258,7 @@ export function renderStatusLine(
     if (visibleWidth(line) <= width) return line;
   }
 
-  // 5. Drop effort next
+  // 6. Drop effort next
   if (effortColored) {
     line = buildLine({
       bar: false,
@@ -242,7 +269,7 @@ export function renderStatusLine(
     if (visibleWidth(line) <= width) return line;
   }
 
-  // 6. Truncate model last, keeping cost high priority
+  // 7. Truncate model last, keeping cost high priority
   if (modelColored && costSegment) {
     const costW = visibleWidth(costSegment);
     const sepW = visibleWidth(sep);

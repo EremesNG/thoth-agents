@@ -1,3 +1,4 @@
+import { sep } from 'node:path';
 import {
   CustomEditor,
   createEventBus,
@@ -86,6 +87,7 @@ describe('registerStatusLine', () => {
 
     const ctx = {
       ui,
+      cwd: '/workspace/project',
       model: { id: 'test-model', name: 'Test Model', provider },
       thinkingLevel: 'low',
       getContextUsage: vi.fn(() => ({
@@ -99,7 +101,7 @@ describe('registerStatusLine', () => {
     const branchUnsub = vi.fn();
     const branchCallbacks: Array<() => void> = [];
     const footerData = {
-      getGitBranch: vi.fn(() => 'main'),
+      getGitBranch: vi.fn<() => string | null>(() => 'main'),
       getExtensionStatuses: vi.fn(() => new Map([['pkg', 'active']])),
       getAvailableProviderCount: vi.fn(() => 1),
       onBranchChange: vi.fn((cb: () => void) => {
@@ -345,7 +347,7 @@ describe('registerStatusLine', () => {
     try {
       const initialFooter = component.render(120);
       expect(initialFooter).toEqual([
-        '● Test Model · ◐ low │ ⑂ main │ [███░░░░░░░] 25% used │ 50K/200K │ $0.300',
+        '● Test Model · ◐ low ◆ ⑂ /workspace/project (main) ◆ [███░░░░░░░] 25% used ◆ 50K/200K ◆ $0.300',
       ]);
       expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
 
@@ -365,7 +367,7 @@ describe('registerStatusLine', () => {
       });
       expect(editor.render(120)[2]).toBe(box[2]);
       expect(component.render(120)).toEqual([
-        '● Test Model · ◐ low │ ⑂ main │ [███░░░░░░░] 25% used │ 50K/200K │ $1.000',
+        '● Test Model · ◐ low ◆ ⑂ /workspace/project (main) ◆ [███░░░░░░░] 25% used ◆ 50K/200K ◆ $1.000',
       ]);
       expect(mocks.ui.setEditorComponent).not.toHaveBeenCalled();
     } finally {
@@ -373,7 +375,7 @@ describe('registerStatusLine', () => {
     }
   });
 
-  it('renders one status line row with model, git, context, and cumulative cost', () => {
+  it('renders one status line row with model, cwd, git, context, and cumulative cost', () => {
     const mocks = createMocks();
     const component = createFooter(mocks);
     const lines = component.render(120);
@@ -381,9 +383,83 @@ describe('registerStatusLine', () => {
     expect(lines).toHaveLength(1);
     const row = lines[0];
     expect(row).toBe(
-      '● Test Model · ◐ low │ ⑂ main │ [███░░░░░░░] 25% used │ 50K/200K │ $0.300',
+      '● Test Model · ◐ low ◆ ⑂ /workspace/project (main) ◆ [███░░░░░░░] 25% used ◆ 50K/200K ◆ $0.300',
     );
     expect(row).not.toContain('active');
+  });
+
+  it.each([
+    {
+      home: '/home/test',
+      userProfile: '/other/home',
+      expected: `~${sep}project${sep}src`,
+    },
+    {
+      home: undefined,
+      userProfile: '/home/test',
+      expected: `~${sep}project${sep}src`,
+    },
+    {
+      home: '',
+      userProfile: '/home/test',
+      expected: `~${sep}project${sep}src`,
+    },
+    {
+      home: undefined,
+      userProfile: undefined,
+      expected: '/home/test/project/src',
+    },
+    {
+      home: '/other/home',
+      userProfile: '/home/test',
+      expected: '/home/test/project/src',
+    },
+  ])('formats ctx.cwd using HOME=$home before USERPROFILE=$userProfile', ({
+    home,
+    userProfile,
+    expected,
+  }) => {
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', userProfile);
+    const mocks = createMocks();
+    mocks.ctx.cwd = '/home/test/project/src';
+    const component = createFooter(mocks);
+    try {
+      expect(component.render(200)[0]).toContain(`⑂ ${expected} (main)`);
+    } finally {
+      component.dispose();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('refreshes cached cwd and branch while preserving branchless path display', () => {
+    const mocks = createMocks();
+    const component = createFooter(mocks);
+    try {
+      const initial = component.render(200);
+      expect(initial[0]).toContain('⑂ /workspace/project (main)');
+      expect(component.render(200)).toBe(initial);
+
+      mocks.ctx.cwd = '/workspace/other';
+      const moved = component.render(200);
+      expect(moved).not.toBe(initial);
+      expect(moved[0]).toContain('⑂ /workspace/other (main)');
+      expect(component.render(200)).toBe(moved);
+
+      mocks.footerData.getGitBranch.mockReturnValue('feature/new');
+      for (const cb of mocks.branchCallbacks) cb();
+      expect(component.render(200)[0]).toContain(
+        '⑂ /workspace/other (feature/new)',
+      );
+
+      mocks.footerData.getGitBranch.mockReturnValue(null);
+      const branchless = component.render(200)[0];
+      expect(branchless).toContain(' ◆ /workspace/other ◆ ');
+      expect(branchless).not.toContain('⑂');
+      expect(branchless).not.toContain('(null)');
+    } finally {
+      component.dispose();
+    }
   });
 
   it('adds the latest cumulative subagent snapshot to session cost, replacing earlier snapshots', () => {
@@ -554,7 +630,7 @@ describe('registerStatusLine', () => {
       runCount: 1,
     });
 
-    expect(component.render(120)[0].split(' │ ').at(-1)).toBe(expected);
+    expect(component.render(120)[0].split(' ◆ ').at(-1)).toBe(expected);
   });
 
   it('updates the cached subscription flag when only the model provider changes', () => {

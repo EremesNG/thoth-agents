@@ -22,6 +22,7 @@ const tokens: RenderKitToken[] = [];
 afterEach(() => {
 	for (const token of tokens.splice(0)) withdrawRenderKit(token);
 	vi.unstubAllEnvs();
+	vi.restoreAllMocks();
 });
 
 const theme = {
@@ -181,9 +182,19 @@ test.each([
 	]);
 	for (const [, options] of card.mock.calls) {
 		expect(options.isSuccess).toBe(completed);
-		expect(options.status).toBeUndefined();
+		expect(options.status).toBe(
+			isPartial ? "running" : isError ? "failed" : "completed",
+		);
+		expect(options.context).toBe(shared);
 		expect(Boolean(options.isError)).toBe(isError);
 	}
+});
+
+test("AskAntigravity closes its initial KIT call with the standard running footer", async () => {
+	const tool = await askTool();
+	registerKit();
+	const call = tool.renderCall({ prompt: "review" }, theme, context());
+	expect(call.render(120).at(-1)).toBe("╰─ running");
 });
 
 test("AskAntigravity does not infer success before a result exists", async () => {
@@ -250,7 +261,7 @@ test.each([
 	const token = registerRenderKit(kit, {});
 	tokens.push(token);
 	call.render(120);
-	expect(result.render(120).at(-1)).toBe("╰─ completed · Done");
+	expect(result.render(120).at(-1)).toBe("╰─ Done");
 	for (const [, option] of card.mock.calls) {
 		expect(option.status).toBe("completed");
 		expect(option.footer).toBe("Done");
@@ -259,6 +270,29 @@ test.each([
 	}
 	withdrawRenderKit(token);
 	expect([...call.render(120), ...result.render(120)]).toEqual(native);
+});
+
+test("renderToolCard forwards a tool's status, context and summary to the standard footer", () => {
+	const kit = createTestRenderKit();
+	delete kit.toolFooter;
+	tokens.push(registerRenderKit(kit, {}));
+	vi.spyOn(Date, "now").mockReturnValue(6500);
+	const shared = context({ isPartial: false });
+	const footerContext = { state: { startedAt: 1000 }, executionStarted: true };
+	const result = renderToolCard(
+		theme,
+		"output",
+		() => ({
+			body: ["output"],
+			status: "completed",
+			context: footerContext,
+			summary: ["2 files"],
+		}),
+		"end",
+		shared,
+		{ isPartial: false, isError: false },
+	);
+	expect(result.render(120).at(-1)).toBe("╰─ ✓ · 5s · 2 files");
 });
 
 test("renderToolCard preserves a completed call footer without inferring success before a result", () => {
@@ -363,7 +397,9 @@ test.each([
 	expect(themed).not.toContain("╭─");
 	expect(themed).toContain("AskAntigravity");
 	expect(themed).toContain(body);
-	expect(themed).toContain(status);
+	expect(themed).toContain(
+		`╰─ ${status === "completed" ? "✓ · 12s" : status === "failed" ? "✗" : "running"}`,
+	);
 	if (!isPartial && !isError) expect(themed).toContain("12.3s");
 	expect(themed).not.toContain("\u001b[4");
 	withdrawRenderKit(token);

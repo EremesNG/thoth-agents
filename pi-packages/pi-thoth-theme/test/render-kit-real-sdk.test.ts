@@ -188,6 +188,92 @@ describe('render kit through Pi SDK 1.0.2', () => {
     expect(text(component)).not.toContain('╭');
   }, 30_000);
 
+  it('recomputes context-derived card footers at the same SDK width and freezes terminal output', async () => {
+    await loadSession();
+    const kit = getRenderKit();
+    if (!kit) throw new Error('No theme kit');
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    const requestRender = vi.fn();
+    const component = new ToolExecutionComponent(
+      'footer_probe',
+      'standard-footer-sdk',
+      {},
+      {},
+      {
+        renderShell: 'self',
+        renderCall(_args, theme, context) {
+          return kit.cachedComponent((width) =>
+            kit.card(
+              theme,
+              {
+                title: 'Footer probe',
+                body: ['call'],
+                context,
+                status: context.executionStarted ? 'running' : 'pending',
+                part: context.state.hasResult ? 'start' : 'full',
+              },
+              width,
+            ),
+          );
+        },
+        renderResult(result, options, theme, context) {
+          context.state.hasResult = true;
+          return kit.cachedComponent((width) =>
+            kit.card(
+              theme,
+              {
+                body: ['output'],
+                part: 'end',
+                context,
+                summary: '1 line',
+                status: options.isPartial
+                  ? 'running'
+                  : result.isError
+                    ? 'failed'
+                    : 'completed',
+              },
+              width,
+            ),
+          );
+        },
+      },
+      { requestRender } as unknown as TUI,
+      cwd,
+    );
+    component.markExecutionStarted();
+    expect(text(component)).toContain('△ · 0s');
+    component.updateResult(
+      {
+        content: [{ type: 'text', text: 'partial error' }],
+        isError: true,
+      },
+      true,
+    );
+    requestRender.mockClear();
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(1000);
+    expect(requestRender).toHaveBeenCalledTimes(1);
+    expect(text(component)).toContain('◭ · 1s');
+    expect(text(component)).not.toContain('✗');
+    vi.advanceTimersByTime(1250);
+    component.updateResult(
+      {
+        content: [{ type: 'text', text: 'done' }],
+        isError: false,
+      },
+      false,
+    );
+    expect(text(component)).toContain('✓ · 2s · 1 line');
+    expect(text(component).match(/✓/g)).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+    requestRender.mockClear();
+    vi.advanceTimersByTime(5000);
+    expect(requestRender).not.toHaveBeenCalled();
+    component.invalidate();
+    expect(text(component)).toContain('✓ · 2s · 1 line');
+    expect(vi.getTimerCount()).toBe(0);
+  }, 30_000);
+
   it('replaces the kit on native reload and removes it when styling is disabled on reload', async () => {
     const session = await loadSession();
     const original = getRenderKit();
@@ -233,7 +319,7 @@ describe('render kit through Pi SDK 1.0.2', () => {
       vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
       const { component, requestRender } = toolComponent(parent, 'bash');
       component.markExecutionStarted();
-      expect(text(component)).toContain('running… · 0s');
+      expect(text(component)).toContain('△ · 0s');
       requestRender.mockClear();
       let childPrompts = 0;
       const prompt = vi
@@ -306,7 +392,7 @@ describe('render kit through Pi SDK 1.0.2', () => {
       expect(getRenderKit()).toBe(kit);
       vi.advanceTimersByTime(1000);
       expect(requestRender).toHaveBeenCalledTimes(1);
-      expect(text(component)).toContain('running… · 3s');
+      expect(text(component)).toContain('◮ · 3s');
       await parent.extensionRunner.emit({ type: 'agent_end', messages: [] });
       requestRender.mockClear();
       vi.advanceTimersByTime(1000);

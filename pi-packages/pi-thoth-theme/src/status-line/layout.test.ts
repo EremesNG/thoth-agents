@@ -1,10 +1,78 @@
+import { sep } from 'node:path';
 import { visibleWidth } from '@earendil-works/pi-tui';
 import { describe, expect, it } from 'vitest';
-import { formatTokens, renderStatusLine, type StatusData } from './layout.ts';
+import {
+  formatCwd,
+  formatTokens,
+  renderStatusLine,
+  type StatusData,
+} from './layout.ts';
 
 const mockTheme = {
   fg: (token: string, text: string) => `[${token}]${text}[/${token}]`,
 };
+
+describe('formatCwd', () => {
+  it.each([
+    { cwd: '/home/test', expected: '~' },
+    {
+      cwd: '/home/test/project/src',
+      expected: `~${sep}project${sep}src`,
+    },
+    {
+      cwd: '/home/test/project/../other',
+      expected: `~${sep}other`,
+    },
+  ])('shortens $cwd inside home like the native footer', ({
+    cwd,
+    expected,
+  }) => {
+    expect(formatCwd(cwd, '/home/test')).toBe(expected);
+  });
+
+  it.each([
+    '/home/test-other/project',
+    '/home',
+    '/home/test/../other',
+    '/workspace/project/../src',
+  ])('preserves %s outside home without normalization', (cwd) => {
+    expect(formatCwd(cwd, '/home/test')).toBe(cwd);
+  });
+
+  it('preserves cwd when home is missing or empty', () => {
+    expect(formatCwd('/workspace/project/../src')).toBe(
+      '/workspace/project/../src',
+    );
+    expect(formatCwd('/workspace/project/../src', '')).toBe(
+      '/workspace/project/../src',
+    );
+  });
+
+  it('handles trailing separators and dot-prefixed child directories', () => {
+    expect(formatCwd('/home/test/', '/home/test/')).toBe('~');
+    expect(formatCwd('/home/test/..cache', '/home/test/')).toBe(
+      `~${sep}..cache`,
+    );
+  });
+
+  it.runIf(process.platform === 'win32')(
+    'shortens native Windows paths and preserves paths on another drive',
+    () => {
+      expect(
+        formatCwd(
+          'C:\\Users\\EremesNG\\orca\\workspaces\\thoth-agents\\thoth-theme',
+          'C:\\Users\\EremesNG',
+        ),
+      ).toBe('~\\orca\\workspaces\\thoth-agents\\thoth-theme');
+      expect(
+        formatCwd('c:/users/eremesng/project', 'C:\\Users\\EremesNG\\'),
+      ).toBe('~\\project');
+      expect(formatCwd('D:\\project', 'C:\\Users\\EremesNG')).toBe(
+        'D:\\project',
+      );
+    },
+  );
+});
 
 describe('formatTokens', () => {
   it('formats counts under 1K as plain numbers', () => {
@@ -39,7 +107,7 @@ describe('renderStatusLine - target format and glyphs', () => {
     cost: 1.234,
   };
 
-  it('renders Unicode format with ● model, · ◐ effort, │ separator, ⑂ branch, [bar] % used, tokens, $<cost>', () => {
+  it('renders Unicode format with ● model, · ◐ effort, ◆ separator, ⑂ branch, [bar] % used, tokens, $<cost>', () => {
     const rendered = renderStatusLine(sampleData, {
       width: 200,
       mode: 'nerd',
@@ -51,7 +119,7 @@ describe('renderStatusLine - target format and glyphs', () => {
     expect(rendered).toContain('43% used');
     expect(rendered).toContain('425.9K/1M');
     expect(rendered).toContain('$1.234');
-    expect(rendered).toContain(' │ ');
+    expect(rendered).toContain(' ◆ ');
     expect(rendered).not.toContain('\uf4b8'); // no Nerd Font model
     expect(rendered).not.toContain('\ue702'); // no Nerd Font git
     expect(rendered).not.toContain('\uf49d'); // no Nerd Font context
@@ -92,7 +160,7 @@ describe('renderStatusLine - target format and glyphs', () => {
     expect(rendered).toContain('425.9K/1M');
     expect(rendered).toContain('$1.234');
     expect(rendered).toContain(' | ');
-    expect(rendered).not.toContain('│');
+    expect(rendered).not.toContain('◆');
     expect(rendered).not.toContain('●');
     expect(rendered).not.toContain('◐');
     expect(rendered).not.toContain('⑂');
@@ -134,27 +202,45 @@ describe('renderStatusLine - target format and glyphs', () => {
     expect(none).toContain('● Claude 3.5 Sonnet');
   });
 
-  it('never renders a path, cwd or extension statuses segment', () => {
+  it.each([
+    { mode: 'nerd', prefix: '⑂' },
+    { mode: 'ascii', prefix: 'git' },
+  ] as const)('renders cwd with branch in $mode mode, excluding unrelated path and extension statuses', ({
+    mode,
+    prefix,
+  }) => {
     const dataWithExtras: StatusData & {
-      cwd?: string;
       path?: string;
       extensionStatuses?: unknown;
     } = {
       ...sampleData,
       cwd: '/workspace/project/src',
-      path: '/workspace/project/src',
+      path: '/ignored/path',
       extensionStatuses: new Map([['ext1', 'active']]),
     };
 
-    const rendered = renderStatusLine(dataWithExtras, {
-      width: 200,
-      mode: 'nerd',
-    });
+    const rendered = renderStatusLine(dataWithExtras, { width: 200, mode });
 
-    expect(rendered).not.toContain('/workspace');
-    expect(rendered).not.toContain('project');
+    expect(rendered).toContain(
+      `${prefix} /workspace/project/src (feature/ac-2)`,
+    );
+    expect(rendered).not.toContain('/ignored/path');
     expect(rendered).not.toContain('active');
     expect(rendered).not.toContain('ext1');
+  });
+
+  it.each([
+    'nerd',
+    'ascii',
+  ] as const)('renders just cwd without a branch or git prefix in %s mode', (mode) => {
+    for (const gitBranch of [null, undefined, '']) {
+      expect(
+        renderStatusLine(
+          { cwd: '/workspace/project/src', gitBranch },
+          { width: 200, mode },
+        ),
+      ).toBe('/workspace/project/src');
+    }
   });
 });
 
@@ -240,6 +326,7 @@ describe('renderStatusLine - thoth theme color mapping', () => {
     modelName: 'Claude',
     thinkingLevel: 'medium',
     gitBranch: 'main',
+    cwd: '~/project',
     contextPercent: 50,
     contextTokens: 100000,
     contextWindow: 200000,
@@ -258,7 +345,7 @@ describe('renderStatusLine - thoth theme color mapping', () => {
     // Effort thinkingMedium
     expect(rendered).toContain('[thinkingMedium]');
     // Branch turquoise -> success
-    expect(rendered).toContain('[success]⑂ main[/success]');
+    expect(rendered).toContain('[success]⑂ ~/project (main)[/success]');
     // Bar fill under 70% -> success
     expect(rendered).toContain('[success]');
     // Bar empty -> dim
@@ -270,7 +357,7 @@ describe('renderStatusLine - thoth theme color mapping', () => {
     // Cost gold -> accent
     expect(rendered).toContain('[accent]$0.500[/accent]');
     // Separators bronze -> border
-    expect(rendered).toContain('[border]│[/border]');
+    expect(rendered).toContain('[border]◆[/border]');
   });
 
   it('applies warning (ochre) when percent is between 70 and 89', () => {
@@ -302,6 +389,84 @@ describe('renderStatusLine - responsive width degradation', () => {
     contextWindow: 1000000,
     cost: 1.234,
   };
+
+  it.each([
+    'nerd',
+    'ascii',
+  ] as const)('falls back to branch-only before dropping other segments in %s mode', (mode) => {
+    const data = {
+      ...fullData,
+      cwd: '~/orca/workspaces/thoth-agents/thoth-theme',
+    };
+    const full = renderStatusLine(data, { width: 200, mode });
+    expect(full).toContain(`${data.cwd} (feature/ac-2)`);
+
+    const reduced = renderStatusLine(data, {
+      width: visibleWidth(full) - 1,
+      mode,
+    });
+    expect(reduced).not.toContain(data.cwd);
+    expect(reduced).toContain(
+      mode === 'ascii' ? 'git feature/ac-2' : '⑂ feature/ac-2',
+    );
+    expect(reduced).toContain('43% used');
+    expect(reduced).toContain('425.9K/1M');
+    expect(reduced).toContain('med');
+    expect(reduced).toContain('$1.234');
+  });
+
+  it.each([
+    'nerd',
+    'ascii',
+  ] as const)('retains the original segment-drop priorities after path fallback in %s mode', (mode) => {
+    const data = { ...fullData, cwd: '/workspace/project' };
+    const withoutBar = renderStatusLine(data, { width: 70, mode });
+    expect(withoutBar).not.toContain('43% used');
+    expect(withoutBar).toContain('425.9K/1M');
+    expect(withoutBar).toContain('feature/ac-2');
+    expect(withoutBar).not.toContain(data.cwd);
+
+    const withoutTokens = renderStatusLine(data, { width: 55, mode });
+    expect(withoutTokens).not.toContain('425.9K/1M');
+    expect(withoutTokens).toContain('feature/ac-2');
+
+    const withoutBranch = renderStatusLine(data, { width: 40, mode });
+    expect(withoutBranch).not.toContain('feature/ac-2');
+    expect(withoutBranch).toContain('med');
+
+    const withoutEffort = renderStatusLine(data, { width: 30, mode });
+    expect(withoutEffort).not.toContain('med');
+    expect(withoutEffort).toContain('Claude 3.5 Sonnet');
+    expect(withoutEffort).toContain('$1.234');
+  });
+
+  it.each([
+    'nerd',
+    'ascii',
+  ] as const)('keeps a branchless path until its original segment-drop priority in %s mode', (mode) => {
+    const data: StatusData = {
+      modelName: 'Model',
+      thinkingLevel: 'low',
+      cwd: '/workspace/project',
+      contextPercent: 25,
+      contextTokens: 50000,
+      contextWindow: 200000,
+      cost: 0.3,
+    };
+    const withoutBar = renderStatusLine(data, { width: 60, mode });
+    expect(withoutBar).not.toContain('25% used');
+    expect(withoutBar).toContain(data.cwd);
+    expect(withoutBar).toContain('50K/200K');
+
+    const withoutTokens = renderStatusLine(data, { width: 47, mode });
+    expect(withoutTokens).toContain(data.cwd);
+    expect(withoutTokens).not.toContain('50K/200K');
+
+    const withoutPath = renderStatusLine(data, { width: 40, mode });
+    expect(withoutPath).not.toContain(data.cwd);
+    expect(withoutPath).toContain('low');
+    expect(withoutPath).toContain('$0.300');
+  });
 
   it('drops bar first when width shrinks', () => {
     const full = renderStatusLine(fullData, { width: 200, mode: 'nerd' });
@@ -373,16 +538,25 @@ describe('renderStatusLine - responsive width degradation', () => {
   });
 
   it('truncates model last while keeping cost high priority', () => {
-    // Model + cost: Claude 3.5 Sonnet │ $1.234
+    // Model + cost: Claude 3.5 Sonnet ◆ $1.234
     const tight = renderStatusLine(fullData, { width: 22, mode: 'nerd' });
     expect(tight).toContain('$1.234');
     expect(visibleWidth(tight)).toBeLessThanOrEqual(22);
   });
 
-  it('never exceeds width across a range of narrow widths', () => {
-    for (let w = 1; w <= 120; w++) {
-      const rendered = renderStatusLine(fullData, { width: w, mode: 'nerd' });
-      expect(visibleWidth(rendered)).toBeLessThanOrEqual(w);
+  it.each([
+    'nerd',
+    'ascii',
+  ] as const)('never exceeds width with or without cwd and branch in %s mode', (mode) => {
+    for (const data of [
+      fullData,
+      { ...fullData, cwd: '~/orca/workspaces/thoth-agents/thoth-theme' },
+      { ...fullData, cwd: '/workspace/界/project', gitBranch: null },
+    ]) {
+      for (let width = 1; width <= 150; width++) {
+        const rendered = renderStatusLine(data, { width, mode });
+        expect(visibleWidth(rendered)).toBeLessThanOrEqual(width);
+      }
     }
   });
 

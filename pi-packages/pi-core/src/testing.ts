@@ -1,5 +1,10 @@
 import { formatDuration } from './duration.js';
-import type { RenderRows, RenderStatus, ThothRenderKit } from './render-kit.js';
+import {
+  type RenderRows,
+  type RenderStatus,
+  renderToolFooter,
+  type ThothRenderKit,
+} from './render-kit.js';
 
 function clip(text: string, width: number): string {
   return [...text].slice(0, Math.max(0, Math.floor(width))).join('');
@@ -28,11 +33,14 @@ const glyphs: Record<RenderStatus, string> = {
   unknown: '?',
 };
 
-/** Plain-text fake with real tree-gutter widths and caller-owned braille frames. */
+/**
+ * Plain-text fake with real tree-gutter widths and caller-owned braille frames.
+ * Tool footers use elapsed overrides only, without clock reads or state mutation.
+ */
 export function createTestRenderKit(): ThothRenderKit {
   const kit: ThothRenderKit = {
     version: 1,
-    card(_theme, options, width) {
+    card(theme, options, width) {
       if (!(width > 0)) return [];
       const contentWidth = Math.max(0, Math.floor(width) - 4);
       const lines: string[] = [];
@@ -49,9 +57,15 @@ export function createTestRenderKit(): ThothRenderKit {
         );
       }
       if (options.part !== 'start') {
-        const footer = [options.status, options.footer]
-          .filter(Boolean)
-          .join(' · ');
+        const footer =
+          options.context && options.status
+            ? (options.footer ??
+              renderToolFooter(kit, theme, {
+                status: options.status,
+                context: options.context,
+                summary: options.summary,
+              }))
+            : [options.status, options.footer].filter(Boolean).join(' · ');
         lines.push(`╰─${footer ? ` ${footer}` : ''}`);
       }
       return lines.map((line) => clip(line, width));
@@ -109,6 +123,12 @@ export function createTestRenderKit(): ThothRenderKit {
         elapsed,
         text: [options.label ?? status, elapsed].filter(Boolean).join(' · '),
       };
+    },
+    toolFooter(theme, options) {
+      return renderToolFooter(undefined, theme, {
+        ...options,
+        context: undefined,
+      });
     },
     statusGlyph: (_theme, status) => glyphs[status],
     widgetHeading(theme, options, width) {

@@ -4,6 +4,7 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import type { Component } from '@earendil-works/pi-tui';
+import { formatDuration } from './duration.js';
 import type { ToolRenderersLike } from './tool-registry.js';
 
 /** Minimal structural theme; Pi Theme satisfies this without a runtime import. */
@@ -42,6 +43,10 @@ export interface RenderCardOptions {
   footer?: string;
   /** Footer decoration only; never changes the border tone. */
   status?: RenderStatus;
+  /** Status + tool context requests the standard footer unless `footer` is supplied. */
+  context?: RenderIndicatorContext;
+  /** Optional terminal tool summary for the standard footer. */
+  summary?: RenderToolFooterOptions['summary'];
   /** Draws an `error` border, taking precedence over `isSuccess`. */
   isError?: boolean;
   /**
@@ -72,6 +77,19 @@ export interface RenderIndicatorContext {
   isError?: boolean;
   invalidate?: () => void;
   state?: Record<string, unknown>;
+}
+
+export interface RenderToolFooterOptions {
+  /**
+   * running/in_progress use the running form; completed/deleted use ✓;
+   * failed/cancelled/interrupted/blocked use ✗; other statuses stay literal.
+   */
+  status: RenderStatus;
+  context?: RenderIndicatorContext;
+  /** Producer-owned duration takes precedence over context timing. */
+  elapsedMs?: number;
+  /** Terminal summary; running footers show only status and elapsed time. */
+  summary?: string | readonly string[];
 }
 
 export interface RenderIndicatorOptions {
@@ -134,6 +152,8 @@ export interface ThothRenderKit {
     context?: RenderIndicatorContext,
     options?: RenderIndicatorOptions,
   ): RenderIndicator;
+  /** Standard tool footer; legacy v1 kits may omit it. */
+  toolFooter?(theme: RenderKitTheme, options: RenderToolFooterOptions): string;
   statusGlyph(theme: RenderKitTheme, status: RenderStatus): string;
   widgetHeading(
     theme: RenderKitTheme,
@@ -146,6 +166,90 @@ export interface ThothRenderKit {
     width: number,
   ): string;
   fg(theme: RenderKitTheme, role: ThemeColor, text: string): string;
+}
+
+const terminalFooterGlyphs: Partial<Record<RenderStatus, '✓' | '✗'>> = {
+  completed: '✓',
+  deleted: '✓',
+  failed: '✗',
+  cancelled: '✗',
+  interrupted: '✗',
+  blocked: '✗',
+};
+
+/**
+ * Shared context timing uses `state.startedAt` and `state.completedElapsedMs`.
+ * Starts on executing running/in_progress renders and freezes on terminal status,
+ * regardless of partial/error flags. Terminal elapsed overrides replace the frozen
+ * duration. Unknown elapsed stays undefined. Never creates timers or invalidates.
+ */
+export function getToolElapsedMs(
+  options: Pick<RenderToolFooterOptions, 'status' | 'context' | 'elapsedMs'>,
+): number | undefined {
+  const context = options.context;
+  const state = context?.state;
+  if (options.elapsedMs !== undefined) {
+    const elapsedMs = Number.isFinite(options.elapsedMs)
+      ? Math.max(0, options.elapsedMs)
+      : undefined;
+    if (
+      state &&
+      terminalFooterGlyphs[options.status] &&
+      elapsedMs !== undefined
+    ) {
+      state.completedElapsedMs = elapsedMs;
+    }
+    return elapsedMs;
+  }
+  if (!state) return undefined;
+  if (
+    context.executionStarted &&
+    (options.status === 'running' || options.status === 'in_progress') &&
+    state.startedAt === undefined
+  ) {
+    state.startedAt = Date.now();
+  }
+  if (
+    typeof state.completedElapsedMs === 'number' &&
+    Number.isFinite(state.completedElapsedMs)
+  ) {
+    return Math.max(0, state.completedElapsedMs);
+  }
+  if (
+    typeof state.startedAt !== 'number' ||
+    !Number.isFinite(state.startedAt)
+  ) {
+    return undefined;
+  }
+  const elapsedMs = Math.max(0, Date.now() - state.startedAt);
+  if (terminalFooterGlyphs[options.status])
+    state.completedElapsedMs = elapsedMs;
+  return elapsedMs;
+}
+
+/** Delegate to the kit, or use a plain, whole-second tool footer. */
+export function renderToolFooter(
+  kit: ThothRenderKit | undefined,
+  theme: RenderKitTheme,
+  options: RenderToolFooterOptions,
+): string {
+  if (kit?.toolFooter) return kit.toolFooter(theme, options);
+  const elapsedMs = getToolElapsedMs(options);
+  const elapsed =
+    elapsedMs === undefined
+      ? ''
+      : formatDuration(Math.floor(elapsedMs / 1000) * 1000);
+  const terminalGlyph = terminalFooterGlyphs[options.status];
+  const status =
+    terminalGlyph ??
+    (options.status === 'in_progress' ? 'running' : options.status);
+  const summary =
+    typeof options.summary === 'string'
+      ? [options.summary]
+      : (options.summary ?? []);
+  return [status, elapsed, ...(terminalGlyph ? summary : [])]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 export type RenderKitToken = symbol;
@@ -183,6 +287,7 @@ export function getRenderKit(): ThothRenderKit | undefined {
       kit?.version === 1 &&
       (!('resolveToolRenderers' in kit) ||
         typeof kit.resolveToolRenderers === 'function') &&
+      (!('toolFooter' in kit) || typeof kit.toolFooter === 'function') &&
       [
         'card',
         'collapse',

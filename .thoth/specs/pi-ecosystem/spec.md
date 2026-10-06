@@ -98,13 +98,13 @@ The subagents thread viewer MUST resolve tool definitions from the tool definiti
 
 ### Requirement: Render kit result borders
 
-Themed tool and notification cards that render through the Thoth render kit or the theme's tool renderers and draw an error-colored border for failed results MUST draw the theme `success` color for affirmative terminal success, the theme `error` color wherever an error border is drawn today (including cancellation where it is red), except that the still-running shell/generic rule in the next sentence takes precedence over this error-color rule, and the theme `accent` color for every other non-error state, consistently across every part of the same card. A shell or generic tool card (bash, PowerShell, generic renderer) that is still running, even with partial output or a partial error flag, MUST show its running footer/state and the `accent` border until it finishes, and only completion changes its footer and border; in the subagents thread viewer, tool items that are still running MUST be rendered as running, with or without a kit. Cards without a result-driven error border are unchanged.
+Themed tool and notification cards that render through the Thoth render kit or the theme's tool renderers and draw an error-colored border for failed results MUST draw the theme `success` color for affirmative terminal success, the theme `error` color wherever an error border is drawn today (including cancellation where it is red), except that the still-running shell/generic rule in the next sentence takes precedence over this error-color rule, and the theme `accent` color for every other non-error state, consistently across every part of the same card. A shell or generic tool card (bash, PowerShell, generic renderer) that is still running, even with partial output or a partial error flag, MUST show the running form of the standard tool status footer and the `accent` border until it finishes, and only completion changes its footer (to the terminal form of the standard tool status footer, whose summary carries the exit code for shells) and border; in the subagents thread viewer, tool items that are still running MUST be rendered as running, with or without a kit. Cards without a result-driven error border are unchanged.
 
 #### Scenario: Render kit result borders
 
 - **GIVEN** a themed bash card that has already produced output
-- **WHEN** it is still running and then completes, in the chat or in the subagents thread viewer
-- **THEN** it shows the running footer and the accent border while running, and after completion the exit footer with the success border for exit code 0 or the error border for a failure
+- **WHEN** it is still running and then completes
+- **THEN** it shows the standard running footer and the accent border while running, and after completion the standard terminal footer with `✓` and the success border for exit code 0 or `✗` and the error border for a failure
 
 ### Requirement: Claude bridge projects Pi prompt sections
 
@@ -125,3 +125,13 @@ Themed tool and notification cards that render through the Thoth render kit or t
 - **GIVEN** Pi tools are served as `mcp__custom-tools__<name>`
 - **WHEN** the bridge projects the system prompt
 - **THEN** the prompt states that a plain name `X` refers to `mcp__custom-tools__X`
+
+### Requirement: Standard tool status footer
+
+`@thoth-agents/pi-core` MUST define a render-kit contract that produces the tool card status footer from a status and the tool render context, with a plain-text fallback when no kit is registered; `@thoth-agents/pi-thoth-theme` MUST implement it so that every running first-party tool card (theme built-ins and kit producers) shows the animated pyramid frame and elapsed time, and every finished tool card shows `✓` or `✗`, the elapsed time and the tool's optional summary.
+
+#### Scenario: Standard tool status footer
+
+- **GIVEN** a themed read, bash or subagent tool card
+- **WHEN** it is running and then finishes
+- **THEN** its footer shows `<pyramid frame> · <elapsed>` while running and `✓ · <elapsed>[ · summary]` or `✗ · <elapsed>[ · summary]` after finishing

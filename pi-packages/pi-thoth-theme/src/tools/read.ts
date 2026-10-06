@@ -3,6 +3,7 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
+import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, getResultText, hasImageContent } from './box.ts';
@@ -14,6 +15,7 @@ import {
   renderFrameRow,
   renderFrameTop,
 } from './frame.ts';
+import { type ElapsedRenderContext, syncElapsedTicker } from './ticker.ts';
 
 interface ReadArgs {
   path?: string;
@@ -22,10 +24,8 @@ interface ReadArgs {
   limit?: number;
 }
 
-interface ToolContext {
-  isError?: boolean;
+interface ToolContext extends ElapsedRenderContext {
   cwd?: string;
-  isPartial?: boolean;
   lastComponent?: { invalidate?: () => void };
   state?: {
     hasResult?: boolean;
@@ -38,6 +38,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: ToolContext) {
+      syncElapsedTicker(context);
       const args = (rawArgs ?? {}) as ReadArgs;
       const rawPath = String(args.path ?? args.file_path ?? '');
       const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
@@ -55,6 +56,10 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
 
       const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
+        const footer =
+          context?.executionStarted && context.isPartial
+            ? toolFooter(theme, { status: 'running', context })
+            : undefined;
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Read')) : theme.fg('toolTitle', 'Read')} ${theme.fg('text', `${filePath}${range}`)}`;
 
         if (hasToolResult(context)) {
@@ -63,7 +68,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
 
         return [
           ...renderFrameTop(theme, title, safeWidth, borderTone),
-          ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];
       });
 
@@ -96,6 +101,16 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
       }
 
       const isErr = Boolean(context?.isError);
+      const status = options?.isPartial
+        ? 'running'
+        : isErr
+          ? 'failed'
+          : 'completed';
+      const footerOptions = {
+        status,
+        context: { ...context, isPartial: options?.isPartial },
+      } as const;
+      syncElapsedTicker(footerOptions.context);
       const borderTone = getToolBorderTone({
         isError: isErr,
         isPartial: options?.isPartial,
@@ -105,10 +120,11 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
       if (isErr) {
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
+          const footer = toolFooter(theme, footerOptions);
           const errText = `${theme.fg('error', '! ')}${theme.fg('error', textOutput || 'Failed to read file')}`;
           return [
             ...renderFrameRow(theme, errText, safeWidth, borderTone),
-            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         });
       }
@@ -121,6 +137,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
         const note = firstTextBlock?.text ?? 'Read image file';
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
+          const footer = toolFooter(theme, footerOptions);
           return [
             ...renderFrameRow(
               theme,
@@ -128,7 +145,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
               safeWidth,
               borderTone,
             ),
-            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         });
       }
@@ -138,6 +155,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
 
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
+        const footer = toolFooter(theme, footerOptions);
         if (!options?.expanded) {
           const summary = `${lineCount} ${lineCount === 1 ? 'line' : 'lines'} · ctrl+o to expand`;
           return [
@@ -147,7 +165,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
               safeWidth,
               borderTone,
             ),
-            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         }
 
@@ -159,7 +177,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
               safeWidth,
               borderTone,
             ),
-            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         }
 
@@ -167,7 +185,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
           ...lines.flatMap((line) =>
             renderFrameRow(theme, line, safeWidth, borderTone),
           ),
-          ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];
       });
     },

@@ -88,7 +88,8 @@ describe('successful card borders', () => {
     it.each([
       [undefined, 'Done', '╰── Done ──────────────╯'],
       ['completed', '\x1b[32m✓\x1b[39m Done', '╰── ✓ Done ────────────╯'],
-      ['running', '\x1b[33m◭\x1b[39m Done', '╰── ◭ Done ────────────╯'],
+      ['running', 'Done', '╰── Done ──────────────╯'],
+      ['in_progress', 'Done', '╰── Done ──────────────╯'],
       ['failed', '\x1b[31m✗\x1b[39m Done', '╰── ✗ Done ────────────╯'],
       ['cancelled', '\x1b[37m⊘\x1b[39m Done', '╰── ⊘ Done ────────────╯'],
     ] as const)('preserves the status=%s footer when border flags change', (status, footer, bottom) => {
@@ -131,7 +132,7 @@ describe('successful card borders', () => {
         120,
       );
       expectBorderTone(lines, tone);
-      expect(lines.map(stripTerminalSequences).join('\n')).not.toMatch(/[✓✗◭]/);
+      expect(lines.map(stripTerminalSequences).join('\n')).not.toMatch(/[✓✗◇]/);
     });
   });
 
@@ -372,6 +373,7 @@ describe.each(branchCases)('$tool $name border paths', (branch) => {
     const context = {
       ...toolContext(isPartial, false),
       args: branch.args ?? args,
+      state: { startedAt: Date.now() - 5250 },
     };
     const tone = isPartial ? 'accent' : 'success';
     for (const expanded of [false, true]) {
@@ -383,7 +385,11 @@ describe.each(branchCases)('$tool $name border paths', (branch) => {
       );
       const call = tool.renderCall(context.args, theme, context);
       expectBorderTone(call.render(120), tone);
-      expectBorderTone(output.render(120), tone);
+      const outputLines = output.render(120);
+      expectBorderTone(outputLines, tone);
+      expect(stripTerminalSequences(outputLines.at(-1) ?? '')).toMatch(
+        isPartial ? /╰── [△◭▲◮] · 5s / : /╰── ✓ · 5s(?: ·| )/,
+      );
     }
   });
 });

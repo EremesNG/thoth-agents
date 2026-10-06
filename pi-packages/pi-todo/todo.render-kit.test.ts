@@ -9,6 +9,7 @@ let token: ReturnType<typeof registerRenderKit> | undefined;
 afterEach(() => {
   if (token) withdrawRenderKit(token);
   token = undefined;
+  vi.restoreAllMocks();
 });
 
 function setup() {
@@ -66,12 +67,38 @@ it('renders a todo card with action, subject and task status through the registe
   expect(tool.renderShell).toBe('self');
   expect(
     [...call.render(80), ...output.render(80)].map((row) => row.trimEnd()),
-  ).toEqual([
-    '╭─ todo',
-    '+ write tests',
-    '○ pending',
-    '╰─ completed · completed',
-  ]);
+  ).toEqual(['╭─ todo', '+ write tests', '○ pending', '╰─ ✓']);
+});
+
+it('uses the plain standard footer for a legacy kit and recomputes elapsed on invalidate', () => {
+  const kit = createTestRenderKit();
+  delete kit.toolFooter;
+  token = registerRenderKit(kit, {});
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
+  const tool = setup();
+  const ctx = context({ isPartial: true });
+  const call = tool.renderCall(ctx.args, makeTheme(), ctx);
+  expect(call.render(80).at(-1)).toBe('╰─ running · 0s');
+  now.mockReturnValue(6500);
+  call.invalidate();
+  expect(call.render(80).at(-1)).toBe('╰─ running · 5s');
+
+  ctx.isPartial = false;
+  const result = tool.renderResult(
+    { content: [], details: undefined },
+    { expanded: false, isPartial: false },
+    makeTheme(),
+    ctx,
+  );
+  call.invalidate();
+  expect(
+    [...call.render(80), ...result.render(80)].filter((row) =>
+      row.startsWith('╰─'),
+    ),
+  ).toEqual(['╰─ ✓ · 5s']);
+  now.mockReturnValue(9000);
+  result.invalidate();
+  expect(result.render(80).at(-1)).toBe('╰─ ✓ · 5s');
 });
 
 it.each([
@@ -137,9 +164,7 @@ it.each([
   token = registerRenderKit(kit, {});
   const lines = component.render(80);
   expect(lines.map((row) => row.trimEnd())).toEqual(
-    slot === 'call'
-      ? ['╭─ todo', '+ write tests']
-      : ['○ pending', '╰─ completed · completed'],
+    slot === 'call' ? ['╭─ todo', '+ write tests'] : ['○ pending', '╰─ ✓'],
   );
   expect(component.render(80)).toBe(lines);
   expect(card).toHaveBeenCalledTimes(1);
@@ -188,7 +213,7 @@ it('looks up the kit again on the same call and result components without invali
   const nativeResult = output.render(80);
   token = registerRenderKit(createTestRenderKit(), {});
   expect(call.render(80)[0]).toBe('╭─ todo');
-  expect(output.render(80).at(-1)).toBe('╰─ completed · completed');
+  expect(output.render(80).at(-1)).toBe('╰─ ✓');
   withdrawRenderKit(token);
   expect(call.render(80)).toEqual(nativeCall);
   expect(output.render(80)).toEqual(nativeResult);
@@ -207,7 +232,7 @@ it('keeps one complete pending shell until a result slot is mounted', () => {
   expect(call.render(80).map((row) => row.trimEnd())).toEqual([
     '╭─ todo',
     '+ write tests',
-    '╰─ running · running',
+    '╰─ running',
   ]);
 });
 
@@ -339,14 +364,17 @@ it.each([
     ctx,
   );
   call.render(80);
-  expect(result.render(80).at(-1)).toBe(`╰─ ${status} · ${status}`);
+  const footer =
+    status === 'completed' ? '✓' : status === 'failed' ? '✗' : status;
+  expect(result.render(80).at(-1)).toBe(`╰─ ${footer}`);
   expect(card.mock.calls.map(([, options]) => options.part)).toEqual([
     'start',
     'end',
   ]);
   for (const [, options] of card.mock.calls) {
     expect(options.status).toBe(status);
-    expect(options.footer).toBe(status);
+    expect(options.footer).toBe(footer);
+    expect(options.context).toBe(ctx);
     expect(options.isSuccess).toBe(completed);
     expect(Boolean(options.isError)).toBe(isError);
   }
@@ -370,7 +398,7 @@ it('does not infer todo success before any execution or result context exists', 
   tool.renderCall({ action: 'list' }, makeTheme(), context()).render(80);
   for (const [, options] of card.mock.calls) {
     expect(options.status).toBe('completed');
-    expect(options.footer).toBe('completed');
+    expect(options.footer).toBe('✓');
     expect(options.isSuccess).not.toBe(true);
   }
 });
@@ -387,5 +415,5 @@ it('marks SDK errors in the card and footer rather than using the success frame'
     ctx,
   );
   expect(call.render(80)[0]).toBe('╭─ ! todo');
-  expect(output.render(80).at(-1)).toBe('╰─ failed · failed');
+  expect(output.render(80).at(-1)).toBe('╰─ ✗');
 });

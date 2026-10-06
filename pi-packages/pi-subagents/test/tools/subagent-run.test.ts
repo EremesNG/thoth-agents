@@ -330,8 +330,9 @@ describe('subagent_run tool', () => {
         { status: 'running' },
       ]);
       expect(rendered.at(-1)!.split('\n')[1]).toContain(
-        'subagent · analyst · running · 0s',
+        'subagent · analyst · running',
       );
+      expect(rendered.at(-1)!.split('\n')[1]).not.toContain('running ·');
       expect(rendered.at(-1)).not.toContain('⧗ elapsed');
 
       await vi.advanceTimersByTimeAsync(1000);
@@ -344,15 +345,19 @@ describe('subagent_run tool', () => {
         );
         expect(update.details.tasks).toEqual(runningUpdate.details.tasks);
         expect(rendered[updateCount + index].split('\n')[1]).toContain(
-          `subagent · analyst · running · ${['0s', '0s', '0s', '1s'][index]}`,
+          'subagent · analyst · running',
+        );
+        expect(rendered[updateCount + index].split('\n')[1]).not.toContain(
+          'running ·',
         );
       }
       expect(rendered[updateCount].split('\n')[1]).not.toBe(
         rendered[updateCount - 1].split('\n')[1],
       );
       expect(rendered.at(-1)!.split('\n')[1]).toContain(
-        'subagent · analyst · running · 1s',
+        'subagent · analyst · running',
       );
+      expect(rendered.at(-1)!.split('\n')[1]).not.toContain('running ·');
       expect(rendered.at(-1)).not.toContain('⧗ elapsed');
 
       await vi.advanceTimersByTimeAsync(10_000);

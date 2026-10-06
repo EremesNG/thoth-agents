@@ -93,21 +93,32 @@ export function renderSubagentRunResult(
   const renderState = toolRenderState(result, options, context);
   const { expanded, isPartial } = options ?? {};
   const task = taskFromDetails(result);
-  const taskStatus =
-    task?.status ?? (renderState.context.isError ? 'failed' : 'completed');
   const isBg =
     task?.mode === 'background' ||
     task?.effective_mode === 'background' ||
     result?.details?.mode === 'background';
   const isRunning = task?.status === 'running' || task?.status === 'queued';
+  const isLaunched =
+    isBg &&
+    isRunning &&
+    !renderState.context.isPartial &&
+    !renderState.context.isError;
+  // The finalized card represents the launch, not the live background task.
+  if (isLaunched) {
+    renderState.status = 'completed';
+    renderState.isSuccess = true;
+  }
+  const statusLabel = isLaunched
+    ? 'launched'
+    : (task?.status ?? (renderState.context.isError ? 'failed' : 'completed'));
   const runtime =
     task && (isPartial || !isBg) ? formatRuntimeMetrics(task) : undefined;
   const archPrefix = themeStatus(
     theme,
-    taskStatus,
+    isLaunched ? 'completed' : statusLabel,
     isBg && isRunning
       ? '⤓'
-      : statusGlyph(taskStatus, result?.details?.frame ?? 0),
+      : statusGlyph(statusLabel, result?.details?.frame ?? 0),
   );
   const bgSuffix = isBg ? ' (background)' : '';
 
@@ -133,8 +144,7 @@ export function renderSubagentRunResult(
       })
       .filter(Boolean) as string[];
     const agentOrName = task?.display_name || task?.agent || 'subagent';
-    const elapsedSuffix = runtime?.elapsed ? ` · ${runtime.elapsed}` : '';
-    const title = `${archPrefix} ${themeTitle(theme, `subagent · ${agentOrName} · running${elapsedSuffix}${bgSuffix}`)}`;
+    const title = `${archPrefix} ${themeTitle(theme, `subagent · ${agentOrName} · running${bgSuffix}`)}`;
     return boxedComponent(styled, {
       title,
       theme,
@@ -150,11 +160,13 @@ export function renderSubagentRunResult(
       task?.status === 'cancelled',
   );
   const isExpanded = Boolean(expanded);
-  const status = task
-    ? themeStatus(theme, task.status ?? (failed ? 'failed' : 'done'))
-    : failed
-      ? themeError(theme, 'failed')
-      : themeSuccess(theme, 'done');
+  const status = isLaunched
+    ? themeSuccess(theme, 'launched')
+    : task
+      ? themeStatus(theme, task.status ?? (failed ? 'failed' : 'done'))
+      : failed
+        ? themeError(theme, 'failed')
+        : themeSuccess(theme, 'done');
   const taskLabel = formatTaskLabel(task);
   const hasResp = hasAgentResponse(task, result);
   const responseText = taskResponseText(task, result);
@@ -162,11 +174,11 @@ export function renderSubagentRunResult(
   let title: string;
   if (isRunning) {
     const agentOrName = task?.display_name || task?.agent || 'subagent';
-    title = `${archPrefix} ${themeTitle(theme, `subagent · ${agentOrName} · ${task?.status ?? 'running'}${bgSuffix}`)}`;
+    title = `${archPrefix} ${themeTitle(theme, `subagent · ${agentOrName} · ${statusLabel}${bgSuffix}`)}`;
   } else if (!isExpanded) {
     const titleLabel = failed
-      ? themeError(theme, `[subagent] ${taskLabel} · ${taskStatus}`)
-      : themeTitle(theme, `[subagent] ${taskLabel} · ${taskStatus}`);
+      ? themeError(theme, `[subagent] ${taskLabel} · ${statusLabel}`)
+      : themeTitle(theme, `[subagent] ${taskLabel} · ${statusLabel}`);
     title = `${archPrefix} ${titleLabel}`.trim();
   } else if (hasResp) {
     title = `${archPrefix} ${themeTitle(theme, `subagent result · ${taskLabel}`)}`;
@@ -190,7 +202,7 @@ export function renderSubagentRunResult(
         : '';
     const metaLine = themeDim(
       theme,
-      `subagent: ${task?.agent ?? 'subagent'} · model: ${task?.model ?? 'default/current'} · effort: ${task?.effort ?? 'default/current'} · status: ${taskStatus}${costSuffix}`,
+      `subagent: ${task?.agent ?? 'subagent'} · model: ${task?.model ?? 'default/current'} · effort: ${task?.effort ?? 'default/current'} · status: ${statusLabel}${costSuffix}`,
     );
     const collapsedLines: string[] = [metaLine];
     if (failed) {

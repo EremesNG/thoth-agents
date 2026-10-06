@@ -18,6 +18,7 @@ export type {
   RenderKitToken,
   RenderRows,
   RenderStatus,
+  RenderToolFooterOptions,
   RenderTreeRowOptions,
   RenderWidgetHeadingOptions,
   ThothRenderKit,
@@ -25,7 +26,9 @@ export type {
 export {
   createKitRenderMemo,
   getRenderKit,
+  getToolElapsedMs,
   registerRenderKit,
+  renderToolFooter,
   withdrawRenderKit,
 } from './render-kit.js';
 export type {

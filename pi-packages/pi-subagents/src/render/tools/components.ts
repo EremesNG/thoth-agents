@@ -3,6 +3,7 @@ import {
   createKitRenderMemo,
   type RenderIndicatorContext,
   type RenderStatus,
+  renderToolFooter,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import {
@@ -126,19 +127,28 @@ export function boxedComponent(
           ? wrapLineToWidth(text, contentWidth)
           : [truncateToWidth(text, contentWidth, '…')];
       });
-    if (kit)
+    if (kit) {
+      const footer = options?.message
+        ? undefined
+        : renderToolFooter(kit, theme, {
+            status,
+            context: options?.context,
+          });
       return kit.card(
         theme,
         {
           title,
           body: rows,
           status: options?.message ? undefined : status,
+          context: options?.message ? undefined : (options?.context ?? {}),
+          footer,
           isError: options?.context?.isError,
           isSuccess: options?.isSuccess === true || undefined,
           wrap: options?.wrapped,
         },
         safeWidth,
       );
+    }
     if (options?.message)
       return frameBox(
         title,
@@ -197,39 +207,21 @@ export function toolRenderState(result: any, options: any, context?: any) {
   const tasks = result?.details?.tasks ?? result?.details?.results;
   const isError = context?.isError ?? Boolean(result?.isError);
   const isPartial = context?.isPartial ?? Boolean(options?.isPartial);
-  // Preserve the legacy footer below; border success requires the whole result.
+  // Task snapshots stay in the title/body and inform border success, not the footer.
   const completed = Array.isArray(tasks)
     ? tasks.length > 0 && tasks.every((entry) => entry?.status === 'completed')
     : task
       ? task.status === 'completed'
       : result?.details?.status === undefined ||
         result?.details?.status === 'completed';
+  const status: RenderStatus = isPartial
+    ? 'running'
+    : isError
+      ? 'failed'
+      : 'completed';
   return {
     context: { ...context, isError, isPartial },
     isSuccess: !isPartial && !isError && completed,
-    status: renderStatus(
-      task?.status ??
-        (isPartial ? 'running' : isError ? 'failed' : 'completed'),
-    ),
+    status,
   };
-}
-
-function renderStatus(status: string): RenderStatus {
-  const statuses: RenderStatus[] = [
-    'pending',
-    'queued',
-    'in_progress',
-    'running',
-    'completed',
-    'failed',
-    'cancelled',
-    'interrupted',
-    'stopping',
-    'deleted',
-    'blocked',
-    'unknown',
-  ];
-  return statuses.includes(status as RenderStatus)
-    ? (status as RenderStatus)
-    : 'unknown';
 }

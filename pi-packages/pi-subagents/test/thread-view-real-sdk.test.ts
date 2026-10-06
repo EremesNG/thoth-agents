@@ -367,7 +367,7 @@ it.each([
   };
   for (const exitCode of [undefined, 0, 7]) {
     const footer = render({ ...bash, status: 'running', exitCode }, 'accent');
-    expect(footer).toContain('running…');
+    expect(footer).toMatch(/╰── [△◭▲◮]/);
     expect(footer).not.toMatch(/Exit \d+/);
   }
   const footer = render(
@@ -380,6 +380,6 @@ it.each([
     },
     status === 'completed' ? 'success' : 'error',
   );
-  expect(footer).not.toContain('running…');
+  expect(footer).not.toMatch(/╰── [△◭▲◮]/);
   expect(footer).toContain(status === 'completed' ? 'Exit 0' : 'Exit ');
 });

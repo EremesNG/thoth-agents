@@ -4,6 +4,7 @@ import {
 	getRenderKit,
 	type RenderCardOptions,
 	type RenderIndicatorContext,
+	renderToolFooter,
 	type ThothRenderKit,
 } from "@thoth-agents/pi-core";
 
@@ -43,17 +44,34 @@ export function renderToolCard(
 				const isError = Boolean(
 					card.isError || shell.isError || shell.resultIsError,
 				);
+				const status =
+					card.status ??
+					(shell.isPartial || !shell.hasResult
+						? "running"
+						: isError
+							? "failed"
+							: "completed");
+				const footerContext = card.context ?? context;
 				const completed =
 					shell.hasResult &&
 					!shell.isPartial &&
 					!isError &&
 					context?.executionStarted !== false &&
-					(card.status === undefined || card.status === "completed");
+					status === "completed";
 				return kit.card(
 					theme,
 					{
 						...card,
-						part,
+						status,
+						context: footerContext,
+						footer:
+							card.footer ??
+							renderToolFooter(kit, theme, {
+								status,
+								context: footerContext,
+								summary: card.summary,
+							}),
+						part: part === "start" && !shell.hasResult ? "full" : part,
 						isError,
 						isSuccess: completed,
 					},

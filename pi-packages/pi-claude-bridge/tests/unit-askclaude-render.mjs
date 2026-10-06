@@ -79,24 +79,28 @@ describe('AskClaude rendering', () => {
       executionStarted: true,
       completed: true,
       status: 'completed',
+      footer: '✓',
     },
     {
       name: 'running',
       isPartial: true,
       executionStarted: true,
       status: 'running',
+      footer: 'running',
     },
     {
       name: 'not started',
       isPartial: true,
       executionStarted: false,
       status: 'running',
+      footer: 'running',
     },
     {
       name: 'not started with a non-partial context',
       isPartial: false,
       executionStarted: false,
       status: 'completed',
+      footer: '✓',
     },
     {
       name: 'SDK failure',
@@ -104,6 +108,7 @@ describe('AskClaude rendering', () => {
       executionStarted: true,
       isError: true,
       status: 'failed',
+      footer: '✗',
     },
     {
       name: 'bridge failure',
@@ -111,6 +116,7 @@ describe('AskClaude rendering', () => {
       executionStarted: true,
       bridgeError: true,
       status: 'failed',
+      footer: '✗',
     },
     {
       name: 'partial error',
@@ -118,6 +124,7 @@ describe('AskClaude rendering', () => {
       executionStarted: true,
       isError: true,
       status: 'running',
+      footer: 'running',
     },
   ]) {
     it(`signals ${scenario.name} consistently across AskClaude card parts`, () => {
@@ -140,10 +147,7 @@ describe('AskClaude rendering', () => {
         shared,
       );
       call.render(100);
-      assert.equal(
-        result.render(100).at(-1),
-        `╰─ ${scenario.status} · Claude Code`,
-      );
+      assert.equal(result.render(100).at(-1), `╰─ ${scenario.footer}`);
       const options = card.mock.calls.map(
         ({ arguments: [, options] }) => options,
       );
@@ -154,7 +158,8 @@ describe('AskClaude rendering', () => {
       assert.equal(options[0].status, undefined);
       assert.equal(options[0].footer, undefined);
       assert.equal(options[1].status, scenario.status);
-      assert.equal(options[1].footer, 'Claude Code');
+      assert.equal(options[1].footer, scenario.footer);
+      assert.equal(options[1].context, shared);
       for (const option of options) {
         assert.equal(option.isSuccess, scenario.completed ?? false);
         assert.equal(
@@ -165,7 +170,7 @@ describe('AskClaude rendering', () => {
     });
   }
 
-  it('retains bridge error borders without changing the recreated-slot footer', () => {
+  it('retains bridge error borders and failure footer after call-slot reconstruction', () => {
     const kit = createTestRenderKit();
     const card = mock.method(kit, 'card');
     token = registerRenderKit(kit, {});
@@ -182,12 +187,11 @@ describe('AskClaude rendering', () => {
     );
     const updatedCall = tool.renderCall({ prompt: 'Review' }, theme, shared);
     updatedCall.render(100);
-    // HEAD uses the SDK-reconstructed state for footer decoration, even though
-    // the bridge's terminal error still needs a red border on both parts.
-    assert.equal(result.render(100).at(-1), '╰─ completed · Claude Code');
+    // A reconstructed call slot must not turn the bridge failure footer into success.
+    assert.equal(result.render(100).at(-1), '╰─ ✗');
     assert.deepEqual(
       card.mock.calls.map(({ arguments: [, options] }) => options.status),
-      [undefined, 'completed'],
+      [undefined, 'failed'],
     );
     for (const {
       arguments: [, options],
@@ -215,9 +219,9 @@ describe('AskClaude rendering', () => {
       theme,
       context({ isPartial: false }),
     );
-    assert.equal(call.render(100).at(-1), '╰─ completed · Claude Code');
+    assert.equal(call.render(100).at(-1), '╰─ ✓');
     assert.equal(card.mock.calls[0].arguments[1].status, 'completed');
-    assert.equal(card.mock.calls[0].arguments[1].footer, 'Claude Code');
+    assert.equal(card.mock.calls[0].arguments[1].footer, '✓');
     assert.notEqual(card.mock.calls[0].arguments[1].isSuccess, true);
   });
 
@@ -245,13 +249,13 @@ describe('AskClaude rendering', () => {
       assert.deepEqual(
         lines,
         slot === 'call'
-          ? ['╭─ AskClaude', '"Review"', '╰─ completed · Claude Code']
+          ? ['╭─ AskClaude', '"Review"', '╰─ ✓']
           : [
               ...(slot === 'expanded'
                 ? ['├─ Prompt', 'Review', '├─ Output']
                 : []),
               'Done',
-              `╰─ ${slot === 'partial' ? 'running' : 'completed'} · Claude Code · 1s`,
+              `╰─ ${slot === 'partial' ? 'running' : '✓'} · 1s`,
             ],
       );
       assert.strictEqual(component.render(100), lines);
@@ -290,7 +294,7 @@ describe('AskClaude rendering', () => {
       '╭─ AskClaude',
       '[mode=full, model=sonnet, isolated]',
       '"Review the bridge"',
-      '╰─ running · Claude Code',
+      '╰─ running',
     ]);
     shared.isPartial = false;
     const result = tool.renderResult(
@@ -317,7 +321,7 @@ describe('AskClaude rendering', () => {
         '[mode=full, model=sonnet, isolated]',
         '"Review the bridge"',
         'Looks good',
-        '╰─ completed · Claude Code · 12.3s · 2 reads',
+        '╰─ ✓ · 12s · 2 reads',
       ],
     );
   });
@@ -355,7 +359,7 @@ describe('AskClaude rendering', () => {
         'seven',
         'eight',
         '… 2 more lines · ctrl+o to expand',
-        '╰─ completed · Claude Code · 0s',
+        '╰─ ✓ · 0s',
       ],
     );
     const expanded = tool.renderResult(
@@ -379,7 +383,7 @@ describe('AskClaude rendering', () => {
       'eight',
       'nine',
       'ten',
-      '╰─ completed · Claude Code · 0s',
+      '╰─ ✓ · 0s',
     ]);
   });
 
@@ -416,7 +420,7 @@ describe('AskClaude rendering', () => {
       'four',
       'five',
       'six" …',
-      '╰─ pending · Claude Code',
+      '╰─ pending',
     ]);
   });
 
@@ -434,12 +438,7 @@ describe('AskClaude rendering', () => {
       'toolSuccessBg',
       60,
     );
-    const kit = [
-      '╭─ AskClaude',
-      '"Review"',
-      'Done',
-      '╰─ completed · Claude Code',
-    ];
+    const kit = ['╭─ AskClaude', '"Review"', 'Done', '╰─ ✓'];
     assert.deepEqual([...call.render(60), ...result.render(60)], native);
     withKit();
     assert.deepEqual([...call.render(60), ...result.render(60)], kit);
@@ -469,13 +468,26 @@ describe('AskClaude rendering', () => {
     );
     assert.deepEqual(
       [...call.render(100), ...result.render(100)],
-      [
-        '╭─ AskClaude',
-        '"Review"',
-        '5s — reading files',
-        '╰─ running · Claude Code · 5s',
-      ],
+      ['╭─ AskClaude', '"Review"', '5s — reading files', '╰─ running · 5s'],
     );
+  });
+
+  it('keeps action details in the running body without extending the standard footer', () => {
+    withKit();
+    const component = tool.renderResult(
+      {
+        content: [{ type: 'text', text: 'Reading files' }],
+        details: { executionTime: 5000, actions: '2 reads' },
+      },
+      { expanded: false, isPartial: true },
+      theme,
+      context(),
+    );
+    assert.deepEqual(component.render(100), [
+      'Reading files',
+      '2 reads',
+      '╰─ running · 5s',
+    ]);
   });
 
   for (const sdkError of [false, true]) {
@@ -502,12 +514,7 @@ describe('AskClaude rendering', () => {
       withKit();
       assert.deepEqual(
         [...call.render(80), ...result.render(80)],
-        [
-          '╭─ ! AskClaude',
-          '"Review"',
-          'Error: unavailable',
-          '╰─ failed · Claude Code',
-        ],
+        ['╭─ ! AskClaude', '"Review"', 'Error: unavailable', '╰─ ✗'],
       );
     });
   }

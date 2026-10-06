@@ -8,9 +8,12 @@ import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   getRenderKit,
+  getToolElapsedMs,
   type RenderIndicatorContext,
   type RenderKitTheme,
+  type RenderToolFooterOptions,
   registerRenderKit,
+  renderToolFooter,
   type ThothRenderKit,
   type ToolRenderersLike,
   withdrawRenderKit,
@@ -19,9 +22,11 @@ import {
 const registryKey = Symbol.for('thoth-agents.pi-core.render-kit.v1');
 const shared = globalThis as typeof globalThis & { [registryKey]?: unknown };
 const kit = createTestRenderKit();
+const theme = { fg: (_role: string, text: string) => text };
 
 afterEach(() => {
   delete shared[registryKey];
+  vi.useRealTimers();
 });
 
 describe('render kit registry', () => {
@@ -29,12 +34,52 @@ describe('render kit registry', () => {
     type Context = Parameters<NonNullable<ToolDefinition['renderCall']>>[2];
     expectTypeOf<Theme>().toExtend<RenderKitTheme>();
     expectTypeOf<Context>().toExtend<RenderIndicatorContext>();
+    expectTypeOf<Context>().toExtend<
+      NonNullable<RenderToolFooterOptions['context']>
+    >();
   });
 
   it('accepts legacy v1 kits without a tool resolver', () => {
     expect('resolveToolRenderers' in kit).toBe(false);
     registerRenderKit(kit, {});
     expect(getRenderKit()).toBe(kit);
+  });
+
+  it('accepts legacy v1 kits without toolFooter and uses the plain fallback', () => {
+    const { toolFooter: _toolFooter, ...legacy } = kit;
+    registerRenderKit(legacy, {});
+    expect(getRenderKit()).toBe(legacy);
+    expect(
+      renderToolFooter(getRenderKit(), theme, {
+        status: 'completed',
+        summary: 'Done',
+      }),
+    ).toBe('✓ · Done');
+  });
+
+  it.each([
+    undefined,
+    null,
+    false,
+    42,
+    'footer',
+    {},
+  ])('rejects a present non-callable toolFooter: %s', (toolFooter) => {
+    registerRenderKit({ ...kit, toolFooter } as ThothRenderKit, {});
+    expect(getRenderKit()).toBeUndefined();
+  });
+
+  it('ignores toolFooter with a throwing accessor', () => {
+    registerRenderKit(
+      {
+        ...kit,
+        get toolFooter(): never {
+          throw new Error('foreign accessor');
+        },
+      },
+      {},
+    );
+    expect(getRenderKit()).toBeUndefined();
   });
 
   it('accepts a host-compatible tool resolver and preserves its downstream renderers', () => {
@@ -123,6 +168,181 @@ describe('render kit registry', () => {
     expect(getRenderKit()).toBeUndefined();
     withdrawRenderKit(current);
     expect(getRenderKit()).toBeUndefined();
+  });
+});
+
+describe('standard tool footer', () => {
+  it('delegates untouched options to the current kit implementation', () => {
+    const options: RenderToolFooterOptions = {
+      status: 'running',
+      context: { executionStarted: true, state: {} },
+      elapsedMs: 5250,
+      summary: 'partial output',
+    };
+    const toolFooter = vi.fn(() => '▲ · 5s');
+    const themedKit: ThothRenderKit = { ...kit, toolFooter };
+    expect(renderToolFooter(themedKit, theme, options)).toBe('▲ · 5s');
+    expect(toolFooter).toHaveBeenCalledExactlyOnceWith(theme, options);
+    expect(options.context?.state).toEqual({});
+  });
+
+  it('tracks execution and freezes terminal elapsed by status, not partial error flags', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const invalidate = vi.fn();
+    const context = {
+      executionStarted: true,
+      isPartial: true,
+      isError: true,
+      state: {},
+      invalidate,
+    };
+    expect(getToolElapsedMs({ status: 'running', context })).toBe(0);
+    vi.setSystemTime(3500);
+    expect(getToolElapsedMs({ status: 'in_progress', context })).toBe(2500);
+    expect(
+      renderToolFooter(undefined, theme, { status: 'running', context }),
+    ).toBe('running · 2s');
+    expect(getToolElapsedMs({ status: 'completed', context })).toBe(2500);
+    vi.setSystemTime(9000);
+    expect(getToolElapsedMs({ status: 'completed', context })).toBe(2500);
+    expect(context.state).toEqual({
+      startedAt: 1000,
+      completedElapsedMs: 2500,
+    });
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    'pending',
+    'queued',
+    'stopping',
+    'unknown',
+  ] as const)('does not freeze elapsed for %s', (status) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(2000);
+    const context = {
+      state: { startedAt: 1000 },
+      isPartial: false,
+      isError: true,
+    };
+    expect(getToolElapsedMs({ status, context })).toBe(1000);
+    vi.setSystemTime(4000);
+    expect(getToolElapsedMs({ status, context })).toBe(3000);
+    expect(context.state).toEqual({ startedAt: 1000 });
+  });
+
+  it('does not invent a start time without an executing running context and shared state', () => {
+    const context = { executionStarted: false, state: {}, isPartial: true };
+    expect(getToolElapsedMs({ status: 'running', context })).toBeUndefined();
+    expect(
+      getToolElapsedMs({
+        status: 'running',
+        context: { executionStarted: true },
+      }),
+    ).toBeUndefined();
+    expect(context.state).toEqual({});
+  });
+
+  it.each([
+    { state: {}, expected: undefined, footer: '✗ · Error' },
+    {
+      state: { startedAt: 'unknown' },
+      expected: undefined,
+      footer: '✗ · Error',
+    },
+    {
+      state: { startedAt: Number.NaN },
+      expected: undefined,
+      footer: '✗ · Error',
+    },
+    {
+      state: { startedAt: Number.POSITIVE_INFINITY },
+      expected: undefined,
+      footer: '✗ · Error',
+    },
+    {
+      state: { completedElapsedMs: Number.NaN },
+      expected: undefined,
+      footer: '✗ · Error',
+    },
+    {
+      state: { completedElapsedMs: Number.POSITIVE_INFINITY },
+      expected: undefined,
+      footer: '✗ · Error',
+    },
+    {
+      state: { completedElapsedMs: -500 },
+      expected: 0,
+      footer: '✗ · 0s · Error',
+    },
+  ])('handles unavailable or malformed context timing: $state', ({
+    state,
+    expected,
+    footer,
+  }) => {
+    const options: RenderToolFooterOptions = {
+      status: 'failed',
+      context: { state, executionStarted: true },
+      summary: 'Error',
+    };
+    expect(getToolElapsedMs(options)).toBe(expected);
+    expect(renderToolFooter(undefined, theme, options)).toBe(footer);
+  });
+
+  it('freezes a terminal authoritative elapsed override for later context-only renders', () => {
+    const context = { state: { startedAt: 1000, completedElapsedMs: 5000 } };
+    expect(getToolElapsedMs({ status: 'failed', context, elapsedMs: 0 })).toBe(
+      0,
+    );
+    expect(getToolElapsedMs({ status: 'failed', context })).toBe(0);
+  });
+
+  it('renders whole-second running elapsed without a kit or terminal summary', () => {
+    expect(
+      renderToolFooter(undefined, theme, {
+        status: 'running',
+        elapsedMs: 5250,
+        summary: 'partial output',
+      }),
+    ).toBe('running · 5s');
+  });
+
+  it.each([
+    [undefined, 'running'],
+    [Number.NaN, 'running'],
+    [Number.POSITIVE_INFINITY, 'running'],
+    [Number.NEGATIVE_INFINITY, 'running'],
+    [-500, 'running · 0s'],
+    [0, 'running · 0s'],
+    [999, 'running · 0s'],
+  ] as const)('omits unknown elapsed and clamps finite durations: %s', (elapsedMs, expected) => {
+    expect(
+      renderToolFooter(undefined, theme, { status: 'running', elapsedMs }),
+    ).toBe(expected);
+  });
+
+  it.each([
+    ['completed', '✓ · 5s · Exit 0 · 1 line'],
+    ['deleted', '✓ · 5s · Exit 0 · 1 line'],
+    ['failed', '✗ · 5s · Exit 0 · 1 line'],
+    ['cancelled', '✗ · 5s · Exit 0 · 1 line'],
+    ['interrupted', '✗ · 5s · Exit 0 · 1 line'],
+    ['blocked', '✗ · 5s · Exit 0 · 1 line'],
+    ['in_progress', 'running · 5s'],
+    ['pending', 'pending · 5s'],
+    ['queued', 'queued · 5s'],
+    ['stopping', 'stopping · 5s'],
+    ['unknown', 'unknown · 5s'],
+  ] as const)('formats %s without a kit', (status, expected) => {
+    expect(
+      renderToolFooter(undefined, theme, {
+        status,
+        elapsedMs: 5999,
+        summary: ['', 'Exit 0', '1 line', ''],
+      }),
+    ).toBe(expected);
   });
 });
 

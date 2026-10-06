@@ -19,7 +19,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildSessionContext, getAgentDir, keyHint } from "@earendil-works/pi-coding-agent";
 import { contentText, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { formatDuration } from "@thoth-agents/pi-core";
+import { formatDuration, renderToolFooter } from "@thoth-agents/pi-core";
 import {
 	CONVERSATIONS_DIR,
 	newConversationId,
@@ -515,10 +515,11 @@ export async function registerAskAntigravityTool(
 				return renderToolCard(
 					theme,
 					text,
-					(kit) => ({
+					() => ({
 						title: "AskAntigravity",
 						body: text.split("\n"),
-						footer: kit.indicator(theme, context, { status: "running" }).text,
+						status: "running",
+						context,
 					}),
 					"end",
 					context,
@@ -528,6 +529,7 @@ export async function registerAskAntigravityTool(
 			const body = result.content[0]?.type === "text" ? result.content[0].text : "";
 			const errored =
 				d?.exitCode !== 0 || !!d?.aborted || !!d?.timedOut || !!d?.empty;
+			const status = errored || context?.isError ? "failed" : "completed";
 
 			let text = errored
 				? theme.fg("error", "✗ AskAntigravity error")
@@ -558,10 +560,13 @@ export async function registerAskAntigravityTool(
 					title: "AskAntigravity",
 					body: text.split("\n"),
 					isError: errored || context?.isError,
-					footer: kit.indicator(theme, context, {
-						status: errored || context?.isError ? "failed" : "completed",
+					status,
+					context,
+					footer: renderToolFooter(kit, theme, {
+						status,
+						context,
 						elapsedMs: d?.durationMs,
-					}).text,
+					}),
 				}),
 				"end",
 				context,

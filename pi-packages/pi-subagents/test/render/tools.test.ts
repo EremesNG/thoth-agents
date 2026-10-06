@@ -175,7 +175,8 @@ describe('tool render helpers', () => {
         )
         .render(200)
         .join('\n');
-      expect(renderedBg).toContain('running (background)');
+      expect(renderedBg).toContain('launched (background)');
+      expect(renderedBg).toContain('status: launched');
 
       const taskResult = {
         details: {
@@ -311,7 +312,6 @@ describe('tool render helpers', () => {
           },
         },
         usageLine: '↳ usage: 2 turns ↑1.5k ↓100 · 25 tok/s',
-        duration: '3s',
       },
       { label: 'no usage or runtime', metrics: {}, usageLine: undefined },
       { label: 'empty usage', metrics: { usage: {} }, usageLine: undefined },
@@ -331,12 +331,10 @@ describe('tool render helpers', () => {
         label: 'elapsed only',
         metrics: { started_at: '2026-01-01T00:00:00.000Z' },
         usageLine: undefined,
-        duration: '3s',
       },
     ])('separates model and usage while highlighting the current activity with $label', ({
       metrics,
       usageLine,
-      duration,
     }) => {
       let runTool: any;
       registerSubagentTools(
@@ -385,10 +383,8 @@ describe('tool render helpers', () => {
             { fg, bold },
           )
           .render(200);
-        expect(lines[1]).toContain(
-          `subagent · analyst · running${duration ? ` · ${duration}` : ''}`,
-        );
-        if (!duration) expect(lines[1]).not.toContain('running ·');
+        expect(lines[1]).toContain('subagent · analyst · running');
+        expect(lines[1]).not.toContain('running ·');
         expect(lines.join('\n')).not.toContain('⧗ elapsed');
         const body = lines
           .slice(2, -1)
@@ -422,7 +418,7 @@ describe('tool render helpers', () => {
   it.each([
     {
       started_at: '2026-01-01T00:00:00.000Z',
-      title: 'subagent · analyst · running · 1m 25s (background)',
+      title: 'subagent · analyst · running (background)',
     },
     {
       started_at: undefined,
@@ -432,7 +428,7 @@ describe('tool render helpers', () => {
       started_at: 'invalid',
       title: 'subagent · analyst · running (background)',
     },
-  ])('keeps the background suffix after any partial title duration ($started_at)', ({
+  ])('keeps the partial background title timer-free ($started_at)', ({
     started_at,
     title,
   }) => {
@@ -750,7 +746,7 @@ describe('tool render helpers', () => {
     const plainCollapsed = collapsedLines.map(env.stripAnsi);
     const collapsedPlain = plainCollapsed.join('\n');
 
-    // Collapsed completed result: 5 rows (top padding, title, metadata, hint, bottom padding)
+    // Collapsed completed result: padding, title, metadata, hint, padding.
     expect(collapsedLines).toHaveLength(5);
     expect(env.stripAnsi(collapsedLines[1])).toContain(
       '✓ [subagent] sdd-verify · verify · completed',
@@ -838,7 +834,7 @@ describe('tool render helpers', () => {
       },
     };
 
-    // Collapsed failed result: 6 rows (top padding, title, metadata, error line, hint, bottom padding)
+    // Collapsed failed result: padding, title, metadata, error line, hint, padding.
     const collapsedLines = runTool
       .renderResult(failedResult, { expanded: false, isPartial: false }, theme)
       .render(80);
@@ -975,9 +971,8 @@ describe('tool render helpers', () => {
         `usage: 9 turns ↑19k ↓803 R61k $0.1051 ctx:19k · 51 tok/s${isPartial ? '' : ' · ⧗ elapsed 2m 11s'}`,
       );
       if (isPartial) {
-        expect(first.split('\n')[1]).toContain(
-          'subagent · worker · running · 2m 11s',
-        );
+        expect(first.split('\n')[1]).toContain('subagent · worker · running');
+        expect(first.split('\n')[1]).not.toContain('running ·');
         expect(first).not.toContain('⧗ elapsed');
       }
       now.mockReturnValue(Date.parse('2026-01-01T00:02:12.200Z'));
@@ -987,9 +982,8 @@ describe('tool render helpers', () => {
         `ctx:19k · 26 tok/s${isPartial ? '' : ' · ⧗ elapsed 2m 12s'}`,
       );
       if (isPartial) {
-        expect(second.split('\n')[1]).toContain(
-          'subagent · worker · running · 2m 12s',
-        );
+        expect(second.split('\n')[1]).toContain('subagent · worker · running');
+        expect(second.split('\n')[1]).not.toContain('running ·');
         expect(second).not.toContain('⧗ elapsed');
       }
     } finally {
@@ -1039,8 +1033,9 @@ describe('tool render helpers', () => {
         .render(200)
         .join('\n');
       expect(rendered).toContain(
-        isPartial ? 'subagent · worker · running · 12s' : '⧗ elapsed 12s',
+        isPartial ? 'subagent · worker · running' : '⧗ elapsed 12s',
       );
+      if (isPartial) expect(rendered.split('\n')[1]).not.toContain('running ·');
       expect(rendered).not.toContain('12.3s');
     } finally {
       now.mockRestore();
@@ -1161,7 +1156,7 @@ describe('tool render helpers', () => {
       task.started_at = '2026-01-01T00:00:00.000Z';
       const elapsedOnly = render();
       expect(elapsedOnly).toContain(
-        isPartial ? 'subagent · worker · running · 0s' : '⧗ elapsed 0s',
+        isPartial ? 'subagent · worker · running' : '⧗ elapsed 0s',
       );
       expect(elapsedOnly).not.toContain('tok/s');
       if (isPartial) {
@@ -1170,7 +1165,7 @@ describe('tool render helpers', () => {
       }
       task.started_at = '2026-01-01T00:00:01.000Z';
       expect(render()).toContain(
-        isPartial ? 'subagent · worker · running · 0s' : '⧗ elapsed 0s',
+        isPartial ? 'subagent · worker · running' : '⧗ elapsed 0s',
       );
     } finally {
       now.mockRestore();
@@ -1224,9 +1219,8 @@ describe('tool render helpers', () => {
     expect(runningLines.some((line) => line.includes('51 tok/s'))).toBe(true);
     expect(runningLines.some((line) => line.includes('34 tok/s'))).toBe(true);
     for (const rendered of runningLines) {
-      expect(rendered.split('\n')[1]).toMatch(
-        /subagent · worker · running · \d+s/,
-      );
+      expect(rendered.split('\n')[1]).toMatch(/subagent · worker · running/);
+      expect(rendered.split('\n')[1]).not.toContain('running ·');
       expect(rendered).not.toContain('⧗ elapsed');
     }
   });
@@ -1327,7 +1321,7 @@ describe('tool render helpers', () => {
   it.each([
     'running',
     'queued',
-  ])('renders background %s execution state as one native shell with (background) in its title', async (status) => {
+  ])('renders a background %s snapshot as a launched native tool card', async (status) => {
     env.writeAgent('sdd-verify');
     const manager = env.createManager(env.mockRunner());
     let runTool: any;
@@ -1381,17 +1375,18 @@ describe('tool render helpers', () => {
       .render(80);
     expectNativeShell(lines, 80);
     expect(lines[1]).toContain(
-      `subagent · sdd-verify · ${status} (background)`,
+      '⤓ subagent · sdd-verify · launched (background)',
     );
-    expect(lines[1]).toContain('⤓');
     expect(lines[1]).not.toContain('⠋');
     expect(lines[2]).toContain('subagent: sdd-verify');
-    expect(lines[2]).toContain(`status: ${status}`);
+    expect(lines[2]).toContain('status: launched');
+    expect(lines.join('\n')).not.toContain(`status: ${status}`);
     expect(lines.join('\n')).toContain('click to view execution');
     expect(lines.join('\n')).not.toContain('\x1b[4');
+    expect(bgResult.details.task.status).toBe(status);
   });
 
-  it('produces one native shell for background running execution with IDs kept in details', async () => {
+  it('produces one native launch shell for an active background execution with IDs kept in details', async () => {
     env.writeAgent('sdd-verify');
     const manager = env.createManager(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -1452,12 +1447,12 @@ describe('tool render helpers', () => {
     expect(resultLines[1]).toContain('⤓');
     expect(resultLines[1]).not.toContain('⠋');
     expect(resultLines[1]).toContain(
-      'subagent · sdd-verify · running (background)',
+      'subagent · sdd-verify · launched (background)',
     );
 
     // Interior lines:
     expect(resultLines[2]).toContain('subagent: sdd-verify');
-    expect(resultLines[2]).toContain('status: running');
+    expect(resultLines[2]).toContain('status: launched');
     expect(resultLines.join('\n')).toContain('click to view execution');
 
     // 3. No project-owned background fills or ANSI background color escapes

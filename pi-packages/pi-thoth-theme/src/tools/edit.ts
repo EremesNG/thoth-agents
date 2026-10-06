@@ -3,6 +3,7 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
+import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, getResultText } from './box.ts';
@@ -14,6 +15,7 @@ import {
   renderFrameRow,
   renderFrameTop,
 } from './frame.ts';
+import { type ElapsedRenderContext, syncElapsedTicker } from './ticker.ts';
 
 const COLLAPSED_DIFF_LINES = 6;
 
@@ -22,10 +24,8 @@ interface EditArgs {
   file_path?: string;
 }
 
-interface EditContext {
-  isError?: boolean;
+interface EditContext extends ElapsedRenderContext {
   cwd?: string;
-  isPartial?: boolean;
   lastComponent?: { invalidate?: () => void };
   state?: {
     hasResult?: boolean;
@@ -76,6 +76,7 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: EditContext) {
+      syncElapsedTicker(context);
       const args = (rawArgs ?? {}) as EditArgs;
       const rawPath = String(args.path ?? args.file_path ?? '');
       const filePath = formatDisplayPath(rawPath, context?.cwd ?? cwd);
@@ -85,6 +86,10 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
 
       const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
+        const footer =
+          context?.executionStarted && context.isPartial
+            ? toolFooter(theme, { status: 'running', context })
+            : undefined;
         const title = `${theme.fg('accent', editIcon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Edit')) : theme.fg('toolTitle', 'Edit')} ${theme.fg('accent', icon)} ${theme.fg('text', filePath)}`;
 
         if (hasToolResult(context)) {
@@ -93,7 +98,7 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
 
         return [
           ...renderFrameTop(theme, title, safeWidth, borderTone),
-          ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];
       });
 
@@ -126,6 +131,16 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
       }
 
       const isErr = Boolean(context?.isError);
+      const status = options?.isPartial
+        ? 'running'
+        : isErr
+          ? 'failed'
+          : 'completed';
+      const footerOptions = {
+        status,
+        context: { ...context, isPartial: options?.isPartial },
+      } as const;
+      syncElapsedTicker(footerOptions.context);
       const borderTone = getToolBorderTone({
         isError: isErr,
         isPartial: options?.isPartial,
@@ -139,7 +154,12 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
           const errText = `${theme.fg('error', '! ')}${theme.fg('error', diffText || 'Edit failed')}`;
           return [
             ...renderFrameRow(theme, errText, safeWidth, borderTone),
-            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+            ...renderFrameBottom(
+              theme,
+              toolFooter(theme, footerOptions),
+              safeWidth,
+              borderTone,
+            ),
           ];
         });
       }
@@ -157,7 +177,10 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
           removals > 0
             ? theme.fg('toolDiffRemoved', `-${removals}`)
             : theme.fg('dim', '-0');
-        const footer = `${addedStr} ${removedStr} · ${theme.fg('dim', '1 file')}`;
+        const footer = toolFooter(theme, {
+          ...footerOptions,
+          summary: [`${addedStr} ${removedStr}`, '1 file'],
+        });
 
         if (diffLines.length === 0) {
           return [

@@ -87,7 +87,7 @@ describe('theme render-kit lifecycle', () => {
         state: {},
         invalidate,
       };
-      expect(kit.indicator(theme, context).text).toBe('running… · 0s');
+      expect(kit.indicator(theme, context).text).toBe('△ · 0s');
       kit.indicator(theme, context);
       const child = loadTheme(true, false);
       await child.emit({ type: 'session_start', reason: 'startup' });
@@ -96,7 +96,7 @@ describe('theme render-kit lifecycle', () => {
       vi.advanceTimersByTime(2250);
       expect(invalidate).toHaveBeenCalledTimes(2);
       expect(kit.indicator(theme, context).glyph).toBe('▲');
-      expect(kit.indicator(theme, context).text).toBe('running… · 2s');
+      expect(kit.indicator(theme, context).text).toBe('▲ · 2s');
       context.isPartial = false;
       expect(kit.indicator(theme, context).text).toBe('Done · 2.3s');
       invalidate.mockClear();
@@ -104,6 +104,139 @@ describe('theme render-kit lifecycle', () => {
       expect(invalidate).not.toHaveBeenCalled();
       expect(kit.indicator(theme, context).text).toBe('Done · 2.3s');
       expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ['completed', '✓'],
+    ['deleted', '✓'],
+    ['failed', '✗'],
+    ['cancelled', '✗'],
+    ['interrupted', '✗'],
+    ['blocked', '✗'],
+  ] as const)('keeps partial errors running, then freezes the %s footer and stops invalidations', async (status, glyph) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    try {
+      const parent = loadTheme();
+      await parent.emit({ type: 'session_start', reason: 'startup' });
+      const kit = getRenderKit();
+      if (!kit?.toolFooter) throw new Error('No theme footer');
+      const theme = { fg: (_role: string, text: string) => text };
+      const context = {
+        executionStarted: true,
+        isPartial: true,
+        isError: true,
+        state: {},
+        invalidate: vi.fn(),
+      };
+      expect(kit.toolFooter(theme, { status: 'running', context })).toBe(
+        '△ · 0s',
+      );
+      expect(kit.indicator(theme, context, { status: 'running' }).text).toBe(
+        '△ · 0s',
+      );
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(2250);
+      expect(context.invalidate).toHaveBeenCalledTimes(2);
+      expect(kit.toolFooter(theme, { status: 'running', context })).toBe(
+        '▲ · 2s',
+      );
+      expect(
+        kit.toolFooter(theme, { status, context, summary: 'result' }),
+      ).toBe(`${glyph} · 2s · result`);
+      expect(vi.getTimerCount()).toBe(0);
+      context.invalidate.mockClear();
+      vi.advanceTimersByTime(5000);
+      expect(context.invalidate).not.toHaveBeenCalled();
+      expect(kit.toolFooter(theme, { status, context })).toBe(`${glyph} · 2s`);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops a card ticker when the terminal footer is explicitly supplied', async () => {
+    vi.useFakeTimers();
+    try {
+      const parent = loadTheme();
+      await parent.emit({ type: 'session_start', reason: 'startup' });
+      const kit = getRenderKit();
+      if (!kit) throw new Error('No theme kit');
+      const theme = { fg: (_role: string, text: string) => text };
+      const context = {
+        executionStarted: true,
+        isPartial: true,
+        state: {},
+        invalidate: vi.fn(),
+      };
+      expect(
+        kit.card(theme, { status: 'running', context }, 40).at(-1),
+      ).toContain('△ · 0s');
+      vi.advanceTimersByTime(1250);
+      expect(
+        kit
+          .card(
+            theme,
+            {
+              status: 'completed',
+              context,
+              footer: '✓ · 1s · result',
+            },
+            40,
+          )
+          .at(-1),
+      ).toContain('╰── ✓ · 1s · result ');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('honors producer elapsed overrides while keeping shared timing live and freezing the final override', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    try {
+      const parent = loadTheme();
+      await parent.emit({ type: 'session_start', reason: 'startup' });
+      const kit = getRenderKit();
+      if (!kit?.toolFooter) throw new Error('No theme footer');
+      const theme = { fg: (_role: string, text: string) => text };
+      const context = {
+        executionStarted: true,
+        isPartial: false,
+        state: {},
+        invalidate: vi.fn(),
+      };
+      expect(
+        kit.toolFooter(theme, {
+          status: 'in_progress',
+          context,
+          elapsedMs: 5250,
+        }),
+      ).toBe('◭ · 5s');
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(2250);
+      expect(kit.toolFooter(theme, { status: 'running', context })).toBe(
+        '▲ · 2s',
+      );
+      expect(
+        kit.toolFooter(theme, {
+          status: 'completed',
+          context,
+          elapsedMs: 10250,
+          summary: 'Exit 0',
+        }),
+      ).toBe('✓ · 10s · Exit 0');
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(5000);
+      expect(kit.toolFooter(theme, { status: 'completed', context })).toBe(
+        '✓ · 10s',
+      );
     } finally {
       vi.clearAllTimers();
       vi.useRealTimers();
@@ -124,6 +257,18 @@ describe('theme render-kit lifecycle', () => {
           isPartial: true,
           state: {},
           invalidate: vi.fn(),
+        },
+      );
+      kit?.toolFooter?.(
+        { fg: (_role, text) => text },
+        {
+          status: 'running',
+          context: {
+            executionStarted: true,
+            isPartial: true,
+            state: {},
+            invalidate: vi.fn(),
+          },
         },
       );
       expect(vi.getTimerCount()).toBe(0);

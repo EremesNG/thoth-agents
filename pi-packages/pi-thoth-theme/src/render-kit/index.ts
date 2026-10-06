@@ -1,12 +1,18 @@
-import { truncateToWidth, wrapTextWithAnsi } from '@earendil-works/pi-tui';
+import {
+  stripTerminalSequences,
+  truncateToWidth,
+  wrapTextWithAnsi,
+} from '@earendil-works/pi-tui';
 import type {
   RenderCardOptions,
   RenderIndicatorContext,
   RenderKitTheme,
   RenderRows,
   RenderStatus,
+  RenderToolFooterOptions,
   ThothRenderKit,
 } from '@thoth-agents/pi-core';
+import { getToolElapsedMs } from '@thoth-agents/pi-core';
 import { cachedComponent } from '../shared/cache.ts';
 import { formatDuration } from '../shared/duration.ts';
 import { getBorderTone } from '../tools/border.ts';
@@ -17,15 +23,15 @@ import {
   renderFrameRow,
   renderFrameTop,
 } from '../tools/frame.ts';
-import { getElapsedMs, syncElapsedTicker } from '../tools/ticker.ts';
+import { syncElapsedTicker } from '../tools/ticker.ts';
+import { runningFooter, workingFrame } from './working.ts';
 
-const WORKING_FRAMES = ['△', '◭', '▲', '◮'];
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const STATUS_STYLE = {
   pending: ['dim', '○'],
   queued: ['dim', '○'],
-  in_progress: ['accent', '◭'],
-  running: ['accent', '◭'],
+  in_progress: ['accent', '◇'],
+  running: ['accent', '◇'],
   completed: ['success', '✓'],
   failed: ['error', '✗'],
   cancelled: ['muted', '⊘'],
@@ -36,19 +42,31 @@ const STATUS_STYLE = {
   unknown: ['dim', '?'],
 } as const;
 
+const TOOL_FOOTER_GLYPHS: Partial<Record<RenderStatus, '✓' | '✗'>> = {
+  completed: '✓',
+  deleted: '✓',
+  failed: '✗',
+  cancelled: '✗',
+  interrupted: '✗',
+  blocked: '✗',
+};
+
+function isRunning(status: RenderStatus): boolean {
+  return status === 'running' || status === 'in_progress';
+}
+
 function statusGlyph(theme: RenderKitTheme, status: RenderStatus): string {
   const [role, glyph] = STATUS_STYLE[status];
   return theme.fg(role, glyph);
 }
 
 function indicatorStatus(context: RenderIndicatorContext): RenderStatus {
+  if (context.executionStarted && context.isPartial) return 'running';
   if (context.isError) return 'failed';
-  if (!context.executionStarted) return 'pending';
-  return context.isPartial ? 'running' : 'completed';
+  return context.executionStarted ? 'completed' : 'pending';
 }
 
 function indicatorLabel(status: RenderStatus): string {
-  if (status === 'running' || status === 'in_progress') return 'running…';
   if (status === 'completed') return 'Done';
   if (status === 'failed') return 'Error';
   return status;
@@ -58,6 +76,7 @@ function card(
   theme: RenderKitTheme,
   options: RenderCardOptions,
   width: number,
+  toolFooter: NonNullable<ThothRenderKit['toolFooter']>,
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
   if (safeWidth <= 0) return [];
@@ -68,12 +87,27 @@ function card(
       options.wrap ? wrapTextWithAnsi(row, bodyWidth) : [row],
     );
   };
-  const footer = [
-    options.status ? statusGlyph(theme, options.status) : '',
-    options.footer,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  let footer = options.footer ?? '';
+  if (options.footer === undefined && options.status) {
+    footer = options.context
+      ? toolFooter(theme, {
+          status: options.status,
+          context: options.context,
+          summary: options.summary,
+        })
+      : statusGlyph(theme, options.status);
+  } else if (
+    options.status &&
+    !isRunning(options.status) &&
+    !(
+      TOOL_FOOTER_GLYPHS[options.status] &&
+      /^[✓✗](?:\s|$)/u.test(stripTerminalSequences(footer))
+    )
+  ) {
+    footer = [statusGlyph(theme, options.status), footer]
+      .filter(Boolean)
+      .join(' ');
+  }
   const body = rows(options.body);
   const borderState = {
     isError: options.isError,
@@ -106,15 +140,54 @@ function card(
   ];
 }
 
+/** Shared standard footer for kit producers and theme built-ins. */
+export function toolFooter(
+  theme: RenderKitTheme,
+  options: RenderToolFooterOptions,
+  owner?: object,
+): string {
+  syncElapsedTicker(options.context ?? {}, owner, options.status);
+  const elapsedMs = getToolElapsedMs(options);
+  if (isRunning(options.status)) return runningFooter(theme, elapsedMs);
+  const glyph = TOOL_FOOTER_GLYPHS[options.status];
+  const summary =
+    typeof options.summary === 'string'
+      ? [options.summary]
+      : (options.summary ?? []);
+  const parts = [
+    theme.fg(STATUS_STYLE[options.status][0], glyph ?? options.status),
+  ];
+  if (elapsedMs !== undefined) {
+    parts.push(
+      theme.fg('dim', formatDuration(Math.floor(elapsedMs / 1000) * 1000)),
+    );
+  }
+  if (glyph) {
+    parts.push(...summary.filter(Boolean).map((part) => theme.fg('dim', part)));
+  }
+  return parts.join(theme.fg('dim', ' · '));
+}
+
 /** Theme primitives exposed structurally; producers never import this package. */
 export function createRenderKit(
   owner: object,
   resolveToolRenderers?: ThothRenderKit['resolveToolRenderers'],
 ): ThothRenderKit {
+  const ownedToolFooter: NonNullable<ThothRenderKit['toolFooter']> = (
+    theme,
+    options,
+  ) => toolFooter(theme, options, owner);
+
   return {
     version: 1,
     ...(resolveToolRenderers ? { resolveToolRenderers } : {}),
-    card,
+    toolFooter: ownedToolFooter,
+    card(theme, options, width) {
+      if (options.footer !== undefined && options.context && options.status) {
+        syncElapsedTicker(options.context, owner, options.status);
+      }
+      return card(theme, options, width, ownedToolFooter);
+    },
     collapse(theme, rows, options = {}) {
       const budget = Math.max(0, Math.floor(options.budget ?? 8));
       if (options.expanded || rows.length <= budget) return [...rows];
@@ -128,10 +201,10 @@ export function createRenderKit(
     },
     cachedComponent,
     indicator(theme, context = {}, options = {}) {
-      syncElapsedTicker(context, owner);
       const status = options.status ?? indicatorStatus(context);
-      const running = status === 'running' || status === 'in_progress';
-      const elapsedMs = options.elapsedMs ?? getElapsedMs(context.state);
+      syncElapsedTicker(context, owner, status);
+      const running = isRunning(status);
+      const elapsedMs = getToolElapsedMs({ ...options, status, context });
       const elapsed =
         elapsedMs === undefined
           ? ''
@@ -146,9 +219,7 @@ export function createRenderKit(
                 BRAILLE_FRAMES.length) %
                 BRAILLE_FRAMES.length
             ]
-          : WORKING_FRAMES[
-              Math.floor((elapsedMs ?? 0) / 1000) % WORKING_FRAMES.length
-            ];
+          : workingFrame(elapsedMs);
       const glyph = running
         ? theme.fg('accent', workingGlyph)
         : statusGlyph(theme, status);
@@ -158,9 +229,11 @@ export function createRenderKit(
         glyph,
         elapsedMs,
         elapsed,
-        text: [theme.fg(role, label), elapsed ? theme.fg('dim', elapsed) : '']
-          .filter(Boolean)
-          .join(theme.fg('dim', ' · ')),
+        text: running
+          ? ownedToolFooter(theme, { status, elapsedMs })
+          : [theme.fg(role, label), elapsed ? theme.fg('dim', elapsed) : '']
+              .filter(Boolean)
+              .join(theme.fg('dim', ' · ')),
       };
     },
     statusGlyph,

@@ -4,6 +4,7 @@
 
 - **Fix: refresh appended instructions inline on resumed provider queries** — Deliver only changed/added keyed blocks and removed keys through new-turn hook context, with full replacement for ambiguous segmentation or changed order. Split framed values into ≤9,000 string-length units across one-shot callbacks; commit only after all parts return and force full replacement after partial delivery. Preserve the recorded system prompt and prior conversation/cache prefix, epoch resets, retries and child isolation. Add offline request-content, segmentation and multipart regressions plus a large-append opt-in live recording/reuse probe.
 
+- **Rendering: standard tool status footer** — AskClaude kit cards use pi-core's shared status/elapsed footer, preserve action summaries, and retain terminal failure status after call-slot reconstruction.
 - **Rendering: use the theme Render KIT for AskClaude** — Discover the kit through pi-core at render time, with native Pi fallback and no theme dependency; use pi-core's shared `formatDuration`.
 - **Fix: match resumed structured prompt captures** — Keep re-added custom sections after earlier built-ins when a new addendum lands at the replay tail, retaining every section byte and exact capture lookup. Offline Pi-renderer regressions cover resume, append-once turns and same-length instruction changes.
 - **Fix: tolerate non-object Pi tool schemas** — Wrap object-only root unions for MCP and omit incompatible tools with session-scoped UI/headless warnings, retaining Pi's original argument validation.

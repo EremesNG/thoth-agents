@@ -13,6 +13,8 @@ import {
   createKitRenderMemo,
   formatDuration,
   renderToolFooter,
+  resolveIcon,
+  resolveStatusGlyph,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import {
@@ -63,7 +65,7 @@ function renderState(context: AskClaudeRenderContext | undefined): RenderState {
 }
 
 function renderComponent(
-  text: string,
+  text: () => string,
   theme: Theme,
   state: RenderState,
   call: boolean,
@@ -82,7 +84,7 @@ function renderComponent(
             : 'toolSuccessBg';
         const bg = (line: string) => theme.bg(role, line);
         const box = new Box(1, 0, bg);
-        box.addChild(new Text(text, 0, 0));
+        box.addChild(new Text(text(), 0, 0));
         const padding = bg(' '.repeat(width));
         return [
           ...(call ? [padding] : []),
@@ -112,8 +114,12 @@ export function createAskClaudeRenderers(
       const preview = previewText(args.prompt);
       const promptPreview = `"${preview.text}"`;
       text += theme.fg('muted', promptPreview);
-      if (preview.truncated) text += theme.fg('dim', ' …');
-      return renderComponent(text, theme, state, true, (kit, width) => {
+      const nativeText = () =>
+        text +
+        (preview.truncated
+          ? theme.fg('dim', ` ${resolveIcon('ellipsis', '…')}`)
+          : '');
+      return renderComponent(nativeText, theme, state, true, (kit, width) => {
         const isError = Boolean(state.isError || state.resultIsError);
         const status = state.isError
           ? 'failed'
@@ -130,7 +136,10 @@ export function createAskClaudeRenderers(
               ...(tags.length
                 ? [kit.fg(theme, 'accent', `[${tags.join(', ')}]`)]
                 : []),
-              ...(promptPreview + (preview.truncated ? ' …' : ''))
+              ...(
+                promptPreview +
+                (preview.truncated ? ` ${resolveIcon('ellipsis', '…')}` : '')
+              )
                 .split('\n')
                 .map((line) => kit.fg(theme, 'muted', line)),
             ],
@@ -225,34 +234,45 @@ export function createAskClaudeRenderers(
       };
       if (isPartial) {
         return renderComponent(
-          theme.fg('mdLink', '◉ Claude Code ') + theme.fg('muted', body),
+          // Only used without a kit; the kit path owns its animated running footer.
+          () => theme.fg('mdLink', '◉ Claude Code ') + theme.fg('muted', body),
           theme,
           state,
           false,
           renderCard,
         );
       }
-      let text = state.isError
-        ? theme.fg('error', '✗ Claude Code error')
-        : theme.fg('mdLink', '✓ Claude Code');
+      const nativeIsError = state.isError;
+      const nativeText = () => {
+        let text = nativeIsError
+          ? theme.fg(
+              'error',
+              `${resolveStatusGlyph('failed', '✗')} Claude Code error`,
+            )
+          : theme.fg(
+              'mdLink',
+              `${resolveStatusGlyph('completed', '✓')} Claude Code`,
+            );
 
-      if (details?.executionTime)
-        text += ` ${theme.fg('dim', formatDuration(details.executionTime))}`;
-      if (details?.actions) text += ` ${theme.fg('muted', details.actions)}`;
+        if (details?.executionTime)
+          text += ` ${theme.fg('dim', formatDuration(details.executionTime))}`;
+        if (details?.actions) text += ` ${theme.fg('muted', details.actions)}`;
 
-      if (expanded) {
-        if (details?.prompt)
-          text += `\n${theme.fg('dim', `Prompt: ${details.prompt}`)}`;
-        if (details?.prompt && body)
-          text += `\n${theme.fg('dim', '─'.repeat(40))}`;
-        if (body) text += `\n${theme.fg('toolOutput', body)}`;
-      } else {
-        const preview = previewText(body);
-        text += `\n${theme.fg('toolOutput', preview.text)}`;
-        if (preview.truncated)
-          text += `\n${theme.fg('dim', `… (${keyHint('app.tools.expand', 'to expand')})`)}`;
-      }
-      return renderComponent(text, theme, state, false, renderCard);
+        if (expanded) {
+          if (details?.prompt)
+            text += `\n${theme.fg('dim', `Prompt: ${details.prompt}`)}`;
+          if (details?.prompt && body)
+            text += `\n${theme.fg('dim', '─'.repeat(40))}`;
+          if (body) text += `\n${theme.fg('toolOutput', body)}`;
+        } else {
+          const preview = previewText(body);
+          text += `\n${theme.fg('toolOutput', preview.text)}`;
+          if (preview.truncated)
+            text += `\n${theme.fg('dim', `${resolveIcon('ellipsis', '…')} (${keyHint('app.tools.expand', 'to expand')})`)}`;
+        }
+        return text;
+      };
+      return renderComponent(nativeText, theme, state, false, renderCard);
     },
   };
 }

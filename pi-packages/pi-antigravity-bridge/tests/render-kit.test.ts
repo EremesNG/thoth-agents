@@ -509,3 +509,41 @@ test("AskAntigravity preserves result tags and expanded versus preview content w
 		if (token) withdrawRenderKit(token);
 	}
 });
+
+test.each([
+  { partial: true, error: false, native: '◉', ascii: '⠋' },
+  { partial: false, error: false, native: '✓', ascii: '+' },
+  { partial: false, error: true, native: '✗', ascii: 'x' },
+])('mounted AskAntigravity body resolves status and preview punctuation ($ascii)', async ({ partial, error, native, ascii }) => {
+  vi.spyOn(Date, 'now').mockReturnValue(0);
+  const tool = await askTool();
+  const payload = { content: [{ type: 'text' as const, text: Array(7).fill('answer').join('\n') }], details: { exitCode: error ? 1 : 0 } };
+  const before = JSON.stringify(payload);
+  const component = tool.renderResult(payload, { expanded: false, isPartial: partial }, theme, context({ isPartial: partial, isError: error }));
+  expect(component.render(120).join('\n')).toContain(`${native} AskAntigravity`);
+  const kit = createTestRenderKit({ icon: (name) => name === 'ellipsis' ? '...' : name });
+  kit.statusGlyph = (_theme, status) => status === 'running' ? '*' : status === 'completed' ? '+' : 'x';
+  tokens.push(registerRenderKit(kit, {}));
+  expect(component.render(120).join('\n')).toContain(`${ascii} AskAntigravity`);
+  if (!partial) expect(component.render(120).join('\n')).toContain('... (');
+  expect(JSON.stringify(payload)).toBe(before);
+});
+
+test('mounted AskAntigravity running body animates via the kit indicator and restores the native glyph', async () => {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(0);
+  const tool = await askTool();
+  const component = tool.renderResult(
+    { content: [{ type: 'text', text: 'working' }], details: undefined },
+    { expanded: false, isPartial: true }, theme, context(),
+  );
+  const native = component.render(120);
+  const kit = createTestRenderKit();
+  kit.statusGlyph = () => 'static';
+  const token = registerRenderKit(kit, {});
+  tokens.push(token);
+  expect(component.render(120).join('\n')).toContain('⠋ AskAntigravity');
+  clock.mockReturnValue(80);
+  expect(component.render(120).join('\n')).toContain('⠙ AskAntigravity');
+  withdrawRenderKit(token);
+  expect(component.render(120)).toEqual(native);
+});

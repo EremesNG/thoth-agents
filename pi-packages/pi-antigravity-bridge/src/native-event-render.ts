@@ -4,6 +4,7 @@ import { Text } from "@earendil-works/pi-tui";
 import {
 	createKitRenderMemo,
 	type RenderCardSection,
+	resolveStatusGlyph,
 } from "@thoth-agents/pi-core";
 import type { NativeDisplayEvent } from "./provider.js";
 
@@ -20,10 +21,13 @@ export const renderNativeEvent: EntryRenderer<NativeDisplayEvent> = (
 		? path.basename(event.path)
 		: (firstLine(event?.command) ?? firstLine(event?.output));
 	const failed = event?.status === "failed";
-	const status = failed ? theme.fg("error", "✗") : theme.fg("success", "✓");
-	const lines = [
-		`${status} ${theme.fg("toolTitle", event?.name ?? "Antigravity")}${detail ? ` ${theme.fg("muted", detail.slice(0, 160))}` : ""}`,
-	];
+	const headline = () => {
+		const status = failed
+			? theme.fg("error", resolveStatusGlyph("failed", "✗"))
+			: theme.fg("success", resolveStatusGlyph("completed", "✓"));
+		return `${status} ${theme.fg("toolTitle", event?.name ?? "Antigravity")}${detail ? ` ${theme.fg("muted", detail.slice(0, 160))}` : ""}`;
+	};
+	const lines: string[] = [];
 	const sections: RenderCardSection[] = [];
 	const body: string[] = [];
 	if (expanded) {
@@ -66,26 +70,26 @@ export const renderNativeEvent: EntryRenderer<NativeDisplayEvent> = (
 			});
 		}
 	} else if (detail) body.push(theme.fg("muted", detail.slice(0, 160)));
-	const native = new Text(lines.join("\n"), 0, 0);
+	const native = new Text("", 0, 0);
 	const memo = createKitRenderMemo();
 	return {
 		render(width) {
-			return memo.render(width, (kit) =>
-				kit
-					? kit.card(
-							theme,
-							{
-								title: event?.name ?? "Antigravity",
-								body,
-								sections,
-								status: failed ? "failed" : "completed",
-								isSuccess: event?.status === "completed",
-								isError: failed,
-							},
-							width,
-						)
-					: native.render(width),
-			);
+			return memo.render(width, (kit) => {
+				if (kit) return kit.card(
+					theme,
+					{
+						title: event?.name ?? "Antigravity",
+						body,
+						sections,
+						status: failed ? "failed" : "completed",
+						isSuccess: event?.status === "completed",
+						isError: failed,
+					},
+					width,
+				);
+				native.setText([headline(), ...lines].join("\n"));
+				return native.render(width);
+			});
 		},
 		invalidate() {
 			memo.invalidate();

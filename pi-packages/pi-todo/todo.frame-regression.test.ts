@@ -22,11 +22,18 @@ afterEach(() => {
 });
 
 it.each([
-  false,
-  true,
-])('keeps the list call and short result framed with the real KIT and SDK (populated=%s)', async (populated) => {
+  { populated: false, mode: 'nerd' as const, glyph: '\uf00c', separator: '·' },
+  { populated: true, mode: 'nerd' as const, glyph: '\uf00c', separator: '·' },
+  { populated: false, mode: 'ascii' as const, glyph: '+', separator: '|' },
+  { populated: true, mode: 'ascii' as const, glyph: '+', separator: '|' },
+])('keeps the list call and short result framed with the real KIT and SDK (populated=$populated, mode=$mode)', async ({
+  populated,
+  mode,
+  glyph,
+  separator,
+}) => {
   vi.spyOn(Date, 'now').mockReturnValue(0);
-  token = registerRenderKit(createRenderKit({}), {});
+  token = registerRenderKit(createRenderKit({}, undefined, mode), {});
   setActiveRenderSession('test-session');
   const { pi, captured } = createMockPi();
   registerTodoTool(pi);
@@ -74,8 +81,9 @@ it.each([
       expect(plain).toHaveLength(4);
       expect(plain[0]).toMatch(/^╭.*╮$/);
       expect(plain[1]).toMatch(/^│ .*│$/);
-      expect(plain[2]).toMatch(/^│ ✓ +│$/);
-      expect(plain[3]).toMatch(/^╰.*✓ · 0s.*╯$/);
+      expect(plain[2]).toBe(`│ ${glyph}${' '.repeat(width - 4)}│`);
+      expect(plain[3]).toContain(`${glyph} ${separator} 0s`);
+      expect(plain[3]).toMatch(/^╰.*╯$/);
       expect(rows.map(visibleWidth)).toEqual([width, width, width, width]);
       // These fixture rows contain only one-cell text in the operator's
       // terminal. Catch SDK/terminal disagreement, not just SDK self-consistency.

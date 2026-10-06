@@ -159,3 +159,26 @@ it('shows provider status and timing instead of commands with semantic name, sta
     for (const meta of [watch, failed]) rmSync(taskDir(meta.id), { recursive: true, force: true });
   }
 });
+
+it('background navigator segments resolve the registered UI separator', async () => {
+  const { registerRenderKit, withdrawRenderKit } = await import('@thoth-agents/pi-core');
+  const { createTestRenderKit } = await import('@thoth-agents/pi-core/testing');
+  const host = lifecycleHost('panel-icons', true);
+  const meta = task(host, 'bg_panel_icons', 'running');
+  let token: ReturnType<typeof registerRenderKit> | undefined;
+  try {
+    await host.emit('session_start');
+    const provider = getBackgroundTasksNavigator(host.pi).provider;
+    expect(provider.listRows(Date.now())[0].segments?.[1].text).toMatch(/^ · /);
+    token = registerRenderKit(createTestRenderKit({ icon: (name) => name === 'separator' ? '|' : name }), {});
+    expect(provider.listRows(Date.now())[0].segments?.[1].text).toMatch(/^ \| /);
+    expect(provider.listRows(Date.now())[0].segments?.[2].text).toMatch(/^ \| /);
+    withdrawRenderKit(token);
+    token = undefined;
+    expect(provider.listRows(Date.now())[0].segments?.[1].text).toMatch(/^ · /);
+  } finally {
+    if (token) withdrawRenderKit(token);
+    await host.emit('session_shutdown', 'reload');
+    rmSync(taskDir(meta.id), { recursive: true, force: true });
+  }
+});

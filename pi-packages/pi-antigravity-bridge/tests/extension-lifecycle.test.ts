@@ -8,8 +8,10 @@ import { randomUUID } from "node:crypto";
 import { afterEach, test, vi } from "vitest";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerRenderKit, withdrawRenderKit } from "@thoth-agents/pi-core";
+import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
 import extension from "../extensions/index.js";
-import { saveConfig } from "../src/config.js";
+import { loadConfig, saveConfig } from "../src/config.js";
 import { mcpConfigPath } from "../src/mcp-registration.js";
 import { agyConversationDir } from "../src/agy-paths.js";
 import { TOKEN_HEADER } from "../src/mcp-server.js";
@@ -197,6 +199,61 @@ test.each(["artifacts open 0", "artifacts"])("/agy %s hides the detached artifac
 		detached: true, stdio: "ignore", shell: false, windowsHide: true,
 	}]);
 	assert.equal(unref.mock.calls.length, 1);
+});
+
+test.each(["engine acp", "auth"])("/agy %s preparation notification uses UI ellipsis", async (args) => {
+	fixture();
+	vi.stubEnv("AGY_ACP_BIN", process.env.AGY_BIN!);
+	if (args === "auth") vi.stubEnv("AGY_ENGINE", "acp");
+	const gdir = path.join(os.homedir(), ".gemini", "antigravity-acp");
+	fs.mkdirSync(gdir, { recursive: true });
+	fs.writeFileSync(path.join(gdir, "settings.json"), JSON.stringify({ auth: { type: "gemini-api-key" } }));
+	dirs.push(gdir);
+	const s = session();
+	await extension(s.pi);
+	await s.command(args);
+	assert.ok(s.notices.some((line) => /Preparing.*…$/.test(line)));
+	s.notices.length = 0;
+	const token = registerRenderKit(createTestRenderKit({ icon: (name) => name === "ellipsis" ? "..." : name }), {});
+	try {
+		await s.command(args);
+		assert.ok(s.notices.some((line) => /Preparing.*\.\.\.$/.test(line)));
+	} finally {
+		withdrawRenderKit(token);
+	}
+});
+
+test("/agy auth resolves setup progress punctuation only at the UI sink", async () => {
+	fixture();
+	vi.stubEnv("AGY_ENGINE", "acp");
+	vi.stubEnv("AGY_ACP_BIN", "/missing/acp");
+	saveConfig({ acp: { ...loadConfig().acp, bin: "/missing/acp" } });
+	dirs.push(path.join(os.homedir(), ".local", "opt", "agy-acp"));
+	// External registry/download boundary: exercise progress without installing a binary.
+	const platform = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux";
+	const arch = process.arch === "arm64" ? "aarch64" : "x86_64";
+	const registry = { distribution: { binary: {
+		[`${platform}-${arch}`]: { archive: `https://example.invalid/agy-acp-server-icons-${platform}-${arch}.zip` },
+	} } };
+	vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+		String(input).endsWith("agent.json")
+			? new Response(JSON.stringify(registry))
+			: new Response("", { status: 503 }),
+	);
+	const s = session();
+	await extension(s.pi);
+	await s.command("auth");
+	assert.ok(s.notices.includes("downloading ACP server (build icons)…"));
+	const nativeFailure = s.notices.find((line) => line.startsWith("ACP auto-setup failed"));
+	s.notices.length = 0;
+	const token = registerRenderKit(createTestRenderKit({ icon: (name) => name === "ellipsis" ? "..." : name }), {});
+	try {
+		await s.command("auth");
+		assert.ok(s.notices.includes("downloading ACP server (build icons)..."));
+		assert.equal(s.notices.find((line) => line.startsWith("ACP auto-setup failed")), nativeFailure);
+	} finally {
+		withdrawRenderKit(token);
+	}
 });
 
 test("private model-at-start writes unique private discovery, no global entries, and reuses it on resume", async () => {

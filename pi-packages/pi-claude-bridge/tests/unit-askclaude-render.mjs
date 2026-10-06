@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { afterEach, describe, it, mock } from 'node:test';
 import { initTheme } from '@earendil-works/pi-coding-agent';
-import { Box, Text } from '@earendil-works/pi-tui';
+import { Box, Text, visibleWidth } from '@earendil-works/pi-tui';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { globalConfigPath } from '../src/config.js';
@@ -564,4 +564,36 @@ describe('AskClaude rendering', () => {
       sdkBox(`${callText}\n◉ Claude Code working...`, 'toolPendingBg', 100),
     );
   });
+});
+
+it('mounted AskClaude previews resolve UI ellipsis without changing result payloads', () => {
+  const prompt = Array(7).fill('preview').join('\n');
+  const call = tool.renderCall({ prompt }, theme, context());
+  assert.match(call.render(120).join('\n'), / …/);
+  const kit = createTestRenderKit({
+    icon: (name) => (name === 'ellipsis' ? '...' : name),
+  });
+  kit.statusGlyph = (_theme, status) => (status === 'completed' ? '+' : '*');
+  kit.toolFooter = (theme, options) => kit.statusGlyph(theme, options.status);
+  token = registerRenderKit(kit, {});
+  assert.match(call.render(120).join('\n'), / \.\.\./);
+  for (const width of [4, 8, 20, 80]) {
+    assert.ok(call.render(width).every((line) => visibleWidth(line) <= width));
+  }
+  const payload = {
+    content: [{ type: 'text', text: 'answer … ✓' }],
+    details: { prompt },
+  };
+  const before = JSON.stringify(payload);
+  const output = tool.renderResult(
+    payload,
+    { expanded: true, isPartial: false },
+    theme,
+    context(),
+  );
+  assert.equal(output.render(80).at(-1), '╰─ +');
+  assert.equal(JSON.stringify(payload), before);
+  withdrawRenderKit(token);
+  token = undefined;
+  assert.match(call.render(120).join('\n'), / …/);
 });

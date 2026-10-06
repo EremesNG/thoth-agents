@@ -8,6 +8,7 @@
  */
 
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { resolveIcon, resolveStatusGlyph } from '@thoth-agents/pi-core';
 import { publishTodoState } from './state/publish.js';
 import {
   selectTasksByStatus,
@@ -161,21 +162,29 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
       if (counts.pending > 0)
         header.push(`${counts.pending} ${formatStatusLabel('pending')}`);
 
-      const lines: string[] = [header.join(' · ')];
+      const lines: string[] = [
+        header.join(` ${resolveIcon('separator', '·')} `),
+      ];
       if (groups.pending.length > 0) {
         lines.push(SECTION_PENDING);
         for (const task of groups.pending)
-          lines.push(formatCommandTaskLine(task, '○'));
+          lines.push(
+            formatCommandTaskLine(task, resolveStatusGlyph('pending', '○')),
+          );
       }
       if (groups.inProgress.length > 0) {
         lines.push(SECTION_IN_PROGRESS);
         for (const task of groups.inProgress)
-          lines.push(formatCommandTaskLine(task, '◐'));
+          lines.push(
+            formatCommandTaskLine(task, resolveStatusGlyph('in_progress', '◐')),
+          );
       }
       if (groups.completed.length > 0) {
         lines.push(SECTION_COMPLETED);
         for (const task of groups.completed)
-          lines.push(formatCommandTaskLine(task, '✓'));
+          lines.push(
+            formatCommandTaskLine(task, resolveStatusGlyph('completed', '✓')),
+          );
       }
 
       ctx.ui.notify(lines.join('\n'), 'info');

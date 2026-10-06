@@ -19,7 +19,7 @@ interface ShellState {
 /** Call/result share the SDK's state, composing one shell in either rendering path. */
 export function renderToolCard(
 	theme: Theme,
-	text: string,
+	text: string | (() => string),
 	options: (kit: ThothRenderKit) => RenderCardOptions,
 	part: "start" | "end",
 	context?: RenderIndicatorContext,
@@ -35,7 +35,7 @@ export function renderToolCard(
 		shell.hasResult = true;
 		shell.resultIsError = fallback.isError;
 	}
-	const content = new Text(text, 0, 0);
+	const content = () => new Text(typeof text === "function" ? text() : text, 0, 0);
 	return {
 		render(width) {
 			const kit = getRenderKit();
@@ -85,7 +85,7 @@ export function renderToolCard(
 					: "toolSuccessBg";
 			const bg = (row: string) => theme.bg(role, row);
 			const native = new Box(1, 0, bg);
-			native.addChild(content);
+			native.addChild(content());
 			const padding = bg(" ".repeat(Math.max(0, width)));
 			return [
 				...(part === "start" ? [padding] : []),
@@ -94,7 +94,7 @@ export function renderToolCard(
 			];
 		},
 		invalidate() {
-			content.invalidate();
+			// Text is rebuilt at render time so mounted rows follow kit changes.
 		},
 	};
 }

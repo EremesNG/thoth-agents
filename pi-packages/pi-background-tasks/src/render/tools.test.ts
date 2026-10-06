@@ -22,7 +22,31 @@ import { registerTools } from '../tools.js';
 import {
   backgroundToolRenderers,
   renderBackgroundTaskLogDisplay,
+  summarizeArgs,
 } from './tools.js';
+
+it('mounted background summaries resolve UI punctuation while the shared formatter stays payload-invariant', () => {
+  const args = { action: 'run', command: 'c'.repeat(61) };
+  const native = summarizeArgs(args);
+  expect(native).toBe(`run · ${'c'.repeat(60)}…`);
+  const wideArgs = { command: '界'.repeat(61) };
+  expect(summarizeArgs(wideArgs, { ui: true })).toBe(summarizeArgs(wideArgs));
+  const call = backgroundToolRenderers('bg_task').renderCall(args, {});
+  expect(strip(call.render(100))).toContain('run ·');
+  token = registerRenderKit(
+    createTestRenderKit({
+      icon: (name) =>
+        name === 'separator' ? '|' : name === 'ellipsis' ? '...' : name,
+    }),
+    {},
+  );
+  expect(summarizeArgs(args)).toBe(native);
+  expect(strip(call.render(100))).toContain(`run | ${'c'.repeat(58)}...`);
+  expect(visibleWidth(summarizeArgs(args, { ui: true }))).toBe(67);
+  withdrawRenderKit(token);
+  token = undefined;
+  expect(strip(call.render(100))).toContain('run ·');
+});
 
 const TOOL_NAMES = [
   'bg_task_spawn',

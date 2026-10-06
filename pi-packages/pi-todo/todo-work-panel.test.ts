@@ -354,3 +354,33 @@ it('publishes distinct todo glyphs and semantic subject, active-form and done-su
     segments: [{ text: '+1 done', role: 'dim' }],
   });
 });
+
+it('todo producer overrides let the registered kit win and restore native glyphs on withdrawal', () => {
+  setActiveRenderSession('glyph-test');
+  cleanups.push(() => evictSession('glyph-test'));
+  replaceState('glyph-test', {
+    tasks: [
+      { id: 1, subject: 'active', status: 'in_progress' },
+      { id: 2, subject: 'waiting', status: 'pending' },
+    ],
+    nextId: 3,
+  });
+  const provider = createTodoWorkPanelProvider();
+  expect(provider.listRows(0).map((row) => row.statusGlyph)).toEqual([
+    '◇',
+    '○',
+  ]);
+  const kit = createTestRenderKit();
+  kit.statusGlyph = (_theme, status) => (status === 'in_progress' ? '*' : '-');
+  const token = registerRenderKit(kit, {});
+  cleanups.push(() => withdrawRenderKit(token));
+  expect(provider.listRows(0).map((row) => row.statusGlyph)).toEqual([
+    '*',
+    '-',
+  ]);
+  withdrawRenderKit(token);
+  expect(provider.listRows(0).map((row) => row.statusGlyph)).toEqual([
+    '◇',
+    '○',
+  ]);
+});

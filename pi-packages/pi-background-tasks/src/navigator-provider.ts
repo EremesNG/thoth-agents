@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   ensureWorkPanel,
+  resolveIcon,
   registerWorkPanelProvider,
   WORK_PANEL_VERSION,
   type WorkPanelDetail,
@@ -144,7 +145,7 @@ function getNavigatorOrigin(ctx: ExtensionContext): BackgroundTaskCallbackOrigin
 
 function rowFromMeta(meta: BackgroundTaskMeta, now: number): WorkPanelRow {
   const facts = factsForMeta(meta, now);
-  const statusText = facts.join(" · ") || statusLabel(meta);
+  const statusText = facts.join(` ${resolveIcon('separator', '·')} `) || statusLabel(meta);
   const elapsed = formatDuration(Math.round(((meta.endedAt ?? now) - meta.startedAt) / 1000) * 1000);
   return {
     providerId: "background-tasks",
@@ -157,8 +158,8 @@ function rowFromMeta(meta: BackgroundTaskMeta, now: number): WorkPanelRow {
     primary: statusText,
     segments: [
       { text: meta.name || meta.id, role: "primary" },
-      { text: ` · ${statusText}`, role: "secondary" },
-      { text: ` · ${elapsed}`, role: "meta" },
+      { text: ` ${resolveIcon('separator', '·')} ${statusText}`, role: "secondary" },
+      { text: ` ${resolveIcon('separator', '·')} ${elapsed}`, role: "meta" },
     ],
     command: commandLabel(meta),
     tool: compactCommandLabel(meta),
@@ -256,7 +257,7 @@ function secondaryLabel(meta: BackgroundTaskMeta): string | undefined {
   if (meta.cwd) parts.push(meta.cwd);
   if (meta.pid != null) parts.push(`pid ${meta.pid}`);
   if (meta.lastExitCode !== undefined) parts.push(`exit ${meta.lastExitCode}`);
-  return parts.length ? parts.join(" · ") : undefined;
+  return parts.length ? parts.join(` ${resolveIcon('separator', '·')} `) : undefined;
 }
 
 function factsForMeta(meta: BackgroundTaskMeta, now: number): string[] {

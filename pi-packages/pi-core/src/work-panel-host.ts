@@ -330,13 +330,8 @@ export function createWorkPanelHost(
       if (disposed) return;
       if (!installed && loaded && providers().length) install();
       if (!installed) return;
-      rows();
+      const count = rows().length;
       scheduleRender();
-      const count = providers().reduce(
-        (sum, provider) =>
-          sum + safely(() => Math.max(0, provider.visibleCount()), 0),
-        0,
-      );
       ctx.ui.setStatus(
         WIDGET_KEY,
         count > 0 && !focused && !suspended ? `← work · ${count}` : undefined,

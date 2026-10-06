@@ -26,6 +26,7 @@ export function createTodoWorkPanelProvider() {
     listRows(_now: number): WorkPanelRow[] {
       const groups = selectTasksByStatus(getRenderState());
       const open = [...groups.inProgress, ...groups.pending];
+      if (!open.length) return [];
       const rows: WorkPanelRow[] = open.map((task) => {
         const subject = sanitizeTerminalText(task.subject);
         const activeForm =

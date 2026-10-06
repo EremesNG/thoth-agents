@@ -25,7 +25,8 @@ Open-task reinjection uses the append-only approach demonstrated by
 - Registers a versioned Work panel provider (priority 20, label `Todos`) with
   a `completed/total done` counter. Open tasks appear in-progress first (with
   their active form), then pending, followed by `+N done` when completed tasks
-  exist. Deleted tasks are excluded; an empty list hides the section. Enter opens
+  exist. Deleted tasks are excluded; the section hides when no pending or
+  in-progress tasks remain, including when all tasks are completed. Enter opens
   the host's subject/status/description detail; todos have no close action.
 - The provider reads only the foreground session's local store and notifies the
   host on every foreground mutation, replay, or ownership change. Children never

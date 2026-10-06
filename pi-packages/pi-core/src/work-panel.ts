@@ -117,6 +117,7 @@ export interface WorkPanelProvider {
   id: string;
   label: string;
   priority: number;
+  /** Advisory provider count; host cues and focus use selectable section rows instead. */
   visibleCount(): number;
   listRows(now: number): WorkPanelRow[];
   detail(

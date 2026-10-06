@@ -199,8 +199,13 @@ export function renderPanel(
       })
       .join('');
   };
+  const hint = sections.some((section) =>
+    section.rows.some(({ row }) => !row.summary),
+  )
+    ? options.hint
+    : undefined;
   const budget = Math.max(0, Math.floor(options.budget ?? 12));
-  const remaining = Math.max(0, budget - (options.hint ? 1 : 0));
+  const remaining = Math.max(0, budget - (hint ? 1 : 0));
   const visible = sections.slice(0, Math.floor(remaining / 2));
   const selectedSection = sections.find((section) =>
     section.rows.some((entry) => entry.key === options.selectedKey),
@@ -370,8 +375,7 @@ export function renderPanel(
     if (more) sectionLines.push(fg('dim', `  +${hidden} more`));
     lines.push(...sectionLines);
   }
-  if (sections.length && options.hint && budget)
-    lines.push(fg('dim', options.hint));
+  if (hint && budget) lines.push(fg('dim', hint));
   return lines.slice(0, budget).map((line) => clip(line, width));
 }
 

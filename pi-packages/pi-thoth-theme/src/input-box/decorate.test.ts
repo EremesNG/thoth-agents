@@ -10,7 +10,12 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { decorateEditor, type EditorDecoration } from './decorate.ts';
+import type { StatusSnapshotProvider } from '../status-line/snapshot.ts';
+import {
+  decorateEditor,
+  type EditorDecoration,
+  type InputBoxDeps,
+} from './decorate.ts';
 import { createWorkingState } from './state.ts';
 
 const cleanups: Array<() => void> = [];
@@ -41,6 +46,7 @@ function setup() {
   const deps = {
     theme: { fg: vi.fn((_token: string, text: string) => text) },
     working,
+    getStatusSnapshot: undefined as InputBoxDeps['getStatusSnapshot'],
   };
   function decorate(candidate: unknown = editor): EditorDecoration {
     const decoration = decorateEditor(candidate, deps);
@@ -49,6 +55,10 @@ function setup() {
     return decoration;
   }
   return { editor, tui, deps, decorate };
+}
+
+function plainLines(lines: string[]): string[] {
+  return lines.map(stripTerminalSequences);
 }
 
 function mouse(overrides: Partial<TuiMouseEvent> = {}): TuiMouseEvent {
@@ -217,6 +227,162 @@ describe('input-box mouse geometry', () => {
 });
 
 describe('input-box editor composition', () => {
+  it('reads the optional status provider live on every render and stops after disposal', () => {
+    const { editor, deps, decorate } = setup();
+    let modelName = 'First model';
+    const provider: StatusSnapshotProvider = () => ({
+      modelName,
+      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokensPerSecond: null,
+    });
+    deps.getStatusSnapshot = provider;
+    const decoration = decorate();
+    expect(decoration.getStatusSnapshot()?.modelName).toBe('First model');
+    expect(plainLines(editor.render(60))[2]).toContain('● First model');
+    modelName = 'Next model';
+    expect(decoration.getStatusSnapshot()?.modelName).toBe('Next model');
+    expect(plainLines(editor.render(60))[2]).toContain('● Next model');
+    decoration.dispose();
+    expect(decoration.getStatusSnapshot()).toBeUndefined();
+  });
+
+  it('puts branch and cwd on the top border and model, effort and context on the bottom', () => {
+    const { editor, deps, decorate } = setup();
+    deps.getStatusSnapshot = () => ({
+      modelName: 'Opus',
+      thinkingLevel: 'high',
+      gitBranch: 'main',
+      cwd: '~/proj',
+      contextTokens: 60_000,
+      contextPercent: 30,
+      contextWindow: 200_000,
+      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokensPerSecond: null,
+    });
+    decorate();
+    const [top, , bottom] = plainLines(editor.render(80));
+    expect(top).toBe(`╭─ ▲ ready · ⑂ main ${'─'.repeat(50)} ~/proj ─╮`);
+    expect(bottom).toBe(
+      `╰─ ● Opus · ◐ high ${'─'.repeat(32)} [███░░░░░░░] 30% 60K/200K ─╯`,
+    );
+    expect(top.length).toBe(80);
+    expect(visibleWidth(bottom)).toBe(80);
+  });
+
+  it('keeps scroll counts and shows a dash when context usage is absent', () => {
+    const { editor, deps, decorate } = setup();
+    deps.getStatusSnapshot = () => ({
+      modelName: 'Opus',
+      gitBranch: 'main',
+      cwd: '~/proj',
+      contextTokens: null,
+      contextPercent: null,
+      contextWindow: 200_000,
+      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokensPerSecond: null,
+    });
+    decorate();
+    editor.setText(
+      Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n'),
+    );
+    editor.render(80);
+    for (let i = 0; i < 20; i++) editor.handleInput('\x1b[A');
+    // Place the cursor mid-document so both scroll counts are present.
+    const lines = plainLines(editor.render(80));
+    const top = lines[0];
+    const bottom = lines.find((line) => line.startsWith('╰')) as string;
+    expect(top).toMatch(/^╭─ ▲ ready · ⑂ main ─ ↑ \d+ more ─+ ~\/proj ─╮$/);
+    expect(bottom).toMatch(/^╰─ ● Opus ─ ↓ \d+ more ─+ —\/200K ─╯$/);
+    expect(visibleWidth(top)).toBe(80);
+    expect(visibleWidth(bottom)).toBe(80);
+  });
+
+  it('keeps exact border widths with ANSI and wide glyphs across degradation widths', () => {
+    const { editor, deps, decorate } = setup();
+    deps.getStatusSnapshot = () => ({
+      modelName: '模型 Opus',
+      thinkingLevel: 'xhigh',
+      gitBranch: 'feature/界',
+      cwd: '~/界/very/long/project/path',
+      contextTokens: 60_000,
+      contextPercent: 95,
+      contextWindow: 200_000,
+      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokensPerSecond: null,
+    });
+    decorate();
+    for (let width = 16; width <= 200; width++) {
+      const lines = editor.render(width);
+      const bottom = lines.findIndex((line) => line.includes('╯'));
+      expect(visibleWidth(lines[0])).toBe(width);
+      expect(visibleWidth(lines[bottom])).toBe(width);
+      expect(stripTerminalSequences(lines[0])).toContain('▲');
+    }
+  });
+
+  it('keeps a compact native-separator cwd on the top border where the full Windows path drops', () => {
+    const { editor, deps, decorate } = setup();
+    deps.getStatusSnapshot = () => ({
+      modelName: 'Opus',
+      gitBranch: 'main',
+      cwd: '~\\orca\\workspaces\\thoth-agents\\thoth-theme',
+      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokensPerSecond: null,
+    });
+    decorate();
+    let compactWidths = 0;
+    for (let width = 24; width <= 120; width++) {
+      const top = plainLines(editor.render(width))[0];
+      expect(visibleWidth(top)).toBe(width);
+      if (top.includes(' …\\thoth-theme ') && top.includes('⑂ main')) {
+        compactWidths++;
+        expect(top).not.toContain('workspaces');
+      }
+    }
+    expect(compactWidths).toBeGreaterThan(0);
+    const narrow = plainLines(editor.render(44))[0];
+    expect(visibleWidth(narrow)).toBe(44);
+    expect(narrow).toContain('…\\thoth-theme');
+  });
+
+  it('degrades right regions before left secondaries and never drops the status or model while the frame fits', () => {
+    const { editor, deps, decorate } = setup();
+    deps.getStatusSnapshot = () => ({
+      modelName: 'Opus',
+      thinkingLevel: 'high',
+      gitBranch: 'main',
+      cwd: '~/work/project',
+      contextTokens: 60_000,
+      contextPercent: 30,
+      contextWindow: 200_000,
+      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokensPerSecond: null,
+    });
+    decorate();
+    let sawBranchWithoutCwd = false;
+    let sawEffortWithoutContext = false;
+    for (let width = 24; width <= 200; width++) {
+      const lines = plainLines(editor.render(width));
+      const top = lines[0];
+      const bottom = lines.find((line) => line.startsWith('╰')) as string;
+      expect(visibleWidth(top)).toBe(width);
+      expect(visibleWidth(bottom)).toBe(width);
+      expect(top).toContain('▲ ready');
+      expect(bottom).toContain('● Opus');
+      const branch = top.includes('⑂ main');
+      const cwd = top.includes('project');
+      const effort = bottom.includes('◐ high');
+      const context = bottom.includes('200K');
+      // Right regions drop before left secondaries do.
+      if (!branch) expect(cwd).toBe(false);
+      if (!effort) expect(context).toBe(false);
+      sawBranchWithoutCwd ||= branch && !cwd;
+      sawEffortWithoutContext ||= effort && !context;
+    }
+    expect(sawBranchWithoutCwd).toBe(true);
+    expect(sawEffortWithoutContext).toBe(true);
+  });
+
   it('animates only the working box, preserving native fallback and byte-identical idle output', () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

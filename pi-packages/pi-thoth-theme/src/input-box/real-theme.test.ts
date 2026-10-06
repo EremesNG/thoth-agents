@@ -16,7 +16,7 @@ import {
 } from '@earendil-works/pi-tui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ActiveThemeLike } from '../status-line/layout.ts';
-import { decorateEditor } from './decorate.ts';
+import { decorateEditor, type InputBoxDeps } from './decorate.ts';
 import { createWorkingState } from './state.ts';
 
 const capabilities = getCapabilities();
@@ -53,7 +53,10 @@ async function loadThothTheme(mode?: TerminalColorMode) {
   return theme;
 }
 
-function themedEditor(theme: ActiveThemeLike) {
+function themedEditor(
+  theme: ActiveThemeLike,
+  getStatusSnapshot?: InputBoxDeps['getStatusSnapshot'],
+) {
   const plain = (text: string) => text;
   const tui = { terminal: { rows: 20 }, requestRender: () => {} };
   const editor = new Editor(tui as unknown as TUI, {
@@ -69,7 +72,11 @@ function themedEditor(theme: ActiveThemeLike) {
   editor.focused = true;
   const working = createWorkingState(tui.requestRender);
   cleanups.push(() => working.dispose());
-  const decoration = decorateEditor(editor, { theme, working });
+  const decoration = decorateEditor(editor, {
+    theme,
+    working,
+    getStatusSnapshot,
+  });
   if (!decoration) throw new Error('Editor was not decorated');
   cleanups.push(() => decoration.dispose());
   return { editor, working };
@@ -227,5 +234,35 @@ describe('input box with the real Pi Thoth theme', () => {
     working.end();
     expect(editor.render(40)).toEqual(idle);
     expect(vi.getTimerCount()).toBe(0);
+  });
+  it.each([
+    'truecolor',
+    '256color',
+  ] as const)('renders themed status content on both borders at exact width in %s', async (mode) => {
+    const theme = await loadThothTheme(mode);
+    setCapabilities({ ...capabilities, trueColor: mode === 'truecolor' });
+    const { editor } = themedEditor(theme as ActiveThemeLike, () => ({
+      modelName: 'Opus',
+      thinkingLevel: 'high',
+      gitBranch: 'main',
+      cwd: '~/proj',
+      contextTokens: 60_000,
+      contextPercent: 30,
+      contextWindow: 200_000,
+      tokenTotals: { input: 0, output: 0, cacheRead: 0 },
+      tokensPerSecond: null,
+    }));
+    editor.setText('content');
+    const lines = editor.render(100);
+    expect(stripTerminalSequences(lines[0])).toBe(
+      `╭─ ▲ ready · ⑂ main ${'─'.repeat(70)} ~/proj ─╮`,
+    );
+    expect(stripTerminalSequences(lines[2])).toBe(
+      `╰─ ● Opus · ◐ high ${'─'.repeat(52)} [███░░░░░░░] 30% 60K/200K ─╯`,
+    );
+    expect(lines.map(visibleWidth)).toEqual([100, 100, 100]);
+    expect(lines[0]).toContain(theme.fg('success', '⑂ main'));
+    expect(lines[2]).toContain(theme.fg('mdLink', '● Opus'));
+    expect(lines[2]).toContain(theme.fg('thinkingHigh', '◐ high'));
   });
 });

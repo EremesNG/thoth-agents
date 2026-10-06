@@ -16,7 +16,7 @@ import { createCustomGrepTool } from './grep.ts';
 import { createCustomLsTool } from './ls.ts';
 
 const config: ThemeConfig = {
-  icons: 'ascii',
+  icons: 'nerd',
   statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
   tools: { enabled: true },
   welcome: { enabled: true },
@@ -192,7 +192,7 @@ describe('Lossless SDK listing and search result rendering', () => {
         .map(({ text }) => text),
     ).toEqual(displayed);
     expect(lines).toHaveLength(data.length + 1);
-    expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
+    expect(lines.at(-1)).toMatch(/^╰── \uf00c .*╯$/);
     for (const [i, entry] of displayed.entries()) {
       expect(lines[i].endsWith(entry ?? '')).toBe(true);
     }
@@ -224,7 +224,7 @@ describe('Lossless SDK listing and search result rendering', () => {
 
     expect(styled.filter(({ color }) => color === 'warning')).toEqual([]);
     expect(lines).toHaveLength(6);
-    expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
+    expect(lines.at(-1)).toMatch(/^╰── \uf00c .*╯$/);
     for (const entry of entries.filter(Boolean)) {
       expect(lines.some((line) => line.endsWith(entry))).toBe(true);
       expect(styled).toContainEqual({ color: 'toolOutput', text: entry });
@@ -467,7 +467,7 @@ describe('Lossless SDK listing and search result rendering', () => {
       .render(200);
 
     expect(lines).toHaveLength(4);
-    expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
+    expect(lines.at(-1)).toMatch(/^╰── \uf00c .*╯$/);
     for (const entry of entries) {
       expect(lines.some((line) => line.endsWith(entry))).toBe(true);
     }
@@ -534,7 +534,7 @@ describe('SDK-produced notice appendices', () => {
         { color: 'warning', text: notice },
       ]);
       expect(lines).toHaveLength(14);
-      expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
+      expect(lines.at(-1)).toMatch(/^╰── \uf00c .*╯$/);
       for (const entry of data) {
         expect(lines.some((line) => line.endsWith(entry))).toBe(true);
         expect(styled).toContainEqual({ color: 'toolOutput', text: entry });
@@ -634,7 +634,7 @@ describe('SDK-produced notice appendices', () => {
         .map(({ text }) => text),
     ).toEqual(data);
     expect(lines).toHaveLength(data.length + 2);
-    expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
+    expect(lines.at(-1)).toMatch(/^╰── \uf00c .*╯$/);
     for (const entry of data) {
       expect(lines.some((line) => line.endsWith(entry))).toBe(true);
     }
@@ -858,7 +858,7 @@ describe('SDK-produced notice appendices', () => {
         .renderResult(result, expanded, theme, {})
         .render(200);
       expect(lines.slice(0, -1)).toEqual(['empty directory']);
-      expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
+      expect(lines.at(-1)).toMatch(/^╰── \uf00c .*╯$/);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

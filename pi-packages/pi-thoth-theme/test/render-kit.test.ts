@@ -26,7 +26,7 @@ describe('theme render kit', () => {
         summary: ['Exit 0', '', '1 line'],
       }),
     ).toBe(
-      '<success>✓</success><dim> · </dim><dim>5s</dim><dim> · </dim><dim>Exit 0</dim><dim> · </dim><dim>1 line</dim>',
+      '<success>\uf00c</success><dim> · </dim><dim>5s</dim><dim> · </dim><dim>Exit 0</dim><dim> · </dim><dim>1 line</dim>',
     );
   });
 
@@ -34,8 +34,8 @@ describe('theme render kit', () => {
     expect(kit.toolFooter?.(theme, { status: 'running' })).toBe('△');
     expect(
       kit.toolFooter?.(theme, { status: 'completed', summary: '1 line' }),
-    ).toBe('✓ · 1 line');
-    expect(kit.toolFooter?.(theme, { status: 'failed' })).toBe('✗');
+    ).toBe('\uf00c · 1 line');
+    expect(kit.toolFooter?.(theme, { status: 'failed' })).toBe('\uf00d');
     for (const status of [
       'pending',
       'queued',
@@ -108,7 +108,7 @@ describe('theme render kit', () => {
       '│ call         │',
       '│ one two      │',
       '│ three four   │',
-      '╰── ✓ Done ────╯',
+      '╰── \uf00c Done ────╯',
     ]);
     const styled = kit
       .card(
@@ -123,7 +123,7 @@ describe('theme render kit', () => {
       )
       .join('\n');
     expect(styled).toContain('<error>╭──</error>');
-    expect(styled).toContain('<error>✗</error>');
+    expect(styled).toContain('<error>\uf00d</error>');
     expect(styled).not.toContain('<accent>');
   });
 
@@ -147,9 +147,9 @@ describe('theme render kit', () => {
         24,
       );
       expect(lines.at(-1)).toBe('╰── ◭ · 5s ────────────╯');
-      expect(lines.at(-1)).not.toMatch(/◇|Claude Code|running/);
+      expect(lines.at(-1)).not.toMatch(/◐|Claude Code|running/);
     }
-    expect(kit.card(theme, { status }, 24).at(-1)).toContain('╰── ◇ ');
+    expect(kit.card(theme, { status }, 24).at(-1)).toContain('╰── ◐ ');
     expect(
       kit.indicator(theme, undefined, {
         status: 'completed',
@@ -186,10 +186,10 @@ describe('theme render kit', () => {
             40,
           )
           .at(-1),
-      ).toContain('╰── ✓ · 5s · Exit 0 · 1 line ');
+      ).toContain('╰── \uf00c · 5s · Exit 0 · 1 line ');
       for (const [status, footer] of [
-        ['completed', '✓ · 5s · Exit 0'],
-        ['failed', '✗ · 5s · Exit 1'],
+        ['completed', '\uf00c · 5s · Exit 0'],
+        ['failed', '\uf00d · 5s · Exit 1'],
       ] as const) {
         expect(
           kit.card(theme, { ...options, status, context, footer }, 40).at(-1),
@@ -208,7 +208,7 @@ describe('theme render kit', () => {
             40,
           )
           .at(-1),
-      ).toContain('╰── ✓ ');
+      ).toContain('╰── \uf00c ');
     }
   });
 
@@ -223,19 +223,19 @@ describe('theme render kit', () => {
         kit.card(ansiTheme, { status, footer }, 24).at(-1) ?? '',
       );
       expect(bottom).toContain(
-        status === 'completed' ? '╰── ✓ · 2s ' : '╰── ✗ · 2s ',
+        status === 'completed' ? '╰── \uf00c · 2s ' : '╰── \uf00d · 2s ',
       );
-      expect(bottom.match(/[✓✗]/g)).toHaveLength(1);
+      expect(bottom.match(/[\uf00c\uf00d]/g)).toHaveLength(1);
       expect(
         stripTerminalSequences(
           kit.card(ansiTheme, { status, footer: 'Done' }, 24).at(-1) ?? '',
         ),
       ).toContain(
         status === 'completed'
-          ? '✓ Done'
+          ? '\uf00c Done'
           : status === 'failed'
-            ? '✗ Done'
-            : '⊘ Done',
+            ? '\uf00d Done'
+            : '\uf05e Done',
       );
     }
   });
@@ -290,12 +290,14 @@ describe('theme render kit', () => {
 
   it('styles status glyphs and widget rails using theme roles, not fixed colors', () => {
     expect(kit.statusGlyph(styledTheme, 'completed')).toBe(
-      '<success>✓</success>',
+      '<success>\uf00c</success>',
     );
-    expect(kit.statusGlyph(styledTheme, 'failed')).toBe('<error>✗</error>');
-    expect(kit.statusGlyph(styledTheme, 'running')).toBe('<accent>◇</accent>');
+    expect(kit.statusGlyph(styledTheme, 'failed')).toBe(
+      '<error>\uf00d</error>',
+    );
+    expect(kit.statusGlyph(styledTheme, 'running')).toBe('<accent>◐</accent>');
     expect(kit.statusGlyph(styledTheme, 'in_progress')).toBe(
-      '<accent>◇</accent>',
+      '<accent>◐</accent>',
     );
     expect(kit.fg(styledTheme, 'warning', 'blocked')).toBe(
       '<warning>blocked</warning>',
@@ -323,7 +325,7 @@ describe('theme render kit', () => {
         },
         80,
       ),
-    ).toBe('›   └─ ✓ Task');
+    ).toBe('›   └─ \uf00c Task');
     expect(kit.treeRow(theme, { text: 'Task' }, 80)).toBe('  ├─ Task');
     for (const width of [0, 1, 4, 16]) {
       expect(
@@ -397,10 +399,10 @@ describe('theme render kit', () => {
     ).toBe('⠙');
     expect(
       kit.indicator(theme, context, { status: 'queued', frame: 1 }).glyph,
-    ).toBe('○');
+    ).toBe('\u{f051f}');
     expect(
       kit.indicator(theme, context, { status: 'completed', frame: 1 }).glyph,
-    ).toBe('✓');
+    ).toBe('\uf00c');
   });
 
   it('uses elapsed pyramid frames in footer text without changing caller-owned working prefixes', () => {
@@ -446,7 +448,7 @@ describe('theme render kit', () => {
         label: 'Exit 0',
       }),
     ).toEqual({
-      glyph: '✓',
+      glyph: '\uf00c',
       elapsedMs: 2250,
       elapsed: '2.3s',
       text: 'Exit 0 · 2.3s',

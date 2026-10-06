@@ -6,6 +6,7 @@ import type {
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import {
   createComponent,
@@ -73,7 +74,7 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
         const safeWidth = Math.max(0, width);
         const footer =
           context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context })
+            ? toolFooter(theme, { status: 'running', context }, config.icons)
             : undefined;
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'List')) : theme.fg('toolTitle', 'List')} ${theme.fg('text', dirPath)}`;
 
@@ -144,8 +145,8 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
       if (isErr) {
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
-          const footer = toolFooter(theme, footerOptions);
-          const errText = `${theme.fg('error', '! ')}${theme.fg('error', escapeControlCharacters(textOutput || 'Failed to list directory'))}`;
+          const footer = toolFooter(theme, footerOptions, config.icons);
+          const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', escapeControlCharacters(textOutput || 'Failed to list directory'))}`;
           if (!isFramedContext(context)) {
             return [
               truncateToWidth(errText, safeWidth),
@@ -164,7 +165,7 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
 
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
-        const footer = toolFooter(theme, footerOptions);
+        const footer = toolFooter(theme, footerOptions, config.icons);
         if (safeWidth === 0) return [];
         if (total === 0 && notices.length === 0) {
           if (!isFramedContext(context)) {
@@ -203,7 +204,7 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
         }
 
         if (remaining > 0) {
-          const more = `${theme.fg('dim', '└─')} ${theme.fg('dim', `… ${remaining} more files · ctrl+o to expand`)}`;
+          const more = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remaining} more files ${semanticIcon('separator', config.icons)} ctrl+o to expand`)}`;
           rawLines.push(more);
         }
 

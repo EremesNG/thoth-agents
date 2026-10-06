@@ -20,7 +20,7 @@ import type { ThemeConfig } from '../shared/config.ts';
 import { registerTools } from './index.ts';
 
 const config: ThemeConfig = {
-  icons: 'ascii',
+  icons: 'nerd',
   statusLine: { enabled: false, subscriptionProviders: [] },
   tools: { enabled: true },
   welcome: { enabled: false },
@@ -129,7 +129,7 @@ describe.each(tools)('$name standard tool status footer', ({
       false,
     );
     const terminal = footer(component);
-    expect(terminal).toContain(`╰── ${isError ? '✗' : '✓'} · 5s`);
+    expect(terminal).toContain(`╰── ${isError ? '\uf00d' : '\uf00c'} · 5s`);
     if (!isError && summary) expect(terminal).toContain(` · ${summary} `);
     if (isError && ['bash', 'powershell'].includes(name)) {
       expect(terminal).toContain(' · Exit 7 · ');

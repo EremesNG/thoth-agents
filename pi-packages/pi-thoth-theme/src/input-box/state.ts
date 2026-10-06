@@ -1,5 +1,7 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import type { IconMode } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
+import { frames, icon } from '../shared/icons.ts';
 import {
   type BreathingFrame,
   createBreathingFrame,
@@ -39,25 +41,28 @@ export function createWorkingState(requestRender: () => void) {
       width: number,
       styleMuted: (text: string) => string = (text) => text,
       frame?: BreathingFrame,
+      mode: IconMode = 'nerd',
     ): string {
+      const ready = `${icon('ready', mode)} ready`;
+      const separator = icon('separator', mode);
       if (
         !indicator ||
         typeof indicator !== 'object' ||
         !('renderInBorder' in indicator) ||
         typeof indicator.renderInBorder !== 'function'
       ) {
-        return styleMuted(truncateToWidth('▲ ready', width, ''));
+        return styleMuted(truncateToWidth(ready, width, ''));
       }
       const working = 'kind' in indicator && indicator.kind === 'working';
       const now = frame?.now ?? Date.now();
       const elapsed =
         working && startedAt !== undefined
-          ? ` · ${formatDuration(Math.floor((now - startedAt) / 1000) * 1000)}`
+          ? ` ${separator} ${formatDuration(Math.floor((now - startedAt) / 1000) * 1000)}`
           : '';
       const nativeWidth = Math.max(1, width - visibleWidth(elapsed));
       const native = indicator.renderInBorder(nativeWidth);
       if (typeof native !== 'string' || visibleWidth(native) === 0) {
-        return styleMuted(truncateToWidth('▲ ready', width, ''));
+        return styleMuted(truncateToWidth(ready, width, ''));
       }
       const fitted = truncateToWidth(native, nativeWidth, '');
       const label =
@@ -66,6 +71,7 @@ export function createWorkingState(requestRender: () => void) {
               fitted,
               frame ?? createBreathingFrame(now),
               styleMuted,
+              frames('workingFrames', mode),
             )
           : fitted;
       return truncateToWidth(

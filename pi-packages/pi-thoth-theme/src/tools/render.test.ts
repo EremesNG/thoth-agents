@@ -95,7 +95,7 @@ function expectGrepDataRows(
       .replaceAll('\x07', '␇'),
   );
   if (mode === 'raw') {
-    expect(plain.at(-1)).toMatch(/^╰── ✓ .*╯$/);
+    expect(plain.at(-1)).toMatch(/^╰── [+\uf00c] .*╯$/);
     const rawLines = plain[0].startsWith('╭')
       ? plain.slice(1, -1)
       : plain.slice(0, -1);
@@ -326,7 +326,7 @@ describe('Built-in tool renderers', () => {
         context,
       );
       expect(stripTerminalSequences(result.render(80).at(-1) ?? '')).toContain(
-        ` ✓ · ${completed} · Exit 0 · 1 line · ~1 words `,
+        ` \uf00c · ${completed} · Exit 0 · 1 line · ~1 words `,
       );
       for (const width of [0, 1, 2, 5, 10, 20, 80]) {
         for (const line of result.render(width)) {
@@ -350,7 +350,7 @@ describe('Built-in tool renderers', () => {
         context,
       );
       expect(stripTerminalSequences(result.render(80).at(-1) ?? '')).toContain(
-        ' ✓ · Exit 0 · 1 line · ~1 words ',
+        ' \uf00c · Exit 0 · 1 line · ~1 words ',
       );
     });
   });
@@ -533,8 +533,8 @@ describe('Built-in tool renderers', () => {
         .renderCall({ path: 'src' }, theme, baseContext)
         .render(80);
 
-      expect(nerdLines[0]).toContain('\uf07b');
-      expect(asciiLines[0]).toContain('[dir]');
+      expect(nerdLines[0]).toContain('\uf07c');
+      expect(asciiLines[0]).toContain('dir');
       expect(nerdLines[0]).toContain('src');
     });
 
@@ -1625,6 +1625,38 @@ describe('Built-in tool renderers', () => {
         .render(80);
       expect(grepLines[0]).toContain('src');
       expect(grepLines[0]).not.toContain(cwd);
+    });
+  });
+
+  describe('Intent warning prefix on tool errors', () => {
+    it.each([
+      ['read', createCustomReadTool],
+      ['edit', createCustomEditTool],
+      ['write', createCustomWriteTool],
+      ['find', createCustomFindTool],
+      ['grep', createCustomGrepTool],
+      ['ls', createCustomLsTool],
+    ] as const)('%s uses the table warning icon per mode', (_name, createTool) => {
+      for (const [mode, prefix] of [
+        ['ascii', '! boom'],
+        ['nerd', '\u{f071} boom'],
+      ] as const) {
+        const tool = createTool(cwd, createConfig(mode));
+        const plain = tool
+          .renderResult(
+            textResult('boom'),
+            resultOpts(true),
+            createAnsiTheme(),
+            {
+              ...baseContext,
+              isError: true,
+            },
+          )
+          .render(80)
+          .map(stripTerminalSequences);
+        expect(plain[0]).toContain(prefix);
+        if (mode === 'nerd') expect(plain[0]).not.toContain('! boom');
+      }
     });
   });
 });

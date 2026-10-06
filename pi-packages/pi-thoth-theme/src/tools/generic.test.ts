@@ -91,7 +91,7 @@ describe('generic tool frame', () => {
     const lines = plain(component).filter((l) => l !== '');
     expect(lines[0]).toMatch(/^╭.*mcp__docs__search.*╮$/);
     expect(lines[1]).toContain('query="hello" limit=3');
-    expect(lines.at(-1)).toMatch(/^╰.*✓ · 2 lines.*╯$/);
+    expect(lines.at(-1)).toMatch(/^╰.*\uf00c · 2 lines.*╯$/);
     for (const l of lines.slice(1, -1)) expect(l).toMatch(/^[│├].*[│┤]$/);
     expect(lines.join('\n')).not.toMatch(/╭.*\n(.*\n)*.*╭/);
   });
@@ -132,7 +132,7 @@ describe('generic tool frame', () => {
     });
     const out = plain(component).join('\n');
     expect(out).toContain('boom');
-    expect(out).toContain('✗ · 1 line');
+    expect(out).toContain('\uf00d · 1 line');
   });
 
   it('shows running footer with live elapsed and cleans up the ticker', () => {
@@ -181,12 +181,16 @@ describe('generic tool frame', () => {
     expect(plain(component).at(-1)).toContain(` ${frame} · ${live} `);
     component.updateResult({ content: [text('ok')], isError: false }, false);
     expect(vi.getTimerCount()).toBe(0);
-    expect(plain(component).at(-1)).toContain(` ✓ · ${completed} · 1 line `);
+    expect(plain(component).at(-1)).toContain(
+      ` \uf00c · ${completed} · 1 line `,
+    );
 
     vi.setSystemTime(ms + 10000);
     component.setExpanded(true);
     component.invalidate();
-    expect(plain(component).at(-1)).toContain(` ✓ · ${completed} · 1 line `);
+    expect(plain(component).at(-1)).toContain(
+      ` \uf00c · ${completed} · 1 line `,
+    );
     for (const width of [0, 1, 2, 5, 10, 20, 80]) {
       for (const line of component.render(width)) {
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);

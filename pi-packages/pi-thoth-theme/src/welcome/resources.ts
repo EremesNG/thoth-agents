@@ -8,6 +8,8 @@ import {
   VERSION as PI_VERSION,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
+import type { IconMode } from '../shared/config.ts';
+import { icon } from '../shared/icons.ts';
 import { formatAge } from './age.ts';
 
 export interface WelcomeProvider {
@@ -45,6 +47,7 @@ export interface StartupResourceOptions {
   skillCountLister?: (cwd: string) => number;
   extensionCountLister?: (cwd: string) => number;
   resourceLoader?: ResourceLoaderLike;
+  iconMode?: IconMode;
 }
 
 function toolSourceLabel(sourceInfo: SourceInfo | undefined): string {
@@ -107,6 +110,7 @@ function groupToolDetails(tools: readonly ToolInfo[]): WelcomeProvider[] {
 export async function fetchRecentSessions(
   cwd: string,
   limit = 4,
+  mode: IconMode = 'nerd',
 ): Promise<WelcomeSession[]> {
   try {
     const sessions = await SessionManager.list(cwd);
@@ -129,7 +133,9 @@ export async function fetchRecentSessions(
         .replace(/\s+/g, ' ')
         .trim();
       const title =
-        cleanTitle.length > 45 ? `${cleanTitle.slice(0, 44)}…` : cleanTitle;
+        cleanTitle.length > 45
+          ? `${cleanTitle.slice(0, 44)}${icon('ellipsis', mode)}`
+          : cleanTitle;
       const timeAgo = formatAge(
         session.modified ? session.modified.getTime() : Date.now(),
       );
@@ -224,7 +230,7 @@ export async function collectStartupResources(
   if (options?.sessionLister) {
     sessions = await options.sessionLister(ctx.cwd);
   } else {
-    sessions = await fetchRecentSessions(ctx.cwd, 4);
+    sessions = await fetchRecentSessions(ctx.cwd, 4, options?.iconMode);
   }
 
   const modelName = ctx.model?.name || ctx.model?.id;

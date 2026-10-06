@@ -1,4 +1,6 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import type { IconMode } from '../shared/config.ts';
+import { icon } from '../shared/icons.ts';
 import type { ActiveThemeLike } from '../status-line/layout.ts';
 import { type BreathingFrame, colorBreathingBorder } from './gradient.ts';
 
@@ -14,9 +16,25 @@ function colorBorder(
   return frame ? colorBreathingBorder(text, frame) : muted(theme, text);
 }
 
-export function inputLabelWidth(width: number, hiddenLineCount = 0): number {
+/** Editor scroll indicator, `↑/↓ N more` or `^/v N more` by icon mode. */
+export function scrollLabel(
+  direction: 'up' | 'down',
+  hiddenLineCount: number,
+  mode: IconMode = 'nerd',
+): string {
+  const arrow = icon(direction === 'up' ? 'scrollUp' : 'scrollDown', mode);
+  return `${arrow} ${hiddenLineCount} more`;
+}
+
+export function inputLabelWidth(
+  width: number,
+  hiddenLineCount = 0,
+  mode: IconMode = 'nerd',
+): number {
   const overflowWidth =
-    hiddenLineCount > 0 ? visibleWidth(`↑ ${hiddenLineCount} more`) + 3 : 0;
+    hiddenLineCount > 0
+      ? visibleWidth(scrollLabel('up', hiddenLineCount, mode)) + 3
+      : 0;
   return Math.max(0, Math.floor(width) - 6 - overflowWidth);
 }
 
@@ -112,8 +130,10 @@ export function renderInputTop(
   regions: BorderRegions,
   hiddenLineCount = 0,
   frame?: BreathingFrame,
+  mode: IconMode = 'nerd',
 ): string {
-  const overflow = hiddenLineCount > 0 ? `↑ ${hiddenLineCount} more` : '';
+  const overflow =
+    hiddenLineCount > 0 ? scrollLabel('up', hiddenLineCount, mode) : '';
   return renderBorder(width, theme, regions, overflow, '╭', '╮', frame);
 }
 
@@ -123,8 +143,10 @@ export function renderInputBottom(
   regions: BorderRegions,
   hiddenLineCount = 0,
   frame?: BreathingFrame,
+  mode: IconMode = 'nerd',
 ): string {
-  const overflow = hiddenLineCount > 0 ? `↓ ${hiddenLineCount} more` : '';
+  const overflow =
+    hiddenLineCount > 0 ? scrollLabel('down', hiddenLineCount, mode) : '';
   return renderBorder(width, theme, regions, overflow, '╰', '╯', frame);
 }
 

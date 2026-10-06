@@ -113,7 +113,10 @@ export function registerWelcome(
     activeComponent = component;
 
     // Asynchronously populate full resource details and recent sessions
-    void collectStartupResources(pi, ctx, options)
+    void collectStartupResources(pi, ctx, {
+      ...options,
+      iconMode: options?.iconMode ?? config.icons,
+    })
       .then((fullData) => {
         if (!component.isDisposed && activeComponent === component) {
           component.updateData(fullData);

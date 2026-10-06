@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, getResultText, hasImageContent } from './box.ts';
 import { getFileIcon } from './file-icons.ts';
@@ -58,7 +59,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
         const safeWidth = Math.max(0, width);
         const footer =
           context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context })
+            ? toolFooter(theme, { status: 'running', context }, config.icons)
             : undefined;
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Read')) : theme.fg('toolTitle', 'Read')} ${theme.fg('text', `${filePath}${range}`)}`;
 
@@ -120,8 +121,8 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
       if (isErr) {
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
-          const footer = toolFooter(theme, footerOptions);
-          const errText = `${theme.fg('error', '! ')}${theme.fg('error', textOutput || 'Failed to read file')}`;
+          const footer = toolFooter(theme, footerOptions, config.icons);
+          const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', textOutput || 'Failed to read file')}`;
           return [
             ...renderFrameRow(theme, errText, safeWidth, borderTone),
             ...renderFrameBottom(theme, footer, safeWidth, borderTone),
@@ -137,7 +138,7 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
         const note = firstTextBlock?.text ?? 'Read image file';
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
-          const footer = toolFooter(theme, footerOptions);
+          const footer = toolFooter(theme, footerOptions, config.icons);
           return [
             ...renderFrameRow(
               theme,
@@ -155,9 +156,9 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
 
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
-        const footer = toolFooter(theme, footerOptions);
+        const footer = toolFooter(theme, footerOptions, config.icons);
         if (!options?.expanded) {
-          const summary = `${lineCount} ${lineCount === 1 ? 'line' : 'lines'} · ctrl+o to expand`;
+          const summary = `${lineCount} ${lineCount === 1 ? 'line' : 'lines'} ${semanticIcon('separator', config.icons)} ctrl+o to expand`;
           return [
             ...renderFrameRow(
               theme,

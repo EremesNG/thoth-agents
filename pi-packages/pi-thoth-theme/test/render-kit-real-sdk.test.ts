@@ -254,7 +254,7 @@ describe('render kit through Pi SDK 1.0.2', () => {
     vi.advanceTimersByTime(1000);
     expect(requestRender).toHaveBeenCalledTimes(1);
     expect(text(component)).toContain('◭ · 1s');
-    expect(text(component)).not.toContain('✗');
+    expect(text(component)).not.toContain('\uf00d');
     vi.advanceTimersByTime(1250);
     component.updateResult(
       {
@@ -263,14 +263,14 @@ describe('render kit through Pi SDK 1.0.2', () => {
       },
       false,
     );
-    expect(text(component)).toContain('✓ · 2s · 1 line');
-    expect(text(component).match(/✓/g)).toHaveLength(1);
+    expect(text(component)).toContain('\uf00c · 2s · 1 line');
+    expect(text(component).match(/\uf00c/g)).toHaveLength(1);
     expect(vi.getTimerCount()).toBe(0);
     requestRender.mockClear();
     vi.advanceTimersByTime(5000);
     expect(requestRender).not.toHaveBeenCalled();
     component.invalidate();
-    expect(text(component)).toContain('✓ · 2s · 1 line');
+    expect(text(component)).toContain('\uf00c · 2s · 1 line');
     expect(vi.getTimerCount()).toBe(0);
   }, 30_000);
 

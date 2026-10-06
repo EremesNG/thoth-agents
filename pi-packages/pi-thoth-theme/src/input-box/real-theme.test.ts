@@ -255,14 +255,14 @@ describe('input box with the real Pi Thoth theme', () => {
     editor.setText('content');
     const lines = editor.render(100);
     expect(stripTerminalSequences(lines[0])).toBe(
-      `╭─ ▲ ready · ⑂ main ${'─'.repeat(70)} ~/proj ─╮`,
+      `╭─ ▲ ready · \ue0a0 main ${'─'.repeat(68)} \u{f07c} ~/proj ─╮`,
     );
     expect(stripTerminalSequences(lines[2])).toBe(
-      `╰─ ● Opus · ◐ high ${'─'.repeat(52)} [███░░░░░░░] 30% 60K/200K ─╯`,
+      `╰─ \u{f06a9} Opus · \u{f09d1} high ${'─'.repeat(50)} \uf2db [███░░░░░░░] 30% 60K/200K ─╯`,
     );
     expect(lines.map(visibleWidth)).toEqual([100, 100, 100]);
-    expect(lines[0]).toContain(theme.fg('success', '⑂ main'));
-    expect(lines[2]).toContain(theme.fg('mdLink', '● Opus'));
-    expect(lines[2]).toContain(theme.fg('thinkingHigh', '◐ high'));
+    expect(lines[0]).toContain(theme.fg('success', '\ue0a0 main'));
+    expect(lines[2]).toContain(theme.fg('mdLink', '\u{f06a9} Opus'));
+    expect(lines[2]).toContain(theme.fg('thinkingHigh', '\u{f09d1} high'));
   });
 });

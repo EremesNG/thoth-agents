@@ -1,6 +1,6 @@
 import type { SessionEntry } from '@earendil-works/pi-coding-agent';
 import type { IconMode } from '../shared/config.ts';
-import { iconFor } from '../shared/icons.ts';
+import { icon } from '../shared/icons.ts';
 
 export interface SessionEntriesSource {
   getEntries(): readonly SessionEntry[];
@@ -52,6 +52,5 @@ export function calculateSessionCost(
  * ('$' in ascii mode, nerd dollar icon in nerd mode).
  */
 export function formatCost(cost: number, mode: IconMode): string {
-  const icon = iconFor('cost', mode);
-  return `${icon}${cost.toFixed(3)}`;
+  return `${icon('cost', mode)}${cost.toFixed(3)}`;
 }

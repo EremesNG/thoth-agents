@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { icon as semanticIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, escapeOutputRow, getResultText } from './box.ts';
 import { getToolIcon } from './file-icons.ts';
@@ -97,7 +98,7 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
         const cmdLines = command ? command.split('\n') : [''];
         const footer =
           context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context })
+            ? toolFooter(theme, { status: 'running', context }, config.icons)
             : undefined;
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', shellConfig.title)) : theme.fg('toolTitle', shellConfig.title)}`;
         const preview = cmdLines.map(
@@ -172,15 +173,19 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
 
-        const footer = toolFooter(theme, {
-          status: isPartial ? 'running' : isErr ? 'failed' : 'completed',
-          context: { ...context, isPartial },
-          summary: [
-            exitStr,
-            `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
-            wordsStr,
-          ],
-        });
+        const footer = toolFooter(
+          theme,
+          {
+            status: isPartial ? 'running' : isErr ? 'failed' : 'completed',
+            context: { ...context, isPartial },
+            summary: [
+              exitStr,
+              `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
+              wordsStr,
+            ],
+          },
+          config.icons,
+        );
 
         if (allLines.length === 0) {
           const emptyBody = [theme.fg('dim', '(no output)')];
@@ -205,7 +210,10 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
         if (!options?.expanded && allLines.length > COLLAPSED_OUTPUT_LINES) {
           const remaining = allLines.length - COLLAPSED_OUTPUT_LINES;
           bodyLines.push(
-            theme.fg('dim', `… ${remaining} more lines · ctrl+o to expand`),
+            theme.fg(
+              'dim',
+              `${semanticIcon('ellipsis', config.icons)} ${remaining} more lines ${semanticIcon('separator', config.icons)} ctrl+o to expand`,
+            ),
           );
         }
 

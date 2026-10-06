@@ -11,6 +11,7 @@ import type { ThemeConfig } from '../shared/config.ts';
 import { calculateSessionCost } from './cost.ts';
 import {
   type ActiveThemeLike,
+  formatCwd,
   renderStatusLine,
   type StatusData,
 } from './layout.ts';
@@ -19,6 +20,7 @@ export { calculateSessionCost, formatCost } from './cost.ts';
 export {
   type ActiveThemeLike,
   type ContextUsageInfo,
+  formatCwd,
   formatTokens,
   type RenderStatusLineOptions,
   renderStatusLine,
@@ -150,6 +152,7 @@ export function registerStatusLine(
           modelId: ctx.model?.id,
           thinkingLevel: ctx.thinkingLevel,
           gitBranch: footerData?.getGitBranch?.() ?? null,
+          cwd: formatCwd(ctx.cwd, process.env.HOME || process.env.USERPROFILE),
           ...session,
           subagentCost,
         };

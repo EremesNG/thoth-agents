@@ -207,6 +207,10 @@ export function renderTodoCall(
               title: 'todo',
               body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
               status,
+              isSuccess:
+                Boolean(context?.state?.[HAS_RESULT]) &&
+                status === 'completed' &&
+                context?.executionStarted !== false,
               footer: kit.indicator(theme, context, { status }).text,
               isError: context?.isError,
               part,
@@ -276,6 +280,9 @@ export function renderTodoResult(
             {
               body: (bodyWidth) => new Text(text, 0, 0).render(bodyWidth),
               status: toolStatus,
+              isSuccess:
+                toolStatus === 'completed' &&
+                context?.executionStarted !== false,
               footer: kit.indicator(theme, context, { status: toolStatus })
                 .text,
               isError: context?.isError,

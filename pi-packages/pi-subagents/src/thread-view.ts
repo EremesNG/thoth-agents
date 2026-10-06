@@ -1058,7 +1058,7 @@ function renderToolItem(
       component.markExecutionStarted?.();
       component.setArgsComplete?.();
       if (item.result)
-        component.updateResult?.(item.result, item.status === 'partial');
+        component.updateResult?.(item.result, isActiveToolStatus(item.status));
       component.setExpanded?.(context.toolOutputExpanded ?? false);
       const rendered = renderComponent(component, width);
       if (rendered?.some((line) => line.trim())) return rendered;

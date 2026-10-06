@@ -81,6 +81,8 @@ export interface BoxedComponentOptions {
   wrapped?: boolean;
   onClick?: () => void;
   status?: RenderStatus;
+  /** Affirmative terminal success, independent of footer decoration. */
+  isSuccess?: boolean;
   context?: RenderIndicatorContext;
   message?: boolean;
   /** Index of the generated progress row, never a user response row. */
@@ -132,6 +134,7 @@ export function boxedComponent(
           body: rows,
           status: options?.message ? undefined : status,
           isError: options?.context?.isError,
+          isSuccess: options?.isSuccess === true || undefined,
           wrap: options?.wrapped,
         },
         safeWidth,
@@ -191,10 +194,19 @@ export function boxedComponent(
 /** The SDK strips result.isError; the render context is authoritative when present. */
 export function toolRenderState(result: any, options: any, context?: any) {
   const task = taskFromDetails(result);
+  const tasks = result?.details?.tasks ?? result?.details?.results;
   const isError = context?.isError ?? Boolean(result?.isError);
   const isPartial = context?.isPartial ?? Boolean(options?.isPartial);
+  // Preserve the legacy footer below; border success requires the whole result.
+  const completed = Array.isArray(tasks)
+    ? tasks.length > 0 && tasks.every((entry) => entry?.status === 'completed')
+    : task
+      ? task.status === 'completed'
+      : result?.details?.status === undefined ||
+        result?.details?.status === 'completed';
   return {
     context: { ...context, isError, isPartial },
+    isSuccess: !isPartial && !isError && completed,
     status: renderStatus(
       task?.status ??
         (isPartial ? 'running' : isError ? 'failed' : 'completed'),

@@ -79,6 +79,7 @@ export const renderNativeEvent: EntryRenderer<NativeDisplayEvent> = (
 								body,
 								sections,
 								status: failed ? "failed" : "completed",
+								isSuccess: event?.status === "completed",
 								isError: failed,
 							},
 							width,

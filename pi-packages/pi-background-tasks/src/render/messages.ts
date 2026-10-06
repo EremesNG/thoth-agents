@@ -40,6 +40,15 @@ export function renderBackgroundMessage(
   const isError = details
     ? details.kind === 'failure' || details.entries.some(isFailed)
     : false;
+  const completed =
+    !isError &&
+    details?.kind === 'batch' &&
+    details.entries.length > 0 &&
+    details.entries.length ===
+      (message.details as CallbackDisplayDetails).entries.length &&
+    details.omitted === 0 &&
+    details.unlisted === 0 &&
+    details.entries.every(isSucceeded);
   const title = details
     ? titleFor(details)
     : { name: 'background', summary: '' };
@@ -90,6 +99,7 @@ export function renderBackgroundMessage(
               body: lines,
               footer: indicator.text,
               status,
+              isSuccess: completed,
               isError,
               wrap: expanded,
             },
@@ -126,6 +136,16 @@ function isFailed(entry: CallbackDisplayEntry): boolean {
   return (
     (entry.incidents?.total ?? 0) > 0 ||
     FAILED_STATUS.test(`${entry.status} ${entry.outcome ?? ''}`)
+  );
+}
+
+function isSucceeded(entry: CallbackDisplayEntry): boolean {
+  return (
+    (entry.status === 'completed' || entry.status === 'succeeded') &&
+    (entry.outcome === undefined ||
+      entry.outcome === 'completed' ||
+      entry.outcome === 'succeeded' ||
+      entry.outcome === 'exit 0')
   );
 }
 

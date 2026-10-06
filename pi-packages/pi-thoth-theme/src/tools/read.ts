@@ -4,6 +4,7 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
+import { getToolBorderTone } from './border.ts';
 import { createComponent, getResultText, hasImageContent } from './box.ts';
 import { getFileIcon } from './file-icons.ts';
 import {
@@ -50,19 +51,19 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
             : '';
         range = `:${start}${end ? `-${end}` : ''}`;
       }
-      const isErr = Boolean(context?.isError);
+      const borderTone = getToolBorderTone(context);
 
       const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Read')) : theme.fg('toolTitle', 'Read')} ${theme.fg('text', `${filePath}${range}`)}`;
 
         if (hasToolResult(context)) {
-          return renderFrameTop(theme, title, safeWidth, isErr);
+          return renderFrameTop(theme, title, safeWidth, borderTone);
         }
 
         return [
-          ...renderFrameTop(theme, title, safeWidth, isErr),
-          ...renderFrameBottom(theme, undefined, safeWidth, isErr),
+          ...renderFrameTop(theme, title, safeWidth, borderTone),
+          ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
         ];
       });
 
@@ -95,6 +96,10 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
       }
 
       const isErr = Boolean(context?.isError);
+      const borderTone = getToolBorderTone({
+        isError: isErr,
+        isPartial: options?.isPartial,
+      });
       const textOutput = getResultText(result);
 
       if (isErr) {
@@ -102,8 +107,8 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
           const safeWidth = Math.max(0, width);
           const errText = `${theme.fg('error', '! ')}${theme.fg('error', textOutput || 'Failed to read file')}`;
           return [
-            ...renderFrameRow(theme, errText, safeWidth, true),
-            ...renderFrameBottom(theme, undefined, safeWidth, true),
+            ...renderFrameRow(theme, errText, safeWidth, borderTone),
+            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
           ];
         });
       }
@@ -117,8 +122,13 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
           return [
-            ...renderFrameRow(theme, theme.fg('dim', note), safeWidth, false),
-            ...renderFrameBottom(theme, undefined, safeWidth, false),
+            ...renderFrameRow(
+              theme,
+              theme.fg('dim', note),
+              safeWidth,
+              borderTone,
+            ),
+            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
           ];
         });
       }
@@ -135,9 +145,9 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
               theme,
               theme.fg('dim', summary),
               safeWidth,
-              false,
+              borderTone,
             ),
-            ...renderFrameBottom(theme, undefined, safeWidth, false),
+            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
           ];
         }
 
@@ -147,17 +157,17 @@ export function createCustomReadTool(cwd: string, config: ThemeConfig) {
               theme,
               theme.fg('dim', '(empty file)'),
               safeWidth,
-              false,
+              borderTone,
             ),
-            ...renderFrameBottom(theme, undefined, safeWidth, false),
+            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
           ];
         }
 
         return [
           ...lines.flatMap((line) =>
-            renderFrameRow(theme, line, safeWidth, false),
+            renderFrameRow(theme, line, safeWidth, borderTone),
           ),
-          ...renderFrameBottom(theme, undefined, safeWidth, false),
+          ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
         ];
       });
     },

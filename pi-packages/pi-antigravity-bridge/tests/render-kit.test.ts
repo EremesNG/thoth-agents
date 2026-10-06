@@ -13,6 +13,7 @@ import {
 import { createTestRenderKit } from "@thoth-agents/pi-core/testing";
 import { afterEach, expect, test, vi } from "vitest";
 import { registerAskAntigravityTool } from "../src/ask-tool.js";
+import { renderToolCard } from "../src/render-tool-card.js";
 
 type ToolRenderContext = Parameters<
 	NonNullable<ToolDefinition["renderCall"]>
@@ -86,6 +87,196 @@ function nativeBox(
 	box.addChild(new Text(text, 0, 0));
 	return box.render(width);
 }
+
+test.each([
+	{
+		name: "success",
+		isPartial: false,
+		executionStarted: true,
+		details: { exitCode: 0 },
+		completed: true,
+	},
+	{
+		name: "running",
+		isPartial: true,
+		executionStarted: true,
+		details: { exitCode: 0 },
+	},
+	{
+		name: "not started",
+		isPartial: true,
+		executionStarted: false,
+		details: { exitCode: 0 },
+	},
+	{
+		name: "not started with non-partial context",
+		isPartial: false,
+		executionStarted: false,
+		details: { exitCode: 0 },
+	},
+	{
+		name: "SDK failure",
+		isPartial: false,
+		executionStarted: true,
+		details: { exitCode: 0 },
+		isError: true,
+	},
+	{
+		name: "non-zero exit",
+		isPartial: false,
+		executionStarted: true,
+		details: { exitCode: 1 },
+		isError: true,
+		sdkError: false,
+	},
+	{
+		name: "aborted",
+		isPartial: false,
+		executionStarted: true,
+		details: { exitCode: 0, aborted: true },
+		isError: true,
+		sdkError: false,
+	},
+	{
+		name: "timed out",
+		isPartial: false,
+		executionStarted: true,
+		details: { exitCode: 0, timedOut: true },
+		isError: true,
+		sdkError: false,
+	},
+	{
+		name: "empty",
+		isPartial: false,
+		executionStarted: true,
+		details: { exitCode: 0, empty: true },
+		isError: true,
+		sdkError: false,
+	},
+])("AskAntigravity signals $name consistently across card parts", async ({
+	isPartial,
+	executionStarted,
+	details,
+	completed = false,
+	isError = false,
+	sdkError = isError,
+}) => {
+	const tool = await askTool();
+	const shared = context({ isPartial, executionStarted, isError: sdkError });
+	const call = tool.renderCall({ prompt: "review" }, theme, shared);
+	const result = tool.renderResult(
+		{ content: [{ type: "text", text: "output" }], details },
+		{ expanded: false, isPartial },
+		theme,
+		shared,
+	);
+	const kit = createTestRenderKit();
+	const card = vi.spyOn(kit, "card");
+	tokens.push(registerRenderKit(kit, {}));
+	call.render(120);
+	result.render(120);
+	expect(card.mock.calls.map(([, options]) => options.part)).toEqual([
+		"start",
+		"end",
+	]);
+	for (const [, options] of card.mock.calls) {
+		expect(options.isSuccess).toBe(completed);
+		expect(options.status).toBeUndefined();
+		expect(Boolean(options.isError)).toBe(isError);
+	}
+});
+
+test("AskAntigravity does not infer success before a result exists", async () => {
+	const tool = await askTool();
+	const kit = createTestRenderKit();
+	const card = vi.spyOn(kit, "card");
+	tokens.push(registerRenderKit(kit, {}));
+	tool
+		.renderCall({ prompt: "review" }, theme, context({ isPartial: false }))
+		.render(120);
+	expect(card.mock.calls[0][1].status).not.toBe("completed");
+	expect(card.mock.calls[0][1].isSuccess).not.toBe(true);
+});
+
+test.each([
+	{
+		name: "success",
+		isPartial: false,
+		executionStarted: true,
+		completed: true,
+	},
+	{
+		name: "running",
+		isPartial: true,
+		executionStarted: true,
+		completed: false,
+	},
+	{
+		name: "not started",
+		isPartial: false,
+		executionStarted: false,
+		completed: false,
+	},
+	{
+		name: "error",
+		isPartial: false,
+		executionStarted: true,
+		isError: true,
+		completed: false,
+	},
+])("renderToolCard preserves completed decoration for $name while signaling success separately", ({
+	isPartial,
+	executionStarted,
+	isError = false,
+	completed,
+}) => {
+	const shared = context({ isPartial, executionStarted, isError });
+	const options = () => ({
+		body: ["output"],
+		status: "completed" as const,
+		footer: "Done",
+	});
+	const call = renderToolCard(theme, "call", options, "start", shared);
+	const result = renderToolCard(theme, "output", options, "end", shared);
+	const role = isPartial
+		? "toolPendingBg"
+		: isError
+			? "toolErrorBg"
+			: "toolSuccessBg";
+	const native = nativeBox("call\noutput", role, 120);
+	expect([...call.render(120), ...result.render(120)]).toEqual(native);
+	const kit = createTestRenderKit();
+	const card = vi.spyOn(kit, "card");
+	const token = registerRenderKit(kit, {});
+	tokens.push(token);
+	call.render(120);
+	expect(result.render(120).at(-1)).toBe("╰─ completed · Done");
+	for (const [, option] of card.mock.calls) {
+		expect(option.status).toBe("completed");
+		expect(option.footer).toBe("Done");
+		expect(option.isSuccess).toBe(completed);
+		expect(option.isError).toBe(isError);
+	}
+	withdrawRenderKit(token);
+	expect([...call.render(120), ...result.render(120)]).toEqual(native);
+});
+
+test("renderToolCard preserves a completed call footer without inferring success before a result", () => {
+	const kit = createTestRenderKit();
+	const card = vi.spyOn(kit, "card");
+	tokens.push(registerRenderKit(kit, {}));
+	const call = renderToolCard(
+		theme,
+		"call",
+		() => ({ status: "completed", footer: "Done" }),
+		"start",
+		context({ isPartial: false }),
+	);
+	call.render(120);
+	expect(card.mock.calls[0][1].status).toBe("completed");
+	expect(card.mock.calls[0][1].footer).toBe("Done");
+	expect(card.mock.calls[0][1].isSuccess).toBe(false);
+});
 
 test("AskAntigravity keeps its self shell and discovers KIT on every call-component render", async () => {
 	vi.stubEnv("AGY_DEFAULT_THINKING", "high");

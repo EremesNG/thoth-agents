@@ -235,6 +235,92 @@ it.each([
   expect(card).toHaveBeenCalledTimes(6);
 });
 
+it.each([
+  {
+    isPartial: false,
+    executionStarted: true,
+    completed: true,
+    status: 'completed',
+  },
+  {
+    isPartial: true,
+    executionStarted: true,
+    completed: false,
+    status: 'running',
+  },
+  {
+    isPartial: true,
+    executionStarted: false,
+    completed: false,
+    status: 'running',
+  },
+  {
+    isPartial: false,
+    executionStarted: false,
+    completed: false,
+    status: 'completed',
+  },
+  {
+    isPartial: false,
+    executionStarted: true,
+    isError: true,
+    completed: false,
+    status: 'failed',
+  },
+  {
+    isPartial: true,
+    executionStarted: true,
+    isError: true,
+    completed: false,
+    status: 'running',
+  },
+])('preserves the background-tool footer while signaling success on both parts (%j)', ({
+  isPartial,
+  executionStarted,
+  isError = false,
+  completed,
+  status,
+}) => {
+  const kit = createTestRenderKit();
+  const card = vi.spyOn(kit, 'card');
+  token = registerRenderKit(kit, {});
+  const context = { state: {}, isPartial, executionStarted, isError };
+  const renderers = backgroundToolRenderers('bg_task_log');
+  const call = renderers.renderCall({ id: 'bg_abc' }, {}, context);
+  const result = renderers.renderResult(
+    { content: [{ type: 'text', text: 'log' }] },
+    { expanded: false, isPartial },
+    {},
+    context,
+  );
+  call.render(80);
+  expect(result.render(80).at(-1)).toBe(`╰─ ${status} · ${status}`);
+  expect(card.mock.calls.map(([, options]) => options.part)).toEqual([
+    'start',
+    'end',
+  ]);
+  for (const [, options] of card.mock.calls) {
+    expect(options.isSuccess).toBe(completed);
+    expect(options.isError).toBe(isError);
+  }
+  expect(card.mock.calls[0][1].status).toBeUndefined();
+  expect(card.mock.calls[1][1].status).toBe(status);
+  expect(card.mock.calls[1][1].footer).toBe(status);
+});
+
+it('does not infer background-tool success before a result exists', () => {
+  const kit = createTestRenderKit();
+  const card = vi.spyOn(kit, 'card');
+  token = registerRenderKit(kit, {});
+  const renderers = backgroundToolRenderers('bg_task_log');
+  renderers.renderCall({}, {}, { state: {}, isPartial: false }).render(80);
+  renderers.renderCall({}, {}).render(80);
+  for (const [, options] of card.mock.calls) {
+    expect(options.status).not.toBe('completed');
+    expect(options.isSuccess).not.toBe(true);
+  }
+});
+
 describe('KIT tool renderers', () => {
   beforeEach(() => {
     token = registerRenderKit(createTestRenderKit(), {});

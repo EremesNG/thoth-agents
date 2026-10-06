@@ -1,6 +1,7 @@
 import { relative, resolve } from 'node:path';
 import type { Theme } from '@earendil-works/pi-coding-agent';
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
+import type { BorderTone } from './border.ts';
 
 export const FRAME_HORIZONTAL = '─';
 export const FRAME_VERTICAL = '│';
@@ -52,10 +53,9 @@ export function renderFrameTop(
   theme: Pick<Theme, 'fg'>,
   title: string,
   width: number,
-  isError = false,
+  borderColor: BorderTone = 'accent',
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = isError ? 'error' : 'accent';
 
   if (safeWidth <= 0) return [];
   if (safeWidth <= 4) {
@@ -82,10 +82,9 @@ export function renderFrameRow(
   theme: Pick<Theme, 'fg'>,
   line: string,
   width: number,
-  isError = false,
+  borderColor: BorderTone = 'accent',
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = isError ? 'error' : 'accent';
 
   if (safeWidth <= 0) return [];
   if (safeWidth <= 4) {
@@ -104,10 +103,9 @@ export function renderFrameDivider(
   theme: Pick<Theme, 'fg'>,
   title: string,
   width: number,
-  isError = false,
+  borderColor: BorderTone = 'accent',
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = isError ? 'error' : 'accent';
 
   if (safeWidth <= 0) return [];
   if (safeWidth <= 4) {
@@ -134,10 +132,9 @@ export function renderFrameBottom(
   theme: Pick<Theme, 'fg'>,
   footer: string | undefined,
   width: number,
-  isError = false,
+  borderColor: BorderTone = 'accent',
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = isError ? 'error' : 'accent';
 
   if (safeWidth <= 0) return [];
   if (safeWidth <= 4) {

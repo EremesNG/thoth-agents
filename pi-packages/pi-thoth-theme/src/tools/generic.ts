@@ -6,6 +6,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
+import { getToolBorderTone } from './border.ts';
 import {
   createComponent,
   escapeControlCharacters,
@@ -94,7 +95,9 @@ export function createGenericTool(
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: GenericContext) {
       syncElapsedTicker(context);
-      const isErr = Boolean(context?.isError);
+      const borderTone = context?.isPartial
+        ? 'accent'
+        : getToolBorderTone(context);
       const argsSummary = summarizeArgs(rawArgs);
       const elapsedMs = getElapsedMs(context?.state);
       const elapsed =
@@ -114,15 +117,20 @@ export function createGenericTool(
       const comp = createComponent((width: number) => {
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', name)) : theme.fg('toolTitle', name)}`;
         const lines = [
-          ...renderFrameTop(theme, title, width, isErr),
+          ...renderFrameTop(theme, title, width, borderTone),
           ...(argsSummary
-            ? renderFrameRow(theme, theme.fg('dim', argsSummary), width, isErr)
+            ? renderFrameRow(
+                theme,
+                theme.fg('dim', argsSummary),
+                width,
+                borderTone,
+              )
             : []),
         ];
         if (hasToolResult(context)) return lines;
         return [
           ...lines,
-          ...renderFrameBottom(theme, runningFooter, width, isErr),
+          ...renderFrameBottom(theme, runningFooter, width, borderTone),
         ];
       });
 
@@ -144,6 +152,9 @@ export function createGenericTool(
 
       const isErr = Boolean(context?.isError);
       const isPartial = Boolean(options?.isPartial);
+      const borderTone = isPartial
+        ? 'accent'
+        : getToolBorderTone({ isError: isErr, isPartial });
       syncElapsedTicker({ ...context, isPartial });
       const elapsedMs = getElapsedMs(context?.state);
       const elapsed =
@@ -193,8 +204,10 @@ export function createGenericTool(
         }
 
         return [
-          ...body.flatMap((line) => renderFrameRow(theme, line, width, isErr)),
-          ...renderFrameBottom(theme, footer, width, isErr),
+          ...body.flatMap((line) =>
+            renderFrameRow(theme, line, width, borderTone),
+          ),
+          ...renderFrameBottom(theme, footer, width, borderTone),
         ];
       });
     },

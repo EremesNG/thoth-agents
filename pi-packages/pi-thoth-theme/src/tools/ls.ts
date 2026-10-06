@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import type { ThemeConfig } from '../shared/config.ts';
+import { getToolBorderTone } from './border.ts';
 import {
   createComponent,
   escapeControlCharacters,
@@ -65,7 +66,7 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
         formatDisplayPath(rawPath, context?.cwd ?? cwd),
       );
       const icon = getDirIcon(config.icons);
-      const isErr = Boolean(context?.isError);
+      const borderTone = getToolBorderTone(context);
 
       const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
@@ -74,17 +75,18 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
         if (!isFramedContext(context)) {
           return renderBox(theme, [], safeWidth, {
             title,
-            isError: isErr,
+            isError: borderTone === 'error',
+            isSuccess: borderTone === 'success',
           });
         }
 
         if (hasToolResult(context)) {
-          return renderFrameTop(theme, title, safeWidth, isErr);
+          return renderFrameTop(theme, title, safeWidth, borderTone);
         }
 
         return [
-          ...renderFrameTop(theme, title, safeWidth, isErr),
-          ...renderFrameBottom(theme, undefined, safeWidth, isErr),
+          ...renderFrameTop(theme, title, safeWidth, borderTone),
+          ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
         ];
       });
 
@@ -117,6 +119,10 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
       }
 
       const isErr = Boolean(context?.isError);
+      const borderTone = getToolBorderTone({
+        isError: isErr,
+        isPartial: options?.isPartial,
+      });
       const textOutput = getRawResultText(result);
 
       if (isErr) {
@@ -127,8 +133,8 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
             return [truncateToWidth(errText, safeWidth)];
           }
           return [
-            ...renderFrameRow(theme, errText, safeWidth, true),
-            ...renderFrameBottom(theme, undefined, safeWidth, true),
+            ...renderFrameRow(theme, errText, safeWidth, borderTone),
+            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
           ];
         });
       }
@@ -150,9 +156,9 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
               theme,
               theme.fg('dim', 'empty directory'),
               safeWidth,
-              false,
+              borderTone,
             ),
-            ...renderFrameBottom(theme, undefined, safeWidth, false),
+            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
           ];
         }
 
@@ -191,9 +197,9 @@ export function createCustomLsTool(cwd: string, config: ThemeConfig) {
 
         return [
           ...rawLines.flatMap((line) =>
-            renderFrameRow(theme, line, safeWidth, false),
+            renderFrameRow(theme, line, safeWidth, borderTone),
           ),
-          ...renderFrameBottom(theme, undefined, safeWidth, false),
+          ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
         ];
       });
     },

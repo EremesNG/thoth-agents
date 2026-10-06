@@ -265,6 +265,7 @@ export function renderSubagentCompletionMessage(
         theme,
         {
           title,
+          isSuccess: task.status === 'completed',
           isError: failed,
           body: (contentWidth) =>
             styledRows(

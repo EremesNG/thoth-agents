@@ -272,6 +272,109 @@ it.each([
   );
 });
 
+it.each([
+  {
+    isPartial: false,
+    executionStarted: true,
+    completed: true,
+    status: 'completed',
+  },
+  {
+    isPartial: true,
+    executionStarted: true,
+    completed: false,
+    status: 'running',
+  },
+  {
+    isPartial: true,
+    executionStarted: false,
+    completed: false,
+    status: 'pending',
+  },
+  {
+    isPartial: false,
+    executionStarted: false,
+    completed: false,
+    status: 'completed',
+  },
+  {
+    isPartial: false,
+    executionStarted: true,
+    isError: true,
+    completed: false,
+    status: 'failed',
+  },
+  {
+    isPartial: true,
+    executionStarted: true,
+    isError: true,
+    completed: false,
+    status: 'running',
+  },
+])('preserves the todo footer while signaling execution success on both parts (%j)', ({
+  isPartial,
+  executionStarted,
+  isError = false,
+  completed,
+  status,
+}) => {
+  const kit = createTestRenderKit();
+  const card = vi.spyOn(kit, 'card');
+  token = registerRenderKit(kit, {});
+  const tool = setup();
+  const ctx = context({ isPartial, executionStarted, isError });
+  const call = tool.renderCall(ctx.args, makeTheme(), ctx);
+  const result = tool.renderResult(
+    {
+      content: [],
+      details: {
+        action: 'create',
+        params: {},
+        tasks: [{ id: 1, subject: 'task', status: 'pending' }],
+        nextId: 2,
+      },
+    },
+    { expanded: false, isPartial },
+    makeTheme(),
+    ctx,
+  );
+  call.render(80);
+  expect(result.render(80).at(-1)).toBe(`╰─ ${status} · ${status}`);
+  expect(card.mock.calls.map(([, options]) => options.part)).toEqual([
+    'start',
+    'end',
+  ]);
+  for (const [, options] of card.mock.calls) {
+    expect(options.status).toBe(status);
+    expect(options.footer).toBe(status);
+    expect(options.isSuccess).toBe(completed);
+    expect(Boolean(options.isError)).toBe(isError);
+  }
+});
+
+it('does not infer todo success before any execution or result context exists', () => {
+  const kit = createTestRenderKit();
+  const card = vi.spyOn(kit, 'card');
+  token = registerRenderKit(kit, {});
+  const tool = setup();
+  tool
+    .renderCall(
+      { action: 'list' },
+      makeTheme(),
+      context({
+        executionStarted: false,
+        isPartial: false,
+      }),
+    )
+    .render(80);
+  tool.renderCall({ action: 'list' }, makeTheme(), context()).render(80);
+  for (const [, options] of card.mock.calls) {
+    expect(options.status).toBe('completed');
+    expect(options.footer).toBe('completed');
+    expect(options.isSuccess).not.toBe(true);
+  }
+});
+
 it('marks SDK errors in the card and footer rather than using the success frame', () => {
   token = registerRenderKit(createTestRenderKit(), {});
   const tool = setup();

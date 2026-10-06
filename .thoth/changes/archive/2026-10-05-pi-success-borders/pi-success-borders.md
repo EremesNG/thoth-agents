@@ -42,6 +42,7 @@ Every themed card whose border turns red on a failed result shows a green (theme
 ## Clarifications
 
 - User request: "SOLO donde hoy cambia a rojo el borde, que tengan su contra parte a verde."
+- AC-5 confirmation: after merge to `0.5.0` and restarting Pi, root ran live tool calls (bash 5-step success, bash exit 1, bash 3-step then exit 2, read existing and missing file, ls, grep) and the user explicitly confirmed with the option "Sí, [everything] como esperado" (Spanish for yes, everything as expected) the expected colors (gold with running footer while running, green on success, red on failure, footers unchanged).
 - Lifecycle exception (explicit user decision after the second final verification found viewer running items with output changed from footer `Exit 0` to `running…` and native background from the success style to the in-progress style): the border-only rule is soft; a tool that is still running, even with partial output, must show its running footer/state and gold border, and only when it finishes do the footer and border change. Showing `Exit 0` while still running is wrong in the viewer and in the main chat. This exception covers footer/native changes that make a running tool display as running. Under the same rule, bash/PowerShell/generic results that are still partial keep the gold border even if marked as error, and turn red only when final (verified: main-chat partial footers were already correct).
 - User chose "Tool calls y notificaciones (Recommended)": the success border applies to tool-call cards and to notification cards that turn red today (subagent completion/failure and background-task messages). Cancelled stays red where it is red today.
 - Exploration found that every tool card has a red path, so the rule covers all themed tool cards; running/partial stays gold.
@@ -125,7 +126,7 @@ Risks: split-card parts disagreeing; hardcoded literal frame calls; cached compl
   - Focused check and PASS evidence: package checks exit 0; root `pnpm run typecheck` exit 0; root `check:ci`/`pnpm test` failures only in the baseline
   - Return milestone: results classified
   - Stop / reassessment: any root failure attributable to the diff
-- [ ] AC-5: user confirms border colors
+- [x] AC-5: user confirms border colors
   - Outcome: user confirmation after merge
   - Known entrypoints and skill paths: user session on `0.5.0`
   - Inputs: accepted AC-4; merge to `0.5.0`
@@ -146,18 +147,18 @@ Risks: split-card parts disagreeing; hardcoded literal frame calls; cached compl
 
 ## Verification
 
-**Reviewer**: PENDING
-**Independent from implementer**: PENDING
-**Verdict**: PENDING
-**Reviewed record SHA-256**: PENDING
+**Reviewer**: oracle
+**Independent from implementer**: Yes
+**Verdict**: PASS
+**Reviewed record SHA-256**: 71027ec32bd88f1ce813043ba27dd75112b64e4732410ef680707ee3bdc999fe
 
-- AC-1: PENDING | check | evidence
-- AC-2: PENDING | check | evidence
-- AC-3: PENDING | check | evidence
-- AC-4: PENDING | check | evidence
-- AC-5: PENDING | check | evidence
+- AC-1: PASS | pi-thoth-theme typecheck + 887/887 tests (--maxWorkers=2), pi-core 172/172; fresh Oracle reran theme 305/305 | three-tone getBorderTone in renderBox, frames and both kit.card paths; isSuccess-only success, error precedence, status footer-only; nine built-ins incl. PowerShell color call/result parts consistently; running shell/generic stay gold until final
+- AC-2: PASS | pi-subagents typecheck + 1231 pass/1 skip; fresh Oracle reran 64/64 incl. real-SDK viewer tests | HEAD footer status restored, isSuccess only on affirmative success; completion messages isSuccess; viewer renders still-running items as running (user-approved lifecycle exception)
+- AC-3: PASS | typecheck + todo 236/236, background 456/4 skip, claude test:unit 405/0, antigravity 770/9 skip; fresh Oracle focused checks | HEAD status/footers preserved; isSuccess only for affirmative terminal success; mixed, incomplete, cancelled, rejected, skipped, stopped and unrecognized outcomes not green; native fallbacks unchanged
+- AC-4: PASS | 7 package typechecks/tests green; antigravity 3 consecutive full suites 770/9 skip with forwarded --maxWorkers=1; root typecheck exit 0 | root check:ci/pnpm test failures only in the known unchanged baseline; pre-existing startup-ownership test defect fixed test-only; pre-existing acp-driver EBUSY teardown left unchanged
+- AC-5: PASS | live tool calls in the user's restarted Pi on merged 0.5.0 | user explicitly confirmed everything as expected: gold running footer while running, green on success, red on failure, footers unchanged
 - Source: .thoth/specs/pi-ecosystem/spec.md | sha256:8a66c9441f2a7f144714ed032013f0249ba11a66d4c04b56386bfdd97f67b8a4
 
 ## Closeout
 
-**Archive**: PENDING
+**Archive**: READY

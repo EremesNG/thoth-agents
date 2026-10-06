@@ -113,7 +113,7 @@ describe("#325 background task structured intent", () => {
     expect(activeFailures(state(unrelated.id))).toHaveLength(1);
     expect(activeFailures(state(undeclared.id))).toHaveLength(1);
     // A task that started before the failure cannot be its recovery evidence.
-    const slowPass = spawnTask(pi, { shell: false, argv: [process.execPath, "-e", "setTimeout(() => {}, 300)"], callback: false, operation_id: "e2e" }, origin.cwd, origin, () => origin);
+    const slowPass = spawnTask(pi, { shell: "none" as const, argv: [process.execPath, "-e", "setTimeout(() => {}, 300)"], callback: false, operation_id: "e2e" }, origin.cwd, origin, () => origin);
     ids.push(slowPass.id);
     const quickFail = spawn("exit 6", { operation_id: "e2e" });
     await Promise.all([terminal(slowPass.id), terminal(quickFail.id)]);

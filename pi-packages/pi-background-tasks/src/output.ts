@@ -437,7 +437,7 @@ export function formatLaunch(meta: BackgroundTaskMeta, firstCheck?: FirstWatchCh
   const build = (checkText: string | undefined, withLog: boolean) => assembleBackgroundContent({
     surface: "status",
     sections: {
-      identity: `Started background ${meta.kind} ${label}. Status: ${meta.status}.`,
+      identity: `Started background ${meta.kind} ${label}. Status: ${meta.status}. Shell: ${meta.shellUsed?.label ?? `${meta.shell ?? 'unknown'} (launch details unknown)`}.`,
       failure: incidentSection(meta.id, {}),
       decision: formatDecision(meta),
       diagnostics: [...(checkText ? [checkText] : [])].join("\n") || undefined,

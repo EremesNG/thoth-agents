@@ -12,7 +12,7 @@ describe.skipIf(process.platform !== 'win32')('job and watch containment',()=>{
     writeFileSync(grand,`require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setInterval(()=>{},1000);`);
     writeFileSync(middle,`const c=require('node:child_process').spawn(process.execPath,[${JSON.stringify(grand)}],{windowsHide:true,detached:true,stdio:'inherit'});c.unref();const t=setInterval(()=>{if(require('node:fs').existsSync(${JSON.stringify(pidFile)})){clearInterval(t);process.exit(0)}},5);`);
     writeFileSync(leader,`const c=require('node:child_process').spawn(process.execPath,[${JSON.stringify(middle)}],{windowsHide:true,detached:true,stdio:'inherit'});c.on('exit',()=>process.exit(0));`);
-    const spec={shell:false,argv:[process.execPath,leader]};
+    const spec={shell: "none" as const,argv:[process.execPath,leader]};
     const work=kind==='job'?spawnCommand(spec,join(dir,'log'),true):startCommandOnce(spec);
     try {
       if('child' in work){await once(work.child,'close');await work.terminate();}

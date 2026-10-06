@@ -2,9 +2,9 @@ import { statSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendLine, appendWatchResult, retainLogTail, resolveMaxLogBytes } from "./logs.js";
 import { evaluateCondition, validateCondition } from "./conditions.js";
-import { CommandTerminationError, processExists, startCommandOnce, spawnCommand, type RunningCommand } from "./process.js";
+import { CommandTerminationError, processExists, startCommandOnce, spawnCommand, commandExecution, type RunningCommand } from "./process.js";
 import { currentProcessInstanceId, currentProcessStartToken, readProcessStartToken } from "./process-identity.js";
-import { ensureTaskDir, logPathFor, nextTaskId, readMeta, writeMeta } from "./registry.js";
+import { belongsToOrigin, ensureTaskDir, logPathFor, nextTaskId, readMeta, writeMeta } from "./registry.js";
 import { failurePath, readTaskIntent, recordExitFailure, recordFailure, recoverDeclaredOperation, recoverFailure, resumeFailureAttention, scheduleFailureAttention, stopFailureAttention, suspendFailureAttention, terminalFailureAttention } from "./failures.js";
 import { markFailureAttentionDelivered } from "./shared-failure-observations.js";
 import { getCallbackBatcher } from "./shared-callback-batcher.js";
@@ -64,10 +64,11 @@ export interface WatchTaskParams extends CommandSpec, TaskIntentParams {
   /** Consecutive blind checks before the watch is flagged (#359). Default 3; 0 turns it off. */
   blind_checks?: number;
 }
-interface InFlightPoll extends RunningCommand { origin: string; consumed?: boolean }
+interface InFlightPoll extends RunningCommand { origin: string; meta: BackgroundTaskMeta; consumed?: boolean }
 const POLL_HANDOFF_KEY = Symbol.for("thoth-agents.background-tasks.poll-handoff");
 interface OwnedContainer {
   origin: string;
+  meta: BackgroundTaskMeta;
   terminate(): Promise<void>;
   readonly cleanupPending: boolean;
   readonly cleanupVerified: boolean;
@@ -93,6 +94,7 @@ function ownedContainerFor(meta: BackgroundTaskMeta, terminateTree?: () => Promi
     let terminationRequested = false;
     tree = {
       origin: pollOrigin(meta),
+      meta,
       get cleanupPending() { return cleanupPending; },
       get cleanupVerified() { return cleanupVerified; },
       get terminationRequested() { return terminationRequested; },
@@ -109,6 +111,17 @@ function ownedContainerFor(meta: BackgroundTaskMeta, terminateTree?: () => Promi
     processContainers.set(meta.id, tree);
   }
   return tree;
+}
+
+/** Storage loss cannot remove session-owned launch authority from shutdown. */
+export function listOwnedTaskIdsForOrigin(origin: BackgroundTaskCallbackOrigin): string[] {
+  const ids = new Set<string>();
+  for (const ownedTasks of [processContainers, inFlightPolls]) {
+    for (const [id, owned] of ownedTasks) {
+      if (belongsToOrigin(owned.meta, origin)) ids.add(id);
+    }
+  }
+  return [...ids];
 }
 
 function createTaskRuntime(owner: ExtensionAPI) {
@@ -207,8 +220,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
     const cwd = params.cwd ?? defaultCwd;
     const logPath = logPathFor(id);
     ensureTaskDir(id);
-    const commandSpec: CommandSpec = { ...params, cwd, shell: params.shell ?? true };
-    const spawned = spawnCommand(commandSpec, logPath, true);
+    const commandSpec: CommandSpec = { ...params, cwd, shell: params.shell ?? 'bash' };
+    // Unavailable shells still fail before recording a task.
+    commandExecution(commandSpec);
     const now = Date.now();
     const meta: BackgroundTaskMeta = {
       id,
@@ -227,29 +241,72 @@ function createTaskRuntime(owner: ExtensionAPI) {
       cwd,
       env: params.env,
       maxLogBytes: resolveMaxLogBytes(params.max_log_bytes),
-      pid: spawned.child.pid,
-      pidStartTime: spawned.child.pid ? readProcessStartToken(spawned.child.pid) : undefined,
-      pgid: spawned.pgid,
       spawnPid: process.pid,
       ownerInstanceId: currentProcessInstanceId(),
       spawnPidStartTime: currentProcessStartToken(),
       ...intent,
     };
+    // Persist the teardown-discoverable record before launching any process.
     writeMeta(meta);
-    ownedContainerFor(meta, spawned.terminate);
-    scheduleLogRetention(id);
-    spawned.child.on("spawn", () => {
-      const latest = readMeta(id);
-      if (!latest) return;
-      latest.pid = meta.pid = spawned.child.pid;
-      writeMeta(latest);
-    });
-    spawned.child.unref();
-    spawned.child.on("close", (exitCode, signal) => {
-      void settleProcessExit(pi, id, exitCode, signal, getActiveSession);
-    });
-    if (meta.deadlineAt) scheduleProcessTimeout(pi, id, meta.deadlineAt, getActiveSession);
-    return meta;
+    let spawned: ReturnType<typeof spawnCommand>;
+    try { spawned = spawnCommand(commandSpec, logPath, true); } catch (error) {
+      const reason = readableError(error);
+      recordFailure(meta, "execution", reason, "launch", { category: "execution" });
+      finalize(meta, { status: "failed", reason }, pi, getActiveSession);
+      throw error;
+    }
+    const container = ownedContainerFor(meta, spawned.terminate)!;
+    try {
+      spawned.child.on("spawn", () => {
+        try {
+          const latest = readMeta(id);
+          if (!latest || isTerminalStatus(latest.status)) return;
+          latest.pid = meta.pid = spawned.child.pid;
+          writeMeta(latest);
+        } catch (error) {
+          void settleProcessFailure(pi, meta, container, error, getActiveSession);
+        }
+      });
+      spawned.child.on("close", (exitCode, signal) => {
+        void settleProcessExit(pi, id, exitCode, signal, getActiveSession)
+          .catch(error => settleProcessFailure(pi, meta, container, error, getActiveSession));
+      });
+      meta.shellUsed = spawned.shell;
+      meta.pid = spawned.child.pid;
+      meta.pidStartTime = meta.pid ? readProcessStartToken(meta.pid) : undefined;
+      meta.pgid = spawned.pgid;
+      writeMeta(meta);
+      scheduleLogRetention(id);
+      spawned.child.unref();
+      if (meta.deadlineAt) scheduleProcessTimeout(pi, id, meta.deadlineAt, getActiveSession);
+      return meta;
+    } catch (error) {
+      void settleProcessFailure(pi, meta, container, error, getActiveSession);
+      throw error;
+    }
+  }
+
+  /** Post-launch bookkeeping failure cannot surrender the captured tree's authority. */
+  async function settleProcessFailure(
+    pi: ExtensionAPI, meta: BackgroundTaskMeta, container: OwnedContainer, error: unknown,
+    getActiveSession?: ActiveSessionProvider,
+  ): Promise<void> {
+    try { await container.terminate(); } catch (cleanupError) {
+      try { recordStopError(meta, readableError(cleanupError)); } catch {
+        // The pre-launch record and in-memory ownership still make teardown retriable.
+      }
+      return;
+    }
+    try {
+      const latest = readMeta(meta.id) ?? meta;
+      if (isTerminalStatus(latest.status) || latest.stopRequestedAt) return;
+      const reason = readableError(error);
+      latest.error = reason;
+      recordFailure(latest, "execution", reason, "launch", { category: "execution" });
+      finalize(latest, { status: "failed", reason }, pi, getActiveSession);
+    } catch {
+      // Storage is still unavailable; keep ownership until teardown can record the result.
+    }
   }
 
   async function settleProcessExit(
@@ -297,7 +354,9 @@ function createTaskRuntime(owner: ExtensionAPI) {
     const cwd = params.cwd ?? defaultCwd;
     const now = Date.now();
     const timeoutSeconds = resolveWatchTimeoutSeconds(params.timeout_seconds);
-    const commandSpec: CommandSpec = { ...params, cwd, shell: params.shell ?? true };
+    const commandSpec: CommandSpec = { ...params, cwd, shell: params.shell ?? 'bash' };
+    // Reject unavailable declared shells before a watch is recorded or scheduled.
+    commandExecution(commandSpec);
     const meta: BackgroundTaskMeta = {
       id,
       name: params.name,
@@ -391,6 +450,7 @@ function createTaskRuntime(owner: ExtensionAPI) {
       return meta;
     }
 
+    if (settleUnlaunchedProcess(pi, meta, getActiveSession)) return meta;
     ownedContainerFor(meta);
     scheduleLogRetention(meta.id);
     if (ownedByThisProcess) {
@@ -475,12 +535,25 @@ function createTaskRuntime(owner: ExtensionAPI) {
     finalize(latest, { status: "failed", reason: latest.error }, pi, getActiveSession);
   }
 
+  /** A pre-launch record without launch-time authority never grants PID-based cleanup. */
+  function settleUnlaunchedProcess(
+    pi: ExtensionAPI, meta: BackgroundTaskMeta, getActiveSession?: ActiveSessionProvider,
+  ): boolean {
+    if (meta.kind !== "process" || meta.ownerInstanceId !== currentProcessInstanceId() ||
+        meta.pid || meta.shellUsed || processContainers.has(meta.id)) return false;
+    const reason = "process launch did not complete; no owned container was created";
+    meta.error = reason;
+    recordFailure(meta, "execution", reason, "launch", { incomplete: true });
+    finalize(meta, { status: "failed", reason }, pi, getActiveSession);
+    return true;
+  }
+
   async function stopTask(
     pi: ExtensionAPI,
     id: string,
     getActiveSession?: ActiveSessionProvider,
   ): Promise<BackgroundTaskMeta | undefined> {
-    const meta = readMeta(id);
+    const meta = readMeta(id) ?? inFlightPolls.get(id)?.meta ?? processContainers.get(id)?.meta;
     if (!meta) return undefined;
     if (isTerminalStatus(meta.status)) return meta;
     if (meta.spawnPid !== process.pid || (meta.ownerInstanceId && meta.ownerInstanceId !== currentProcessInstanceId())) {
@@ -491,9 +564,12 @@ function createTaskRuntime(owner: ExtensionAPI) {
       recordStopError(meta, "Watch ownership is unavailable; refusing to reconstruct it from persisted metadata");
       return meta;
     }
+    if (settleUnlaunchedProcess(pi, meta, getActiveSession)) return meta;
 
     meta.stopRequestedAt = Date.now();
-    writeMeta(meta);
+    try { writeMeta(meta); } catch {
+      // A storage fault cannot gate termination through captured launch authority.
+    }
     clearWatchTimer(id);
     clearProcessTimeout(id);
 
@@ -523,8 +599,8 @@ function createTaskRuntime(owner: ExtensionAPI) {
       }
     }
 
-    const latest = readMeta(id);
-    if (!latest || isTerminalStatus(latest.status)) return latest;
+    const latest = readMeta(id) ?? meta;
+    if (isTerminalStatus(latest.status)) return latest;
     processContainers.delete(id);
     stopFailureAttention(id, owner);
     latest.status = "cancelled";
@@ -575,9 +651,10 @@ function createTaskRuntime(owner: ExtensionAPI) {
     activePolls.add(id);
     let checked: FirstWatchCheck | undefined;
     let poll: InFlightPoll | undefined;
+    let launchMeta: BackgroundTaskMeta | undefined;
     let consumedHere = false;
     try {
-      const meta = readMeta(id);
+      const meta = launchMeta = readMeta(id);
       if (!meta || meta.status !== "running" || meta.kind !== "command_watch") return;
       const now = Date.now();
       if (meta.deadlineAt && now >= meta.deadlineAt) {
@@ -599,8 +676,12 @@ function createTaskRuntime(owner: ExtensionAPI) {
       if (poll && poll.origin !== pollOrigin(meta)) throw new Error("Watch poll belongs to another origin");
       if (!poll) {
         const command = startCommandOnce(commandSpecFromMeta(meta), undefined, timeoutMs);
-        poll = Object.assign(command, { origin: pollOrigin(meta) });
+        poll = Object.assign(command, { origin: pollOrigin(meta), meta });
         inFlightPolls.set(id, poll);
+        // A write can fail before the await below; retain ownership and observe rejection.
+        void poll.result.catch(() => {});
+        meta.shellUsed = command.shell;
+        writeMeta(meta);
       }
       const result = await poll.result;
       checked = {
@@ -694,17 +775,27 @@ function createTaskRuntime(owner: ExtensionAPI) {
       scheduleFailureAttention(pi, id, getActiveSession);
       scheduleWatch(pi, id, nextWatchDelayMs(latest), getActiveSession);
     } catch (error) {
-      if (poll?.consumed && !consumedHere) return;
-      const meta = readMeta(id);
-      if (meta && meta.status === "running" && (error instanceof CommandTerminationError || poll?.cleanupPending)) {
-        recordStopError(meta, readableError(error));
-      } else if (!scheduledWorkSuspended && meta && meta.status === "running" && !meta.stopRequestedAt) {
-        if (poll) poll.consumed = true;
-        const detail = readableError(error);
-        const reason = detail;
-        recordFailure(meta, "watch-poll", reason, `throw:${meta.lastCheckedAt ?? meta.startedAt}`, { category: "execution" });
-        finalize(meta, { status: "failed", reason }, pi, getActiveSession);
-        checked ??= { exitCode: null, signal: null, durationMs: 0, stdout: "", stderr: "", error: reason };
+      try {
+        if (poll?.consumed && !consumedHere) return;
+        const meta = readMeta(id) ?? launchMeta;
+        if (poll && launchMeta && poll.origin === pollOrigin(launchMeta) &&
+            !poll.cleanupVerified && !(error instanceof CommandTerminationError)) {
+          try { await poll.terminate(); } catch (cleanupError) {
+            if (meta?.status === "running") recordStopError(meta, readableError(cleanupError));
+            return;
+          }
+        }
+        if (meta && meta.status === "running" && (error instanceof CommandTerminationError || poll?.cleanupPending)) {
+          recordStopError(meta, readableError(error));
+        } else if (!scheduledWorkSuspended && meta && meta.status === "running" && !meta.stopRequestedAt) {
+          if (poll) poll.consumed = true;
+          const reason = readableError(error);
+          recordFailure(meta, "watch-poll", reason, `throw:${meta.lastCheckedAt ?? meta.startedAt}`, { category: "execution" });
+          finalize(meta, { status: "failed", reason }, pi, getActiveSession);
+          checked ??= { exitCode: null, signal: null, durationMs: 0, stdout: "", stderr: "", error: reason };
+        }
+      } catch {
+        // Failure-record storage can also fail; the detached poll must not reject or lose ownership.
       }
     } finally {
       activePolls.delete(id);

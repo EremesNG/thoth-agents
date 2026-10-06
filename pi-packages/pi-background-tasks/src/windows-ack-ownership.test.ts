@@ -12,7 +12,7 @@ describe('launch acknowledgment ownership through lifecycle tools',()=>{
     const fixture=fakeJobHelper(985001);fixture.failLaunch();
     const host=lifecycleHost('lost-launch-'+kind);await host.emit('session_start');
     const abort=new AbortController();abort.abort();
-    const text=kind==='job'?await host.spawn({shell:false,argv:['node','long-running']}):await host.execute('bg_task_watch',{shell:false,argv:['node','long-running'],success_when:{type:'exit_code',equals:0},timeout_seconds:0},abort.signal);
+    const text=kind==='job'?await host.spawn({shell: "none" as const,argv:['node','long-running']}):await host.execute('bg_task_watch',{shell: "none" as const,argv:['node','long-running'],success_when:{type:'exit_code',equals:0},timeout_seconds:0},abort.signal);
     const id=text.match(/bg_[a-z0-9_]+/)![0];
     try {
       await expect.poll(()=>readMeta(id)?.error).toBeTruthy();

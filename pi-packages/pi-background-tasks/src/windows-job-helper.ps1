@@ -1,7 +1,8 @@
 # Persistent UTF-8 JSON-lines host. One Add-Type per helper process.
 param([Parameter(Mandatory=$true)][int]$ParentPid, [switch]$TestFaults)
 $ErrorActionPreference = 'Stop'
-if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell Core 7+ is required.' }
+if (-not (($PSVersionTable.PSEdition -eq 'Core' -and $PSVersionTable.PSVersion.Major -ge 7) -or ($PSVersionTable.PSEdition -eq 'Desktop' -and $PSVersionTable.PSVersion.Major -eq 5 -and $PSVersionTable.PSVersion.Minor -eq 1))) { throw 'PowerShell 7+ or Windows PowerShell 5.1 is required.' }
+$ProgressPreference = 'SilentlyContinue'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 Add-Type -Path (Join-Path $PSScriptRoot 'windows-job-helper.cs')
@@ -9,11 +10,25 @@ Add-Type -Path (Join-Path $PSScriptRoot 'windows-job-helper.cs')
 [Console]::WriteLine((@{ event = 'ready'; pid = $PID; parentPid = $ParentPid } | ConvertTo-Json -Compress))
 $terminationFaults = @{}
 $responseFaults = @{}
+# Convert JSON objects recursively, including env and test fault dictionaries.
+# ConvertFrom-Json -AsHashtable is unavailable on Windows PowerShell 5.1.
+function ConvertTo-Hashtable($value) {
+    if ($value -is [System.Management.Automation.PSCustomObject]) {
+        $table = @{}
+        foreach ($property in $value.PSObject.Properties) { $table[$property.Name] = ConvertTo-Hashtable $property.Value }
+        return $table
+    }
+    if ($value -is [array]) {
+        $items = @($value | ForEach-Object { ConvertTo-Hashtable $_ })
+        return ,$items
+    }
+    return $value
+}
 try {
     while ($null -ne ($line = [Console]::ReadLine())) {
         $request = $null
         try {
-            $request = ConvertFrom-Json -InputObject $line -AsHashtable
+            $request = ConvertTo-Hashtable (ConvertFrom-Json -InputObject $line)
             # Private test clients can withhold one response without blocking unrelated jobs.
             if ($TestFaults -and $request.op -eq 'terminate' -and $terminationFaults.ContainsKey($request.key)) {
                 $fault = $terminationFaults[$request.key]

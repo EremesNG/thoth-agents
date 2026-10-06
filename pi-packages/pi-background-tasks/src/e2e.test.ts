@@ -81,7 +81,7 @@ describe("extension e2e", () => {
     // The wrapper's watch action goes through the same first-check wait as bg_task_watch.
     const launch = await harness.execute("bg_task", {
       action: "watch",
-      command: process.platform === "win32" ? "[Console]::WriteLine('STILL_UNKNOWN'); [Console]::Error.WriteLine('ERROR: broken format'); exit 0" : "echo STILL_UNKNOWN; echo 'ERROR: broken format' >&2; exit 0",
+      command: "echo STILL_UNKNOWN; echo 'ERROR: broken format' >&2; exit 0",
       interval_seconds: 60,
       timeout_seconds: 5,
       callback: false,
@@ -266,7 +266,7 @@ describe("extension e2e", () => {
     await sessionA.fireSessionStart();
     const launch = await sessionA.execute("bg_task_spawn", {
       name: "session-a-task",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "setTimeout(() => {}, 30_000)"],
       callback: false,
     });
@@ -289,14 +289,14 @@ describe("extension e2e", () => {
     const harness = createHarness({ sessionId: "session-a", mode: "tui", hasUI: true });
     const failedLaunch = await harness.execute("bg_task_spawn", {
       name: "recent-failure",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "process.exit(1)"],
       callback: false,
     });
     const failedId = extractTaskId(failedLaunch);
     const succeededLaunch = await harness.execute("bg_task_spawn", {
       name: "recent-success",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "process.exit(0)"],
       callback: false,
     });
@@ -325,21 +325,21 @@ describe("extension e2e", () => {
     const harness = createHarness({ cwd, sessionId: "session-a" });
     const failedLaunch = await harness.execute("bg_task_spawn", {
       name: "clearable-failure",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "process.exit(1)"],
       callback: false,
     });
     const failedId = extractTaskId(failedLaunch);
     const runningLaunch = await harness.execute("bg_task_spawn", {
       name: "keep-running",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "setTimeout(() => {}, 30_000)"],
       callback: false,
     });
     const runningId = extractTaskId(runningLaunch);
     const otherSessionLaunch = await createHarness({ cwd, sessionId: "session-b" }).execute("bg_task_spawn", {
       name: "other-session-failure",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "process.exit(1)"],
       callback: false,
     });
@@ -366,7 +366,7 @@ describe("extension e2e", () => {
     const other = createHarness({ cwd, sessionId: "other-session" });
     const launch = await owner.execute("bg_task_spawn", {
       name: "owned-sleeper",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "setTimeout(() => {}, 30_000)"],
       callback: false,
     });

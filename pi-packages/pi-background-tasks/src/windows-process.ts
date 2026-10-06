@@ -6,11 +6,20 @@ import { getWindowsJobClient, type PendingWindowsJob } from './windows-job-clien
 import { commandExecution, CommandTerminationError, completeUtf8Length, type RunningCommand, type SpawnedProcess } from './process.js';
 import type { CommandSpec, CommandResult } from './types.js';
 
+function bashLogPath(path:string):string {
+  const msys=path.replaceAll('\\','/').replace(/^([a-z]):/i,(_match,drive:string)=>`/${drive.toLowerCase()}`);
+  return `'${msys.replaceAll("'", "'\\''")}'`;
+}
+
 export function spawnWindowsCommand(spec:CommandSpec,log:string,stderrLog?:string):SpawnedProcess {
+  // MSYS cannot use native append-only stdio handles. Reopen inside bash,
+  // exactly as the historical Git Bash launch path did; keep Job assignment unchanged.
+  const execution=commandExecution((spec.shell ?? 'bash')==='bash'
+    ? {...spec,command:`exec >> ${bashLogPath(log)} 2>> ${bashLogPath(stderrLog || log)}\n${spec.command}`}
+    : spec);
   const child=Object.assign(new EventEmitter(),{pid:undefined as number|undefined,unref(){}});
   let owned:PendingWindowsJob|undefined;
   const prepared=Promise.resolve().then(()=>{
-    const execution=commandExecution(spec);
     owned=getWindowsJobClient().createJob({executable:execution.execPath,argv:execution.execArgs,cwd:spec.cwd || process.cwd(),env:{...process.env,...spec.env},log,stderrLog});
     return owned;
   });
@@ -31,7 +40,7 @@ export function spawnWindowsCommand(spec:CommandSpec,log:string,stderrLog?:strin
     child.pid=job.pid;child.emit('spawn');
     emitExit(await job.waitForExit());
   }).catch(error=>{if(!exitEmitted){child.emit('error',error);emitExit(null);}});
-  return {child,terminate};
+  return {child,terminate,shell:execution.shell};
 }
 function capture(file:string,cap:number):{text:string;discardedBytes:number} {
   const fd=openSync(file,'r');try {
@@ -42,7 +51,9 @@ function capture(file:string,cap:number):{text:string;discardedBytes:number} {
 }
 export function startWindowsCommandOnce(spec:CommandSpec,maxBufferBytes:number,timeoutMs?:number,signal?:AbortSignal):RunningCommand {
   const startedAt=Date.now(),dir=mkdtempSync(join(tmpdir(),'pi-bg-poll-')),out=join(dir,'stdout'),err=join(dir,'stderr');
-  const spawned=spawnWindowsCommand(spec,out,err);
+  let spawned:SpawnedProcess;
+  try { spawned=spawnWindowsCommand(spec,out,err); }
+  catch(error) { rmSync(dir,{recursive:true,force:true});throw error; }
   let pending=true,verified=false,termination:Promise<void>|undefined,timedOut=false,removed=false;
   let timer:ReturnType<typeof setTimeout>|undefined;
   const remove=()=>{if(!removed){rmSync(dir,{recursive:true,force:true});removed=true;}};
@@ -61,6 +72,6 @@ export function startWindowsCommandOnce(spec:CommandSpec,maxBufferBytes:number,t
       })().catch(reject).finally(()=>{if(verified)remove();});
     });
   });
-  return {result,terminate:async()=>{await terminate();if(verified)removeAfterResult();},get cleanupPending(){return pending;},get cleanupVerified(){return verified;}};
+  return {result,shell:spawned.shell,terminate:async()=>{await terminate();if(verified)removeAfterResult();},get cleanupPending(){return pending;},get cleanupVerified(){return verified;}};
   function removeAfterResult(){void result.then(remove,remove);}
 }

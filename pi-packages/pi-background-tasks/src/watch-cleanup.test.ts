@@ -27,7 +27,7 @@ async function launchBlockedWatch(host: ReturnType<typeof lifecycleHost>, timeou
   const controller = new AbortController();
   controller.abort(); // End only the tool's wait, not the watch poll.
   const text = await host.execute("bg_task_watch", {
-    shell: false, argv: [process.execPath, "-e", "setInterval(() => {}, 10000)"],
+    shell: "none" as const, argv: [process.execPath, "-e", "setInterval(() => {}, 10000)"],
     success_when: { type: "exit_code", equals: 0 }, timeout_seconds: timeoutSeconds, ...params,
   }, controller.signal);
   const id = text.match(/bg_[a-z0-9_]+/)![0];

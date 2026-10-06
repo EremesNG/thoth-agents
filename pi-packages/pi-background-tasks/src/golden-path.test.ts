@@ -20,7 +20,7 @@ describe("golden path: background process journey", () => {
     try {
       const launchText = await harness.execute("bg_task_spawn", {
         name: "golden path process",
-        shell: false,
+        shell: "none" as const,
         argv: [process.execPath, "-e", `
           const fs = require('node:fs');
           console.log('golden:start');

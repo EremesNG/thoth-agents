@@ -1,3 +1,7 @@
+import type { ResolvedShell, ShellKind } from './shell.js';
+
+export type ShellUsed = Omit<ResolvedShell, 'args'>;
+
 export type BackgroundTaskStatus =
   | "running"
   | "succeeded"
@@ -17,7 +21,7 @@ export type Condition =
 export interface CommandSpec {
   command?: string;
   argv?: string[];
-  shell?: boolean;
+  shell?: ShellKind;
   cwd?: string;
   env?: Record<string, string>;
 }
@@ -80,7 +84,9 @@ export interface BackgroundTaskMeta {
   dismissedAt?: number;
   command?: string;
   argv?: string[];
-  shell?: boolean;
+  shell?: ShellKind;
+  /** Actual resolved launch, absent for legacy records or before the first watch launch. */
+  shellUsed?: ShellUsed;
   cwd: string;
   env?: Record<string, string>;
   maxLogBytes?: number;

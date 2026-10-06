@@ -19,7 +19,7 @@ describe.skipIf(process.platform!=='win32')('natural watch branches use containe
     const host=lifecycleHost('natural-watch-'+branch);await host.emit('session_start');
     const controller=new AbortController();controller.abort();
     const condition=branch==='evaluation error'?{type:'json_path_equals',path:'$.ok',value:true}:{type:'exit_code',equals:branch==='nonmatching'?7:0};
-    const text=branch==='job'?await host.spawn({shell:false,argv:[process.execPath,leader]}):await host.execute('bg_task_watch',{shell:false,argv:[process.execPath,leader],success_when:condition,interval_seconds:1,timeout_seconds:0,...(branch==='failure'?{failure_when:{type:'exit_code',equals:0}}:{})},controller.signal);
+    const text=branch==='job'?await host.spawn({shell: "none" as const,argv:[process.execPath,leader]}):await host.execute('bg_task_watch',{shell: "none" as const,argv:[process.execPath,leader],success_when:condition,interval_seconds:1,timeout_seconds:0,...(branch==='failure'?{failure_when:{type:'exit_code',equals:0}}:{})},controller.signal);
     const id=text.match(/bg_[a-z0-9_]+/)![0];
     try {
       await expect.poll(()=>existsSync(pids),{timeout:10000}).toBe(true);

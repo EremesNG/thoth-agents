@@ -55,7 +55,7 @@ export class WindowsJobClient {
   private start():Promise<void> {
     if(this.ready)return this.ready;
     this.ready=new Promise<void>((resolve,reject)=>{
-      const args=['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-File',fileURLToPath(new URL('./windows-job-helper.ps1',import.meta.url)),'-ParentPid',String(process.pid)];
+      const args=['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',fileURLToPath(new URL('./windows-job-helper.ps1',import.meta.url)),'-ParentPid',String(process.pid)];
       if(this.options.testFaults)args.push('-TestFaults');
       const child=this.child=spawn(resolvePowerShell(),args,{windowsHide:true,stdio:['pipe','pipe','pipe']});
       const timeout=setTimeout(()=>{const error=new Error('Windows job helper readiness timed out');this.fail(error);reject(error);child.kill();},15000);
@@ -77,7 +77,7 @@ export class WindowsJobClient {
         }
       });
       const failed=(error:Error)=>{clearTimeout(timeout);this.fail(error);reject(error);};
-      child.on('error',error=>failed(new Error(`Windows job helper requires PowerShell Core 7+: ${error.message}`)));
+      child.on('error',error=>failed(new Error(`Windows job helper requires PowerShell 7+ or Windows PowerShell 5.1: ${error.message}`)));
       child.on('exit',(code,signal)=>{lines.close();failed(new Error(`Windows job helper exited (${code ?? signal}): ${this.stderr}`));});
       child.unref();
       for(const stream of [child.stdin,child.stdout,child.stderr]) (stream as unknown as {unref?:()=>void}).unref?.();

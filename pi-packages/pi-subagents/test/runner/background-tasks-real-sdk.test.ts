@@ -110,7 +110,7 @@ function backgroundProvider(
           name: 'bg_task_spawn',
           arguments: {
             argv: [process.execPath, processTree, file],
-            shell: false,
+            shell: 'none',
             callback: false,
           },
         }));

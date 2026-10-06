@@ -7,11 +7,11 @@ import { scheduleFailureAttention } from "./failures.js";
 import { processExists } from "./process.js";
 import { lifecycleHost } from "./test-support/lifecycle-harness.js";
 
-const idle = { shell: false, argv: [process.execPath, "-e", "setInterval(() => {}, 10000)"] };
+const idle = { shell: "none" as const, argv: [process.execPath, "-e", "setInterval(() => {}, 10000)"] };
 
 async function startTree(host: ReturnType<typeof lifecycleHost>) {
   const marker = join(mkdtempSync(join(tmpdir(), "bg-lifecycle-")), "pids.json");
-  const id = await host.spawn({ shell: false, argv: [process.execPath, "-e", `
+  const id = await host.spawn({ shell: "none" as const, argv: [process.execPath, "-e", `
     const fs = require('node:fs');
     const child = require('node:child_process').spawn(process.execPath,
       ['-e', 'setInterval(() => {}, 10000)'], {stdio: 'inherit', windowsHide: true});
@@ -41,8 +41,8 @@ describe("session-owned background work lifecycle", () => {
       }, 25);
     `, marker, release];
     const controller = new AbortController(); controller.abort();
-    const id = kind === "process" ? await host.spawn({ shell: false, argv }) :
-      (await host.execute("bg_task_watch", { shell: false, argv, timeout_seconds: 0,
+    const id = kind === "process" ? await host.spawn({ shell: "none" as const, argv }) :
+      (await host.execute("bg_task_watch", { shell: "none" as const, argv, timeout_seconds: 0,
         success_when: { type: "exit_code", equals: 0 } }, controller.signal)).match(/bg_[a-z0-9_]+/)![0];
     let pids: number[] = [];
     const live = (pid: number) => {
@@ -79,7 +79,7 @@ describe("session-owned background work lifecycle", () => {
   it("two concurrent origins keep independent scheduling and callbacks when one quits", async () => {
     const root = lifecycleHost("concurrent-root");
     await root.emit("session_start");
-    const id = await root.spawn({ shell: false, argv: [process.execPath, "-e", "setTimeout(() => console.log('done'), 1800)"] });
+    const id = await root.spawn({ shell: "none" as const, argv: [process.execPath, "-e", "setTimeout(() => console.log('done'), 1800)"] });
     const child = lifecycleHost("concurrent-child");
     await child.emit("session_start");
     const childId = await child.spawn(idle);
@@ -95,7 +95,7 @@ describe("session-owned background work lifecycle", () => {
   it("a headless second instance loading and ending leaves root UI and callbacks unchanged", async () => {
     const root = lifecycleHost("ui-root", true);
     await root.emit("session_start");
-    const id = await root.spawn({ shell: false, argv: [process.execPath, "-e", "setTimeout(() => console.log('done'), 1800)"] });
+    const id = await root.spawn({ shell: "none" as const, argv: [process.execPath, "-e", "setTimeout(() => console.log('done'), 1800)"] });
     const calls = root.uiCalls.length;
     const editor = root.editor;
     const child = lifecycleHost("ui-child");
@@ -117,7 +117,7 @@ describe("session-owned background work lifecycle", () => {
     const directory = mkdtempSync(join(tmpdir(), "bg-blocked-reload-"));
     const marker = join(directory, "polls.jsonl");
     const controller = new AbortController();
-    const launch = before.execute("bg_task_watch", { shell: false, argv: [process.execPath, "-e", `
+    const launch = before.execute("bg_task_watch", { shell: "none" as const, argv: [process.execPath, "-e", `
       const child = require('node:child_process').spawn(process.execPath,
         ['-e', 'setInterval(() => {}, 10000)'], {stdio: 'inherit', windowsHide: true});
       require('node:fs').appendFileSync(process.argv[1], JSON.stringify([process.pid, child.pid]) + '\\n');
@@ -150,7 +150,7 @@ describe("session-owned background work lifecycle", () => {
     const marker = join(directory, "polls");
     const release = join(directory, "release");
     const pidFile = join(directory, "pid");
-    const launch = before.execute("bg_task_watch", { shell: false, argv: [process.execPath, "-e", `
+    const launch = before.execute("bg_task_watch", { shell: "none" as const, argv: [process.execPath, "-e", `
       const fs = require('node:fs'); fs.writeFileSync(process.argv[3], String(process.pid)); fs.appendFileSync(process.argv[1], 'poll\\n');
       const timer = setInterval(() => {
         if (fs.existsSync(process.argv[2])) { clearInterval(timer); console.log('ready'); }
@@ -185,7 +185,7 @@ describe("session-owned background work lifecycle", () => {
   it("ending a child does not suspend the root's running failure-attention state", async () => {
     const root = lifecycleHost("attention-root");
     await root.emit("session_start");
-    const launch = await root.execute("bg_task_watch", {shell: false,
+    const launch = await root.execute("bg_task_watch", {shell: "none" as const,
       argv: [process.execPath, "-e", "console.error('broken check'); process.exitCode = 7"],
       success_when: {type: "stdout_contains", value: "ready"}, interval_seconds: 60, timeout_seconds: 0});
     const id = launch.match(/bg_[a-z0-9_]+/)![0];
@@ -206,7 +206,7 @@ describe("session-owned background work lifecycle", () => {
     const before = lifecycleHost("overdue-poll-reload");
     await before.emit("session_start");
     const marker = join(mkdtempSync(join(tmpdir(), "bg-overdue-poll-")), "pid");
-    const launch = before.execute("bg_task_watch", {shell: false, argv: [process.execPath, "-e",
+    const launch = before.execute("bg_task_watch", {shell: "none" as const, argv: [process.execPath, "-e",
       "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 10000)", marker],
       success_when: {type: "exit_code", equals: 0}, timeout_seconds: 120});
     let pid = 0;
@@ -231,7 +231,7 @@ describe("session-owned background work lifecycle", () => {
     const before = lifecycleHost("process-reload");
     await before.emit("session_start");
     const release = join(mkdtempSync(join(tmpdir(), "bg-process-reload-")), "release");
-    const id = await before.spawn({ shell: false, argv: [process.execPath, "-e", `
+    const id = await before.spawn({ shell: "none" as const, argv: [process.execPath, "-e", `
       const timer = setInterval(() => {
         if (require('node:fs').existsSync(process.argv[1])) { clearInterval(timer); console.log('done'); }
       }, 25);
@@ -257,7 +257,7 @@ describe("session-owned background work lifecycle", () => {
     const host = lifecycleHost(`term-resistant-${leaderResistant}`);
     await host.emit("session_start");
     const marker = join(mkdtempSync(join(tmpdir(), "bg-term-resistant-")), "pids");
-    const id = await host.spawn({ shell: false, argv: [process.execPath, "-e", `
+    const id = await host.spawn({ shell: "none" as const, argv: [process.execPath, "-e", `
       if (process.argv[2] === 'true') process.on('SIGTERM', () => {});
       const child = require('node:child_process').spawn(process.execPath, ['-e',
         "process.on('SIGTERM', () => {}); process.send('ready'); setInterval(() => {}, 10000)"],
@@ -284,7 +284,7 @@ describe("session-owned background work lifecycle", () => {
     await host.emit("session_start");
     const marker = join(mkdtempSync(join(tmpdir(), "bg-watch-abort-")), "pids.json");
     const controller = new AbortController();
-    const launch = host.execute("bg_task_watch", { shell: false, argv: [process.execPath, "-e", `
+    const launch = host.execute("bg_task_watch", { shell: "none" as const, argv: [process.execPath, "-e", `
       const child = require('node:child_process').spawn(process.execPath,
         ['-e', 'setInterval(() => {}, 10000)'], {stdio: 'inherit', windowsHide: true});
       require('node:fs').writeFileSync(process.argv[1], JSON.stringify([process.pid, child.pid]));

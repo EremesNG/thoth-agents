@@ -9,7 +9,7 @@ export class LocalPollSequence {
   constructor(results: CommandResult[]) {
     const counter = join(mkdtempSync(join(tmpdir(), "bg-local-polls-")), "counter");
     this.spec = {
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", `
         const fs = require('node:fs');
         const results = JSON.parse(process.argv[1]);

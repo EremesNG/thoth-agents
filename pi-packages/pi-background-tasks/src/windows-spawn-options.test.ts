@@ -16,9 +16,9 @@ describe('hidden Windows container launches',()=>{
   it('jobs and watches share one hidden helper and request separate containers',async()=>{
     const fixture=fakeJobHelper(980001);fixture.allowCleanup();
     const dir=mkdtempSync(join(tmpdir(),'bg-hidden-'));dirs.push(dir);
-    const job=spawnCommand({shell:false,argv:[process.execPath,'-e','process.exit(0)']},join(dir,'log'),true);
+    const job=spawnCommand({shell: "none" as const,argv:[process.execPath,'-e','process.exit(0)']},join(dir,'log'),true);
     await expect.poll(()=>fixture.launchCount).toBe(1);
-    const result=runCommandOnce({shell:false,argv:[process.execPath,'-e','process.exit(0)']},1024,25);
+    const result=runCommandOnce({shell: "none" as const,argv:[process.execPath,'-e','process.exit(0)']},1024,25);
     await result;await job.terminate();
     expect(spawn).toHaveBeenCalledExactlyOnceWith(expect.any(String),expect.arrayContaining(['-NoProfile','-NonInteractive','-WindowStyle','Hidden']),expect.objectContaining({windowsHide:true,stdio:['pipe','pipe','pipe']}));
     const launches=fixture.requests.filter(r=>r.op==='launch');expect(launches).toHaveLength(2);expect(launches[0]!.key).not.toBe(launches[1]!.key);
@@ -29,7 +29,7 @@ describe('hidden Windows container launches',()=>{
     vi.mocked(spawn).mockImplementation(()=>{queueMicrotask(()=>helper.emit('error',Object.assign(new Error('spawn pwsh ENOENT'),{code:'ENOENT'})));return helper as any;});
     const kill=vi.spyOn(process,'kill');
     const client=new WindowsJobClient();
-    await expect(client.launch({executable:'node.exe',argv:[],cwd:process.cwd(),env:process.env,log:'not-created'})).rejects.toThrow(/PowerShell Core 7.*ENOENT/);
+    await expect(client.launch({executable:'node.exe',argv:[],cwd:process.cwd(),env:process.env,log:'not-created'})).rejects.toThrow(/PowerShell 7.*5.1.*ENOENT/);
     expect(kill).not.toHaveBeenCalled();
   });
   it('Node descendant fixtures explicitly hide consoles, including embedded scripts',()=>{

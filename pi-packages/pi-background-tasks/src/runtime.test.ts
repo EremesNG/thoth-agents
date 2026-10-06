@@ -50,7 +50,7 @@ describe("runtime", () => {
   });
   it("counts a terminal poll's capture overflow once", async () => {
     const meta = startWatchTask(fakePi, {
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "process.stdout.write('x'.repeat(1200012))"],
       interval_seconds: 60,
       callback: false,
@@ -145,7 +145,7 @@ describe("runtime", () => {
   it("times out a command watcher", async () => {
     const meta = startWatchTask(fakePi, {
       name: "test timeout watcher",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "console.log(JSON.stringify({status:'pending'}))"],
       interval_seconds: 1,
       timeout_seconds: 0.1,
@@ -160,7 +160,7 @@ describe("runtime", () => {
   it("finalizes a short spawned process", async () => {
     const meta = spawnTask(fakePi, {
       name: "test process",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "process.exit(0)"],
       callback: false,
     }, process.cwd());
@@ -172,7 +172,7 @@ describe("runtime", () => {
   it("retains bounded output from a noisy spawned process", async () => {
     const meta = spawnTask(fakePi, {
       name: "bounded process log",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "process.stdout.write('x'.repeat(200000))"],
       max_log_bytes: 64 * 1024,
       callback: false,
@@ -196,7 +196,7 @@ describe("runtime", () => {
     const sentinel = "UNIQUE_BACKGROUND_LOG_PAYLOAD_SHOULD_NOT_DISPLAY";
     const meta = spawnTask(pi, {
       name: "callback process",
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", `console.log(${JSON.stringify(sentinel)})`],
       callback: true,
     }, process.cwd(), origin, () => origin);

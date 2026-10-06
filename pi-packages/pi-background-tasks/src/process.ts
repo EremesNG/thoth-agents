@@ -1,34 +1,38 @@
 import { createProcessTreeTerminator } from "./process-termination.js";
 import { spawn } from "node:child_process";
-import { powerShellArguments, resolvePowerShell } from "./powershell.js";
+import { powerShellArguments } from "./powershell.js";
+import { resolveShell } from './shell.js';
 import { spawnWindowsCommand, startWindowsCommandOnce } from "./windows-process.js";
 import { appendFileSync, closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ChildProcess } from "node:child_process";
 import type { EventEmitter } from "node:events";
-import type { CommandResult, CommandSpec } from "./types.js";
+import type { CommandResult, CommandSpec, ShellUsed } from "./types.js";
 
-/** POSIX retains its shell override; Windows requires validated PowerShell Core 7+. */
+/** The default is the same local bash Pi resolves, never PowerShell fallback. */
 export function resolveDefaultShell(): string {
-  if (process.platform === "win32") return resolvePowerShell();
-  return process.env.PI_BETTER_BACKGROUND_TASKS_SHELL || "/bin/bash";
+  return resolveShell('bash').executable;
 }
 
 export interface SpawnedProcess {
+  shell: ShellUsed;
   child: EventEmitter & { pid?: number; unref(): void };
   pgid?: number;
   terminate(): Promise<void>;
 }
 
 export function validateCommandSpec(spec: CommandSpec): void {
-  if (spec.shell === false) {
+  if (spec.shell !== undefined && !['bash', 'powershell', 'none'].includes(spec.shell)) {
+    throw new Error('shell must be "bash", "powershell", or "none" (default "bash")');
+  }
+  if (spec.shell === 'none') {
     if (!spec.argv || spec.argv.length === 0 || !spec.argv[0]) {
-      throw new Error("argv with at least one element is required when shell:false");
+      throw new Error('argv with at least one element is required when shell:"none"');
     }
     return;
   }
   if (!spec.command || spec.command.trim().length === 0) {
-    throw new Error("command is required unless shell:false with argv is provided");
+    throw new Error('command is required unless shell:"none" with argv is provided');
   }
 }
 
@@ -42,9 +46,10 @@ export function spawnCommand(spec: CommandSpec, logPath: string, detached: boole
     });
     return spawned;
   }
+  const execution = commandExecution(spec);
   const fd = openSync(logPath, "a");
   const stdio: SpawnStdio = ["ignore", fd, fd];
-  const child = spawnArgs(spec, detached, stdio);
+  const child = spawnArgs(spec, detached, stdio, execution);
   const marker = `\n--- spawn ${new Date().toISOString()} pid=${child.pid ?? "unknown"} ---\n`;
   try {
     if (fd !== undefined) {
@@ -81,7 +86,7 @@ export function spawnCommand(spec: CommandSpec, logPath: string, detached: boole
       // the host; the runtime already finalized the task from meta.
     }
   });
-  return { child, pgid: detached && child.pid ? child.pid : undefined,
+  return { child, shell: execution.shell, pgid: detached && child.pid ? child.pid : undefined,
     terminate: child.pid ? createProcessTreeTerminator(child.pid, child.pid) : async () => {} };
 }
 
@@ -93,6 +98,8 @@ export class CommandTerminationError extends Error {
 }
 
 export interface RunningCommand {
+  /** Aborted-before-launch commands have no used shell. */
+  shell?: ShellUsed;
   result: Promise<CommandResult>;
   /** Retry cleanup independently of an already rejected command result. */
   terminate(): Promise<void>;
@@ -125,7 +132,8 @@ export function startCommandOnce(
   };
   if (process.platform === "win32") return startWindowsCommandOnce(spec, maxBufferBytes, timeoutMs, signal);
   const startedAt = Date.now();
-  const child = spawnArgs(spec, true, ["ignore", "pipe", "pipe"]);
+  const execution = commandExecution(spec);
+  const child = spawnArgs(spec, true, ["ignore", "pipe", "pipe"], execution);
   const cap = Math.max(1, Math.floor(maxBufferBytes));
   const stdoutCapture = createCaptureBuffer();
   const stderrCapture = createCaptureBuffer();
@@ -190,7 +198,7 @@ export function startCommandOnce(
       })().catch(reject);
     });
   });
-  return { result, terminate: () => requestTermination(),
+  return { result, shell: execution.shell, terminate: () => requestTermination(),
     get cleanupPending() { return cleanupPending; }, get cleanupVerified() { return cleanupVerified; } };
 }
 
@@ -296,12 +304,15 @@ export function processExists(pid: number): boolean {
 }
 
 /** Run a command in its own process group, including any descendants holding output pipes. */
-export function commandExecution(spec: CommandSpec): { execPath: string; execArgs: string[] } {
-  if (spec.shell === false) {
+export function commandExecution(spec: CommandSpec): { execPath: string; execArgs: string[]; shell: ShellUsed } {
+  validateCommandSpec(spec);
+  if (spec.shell === 'none') {
     const [command, ...args] = spec.argv!;
-    return { execPath: command!, execArgs: args };
+    return { execPath: command!, execArgs: args, shell: { kind: 'none', executable: command!, label: `none (direct argv: ${command})` } };
   }
-  return { execPath: resolveDefaultShell(), execArgs: process.platform === "win32" ? powerShellArguments(spec.command!) : ["-lc", spec.command!] };
+  const shell = resolveShell(spec.shell ?? 'bash', spec.cwd);
+  const { args, ...shellUsed } = shell;
+  return { execPath: shell.executable, execArgs: shell.kind === 'powershell' ? powerShellArguments(spec.command!) : [...args, spec.command!], shell: shellUsed };
 }
 
 /** Stdio for a spawned task: stdin is always ignored; stdout/stderr are piped (collected) or ignored (redirected into the log by the child itself). */
@@ -311,9 +322,10 @@ function spawnArgs(
   spec: CommandSpec,
   detached: boolean,
   stdio: SpawnStdio,
+  execution: ReturnType<typeof commandExecution>,
 ): ChildProcess {
   const env = { ...process.env, ...spec.env };
-  const { execPath, execArgs } = commandExecution(spec);
+  const { execPath, execArgs } = execution;
   return spawn(execPath, execArgs, {
     cwd: spec.cwd,
     env,

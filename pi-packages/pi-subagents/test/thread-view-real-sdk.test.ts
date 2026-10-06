@@ -278,6 +278,119 @@ it('propagates tool and bash lifecycle to both host renderer parts through the r
 });
 
 it.each([
+  false,
+  true,
+])('keeps active tool error results running through the real SDK (render kit: %s)', async (withKit) => {
+  const { initTheme } = await import('@earendil-works/pi-coding-agent');
+  const { Text, stripTerminalSequences, visibleWidth, truncateToWidth } =
+    await import('@earendil-works/pi-tui');
+  initTheme('dark', false);
+  expect(await preloadPiComponentsForSubagentRendering()).toBe(true);
+  let hostTheme: Theme;
+  const definition = {
+    name: 'partial_error_fixture',
+    renderCall: (_args: unknown, theme: Theme) => {
+      hostTheme = theme;
+      return new Text('partial error call');
+    },
+    renderResult: () => new Text('error output'),
+  };
+  if (withKit) {
+    const toolsModule = new URL(
+      '../../pi-thoth-theme/src/tools/index.ts',
+      import.meta.url,
+    ).href;
+    const kitModule = new URL(
+      '../../pi-thoth-theme/src/render-kit/index.ts',
+      import.meta.url,
+    ).href;
+    const { createToolRendererResolver } = await import(toolsModule);
+    const { createRenderKit } = await import(kitModule);
+    const resolve = createToolRendererResolver(
+      { getAllTools: () => [] },
+      { icons: 'ascii', tools: { enabled: true } },
+      fixtureRoot,
+    );
+    const token = registerRenderKit(
+      createRenderKit(
+        {},
+        (name: string, next: () => ToolRenderers | undefined) => {
+          const renderers: ToolRenderers = resolve(name, next);
+          const { renderCall } = renderers;
+          if (!renderCall) throw new Error(`No themed renderer for ${name}`);
+          return {
+            ...renderers,
+            renderCall(args, theme, context) {
+              hostTheme = theme;
+              return renderCall(args, theme, context);
+            },
+          } satisfies ToolRenderers;
+        },
+        'ascii',
+      ),
+      {},
+    );
+    onTestFinished(() => withdrawRenderKit(token));
+  }
+  const render = (status: 'pending' | 'running' | 'partial' | 'failed') => {
+    const lines = renderThreadBody(
+      {
+        version: 1,
+        source: 'events',
+        items: [
+          {
+            type: 'tool',
+            name: definition.name,
+            tool_call_id: 'partial-error-tool',
+            status,
+            result: {
+              isError: true,
+              content: [{ type: 'text', text: 'error output' }],
+            },
+          },
+        ],
+      },
+      {
+        cwd: fixtureRoot,
+        taskId: 'partial-error-task',
+        tui: { requestRender() {} },
+        visibleWidth,
+        truncateToWidth,
+        renderWidth: 100,
+        getToolDefinition: withKit ? undefined : () => definition,
+      },
+    ).filter((line) => stripTerminalSequences(line) !== '');
+    expect(plainText(lines)).toContain('error output');
+    if (withKit) {
+      const tone = status === 'failed' ? 'error' : 'accent';
+      for (const line of lines) {
+        const plain = stripTerminalSequences(line);
+        const left = plain.match(/^(?:[╭├╰]──|│ )/)?.[0] ?? '';
+        const right = plain.match(/(?: │|─*[╮┤╯])$/)?.[0] ?? '';
+        expect(left, plain).not.toBe('');
+        expect(right, plain).not.toBe('');
+        expect(line.startsWith(hostTheme.fg(tone, left)), plain).toBe(true);
+        expect(line.endsWith(hostTheme.fg(tone, right)), plain).toBe(true);
+      }
+      const footer = stripTerminalSequences(lines.at(-1) ?? '');
+      if (status === 'failed') expect(footer).toMatch(/╰── x/);
+      else expect(footer).toMatch(/╰── [.oO0]/);
+    } else {
+      const text = lines.join('\n');
+      expect(text).toContain(
+        hostTheme.getBgAnsi(
+          status === 'failed' ? 'toolErrorBg' : 'toolPendingBg',
+        ),
+      );
+      if (status !== 'failed')
+        expect(text).not.toContain(hostTheme.getBgAnsi('toolErrorBg'));
+    }
+  };
+  for (const status of ['pending', 'running', 'partial', 'failed'] as const)
+    render(status);
+});
+
+it.each([
   'completed',
   'failed',
   'cancelled',

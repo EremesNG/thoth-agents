@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta } from "./types.js";
@@ -67,7 +67,27 @@ export function ensureTaskDir(id: string): void {
 
 export function writeMeta(meta: BackgroundTaskMeta): void {
   ensureTaskDir(meta.id);
-  writeFileSync(metaPathFor(meta.id), JSON.stringify(meta, null, 2));
+  const target = metaPathFor(meta.id);
+  const temporary = `${target}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, JSON.stringify(meta, null, 2), { flag: "wx" });
+    // Node's rename replaces the existing file on Windows too. Never unlink the
+    // target first: a failed write or replacement must leave the last record intact.
+    const maxAttempts = process.platform === "win32" ? 11 : 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        renameSync(temporary, target);
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (attempt === maxAttempts || !["EPERM", "EACCES", "EBUSY"].includes(code ?? "")) throw error;
+        // Match the bounded Windows replacement retry used by pi-managed-write.
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+      }
+    }
+  } finally {
+    try { unlinkSync(temporary); } catch { /* best effort after write/rename failure */ }
+  }
   metaCache.set(meta.id, meta);
   indexMeta(meta);
   for (const listener of metaChangedListeners) {
@@ -123,6 +143,10 @@ export function inspectMeta(id: string): MetaInspection {
         metaCache.delete(id);
         return { id, found: true, readable: false, error: `invalid metadata: ${invalid}` };
       }
+      // Normalize persisted pre-enum jobs before exposing or caching them.
+      const legacyShell: unknown = meta.shell;
+      if (legacyShell === false) meta.shell = 'none';
+      else if (legacyShell === true || legacyShell === undefined) meta.shell = process.platform === 'win32' ? 'powershell' : 'bash';
       metaCache.set(id, meta);
       return { id, meta, found: true, readable: true };
     } catch (error) {

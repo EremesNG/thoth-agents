@@ -64,7 +64,7 @@ describe("Background interaction through the pi-core host", () => {
     const host = lifecycleHost("panel-stop", true);
     await host.emit("session_start");
     const id = await host.spawn({
-      name: "panel sleeper", shell: false,
+      name: "panel sleeper", shell: "none" as const,
       argv: [process.execPath, "-e", "setInterval(() => {}, 10000)"], callback: false,
     });
     try {

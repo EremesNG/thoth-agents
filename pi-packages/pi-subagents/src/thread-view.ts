@@ -1098,7 +1098,10 @@ function renderToolItem(
   }
   const result = item.result ? payloadText(item.result) : '';
   const args = toolArgumentSummary(item.name, item.arguments);
-  const state = item.result?.isError ? 'failed' : item.status;
+  const state =
+    item.result?.isError && !isActiveToolStatus(item.status)
+      ? 'failed'
+      : item.status;
   const fallback = [
     `${item.name} ${state}${args ? ` ${resolveIcon('separator', '·')} ${args}` : ''}`,
     ...(result ? [result] : []),

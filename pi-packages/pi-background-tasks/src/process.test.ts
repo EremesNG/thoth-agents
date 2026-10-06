@@ -22,7 +22,7 @@ describe("process shell execution", () => {
     const startedAt = Date.now();
 
     const result = await runCommandOnce({
-      shell: false,
+      shell: "none" as const,
       argv: [process.execPath, "-e", "setInterval(() => {}, 10_000)"],
     }, undefined, 25);
 
@@ -39,7 +39,7 @@ describe("process shell execution", () => {
     // signal to that pid never reaches. Reproduced here with a plain shell,
     const startedAt = Date.now();
 
-    const result = await runCommandOnce({ shell: false, argv: [process.execPath, "-e", "require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 10000)'], {stdio: 'inherit', windowsHide: true}); setInterval(() => {}, 10000)"] }, undefined, 25);
+    const result = await runCommandOnce({ shell: "none" as const, argv: [process.execPath, "-e", "require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 10000)'], {stdio: 'inherit', windowsHide: true}); setInterval(() => {}, 10000)"] }, undefined, 25);
 
     expect(result.timedOut).toBe(true);
     expect(Date.now() - startedAt).toBeLessThan(5_000);
@@ -53,17 +53,17 @@ describe("process shell execution", () => {
     chmodSync(fakeShell, 0o755);
     process.env.SHELL = fakeShell;
 
-    const result = await runCommandOnce({ command: process.platform === "win32" ? "$status='ok'; [Console]::WriteLine($status)" : "status=ok; printf '%s\\n' \"$status\"" });
+    const result = await runCommandOnce({ command: "status=ok; printf '%s\\n' \"$status\"" });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe(process.platform === "win32" ? "ok\r\n" : "ok\n");
+    expect(result.stdout).toBe("ok\n");
     expect(result.stderr).not.toContain("unexpected login shell");
   });
 
   it("counts capture overflow above 1 MiB instead of silently dropping the tail", async () => {
     const result = await runCommandOnce({
       argv: [process.execPath, "-e", "process.stdout.write('x'.repeat(1_200_012) + 'END_MARKER')"],
-      shell: false,
+      shell: "none" as const,
     });
     expect(result.captureTruncated).toBe(true);
     expect(result.stdoutDiscardedBytes).toBeGreaterThan(1_200_012 - 1024 * 1024);
@@ -77,7 +77,7 @@ describe("process shell execution", () => {
       "process.stdout.write(Buffer.from([0x61, 0xf0, 0x9f]));",
       "setTimeout(() => process.stdout.write(Buffer.from([0x98, 0x80, 0x62])), 60);",
     ].join("");
-    const result = await runCommandOnce({ argv: [process.execPath, "-e", script], shell: false }, 4);
+    const result = await runCommandOnce({ argv: [process.execPath, "-e", script], shell: "none" as const }, 4);
     expect(result.stdout).toBe("a");
     expect(result.stdout).not.toContain("\uFFFD");
     expect(result.stdoutDiscardedBytes).toBe(5);

@@ -637,6 +637,52 @@ describe('config and workflow loading', () => {
     expect(warnings).toContainEqual(expect.stringContaining('background'));
   });
 
+  it('defaults the stall suspension safety ceiling to fifteen minutes', () => {
+    expect(readSubagentsConfig(tmp).stall_suspend_max_ms).toBe(900000);
+  });
+
+  it.each([
+    [-1, 900000],
+    [0, 900000],
+    [null, 900000],
+    ['bad', 900000],
+    ['Infinity', 900000],
+    [1234, 1234],
+    ['2345', 2345],
+    [3456.9, 3456],
+    [0.5, 1],
+  ])('normalizes stall suspension ceiling %j to %i like stall inactivity', (value, expected) => {
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ stall_suspend_max_ms: value }),
+    );
+    expect(readSubagentsConfig(tmp).stall_suspend_max_ms).toBe(expected);
+  });
+
+  it('cascades the stall suspension ceiling from global to project config', () => {
+    const agentDir = process.env.PI_CODING_AGENT_DIR!;
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, 'subagents.json'),
+      JSON.stringify({ stall_suspend_max_ms: 7000 }),
+    );
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ stall_timeout_ms: 1000 }),
+    );
+    expect(readSubagentsConfig(tmp).stall_suspend_max_ms).toBe(7000);
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ stall_suspend_max_ms: 8000 }),
+    );
+    expect(readSubagentsConfig(tmp).stall_suspend_max_ms).toBe(8000);
+    fs.writeFileSync(
+      path.join(tmp, '.pi', 'subagents.json'),
+      JSON.stringify({ stall_suspend_max_ms: -1 }),
+    );
+    expect(readSubagentsConfig(tmp).stall_suspend_max_ms).toBe(900000);
+  });
+
   it('falls back for invalid numeric config values', () => {
     fs.writeFileSync(
       path.join(tmp, '.pi', 'subagents.json'),

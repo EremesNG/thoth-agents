@@ -76,6 +76,7 @@ export type SubagentsConfig = {
   project_model_profiles?: SubagentModelProfiles;
   timeout_ms: number;
   stall_timeout_ms: number;
+  stall_suspend_max_ms?: number;
   max_concurrency: number;
   default_tools: string[];
   session_resources?: SubagentSessionResources;

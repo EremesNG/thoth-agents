@@ -304,7 +304,7 @@ Pi root guidance MUST use one direct subagent_run with explicit canonical agent 
 
 - **GIVEN** an active root using the adopted fork on Pi 0.99.0 or 1.0.2
 - **WHEN** it launches an LLM subagent, selects tools, or sends live input
-- **THEN** native delegation controls remain model-only, child callability respects the permitted registry, and reported message/terminal states retain their actual meanings without adding generic task responsibilities 
+- **THEN** native delegation controls remain model-only, child callability respects the permitted registry, and reported message/terminal states retain their actual meanings without adding generic task responsibilities
 
 ### Requirement: Expose routable role contracts
 
@@ -474,13 +474,13 @@ Explorer and Librarian MUST return facts with evidence, verification, risks and 
 
 ### Requirement: Own session-scoped Pi background shell jobs
 
-The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST on Windows stop every running job of the session, including in-flight watch commands, on any other session shutdown, subagent teardown or Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run Windows command jobs in PowerShell 7, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
+The vendored `@thoth-agents/pi-background-tasks` package MUST run local shell jobs owned by their session and, on Windows, inside Job Objects assigned before the job runs, MUST keep a session's running jobs across that session's same-process reload, MUST on Windows stop every running job of the session, including in-flight watch commands, on any other session shutdown, subagent teardown or Pi process exit including a crash, MUST on Windows terminate and verify a job's Job Object when its leader or watch command exits on its own before recording it terminal and never signal processes outside it, MUST run command jobs in the shell the caller declares (`bash` by default, resolved like Pi's bash tool; `powershell` preferring PowerShell 7 and on Windows falling back to Windows PowerShell 5.1; or `none` for direct argv), MUST fail without launching when the declared shell is unavailable and never substitute another shell, MUST disclose the available shells in its tool descriptions and the shell used in each result, and MAY handle POSIX jobs on a best-effort process-group basis with documented limits.
 
 #### Scenario: Own session-scoped Pi background shell jobs
 
-- **GIVEN** running background jobs in two Pi sessions and in a subagent, including a job whose leader exits leaving a grandchild
-- **WHEN** one root reloads, the subagent ends, the job leader exits, or the root quits or (on Windows) its process dies
-- **THEN** on Windows reloaded root jobs survive and deliver once, the subagent's and the exited leader's remaining processes stop, nothing of the quitting session survives, and the other session's jobs are untouched, while on POSIX the non-reload cleanup triggers attempt TERM, a bounded wait, KILL and ESRCH verification of each job's group, subject to the documented limits
+- **GIVEN** a Windows host with Git Bash and Windows PowerShell 5.1 but no PowerShell 7
+- **WHEN** the agent spawns a bash-syntax command with the default shell, then requests `shell:"powershell"`, then a host without bash receives a default-shell request
+- **THEN** the first runs in Git Bash inside a Job Object and reports bash, the second runs in Windows PowerShell 5.1 and reports it, and the third fails before launch naming the missing bash and the available PowerShell 
 
 ### Requirement: Reply in the user's language
 
@@ -530,4 +530,4 @@ The root thoth-agents package and every Pi package under pi-packages MUST declar
 
 - **GIVEN** the repository manifests and root lockfile
 - **WHEN** Pi SDK dependencies are inspected
-- **THEN** every Pi peer range is `>=0.99.0`, every Pi development dependency resolves to the single shared version, and every manifest requires Node 22.19 or newer 
+- **THEN** every Pi peer range is `>=0.99.0`, every Pi development dependency resolves to the single shared version, and every manifest requires Node 22.19 or newer

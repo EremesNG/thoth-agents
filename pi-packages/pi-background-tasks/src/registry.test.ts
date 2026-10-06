@@ -1,7 +1,57 @@
-import { rmSync, writeFileSync } from "node:fs";
-import { afterEach, describe, expect, it } from "vitest";
+import { readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { baseDir, ensureTaskDir, taskDir, getRegistryIoMetrics, listActiveMetasForOrigin, inspectMeta, listMetas, listMetasForOrigin, listTaskRecords, logPathFor, metaPathFor, readMeta, resetRegistryIoMetrics, writeMeta } from "./registry.js";
 import type { BackgroundTaskMeta } from "./types.js";
+
+vi.mock('node:fs', async original => {
+  const fs = await original<typeof import('node:fs')>();
+  return { ...fs, writeFileSync: vi.fn(fs.writeFileSync), renameSync: vi.fn(fs.renameSync) };
+});
+
+describe('atomic metadata writes', () => {
+  it('preserves the previous readable record when a write truncates then throws', async () => {
+    const meta = fixtureMeta('running', 'previous valid record');
+    writeMeta(meta);
+    const previous = readMeta(meta.id);
+    const fs = await vi.importActual<typeof import('node:fs')>('node:fs');
+    vi.mocked(writeFileSync).mockImplementationOnce((path, _data, options) => {
+      fs.writeFileSync(path, '{"id":', options);
+      throw new Error('partial metadata write');
+    });
+
+    expect(() => writeMeta({ ...meta, name: 'replacement' })).toThrow('partial metadata write');
+    expect(readMeta(meta.id)).toEqual(previous);
+    expect(readdirSync(taskDir(meta.id))).toEqual(['meta.json']);
+  });
+
+  it.each(['EPERM', 'EBUSY'])('retries a transient Windows %s replacement without removing the target', code => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    const meta = fixtureMeta('running', 'before replacement');
+    writeMeta(meta);
+    vi.mocked(renameSync).mockImplementationOnce(() => {
+      expect(readMeta(meta.id)?.name).toBe('before replacement');
+      throw Object.assign(new Error('replacement locked'), { code });
+    });
+
+    writeMeta({ ...meta, name: 'after replacement' });
+    expect(readMeta(meta.id)?.name).toBe('after replacement');
+    expect(readdirSync(taskDir(meta.id))).toEqual(['meta.json']);
+  });
+
+  it.each(['EIO', 'EPERM', 'EBUSY'])('preserves the last record and removes the temporary file after a persistent %s replacement failure', code => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    const meta = fixtureMeta('running', 'previous valid record');
+    writeMeta(meta);
+    const previous = readMeta(meta.id);
+    vi.mocked(renameSync).mockImplementation(() => {
+      throw Object.assign(new Error('replacement unavailable'), { code });
+    });
+
+    expect(() => writeMeta({ ...meta, name: 'replacement' })).toThrow('replacement unavailable');
+    expect(readMeta(meta.id)).toEqual(previous);
+    expect(readdirSync(taskDir(meta.id))).toEqual(['meta.json']);
+  });
+});
 
 describe("registry meta sweep cache", () => {
   it("isolates durable test metadata by Vitest worker pool", () => {
@@ -47,6 +97,9 @@ describe("registry meta sweep cache", () => {
 // (especially a corrupt one) changes their list payloads, so remove every one.
 const createdIds: string[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.mocked(writeFileSync).mockReset();
+  vi.mocked(renameSync).mockReset();
   for (const id of createdIds.splice(0)) rmSync(taskDir(id), { recursive: true, force: true });
 });
 
@@ -120,6 +173,21 @@ describe("session-owned registry index", () => {
     writeMeta({ ...meta, status: "succeeded", endedAt: Date.now() });
     expect(listActiveMetasForOrigin(origin)).toEqual([]);
     expect(listMetasForOrigin(origin).map((candidate) => candidate.id)).toEqual([meta.id]);
+  });
+});
+
+describe("legacy shell metadata reload", () => {
+  it.each(['win32', 'linux'] as const)('normalizes legacy values before reads and caches on %s', platform => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
+    try {
+      for (const [legacy, expected] of [[false, 'none'], [true, platform === 'win32' ? 'powershell' : 'bash'], [undefined, platform === 'win32' ? 'powershell' : 'bash'], ['bash', 'bash'], ['powershell', 'powershell'], ['none', 'none']] as const) {
+        const meta = fixtureMeta('succeeded', 'legacy shell');
+        ensureTaskDir(meta.id);
+        writeFileSync(metaPathFor(meta.id), JSON.stringify({ ...meta, shell: legacy }));
+        expect(readMeta(meta.id)?.shell).toBe(expected);
+        expect(listMetas().find(candidate => candidate.id === meta.id)?.shell).toBe(expected);
+      }
+    } finally { vi.restoreAllMocks(); }
   });
 });
 

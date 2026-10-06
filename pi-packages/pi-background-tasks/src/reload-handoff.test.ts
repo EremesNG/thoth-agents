@@ -42,7 +42,7 @@ async function until<T>(fn: () => T | undefined, timeoutMs = 10_000): Promise<T>
 describe("reload handoff", () => {
   it("a suspended instance records a later exit but leaves the callback to the resuming instance", async () => {
     const before = host();
-    const meta = spawnTask(before.pi, { shell: false, argv: [process.execPath, "-e", "setTimeout(() => console.log('done'), 500)"] }, process.cwd(), origin, () => undefined);
+    const meta = spawnTask(before.pi, { shell: "none" as const, argv: [process.execPath, "-e", "setTimeout(() => console.log('done'), 500)"] }, process.cwd(), origin, () => undefined);
     ids.push(meta.id);
     suspendScheduledWork();
     // A fresh module instance in the same process, as Pi's /reload loads one.

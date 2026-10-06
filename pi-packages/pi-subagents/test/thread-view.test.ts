@@ -1151,6 +1151,34 @@ describe('thread view and render', () => {
     expect(text).not.toContain('"scopes"');
   });
 
+  it.each([
+    ['pending', 'pending'],
+    ['running', 'running'],
+    ['partial', 'partial'],
+    ['completed', 'failed'],
+    ['failed', 'failed'],
+  ] as const)('renders an error result with %s status as %s in the tool fallback', (status, expectedState) => {
+    const text = renderText({
+      version: 1,
+      source: 'events',
+      items: [
+        {
+          type: 'tool',
+          name: 'custom_tool',
+          status,
+          result: {
+            content: [{ type: 'text', text: 'error output' }],
+            isError: true,
+          },
+        },
+      ],
+    });
+
+    expect(text).toContain(`custom_tool ${expectedState}`);
+    expect(text).toContain('error output');
+    if (expectedState !== 'failed') expect(text).not.toContain('failed');
+  });
+
   it('renders structured thread body rows with safe generic fallbacks', () => {
     const snapshot = {
       version: 1,

@@ -504,6 +504,64 @@ describe('subagent runner thread snapshots', () => {
     }
   });
 
+  it.each([
+    { type: 'compaction_start', reason: 'threshold' },
+    { type: 'auto_retry_start', attempt: 1, delayMs: 7000 },
+  ])('applies the configured safety ceiling to silent maintenance (%j)', async (event) => {
+    vi.useFakeTimers();
+    let subscriber: ((event: unknown) => void) | undefined;
+    let finishPrompt: () => void = () => {};
+    const session = {
+      subscribe: vi.fn((callback: (event: unknown) => void) => {
+        subscriber = callback;
+        return vi.fn();
+      }),
+      prompt: vi.fn(async () => {
+        subscriber?.(event);
+        await new Promise<void>((resolve) => {
+          finishPrompt = resolve;
+        });
+      }),
+      abort: vi.fn(async () => finishPrompt()),
+      messages: [
+        { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+      ],
+      dispose: vi.fn(async () => undefined),
+    };
+    // Avoid the fixture's nonexistent persistent path and its permission retries.
+    sessionManagerSpies.create.mockReturnValueOnce({ path: '' });
+    const outcome = runWithSession(session, '/workspace', {
+      config: {
+        ...config,
+        stall_timeout_ms: 1000,
+        stall_suspend_max_ms: 6000,
+      },
+    }).catch((error) => error);
+    try {
+      await vi.dynamicImportSettled();
+      expect(session.prompt).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(3500);
+      expect(session.abort).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(session.abort).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(session.abort).toHaveBeenCalledOnce();
+      expect((await outcome).error_metadata).toMatchObject({
+        category: 'stall_timeout',
+        details: {
+          stall_timeout_ms: '1000',
+          stall_suspend_max_ms: '6000',
+          stall_suspend_reason:
+            event.type === 'compaction_start' ? 'compaction' : 'auto_retry',
+        },
+      });
+    } finally {
+      finishPrompt();
+      await outcome;
+      vi.useRealTimers();
+    }
+  });
+
   it('records Pi retry and settled lifecycle events in transcript and status rows without incrementing attempt', async () => {
     let subscriber: ((event: unknown) => void) | undefined;
     const session = {

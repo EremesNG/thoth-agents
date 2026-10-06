@@ -15,17 +15,23 @@ Install/select this package explicitly in Pi settings, then restart Pi. Pi loads
 ```json
 {
   "name": "build",
-  "shell": false,
+  "shell": "none",
   "argv": ["node", "build.mjs"],
   "timeout_seconds": 1800
 }
 ```
 
-Pass this to `bg_task_spawn`. Prefer `shell:false` and `argv` for literal arguments: the executable runs directly, without a shell or argument rewriting. Commands should be long-running work, not short foreground checks.
+Pass this to `bg_task_spawn`. Prefer `shell:"none"` and `argv` for literal arguments: the executable runs directly, without shell parsing or MSYS argument rewriting. Commands should be long-running work, not short foreground checks.
 
-On Windows, command strings and watch commands use **PowerShell Core 7+** with `-NoProfile -NonInteractive` and UTF-16LE `-EncodedCommand` (UTF-8 stdout/stderr). Native-command exit codes and explicit `exit N` propagate. Write PowerShell syntax, not Bash syntax. Install PowerShell 7 or set `PI_BACKGROUND_TASKS_PWSH` to its `pwsh.exe` path. Discovery checks that explicit override, otherwise `where.exe pwsh.exe`, then `%ProgramFiles%\PowerShell\7\pwsh.exe` and `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`. Each discovered executable is validated as Core edition major 7+ and cached for that discovery configuration. An invalid override or missing compatible executable fails actionably; **there is no Git Bash fallback**. PowerShell 7 is also required for the hidden containment helper, including for argv jobs.
+### Declare the command shell
 
-On POSIX, command strings keep `/bin/bash`; `PI_BETTER_BACKGROUND_TASKS_SHELL` overrides the POSIX shell only.
+Spawn, watch, and the `bg_task` action wrapper accept **`shell: "bash" | "powershell" | "none"`**, default **`"bash"`**. New calls reject the old boolean form. Write the syntax of the shell you declare; commands are never translated or silently run in another shell. An unavailable requested shell fails before launch, naming the missing shell, available shells (including PowerShell edition/version), and how to rewrite the call.
+
+- **`bash`** resolves through Pi's public shell resolver and `shellPath` setting, with Pi's arguments (`-c`). Windows: `shellPath` → Git Bash under Program Files → `bash.exe` on PATH. POSIX: `shellPath` → `PI_BETTER_BACKGROUND_TASKS_SHELL` override → `/bin/bash` → PATH bash. Pi's `sh` fallback and System32/Sysnative WSL bash are rejected as bash unavailable. Bash command strings retain Pi's MSYS path/argument conversion behavior; use `none` for literal native argv. Git Bash reopens its log streams inside the shell so stdout/stderr are captured.
+- **`powershell`** prefers validated PowerShell Core 7+, then Windows PowerShell Desktop 5.1 on Windows; POSIX supports pwsh only. `PI_BACKGROUND_TASKS_PWSH` replaces pwsh discovery and may point to either edition; an unusable override still permits the Windows 5.1 candidate, never a different shell. Normal Windows discovery checks PATH pwsh, Program Files/PowerShell/7 and WindowsApps, then System32/WindowsPowerShell/v1.0/powershell.exe. Windows PowerShell **5.1 lacks `&&`/`||`**: use compatible PowerShell syntax. The encoded wrapper sets UTF-8 before parsing user commands inside `try`, suppresses progress, and propagates explicit `exit N` and native-command exit codes.
+- **`none`** runs `argv` directly. No command shell is required, but Windows containment still uses a validated PowerShell helper, preferring 7+ and accepting built-in 5.1. PowerShell 7 is not a prerequisite for Windows jobs of any shell.
+
+Tool descriptions and command/shell parameter docs disclose shells detected once at registration (paths, PowerShell edition/version and 5.1 limitations). Availability is revalidated at launch. Every spawn/watch result includes the actual shell label in text and `details.shell` (`kind`, `executable`, `label`, and PowerShell `edition`/`version`). Legacy records without launch details report those details as unknown. Reload normalizes legacy metadata: `false` → `none`, `true`/absent → `powershell` on Windows or `bash` on POSIX, preserving the shell the old job was written for.
 
 A watch repeatedly executes a command until `success_when`, `failure_when`, or timeout matches. Its first result is returned after at most 15 seconds. Watch timeout defaults to 900 seconds; `timeout_seconds:0` disables it. Spawned processes have no default timeout. Logs retain a bounded tail (4 MiB by default), and terminal artifacts are retained for seven days. List/status/log default to the current session; `all:true` explicitly opts into cross-session inspection.
 

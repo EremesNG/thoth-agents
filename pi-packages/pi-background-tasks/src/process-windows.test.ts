@@ -10,6 +10,11 @@ import {
   stopProcessGroup,
 } from "./process.js";
 
+vi.mock('@earendil-works/pi-coding-agent', () => ({
+  SettingsManager: { create: () => ({ getShellPath: () => undefined }) },
+  getShellConfig: (setting?: string) => ({ shell: setting || '/bin/bash', args: ['-c'] }),
+}));
+
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
@@ -48,7 +53,7 @@ afterEach(() => {
 
 describe("POSIX shell selection",()=>{
  it("keeps the existing explicit POSIX override",()=>{fakePlatform("linux");vi.stubEnv("PI_BETTER_BACKGROUND_TASKS_SHELL","/custom/bash");expect(resolveDefaultShell()).toBe("/custom/bash");});
- it("uses /bin/bash without consulting discovery on POSIX",()=>{fakePlatform("linux");vi.stubEnv("PI_BETTER_BACKGROUND_TASKS_SHELL","");expect(resolveDefaultShell()).toBe("/bin/bash");expect(mockExists).not.toHaveBeenCalled();});
+ it("uses Pi's /bin/bash resolution without PowerShell discovery on POSIX",()=>{fakePlatform("linux");vi.stubEnv("PI_BETTER_BACKGROUND_TASKS_SHELL","");expect(resolveDefaultShell()).toBe("/bin/bash");expect(mockExists).not.toHaveBeenCalled();});
 });
 describe("stopProcessGroup", () => {
   it.each(["SIGTERM", "SIGKILL"] as const)("refuses Windows PID cleanup (%s) without signalling any process", signal => {
@@ -80,13 +85,13 @@ describe("spawnCommand platform gating", () => {
       return fakeChild;
     });
 
-    spawnCommand({ shell: true, command: "echo hi" }, log, true);
+    spawnCommand({ shell: "bash" as const, command: "echo hi" }, log, true);
 
     const call = mockSpawn.mock.calls[0]!;
     expect(call[0]).toBe("/bin/bash");
     const args = call[1] as string[];
     const options = call[2] as { windowsHide: boolean; detached: boolean; stdio: unknown[] };
-    expect(args).toEqual(["-lc", "echo hi"]);
+    expect(args).toEqual(["-c", "echo hi"]);
     expect(options).toMatchObject({ windowsHide: true, detached: true });
     expect(options.stdio[0]).toBe("ignore");
     expect(readFileSync(log, "utf8")).toContain("stdout probe\nstderr probe\n");
@@ -98,7 +103,7 @@ describe("spawnCommand platform gating", () => {
     mockSpawn.mockImplementation(() => fakeChild);
     mockWrite.mockImplementationOnce(() => { throw new Error("marker write failed"); });
 
-    spawnCommand({ shell: true, command: "echo hi" }, log, true);
+    spawnCommand({ shell: "bash" as const, command: "echo hi" }, log, true);
 
     const fd = (mockSpawn.mock.calls.at(-1)?.[2] as { stdio: unknown[] }).stdio[1];
     expect(mockClose).toHaveBeenCalledWith(fd);

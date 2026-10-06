@@ -135,7 +135,7 @@ describe("#359 blind watch checks", () => {
   it("a pending-but-healthy check (clean STILL_RUNNING, no stderr) never triggers", async () => {
     const { pi } = host();
     const launch = await launchWatch(pi, {
-      shell: false, argv: [process.execPath, "-e", "console.log('STILL_RUNNING')"],
+      shell: "none" as const, argv: [process.execPath, "-e", "console.log('STILL_RUNNING')"],
       interval_seconds: 1, timeout_seconds: 0, success_when: SUCCESS, failure_when: FAILURE,
     }, process.cwd(), origin, () => origin);
     const id = taskId(launch);
@@ -217,7 +217,7 @@ describe("#359 blind watch checks", () => {
   it("reports a first check that is still running when the wait ends", async () => {
     const { pi } = host();
     const launch = await launchWatch(pi, {
-      shell: false, argv: [process.execPath, "-e", "setTimeout(() => console.log('TERMINAL_SUCCESS'), 5000)"],
+      shell: "none" as const, argv: [process.execPath, "-e", "setTimeout(() => console.log('TERMINAL_SUCCESS'), 5000)"],
       interval_seconds: 1, timeout_seconds: 0, success_when: SUCCESS,
     }, process.cwd(), origin, () => origin, 1_000);
     const id = taskId(launch);
@@ -232,7 +232,7 @@ describe("#359 blind watch checks", () => {
     const started = Date.now();
     setTimeout(() => controller.abort(), 200);
     const launch = await launchWatch(pi, {
-      shell: false, argv: [process.execPath, "-e", "setTimeout(() => console.log('TERMINAL_SUCCESS'), 5000)"],
+      shell: "none" as const, argv: [process.execPath, "-e", "setTimeout(() => console.log('TERMINAL_SUCCESS'), 5000)"],
       interval_seconds: 1, timeout_seconds: 0, success_when: SUCCESS,
     }, process.cwd(), origin, () => origin, 15_000, controller.signal);
     expect(Date.now() - started).toBeLessThan(3_000);
@@ -248,7 +248,7 @@ describe("#359 blind watch checks", () => {
     let launch: string;
     try {
       launch = await launchWatch(pi, {
-        shell: false, argv: [process.execPath, "-e", "setTimeout(() => console.log('TERMINAL_SUCCESS'), 5000)"],
+        shell: "none" as const, argv: [process.execPath, "-e", "setTimeout(() => console.log('TERMINAL_SUCCESS'), 5000)"],
         interval_seconds: 1, timeout_seconds: 0, success_when: SUCCESS,
       }, process.cwd(), origin, () => origin, 15_000);
     } finally {

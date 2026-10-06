@@ -24,7 +24,7 @@ afterEach(async () => {
 function faultInjectedTree() { return fixture = fakeJobHelper(940001); }
 
 async function launchProcess(host: ReturnType<typeof lifecycleHost>, timeoutSeconds = 0) {
-  const id = await host.spawn({ shell: false, argv: [process.execPath, "-e", "setInterval(() => {}, 10000)"], timeout_seconds: timeoutSeconds });
+  const id = await host.spawn({ shell: "none" as const, argv: [process.execPath, "-e", "setInterval(() => {}, 10000)"], timeout_seconds: timeoutSeconds });
   expect(spawn).toHaveBeenCalledWith(expect.any(String), expect.any(Array),
     expect.objectContaining({ windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }));
   await expect.poll(() => fixture.launchCount).toBe(1);
@@ -167,9 +167,14 @@ describe("ordinary process cleanup ownership after termination failure", () => {
     const { live, child } = faultInjectedTree();
     const before = lifecycleHost("failed-process-deadline"); hosts.push(before);
     await before.emit("session_start");
+    // Publish the intended leader exit during deadline cleanup, before the helper
+    // can emit its one close event with the fixture's default termination code 1.
+    fixture.onTerminate(() => {
+      fixture.onTerminate(() => {});
+      child.emit("close", 0, null);
+    });
     const id = await launchProcess(before, 0.05);
     await expect.poll(async () => !!(await before.status(id)).stopError).toBe(true);
-    child.emit("close", 0, null);
     await expect.poll(async () => (await before.status(id)).lastExitCode).toBe(0);
     expect(await before.status(id)).toMatchObject({ status: "running", lastExitCode: 0 });
     expect((await before.status(id)).endedAt).toBeUndefined();

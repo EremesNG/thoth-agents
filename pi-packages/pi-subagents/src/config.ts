@@ -31,6 +31,7 @@ export const DEFAULT_LIFECYCLE_PASSTHROUGH = [
 const DEFAULT_MAX_CONCURRENCY = 5;
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
 const DEFAULT_STALL_TIMEOUT_MS = 4 * 60 * 1000;
+export const DEFAULT_STALL_SUSPEND_MAX_MS = 15 * 60 * 1000;
 export const DEFAULT_ASK_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_BACKGROUND_HANDOFF_SHORTCUT = 'ctrl+h';
 const DEFAULT_HISTORY_PANEL_SHORTCUT = 'ctrl+,';
@@ -500,6 +501,10 @@ export function readSubagentsConfig(cwd: string): SubagentsConfig {
     stall_timeout_ms: positiveInteger(
       raw.stall_timeout_ms,
       DEFAULT_STALL_TIMEOUT_MS,
+    ),
+    stall_suspend_max_ms: positiveInteger(
+      raw.stall_suspend_max_ms,
+      DEFAULT_STALL_SUSPEND_MAX_MS,
     ),
     max_concurrency: positiveInteger(
       raw.max_concurrency,

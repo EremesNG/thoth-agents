@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { detectShells } from './shell.js';
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getBackgroundTasksNavigator } from "./navigator-provider.js";
 import {
@@ -56,13 +57,11 @@ const IntentFields = {
   expected_exit_codes: Type.Optional(Type.Unsafe<number[] | null>({ anyOf: [{ type: "array", items: { type: "integer", minimum: 0, maximum: 255 }, minItems: 1, maxItems: 16 }, { type: "null" }], description: "Optional distinct non-zero exit codes that are intentional for this command (e.g. [1] for a no-match probe). 0 is allowed and ignored: exit 0 is already success. Declared before launch; recorded as expected failures, not incidents needing action. Signals and timeouts are never expected." })),
 };
 
-const SHELL_GUIDANCE = "Commands use PowerShell Core 7+ on Windows and /bin/bash (or the configured shell) on POSIX. Use shell:false with argv for direct executable arguments.";
+const SHELL_GUIDANCE = 'Declare shell:"bash" (default, Pi bash syntax), shell:"powershell" (PowerShell syntax), or shell:"none" with argv for direct execution. An unavailable requested shell fails without fallback.';
 
 const CommandFields = {
   name: Type.Optional(Type.String({ description: "Human-readable task label." })),
-  command: Type.Optional(Type.String({ description: `Shell command to run. ${SHELL_GUIDANCE} Required unless shell:false with argv is used.` })),
-  argv: Type.Optional(Type.Array(Type.String(), { description: "Argument vector. Use with shell:false to avoid shell parsing." })),
-  shell: Type.Optional(Type.Boolean({ description: `Default true. ${SHELL_GUIDANCE}` })),
+  argv: Type.Optional(Type.Array(Type.String(), { description: 'Argument vector. Use with shell:"none" to avoid shell parsing.' })),
   cwd: Type.Optional(Type.String({ description: "Working directory. Defaults to the current pi cwd." })),
   env: Type.Optional(StringMap("Extra environment variables.")),
   max_log_bytes: Type.Optional(Type.Number({ description: "Maximum retained raw-log bytes. Default 4194304 (4 MiB). Older output is compacted while the task runs." })),
@@ -70,8 +69,6 @@ const CommandFields = {
   timeout_seconds: Type.Optional(Type.Number({ description: "Optional timeout in seconds. Command watchers default to 900 seconds when omitted; pass 0 to disable. Spawned processes have no default timeout." })),
   ...IntentFields,
 };
-
-const SpawnParams = Type.Object(CommandFields);
 
 const BlindChecksField = Type.Optional(Type.Integer({ minimum: 0, description: "Flag the watch as possibly blind after this many checks in a row exit 0, write stderr, and match neither success_when nor failure_when: one incident that needs action, with the latest stderr line. The watch keeps running; a check with no stderr or a matched condition recovers it. Default 3; 0 turns it off." }));
 
@@ -84,7 +81,7 @@ const WATCH_CHECK_GUIDANCE = "Waits up to 15s for the first check and returns it
   + "Map an unknown or unparseable state to failure (exit non-zero), not to pending. Prefer structured output, e.g. `--format=json | jq -er '.status'`, over fragile format strings. "
   + "A check that exits 0 but writes stderr without matching a condition for blind_checks (default 3) checks in a row is flagged as needing action; if that stderr is expected, redirect it (2>$null on PowerShell; 2>/dev/null on POSIX) or set blind_checks:0.";
 
-const WatchParams = Type.Object({
+const WatchSchema = Type.Object({
   ...CommandFields,
   interval_seconds: Type.Optional(Type.Number({ description: "Polling interval in seconds. Default 30." })),
   success_when: ConditionSchema,
@@ -126,7 +123,7 @@ const LogParams = Type.Object({
   ...CursorFields,
 });
 
-const ActionParams = Type.Object({
+const ActionSchema = Type.Object({
   action: Type.Union([
     Type.Literal("spawn"),
     Type.Literal("watch"),
@@ -172,6 +169,17 @@ const BACKGROUND_ORCHESTRATION_GUIDELINES = [
 ];
 
 export function registerTools(pi: ExtensionAPI): void {
+  const detection = detectShells();
+  const detected = [...detection.available.map(shell => shell.label), ...Object.keys(detection.unavailable).map(kind => `${kind} unavailable`)];
+  const shellGuidance = `${SHELL_GUIDANCE} Detected shells at registration: ${detected.join('; ')}. ${detection.available.some(shell => shell.edition === 'Desktop') ? 'Windows PowerShell 5.1 lacks &&/||; use PowerShell 5.1-compatible syntax.' : ''} Availability is revalidated at launch.`;
+  const fields = {
+    ...CommandFields,
+    command: Type.Optional(Type.String({ description: `Shell command to run. ${shellGuidance} Required unless shell:"none" with argv is used.` })),
+    shell: Type.Optional(Type.Union([Type.Literal('bash'), Type.Literal('powershell'), Type.Literal('none')], { default: 'bash', description: shellGuidance })),
+  };
+  const SpawnParams = Type.Object(fields);
+  const WatchParams = Type.Object({ ...WatchSchema.properties, ...fields });
+  const ActionParams = Type.Object({ ...ActionSchema.properties, ...fields });
   let activeSession: BackgroundTaskCallbackOrigin | undefined;
   const getActiveSession = () => activeSession;
 
@@ -197,14 +205,14 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_spawn",
     ...backgroundToolRenderers("bg_task_spawn"),
     label: "BG Spawn",
-    description: `Start a long-running background process and return immediately with its task id. Never wait or poll in the foreground. ${SHELL_GUIDANCE}`,
+    description: `Start a long-running background process and return immediately with its task id. Never wait or poll in the foreground. ${shellGuidance}`,
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: SpawnParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
-      const launched = reportLaunch(() => spawnTask(pi, params, ctx.cwd, activeSession, getActiveSession));
+      const launched = launchResult(spawnTask(pi, params, ctx.cwd, activeSession, getActiveSession));
       getBackgroundTasksNavigator(pi).refresh(ctx);
-      return text(launched);
+      return launched;
     },
   });
 
@@ -212,14 +220,14 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task_watch",
     ...backgroundToolRenderers("bg_task_watch"),
     label: "BG Watch",
-    description: `Poll a command in the background until success_when, failure_when, or timeout matches. Returns its task id once the first check finishes. ${WATCH_CHECK_GUIDANCE} ${SHELL_GUIDANCE} Default timeout 900 seconds; pass timeout_seconds:0 to disable.`,
+    description: `Poll a command in the background until success_when, failure_when, or timeout matches. Returns its task id once the first check finishes. ${WATCH_CHECK_GUIDANCE} ${shellGuidance} Default timeout 900 seconds; pass timeout_seconds:0 to disable.`,
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: WatchParams,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       activeSession = getCallbackOrigin(ctx);
-      const launched = await launchWatch(pi, params, ctx.cwd, activeSession, getActiveSession, FIRST_WATCH_CHECK_WAIT_MS, signal);
+      const launched = await launchWatchResult(pi, params, ctx.cwd, activeSession, getActiveSession, FIRST_WATCH_CHECK_WAIT_MS, signal);
       getBackgroundTasksNavigator(pi).refresh(ctx);
-      return text(launched);
+      return launched;
     },
   });
 
@@ -277,7 +285,7 @@ export function registerTools(pi: ExtensionAPI): void {
     name: "bg_task",
     ...backgroundToolRenderers("bg_task"),
     label: "BG Task",
-    description: SHELL_GUIDANCE + " Action wrapper for background tasks: spawn, watch, list, status, log, stop, or clear. Spawn returns immediately; do not poll in foreground. For action:watch: " + WATCH_CHECK_GUIDANCE + " For action:status, default compact output and use verbose:true only for full metadata. For action:log, default compact tail and use lines:0 to page retained raw bytes. Standalone tools and these wrappers share the same output assembler. List/status/log default to the current session; pass all:true to override. Stop and clear change only current-session tasks: clear dismisses every owned terminal task, or one task with id (all:true allows another session's task by id).",
+    description: shellGuidance + " Action wrapper for background tasks: spawn, watch, list, status, log, stop, or clear. Spawn returns immediately; do not poll in foreground. For action:watch: " + WATCH_CHECK_GUIDANCE + " For action:status, default compact output and use verbose:true only for full metadata. For action:log, default compact tail and use lines:0 to page retained raw bytes. Standalone tools and these wrappers share the same output assembler. List/status/log default to the current session; pass all:true to override. Stop and clear change only current-session tasks: clear dismisses every owned terminal task, or one task with id (all:true allows another session's task by id).",
     promptGuidelines: BACKGROUND_ORCHESTRATION_GUIDELINES,
     parameters: ActionParams,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -352,10 +360,21 @@ async function actionText(
   getActiveSession: () => BackgroundTaskCallbackOrigin | undefined,
   signal?: AbortSignal,
 ) {
+  if (params.action === 'spawn') {
+    const launched = launchResult(spawnTask(pi, params, ctx.cwd, callbackOrigin, getActiveSession));
+    getBackgroundTasksNavigator(pi).refresh(ctx);
+    return launched;
+  }
+  if (params.action === 'watch') {
+    if (!params.success_when) return text('Invalid parameters: watch requires success_when.');
+    const launched = await launchWatchResult(pi, params as unknown as WatchTaskParams, ctx.cwd, callbackOrigin, getActiveSession, FIRST_WATCH_CHECK_WAIT_MS, signal);
+    getBackgroundTasksNavigator(pi).refresh(ctx);
+    return launched;
+  }
   if (params.action === "log" && params.id) {
     return logText(String(params.id), logOptions(params, callbackOrigin));
   }
-  return text(await runAction(pi, params, ctx, callbackOrigin, getActiveSession, signal));
+  return text(await runAction(pi, params, ctx, callbackOrigin, getActiveSession));
 }
 
 async function runAction(
@@ -364,14 +383,8 @@ async function runAction(
   ctx: ExtensionContext,
   callbackOrigin: BackgroundTaskCallbackOrigin,
   getActiveSession: () => BackgroundTaskCallbackOrigin | undefined,
-  signal?: AbortSignal,
 ): Promise<string> {
   switch (params.action) {
-    case "spawn":
-      return withNavigatorRefresh(pi, ctx, reportLaunch(() => spawnTask(pi, params, ctx.cwd, callbackOrigin, getActiveSession)));
-    case "watch":
-      if (!params.success_when) return "Invalid parameters: watch requires success_when.";
-      return withNavigatorRefresh(pi, ctx, await launchWatch(pi, params as unknown as WatchTaskParams, ctx.cwd, callbackOrigin, getActiveSession, FIRST_WATCH_CHECK_WAIT_MS, signal));
     case "list":
       return formatList(listOptions(params, callbackOrigin));
     case "status":
@@ -390,15 +403,19 @@ async function runAction(
   }
 }
 
-function reportLaunch(launch: () => BackgroundTaskMeta): string {
-  return formatLaunch(launch());
+function launchResult(meta: BackgroundTaskMeta, firstCheck?: Parameters<typeof formatLaunch>[1]) {
+  return text(formatLaunch(meta, firstCheck), { shell: meta.shellUsed ?? { kind: meta.shell, label: `${meta.shell ?? 'unknown'} (launch details unknown)` } });
 }
 
 /**
  * Start a watch and wait, bounded by `waitMs`, for its first check, so the launch result
  * shows what the check really prints (#359). Local watches use this path.
  */
-export async function launchWatch(
+export async function launchWatch(...args: Parameters<typeof launchWatchResult>): Promise<string> {
+  return (await launchWatchResult(...args)).content[0]!.text;
+}
+
+async function launchWatchResult(
   pi: ExtensionAPI,
   params: WatchTaskParams,
   cwd: string,
@@ -406,13 +423,13 @@ export async function launchWatch(
   getActiveSession: () => BackgroundTaskCallbackOrigin | undefined,
   waitMs = FIRST_WATCH_CHECK_WAIT_MS,
   signal?: AbortSignal,
-): Promise<string> {
+) {
   const meta = startWatchTask(pi, params, cwd, callbackOrigin, getActiveSession);
   // Esc (the tool's abort signal) ends the wait at once; the watch itself keeps running.
   const outcome = await awaitFirstWatchCheck(meta.id, waitMs, signal);
   const latest = readMeta(meta.id) ?? meta;
-  if (outcome && !("pending" in outcome && isTerminalStatus(latest.status))) return formatLaunch(latest, outcome);
-  return formatLaunch(latest);
+  if (outcome && !("pending" in outcome && isTerminalStatus(latest.status))) return launchResult(latest, outcome);
+  return launchResult(latest);
 }
 
 function withNavigatorRefresh(pi: ExtensionAPI, ctx: ExtensionContext, result: string): string {

@@ -47,7 +47,7 @@ function makeCompletedTask(id: string, logLines: string[]): void {
     endedAt: 2,
     logPath: logPathFor(id),
     cwd: "/tmp",
-    shell: true,
+    shell: "bash" as const,
     spawnPid: process.pid,
     callbackOrigin: { cwd: "/tmp", sessionId: "s" },
   });

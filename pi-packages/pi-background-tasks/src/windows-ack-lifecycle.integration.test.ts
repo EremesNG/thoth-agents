@@ -30,10 +30,10 @@ describe.skipIf(process.platform!=='win32')('lost launch acknowledgment real lif
     let adopted:ReturnType<typeof lifecycleHost>|undefined;
     await root.emit('session_start');await child.emit('session_start');
     try {
-      const rootId=await root.spawn({shell:false,argv:[process.execPath,'-e','setInterval(()=>{},1000)']});
+      const rootId=await root.spawn({shell: "none" as const,argv:[process.execPath,'-e','setInterval(()=>{},1000)']});
       await expect.poll(()=>readMeta(rootId)?.pid,{timeout:10000}).toBeTruthy();
       const abort=new AbortController();abort.abort();
-      const params={shell:false,argv:[process.execPath,script],env:{BG_TEST_ACK:'1'},callback:false};
+      const params={shell: "none" as const,argv:[process.execPath,script],env:{BG_TEST_ACK:'1'},callback:false};
       const text=kind==='job'?await child.spawn(params):await child.execute('bg_task_watch',{...params,success_when:{type:'exit_code',equals:0},timeout_seconds:0},abort.signal);
       const id=text.match(/bg_[a-z0-9_]+/)![0];
       await expect.poll(()=>readMeta(id)?.error,{timeout:10000}).toMatch(/invalid protocol/);
@@ -71,7 +71,7 @@ describe.skipIf(process.platform!=='win32')('lost launch acknowledgment real lif
     const client=new PendingAckClient({testFaults:true,requestTimeoutMs:3000});global[helperKey]=client;
     const host=lifecycleHost('ack-pending-'+kind);await host.emit('session_start');
     try {
-      const params={shell:false,argv:[process.execPath,'-e','setInterval(()=>{},1000)'],callback:false};
+      const params={shell: "none" as const,argv:[process.execPath,'-e','setInterval(()=>{},1000)'],callback:false};
       const abort=new AbortController();abort.abort();
       const text=kind==='job'?await host.spawn(params):await host.execute('bg_task_watch',{...params,success_when:{type:'exit_code',equals:0},timeout_seconds:0},abort.signal);
       const id=text.match(/bg_[a-z0-9_]+/)![0];
@@ -85,7 +85,7 @@ describe.skipIf(process.platform!=='win32')('lost launch acknowledgment real lif
     const previous=global[helperKey];const client=new WindowsJobClient({testFaults:true,requestTimeoutMs:500});global[helperKey]=client;
     const dir=mkdtempSync(join(tmpdir(),'bg-ack-lifecycle-'));const host=lifecycleHost('ack-rejected-'+kind);await host.emit('session_start');
     try {
-      const params={shell:false,argv:[join(dir,'does-not-exist.exe')],callback:false};
+      const params={shell: "none" as const,argv:[join(dir,'does-not-exist.exe')],callback:false};
       const abort=new AbortController();abort.abort();
       const text=kind==='job'?await host.spawn(params):await host.execute('bg_task_watch',{...params,success_when:{type:'exit_code',equals:0},timeout_seconds:0},abort.signal);
       const id=text.match(/bg_[a-z0-9_]+/)![0];

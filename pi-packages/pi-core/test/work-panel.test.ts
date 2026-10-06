@@ -94,6 +94,38 @@ describe('work panel lifecycle', () => {
 });
 
 describe('work panel rendering', () => {
+  it.each([
+    false,
+    true,
+  ])('keeps a summary-only section informational without interaction cues (render kit: %s)', async (themed) => {
+    const session = uiSession();
+    if (themed) {
+      const token = registerRenderKit(createTestRenderKit(), {});
+      cleanups.push(() => withdrawRenderKit(token));
+    }
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('archive', 'Archive', 15),
+        summary: () => ({ completed: 7, total: 7 }),
+        listRows: () => [{ id: 'done', primary: '+7 done', summary: true }],
+      }),
+    );
+    cleanups.push(await ensureWorkPanel(session.ctx));
+
+    for (const key of [...Object.values(keys), 'x'])
+      expect(session.key(key)).toBeUndefined();
+    const expected = themed
+      ? ['Archive · 7/7 done', '  └─ +7 done']
+      : ['◆ Archive · 7/7 done', '  +7 done'];
+    expect(session.render()).toEqual(expected);
+    session.tui.terminal.rows = 4;
+    expect(session.render()).toEqual(expected);
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      undefined,
+    );
+  });
+
   it('renders native compact sections in priority order with explicit counters and no unfocused full hint', async () => {
     const session = uiSession();
     const agents = { ...provider(), summary: () => ({ running: 2 }) };
@@ -129,6 +161,37 @@ const keys = {
   escape: '\x1b',
 };
 describe('work panel input', () => {
+  it('offers interaction for a failed background item even when no active work is reported', async () => {
+    const session = uiSession();
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider('background-tasks', 'Background', 30),
+        visibleCount: () => 0,
+        listRows: () => [
+          { id: 'failed', primary: 'Failed task', status: 'failed' },
+        ],
+        armCloseLabel: () => 'dismiss',
+      }),
+    );
+    cleanups.push(await ensureWorkPanel(session.ctx));
+
+    expect(session.render()).toEqual([
+      '◆ Background · 1 items',
+      '  ✗ Failed task',
+      '← interact',
+    ]);
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      '← work · 1',
+    );
+    expect(session.key(keys.left)).toEqual({ consume: true });
+    expect(session.render()).toEqual([
+      '◆ Background · 1 items',
+      '› ✗ Failed task',
+      '↑↓ move · Enter open · x dismiss · Esc back',
+    ]);
+  });
+
   it('leaves history keys alone until left focuses, traverses sections with one cursor, confirms close and releases', async () => {
     const session = uiSession();
     const agents = provider();
@@ -532,10 +595,18 @@ describe('work panel updates and animation lifecycle', () => {
     );
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render().join('\n')).toContain('Transient');
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      '← work · 2',
+    );
     session.tui.requestRender.mockClear();
     vi.advanceTimersByTime(1000);
     expect(session.tui.requestRender).toHaveBeenCalledTimes(1);
     expect(session.render().join('\n')).not.toContain('Transient');
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      '← work · 1',
+    );
     expect(vi.getTimerCount()).toBe(0);
     session.key(keys.left);
     session.key('x');
@@ -680,10 +751,18 @@ describe('work panel fail-closed focus observation', () => {
     expect(
       session.render().some((line: string) => line.includes('Hidden')),
     ).toBe(false);
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      '← work · 1',
+    );
     session.key(keys.left);
     empty = true;
     notify();
     expect(session.render()).toEqual([]);
+    expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      undefined,
+    );
     for (const key of [...Object.values(keys), 'x'])
       expect(session.key(key)).toBeUndefined();
   });
@@ -937,6 +1016,10 @@ it('keeps all open items when space permits and a dim done summary outside caps,
   expect(lines.at(-2)).toBe('  +4 done');
   expect(lines.at(-1)).toBe('← interact');
   expect(roles).toContainEqual(['dim', '+4 done']);
+  expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+    'thoth-work-panel',
+    '← work · 3',
+  );
   session.key(keys.left);
   for (let i = 0; i < 5; i++) session.key(keys.down);
   expect(

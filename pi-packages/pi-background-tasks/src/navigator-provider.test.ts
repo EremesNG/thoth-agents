@@ -30,13 +30,13 @@ describe("Background Work panel provider", () => {
       expect(lines.at(-1)).toBe('← interact');
       expect(lines.join("\n")).toContain("bg_panel_running");
       expect(getBackgroundTasksNavigator(host.pi).provider.supportsLogTail).toBe(true);
-      expect(host.statuses.get("thoth-work-panel")).toBe("← work · 1");
+      expect(host.statuses.get("thoth-work-panel")).toBe("← work · 2");
       expect(host.panel.listenerCount()).toBe(1);
       expect(host.widgets.has("background-work-list")).toBe(false);
       expect(lines.join("\n")).not.toContain("work navigator");
       writeMeta({ ...metas[0]!, status: "succeeded", endedAt: Date.now() });
       expect(host.panel.render()[0]).toContain("Background · 0 running · 1 failed");
-      expect(host.statuses.get("thoth-work-panel")).toBeUndefined();
+      expect(host.statuses.get("thoth-work-panel")).toBe("← work · 2");
     } finally {
       await host.emit("session_shutdown", "reload");
       for (const meta of metas) rmSync(taskDir(meta.id), { recursive: true, force: true });
@@ -74,6 +74,7 @@ describe("Background Work panel provider", () => {
       expect(host.panel.render().join("\n")).toContain(meta.id);
       await vi.advanceTimersByTimeAsync(1);
       expect(host.panel.render()).toEqual([]);
+      expect(host.statuses.get("thoth-work-panel")).toBeUndefined();
       expect(readMeta(meta.id)?.status).toBe("failed");
       expect(readMeta(meta.id)?.dismissedAt).toBeUndefined();
     } finally {

@@ -1,5 +1,13 @@
-import { TODO_STATE_CHANNEL } from '@thoth-agents/pi-core';
-import { expect, it } from 'vitest';
+import {
+  ensureWorkPanel,
+  registerRenderKit,
+  registerWorkPanelProvider,
+  TODO_STATE_CHANNEL,
+  withdrawRenderKit,
+} from '@thoth-agents/pi-core';
+import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
+import { afterEach, expect, it } from 'vitest';
+import { uiSession } from '../pi-core/test/work-panel-fixture.js';
 import {
   clearActiveRenderSession,
   commitState,
@@ -10,6 +18,86 @@ import {
 import { createMockCtx, createMockPi } from './test/helpers.js';
 import { registerTodoTool } from './todo.js';
 import { createTodoWorkPanelProvider } from './todo-work-panel.js';
+
+const cleanups: Array<() => void> = [];
+afterEach(() => {
+  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+});
+
+it.each([
+  false,
+  true,
+])('hides an all-done task list with no widget lines (render kit: %s)', async (themed) => {
+  const session = uiSession();
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: Array.from({ length: 7 }, (_, index) => ({
+      id: index + 1,
+      subject: `Finished ${index + 1}`,
+      status: 'completed' as const,
+    })),
+    nextId: 8,
+  });
+  if (themed) {
+    const token = registerRenderKit(createTestRenderKit(), {});
+    cleanups.push(() => withdrawRenderKit(token));
+  }
+  const provider = createTodoWorkPanelProvider();
+  cleanups.push(registerWorkPanelProvider(session.ctx, provider));
+  cleanups.push(await ensureWorkPanel(session.ctx));
+
+  expect(session.render()).toEqual([]);
+  expect(provider.listRows(0)).toEqual([]);
+  expect(provider.visibleCount()).toBe(0);
+  expect(provider.summary()).toEqual({ completed: 7, total: 7 });
+  expect(session.key('\x1b[D')).toBeUndefined();
+  expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+    'thoth-work-panel',
+    undefined,
+  );
+});
+
+it('removes the Todos section and releases focus as soon as the last open task completes', async () => {
+  const session = uiSession();
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: [
+      { id: 1, subject: 'Last open task', status: 'in_progress' },
+      { id: 2, subject: 'Already finished', status: 'completed' },
+    ],
+    nextId: 3,
+  });
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, createTodoWorkPanelProvider()),
+  );
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  expect(session.render()).toEqual([
+    '◆ Todos · 1/2 done',
+    '  ◇ Last open task',
+    '  +1 done',
+    '← interact',
+  ]);
+  expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+    'thoth-work-panel',
+    '← work · 1',
+  );
+  expect(session.key('\x1b[D')).toEqual({ consume: true });
+
+  commitState('foreground', {
+    tasks: [
+      { id: 1, subject: 'Last open task', status: 'completed' },
+      { id: 2, subject: 'Already finished', status: 'completed' },
+    ],
+    nextId: 3,
+  });
+  expect(session.render()).toEqual([]);
+  expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+    'thoth-work-panel',
+    undefined,
+  );
+  for (const key of ['\x1b[D', '\x1b[A', '\x1b[B', '\r', 'x'])
+    expect(session.key(key)).toBeUndefined();
+});
 
 it('lists in-progress work with its active form before pending work and a trailing done count', () => {
   setActiveRenderSession('foreground');
@@ -201,7 +289,7 @@ it.each([
   expect(provider.visibleCount()).toBe(0);
 });
 
-it('keeps completed-only lists compact and excludes pending active forms', () => {
+it('hides completed-only lists and excludes pending active forms', () => {
   setActiveRenderSession('foreground');
   replaceState('foreground', {
     tasks: [
@@ -211,7 +299,7 @@ it('keeps completed-only lists compact and excludes pending active forms', () =>
     nextId: 3,
   });
   const provider = createTodoWorkPanelProvider();
-  expect(provider.listRows(0).map((row) => row.primary)).toEqual(['+2 done']);
+  expect(provider.listRows(0)).toEqual([]);
   expect(provider.summary()).toEqual({ completed: 2, total: 2 });
   replaceState('foreground', {
     tasks: [

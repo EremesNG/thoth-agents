@@ -271,6 +271,8 @@ isWorkPanelRootEditorInputActive(ctx: ExtensionContext): boolean | undefined;
 `armCloseLabel(row)` and `close(id)`. Optional methods are `summary`, `open`,
 `showSection`, `parentRow` and `onVisibleChanged`. Use priorities 10/20/30 for
 Agents/Todos/Background. Lists retain provider ordering and empty sections hide.
+`visibleCount()` is advisory; the host derives interaction cues and the footer
+count from selectable rows in shown sections, excluding summaries and expired rows.
 `summary()` returns counter text or `{ text?, running?, failed?, completed?, total? }`.
 Return an empty close label for items with no close action.
 
@@ -287,9 +289,9 @@ removes the host, not providers; extension owners unregister providers on unload
 Rows need `id` and `primary`, with optional name, status/tone, elapsed and legacy
 navigator metadata. `row.render(bodyWidth, now)` returns `{ text, extraRows? }`:
 truncate the task label before metrics, and put metrics in a continuation only
-when they cannot fit inline. Continuations are not selectable. `statusGlyph` may
-be a string or `(now) => string`. Set `refreshIntervalMs` to request ticks (minimum
-100ms); the host ticks only while that provider has running/in-progress rows.
+when they cannot fit inline. Continuations and `summary: true` rows are not
+selectable. `statusGlyph` may be a string or `(now) => string`.
+Set `refreshIntervalMs` to request ticks (minimum 100ms); the host ticks only while that provider has running/in-progress rows.
 Notify through `onVisibleChanged` for all state changes; transient `expiresAt`
 rows also request a one-shot expiry render. Timers stop on teardown.
 
@@ -302,10 +304,11 @@ may be omitted to preserve the selected item's metrics. There are no blank
 separator rows. Render-kit discovery happens on every render, with unframed
 native output when absent.
 
-The panel's bottom-left hint row shows dim `← interact` when unfocused and
-selection-aware controls when focused; the footer also shows `← work · N`.
-Left focuses only on a truly empty root editor; unfocused up/down retain Pi's
-history behavior. Focused: up/down move across sections, Enter opens, x (only for
+The panel's bottom-left hint row appears only when a selectable row exists across
+its shown sections: dim `← interact` when unfocused and selection-aware controls
+when focused. The footer shows `← work · N`, counting only selectable rows.
+Left focuses only with selectable rows and a truly empty root editor; otherwise
+it passes through. Unfocused up/down retain Pi's history behavior. Focused: up/down move across sections, Enter opens, x (only for
 closable items) requires two presses within 3 seconds, Esc/right release. Editor
 identity, focused component and overlay guards fail closed. Providers with a custom
 `open` (such as subagents) show their own UI instead of the generic detail card.

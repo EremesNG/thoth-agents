@@ -33,14 +33,6 @@ of the module toggles below.
   styling and a live elapsed footer. Images keep Pi's native rendering.
   Tool renderers require Pi `>=1.0.1`; they are runtime-guarded and inert on
   older supported Pi versions.
-- **Inline images**: image content from `read` is preserved for Pi's native
-  inline rendering. In Orca (including Windows), outside tmux and without an
-  explicit `PI_IMAGE_PROTOCOL`, the package selects Kitty when Pi has not already
-  detected an image protocol. The fallback is applied at session startup and
-  before each agent loop, restoring it after `/reload`. Explicit protocols and
-  existing capabilities are respected; unsupported terminals keep Pi's native
-  text fallback. Pi's image-display settings still apply. Disabling this module
-  skips the Orca fallback, not Pi's native image support.
 - **Welcome**: a header with the Thoth logo, Pi version, loaded resources and
   tool providers, and recent sessions. Resource and session details load
   best-effort through public APIs.
@@ -76,7 +68,6 @@ Edit `~/.pi/agent/pi-thoth-theme.json` (or
     "enabled": true,
     "respectPackages": ["thoth-agents", "@thoth-agents/*", "thoth-mem"]
   },
-  "images": { "enabled": true },
   "welcome": { "enabled": true }
 }
 ```
@@ -112,21 +103,6 @@ package configuration.
 
 **A Nerd Font is required for the default icons.** Configure your terminal to
 use one, or set `"icons": "ascii"` for plain-text alternatives.
-
-### Fullscreen images in Orca
-
-Pi disables iTerm2 images in fullscreen by design. Setting
-`terminal.images: "iterm2"` in `~/.pi/agent/settings.json` or setting the
-environment variable `PI_IMAGE_PROTOCOL=iterm2` therefore yields no images
-in fullscreen. Remove the `terminal.images` entry, leave `PI_IMAGE_PROTOCOL`
-unset and restart Pi so this package's Orca Kitty fallback can apply. Keep the
-package's `images` module enabled.
-
-Pi's `terminal.showImages` setting must also be `true` (the default). The Orca
-fallback deliberately excludes tmux: it does not apply when `TMUX` is set.
-
-To verify, run Pi fullscreen in Orca outside tmux and ask `read` to open a PNG
-and a JPEG. Both should appear below the tool's framed text.
 
 ## Attribution
 

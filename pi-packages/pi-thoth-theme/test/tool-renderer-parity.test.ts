@@ -65,7 +65,6 @@ async function loadTheme(tools: ToolInfo[] = [], respectPackages?: string[]) {
       tools: { enabled: true, respectPackages },
       statusLine: { enabled: false },
       welcome: { enabled: false },
-      images: { enabled: false },
     }),
   );
   const handlers = new Map<string, Set<Handler>>();

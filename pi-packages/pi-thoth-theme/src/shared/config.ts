@@ -19,7 +19,6 @@ export interface ThemeConfig {
   /** Omission enables the input box, preserving the legacy config shape. */
   inputBox?: { enabled: boolean };
   tools: { enabled: boolean; respectPackages?: string[] };
-  images: { enabled: boolean };
   welcome: { enabled: boolean };
 }
 
@@ -82,7 +81,6 @@ export function loadConfig(
       enabled: moduleEnabled(config.tools),
       respectPackages: parseRespectPackages(config.tools),
     },
-    images: { enabled: moduleEnabled(config.images) },
     welcome: { enabled: moduleEnabled(config.welcome) },
   };
 }

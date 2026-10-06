@@ -2,52 +2,28 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
-  AgentStartEvent,
   ExtensionAPI,
   ExtensionContext,
   SessionStartEvent,
 } from '@earendil-works/pi-coding-agent';
-import {
-  getCapabilities,
-  resetCapabilitiesCache,
-  setCapabilityOverrides,
-} from '@earendil-works/pi-tui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import thothTheme from './index.ts';
 
 type LifecycleHandler = (
-  event: SessionStartEvent | AgentStartEvent,
+  event: SessionStartEvent,
   ctx: ExtensionContext,
 ) => void | Promise<void>;
-type ModuleName = 'statusLine' | 'inputBox' | 'tools' | 'welcome' | 'images';
+type ModuleName = 'statusLine' | 'inputBox' | 'tools' | 'welcome';
 
 let agentDir: string;
 
 beforeEach(() => {
   agentDir = mkdtempSync(join(tmpdir(), 'pi-thoth-theme-composition-'));
   vi.stubEnv('PI_CODING_AGENT_DIR', agentDir);
-  vi.stubEnv('TERM_PROGRAM', 'Orca');
-  vi.stubEnv('TERM', 'xterm-256color');
-  for (const key of [
-    'TMUX',
-    'PI_IMAGE_PROTOCOL',
-    'KITTY_WINDOW_ID',
-    'GHOSTTY_RESOURCES_DIR',
-    'WEZTERM_PANE',
-    'WARP_SESSION_ID',
-    'WARP_TERMINAL_SESSION_UUID',
-    'ITERM_SESSION_ID',
-  ]) {
-    vi.stubEnv(key, undefined);
-  }
-  setCapabilityOverrides({ trueColor: false, hyperlinks: true });
-  resetCapabilitiesCache();
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  setCapabilityOverrides({});
-  resetCapabilitiesCache();
   rmSync(agentDir, { recursive: true, force: true });
 });
 
@@ -112,12 +88,6 @@ function loadTheme(
         await handler({ type: 'session_start', reason: 'startup' }, ctx);
       }
     },
-    async startAgent() {
-      for (const { event, handler } of subscriptions) {
-        if (event === 'agent_start')
-          await handler({ type: 'agent_start' }, ctx);
-      }
-    },
   };
 }
 
@@ -155,8 +125,12 @@ describe('Thoth extension composition', () => {
     expect(session.ui.setHeader).not.toHaveBeenCalled();
     expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
 
+    expect(session.on).not.toHaveBeenCalledWith(
+      'agent_start',
+      expect.any(Function),
+    );
+
     await session.start();
-    await session.startAgent();
 
     expect(session.ui.setFooter).toHaveBeenCalledExactlyOnceWith(
       expect.any(Function),
@@ -164,7 +138,6 @@ describe('Thoth extension composition', () => {
     expect(session.ui.setHeader).toHaveBeenCalledExactlyOnceWith(
       expect.any(Function),
     );
-    expect(getCapabilities().images).toBe('kitty');
     expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
   });
 
@@ -183,7 +156,6 @@ describe('Thoth extension composition', () => {
       resolverCount: 1,
       footerCount: 0,
       headerCount: 1,
-      protocol: 'kitty',
       transformerCount: 0,
     },
     {
@@ -191,7 +163,6 @@ describe('Thoth extension composition', () => {
       resolverCount: 0,
       footerCount: 1,
       headerCount: 1,
-      protocol: 'kitty',
       transformerCount: 0,
     },
     {
@@ -199,15 +170,6 @@ describe('Thoth extension composition', () => {
       resolverCount: 1,
       footerCount: 1,
       headerCount: 0,
-      protocol: 'kitty',
-      transformerCount: 0,
-    },
-    {
-      disabled: 'images',
-      resolverCount: 1,
-      footerCount: 1,
-      headerCount: 1,
-      protocol: null,
       transformerCount: 0,
     },
   ] as const)('leaves native $disabled behavior while retaining other defaults', async ({
@@ -215,13 +177,11 @@ describe('Thoth extension composition', () => {
     resolverCount,
     footerCount,
     headerCount,
-    protocol,
     transformerCount,
   }) => {
     const session = loadTheme({ [disabled]: { enabled: false } });
 
     await session.start();
-    await session.startAgent();
 
     expect(session.registerTool).not.toHaveBeenCalled();
     expect(session.registerToolRenderer).toHaveBeenCalledTimes(resolverCount);
@@ -230,7 +190,6 @@ describe('Thoth extension composition', () => {
     );
     expect(session.ui.setFooter).toHaveBeenCalledTimes(footerCount);
     expect(session.ui.setHeader).toHaveBeenCalledTimes(headerCount);
-    expect(getCapabilities().images).toBe(protocol);
     expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
   });
 
@@ -240,11 +199,9 @@ describe('Thoth extension composition', () => {
       inputBox: { enabled: false },
       tools: { enabled: false },
       welcome: { enabled: false },
-      images: { enabled: false },
     });
 
     await session.start();
-    await session.startAgent();
 
     expect(session.registerTool).not.toHaveBeenCalled();
     expect(session.registerToolRenderer).not.toHaveBeenCalled();
@@ -253,7 +210,6 @@ describe('Thoth extension composition', () => {
     expect(session.ui.setHeader).not.toHaveBeenCalled();
     expect(session.ui.setWorkingIndicator).not.toHaveBeenCalled();
     expect(session.ui.setWorkingMessage).not.toHaveBeenCalled();
-    expect(getCapabilities().images).toBeNull();
     expect(session.ui.setEditorComponent).not.toHaveBeenCalled();
   });
 });

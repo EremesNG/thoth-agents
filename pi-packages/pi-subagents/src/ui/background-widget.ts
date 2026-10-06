@@ -1,4 +1,8 @@
-import type { RenderKitTheme } from '@thoth-agents/pi-core';
+import type {
+  RenderKitTheme,
+  WorkPanelRowContent,
+  WorkPanelSegment,
+} from '@thoth-agents/pi-core';
 import {
   truncateToWidth,
   visibleWidth,
@@ -63,7 +67,7 @@ export function renderSubagentWorkRow(
   width: number,
   now: number,
   theme?: RenderKitTheme,
-): { text: string; extraRows?: string[] } {
+): WorkPanelRowContent {
   width = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0;
   if (!width) return { text: '' };
   const metrics = task.runtime_metrics;
@@ -96,17 +100,45 @@ export function renderSubagentWorkRow(
     const label = summary
       ? ` · ${truncateToWidth(summary, inlineIdentityWidth - visibleWidth(agent) - 3, '…')}`
       : '';
-    return { text: `${agent}${label}${warningSuffix} · ${metricText}` };
+    return {
+      text: `${agent}${label}${warningSuffix} · ${metricText}`,
+      segments: [
+        { text: agent, role: 'primary' },
+        { text: label, role: 'secondary' },
+        ...(warningText
+          ? [{ text: ` · ${warningText}`, role: 'warning' as const }]
+          : []),
+        { text: ` · ${metricText}`, role: 'meta' },
+      ],
+    };
   }
   const identity = `${agent}${summary ? ` · ${summary}` : ''}`;
   const identityWidth = width - visibleWidth(warningSuffix);
+  const visibleIdentity = truncateToWidth(identity, identityWidth, '…');
+  const visibleAgent = truncateToWidth(agent, identityWidth, '…');
+  const segments: WorkPanelSegment[] =
+    warning && identityWidth <= 0
+      ? [{ text: truncateToWidth(warningText, width, ''), role: 'warning' }]
+      : [
+          { text: visibleAgent, role: 'primary' },
+          {
+            text: visibleIdentity.slice(visibleAgent.length),
+            role: 'secondary',
+          },
+          ...(warningText
+            ? [{ text: ` · ${warningText}`, role: 'warning' as const }]
+            : []),
+        ];
+  const extraRows = metricLines(parts, width).flatMap((line) =>
+    wrapLineToWidth(line, width),
+  );
   return {
     text:
       warning && identityWidth <= 0
         ? truncateToWidth(warning, width, '')
-        : `${truncateToWidth(identity, identityWidth, '…')}${warningSuffix}`,
-    extraRows: metricLines(parts, width).flatMap((line) =>
-      wrapLineToWidth(line, width),
-    ),
+        : `${visibleIdentity}${warningSuffix}`,
+    segments,
+    extraRows,
+    extraSegments: extraRows.map((text) => [{ text, role: 'meta' }]),
   };
 }

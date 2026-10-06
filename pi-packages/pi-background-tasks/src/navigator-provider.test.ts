@@ -109,3 +109,30 @@ describe("Background Work panel provider", () => {
     }
   });
 });
+
+
+it('shows provider status and timing instead of commands with semantic name, status and elapsed roles', async () => {
+  const host = lifecycleHost('panel-status-hierarchy', true);
+  const now = Date.now();
+  const watch = task(host, 'bg_panel_watch_status', 'running');
+  writeMeta({ ...watch, name: 'watch tests', kind: 'command_watch', intervalMs: 20_000, deadlineAt: now + 587_000 });
+  const failed = task(host, 'bg_panel_failed_status', 'failed');
+  writeMeta({ ...failed, name: 'failed build', result: { reason: 'result' } });
+  const styled: Array<[string, string]> = [];
+  host.panel.ui.theme.fg = (role, text) => { styled.push([role, text]); return text; };
+  try {
+    await host.emit('session_start');
+    const text = host.panel.render().join('\n');
+    expect(text).toContain('every 20s');
+    expect(text).toMatch(/9m (46|47)s left/);
+    expect(text).toContain('result');
+    expect(text).not.toContain('pnpm build');
+    expect(styled).toContainEqual(['toolTitle', 'watch tests']);
+    expect(styled.some(([role, value]) => role === 'text' && value.includes('every 20s'))).toBe(true);
+    expect(styled.some(([role, value]) => role === 'dim' && value.includes('1s'))).toBe(true);
+    expect(styled).toContainEqual(['error', '1 failed']);
+  } finally {
+    await host.emit('session_shutdown', 'reload');
+    for (const meta of [watch, failed]) rmSync(taskDir(meta.id), { recursive: true, force: true });
+  }
+});

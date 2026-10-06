@@ -14,7 +14,10 @@ it('keeps the public entry importable and uses native output without optional ru
   const unregister = registerWorkPanelProvider(session.ctx, provider());
   const release = await ensureWorkPanel(session.ctx);
   try {
-    expect(session.render()).toEqual(['◆ Agents · 1 items', '  ◐ Agents item']);
+    expect(session.render()).toEqual([
+      '◆ Agents · 1 items'.padEnd(90) + '← interact',
+      '  ◐ Agents item',
+    ]);
     expect(session.key('\x1b[D')).toEqual({ consume: true });
     expect(session.key('\x1b')).toEqual({ consume: true });
   } finally {

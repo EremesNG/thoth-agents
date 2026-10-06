@@ -226,3 +226,38 @@ it('keeps completed-only lists compact and excludes pending active forms', () =>
   expect(provider.listRows(0).map((row) => row.primary)).toEqual(['Pending']);
   expect(provider.detail('1', 0)?.evidence.text).toBe('(No description)');
 });
+
+it('publishes distinct todo glyphs and semantic subject, active-form and done-summary hierarchy', () => {
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: [
+      {
+        id: 1,
+        subject: 'Verify',
+        status: 'in_progress',
+        activeForm: 'Verifying',
+      },
+      { id: 2, subject: 'Archive', status: 'pending' },
+      { id: 3, subject: 'Finished', status: 'completed' },
+    ],
+    nextId: 4,
+  });
+  const rows = createTodoWorkPanelProvider().listRows(0);
+  expect(rows[0]).toMatchObject({
+    statusGlyph: '◇',
+    statusGlyphRole: 'accent',
+    segments: [
+      { text: 'Verify', role: 'primary' },
+      { text: ' (Verifying)', role: 'secondary' },
+    ],
+  });
+  expect(rows[1]).toMatchObject({
+    statusGlyph: '○',
+    statusGlyphRole: 'secondary',
+    segments: [{ text: 'Archive', role: 'primary' }],
+  });
+  expect(rows[2]).toMatchObject({
+    summary: true,
+    segments: [{ text: '+1 done', role: 'dim' }],
+  });
+});

@@ -55,6 +55,7 @@ export function workPanelSession(cwd: string, sessionId = 'work-session') {
     ),
   };
   return {
+    theme,
     ctx: {
       cwd,
       hasUI: true,

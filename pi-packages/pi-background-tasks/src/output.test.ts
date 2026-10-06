@@ -986,14 +986,14 @@ describe("status cursor delegation (#323)", () => {
 });
 
 describe("#332 navigator rows", () => {
-  it("history-only failures keep the command in the row; an actionable incident still leads it", async () => {
+  it("history-only failures keep normal provider status in the row and commands in detail; actionable incidents lead status", async () => {
     const navigator = getBackgroundTasksNavigator({} as any);
     await navigator.ensure({ cwd: origin.cwd, hasUI: false, sessionManager: { getSessionId: () => origin.sessionId } } as any);
     const provider = navigator.provider;
     const quiet = fixture({ status: "running", endedAt: undefined, command: "rg needle src" });
     recordFailure(quiet, "exit", "exited with declared expected code 1", "q1", { expected: true });
     let row = provider.listRows(Date.now()).find((x: any) => x.id === quiet.id);
-    expect(row!.primary).toBe("rg needle src");
+    expect(row!.primary).toBe("stalled");
     expect(row!.facts!.join("\n")).not.toMatch(/Expected failure|No failures need action/);
     expect(provider.detail(quiet.id, Date.now())!.subtitle).toBe("rg needle src");
     const loud = fixture({ status: "running", endedAt: undefined, command: "npm test" });

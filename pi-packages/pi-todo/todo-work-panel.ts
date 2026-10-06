@@ -26,20 +26,34 @@ export function createTodoWorkPanelProvider() {
     listRows(_now: number): WorkPanelRow[] {
       const groups = selectTasksByStatus(getRenderState());
       const open = [...groups.inProgress, ...groups.pending];
-      const rows: WorkPanelRow[] = open.map((task) => ({
-        id: String(task.id),
-        primary:
-          sanitizeTerminalText(task.subject) +
-          (task.status === 'in_progress' && task.activeForm
+      const rows: WorkPanelRow[] = open.map((task) => {
+        const subject = sanitizeTerminalText(task.subject);
+        const activeForm =
+          task.status === 'in_progress' && task.activeForm
             ? ` (${sanitizeTerminalText(task.activeForm)})`
-            : ''),
-        status: task.status,
-      }));
+            : '';
+        return {
+          id: String(task.id),
+          primary: subject + activeForm,
+          status: task.status,
+          statusGlyph: task.status === 'in_progress' ? '◇' : '○',
+          statusGlyphRole:
+            task.status === 'in_progress' ? 'accent' : 'secondary',
+          segments: [
+            { text: subject, role: 'primary' },
+            ...(activeForm
+              ? [{ text: activeForm, role: 'secondary' as const }]
+              : []),
+          ],
+        };
+      });
       const completed = groups.completed.length;
       if (completed)
         rows.push({
           id: 'done',
           primary: `+${completed} done`,
+          segments: [{ text: `+${completed} done`, role: 'dim' }],
+          summary: true,
           status: 'completed',
         });
       return rows;

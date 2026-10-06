@@ -60,6 +60,8 @@ export type {
   WorkPanelProvider,
   WorkPanelRow,
   WorkPanelRowContent,
+  WorkPanelSegment,
+  WorkPanelSegmentRole,
   WorkPanelStatusTone,
   WorkPanelSummary,
 } from './work-panel.js';

@@ -14,9 +14,30 @@ export type WorkPanelStatusTone =
   | 'warning'
   | 'muted';
 
+/** Semantic hierarchy resolved by the host against the current theme. */
+export type WorkPanelSegmentRole =
+  | 'primary'
+  | 'secondary'
+  | 'meta'
+  | 'dim'
+  | 'accent'
+  | 'warning'
+  | 'error'
+  | 'success'
+  | 'muted';
+
+export interface WorkPanelSegment {
+  text: string;
+  role: WorkPanelSegmentRole;
+}
+
 /** Provider-owned formatting gets the body width, excluding selection/tree/status gutters. */
 export interface WorkPanelRowContent {
   text: string;
+  /** Styled counterpart of text; separators belong to the segments. */
+  segments?: readonly WorkPanelSegment[];
+  /** Styled counterparts of extraRows, in the same order. */
+  extraSegments?: readonly (readonly WorkPanelSegment[])[];
   /** Narrow-width metrics or other continuations; never independently selectable. */
   extraRows?: readonly string[];
 }
@@ -24,10 +45,15 @@ export interface WorkPanelRowContent {
 export interface WorkPanelRow {
   id: string;
   primary: string;
+  segments?: readonly WorkPanelSegment[];
+  /** Nonselectable section summary; excluded from item caps and overflow counts. */
+  summary?: boolean;
   providerId?: string;
   name?: string;
   status?: string;
   statusTone?: WorkPanelStatusTone;
+  /** Override the state-derived color, e.g. pending Todos use normal text. */
+  statusGlyphRole?: WorkPanelSegmentRole;
   /** Overrides the host indicator, including producer-owned animated glyphs. */
   statusGlyph?: string | ((now: number) => string);
   render?: (width: number, now: number) => WorkPanelRowContent;
@@ -48,6 +74,7 @@ export interface WorkPanelRow {
 export interface WorkPanelSummary {
   /** Complete heading counter when the provider has domain-specific wording. */
   text?: string;
+  segments?: readonly WorkPanelSegment[];
   running?: number;
   failed?: number;
   completed?: number;
@@ -104,7 +131,7 @@ export interface WorkPanelProvider {
   onVisibleChanged?(notify: () => void): () => void;
   /** Host ticks only while this provider has running/in_progress rows (minimum 100ms). */
   refreshIntervalMs?: number;
-  /** Item cap, not counting a heading or '+N more'; defaults to 3. */
+  /** Preferred item cap; spare height shows more items. Summaries do not count. Default 3. */
   rowCap?: number;
 }
 

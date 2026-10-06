@@ -1,4 +1,5 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
+import { visibleWidth } from '@earendil-works/pi-tui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ensureWorkPanel,
@@ -93,7 +94,7 @@ describe('work panel lifecycle', () => {
 });
 
 describe('work panel rendering', () => {
-  it('renders native compact sections in priority order with explicit counters and no unfocused hint', async () => {
+  it('renders native compact sections in priority order with explicit counters and no unfocused full hint', async () => {
     const session = uiSession();
     const agents = { ...provider(), summary: () => ({ running: 2 }) };
     const todos = {
@@ -108,7 +109,7 @@ describe('work panel rendering', () => {
       cleanups.push(registerWorkPanelProvider(session.ctx, item));
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render()).toEqual([
-      '◆ Agents · 2 running',
+      entryHeading('◆ Agents · 2 running'),
       '  ◐ Agents item',
       '◆ Todos · 1/4 done',
       '  ◐ todos item',
@@ -117,6 +118,9 @@ describe('work panel rendering', () => {
     ]);
   });
 });
+
+const entryHeading = (text: string, width = 100) =>
+  text.padEnd(width - 10) + '← interact';
 
 const keys = {
   left: '\x1b[D',
@@ -371,7 +375,9 @@ describe('work panel compact budget', () => {
       lines.filter((line: string) => line.includes('+5 more')),
     ).toHaveLength(3);
     expect(lines.some((line: string) => !line.trim())).toBe(false);
-    expect(lines.every((line: string) => [...line].length <= width)).toBe(true);
+    expect(lines.every((line: string) => visibleWidth(line) <= width)).toBe(
+      true,
+    );
     session.key(keys.left);
     for (let i = 0; i < 13; i += 1) session.key(keys.down);
     const focused = session.render(width);
@@ -404,18 +410,12 @@ describe('work panel compact budget', () => {
     );
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render(80)).toEqual([
-      '◆ Agents · 4 items',
-      '  ⠋ Agent · task · 4 tools · 2k tok · 20%',
-      '  ⠋ Agent · task · 4 tools · 2k tok · 20%',
-      '  +2 more',
+      entryHeading('◆ Agents · 4 items', 80),
+      ...Array(4).fill('  ⠋ Agent · task · 4 tools · 2k tok · 20%'),
     ]);
     expect(session.render(24)).toEqual([
-      '◆ Agents · 4 items',
-      '  ⠋ Agent · task',
-      '    4 tools · 2k · 20%',
-      '  ⠋ Agent · task',
-      '    4 tools · 2k · 20%',
-      '  +2 more',
+      expect.stringMatching(/^◆ Agents.*← interact$/),
+      ...Array(4).fill(['  ⠋ Agent · task', '    4 tools · 2k · 20%']).flat(),
     ]);
   });
 });
@@ -431,7 +431,7 @@ describe('work panel render kit', () => {
     );
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render()).toEqual([
-      '◆ Agents · 1 running',
+      entryHeading('◆ Agents · 1 running'),
       '  ◐ Agents item',
     ]);
     const kit = createTestRenderKit();
@@ -445,7 +445,7 @@ describe('work panel render kit', () => {
     const token = registerRenderKit(themed, {});
     cleanups.push(() => withdrawRenderKit(token));
     expect(session.render()).toEqual([
-      '◆ Agents · 1 running',
+      entryHeading('Agents · 1 running'),
       '  └─ ◐ Agents item',
     ]);
     session.key(keys.left);
@@ -557,7 +557,7 @@ describe('work panel ownership edges', () => {
     const oldRelease = await ensureWorkPanel(session.ctx);
     cleanups.push(oldRelease);
     stale();
-    expect(session.render()[0]).toBe('◆ Agents · replacement');
+    expect(session.render()[0]).toBe(entryHeading('◆ Agents · replacement'));
     current();
     expect(session.listenerCount()).toBe(0);
     cleanups.push(registerWorkPanelProvider(session.ctx, provider()));
@@ -594,7 +594,10 @@ describe('work panel ownership edges', () => {
     });
     cleanups.push(broken, registerWorkPanelProvider(session.ctx, provider()));
     cleanups.push(await ensureWorkPanel(session.ctx));
-    expect(session.render()).toEqual(['◆ Agents · 1 items', '  ◐ Agents item']);
+    expect(session.render()).toEqual([
+      entryHeading('◆ Agents · 1 items'),
+      '  ◐ Agents item',
+    ]);
     broken();
     expect(session.listenerCount()).toBe(1);
   });
@@ -796,4 +799,235 @@ it('stops a running detail refresh when its last item disappears between overlay
   await Promise.resolve();
   expect(vi.getTimerCount()).toBe(0);
   expect(session.key(keys.up)).toBeUndefined();
+});
+
+describe('work panel semantic hierarchy', () => {
+  it('styles segments, overridden state glyphs and failure counters without coloring the whole row', async () => {
+    const session = uiSession();
+    const styled: Array<[string, string]> = [];
+    session.ui.theme.fg = (role, text) => {
+      styled.push([role, text]);
+      return text;
+    };
+    const token = registerRenderKit(
+      {
+        ...createTestRenderKit(),
+        fg: (theme, role, text) => theme.fg(role, text),
+        widgetHeading: (theme, options) =>
+          `▲ ${theme.fg('toolTitle', options.title)} ${theme.fg('dim', options.suffix ?? '')}`,
+      },
+      {},
+    );
+    cleanups.push(() => withdrawRenderKit(token));
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(),
+        summary: () => ({ running: 1, failed: 2 }),
+        listRows: () => [
+          {
+            id: 'one',
+            primary: 'fallback',
+            status: 'running',
+            statusGlyph: '⠋',
+            segments: [
+              { text: 'worker', role: 'primary' },
+              { text: ' · inspect', role: 'secondary' },
+              { text: ' · tools 5', role: 'meta' },
+              { text: ' · ⚠ 2 dropped', role: 'warning' },
+            ],
+          },
+        ],
+      }),
+    );
+    cleanups.push(await ensureWorkPanel(session.ctx));
+    const lines = session.render();
+    expect(lines[0]).toContain('▲ Agents');
+    expect(lines[0]).not.toContain('◆');
+    expect(lines[1]).toContain('⠋ worker · inspect · tools 5 · ⚠ 2 dropped');
+    expect(styled).toEqual(
+      expect.arrayContaining([
+        ['accent', '⠋'],
+        ['toolTitle', 'worker'],
+        ['text', ' · inspect'],
+        ['dim', ' · tools 5'],
+        ['warning', ' · ⚠ 2 dropped'],
+        ['error', '2 failed'],
+      ]),
+    );
+  });
+});
+
+it('shows a dim panel entry cue aligned on the first heading or suffixed at narrow widths, but only full hints when focused', async () => {
+  const session = uiSession();
+  const roles: Array<[string, string]> = [];
+  session.ui.theme.fg = (role, text) => {
+    roles.push([role, text]);
+    return text;
+  };
+  cleanups.push(registerWorkPanelProvider(session.ctx, provider()));
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  expect(session.render(80)[0]).toBe(
+    '◆ Agents · 1 items'.padEnd(70) + '← interact',
+  );
+  expect(session.render(24)[0]).toMatch(/^◆ Agents.* · ← interact$/);
+  expect(session.render(10)[0]).toBe('← interact');
+  expect(roles).toContainEqual(['dim', '← interact']);
+  expect(
+    session.render().filter((line: string) => line.includes('← interact')),
+  ).toHaveLength(1);
+  session.key(keys.left);
+  expect(session.render().join('\n')).not.toContain('← interact');
+  expect(session.render().at(-1)).toContain('↑↓ move · Enter open');
+});
+
+it('keeps all open items when space permits and a dim done summary outside caps, overflow and selection', async () => {
+  const session = uiSession();
+  const roles: Array<[string, string]> = [];
+  session.ui.theme.fg = (role, text) => {
+    roles.push([role, text]);
+    return text;
+  };
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider('todos', 'Todos', 20),
+      rowCap: 2,
+      listRows: () => [
+        ...Array.from({ length: 3 }, (_, index) => ({
+          id: `${index}`,
+          primary: `Open ${index}`,
+          status: 'pending',
+        })),
+        {
+          id: 'done',
+          primary: '+4 done',
+          summary: true,
+          segments: [{ text: '+4 done', role: 'dim' }],
+        },
+      ],
+    }),
+  );
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  const lines = session.render();
+  expect(lines.join('\n')).toContain('Open 2');
+  expect(lines.join('\n')).not.toContain('more');
+  expect(lines.at(-1)).toBe('  +4 done');
+  expect(roles).toContainEqual(['dim', '+4 done']);
+  session.key(keys.left);
+  for (let i = 0; i < 5; i++) session.key(keys.down);
+  expect(
+    session.render().filter((line: string) => line.startsWith('› ')),
+  ).toEqual(['› ○ Open 2']);
+  session.tui.terminal.rows = 10;
+  const compact = session.render();
+  expect(compact.join('\n')).toContain('+2 more');
+  expect(compact.join('\n')).not.toContain('+3 more');
+  expect(compact.join('\n')).toContain('+4 done');
+});
+
+it('truncates secondary labels before names and preserves metrics and dropped-tools warnings', async () => {
+  const session = uiSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider(),
+      listRows: () => [
+        {
+          id: 'one',
+          primary: 'fallback',
+          status: 'running',
+          segments: [
+            { text: 'worker', role: 'primary' },
+            {
+              text: ' · a long task label that must shrink first',
+              role: 'secondary',
+            },
+            { text: ' · tools 5', role: 'meta' },
+            { text: ' · ⚠ 2 dropped', role: 'warning' },
+          ],
+        },
+      ],
+    }),
+  );
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  const row = session.render(40)[1];
+  expect(row).toContain('worker');
+  expect(row).toContain('tools 5');
+  expect(row).toContain('⚠ 2 dropped');
+  expect(row).not.toContain('long task');
+  expect(visibleWidth(row)).toBeLessThanOrEqual(40);
+});
+
+it('shares spare height across three sections without hiding open Todos or their done summary', async () => {
+  const session = uiSession();
+  for (const [id, label, priority, count] of [
+    ['agents', 'Agents', 10, 2],
+    ['todos', 'Todos', 20, 3],
+    ['background', 'Background', 30, 2],
+  ] as const) {
+    cleanups.push(
+      registerWorkPanelProvider(session.ctx, {
+        ...provider(id, label, priority),
+        rowCap: 2,
+        listRows: () => [
+          ...Array.from({ length: count }, (_, i) => ({
+            id: `${i}`,
+            primary: `${label} ${i}`,
+            status: 'running',
+          })),
+          ...(id === 'todos'
+            ? [{ id: 'done', primary: '+4 done', summary: true }]
+            : []),
+        ],
+      }),
+    );
+  }
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  const lines = session.render();
+  expect(lines).toHaveLength(11);
+  expect(lines.join('\n')).toContain('Todos 2');
+  expect(lines.join('\n')).toContain('+4 done');
+  expect(lines.join('\n')).not.toContain('more');
+});
+
+it.each([
+  ['running', 'accent', '◐'],
+  ['failed', 'error', '✗'],
+  ['completed', 'success', '✓'],
+  ['cancelled', 'muted', '■'],
+  ['pending', 'text', '○'],
+])('uses the state color for native %s glyphs', async (status, role, glyph) => {
+  const session = uiSession();
+  const styles: Array<[string, string]> = [];
+  session.ui.theme.fg = (color, text) => {
+    styles.push([color, text]);
+    return text;
+  };
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider(),
+      listRows: () => [{ id: 'one', primary: 'Item', status }],
+    }),
+  );
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  session.render();
+  expect(styles).toContainEqual([role, glyph]);
+});
+
+it('keeps the selected item instead of an overflow counter when a tiny terminal only has room for one body row', async () => {
+  const session = uiSession();
+  session.tui.terminal.rows = 6;
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider(),
+      listRows: () => [
+        { id: 'first', primary: 'First', status: 'running' },
+        { id: 'second', primary: 'Second', status: 'running' },
+        { id: 'third', primary: 'Third', status: 'running' },
+      ],
+    }),
+  );
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  session.key(keys.left);
+  const lines = session.render();
+  expect(lines[1]).toBe('› ◐ First');
+  expect(lines).toHaveLength(3);
 });

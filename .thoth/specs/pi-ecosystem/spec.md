@@ -24,7 +24,7 @@ The Thoth Pi task-list package (published under the `@thoth-agents` scope as a f
 
 - **GIVEN** a session with open tasks in the task-list tool
 - **WHEN** the session is compacted and the agent starts again
-- **THEN** the list is reconstructed, the open tasks are present in the model context and the work-panel Todos section, and a fresh state snapshot is published on the pi-core task-list state channel 
+- **THEN** the list is reconstructed, the open tasks are present in the model context and the work-panel Todos section, and a fresh state snapshot is published on the pi-core task-list state channel
 
 ### Requirement: Thoth Pi render kit
 
@@ -98,13 +98,13 @@ The subagents thread viewer MUST resolve tool definitions from the tool definiti
 
 ### Requirement: Render kit result borders
 
-Themed tool and notification cards that render through the Thoth render kit or the theme's tool renderers and draw an error-colored border for failed results MUST draw the theme `success` color for affirmative terminal success, the theme `error` color wherever an error border is drawn today (including cancellation where it is red), except that the still-running shell/generic rule in the next sentence takes precedence over this error-color rule, and the theme `accent` color for every other non-error state, consistently across every part of the same card. A shell or generic tool card (bash, PowerShell, generic renderer) that is still running, even with partial output or a partial error flag, MUST show the running form of the standard tool status footer and the `accent` border until it finishes, and only completion changes its footer (to the terminal form of the standard tool status footer, whose summary carries the exit code for shells) and border; in the subagents thread viewer, tool items that are still running MUST be rendered as running, with or without a kit. Cards without a result-driven error border are unchanged.
+Themed tool and notification cards that render through the Thoth render kit or the theme tool renderers and draw an error-colored border for failed results MUST draw the theme `success` color for affirmative terminal success, the theme `error` color wherever an error border is drawn today (including cancellation where it is red), except that the still-running shell/generic rule in the next sentence takes precedence over this error-color rule, and the theme `accent` color for every other non-error state, consistently across every part of the same card. A shell or generic tool card (bash, PowerShell, generic renderer) that is still running, even with partial output or a partial error flag, MUST show the running form of the standard tool status footer and the `accent` border until it finishes, and only completion changes its footer (to the terminal form of the standard tool status footer, whose summary carries the exit code for shells) and border; in the subagents thread viewer, tool items that are still running MUST be rendered as running, with or without a kit. Cards without a result-driven error border are unchanged.
 
 #### Scenario: Render kit result borders
 
 - **GIVEN** a themed bash card that has already produced output
 - **WHEN** it is still running and then completes
-- **THEN** it shows the standard running footer and the accent border while running, and after completion the standard terminal footer with `✓` and the success border for exit code 0 or `✗` and the error border for a failure
+- **THEN** it shows the standard running footer and the accent border while running, and after completion the standard terminal footer with the completed status icon and the success border for exit code 0 or the failed status icon and the error border for a failure 
 
 ### Requirement: Claude bridge projects Pi prompt sections
 
@@ -128,13 +128,13 @@ Themed tool and notification cards that render through the Thoth render kit or t
 
 ### Requirement: Standard tool status footer
 
-`@thoth-agents/pi-core` MUST define a render-kit contract that produces the tool card status footer from a status and the tool render context, with a plain-text fallback when no kit is registered; `@thoth-agents/pi-thoth-theme` MUST implement it so that every running first-party tool card (theme built-ins and kit producers) shows the animated pyramid frame and elapsed time, and every finished tool card shows `✓` or `✗`, the elapsed time and the tool's optional summary.
+`@thoth-agents/pi-core` MUST define a render-kit contract that produces the tool card status footer from a status and the tool render context, with a plain-text fallback when no kit is registered; `@thoth-agents/pi-thoth-theme` MUST implement it so that every running first-party tool card (theme built-ins and kit producers) shows the theme working animation frame for the configured icon mode and elapsed time, and every finished tool card shows the theme completed or failed status icon for the configured icon mode, the elapsed time and the tool optional summary.
 
 #### Scenario: Standard tool status footer
 
-- **GIVEN** a themed read, bash or subagent tool card
+- **GIVEN** a themed read, bash or subagent tool card with Nerd icons
 - **WHEN** it is running and then finishes
-- **THEN** its footer shows `<pyramid frame> · <elapsed>` while running and `✓ · <elapsed>[ · summary]` or `✗ · <elapsed>[ · summary]` after finishing
+- **THEN** its footer shows `<pyramid frame> · <elapsed>` while running and `<completed icon> · <elapsed>[ · summary]` or `<failed icon> · <elapsed>[ · summary]` after finishing, and in ASCII mode the ASCII frame, separator and status icons 
 
 ### Requirement: Thoth Pi work panel
 
@@ -144,4 +144,14 @@ Themed tool and notification cards that render through the Thoth render kit or t
 
 - **GIVEN** subagents, todos and background tasks active in one Pi session
 - **WHEN** the user presses ← on an empty editor, moves with ↑↓ across sections, opens a task-list item's detail, moves with ↑↓, a question dialog then opens, and the user presses Esc
-- **THEN** one panel with one cursor traverses all items, the detail card keeps its size and stays in the Todos section, the card closes when the dialog opens so Esc acts on the dialog, and unfocused ↑ recalls prompt history 
+- **THEN** one panel with one cursor traverses all items, the detail card keeps its size and stays in the Todos section, the card closes when the dialog opens so Esc acts on the dialog, and unfocused ↑ recalls prompt history
+
+### Requirement: Render kit semantic icons
+
+`@thoth-agents/pi-core` MUST let a registered render kit optionally supply semantic icons (UI punctuation, navigation, motion frames and named icons) through an optional v1 lookup member that legacy v1 kits may omit, and first-party Pi packages MUST resolve those icons and their status glyphs for rendered UI through the registered kit when it provides them, keeping their current native glyphs when no compatible kit or member is available; model-facing text MUST NOT depend on the icon mode.
+
+#### Scenario: Render kit semantic icons
+
+- **GIVEN** the theme kit is registered with Nerd icons
+- **WHEN** a subagent, bridge, task-list or work-panel row renders a completed status
+- **THEN** it shows the theme completed icon, and without a registered kit it shows its current native glyph 

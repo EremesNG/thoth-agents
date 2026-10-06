@@ -43,6 +43,26 @@ describe("Background Work panel provider", () => {
     }
   });
 
+  it('shows the command once under its heading and omits unrecorded process fields', async () => {
+    const host = lifecycleHost('panel-detail-hierarchy', true);
+    const meta = task(host, 'bg_panel_detail_hierarchy', 'running');
+    try {
+      await host.emit('session_start');
+      const detail = getBackgroundTasksNavigator(host.pi).provider.detail(meta.id, Date.now())!;
+      expect(detail.subtitle).toBeUndefined();
+      expect(detail.metadata.map(field => field.label)).not.toContain('pid');
+      expect(detail.metadata.map(field => field.label)).not.toContain('pgid');
+      expect(detail.foldedSections).toEqual([expect.objectContaining({ label: 'Command', text: 'pnpm build' })]);
+      expect(detail.evidence.label).toBe('Log');
+      host.panel.key('\x1b[D');
+      host.panel.key('\r');
+      expect(host.panel.detailRender().join('\n').match(/pnpm build/g)).toHaveLength(1);
+    } finally {
+      await host.emit('session_shutdown', 'reload');
+      rmSync(taskDir(meta.id), { recursive: true, force: true });
+    }
+  });
+
   it("expires terminal rows at exactly 30 seconds without another tool call", async () => {
     const host = lifecycleHost("panel-expiry", true);
     await host.emit("session_start");

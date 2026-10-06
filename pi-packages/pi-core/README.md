@@ -301,15 +301,23 @@ may be omitted to preserve the selected item's metrics. There are no blank
 separator rows. Render-kit discovery happens on every render, with unframed
 native output when absent.
 
-Unfocused, the footer shows `← work · N`. Left focuses only on a truly empty root
-editor; up/down otherwise retain Pi's history behavior. Focused: up/down move,
-Enter opens, x requires two presses within 3 seconds, Esc/right release. Editor
+The panel's bottom-left hint row shows dim `← interact` when unfocused and
+selection-aware controls when focused; the footer also shows `← work · N`.
+Left focuses only on a truly empty root editor; unfocused up/down retain Pi's
+history behavior. Focused: up/down move across sections, Enter opens, x (only for
+closable items) requires two presses within 3 seconds, Esc/right release. Editor
 identity, focused component and overlay guards fail closed. The host suspends
 input before invoking `open(id, ctx)` and releases focus when it settles: **custom
 UI providers must return a promise that resolves only after their UI closes**.
-Without `open`, the host displays detail metadata, folded sections and evidence,
-with log-tail, navigation and close controls. SDK/TUI imports are lazy and optional;
-missing focus hooks disable interception instead of guessing.
+Without `open`, a centered, framed opaque detail card shows styled metadata,
+section headings and evidence. Its size is fixed for the largest item in the
+opened section, capped by the terminal; card up/down stays within that section
+and stops at its ends. Folding appears only for oversized content, log-tail `l`
+only when the provider supports it, and `x` only when the item is closable.
+The card auto-closes and releases panel focus when another overlay, custom UI,
+native dialog or replaced editor takes focus, leaving Esc to the new UI.
+SDK/TUI imports are lazy and optional; missing focus hooks disable interception
+instead of guessing.
 
 `isWorkPanelRootEditorInputActive(ctx)` is a read-only query of that session's
 editor-identity, focused-component, overlay and suspension guards. It installs

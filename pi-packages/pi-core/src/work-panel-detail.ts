@@ -1,4 +1,4 @@
-import type { Component } from '@earendil-works/pi-tui';
+import type { Component, Focusable } from '@earendil-works/pi-tui';
 import { getRenderKit, type RenderKitTheme } from './render-kit.js';
 import type { WorkPanelDetail } from './work-panel.js';
 import {
@@ -6,7 +6,35 @@ import {
   panelCloseLabel,
   safely,
   singleLine,
+  workPanelRenderStatus,
 } from './work-panel-render.js';
+
+const hasValue = (value: string | undefined) =>
+  value !== undefined && !['', '-', '–', '—'].includes(value.trim());
+
+function statusRole(
+  detail: WorkPanelDetail,
+): Parameters<RenderKitTheme['fg']>[0] {
+  if (detail.statusTone === 'muted') return 'muted';
+  switch (workPanelRenderStatus(detail)) {
+    case 'running':
+    case 'in_progress':
+      return 'accent';
+    case 'failed':
+      return 'error';
+    case 'completed':
+      return 'success';
+    case 'cancelled':
+    case 'interrupted':
+    case 'deleted':
+      return 'muted';
+    case 'blocked':
+    case 'stopping':
+      return 'warning';
+    default:
+      return 'text';
+  }
+}
 
 interface DetailOptions {
   rows(): PanelRow[];
@@ -15,9 +43,11 @@ interface DetailOptions {
   closeItem(entry: PanelRow): void;
   clearCloseArm(): void;
   done(): void;
+  onFocusLost(): void;
   requestRender(): void;
   theme: RenderKitTheme;
   height(): number;
+  width(): number;
   clip(text: string, width: number): string;
   wrap(text: string, width: number): string[];
   measure(text: string): number;
@@ -30,8 +60,10 @@ interface DetailOptions {
 /** The overlay owns its keys; the terminal listener is suspended for its entire lifetime. */
 export function createWorkPanelDetail(
   options: DetailOptions,
-): Component & { dispose(): void; dismiss(): void } {
+): Component &
+  Focusable & { readonly width: number; dispose(): void; dismiss(): void } {
   let closed = false;
+  let focused = false;
   let detailKey: string | undefined;
   let detail: WorkPanelDetail | null = null;
   let logTailLines = 25;
@@ -40,17 +72,11 @@ export function createWorkPanelDetail(
   let foldExpanded = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const EVIDENCE = '__evidence__';
-  function refreshDetail(): void {
-    const entry = options.selected();
-    if (!entry) {
-      dismiss();
-      return;
-    }
-    const next = safely(
+  function readDetail(entry: PanelRow): WorkPanelDetail {
+    const snapshot = safely(
       () => entry.provider.detail(entry.row.id, Date.now(), { logTailLines }),
       null,
-    );
-    detail = next ?? {
+    ) ?? {
       id: entry.row.id,
       title: entry.row.name ?? entry.row.id,
       subtitle: entry.row.primary,
@@ -61,6 +87,23 @@ export function createWorkPanelDetail(
         text: entry.row.secondary ?? '(no details)',
       },
     };
+    return {
+      ...snapshot,
+      status: hasValue(snapshot.status) ? snapshot.status : undefined,
+      subtitle: hasValue(snapshot.subtitle) ? snapshot.subtitle : undefined,
+      metadata: snapshot.metadata.filter((item) => hasValue(item.value)),
+      foldedSections: snapshot.foldedSections?.filter((section) =>
+        hasValue(section.text),
+      ),
+    };
+  }
+  function refreshDetail(): void {
+    const entry = options.selected();
+    if (!entry) {
+      dismiss();
+      return;
+    }
+    detail = readDetail(entry);
     if (detailKey !== entry.key) {
       detailKey = entry.key;
       expanded.clear();
@@ -96,52 +139,171 @@ export function createWorkPanelDetail(
     dispose();
     options.done();
   }
+  // Measure every item once at opening; live detail refreshes never resize the card.
+  const openingDetails = options
+    .rows()
+    .map((entry) => ({ entry, detail: readDetail(entry) }));
+  function hintFor(entry: PanelRow | undefined, foldable: boolean): string {
+    const close = panelCloseLabel(entry);
+    return [
+      '↑↓ move',
+      foldable ? 'Enter expand/collapse' : '',
+      close ? `x ${close}` : '',
+      entry?.provider.supportsLogTail ? 'l 10/25' : '',
+      'Esc back',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+  const plain: RenderKitTheme['fg'] = (_role, text) => text;
+  function fieldsFor(snapshot: WorkPanelDetail, fg = plain): string[] {
+    const field = (
+      label: string,
+      value: string,
+      role: Parameters<RenderKitTheme['fg']>[0] = 'text',
+    ) => fg('dim', `${singleLine(label)} · `) + fg(role, singleLine(value));
+    return [
+      ...(snapshot.status
+        ? [field('status', snapshot.status, statusRole(snapshot))]
+        : []),
+      ...(snapshot.subtitle ? [fg('text', singleLine(snapshot.subtitle))] : []),
+      ...snapshot.metadata.map((item) => field(item.label, item.value)),
+    ];
+  }
+  function blocksFor(
+    snapshot: WorkPanelDetail,
+    tail: boolean,
+    width: number,
+    fg = plain,
+  ) {
+    const empty = !snapshot.evidence.text.trim();
+    const evidence = options.wrap(
+      fg(
+        empty ? 'dim' : 'text',
+        empty
+          ? (snapshot.evidence.emptyText ?? '(no output yet)')
+          : snapshot.evidence.text,
+      ),
+      Math.max(1, width),
+    );
+    return [
+      ...(snapshot.foldedSections ?? []).map((section) => ({
+        id: section.id,
+        label: singleLine(section.label),
+        rows: options.wrap(fg('text', section.text), Math.max(1, width)),
+        preview: singleLine(
+          section.collapsedText ?? section.text.split(/\r?\n/)[0] ?? '',
+        ),
+        defaultExpanded: section.expandedByDefault ?? false,
+      })),
+      {
+        id: EVIDENCE,
+        label: singleLine(snapshot.evidence.label),
+        rows: tail ? evidence.slice(-logTailLines) : evidence,
+        preview: singleLine(snapshot.evidence.text.split(/\r?\n/)[0] ?? ''),
+        defaultExpanded: tail,
+      },
+    ];
+  }
+  const expandedBody = (
+    snapshot: WorkPanelDetail,
+    entry: PanelRow,
+    width: number,
+  ): string[] => [
+    ...fieldsFor(snapshot),
+    ...blocksFor(
+      snapshot,
+      entry.provider.supportsLogTail === true,
+      width,
+    ).flatMap((block) => [block.label, ...block.rows]),
+  ];
+  const widthCap = Math.max(0, Math.floor(options.width()));
+  const heightCap = Math.max(0, Math.floor(options.height()));
+  const openingWidth = Math.min(
+    widthCap,
+    Math.max(
+      4,
+      ...openingDetails.flatMap(({ entry, detail }) => [
+        options.measure(singleLine(detail.title)) + 5,
+        options.measure(
+          hintFor(
+            entry,
+            expandedBody(detail, entry, Math.max(1, widthCap - 4)).length >
+              heightCap - 3,
+          ),
+        ) + 4,
+        ...expandedBody(detail, entry, Number.MAX_SAFE_INTEGER).map(
+          (row) => options.measure(row) + 4,
+        ),
+      ]),
+    ),
+  );
+  const kitAtOpening = getRenderKit();
+  const openingHeight = Math.min(
+    heightCap,
+    Math.max(
+      2,
+      ...openingDetails.map(({ entry, detail }) => {
+        const body = (innerWidth: number) => [
+          ...expandedBody(detail, entry, innerWidth),
+          hintFor(entry, false),
+        ];
+        return kitAtOpening
+          ? kitAtOpening.card(
+              options.theme,
+              { title: singleLine(detail.title), body },
+              openingWidth,
+            ).length
+          : body(Math.max(1, openingWidth - 4)).length + 2;
+      }),
+    ),
+  );
   tick();
   return {
+    get width() {
+      return Math.min(openingWidth, options.width());
+    },
+    get focused() {
+      return focused;
+    },
+    set focused(value: boolean) {
+      const lostFocus = focused && !value;
+      focused = value;
+      // TUI is still updating its focus/overlay restore state inside this setter.
+      if (lostFocus && !closed)
+        void Promise.resolve().then(() => {
+          if (!closed) options.onFocusLost();
+        });
+    },
     render(width) {
       if (closed) return [];
       refreshDetail();
       if (!detail || closed) return [];
       width = Math.max(0, Math.floor(width));
       if (!width) return [];
-      const fg = options.theme.fg.bind(options.theme);
+      const kit = getRenderKit();
+      const fg: RenderKitTheme['fg'] = (role, text) =>
+        kit ? kit.fg(options.theme, role, text) : options.theme.fg(role, text);
+      const heading = (title: string) =>
+        fg(
+          'accent',
+          options.theme.bold?.(singleLine(title)) ?? singleLine(title),
+        );
       const snapshot = detail;
-      const budget = Math.max(0, Math.floor(options.height()));
+      const budget = Math.max(
+        0,
+        Math.min(openingHeight, Math.floor(options.height())),
+      );
       const body = (innerWidth: number): string[] => {
         foldTarget = undefined;
         if (budget < 3) return [];
         const detail = snapshot;
         innerWidth = Math.max(1, innerWidth);
-        const lines: string[] = [];
-        if (detail.status) lines.push(`status · ${singleLine(detail.status)}`);
-        if (detail.subtitle) lines.push(singleLine(detail.subtitle));
-        for (const item of detail.metadata)
-          lines.push(`${singleLine(item.label)} · ${singleLine(item.value)}`);
+        const lines = fieldsFor(detail, fg);
         const entry = options.selected();
         const tail = entry?.provider.supportsLogTail === true;
-        const evidenceText = detail.evidence.text.trim()
-          ? detail.evidence.text
-          : fg('dim', detail.evidence.emptyText ?? '(no output yet)');
-        const evidence = options.wrap(evidenceText, innerWidth);
-        const evidenceRows = tail ? evidence.slice(-logTailLines) : evidence;
-        const blocks = [
-          ...(detail.foldedSections ?? []).map((section) => ({
-            id: section.id,
-            label: singleLine(section.label),
-            rows: options.wrap(section.text, innerWidth),
-            preview: singleLine(
-              section.collapsedText ?? section.text.split(/\r?\n/)[0] ?? '',
-            ),
-            defaultExpanded: section.expandedByDefault ?? false,
-          })),
-          {
-            id: EVIDENCE,
-            label: singleLine(detail.evidence.label),
-            rows: evidenceRows,
-            preview: singleLine(detail.evidence.text.split(/\r?\n/)[0] ?? ''),
-            defaultExpanded: tail,
-          },
-        ];
+        const blocks = blocksFor(detail, tail, innerWidth, fg);
+        const evidenceRows = blocks.at(-1)?.rows ?? [];
         const available = Math.max(0, budget - 3);
         const metadataRows = lines.length;
         let evidenceCollapsed = false;
@@ -161,7 +323,7 @@ export function createWorkPanelDetail(
             foldTarget = block.id;
             foldExpanded = isExpanded;
           }
-          if (isExpanded) lines.push(block.label, ...block.rows);
+          if (isExpanded) lines.push(heading(block.label), ...block.rows);
           else {
             const previewWidth = Math.max(
               0,
@@ -170,23 +332,14 @@ export function createWorkPanelDetail(
                 options.measure(' ·  · folded'),
             );
             lines.push(
-              `${block.label} · ${options.clip(block.preview, previewWidth)}${fg('dim', ' · folded')}`,
+              `${heading(block.label)}${fg('dim', ' · ')}${fg('text', options.clip(block.preview, previewWidth))}${fg('dim', ' · folded')}`,
             );
             if (block.id === EVIDENCE) evidenceCollapsed = true;
           }
         }
         const headerRows =
           lines.length - (evidenceCollapsed ? 1 : evidenceRows.length + 1);
-        const label = panelCloseLabel(entry);
-        const hint = [
-          '↑↓ move',
-          foldTarget ? 'Enter expand/collapse' : '',
-          label ? `x ${label}` : '',
-          tail ? 'l 10/25' : '',
-          'Esc back',
-        ]
-          .filter(Boolean)
-          .join(' · ');
+        const hint = hintFor(entry, foldTarget !== undefined);
         let content = lines.slice(0, available);
         if (
           tail &&
@@ -199,11 +352,15 @@ export function createWorkPanelDetail(
           const tailCount = available - headCount;
           content = [
             ...lines.slice(0, headCount),
-            ...(tailCount > 1 ? [singleLine(detail.evidence.label)] : []),
+            ...(tailCount > 1 ? [heading(detail.evidence.label)] : []),
             ...evidenceRows.slice(-(tailCount > 1 ? tailCount - 1 : tailCount)),
           ];
         }
-        return [...content, fg('dim', hint)];
+        return [
+          ...content,
+          ...Array<string>(Math.max(0, available - content.length)).fill(''),
+          fg('dim', hint),
+        ];
       };
       const pad = (text: string, available: number) => {
         const clipped = options.clip(text, available);
@@ -212,7 +369,6 @@ export function createWorkPanelDetail(
           ' '.repeat(Math.max(0, available - options.measure(clipped)))
         );
       };
-      const kit = getRenderKit();
       if (kit)
         return kit
           .card(

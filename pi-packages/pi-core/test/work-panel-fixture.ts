@@ -1,10 +1,11 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: Pi boundary fixture also models missing hooks and foreign UIs.
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
+import type { TuiMainScreen } from '@earendil-works/pi-tui';
 import { vi } from 'vitest';
 import { WORK_PANEL_VERSION, type WorkPanelProvider } from '../src/index.js';
 
 // Pi is the system boundary: drive the real registered widget and input listener.
-export function uiSession() {
+export function uiSession(realTui?: TuiMainScreen) {
   let editorFactory: any;
   let editor: any;
   let focused: any;
@@ -14,12 +15,17 @@ export function uiSession() {
   let customComponent: any;
   let finishCustom: (() => void) | undefined;
   const listeners = new Set<(data: string) => any>();
-  const tui = {
+  const mockTui = {
     terminal: { rows: 40, columns: 120 },
     requestRender: vi.fn(),
     getFocusedComponent: () => focused,
     hasOverlay: () => overlay,
+    hideOverlay: () => {
+      overlay = false;
+      focused = editor;
+    },
   };
+  const tui = realTui ? (realTui as unknown as typeof mockTui) : mockTui;
   const theme = { fg: (_role: string, value: string) => value };
   const baseFactory = vi.fn(() => ({
     render: () => [],
@@ -41,23 +47,66 @@ export function uiSession() {
       editorFactory = factory;
       editor = factory?.(tui, theme, {});
       focused = editor;
+      if (realTui && editor) {
+        realTui.addChild(editor);
+        realTui.setFocus(editor);
+      }
     }),
     onTerminalInput: vi.fn((handler: (data: string) => any) => {
       listeners.add(handler);
-      return vi.fn(() => listeners.delete(handler));
+      const remove = realTui?.addInputListener(handler);
+      return vi.fn(() => {
+        listeners.delete(handler);
+        remove?.();
+      });
     }),
     notify: vi.fn(),
     custom: vi.fn(
-      (factory: any, _options?: any) =>
+      (factory: any, options?: any) =>
         new Promise<void>((resolve) => {
+          let closed = false;
+          let component: any;
           const done = () => {
-            overlay = false;
-            focused = editor;
+            if (closed) return;
+            closed = true;
+            // coding-agent 1.0.2 closes overlays by popping the top, not by handle.
+            if (realTui) realTui.hideOverlay();
+            else {
+              overlay = false;
+              focused = editor;
+            }
             resolve();
+            component?.dispose?.();
           };
-          customComponent = factory(tui, theme, {}, done);
-          overlay = true;
-          focused = customComponent;
+          component = factory(tui, theme, {}, done);
+          customComponent = component;
+          if (realTui) {
+            Promise.resolve(component).then((component) => {
+              if (closed) return;
+              if (options?.overlay) {
+                const handle = realTui.showOverlay(
+                  component,
+                  typeof options.overlayOptions === 'function'
+                    ? options.overlayOptions()
+                    : options.overlayOptions,
+                );
+                options.onHandle?.(handle);
+              } else {
+                realTui.addChild(component);
+                realTui.setFocus(component);
+                realTui.requestRender();
+              }
+            });
+          } else {
+            overlay = true;
+            focused = customComponent;
+            options?.onHandle?.({
+              hide: () => {
+                overlay = false;
+                focused = editor;
+              },
+            });
+          }
           finishCustom = done;
         }),
     ),
@@ -89,6 +138,9 @@ export function uiSession() {
     },
     listenerCount: () => listeners.size,
     closeCustom: () => finishCustom?.(),
+    get customComponent() {
+      return customComponent;
+    },
     customKey: (data: string) => customComponent?.handleInput(data),
     customRender: (width = 100) => customComponent?.render(width) ?? [],
   };

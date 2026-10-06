@@ -113,6 +113,18 @@ from an empty editor.
   centered; it only shows controls that apply (log-tail `l` only for providers
   that use it, folding only for content taller than the card, `x` only when
   closable), and short sections such as a task description are shown expanded.
+- AC-10: The detail card keeps a stable size while open: its width and height
+  are fixed when it opens (sized for the largest item of the opened section,
+  capped by the terminal) and do not change while ↑↓ moves between items. ↑↓
+  in the card moves only within the opened section, so agents never appear in
+  the generic card (Enter on an agent always opens its subagents panel).
+- AC-11: The detail card has a visual hierarchy: field labels dim, values
+  normal, status value colored by state role, section titles (e.g. `Command`,
+  `Log`, `Description`) styled as headings; empty fields are omitted and no
+  value is shown twice (background command appears once).
+- AC-12: When another UI takes focus while the detail card is open (question
+  dialog, native dialog, another overlay or custom UI), the card closes and the
+  panel releases focus, so Esc always acts on the topmost visible UI.
 - AC-7: With the theme absent the panel renders native unframed output; with the
   theme present it renders through the render kit.
 
@@ -153,6 +165,13 @@ from an empty editor.
   frameless transparent box over the transcript with irrelevant controls
   (`folded`, `l 10/25`, `x unavailable`). Root decision: fix within this change
   (AC-2 amended, AC-9 added).
+- Live test 3 (2026-10-05): card framed and opaque as intended; user asked to
+  polish the card hierarchy, keep its size stable while navigating, and fix a
+  question dialog opening over the card so Esc cancelled the question instead
+  of closing the card. User decisions: card ↑↓ stays within the opened section;
+  the card closes when another UI takes focus; panel standardization across the
+  subagents history panel, /subagents-tools and /subagents-model is a separate
+  change based on the /subagents-tools design (AC-10..AC-12 added here).
 - Plan review history: round 1 Oracle REJECT (focus guards, metric visibility) repaired; round 2 fresh Oracle OKAY. Implementation authorized by explicit user choice "Implement" on 2026-10-05.
 - The canonical `multi-harness-agent-pack` requirement **Run visible background
   Pi specialists** is retained unchanged: metrics stay visible above input in
@@ -163,8 +182,8 @@ from an empty editor.
 
 - `MODIFIED pi-ecosystem` **Thoth Pi task-list extension** — The Thoth Pi task-list package (published under the `@thoth-agents` scope as a fork of the juicesharp rpiv 2.12.0 task-list package) MUST register the session task-list tool with the upstream 2.12.0 schema and transition rules, MUST reconstruct the session list from the branch on session start, tree navigation and compaction, MUST publish its full session snapshot on the pi-core task-list state channel after each change and in answer to a request, MUST add the open tasks to the model context before each agent start when any exist using an API detected at runtime that degrades without failing on the minimum supported Pi, and MUST show only the current session's list through its pi-core work-panel section.
   - GIVEN a session with open tasks in the task-list tool; WHEN the session is compacted and the agent starts again; THEN the list is reconstructed, the open tasks are present in the model context and the work-panel Todos section, and a fresh state snapshot is published on the pi-core task-list state channel .
-- `ADDED pi-ecosystem` **Thoth Pi work panel** — `@thoth-agents/pi-core` MUST define a versioned work-panel contract with a process-wide provider registry; first-party packages that show live work above the editor (subagents, task list, background tasks) MUST register sections through it instead of installing their own above-editor widgets or input handlers; the host MUST install exactly one widget and one input listener per UI session, MUST keep a single selection, MUST be focused with ← from an empty editor and released with Esc, and MUST leave unfocused ↑/↓ to the editor.
-  - GIVEN subagents, todos and background tasks active in one Pi session; WHEN the user presses ← on an empty editor, moves with ↑↓ across sections and presses Esc; THEN one panel with one cursor traverses all items and focus returns to the editor, while unfocused ↑ recalls prompt history .
+- `ADDED pi-ecosystem` **Thoth Pi work panel** — `@thoth-agents/pi-core` MUST define a versioned work-panel contract with a process-wide provider registry; first-party packages that show live work above the editor (subagents, task list, background tasks) MUST register sections through it instead of installing their own above-editor widgets or panel navigation handlers; the host MUST install exactly one panel widget and one panel input listener per UI session, MUST keep a single selection, MUST be focused with ← only from an empty, focused root editor with no overlay or dialog open and released with Esc, MUST leave unfocused ↑/↓ to the editor, MUST end the panel with a hint row listing only the actions available for the selected item, MUST show item details in a framed opaque card of stable size whose ↑/↓ stays within the opened section, MUST close that card when another UI takes focus, and MUST expose a read-only focus-guard query so other key handlers in those packages consume nothing outside the focused root editor.
+  - GIVEN subagents, todos and background tasks active in one Pi session; WHEN the user presses ← on an empty editor, moves with ↑↓ across sections, opens a task-list item's detail, moves with ↑↓, a question dialog then opens, and the user presses Esc; THEN one panel with one cursor traverses all items, the detail card keeps its size and stays in the Todos section, the card closes when the dialog opens so Esc acts on the dialog, and unfocused ↑ recalls prompt history .
 
 ## Plan
 
@@ -265,6 +284,42 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: detail tests assert frame, full-width padded rows, no `l`/`x`/fold controls for task-list details, kit and native; hint-row tests assert bottom-left cue and action-aware hints
   - Return milestone: pi-core, task-list and background package tests green
   - Stop / reassessment: overlay compositor does not overwrite underlying cells with padded rows
+- [ ] AC-10: stable-size, section-scoped detail card
+  - Outcome: card size fixed while open; card ↑↓ limited to the opened section
+  - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel-host.ts:127-165; pi-packages/pi-core/src/work-panel-detail.ts; skills C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md, C:\Users\EremesNG\.pi\agent\skills\simplify\SKILL.md
+  - Inputs: live test 3 decisions
+  - Dependencies: none
+  - Output: pi-core changes and tests
+  - Owner: thoth-worker
+  - Writes: pi-packages/pi-core/**
+  - Interface boundaries: provider contract unchanged except optional fields
+  - Focused check and PASS evidence: tests assert identical card dimensions across ↑↓ between items of different content size and that ↑↓ never leaves the section
+  - Return milestone: pi-core tests green
+  - Stop / reassessment: overlay API cannot hold a fixed height
+- [ ] AC-11: detail card visual hierarchy and deduplicated fields
+  - Outcome: styled labels/values/status/section titles; empty fields omitted; background command shown once
+  - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel-detail.ts:94-245; pi-packages/pi-background-tasks/src/navigator-provider.ts; <task-list pkg>/*-work-panel.ts
+  - Inputs: live test 3 screenshots (background card flat, duplicated command, `pgid · –`)
+  - Dependencies: none
+  - Output: styled detail rendering, provider detail cleanup, tests
+  - Owner: thoth-worker (same session as AC-10 unit)
+  - Writes: pi-packages/pi-core/**, pi-packages/pi-background-tasks/**, <task-list pkg>/**
+  - Interface boundaries: render-kit contract unchanged
+  - Focused check and PASS evidence: recording-theme tests assert roles per label/value/status/heading; tests assert no empty field and single command occurrence
+  - Return milestone: three packages green
+  - Stop / reassessment: theme lacks a needed role
+- [ ] AC-12: detail card closes when another UI takes focus
+  - Outcome: card closes and panel releases focus when a question dialog, native dialog or other overlay/custom UI opens
+  - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel-host.ts:119-214
+  - Inputs: live test 3 Esc incident
+  - Dependencies: none
+  - Output: host change and tests
+  - Owner: thoth-worker (same session as AC-10 unit)
+  - Writes: pi-packages/pi-core/**
+  - Interface boundaries: Pi overlay/custom UI APIs
+  - Focused check and PASS evidence: test opens another custom UI or overlay while the card is open and asserts the card is closed and the next Esc reaches the new UI
+  - Return milestone: pi-core tests green
+  - Stop / reassessment: no observable signal when another UI opens
 - [x] AC-4: background tasks register through the pi-core work panel
   - Outcome: background tasks shown, focused, detailed, stopped and dismissed only via the panel
   - Known entrypoints and skill paths: pi-packages/pi-background-tasks/src/index.ts:13-29, src/navigator-provider.ts, src/shared-navigator.ts

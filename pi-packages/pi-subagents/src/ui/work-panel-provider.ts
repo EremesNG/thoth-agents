@@ -2,6 +2,7 @@ import {
   type RenderKitTheme,
   WORK_PANEL_VERSION,
   type WorkPanelProvider,
+  type WorkPanelSegment,
 } from '@thoth-agents/pi-core';
 import { statusGlyph } from '../render/tools/progress.js';
 import type { SubagentTask } from '../types.js';
@@ -34,7 +35,9 @@ export function createSubagentsWorkPanelProvider(source: {
       const tasks = source.listTasks();
       const count = (status: SubagentTask['status']) =>
         tasks.filter((task) => task.status === status).length;
-      const parts = [`${count('running')} running`];
+      const parts: WorkPanelSegment[] = [
+        { text: `${count('running')} running`, role: 'meta' },
+      ];
       for (const status of [
         'queued',
         'stopping',
@@ -44,9 +47,16 @@ export function createSubagentsWorkPanelProvider(source: {
         'interrupted',
       ] as const) {
         const total = count(status);
-        if (total) parts.push(`${total} ${status}`);
+        if (total)
+          parts.push(
+            { text: ' · ', role: 'meta' },
+            {
+              text: `${total} ${status}`,
+              role: status === 'failed' ? 'error' : 'meta',
+            },
+          );
       }
-      return { text: parts.join(' · ') };
+      return { text: parts.map(({ text }) => text).join(''), segments: parts };
     },
     listRows: () =>
       [...source.listTasks()]

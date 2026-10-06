@@ -1,9 +1,15 @@
-import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import {
+  ensureWorkPanel,
+  registerRenderKit,
+  registerWorkPanelProvider,
+  withdrawRenderKit,
+} from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { visibleWidth } from '../../src/render/text-width.js';
 import type { SubagentTask } from '../../src/types.js';
 import { createSubagentsWorkPanelProvider } from '../../src/ui/work-panel-provider.js';
+import { workPanelSession } from '../helpers/work-panel-fixture.js';
 
 const now = Date.parse('2026-01-01T00:00:12Z');
 function task(overrides: Partial<SubagentTask> = {}): SubagentTask {
@@ -58,7 +64,7 @@ describe('Agents work-panel rows', () => {
     });
     expect(agents).toMatchObject({ version: 1, label: 'Agents', priority: 10 });
     expect(agents.visibleCount()).toBe(3);
-    expect(agents.summary!()).toEqual({ text: '2 running · 1 queued' });
+    expect(agents.summary!()).toMatchObject({ text: '2 running · 1 queued' });
     expect(agents.listRows(now).map((row) => row.id)).toEqual([
       'newer',
       'older',
@@ -314,5 +320,69 @@ describe('Agents work-panel rows', () => {
       for (const line of [content.text, ...content.extraRows!])
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
+  });
+});
+
+it('renders agent identity, task, metrics and dropped tools with distinct roles at wide and narrow widths', async () => {
+  const session = workPanelSession(process.cwd());
+  const styled: Array<[string, string]> = [];
+  session.theme.fg = (role, text) => {
+    styled.push([role, text]);
+    return text;
+  };
+  const unregister = registerWorkPanelProvider(
+    session.ctx as never,
+    provider([task({ dropped_tools: ['missing'] })]),
+  );
+  const release = await ensureWorkPanel(session.ctx as never);
+  const token = registerRenderKit(
+    {
+      ...createTestRenderKit(),
+      fg: (theme, role, text) => theme.fg(role, text),
+    },
+    {},
+  );
+  try {
+    for (const width of [120, 50]) {
+      styled.length = 0;
+      const lines = session.render(width);
+      expect(styled).toContainEqual(['toolTitle', 'worker']);
+      expect(
+        styled.some(
+          ([role, text]) => role === 'text' && text.includes('PHASE'),
+        ),
+      ).toBe(true);
+      expect(
+        styled.some(
+          ([role, text]) => role === 'dim' && text.includes('tools 5'),
+        ),
+      ).toBe(true);
+      expect(
+        styled.some(
+          ([role, text]) => role === 'warning' && text.includes('⚠ 1 dropped'),
+        ),
+      ).toBe(true);
+      expect(lines.every((line: string) => visibleWidth(line) <= width)).toBe(
+        true,
+      );
+      expect(lines.join(' ')).toContain('75 tok/s');
+    }
+  } finally {
+    withdrawRenderKit(token);
+    release();
+    unregister();
+  }
+});
+
+it('marks failure counts in the Agents heading as errors, leaving other counters dim', () => {
+  expect(
+    provider([task(), task({ id: 'failed', status: 'failed' })]).summary!(),
+  ).toMatchObject({
+    text: '1 running · 1 failed',
+    segments: [
+      { text: '1 running', role: 'meta' },
+      { text: ' · ', role: 'meta' },
+      { text: '1 failed', role: 'error' },
+    ],
   });
 });

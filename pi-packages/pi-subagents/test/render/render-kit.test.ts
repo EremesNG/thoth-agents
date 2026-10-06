@@ -11,6 +11,7 @@ import {
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import extension from '../../index.js';
+import { visibleWidth } from '../../src/render/text-width.js';
 import { renderSubagentRunResult } from '../../src/render/tools/subagent-run.js';
 import { createSubagentListAgentsTool } from '../../src/tools/subagent-list-agents.js';
 import { registerSubagentTools } from '../../src/tools.js';
@@ -515,7 +516,9 @@ describe('Agents work-panel render kit discovery', () => {
         expect(output.join(' ')).toContain('⠋');
         for (const metric of metrics)
           expect(output.join(' ')).toContain(metric);
-        expect(output.every((line: string) => line.length <= width)).toBe(true);
+        expect(
+          output.every((line: string) => visibleWidth(line) <= width),
+        ).toBe(true);
         if (width >= 80) expect(output).toHaveLength(2);
       }
     } finally {

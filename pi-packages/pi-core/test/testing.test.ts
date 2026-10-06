@@ -55,6 +55,37 @@ describe('shared test render kit', () => {
     expect(kit.fg(theme, 'accent', 'Title')).toBe('Title');
   });
 
+  it('renders standard tool footers deterministically without context timing or timers', () => {
+    const kit = createTestRenderKit();
+    const state = { startedAt: 1, completedElapsedMs: 1234 };
+    const invalidate = vi.fn();
+    const context = {
+      state,
+      invalidate,
+      executionStarted: true,
+      isPartial: true,
+    };
+    expect(
+      kit.toolFooter?.(theme, {
+        status: 'running',
+        context,
+        elapsedMs: 5250,
+        summary: 'partial output',
+      }),
+    ).toBe('running · 5s');
+    expect(
+      kit.toolFooter?.(theme, {
+        status: 'completed',
+        context,
+        elapsedMs: 5250,
+        summary: ['Exit 0', '1 line'],
+      }),
+    ).toBe('✓ · 5s · Exit 0 · 1 line');
+    expect(kit.toolFooter?.(theme, { status: 'failed', context })).toBe('✗');
+    expect(state).toEqual({ startedAt: 1, completedElapsedMs: 1234 });
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
   it('reserves the real adapter rail and selection gutter before clipping tree content', () => {
     const kit = createTestRenderKit();
     for (const selected of [false, true]) {
@@ -129,6 +160,38 @@ describe('shared test render kit', () => {
     expect(kit.collapse(theme, rows, { budget: Infinity })).toEqual(rows);
     expect(kit.collapse(theme, Array(10).fill('row'))).toHaveLength(9);
     expect(kit.collapse(theme, [], { budget: 0 })).toEqual([]);
+  });
+
+  it('uses the standard footer for tool-context cards without duplicating an explicit footer', () => {
+    const kit = createTestRenderKit();
+    const context = { executionStarted: true, state: {}, isPartial: true };
+    expect(
+      kit.card(
+        theme,
+        { status: 'running', context, summary: 'partial output' },
+        60,
+      ),
+    ).toEqual(['╭─', '╰─ running']);
+    expect(
+      kit.card(
+        theme,
+        { status: 'completed', context, summary: ['+3 -1', '1 file'] },
+        60,
+      ),
+    ).toEqual(['╭─', '╰─ ✓ · +3 -1 · 1 file']);
+    expect(
+      kit.card(
+        theme,
+        {
+          status: 'completed',
+          context,
+          footer: '✓ · 2s · Done',
+          summary: 'ignored',
+        },
+        60,
+      ),
+    ).toEqual(['╭─', '╰─ ✓ · 2s · Done']);
+    expect(context.state).toEqual({});
   });
 
   it('renders distinguishable full and split cards with sections and footer status', () => {

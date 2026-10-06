@@ -135,3 +135,13 @@ Themed tool and notification cards that render through the Thoth render kit or t
 - **GIVEN** a themed read, bash or subagent tool card
 - **WHEN** it is running and then finishes
 - **THEN** its footer shows `<pyramid frame> · <elapsed>` while running and `✓ · <elapsed>[ · summary]` or `✗ · <elapsed>[ · summary]` after finishing
+
+### Requirement: Thoth Pi question tool
+
+The `@thoth-agents/pi-questions-user` package MUST register `ask_user_question` with stable question ids, `single`/`multi`/`text`/`confirm` types, structured `recommended` options, optional previews and no declared maximum on questions or options; MUST return per-id structured answers with status, values, labels, custom text and notes, and report cancellation without implying answers; MUST fall back to sequential select/input without custom UI and return `no_ui` without UI; its TUI MUST show the preview beside the options on wide terminals and below them on narrow ones, and offer a review step before submitting multiple questions.
+
+#### Scenario: Thoth Pi question tool
+
+- **GIVEN** a root session with the TUI
+- **WHEN** the model asks two questions with option previews on a wide terminal
+- **THEN** previews render to the right of the options, a review step precedes submission and the result lists each answer by question id

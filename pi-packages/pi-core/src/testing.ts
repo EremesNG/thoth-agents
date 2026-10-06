@@ -36,8 +36,11 @@ const glyphs: Record<RenderStatus, string> = {
 /**
  * Plain-text fake with real tree-gutter widths and caller-owned braille frames.
  * Tool footers use elapsed overrides only, without clock reads or state mutation.
+ * Omit `icon` to exercise legacy-kit fallbacks, or provide a UI lookup for tests.
  */
-export function createTestRenderKit(): ThothRenderKit {
+export function createTestRenderKit(
+  options: Pick<ThothRenderKit, 'icon'> = {},
+): ThothRenderKit {
   const kit: ThothRenderKit = {
     version: 1,
     card(theme, options, width) {
@@ -159,5 +162,6 @@ export function createTestRenderKit(): ThothRenderKit {
     },
     fg: (_theme, _role, text) => text,
   };
+  if (options.icon) kit.icon = options.icon;
   return kit;
 }

@@ -11,9 +11,16 @@ import {
   getToolElapsedMs,
   type RenderIndicatorContext,
   type RenderKitTheme,
+  type RenderStatus,
   type RenderToolFooterOptions,
   registerRenderKit,
   renderToolFooter,
+  resolveFrames,
+  resolveIcon,
+  resolveStatusGlyph,
+  type SemanticFrameName,
+  type SemanticGlyphName,
+  type SemanticIconName,
   type ThothRenderKit,
   type ToolRenderersLike,
   withdrawRenderKit,
@@ -126,6 +133,33 @@ describe('render kit registry', () => {
     expect(getRenderKit()).toBeUndefined();
   });
 
+  it.each([
+    undefined,
+    null,
+    false,
+    42,
+    'lookup',
+    {},
+  ])('rejects a present non-callable icon lookup: %s', (icon) => {
+    registerRenderKit({ ...kit, icon } as ThothRenderKit, {});
+    expect(getRenderKit()).toBeUndefined();
+    expect(resolveIcon('selection', 'native')).toBe('native');
+  });
+
+  it('ignores icon lookups with a throwing accessor', () => {
+    registerRenderKit(
+      {
+        ...kit,
+        get icon(): never {
+          throw new Error('foreign accessor');
+        },
+      },
+      {},
+    );
+    expect(getRenderKit()).toBeUndefined();
+    expect(resolveIcon('selection', 'native')).toBe('native');
+  });
+
   it('shares registrations across independently loaded copies of pi-core', async () => {
     const copy = await import(
       `${new URL('../src/render-kit.ts', import.meta.url).href}?copy`
@@ -168,6 +202,240 @@ describe('render kit registry', () => {
     expect(getRenderKit()).toBeUndefined();
     withdrawRenderKit(current);
     expect(getRenderKit()).toBeUndefined();
+  });
+});
+
+describe('semantic icon resolvers', () => {
+  it('keeps current native glyphs and literals without a registered kit', () => {
+    const nativeIcons: Record<SemanticGlyphName, string> = {
+      branch: '⑂',
+      folder: 'dir',
+      model: '●',
+      effort: '◐',
+      context: 'ctx',
+      cost: '$',
+      tokensIn: '↑',
+      tokensOut: '↓',
+      cache: 'cache',
+      throughput: 'tok/s',
+      agent: '\u{f08c7}',
+      tool: '*',
+      bash: '$',
+      read: 'read',
+      write: 'write',
+      edit: 'edit',
+      search: 'search',
+      file: 'file',
+      separator: '·',
+      ellipsis: '…',
+      arrowUp: '↑',
+      arrowDown: '↓',
+      arrowLeft: '←',
+      arrowRight: '→',
+      selection: '›',
+      scrollUp: '↑',
+      scrollDown: '↓',
+      ready: '▲',
+    };
+    const resolved = Object.fromEntries(
+      (Object.keys(nativeIcons) as SemanticGlyphName[]).map((name) => [
+        name,
+        resolveIcon(name),
+      ]),
+    );
+    expect(resolved).toEqual(nativeIcons);
+    expect(resolveIcon('separator', '┃')).toBe('┃');
+    expect(resolveIcon('folder', '')).toBe('');
+  });
+
+  it('preserves native statuses and caller-specific status fallbacks without a kit', () => {
+    const nativeStatuses: Record<RenderStatus, string> = {
+      pending: '○',
+      queued: '○',
+      in_progress: '◐',
+      running: '◐',
+      completed: '✓',
+      failed: '✗',
+      cancelled: '■',
+      interrupted: '■',
+      stopping: '■',
+      deleted: '⊘',
+      blocked: '⊘',
+      unknown: '?',
+    };
+    const resolved = Object.fromEntries(
+      (Object.keys(nativeStatuses) as RenderStatus[]).map((status) => [
+        status,
+        resolveStatusGlyph(status),
+      ]),
+    );
+    expect(resolved).toEqual(nativeStatuses);
+    expect(resolveStatusGlyph('completed', '●')).toBe('●');
+    expect(resolveStatusGlyph('completed', '')).toBe('');
+  });
+
+  it('uses required statusGlyph without styling and re-resolves kit lifecycle changes', () => {
+    const first: ThothRenderKit = {
+      ...kit,
+      statusGlyph: (theme, status) =>
+        theme.fg('success', theme.bold?.(`first:${status}`) ?? status),
+    };
+    const old = registerRenderKit(first, {});
+    expect(resolveStatusGlyph('completed', '●')).toBe('first:completed');
+    expect(resolveStatusGlyph('failed')).toBe('first:failed');
+
+    const current = registerRenderKit(
+      {
+        ...first,
+        statusGlyph: (theme, status) =>
+          theme.fg('error', theme.strikethrough?.(`next:${status}`) ?? status),
+      },
+      {},
+    );
+    withdrawRenderKit(old);
+    expect(resolveStatusGlyph('failed', 'native')).toBe('next:failed');
+    withdrawRenderKit(current);
+    expect(resolveStatusGlyph('failed', 'native')).toBe('native');
+    expect(resolveStatusGlyph('failed')).toBe('✗');
+  });
+
+  it('keeps rendering with native status fallbacks when statusGlyph is buggy', () => {
+    const implementations: ThothRenderKit['statusGlyph'][] = [
+      ...[undefined, null, false, 42, {}, [], ['wrong shape']].map(
+        (value) => () => value as string,
+      ),
+      () => {
+        throw new Error('buggy status');
+      },
+    ];
+    for (const statusGlyph of implementations) {
+      registerRenderKit({ ...kit, statusGlyph }, {});
+      expect(resolveStatusGlyph('completed', '●')).toBe('●');
+      expect(resolveStatusGlyph('failed')).toBe('✗');
+    }
+  });
+
+  it('exports distinct glyph and frame resolver types without changing required statusGlyph', () => {
+    expectTypeOf<SemanticIconName>().toEqualTypeOf<
+      SemanticGlyphName | SemanticFrameName
+    >();
+    expectTypeOf<SemanticFrameName>().toEqualTypeOf<
+      'spinnerFrames' | 'workingFrames'
+    >();
+    expectTypeOf(resolveIcon).toEqualTypeOf<
+      (name: SemanticGlyphName, fallback?: string) => string
+    >();
+    expectTypeOf(resolveFrames).toEqualTypeOf<
+      (
+        name: SemanticFrameName,
+        fallback?: readonly string[],
+      ) => readonly string[]
+    >();
+    expectTypeOf(resolveStatusGlyph).toEqualTypeOf<
+      (status: RenderStatus, fallback?: string) => string
+    >();
+    expectTypeOf<ThothRenderKit['statusGlyph']>().toEqualTypeOf<
+      (theme: RenderKitTheme, status: RenderStatus) => string
+    >();
+    expectTypeOf<NonNullable<ThothRenderKit['icon']>>().toEqualTypeOf<
+      (name: SemanticIconName) => string | readonly string[]
+    >();
+  });
+
+  it('resolves native and caller-owned motion frames from the current kit', () => {
+    const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    const working = ['△', '◭', '▲', '◮'];
+    const fallback = ['a', 'b'];
+    expect(resolveFrames('spinnerFrames')).toEqual(spinner);
+    expect(resolveFrames('workingFrames')).toEqual(working);
+    expect(resolveFrames('spinnerFrames', fallback)).toBe(fallback);
+    registerRenderKit(kit, {});
+    expect(resolveFrames('spinnerFrames', fallback)).toBe(fallback);
+
+    const themedSpinner = ['|', '/', '-', '\\'];
+    const themedWorking = ['.', 'o', 'O', '0'];
+    const first: ThothRenderKit = {
+      ...kit,
+      icon: (name) =>
+        name === 'spinnerFrames' ? themedSpinner : themedWorking,
+    };
+    const old = registerRenderKit(first, {});
+    expect(resolveFrames('spinnerFrames', fallback)).toBe(themedSpinner);
+    expect(resolveFrames('workingFrames')).toBe(themedWorking);
+
+    const current = registerRenderKit({ ...first, icon: () => ['next'] }, {});
+    withdrawRenderKit(old);
+    expect(resolveFrames('spinnerFrames', fallback)).toEqual(['next']);
+    withdrawRenderKit(current);
+    expect(resolveFrames('spinnerFrames', fallback)).toBe(fallback);
+    expect(resolveFrames('workingFrames')).toEqual(working);
+  });
+
+  it.each(
+    [
+      undefined,
+      null,
+      false,
+      42,
+      {},
+      [],
+      [undefined],
+      ['valid', 42],
+      new Array(1),
+    ].map((value, index) => ({ value, index })),
+  )('falls back when a callable kit icon returns malformed data: $index', ({
+    value,
+  }) => {
+    const malformed: ThothRenderKit = {
+      ...kit,
+      icon: () => value as string | readonly string[],
+    };
+    registerRenderKit(malformed, {});
+    expect(getRenderKit()).toBe(malformed);
+    expect(resolveIcon('selection', 'native')).toBe('native');
+    expect(resolveIcon('selection')).toBe('›');
+    expect(resolveFrames('workingFrames', ['native'])).toEqual(['native']);
+    expect(resolveFrames('workingFrames')).toEqual(['△', '◭', '▲', '◮']);
+  });
+
+  it('falls back when a kit lookup supplies the other icon shape or throws', () => {
+    registerRenderKit({ ...kit, icon: () => ['array'] }, {});
+    expect(resolveIcon('separator', 'native')).toBe('native');
+    registerRenderKit({ ...kit, icon: () => 'string' }, {});
+    expect(resolveFrames('spinnerFrames', ['native'])).toEqual(['native']);
+    registerRenderKit(
+      {
+        ...kit,
+        icon() {
+          throw new Error('buggy lookup');
+        },
+      },
+      {},
+    );
+    expect(resolveIcon('separator', 'native')).toBe('native');
+    expect(resolveIcon('separator')).toBe('·');
+    expect(resolveFrames('spinnerFrames', ['native'])).toEqual(['native']);
+    expect(resolveFrames('workingFrames')).toEqual(['△', '◭', '▲', '◮']);
+  });
+
+  it('uses the current kit icon across registration, replacement and withdrawal', () => {
+    expect('icon' in kit).toBe(false);
+    registerRenderKit(kit, {});
+    expect(getRenderKit()).toBe(kit);
+    expect(resolveIcon('arrowRight', 'native')).toBe('native');
+
+    const first: ThothRenderKit = { ...kit, icon: () => 'first' };
+    const old = registerRenderKit(first, {});
+    expect(resolveIcon('arrowRight', 'native')).toBe('first');
+    expect(resolveIcon('arrowRight')).toBe('first');
+
+    const replacement: ThothRenderKit = { ...kit, icon: () => 'second' };
+    const current = registerRenderKit(replacement, {});
+    withdrawRenderKit(old);
+    expect(resolveIcon('arrowRight', 'native')).toBe('second');
+    withdrawRenderKit(current);
+    expect(resolveIcon('arrowRight', 'native')).toBe('native');
+    expect(resolveIcon('arrowRight')).toBe('→');
   });
 });
 

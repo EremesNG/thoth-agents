@@ -34,6 +34,8 @@ interface RenderState {
   hasResult: boolean;
   isPartial: boolean;
   isError: boolean;
+  /** Keep the result's KIT error across SDK call-slot reconstruction. */
+  resultIsError?: boolean;
 }
 
 function previewText(text: string): { text: string; truncated: boolean } {
@@ -111,6 +113,7 @@ export function createAskClaudeRenderers(
       text += theme.fg('muted', promptPreview);
       if (preview.truncated) text += theme.fg('dim', ' …');
       return renderComponent(text, theme, state, true, (kit, width) => {
+        const isError = Boolean(state.isError || state.resultIsError);
         const status = state.isError
           ? 'failed'
           : !state.isPartial
@@ -131,8 +134,13 @@ export function createAskClaudeRenderers(
                 .map((line) => kit.fg(theme, 'muted', line)),
             ],
             part: state.hasResult ? 'start' : 'full',
-            isError: state.isError,
+            isError,
             status: state.hasResult ? undefined : status,
+            isSuccess:
+              state.hasResult &&
+              status === 'completed' &&
+              !isError &&
+              context?.executionStarted !== false,
             footer: state.hasResult
               ? undefined
               : kit.indicator(theme, context, { status, label: 'Claude Code' })
@@ -157,6 +165,7 @@ export function createAskClaudeRenderers(
       state.hasResult = true;
       state.isPartial = isPartial;
       state.isError = Boolean(context?.isError || details?.error);
+      state.resultIsError = state.isError;
       const body =
         result.content[0]?.type === 'text'
           ? result.content[0].text
@@ -164,6 +173,7 @@ export function createAskClaudeRenderers(
             ? 'working...'
             : '';
       const renderCard = (kit: ThothRenderKit, width: number) => {
+        const isError = Boolean(state.isError || state.resultIsError);
         const status = isPartial
           ? 'running'
           : state.isError
@@ -201,7 +211,11 @@ export function createAskClaudeRenderers(
                 ]
               : undefined,
             status,
-            isError: state.isError,
+            isSuccess:
+              status === 'completed' &&
+              !isError &&
+              context?.executionStarted !== false,
+            isError,
             footer: [indicator.text, details?.actions]
               .filter(Boolean)
               .join(' · '),

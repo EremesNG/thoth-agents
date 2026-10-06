@@ -17,8 +17,8 @@ const BOX_ROUND_TOP_RIGHT = '╮';
 const BOX_ROUND_BOTTOM_LEFT = '╰';
 const BOX_ROUND_BOTTOM_RIGHT = '╯';
 
-// Frozen pre-AC-2 implementation: keep every original truncation pass as the
-// byte-equivalence oracle, independent of production fast-path changes.
+// Keep every original truncation pass as the byte-equivalence oracle,
+// independent of production fast-path changes, with the three-tone border rule.
 function renderBoxReference(
   theme: Pick<Theme, 'fg'>,
   bodyLines: string[],
@@ -26,7 +26,11 @@ function renderBoxReference(
   options: BoxOptions = {},
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = options.isError ? 'error' : 'accent';
+  const borderColor = options.isError
+    ? 'error'
+    : options.isSuccess
+      ? 'success'
+      : 'accent';
 
   if (safeWidth <= 0) {
     return [];
@@ -100,7 +104,7 @@ function renderBoxReference(
 
 const ansiTheme: Pick<Theme, 'fg'> = {
   fg: (color, text) =>
-    `\x1b[${color === 'error' ? '31' : '33'}m${text}\x1b[39m`,
+    `\x1b[${color === 'error' ? '31' : color === 'success' ? '32' : '33'}m${text}\x1b[39m`,
 };
 const plainTheme: Pick<Theme, 'fg'> = { fg: (_color, text) => text };
 const widths = [-1, 0, 0.9, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 20.9, 40, 120];
@@ -158,6 +162,9 @@ const bodyCases = [
 const optionCases: BoxOptions[] = [
   {},
   { title: 'Title' },
+  { title: 'Success', footer: 'Done', isSuccess: true },
+  { isSuccess: true },
+  { title: 'Error wins', isError: true, isSuccess: true },
   { footer: 'Footer' },
   { title: '', footer: '' },
   {

@@ -266,6 +266,94 @@ afterEach(() => {
 
 describe('background message renderer', () => {
   it.each([
+    { status: 'completed', outcome: 'exit 0', completed: true },
+    { status: 'succeeded', outcome: 'succeeded', completed: true },
+    { status: 'completed', completed: true },
+    { status: 'running', completed: false },
+    { status: 'pending', completed: false },
+    { status: 'cancelled', completed: false },
+    { status: 'rejected', completed: false },
+    { status: 'skipped', completed: false },
+    { status: 'stopped', completed: false },
+    { status: 'unrecognized', completed: false },
+    { status: 'completed', outcome: 'cancelled', completed: false },
+    { status: 'completed', outcome: 'unrecognized', completed: false },
+    { status: 'completed', outcome: 'exit 3', completed: false },
+    { status: 'failed', outcome: 'exit 3', completed: false, isError: true },
+    { status: 'lost', completed: false, isError: true },
+    { status: 'succeeded', completed: false, incidentCount: 1, isError: true },
+  ])('signals batch success only for affirmative outcomes ($status, $outcome)', ({
+    status,
+    outcome,
+    completed,
+    incidentCount,
+    isError = false,
+  }) => {
+    const kit = createTestRenderKit();
+    const card = vi.spyOn(kit, 'card');
+    token = registerRenderKit(kit, {});
+    const packed = packCallbackBatch([
+      event(1),
+      event(2, { status, outcome, incidentCount }),
+    ]);
+    const lines = renderBackgroundMessage(
+      { content: packed.text, details: packed.details },
+      {},
+      theme,
+    ).render(160);
+    const options = card.mock.calls[0][1];
+    // HEAD decorates all non-error batches as completed, including mixed ones.
+    expect(options.status).toBe(isError ? 'failed' : 'completed');
+    expect(options.footer).toBe(isError ? 'failed' : 'completed');
+    expect(lines.at(-1)).toBe(
+      isError ? '╰─ failed · failed' : '╰─ completed · completed',
+    );
+    expect(options.isSuccess).toBe(completed);
+    expect(options.isError).toBe(isError);
+  });
+
+  it.each([
+    { kind: 'batch', entries: [], omitted: 0, unlisted: 0 },
+    { kind: 'batch', entries: [{ id: 'bg_1' }], omitted: 0, unlisted: 0 },
+    {
+      kind: 'batch',
+      entries: [{ id: 'bg_1', status: 'completed' }, null],
+      omitted: 0,
+      unlisted: 0,
+    },
+    {
+      kind: 'batch',
+      entries: [{ id: 'bg_1', status: 'completed' }],
+      omitted: 1,
+      unlisted: 0,
+    },
+    {
+      kind: 'batch',
+      entries: [{ id: 'bg_1', status: 'completed' }],
+      omitted: 0,
+      unlisted: 1,
+    },
+    undefined,
+  ])('does not infer success from missing or incomplete batch evidence (%j)', (details) => {
+    const kit = createTestRenderKit();
+    const card = vi.spyOn(kit, 'card');
+    const component = renderBackgroundMessage(
+      { content: 'legacy text', details },
+      {},
+      theme,
+    );
+    const native = component.render(100);
+    token = registerRenderKit(kit, {});
+    expect(component.render(100).at(-1)).toBe('╰─ completed · completed');
+    expect(card.mock.calls[0][1].status).toBe('completed');
+    expect(card.mock.calls[0][1].footer).toBe('completed');
+    expect(card.mock.calls[0][1].isSuccess).toBe(false);
+    expect(card.mock.calls[0][1].isError).toBe(false);
+    withdrawRenderKit(token);
+    expect(component.render(100)).toEqual(native);
+  });
+
+  it.each([
     false,
     true,
   ])('reuses KIT messages (expanded=%s) until the render key or invalidation changes', (expanded) => {

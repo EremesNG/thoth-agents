@@ -72,6 +72,155 @@ function sdkBox(text, role, width) {
 }
 
 describe('AskClaude rendering', () => {
+  for (const scenario of [
+    {
+      name: 'success',
+      isPartial: false,
+      executionStarted: true,
+      completed: true,
+      status: 'completed',
+    },
+    {
+      name: 'running',
+      isPartial: true,
+      executionStarted: true,
+      status: 'running',
+    },
+    {
+      name: 'not started',
+      isPartial: true,
+      executionStarted: false,
+      status: 'running',
+    },
+    {
+      name: 'not started with a non-partial context',
+      isPartial: false,
+      executionStarted: false,
+      status: 'completed',
+    },
+    {
+      name: 'SDK failure',
+      isPartial: false,
+      executionStarted: true,
+      isError: true,
+      status: 'failed',
+    },
+    {
+      name: 'bridge failure',
+      isPartial: false,
+      executionStarted: true,
+      bridgeError: true,
+      status: 'failed',
+    },
+    {
+      name: 'partial error',
+      isPartial: true,
+      executionStarted: true,
+      isError: true,
+      status: 'running',
+    },
+  ]) {
+    it(`signals ${scenario.name} consistently across AskClaude card parts`, () => {
+      const kit = createTestRenderKit();
+      const card = mock.method(kit, 'card');
+      token = registerRenderKit(kit, {});
+      const shared = context({
+        isPartial: scenario.isPartial,
+        executionStarted: scenario.executionStarted,
+        isError: scenario.isError ?? false,
+      });
+      const call = tool.renderCall({ prompt: 'Review' }, theme, shared);
+      const result = tool.renderResult(
+        {
+          content: [{ type: 'text', text: 'Output' }],
+          details: { error: scenario.bridgeError ?? false },
+        },
+        { expanded: false, isPartial: scenario.isPartial },
+        theme,
+        shared,
+      );
+      call.render(100);
+      assert.equal(
+        result.render(100).at(-1),
+        `╰─ ${scenario.status} · Claude Code`,
+      );
+      const options = card.mock.calls.map(
+        ({ arguments: [, options] }) => options,
+      );
+      assert.deepEqual(
+        options.map(({ part }) => part),
+        ['start', 'end'],
+      );
+      assert.equal(options[0].status, undefined);
+      assert.equal(options[0].footer, undefined);
+      assert.equal(options[1].status, scenario.status);
+      assert.equal(options[1].footer, 'Claude Code');
+      for (const option of options) {
+        assert.equal(option.isSuccess, scenario.completed ?? false);
+        assert.equal(
+          option.isError,
+          Boolean(scenario.isError || scenario.bridgeError),
+        );
+      }
+    });
+  }
+
+  it('retains bridge error borders without changing the recreated-slot footer', () => {
+    const kit = createTestRenderKit();
+    const card = mock.method(kit, 'card');
+    token = registerRenderKit(kit, {});
+    const shared = context({ isPartial: false });
+    tool.renderCall({ prompt: 'Review' }, theme, shared);
+    const result = tool.renderResult(
+      {
+        content: [{ type: 'text', text: 'Error: unavailable' }],
+        details: { error: true },
+      },
+      { expanded: false, isPartial: false },
+      theme,
+      shared,
+    );
+    const updatedCall = tool.renderCall({ prompt: 'Review' }, theme, shared);
+    updatedCall.render(100);
+    // HEAD uses the SDK-reconstructed state for footer decoration, even though
+    // the bridge's terminal error still needs a red border on both parts.
+    assert.equal(result.render(100).at(-1), '╰─ completed · Claude Code');
+    assert.deepEqual(
+      card.mock.calls.map(({ arguments: [, options] }) => options.status),
+      [undefined, 'completed'],
+    );
+    for (const {
+      arguments: [, options],
+    } of card.mock.calls) {
+      assert.equal(options.isError, true);
+      assert.notEqual(options.isSuccess, true);
+    }
+    withdrawRenderKit(token);
+    assert.deepEqual(
+      [...updatedCall.render(100), ...result.render(100)],
+      sdkBox(
+        'AskClaude "Review"\n✗ Claude Code error\nError: unavailable',
+        'toolSuccessBg',
+        100,
+      ),
+    );
+  });
+
+  it('does not infer AskClaude success before a result exists', () => {
+    const kit = createTestRenderKit();
+    const card = mock.method(kit, 'card');
+    token = registerRenderKit(kit, {});
+    const call = tool.renderCall(
+      { prompt: 'Review' },
+      theme,
+      context({ isPartial: false }),
+    );
+    assert.equal(call.render(100).at(-1), '╰─ completed · Claude Code');
+    assert.equal(card.mock.calls[0].arguments[1].status, 'completed');
+    assert.equal(card.mock.calls[0].arguments[1].footer, 'Claude Code');
+    assert.notEqual(card.mock.calls[0].arguments[1].isSuccess, true);
+  });
+
   for (const slot of ['call', 'partial', 'collapsed', 'expanded']) {
     it(`reuses ${slot} KIT lines until width, invalidation or kit registration changes`, () => {
       const shared = context({ isPartial: slot === 'partial' });

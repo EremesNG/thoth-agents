@@ -60,6 +60,10 @@ export function backgroundToolRenderers(toolName: string) {
                     .filter(Boolean)
                     .join(' '),
                   body: hasResult ? [] : [indicator.text],
+                  isSuccess:
+                    status === 'completed' &&
+                    hasResult &&
+                    context?.executionStarted !== false,
                   isError,
                   part: 'start',
                 },
@@ -183,6 +187,8 @@ export function renderBackgroundTaskLogDisplay(
               body: rows,
               footer: indicator.text,
               status,
+              isSuccess:
+                status === 'completed' && context?.executionStarted !== false,
               isError,
               wrap: expanded,
               part: 'end',

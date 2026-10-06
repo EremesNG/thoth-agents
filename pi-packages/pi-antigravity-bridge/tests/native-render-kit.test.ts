@@ -70,6 +70,51 @@ function entry(
 }
 
 test.each([
+	"completed",
+	"failed",
+	"started",
+	"pending",
+	"running",
+	"cancelled",
+	"rejected",
+	"skipped",
+	"stopped",
+	"unrecognized",
+])("agy-native-event signals success only for completed events (%s), preserving native output", async (status) => {
+	const render = await nativeRenderer();
+	const component = render(
+		entry({
+			name: "bash",
+			status: status as NativeDisplayEvent["status"],
+			command: "run",
+		}),
+		{ expanded: false },
+		theme,
+	);
+	assert.ok(component);
+	const native = new Text(
+		`${status === "failed" ? "«error:✗»" : "«success:✓»"} «toolTitle:bash» «muted:run»`,
+		0,
+		0,
+	).render(120);
+	expect(component.render(120)).toEqual(native);
+	const kit = createTestRenderKit();
+	const card = vi.spyOn(kit, "card");
+	const token = registerRenderKit(kit, {});
+	tokens.push(token);
+	// HEAD gives every non-failed event a completed footer, even while running.
+	expect(component.render(120).at(-1)).toBe(
+		status === "failed" ? "╰─ failed" : "╰─ completed",
+	);
+	const options = card.mock.calls[0][1];
+	expect(options.status).toBe(status === "failed" ? "failed" : "completed");
+	expect(options.isSuccess).toBe(status === "completed");
+	expect(options.isError).toBe(status === "failed");
+	withdrawRenderKit(token);
+	expect(component.render(120)).toEqual(native);
+});
+
+test.each([
 	false,
 	true,
 ])("agy-native-event reuses KIT lines (expanded=%s) until width, invalidation or registration changes", async (expanded) => {

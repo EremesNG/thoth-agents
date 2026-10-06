@@ -40,9 +40,17 @@ export interface RenderCardOptions {
   body?: RenderRows;
   sections?: readonly RenderCardSection[];
   footer?: string;
-  /** Embedded in the footer by the implementer's visual language. */
+  /** Footer decoration only; never changes the border tone. */
   status?: RenderStatus;
+  /** Draws an `error` border, taking precedence over `isSuccess`. */
   isError?: boolean;
+  /**
+   * Affirmative terminal success: only `true` draws a `success` border unless
+   * `isError` is true; absent or false keeps non-error borders `accent`.
+   * Changes only the border, without adding a footer or status glyph.
+   * Pass consistently across split card parts.
+   */
+  isSuccess?: boolean;
   /** Wrap body rows to the content width instead of truncating. */
   wrap?: boolean;
   /** Split tool call/result frames: start omits bottom; end omits top. */

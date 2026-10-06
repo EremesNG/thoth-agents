@@ -13,6 +13,7 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import { cachedComponent } from '../shared/cache.ts';
+import { type BorderState, getBorderTone } from './border.ts';
 
 export const BOX_HORIZONTAL = '─';
 export const BOX_VERTICAL = '│';
@@ -97,10 +98,9 @@ export function countLines(text: string): number {
   return text.replace(/\r/g, '').replace(/\n+$/, '').split('\n').length;
 }
 
-export interface BoxOptions {
+export interface BoxOptions extends BorderState {
   title?: string;
   footer?: string;
-  isError?: boolean;
 }
 
 // The SDK appends one exact, metadata-backed notice after a blank line.
@@ -174,7 +174,7 @@ export function renderBox(
   options: BoxOptions = {},
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
-  const borderColor = options.isError ? 'error' : 'accent';
+  const borderColor = getBorderTone(options);
 
   if (safeWidth <= 0) {
     return [];

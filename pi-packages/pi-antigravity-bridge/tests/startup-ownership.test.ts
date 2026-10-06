@@ -383,6 +383,12 @@ test("stream-json: a throwing spawn sink cleans up startup and the next call com
 	}
 });
 
+// Missing executables emit error rather than exit, so termination uses its 3s
+// fallback. Budget both bounded collections (4s each) and shutdown (up to 3s):
+// a 5s runner timeout can advance to the next test while finally still owns the
+// spawn spy, making that test's realSpawn capture the spy and recurse.
+const spawnFailureRaceTimeoutMs = 15_000;
+
 test("stream-json: spawn failure racing a throwing spawn sink remains contained", async () => {
 	const realSpawn = childProcess.spawn;
 	const spawn = vi.spyOn(childProcess, "spawn");
@@ -400,7 +406,7 @@ test("stream-json: spawn failure racing a throwing spawn sink remains contained"
 		fail = false;
 		await f.cleanup();
 	}
-});
+}, spawnFailureRaceTimeoutMs);
 
 test("acp: spawn failure racing partial listener wiring remains contained", async () => {
 	const realSpawn = childProcess.spawn;
@@ -427,7 +433,7 @@ test("acp: spawn failure racing partial listener wiring remains contained", asyn
 		fail = false;
 		await f.cleanup();
 	}
-});
+}, spawnFailureRaceTimeoutMs);
 
 test("stream-json: a synchronous prompt-write throw terminates only the failed turn's child", async () => {
 	const spawn = vi.spyOn(childProcess, "spawn");

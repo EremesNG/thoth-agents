@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import type { ThemeConfig } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
+import { getToolBorderTone } from './border.ts';
 import { createComponent, escapeOutputRow, getResultText } from './box.ts';
 import { getToolIcon } from './file-icons.ts';
 import {
@@ -88,7 +89,9 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
       const args = (rawArgs ?? {}) as ShellArgs;
       const command = String(args.command ?? '').trim();
       const icon = getToolIcon(shellConfig.toolName, config.icons);
-      const isErr = Boolean(context?.isError);
+      const borderTone = context?.isPartial
+        ? 'accent'
+        : getToolBorderTone(context);
       const elapsedMs = getElapsedMs(context?.state);
       const elapsedStr =
         elapsedMs === undefined
@@ -114,18 +117,20 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
 
         if (hasToolResult(context)) {
           return [
-            ...renderFrameTop(theme, title, safeWidth, isErr),
+            ...renderFrameTop(theme, title, safeWidth, borderTone),
             ...preview.flatMap((l) =>
-              renderFrameRow(theme, l, safeWidth, isErr),
+              renderFrameRow(theme, l, safeWidth, borderTone),
             ),
-            ...renderFrameDivider(theme, 'Output', safeWidth, isErr),
+            ...renderFrameDivider(theme, 'Output', safeWidth, borderTone),
           ];
         }
 
         return [
-          ...renderFrameTop(theme, title, safeWidth, isErr),
-          ...preview.flatMap((l) => renderFrameRow(theme, l, safeWidth, isErr)),
-          ...renderFrameBottom(theme, runningFooter, safeWidth, isErr),
+          ...renderFrameTop(theme, title, safeWidth, borderTone),
+          ...preview.flatMap((l) =>
+            renderFrameRow(theme, l, safeWidth, borderTone),
+          ),
+          ...renderFrameBottom(theme, runningFooter, safeWidth, borderTone),
         ];
       });
 
@@ -159,6 +164,9 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
 
       const isErr = Boolean(context?.isError);
       const isPartial = Boolean(options?.isPartial);
+      const borderTone = isPartial
+        ? 'accent'
+        : getToolBorderTone({ isError: isErr, isPartial });
       syncElapsedTicker({ ...context, isPartial });
       const textOutput = getResultText(result);
       const allLines = textOutput ? textOutput.split('\n') : [];
@@ -202,9 +210,9 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
           const emptyBody = [theme.fg('dim', '(no output)')];
           return [
             ...emptyBody.flatMap((l) =>
-              renderFrameRow(theme, l, safeWidth, isErr),
+              renderFrameRow(theme, l, safeWidth, borderTone),
             ),
-            ...renderFrameBottom(theme, footer, safeWidth, isErr),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         }
 
@@ -227,9 +235,9 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
 
         return [
           ...bodyLines.flatMap((l) =>
-            renderFrameRow(theme, l, safeWidth, isErr),
+            renderFrameRow(theme, l, safeWidth, borderTone),
           ),
-          ...renderFrameBottom(theme, footer, safeWidth, isErr),
+          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];
       });
     },

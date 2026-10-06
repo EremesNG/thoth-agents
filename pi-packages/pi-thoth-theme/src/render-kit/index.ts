@@ -9,6 +9,7 @@ import type {
 } from '@thoth-agents/pi-core';
 import { cachedComponent } from '../shared/cache.ts';
 import { formatDuration } from '../shared/duration.ts';
+import { getBorderTone } from '../tools/border.ts';
 import { renderBox } from '../tools/box.ts';
 import {
   renderFrameBottom,
@@ -74,26 +75,34 @@ function card(
     .filter(Boolean)
     .join(' ');
   const body = rows(options.body);
+  const borderState = {
+    isError: options.isError,
+    isSuccess: options.isSuccess === true,
+  };
   if (!options.sections?.length && (!options.part || options.part === 'full')) {
-    return renderBox(theme, body, safeWidth, { ...options, footer });
+    return renderBox(theme, body, safeWidth, {
+      ...options,
+      ...borderState,
+      footer,
+    });
   }
-  const isError = options.isError;
+  const borderTone = getBorderTone(borderState);
   return [
     ...(options.part === 'end'
       ? []
       : options.title
-        ? renderFrameTop(theme, options.title, safeWidth, isError)
-        : renderBox(theme, [], safeWidth, { isError }).slice(0, 1)),
-    ...body.flatMap((row) => renderFrameRow(theme, row, safeWidth, isError)),
+        ? renderFrameTop(theme, options.title, safeWidth, borderTone)
+        : renderBox(theme, [], safeWidth, borderState).slice(0, 1)),
+    ...body.flatMap((row) => renderFrameRow(theme, row, safeWidth, borderTone)),
     ...(options.sections ?? []).flatMap((section) => [
-      ...renderFrameDivider(theme, section.title ?? '', safeWidth, isError),
+      ...renderFrameDivider(theme, section.title ?? '', safeWidth, borderTone),
       ...rows(section.rows).flatMap((row) =>
-        renderFrameRow(theme, row, safeWidth, isError),
+        renderFrameRow(theme, row, safeWidth, borderTone),
       ),
     ]),
     ...(options.part === 'start'
       ? []
-      : renderFrameBottom(theme, footer, safeWidth, isError)),
+      : renderFrameBottom(theme, footer, safeWidth, borderTone)),
   ];
 }
 

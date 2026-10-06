@@ -18,12 +18,41 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { activateWithMockPi } from "./lib/mock-pi.mjs";
+import { buildSystemPrompt, buildSystemPromptSections } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
+import { projectPromptCapture } from "../src/prompt-capture.js";
 
 const { __test } = await import("../src/index.js");
 
 const PRE_WIDEN = "You are pi.\n# Tools\n- read: Read a file\n\npi packages (docs/packages.md)";
 // Same prefix, then the MCP tool descriptions that only appear post-connect.
 const WIDENED = "You are pi.\n# Tools\n- read: Read a file\n- Agent: Launch a subagent with a very long description ... \n\npi packages (docs/packages.md)";
+
+describe("section snapshots at recording boundaries", () => {
+	it("captures late handler mutations at agent_start and turn_start without mutating prior keys", () => {
+		const handlers = activateWithMockPi();
+		const options = { cwd: "/late-sections", contextFiles: [], skills: [], selectedTools: [], sections: { recovery: "BEFORE" } };
+		const before = buildSystemPrompt(options);
+		handlers.get("before_agent_start")({ systemPrompt: before, systemPromptOptions: options });
+		const projected = (key) => projectPromptCapture(__test.promptCaptures.resolve(key), { skillReadTool: "none" });
+		assert.equal(projected(before), buildSystemPromptSections(options).recovery);
+
+		// A handler loaded after the bridge writes to the retained options object.
+		options.sections.recovery = "LATE";
+		options.sections.policy = "AFTER BRIDGE";
+		const started = buildSystemPrompt(options);
+		handlers.get("agent_start")({}, { getSystemPrompt: () => started });
+		assert.equal(projected(started), [buildSystemPromptSections(options).recovery, buildSystemPromptSections(options).policy].join("\n\n"));
+		assert.equal(projected(before), "<recovery>\nBEFORE\n</recovery>");
+
+		options.sections = { recovery: "TURN TWO" };
+		const turn = buildSystemPrompt(options);
+		handlers.get("turn_start")({}, { getSystemPrompt: () => turn });
+		assert.equal(projected(turn), buildSystemPromptSections(options).recovery);
+		options.sections.recovery = "UNRECORDED";
+		assert.equal(projected(turn), "<recovery>\nTURN TWO\n</recovery>");
+		assert.match(projected(started), /LATE/);
+	});
+});
 
 describe("agent_start widened-prompt capture", () => {
 	it("records ctx.getSystemPrompt() so the widened prompt itself resolves", () => {

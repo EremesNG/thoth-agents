@@ -8,6 +8,8 @@ import { PassThrough, Writable } from "node:stream";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import { AppendInstructions } from "../src/append-instructions.js";
+import { segment } from "../src/append-blocks.js";
+import { buildSystemPrompt, buildSystemPromptSections } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
 import { projectedAppend, taskBlock } from "./fixtures/append-instructions.mjs";
 
 const claudeDir = mkdtempSync(join(tmpdir(), "claude-bridge-append-"));
@@ -33,16 +35,19 @@ const submitInput = (sessionId, prompt = "test prompt") => ({
 });
 const signal = new AbortController().signal;
 
-async function turn(append, { piSessionId = "parent", script = {} } = {}) {
-	const systemPrompt = `Captured prompt ${randomUUID()}`;
-	handlers.get("before_agent_start")({ systemPrompt, systemPromptOptions: { appendSystemPrompt: append } });
+async function turn(append, { piSessionId = "parent", script = {}, promptOptions, tools = [] } = {}) {
+	const systemPromptOptions = { appendSystemPrompt: append, ...promptOptions };
+	const systemPrompt = promptOptions
+		? buildSystemPrompt({ cwd: "/append-sections", selectedTools: [], ...systemPromptOptions })
+		: `Captured prompt ${randomUUID()}`;
+	handlers.get("before_agent_start")({ systemPrompt, systemPromptOptions });
 	handlers.get("agent_start")({}, { getSystemPrompt: () => systemPrompt });
 	const messages = histories.get(piSessionId) ?? [];
 	messages.push({ role: "user", content: "Report current instructions", timestamp: 0 });
 	histories.set(piSessionId, messages);
 	nextScript = script;
 	const result = await provider
-		.streamSimple(provider.models[0], { systemPrompt, messages, tools: [] }, { sessionId: piSessionId })
+		.streamSimple(provider.models[0], { systemPrompt, messages, tools }, { sessionId: piSessionId })
 		.result();
 	messages.push(result);
 	// .result() resolves before the bridge's finally removes the query context.
@@ -306,6 +311,56 @@ describe("multipart appended instructions", () => {
 });
 
 describe("appended instructions on resumed queries", () => {
+	it("delivers a changed Pi section as new-turn context while retaining the recorded system prompt", async () => {
+		const append = "<root_policy>STATIC ROOT</root_policy>";
+		const first = await turn(append, { promptOptions: { sections: { recovery: "IDENTITY A", unchanged: "STATIC SECTION" } }, script: { captureRequest: true } });
+		const changed = await turn(append, { promptOptions: { sections: { recovery: "IDENTITY B", unchanged: "STATIC SECTION" } }, script: { captureRequest: true } });
+		const rendered = buildSystemPromptSections({ cwd: "/append-sections", sections: { recovery: "IDENTITY B" } }).recovery;
+		assert.equal(changed.options.resume, first.sessionId);
+		assert.match(context(changed), /supersede.*same-keyed blocks/);
+		assert.ok(context(changed).includes(rendered));
+		assert.deepEqual([...context(changed).matchAll(/Added or changed block (.+):/g)].map((match) => JSON.parse(match[1])), ["xml:recovery"]);
+		assert.match(context(changed), /Removed block keys: \[\]/);
+		assert.doesNotMatch(context(changed), /IDENTITY A|STATIC ROOT|STATIC SECTION|full current appended instructions/);
+		assert.equal(changed.request.system, first.request.system, "the recorded cached system prompt stays byte-identical");
+		assert.equal((await turn(append, { promptOptions: { sections: { recovery: "IDENTITY B", unchanged: "STATIC SECTION" } } })).options.hooks, undefined);
+	});
+
+	for (const name of ["addendum", "project_context"]) {
+		it(`delivers only the opaque ${name} override key on resume, keeping the note and recorded prefix stable`, async () => {
+			const append = "<root_policy>STATIC ROOT</root_policy>";
+			const tools = [{ name: "subagent_run", description: "Delegate", parameters: { type: "object", properties: {} } }];
+			const options = (value) => ({ promptOptions: { sections: { [name]: value, recovery: "STATIC SECTION" } }, tools, script: { captureRequest: true } });
+			const first = await turn(append, options("VALUE A"));
+			const changed = await turn(append, options("VALUE B"));
+			assert.equal(changed.options.resume, first.sessionId);
+			assert.equal(changed.request.system, first.request.system);
+			const prior = segment(first.options.systemPrompt.append);
+			const current = segment(changed.options.systemPrompt.append);
+			assert.equal(prior.ambiguous, false);
+			assert.equal(current.ambiguous, false);
+			assert.ok(current.blocks.every(({ key }) => !key.startsWith("free:")));
+			assert.equal(current.blocks.find(({ key }) => key === "xml:mcp_tool_names").text, prior.blocks.find(({ key }) => key === "xml:mcp_tool_names").text);
+			assert.deepEqual([...context(changed).matchAll(/Added or changed block (.+):/g)].map((match) => JSON.parse(match[1])), [`xml:pi_prompt_section:name="${name}"`]);
+			assert.match(context(changed), /Removed block keys: \[\]/);
+			assert.ok(context(changed).includes(`<pi_prompt_section name="${name}">\nVALUE B\n</pi_prompt_section>`));
+			assert.doesNotMatch(context(changed), /free:|STATIC ROOT|STATIC SECTION|mcp_tool_names|full current appended instructions/);
+			assert.equal((await turn(append, options("VALUE B"))).options.hooks, undefined);
+		});
+	}
+
+	it("degrades a section tag collision to full-replacement context, never replacing the recorded system", async () => {
+		const append = "<root_policy>STATIC ROOT</root_policy>";
+		const first = await turn(append, { promptOptions: { sections: { root_policy: "SECTION A" } }, script: { captureRequest: true } });
+		const changed = await turn(append, { promptOptions: { sections: { root_policy: "SECTION B" } }, script: { captureRequest: true } });
+		assert.equal(changed.options.resume, first.sessionId);
+		assert.equal(changed.request.system, first.request.system);
+		assert.equal(segment(changed.options.systemPrompt.append).ambiguous, true);
+		assert.match(context(changed), /supersedes all earlier appended-instructions versions/);
+		assert.ok(deliveredPayload(changed.outputs).endsWith(changed.options.systemPrompt.append));
+		assert.equal((await turn(append, { promptOptions: { sections: { root_policy: "SECTION B" } } })).options.hooks, undefined);
+	});
+
 	it("delivers only the changed task block within a large projected append", async () => {
 		await turn(projectedAppend("A"));
 		const changed = await turn(projectedAppend("B"));

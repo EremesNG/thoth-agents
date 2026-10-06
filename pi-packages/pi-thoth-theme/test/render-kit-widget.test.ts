@@ -1,96 +1,67 @@
 import { visibleWidth } from '@earendil-works/pi-tui';
-import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import type { RenderKitTheme } from '@thoth-agents/pi-core';
 import { expect, it, vi } from 'vitest';
-import type { SubagentTask } from '../../pi-subagents/src/types.js';
-import {
-  ClaudeBackgroundWidget,
-  ClaudeBackgroundWidgetState,
-} from '../../pi-subagents/src/ui/background-widget.js';
 import { createRenderKit } from '../src/render-kit/index.ts';
 
-const theme = { fg: (_role: string, text: string) => text };
+const theme: RenderKitTheme = { fg: (_role, text) => text };
 
 it.each([
   46, 50,
-])('preserves widget braille, complete metrics and mouse targets with the real adapter at width %i', (width) => {
+])('composes widget rows with caller-owned braille frames and metric text at width %i', (width) => {
   vi.useFakeTimers();
-  vi.setSystemTime(new Date('2026-01-01T00:00:02Z'));
-  const tasks = [
-    {
-      id: 'first',
-      agent: 'first',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      created_at: '2026-01-01T00:00:02Z',
-      started_at: '2026-01-01T00:00:00Z',
-      runtime_metrics: {
-        toolUses: 5,
-        contextPercent: 62,
-        generationMs: 4000,
-        generationOutputTokens: 100,
-      },
-      usage: { input: 1000, output: 100 },
-      last_activity: 'reading',
-      dropped_tools: ['missing_tool'],
-    },
-    {
-      id: 'second',
-      agent: 'second',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      created_at: '2026-01-01T00:00:01Z',
-    },
-  ] as SubagentTask[];
-  const state = new ClaudeBackgroundWidgetState(() => tasks);
-  const widget = new ClaudeBackgroundWidget(state, theme, { frame: 0 });
-  const native = widget.render(width);
-  const kit = createRenderKit({});
-  const indicator = vi.spyOn(kit, 'indicator');
-  const token = registerRenderKit(kit, {});
   try {
-    const lines = widget.render(width);
-    const next = new ClaudeBackgroundWidget(state, theme, { frame: 1 }).render(
-      width,
-    );
-    expect(lines[1]).toContain('⠋');
-    expect(next[1]).toContain('⠙');
-    expect(next[1]).not.toBe(lines[1]);
-    for (const metric of [
-      'tools 5',
-      '↑1.0k ↓100',
-      '$?',
-      'context 62.0%',
-      '25 tok/s',
-      'elapsed 2s',
-    ]) {
-      expect(lines.join('\n')).toContain(metric);
-      expect(native.join('\n')).toContain(metric);
-    }
-    expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
-    // At 46 cells the narrower KIT content needs one additional metric row.
-    expect(lines).toHaveLength(width === 46 ? 10 : 9);
-    expect(native).toHaveLength(9);
-    const secondRow = lines.findIndex((line) => line.includes('second · work'));
-    expect(secondRow).toBe(width === 46 ? 7 : 6);
-    for (let row = 1; row < lines.length; row++) {
-      expect(state.handleMouseClick({ row })?.action).toEqual({
-        type: 'open-task',
-        taskId: row < secondRow ? 'first' : 'second',
+    const kit = createRenderKit({});
+    // Producers own metric formatting and row layout; the kit owns glyphs and rails.
+    const metricRows = [
+      'tools 5 · ↑1.0k ↓100 · $?',
+      'context 62.0% · 25 tok/s · elapsed 2s',
+    ];
+    const render = (frame: number) => {
+      const indicator = kit.indicator(theme, undefined, {
+        status: 'running',
+        elapsedMs: 2000,
+        frame,
       });
-    }
+      expect(indicator.elapsed).toBe('2s');
+      return [
+        kit.widgetHeading(
+          theme,
+          { title: 'Tasks', counts: { completed: 0, total: 2 } },
+          width,
+        ),
+        kit.treeRow(
+          theme,
+          { text: `${indicator.glyph} first · work`, depth: 1 },
+          width,
+        ),
+        ...metricRows.map((text) =>
+          kit.treeRow(theme, { text, depth: 1 }, width),
+        ),
+        kit.treeRow(
+          theme,
+          { text: 'second · work', depth: 1, last: true, status: 'queued' },
+          width,
+        ),
+      ];
+    };
+
+    const lines = render(0);
+    const next = render(1);
+    expect(lines[0]).toBe('▲ Tasks 0/2');
+    expect(lines[1]).toBe('    ├─ ⠋ first · work');
+    expect(next[1]).toBe('    ├─ ⠙ first · work');
+    expect(next.slice(2)).toEqual(lines.slice(2));
+    expect(lines.slice(2, -1)).toEqual(
+      metricRows.map((text) => `    ├─ ${text}`),
+    );
+    expect(lines.at(-1)).toBe('    └─ ○ second · work');
+    expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
-    const indicatorCalls = indicator.mock.calls.length;
-    tasks.forEach((task) => {
-      task.status = 'completed';
-    });
-    expect(widget.render(width)).toEqual([]);
-    expect(indicator).toHaveBeenCalledTimes(indicatorCalls);
+    expect(
+      kit.indicator(theme, undefined, { status: 'completed', frame: 1 }).glyph,
+    ).toBe('✓');
     expect(vi.getTimerCount()).toBe(0);
   } finally {
-    withdrawRenderKit(token);
-    indicator.mockRestore();
     vi.useRealTimers();
   }
 });

@@ -1,3 +1,4 @@
+import { isWorkPanelRootEditorInputActive } from '@thoth-agents/pi-core';
 import { readSubagentsConfig } from '../config.js';
 import type { SubagentManager } from '../manager.js';
 import type { SubagentTask } from '../types.js';
@@ -126,7 +127,11 @@ export function installBackgroundHandoffShortcut(
   });
   const unsubscribe = terminalInput
     ? ctx?.ui?.onTerminalInput?.((data: string) => {
-        if (data !== terminalInput) return undefined;
+        if (
+          data !== terminalInput ||
+          isWorkPanelRootEditorInputActive(ctx) === false
+        )
+          return undefined;
         return handoff().length ? { consume: true } : undefined;
       })
     : undefined;

@@ -1,16 +1,18 @@
 # @thoth-agents/pi-todo
 
 Session-owned task lists for Pi. Registers the `todo` tool, `/todos` command,
-and an above-editor `thoth-todos` widget. Requires Node >=22.19 and Pi >=0.99.0.
+and a Todos section in pi-core's shared Work panel. Requires Node >=22.19 and
+Pi >=0.99.0.
 
 ## Origin and attribution
 
 This is a first-party MIT fork of **@juicesharp/rpiv-todo 2.12.0**, by juicesharp,
 from [rpiv-mono](https://github.com/juicesharp/rpiv-mono/tree/68d9a0014b70006d7b04b57933752338a2716db7/packages/rpiv-todo).
 The upstream source layout, tool schema, state transitions, terminal-safe
-renderers, completed-task display, collapse shortcut, and branch replay are
-retained. Applicable tests are ported from that revision with local SDK mocks;
-configuration and localization tests do not apply. LICENSE retains juicesharp's
+renderers, and branch replay are retained. The standalone overlay and collapse
+shortcut are replaced by the shared Work panel. Applicable tests are ported from
+that revision with local SDK mocks; configuration and localization tests do not
+apply. LICENSE retains juicesharp's
 copyright and adds Thoth contributors' copyright.
 
 Open-task reinjection uses the append-only approach demonstrated by
@@ -19,16 +21,22 @@ Open-task reinjection uses the append-only approach demonstrated by
 ## Differences from upstream
 
 - No configuration or localization dependencies: English text and upstream
-  default tool guidance are fixed. The widget keeps the default 12 content-row
-  budget (plus a spacer), `ctrl+shift+t` collapse shortcut, and Pi's tool-output
-  expansion support.
-- Uses only `ctx.ui.setWidget` with its own `thoth-todos` key; it does not replace
-  the editor or footer. Tasks are isolated by session; the foreground widget
-  never displays another session's tasks. Headless sessions retain the tool,
-  replay, context reinjection, and state publication without creating a widget.
-- Renders `todo` calls/results and the above-editor widget through the theme's
-  Render KIT when present, discovered through `@thoth-agents/pi-core` at render
-  time. Without the kit, it keeps native Pi rendering; there is no dependency on
+  default tool guidance are fixed. Pi's tool-output expansion support is retained.
+- Registers a versioned Work panel provider (priority 20, label `Todos`) with
+  a `completed/total done` counter. Open tasks appear in-progress first (with
+  their active form), then pending, followed by `+N done` when completed tasks
+  exist. Deleted tasks are excluded; an empty list hides the section. Enter opens
+  the host's subject/status/description detail; todos have no close action.
+- The provider reads only the foreground session's local store and notifies the
+  host on every foreground mutation, replay, or ownership change. Children never
+  rebind the panel or display their tasks in it. Headless sessions retain the
+  tool, replay, context reinjection, and state publication without requesting UI.
+  This package installs no widget, editor replacement, footer, input listener,
+  or collapse shortcut; pi-core owns the shared panel and navigation.
+- Renders `todo` calls/results through the theme's Render KIT when present,
+  discovered through `@thoth-agents/pi-core` at render time. pi-core also renders
+  the shared panel with the kit or native unframed output. Without the kit, tools
+  keep native Pi rendering; there is no dependency on
   `@thoth-agents/pi-thoth-theme`.
 - Publishes full `TodoSnapshot` envelopes through `@thoth-agents/pi-core` on
   `thoth:todo:state` after mutations and replay on `session_start`, `session_tree`,

@@ -1,11 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  CustomEditor,
-  ExtensionInputComponent,
-  ExtensionSelectorComponent,
-  initTheme,
-} from '@earendil-works/pi-coding-agent';
 import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +16,7 @@ import {
 import type { SubagentTask } from '../src/types.js';
 import { registerSubagentsPanelOpener } from '../src/ui/panel-overlay.js';
 import { installSubagentTestEnv } from './helpers/subagent-test-helpers.js';
+import { workPanelSession } from './helpers/work-panel-fixture.js';
 
 // Reuse the extension module graph with a fresh, complete fake for each test.
 vi.mock('../src/manager.js', () => ({ SubagentManager: vi.fn() }));
@@ -306,444 +301,252 @@ describe('subagents smoke', () => {
   it.each([
     false,
     true,
-  ])('animates the Agents widget only while running and cleans up on shutdown (KIT=%s)', async (withKit) => {
+  ])('refreshes and animates only while a child runs, then disposes the provider (KIT=%s)', async (withKit) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     const token = withKit
       ? registerRenderKit(createTestRenderKit(), {})
       : undefined;
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-    try {
-      const listeners: Array<() => void> = [];
-      const { close, listActiveSessionTasks } = managerInstance;
-      let running = false;
-      let queued = false;
-      listActiveSessionTasks.mockImplementation(
-        () =>
-          (running
-            ? [
-                {
-                  id: 'running',
-                  agent: 'worker',
-                  mode: 'background',
-                  status: 'running',
-                  task: 'work',
-                },
-              ]
-            : queued
-              ? [
-                  {
-                    id: 'queued',
-                    agent: 'worker',
-                    mode: 'background',
-                    status: 'queued',
-                    task: 'wait',
-                  },
-                ]
-              : []) as SubagentTask[],
-      );
-      const interval = vi.spyOn(global, 'setInterval');
-      managerInstance.onTaskUpdate.mockImplementation((listener) => {
-        listeners.push(listener);
-        return () => {
-          listeners.splice(listeners.indexOf(listener), 1);
-        };
-      });
-      const handlers = new Map<string, Function>();
-      const setWidget = vi.fn();
-      const pi = {
-        registerMessageRenderer: vi.fn(),
-        registerShortcut: vi.fn(),
-        registerCommand: vi.fn(),
-        registerTool: vi.fn(),
-        on: vi.fn((event: string, handler: Function) =>
-          handlers.set(event, handler),
-        ),
+    let notify: (() => void) | undefined;
+    managerInstance.onTaskUpdate.mockImplementation((listener) => {
+      notify = listener;
+      return () => {
+        notify = undefined;
       };
-      extension(pi);
-      handlers.get('session_start')?.(
-        {},
-        { cwd: env.tmp, sessionId: 'session-new', ui: { setWidget } },
-      );
-      expect(setWidget).toHaveBeenCalledWith(
-        'subagents-claude-background',
-        expect.any(Function),
-        { placement: 'aboveEditor' },
-      );
-      expect(interval).not.toHaveBeenCalled();
-      queued = true;
-      listeners[0]?.();
-      expect(interval).not.toHaveBeenCalled();
-      const requestRender = vi.fn();
-      const widgetFactory = setWidget.mock.calls[0]?.[1];
-      const widget = widgetFactory(
-        { requestRender },
-        { fg: (_role: string, text: string) => text },
-      );
-      const queuedLines = widget.render(80);
-      expect(queuedLines.join('')).not.toMatch(/[\u2800-\u28ff]/u);
-      queued = false;
-      running = true;
-      listeners[0]?.();
-      expect(widget.render(80).join('')).toContain('⠋');
-      vi.advanceTimersByTime(100);
-      expect(widget.render(80).join('')).toContain('⠙');
-      expect(requestRender).toHaveBeenCalledTimes(2);
-      running = false;
-      listeners[0]?.();
-      vi.advanceTimersByTime(2000);
-      expect(requestRender).toHaveBeenCalledTimes(3);
-      expect(widget.render(80)).toEqual([]);
-      expect(vi.getTimerCount()).toBe(0);
-      queued = true;
-      listeners[0]?.();
-      const queueRequests = requestRender.mock.calls.length;
-      vi.advanceTimersByTime(1000);
-      expect(widget.render(80)).toEqual(queuedLines);
-      expect(requestRender).toHaveBeenCalledTimes(queueRequests);
-      expect(vi.getTimerCount()).toBe(0);
-      queued = false;
-      running = true;
-      listeners[0]?.();
-      expect(vi.getTimerCount()).toBe(1);
-      const beforeShutdown = requestRender.mock.calls.length;
-      await handlers.get('session_shutdown')?.();
-      vi.advanceTimersByTime(2000);
-      expect(requestRender).toHaveBeenCalledTimes(beforeShutdown);
-      expect(vi.getTimerCount()).toBe(0);
-      expect(setWidget).toHaveBeenLastCalledWith(
-        'subagents-claude-background',
-        undefined,
-      );
-      expect(close).toHaveBeenCalledOnce();
-      expect(listeners).toHaveLength(0);
-    } finally {
-      if (token) withdrawRenderKit(token);
-      vi.restoreAllMocks();
-      vi.useRealTimers();
-    }
-  });
-
-  it('opens full history from the widget overflow and retains an active task beyond 100 newer completed tasks', async () => {
-    const completedTasks = Array.from({ length: 110 }, (_, index) => ({
-      id: `completed-${index + 1}`,
-      agent: 'finished-worker',
-      mode: 'background',
-      status: 'completed',
-      task: `completed task ${index + 1}`,
-      created_at: new Date(Date.now() - index * 1000).toISOString(),
-    }));
-    const activeTasks = Array.from({ length: 4 }, (_, index) => ({
-      id: `active-${index + 1}`,
-      agent: `active-worker-${index + 1}`,
-      mode: 'background',
-      status: 'running',
-      task: `active task ${index + 1}`,
-      created_at: new Date(Date.now() - 200_000 - index * 1000).toISOString(),
-    }));
-    const olderActiveTask = {
-      id: 'active-old',
-      agent: 'older-active-worker',
-      mode: 'background',
-      status: 'running',
-      task: 'OLDER_ACTIVE_TASK_SENTINEL',
-      created_at: '2020-01-01T00:00:00.000Z',
-    };
-    const allTasks = [
-      ...completedTasks,
-      ...activeTasks,
-      olderActiveTask,
-    ] as SubagentTask[];
-    managerInstance.listActiveSessionTasks.mockReturnValue([
-      ...activeTasks,
-      olderActiveTask,
-    ] as SubagentTask[]);
-    managerInstance.listSessionTasks.mockReturnValue(allTasks);
-    managerInstance.getTask.mockImplementation((id) =>
-      allTasks.find((task) => task.id === id),
-    );
-
-    const handlers = new Map<string, Function>();
-    let terminalInput: ((data: string) => unknown) | undefined;
-    let panelComponent: any;
-    const finishCustomUi = vi.fn();
-    const custom = vi.fn(async (factory: Function) => {
-      panelComponent = factory(
-        {
-          mode: 'fullscreen',
-          terminal: { rows: 40 },
-          requestRender: vi.fn(),
-        },
-        { fg: (_name: string, text: string) => text },
-        undefined,
-        finishCustomUi,
-      );
     });
-    let editorFactory: any;
-    let editor: any;
-    const tui = {
-      requestRender: vi.fn(),
-      hasOverlay: () => false,
-      getFocusedComponent: () => editor,
+    const task: SubagentTask = {
+      id: 'live',
+      agent: 'worker',
+      mode: 'background',
+      status: 'queued',
+      task: 'work',
+      created_at: '2026-01-01T00:00:00Z',
     };
-    const setWidget = vi.fn((_name: string, factory: any) =>
-      factory?.(tui, {}),
-    );
-    const pi = {
-      registerMessageRenderer: vi.fn(),
-      registerShortcut: vi.fn(),
-      registerCommand: vi.fn(),
+    managerInstance.listActiveSessionTasks.mockReturnValue([task]);
+    const fixture = workPanelSession(env.tmp);
+    const handlers = new Map<string, Function>();
+    extension({
       registerTool: vi.fn(),
-      on: vi.fn((event: string, handler: Function) =>
-        handlers.set(event, handler),
-      ),
-    };
-    extension(pi);
-    const ctx = {
-      cwd: env.tmp,
-      sessionId: 'session-overflow-history',
-      ui: {
-        setWidget,
-        getEditorComponent: () => editorFactory,
-        setEditorComponent: (factory: any) => {
-          editorFactory = factory;
-          editor = factory(tui, {}, {});
-        },
-        onTerminalInput: (handler: (data: string) => unknown) => {
-          terminalInput = handler;
-          return () => {
-            terminalInput = undefined;
-          };
-        },
-        getEditorText: () => '',
-        custom,
-      },
-    };
-
+      on: (event: string, handler: Function) => handlers.set(event, handler),
+    });
     try {
-      handlers.get('session_start')?.({}, ctx);
-      expect(terminalInput).toBeDefined();
-      for (let i = 0; i < 4; i++) {
-        expect(terminalInput?.('\u001b[B')).toEqual({ consume: true });
-      }
-      expect(terminalInput?.('\r')).toEqual({
-        consume: true,
-        action: { type: 'open-history' },
-      });
-      await vi.waitFor(() => expect(custom).toHaveBeenCalledOnce());
-
-      for (let i = 0; i < 104; i++) panelComponent.handleInput('\u001b[C');
-      const rendered = panelComponent.render(160).join('\n');
-      expect(rendered).toContain('/105');
-      expect(rendered).toContain('OLDER_ACTIVE_TASK_SENTINEL');
+      await handlers.get('session_start')?.({}, fixture.ctx);
+      expect(fixture.render().join(' ')).toContain('○');
+      expect(vi.getTimerCount()).toBe(0);
+      task.status = 'running';
+      notify?.();
+      expect(fixture.render().join(' ')).toContain('⠋');
+      vi.advanceTimersByTime(100);
+      expect(fixture.render().join(' ')).toContain('⠙');
+      expect(vi.getTimerCount()).toBe(1);
+      task.status = 'completed';
+      task.ended_at = '2026-01-01T00:00:00.100Z';
+      notify?.();
+      const terminal = fixture.render();
+      const requests = fixture.tui.requestRender.mock.calls.length;
+      vi.advanceTimersByTime(2000);
+      expect(fixture.render()).toEqual(terminal);
+      expect(terminal.join(' ')).toContain('✓');
+      expect(fixture.tui.requestRender).toHaveBeenCalledTimes(requests);
+      expect(vi.getTimerCount()).toBe(0);
+      task.status = 'running';
+      notify?.();
+      expect(vi.getTimerCount()).toBe(1);
     } finally {
-      panelComponent?.handleInput('q');
-      await handlers.get('session_shutdown')?.({}, ctx);
+      await handlers.get('session_shutdown')?.({}, fixture.ctx);
+      if (token) withdrawRenderKit(token);
+    }
+    expect(vi.getTimerCount()).toBe(0);
+    expect(notify).toBeUndefined();
+    expect(fixture.listenerCount()).toBe(0);
+  });
+
+  it('opens the selected task, awaits panel closure and lets the existing panel receive its keys', async () => {
+    const tasks: SubagentTask[] = ['first', 'second'].map((id, index) => ({
+      id,
+      agent: id,
+      mode: 'background',
+      status: 'running',
+      task: `task ${id}`,
+      created_at: `2026-01-01T00:00:0${2 - index}Z`,
+    }));
+    managerInstance.listActiveSessionTasks.mockReturnValue(tasks);
+    managerInstance.listSessionTasks.mockReturnValue(tasks);
+    managerInstance.getTask.mockImplementation((id) =>
+      tasks.find((task) => task.id === id),
+    );
+    const fixture = workPanelSession(env.tmp);
+    const handlers = new Map<string, Function>();
+    extension({
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => handlers.set(event, handler),
+    });
+    try {
+      await handlers.get('session_start')?.({}, fixture.ctx);
+      fixture.key('\u001b[D');
+      fixture.key('\u001b[B');
+      expect(fixture.key('\r')).toEqual({ consume: true });
+      await vi.waitFor(() => expect(fixture.ui.custom).toHaveBeenCalledOnce());
+      expect(fixture.panelRender().join(' ')).toContain('task second');
+      expect(fixture.key('x')).toBeUndefined();
+      expect(fixture.key('x')).toBeUndefined();
+      expect(managerInstance.cancel).toHaveBeenCalledWith(
+        'second',
+        'cancelled from subagents detail view',
+      );
+      expect(fixture.key('\u001b[D')).toBeUndefined();
+      expect(fixture.panelRender().join(' ')).toContain('task first');
+      // Even if focus/overlay hooks transiently report the root, open() must stay pending.
+      fixture.focusEditor();
+      fixture.setOverlay(false);
+      await Promise.resolve();
+      expect(fixture.key('\u001b[D')).toBeUndefined();
+      fixture.focusPanel();
+      expect(fixture.key('q')).toBeUndefined();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fixture.key('\u001b[A')).toBeUndefined();
+      expect(fixture.key('\u001b[D')).toEqual({ consume: true });
+    } finally {
+      fixture.focusPanel();
+      fixture.key('q');
+      await handlers.get('session_shutdown')?.({}, fixture.ctx);
     }
   });
-});
 
-describe('widget editor focus ownership', () => {
-  function start(configuredFactory?: any) {
+  it('uses the host two-press confirmation to cancel a running task, not a queue or terminal row', async () => {
+    const task: SubagentTask = {
+      id: 'cancel-me',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'work',
+      created_at: '2026-01-01T00:00:00Z',
+    };
+    managerInstance.listActiveSessionTasks.mockReturnValue([task]);
+    const fixture = workPanelSession(env.tmp);
+    const handlers = new Map<string, Function>();
+    extension({
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => handlers.set(event, handler),
+    });
+    try {
+      await handlers.get('session_start')?.({}, fixture.ctx);
+      fixture.key('\u001b[D');
+      fixture.key('x');
+      expect(managerInstance.cancel).not.toHaveBeenCalled();
+      expect(fixture.ui.setStatus).toHaveBeenCalledWith(
+        'thoth-work-panel-close',
+        'Press x again to cancel worker',
+      );
+      fixture.key('x');
+      expect(managerInstance.cancel).toHaveBeenCalledWith(
+        'cancel-me',
+        'cancelled from work panel',
+      );
+      for (const status of ['queued', 'completed'] as const) {
+        task.status = status;
+        fixture.key('x');
+        fixture.key('x');
+      }
+      expect(managerInstance.cancel).toHaveBeenCalledTimes(1);
+    } finally {
+      await handlers.get('session_shutdown')?.({}, fixture.ctx);
+    }
+  });
+
+  it('replaces a session provider without leaving stale input interception or task subscriptions', async () => {
+    const listeners = new Set<() => void>();
+    managerInstance.onTaskUpdate.mockImplementation((listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    });
+    const first = workPanelSession(env.tmp, 'first-session');
+    const second = workPanelSession(env.tmp, 'second-session');
+    const handlers = new Map<string, Function>();
+    extension({
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => handlers.set(event, handler),
+    });
+    try {
+      await handlers.get('session_start')?.({}, first.ctx);
+      expect(first.listenerCount()).toBe(1);
+      await handlers.get('session_start')?.({}, second.ctx);
+      expect(first.listenerCount()).toBe(0);
+      expect(second.listenerCount()).toBe(1);
+      expect(listeners.size).toBe(1);
+    } finally {
+      await handlers.get('session_shutdown')?.({}, second.ctx);
+    }
+    expect(second.listenerCount()).toBe(0);
+    expect(listeners.size).toBe(0);
+  });
+
+  it('releases an in-flight host installation when the session shuts down before ensure resolves', async () => {
+    const fixture = workPanelSession(env.tmp);
+    const handlers = new Map<string, Function>();
+    extension({
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => handlers.set(event, handler),
+    });
+    const starting = handlers.get('session_start')?.({}, fixture.ctx);
+    await handlers.get('session_shutdown')?.({}, fixture.ctx);
+    await starting;
+    expect(fixture.listenerCount()).toBe(0);
+    expect(fixture.render()).toEqual([]);
+  });
+
+  it('shows session Agents through the shared host, leaving history keys unfocused', async () => {
     managerInstance.listActiveSessionTasks.mockReturnValue([
       {
-        id: 'focused-task',
+        id: 'running',
         agent: 'worker',
         mode: 'background',
         status: 'running',
         task: 'work',
         created_at: '2026-01-01T00:00:00Z',
       },
+      {
+        id: 'queued',
+        agent: 'reviewer',
+        mode: 'background',
+        status: 'queued',
+        task: 'wait',
+        created_at: '2026-01-01T00:00:00Z',
+      },
     ]);
+    const fixture = workPanelSession(env.tmp);
     const handlers = new Map<string, Function>();
     extension({
       registerTool: vi.fn(),
       on: (event: string, handler: Function) => handlers.set(event, handler),
     });
-    let factory = configuredFactory;
-    let focused: any;
-    let overlay = false;
-    let input: any;
-    const keybindings = { matches: vi.fn(() => false) };
-    const theme = { borderColor: (text: string) => text };
-    const tui = {
-      requestRender: vi.fn(),
-      getFocusedComponent: () => focused,
-      hasOverlay: () => overlay,
-    };
-    const ui = {
-      getEditorComponent: () => factory,
-      setEditorComponent: (next: any) => {
-        factory = next;
-        focused = next
-          ? next(tui, theme, keybindings)
-          : { handleInput: vi.fn() };
-      },
-      setWidget: (_name: string, next: any) => next?.(tui, {}),
-      onTerminalInput: (next: any) => {
-        input = next;
-        return () => {
-          input = undefined;
-        };
-      },
-      getEditorText: () => '',
-      notify: vi.fn(),
-    };
-    const ctx = { cwd: env.tmp, sessionId: 'focus-session', ui };
-    const restart = () => handlers.get('session_start')?.({}, ctx);
-    restart();
-    const dispatch = (key: string) => {
-      const result = input?.(key);
-      if (!result?.consume) focused?.handleInput?.(key);
-      return result;
-    };
-    return {
-      ui,
-      tui,
-      theme,
-      keybindings,
-      restart,
-      dispatch,
-      getEditor: () => focused,
-      focus: (next: any) => {
-        focused = next;
-      },
-      overlay: (value: boolean) => {
-        overlay = value;
-      },
-      close: () => handlers.get('session_shutdown')?.({}, ctx),
-    };
-  }
-
-  it('installs the default CustomEditor with embedded working status and preserves input', async () => {
-    const fixture = start();
     try {
-      expect(fixture.getEditor()).toBeInstanceOf(CustomEditor);
-      expect(fixture.getEditor().embedWorkingStatus).toBe(true);
-      expect(fixture.dispatch('a')).toBeUndefined();
-      expect(fixture.getEditor().getText()).toBe('a');
-      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it('delegates the configured editor with the original TUI, theme and keybindings across session starts', async () => {
-    const configured = vi.fn(() => ({ handleInput: vi.fn() }));
-    const fixture = start(configured);
-    try {
-      expect(configured).toHaveBeenCalledWith(
-        fixture.tui,
-        fixture.theme,
-        fixture.keybindings,
+      await handlers.get('session_start')?.({}, fixture.ctx);
+      expect(fixture.render().join(' ')).toContain(
+        'Agents · 1 running · 1 queued',
       );
-      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
-      fixture.restart();
-      expect(configured).toHaveBeenCalledTimes(2);
-      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
-      expect(fixture.ui.notify).not.toHaveBeenCalled();
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it.each([
-    'overlay',
-    'custom',
-  ])('passes keys to %s UI and exits existing navigation without consuming', async (kind) => {
-    const fixture = start();
-    try {
-      const editor = fixture.getEditor();
-      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
-      const dialog = { handleInput: vi.fn() };
-      fixture.focus(dialog);
-      fixture.overlay(kind === 'overlay');
-      for (const key of ['\u001b[B', '\u001b[A', '\r', '\u001b', 'x']) {
-        expect(fixture.dispatch(key)).toBeUndefined();
-        expect(dialog.handleInput).toHaveBeenLastCalledWith(key);
-      }
-      expect(fixture.ui.notify).not.toHaveBeenCalled();
-      fixture.focus(editor);
-      fixture.overlay(false);
-      expect(fixture.dispatch('\u001b[A')).toBeUndefined();
-      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it.each([
-    'select',
-    'confirm',
-    'input',
-  ])('lets Pi native %s receive input while the editor is temporarily unmounted', async (kind) => {
-    const fixture = start();
-    try {
-      const editor = fixture.getEditor();
-      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
-      const selected = vi.fn();
-      initTheme('dark', false);
-      const dialog =
-        kind === 'input'
-          ? new ExtensionInputComponent('Input', undefined, selected, () => {})
-          : new ExtensionSelectorComponent(
-              'Select',
-              kind === 'confirm' ? ['Yes', 'No'] : ['first', 'second'],
-              selected,
-              () => {},
-            );
-      fixture.focus(dialog);
-      expect(fixture.dispatch('\u001b[B')).toBeUndefined();
-      if (kind === 'input') expect(fixture.dispatch('x')).toBeUndefined();
-      expect(fixture.dispatch('\r')).toBeUndefined();
-      expect(selected).toHaveBeenCalledWith(
-        kind === 'input' ? 'x' : kind === 'confirm' ? 'No' : 'second',
+      expect(managerInstance.listActiveSessionTasks).toHaveBeenCalledWith(
+        env.tmp,
+        'work-session',
       );
-      dialog.dispose();
-      fixture.focus(editor);
-      expect(fixture.ui.notify).not.toHaveBeenCalled();
-      expect(fixture.dispatch('\u001b[A')).toBeUndefined();
-      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
+      expect(fixture.ui.setWidget).toHaveBeenCalledTimes(1);
+      expect(fixture.ui.setWidget.mock.calls[0]?.[0]).toBe('thoth-work-panel');
+      expect(fixture.ui.setEditorComponent).toHaveBeenCalledTimes(1);
+      expect(fixture.listenerCount()).toBe(1);
+      expect(fixture.key('[A')).toBeUndefined();
+      expect(fixture.key('[B')).toBeUndefined();
+      fixture.setText(' ');
+      expect(fixture.key('\u001b[D')).toBeUndefined();
+      fixture.setText('');
+      expect(fixture.key('\u001b[D')).toEqual({ consume: true });
+      expect(fixture.key('\u001b')).toEqual({ consume: true });
     } finally {
-      await fixture.close();
+      await handlers.get('session_shutdown')?.({}, fixture.ctx);
     }
-  });
-
-  it('does not navigate even if an overlay leaves the editor focused', async () => {
-    const fixture = start();
-    try {
-      fixture.overlay(true);
-      expect(fixture.dispatch('\u001b[B')).toBeUndefined();
-      fixture.overlay(false);
-      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it.each([
-    'replacement',
-    'default-restoration',
-    'same-wrapper',
-  ])('fails closed with one visible notice after %s', async (kind) => {
-    const fixture = start();
-    try {
-      const installed = fixture.ui.getEditorComponent();
-      expect(fixture.dispatch('\u001b[B')).toEqual({ consume: true });
-      fixture.ui.setEditorComponent(
-        kind === 'same-wrapper'
-          ? installed
-          : kind === 'replacement'
-            ? () => ({ handleInput: vi.fn() })
-            : undefined,
-      );
-      for (const key of ['\u001b[B', '\u001b[A', '\r', 'x'])
-        expect(fixture.dispatch(key)).toBeUndefined();
-      expect(fixture.ui.notify).toHaveBeenCalledTimes(1);
-      expect(fixture.ui.notify.mock.calls[0][0]).toMatch(
-        /widget navigation.*unavailable/i,
-      );
-    } finally {
-      await fixture.close();
-    }
+    expect(fixture.listenerCount()).toBe(0);
   });
 });

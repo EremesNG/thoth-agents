@@ -54,3 +54,18 @@ export {
   getToolDefinitionRegistryVersion,
   publishToolDefinitions,
 } from './tool-registry.js';
+export type {
+  WorkPanelCloseOutcome,
+  WorkPanelDetail,
+  WorkPanelProvider,
+  WorkPanelRow,
+  WorkPanelRowContent,
+  WorkPanelStatusTone,
+  WorkPanelSummary,
+} from './work-panel.js';
+export {
+  ensureWorkPanel,
+  isWorkPanelRootEditorInputActive,
+  registerWorkPanelProvider,
+  WORK_PANEL_VERSION,
+} from './work-panel.js';

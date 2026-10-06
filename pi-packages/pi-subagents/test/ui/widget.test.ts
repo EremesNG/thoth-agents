@@ -1,1455 +1,318 @@
-import fs from 'node:fs';
-import { createRequire } from 'node:module';
-import os from 'node:os';
-import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import extension, {
-  ClaudeBackgroundWidget,
-  ClaudeBackgroundWidgetState,
-  completionMessage,
-  createSubagentsPanelKeyMatcher,
-  moveClaudeBackgroundWidgetSelection,
-  renderClaudeBackgroundWidgetLines,
-  resolveRegisteredToolDefinition,
-  sendSubagentCompletionMessage,
-} from '../../index.js';
-import {
-  loadSubagents,
-  parseFrontmatter,
-  readSubagentsConfig,
-  resetGlobalSubagentModelProfileField,
-  saveGlobalSubagentModelProfile,
-  subagentSourceWarnings,
-} from '../../src/config.js';
-import {
-  isSubagentsDebugEnabled,
-  writeSubagentsDebugLog,
-} from '../../src/debug.js';
-import {
-  deriveErrorString,
-  normalizeErrorMetadata,
-  parseErrorMetadata,
-  SubagentStructuredError,
-  safeErrorMetadataDetails,
-  serializeErrorMetadata,
-} from '../../src/error-metadata.js';
-import {
-  resolveSubagentHistoryDbPath,
-  resolveSubagentsHistoryHome,
-  SubagentHistoryStore,
-} from '../../src/history.js';
-import { SubagentManager } from '../../src/manager.js';
-import {
-  applyDirtyProfileEdit,
-  buildModelProfileRows,
-  buildNoChangesModelProfilesMessage,
-  buildNonTuiModelProfilesMessage,
-  commitStagedModelProfiles,
-  createSubagentModelProfilesModal,
-  globalSubagentsConfigPath,
-  groupAvailableModelsByProvider,
-  runSubagentModelsCommand,
-  stageModelProfileEdit,
-} from '../../src/model-profiles-ui.js';
-import { resolveEffectiveSubagentProfile } from '../../src/profile-resolver.js';
+import { registerRenderKit, withdrawRenderKit } from '@thoth-agents/pi-core';
+import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
+import { describe, expect, it, vi } from 'vitest';
 import { visibleWidth } from '../../src/render/text-width.js';
-import {
-  createSubagentsRenderLogger,
-  DEFAULT_RENDER_DEBUG_LOG_PATH,
-} from '../../src/render-debug.js';
-import { buildPrompt, ThreadSnapshotBuilder } from '../../src/runner.js';
-import {
-  boundThreadSnapshot,
-  isValidThreadSnapshot,
-  registerSubagentRuntimeToolDefinition,
-  renderThreadBody,
-  resetPiComponentCacheForTests,
-} from '../../src/thread-view.js';
-import { registerSubagentTools } from '../../src/tools.js';
-import type {
-  EffectiveSubagentProfile,
-  SubagentErrorMetadata,
-  SubagentModelProfiles,
-  SubagentRunner,
-  SubagentTask,
-} from '../../src/types.js';
-import { ARCH_ICON } from '../../src/ui/theme.js';
-import { SubagentsHistoryPanel } from '../../src/ui.js';
+import type { SubagentTask } from '../../src/types.js';
+import { createSubagentsWorkPanelProvider } from '../../src/ui/work-panel-provider.js';
 
-const require = createRequire(import.meta.url);
-
-let tmp: string;
-let oldAgentDir: string | undefined;
-let oldHistoryDbPath: string | undefined;
-beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-subagents-test-'));
-  oldAgentDir = process.env.PI_CODING_AGENT_DIR;
-  oldHistoryDbPath = process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
-  process.env.PI_CODING_AGENT_DIR = path.join(tmp, 'isolated-agent');
-  process.env.PI_SUBAGENTS_HISTORY_DB_PATH = path.join(
-    tmp,
-    'global-agent',
-    'subagents-history.sqlite',
-  );
-  fs.mkdirSync(path.join(tmp, '.pi', 'subagents'), { recursive: true });
-});
-afterEach(() => {
-  if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-  else process.env.PI_CODING_AGENT_DIR = oldAgentDir;
-  if (oldHistoryDbPath === undefined)
-    delete process.env.PI_SUBAGENTS_HISTORY_DB_PATH;
-  else process.env.PI_SUBAGENTS_HISTORY_DB_PATH = oldHistoryDbPath;
-  fs.rmSync(tmp, { recursive: true, force: true });
-});
-
-function writeAgent(name: string, body = '# Agent\nhello') {
-  fs.writeFileSync(
-    path.join(tmp, '.pi', 'subagents', `${name}.md`),
-    `---\nname: ${name}\ndescription: ${name} agent\ntools:\n  - read\n  - memory_search\n---\n${body}`,
-  );
-}
-
-function mockRunner(delay = 0): SubagentRunner {
-  return async ({ definition, task }) => {
-    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-    return {
-      result: `${definition.name} handled ${task}`,
-      model: 'mock/model',
-      fallback_used: false,
-    };
-  };
-}
-
-function statusSnapshot(text: string) {
+const now = Date.parse('2026-01-01T00:00:12Z');
+function task(overrides: Partial<SubagentTask> = {}): SubagentTask {
   return {
-    version: 1 as const,
-    source: 'events' as const,
-    items: [{ type: 'status' as const, text }],
-  };
-}
-
-function stripAnsi(text: string): string {
-  return text
-    .replace(/\u001b\[[0-9;]*m/g, '')
-    .replace(/\u001b\][^\u001b]*(?:\u001b\\|\u0007)/g, '');
-}
-
-function renderText(
-  snapshot: unknown,
-  overrides: Partial<Parameters<typeof renderThreadBody>[1]> = {},
-): string {
-  const context = {
-    cwd: tmp,
-    visibleWidth: (text: string) => stripAnsi(text).length,
-    truncateToWidth: (text: string, width: number) =>
-      text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text,
+    id: 'agent-1',
+    agent: 'worker',
+    mode: 'background',
+    status: 'running',
+    task: 'PHASE / CHANGE: inspect a very long migration surface and report back',
+    model: 'provider/a-very-long-model-name-that-must-not-displace-metrics',
+    created_at: '2026-01-01T00:00:00Z',
+    started_at: '2026-01-01T00:00:00Z',
+    usage: {
+      input: 20000,
+      output: 10000,
+      cacheRead: 90000,
+      cacheWrite: 3800,
+      cost: 0,
+      turns: 5,
+      contextTokens: 0,
+    },
+    runtime_metrics: {
+      toolUses: 5,
+      contextPercent: 62,
+      generationOutputTokens: 300,
+      generationMs: 4000,
+    },
     ...overrides,
   };
-  return stripAnsi(renderThreadBody(snapshot, context).join('\n'))
-    .replace(/\s+/g, ' ')
-    .trim();
+}
+function provider(tasks: SubagentTask[]) {
+  return createSubagentsWorkPanelProvider({
+    listTasks: () => tasks,
+    onTaskUpdate: () => () => {},
+    cancel: () => {},
+    open: async () => {},
+  });
 }
 
-function withAgentDir<T>(agentDir: string, run: () => T): T {
-  const old = process.env.PI_CODING_AGENT_DIR;
-  process.env.PI_CODING_AGENT_DIR = agentDir;
-  try {
-    return run();
-  } finally {
-    if (old === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = old;
-  }
-}
-
-function readJsonl(file: string): any[] {
-  return fs
-    .readFileSync(file, 'utf8')
-    .trim()
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
-}
-
-describe('background widget', () => {
-  it('shows the latest progress update and outstanding-question state even while a tool is active', () => {
-    const task: SubagentTask = {
-      id: 'task-question',
-      agent: 'analyst',
-      mode: 'background',
-      status: 'running',
-      task: 'alignment',
-      created_at: '2026-01-01T00:00:00Z',
-      live_activity: {
-        current: {
-          kind: 'tool_running',
-          label: 'running tool: ask_orchestrator',
-        },
-        trail: [],
-      },
-      pending_questions: [
-        {
-          request_id: 'request-1',
-          message: 'scope?',
-          created_at: '2026-01-01T00:00:01Z',
-        },
-      ],
-      progress_updates: [
-        { message: 'old progress', created_at: '2026-01-01T00:00:00Z' },
-        { message: 'Discovery complete', created_at: '2026-01-01T00:00:01Z' },
-      ],
+describe('Agents work-panel rows', () => {
+  it('summarizes the session, keeps streaming rows stationary and cancels only a still-running task', () => {
+    const older = task({ id: 'older', created_at: '2026-01-01T00:00:00Z' });
+    const newer = task({ id: 'newer', created_at: '2026-01-01T00:00:01Z' });
+    const queued = task({ id: 'queued', status: 'queued' });
+    let tasks = [older, newer, queued];
+    const cancel = vi.fn();
+    const agents = createSubagentsWorkPanelProvider({
+      listTasks: () => tasks,
+      cancel,
+      onTaskUpdate: () => () => {},
+      open: async () => {},
+    });
+    expect(agents).toMatchObject({ version: 1, label: 'Agents', priority: 10 });
+    expect(agents.visibleCount()).toBe(3);
+    expect(agents.summary!()).toEqual({ text: '2 running · 1 queued' });
+    expect(agents.listRows(now).map((row) => row.id)).toEqual([
+      'newer',
+      'older',
+      'queued',
+    ]);
+    tasks = [queued, newer, older];
+    older.last_activity_at = '2026-01-01T00:00:59Z';
+    expect(agents.listRows(now).map((row) => row.id)).toEqual([
+      'newer',
+      'older',
+      'queued',
+    ]);
+    expect(tasks.map((item) => item.id)).toEqual(['queued', 'newer', 'older']);
+    const row = agents.listRows(now)[0]!;
+    expect(agents.armCloseLabel(row)).toBe('cancel');
+    expect(agents.close(row.id)).toMatchObject({
+      action: 'cancel',
+      id: 'newer',
+    });
+    expect(cancel).toHaveBeenCalledWith('newer', 'cancelled from work panel');
+    newer.status = 'completed';
+    expect(agents.armCloseLabel(row)).toBe('');
+    agents.close(row.id);
+    agents.close('queued');
+    agents.close('missing');
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+  it('animates only running rows and distinguishes queue, completion, cancellation and failure', () => {
+    const rows = provider(
+      ['running', 'queued', 'completed', 'cancelled', 'failed'].map(
+        (status, index) =>
+          task({ id: `${index}`, status: status as SubagentTask['status'] }),
+      ),
+    ).listRows(now);
+    const glyph = (index: number, at: number) => {
+      const value = rows.find((row) => row.id === `${index}`)!.statusGlyph;
+      return typeof value === 'function' ? value(at) : value;
     };
-    const state = new ClaudeBackgroundWidgetState(() => [task]);
-    const text = state.renderLines({ width: 200 }).join('\n');
-    expect(text).toContain('awaiting orchestrator reply');
-    expect(text).toContain('progress: Discovery complete');
-    expect(text).not.toContain('old progress');
-    task.pending_questions = [];
-    expect(state.renderLines({ width: 200 }).join('\n')).toContain(
-      'running tool: ask_orchestrator',
+    expect(glyph(0, 0)).toBe('⠋');
+    expect(glyph(0, 100)).toBe('⠙');
+    expect([1, 2, 3, 4].map((index) => glyph(index, 0))).toEqual([
+      '○',
+      '✓',
+      '■',
+      '✗',
+    ]);
+    for (const index of [1, 2, 3, 4])
+      expect(glyph(index, 100)).toBe(glyph(index, 0));
+    expect(provider([]).refreshIntervalMs).toBe(100);
+  });
+  it.each([
+    undefined,
+    -1,
+    NaN,
+    Infinity,
+  ])('marks missing or invalid metrics rather than inventing zero (%s)', (value) => {
+    const row = provider([
+      task({
+        started_at: 'invalid',
+        usage: { input: value, output: value } as SubagentTask['usage'],
+        runtime_metrics: {
+          toolUses: value,
+          contextPercent: value,
+          generationOutputTokens: value,
+          generationMs: 1000,
+        },
+      }),
+    ]).listRows(now)[0]!;
+    expect(row.render!(100, now).text).toContain(
+      'tools ? · ↑? ↓? · ctx ? · ? tok/s · elapsed ?',
     );
+  });
+
+  it('preserves measured zeroes, excludes caches and uses average generation time, not wall time or lifetime output', () => {
+    const zero = task({
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 90000,
+        cacheWrite: 3800,
+      } as SubagentTask['usage'],
+      runtime_metrics: {
+        toolUses: 0,
+        contextPercent: 0,
+        generationOutputTokens: 0,
+        generationMs: 1000,
+      },
+    });
+    expect(provider([zero]).listRows(now)[0]!.render!(100, now).text).toContain(
+      'tools 0 · ↑0 ↓0 · ctx 0.0% · 0 tok/s · elapsed 12s',
+    );
+    const measured = task({
+      runtime_metrics: { generationOutputTokens: 300, generationMs: 4000 },
+    });
+    const content = provider([measured]).listRows(now)[0]!.render!(
+      100,
+      now,
+    ).text;
+    expect(content).toContain('↑20k ↓10k');
+    expect(content).toContain('75 tok/s');
+    expect(content).not.toContain('90k');
+    expect(content).not.toContain('3.8k');
+    measured.runtime_metrics!.generationMs = 0;
+    expect(
+      provider([measured]).listRows(now)[0]!.render!(100, now).text,
+    ).toContain('? tok/s');
+  });
+
+  it('freezes terminal elapsed at the recorded end and leaves an unstarted queue unknown', () => {
+    const ended = task({
+      status: 'completed',
+      ended_at: '2026-01-01T00:00:09Z',
+    });
+    const row = provider([ended]).listRows(now)[0]!;
+    expect(row.render!(100, now).text).toContain('elapsed 9s');
+    expect(row.render!(100, now + 100000).text).toContain('elapsed 9s');
+    ended.ended_at = undefined;
+    expect(row.render!(100, now).text).toContain('elapsed ?');
+    const queue = task({
+      status: 'queued',
+      started_at: undefined,
+      runtime_metrics: undefined,
+      usage: undefined,
+    });
+    expect(
+      provider([queue]).listRows(now)[0]!.render!(100, now).text,
+    ).toContain('tools ? · ↑? ↓? · ctx ? · ? tok/s · elapsed ?');
+  });
+
+  it('keeps Unicode task labels cell-bounded at tiny widths and prefers the display name to a delegated prompt', () => {
+    const row = provider([
+      task({
+        agent: 'worker-🚀',
+        display_name: '日本語\n👩‍💻 e\u0301\t review',
+        task: '# delegated task\n' + 'A'.repeat(500),
+      }),
+    ]).listRows(now)[0]!;
+    expect(row.render!(200, now).text).toContain('日本語 👩‍💻 e\u0301 review');
+    expect(row.render!(200, now).text).not.toContain('AAA');
+    for (const width of [50, 24, 12, 1, 0]) {
+      const content = row.render!(width, now);
+      for (const line of [content.text, ...(content.extraRows ?? [])]) {
+        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+        expect(line).not.toMatch(/[\uD800-\uDBFF]$/u);
+      }
+    }
   });
 
   it.each([
     'running',
     'queued',
-  ] as const)('shows a compact dropped-tools warning on %s cards without changing empty cards', (status) => {
-    const task = {
-      id: 'warned',
-      agent: 'worker',
-      mode: 'background',
-      status,
-      task: 'work',
-      dropped_tools: ['missing_fixture_tool'],
-    } as SubagentTask;
-    const state = new ClaudeBackgroundWidgetState(() => [task]);
-    const widget = new ClaudeBackgroundWidget(state, {});
-    const warned = widget.render(200);
-    expect(warned.join('\n')).toContain(
-      '⚠ Dropped tools: missing_fixture_tool',
-    );
-    task.dropped_tools = [];
-    const empty = widget.render(200);
-    expect(empty.join('\n')).not.toContain('Dropped tools');
-    expect(warned).toHaveLength(empty.length + 1);
-    task.dropped_tools = undefined;
-    expect(widget.render(200).length).toBe(empty.length);
-  });
-  it('keeps dropped-tools warnings compact, metrics intact and mouse rows aligned at narrow widths', () => {
-    const first = {
-      id: 'first',
-      agent: 'first',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      created_at: '2026-01-01T00:00:02Z',
-      last_activity: 'reading',
-      dropped_tools: [
-        'missing_工具_👩‍💻_tool_with_a_long_name',
-        'another_missing_tool',
-      ],
-      runtime_metrics: { turns: 0, toolUses: 5, contextPercent: 62 },
-    } as SubagentTask;
-    const second = {
-      id: 'second',
-      agent: 'second',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      created_at: '2026-01-01T00:00:01Z',
-    } as SubagentTask;
-    for (const width of [80, 50, 35, 24, 20, 1]) {
-      const state = new ClaudeBackgroundWidgetState(() => [first, second]);
-      const widget = new ClaudeBackgroundWidget(state, {
-        fg: (_name: string, text: string) => `\u001b[33m${text}\u001b[39m`,
-      });
-      const lines = widget.render(width);
-      expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
-      const raw = state.renderLines({ width });
-      const warningRow = raw.findIndex((line) =>
-        line.includes('⚠ Dropped tools:'),
-      );
-      expect(warningRow).toBeGreaterThan(1);
-      expect(state.handleMouseClick({ row: warningRow })?.action).toEqual({
-        type: 'open-task',
-        taskId: 'first',
-      });
-      const nextHeader = raw.findIndex((line) =>
-        line.includes('second · work'),
-      );
-      expect(state.handleMouseClick({ row: nextHeader })?.action).toEqual({
-        type: 'open-task',
-        taskId: 'second',
-      });
-      if (width >= 50) {
-        const text = lines.map(stripAnsi).join(' ');
-        expect(text).toContain('tools 5');
-        expect(text).toContain('context 62.0%');
-      }
-      if (width >= 24)
-        expect(lines.map(stripAnsi).join(' ')).toContain('Dropped tools:');
-    }
-  });
-
-  it('includes warnings from every queued task in the grouped queue without duplicating names', () => {
-    const tasks = ['first', 'second'].map((id) => ({
-      id,
-      agent: id,
-      mode: 'background',
-      status: 'queued',
-      task: 'work',
-      dropped_tools: id === 'first' ? [] : ['missing_tool', 'missing_tool'],
-    })) as SubagentTask[];
-    const state = new ClaudeBackgroundWidgetState(() => tasks);
-    expect(state.renderLines({ width: 200 })).toEqual([
-      '● Agents  (↑↓ navigate · ↵ open)',
-      '  ○ 2 queued',
-      '  ╰─ ⚠ Dropped tools: missing_tool',
-    ]);
-    expect(state.handleMouseClick({ row: 2 })?.action).toEqual({
-      type: 'open-task',
-      taskId: 'first',
-    });
-  });
-
-  it.each([
-    'completed',
-    'failed',
-    'cancelled',
-  ] as const)('removes the warned running card at %s while retaining terminal warning surfaces', (status) => {
-    const task = {
-      id: 'warned',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      dropped_tools: ['missing_fixture_tool'],
-    } as SubagentTask;
-    const state = new ClaudeBackgroundWidgetState(() => [task]);
-    expect(state.renderLines().join(' ')).toContain('Dropped tools');
-    state.handleTerminalInput('\u001b[B');
-    task.status = status;
-    expect(state.renderLines({ frame: 1 })).toEqual([]);
-    expect(state.handleTerminalInput('\u001b[B')).toBeUndefined();
-    expect(state.getSelectedKey()).toBe('main');
-    expect(completionMessage(task)).toContain(
-      'missing implementation: missing_fixture_tool',
-    );
-  });
-
-  it('keeps running cards and selection stationary while streaming inputs reorder', () => {
-    const makeTask = (id: string, created_at: string) =>
-      ({
-        id,
-        agent: id,
-        mode: 'background',
-        status: 'running',
-        task: `work ${id}`,
-        created_at,
-        started_at: '2026-01-01T00:00:00Z',
-        last_activity_at: '2026-01-01T00:00:00Z',
-        last_activity: 'initial',
-        runtime_metrics: { turns: 0, toolUses: 0, contextPercent: 0 },
-      }) as SubagentTask;
-    const a = makeTask('A', '2026-01-01T00:00:02Z');
-    const b = makeTask('B', '2026-01-01T00:00:01Z');
-    let tasks = [b, a];
-    const state = new ClaudeBackgroundWidgetState(() => tasks);
-    const headers = () =>
-      state
-        .renderLines({ width: 200, frame: 0 })
-        .filter((line) => line.includes('work '));
-    expect(headers()).toEqual(['  ╭─ ⠋ A · work A', '  ╭─ ⠋ B · work B']);
-    state.handleTerminalInput('\u001b[B');
-    expect(state.getSelectedKey()).toBe('A');
-    for (const [index, input] of [
-      [a, b],
-      [b, a],
-    ].entries()) {
-      tasks = input;
-      const before = [...input];
-      a.last_activity_at = `2026-01-01T00:00:0${index + 3}Z`;
-      a.started_at = `2026-01-01T00:00:0${index + 1}Z`;
-      a.last_activity = `stream ${index}`;
-      a.runtime_metrics = {
-        turns: index + 1,
-        toolUses: index + 2,
-        contextPercent: 50 + index,
-      };
-      expect(headers()).toEqual(['● ┏━ ⠋ A · work A', '  ╭─ ⠋ B · work B']);
-      expect(state.getSelectedKey()).toBe('A');
-      const text = state.renderLines({ width: 200 }).join('\n');
-      expect(text).toContain(`stream ${index}`);
-      expect(text).toContain(`⚙ tools ${index + 2}`);
-      expect(text).toContain(`context ${50 + index}.0%`);
-      expect(
-        renderClaudeBackgroundWidgetLines(tasks, undefined, {
-          now: Date.parse('2026-01-01T00:00:10Z'),
-          width: 200,
-        })?.join('\n'),
-      ).toContain(`elapsed ${9 - index}s`);
-      expect(tasks).toEqual(before);
-    }
-    state.handleTerminalInput('\u001b[B');
-    expect(state.getSelectedKey()).toBe('B');
-    state.handleTerminalInput('\u001b[A');
-    expect(state.handleTerminalInput('\r')).toEqual({
-      consume: true,
-      action: { type: 'open-task', taskId: 'A' },
-    });
-  });
-  it('keeps the newest three visible with binary descending ID ties across streaming reorders', () => {
-    const tasks = ['a', 'Z', 'z', 'older'].map((id) => ({
-      id,
-      agent: id,
-      mode: 'background',
-      status: 'running',
-      task: `work ${id}`,
-      created_at:
-        id === 'older' ? '2026-01-01T00:00:00Z' : '2026-01-01T00:00:01Z',
-    })) as SubagentTask[];
-    let current = [...tasks];
-    const state = new ClaudeBackgroundWidgetState(() => current);
-    state.handleTerminalInput('\u001b[B');
-    state.handleTerminalInput('\u001b[B');
-    expect(state.getSelectedKey()).toBe('a');
-    for (const input of [
-      [tasks[3]!, tasks[1]!, tasks[0]!, tasks[2]!],
-      [...tasks].reverse(),
-    ]) {
-      current = input;
-      tasks[3]!.last_activity_at = '2026-01-01T00:00:59Z';
-      const before = [...input];
-      const lines = state.renderLines({ frame: 0 });
-      expect(lines.filter((line) => line.includes('work '))).toEqual([
-        '  ╭─ ⠋ z · work z',
-        '● ┏━ ⠋ a · work a',
-        '  ╭─ ⠋ Z · work Z',
-      ]);
-      expect(lines.join('\n')).toContain('+1 more active');
-      expect(lines.join('\n')).not.toContain('work older');
-      expect(state.getSelectedKey()).toBe('a');
-      expect(input).toEqual(before);
-    }
-    state.handleTerminalInput('\u001b[B');
-    expect(state.getSelectedKey()).toBe('Z');
-    state.handleTerminalInput('\u001b[B');
-    expect(state.getSelectedKey()).toBe('overflow');
-    state.handleTerminalInput('\u001b[A');
-    expect(state.handleTerminalInput('\r')).toEqual({
-      consume: true,
-      action: { type: 'open-task', taskId: 'Z' },
-    });
-  });
-
-  it('shows context usage with exactly one decimal place', () => {
-    const task = {
-      id: 'context-task',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      runtime_metrics: { contextPercent: 1.134191176470588 },
-    } as any;
-    const render = () =>
-      renderClaudeBackgroundWidgetLines([task])?.join(' ') ?? '';
-
-    expect(render()).toContain('context 1.1%');
-    task.runtime_metrics.contextPercent = 0;
-    expect(render()).toContain('context 0.0%');
-    task.runtime_metrics.contextPercent = 62;
-    expect(render()).toContain('context 62.0%');
-  });
-
-  it('animates running status across frames while queue keeps a hollow dot', () => {
-    const running = {
-      id: 'r',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-    } as any;
-    const queued = {
-      id: 'q',
-      agent: 'worker',
-      mode: 'background',
-      status: 'queued',
-      task: 'wait',
-    } as any;
-    const first = renderClaudeBackgroundWidgetLines(
-      [running, queued],
-      undefined,
-      { frame: 0 },
-    );
-    const next = renderClaudeBackgroundWidgetLines(
-      [running, queued],
-      undefined,
-      { frame: 1 },
-    );
-    expect(first?.[1]).toContain('⠋ worker');
-    expect(next?.[1]).toContain('⠙ worker');
-    expect(first?.at(-1)).toBe('  ○ 1 queued');
-  });
-  it.each<{ started_at?: string; expected: string }>([
-    { started_at: '2026-01-01T02:03:59.099Z', expected: '0s' },
-    { started_at: '2026-01-01T02:03:47.654Z', expected: '12s' },
-    { started_at: '2026-01-01T02:03:14.999Z', expected: '45s' },
-    { started_at: '2026-01-01T02:03:00.000Z', expected: '59s' },
-    { started_at: '2026-01-01T01:49:54.000Z', expected: '14m 05s' },
-    { started_at: '2026-01-01T00:00:00.000Z', expected: '2h 03m' },
-    { started_at: '2026-01-01T02:03:59.999Z', expected: '0s' },
-    { started_at: '2026-01-01T02:04:00.000Z', expected: '0s' },
-    { started_at: 'invalid', expected: '?' },
-    { expected: '?' },
-  ])('shows widget elapsed $expected for start $started_at', ({
-    started_at,
-    expected,
-  }) => {
-    const task: SubagentTask = {
-      id: 'duration',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'show elapsed',
-      created_at: '2026-01-01T00:00:00.000Z',
-      started_at,
-    };
-    const now = Date.parse('2026-01-01T02:03:59.999Z');
-    const rendered = renderClaudeBackgroundWidgetLines([task], undefined, {
-      width: 200,
-      now,
-    })!.join('\n');
-    expect(rendered).toContain(`⧗ elapsed ${expected}`);
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
-    try {
-      const widget = new ClaudeBackgroundWidget(
-        new ClaudeBackgroundWidgetState(() => [task]),
-        {
-          fg: (color: string, text: string) =>
-            color === 'dim' ? `\x1b[2m${text}\x1b[0m` : text,
-        },
-      );
-      expect(widget.render(200).join('\n')).toContain(
-        `⧗ \x1b[2melapsed\x1b[0m ${expected}`,
-      );
-    } finally {
-      clock.mockRestore();
-    }
-  });
-
-  it('shows task-average output speed between context and elapsed, not turns or session usage', () => {
-    const task: SubagentTask = {
-      id: 'speed',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      created_at: '2026-01-01T00:00:00Z',
-      started_at: '2026-01-01T00:00:00Z',
-      usage: {
-        input: 100,
-        output: 99999,
-        cacheRead: 0,
-        cacheWrite: 0,
-        cost: 0,
-        contextTokens: 0,
-        turns: 5,
-      },
-      runtime_metrics: {
-        contextPercent: 25,
-        generationOutputTokens: 300,
-        generationMs: 4000,
-      },
-    };
-    const render = () =>
-      renderClaudeBackgroundWidgetLines([task], undefined, {
-        width: 200,
-        now: Date.parse('2026-01-01T00:00:10Z'),
-      })!.join(' ');
-    expect(render()).toContain('context 25.0% · 75 tok/s · ⧗ elapsed 10s');
-    expect(render()).not.toContain('turns');
-    for (const metrics of [
-      undefined,
-      {},
-      { generationOutputTokens: 100 },
-      { generationOutputTokens: 0, generationMs: 0 },
-      { generationOutputTokens: NaN, generationMs: 1000 },
-      { generationOutputTokens: 100, generationMs: -1 },
-    ]) {
-      task.runtime_metrics = metrics;
-      expect(render()).toContain('? tok/s');
-    }
-    task.runtime_metrics = { generationOutputTokens: 0, generationMs: 1000 };
-    expect(render()).toContain('0 tok/s');
-  });
-
-  it.each([
-    { cost: 0.1051, expected: '$0.1051' },
-    { cost: 0, expected: '$0.0000' },
-    { cost: 0.00006, expected: '$0.0001' },
-  ])('shows estimated cost $expected after tokens with only the currency label dimmed', ({
-    cost,
-    expected,
-  }) => {
-    const task = {
-      id: 'cost',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      usage: { input: 19000, output: 803, cost },
-    } as SubagentTask;
-    const text = renderClaudeBackgroundWidgetLines([task], undefined, {
-      width: 200,
-    })!.join(' ');
-    expect(text).toContain(`↑19k ↓803 · ${expected} · ▣ context ?`);
-    const widget = new ClaudeBackgroundWidget(
-      new ClaudeBackgroundWidgetState(() => [task]),
-      {
-        fg: (color: string, value: string) =>
-          color === 'dim' ? `\x1b[2m${value}\x1b[0m` : value,
-      },
-    );
-    expect(widget.render(200).join(' ')).toContain(
-      `\x1b[2m$\x1b[0m${expected.slice(1)}`,
-    );
-  });
-
-  it.each([
-    undefined,
-    {},
-    { cost: undefined },
-    { cost: -1 },
-    { cost: NaN },
-    { cost: Infinity },
-    { cost: -Infinity },
-    { cost: '0.1051' },
-    { cost: null },
-  ])('marks missing or invalid estimated cost as $? (%j)', (usage) => {
-    const task = {
-      id: 'unknown-cost',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      usage,
-    } as SubagentTask;
-    const text = renderClaudeBackgroundWidgetLines([task], undefined, {
-      width: 200,
-    })!.join(' ');
-    expect(text).toContain('↑? ↓? · $? · ▣ context ?');
-    const widget = new ClaudeBackgroundWidget(
-      new ClaudeBackgroundWidgetState(() => [task]),
-      {
-        fg: (color: string, value: string) =>
-          color === 'dim' ? `\x1b[2m${value}\x1b[0m` : value,
-      },
-    );
-    expect(widget.render(200).join(' ')).toContain('\x1b[2m$\x1b[0m?');
-  });
-
-  it.each([
-    [29000, 6000, '↑29k ↓6.0k'],
-    [60000, 7700, '↑60k ↓7.7k'],
-    [999, 1000, '↑999 ↓1.0k'],
-    [1000000, 0, '↑1.0M ↓0'],
-    [0, 0, '↑0 ↓0'],
-    [-1, 500, '↑? ↓500'],
-    [100, -1, '↑100 ↓?'],
-    [NaN, 500, '↑? ↓500'],
-    [100, NaN, '↑100 ↓?'],
-    [Infinity, 500, '↑? ↓500'],
-    [100, Infinity, '↑100 ↓?'],
-    [undefined, 500, '↑? ↓500'],
-    [100, undefined, '↑100 ↓?'],
-  ])('shows separate token counts without caches (%s input, %s output)', (input, output, expected) => {
-    const task = {
-      id: 'usage',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'work',
-      usage: {
-        input,
-        output,
-        cacheRead: 90000,
-        cacheWrite: 3800,
-        cost: 0,
-        contextTokens: 0,
-        turns: 5,
-      },
-    } as SubagentTask;
-    const render = () =>
-      renderClaudeBackgroundWidgetLines([task], undefined, {
-        width: 200,
-        frame: 0,
-        now: 0,
-      })!.join(' ');
-    const text = render();
-    expect(text).toContain(`⚙ tools ? · ${expected} · $0.0000 · ▣ context ?`);
-    expect(text).not.toContain('◈');
-    expect(text).not.toContain('tokens');
-    task.usage!.cacheRead = 0;
-    task.usage!.cacheWrite = 0;
-    expect(render()).toBe(text);
-  });
-
-  it('keeps live metrics visible beside a long task at narrow widths and marks absent values', () => {
-    const task = {
-      id: 'long',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'PHASE / CHANGE: examine a lengthy migration task that fills the row',
-      model: 'provider/a-very-long-model-name',
-      created_at: '2026-01-01T00:00:00Z',
-      started_at: '2026-01-01T00:00:00Z',
-      usage: {
-        input: 20000,
-        output: 10000,
-        cost: 0.1051,
-        cacheWrite: 3800,
-        cacheRead: 90000,
-        turns: 0,
-      },
-      runtime_metrics: {
-        turns: 0,
-        toolUses: 5,
-        contextPercent: 62,
-        compactions: 1,
-      },
-    } as any;
-    const state = new ClaudeBackgroundWidgetState(() => [task]);
-    const widget = new ClaudeBackgroundWidget(state, {});
-    for (const width of [100, 80, 50]) {
-      const lines = widget.render(width);
-      expect(lines.some((line) => line.includes('tools 5'))).toBe(true);
-      expect(lines.join(' ')).toContain('↑20k ↓10k');
-      expect(lines.join(' ')).toContain('$0.1051');
-      expect(lines.join(' ')).toContain('context 62.0%');
-      expect(lines.join(' ')).toContain('compaction');
-      expect(lines.every((line) => line.length <= width)).toBe(true);
-    }
-    task.usage = undefined;
-    task.runtime_metrics = undefined;
-    const unknown = widget.render(50).join(' ');
-    expect(unknown).toContain('? tok/s');
-    expect(unknown).toContain('tools ?');
-    expect(unknown).toContain('↑? ↓?');
-    expect(unknown).toContain('$?');
-    expect(unknown).toContain('context ?');
-    expect(unknown).toMatch(/elapsed \d/);
-  });
-
-  it('keeps multiple agents compact and makes a wrapped metrics row open its owner', () => {
-    const tasks = ['one', 'two'].map((id, i) => ({
-      created_at: `2026-01-01T00:00:0${2 - i}Z`,
-      id,
-      agent: id,
-      mode: 'background',
-      status: 'running',
-      task: 'PHASE / CHANGE: inspect the long migration surface and report back',
-      started_at: new Date(Date.now() - 12000).toISOString(),
-      runtime_metrics: { turns: 2, toolUses: 3, contextPercent: 40 },
-      usage: {
-        input: 1000,
-        output: 500,
-        cacheWrite: 0,
-        cacheRead: 2000,
-        turns: 2,
-      },
-    })) as any;
-    const actions: any[] = [];
-    const widget = new ClaudeBackgroundWidget(
-      new ClaudeBackgroundWidgetState(() => tasks),
-      {},
-      {},
-      (action) => actions.push(action),
-    );
-    const lines = widget.render(50);
-    expect(lines.filter((line) => line.includes('? tok/s'))).toHaveLength(2);
-    expect(lines.filter((line) => line.includes('↑1.0k ↓500'))).toHaveLength(2);
-    expect(lines.every((line) => line.length <= 50)).toBe(true);
-    widget.handleMouse({ row: 3, type: 'click' });
-    expect(actions).toEqual([{ type: 'open-task', taskId: 'one' }]);
-  });
-
-  it('shows minimalist child metrics with dim labels without counting cache reads or writes', () => {
-    const task = {
-      id: 'metric-task',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: 'Review the migration',
-      created_at: '2026-01-01T00:00:00.000Z',
-      started_at: '2026-01-01T00:00:00.000Z',
-      model: 'openai/gpt-6',
-      usage: {
-        input: 20000,
-        output: 10000,
-        cost: 0.1051,
-        cacheWrite: 3800,
-        cacheRead: 90000,
-        turns: 5,
-      },
-      runtime_metrics: {
-        turns: 5,
-        toolUses: 5,
-        contextPercent: 62,
-        compactions: 1,
-      },
-      live_activity: {
-        current: { kind: 'tool_running', label: 'editing…' },
-        trail: [],
-      },
-    } as any;
-    const lines = renderClaudeBackgroundWidgetLines([task], undefined, {
-      frame: 0,
-      now: Date.parse('2026-01-01T00:00:12.300Z'),
-    });
-    expect(lines).toEqual([
-      '● Agents  (↑↓ navigate · ↵ open)',
-      '  ╭─ ⠋ worker [openai/gpt-6] · Review the migration',
-      '  │  ⚙ tools 5 · ↑20k ↓10k · $0.1051 · ▣ context 62.0% · ? tok/s · ⧗ elapsed 12s',
-      '  │  ≋ 1 compaction',
-      '  ╰⎿ editing…',
-    ]);
-
-    const widget = new ClaudeBackgroundWidget(
-      new ClaudeBackgroundWidgetState(() => [task]),
-      {
-        fg: (color: string, text: string) =>
-          color === 'dim' ? `\x1b[2m${text}\x1b[0m` : text,
-      },
-    );
-    const styled = widget.render(80).join('\n');
-    for (const metric of [
-      '? \x1b[2mtok/s\x1b[0m',
-      '⚙ \x1b[2mtools\x1b[0m 5',
-      '\x1b[2m↑\x1b[0m20k \x1b[2m↓\x1b[0m10k',
-      '\x1b[2m$\x1b[0m0.1051',
-      '▣ \x1b[2mcontext\x1b[0m 62.0%',
-      '⧗ \x1b[2melapsed\x1b[0m ',
-      '≋ 1 \x1b[2mcompaction\x1b[0m',
-    ]) {
-      expect(styled).toContain(metric);
-    }
-    task.runtime_metrics.compactions = 2;
-    expect(widget.render(80).join('\n')).toContain(
-      '≋ 2 \x1b[2mcompactions\x1b[0m',
-    );
-  });
-
-  it('shows a queue without invented runtime values and clips narrow rows', () => {
-    const tasks = [
-      {
-        id: 'q1',
-        agent: 'worker',
-        mode: 'background',
-        status: 'queued',
-        task: 'first',
-        created_at: '2026-01-01T00:00:00Z',
-      },
-      {
-        id: 'q2',
-        agent: 'worker',
-        mode: 'background',
-        status: 'queued',
-        task: 'second',
-        created_at: '2026-01-01T00:00:00Z',
-      },
-    ] as any;
-    expect(renderClaudeBackgroundWidgetLines(tasks)).toEqual([
-      '● Agents  (↑↓ navigate · ↵ open)',
-      '  ○ 2 queued',
-    ]);
-    const state = new ClaudeBackgroundWidgetState(() => tasks);
-    const widget = new ClaudeBackgroundWidget(state, {
-      fg: (_: string, text: string) => text,
-      bold: (text: string) => text,
-    });
-    expect(widget.render(8)).toEqual(['● Agents', '  ○ 2 q…']);
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.handleTerminalInput('\r')).toEqual({
-      consume: true,
-      action: { type: 'open-task', taskId: 'q1' },
-    });
-  });
-  it('renders claude background widget lines for running background tasks only', () => {
-    const now = new Date().toISOString();
-    const tasks = [
-      {
-        id: 'task-main-ignore',
-        agent: 'main-agent',
-        mode: 'task',
-        status: 'running',
-        task: 'foreground task',
-        created_at: now,
-      },
-      {
-        id: 'task-finished-ignore',
-        agent: 'reviewer',
-        mode: 'background',
-        status: 'completed',
-        task: 'finished task',
-        created_at: now,
-      },
-      {
-        id: 'task-1',
-        agent: 'claude',
-        mode: 'background',
-        status: 'running',
-        task: 'ping-pong loop command',
-        last_activity: 'Running ping-pong loop command.',
-        created_at: now,
-      },
-      {
-        id: 'task-2',
-        agent: 'claude',
-        mode: 'background',
-        status: 'queued',
-        task: 'PING-PONG loop bash',
-        last_activity: 'Running PING-PONG loop bash.',
-        created_at: now,
-      },
-    ] as any;
-
-    const lines = renderClaudeBackgroundWidgetLines(tasks)!;
-    expect(lines[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
-    expect(lines[1]).toContain('claude · ping-pong loop command');
-    expect(lines[3]).toBe('  ╰⎿ Running ping-pong loop command.');
-    expect(lines[4]).toBe('  ○ 1 queued');
-    expect(renderClaudeBackgroundWidgetLines(tasks, 'task-2')?.at(-1)).toBe(
-      '● ○ 1 queued',
-    );
-    expect(moveClaudeBackgroundWidgetSelection(tasks, 'main', 'down')).toBe(
-      'task-1',
-    );
-    expect(moveClaudeBackgroundWidgetSelection(tasks, 'task-1', 'down')).toBe(
-      'task-2',
-    );
-    expect(moveClaudeBackgroundWidgetSelection(tasks, 'task-2', 'up')).toBe(
-      'task-1',
-    );
-    expect(
-      renderClaudeBackgroundWidgetLines([
-        {
-          id: 'done',
-          agent: 'claude',
-          mode: 'background',
-          status: 'completed',
-          task: 'done',
-          created_at: now,
-        },
-      ] as any),
-    ).toBeUndefined();
-  });
-
-  it('allows navigating the claude background widget selection with arrow keys', () => {
-    const now = new Date().toISOString();
-    const requestRender = vi.fn();
-    const state = new ClaudeBackgroundWidgetState(
-      () =>
-        [
-          {
-            id: 'task-1',
-            agent: 'tool-smoke',
-            mode: 'background',
-            status: 'running',
-            task: 'sleep 15',
-            last_activity: 'Running sleep 15.',
-            created_at: now,
-          },
-          {
-            id: 'task-2',
-            agent: 'tool-smoke',
-            mode: 'background',
-            status: 'queued',
-            task: 'sleep 30',
-            last_activity: 'Queued sleep 30.',
-            created_at: now,
-          },
-        ] as any,
-      requestRender,
-    );
-    const widget = new ClaudeBackgroundWidget(state, {
-      fg: (_name: string, text: string) => text,
-      bold: (text: string) => text,
-    });
-
-    expect(widget.render(200)[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
-    expect(widget.render(200).at(-1)).toBe('  ○ 1 queued');
-
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(requestRender).toHaveBeenCalledTimes(1);
-    expect(widget.render(200)[1]).toMatch(
-      /● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/,
-    );
-
-    expect(state.handleTerminalInput('q')).toEqual({ consume: true });
-    expect(widget.render(200)[1]).toMatch(
-      /● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/,
-    );
-
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(widget.render(200).at(-1)).toBe('● ○ 1 queued');
-
-    expect(state.handleTerminalInput('\u001b[A')).toEqual({ consume: true });
-    expect(widget.render(200)[1]).toMatch(
-      /● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/,
-    );
-
-    expect(state.handleTerminalInput('\u001b[A')).toEqual({ consume: true });
-    expect(widget.render(200)[0]).toBe(
-      '● Agents  (↑↓ navigate · ↵ open · esc dismiss)',
-    );
-
-    expect(state.handleTerminalInput('\u001b[D')).toEqual({
-      consume: true,
-      action: { type: 'focus-editor' },
-    });
-    expect(widget.render(200)[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
-
-    expect(state.handleTerminalInput('\u001b[A')).toBeUndefined();
-    expect(state.handleTerminalInput('x')).toBeUndefined();
-  });
-
-  it('does not activate background widget navigation with down when activation is disallowed', () => {
-    const now = new Date().toISOString();
-    const requestRender = vi.fn();
-    const state = new ClaudeBackgroundWidgetState(
-      () =>
-        [
-          {
-            id: 'task-1',
-            agent: 'tool-smoke',
-            mode: 'background',
-            status: 'running',
-            task: 'sleep 15',
-            last_activity: 'Running sleep 15.',
-            created_at: now,
-          },
-        ] as any,
-      requestRender,
-    );
-    const widget = new ClaudeBackgroundWidget(state, {
-      fg: (_name: string, text: string) => text,
-      bold: (text: string) => text,
-    });
-
-    expect(
-      state.handleTerminalInput('\u001b[B', { allowActivate: false }),
-    ).toBeUndefined();
-    expect(requestRender).not.toHaveBeenCalled();
-    expect(widget.render(200)[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
-
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(widget.render(200)[1]).toMatch(
-      /● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/,
-    );
-  });
-
-  it('renders the selected claude background widget row with warning styling only while navigation is active', () => {
-    const now = new Date().toISOString();
-    const state = new ClaudeBackgroundWidgetState(
-      () =>
-        [
-          {
-            id: 'task-1',
-            agent: 'tool-smoke',
-            mode: 'background',
-            status: 'running',
-            task: 'sleep 15',
-            last_activity: 'Running sleep 15.',
-            created_at: now,
-          },
-        ] as any,
-    );
-    const fg = vi.fn((_: string, text: string) => text);
-    const bold = vi.fn((text: string) => text);
-    const widget = new ClaudeBackgroundWidget(state, { fg, bold });
-
-    widget.render(200);
-    expect(fg).not.toHaveBeenCalledWith('warning', expect.any(String));
-
-    state.handleTerminalInput('\u001b[B');
-    widget.render(200);
-
-    expect(fg).toHaveBeenCalledWith(
-      'warning',
-      expect.stringMatching(/● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/),
-    );
-    expect(bold).toHaveBeenCalledWith(
-      expect.stringMatching(/● ┏━ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] tool-smoke · sleep 15/),
-    );
-  });
-
-  it('renders one wrapped current background activity and never a trail', () => {
-    const now = new Date().toISOString();
-    const state = new ClaudeBackgroundWidgetState(
-      () =>
-        [
-          {
-            id: 'task-1',
-            agent: 'tool-smoke',
-            mode: 'background',
-            status: 'running',
-            task: 'sleep 15',
-            created_at: now,
-            live_activity: {
-              trail: [
-                { kind: 'thinking', label: 'thinking' },
-                { kind: 'streaming_response', label: 'streaming response' },
-                {
-                  kind: 'tool_running',
-                  label:
-                    'running tool: workspace_graph_status_with_a_very_long_public_name',
-                  tool_names: [
-                    'workspace_graph_status_with_a_very_long_public_name',
-                  ],
-                },
-              ],
-              current: {
-                kind: 'tool_running',
-                label:
-                  'running tool: workspace_graph_status_with_a_very_long_public_name',
-                tool_names: [
-                  'workspace_graph_status_with_a_very_long_public_name',
-                ],
-              },
-            },
-          },
-        ] as any,
-    );
-    const widget = new ClaudeBackgroundWidget(state, {
-      fg: (_name: string, text: string) => `\u001b[33m${text}\u001b[39m`,
-      bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
-    });
-
-    const rendered = widget
-      .render(24)
-      .map((line) => line.replace(/\u001b\[[0-9;]*m/g, ''));
-    const normalized = rendered.join(' ').replace(/\s+/g, ' ');
-    const condensed = normalized.replace(/\s+/g, '');
-
-    expect(condensed).toContain('runningtool:work');
-    expect(normalized).not.toContain('thinking');
-    expect(normalized).not.toContain('streaming response');
-    expect(rendered.every((line) => line.length <= 24)).toBe(true);
-  });
-
-  it('returns to input on main enter and opens the selected subagent on enter', () => {
-    const now = new Date().toISOString();
-    const state = new ClaudeBackgroundWidgetState(
-      () =>
-        [
-          {
-            id: 'task-1',
-            agent: 'tool-smoke',
-            mode: 'background',
-            status: 'running',
-            task: 'sleep 15',
-            last_activity: 'Running sleep 15.',
-            created_at: now,
-          },
-        ] as any,
-    );
-
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.handleTerminalInput('\r')).toEqual({
-      consume: true,
-      action: { type: 'open-task', taskId: 'task-1' },
-    });
-
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.handleTerminalInput('\u001b[A')).toEqual({ consume: true });
-    expect(state.handleTerminalInput('\r')).toEqual({
-      consume: true,
-      action: { type: 'focus-editor' },
-    });
-  });
-
-  it('caps visible running cards at at most 3 when 10 tasks run, shows truthful overflow footer, and keeps grouped queue', () => {
-    const tasks = Array.from({ length: 10 }, (_, i) => ({
-      id: `task-${i + 1}`,
-      agent: `worker-${i + 1}`,
-      mode: 'background',
-      status: 'running',
-      task: `task ${i + 1}`,
-      created_at: new Date(
-        Date.parse('2026-01-01T00:00:10Z') - i * 1000,
-      ).toISOString(),
-    }));
-    const queuedTasks = [
-      {
-        id: 'q-1',
-        agent: 'worker',
-        mode: 'background',
-        status: 'queued',
-        task: 'q1',
-        created_at: new Date().toISOString(),
-      },
-      {
-        id: 'q-2',
-        agent: 'worker',
-        mode: 'background',
-        status: 'queued',
-        task: 'q2',
-        created_at: new Date().toISOString(),
-      },
-    ];
-    const all = [...tasks, ...queuedTasks] as any;
-    const lines = renderClaudeBackgroundWidgetLines(all)!;
-    expect(lines[0]).toBe('● Agents  (↑↓ navigate · ↵ open)');
-    expect(lines.some((l) => l.includes('worker-1'))).toBe(true);
-    expect(lines.some((l) => l.includes('worker-2'))).toBe(true);
-    expect(lines.some((l) => l.includes('worker-3'))).toBe(true);
-    expect(lines.some((l) => l.includes('worker-4'))).toBe(false);
-    expect(lines.some((l) => l.includes('worker-10'))).toBe(false);
-    expect(lines.some((l) => l.includes('+7 more active · /subagents'))).toBe(
-      true,
-    );
-    expect(lines.at(-1)).toBe('  ○ 2 queued');
-  });
-
-  it('supports full keyboard navigation through visible cards, overflow footer, and queue with footer activation', () => {
-    const tasks = Array.from({ length: 5 }, (_, i) => ({
-      id: `task-${i + 1}`,
-      agent: `worker-${i + 1}`,
-      mode: 'background',
-      status: 'running',
-      task: `task ${i + 1}`,
-      created_at: new Date(
-        Date.parse('2026-01-01T00:00:10Z') - i * 1000,
-      ).toISOString(),
-    }));
-    const queued = [
-      {
-        id: 'q-1',
-        agent: 'worker',
-        mode: 'background',
-        status: 'queued',
-        task: 'q1',
-        created_at: new Date().toISOString(),
-      },
-    ];
-    const state = new ClaudeBackgroundWidgetState(
-      () => [...tasks, ...queued] as any,
-    );
-
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.getSelectedKey()).toBe('task-1');
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.getSelectedKey()).toBe('task-2');
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.getSelectedKey()).toBe('task-3');
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.getSelectedKey()).toBe('overflow');
-    expect(state.handleTerminalInput('\r')).toEqual({
-      consume: true,
-      action: { type: 'open-history' },
-    });
-
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-    expect(state.getSelectedKey()).toBe('q-1');
-    expect(state.handleTerminalInput('\r')).toEqual({
-      consume: true,
-      action: { type: 'open-task', taskId: 'q-1' },
-    });
-  });
-
-  it('maintains stable selected item when tasks finish during navigation', () => {
-    let currentTasks = [
-      {
-        id: 'task-1',
-        agent: 'w1',
-        mode: 'background',
-        status: 'running',
-        task: 't1',
-        created_at: '2026-01-01T00:00:03Z',
-      },
-      {
-        id: 'task-2',
-        agent: 'w2',
-        mode: 'background',
-        status: 'running',
-        task: 't2',
-        created_at: '2026-01-01T00:00:02Z',
-      },
-      {
-        id: 'task-3',
-        agent: 'w3',
-        mode: 'background',
-        status: 'running',
-        task: 't3',
-        created_at: '2026-01-01T00:00:01Z',
-      },
-    ] as any[];
-
-    const state = new ClaudeBackgroundWidgetState(() => currentTasks);
-    state.handleTerminalInput('\u001b[B');
-    state.handleTerminalInput('\u001b[B');
-    expect(state.getSelectedKey()).toBe('task-2');
-
-    currentTasks = [currentTasks[0], currentTasks[2]];
-    expect(state.getSelectedKey()).toBe('task-3');
-  });
-
-  it('bounds widget height for 10 running tasks at normal and narrow widths while preserving all telemetry', () => {
-    const tasks = Array.from({ length: 10 }, (_, i) => ({
-      id: `task-${i + 1}`,
-      agent: `worker-${i + 1}`,
-      mode: 'background',
-      status: 'running',
-      task: `task ${i + 1}`,
-      created_at: new Date(
-        Date.parse('2026-01-01T00:00:10Z') - i * 1000,
-      ).toISOString(),
-      started_at: '2026-01-01T00:00:00Z',
-      runtime_metrics: {
-        turns: i + 1,
-        toolUses: i + 2,
-        contextPercent: 25.5,
-        compactions: i === 0 ? 1 : 0,
-      },
-      usage: {
-        input: 1000,
-        output: 500,
-        cacheWrite: 0,
-        cacheRead: 0,
-        turns: i + 1,
-      },
-      live_activity: { current: { label: `activity ${i + 1}` } },
-    })) as any;
-
-    const widget = new ClaudeBackgroundWidget(
-      new ClaudeBackgroundWidgetState(() => tasks),
-      {},
-    );
-    const normalLines = widget.render(100);
-    expect(normalLines.length).toBeLessThanOrEqual(14);
-    expect(normalLines.join(' ')).toContain('? tok/s');
-    expect(normalLines.join(' ')).toContain('tools 2');
-    expect(normalLines.join(' ')).toContain('↑1.0k ↓500');
-    expect(normalLines.join(' ')).toContain('context 25.5%');
-    expect(normalLines.join(' ')).toContain('+7 more active · /subagents');
-
-    const narrowLines = widget.render(45);
-    expect(narrowLines.length).toBeLessThanOrEqual(18);
-    expect(narrowLines.every((l) => visibleWidth(l) <= 45)).toBe(true);
-    expect(narrowLines.join(' ')).toContain('? tok/s');
-    expect(narrowLines.join(' ')).toContain('tools 2');
-  });
-
-  it('avoids huge task prompt in identity row while keeping short summary readable', () => {
-    const task = {
-      id: 'huge',
-      agent: 'worker',
-      mode: 'background',
-      status: 'running',
-      task: '# delegated task\n' + 'A'.repeat(500) + '\nmore prompt lines',
-      created_at: new Date().toISOString(),
-    } as any;
-    const lines = renderClaudeBackgroundWidgetLines([task])!;
-    expect(lines[1]?.length).toBeLessThan(120);
-    expect(lines[1]).toContain('…');
-  });
-
-  it('safely handles terminal cell width with CJK and emoji without splitting sequences or overflowing', async () => {
-    const { visibleWidth, truncateToWidth } = await import(
-      '../../src/render/text-width.js'
-    );
-    expect(visibleWidth('你好世界')).toBe(8);
-    expect(visibleWidth('🚀 rocket')).toBe(9);
-    const truncated = truncateToWidth('你好世界朋友', 7, '…');
-    expect(visibleWidth(truncated)).toBeLessThanOrEqual(7);
-  });
-
-  it('correctly renders whole widget output containing ANSI, CJK, combining characters, and ZWJ emojis without sequence corruption or boundary overflow', ({
-    onTestFinished,
-  }) => {
-    // Compare styling at the same spinner frame and elapsed-time value.
-    vi.useFakeTimers({
-      toFake: ['Date'],
-      now: Date.parse('2026-10-03T00:00:12.300Z'),
-    });
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
-    const taskCjkZwj = {
-      id: 'task-cjk-zwj',
-      agent: 'worker-🚀',
-      mode: 'background',
-      status: 'running',
-      task: '日本語テキストと絵文字 👩‍💻 👨‍👩‍👧‍👦 combining e\u0301 accent test',
-      started_at: '2026-01-01T00:00:00Z',
-      runtime_metrics: {
-        turns: 3,
-        toolUses: 4,
-        contextPercent: 55.5,
-      },
-      usage: {
-        input: 1000,
-        output: 500,
-        cacheWrite: 0,
-        cacheRead: 0,
-        turns: 3,
-      },
-      live_activity: { current: { label: '実行中 ⚡ 👩‍🔬' } },
-    } as any;
-
-    const queuedTask = {
-      id: 'q-cjk',
-      agent: 'worker',
-      mode: 'background',
-      status: 'queued',
-      task: '待ち行列',
-      created_at: new Date().toISOString(),
-    } as any;
-
-    const tasks = [taskCjkZwj, queuedTask];
-    const options = { archIndicator: true };
-    const createSelectedState = () => {
-      const state = new ClaudeBackgroundWidgetState(() => tasks);
-      state.handleTerminalInput('\u001b[B');
-      state.handleTerminalInput('\u001b[A');
-      return state;
-    };
-    const widget = new ClaudeBackgroundWidget(
-      createSelectedState(),
-      {
-        fg: (_name: string, text: string) => `\u001b[36m${text}\u001b[39m`,
-        bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
-      },
-      options,
-    );
-    const styledOutput = widget.render(80).join('\n');
-    const plainOutput = new ClaudeBackgroundWidget(
-      createSelectedState(),
-      undefined,
-      options,
-    )
-      .render(80)
-      .join('\n');
-    expect(styledOutput).toContain(`\u001b[36m${ARCH_ICON}\u001b[39m`);
-    expect(styledOutput).toContain('\u001b[36mtools\u001b[39m');
-    expect(styledOutput).toContain('\u001b[36m↑\u001b[39m1.0k');
-    expect(styledOutput).toContain('\u001b[36m↓\u001b[39m500');
-    expect(stripAnsi(styledOutput)).toBe(plainOutput);
-    expect(styledOutput).not.toMatch(
-      /[\uD800-\uDBFF]\u001b\[[0-9;]*m[\uDC00-\uDFFF]/,
-    );
-
-    for (const width of [80, 50, 35, 20]) {
-      const rendered = widget.render(width);
-      expect(rendered.length).toBeGreaterThan(0);
-      for (const line of rendered) {
+  ] as const)('keeps a compact dropped-tools warning on %s rows without displacing metrics', (status) => {
+    const row = provider([
+      task({ status, dropped_tools: ['unavailable_read', 'missing_search'] }),
+    ]).listRows(now)[0]!;
+    for (const width of [100, 80, 70, 50, 35, 24]) {
+      const content = row.render!(width, now);
+      expect(content.text).toContain('⚠ 2 dropped');
+      expect(content.text).not.toContain('unavailable_read');
+      expect(content.text).not.toContain('missing_search');
+      const lines = [content.text, ...(content.extraRows ?? [])];
+      for (const metric of [
+        'tools 5',
+        '↑20k ↓10k',
+        'ctx 62.0%',
+        '75 tok/s',
+        status === 'running' ? 'elapsed 12s' : 'elapsed ?',
+      ])
+        expect(lines.join(' · ')).toContain(metric);
+      for (const line of lines)
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-        expect(line).not.toMatch(/\u001b(?:\[[0-9;]*)?$/);
+      if (width === 100) {
+        expect(content.extraRows ?? []).toEqual([]);
+        expect(content.text).toContain('…');
       }
+      if (width <= 50) expect(content.extraRows?.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('uses the current theme warning color and protects the warning before a long agent or task label', () => {
+    const fg = vi.fn((_role: string, text: string) => `\x1b[33m${text}\x1b[0m`);
+    const currentTheme: { fg: (role: string, text: string) => string } = { fg };
+    const item = task({
+      agent: 'worker-with-an-extremely-long-name',
+      dropped_tools: ['missing_read'],
+    });
+    const agents = createSubagentsWorkPanelProvider({
+      listTasks: () => [item],
+      onTaskUpdate: () => () => {},
+      cancel: () => {},
+      open: async () => {},
+      theme: () => currentTheme,
+    });
+    const row = agents.listRows(now)[0]!;
+    for (const width of [200, 80, 24, 12]) {
+      const content = row.render!(width, now);
+      expect(content.text).toContain('\x1b[33m⚠ 1 dropped\x1b[0m');
+      expect(visibleWidth(content.text)).toBeLessThanOrEqual(width);
+    }
+    expect(fg).toHaveBeenCalledWith('warning', '⚠ 1 dropped');
+    currentTheme.fg = (_role, text) => `\x1b[93m${text}\x1b[0m`;
+    expect(row.render!(200, now).text).toContain('\x1b[93m⚠ 1 dropped\x1b[0m');
+    expect(row.render!(1, now).text).toContain('⚠');
+    expect(row.render!(0, now)).toEqual({ text: '' });
+    item.status = 'completed';
+    expect(row.render!(200, now).text).not.toContain('dropped');
+    item.status = 'running';
+    item.dropped_tools = [];
+    expect(row.render!(200, now).text).not.toContain('dropped');
+  });
+
+  it('keeps an unstyled warning when no producer theme is supplied, even with a render kit registered', () => {
+    const token = registerRenderKit(
+      {
+        ...createTestRenderKit(),
+        fg: (theme, role, text) => theme.fg(role, text),
+      },
+      {},
+    );
+    try {
+      const row = provider([
+        task({ dropped_tools: ['missing_read'] }),
+      ]).listRows(now)[0]!;
+      expect(row.render!(100, now).text).toContain('⚠ 1 dropped');
+    } finally {
+      withdrawRenderKit(token);
+    }
+  });
+
+  it('truncates the task before metrics and uses continuations only when metrics cannot fit inline', () => {
+    const row = provider([task()]).listRows(now)[0]!;
+    const metrics = [
+      'tools 5',
+      '↑20k ↓10k',
+      'ctx 62.0%',
+      '75 tok/s',
+      'elapsed 12s',
+    ];
+    for (const width of [100, 80, 70]) {
+      const content = row.render!(width, now);
+      expect(content.extraRows ?? []).toEqual([]);
+      for (const metric of metrics) expect(content.text).toContain(metric);
+      expect(content.text).toContain('worker');
+      expect(content.text).toContain('…');
+      expect(visibleWidth(content.text)).toBeLessThanOrEqual(width);
+    }
+    for (const width of [50, 35, 24]) {
+      const content = row.render!(width, now);
+      expect(content.extraRows?.length).toBeGreaterThan(0);
+      expect(content.text).toContain('worker');
+      for (const metric of metrics)
+        expect(content.extraRows!.join(' · ')).toContain(metric);
+      for (const line of [content.text, ...content.extraRows!])
+        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
   });
 });

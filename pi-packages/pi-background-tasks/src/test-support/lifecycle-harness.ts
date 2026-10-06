@@ -1,40 +1,33 @@
 import { EventEmitter } from "node:events";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import backgroundTasksExtension from "../index.js";
+import { workPanelUI } from "./work-panel-ui.js";
 
 export function lifecycleHost(sessionId: string, hasUI = false) {
   const tools = new Map<string, any>();
   const handlers = new Map<string, Array<(event: any, ctx: any) => unknown>>();
   const messages: string[] = [];
-  const widgets = new Map<string, unknown>();
-  const statuses = new Map<string, unknown>();
-  const uiCalls: unknown[] = [];
-  let editor: unknown;
+  const panel = workPanelUI();
+  const { widgets, statuses, uiCalls } = panel;
   const ctx = {
     cwd: process.cwd(), mode: hasUI ? "tui" : "print", hasUI,
     sessionManager: { getSessionId: () => sessionId },
-    ui: {
-      theme: { fg: (_: string, value: string) => value },
-      setStatus(key: string, value: unknown) { statuses.set(key, value); uiCalls.push([key, value]); },
-      setWidget(key: string, value: unknown) { widgets.set(key, value); uiCalls.push([key, value]); },
-      getEditorComponent() { return editor; },
-      setEditorComponent(value: unknown) { editor = value; uiCalls.push(value); },
-      custom() { return Promise.resolve(null); },
-    },
+    ui: panel.ui,
   };
   const pi = {
     events: new EventEmitter(),
     registerTool(tool: any) { tools.set(tool.name, tool); },
     on(name: string, handler: (event: any, ctx: any) => unknown) {
       const list = handlers.get(name) ?? []; list.push(handler); handlers.set(name, list);
+      return () => handlers.set(name, (handlers.get(name) ?? []).filter((entry) => entry !== handler));
     },
     sendMessage(message: { content: string }) { messages.push(message.content); },
   } as unknown as ExtensionAPI;
   backgroundTasksExtension(pi);
   return {
-    pi, ctx, tools, messages, widgets, statuses, uiCalls,
+    pi, ctx, tools, messages, widgets, statuses, uiCalls, panel,
     async emit(type: string, reason?: string) {
-      for (const handler of handlers.get(type) ?? []) await handler({ type, reason }, ctx);
+      for (const handler of [...(handlers.get(type) ?? [])]) await handler({ type, reason }, ctx);
     },
     async execute(name: string, params: Record<string, unknown>, signal = new AbortController().signal) {
       const result = await tools.get(name).execute("lifecycle-test", params, signal, undefined, ctx);
@@ -45,6 +38,6 @@ export function lifecycleHost(sessionId: string, hasUI = false) {
       const text = await this.execute("bg_task_spawn", params);
       const id = text.match(/bg_[a-z0-9_]+/)?.[0]; if (!id) throw new Error(text); return id;
     },
-    get editor() { return editor; },
+    get editor() { return panel.editor; },
   };
 }

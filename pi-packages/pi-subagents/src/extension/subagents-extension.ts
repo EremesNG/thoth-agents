@@ -1,6 +1,7 @@
-import { CustomEditor } from '@earendil-works/pi-coding-agent';
 import {
+  ensureWorkPanel,
   publishToolDefinitions,
+  registerWorkPanelProvider,
   type ToolDefinitionHandle,
   type ToolDefinitionLike,
 } from '@thoth-agents/pi-core';
@@ -29,13 +30,10 @@ import {
   triggerClaudeBackgroundHandoff,
 } from '../tools.js';
 import {
-  ClaudeBackgroundWidget,
-  ClaudeBackgroundWidgetState,
-} from '../ui/background-widget.js';
-import {
   registerSubagentsPanelOpener,
   showSubagentsPanel,
 } from '../ui/panel-overlay.js';
+import { createSubagentsWorkPanelProvider } from '../ui/work-panel-provider.js';
 import { SubagentUsageEvents } from '../usage-events.js';
 
 function currentSessionId(ctx: any): string | undefined {
@@ -77,13 +75,8 @@ export default function subagentsExtension(pi: any): void {
     'subagent-question',
     renderSubagentQuestionMessage,
   );
-  const widgetInputSuspensions = new Set<string>();
   let activeSessionId: string | undefined;
   let activeSessionOwner: AtelierSessionOwner | undefined;
-  const setWidgetInputSuspended = (reason: string, active: boolean): void => {
-    if (active) widgetInputSuspensions.add(reason);
-    else widgetInputSuspensions.delete(reason);
-  };
   const usageEvents = pi.events
     ? new SubagentUsageEvents(
         pi.events,
@@ -107,9 +100,7 @@ export default function subagentsExtension(pi: any): void {
         if (!isStaleContextError(error)) throw error;
       }
     },
-    (active) => {
-      setWidgetInputSuspended('interaction', active);
-    },
+    undefined,
     new AtelierMetadataWriter({
       appendEntry: (customType, data) => {
         pi.appendEntry?.(customType, data);
@@ -136,158 +127,48 @@ export default function subagentsExtension(pi: any): void {
   );
   registerSubagentTools(pi, manager, process.cwd());
 
-  let widgetCtx: any;
-  let widgetRequestRender: (() => void) | undefined;
-  let widgetTimer: ReturnType<typeof setInterval> | undefined;
-  let removeTerminalInputListener: (() => void) | undefined;
-  let removeTaskUpdateListener: (() => void) | undefined;
-  let widgetState: ClaudeBackgroundWidgetState | undefined;
+  let panelCtx: any;
+  let unregisterWorkPanel: (() => void) | undefined;
+  let releaseWorkPanel: (() => void) | undefined;
+  let workPanelGeneration = 0;
   let activePanelCancelSelected: (() => void) | undefined;
   let activePanelRequestRender: (() => void) | undefined;
-  // Unwrap our own prior session factory instead of nesting stale identity guards.
-  const editorFactories = new WeakMap<Function, any>();
 
-  const installClaudeBackgroundWidget = (ctx: any): boolean => {
-    if (typeof ctx?.ui?.setWidget !== 'function') return false;
-    const cwd = ctx?.cwd ?? process.cwd();
-    const sessionId = currentSessionId(ctx);
-    let widgetTui: any;
-    let editorInstance: any;
-    let editorInvocations = 0;
-    let editorIdentityLost = false;
-    const loseEditorIdentity = () => {
-      if (editorIdentityLost) return;
-      editorIdentityLost = true;
-      ctx.ui.notify?.(
-        'Subagents widget navigation is unavailable: the editor was replaced. Restart the session to restore navigation.',
-        'warning',
-      );
-    };
-    let configuredFactory = ctx.ui.getEditorComponent?.();
-    if (configuredFactory && editorFactories.has(configuredFactory))
-      configuredFactory = editorFactories.get(configuredFactory);
-    const editorFactory = (tui: any, theme: any, keybindings: any) => {
-      const instance = configuredFactory
-        ? configuredFactory(tui, theme, keybindings)
-        : new CustomEditor(tui, theme, keybindings, {
-            embedWorkingStatus: true,
-          });
-      editorInvocations += 1;
-      if (editorInvocations === 1) editorInstance = instance;
-      else loseEditorIdentity();
-      return instance;
-    };
-    editorFactories.set(editorFactory, configuredFactory);
-    if (
-      typeof ctx.ui.getEditorComponent === 'function' &&
-      typeof ctx.ui.setEditorComponent === 'function'
-    )
-      ctx.ui.setEditorComponent(editorFactory);
-    widgetState = new ClaudeBackgroundWidgetState(
-      () => manager.listActiveSessionTasks(cwd, sessionId),
-      () => widgetRequestRender?.(),
-    );
-    const syncWidgetTimer = () => {
-      const hasRunningTask = manager
-        .listActiveSessionTasks(cwd, sessionId)
-        .some((task) => task.status === 'running');
-      if (hasRunningTask && !widgetTimer) {
-        widgetTimer = setInterval(() => {
-          widgetRequestRender?.();
-          syncWidgetTimer();
-        }, 100);
-        widgetTimer.unref?.();
-      } else if (!hasRunningTask && widgetTimer) {
-        clearInterval(widgetTimer);
-        widgetTimer = undefined;
-      }
-    };
-    removeTaskUpdateListener = manager.onTaskUpdate(() => {
-      widgetRequestRender?.();
-      syncWidgetTimer();
-    });
-    syncWidgetTimer();
-    if (typeof ctx?.ui?.onTerminalInput === 'function') {
-      removeTerminalInputListener = ctx.ui.onTerminalInput((data: string) => {
-        if (ctx.ui.getEditorComponent?.() !== editorFactory)
-          loseEditorIdentity();
-        const editorFocused =
-          !editorIdentityLost &&
-          editorInstance !== undefined &&
-          widgetTui?.getFocusedComponent?.() === editorInstance &&
-          widgetTui?.hasOverlay?.() === false &&
-          widgetInputSuspensions.size === 0;
-        const editorText =
-          typeof ctx.ui.getEditorText === 'function'
-            ? String(ctx.ui.getEditorText() ?? '')
-            : '';
-        const result = widgetState?.handleTerminalInput(data, {
-          editorFocused,
-          allowActivate: !editorText.trim(),
-        });
-        if (
-          (result?.action?.type === 'open-task' ||
-            result?.action?.type === 'open-history') &&
-          widgetCtx
-        ) {
-          const selectedTaskId =
-            result.action.type === 'open-task'
-              ? result.action.taskId
-              : undefined;
-          void (async () => {
-            await preloadPiComponentsForSubagentRendering();
-            await showSubagentsPanel({
-              ctx: widgetCtx,
-              pi,
-              manager,
-              selectedTaskId,
-              setWidgetInputSuspended: (value) => {
-                setWidgetInputSuspended('panel', value);
-              },
-              setActivePanelCancelSelected: (fn) => {
-                activePanelCancelSelected = fn;
-              },
-              setActivePanelRequestRender: (fn) => {
-                activePanelRequestRender = fn;
-              },
-            });
-          })();
-        }
-        return result;
-      });
-    }
-    ctx.ui.setWidget(
-      'subagents-claude-background',
-      (tui: any, theme: any) => {
-        widgetTui = tui;
-        widgetRequestRender = () => tui?.requestRender?.();
-        return new ClaudeBackgroundWidget(widgetState!, theme);
+  const openPanel = async (
+    ctx: any,
+    selectedTaskId?: string,
+  ): Promise<void> => {
+    await preloadPiComponentsForSubagentRendering();
+    await showSubagentsPanel({
+      ctx,
+      pi,
+      manager,
+      selectedTaskId,
+      setActivePanelCancelSelected: (fn) => {
+        activePanelCancelSelected = fn;
       },
-      { placement: 'aboveEditor' },
-    );
-    return true;
+      setActivePanelRequestRender: (fn) => {
+        activePanelRequestRender = fn;
+      },
+    });
   };
 
-  const clearClaudeBackgroundWidget = () => {
-    if (widgetTimer) clearInterval(widgetTimer);
-    widgetTimer = undefined;
-    widgetRequestRender = undefined;
-    removeTaskUpdateListener?.();
-    removeTaskUpdateListener = undefined;
-    removeTerminalInputListener?.();
-    removeTerminalInputListener = undefined;
-    widgetState = undefined;
-    widgetInputSuspensions.clear();
-    widgetCtx?.ui?.setWidget?.('subagents-claude-background', undefined);
-    widgetCtx = undefined;
+  const clearWorkPanel = () => {
+    workPanelGeneration += 1;
+    unregisterWorkPanel?.();
+    unregisterWorkPanel = undefined;
+    releaseWorkPanel?.();
+    releaseWorkPanel = undefined;
+    panelCtx = undefined;
   };
 
-  pi.on?.('session_start', (_event: unknown, ctx: any) => {
+  pi.on?.('session_start', async (_event: unknown, ctx: any) => {
     if (ctx.hasUI && !publication)
       publication = publishToolDefinitions(definitions);
     void preloadPiComponentsForSubagentRendering();
-    clearClaudeBackgroundWidget();
-    activeSessionId = currentSessionId(ctx);
+    clearWorkPanel();
+    const sessionId = currentSessionId(ctx);
+    activeSessionId = sessionId;
     activeSessionOwner = captureAtelierSessionOwner(ctx);
     usageEvents?.startSession(
       activeSessionId,
@@ -299,29 +180,26 @@ export default function subagentsExtension(pi: any): void {
     manager.reconcileOrphanedTasks(cwd);
     for (const warning of subagentSourceWarnings(cwd))
       ctx?.ui?.notify?.(warning, 'warning');
-    widgetCtx = ctx;
-    registerSubagentsPanelOpener(async (taskId?: string) => {
-      const currentCtx = widgetCtx ?? ctx;
-      if (!currentCtx) return;
-      await preloadPiComponentsForSubagentRendering();
-      await showSubagentsPanel({
-        ctx: currentCtx,
-        pi,
-        manager,
-        selectedTaskId: taskId,
-        setWidgetInputSuspended: (value) => {
-          setWidgetInputSuspended('panel', value);
-        },
-        setActivePanelCancelSelected: (fn) => {
-          activePanelCancelSelected = fn;
-        },
-        setActivePanelRequestRender: (fn) => {
-          activePanelRequestRender = fn;
-        },
-      });
-    });
-    if (typeof ctx?.ui?.setWidget !== 'function') return;
-    if (!installClaudeBackgroundWidget(ctx)) return;
+    panelCtx = ctx;
+    registerSubagentsPanelOpener((taskId?: string) =>
+      openPanel(panelCtx ?? ctx, taskId),
+    );
+    if (!ctx.hasUI || ctx.mode !== 'tui') return;
+    const generation = workPanelGeneration;
+    unregisterWorkPanel = registerWorkPanelProvider(
+      ctx,
+      createSubagentsWorkPanelProvider({
+        listTasks: () => manager.listActiveSessionTasks(cwd, sessionId),
+        onTaskUpdate: (notify) => manager.onTaskUpdate(notify),
+        cancel: (id, reason) => manager.cancel(id, reason),
+        open: (id, liveCtx) => openPanel(liveCtx, id),
+        theme: () => ctx.ui.theme,
+      }),
+    );
+    const release = await ensureWorkPanel(ctx);
+    // A replacement or shutdown may finish while the host loads its optional peers.
+    if (generation !== workPanelGeneration) release();
+    else releaseWorkPanel = release;
   });
 
   if (usageEvents && typeof pi.appendEntry === 'function')
@@ -333,7 +211,7 @@ export default function subagentsExtension(pi: any): void {
     activeSessionId = undefined;
     activeSessionOwner = undefined;
     registerSubagentsPanelOpener(undefined);
-    clearClaudeBackgroundWidget();
+    clearWorkPanel();
     try {
       await manager.close();
     } catch (error) {
@@ -350,23 +228,7 @@ export default function subagentsExtension(pi: any): void {
     readSubagentsConfig(process.cwd()).history_panel_shortcut ?? 'ctrl+,';
   pi.registerShortcut?.(historyPanelShortcut, {
     description: 'Show subagent history panel',
-    handler: async (ctx: any) => {
-      await preloadPiComponentsForSubagentRendering();
-      await showSubagentsPanel({
-        ctx,
-        pi,
-        manager,
-        setWidgetInputSuspended: (value) => {
-          setWidgetInputSuspended('panel', value);
-        },
-        setActivePanelCancelSelected: (fn) => {
-          activePanelCancelSelected = fn;
-        },
-        setActivePanelRequestRender: (fn) => {
-          activePanelRequestRender = fn;
-        },
-      });
-    },
+    handler: (ctx: any) => openPanel(ctx),
   });
 
   const detailCancelShortcut =
@@ -393,23 +255,7 @@ export default function subagentsExtension(pi: any): void {
 
   pi.registerCommand?.('subagents', {
     description: 'Show subagent history panel',
-    handler: async (_args: string, ctx: any) => {
-      await preloadPiComponentsForSubagentRendering();
-      return showSubagentsPanel({
-        ctx: { ...ctx, pi },
-        pi,
-        manager,
-        setWidgetInputSuspended: (value) => {
-          setWidgetInputSuspended('panel', value);
-        },
-        setActivePanelCancelSelected: (fn) => {
-          activePanelCancelSelected = fn;
-        },
-        setActivePanelRequestRender: (fn) => {
-          activePanelRequestRender = fn;
-        },
-      });
-    },
+    handler: (_args: string, ctx: any) => openPanel({ ...ctx, pi }),
   });
 
   pi.registerCommand?.('subagents-model', {

@@ -11,13 +11,33 @@ import { EMPTY_STATE, type TaskState } from './state.js';
 const sessions = new Map<string, TaskState>();
 
 /**
- * Ctx-less render pointer: which slot do the ctx-free readers (the overlay's
- * `getSnapshot()`, the tool's `renderCall()`) render? Set when the first UI
- * session claims the foreground, before the overlay is loaded (creator-ownership
+ * Ctx-less render pointer: which slot do the ctx-free readers (the Work panel
+ * provider, the tool's `renderCall()`) render? Set when the first UI
+ * session claims the foreground, before the panel is installed (creator-ownership
  * — see `index.ts`). A *distinct* concept from the three task-state mutation
  * seams; it is not a 4th writer of task state.
  */
 let activeRenderSession = '';
+const renderListeners = new Set<() => void>();
+
+/** Observe the foreground slot without subscribing to other sessions' state. */
+export function onRenderStateChanged(notify: () => void): () => void {
+  renderListeners.add(notify);
+  return () => {
+    renderListeners.delete(notify);
+  };
+}
+
+function notifyRenderStateChanged(sessionId: string): void {
+  if (sessionId !== activeRenderSession) return;
+  for (const notify of renderListeners) {
+    try {
+      notify();
+    } catch {
+      // Optional UI observers cannot break tool commits or state publication.
+    }
+  }
+}
 
 /**
  * Session-id extractor. Structural ctx type (no Pi-runtime import) —
@@ -44,7 +64,7 @@ function slotFor(sessionId: string): TaskState {
 
 /**
  * Live tasks accessor for a session. Returned `readonly Task[]` so callers
- * (overlay render hook, `/todos` command, `renderCall` subject lookup) cannot
+ * (Work panel provider, `/todos` command, `renderCall` subject lookup) cannot
  * mutate the live slot. Consumers must not cast back.
  */
 export function getTodos(sessionId: string): readonly Task[] {
@@ -67,24 +87,27 @@ export function getState(sessionId: string): TaskState {
  */
 export function replaceState(sessionId: string, next: TaskState): void {
   sessions.set(sessionId, next);
+  notifyRenderStateChanged(sessionId);
 }
 
 /**
  * Post-reducer commit seam. Tool `execute()` calls this with the reducer's
- * `state` output to publish the new canonical state to live readers (overlay,
+ * `state` output to publish the new canonical state to live readers (panel,
  * `/todos`, `renderCall`), keyed to the calling session.
  */
 export function commitState(sessionId: string, next: TaskState): void {
   sessions.set(sessionId, next);
+  notifyRenderStateChanged(sessionId);
 }
 
 /** Drop a session's slot on `session_shutdown`. No-op if the slot is absent. */
 export function evictSession(sessionId: string): void {
   sessions.delete(sessionId);
+  notifyRenderStateChanged(sessionId);
 }
 
 /**
- * Ctx-less render reader: the slot the overlay / `renderCall` render.
+ * Ctx-less render reader: the slot the Work panel / `renderCall` render.
  * Resolves to the `activeRenderSession` slot, or a fresh EMPTY_STATE copy when
  * no foreground has been set yet.
  */
@@ -94,7 +117,9 @@ export function getRenderState(): TaskState {
 
 /** Set the ctx-less render pointer when the first UI session claims foreground. */
 export function setActiveRenderSession(sessionId: string): void {
+  if (activeRenderSession === sessionId) return;
   activeRenderSession = sessionId;
+  notifyRenderStateChanged(sessionId);
 }
 
 /**
@@ -112,7 +137,7 @@ export function getActiveRenderSession(): string {
  * pointer to "" so the next `hasUI` session_start reclaims the foreground.
  */
 export function clearActiveRenderSession(): void {
-  activeRenderSession = '';
+  setActiveRenderSession('');
 }
 
 /**

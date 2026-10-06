@@ -1,3 +1,4 @@
+import { isWorkPanelRootEditorInputActive } from '@thoth-agents/pi-core';
 import { Type } from 'typebox';
 import {
   loadSubagents,
@@ -38,6 +39,10 @@ export function installDoubleEscapeCancel(
 ): () => void {
   let lastEscapeAt = 0;
   const unsubscribe = ctx?.ui?.onTerminalInput?.((data: string) => {
+    if (isWorkPanelRootEditorInputActive(ctx) === false) {
+      lastEscapeAt = 0;
+      return undefined;
+    }
     if (data !== '\u001b') return undefined;
     const now = Date.now();
     const isDoubleEscape = now - lastEscapeAt <= 600;

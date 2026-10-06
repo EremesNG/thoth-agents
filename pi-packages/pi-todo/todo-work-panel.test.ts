@@ -1,0 +1,228 @@
+import { TODO_STATE_CHANNEL } from '@thoth-agents/pi-core';
+import { expect, it } from 'vitest';
+import {
+  clearActiveRenderSession,
+  commitState,
+  evictSession,
+  replaceState,
+  setActiveRenderSession,
+} from './state/store.js';
+import { createMockCtx, createMockPi } from './test/helpers.js';
+import { registerTodoTool } from './todo.js';
+import { createTodoWorkPanelProvider } from './todo-work-panel.js';
+
+it('lists in-progress work with its active form before pending work and a trailing done count', () => {
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: [
+      { id: 1, subject: 'Pending first', status: 'pending' },
+      { id: 2, subject: 'Finished task', status: 'completed' },
+      {
+        id: 3,
+        subject: 'Implement feature',
+        status: 'in_progress',
+        activeForm: 'Implementing feature',
+      },
+      { id: 4, subject: 'Pending last', status: 'pending' },
+      { id: 5, subject: 'Deleted task', status: 'deleted' },
+    ],
+    nextId: 6,
+  });
+  const provider = createTodoWorkPanelProvider();
+  expect(provider).toMatchObject({
+    version: 1,
+    id: 'todos',
+    label: 'Todos',
+    priority: 20,
+  });
+  expect(provider.summary()).toEqual({ completed: 1, total: 4 });
+  expect(provider.listRows(0).map((row) => row.primary)).toEqual([
+    'Implement feature (Implementing feature)',
+    'Pending first',
+    'Pending last',
+    '+1 done',
+  ]);
+  expect(provider.visibleCount()).toBe(3);
+});
+
+it('provides host detail with the subject, status and multiline description, without a close action', () => {
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: [
+      {
+        id: 7,
+        subject: 'Write tests',
+        status: 'in_progress',
+        description: 'Cover ordering.\nCover replay.',
+        activeForm: 'Writing tests',
+      },
+    ],
+    nextId: 8,
+  });
+  const provider = createTodoWorkPanelProvider();
+  expect(provider.detail('7', 0)).toMatchObject({
+    id: '7',
+    title: 'Write tests',
+    status: 'in_progress',
+    evidence: { label: 'Description', text: 'Cover ordering.\nCover replay.' },
+  });
+  const row = provider.listRows(0)[0];
+  expect(provider.armCloseLabel(row)).toBe('');
+  provider.close('7');
+  expect(provider.listRows(0)[0]).toEqual(row);
+  expect(provider.detail('missing', 0)).toBeNull();
+});
+
+it('notifies on every foreground commit, replay and eviction, but not child changes, and unsubscribes cleanly', () => {
+  setActiveRenderSession('foreground');
+  const provider = createTodoWorkPanelProvider();
+  const updates: string[][] = [];
+  const unsubscribe = provider.onVisibleChanged(() =>
+    updates.push(provider.listRows(0).map((row) => row.primary)),
+  );
+  commitState('foreground', {
+    tasks: [{ id: 1, subject: 'Created', status: 'pending' }],
+    nextId: 2,
+  });
+  commitState('child', {
+    tasks: [{ id: 1, subject: 'Child task', status: 'pending' }],
+    nextId: 2,
+  });
+  replaceState('child', { tasks: [], nextId: 1 });
+  evictSession('child');
+  replaceState('foreground', {
+    tasks: [{ id: 2, subject: 'Replayed', status: 'pending' }],
+    nextId: 3,
+  });
+  evictSession('foreground');
+  expect(updates).toEqual([['Created'], ['Replayed'], []]);
+  unsubscribe();
+  commitState('foreground', {
+    tasks: [{ id: 3, subject: 'After disposal', status: 'pending' }],
+    nextId: 4,
+  });
+  expect(updates).toEqual([['Created'], ['Replayed'], []]);
+});
+
+it('keeps model-controlled row and detail text terminal-safe', () => {
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: [
+      {
+        id: 1,
+        subject: 'Safe\u001b[31m subject\u001b[0m\nline',
+        status: 'in_progress',
+        activeForm: 'Working\twell\u202e',
+        description:
+          'First\u001b]52;c;secret\u0007 line\nSecond\u001b[31m line\u001b[0m',
+      },
+    ],
+    nextId: 2,
+  });
+  const provider = createTodoWorkPanelProvider();
+  expect(provider.listRows(0)[0].primary).toBe(
+    'Safe subject line (Working well)',
+  );
+  expect(provider.detail('1', 0)).toMatchObject({
+    title: 'Safe subject line',
+    evidence: { text: 'First line\nSecond line' },
+  });
+});
+
+it('refreshes when foreground ownership changes or clears', () => {
+  replaceState('first', {
+    tasks: [{ id: 1, subject: 'First', status: 'pending' }],
+    nextId: 2,
+  });
+  replaceState('second', {
+    tasks: [{ id: 1, subject: 'Second', status: 'pending' }],
+    nextId: 2,
+  });
+  const provider = createTodoWorkPanelProvider();
+  const updates: string[][] = [];
+  const unsubscribe = provider.onVisibleChanged(() =>
+    updates.push(provider.listRows(0).map((row) => row.primary)),
+  );
+  setActiveRenderSession('first');
+  setActiveRenderSession('second');
+  clearActiveRenderSession();
+  unsubscribe();
+  expect(updates).toEqual([['First'], ['Second'], []]);
+});
+
+it('does not let a stale panel refresh break tool execution or state publication', async () => {
+  setActiveRenderSession('foreground');
+  const provider = createTodoWorkPanelProvider();
+  const unsubscribe = provider.onVisibleChanged(() => {
+    throw new Error('stale UI');
+  });
+  const { pi, captured } = createMockPi();
+  const snapshots: unknown[] = [];
+  const offState = pi.events.on(TODO_STATE_CHANNEL.name, (snapshot) =>
+    snapshots.push(snapshot),
+  );
+  registerTodoTool(pi);
+  const tool = captured.tools.get('todo');
+  if (!tool) throw new Error('todo not registered');
+  try {
+    await expect(
+      tool.execute(
+        'call',
+        { action: 'create', subject: 'Preserved work' },
+        undefined,
+        undefined,
+        createMockCtx({ sessionId: 'foreground' }),
+      ),
+    ).resolves.toMatchObject({
+      details: { tasks: [{ subject: 'Preserved work' }] },
+    });
+    expect(snapshots).toMatchObject([
+      {
+        sessionId: 'foreground',
+        data: { tasks: [{ subject: 'Preserved work' }] },
+      },
+    ]);
+  } finally {
+    unsubscribe();
+    offState();
+  }
+});
+
+it.each([
+  { tasks: [] },
+  { tasks: [{ id: 1, subject: 'Deleted', status: 'deleted' as const }] },
+])('hides an empty or tombstone-only list from the host', ({ tasks }) => {
+  setActiveRenderSession('foreground');
+  replaceState('foreground', { tasks, nextId: 2 });
+  const provider = createTodoWorkPanelProvider();
+  expect(provider.listRows(0)).toEqual([]);
+  expect(provider.summary()).toEqual({ completed: 0, total: 0 });
+  expect(provider.visibleCount()).toBe(0);
+});
+
+it('keeps completed-only lists compact and excludes pending active forms', () => {
+  setActiveRenderSession('foreground');
+  replaceState('foreground', {
+    tasks: [
+      { id: 1, subject: 'Finished one', status: 'completed' },
+      { id: 2, subject: 'Finished two', status: 'completed' },
+    ],
+    nextId: 3,
+  });
+  const provider = createTodoWorkPanelProvider();
+  expect(provider.listRows(0).map((row) => row.primary)).toEqual(['+2 done']);
+  expect(provider.summary()).toEqual({ completed: 2, total: 2 });
+  replaceState('foreground', {
+    tasks: [
+      {
+        id: 1,
+        subject: 'Pending',
+        status: 'pending',
+        activeForm: 'Not active yet',
+      },
+    ],
+    nextId: 2,
+  });
+  expect(provider.listRows(0).map((row) => row.primary)).toEqual(['Pending']);
+  expect(provider.detail('1', 0)?.evidence.text).toBe('(No description)');
+});

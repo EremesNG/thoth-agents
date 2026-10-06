@@ -269,10 +269,10 @@ export function createWorkPanelDetail(
     set focused(value: boolean) {
       const lostFocus = focused && !value;
       focused = value;
-      // TUI is still updating its focus/overlay restore state inside this setter.
+      // Wait for TUI's focus update; refocusing this card also toggles false → true.
       if (lostFocus && !closed)
         void Promise.resolve().then(() => {
-          if (!closed) options.onFocusLost();
+          if (!closed && !focused) options.onFocusLost();
         });
     },
     render(width) {

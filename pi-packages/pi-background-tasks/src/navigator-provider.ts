@@ -142,9 +142,8 @@ function getNavigatorOrigin(ctx: ExtensionContext): BackgroundTaskCallbackOrigin
 }
 
 function rowFromMeta(meta: BackgroundTaskMeta, now: number): WorkPanelRow {
-  // Only a failure that needs action replaces the row's command; history stays in the detail view (#332).
-  const view = failureView(meta.id);
-  const failure = view.actionable ? view.text : "";
+  const facts = factsForMeta(meta, now);
+  const statusText = facts.join(" · ") || statusLabel(meta);
   const elapsed = formatDuration(Math.round(((meta.endedAt ?? now) - meta.startedAt) / 1000) * 1000);
   return {
     providerId: "background-tasks",
@@ -154,11 +153,16 @@ function rowFromMeta(meta: BackgroundTaskMeta, now: number): WorkPanelRow {
     statusTone: toneForStatus(meta.status),
     kind: meta.kind === "command_watch" ? "watch" : "process",
     elapsed,
-    primary: failure ? failure.split("\n")[0]! : compactCommandLabel(meta),
+    primary: statusText,
+    segments: [
+      { text: meta.name || meta.id, role: "primary" },
+      { text: ` · ${statusText}`, role: "secondary" },
+      { text: ` · ${elapsed}`, role: "meta" },
+    ],
     command: commandLabel(meta),
     tool: compactCommandLabel(meta),
     secondary: secondaryLabel(meta),
-    facts: factsForMeta(meta, now),
+    facts,
     sortStartedAt: meta.startedAt,
     expiresAt: meta.status === "running" || meta.endedAt === undefined
       ? undefined
@@ -222,9 +226,16 @@ function toneForStatus(status: BackgroundTaskStatus): WorkPanelRow["statusTone"]
     case "succeeded": return "success";
     case "failed":
     case "timed_out": return "failed";
-    case "cancelled": return "warning";
+    case "cancelled": return "muted";
     default: return "muted";
   }
+}
+
+function statusLabel(meta: BackgroundTaskMeta): string {
+  if (meta.status === "running") return meta.kind === "command_watch" ? "watching condition" : "process running";
+  if (meta.status === "succeeded") return "completed";
+  if (meta.status === "failed" || meta.status === "timed_out") return "failed, inspect log";
+  return meta.status;
 }
 
 function commandLabel(meta: BackgroundTaskMeta): string {
@@ -265,7 +276,7 @@ function factsForMeta(meta: BackgroundTaskMeta, now: number): string[] {
       : "result";
     facts.push(reason);
   }
-  return facts.slice(0, 2);
+  return facts;
 }
 
 function formatBytes(bytes: number): string {

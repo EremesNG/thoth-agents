@@ -1,3 +1,4 @@
+import { DEFAULT_STALL_SUSPEND_MAX_MS } from '../config.js';
 import { writeSubagentsDebugLog } from '../debug.js';
 import {
   classifyAssistantFailure,
@@ -347,6 +348,7 @@ export async function promptWithInactivity(
   onQueuedMessageStart?: () => void,
   previousSnapshot?: SubagentThreadSnapshot,
   onQuestionPendingChange?: SubagentOrchestratorChannel['onPendingChange'],
+  stallSuspendMaxMs = DEFAULT_STALL_SUSPEND_MAX_MS,
 ): Promise<{
   result: string;
   usage: UsageStats;
@@ -374,6 +376,8 @@ export async function promptWithInactivity(
   let settledAfterLastStart = false;
   let stallDetails: Record<string, string> | undefined;
   let stalled = false;
+  let compactionStartedAt: number | undefined;
+  let retryBackoffStartedAt: number | undefined;
   const initialMessagesLength =
     promptLabel === 'continuation' && Array.isArray(session.messages)
       ? session.messages.length
@@ -385,6 +389,10 @@ export async function promptWithInactivity(
     string,
     { name: string; startTime: number; lastUpdate: number }
   >();
+  const refreshInactivityBudget = (now = Date.now()): void => {
+    lastActivity = now;
+    for (const tool of activeToolCalls.values()) tool.lastUpdate = now;
+  };
   const emitActivity = (activity: SubagentActivity): void => {
     const snapshot = runtimeMetricsTracker.snapshot();
     usage = snapshot.usage ?? {
@@ -415,6 +423,23 @@ export async function promptWithInactivity(
       if (event?.type === 'agent_start') settledAfterLastStart = false;
       if (event?.type === 'agent_settled') settledAfterLastStart = true;
       const observedAt = lastActivity;
+      // Backoff is silent; any subsequent session event resumes execution.
+      if (retryBackoffStartedAt !== undefined) {
+        retryBackoffStartedAt = undefined;
+        refreshInactivityBudget(observedAt);
+      }
+      if (event?.type === 'auto_retry_start')
+        retryBackoffStartedAt = observedAt;
+      // Interim events and duplicate starts must not extend the compaction ceiling.
+      if (event?.type === 'compaction_start')
+        compactionStartedAt ??= observedAt;
+      if (
+        event?.type === 'compaction_end' &&
+        compactionStartedAt !== undefined
+      ) {
+        compactionStartedAt = undefined;
+        refreshInactivityBudget(observedAt);
+      }
       debugLog(cwd, 'runner_event', {
         type: event?.type,
         messageRole: event?.message?.role,
@@ -623,28 +648,47 @@ export async function promptWithInactivity(
   const unsubscribePending = onQuestionPendingChange?.((pending, count) => {
     if (questionPending && !pending) {
       // Answering resumes a fresh inactivity budget, including other active tools.
-      lastActivity = Date.now();
-      for (const tool of activeToolCalls.values())
-        tool.lastUpdate = lastActivity;
+      refreshInactivityBudget();
     }
     questionPending = pending;
     outstandingQuestions = count ?? Number(pending);
   });
   const interval = setInterval(
     () => {
-      if (stalled || questionPending) return;
-      if (activeToolCalls.size === 0) {
-        if (Date.now() - lastActivity <= stallTimeoutMs) return;
+      if (stalled) return;
+      const stalledAt = Date.now();
+      const suspension =
+        compactionStartedAt !== undefined
+          ? { reason: 'compaction', startedAt: compactionStartedAt }
+          : retryBackoffStartedAt !== undefined
+            ? { reason: 'auto_retry', startedAt: retryBackoffStartedAt }
+            : undefined;
+      // Questions pause ordinary inactivity, not the maintenance safety ceiling.
+      if (suspension) {
+        if (stalledAt - suspension.startedAt <= stallSuspendMaxMs) return;
       } else {
-        const oldestToolUpdate = Math.min(
-          ...[...activeToolCalls.values()].map((entry) => entry.lastUpdate),
-        );
-        if (Date.now() - oldestToolUpdate <= stallTimeoutMs) return;
+        if (questionPending) return;
+        if (activeToolCalls.size === 0) {
+          if (stalledAt - lastActivity <= stallTimeoutMs) return;
+        } else {
+          const oldestToolUpdate = Math.min(
+            ...[...activeToolCalls.values()].map((entry) => entry.lastUpdate),
+          );
+          if (stalledAt - oldestToolUpdate <= stallTimeoutMs) return;
+        }
       }
       // Capture before abort: cleanup can emit events and clear tracked tools.
-      const stalledAt = Date.now();
       stallDetails = {
         stall_timeout_ms: String(stallTimeoutMs),
+        ...(suspension
+          ? {
+              stall_suspend_max_ms: String(stallSuspendMaxMs),
+              stall_suspend_reason: suspension.reason,
+              ms_since_stall_suspend_start: String(
+                stalledAt - suspension.startedAt,
+              ),
+            }
+          : {}),
         ms_since_last_session_event: String(stalledAt - lastSessionEventAt),
         last_session_event_type: lastSessionEventType,
         active_tools:
@@ -658,9 +702,12 @@ export async function promptWithInactivity(
         outstanding_orchestrator_questions: String(outstandingQuestions),
       };
       stalled = true;
-      transcript += `\n\n--- stall ---\nstalled for ${stallTimeoutMs}ms; aborting session\n`;
+      const stallMessage = suspension
+        ? `stalled during ${suspension.reason} for ${stallSuspendMaxMs}ms; aborting session`
+        : `stalled for ${stallTimeoutMs}ms; aborting session`;
+      transcript += `\n\n--- stall ---\n${stallMessage}\n`;
       emitActivity({
-        message: `stalled for ${stallTimeoutMs}ms; aborting session`,
+        message: stallMessage,
         output,
         transcript,
         thread_snapshot: snapshotBuilder.snapshot(),

@@ -167,9 +167,12 @@ function safeMessage(
         ? `timed out after ${details.timeout_ms}ms`
         : 'timed out';
     case 'stall_timeout': {
-      const base = details?.stall_timeout_ms
-        ? `Subagent stalled for ${limitCodePoints(details.stall_timeout_ms, 32)}ms without final response.`
-        : 'Subagent stalled without final response.';
+      const base =
+        details?.stall_suspend_reason && details.stall_suspend_max_ms
+          ? `Subagent stalled during ${limitCodePoints(details.stall_suspend_reason, 32)} for ${limitCodePoints(details.stall_suspend_max_ms, 32)}ms without final response.`
+          : details?.stall_timeout_ms
+            ? `Subagent stalled for ${limitCodePoints(details.stall_timeout_ms, 32)}ms without final response.`
+            : 'Subagent stalled without final response.';
       if (!details?.last_session_event_type) return base;
       // Bound each field so long tool/event names cannot hide later diagnostics.
       const diagnostics = [

@@ -259,6 +259,7 @@ The same JSON shape is valid globally or project-locally; place it only in the s
   "ask_timeout_ms": 600000,
   "timeout_ms": 1200000,
   "stall_timeout_ms": 240000,
+  "stall_suspend_max_ms": 900000,
   "max_concurrency": 5,
   "debug": false,
   "session_resources": "lean",
@@ -299,7 +300,8 @@ The same JSON shape is valid globally or project-locally; place it only in the s
 | `ask_timeout_ms` | `600000` | Positive integer reply timeout per question (10 minutes). Waiting suspends `stall_timeout_ms`, but still counts toward total `timeout_ms`. |
 | `model_profiles` | `{}` | Per-agent model/effort overrides scoped to matching definitions. Project-local profiles apply to project-local definitions; global profiles apply to global definitions. |
 | `timeout_ms` | `1200000` | Total timeout per subagent task (20 minutes). |
-| `stall_timeout_ms` | `240000` | Inactivity timeout for a subagent session (4 minutes). |
+| `stall_timeout_ms` | `240000` | Inactivity timeout for a subagent session (4 minutes). Suspended during pending orchestrator questions, context compaction, and auto-retry backoff; resuming refreshes both session and active-tool inactivity budgets. |
+| `stall_suspend_max_ms` | `900000` | Positive integer safety ceiling for each compaction or auto-retry backoff window (15 minutes). Compaction ends on `compaction_end`, including errors/aborts; retry backoff ends on the next session event. Exceeding the ceiling aborts with `stall_timeout` and compaction/retry diagnostics. Uses the same numeric normalization, invalid-value fallback, and global/project cascade as `stall_timeout_ms`. It does not cap pending-question waits; total `timeout_ms` still applies throughout. |
 | `max_concurrency` | `5` | Max concurrent subagent tasks per cwd/config pair. |
 | `debug` | `false` | Enable bounded runtime/interaction diagnostics in the executing project's `.pi/subagents-debug.log`. Use temporarily and disable after diagnosis. |
 | `session_resources` | `lean` | SDK resource loading mode. `lean` uses the subagent markdown body as the nested session system prompt, skips skills, prompt templates, themes, and context files, and loads extensions in tools-only/safety-hook mode so allowlisted extension tools remain available without startup context injection. Use explicit `full` only when a subagent intentionally needs the full Pi resource set. Also accepts camelCase `sessionResources`. |

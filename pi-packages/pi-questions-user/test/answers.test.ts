@@ -319,3 +319,25 @@ it('never preselects recommendations and reports selections with ids, labels and
   expect(result.content[0].text).toContain('Approach [choice]: Fast');
   expect(initial.answers.choice.values).toEqual([]);
 });
+
+it('localizes synthesized confirm labels while values stay stable', () => {
+  const state = createState({
+    labels: { yes: 'Sí', no: 'No, gracias' },
+    questions: [
+      { id: 'c', header: 'C', prompt: 'Ok?', type: 'confirm' as const },
+    ],
+  });
+  expect(state.questions[0].options).toEqual([
+    { value: 'yes', label: 'Sí' },
+    { value: 'no', label: 'No, gracias' },
+  ]);
+  const result = buildResult(selectOption(state, 'c', 'yes'));
+  expect(result.details.answers.c).toMatchObject({
+    values: ['yes'],
+    labels: ['Sí'],
+  });
+  expect(result.details.labels).toEqual({ yes: 'Sí', no: 'No, gracias' });
+  expect(
+    buildResult(createState({ questions: [] })).details,
+  ).not.toHaveProperty('labels');
+});

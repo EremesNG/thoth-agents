@@ -27,8 +27,17 @@ import {
 import type { QuestionUIFactory, QuestionUISession } from '../custom-ui.js';
 import { getOwn } from '../records.js';
 import type { Question } from '../schema.js';
-import { FREE_TEXT_LABEL } from '../schema.js';
-import { isWide, listWindowSize, splitColumns, windowStart } from './layout.js';
+import { type Labels, type QuestionOption, resolveLabels } from '../schema.js';
+import { pad, renderFrame } from './frame.js';
+import {
+  CHROME_ROWS,
+  heightBudget,
+  isWide,
+  MAX_PROMPT_ROWS,
+  MIN_CONTENT_ROWS,
+  splitColumns,
+  windowStart,
+} from './layout.js';
 import { MarkdownCache } from './markdown-cache.js';
 
 type EditTarget =
@@ -40,16 +49,24 @@ type ReviewRow =
   | { kind: 'question'; index: number }
   | { kind: 'action'; action: 'submit' | 'back' | 'cancel' };
 
-const NARROW_PREVIEW_ROWS = 8;
-const REVIEW_ACTIONS = [
-  ['submit', 'Submit answers'],
-  ['back', 'Back to edit'],
-  ['cancel', 'Cancel'],
-] as const;
+const MIN_NARROW_PREVIEW = 2;
+const REVIEW_ACTIONS = ['submit', 'back', 'cancel'] as const;
 
-function pad(line: string, width: number): string {
-  const clipped = truncateToWidth(line, width);
-  return clipped + ' '.repeat(Math.max(0, width - visibleWidth(clipped)));
+/** Static geometry of the frame body; see QuestionnaireComponent.layout. */
+interface Layout {
+  inner: number;
+  wide: boolean;
+  left: number;
+  right: number;
+  promptRows: number;
+  content: number;
+  listRows: number;
+  previewBody: number;
+}
+
+/** Exactly `rows` lines: clipped, or padded with blanks. */
+function fixed(lines: string[], rows: number): string[] {
+  return Array.from({ length: rows }, (_, i) => lines[i] ?? '');
 }
 
 /** Free-text row index for questions that accept typed answers; absent for confirm. */
@@ -73,6 +90,9 @@ export class QuestionnaireComponent implements Component {
   private finished = false;
   private readonly onAbort = () => this.finish(true, 'aborted');
   private readonly markdown = new MarkdownCache();
+  private readonly layouts = new Map<string, Layout>();
+  private readonly labels: Labels;
+  private lastWidth = 80;
 
   constructor(
     private readonly session: QuestionUISession,
@@ -81,6 +101,7 @@ export class QuestionnaireComponent implements Component {
     private readonly done: (result: QuestionResult | undefined) => void,
   ) {
     this.state = session.state;
+    this.labels = resolveLabels(session.state.labels);
     this.cursors = this.state.questions.map(() => 0);
     this.starts = this.state.questions.map(() => 0);
     session.signal?.addEventListener('abort', this.onAbort, { once: true });
@@ -344,7 +365,7 @@ export class QuestionnaireComponent implements Component {
         (_q, index): ReviewRow => ({ kind: 'question', index }),
       ),
       ...REVIEW_ACTIONS.map(
-        ([action]): ReviewRow => ({ kind: 'action', action }),
+        (action): ReviewRow => ({ kind: 'action', action }),
       ),
     ];
   }
@@ -393,25 +414,141 @@ export class QuestionnaireComponent implements Component {
 
   invalidate(): void {
     this.markdown.clear();
+    this.layouts.clear();
     this.edit?.editor.invalidate();
   }
 
+  /**
+   * Static geometry for a width/terminal height. It depends only on the
+   * questionnaire content, never on cursor, tab or answers, so the component
+   * keeps one height while the user navigates.
+   */
+  private layout(width: number): Layout {
+    const rows = this.tui.terminal.rows;
+    const key = `${width}x${rows}`;
+    let layout = this.layouts.get(key);
+    if (layout) return layout;
+    const inner = Math.max(1, width - 4);
+    const wide = isWide(width);
+    const { left, right } = splitColumns(inner);
+    const questions = this.state.questions;
+    const promptRows = Math.min(
+      MAX_PROMPT_ROWS,
+      Math.max(1, ...questions.map((q) => this.promptLines(q, inner).length)),
+    );
+    const interactive = questions.filter((q) => q.type !== 'text');
+    const listNeed = Math.max(0, ...interactive.map(rowCount));
+    const previewNeed = Math.max(
+      0,
+      ...interactive.flatMap((q) =>
+        (q.options ?? []).map(
+          (option) =>
+            this.markdown.render(
+              this.previewSource(option),
+              wide ? right : inner,
+            ).length,
+        ),
+      ),
+    );
+    const narrowPreview = Math.min(
+      Math.max(previewNeed, MIN_NARROW_PREVIEW),
+      4,
+    );
+    const review =
+      this.reviewIndex === undefined ? 0 : questions.length + 3 + 2;
+    const needed = Math.max(
+      MIN_CONTENT_ROWS,
+      review,
+      wide
+        ? Math.max(listNeed, previewNeed + 1) + 1
+        : listNeed + 1 + narrowPreview + 1,
+    );
+    const budget = heightBudget(rows) - CHROME_ROWS - promptRows;
+    const content = Math.max(MIN_CONTENT_ROWS, Math.min(needed, budget));
+    // Narrow: the list keeps priority (down to 3 rows); the preview takes the rest.
+    const listRows = wide
+      ? content
+      : Math.min(listNeed, Math.max(3, content - 1 - MIN_NARROW_PREVIEW));
+    const previewBody = wide
+      ? content - 1
+      : Math.max(1, content - 1 - listRows);
+    layout = {
+      inner,
+      wide,
+      left,
+      right,
+      promptRows,
+      content,
+      listRows,
+      previewBody,
+    };
+    this.layouts.set(key, layout);
+    return layout;
+  }
+
   private previewHeight(): number {
-    return listWindowSize(this.tui.terminal.rows);
+    return this.layout(this.lastWidth).previewBody;
+  }
+
+  private promptLines(question: Question, width: number): string[] {
+    return wrapTextWithAnsi(
+      `${question.prompt}${question.required ? this.theme.fg('warning', ` (${this.labels.required})`) : ''}`,
+      width,
+    );
   }
 
   render(width: number): string[] {
     if (width <= 0) return [];
-    const lines: string[] = [];
-    if (this.state.title) lines.push(this.theme.bold(this.state.title));
-    lines.push(this.renderTabs(width), '');
-    lines.push(
-      ...(this.tab === this.reviewIndex
-        ? this.renderReview()
-        : this.renderQuestion(width)),
+    this.lastWidth = width;
+    const layout = this.layout(width);
+    const t = this.theme;
+    const onReview = this.tab === this.reviewIndex;
+    const answered = this.state.questions.filter(
+      (q) => getAnswer(this.state, q.id).status === 'answered',
+    ).length;
+    const frame = renderFrame(
+      t,
+      {
+        title: this.state.title ?? this.labels.askUser,
+        head: [this.renderTabs(layout.inner)],
+        sections: [
+          {
+            title: `${answered}/${this.state.questions.length} ${this.labels.answered}`,
+            rows: [
+              ...fixed(
+                onReview
+                  ? [t.bold(this.labels.reviewHeading)]
+                  : this.question
+                    ? this.promptLines(this.question, layout.inner)
+                    : [],
+                layout.promptRows,
+              ),
+              ...fixed(
+                onReview
+                  ? this.renderReview(layout)
+                  : this.renderQuestion(layout),
+                layout.content,
+              ),
+              this.noteRow(),
+            ],
+          },
+          { title: '', rows: this.renderHints(layout.inner) },
+        ],
+      },
+      width,
     );
-    lines.push('', this.theme.fg('dim', this.hints()));
-    return lines.map((line) => truncateToWidth(line, width));
+    return frame.map((line) => truncateToWidth(line, width));
+  }
+
+  private noteRow(): string {
+    const question = this.question;
+    const note = question ? getAnswer(this.state, question.id).note : undefined;
+    return note && !this.edit
+      ? this.theme.fg(
+          'muted',
+          `✎ ${this.labels.note}: ${note.replace(/\s+/g, ' ')}`,
+        )
+      : '';
   }
 
   private renderTabs(width: number): string {
@@ -426,8 +563,8 @@ export class QuestionnaireComponent implements Component {
     if (this.reviewIndex !== undefined) {
       labels.push(
         this.tab === this.reviewIndex
-          ? t.bold(t.fg('accent', '[Review]'))
-          : ' Review ',
+          ? t.bold(t.fg('accent', `[${this.labels.review}]`))
+          : ` ${this.labels.review} `,
       );
     }
     // Drop leading tabs until the active one fits.
@@ -440,85 +577,94 @@ export class QuestionnaireComponent implements Component {
     return (first > 0 ? '‹ ' : '') + labels.slice(first).join('');
   }
 
-  private renderQuestion(width: number): string[] {
+  private renderQuestion(layout: Layout): string[] {
     const question = this.question;
     if (!question) return [];
     const t = this.theme;
-    const lines = wrapTextWithAnsi(
-      `${question.prompt}${question.required ? t.fg('warning', ' (required)') : ''}`,
-      width,
-    );
-    lines.push('');
-    if (question.type !== 'text') {
-      const preview = this.focusPreview(question);
-      if (isWide(width)) {
-        const { left, right } = splitColumns(width);
-        const list = this.renderList(question, left);
-        const side = this.renderPreview(preview, right, this.previewHeight());
-        const rows = Math.max(list.length, side.length);
-        for (let i = 0; i < rows; i++) {
-          lines.push(
-            `${pad(list[i] ?? '', left)} ${t.fg('borderMuted', '│')} ${side[i] ?? ''}`,
-          );
-        }
-      } else {
-        lines.push(
-          ...this.renderList(question, width),
-          ...this.renderPreview(preview, width, NARROW_PREVIEW_ROWS),
-        );
-      }
-    }
+    if (this.edit) return this.renderEditor(layout);
     const answer = getAnswer(this.state, question.id);
-    if (answer.note && !this.edit) {
-      lines.push('', t.fg('muted', `Note: ${answer.note}`));
+    if (question.type === 'text') {
+      return answer.customText
+        ? wrapTextWithAnsi(
+            `${t.fg('success', '✓')} ${answer.customText}`,
+            layout.inner,
+          )
+        : [t.fg('muted', this.labels.noTextYet)];
     }
-    if (this.edit) {
-      lines.push(...this.renderEditor(width));
-    } else if (question.type === 'text') {
-      lines.push(
-        answer.customText
-          ? `${t.fg('success', '✓')} ${answer.customText}`
-          : t.fg('muted', 'No text yet. Press Enter to write an answer.'),
+    const preview = this.focusPreview(question);
+    if (layout.wide) {
+      const list = this.renderList(question, layout.left, layout.listRows);
+      const side = this.renderPreview(
+        preview,
+        layout.right,
+        layout.previewBody,
+      );
+      return Array.from(
+        { length: layout.content },
+        (_, i) =>
+          `${pad(list[i] ?? '', layout.left)} ${t.fg('borderMuted', '│')} ${side[i] ?? ''}`,
       );
     }
-    return lines;
+    const [header, ...body] = this.renderPreview(
+      preview,
+      layout.inner,
+      layout.previewBody,
+    );
+    return [
+      ...fixed(
+        this.renderList(question, layout.inner, layout.listRows),
+        layout.listRows,
+      ),
+      this.separator(header, layout.inner),
+      ...body,
+    ];
   }
 
-  private renderEditor(width: number): string[] {
+  /** Rule carrying the preview header; splits the list from the preview below it. */
+  private separator(label: string, width: number): string {
+    const text = ` ${label} `;
+    const rest = Math.max(0, width - 2 - visibleWidth(text));
+    return this.theme.fg('borderMuted', `──${text}${'─'.repeat(rest)}`);
+  }
+
+  private renderEditor(layout: Layout): string[] {
     const edit = this.edit;
     if (!edit) return [];
     const { target } = edit;
     const question = this.state.questions.find((q) => q.id === target.id);
     let label: string;
     if (target.kind === 'custom') {
-      label = question?.type === 'text' ? 'Your answer' : FREE_TEXT_LABEL;
+      label =
+        question?.type === 'text'
+          ? this.labels.yourAnswer
+          : this.labels.typeSomething;
     } else if (target.kind === 'note') {
-      label = 'Note for this question';
+      label = this.labels.noteForQuestion;
     } else {
       const option = question?.options?.find((o) => o.value === target.value);
-      label = `Note for “${option?.label ?? target.value}”`;
+      label = `${this.labels.noteFor} “${option?.label ?? target.value}”`;
     }
+    // A long draft keeps its last rows visible inside the reserved area.
     return [
-      '',
       this.theme.fg('accent', label),
-      ...edit.editor.render(width),
-      this.theme.fg(
-        'dim',
-        'Enter save · Shift+Enter newline · Esc keep draft and return',
-      ),
+      ...edit.editor.render(layout.inner).slice(-(layout.content - 1)),
     ];
   }
 
-  private renderList(question: Question, width: number): string[] {
+  private renderList(
+    question: Question,
+    width: number,
+    size: number,
+  ): string[] {
     const t = this.theme;
     const answer = getAnswer(this.state, question.id);
     const options = question.options ?? [];
     const total = rowCount(question);
-    const size = listWindowSize(this.tui.terminal.rows);
+    const windowRows = total > size ? size - 1 : size;
     const cursor = this.cursors[this.tab];
-    const start = windowStart(total, cursor, size, this.starts[this.tab]);
+    const start = windowStart(total, cursor, windowRows, this.starts[this.tab]);
     this.starts[this.tab] = start;
-    const end = Math.min(start + size, total);
+    const end = Math.min(start + windowRows, total);
     const multi = question.type === 'multi';
     const lines: string[] = [];
     for (let i = start; i < end; i++) {
@@ -529,8 +675,10 @@ export class QuestionnaireComponent implements Component {
         : Boolean(answer.customText);
       const mark = multi ? (checked ? '☑' : '☐') : checked ? '◉' : '○';
       const number = i < 9 ? `${i + 1}.` : '  ';
-      let label = option ? option.label : FREE_TEXT_LABEL;
-      if (option?.recommended) label += t.fg('success', ' ★ recommended');
+      let label = option ? option.label : this.labels.typeSomething;
+      if (option?.recommended) {
+        label += t.fg('success', ` ★ ${this.labels.recommended}`);
+      }
       if (option && getOwn(answer.optionNotes, option.value)) {
         label += t.fg('muted', ' ✎');
       }
@@ -540,7 +688,7 @@ export class QuestionnaireComponent implements Component {
       const text = `${focused ? '›' : ' '} ${number} ${mark} ${label}`;
       lines.push(focused ? t.fg('accent', text) : text);
     }
-    if (total > size) {
+    if (total > windowRows) {
       const up = start > 0 ? '↑' : ' ';
       const down = end < total ? '↓' : ' ';
       lines.push(t.fg('muted', `  ${up} ${cursor + 1}/${total} ${down}`));
@@ -548,17 +696,22 @@ export class QuestionnaireComponent implements Component {
     return lines.map((line) => truncateToWidth(line, width));
   }
 
+  private previewSource(option: QuestionOption): string {
+    return (
+      option.preview ?? option.description ?? `*${this.labels.noDescription}*`
+    );
+  }
+
   private focusPreview(question: Question): string {
     const answer = getAnswer(this.state, question.id);
     const option = question.options?.[this.cursors[this.tab]];
-    if (!option) {
-      return answer.customText ?? 'Press Enter to type your own answer.';
-    }
-    const body = option.preview ?? option.description ?? '*No description.*';
+    if (!option) return answer.customText ?? this.labels.typeOwn;
+    const body = this.previewSource(option);
     const note = getOwn(answer.optionNotes, option.value);
-    return note ? `${body}\n\n**Note:** ${note}` : body;
+    return note ? `${body}\n\n**${this.labels.note}:** ${note}` : body;
   }
 
+  /** Header row followed by exactly `height` rows, scrolled internally. */
   private renderPreview(
     source: string,
     width: number,
@@ -573,16 +726,18 @@ export class QuestionnaireComponent implements Component {
     const header = this.theme.fg(
       'muted',
       all.length > height
-        ? `Preview ${this.previewScroll + 1}-${this.previewScroll + visible.length}/${all.length} (PgUp/PgDn)`
-        : 'Preview',
+        ? `${this.labels.preview} ${this.previewScroll + 1}-${this.previewScroll + visible.length}/${all.length} (PgUp/PgDn)`
+        : this.labels.preview,
     );
-    return [header, ...visible].map((line) => truncateToWidth(line, width));
+    return [header, ...fixed(visible, height)].map((line) =>
+      truncateToWidth(line, width),
+    );
   }
 
-  private renderReview(): string[] {
+  private renderReview(layout: Layout): string[] {
     const t = this.theme;
     const rows = this.reviewRows();
-    const size = listWindowSize(this.tui.terminal.rows);
+    const size = Math.max(1, layout.content - 2);
     const start = windowStart(
       rows.length,
       this.reviewCursor,
@@ -590,7 +745,12 @@ export class QuestionnaireComponent implements Component {
       this.reviewStart,
     );
     this.reviewStart = start;
-    const lines = [t.bold('Review your answers'), ''];
+    const actions = {
+      submit: this.labels.submit,
+      back: this.labels.backToEdit,
+      cancel: this.labels.cancel,
+    };
+    const lines: string[] = [];
     for (const [offset, row] of rows.slice(start, start + size).entries()) {
       const focused = start + offset === this.reviewCursor;
       const prefix = focused ? '›' : ' ';
@@ -605,42 +765,78 @@ export class QuestionnaireComponent implements Component {
             .join(', ')
             .replace(/\s+/g, ' ');
         } else if (question.required) {
-          summary = t.fg('warning', '⚠ required — unanswered');
+          summary = t.fg(
+            'warning',
+            `⚠ ${this.labels.required} — ${this.labels.unanswered}`,
+          );
         } else {
-          summary = t.fg('muted', 'skipped');
+          summary = t.fg('muted', this.labels.skipped);
         }
         text = `${prefix} ${question.header}: ${summary}`;
       } else {
-        const label = REVIEW_ACTIONS.find(([a]) => a === row.action)?.[1];
-        text = `${prefix} ▸ ${label}`;
+        text = `${prefix} ▸ ${actions[row.action]}`;
       }
       lines.push(focused ? t.fg('accent', text) : text);
     }
     const missing = this.state.questions.filter(
       (q) => q.required && getAnswer(this.state, q.id).status !== 'answered',
     ).length;
-    if (missing) {
-      lines.push(
-        '',
-        t.fg(
-          'warning',
-          `${missing} required question(s) unanswered; you may still submit.`,
-        ),
-      );
-    }
-    return lines;
+    return [
+      ...fixed(lines, size),
+      '',
+      missing
+        ? t.fg('warning', `${missing} ${this.labels.requiredPending}`)
+        : '',
+    ];
   }
 
-  private hints(): string {
-    if (this.edit) return 'Tab switch question · Esc keep draft';
-    if (this.tab === this.reviewIndex) {
-      return '↑↓ move · Enter choose · Tab/←→ switch · Esc cancel';
+  /** Key hints flowed onto exactly two rows without splitting a hint. */
+  private renderHints(width: number): string[] {
+    const l = this.labels;
+    let items: string[];
+    if (this.edit) {
+      items = [
+        `Enter ${l.save}`,
+        `Shift+Enter ${l.newline}`,
+        `Tab ${l.switchTab}`,
+        `Esc ${l.keepDraft}`,
+      ];
+    } else if (this.tab === this.reviewIndex) {
+      items = [
+        `↑↓ ${l.move}`,
+        `Enter ${l.select}`,
+        `Tab/←→ ${l.switchTab}`,
+        `Esc ${l.cancel.toLowerCase()}`,
+      ];
+    } else {
+      items = [
+        `↑↓ ${l.move}`,
+        `1-9 ${l.pick}`,
+        this.question?.type === 'multi'
+          ? `Space ${l.toggle} · Enter ${l.next}`
+          : `Enter ${l.select}`,
+        `n ${l.optionNote}`,
+        `N ${l.questionNote}`,
+        `x ${l.clear}`,
+        `PgUp/PgDn ${l.scrollPreview}`,
+        `Tab/←→ ${l.switchTab}`,
+        `Esc ${l.cancel.toLowerCase()}`,
+      ];
     }
-    const choose =
-      this.question?.type === 'multi'
-        ? 'Space toggle · Enter next'
-        : 'Enter select';
-    return `↑↓ move · 1-9 pick · ${choose} · n option note · N question note · x clear · PgUp/PgDn preview · Tab/←→ switch · Esc cancel`;
+    const lines = ['', ''];
+    let row = 0;
+    for (const item of items) {
+      const joined = lines[row] ? `${lines[row]} · ${item}` : item;
+      if (row === 1 || !lines[row] || visibleWidth(joined) <= width) {
+        lines[row] = joined;
+      } else {
+        row = 1;
+        lines[row] = item;
+      }
+    }
+    return lines.map((line) =>
+      this.theme.fg('dim', truncateToWidth(line, width)),
+    );
   }
 }
 

@@ -6,6 +6,7 @@ import type {
   KeybindingsManager,
   Theme,
 } from '@earendil-works/pi-coding-agent';
+import { initTheme } from '@earendil-works/pi-coding-agent';
 import type { TUI } from '@earendil-works/pi-tui';
 import {
   getPublishedToolDefinition,
@@ -429,4 +430,80 @@ it('registers ask_user_question and uses sequential fallback when the custom hos
       plan: { status: 'answered', values: ['safe'], labels: ['Safe'] },
     },
   });
+});
+
+it('tells models to pass labels in the conversation language', () => {
+  const tool = createQuestionTool();
+  expect(tool.promptGuidelines?.join(' ')).toContain('labels');
+  expect(tool.promptGuidelines?.join(' ')).toContain("user's language");
+});
+
+const confirmWithLabels = {
+  labels: { yes: 'Sí', no: 'No, gracias' },
+  questions: [
+    { id: 'go', header: 'Seguir', prompt: '¿Seguimos?', type: 'confirm' },
+  ],
+};
+
+it('applies labels end to end through the native questionnaire', async () => {
+  initTheme('dark');
+  let rendered = '';
+  const host = vi.fn(async (factory: QuestionUIFactory) => {
+    let result: QuestionResult | undefined;
+    const component = await factory(
+      { requestRender() {}, terminal: { rows: 40 } } as unknown as TUI,
+      {
+        fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+      } as Theme,
+      {} as KeybindingsManager,
+      (value) => {
+        result = value;
+      },
+    );
+    rendered = component.render(100).join('\n');
+    component.handleInput?.('1');
+    return result;
+  });
+  const result = await extensionHost().tool.execute(
+    'call',
+    confirmWithLabels as never,
+    undefined,
+    undefined,
+    context(true, { custom: host as ExtensionUIContext['custom'] }),
+  );
+  expect(rendered).toContain('Sí');
+  expect(rendered).toContain('No, gracias');
+  expect(rendered).not.toContain('Yes');
+  expect(result.details.answers.go).toMatchObject({
+    values: ['yes'],
+    labels: ['Sí'],
+  });
+});
+
+it('applies labels in the sequential fallback', async () => {
+  const select = vi.fn(async (_title: string, options: string[]) => options[1]);
+  const result = await extensionHost().tool.execute(
+    'call',
+    confirmWithLabels as never,
+    undefined,
+    undefined,
+    context(true, { select: select as ExtensionUIContext['select'] }),
+  );
+  expect(select.mock.calls[0][1].slice(0, 2)).toEqual(['Sí', 'No, gracias']);
+  expect(result.details.answers.go).toMatchObject({
+    values: ['no'],
+    labels: ['No, gracias'],
+  });
+});
+
+it('the tool schema declares labels so hosts do not drop them', () => {
+  const schema = createQuestionTool().parameters as unknown as {
+    properties: Record<string, { properties?: Record<string, unknown> }>;
+  };
+  expect(Object.keys(schema.properties)).toContain('labels');
+  expect(Object.keys(schema.properties.labels.properties ?? {})).toEqual(
+    expect.arrayContaining(['yes', 'no', 'typeSomething', 'submit']),
+  );
 });

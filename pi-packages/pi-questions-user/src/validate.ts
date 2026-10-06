@@ -1,7 +1,9 @@
 import {
-  FREE_TEXT_LABEL,
+  LABEL_KEYS,
+  type LabelOverrides,
   type Questionnaire,
   type QuestionParameters,
+  reservedLabels,
 } from './schema.js';
 
 export type ValidationIssueCode =
@@ -63,6 +65,17 @@ export function validateQuestions(input: unknown): ValidationResult {
     };
   }
   optional(input.title, 'title', 'string');
+  if (input.labels !== undefined) {
+    if (!isObject(input.labels)) {
+      issue('labels', 'invalid_type', 'Expected a labels object.');
+    } else {
+      for (const key of LABEL_KEYS) {
+        if (input.labels[key] !== undefined) {
+          string(input.labels[key], `labels.${key}`, true);
+        }
+      }
+    }
+  }
   if (!Array.isArray(input.questions)) {
     issue('questions', 'invalid_type', 'Expected an array of questions.');
     return { valid: false, issues };
@@ -71,6 +84,9 @@ export function validateQuestions(input: unknown): ValidationResult {
     issue('questions', 'empty_questions', 'At least one question is required.');
   }
 
+  const reserved = isObject(input.labels)
+    ? reservedLabels(input.labels as LabelOverrides)
+    : reservedLabels();
   const ids = new Set<string>();
   input.questions.forEach((question: unknown, index: number) => {
     const path = `questions[${index}]`;
@@ -137,7 +153,7 @@ export function validateQuestions(input: unknown): ValidationResult {
       }
       if (
         typeof option.label === 'string' &&
-        option.label.trim() === FREE_TEXT_LABEL
+        reserved.includes(option.label.trim())
       ) {
         issue(
           `${optionPath}.label`,
@@ -157,6 +173,7 @@ export function validateQuestions(input: unknown): ValidationResult {
     valid: true,
     value: {
       ...(params.title !== undefined ? { title: params.title } : {}),
+      ...(params.labels !== undefined ? { labels: params.labels } : {}),
       questions: params.questions.map((question) => ({
         ...question,
         type: question.type ?? 'single',

@@ -29,6 +29,9 @@ export function createQuestionTool(
     label: 'Ask User Question',
     description:
       'Ask the user a questionnaire with stable ids, single/multi choices, text or Yes/No confirmation. Required is advisory; recommendations are never preselected.',
+    promptGuidelines: [
+      "When the user does not write in English, pass `labels` with the fixed UI strings (yes, no, typeSomething, submit, backToEdit, cancel, review, skip, done, hints…) translated to the user's language; also write headers, prompts and option labels in that language. Option values and ids stay stable.",
+    ],
     parameters: questionParameters,
     ...createQuestionRenderers(),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

@@ -318,11 +318,21 @@ export class QuestionnaireComponent implements Component {
       this.move(Number.MAX_SAFE_INTEGER);
       return;
     }
-    if (matchesKey(data, 'pageUp')) {
+    // Fullscreen hosts consume PgUp/PgDn/Home/End/Ctrl+arrows and the wheel
+    // before the component; Shift+arrows and brackets always reach it.
+    if (matchesKey(data, 'shift+up')) {
+      this.scrollPreview(-1, 1);
+      return;
+    }
+    if (matchesKey(data, 'shift+down')) {
+      this.scrollPreview(1, 1);
+      return;
+    }
+    if (matchesKey(data, 'pageUp') || data === '[') {
       this.scrollPreview(-1);
       return;
     }
-    if (matchesKey(data, 'pageDown')) {
+    if (matchesKey(data, 'pageDown') || data === ']') {
       this.scrollPreview(1);
       return;
     }
@@ -403,10 +413,11 @@ export class QuestionnaireComponent implements Component {
     }
   }
 
-  private scrollPreview(direction: number): void {
+  private scrollPreview(direction: number, step?: number): void {
     this.previewScroll = Math.max(
       0,
-      this.previewScroll + direction * Math.max(1, this.previewHeight() >> 1),
+      this.previewScroll +
+        direction * (step ?? Math.max(1, this.previewHeight() >> 1)),
     );
   }
 
@@ -723,10 +734,12 @@ export class QuestionnaireComponent implements Component {
       Math.max(0, all.length - height),
     );
     const visible = all.slice(this.previewScroll, this.previewScroll + height);
+    const above = this.previewScroll;
+    const below = all.length - above - visible.length;
     const header = this.theme.fg(
       'muted',
       all.length > height
-        ? `${this.labels.preview} ${this.previewScroll + 1}-${this.previewScroll + visible.length}/${all.length} (PgUp/PgDn)`
+        ? `${this.labels.preview} ${above + 1}-${above + visible.length}/${all.length}${above > 0 ? ` · ↑ ${above} ${this.labels.more}` : ''}${below > 0 ? ` · ↓ ${below} ${this.labels.more}` : ''}`
         : this.labels.preview,
     );
     return [header, ...fixed(visible, height)].map((line) =>
@@ -818,7 +831,7 @@ export class QuestionnaireComponent implements Component {
         `n ${l.optionNote}`,
         `N ${l.questionNote}`,
         `x ${l.clear}`,
-        `PgUp/PgDn ${l.scrollPreview}`,
+        `⇧↑↓/[ ] ${l.scrollPreview}`,
         `Tab/←→ ${l.switchTab}`,
         `Esc ${l.cancel.toLowerCase()}`,
       ];

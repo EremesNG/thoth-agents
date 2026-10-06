@@ -33,6 +33,8 @@ const KEY = {
   enter: '\r',
   esc: '\x1b',
   pageDown: '\x1b[6~',
+  shiftUp: '\x1b[1;2A',
+  shiftDown: '\x1b[1;2B',
 };
 
 const options = (n: number) =>
@@ -370,9 +372,43 @@ describe('questionnaire UI', () => {
     expect(text()).not.toContain('line 39');
     send(KEY.pageDown);
     expect(text()).not.toContain('line 0\n');
-    expect(text()).toContain('PgUp/PgDn');
+    expect(text()).toContain('↓');
     send(KEY.down);
     expect(text()).toContain('Plain description');
+  });
+
+  it.each([
+    80, 140,
+  ])('scrolls a 15-line preview to its last line with Shift+arrows and brackets at %i columns', (width) => {
+    const q: Questionnaire = {
+      questions: [
+        {
+          id: 'a',
+          header: 'P',
+          prompt: 'p',
+          type: 'single',
+          options: [
+            { value: 'x', label: 'X', preview: lines(8) },
+            { value: 'y', label: 'Y' },
+          ],
+        },
+      ],
+    };
+    for (const key of [KEY.shiftDown, ']']) {
+      const { send, component } = setup(q, 24);
+      const joined = () => component.render(width).join('\n');
+      const before = component.render(width);
+      expect(joined()).toMatch(/↓ \d+ more/);
+      expect(joined()).not.toContain('line 7');
+      for (let i = 0; i < 20; i++) send(key);
+      const after = component.render(width);
+      expect(after.join('\n')).toContain('line 7');
+      expect(after.join('\n')).not.toMatch(/↓ \d+ more/);
+      expect(after.join('\n')).toMatch(/↑ \d+ more/);
+      expect(after.length).toBe(before.length);
+      send(KEY.shiftUp);
+      expect(joined()).toContain('↓ 1 more');
+    }
   });
 
   it('single question submits directly; text type is editor-only', () => {

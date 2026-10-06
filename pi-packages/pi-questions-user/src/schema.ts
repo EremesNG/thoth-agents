@@ -39,6 +39,7 @@ export const DEFAULT_LABELS = {
   questionNote: 'question note',
   clear: 'clear',
   scrollPreview: 'preview',
+  more: 'more',
   switchTab: 'switch',
   save: 'save',
   newline: 'newline',

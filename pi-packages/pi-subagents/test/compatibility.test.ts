@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import extension, {
-  ClaudeBackgroundWidget,
-  ClaudeBackgroundWidgetState,
   completionMessage,
   createSubagentsPanelKeyMatcher,
-  moveClaudeBackgroundWidgetSelection,
-  renderClaudeBackgroundWidgetLines,
+  createSubagentsWorkPanelProvider,
   renderSubagentCompletionMessage,
   resolveRegisteredToolDefinition,
   sendSubagentCompletionMessage,
@@ -70,11 +67,8 @@ describe('compatibility smoke', () => {
   it('preserves the root default export and named root exports', () => {
     expect(typeof extension).toBe('function');
     expect(typeof createSubagentsPanelKeyMatcher).toBe('function');
+    expect(typeof createSubagentsWorkPanelProvider).toBe('function');
     expect(typeof resolveRegisteredToolDefinition).toBe('function');
-    expect(typeof moveClaudeBackgroundWidgetSelection).toBe('function');
-    expect(typeof renderClaudeBackgroundWidgetLines).toBe('function');
-    expect(typeof ClaudeBackgroundWidgetState).toBe('function');
-    expect(typeof ClaudeBackgroundWidget).toBe('function');
     expect(typeof completionMessage).toBe('function');
     expect(typeof sendSubagentCompletionMessage).toBe('function');
     expect(typeof renderSubagentCompletionMessage).toBe('function');

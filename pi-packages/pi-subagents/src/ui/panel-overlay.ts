@@ -192,7 +192,6 @@ export async function showSubagentsPanel(input: {
   pi: any;
   manager: SubagentManager;
   selectedTaskId?: string;
-  setWidgetInputSuspended: (value: boolean) => void;
   setActivePanelCancelSelected: (fn: (() => void) | undefined) => void;
   setActivePanelRequestRender: (fn: (() => void) | undefined) => void;
 }) {
@@ -201,14 +200,12 @@ export async function showSubagentsPanel(input: {
     pi,
     manager,
     selectedTaskId,
-    setWidgetInputSuspended,
     setActivePanelCancelSelected,
     setActivePanelRequestRender,
   } = input;
   const cwd = ctx?.cwd ?? process.cwd();
   const sessionId = currentSessionId(ctx);
   let refresh: NodeJS.Timeout | undefined;
-  setWidgetInputSuspended(true);
   try {
     await ctx.ui.custom(
       (tui: any, theme: any, _keybindings: any, done: () => void) => {
@@ -368,6 +365,6 @@ export async function showSubagentsPanel(input: {
   } finally {
     setActivePanelCancelSelected(undefined);
     setActivePanelRequestRender(undefined);
-    setWidgetInputSuspended(false);
+    if (refresh) clearInterval(refresh);
   }
 }

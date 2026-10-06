@@ -4,12 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import extension, {
-  ClaudeBackgroundWidget,
-  ClaudeBackgroundWidgetState,
   completionMessage,
   createSubagentsPanelKeyMatcher,
-  moveClaudeBackgroundWidgetSelection,
-  renderClaudeBackgroundWidgetLines,
   resolveRegisteredToolDefinition,
   sendSubagentCompletionMessage,
 } from '../../index.js';

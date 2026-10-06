@@ -4,11 +4,6 @@ export {
   renderSubagentCompletionMessage,
   sendSubagentCompletionMessage,
 } from './src/render/completion-message.js';
-export {
-  ClaudeBackgroundWidget,
-  ClaudeBackgroundWidgetState,
-  moveClaudeBackgroundWidgetSelection,
-  renderClaudeBackgroundWidgetLines,
-} from './src/ui/background-widget.js';
 export { createSubagentsPanelKeyMatcher } from './src/ui/panel-input.js';
 export { resolveRegisteredToolDefinition } from './src/ui/panel-overlay.js';
+export { createSubagentsWorkPanelProvider } from './src/ui/work-panel-provider.js';

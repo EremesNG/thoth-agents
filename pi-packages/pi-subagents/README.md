@@ -26,14 +26,14 @@ Requires Pi `>=0.99.0` and Node `>=22.19.0`; development SDK/TUI dependencies ar
 
 ## Rendering
 
-Tool calls/results, completion/question messages and the above-editor widget
-render through the theme's Render KIT when present, discovered through
+Tool calls/results, completion/question messages and the shared above-editor
+Work panel render through the theme's Render KIT when present, discovered through
 `@thoth-agents/pi-core` at render time. Without the kit, they keep native Pi
 rendering; there is no dependency on `@thoth-agents/pi-thoth-theme`.
 
 The visual palette uses theme roles instead of hardcoded neon colors or RGB
-cycling. The background widget's braille animation is preserved; kit-rendered
-working states use the theme-owned indicator.
+cycling. Agents retain animated braille status while running; the shared host
+owns input interception and refreshes only while a child runs.
 
 ## Install as a Pi package
 
@@ -185,7 +185,7 @@ Thoth-generated specialists use explicit lists that omit the interactive questio
 
 These exclusions are not a sandbox: shell and MCP tools can still launch agents indirectly.
 
-For every selection form—explicit lists and globs (including `*`), alone or mixed—a selected tool without a child-loadable implementation is dropped after session creation, and the child runs with the remaining tools. Dropped names are persisted as `dropped_tools` in task and attempt history and shown as a compact warning on running/queued widget cards and in status, result, and completion notifications; they are never listed in the child prompt. If every selected tool is missing, launch fails with the missing-implementation diagnostic. All selections still reject unexpected extra child tools, and unrelated startup failures remain errors.
+For every selection form—explicit lists and globs (including `*`), alone or mixed—a selected tool without a child-loadable implementation is dropped after session creation, and the child runs with the remaining tools. Dropped names are persisted as `dropped_tools` in task and attempt history and shown as a compact warning on running/queued Agents rows in the Work panel, in task details, and in status, result, and completion notifications; they are never listed in the child prompt. If every selected tool is missing, launch fails with the missing-implementation diagnostic. All selections still reject unexpected extra child tools, and unrelated startup failures remain errors.
 
 Exact names and tools matched by globs reach the child even when inactive in the root. For example, `agent_browser_*` includes root-inactive registered browser capabilities that the child may activate. All selections are checked against the child's registered implementations, rather than requiring every selected tool to be active in the model tool list. Selected `deferred` and `codemode` tools remain callable through Pi's native nested-tool interface. Excluded and prohibited tools are absent from the child's registered inventory.
 
@@ -450,7 +450,7 @@ Behavior:
 - Effective continuation mode resolves once as `input.mode ?? previous_task.effective_mode ?? previous_task.mode ?? config.default_mode ?? "background"`.
 - `mode: "task"` waits, renders `(task)`, and remains eligible for manual `ctrl+h` handoff.
 - `mode: "background"` returns immediately, renders `(background)`, and relies on the automatic completion notification.
-- While background tasks are active, an `Agents` widget appears above the input displaying up to 3 compact active subagent cards with distinct card boundaries and theme hierarchy. Running cards use an animated braille indicator and show the agent, resolved model, and a concise task summary (avoiding raw prompt clutter in the identity row). Compact telemetry rows keep tool uses, lifetime tokens, context percentage, task-average output speed (`N tok/s`), and elapsed time readable even when narrow; activity and compactions also appear when available. Output speed sits between context and elapsed and divides accumulated assistant output tokens by measured assistant generation time, excluding tool execution and compaction. Its counters persist across continuations; unavailable or legacy timing shows `?`, never an invented rate. Token totals include input, output, and cache writes, excluding repeated cache reads. Unavailable metrics show `?`, while measured zeroes remain visible. When more than 3 active agents run, a selectable overflow footer reports the count of additional active subagents and opens the full `/subagents` history panel on Enter. Queued tasks use a hollow dot and appear as a grouped count. Running cards and the grouped queue show a compact dropped-tools warning when present; terminal tasks leave the widget, with the warning retained in status, result, and completion. Header keyboard hints adapt to terminal width and are discoverable initially. With the root editor focused and empty, use the arrow keys and Enter to open a selected task or the overflow footer, or return to the editor with Escape. Widget navigation never consumes keys while an overlay, native dialog, other custom UI, or Thoth panel holds input; existing navigation exits when editor focus is lost. At session start the widget wraps the configured editor factory (or Pi's default editor), preserving editor behavior and keybindings. If another extension replaces or reinstalls that editor later, navigation fails closed with one visible warning until the next session start.
+- The shared Work panel shows an `Agents · N running` section for the current session's tasks, with one compact row per task and up to 3 visible items plus `+N more`. Each row shows a running braille animation (or a distinct queued/terminal glyph), agent, concise task label and tool uses, lifetime input/output tokens, context percentage, average output speed (`N tok/s`) and active elapsed time. Running/queued rows retain a warning-colored `⚠ N dropped` count when tools were dropped. The task label truncates before warnings and metrics; narrow widths move metrics to continuation rows. Token counts exclude caches. Output speed divides accumulated measured assistant output tokens by generation time, excluding tools and compaction; its counters persist across continuations. Unavailable values show `?`, while measured zeroes remain visible. Resolved model, activity and other details remain in the existing task panel. With an empty root editor, press ← to focus Work, ↑↓ to select across sections, Enter to open the selected task, or x twice to cancel a running task. Esc/→ return to the editor. Unfocused ↑↓ retain prompt history, and overlays, dialogs and the task panel receive their keys. The pi-core host alone owns the Work widget, navigation listener and running-only refresh lifecycle. Separate foreground task-mode double-Escape and manual handoff listeners reuse the host's editor-focus, overlay and suspension guard without requiring empty input; without an installed Work host they retain their existing handling.
 - When `mode` is omitted, the continuation preserves the previous task attempt's effective mode. Legacy records without a valid saved mode fall back through `default_mode` and then `background`.
 - Model and effort overrides still require an explicit user decision before use.
 
@@ -503,7 +503,7 @@ Live-message requirements, visibility, and lifecycle:
 - Active `subagent_status` surfaces `pending_message_count`. Terminal `subagent_result` and completion notifications surface `undelivered_message_count`, including `0`.
 - Pending queue entries are discarded on completion, cancellation, shutdown, restart, or continuation; they are not replayed into a new attempt.
 - Message text is private to the owning task detail timeline and persisted task-detail snapshot. Lists, widgets, completion notifications, result summaries, logs, and unrelated parent sessions expose only safe counts/metadata.
-- Live task-mode rendering shows the latest three safe activity labels; live background rendering shows one current activity only.
+- Live task-mode rendering shows the latest three safe activity labels; the compact Work panel shows task labels and metrics, with activity available in task details.
 
 ### `subagent_reply`
 
@@ -527,7 +527,7 @@ Questions arrive as automated `subagent-question` messages with task id, agent, 
 - The tool is injected in-process for every child when `enable_ask_orchestrator` is true unless denied by `disallowed_tools`, regardless of `tools` selection; it is not registered for the root.
 - `question` blocks until the parent replies, and the child may ask repeatedly in the same live session. Replies are correlated by task id and UUID request id.
 - Each question rejects on `ask_timeout_ms` expiry, task cancellation, or session shutdown. Waiting suspends stall inactivity (`stall_timeout_ms`); the inactivity budget resumes after the last pending question ends. Total `timeout_ms` continues, so long human escalation can still exhaust the task's total budget.
-- `progress` returns immediately and keeps the latest five `progress_updates` on the task; it never injects a parent message or triggers a turn. The widget shows the latest progress update.
+- `progress` returns immediately and keeps the latest five `progress_updates` on the task; it never injects a parent message or triggers a turn. Progress updates remain available in task details and the status/list tools.
 - `subagent_status` and `subagent_list_tasks` expose `pending_question_count`, `pending_questions` (`request_id`, `message`, `created_at`), and recent `progress_updates` in compact details and text. Pending questions are live-only and cannot be answered after the parent session ends.
 - Use questions for material alignment or decisions, not as a substitute for the child's own discovery, and never to delegate. This channel does not change the separate human interaction bridge described below.
 

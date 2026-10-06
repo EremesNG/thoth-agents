@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Box } from '@earendil-works/pi-tui';
 import {
+  ensureWorkPanel,
   registerRenderKit,
+  registerWorkPanelProvider,
   renderToolFooter,
   withdrawRenderKit,
 } from '@thoth-agents/pi-core';
@@ -14,10 +16,6 @@ import { createSubagentListAgentsTool } from '../../src/tools/subagent-list-agen
 import { registerSubagentTools } from '../../src/tools.js';
 import type { SubagentTask } from '../../src/types.js';
 import {
-  ClaudeBackgroundWidget,
-  ClaudeBackgroundWidgetState,
-} from '../../src/ui/background-widget.js';
-import {
   themeAccent,
   themeDim,
   themeError,
@@ -25,7 +23,9 @@ import {
   themeTitle,
   themeWarning,
 } from '../../src/ui/theme.js';
+import { createSubagentsWorkPanelProvider } from '../../src/ui/work-panel-provider.js';
 import { installSubagentTestEnv } from '../helpers/subagent-test-helpers.js';
+import { workPanelSession } from '../helpers/work-panel-fixture.js';
 
 const env = installSubagentTestEnv();
 const theme = {
@@ -460,173 +460,71 @@ describe('message render kit discovery', () => {
   });
 });
 
-describe('widget render kit discovery', () => {
-  it('preserves metrics, animation, row hit targets and selection when KIT is installed and withdrawn', () => {
-    const tasks: any[] = [
-      {
-        id: 'first',
-        agent: 'first',
-        mode: 'background',
-        status: 'running',
-        task: 'work',
-        created_at: '2026-01-01T00:00:02Z',
-        started_at: '2026-01-01T00:00:00Z',
-        runtime_metrics: {
-          toolUses: 5,
-          contextPercent: 62,
-          generationMs: 4000,
-          generationOutputTokens: 100,
-        },
-        usage: { input: 1000, output: 100 },
-        last_activity: 'reading',
-        dropped_tools: ['missing_tool'],
+describe('Agents work-panel render kit discovery', () => {
+  it.each([
+    100, 80, 50, 35, 24,
+  ])('preserves compact metrics at width %i when the KIT is installed and withdrawn', async (width) => {
+    const clock = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-01-01T00:00:12Z'));
+    const fixture = workPanelSession(env.tmp);
+    const task: SubagentTask = {
+      id: 'agent',
+      agent: 'worker',
+      mode: 'background',
+      status: 'running',
+      task: 'A very long delegated task label that must not displace metrics',
+      model: 'provider/a-very-long-model-name',
+      created_at: '2026-01-01T00:00:00Z',
+      started_at: '2026-01-01T00:00:00Z',
+      usage: { input: 20000, output: 10000 } as SubagentTask['usage'],
+      runtime_metrics: {
+        toolUses: 5,
+        contextPercent: 62,
+        generationOutputTokens: 300,
+        generationMs: 4000,
       },
-      {
-        id: 'second',
-        agent: 'second',
-        mode: 'background',
-        status: 'running',
-        task: 'work',
-        created_at: '2026-01-01T00:00:01Z',
-      },
+    };
+    const unregister = registerWorkPanelProvider(
+      fixture.ctx as any,
+      createSubagentsWorkPanelProvider({
+        listTasks: () => [task],
+        onTaskUpdate: () => () => {},
+        cancel: () => {},
+        open: async () => {},
+      }),
+    );
+    const release = await ensureWorkPanel(fixture.ctx as any);
+    const metrics = [
+      'tools 5',
+      '↑20k ↓10k',
+      'ctx 62.0%',
+      '75 tok/s',
+      'elapsed 12s',
     ];
-    const state = new ClaudeBackgroundWidgetState(() => tasks);
-    const widget = new ClaudeBackgroundWidget(state, theme, { frame: 0 });
-    const native = widget.render(120);
-    expect(native.join('')).toContain('⠋');
-    expect(
-      new ClaudeBackgroundWidget(state, theme, { frame: 1 })
-        .render(120)
-        .join(''),
-    ).toContain('⠙');
+    const native = fixture.render(width);
     const kit = createTestRenderKit();
     const heading = vi.spyOn(kit, 'widgetHeading');
     const tree = vi.spyOn(kit, 'treeRow');
-    const indicator = vi.spyOn(kit, 'indicator');
     const token = registerRenderKit(kit, {});
     try {
-      const lines = widget.render(120);
+      const lines = fixture.render(width);
       expect(heading).toHaveBeenCalled();
       expect(tree).toHaveBeenCalled();
-      expect(indicator).toHaveBeenCalled();
-      expect(lines.join('')).toContain('⠋');
-      const nextFrame = new ClaudeBackgroundWidget(state, theme, {
-        frame: 1,
-      }).render(120);
-      expect(nextFrame.join('')).toContain('⠙');
-      expect(nextFrame[1]).not.toBe(lines[1]);
-      expect(lines).toHaveLength(native.length);
-      expect(lines.join(' ')).toContain('tools 5');
-      expect(lines.join(' ')).toContain('context 62.0%');
-      expect(lines.join(' ')).toContain('25 tok/s');
-      const warningRow = lines.findIndex((line) =>
-        line.includes('Dropped tools:'),
-      );
-      expect(state.handleMouseClick({ row: warningRow })?.action).toEqual({
-        type: 'open-task',
-        taskId: 'first',
-      });
-      const secondRow = lines.findIndex((line) =>
-        line.includes('second · work'),
-      );
-      expect(state.handleMouseClick({ row: secondRow })?.action).toEqual({
-        type: 'open-task',
-        taskId: 'second',
-      });
-      expect(state.handleTerminalInput('\u001b[B')).toEqual({ consume: true });
-      widget.render(120);
-      expect(tree.mock.calls.some(([, options]) => options.selected)).toBe(
-        true,
-      );
-      expect(state.handleTerminalInput('\r')?.action).toEqual({
-        type: 'open-task',
-        taskId: 'second',
-      });
-    } finally {
-      withdrawRenderKit(token);
-    }
-    expect(widget.render(120)).toEqual(native);
-    tasks.forEach((task) => {
-      task.status = 'completed';
-    });
-    expect(widget.render(120)).toEqual([]);
-  });
-});
-
-describe('widget metric content width', () => {
-  it.each([
-    46, 50,
-  ])('keeps every metric and mouse row at width %i through KIT registration and withdrawal', (width) => {
-    const clock = vi
-      .spyOn(Date, 'now')
-      .mockReturnValue(Date.parse('2026-01-01T00:00:02Z'));
-    onTestFinished(() => clock.mockRestore());
-    const tasks = [
-      {
-        id: 'first',
-        agent: 'first',
-        mode: 'background',
-        status: 'running',
-        task: 'work',
-        created_at: '2026-01-01T00:00:02Z',
-        started_at: '2026-01-01T00:00:00Z',
-        runtime_metrics: {
-          toolUses: 5,
-          contextPercent: 62,
-          generationMs: 4000,
-          generationOutputTokens: 100,
-        },
-        usage: { input: 1000, output: 100 },
-        last_activity: 'reading',
-        dropped_tools: ['missing_tool'],
-      },
-      {
-        id: 'second',
-        agent: 'second',
-        mode: 'background',
-        status: 'running',
-        task: 'work',
-        created_at: '2026-01-01T00:00:01Z',
-      },
-    ] as SubagentTask[];
-    const state = new ClaudeBackgroundWidgetState(() => tasks);
-    const widget = new ClaudeBackgroundWidget(state, theme, { frame: 0 });
-    const native = widget.render(width);
-    const metrics = [
-      'tools 5',
-      '↑1.0k ↓100',
-      '$?',
-      'context 62.0%',
-      '25 tok/s',
-      'elapsed 2s',
-    ];
-    for (const metric of metrics) expect(native.join('\n')).toContain(metric);
-    const token = registerRenderKit(createTestRenderKit(), {});
-    try {
-      const lines = widget.render(width);
-      for (const metric of metrics) expect(lines.join('\n')).toContain(metric);
-      const secondRow = lines.findIndex((line) =>
-        line.includes('second · work'),
-      );
-      expect(secondRow).toBeGreaterThan(1);
-      expect(state.handleMouseClick({ row: 0 })?.action).toEqual({
-        type: 'focus-editor',
-      });
-      for (let row = 1; row < lines.length; row++) {
-        expect(state.handleMouseClick({ row })?.action).toEqual({
-          type: 'open-task',
-          taskId: row < secondRow ? 'first' : 'second',
-        });
+      for (const output of [native, lines]) {
+        expect(output.join(' ')).toContain('⠋');
+        for (const metric of metrics)
+          expect(output.join(' ')).toContain(metric);
+        expect(output.every((line: string) => line.length <= width)).toBe(true);
+        if (width >= 80) expect(output).toHaveLength(2);
       }
-      state.handleTerminalInput('\u001b[B');
-      const selected = widget.render(width);
-      for (const metric of metrics)
-        expect(selected.join('\n')).toContain(metric);
-      state.handleTerminalInput('\u001b');
     } finally {
       withdrawRenderKit(token);
+      expect(fixture.render(width)).toEqual(native);
+      release();
+      unregister();
+      clock.mockRestore();
     }
-    expect(widget.render(width)).toEqual(native);
   });
 });
 

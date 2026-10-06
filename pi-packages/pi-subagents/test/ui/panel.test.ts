@@ -4,12 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import extension, {
-  ClaudeBackgroundWidget,
-  ClaudeBackgroundWidgetState,
   completionMessage,
   createSubagentsPanelKeyMatcher,
-  moveClaudeBackgroundWidgetSelection,
-  renderClaudeBackgroundWidgetLines,
   resolveRegisteredToolDefinition,
   sendSubagentCompletionMessage,
 } from '../../index.js';
@@ -76,6 +72,7 @@ import type {
   SubagentTask,
 } from '../../src/types.js';
 import { SubagentsHistoryPanel } from '../../src/ui.js';
+import { workPanelSession } from '../helpers/work-panel-fixture.js';
 
 const require = createRequire(import.meta.url);
 
@@ -2313,7 +2310,7 @@ describe('subagents panel and extension ui', () => {
     }
   });
 
-  it('does not install a recurring background widget timer at session startup', async () => {
+  it('does not install a recurring work-panel timer at empty session startup', async () => {
     const handlers: Record<string, any> = {};
     const setIntervalSpy = vi.spyOn(global, 'setInterval');
     try {
@@ -2326,16 +2323,7 @@ describe('subagents panel and extension ui', () => {
         registerShortcut: () => undefined,
       });
 
-      await handlers.session_start?.(
-        {},
-        {
-          cwd: tmp,
-          ui: {
-            setWidget: vi.fn(),
-            onTerminalInput: vi.fn(() => () => undefined),
-          },
-        },
-      );
+      await handlers.session_start?.({}, workPanelSession(tmp).ctx);
 
       expect(setIntervalSpy).not.toHaveBeenCalled();
     } finally {
@@ -2344,10 +2332,9 @@ describe('subagents panel and extension ui', () => {
     }
   });
 
-  it('registers terminal input routing and cleans it up on shutdown', async () => {
+  it('releases the shared host and listener on shutdown without installing the old widget', async () => {
     const handlers: Record<string, any> = {};
-    const off = vi.fn();
-    const setWidget = vi.fn();
+    const fixture = workPanelSession(tmp);
     extension({
       on: (event: string, handler: any) => {
         handlers[event] = handler;
@@ -2357,22 +2344,45 @@ describe('subagents panel and extension ui', () => {
       registerShortcut: () => undefined,
     });
 
-    await handlers.session_start?.(
-      {},
-      {
-        cwd: tmp,
-        ui: {
-          setWidget,
-          onTerminalInput: vi.fn(() => off),
-        },
-      },
+    await handlers.session_start?.({}, fixture.ctx);
+    expect(fixture.ui.setWidget).toHaveBeenCalledWith(
+      'thoth-work-panel',
+      expect.any(Function),
+      { placement: 'aboveEditor' },
     );
+    expect(fixture.listenerCount()).toBe(1);
+    await handlers.session_shutdown?.({}, fixture.ctx);
+    expect(fixture.listenerCount()).toBe(0);
+    expect(fixture.ui.setWidget).toHaveBeenLastCalledWith(
+      'thoth-work-panel',
+      undefined,
+    );
+  });
 
-    expect(setWidget).toHaveBeenCalled();
-    expect(off).not.toHaveBeenCalled();
-
-    await handlers.session_shutdown?.({}, { ui: { setWidget } });
-    expect(off).toHaveBeenCalledTimes(1);
+  it('keeps the history shortcut pending until its panel closes and still accepts panel keys', async () => {
+    let historyShortcutHandler: any;
+    const handlers: Record<string, any> = {};
+    extension({
+      registerTool: () => undefined,
+      on: (event: string, handler: any) => {
+        handlers[event] = handler;
+      },
+      registerShortcut: (key: string, shortcut: any) => {
+        if (key === 'ctrl+,') historyShortcutHandler = shortcut.handler;
+      },
+    });
+    const fixture = workPanelSession(tmp);
+    let settled = false;
+    const opening = historyShortcutHandler(fixture.ctx).then(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(fixture.ui.custom).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    expect(fixture.key('\u001b[B')).toBeUndefined();
+    expect(fixture.key('q')).toBeUndefined();
+    await opening;
+    expect(settled).toBe(true);
+    await handlers.session_shutdown?.({}, fixture.ctx);
   });
 
   it('keeps the history shortcut and command available together', async () => {
@@ -3320,142 +3330,140 @@ describe('subagents panel and extension ui', () => {
     expect(rendered.join('\n')).toContain('executions [1-1/1]');
   });
 
-  it.each([76, 120])(
-    'keeps multiline snapshot fallback rows inside the frame while scrolling at width %i',
-    async (width) => {
-      const { truncateToWidth: realTruncate, visibleWidth: realVisible } =
-        await import('@earendil-works/pi-tui');
-      resetPiComponentCacheForTests();
-      try {
-        // No Pi message components: exercise the real snapshot fallback renderers.
-        setPiComponentProviderForSubagentRendering({});
-        const maxLines = 16;
-        const task: SubagentTask = {
-          id: 'subtask_multiline_fallback',
-          agent: 'worker',
-          mode: 'task',
-          status: 'failed',
-          task: 'Review registration and delivery',
-          created_at: new Date().toISOString(),
-          error:
-            'panel boundary first\r\npanel\tboundary second\rEND OF HISTORY',
-          thread_snapshot: {
-            version: 1,
-            source: 'events',
-            items: [
-              {
-                type: 'assistant',
-                message: {
-                  role: 'assistant',
-                  content: [
-                    {
-                      type: 'text',
-                      text: [
-                        '## conclusion',
-                        '**conclusion:** Replaced list glyph `☰` with `≡`',
-                        '[REJECT] Registration alone is insufficient',
-                        '### 1. Registration is not delivery',
-                        ...Array.from(
-                          { length: 20 },
-                          (_, i) => `review row ${i}`,
-                        ),
-                        `\x1b[36m${'界☰'.repeat(30)}\x1b[0m`,
-                      ].join('\n'),
-                    },
-                  ],
-                },
+  it.each([
+    76, 120,
+  ])('keeps multiline snapshot fallback rows inside the frame while scrolling at width %i', async (width) => {
+    const { truncateToWidth: realTruncate, visibleWidth: realVisible } =
+      await import('@earendil-works/pi-tui');
+    resetPiComponentCacheForTests();
+    try {
+      // No Pi message components: exercise the real snapshot fallback renderers.
+      setPiComponentProviderForSubagentRendering({});
+      const maxLines = 16;
+      const task: SubagentTask = {
+        id: 'subtask_multiline_fallback',
+        agent: 'worker',
+        mode: 'task',
+        status: 'failed',
+        task: 'Review registration and delivery',
+        created_at: new Date().toISOString(),
+        error: 'panel boundary first\r\npanel\tboundary second\rEND OF HISTORY',
+        thread_snapshot: {
+          version: 1,
+          source: 'events',
+          items: [
+            {
+              type: 'assistant',
+              message: {
+                role: 'assistant',
+                content: [
+                  {
+                    type: 'text',
+                    text: [
+                      '## conclusion',
+                      '**conclusion:** Replaced list glyph `☰` with `≡`',
+                      '[REJECT] Registration alone is insufficient',
+                      '### 1. Registration is not delivery',
+                      ...Array.from(
+                        { length: 20 },
+                        (_, i) => `review row ${i}`,
+                      ),
+                      `\x1b[36m${'界☰'.repeat(30)}\x1b[0m`,
+                    ].join('\n'),
+                  },
+                ],
               },
-              {
-                type: 'tool',
-                name: 'fallback_probe',
-                status: 'completed',
-                result: {
-                  content: [
-                    {
-                      type: 'text',
-                      text: 'tool first\r\ntool\tsecond\rtool third',
-                    },
-                  ],
-                  isError: false,
-                },
+            },
+            {
+              type: 'tool',
+              name: 'fallback_probe',
+              status: 'completed',
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: 'tool first\r\ntool\tsecond\rtool third',
+                  },
+                ],
+                isError: false,
               },
-              {
-                type: 'tool_result',
-                name: 'fallback_probe',
-                result: {
-                  content: [
-                    { type: 'text', text: 'result first\nresult\tsecond' },
-                    { type: 'text', text: 'result third' },
-                  ],
-                  isError: false,
-                },
+            },
+            {
+              type: 'tool_result',
+              name: 'fallback_probe',
+              result: {
+                content: [
+                  { type: 'text', text: 'result first\nresult\tsecond' },
+                  { type: 'text', text: 'result third' },
+                ],
+                isError: false,
               },
-            ],
-          },
-        };
-        const panel = new SubagentsHistoryPanel(
-          [task],
-          {
-            fg: (_name: string, text: string) => `\x1b[36m${text}\x1b[0m`,
-            bold: (text: string) => `\x1b[1m${text}\x1b[0m`,
-          },
-          () => {},
-          (data, key) => data === key,
-          realVisible,
-          realTruncate,
-          {},
-          maxLines,
-        );
-        const renderFrame = () => {
-          const lines = panel.render(width);
-          expect(lines.length).toBeLessThanOrEqual(maxLines);
-          for (const line of lines) {
-            expect(line).not.toMatch(/[\n\r\t]/);
-            expect(realVisible(line)).toBeLessThanOrEqual(width);
-          }
-          const bodyRows = lines.slice(4, width >= 90 ? -1 : -3);
-          expect(bodyRows.length).toBeGreaterThan(0);
-          for (const row of bodyRows) {
-            expect(stripAnsi(row).startsWith('│')).toBe(true);
-            expect(stripAnsi(row).trimEnd().endsWith('│')).toBe(true);
-          }
-          expect(stripAnsi(lines.at(-1)!).endsWith('─╯')).toBe(true);
-          return lines.join('\n');
-        };
+            },
+          ],
+        },
+      };
+      const panel = new SubagentsHistoryPanel(
+        [task],
+        {
+          fg: (_name: string, text: string) => `\x1b[36m${text}\x1b[0m`,
+          bold: (text: string) => `\x1b[1m${text}\x1b[0m`,
+        },
+        () => {},
+        (data, key) => data === key,
+        realVisible,
+        realTruncate,
+        {},
+        maxLines,
+      );
+      const renderFrame = () => {
+        const lines = panel.render(width);
+        expect(lines.length).toBeLessThanOrEqual(maxLines);
+        for (const line of lines) {
+          expect(line).not.toMatch(/[\n\r\t]/);
+          expect(realVisible(line)).toBeLessThanOrEqual(width);
+        }
+        const bodyRows = lines.slice(4, width >= 90 ? -1 : -3);
+        expect(bodyRows.length).toBeGreaterThan(0);
+        for (const row of bodyRows) {
+          expect(stripAnsi(row).startsWith('│')).toBe(true);
+          expect(stripAnsi(row).trimEnd().endsWith('│')).toBe(true);
+        }
+        expect(stripAnsi(lines.at(-1)!).endsWith('─╯')).toBe(true);
+        return lines.join('\n');
+      };
 
-        expect(renderFrame()).toContain('END OF HISTORY');
-        panel.handleInput('home');
-        const frames = [renderFrame()];
-        for (let i = 0; i < 50; i++) {
-          panel.handleInput('down');
-          frames.push(renderFrame());
-        }
-        const history = frames.join('\n');
-        for (const text of [
-          '## conclusion',
-          '**conclusion:** Replaced list glyph `☰` with `≡`',
-          '[REJECT] Registration alone is insufficient',
-          '### 1. Registration is not delivery',
-          'tool first',
-          'tool  second',
-          'tool third',
-          'result first',
-          'result  second',
-          'result third',
-          'panel boundary first',
-          'panel  boundary second',
-        ]) {
-          expect(history).toContain(text);
-        }
-        panel.handleInput('home');
-        expect(renderFrame()).not.toContain('END OF HISTORY');
-        panel.handleInput('end');
-        expect(renderFrame()).toContain('END OF HISTORY');
-      } finally {
-        resetPiComponentCacheForTests();
+      expect(renderFrame()).toContain('END OF HISTORY');
+      panel.handleInput('home');
+      const frames = [renderFrame()];
+      for (let i = 0; i < 50; i++) {
+        panel.handleInput('down');
+        frames.push(renderFrame());
       }
-    },
-  );
+      const history = frames.join('\n');
+      for (const text of [
+        '## conclusion',
+        '**conclusion:** Replaced list glyph `☰` with `≡`',
+        '[REJECT] Registration alone is insufficient',
+        '### 1. Registration is not delivery',
+        'tool first',
+        'tool  second',
+        'tool third',
+        'result first',
+        'result  second',
+        'result third',
+        'panel boundary first',
+        'panel  boundary second',
+      ]) {
+        expect(history).toContain(text);
+      }
+      panel.handleInput('home');
+      expect(renderFrame()).not.toContain('END OF HISTORY');
+      panel.handleInput('end');
+      expect(renderFrame()).toContain('END OF HISTORY');
+    } finally {
+      resetPiComponentCacheForTests();
+    }
+  });
 
   it('renders narrow stacked view with intact borders and clean task description', async () => {
     const { truncateToWidth: realTruncate, visibleWidth: realVisible } =

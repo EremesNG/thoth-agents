@@ -10,6 +10,7 @@ import { PROVIDER_ID, messageContentToText, convertPiMessages } from "./convert.
 import { DEBUG_LOG_PATH, DIAG_LOG_PATH } from "./log-paths.js";
 import { applyLongContext, buildModels, claudeCodeModelId, type LongContextSettings, resolveModel as _resolveModel } from "./models.js";
 import { MCP_SERVER_NAME, MCP_TOOL_PREFIX, renderSkillsBlock } from "./skills.js";
+import { MCP_TOOL_NAME_NOTE } from "./mcp-tool-note.js";
 import { verifyWrittenSession as _verifyWrittenSession } from "./session-verify.js";
 import { extractAllToolResults as _extractAllToolResults, type McpResult } from "./extract-tool-results.js";
 import { QueryContext, ctx } from "./query-state.js";
@@ -1906,11 +1907,15 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	let systemPromptAppend: string | undefined;
 	try {
 		promptCapture = promptCaptures.resolveOrDerive(context.systemPrompt);
-		systemPromptAppend = promptCapture
+		const projectedPrompt = promptCapture
 			? projectPromptCapture(promptCapture, {
 				skillReadTool: mcpTools.some((tool) => tool.name === "read") ? "mcp" : "none",
 			})
 			: undefined;
+		// Only this outer boundary emits the note, including for inherited children.
+		// The map excludes omitted schemas; mcpTools intentionally retains them.
+		systemPromptAppend = [customToolNameToSdk.size > 0 ? MCP_TOOL_NAME_NOTE : undefined, projectedPrompt]
+			.filter(Boolean).join("\n\n") || undefined;
 	} catch (err) {
 		// resolveOrDerive and projectPromptCapture throw to stop a turn that would lose
 		// its instructions or leak pi's harness text. Report it on the stream, as pi-ai's
@@ -2545,14 +2550,15 @@ export default function (pi: ExtensionAPI) {
 	// Code's preset carries its own tool and permission guidance that the bridge
 	// still depends on, so both flags are forwarded as an append.
 	//
-	// The options (custom/append/contextFiles/skills) are pi config, stable across a
-	// turn; only the auto-generated tool list in the rendered prompt varies. Stash them
-	// at before_agent_start so the agent_start recording below can reuse them.
+	// Retain Pi's mutable options for later recording boundaries: handlers loaded
+	// after the bridge can still add sections. record() snapshots each recording,
+	// so query-time projection never reads these options lazily.
 	type RecordOptions = Parameters<typeof recordSystemPrompt>[2];
 	let lastSystemPromptOptions: RecordOptions | undefined;
 	function recordSystemPrompt(source: string, systemPrompt: string | undefined, options: {
 		customPrompt?: string;
 		appendSystemPrompt?: string;
+		sections?: Record<string, string>;
 		contextFiles?: { path: string; content: string }[];
 		skills?: Parameters<typeof promptCaptures.record>[1]["skills"];
 		selectedTools?: string[];
@@ -2562,6 +2568,7 @@ export default function (pi: ExtensionAPI) {
 		promptCaptures.record(systemPrompt, {
 			custom: options?.customPrompt,
 			append: options?.appendSystemPrompt,
+			sections: options?.sections,
 			contextFiles: options?.contextFiles ?? [],
 			skills: hasRead ? options?.skills ?? [] : [],
 		}, source);

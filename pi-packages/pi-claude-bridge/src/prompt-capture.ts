@@ -9,6 +9,7 @@ import { renderSkillsBlock, type SkillReadTool } from "./skills.js";
 export type PromptCaptureInput = {
 	custom?: string;
 	append?: string;
+	sections?: Record<string, string>;
 	contextFiles: { path: string; content: string }[];
 	skills: Skill[];
 };
@@ -85,6 +86,7 @@ export class PromptCaptures {
 
 		capture.custom = input.custom;
 		capture.append = input.append;
+		capture.sections = { ...input.sections };
 		capture.contextFiles = input.contextFiles.map((file) => ({ ...file }));
 		capture.skills = [...input.skills];
 		capture.source = source;
@@ -271,6 +273,18 @@ export const PI_PREAMBLE = "You are an expert coding assistant operating inside 
  *  rejects a system prompt carrying both, while either alone passes (issues #883, #88). */
 const ANTHROPIC_THIRD_PARTY_TRIGGERS = ["docs/custom-provider.md", "docs/packages.md"];
 
+// Slot assignments in the installed Pi dist/core/system-prompt.js
+// buildSystemPromptSections (including conditional slots). Renderer-backed tests
+// pin this list. Pi rejects overrides of preamble before a capture is recorded.
+const PI_BUILTIN_SLOTS = new Set(["preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd"]);
+
+function renderSection(name: string, content: string): string {
+	// project_context is recursively segmented; a replacement must stay opaque.
+	return PI_BUILTIN_SLOTS.has(name)
+		? `<pi_prompt_section name="${name}">\n${content}\n</pi_prompt_section>`
+		: `<${name}>\n${content}\n</${name}>`;
+}
+
 /** One piece of the append, named so a refusal can say where it found the text. */
 type PromptPart = { label: string; text: string };
 
@@ -339,12 +353,38 @@ function projectCapture(
 
 		const custom = projectCustom(capture, options, visiting);
 		const parts: PromptPart[] = [];
-		const context = formatProjectContext(capture.contextFiles);
+		const sections = capture.sections ?? {};
+		const ownSection = (name: string): string | undefined => {
+			const content = sections[name];
+			if (!content) return undefined;
+			const rendered = renderSection(name, content);
+			// Custom text may already carry this section, either from an inherited
+			// projection or as Pi's original tagged block. Match the whole block,
+			// never an incidental occurrence of its content in unrelated instructions.
+			if (custom?.includes(rendered) || custom?.includes(`<${name}>\n${content}\n</${name}>`)) return undefined;
+			return rendered;
+		};
+		const context = sections.project_context
+			? ownSection("project_context")
+			: formatProjectContext(capture.contextFiles);
 		if (context) parts.push({ label: "the project context block", text: context });
-		const skills = renderSkillsBlock(ownSkills, options.skillReadTool);
+		const skills = sections.skills
+			? ownSection("skills")
+			: renderSkillsBlock(ownSkills, options.skillReadTool);
 		if (skills) parts.push({ label: "the skills block", text: skills });
 		if (custom) parts.push({ label: "the custom prompt", text: custom });
-		if (capture.append) parts.push({ label: "the appended instructions", text: capture.append });
+		const append = sections.addendum ? ownSection("addendum") : capture.append;
+		if (append) parts.push({ label: "the appended instructions", text: append });
+		for (const name of PI_BUILTIN_SLOTS) {
+			if (["project_context", "skills", "addendum"].includes(name)) continue;
+			const text = ownSection(name);
+			if (text) parts.push({ label: `the ${name} section`, text });
+		}
+		for (const name of Object.keys(sections)) {
+			if (PI_BUILTIN_SLOTS.has(name)) continue;
+			const text = ownSection(name);
+			if (text) parts.push({ label: `the ${name} section`, text });
+		}
 		assertSendablePrompt(parts, capture);
 		return parts.length > 0 ? parts.map((part) => part.text).join("\n\n") : undefined;
 	} finally {

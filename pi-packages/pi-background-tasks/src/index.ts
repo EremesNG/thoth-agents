@@ -25,7 +25,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     if (ctx.hasUI && !publication) publication = publishToolDefinitions(definitions);
     resumeScheduledWork(pi);
-    navigator.ensure(ctx);
+    await navigator.ensure(ctx);
   });
   pi.on("session_before_switch", async () => {
     navigator.dispose();
@@ -40,7 +40,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
         .map((meta) => stopTask(pi, meta.id)));
       if (stopped.some((meta) => meta?.status === "running")) throw new Error("Background job cleanup failed: a process tree is still running");
     }
-    navigator.dispose(ctx);
+    navigator.dispose();
   });
   pi.registerMessageRenderer?.(COMPLETION_BATCH_TYPE, renderBackgroundMessage);
   pi.registerMessageRenderer?.(TASK_FAILURE_TYPE, renderBackgroundMessage);

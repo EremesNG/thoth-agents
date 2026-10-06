@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { visibleWidth, type Component } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { recordFailure } from "./failures.js";
 import { packCallbackBatch } from "./shared-callback-batcher.js";
@@ -19,7 +19,7 @@ import {
 import { inspectMeta, logPathFor, metaPathFor, taskDir, writeMeta } from "./registry.js";
 import { registerTools } from "./tools.js";
 import { getBackgroundTasksNavigator } from "./navigator-provider.js";
-import { MAIN_LIST_WIDGET_KEY } from "./shared-navigator.js";
+import { workPanelUI } from "./test-support/work-panel-ui.js";
 import type { BackgroundTaskCallbackOrigin, BackgroundTaskMeta, Condition } from "./types.js";
 
 const createdIds: string[] = [];
@@ -145,7 +145,7 @@ describe("background output durations", () => {
 });
 
 describe("background navigator durations", () => {
-  it.each(roundedDurationCases)("keeps whole-second row, detail and watch facts for %s ms", (ms, expected) => {
+  it.each(roundedDurationCases)("keeps whole-second row, detail and watch facts for %s ms", async (ms, expected) => {
     const now = 20_000_000;
     vi.spyOn(Date, "now").mockReturnValue(now);
     const meta = fixture({
@@ -158,7 +158,7 @@ describe("background navigator durations", () => {
       intervalMs: ms,
     });
     const navigator = getBackgroundTasksNavigator({} as any);
-    navigator.ensure({ ...ctx, hasUI: false } as any);
+    await navigator.ensure({ ...ctx, hasUI: false } as any);
     try {
       const row = navigator.provider.listRows(now).find((item) => item.id === meta.id)!;
       expect(row.elapsed).toBe(expected);
@@ -174,12 +174,12 @@ describe("background navigator durations", () => {
     }
   });
 
-  it("normalizes non-finite navigator clock durations", () => {
+  it("normalizes non-finite navigator clock durations", async () => {
     const meta = fixture({
       status: "running", endedAt: undefined, startedAt: 1_000, deadlineAt: 20_000, lastCheckedAt: 5_000,
     });
     const navigator = getBackgroundTasksNavigator({} as any);
-    navigator.ensure({ ...ctx, hasUI: false } as any);
+    await navigator.ensure({ ...ctx, hasUI: false } as any);
     try {
       const row = navigator.provider.listRows(Number.NaN).find((item) => item.id === meta.id)!;
       expect(row.elapsed).toBe("0s");
@@ -195,34 +195,21 @@ describe("background navigator durations", () => {
     }
   });
 
-  it("fits rounded duration strings into width-constrained navigator rows", () => {
+  it("fits rounded duration strings into width-constrained Work panel rows", async () => {
     const now = 20_000_000;
     vi.spyOn(Date, "now").mockReturnValue(now);
+    const panelOrigin = { ...origin, sessionId: "duration-panel" };
     for (const ms of [12_499, 845_499, 7_380_456]) {
-      fixture({ status: "running", endedAt: undefined, startedAt: now - ms, lastProgressAt: now });
+      fixture({ status: "running", endedAt: undefined, startedAt: now - ms, lastProgressAt: now,
+        command: "build", callbackOrigin: panelOrigin });
     }
-    let widgetFactory: ((tui: unknown, theme: unknown) => Component) | undefined;
-    const uiCtx = {
-      ...ctx,
-      hasUI: true,
-      mode: "tui",
-      ui: {
-        theme: { fg: (_color: string, value: string) => value },
-        setStatus() {},
-        setWidget(key: string, value: unknown) {
-          if (key === MAIN_LIST_WIDGET_KEY) widgetFactory = value as typeof widgetFactory;
-        },
-        getEditorComponent() {},
-        setEditorComponent() {},
-      },
-    };
+    const panel = workPanelUI();
+    const uiCtx = { ...ctx, sessionManager: { getSessionId: () => panelOrigin.sessionId }, hasUI: true, mode: "tui", ui: panel.ui };
     const navigator = getBackgroundTasksNavigator({} as any);
-    navigator.ensure(uiCtx as any);
+    await navigator.ensure(uiCtx as any);
     try {
-      expect(widgetFactory).toBeTypeOf("function");
-      const widget = widgetFactory!({}, uiCtx.ui.theme);
       for (const width of [1, 24, 32, 80]) {
-        const lines = widget.render(width);
+        const lines = panel.render(width);
         for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
         if (width >= 24) {
           const text = lines.join("\n");
@@ -230,7 +217,7 @@ describe("background navigator durations", () => {
         }
       }
     } finally {
-      navigator.dispose(uiCtx as any);
+      navigator.dispose();
     }
   });
 });
@@ -999,9 +986,9 @@ describe("status cursor delegation (#323)", () => {
 });
 
 describe("#332 navigator rows", () => {
-  it("history-only failures keep the command in the row; an actionable incident still leads it", () => {
+  it("history-only failures keep the command in the row; an actionable incident still leads it", async () => {
     const navigator = getBackgroundTasksNavigator({} as any);
-    navigator.ensure({ cwd: origin.cwd, hasUI: false, sessionManager: { getSessionId: () => origin.sessionId } } as any);
+    await navigator.ensure({ cwd: origin.cwd, hasUI: false, sessionManager: { getSessionId: () => origin.sessionId } } as any);
     const provider = navigator.provider;
     const quiet = fixture({ status: "running", endedAt: undefined, command: "rg needle src" });
     recordFailure(quiet, "exit", "exited with declared expected code 1", "q1", { expected: true });
@@ -1013,5 +1000,6 @@ describe("#332 navigator rows", () => {
     recordFailure(loud, "exit", "exited with code 2", "l1");
     row = provider.listRows(Date.now()).find((x: any) => x.id === loud.id);
     expect(row!.primary).toMatch(/Action required/);
+    navigator.dispose();
   });
 });

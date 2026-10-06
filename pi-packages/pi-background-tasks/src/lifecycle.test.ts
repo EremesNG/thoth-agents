@@ -105,7 +105,7 @@ describe("session-owned background work lifecycle", () => {
     try {
       expect(root.uiCalls.length).toBe(calls);
       expect(root.editor).toBe(editor);
-      expect(root.statuses.get("background-work-nav")).toBe("← work · 1");
+      expect(root.statuses.get("thoth-work-panel")).toBe("← work · 1");
       await expect.poll(() => root.messages.length, {timeout: 10000}).toBe(1);
       expect(child.messages).toEqual([]);
     } finally { await root.emit("session_shutdown", "quit"); }

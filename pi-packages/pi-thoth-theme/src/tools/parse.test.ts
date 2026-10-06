@@ -191,7 +191,8 @@ describe('Lossless SDK listing and search result rendering', () => {
         .filter(({ color }) => color === 'toolOutput')
         .map(({ text }) => text),
     ).toEqual(displayed);
-    expect(lines).toHaveLength(data.length);
+    expect(lines).toHaveLength(data.length + 1);
+    expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
     for (const [i, entry] of displayed.entries()) {
       expect(lines[i].endsWith(entry ?? '')).toBe(true);
     }
@@ -222,7 +223,8 @@ describe('Lossless SDK listing and search result rendering', () => {
       .render(200);
 
     expect(styled.filter(({ color }) => color === 'warning')).toEqual([]);
-    expect(lines).toHaveLength(5);
+    expect(lines).toHaveLength(6);
+    expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
     for (const entry of entries.filter(Boolean)) {
       expect(lines.some((line) => line.endsWith(entry))).toBe(true);
       expect(styled).toContainEqual({ color: 'toolOutput', text: entry });
@@ -464,7 +466,8 @@ describe('Lossless SDK listing and search result rendering', () => {
       .renderResult(textResult(entries.join('\n')), expanded, theme, {})
       .render(200);
 
-    expect(lines).toHaveLength(3);
+    expect(lines).toHaveLength(4);
+    expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
     for (const entry of entries) {
       expect(lines.some((line) => line.endsWith(entry))).toBe(true);
     }
@@ -530,7 +533,8 @@ describe('SDK-produced notice appendices', () => {
       expect(styled.filter(({ color }) => color === 'warning')).toEqual([
         { color: 'warning', text: notice },
       ]);
-      expect(lines).toHaveLength(13);
+      expect(lines).toHaveLength(14);
+      expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
       for (const entry of data) {
         expect(lines.some((line) => line.endsWith(entry))).toBe(true);
         expect(styled).toContainEqual({ color: 'toolOutput', text: entry });
@@ -629,7 +633,8 @@ describe('SDK-produced notice appendices', () => {
         .filter(({ color }) => color === 'toolOutput')
         .map(({ text }) => text),
     ).toEqual(data);
-    expect(lines).toHaveLength(data.length + 1);
+    expect(lines).toHaveLength(data.length + 2);
+    expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
     for (const entry of data) {
       expect(lines.some((line) => line.endsWith(entry))).toBe(true);
     }
@@ -849,11 +854,11 @@ describe('SDK-produced notice appendices', () => {
       );
       expect(sdkText(result)).toBe('(empty directory)');
       const { theme } = trackingTheme();
-      expect(
-        createCustomLsTool(dir, config)
-          .renderResult(result, expanded, theme, {})
-          .render(200),
-      ).toEqual(['empty directory']);
+      const lines = createCustomLsTool(dir, config)
+        .renderResult(result, expanded, theme, {})
+        .render(200);
+      expect(lines.slice(0, -1)).toEqual(['empty directory']);
+      expect(lines.at(-1)).toMatch(/^╰── ✓ .*╯$/);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

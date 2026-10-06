@@ -1,18 +1,19 @@
 // Per-state elapsed invalidation adapted from pi-omp-theme (MIT).
 // Only public renderer context APIs are used; no viewport-dependent freezing.
 
-export interface ElapsedRenderState {
-  startedAt?: number;
-  completedElapsedMs?: number;
-  elapsedTicker?: ReturnType<typeof setInterval>;
-  [key: string]: unknown;
-}
+import type {
+  RenderIndicatorContext,
+  RenderStatus,
+} from '@thoth-agents/pi-core';
+import { getToolElapsedMs } from '@thoth-agents/pi-core';
 
-export interface ElapsedRenderContext {
-  executionStarted?: boolean;
-  isPartial?: boolean;
-  isError?: boolean;
-  invalidate?: () => void;
+export type ElapsedRenderState = NonNullable<
+  RenderIndicatorContext['state']
+> & {
+  elapsedTicker?: ReturnType<typeof setInterval>;
+};
+
+export interface ElapsedRenderContext extends RenderIndicatorContext {
   state?: ElapsedRenderState;
 }
 
@@ -28,24 +29,25 @@ export function releaseElapsedTickerOwner(owner: object): void {
   if (activeOwner === owner) activeOwner = undefined;
 }
 
-function freezeElapsed(state: ElapsedRenderState): void {
-  if (
-    state.completedElapsedMs === undefined &&
-    typeof state.startedAt === 'number'
-  ) {
-    state.completedElapsedMs = Date.now() - state.startedAt;
-  }
+function legacyElapsedOverride(
+  state: ElapsedRenderState | undefined,
+): number | undefined {
+  // Legacy duration formatting displays malformed producer-owned durations as 0s.
+  return typeof state?.completedElapsedMs === 'number' &&
+    !Number.isFinite(state.completedElapsedMs)
+    ? 0
+    : undefined;
 }
 
+/** Legacy built-ins can read the same timing state until they use toolFooter. */
 export function getElapsedMs(
   state: ElapsedRenderState | undefined,
 ): number | undefined {
-  if (typeof state?.completedElapsedMs === 'number') {
-    return state.completedElapsedMs;
-  }
-  return typeof state?.startedAt === 'number'
-    ? Date.now() - state.startedAt
-    : undefined;
+  return getToolElapsedMs({
+    status: 'running',
+    context: { state },
+    elapsedMs: legacyElapsedOverride(state),
+  });
 }
 
 function stopElapsedTicker(state: ElapsedRenderState): void {
@@ -58,25 +60,30 @@ function stopElapsedTicker(state: ElapsedRenderState): void {
 export function stopElapsedTickers(owner: object): void {
   for (const [state, stateOwner] of tickerStates) {
     if (stateOwner !== owner) continue;
-    freezeElapsed(state);
+    getToolElapsedMs({ status: 'interrupted', context: { state } });
     stopElapsedTicker(state);
   }
 }
 
-/** Keep one public renderer invalidation interval per running tool state. */
+/** Keep one invalidation interval per state; explicit status wins over partial/error flags. */
 export function syncElapsedTicker(
   context: ElapsedRenderContext,
   owner = activeOwner,
+  status?: RenderStatus,
 ): void {
   const state = context?.state;
   if (!state) return;
-  if (context.executionStarted && state.startedAt === undefined) {
-    state.startedAt = Date.now();
-  }
-  if (!context.isPartial || context.isError) freezeElapsed(state);
+  const resolvedStatus =
+    status ??
+    (context.isPartial ? 'running' : context.isError ? 'failed' : 'completed');
+  getToolElapsedMs({
+    status: resolvedStatus,
+    context,
+    elapsedMs: status === undefined ? legacyElapsedOverride(state) : undefined,
+  });
   if (
     !context.executionStarted ||
-    !context.isPartial ||
+    (resolvedStatus !== 'running' && resolvedStatus !== 'in_progress') ||
     state.completedElapsedMs !== undefined
   ) {
     stopElapsedTicker(state);

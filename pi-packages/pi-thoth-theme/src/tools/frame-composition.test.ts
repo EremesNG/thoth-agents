@@ -205,7 +205,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
 
       const plain = lines.map(stripTerminalSequences).join('\n');
       expect(plain).toContain('Exit 0');
-      expect(plain).not.toContain('running…');
+      expect(plain).not.toMatch(/╰── [△◭▲◮]/);
     });
 
     it('renders real SDK exit 7 with Exit 7 footer, error styling, and continuity', () => {
@@ -238,7 +238,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
       const plain = lines.map(stripTerminalSequences).join('\n');
       expect(plain).toContain('Exit 7');
       expect(plain).not.toContain('Exit 1');
-      expect(plain).not.toContain('running…');
+      expect(plain).not.toMatch(/╰── [△◭▲◮]/);
     });
 
     // ToolExecutionComponent drops structuredContent before rendering
@@ -308,7 +308,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
       assertBorderContinuity(lines);
 
       const plain = lines.map(stripTerminalSequences).join('\n');
-      expect(plain).toContain('running…');
+      expect(plain).toMatch(/╰── [△◭▲◮]/);
       expect(plain).not.toContain('Exit');
     });
 
@@ -414,7 +414,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
 
       const plain = lines.map(stripTerminalSequences).join('\n');
       expect(plain).toContain('Exit 0');
-      expect(plain).not.toContain('running…');
+      expect(plain).not.toMatch(/╰── [△◭▲◮]/);
     });
 
     it('renders real SDK exit 7 with Exit 7 footer, error styling, and continuity', () => {
@@ -447,7 +447,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
       const plain = lines.map(stripTerminalSequences).join('\n');
       expect(plain).toContain('Exit 7');
       expect(plain).not.toContain('Exit 1');
-      expect(plain).not.toContain('running…');
+      expect(plain).not.toMatch(/╰── [△◭▲◮]/);
     });
 
     it('ignores a status-like stdout line when the command exits 0', () => {
@@ -521,7 +521,7 @@ describe('Frame composition with real SDK ToolExecutionComponent', () => {
       assertBorderContinuity(lines);
 
       const plain = lines.map(stripTerminalSequences).join('\n');
-      expect(plain).toContain('running…');
+      expect(plain).toMatch(/╰── [△◭▲◮]/);
       expect(plain).not.toContain('Exit');
     });
 

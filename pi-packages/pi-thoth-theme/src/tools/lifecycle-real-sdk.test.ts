@@ -105,7 +105,7 @@ function createHostComponent(name: string) {
 describe.each([
   { name: 'bash', successFooter: 'Exit 0', errorFooter: 'Exit 7' },
   { name: 'powershell', successFooter: 'Exit 0', errorFooter: 'Exit 7' },
-  { name: 'custom_tool', successFooter: 'Done', errorFooter: 'Error' },
+  { name: 'custom_tool', successFooter: '✓', errorFooter: '✗' },
 ])('$name host lifecycle', ({ name, successFooter, errorFooter }) => {
   it('keeps an error-marked partial update gold until the host finishes execution', () => {
     const host = createHostComponent(name);
@@ -120,11 +120,11 @@ describe.each([
       isError: true,
     };
     const runningFooter = host.update(result, true, 'accent');
-    expect(runningFooter).toContain('running…');
+    expect(runningFooter).toMatch(/╰── [△◭▲◮]/);
     expect(runningFooter).not.toMatch(/Exit \d+|Done|Error/);
     const footer = host.update(result, false, 'error');
     expect(footer).toContain(errorFooter);
-    expect(footer).not.toContain('running…');
+    expect(footer).not.toMatch(/╰── [△◭▲◮]/);
   });
 
   it.each([
@@ -142,7 +142,7 @@ describe.each([
           isError: false,
         };
         const runningFooter = host.update(partial, true, 'accent');
-        expect(runningFooter).toContain('running…');
+        expect(runningFooter).toMatch(/╰── [△◭▲◮]/);
         expect(runningFooter).not.toMatch(/Exit \d+|Done|Error/);
 
         const footer = host.update(
@@ -162,7 +162,7 @@ describe.each([
           failed ? 'error' : 'success',
         );
         expect(footer).toContain(failed ? errorFooter : successFooter);
-        expect(footer).not.toContain('running…');
+        expect(footer).not.toMatch(/╰── [△◭▲◮]/);
       }
     }
   });

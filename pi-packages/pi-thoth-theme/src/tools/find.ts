@@ -4,6 +4,7 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import { truncateToWidth } from '@earendil-works/pi-tui';
+import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
 import { getToolBorderTone } from './border.ts';
 import {
@@ -22,6 +23,7 @@ import {
   renderFrameRow,
   renderFrameTop,
 } from './frame.ts';
+import { type ElapsedRenderContext, syncElapsedTicker } from './ticker.ts';
 
 const COLLAPSED_ENTRY_LIMIT = 8;
 
@@ -30,10 +32,8 @@ interface FindArgs {
   path?: string;
 }
 
-interface FindContext {
-  isError?: boolean;
+interface FindContext extends ElapsedRenderContext {
   cwd?: string;
-  isPartial?: boolean;
   lastComponent?: { invalidate?: () => void };
   state?: {
     hasResult?: boolean;
@@ -58,6 +58,7 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
   return {
     renderShell: 'self' as const,
     renderCall(rawArgs: unknown, theme: Theme, context: FindContext) {
+      syncElapsedTicker(context);
       const args = (rawArgs ?? {}) as FindArgs;
       const pattern = escapeControlCharacters(String(args.pattern ?? '*'));
       const rawPath = String(args.path ?? '.');
@@ -69,11 +70,16 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
 
       const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
+        const footer =
+          context?.executionStarted && context.isPartial
+            ? toolFooter(theme, { status: 'running', context })
+            : undefined;
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Find')) : theme.fg('toolTitle', 'Find')} ${theme.fg('syntaxString', `"${pattern}"`)} ${theme.fg('dim', 'in')} ${theme.fg('text', searchPath)}`;
 
         if (!isFramedContext(context)) {
           return renderBox(theme, [], safeWidth, {
             title,
+            footer,
             isError: borderTone === 'error',
             isSuccess: borderTone === 'success',
           });
@@ -85,7 +91,7 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
 
         return [
           ...renderFrameTop(theme, title, safeWidth, borderTone),
-          ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];
       });
 
@@ -118,6 +124,16 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
       }
 
       const isErr = Boolean(context?.isError);
+      const status = options?.isPartial
+        ? 'running'
+        : isErr
+          ? 'failed'
+          : 'completed';
+      const footerOptions = {
+        status,
+        context: { ...context, isPartial: options?.isPartial },
+      } as const;
+      syncElapsedTicker(footerOptions.context);
       const borderTone = getToolBorderTone({
         isError: isErr,
         isPartial: options?.isPartial,
@@ -127,13 +143,17 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
       if (isErr) {
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
+          const footer = toolFooter(theme, footerOptions);
           const errText = `${theme.fg('error', '! ')}${theme.fg('error', escapeControlCharacters(textOutput || 'Find failed'))}`;
           if (!isFramedContext(context)) {
-            return [truncateToWidth(errText, safeWidth)];
+            return [
+              truncateToWidth(errText, safeWidth),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+            ];
           }
           return [
             ...renderFrameRow(theme, errText, safeWidth, borderTone),
-            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         });
       }
@@ -143,11 +163,13 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
 
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
+        const footer = toolFooter(theme, footerOptions);
         if (safeWidth === 0) return [];
         if (total === 0 && notices.length === 0) {
           if (!isFramedContext(context)) {
             return [
               truncateToWidth(theme.fg('dim', 'no matches found'), safeWidth),
+              ...renderFrameBottom(theme, footer, safeWidth, borderTone),
             ];
           }
           return [
@@ -157,7 +179,7 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
               safeWidth,
               borderTone,
             ),
-            ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
           ];
         }
 
@@ -186,16 +208,17 @@ export function createCustomFindTool(cwd: string, config: ThemeConfig) {
         }
 
         if (!isFramedContext(context)) {
-          return rawLines.map((line) =>
-            truncateToWidth(`  ${line}`, safeWidth),
-          );
+          return [
+            ...rawLines.map((line) => truncateToWidth(`  ${line}`, safeWidth)),
+            ...renderFrameBottom(theme, footer, safeWidth, borderTone),
+          ];
         }
 
         return [
           ...rawLines.flatMap((line) =>
             renderFrameRow(theme, line, safeWidth, borderTone),
           ),
-          ...renderFrameBottom(theme, undefined, safeWidth, borderTone),
+          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];
       });
     },

@@ -3,8 +3,8 @@ import type {
   Theme,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
+import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
-import { formatDuration } from '../shared/duration.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, escapeOutputRow, getResultText } from './box.ts';
 import { getToolIcon } from './file-icons.ts';
@@ -18,7 +18,6 @@ import {
 import {
   type ElapsedRenderContext,
   type ElapsedRenderState,
-  getElapsedMs,
   syncElapsedTicker,
 } from './ticker.ts';
 
@@ -92,24 +91,14 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
       const borderTone = context?.isPartial
         ? 'accent'
         : getToolBorderTone(context);
-      const elapsedMs = getElapsedMs(context?.state);
-      const elapsedStr =
-        elapsedMs === undefined
-          ? ''
-          : formatDuration(Math.floor(elapsedMs / 1000) * 1000);
-      const runningFooter =
-        context?.executionStarted && context.isPartial
-          ? [
-              theme.fg('dim', 'running…'),
-              elapsedStr ? theme.fg('dim', elapsedStr) : '',
-            ]
-              .filter(Boolean)
-              .join(theme.fg('dim', ' · '))
-          : undefined;
 
       const comp = createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
         const cmdLines = command ? command.split('\n') : [''];
+        const footer =
+          context?.executionStarted && context.isPartial
+            ? toolFooter(theme, { status: 'running', context })
+            : undefined;
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', shellConfig.title)) : theme.fg('toolTitle', shellConfig.title)}`;
         const preview = cmdLines.map(
           (l) => `${theme.fg('dim', shellConfig.prompt)}${theme.fg('text', l)}`,
@@ -130,7 +119,7 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
           ...preview.flatMap((l) =>
             renderFrameRow(theme, l, safeWidth, borderTone),
           ),
-          ...renderFrameBottom(theme, runningFooter, safeWidth, borderTone),
+          ...renderFrameBottom(theme, footer, safeWidth, borderTone),
         ];
       });
 
@@ -172,14 +161,6 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
       const allLines = textOutput ? textOutput.split('\n') : [];
       const lineCount = allLines.length;
 
-      const elapsedMs = getElapsedMs(context?.state);
-      const elapsedStr =
-        elapsedMs === undefined
-          ? ''
-          : formatDuration(
-              isPartial ? Math.floor(elapsedMs / 1000) * 1000 : elapsedMs,
-            );
-
       const exitNum = extractShellExitCode(result, textOutput, isErr);
       const exitStr = `Exit ${exitNum}`;
 
@@ -191,20 +172,15 @@ function createCustomShellTool(shellConfig: ShellConfig, config: ThemeConfig) {
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
 
-        const statusStr = isPartial
-          ? theme.fg('dim', 'running…')
-          : isErr
-            ? theme.fg('error', exitStr)
-            : theme.fg('success', exitStr);
-
-        const footerParts = [
-          statusStr,
-          elapsedStr ? theme.fg('dim', elapsedStr) : '',
-          theme.fg('dim', `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`),
-          wordsStr ? theme.fg('dim', wordsStr) : '',
-        ].filter(Boolean);
-
-        const footer = footerParts.join(theme.fg('dim', ' · '));
+        const footer = toolFooter(theme, {
+          status: isPartial ? 'running' : isErr ? 'failed' : 'completed',
+          context: { ...context, isPartial },
+          summary: [
+            exitStr,
+            `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
+            wordsStr,
+          ],
+        });
 
         if (allLines.length === 0) {
           const emptyBody = [theme.fg('dim', '(no output)')];

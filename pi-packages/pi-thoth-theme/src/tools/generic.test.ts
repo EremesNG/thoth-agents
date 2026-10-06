@@ -91,7 +91,7 @@ describe('generic tool frame', () => {
     const lines = plain(component).filter((l) => l !== '');
     expect(lines[0]).toMatch(/^╭.*mcp__docs__search.*╮$/);
     expect(lines[1]).toContain('query="hello" limit=3');
-    expect(lines.at(-1)).toMatch(/^╰.*Done · 2 lines.*╯$/);
+    expect(lines.at(-1)).toMatch(/^╰.*✓ · 2 lines.*╯$/);
     for (const l of lines.slice(1, -1)) expect(l).toMatch(/^[│├].*[│┤]$/);
     expect(lines.join('\n')).not.toMatch(/╭.*\n(.*\n)*.*╭/);
   });
@@ -132,7 +132,7 @@ describe('generic tool frame', () => {
     });
     const out = plain(component).join('\n');
     expect(out).toContain('boom');
-    expect(out).toContain('Error');
+    expect(out).toContain('✗ · 1 line');
   });
 
   it('shows running footer with live elapsed and cleans up the ticker', () => {
@@ -141,11 +141,13 @@ describe('generic tool frame', () => {
     setup();
     const { component, requestRender } = make();
     component.markExecutionStarted();
-    expect(plain(component).join('\n')).toContain('running… · 0s');
+    expect(plain(component).at(-1)).toContain('╰── △ · 0s ');
     expect(vi.getTimerCount()).toBe(1);
-    vi.advanceTimersByTime(2000);
-    expect(requestRender).toHaveBeenCalled();
-    expect(plain(component).join('\n')).toContain('running… · 2s');
+    for (const footer of ['◭ · 1s', '▲ · 2s', '◮ · 3s', '△ · 4s']) {
+      vi.advanceTimersByTime(1000);
+      expect(requestRender).toHaveBeenCalled();
+      expect(plain(component).at(-1)).toContain(`╰── ${footer} `);
+    }
     component.updateResult({
       content: [text('ok')],
       details: {},
@@ -156,16 +158,16 @@ describe('generic tool frame', () => {
   });
 
   it.each([
-    [-1, '0s', '0s'],
-    [0, '0s', '0s'],
-    [999, '0s', '999ms'],
-    [12345, '12s', '12.3s'],
-    [45000, '45s', '45s'],
-    [60000, '1m 00s', '1m 00s'],
-    [845999, '14m 05s', '14m 05s'],
-    [3600000, '1h 00m', '1h 00m'],
-    [7439999, '2h 03m', '2h 03m'],
-  ])('shows %s ms as %s live and %s completed within the frame width', (ms, live, completed) => {
+    [-1, '0s', '0s', '△'],
+    [0, '0s', '0s', '△'],
+    [999, '0s', '0s', '△'],
+    [12345, '12s', '12s', '△'],
+    [45000, '45s', '45s', '◭'],
+    [60000, '1m 00s', '1m 00s', '△'],
+    [845999, '14m 05s', '14m 05s', '◭'],
+    [3600000, '1h 00m', '1h 00m', '△'],
+    [7439999, '2h 03m', '2h 03m', '◮'],
+  ])('shows %s ms as %s live and %s completed within the frame width', (ms, live, completed, frame) => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     setup();
@@ -174,17 +176,17 @@ describe('generic tool frame', () => {
     plain(component);
     vi.setSystemTime(ms);
     component.invalidate();
-    expect(plain(component).at(-1)).toContain(` running… · ${live} `);
+    expect(plain(component).at(-1)).toContain(` ${frame} · ${live} `);
     component.updateResult({ content: [text('ok')], isError: false }, true);
-    expect(plain(component).at(-1)).toContain(` running… · ${live} · 1 line `);
+    expect(plain(component).at(-1)).toContain(` ${frame} · ${live} `);
     component.updateResult({ content: [text('ok')], isError: false }, false);
     expect(vi.getTimerCount()).toBe(0);
-    expect(plain(component).at(-1)).toContain(` Done · ${completed} · 1 line `);
+    expect(plain(component).at(-1)).toContain(` ✓ · ${completed} · 1 line `);
 
     vi.setSystemTime(ms + 10000);
     component.setExpanded(true);
     component.invalidate();
-    expect(plain(component).at(-1)).toContain(` Done · ${completed} · 1 line `);
+    expect(plain(component).at(-1)).toContain(` ✓ · ${completed} · 1 line `);
     for (const width of [0, 1, 2, 5, 10, 20, 80]) {
       for (const line of component.render(width)) {
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);

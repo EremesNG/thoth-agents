@@ -131,7 +131,7 @@ describe('Live tool elapsed through the real SDK', () => {
     requestRender.mockClear();
     vi.advanceTimersByTime(1000);
     expect(requestRender).toHaveBeenCalledTimes(1);
-    expect(renderText(component)).toContain('running… · 4s');
+    expect(renderText(component)).toContain('△ · 4s');
     parent.emit('agent_end');
     requestRender.mockClear();
     vi.advanceTimersByTime(1000);
@@ -150,7 +150,7 @@ describe('Live tool elapsed through the real SDK', () => {
     newTool.requestRender.mockClear();
     vi.advanceTimersByTime(1000);
     expect(newTool.requestRender).toHaveBeenCalledTimes(1);
-    expect(renderText(newTool.component)).toContain('running… · 1s');
+    expect(renderText(newTool.component)).toContain('◭ · 1s');
     newer.emit('session_shutdown');
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -158,19 +158,19 @@ describe('Live tool elapsed through the real SDK', () => {
   it('shows live elapsed for a started tool before its first output', () => {
     const { component, requestRender } = createSession().createBashComponent();
     component.markExecutionStarted();
-    expect(renderText(component)).toContain('running… · 0s');
+    expect(renderText(component)).toContain('△ · 0s');
     requestRender.mockClear();
 
     vi.advanceTimersByTime(1000);
     expect(requestRender).toHaveBeenCalledTimes(1);
-    expect(renderText(component)).toContain('running… · 1s');
+    expect(renderText(component)).toContain('◭ · 1s');
     expect(renderText(component)).not.toContain('Output');
   });
 
   it.each([
     'bash',
     'powershell',
-  ] as const)('shows whole seconds live and fractional seconds completed for %s', (name) => {
+  ] as const)('shows standard whole-second elapsed in running and terminal footers for %s', (name) => {
     const session = createSession();
     const { component } =
       name === 'bash'
@@ -180,13 +180,13 @@ describe('Live tool elapsed through the real SDK', () => {
     renderText(component);
     vi.advanceTimersByTime(12345);
     component.invalidate();
-    expect(renderText(component)).toContain('running… · 12s');
+    expect(renderText(component)).toContain('△ · 12s');
 
     component.updateResult(partialResult, true);
-    expect(renderText(component)).toContain('running… · 12s');
+    expect(renderText(component)).toContain('△ · 12s');
 
     component.updateResult(partialResult, false);
-    expect(renderText(component)).toContain('Exit 0 · 12.3s');
+    expect(renderText(component)).toContain('✓ · 12s · Exit 0');
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -195,7 +195,7 @@ describe('Live tool elapsed through the real SDK', () => {
     component.markExecutionStarted();
     component.updateResult(partialResult, true);
     const initialText = renderText(component);
-    expect(initialText).toContain('running… · 0s');
+    expect(initialText).toContain('△ · 0s');
 
     // Repeated SDK renderer passes must keep just one interval per tool state.
     component.setExpanded(true);
@@ -209,11 +209,26 @@ describe('Live tool elapsed through the real SDK', () => {
 
     vi.advanceTimersByTime(1);
     expect(requestRender).toHaveBeenCalledTimes(1);
-    expect(renderText(component)).toContain('running… · 1s');
+    expect(renderText(component)).toContain('◭ · 1s');
 
     vi.advanceTimersByTime(2000);
     expect(requestRender).toHaveBeenCalledTimes(3);
-    expect(renderText(component)).toContain('running… · 3s');
+    expect(renderText(component)).toContain('◮ · 3s');
+  });
+
+  it('keeps a partial shell error ticking until the terminal result arrives', () => {
+    const { component, requestRender } = createSession().createBashComponent();
+    component.markExecutionStarted();
+    component.updateResult({ ...partialResult, isError: true }, true);
+    expect(renderText(component)).toContain('△ · 0s');
+    expect(vi.getTimerCount()).toBe(1);
+    requestRender.mockClear();
+    vi.advanceTimersByTime(2250);
+    expect(requestRender).toHaveBeenCalledTimes(2);
+    expect(renderText(component)).toContain('▲ · 2s');
+    component.updateResult(partialResult, false);
+    expect(renderText(component)).toContain('✓ · 2s · Exit 0');
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it.each([
@@ -237,7 +252,9 @@ describe('Live tool elapsed through the real SDK', () => {
       { content: [{ type: 'text', text }], isError },
       false,
     );
-    expect(renderText(component)).toContain(`${status} · 2.3s`);
+    expect(renderText(component)).toContain(
+      `${isError ? '✗' : '✓'} · 2s · ${status}`,
+    );
     expect(vi.getTimerCount()).toBe(0);
     requestRender.mockClear();
 
@@ -245,7 +262,9 @@ describe('Live tool elapsed through the real SDK', () => {
     expect(requestRender).not.toHaveBeenCalled();
     component.setExpanded(true);
     component.invalidate();
-    expect(renderText(component, 96)).toContain(`${status} · 2.3s`);
+    expect(renderText(component, 96)).toContain(
+      `${isError ? '✗' : '✓'} · 2s · ${status}`,
+    );
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -274,7 +293,7 @@ describe('Live tool elapsed through the real SDK', () => {
       expect(requestRender).not.toHaveBeenCalled();
       component.setExpanded(true);
       component.invalidate();
-      expect(renderText(component)).toContain('running… · 1s');
+      expect(renderText(component)).toContain('◭ · 1s');
     }
     expect(vi.getTimerCount()).toBe(0);
 
@@ -286,7 +305,7 @@ describe('Live tool elapsed through the real SDK', () => {
     next.requestRender.mockClear();
     vi.advanceTimersByTime(1000);
     expect(next.requestRender).toHaveBeenCalledTimes(1);
-    expect(renderText(next.component)).toContain('running… · 1s');
+    expect(renderText(next.component)).toContain('◭ · 1s');
   });
 
   it('disposes live intervals and detaches lifecycle cleanup idempotently', () => {
@@ -302,7 +321,7 @@ describe('Live tool elapsed through the real SDK', () => {
     vi.advanceTimersByTime(5000);
     expect(requestRender).not.toHaveBeenCalled();
     component.invalidate();
-    expect(renderText(component)).toContain('running… · 1s');
+    expect(renderText(component)).toContain('◭ · 1s');
     expect(vi.getTimerCount()).toBe(0);
 
     const next = createSession().createBashComponent('next-registration');
@@ -315,7 +334,7 @@ describe('Live tool elapsed through the real SDK', () => {
     }
     vi.advanceTimersByTime(1000);
     expect(next.requestRender).toHaveBeenCalledTimes(1);
-    expect(renderText(next.component)).toContain('running… · 1s');
+    expect(renderText(next.component)).toContain('◭ · 1s');
   });
 
   it.each([
@@ -348,7 +367,7 @@ describe('Live tool elapsed through the real SDK', () => {
     }
     vi.advanceTimersByTime(1500);
     first.component.updateResult(partialResult, false);
-    expect(renderText(first.component)).toContain('Exit 0 · 1.5s');
+    expect(renderText(first.component)).toContain('✓ · 1s · Exit 0');
     expect(vi.getTimerCount()).toBe(1);
     first.requestRender.mockClear();
     second.requestRender.mockClear();
@@ -356,8 +375,8 @@ describe('Live tool elapsed through the real SDK', () => {
     vi.advanceTimersByTime(500);
     expect(first.requestRender).not.toHaveBeenCalled();
     expect(second.requestRender).toHaveBeenCalledTimes(1);
-    expect(renderText(second.component)).toContain('running… · 2s');
-    expect(renderText(first.component)).toContain('Exit 0 · 1.5s');
+    expect(renderText(second.component)).toContain('▲ · 2s');
+    expect(renderText(first.component)).toContain('✓ · 1s · Exit 0');
   });
 
   it('ticks a running powershell component every second while execution is partial', () => {
@@ -367,17 +386,17 @@ describe('Live tool elapsed through the real SDK', () => {
 
     component.markExecutionStarted();
     component.updateResult(partialResult, true);
-    expect(renderText(component)).toContain('running… · 0s');
+    expect(renderText(component)).toContain('△ · 0s');
     expect(vi.getTimerCount()).toBe(1);
     requestRender.mockClear();
 
     vi.advanceTimersByTime(1000);
     expect(requestRender).toHaveBeenCalledTimes(1);
-    expect(renderText(component)).toContain('running… · 1s');
+    expect(renderText(component)).toContain('◭ · 1s');
 
     vi.advanceTimersByTime(1000);
     expect(requestRender).toHaveBeenCalledTimes(2);
-    expect(renderText(component)).toContain('running… · 2s');
+    expect(renderText(component)).toContain('▲ · 2s');
 
     component.updateResult(
       {
@@ -387,7 +406,7 @@ describe('Live tool elapsed through the real SDK', () => {
       },
       false,
     );
-    expect(renderText(component)).toContain('Exit 0 · 2s');
+    expect(renderText(component)).toContain('✓ · 2s · Exit 0');
     expect(vi.getTimerCount()).toBe(0);
   });
 });

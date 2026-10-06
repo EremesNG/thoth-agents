@@ -95,7 +95,7 @@ function expectGrepDataRows(
       .replaceAll('\x07', '␇'),
   );
   if (mode === 'raw') {
-    expect(plain.at(-1)).toMatch(/^╰─+╯$/);
+    expect(plain.at(-1)).toMatch(/^╰── ✓ .*╯$/);
     const rawLines = plain[0].startsWith('╭')
       ? plain.slice(1, -1)
       : plain.slice(0, -1);
@@ -282,16 +282,16 @@ describe('Built-in tool renderers', () => {
     ['powershell', createCustomPowerShellTool],
   ] as const)('%s elapsed footers', (_name, createShellTool) => {
     it.each([
-      [0, '0s', '0s'],
-      [-1, '0s', '0s'],
-      [Number.NaN, '0s', '0s'],
-      [Infinity, '0s', '0s'],
-      [999.9, '0s', '999ms'],
-      [12345, '12s', '12.3s'],
-      [45000, '45s', '45s'],
-      [845999.9, '14m 05s', '14m 05s'],
-      [7439999.9, '2h 03m', '2h 03m'],
-    ])('formats %s ms as %s live and %s completed without overflowing', (ms, live, completed) => {
+      [0, '0s', '0s', '△'],
+      [-1, '0s', '0s', '△'],
+      [Number.NaN, '0s', '0s', '△'],
+      [Infinity, '0s', '0s', '△'],
+      [999.9, '0s', '0s', '△'],
+      [12345, '12s', '12s', '△'],
+      [45000, '45s', '45s', '◭'],
+      [845999.9, '14m 05s', '14m 05s', '◭'],
+      [7439999.9, '2h 03m', '2h 03m', '◮'],
+    ])('formats %s ms as %s live and %s completed without overflowing', (ms, live, completed, frame) => {
       const tool = createShellTool(cwd, createConfig('nerd'));
       const theme = createAnsiTheme();
       const context = {
@@ -301,7 +301,7 @@ describe('Built-in tool renderers', () => {
       };
       const call = tool.renderCall({ command: 'echo ok' }, theme, context);
       expect(stripTerminalSequences(call.render(80).at(-1) ?? '')).toContain(
-        ` running… · ${live} `,
+        ` ${frame} · ${live} `,
       );
       for (const width of [0, 1, 2, 5, 10, 20, 80]) {
         for (const line of call.render(width)) {
@@ -316,7 +316,7 @@ describe('Built-in tool renderers', () => {
         context,
       );
       expect(stripTerminalSequences(partial.render(80).at(-1) ?? '')).toContain(
-        ` running… · ${live} · 1 line · ~1 words `,
+        ` ${frame} · ${live} `,
       );
 
       const result = tool.renderResult(
@@ -326,7 +326,7 @@ describe('Built-in tool renderers', () => {
         context,
       );
       expect(stripTerminalSequences(result.render(80).at(-1) ?? '')).toContain(
-        ` Exit 0 · ${completed} · 1 line · ~1 words `,
+        ` ✓ · ${completed} · Exit 0 · 1 line · ~1 words `,
       );
       for (const width of [0, 1, 2, 5, 10, 20, 80]) {
         for (const line of result.render(width)) {
@@ -341,7 +341,7 @@ describe('Built-in tool renderers', () => {
       const context = { ...baseContext, isPartial: true, state: undefined };
       const call = tool.renderCall({ command: 'echo ok' }, theme, context);
       const callFooter = stripTerminalSequences(call.render(80).at(-1) ?? '');
-      expect(callFooter).toContain(' running… ');
+      expect(callFooter).toContain(' △ ');
       expect(callFooter).not.toContain(' · ');
       const result = tool.renderResult(
         textResult('ok'),
@@ -350,7 +350,7 @@ describe('Built-in tool renderers', () => {
         context,
       );
       expect(stripTerminalSequences(result.render(80).at(-1) ?? '')).toContain(
-        ' Exit 0 · 1 line · ~1 words ',
+        ' ✓ · Exit 0 · 1 line · ~1 words ',
       );
     });
   });

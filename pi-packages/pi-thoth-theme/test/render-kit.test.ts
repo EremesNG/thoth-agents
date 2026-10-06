@@ -1,4 +1,4 @@
-import { visibleWidth } from '@earendil-works/pi-tui';
+import { stripTerminalSequences, visibleWidth } from '@earendil-works/pi-tui';
 import type { RenderKitTheme } from '@thoth-agents/pi-core';
 import { describe, expect, it } from 'vitest';
 import { createRenderKit } from '../src/render-kit/index.ts';
@@ -11,6 +11,47 @@ const styledTheme: RenderKitTheme = {
 };
 
 describe('theme render kit', () => {
+  it('renders standard running and terminal tool footers with whole-second elapsed time', () => {
+    expect(
+      kit.toolFooter?.(styledTheme, {
+        status: 'running',
+        elapsedMs: 2250,
+        summary: 'ignored while running',
+      }),
+    ).toBe('<accent>▲</accent><dim> · </dim><dim>2s</dim>');
+    expect(
+      kit.toolFooter?.(styledTheme, {
+        status: 'completed',
+        elapsedMs: 5250,
+        summary: ['Exit 0', '', '1 line'],
+      }),
+    ).toBe(
+      '<success>✓</success><dim> · </dim><dim>5s</dim><dim> · </dim><dim>Exit 0</dim><dim> · </dim><dim>1 line</dim>',
+    );
+  });
+
+  it('keeps untimed and nonterminal footers free of invented elapsed values or terminal summaries', () => {
+    expect(kit.toolFooter?.(theme, { status: 'running' })).toBe('△');
+    expect(
+      kit.toolFooter?.(theme, { status: 'completed', summary: '1 line' }),
+    ).toBe('✓ · 1 line');
+    expect(kit.toolFooter?.(theme, { status: 'failed' })).toBe('✗');
+    for (const status of [
+      'pending',
+      'queued',
+      'stopping',
+      'unknown',
+    ] as const) {
+      expect(
+        kit.toolFooter?.(theme, {
+          status,
+          elapsedMs: 2250,
+          summary: 'ignored',
+        }),
+      ).toBe(`${status} · 2s`);
+    }
+  });
+
   it('draws the existing rounded card with content width, dividers and bottom footer', () => {
     const widths: number[] = [];
     expect(
@@ -86,6 +127,119 @@ describe('theme render kit', () => {
     expect(styled).not.toContain('<accent>');
   });
 
+  it.each([
+    'running',
+    'in_progress',
+  ] as const)('uses an indicator footer without a static %s glyph or a running label', (status) => {
+    const indicator = kit.indicator(theme, undefined, {
+      status,
+      elapsedMs: 5000,
+      label: 'Claude Code',
+    });
+    for (const options of [
+      {},
+      { sections: [{ rows: ['output'] }] },
+      { part: 'end' as const },
+    ]) {
+      const lines = kit.card(
+        theme,
+        { ...options, status, footer: indicator.text },
+        24,
+      );
+      expect(lines.at(-1)).toBe('╰── ◭ · 5s ────────────╯');
+      expect(lines.at(-1)).not.toMatch(/◇|Claude Code|running/);
+    }
+    expect(kit.card(theme, { status }, 24).at(-1)).toContain('╰── ◇ ');
+    expect(
+      kit.indicator(theme, undefined, {
+        status: 'completed',
+        label: 'Claude Code',
+        elapsedMs: 5000,
+      }).text,
+    ).toBe('Claude Code · 5s');
+  });
+
+  it('uses the standard context footer in full, sectioned and split cards without duplicating explicit footers', () => {
+    for (const options of [
+      {},
+      { sections: [{ rows: ['output'] }] },
+      { part: 'end' as const },
+    ]) {
+      const context = {
+        executionStarted: true,
+        isPartial: true,
+        state: { startedAt: Date.now() - 5250 },
+      };
+      expect(
+        kit.card(theme, { ...options, status: 'running', context }, 40).at(-1),
+      ).toContain('╰── ◭ · 5s ');
+      expect(
+        kit
+          .card(
+            theme,
+            {
+              ...options,
+              status: 'completed',
+              context,
+              summary: ['Exit 0', '1 line'],
+            },
+            40,
+          )
+          .at(-1),
+      ).toContain('╰── ✓ · 5s · Exit 0 · 1 line ');
+      for (const [status, footer] of [
+        ['completed', '✓ · 5s · Exit 0'],
+        ['failed', '✗ · 5s · Exit 1'],
+      ] as const) {
+        expect(
+          kit.card(theme, { ...options, status, context, footer }, 40).at(-1),
+        ).toContain(`╰── ${footer} `);
+      }
+      expect(
+        kit
+          .card(
+            theme,
+            {
+              ...options,
+              status: 'completed',
+              context,
+              footer: '',
+            },
+            40,
+          )
+          .at(-1),
+      ).toContain('╰── ✓ ');
+    }
+  });
+
+  it('recognizes ANSI-styled self-contained terminal footers while preserving legacy plain decoration', () => {
+    const ansiTheme: RenderKitTheme = {
+      fg: (_role, text) => `\u001b[32m${text}\u001b[39m`,
+    };
+    for (const status of ['completed', 'failed', 'cancelled'] as const) {
+      const footer =
+        kit.toolFooter?.(ansiTheme, { status, elapsedMs: 2250 }) ?? '';
+      const bottom = stripTerminalSequences(
+        kit.card(ansiTheme, { status, footer }, 24).at(-1) ?? '',
+      );
+      expect(bottom).toContain(
+        status === 'completed' ? '╰── ✓ · 2s ' : '╰── ✗ · 2s ',
+      );
+      expect(bottom.match(/[✓✗]/g)).toHaveLength(1);
+      expect(
+        stripTerminalSequences(
+          kit.card(ansiTheme, { status, footer: 'Done' }, 24).at(-1) ?? '',
+        ),
+      ).toContain(
+        status === 'completed'
+          ? '✓ Done'
+          : status === 'failed'
+            ? '✗ Done'
+            : '⊘ Done',
+      );
+    }
+  });
+
   it('uses the built-in eight-row collapse budget and lets callers expand or override it', () => {
     const rows = [
       'one',
@@ -139,7 +293,10 @@ describe('theme render kit', () => {
       '<success>✓</success>',
     );
     expect(kit.statusGlyph(styledTheme, 'failed')).toBe('<error>✗</error>');
-    expect(kit.statusGlyph(styledTheme, 'running')).toBe('<accent>◭</accent>');
+    expect(kit.statusGlyph(styledTheme, 'running')).toBe('<accent>◇</accent>');
+    expect(kit.statusGlyph(styledTheme, 'in_progress')).toBe(
+      '<accent>◇</accent>',
+    );
     expect(kit.fg(styledTheme, 'warning', 'blocked')).toBe(
       '<warning>blocked</warning>',
     );
@@ -246,14 +403,41 @@ describe('theme render kit', () => {
     ).toBe('✓');
   });
 
+  it('uses elapsed pyramid frames in footer text without changing caller-owned working prefixes', () => {
+    expect(
+      kit.indicator(
+        styledTheme,
+        { isPartial: true },
+        {
+          status: 'running',
+          elapsedMs: 5000,
+          frame: 1,
+        },
+      ),
+    ).toEqual({
+      glyph: '<accent>⠙</accent>',
+      elapsedMs: 5000,
+      elapsed: '5s',
+      text: '<accent>◭</accent><dim> · </dim><dim>5s</dim>',
+    });
+    expect(kit.indicator(theme, undefined, { status: 'running' }).text).toBe(
+      '△',
+    );
+  });
+
   it('accepts explicit elapsed time and keeps absent elapsed values out of footers', () => {
+    for (const status of ['running', 'in_progress'] as const) {
+      expect(
+        kit.indicator(theme, undefined, { status, elapsedMs: 1250 }).glyph,
+      ).toBe('◭');
+    }
     expect(
       kit.indicator(theme, undefined, { status: 'running', elapsedMs: 2250 }),
     ).toEqual({
       glyph: '▲',
       elapsedMs: 2250,
       elapsed: '2s',
-      text: 'running… · 2s',
+      text: '▲ · 2s',
     });
     expect(
       kit.indicator(theme, undefined, {

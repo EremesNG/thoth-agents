@@ -8,7 +8,7 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lt } from 'semver';
 import { piAdapter } from '../harness/adapters/pi';
@@ -75,9 +75,9 @@ export const PI_PACKAGE_SPECS = [
   },
   {
     id: 'ask-user-question',
-    source: 'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
-    packageName: '@juicesharp/rpiv-ask-user-question',
-    version: '2.9.0',
+    source: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+    packageName: '@thoth-agents/pi-questions-user',
+    version: '0.1.0',
   },
   {
     id: 'todo',
@@ -318,6 +318,100 @@ export function getPiExternalPackageSpecs(
 }
 
 const PI_INCUMBENT_TODO_NAME = '@juicesharp/rpiv-todo';
+const PI_INCUMBENT_QUESTIONS_NAME = '@juicesharp/rpiv-ask-user-question';
+
+function piQuestionSourceName(source: string): string | undefined {
+  if (!source.startsWith('npm:')) return undefined;
+  const spec = source.slice(4).trim();
+  const alias = spec.indexOf('@npm:');
+  const target = alias >= 0 ? spec.slice(alias + 5) : spec;
+  return target.match(/^(@[^/@\s]+\/[^/@\s]+|[^/@\s]+)(?:@.+)?$/)?.[1];
+}
+
+function findPiIncumbentQuestions(
+  packages: readonly PiConfiguredPackage[],
+): PiConfiguredPackage[] {
+  return packages.filter(
+    (candidate) =>
+      piQuestionSourceName(candidate.source) === PI_INCUMBENT_QUESTIONS_NAME ||
+      configuredPackageIdentity(candidate).packageName ===
+        PI_INCUMBENT_QUESTIONS_NAME,
+  );
+}
+
+function piQuestionIdentityBlockers(
+  packages: readonly PiConfiguredPackage[],
+  plan?: PiSetupPlan,
+): string[] {
+  return packages.flatMap((candidate) => {
+    const manifest = configuredPackageManifest(candidate);
+    if (typeof manifest?.name === 'string' && manifest.name) return [];
+    const npmSource = candidate.source.startsWith('npm:');
+    const questionSource =
+      /(?:^|[\\/:@?#._-])rpiv-ask-user-question(?:$|[\\/:@?#._-])/i.test(
+        candidate.source,
+      );
+    const unresolvedNpmLocation = npmSource && !candidate.installedPath;
+    const unresolvedAlias =
+      npmSource &&
+      candidate.source.includes('@npm:') &&
+      !piQuestionSourceName(candidate.source);
+    // A previously identified local/git incumbent remains relevant even if
+    // its manifest disappears between preview and any apply-time inspection.
+    const previewedQuestion =
+      candidate.scope === 'user' &&
+      plan?.items.some(
+        ({ command }) =>
+          command?.command === 'pi' &&
+          command.args[0] === 'remove' &&
+          command.args[1] === candidate.source &&
+          command.args[2] === '--no-approve',
+      );
+    if (manifest && !previewedQuestion) return [];
+    if (
+      !questionSource &&
+      !unresolvedNpmLocation &&
+      !unresolvedAlias &&
+      !previewedQuestion
+    )
+      return [];
+    const flags =
+      candidate.scope === 'project' ? '--local --approve' : '--no-approve';
+    return [
+      `Cannot verify configured Pi package ${candidate.source}: installed manifest identity is unavailable. Review its ownership and inspect its package.json using pi list; if it is ${PI_INCUMBENT_QUESTIONS_NAME}, manually run pi remove ${candidate.source} ${flags}. Verify removal, then rerun setup preview.`,
+    ];
+  });
+}
+
+function piUnpreviewedQuestionRecovery(
+  plan: PiSetupPlan,
+  packages: readonly PiConfiguredPackage[],
+): string | undefined {
+  const previewed = new Set(
+    plan.items.flatMap(({ command }) =>
+      command?.command === 'pi' &&
+      command.args[0] === 'remove' &&
+      command.args[2] === '--no-approve'
+        ? [command.args[1]]
+        : [],
+    ),
+  );
+  const unpreviewed = packages.filter(
+    ({ scope, source }) => scope === 'user' && !previewed.has(source),
+  );
+  if (unpreviewed.length === 0) return undefined;
+  return unpreviewed
+    .map(
+      ({ source }) =>
+        `Pi question migration blocked: incumbent ${source} was not previewed for removal. Review its ownership, then manually run: pi remove ${source} --no-approve. Verify with pi list, then rerun setup preview; no unpreviewed incumbent may be removed automatically.`,
+    )
+    .join('\n');
+}
+
+function piProjectQuestionConflict(candidate: PiConfiguredPackage): string {
+  const source = candidate.unmappedSource ? '<source>' : candidate.source;
+  return `Incumbent Pi question package ${candidate.source} conflicts with @thoth-agents/pi-questions-user. ${candidate.identityLimitation ? `${candidate.identityLimitation} ` : ''}Review the project's ownership and trust first; --approve trusts project-local settings for this command only without saving a trust decision. ${candidate.unmappedSource ? 'Find the matching project settings entry, then' : 'Then'} run: pi remove ${source} --local --approve. Verify removal, then rerun setup.`;
+}
 
 function isPiIncumbentTodoSource(source: string): boolean {
   return /^npm:@juicesharp\/rpiv-todo(?:@|$)/.test(source);
@@ -389,33 +483,181 @@ function projectLocalPackagePath(
   return resolve(projectRoot, path);
 }
 
-function readPiProjectPackages(options: PiPathOptions): PiConfiguredPackage[] {
-  const projectRoot = join(resolve(options.cwd ?? process.cwd()), '.pi');
-  const settings = readJsonObject(join(projectRoot, 'settings.json'));
-  const { homeDir } = resolvePiPaths(options);
-  const packages: PiConfiguredPackage[] = [];
-  for (const source of configuredPackageSources(settings)) {
-    const npmSpec = source.startsWith('npm:')
-      ? source.slice(4).trim()
-      : undefined;
-    const npmName =
-      npmSpec?.match(/^(@?[^@]+(?:\/[^@]+)?)(?:@(.+))?$/)?.[1] ?? npmSpec;
-    // Pi 1.0.2 resolves project-local paths relative to .pi, not cwd.
-    // Inspect data only: its package manager requires trust to expose these.
-    const path = npmName
-      ? join(projectRoot, 'npm', 'node_modules', npmName)
-      : (projectGitPackagePath(source, projectRoot) ??
-        projectLocalPackagePath(source, projectRoot, homeDir));
-    packages.push({
-      scope: 'project',
-      source,
-      installedPath: existsSync(path) ? path : undefined,
-    });
+// Pi SDK 1.0.2 dist/core/package-manager.js: getInstalledPath,
+// parseNpmSpec, getNpmInstallPath/getLegacyGlobalNpmInstallPath and
+// getPackageManagerName. Ported because the exported DefaultPackageManager
+// requires project trust, has no injectable command boundary, and is dev-only.
+// Only offline root/list metadata queries are allowed here; never resolve
+// resources, install packages, run hooks, or trust project configuration.
+function legacyPiNpmPackagePath(
+  name: string,
+  settings: Record<string, unknown>,
+  execute: PiCommandExecutor,
+): string | undefined {
+  try {
+    const commandParts =
+      settings.npmCommand === undefined ? ['npm'] : settings.npmCommand;
+    // Metadata inspection must never execute configured install/exec prefixes
+    // or wrappers, including during preview. Only a plain manager is safe.
+    if (
+      !Array.isArray(commandParts) ||
+      commandParts.length !== 1 ||
+      typeof commandParts[0] !== 'string'
+    )
+      return undefined;
+    const command = commandParts[0];
+    // npm/pnpm command shims use a shell on Windows; reject shell expressions
+    // even when their final path component looks like a manager binary.
+    if (/[\0\r\n&|<>^%"'`$;!]/.test(command)) return undefined;
+    const manager = basename(command).replace(/\.(cmd|exe)$/i, '');
+    if (!['npm', 'pnpm', 'bun'].includes(manager)) return undefined;
+    // Distinguish paths with spaces from flattened command prefixes.
+    if (
+      /\s/.test(command) &&
+      !statSync(command, { throwIfNoEntry: false })?.isFile()
+    )
+      return undefined;
+    const query = (args: string[]) => {
+      const result = execute(command, args);
+      if (result.error || result.exitCode !== 0)
+        throw new Error('Package metadata unavailable');
+      return (result.stdout || result.stderr).trim();
+    };
+    if (manager === 'pnpm') {
+      const entries: unknown = JSON.parse(query(['list', '-g', '--json']));
+      if (!Array.isArray(entries)) return undefined;
+      for (const entry of entries) {
+        const dependencies = isRecord(entry) ? entry.dependencies : undefined;
+        const dependency = isRecord(dependencies)
+          ? dependencies[name]
+          : undefined;
+        if (
+          isRecord(dependency) &&
+          typeof dependency.path === 'string' &&
+          dependency.path
+        )
+          return dependency.path;
+      }
+      return undefined;
+    }
+    const root =
+      manager === 'bun'
+        ? join(
+            dirname(query(['pm', 'bin', '-g'])),
+            'install',
+            'global',
+            'node_modules',
+          )
+        : query(['root', '-g']);
+    return root ? join(root, name) : undefined;
+  } catch {
+    return undefined;
   }
-  return packages;
 }
 
-function scanPiProjectInstalledTodos(
+function parsePiPackageSource(source: string, baseDir: string) {
+  // SDK parseSource: npm prefix, then local-path precedence in the mirrored
+  // Git parser, then arbitrary text falls back to a local source.
+  if (source.startsWith('npm:')) {
+    const spec = source.slice(4).trim();
+    const name = spec.match(/^(@?[^@]+(?:\/[^@]+)?)(?:@(.+))?$/)?.[1] ?? spec;
+    return { type: 'npm' as const, name };
+  }
+  const gitPath = projectGitPackagePath(source, baseDir);
+  return gitPath
+    ? { type: 'git' as const, path: gitPath }
+    : { type: 'local' as const, path: source };
+}
+
+function resolvePiPackage(
+  candidate: PiConfiguredPackage,
+  options: PiSetupOptions,
+  userSettings: Record<string, unknown>,
+): PiConfiguredPackage {
+  // pi list reports paths from DefaultPackageManager.getInstalledPath. Reuse
+  // that native resolution when present, but reread its manifest on every
+  // inspection; settings-only planning uses the same SDK algorithm below.
+  if (candidate.installedPath) return candidate;
+  const paths = resolvePiPaths(options);
+  const baseDir =
+    candidate.scope === 'user'
+      ? paths.piRoot
+      : join(resolve(options.cwd ?? process.cwd()), '.pi');
+  const parsed = parsePiPackageSource(candidate.source, baseDir);
+  const npmName = parsed.type === 'npm' ? parsed.name : undefined;
+  let path = npmName
+    ? join(baseDir, 'npm', 'node_modules', npmName)
+    : parsed.type === 'git'
+      ? parsed.path
+      : projectLocalPackagePath(candidate.source, baseDir, paths.homeDir);
+  if (npmName && candidate.scope === 'user' && !existsSync(path))
+    path =
+      legacyPiNpmPackagePath(
+        npmName,
+        userSettings,
+        options.commandExecutor ?? defaultCommandExecutor,
+      ) ?? path;
+  return {
+    ...candidate,
+    installedPath: existsSync(path) ? path : candidate.installedPath,
+  };
+}
+
+function resolvePiConfiguredPackages(
+  settings: Record<string, unknown>,
+  scope: PiConfiguredPackage['scope'],
+  options: PiSetupOptions,
+): PiConfiguredPackage[] {
+  return configuredPackageSources(settings).map((source) =>
+    resolvePiPackage({ scope, source }, options, settings),
+  );
+}
+
+function resolvePiListedPackages(
+  output: string,
+  options: PiSetupOptions,
+): PiConfiguredPackage[] {
+  const packages = parsePiPackageList(output);
+  const paths = resolvePiPaths(options);
+  const settings = readJsonObject(paths.settingsPath);
+  const projectRoot = join(resolve(options.cwd ?? process.cwd()), '.pi');
+  let projectSettings: Record<string, unknown> | undefined;
+  for (const { scope, source, installedPath } of packages) {
+    const baseDir = scope === 'user' ? paths.piRoot : projectRoot;
+    if (parsePiPackageSource(source, baseDir).type !== 'local') continue;
+    // The SDK also parses free-form diagnostics as local paths. Match local
+    // entries against scoped inventory, or, when it is unavailable, require the
+    // absolute directory from pi list's indented installed-path line.
+    let inventory = settings;
+    if (scope === 'project') {
+      projectSettings ??= readJsonObject(join(projectRoot, 'settings.json'));
+      inventory = projectSettings;
+    }
+    if (
+      !configuredPackageSources(inventory).includes(source) &&
+      (Array.isArray(inventory.packages) ||
+        !installedPath ||
+        !isAbsolute(installedPath))
+    )
+      throw new Error(
+        `Pi package manifest identity cannot be verified: malformed pi list source ${source}. Rerun pi list --no-approve and inspect the configured sources before setup.`,
+      );
+  }
+  return packages.map((candidate) =>
+    resolvePiPackage(candidate, options, settings),
+  );
+}
+
+function readPiProjectPackages(options: PiPathOptions): PiConfiguredPackage[] {
+  const projectRoot = join(resolve(options.cwd ?? process.cwd()), '.pi');
+  return resolvePiConfiguredPackages(
+    readJsonObject(join(projectRoot, 'settings.json')),
+    'project',
+    options,
+  );
+}
+
+function scanPiProjectInstalledIncumbents(
   options: PiPathOptions,
   configuredPackages: readonly PiConfiguredPackage[],
 ): PiConfiguredPackage[] {
@@ -453,13 +695,14 @@ function scanPiProjectInstalledTodos(
         };
         const identity = configuredPackageIdentity(candidate);
         if (
-          identity.packageName === PI_INCUMBENT_TODO_NAME &&
+          (identity.packageName === PI_INCUMBENT_TODO_NAME ||
+            identity.packageName === PI_INCUMBENT_QUESTIONS_NAME) &&
           !knownPaths.has(key)
         )
           incumbents.push({
             ...candidate,
             ...identity,
-            identityLimitation: `Installed manifest at ${path} identifies ${PI_INCUMBENT_TODO_NAME}, but no configured settings source maps to this directory.`,
+            identityLimitation: `Installed manifest at ${path} identifies ${identity.packageName}, but no configured settings source maps to this directory.`,
           });
       }
       // Read a linked package's manifest, but do not walk links outside the
@@ -618,6 +861,7 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
       );
     }
   }
+  let plannedQuestionRemovals: PiConfiguredPackage[] = [];
   let subagentsConfigContent: string | undefined;
   let mcpContent: string | undefined;
   try {
@@ -641,6 +885,13 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
       );
     if (incumbentBlockers.length > 0)
       throw new Error(incumbentBlockers.join('\n'));
+    const userPackages = resolvePiConfiguredPackages(
+      userSettings,
+      'user',
+      options,
+    );
+    blockers.push(...piQuestionIdentityBlockers(userPackages));
+    plannedQuestionRemovals = findPiIncumbentQuestions(userPackages);
     subagentsConfigContent = `${JSON.stringify(
       mergePiSubagentsConfig(readJsonObject(paths.subagentsConfigPath)),
       null,
@@ -665,16 +916,17 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
   } catch (error) {
     blockers.push(error instanceof Error ? error.message : String(error));
   }
-  const projectIncumbentTodos = findPiIncumbentTodos(projectPackages);
   try {
     // Scan independently so malformed/missing settings cannot hide installed
     // incumbents from status. Inspection failures still block mutation.
-    projectIncumbentTodos.push(
-      ...scanPiProjectInstalledTodos(options, projectPackages),
+    projectPackages.push(
+      ...scanPiProjectInstalledIncumbents(options, projectPackages),
     );
   } catch (error) {
     blockers.push(error instanceof Error ? error.message : String(error));
   }
+  blockers.push(...piQuestionIdentityBlockers(projectPackages));
+  const projectIncumbentTodos = findPiIncumbentTodos(projectPackages);
   for (const incumbent of projectIncumbentTodos) {
     const location = incumbent.unmappedSource
       ? 'was found in the project install roots'
@@ -689,6 +941,8 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
       `Incumbent Pi task-list package ${incumbent.source} ${location} and conflicts with @thoth-agents/pi-todo. ${recovery}`,
     );
   }
+  for (const incumbent of findPiIncumbentQuestions(projectPackages))
+    blockers.push(piProjectQuestionConflict(incumbent));
   for (const path of [...paths.projectAgentRoots, ...paths.projectMcpPaths]) {
     if (existsSync(path))
       diagnostics.push(
@@ -719,6 +973,13 @@ export function buildPiSetupPlan(options: PiSetupOptions = {}): PiSetupPlan {
         args: ['install', firstPartySource, '--no-approve'],
       },
     },
+    ...plannedQuestionRemovals.map(({ source }) => ({
+      kind: 'preflight' as const,
+      description:
+        'Remove the conflicting user question provider through native Pi removal after root-package verification',
+      target: source,
+      command: { command: 'pi', args: ['remove', source, '--no-approve'] },
+    })),
     ...getPiExternalPackageSpecs(options).map((pkg) => ({
       kind: 'package' as const,
       description: `Install and verify Pi package ${pkg.source}`,
@@ -975,23 +1236,30 @@ export function isThothPackageLocation(
   }
 }
 
+function configuredPackageManifest(
+  candidate: PiConfiguredPackage,
+): Record<string, unknown> | undefined {
+  if (!candidate.installedPath) return undefined;
+  try {
+    const manifest: unknown = JSON.parse(
+      readFileSync(join(candidate.installedPath, 'package.json'), 'utf8'),
+    );
+    return isRecord(manifest) ? manifest : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function configuredPackageIdentity(candidate: PiConfiguredPackage): {
   packageName: string;
   packageVersion: string;
 } {
-  if (!candidate.installedPath) return { packageName: '', packageVersion: '' };
-  try {
-    const manifest = JSON.parse(
-      readFileSync(join(candidate.installedPath, 'package.json'), 'utf8'),
-    ) as { name?: unknown; version?: unknown };
-    return {
-      packageName: typeof manifest.name === 'string' ? manifest.name : '',
-      packageVersion:
-        typeof manifest.version === 'string' ? manifest.version : '',
-    };
-  } catch {
-    return { packageName: '', packageVersion: '' };
-  }
+  const manifest = configuredPackageManifest(candidate);
+  return {
+    packageName: typeof manifest?.name === 'string' ? manifest.name : '',
+    packageVersion:
+      typeof manifest?.version === 'string' ? manifest.version : '',
+  };
 }
 
 export function getPiFirstPartyPackages(
@@ -1033,6 +1301,11 @@ function defaultCommandExecutor(
     windowsHide: true,
     encoding: 'utf8',
     timeout: PI_COMMAND_TIMEOUT_MS,
+    // Like the SDK's cross-spawn, support npm/pnpm's Windows command shims
+    // for the offline metadata queries used by package resolution.
+    shell:
+      process.platform === 'win32' &&
+      /^(npm|pnpm)(\.cmd)?$/i.test(basename(executable)),
   });
   return {
     exitCode: result.status,
@@ -1104,13 +1377,28 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
       ...plan.options.receiptOptions,
     };
     const receipt = readPiPackageReceipt(receiptOptions);
-    const configuredBefore = parsePiPackageList(before.stdout);
+    let configuredBefore: PiConfiguredPackage[];
+    try {
+      configuredBefore = resolvePiListedPackages(before.stdout, plan.options);
+    } catch (error) {
+      return {
+        success: false,
+        changed,
+        diagnostics,
+        error: error instanceof Error ? error.message : String(error),
+        failedStep: 'preflight',
+        installedPackages,
+      };
+    }
     const incumbentDelegation = findPiIncumbentDelegation(configuredBefore);
     let configuredProjectPackages: PiConfiguredPackage[];
     try {
       configuredProjectPackages = readPiProjectPackages(plan.options);
       configuredProjectPackages.push(
-        ...scanPiProjectInstalledTodos(plan.options, configuredProjectPackages),
+        ...scanPiProjectInstalledIncumbents(
+          plan.options,
+          configuredProjectPackages,
+        ),
       );
     } catch (error) {
       return {
@@ -1122,6 +1410,38 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
         installedPackages,
       };
     }
+    const projectQuestions = findPiIncumbentQuestions([
+      ...configuredBefore.filter(({ scope }) => scope === 'project'),
+      ...configuredProjectPackages,
+    ]);
+    if (projectQuestions.length > 0) {
+      const recovery = projectQuestions
+        .map(piProjectQuestionConflict)
+        .join('\n');
+      return {
+        success: false,
+        changed,
+        diagnostics,
+        error: recovery,
+        failedStep: 'preflight',
+        installedPackages,
+        manualRecovery: recovery,
+      };
+    }
+    const unpreviewedQuestions = piUnpreviewedQuestionRecovery(
+      plan,
+      findPiIncumbentQuestions(configuredBefore),
+    );
+    if (unpreviewedQuestions)
+      return {
+        success: false,
+        changed,
+        diagnostics,
+        error: unpreviewedQuestions,
+        failedStep: 'preflight',
+        installedPackages,
+        manualRecovery: unpreviewedQuestions,
+      };
     const incumbentTodos = findPiIncumbentTodos([
       ...configuredBefore,
       ...configuredProjectPackages,
@@ -1181,6 +1501,21 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
       throw new Error(
         `First-party Pi package ownership conflict: ${ownership.reason ?? ownership.state}`,
       );
+
+    const identityRecovery = piQuestionIdentityBlockers(
+      [...configuredBefore, ...configuredProjectPackages],
+      plan,
+    ).join('\n');
+    if (identityRecovery)
+      return {
+        success: false,
+        changed,
+        diagnostics,
+        error: identityRecovery,
+        failedStep: 'preflight',
+        installedPackages,
+        manualRecovery: identityRecovery,
+      };
 
     const installed = execute('pi', ['install', desiredSource, '--no-approve']);
     if (installed.exitCode !== 0)
@@ -1317,6 +1652,81 @@ export function applyPiSetup(plan: PiSetupPlan): PiApplyResult {
     if (!migration.success)
       throw new Error(migration.error ?? 'Pi legacy migration failed.');
     changed.push(...migration.changed);
+
+    const questionListing = execute('pi', ['list', '--no-approve']);
+    if (questionListing.exitCode !== 0)
+      throw new Error(
+        `Unable to inspect conflicting Pi question packages: ${questionListing.stderr.trim() || 'pi list unavailable'}`,
+      );
+    const questionPackages = resolvePiListedPackages(
+      questionListing.stdout,
+      plan.options,
+    );
+    const freshProjectQuestions = findPiIncumbentQuestions(
+      questionPackages,
+    ).filter(({ scope }) => scope === 'project');
+    const questionRecovery =
+      freshProjectQuestions.length > 0
+        ? freshProjectQuestions.map(piProjectQuestionConflict).join('\n')
+        : (piUnpreviewedQuestionRecovery(
+            plan,
+            findPiIncumbentQuestions(questionPackages),
+          ) ??
+          (piQuestionIdentityBlockers(questionPackages, plan).join('\n') ||
+            undefined));
+    if (questionRecovery) {
+      manualRecovery = questionRecovery;
+      throw new Error(questionRecovery);
+    }
+    const incumbentQuestions = findPiIncumbentQuestions(
+      questionPackages,
+    ).filter(({ scope }) => scope === 'user');
+    for (const incumbent of incumbentQuestions) {
+      // Authorize each actual command as well as the batch precheck: identity
+      // reads can race, but no removal source may escape the approved preview.
+      const unpreviewed = piUnpreviewedQuestionRecovery(plan, [incumbent]);
+      if (unpreviewed) {
+        manualRecovery = unpreviewed;
+        throw new Error(unpreviewed);
+      }
+      const removed = execute('pi', [
+        'remove',
+        incumbent.source,
+        '--no-approve',
+      ]);
+      if (removed.exitCode !== 0)
+        throw new Error(
+          `Failed to remove conflicting Pi question package ${incumbent.source}: ${removed.stderr.trim() || 'unknown Pi error'}`,
+        );
+    }
+    if (incumbentQuestions.length > 0) {
+      const afterRemoval = execute('pi', ['list', '--no-approve']);
+      const remaining = resolvePiListedPackages(
+        afterRemoval.stdout,
+        plan.options,
+      );
+      const identityRecovery = piQuestionIdentityBlockers(remaining, plan).join(
+        '\n',
+      );
+      if (identityRecovery) {
+        manualRecovery = identityRecovery;
+        throw new Error(identityRecovery);
+      }
+      if (
+        afterRemoval.exitCode !== 0 ||
+        findPiIncumbentQuestions(remaining).some(
+          ({ scope }) => scope === 'user',
+        ) ||
+        remaining.some(
+          ({ scope, source }) =>
+            scope === 'user' &&
+            incumbentQuestions.some((incumbent) => incumbent.source === source),
+        )
+      )
+        throw new Error(
+          'Pi did not verify removal of the conflicting user question package; rerun pi list and remove it before retrying setup.',
+        );
+    }
 
     for (const pkg of getPiExternalPackageSpecs(plan.options)) {
       const beforeInstall = execute('pi', ['list', '--no-approve']);

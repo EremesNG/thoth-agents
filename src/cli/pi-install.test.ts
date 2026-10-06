@@ -363,7 +363,7 @@ describe('Pi setup', () => {
       'npm:@upstash/context7-pi@>=0.1.2',
       'npm:pi-web-access@>=0.27.0',
       'npm:pi-mcp-adapter@>=2.32.1',
-      'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+      'npm:@thoth-agents/pi-questions-user@>=0.1.0',
       'npm:@thoth-agents/pi-todo@>=0.1.0',
     ]);
     expect(PI_MINIMUM_VERSION).toBe('0.99.0');
@@ -398,7 +398,994 @@ describe('Pi setup', () => {
       installedPackages: [],
     });
     expect(calls).toBe(0);
+    expect(
+      plan.items.some(({ command }) => command?.args[0] === 'remove'),
+    ).toBe(false);
     expect(existsSync(plan.paths.piRoot)).toBe(false);
+  });
+
+  test.each([
+    ['npm:@juicesharp/rpiv-ask-user-question@>=2.9.0', 'managed-real'],
+    ['./renamed-questions', 'local'],
+    [
+      'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+      'legacy-global',
+    ],
+    [
+      'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+      'managed',
+    ],
+    ['npm:operator-questions@2.9.0', 'legacy-global'],
+    [
+      'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+      'legacy-global',
+      'pnpm',
+    ],
+    [
+      'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+      'legacy-global',
+      'bun',
+    ],
+    ['git:https://example.test/operator/renamed-questions.git', 'git'],
+  ])('previews and applies the same native question-provider removal (%s, %s)', (source, layout, manager = 'npm') => {
+    const paths = fixture();
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const globalNpmRoot =
+      manager === 'bun'
+        ? join(paths.homeDir, 'bun', 'install', 'global', 'node_modules')
+        : join(paths.homeDir, 'global', 'node_modules');
+    const oldPackagePath =
+      layout === 'legacy-global'
+        ? join(globalNpmRoot, 'operator-questions')
+        : layout === 'managed'
+          ? join(
+              dirname(settingsPath),
+              'npm',
+              'node_modules',
+              'operator-questions',
+            )
+          : layout === 'managed-real'
+            ? join(
+                dirname(settingsPath),
+                'npm',
+                'node_modules',
+                '@juicesharp',
+                'rpiv-ask-user-question',
+              )
+            : layout === 'git'
+              ? join(
+                  dirname(settingsPath),
+                  'git',
+                  'example.test',
+                  'operator',
+                  'renamed-questions',
+                )
+              : join(dirname(settingsPath), 'renamed-questions');
+    mkdirSync(oldPackagePath, { recursive: true });
+    writeFileSync(
+      join(oldPackagePath, 'package.json'),
+      JSON.stringify({
+        name: '@juicesharp/rpiv-ask-user-question',
+        version: '2.9.0',
+      }),
+    );
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        packages: [{ source, extensions: [] }],
+        npmCommand: [manager],
+      }),
+    );
+    const externalLines = externalPackageList(paths.homeDir);
+    const unrelated = externalPackageFixture(
+      '@vendor/rpiv-ask-user-question-extra',
+      '1.0.0',
+    );
+    const questionsIndex = PI_PACKAGE_SPECS.findIndex(
+      ({ id }) => id === 'ask-user-question',
+    );
+    let oldInstalled = true;
+    let questionsInstalled = false;
+    let rootInstalled = false;
+    let rootVerified = false;
+    const mutations: string[][] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      verifyFirstParty: () => {
+        rootVerified = true;
+        return paths.verifyFirstParty();
+      },
+      commandExecutor: (command, args) => {
+        if (command === manager) {
+          const metadataArgs =
+            manager === 'pnpm'
+              ? ['list', '-g', '--json']
+              : manager === 'bun'
+                ? ['pm', 'bin', '-g']
+                : ['root', '-g'];
+          expect(args).toEqual(metadataArgs);
+          return {
+            exitCode: 0,
+            stdout:
+              manager === 'pnpm'
+                ? JSON.stringify([
+                    {
+                      dependencies: {
+                        'operator-questions': { path: oldPackagePath },
+                      },
+                    },
+                  ])
+                : manager === 'bun'
+                  ? join(paths.homeDir, 'bun', 'bin')
+                  : globalNpmRoot,
+            stderr: '',
+          };
+        }
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+        if (args[0] === 'remove') {
+          expect(rootVerified).toBe(true);
+          mutations.push([...args]);
+          oldInstalled = false;
+        }
+        if (args[0] === 'install') {
+          mutations.push([...args]);
+          if (args[1] === 'npm:thoth-agents@0.3.12') rootInstalled = true;
+          if (args[1] === 'npm:@thoth-agents/pi-questions-user@>=0.1.0')
+            questionsInstalled = true;
+        }
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: [
+              'User packages:',
+              ...(rootInstalled
+                ? ['  npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
+                : []),
+              ...(oldInstalled ? [`  ${source}`, `    ${oldPackagePath}`] : []),
+              '  npm:@vendor/rpiv-ask-user-question-extra@1.0.0',
+              `    ${unrelated.installedPath}`,
+              ...externalLines.filter(
+                (_, index) =>
+                  questionsInstalled ||
+                  Math.floor(index / 2) !== questionsIndex,
+              ),
+            ].join('\n'),
+            stderr: '',
+          };
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+    const removalPreview = plan.items.flatMap(({ command }) =>
+      command?.args[0] === 'remove' ? [command.args] : [],
+    );
+    expect(removalPreview).toEqual([['remove', source, '--no-approve']]);
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: true,
+      installedPackages: expect.arrayContaining([
+        'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+      ]),
+    });
+    expect(mutations.filter(([action]) => action === 'remove')).toEqual(
+      removalPreview,
+    );
+    expect(mutations).toEqual([
+      ['install', 'npm:thoth-agents@0.3.12', '--no-approve'],
+      ['remove', source, '--no-approve'],
+      [
+        'install',
+        'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+        '--no-approve',
+      ],
+    ]);
+  });
+
+  test.each([
+    'before mutation',
+    'after root verification',
+  ])('blocks an unpreviewed user question provider discovered %s', (arrival) => {
+    const paths = fixture();
+    const source =
+      'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0';
+    const installedPath = join(paths.homeDir, 'late-questions');
+    mkdirSync(installedPath);
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({
+        name: '@juicesharp/rpiv-ask-user-question',
+        version: '2.9.0',
+      }),
+    );
+    let rootInstalled = false;
+    let incumbentPresent = arrival === 'before mutation';
+    const mutations: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      verifyFirstParty: () => {
+        incumbentPresent = true;
+        return paths.verifyFirstParty();
+      },
+      commandExecutor: (command, args) => {
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+        if (command === 'npm')
+          return { exitCode: 1, stdout: '', stderr: 'no global metadata' };
+        if (args[0] === 'install' || args[0] === 'remove') {
+          mutations.push(args.join(' '));
+          rootInstalled = true;
+        }
+        return {
+          exitCode: 0,
+          stdout:
+            args[0] === 'list'
+              ? [
+                  'User packages:',
+                  ...(rootInstalled
+                    ? ['  npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
+                    : []),
+                  ...(incumbentPresent
+                    ? [`  ${source}`, `    ${installedPath}`]
+                    : []),
+                ].join('\n')
+              : '',
+          stderr: '',
+        };
+      },
+    });
+    expect(plan.ready).toBe(true);
+    expect(
+      plan.items.some(({ command }) => command?.args[0] === 'remove'),
+    ).toBe(false);
+
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      error: expect.stringContaining('not previewed'),
+      manualRecovery: expect.stringContaining(
+        `pi remove ${source} --no-approve`,
+      ),
+    });
+    expect(mutations).toEqual(
+      arrival === 'before mutation'
+        ? []
+        : ['install npm:thoth-agents@0.3.12 --no-approve'],
+    );
+    expect(existsSync(plan.paths.mcpConfigPath)).toBe(false);
+  });
+
+  test.each([
+    ['before mutation', 'unreadable'],
+    ['after root verification', 'unreadable'],
+    ['before mutation', 'nameless'],
+    ['after root verification', 'nameless'],
+  ])('blocks a previewed local question provider whose manifest identity is lost (%s, %s)', (arrival, manifestState) => {
+    const paths = fixture();
+    const source = './operator-questions';
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const installedPath = join(dirname(settingsPath), 'operator-questions');
+    const manifestPath = join(installedPath, 'package.json');
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        name: '@juicesharp/rpiv-ask-user-question',
+        version: '2.9.0',
+      }),
+    );
+    writeFileSync(settingsPath, JSON.stringify({ packages: [source] }));
+    const mutations: string[] = [];
+    let rootInstalled = false;
+    const lostIdentity = manifestState === 'unreadable' ? '{broken' : '{}';
+    const plan = buildPiSetupPlan({
+      ...paths,
+      verifyFirstParty: () => {
+        if (arrival === 'after root verification')
+          writeFileSync(manifestPath, lostIdentity);
+        return paths.verifyFirstParty();
+      },
+      commandExecutor: (command, args) => {
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (command === 'npm') return { exitCode: 1, stdout: '', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+        if (args[0] === 'install' || args[0] === 'remove') {
+          mutations.push(args.join(' '));
+          rootInstalled = true;
+        }
+        return {
+          exitCode: 0,
+          stdout:
+            args[0] === 'list'
+              ? [
+                  'User packages:',
+                  `  ${source}`,
+                  `    ${installedPath}`,
+                  ...(rootInstalled
+                    ? ['  npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
+                    : []),
+                ].join('\n')
+              : '',
+          stderr: '',
+        };
+      },
+    });
+    expect(plan.ready).toBe(true);
+    if (arrival === 'before mutation')
+      writeFileSync(manifestPath, lostIdentity);
+
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      error: expect.stringContaining('manifest identity'),
+      manualRecovery: expect.stringContaining(
+        `pi remove ${source} --no-approve`,
+      ),
+    });
+    expect(mutations).toEqual(
+      arrival === 'before mutation'
+        ? []
+        : ['install npm:thoth-agents@0.3.12 --no-approve'],
+    );
+  });
+
+  test.each([
+    ['npm', 'install'],
+    ['npx', '--yes', 'npm'],
+    ['npm', 'exec', '--', 'npm'],
+    ['operator-wrapper', 'npm'],
+    ['operator-wrapper'],
+    ['npm install'],
+    ['npx --yes /tools/npm'],
+    ['npm install C:\\tools\\npm.cmd'],
+    ['npx --yes && /tools/npm'],
+    ['npm install; /tools/npm'],
+  ])('never executes an unsafe configured metadata command in dry-run (%j)', (...npmCommand) => {
+    const paths = fixture();
+    const source = 'npm:operator-questions@2.9.0';
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = JSON.stringify({ packages: [source], npmCommand });
+    writeFileSync(settingsPath, settings);
+    const calls: string[][] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor: (command, args) => {
+        calls.push([command, ...args]);
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    expect(calls).toEqual([]);
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toContain(source);
+    expect(plan.blockers.join('\n')).toContain('manifest identity');
+    expect(applyPiSetup(plan)).toMatchObject({ success: false, changed: [] });
+    expect(calls).toEqual([]);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+  });
+
+  test.each([
+    { npmCommand: null },
+    { npmCommand: 'npm install' },
+    { npmCommand: [] },
+    { npmCommand: ['npm', false] },
+  ])('does not execute malformed npmCommand configuration in dry-run (%j)', (settings) => {
+    const paths = fixture();
+    const source = 'npm:operator-questions@2.9.0';
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ ...settings, packages: [source] }),
+    );
+    const calls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor: (command) => {
+        calls.push(command);
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    expect(calls).toEqual([]);
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toContain(source);
+  });
+
+  test.each([
+    ['npm', 'bare'],
+    ['npm', 'path'],
+    ['npm', 'path with spaces'],
+    ['pnpm', 'bare'],
+    ['pnpm', 'path'],
+    ['bun', 'bare'],
+    ['bun', 'path'],
+  ])('uses only fixed read-only metadata argv in dry-run (%s, %s)', (manager, form) => {
+    const paths = fixture();
+    const command =
+      form === 'bare'
+        ? manager
+        : join(
+            paths.homeDir,
+            form === 'path' ? 'tools' : 'tools with spaces',
+            `${manager}.cmd`,
+          );
+    if (form === 'path with spaces') {
+      mkdirSync(dirname(command), { recursive: true });
+      writeFileSync(command, '@echo off');
+    }
+    const source =
+      'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0';
+    const globalRoot =
+      manager === 'bun'
+        ? join(paths.homeDir, 'install', 'global', 'node_modules')
+        : join(paths.homeDir, 'global', 'node_modules');
+    const installedPath = join(globalRoot, 'operator-questions');
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({ name: '@juicesharp/rpiv-ask-user-question' }),
+    );
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ packages: [source], npmCommand: [command] }),
+    );
+    const calls: string[][] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor: (executable, args) => {
+        calls.push([executable, ...args]);
+        return {
+          exitCode: 0,
+          stdout:
+            manager === 'pnpm'
+              ? JSON.stringify([
+                  {
+                    dependencies: {
+                      'operator-questions': { path: installedPath },
+                    },
+                  },
+                ])
+              : manager === 'bun'
+                ? join(paths.homeDir, 'bin')
+                : globalRoot,
+          stderr: '',
+        };
+      },
+    });
+
+    expect(plan.ready).toBe(true);
+    expect(plan.items).toContainEqual(
+      expect.objectContaining({
+        command: { command: 'pi', args: ['remove', source, '--no-approve'] },
+      }),
+    );
+    expect(applyPiSetup(plan)).toMatchObject({ success: true, changed: [] });
+    expect(calls).toEqual([
+      manager === 'pnpm'
+        ? [command, 'list', '-g', '--json']
+        : manager === 'bun'
+          ? [command, 'pm', 'bin', '-g']
+          : [command, 'root', '-g'],
+    ]);
+  });
+
+  test('does not fall back to another metadata command when pnpm cannot locate a package', () => {
+    const paths = fixture();
+    const source = 'npm:operator-questions@2.9.0';
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ packages: [source], npmCommand: ['pnpm'] }),
+    );
+    const calls: string[][] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor: (command, args) => {
+        calls.push([command, ...args]);
+        return { exitCode: 0, stdout: '[{}]', stderr: '' };
+      },
+    });
+
+    expect(calls).toEqual([['pnpm', 'list', '-g', '--json']]);
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toContain(source);
+  });
+
+  test.each([
+    ['user', 'local'],
+    ['project', 'local'],
+    ['user', 'git'],
+    ['project', 'git'],
+    ['user', 'npm'],
+    ['project', 'npm'],
+    ['user', 'npm-alias'],
+    ['project', 'npm-alias'],
+  ] as const)('allows manifest-free prompt resources without question identity blockers (%s, %s)', (scope, layout) => {
+    const paths = fixture();
+    const baseDir =
+      scope === 'user'
+        ? join(paths.homeDir, '.pi', 'agent')
+        : join(paths.cwd, '.pi');
+    const source =
+      layout === 'npm'
+        ? 'npm:operator-prompts@1.0.0'
+        : layout === 'npm-alias'
+          ? 'npm:operator-prompts@npm:@vendor/prompts@1.0.0'
+          : layout === 'git'
+            ? 'git:https://example.test/operator/prompts.git'
+            : './operator-prompts';
+    const installedPath =
+      layout === 'npm' || layout === 'npm-alias'
+        ? join(baseDir, 'npm', 'node_modules', 'operator-prompts')
+        : layout === 'git'
+          ? join(baseDir, 'git', 'example.test', 'operator', 'prompts')
+          : join(baseDir, 'operator-prompts');
+    mkdirSync(join(installedPath, 'prompts'), { recursive: true });
+    writeFileSync(
+      join(installedPath, 'prompts', 'review.md'),
+      'Review this code.',
+    );
+    const settingsPath = join(baseDir, 'settings.json');
+    const settings = JSON.stringify({
+      packages: [{ source, extensions: [], prompts: ['prompts/*.md'] }],
+      npmCommand: ['npx', '--yes', 'npm'],
+    });
+    writeFileSync(settingsPath, settings);
+    const calls: string[][] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor: (command, args) => {
+        calls.push([command, ...args]);
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    expect(plan.blockers).toEqual([]);
+    expect(plan.ready).toBe(true);
+    expect(
+      plan.items.filter(({ command }) => command?.args[0] === 'remove'),
+    ).toEqual([]);
+    expect(applyPiSetup(plan)).toMatchObject({ success: true, changed: [] });
+    expect(calls).toEqual([]);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+  });
+
+  test.each([
+    { scope: 'user', reportInstalledPath: true },
+    { scope: 'project', reportInstalledPath: true },
+    { scope: 'user', reportInstalledPath: false },
+    { scope: 'project', reportInstalledPath: false },
+  ] as const)('allows a configured local source containing an npm prefix in preview and apply ($scope, installedPath=$reportInstalledPath)', ({
+    scope,
+    reportInstalledPath,
+  }) => {
+    const paths = fixture();
+    const source = './operator npm:prompts';
+    const baseDir =
+      scope === 'user'
+        ? join(paths.homeDir, '.pi', 'agent')
+        : join(paths.cwd, '.pi');
+    const installedPath = join(
+      baseDir,
+      process.platform === 'win32'
+        ? 'operator-prompts'
+        : 'operator npm:prompts',
+    );
+    mkdirSync(join(installedPath, 'prompts'), { recursive: true });
+    const promptPath = join(installedPath, 'prompts', 'review.md');
+    writeFileSync(promptPath, 'Review this code.');
+    const settingsPath = join(baseDir, 'settings.json');
+    const settings = JSON.stringify({
+      packages: [{ source, extensions: [], prompts: ['prompts/*.md'] }],
+    });
+    writeFileSync(settingsPath, settings);
+    const externalLines = externalPackageList(paths.homeDir);
+    let rootInstalled = false;
+    const calls: string[][] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        calls.push([command, ...args]);
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+        if (args[0] === 'install' && args[1] === 'npm:thoth-agents@0.3.12')
+          rootInstalled = true;
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: [
+              'User packages:',
+              ...(rootInstalled
+                ? ['  npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
+                : []),
+              ...externalLines,
+              ...(scope === 'project' ? ['Project packages:'] : []),
+              `  ${source} (filtered)`,
+              ...(reportInstalledPath ? [`    ${installedPath}`] : []),
+            ].join('\n'),
+            stderr: '',
+          };
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    expect(plan.ready).toBe(true);
+    expect(plan.blockers).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(applyPiSetup(plan)).toMatchObject({ success: true });
+    expect(calls.some(([, action]) => action === 'remove')).toBe(false);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+    expect(readFileSync(promptPath, 'utf8')).toBe('Review this code.');
+  });
+
+  test.each([
+    'npm:operator-prompts@npm:',
+    'npm:operator-prompts@npm:@unknown-scope',
+  ])('blocks an npm alias whose real target cannot be determined (%s)', (source) => {
+    const paths = fixture();
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const installedPath = join(
+      dirname(settingsPath),
+      'npm',
+      'node_modules',
+      'operator-prompts',
+    );
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify({ packages: [source] }));
+    const calls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor: (command) => {
+        calls.push(command);
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toContain(source);
+    expect(plan.blockers.join('\n')).toContain('manifest identity');
+    expect(calls).toEqual([]);
+  });
+
+  test.each([
+    ['user', 'local'],
+    ['project', 'local'],
+    ['user', 'git'],
+    ['project', 'git'],
+  ] as const)('allows a readable nameless resource manifest despite a question-like source (%s, %s)', (scope, layout) => {
+    const paths = fixture();
+    const baseDir =
+      scope === 'user'
+        ? join(paths.homeDir, '.pi', 'agent')
+        : join(paths.cwd, '.pi');
+    const source =
+      layout === 'git'
+        ? 'git:https://example.test/operator/rpiv-ask-user-question.git'
+        : './rpiv-ask-user-question';
+    const installedPath =
+      layout === 'git'
+        ? join(
+            baseDir,
+            'git',
+            'example.test',
+            'operator',
+            'rpiv-ask-user-question',
+          )
+        : join(baseDir, 'rpiv-ask-user-question');
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({ pi: { prompts: ['./prompts'] } }),
+    );
+    writeFileSync(
+      join(baseDir, 'settings.json'),
+      JSON.stringify({ packages: [source] }),
+    );
+    const calls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor: (command) => {
+        calls.push(command);
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    expect(plan.blockers).toEqual([]);
+    expect(plan.ready).toBe(true);
+    expect(
+      plan.items.filter(({ command }) => command?.args[0] === 'remove'),
+    ).toEqual([]);
+    expect(applyPiSetup(plan)).toMatchObject({ success: true, changed: [] });
+    expect(calls).toEqual([]);
+  });
+
+  test('previews a blocker when an npm alias manifest cannot be read', () => {
+    const paths = fixture();
+    const source =
+      'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0';
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const installedPath = join(
+      dirname(settingsPath),
+      'npm',
+      'node_modules',
+      'operator-questions',
+    );
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(join(installedPath, 'package.json'), '{broken');
+    writeFileSync(settingsPath, JSON.stringify({ packages: [source] }));
+    const calls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command) => {
+        calls.push(command);
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toContain(source);
+    expect(plan.blockers.join('\n')).toContain('manifest identity');
+    expect(applyPiSetup(plan)).toMatchObject({ success: false, changed: [] });
+    expect(calls).toEqual([]);
+  });
+
+  test.each([
+    'failed',
+    'unverified',
+  ])('stops before replacement installation when native question removal is %s', (failure) => {
+    const paths = fixture();
+    const source = 'npm:@juicesharp/rpiv-ask-user-question@2.9.0';
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const installedPath = join(
+      dirname(settingsPath),
+      'npm',
+      'node_modules',
+      '@juicesharp',
+      'rpiv-ask-user-question',
+    );
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({
+        name: '@juicesharp/rpiv-ask-user-question',
+        version: '2.9.0',
+      }),
+    );
+    writeFileSync(settingsPath, JSON.stringify({ packages: [source] }));
+    let rootInstalled = false;
+    const mutations: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        if (command === 'node')
+          return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
+        if (args[0] === '--version')
+          return { exitCode: 0, stdout: '1.0.2', stderr: '' };
+        if (args[0] === 'list')
+          return {
+            exitCode: 0,
+            stdout: [
+              'User packages:',
+              ...(rootInstalled
+                ? ['  npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
+                : []),
+              `  ${source}`,
+            ].join('\n'),
+            stderr: '',
+          };
+        if (args[0] === 'install' || args[0] === 'remove')
+          mutations.push(args.join(' '));
+        if (args[0] === 'install') rootInstalled = true;
+        return {
+          exitCode: args[0] === 'remove' && failure === 'failed' ? 1 : 0,
+          stdout: '',
+          stderr: failure === 'failed' ? 'native removal failed' : '',
+        };
+      },
+    });
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      failedStep: 'package',
+      error: expect.stringContaining(
+        failure === 'failed' ? 'Failed to remove' : 'did not verify removal',
+      ),
+      installedPackages: ['npm:thoth-agents@0.3.12'],
+    });
+    expect(mutations).toEqual([
+      'install npm:thoth-agents@0.3.12 --no-approve',
+      `remove ${source} --no-approve`,
+    ]);
+    expect(existsSync(plan.paths.mcpConfigPath)).toBe(false);
+  });
+
+  test.each([
+    ['npm:@juicesharp/rpiv-ask-user-question@>=2.9.0', 'managed-real'],
+    ['./renamed-questions', 'local'],
+    [
+      'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+      'managed',
+    ],
+    [
+      'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0',
+      'legacy-global',
+    ],
+  ])('previews native question-provider removal without mutation (%s, %s)', (source, layout) => {
+    const paths = fixture();
+    const agentDir = join(paths.homeDir, '.pi', 'agent');
+    const globalNpmRoot = join(paths.homeDir, 'global', 'node_modules');
+    const installedPath =
+      layout === 'managed-real'
+        ? join(
+            agentDir,
+            'npm',
+            'node_modules',
+            '@juicesharp',
+            'rpiv-ask-user-question',
+          )
+        : layout === 'managed'
+          ? join(agentDir, 'npm', 'node_modules', 'operator-questions')
+          : layout === 'legacy-global'
+            ? join(globalNpmRoot, 'operator-questions')
+            : join(agentDir, 'renamed-questions');
+    mkdirSync(installedPath, { recursive: true });
+    const manifest = JSON.stringify({
+      name: '@juicesharp/rpiv-ask-user-question',
+      version: '2.9.0',
+    });
+    writeFileSync(join(installedPath, 'package.json'), manifest);
+    const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+    const settings = JSON.stringify({
+      packages: [{ source, extensions: [] }],
+      theme: 'operator',
+    });
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, settings);
+    const calls: string[][] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      dryRun: true,
+      commandExecutor: (command, args) => {
+        calls.push([command, ...args]);
+        return { exitCode: 0, stdout: globalNpmRoot, stderr: '' };
+      },
+    });
+    expect(plan.ready).toBe(true);
+    expect(plan.items).toContainEqual(
+      expect.objectContaining({
+        command: { command: 'pi', args: ['remove', source, '--no-approve'] },
+      }),
+    );
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: true,
+      changed: [],
+      installedPackages: [],
+    });
+    expect(calls).toEqual(
+      layout === 'legacy-global' ? [['npm', 'root', '-g']] : [],
+    );
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+    expect(readFileSync(join(installedPath, 'package.json'), 'utf8')).toBe(
+      manifest,
+    );
+  });
+
+  test.each([
+    'npm',
+    'npm-alias',
+    'local',
+    'unmapped',
+  ])('blocks a project question-provider conflict without granting trust (%s)', (kind) => {
+    const paths = fixture();
+    const source =
+      kind === 'npm'
+        ? 'npm:@juicesharp/rpiv-ask-user-question@2.9.0'
+        : kind === 'npm-alias'
+          ? 'npm:operator-questions@npm:@juicesharp/rpiv-ask-user-question@2.9.0'
+          : './operator-questions';
+    const installedPath =
+      kind === 'local'
+        ? join(paths.cwd, '.pi', 'operator-questions')
+        : kind === 'npm-alias'
+          ? join(paths.cwd, '.pi', 'npm', 'node_modules', 'operator-questions')
+          : join(
+              paths.cwd,
+              '.pi',
+              'npm',
+              'node_modules',
+              '@juicesharp',
+              'rpiv-ask-user-question',
+            );
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({
+        name: '@juicesharp/rpiv-ask-user-question',
+        version: '2.9.0',
+      }),
+    );
+    if (kind !== 'unmapped')
+      writeFileSync(
+        join(paths.cwd, '.pi', 'settings.json'),
+        JSON.stringify({ packages: [{ source }] }),
+      );
+    const calls: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command) => {
+        calls.push(command);
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers.join('\n')).toContain('question package');
+    expect(plan.blockers.join('\n')).toContain('--local --approve');
+    expect(
+      plan.items.some(({ command }) => command?.args[0] === 'remove'),
+    ).toBe(false);
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      failedStep: 'preflight',
+      changed: [],
+      installedPackages: [],
+    });
+    expect(calls).toEqual([]);
+  });
+
+  test('rechecks project question conflicts after preview and blocks before native mutation', () => {
+    const paths = fixture();
+    const mutations: string[] = [];
+    const plan = buildPiSetupPlan({
+      ...paths,
+      commandExecutor: (command, args) => {
+        if (args[0] === 'install' || args[0] === 'remove')
+          mutations.push(args.join(' '));
+        return {
+          exitCode: 0,
+          stdout:
+            command === 'node'
+              ? 'v22.19.0'
+              : args[0] === '--version'
+                ? '1.0.2'
+                : 'No packages installed.',
+          stderr: '',
+        };
+      },
+    });
+    expect(plan.ready).toBe(true);
+    const settingsPath = join(paths.cwd, '.pi', 'settings.json');
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        packages: ['npm:@juicesharp/rpiv-ask-user-question@2.9.0'],
+      }),
+    );
+    expect(applyPiSetup(plan)).toMatchObject({
+      success: false,
+      failedStep: 'preflight',
+      changed: [],
+      installedPackages: [],
+      manualRecovery: expect.stringContaining('--local --approve'),
+    });
+    expect(mutations).toEqual([]);
+    expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
   });
 
   test('uses and validates an explicit local delegation runtime without npm fallback', () => {
@@ -550,6 +1537,20 @@ describe('Pi setup', () => {
       packages,
       subagents: { disableBuiltins: false, operatorSetting: 'preserve' },
     };
+    for (const source of packages) {
+      const name = source.slice(4).replace(/@[^@/]+$/, '');
+      const installedPath = join(
+        dirname(settingsPath),
+        'npm',
+        'node_modules',
+        name,
+      );
+      mkdirSync(installedPath, { recursive: true });
+      writeFileSync(
+        join(installedPath, 'package.json'),
+        JSON.stringify({ name, version: '1.0.0' }),
+      );
+    }
     const subagentsConfigPath = join(
       paths.homeDir,
       '.pi',
@@ -1536,6 +2537,11 @@ describe('Pi setup', () => {
 
   test('rejects installed package evidence with the expected name at the wrong version', () => {
     const paths = fixture();
+    const externalLines = externalPackageList(
+      paths.homeDir,
+      { delegation: '0.0.1' },
+      { delegation: 'npm:@thoth-agents/pi-subagents@0.0.1' },
+    );
     let firstPartyInstalled = false;
     const plan = buildPiSetupPlan({
       ...paths,
@@ -1551,9 +2557,7 @@ describe('Pi setup', () => {
               ...(firstPartyInstalled
                 ? ['npm:thoth-agents@0.3.12', `    ${paths.packageRoot}`]
                 : []),
-              ...PI_PACKAGE_SPECS.map(
-                ({ packageName }) => `npm:${packageName}@0.0.1`,
-              ),
+              ...externalLines,
             ].join('\n'),
             stderr: '',
           };
@@ -1583,6 +2587,17 @@ describe('Pi setup', () => {
       ],
     },
     {
+      id: 'ask-user-question' as const,
+      failedSource: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+      installedPackages: [
+        'npm:thoth-agents@0.3.12',
+        'npm:@thoth-agents/pi-subagents@>=1.0.0',
+        'npm:@upstash/context7-pi@>=0.1.2',
+        'npm:pi-web-access@>=0.27.0',
+        'npm:pi-mcp-adapter@>=2.32.1',
+      ],
+    },
+    {
       id: 'todo' as const,
       failedSource: 'npm:@thoth-agents/pi-todo@>=0.1.0',
       installedPackages: [
@@ -1591,7 +2606,7 @@ describe('Pi setup', () => {
         'npm:@upstash/context7-pi@>=0.1.2',
         'npm:pi-web-access@>=0.27.0',
         'npm:pi-mcp-adapter@>=2.32.1',
-        'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+        'npm:@thoth-agents/pi-questions-user@>=0.1.0',
       ],
     },
   ])('stops before managed resources when $id cannot be individually verified', ({
@@ -1642,11 +2657,29 @@ describe('Pi setup', () => {
     ).toBe(true);
   });
 
-  test('rejects malformed list output that only embeds the pinned source', () => {
+  test.each([
+    'plain',
+    'scoped',
+    'mismatched-inventory',
+  ])('rejects malformed list output that only embeds the pinned source before mutation (%s)', (layout) => {
     const paths = fixture();
+    const malformedSource = `malformed ${PI_PACKAGE_SPECS[0].source} evidence`;
+    const installedPath = join(paths.homeDir, 'reported-package');
+    if (layout === 'mismatched-inventory') {
+      const settingsPath = join(paths.homeDir, '.pi', 'agent', 'settings.json');
+      mkdirSync(dirname(settingsPath), { recursive: true });
+      writeFileSync(
+        settingsPath,
+        JSON.stringify({ packages: ['./operator-prompts'] }),
+      );
+      mkdirSync(installedPath);
+    }
+    const mutations: string[][] = [];
     const plan = buildPiSetupPlan({
       ...paths,
       commandExecutor: (command, args) => {
+        if (args[0] === 'install' || args[0] === 'remove')
+          mutations.push([...args]);
         if (command === 'node')
           return { exitCode: 0, stdout: 'v22.19.0', stderr: '' };
         if (args[0] === '--version')
@@ -1654,18 +2687,32 @@ describe('Pi setup', () => {
         if (args[0] === 'list')
           return {
             exitCode: 0,
-            stdout: `malformed ${PI_PACKAGE_SPECS[0].source} evidence`,
+            stdout:
+              layout === 'plain'
+                ? malformedSource
+                : [
+                    'User packages:',
+                    `  ${malformedSource}`,
+                    ...(layout === 'mismatched-inventory'
+                      ? [`    ${installedPath}`]
+                      : []),
+                  ].join('\n'),
             stderr: '',
           };
         return { exitCode: 0, stdout: 'installed', stderr: '' };
       },
     });
 
+    expect(plan.ready).toBe(true);
     expect(applyPiSetup(plan)).toMatchObject({
       success: false,
-      failedStep: 'package',
-      installedPackages: ['npm:thoth-agents@0.3.12'],
+      failedStep: 'preflight',
+      changed: [],
+      installedPackages: [],
+      error: expect.stringContaining('manifest identity'),
     });
+    expect(mutations).toEqual([]);
+    expect(readPiPackageReceipt(paths.receiptOptions).status).toBe('missing');
   });
 
   test('merges j0k3r global delegation settings without overwriting unrelated settings', () => {

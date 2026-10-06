@@ -698,6 +698,93 @@ describe('Pi operations', () => {
   });
 
   test.each([
+    'user',
+    'project',
+  ])('reports the first-party question package as missing and previews safe retired-provider migration (%s)', (scope) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'thoth-pi-question-migration-'));
+    roots.push(homeDir);
+    const source = 'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0';
+    const settingsPath =
+      scope === 'user'
+        ? join(homeDir, '.pi', 'agent', 'settings.json')
+        : join(homeDir, '.pi', 'settings.json');
+    const installedPath = join(
+      dirname(settingsPath),
+      'npm',
+      'node_modules',
+      '@juicesharp',
+      'rpiv-ask-user-question',
+    );
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(
+      join(installedPath, 'package.json'),
+      JSON.stringify({
+        name: '@juicesharp/rpiv-ask-user-question',
+        version: '2.9.0',
+      }),
+    );
+    const settings = JSON.stringify({
+      packages: [{ source, extensions: ['*'] }],
+      theme: 'operator',
+    });
+    writeFileSync(settingsPath, settings);
+    const commands: string[] = [];
+    const context = {
+      cwd: homeDir,
+      homeDir,
+      env: {},
+      piCommandExecutor: (command: string, args: readonly string[]) => {
+        commands.push(`${command} ${args.join(' ')}`);
+        return {
+          exitCode: 0,
+          stdout:
+            command === 'node'
+              ? 'v22.19.0'
+              : args[0] === '--version'
+                ? '1.0.2'
+                : scope === 'user'
+                  ? `User packages:\n  ${source}`
+                  : 'No packages installed.',
+          stderr: '',
+        };
+      },
+    };
+    const status = getPiStatus(context);
+    expect(status.targets).toContainEqual(
+      expect.objectContaining({
+        path: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
+        state: 'missing',
+      }),
+    );
+    for (const plan of [
+      buildPiInstallPlan(context),
+      buildPiUpdatePlan(context),
+    ]) {
+      expect(plan.canApply).toBe(scope === 'user');
+      if (scope === 'user')
+        expect(plan.items).toContainEqual(
+          expect.objectContaining({
+            preview: `pi remove ${source} --no-approve`,
+          }),
+        );
+      else {
+        expect(plan.blockerTargets).toContainEqual(
+          expect.objectContaining({
+            observed: expect.stringContaining(
+              `pi remove ${source} --local --approve`,
+            ),
+          }),
+        );
+        expect(applyPiPlan(plan).applied).toBe(false);
+      }
+    }
+    expect(
+      commands.some((command) => /pi (install|remove)|--approve/.test(command)),
+    ).toBe(false);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(settings);
+  });
+
+  test.each([
     {
       scope: 'User',
       removalCommand: 'pi remove npm:@juicesharp/rpiv-todo --no-approve',
@@ -729,8 +816,8 @@ describe('Pi operations', () => {
     writeFileSync(
       join(askPath, 'package.json'),
       JSON.stringify({
-        name: '@juicesharp/rpiv-ask-user-question',
-        version: '2.9.0',
+        name: '@thoth-agents/pi-questions-user',
+        version: '0.1.0',
       }),
     );
     writeFileSync(
@@ -760,7 +847,7 @@ describe('Pi operations', () => {
           exitCode: 0,
           stdout: [
             'User packages:',
-            '  npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+            '  npm:@thoth-agents/pi-questions-user@>=0.1.0',
             `    ${askPath}`,
             ...(scope === 'User'
               ? ['  npm:@juicesharp/rpiv-todo@>=2.9.0', `    ${todoPath}`]
@@ -778,7 +865,7 @@ describe('Pi operations', () => {
           state: 'missing',
         }),
         expect.objectContaining({
-          path: 'npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+          path: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
           state: 'installed',
           description: expect.stringContaining(
             'does not prove live tool availability',

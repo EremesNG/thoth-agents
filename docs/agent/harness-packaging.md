@@ -30,7 +30,7 @@
   materializes the five specialists for the separate
   `@thoth-agents/pi-subagents` runtime from
   `npm:@thoth-agents/pi-subagents@>=1.0.0`.
-  The root package and all eight `pi-packages/*` members declare Pi SDK peers
+  The root package and all nine `pi-packages/*` members declare Pi SDK peers
   `>=0.99.0`, pin development SDK/TUI dependencies to `1.0.2`, and require Node
   `>=22.19.0`. Features requiring newer Pi APIs are runtime-guarded; the theme's
   tool renderers need Pi `>=1.0.1` and are inert on older supported versions.
@@ -42,7 +42,13 @@
   the `todo` tool, `/todos`, and a current-session widget. It replays branch state,
   publishes full task snapshots through pi-core, and reinjects open tasks before
   agent start, including after compaction. The CLI installs pi-todo as its sixth
-  selected Pi package; pi-core is its library dependency.
+  selected Pi package; pi-core is its library dependency. The first-party
+  `@thoth-agents/pi-questions-user` (`pi-packages/pi-questions-user`) is the fifth
+  selected package, providing root-owned `ask_user_question` with stable ids,
+  single/multi/text/confirm types, recommended options, previews and notes,
+  no fixed question/option maximum, and structured per-id answers. It falls
+  back to sequential select/input without custom UI and reports `no_ui`
+  truthfully when UI is unavailable.
   The delegation fork verifies native registry, rendering, and steering.
   Selected registered deferred/codemode tools can be callable while inactive;
   excluded tools are absent from the child registry.
@@ -162,7 +168,8 @@
   incumbent `pi-subagents` or former `pi-subagents-j0k3r` packages block before
   mutation with manual recovery; setup never removes them or installs both
   delegation runtimes.
-- Pi requires RPIV `ask_user_question` for root-owned interaction; the CLI also
+- Pi requires the first-party `@thoth-agents/pi-questions-user` provider of
+  `ask_user_question` for root-owned interaction; the CLI also
   installs the first-party `@thoth-agents/pi-todo` task extension. Progress
   instructions use any available task tool through its actual contract, or
   written progress when unavailable; children report to root.
@@ -181,7 +188,7 @@ interactive UI session while `tools.enabled` is true, and withdraws only its own
 registration on `session_shutdown`. Headless children do not replace or withdraw
 the parent kit, or stop its indicators.
 
-pi-todo, pi-background-tasks, pi-subagents, pi-claude-bridge and
+pi-questions-user, pi-todo, pi-background-tasks, pi-subagents, pi-claude-bridge and
 pi-antigravity-bridge discover `getRenderKit()` inside each render of their tool
 calls/results, custom messages and above-editor widgets where provided, never
 at extension load or component creation. A missing or incompatible kit means
@@ -195,7 +202,7 @@ SDK's default pi-tui `Box(1, 1, bg)`, with `toolPendingBg`, `toolSuccessBg` or
 `toolErrorBg`, without nested frames. Message/widget fallbacks retain native
 presentation. See [pi-core's KIT contract](../../pi-packages/pi-core/README.md#render-kit-v1).
 
-Publish pi-core before pi-subagents, pi-todo and the other KIT consumers (theme,
+Publish pi-core before pi-subagents, pi-questions-user, pi-todo and the other KIT consumers (theme,
 background tasks and both bridges). Use `pnpm pack` / `pnpm publish` to convert
 `workspace:^` dependencies to semver ranges. pi-subagents semantic-release keeps
 `@semantic-release/npm` with `npmPublish: false` for version preparation and uses

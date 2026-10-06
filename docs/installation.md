@@ -220,8 +220,10 @@ The CLI installs and verifies these Pi packages in order:
 4. `pi-web-access@0.27.0` as the native web extension exposing the default
    `web_search`, `fetch_content`, `get_search_content`, and `source_check` tools;
 5. `pi-mcp-adapter@2.32.1` only for the anonymous grep.app MCP endpoint;
-6. `@juicesharp/rpiv-ask-user-question@2.9.0` for the root's interactive
-   `ask_user_question` dialog;
+6. `npm:@thoth-agents/pi-questions-user@>=0.1.0` for the root's interactive
+   `ask_user_question` dialog with stable ids, single/multi/text/confirm types,
+   recommendations, previews, notes and structured per-id answers; no fixed
+   maximum on questions or options;
 7. `npm:@thoth-agents/pi-todo@>=0.1.0` for the first-party session task list:
    the `todo` tool, `/todos`, and current-session editor widget.
 
@@ -230,6 +232,17 @@ verification. Install and applied Update install and individually verify it;
 status reports it as a managed target. Progress tracking never replaces native
 delegation or `.thoth/` change records. Unrelated task extensions remain
 operator-owned and untouched.
+
+Install and applied Update individually verify the first-party question package
+at its configured minimum after root-package verification. An installed
+user-scope `@juicesharp/rpiv-ask-user-question` is removed first through native
+`pi remove <configured-source> --no-approve`; failed or unverifiable removal
+stops setup. Project-scope conflicts block before mutation: review the project's
+ownership and trust, then run
+`pi remove <configured-source> --local --approve` from that project.
+This grants trust only for the command and does not persist a trust decision.
+Dry-run previews configured user removals and project blockers without mutation.
+Unrelated packages and settings are preserved.
 
 An installed `@juicesharp/rpiv-todo` conflicts with the first-party task list.
 Preflight stops before any mutation when it is declared in Pi's settings or

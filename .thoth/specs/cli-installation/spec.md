@@ -468,31 +468,13 @@ Complete Pi setup MUST install and verify pinned Context7, pi-web-access, and th
 
 ### Requirement: Install selected Pi interaction and web extensions
 
-Complete Pi installation and applied Update MUST install and individually verify the selected Pi-native delegation, Context7, web-access, grep-adapter and ask-user-question packages after first-party verification, using their configured minimum versions. `@juicesharp/rpiv-todo`, `@juicesharp/rpiv-web-tools` and `@feniix/pi-exa` MUST NOT be required or installed by the selected inventory. Dry-run MUST remain mutation-free; required dependency failure MUST prevent completion recording; external implementations MUST NOT be vendored.
+Complete Pi installation and applied Update MUST install and individually verify the selected Pi-native delegation, Context7, web-access and grep-adapter packages after first-party verification, using their configured minimum versions; the interactive question tool MUST come from the first-party `@thoth-agents/pi-questions-user` package, which MUST likewise be installed and individually verified at its configured minimum version after root-package verification. The juicesharp rpiv task-list, web-tools and question packages and `@feniix/pi-exa` MUST NOT be required or installed by the selected inventory, and a user-scope installed juicesharp rpiv question package MUST be removed natively before installation, while a project-scope one MUST block completion with explicit manual removal guidance instead of granting project trust. Dry-run MUST remain mutation-free; required dependency failure MUST prevent completion recording; external implementations MUST NOT be vendored.
 
-#### Scenario: US1 - Install one web extension 1
+#### Scenario: Install selected Pi interaction and web extensions
 
-- **GIVEN** valid first-party setup
+- **GIVEN** a Pi profile with the juicesharp rpiv question package installed at user scope
 - **WHEN** Install or applied Update runs
-- **THEN** the exact selected pi-web-access pin is required and neither replaced package is requested
-
-#### Scenario: US1 - Install one web extension 2
-
-- **GIVEN** a web package failure or dry-run
-- **WHEN** setup executes
-- **THEN** failure prevents completion recording and dry-run writes nothing
-
-#### Scenario: US1 - Install one web extension 3
-
-- **GIVEN** a configured alternative web provider without EXA_API_KEY
-- **WHEN** status runs
-- **THEN** it does not declare missing Exa credentials and distinguishes installed evidence from unobserved live availability
-
-#### Scenario: US1 - Install one web extension 4
-
-- **GIVEN** an installation containing the replaced web package
-- **WHEN** the operator follows the documented transition
-- **THEN** native Pi removal of the conflicting package precedes installation; unrelated packages and credentials are preserved
+- **THEN** that package is natively removed, `@thoth-agents/pi-questions-user` is installed and verified, and dry-run performs no mutation
 
 ### Requirement: Pi minimum version floor
 
@@ -512,4 +494,4 @@ Complete Pi installation and applied Update MUST install and individually verify
 
 - **GIVEN** a Pi installation containing the juicesharp rpiv task-list package
 - **WHEN** the operator runs Install
-- **THEN** preflight fails with its `pi remove` instruction and no Pi state changes, while an installation without it receives and verifies the Thoth Pi task-list package 
+- **THEN** preflight fails with its `pi remove` instruction and no Pi state changes, while an installation without it receives and verifies the Thoth Pi task-list package

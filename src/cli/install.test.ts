@@ -213,7 +213,7 @@ describe('install', () => {
       'package:npm:@upstash/context7-pi@>=0.1.2',
       'package:npm:pi-web-access@>=0.27.0',
       'package:npm:pi-mcp-adapter@>=2.32.1',
-      'package:npm:@juicesharp/rpiv-ask-user-question@>=2.9.0',
+      'package:npm:@thoth-agents/pi-questions-user@>=0.1.0',
       'package:npm:@thoth-agents/pi-todo@>=0.1.0',
       'external:simplify',
       'external:tdd',

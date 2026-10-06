@@ -58,8 +58,9 @@ for the end-to-end lifecycle.
   substitute. Preserve configured effort, one writer per mutable surface, and
   native dispatch/liveness. Optional Oracle plan review stays at record level,
   never per unit, and separate from final verification.
-- At substantial `ready`, always offer `Review plan with Oracle (Recommended)`
-  or `Proceed without review`, even when implementation is already authorized.
+- At substantial `ready`, first show the user a concise plan summary (goal,
+  acceptance, key decisions, units, risks), then always offer
+  `Review plan with Oracle (Recommended)` or `Proceed without review`, even when implementation is already authorized.
   Silence is never an explicit review skip; run a fresh review only when selected.
   After `[OKAY]`, separately offer the `Implement (Recommended)` / `Stop` choice;
   prior explicit authorization remains valid, while a later explicit `Stop`

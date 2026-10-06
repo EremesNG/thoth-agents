@@ -70,8 +70,9 @@ not occur. Never invent missing facts or secrets. When a human-owned choice
 remains unresolved, a safe deferral can be the recommendation and leaves the
 decision open.
 
-At substantial `ready`, always offer `Review plan with Oracle (Recommended)` or
-`Proceed without review`, even when implementation was already authorized.
+At substantial `ready`, first show the user a concise plan summary (goal,
+acceptance, key decisions, units, risks, record path), then always offer
+`Review plan with Oracle (Recommended)` or `Proceed without review`, even when implementation was already authorized.
 Silence is never an explicit review skip; run a fresh read-only review only when
 selected. After a selected `[OKAY]`, separately offer `Implement (Recommended)` /
 `Stop`; prior explicit authorization remains valid, while an explicit later

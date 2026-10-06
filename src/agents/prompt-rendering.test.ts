@@ -267,6 +267,9 @@ describe('AI-first prompt rendering', () => {
     expect(prompt).toContain('Review plan with Oracle (Recommended)');
     expect(prompt).toContain('Implement directly without review');
     expect(prompt).toMatch(
+      /at ready, first show the user .*plan summary.*then always offer.*Review plan with Oracle/i,
+    );
+    expect(prompt).toMatch(
       /EXPLICIT_REVIEW.*EXPLICIT_SKIP.*DEFAULT_REVIEW_AFTER_3/i,
     );
     expect(prompt).toMatch(

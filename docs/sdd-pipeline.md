@@ -50,7 +50,8 @@ narrative, sidecar specifications, reports, evidence directories, worker
 packets, scripts, execution wrappers, or evidence generators, even temporarily.
 
 Substantial work uses plan and tasks. Checklist and convergence are conditional
-when useful; verification is always required. At ready, always offer
+when useful; verification is always required. At ready, first show the
+user a concise plan summary, then always offer
 `Review plan with Oracle (Recommended)` or `Proceed without review`, even when
 implementation was already authorized. Silence is never an explicit skip; only
 a selected review runs. After a selected `[OKAY]`, separately offer

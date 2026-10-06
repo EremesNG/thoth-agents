@@ -18,7 +18,175 @@ const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 });
-const keys = { left: '\x1b[D', enter: '\r' };
+const keys = {
+  left: '\x1b[D',
+  enter: '\r',
+  up: '\x1b[A',
+  down: '\x1b[B',
+  escape: '\x1b',
+};
+
+it.each([
+  false,
+  true,
+])('freezes the largest opened section card size and stops navigation at section ends (kit: %s)', async (withKit) => {
+  const session = uiSession();
+  if (withKit) {
+    const token = registerRenderKit(createTestRenderKit(), {});
+    cleanups.push(() => withdrawRenderKit(token));
+  }
+  let liveText = 'First long description line.\nSecond line.\nThird line.';
+  const agentOpen = vi.fn();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, { ...provider(), open: agentOpen }),
+  );
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider('todos', 'Todos', 20),
+      armCloseLabel: () => '',
+      listRows: () => ['short', 'long'].map((id) => ({ id, primary: id })),
+      detail: (id) => ({
+        id,
+        title: id === 'short' ? 'Short' : 'Long description title',
+        metadata: [],
+        evidence: {
+          label: 'Description',
+          text: id === 'short' ? 'Brief.' : liveText,
+        },
+      }),
+    }),
+  );
+  cleanups.push(
+    registerWorkPanelProvider(
+      session.ctx,
+      provider('background', 'Background', 30),
+    ),
+  );
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  session.key(keys.left);
+  session.key(keys.down);
+  session.key(keys.enter);
+  const layout = session.ui.custom.mock.calls[0][1].overlayOptions;
+  const initialWidth = layout().width;
+  expect(initialWidth).toBeLessThan(100);
+  const first: string[] = session.customRender(initialWidth);
+  expect(first).toHaveLength(7);
+  session.customKey(keys.up);
+  expect(session.customRender(initialWidth)[0]).toContain('Short');
+  session.customKey(keys.down);
+  const second: string[] = session.customRender(layout().width);
+  expect(second[0]).toContain('Long description title');
+  expect(second.join('\n')).toContain('Third line.');
+  expect(second).toHaveLength(first.length);
+  expect(layout().width).toBe(initialWidth);
+  expect(second.every((line) => visibleWidth(line) === initialWidth)).toBe(
+    true,
+  );
+  session.customKey(keys.down);
+  expect(session.customRender(initialWidth)[0]).toContain(
+    'Long description title',
+  );
+  expect(agentOpen).not.toHaveBeenCalled();
+  liveText =
+    'New output that is much wider than the opening description.\n'.repeat(20);
+  const refreshed: string[] = session.customRender(initialWidth);
+  expect(refreshed).toHaveLength(first.length);
+  expect(refreshed.at(-1)?.trimEnd()).toMatch(/^╰/);
+  expect(layout().width).toBe(initialWidth);
+});
+
+it('closes the detail when its section becomes empty instead of falling through to an agent', async () => {
+  const session = uiSession();
+  let visible = true;
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, { ...provider(), open: vi.fn() }),
+  );
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider('todos', 'Todos', 20),
+      listRows: () => (visible ? [{ id: 'todo', primary: 'Todo' }] : []),
+    }),
+    await ensureWorkPanel(session.ctx),
+  );
+  session.key(keys.left);
+  session.key(keys.down);
+  session.key(keys.enter);
+  visible = false;
+  expect(session.customRender()).toEqual([]);
+  expect(session.key(keys.up)).toBeUndefined();
+  expect(session.render().join('\n')).not.toContain('› ');
+});
+
+it.each([
+  ['running', 'accent', false],
+  ['failed', 'error', true],
+  ['completed', 'success', false],
+  ['cancelled', 'muted', true],
+  ['in_progress', 'accent', true],
+  ['pending', 'text', false],
+] as const)('styles %s detail fields and headings with semantic roles (%s, kit: %s)', async (status, statusRole, withKit) => {
+  const session = uiSession();
+  const styles: Array<[string, string]> = [];
+  session.ui.theme.fg = (role, text) => {
+    styles.push([role, text]);
+    return text;
+  };
+  if (withKit) {
+    const token = registerRenderKit(
+      {
+        ...createTestRenderKit(),
+        fg: (theme, role, text) => theme.fg(role, text),
+      },
+      {},
+    );
+    cleanups.push(() => withdrawRenderKit(token));
+  }
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider('todos', 'Todos', 20),
+      armCloseLabel: () => '',
+      detail: () => ({
+        id: 'todos-1',
+        title: 'Detail',
+        status,
+        metadata: [
+          { label: 'provider', value: 'Todos' },
+          { label: 'pgid', value: '–' },
+          { label: 'pid', value: '-' },
+          { label: 'cwd', value: '   ' },
+          { label: 'count', value: '0' },
+        ],
+        foldedSections: [
+          { id: 'command', label: 'Command', text: 'echo hello' },
+        ],
+        evidence: {
+          label: 'Description',
+          text: '',
+          emptyText: '(no description)',
+        },
+      }),
+    }),
+    await ensureWorkPanel(session.ctx),
+  );
+  session.key(keys.left);
+  session.key(keys.enter);
+  styles.length = 0;
+  const text = session.customRender(80).join('\n');
+  expect(text).not.toMatch(/pgid|pid ·|cwd/);
+  expect(text).toContain('count · 0');
+  expect(styles).toEqual(
+    expect.arrayContaining([
+      ['dim', 'status · '],
+      [statusRole, status],
+      ['dim', 'provider · '],
+      ['text', 'Todos'],
+      ['accent', 'Command'],
+      ['accent', 'Description'],
+      ['text', 'echo hello'],
+      ['dim', '(no description)'],
+    ]),
+  );
+});
 
 it('uses the registered card with a title and pads every themed row to its full width', async () => {
   const session = uiSession();
@@ -150,7 +318,13 @@ it.each([
     return text;
   };
   if (withKit) {
-    const token = registerRenderKit(createTestRenderKit(), {});
+    const token = registerRenderKit(
+      {
+        ...createTestRenderKit(),
+        fg: (theme, role, text) => theme.fg(role, text),
+      },
+      {},
+    );
     cleanups.push(() => withdrawRenderKit(token));
   }
   cleanups.push(
@@ -179,7 +353,7 @@ it.each([
   expect(lines.every((line) => visibleWidth(line) === 60)).toBe(true);
 });
 
-it('offers folding only for oversized content, expands it on Enter and keeps short sections expanded after resize', async () => {
+it('offers folding only for oversized content and keeps the opening height after terminal growth', async () => {
   const session = uiSession();
   session.tui.terminal.rows = 20;
   cleanups.push(
@@ -219,11 +393,12 @@ it('offers folding only for oversized content, expands it on Enter and keeps sho
   session.customKey(keys.enter);
   expect(session.customRender(80).join('\n')).toBe(folded);
   session.tui.terminal.rows = 40;
-  const short = session.customRender(80).join('\n');
-  expect(short).toContain('description 19');
-  expect(short).not.toMatch(/folded|Enter/);
+  expect(session.customRender(80).join('\n')).toBe(folded);
   session.customKey(keys.enter);
-  expect(session.customRender(80).join('\n')).toBe(short);
+  const afterGrowth = session.customRender(80);
+  expect(afterGrowth).toHaveLength(expanded.length);
+  expect(afterGrowth.join('\n')).toContain('Short task');
+  expect(afterGrowth.join('\n')).toContain('description 1 ');
 });
 
 it('centers the overlay at at most 100 columns or 90% and keeps its frame inside the 80% height on resize', async () => {
@@ -235,7 +410,7 @@ it('centers the overlay at at most 100 columns or 90% and keeps its frame inside
       supportsLogTail: true,
       detail: () => ({
         id: 'agents-1',
-        title: 'Long output',
+        title: `Long output ${'.'.repeat(100)}`,
         metadata: Array.from({ length: 10 }, (_, i) => ({
           label: `Field ${i}`,
           value: 'value',

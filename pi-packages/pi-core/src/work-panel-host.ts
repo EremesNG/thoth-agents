@@ -1,5 +1,5 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
-import type { Component, TUI } from '@earendil-works/pi-tui';
+import type { Component, OverlayHandle, TUI } from '@earendil-works/pi-tui';
 import type { WorkPanelProvider } from './work-panel.js';
 import { createWorkPanelDetail } from './work-panel-detail.js';
 import {
@@ -27,6 +27,40 @@ export interface WorkPanelHost {
   isRootEditorInputActive(): boolean | undefined;
   refresh(): void;
   dispose(): void;
+}
+
+/**
+ * coding-agent 1.0.2's custom-overlay done() calls TUI.hideOverlay(), popping the
+ * top entry even when a newer UI has focus. Reroute only that synchronous call
+ * to the owned handle so settling the card cannot remove the newer UI.
+ * With incomplete hooks, hide only the owned handle and release host state;
+ * never call the unsafe top-of-stack closer.
+ */
+function closeOwnedDetailOverlay(
+  tui: TUI,
+  handle: OverlayHandle | undefined,
+  done: () => void,
+  release: () => void,
+): void {
+  const originalHide = tui.hideOverlay;
+  if (
+    typeof originalHide !== 'function' ||
+    typeof handle?.hide !== 'function'
+  ) {
+    try {
+      if (typeof handle?.hide === 'function') handle.hide();
+    } finally {
+      release();
+    }
+    return;
+  }
+  tui.hideOverlay = () => handle.hide();
+  try {
+    done();
+  } finally {
+    tui.hideOverlay = originalHide;
+    release();
+  }
 }
 
 /** Internal host: optional runtime peers are loaded only after a TUI is requested. */
@@ -123,25 +157,45 @@ export function createWorkPanelHost(
     suspended = true;
     releaseFocus();
     host.refresh();
+    const sectionRows = () =>
+      rows().filter((row) => row.provider.id === entry.provider.id);
+    const sectionSelected = () => {
+      const all = sectionRows();
+      const current = all.find((row) => row.key === selectedKey) ?? all[0];
+      if (current) selectedKey = current.key;
+      return current;
+    };
+    let detailComponent: ReturnType<typeof createWorkPanelDetail> | undefined;
+    let detailHandle: OverlayHandle | undefined;
+    let detailFinished = false;
     const show = () =>
       entry.provider.open
         ? entry.provider.open(entry.row.id, ctx)
         : ctx.ui.custom<void>(
             (detailTui, theme, _keybindings, done) => {
               const component = createWorkPanelDetail({
-                rows,
-                selected,
+                rows: sectionRows,
+                selected: sectionSelected,
                 select(next) {
                   selectedKey = next.key;
                   host.refresh();
                 },
                 closeItem: handleClose,
                 clearCloseArm,
-                done: () => done(),
+                done: () =>
+                  closeOwnedDetailOverlay(
+                    detailTui,
+                    detailHandle,
+                    () => done(),
+                    finished,
+                  ),
+                onFocusLost: () => component.dismiss(),
                 requestRender: () => detailTui.requestRender(),
                 theme,
                 height: () =>
                   Math.max(0, Math.floor(detailTui.terminal.rows * 0.8)),
+                width: () =>
+                  Math.min(100, Math.floor(detailTui.terminal.columns * 0.9)),
                 clip,
                 wrap: (text, width) =>
                   toolkit?.wrapTextWithAnsi(text, Math.max(1, width)) ??
@@ -150,22 +204,26 @@ export function createWorkPanelHost(
                   toolkit?.visibleWidth(text) ?? [...text].length,
                 matches,
               });
+              detailComponent = component;
               dismissDetail = () => component.dismiss();
               return component;
             },
             {
               overlay: true,
+              onHandle(handle) {
+                detailHandle = handle;
+                if (detailFinished) handle.hide();
+              },
               overlayOptions: () => ({
-                width: Math.min(
-                  100,
-                  Math.floor((tui?.terminal.columns ?? 100) * 0.9),
-                ),
+                width: detailComponent?.width ?? 0,
                 maxHeight: '80%',
                 anchor: 'center',
               }),
             },
           );
     const finished = () => {
+      if (detailFinished) return;
+      detailFinished = true;
       suspended = false;
       dismissDetail = undefined;
       releaseFocus();

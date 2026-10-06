@@ -1,11 +1,11 @@
 # @thoth-agents/pi-core
 
 Shared, typed event and rendering contracts for the Thoth Pi ecosystem. This is a library,
-**not a Pi extension**: it registers no tools or UI and has no `pi.extensions`
-entry. It ships TypeScript source for consumption by Pi extensions, with no build
-step or runtime dependencies. The optional Pi SDK and TUI peers are for type
-compatibility only; event helpers accept the minimal structural `pi.events`
-interface. Pi imports in the render contract are type-only.
+**not a Pi extension**: importing it registers no tools or UI, and it has no
+`pi.extensions` entry. It ships TypeScript source with no build step. Event and
+render contracts use type-only Pi imports; the opt-in Work panel host lazily loads
+the optional SDK/TUI peers. Event helpers accept the minimal structural
+`pi.events` interface.
 
 Requires Node >=22.19.0. Supports the event bus in Pi >=0.99.0; development and
 tests use SDK 1.0.2.
@@ -119,9 +119,10 @@ bus sharing and persistence are not provided by this package.
 
 ## Render KIT v1
 
-`ThothRenderKit` describes the theme-owned visual language. pi-core contains no
-TUI implementation or timers. `pi-thoth-theme` supplies the kit at runtime;
-producers have no dependency on that package.
+`ThothRenderKit` describes the theme-owned visual language. The render-kit
+contract owns no UI or timers. `pi-thoth-theme` supplies the kit at runtime;
+producers have no dependency on that package. The opt-in Work panel host owns
+its own widget and refresh lifecycle.
 
 ```ts
 interface ThothRenderKit {
@@ -255,3 +256,64 @@ pnpm --filter @thoth-agents/pi-core run test
 ```
 
 MIT; copyright thoth-agents contributors.
+
+## Work panel v1
+
+```ts
+registerWorkPanelProvider(pi: ExtensionAPI | ExtensionContext,
+  provider: WorkPanelProvider): () => void;
+ensureWorkPanel(ctx: ExtensionContext): Promise<() => void>;
+isWorkPanelRootEditorInputActive(ctx: ExtensionContext): boolean | undefined;
+```
+
+`WORK_PANEL_VERSION` is `1`. Providers carry `version`, `id`, `label`, `priority`,
+`visibleCount`, `listRows(now)`, `detail(id, now, { logTailLines? })`,
+`armCloseLabel(row)` and `close(id)`. Optional methods are `summary`, `open`,
+`showSection`, `parentRow` and `onVisibleChanged`. Use priorities 10/20/30 for
+Agents/Todos/Background. Lists retain provider ordering and empty sections hide.
+`summary()` returns counter text or `{ text?, running?, failed?, completed?, total? }`.
+Return an empty close label for items with no close action.
+
+The process-wide `Symbol.for('thoth.pi-core.work-panel')` registry shares providers
+and in-flight installations across bundled copies. Each session manager/session
+id has one above-editor widget and one terminal-input listener. Await `ensure`
+in session-start handlers; each call returns an idempotent, reference-counted
+release. The final release or final provider unregister tears down the host.
+Registering with `pi` also hooks session shutdown automatically. **Context-only
+callers must release on shutdown themselves.** Provider unregister is token-owned,
+so a stale disposer cannot remove a replacement registration. Session shutdown
+removes the host, not providers; extension owners unregister providers on unload.
+
+Rows need `id` and `primary`, with optional name, status/tone, elapsed and legacy
+navigator metadata. `row.render(bodyWidth, now)` returns `{ text, extraRows? }`:
+truncate the task label before metrics, and put metrics in a continuation only
+when they cannot fit inline. Continuations are not selectable. `statusGlyph` may
+be a string or `(now) => string`. Set `refreshIntervalMs` to request ticks (minimum
+100ms); the host ticks only while that provider has running/in-progress rows.
+Notify through `onVisibleChanged` for all state changes; transient `expiresAt`
+rows also request a one-shot expiry render. Timers stop on teardown.
+
+The default item cap is 3 per section (`rowCap` overrides it). The entire panel,
+including its focused hint, fits 12 rows or half the terminal height, whichever
+is smaller. Hidden items show `+N more`; navigation still traverses all items and
+keeps the selected item visible. At very short heights, lower-priority sections
+may be omitted to preserve the selected item's metrics. There are no blank
+separator rows. Render-kit discovery happens on every render, with unframed
+native output when absent.
+
+Unfocused, the footer shows `← work · N`. Left focuses only on a truly empty root
+editor; up/down otherwise retain Pi's history behavior. Focused: up/down move,
+Enter opens, x requires two presses within 3 seconds, Esc/right release. Editor
+identity, focused component and overlay guards fail closed. The host suspends
+input before invoking `open(id, ctx)` and releases focus when it settles: **custom
+UI providers must return a promise that resolves only after their UI closes**.
+Without `open`, the host displays detail metadata, folded sections and evidence,
+with log-tail, navigation and close controls. SDK/TUI imports are lazy and optional;
+missing focus hooks disable interception instead of guessing.
+
+`isWorkPanelRootEditorInputActive(ctx)` is a read-only query of that session's
+editor-identity, focused-component, overlay and suspension guards. It installs
+nothing, consumes no input and does not require an empty editor or Work focus.
+It returns `true` only when the installed host's root editor is input-active,
+`false` when guarded, and `undefined` when the session has no installed host.
+Separate task-mode controls can reuse it; callers own their no-host fallback.

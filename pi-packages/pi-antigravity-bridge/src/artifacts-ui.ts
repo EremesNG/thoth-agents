@@ -9,6 +9,7 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Spacer, Text } from "@earendil-works/pi-tui";
+import { resolveIcon } from "@thoth-agents/pi-core";
 import type { AgyArtifact } from "./artifacts.js";
 
 export type ArtifactsBrowserAction =
@@ -29,7 +30,7 @@ export function artifactItems(artifacts: AgyArtifact[]): SelectItem[] {
 		return {
 			value: String(i),
 			label: a.name,
-			description: `${a.kind} · ${a.mediaType} · ${humanBytes(a.bytes)} · ${stamp}`,
+			get description() { return [a.kind, a.mediaType, humanBytes(a.bytes), stamp].join(` ${resolveIcon('separator', '·')} `); },
 		};
 	});
 }
@@ -51,7 +52,7 @@ export async function showArtifactsBrowser(
 
 		const list = new SelectList(items, Math.min(items.length, 12), {
 			selectedPrefix: (t: string) => theme.fg("accent", t),
-			selectedText: (t: string) => theme.fg("accent", t),
+			selectedText: (t: string) => theme.fg("accent", t.startsWith("→ ") ? `${resolveIcon("selection", "→")} ${t.slice(2)}` : t),
 			description: (t: string) => theme.fg("muted", t),
 			scrollInfo: (t: string) => theme.fg("dim", t),
 			noMatch: (t: string) => theme.fg("warning", t),
@@ -62,7 +63,7 @@ export async function showArtifactsBrowser(
 
 		container.addChild(new Spacer(1));
 		container.addChild(
-			new Text(theme.fg("dim", "↑↓ navigate · enter open · r rescan · esc close"), 1, 0),
+			{ render: (width: number) => new Text(theme.fg("dim", `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} navigate ${resolveIcon('separator', '·')} enter open ${resolveIcon('separator', '·')} r rescan ${resolveIcon('separator', '·')} esc close`), 1, 0).render(width), invalidate() {} },
 		);
 		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 

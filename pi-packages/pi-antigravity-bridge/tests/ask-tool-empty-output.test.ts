@@ -18,6 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
 
 vi.mock("../src/mcp-registration.js", () => ({
 	acquireBridgeSuppression: () => () => {},
@@ -40,7 +41,7 @@ type RegisteredTool = {
 		result: unknown,
 		opts: { expanded?: boolean; isPartial?: boolean },
 		theme: unknown,
-	) => unknown;
+	) => Component;
 };
 
 // The REAL stderr agy prints when a headless run auto-denies a command
@@ -159,6 +160,7 @@ test("renderResult flips to the error glyph on the empty-output failure", async 
 		theme,
 	);
 	expect(rendered).toBeDefined();
+	expect(rendered.render(120).join("\n")).toContain("✗ AskAntigravity error");
 
 	// The old errored condition (exitCode/aborted/timedOut only) rendered a
 	// green checkmark for this exact failure (peer review, finding 1).

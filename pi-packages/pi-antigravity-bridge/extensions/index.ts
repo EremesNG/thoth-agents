@@ -73,6 +73,7 @@ import { CONFIG_PATH, loadConfig, logsDir, MAX_TURN_CAP_MIN, parseCapMinutes, sa
 import { agyMissingMessage, isAgyInstalled, savedEngineMessage, showEnginePicker, shouldOfferEnginePicker } from "../src/engine-picker.js";
 import { checkAgyCliVersion, describeAgyVersionCheck, MIN_AGY_VERSION } from "../src/agy-version.js";
 import { isValidAgyAgentName, listAgyAgents } from "../src/agents.js";
+import { resolveIcon } from '@thoth-agents/pi-core';
 import { formatSubagentRoster, SubagentRoster } from "../src/subagent-roster.js";
 import { spawn } from "node:child_process";
 import { fetchAgyQuota, formatAgyQuotaReport } from "../src/usage.js";
@@ -122,6 +123,13 @@ function resolveAgyBinary(): string {
 // UI sinks are best-effort, even when a void-typed implementation is async.
 function notifyUi(ui: ExtensionUIContext | null | undefined, ...args: Parameters<ExtensionUIContext["notify"]>): void {
 	emitLifecycle(() => ui?.notify(...args));
+}
+
+// Setup progress is shared native text; resolve its marker only at UI sinks.
+function setupProgressUi(message: string): string {
+	return message.endsWith("…")
+		? `${message.slice(0, -1)}${resolveIcon("ellipsis", "…")}`
+		: message;
 }
 
 function setUiStatus(ui: ExtensionUIContext | null | undefined, ...args: Parameters<ExtensionUIContext["setStatus"]>): void {
@@ -439,7 +447,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		// only native Antigravity / other MCP events need display-only entries.
 		if (event.status === "started") {
 			pendingNativeTools++;
-			setUiStatus(activeUi, "agy-native", `agy ${event.name}… (${pendingNativeTools})`);
+			setUiStatus(activeUi, "agy-native", `agy ${event.name}${resolveIcon('ellipsis', '…')} (${pendingNativeTools})`);
 			return;
 		}
 		pendingNativeTools = Math.max(0, pendingNativeTools - 1);
@@ -602,7 +610,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 	async function runAcpPickSetup(ctx: { ui: ExtensionUIContext }): Promise<void> {
 		acpSelfHealRan = true;
 		let lastPhase = "";
-		setUiStatus(ctx.ui, "agy-acp", "downloading ACP server…");
+		setUiStatus(ctx.ui, "agy-acp", `downloading ACP server${resolveIcon('ellipsis', '…')}`);
 		try {
 			const status = await ensureAcpReady({
 				configBin: loadConfig().acp.bin,
@@ -612,9 +620,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 					// milestones only (download start, unpacking, installed) - same
 					// line-in-chat feel as other extensions' notify() notices. The
 					// percent variant updates every chunk and would spam the chat.
-					setUiStatus(ctx.ui, "agy-acp", m);
+					setUiStatus(ctx.ui, "agy-acp", setupProgressUi(m));
 					if (m !== lastPhase && !/\d+%/.test(m)) {
-						notifyUi(ctx.ui, m, "info");
+						notifyUi(ctx.ui, setupProgressUi(m), "info");
 						lastPhase = m;
 					}
 				},
@@ -1287,10 +1295,10 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					// Self-service setup: install the server from the official
 					// registry and bootstrap auth now, so the restart just works.
 					// Manual instructions only when a step fails.
-					notifyUi(ui, "engine set to acp. Preparing the server (binary + auth)…", "info");
+					notifyUi(ui, `engine set to acp. Preparing the server (binary + auth)${resolveIcon("ellipsis", "…")}`, "info");
 					const status = await ensureAcpReady({
 						configBin: loadConfig().acp.bin,
-						onProgress: (m) => notifyUi(ui, m, "info"),
+						onProgress: (m) => notifyUi(ui, setupProgressUi(m), "info"),
 					});
 					ctx.fileLog.log(
 						"acp-setup",
@@ -1347,8 +1355,8 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					notifyUi(ui, `the selected engine is ${loadConfig().engine}. /agy engine acp first, then /agy auth.`, "warning");
 					return;
 				}
-				notifyUi(ui, "Preparing the ACP server (binary + auth settings)…", "info");
-				const status = await ensureAcpReady({ configBin: loadConfig().acp.bin, onProgress: (m) => notifyUi(ui, m, "info") });
+				notifyUi(ui, `Preparing the ACP server (binary + auth settings)${resolveIcon("ellipsis", "…")}`, "info");
+				const status = await ensureAcpReady({ configBin: loadConfig().acp.bin, onProgress: (m) => notifyUi(ui, setupProgressUi(m), "info") });
 				ctx.fileLog.log(
 					"acp-setup",
 					status.ok
@@ -1536,7 +1544,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 						return;
 					}
 					const lines = tail.split("\n");
-					const body = lines.length > 40 ? `…\n${lines.slice(-40).join("\n")}` : tail;
+					const body = lines.length > 40 ? `${resolveIcon("ellipsis", "…")}\n${lines.slice(-40).join("\n")}` : tail;
 					notifyUi(ui, `task #${id} tail:\n${body}`, "info");
 					return;
 				}
@@ -1659,7 +1667,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 				}
 				// /usage answers in ~10s live; surface the wait instead of a dead
 				// command line.
-				setUiStatus(ui, "agy-quota", "checking agy quota…");
+				setUiStatus(ui, "agy-quota", `checking agy quota${resolveIcon('ellipsis', '…')}`);
 				try {
 					const report = await fetchAgyQuota(bin);
 					if (report === undefined) {
@@ -1678,7 +1686,7 @@ function registerAgyCommand(pi: ExtensionAPI, ctx: AgyCommandCtx): void {
 					notifyUi(ui, "antigravity subagents: none tracked this session\n\nagy spawns subagents as ordinary tool steps; they appear here once a turn uses them.", "info");
 					return;
 				}
-				notifyUi(ui, formatSubagentRoster(entries), "info");
+				notifyUi(ui, formatSubagentRoster(entries, { ui: true }), "info");
 				return;
 			}
 			if (sub === "agent") {

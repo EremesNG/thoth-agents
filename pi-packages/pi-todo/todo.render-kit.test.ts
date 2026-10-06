@@ -417,3 +417,36 @@ it('marks SDK errors in the card and footer rather than using the success frame'
   expect(call.render(80)[0]).toBe('╭─ ! todo');
   expect(output.render(80).at(-1)).toBe('╰─ ✗');
 });
+
+it('mounted todo action and result glyphs follow kit replacement and preserve tool payloads', async () => {
+  const tool = setup();
+  const ctx = context();
+  const payload = await tool.execute(
+    'tc',
+    ctx.args,
+    undefined,
+    undefined,
+    createMockCtx(),
+  );
+  const before = JSON.stringify(payload);
+  const call = tool.renderCall({ action: 'get', id: 1 }, makeTheme(), ctx);
+  const output = tool.renderResult(
+    { content: [], details: undefined },
+    { expanded: false, isPartial: false },
+    makeTheme(),
+    ctx,
+  );
+  expect(call.render(80).join('\n')).toContain('›');
+  const kit = createTestRenderKit({
+    icon: (name) => (name === 'selection' ? '>' : name),
+  });
+  kit.statusGlyph = (_theme, status) => (status === 'completed' ? '+' : '-');
+  token = registerRenderKit(kit, {});
+  expect(call.render(80).join('\n')).toContain('> write tests');
+  expect(output.render(80)[0].trimEnd()).toBe('+');
+  expect(JSON.stringify(payload)).toBe(before);
+  withdrawRenderKit(token);
+  token = undefined;
+  expect(call.render(80).join('\n')).toContain('›');
+  expect(output.render(80).join('\n')).toContain('✓');
+});

@@ -1,7 +1,9 @@
+import { truncateToWidth } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
   type RenderIndicatorContext,
   renderToolFooter,
+  resolveIcon,
 } from '@thoth-agents/pi-core';
 import {
   collapseNative,
@@ -32,7 +34,6 @@ export function backgroundToolRenderers(toolName: string) {
     renderShell: 'self' as const,
     renderCall(args: unknown, theme: unknown, context?: RenderContext) {
       if (context?.state) context.state[RESULT_PRESENT] = false;
-      const summary = summarizeArgs(args);
       const memo = createKitRenderMemo();
       return {
         invalidate() {
@@ -40,6 +41,7 @@ export function backgroundToolRenderers(toolName: string) {
         },
         render(width: number) {
           return memo.render(width, (kit) => {
+            const summary = summarizeArgs(args, { ui: true });
             const hasResult = context?.state?.[RESULT_PRESENT] === true;
             const pending = context?.isPartial ?? !hasResult;
             const isError = context?.isError === true;
@@ -102,16 +104,26 @@ export function backgroundToolRenderers(toolName: string) {
 }
 
 /** Call summary: action, id, name or command on one line. */
-export function summarizeArgs(args: unknown): string {
+export function summarizeArgs(
+  args: unknown,
+  options: { ui?: boolean } = {},
+): string {
   const a = (args ?? {}) as Record<string, unknown>;
   const command =
     typeof a.command === 'string' ? a.command.replace(/\s+/g, ' ').trim() : '';
+  const ellipsis = options.ui ? resolveIcon('ellipsis', '…') : '…';
   const parts = [
     a.action,
     a.id,
     a.name,
     command.length > SUMMARY_COMMAND_CELLS
-      ? `${command.slice(0, SUMMARY_COMMAND_CELLS)}…`
+      ? ellipsis !== '…'
+        ? truncateToWidth(
+            command.slice(0, SUMMARY_COMMAND_CELLS) + ellipsis,
+            SUMMARY_COMMAND_CELLS + 1,
+            ellipsis,
+          )
+        : `${command.slice(0, SUMMARY_COMMAND_CELLS)}…`
       : command,
     a.all === true ? 'all' : '',
   ];
@@ -119,7 +131,7 @@ export function summarizeArgs(args: unknown): string {
     .filter(
       (part): part is string => typeof part === 'string' && part.length > 0,
     )
-    .join(' · ');
+    .join(options.ui ? ` ${resolveIcon('separator', '·')} ` : ' · ');
 }
 
 /** The compact log preview stays display-only; expanded output uses the model's full text. */

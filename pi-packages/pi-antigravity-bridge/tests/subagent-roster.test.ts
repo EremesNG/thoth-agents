@@ -217,3 +217,24 @@ test("roster: define_subagent does not register as a running subagent", () => {
 	assert.equal(r.snapshot().length, 0);
 });
 
+
+test('roster formatting opts into UI icons without changing the native payload or folded entries', async () => {
+  const { registerRenderKit, withdrawRenderKit } = await import('@thoth-agents/pi-core');
+  const { createTestRenderKit } = await import('@thoth-agents/pi-core/testing');
+  const entries = [{ key: 's:1', name: 'reviewer', status: 'running' as const, spawnedAtMs: Date.now(), lastActivityMs: Date.now(), messages: 0, detail: `${'d'.repeat(120)}…` }];
+  const before = JSON.stringify(entries);
+  const native = formatSubagentRoster(entries);
+  const wideEntries = entries.map((entry) => ({ ...entry, detail: `${'界'.repeat(120)}…` }));
+  assert.equal(formatSubagentRoster(wideEntries, { ui: true }), formatSubagentRoster(wideEntries));
+  const token = registerRenderKit(createTestRenderKit({ icon: (name) => name === 'separator' ? '|' : name === 'ellipsis' ? '...' : name }), {});
+  try {
+    assert.equal(formatSubagentRoster(entries), native);
+    const ui = formatSubagentRoster(entries, { ui: true });
+    assert.match(ui, /reviewer \| running \|/);
+    const { stripVTControlCharacters } = await import('node:util');
+    const { visibleWidth } = await import('@earendil-works/pi-tui');
+    assert.match(stripVTControlCharacters(ui), /d\.\.\.$/);
+    assert.equal(visibleWidth(ui.split(' | ').at(-1) ?? ''), 121);
+    assert.equal(JSON.stringify(entries), before);
+  } finally { withdrawRenderKit(token); }
+});

@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import { createComponent, getResultText } from './box.ts';
 import { getFileIcon, getToolIcon } from './file-icons.ts';
@@ -88,7 +89,7 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
         const safeWidth = Math.max(0, width);
         const footer =
           context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context })
+            ? toolFooter(theme, { status: 'running', context }, config.icons)
             : undefined;
         const title = `${theme.fg('accent', editIcon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Edit')) : theme.fg('toolTitle', 'Edit')} ${theme.fg('accent', icon)} ${theme.fg('text', filePath)}`;
 
@@ -151,12 +152,12 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
       if (isErr) {
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
-          const errText = `${theme.fg('error', '! ')}${theme.fg('error', diffText || 'Edit failed')}`;
+          const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', diffText || 'Edit failed')}`;
           return [
             ...renderFrameRow(theme, errText, safeWidth, borderTone),
             ...renderFrameBottom(
               theme,
-              toolFooter(theme, footerOptions),
+              toolFooter(theme, footerOptions, config.icons),
               safeWidth,
               borderTone,
             ),
@@ -177,10 +178,14 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
           removals > 0
             ? theme.fg('toolDiffRemoved', `-${removals}`)
             : theme.fg('dim', '-0');
-        const footer = toolFooter(theme, {
-          ...footerOptions,
-          summary: [`${addedStr} ${removedStr}`, '1 file'],
-        });
+        const footer = toolFooter(
+          theme,
+          {
+            ...footerOptions,
+            summary: [`${addedStr} ${removedStr}`, '1 file'],
+          },
+          config.icons,
+        );
 
         if (diffLines.length === 0) {
           return [
@@ -204,7 +209,10 @@ export function createCustomEditTool(cwd: string, config: ThemeConfig) {
         if (!options?.expanded && diffLines.length > COLLAPSED_DIFF_LINES) {
           const remaining = diffLines.length - COLLAPSED_DIFF_LINES;
           bodyLines.push(
-            theme.fg('dim', `… ${remaining} more lines · ctrl+o to expand`),
+            theme.fg(
+              'dim',
+              `${semanticIcon('ellipsis', config.icons)} ${remaining} more lines ${semanticIcon('separator', config.icons)} ctrl+o to expand`,
+            ),
           );
         }
 

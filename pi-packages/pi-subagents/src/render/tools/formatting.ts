@@ -1,3 +1,4 @@
+import { resolveIcon } from '@thoth-agents/pi-core';
 import { truncateToWidth } from '../completion-message.js';
 import { readSubagentsConfig } from '../config.js';
 import { toolSelectionWarning } from '../tool-selection-warning.js';
@@ -28,10 +29,18 @@ export function appendSubagentResumeGuidance(
     : text;
 }
 
-export function clip(text: string | undefined, limit = 240): string {
+export function clip(
+  text: string | undefined,
+  limit = 240,
+  ui = false,
+): string {
   if (!text) return '';
   const normalized = text.replace(/\s+/g, ' ').trim();
-  return truncateToWidth(normalized, limit, '…');
+  return truncateToWidth(
+    normalized,
+    limit,
+    ui ? resolveIcon('ellipsis', '…') : '…',
+  );
 }
 
 export function formatTokens(count: number): string {
@@ -73,14 +82,20 @@ export function generationSpeed(
   return Number.isFinite(speed) ? speed : undefined;
 }
 
-export function formatUsage(task: SubagentTask): string {
+export function formatUsage(task: SubagentTask, ui = false): string {
   const usage = task.usage;
   if (!usage) return '';
   const parts: string[] = [];
   if (usage.turns)
     parts.push(`${usage.turns} turn${usage.turns > 1 ? 's' : ''}`);
-  if (usage.input) parts.push(`↑${formatTokens(usage.input)}`);
-  if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
+  if (usage.input)
+    parts.push(
+      `${ui ? resolveIcon('tokensIn', '↑') : '↑'}${formatTokens(usage.input)}`,
+    );
+  if (usage.output)
+    parts.push(
+      `${ui ? resolveIcon('tokensOut', '↓') : '↓'}${formatTokens(usage.output)}`,
+    );
   if (usage.cacheRead) parts.push(`R${formatTokens(usage.cacheRead)}`);
   if (usage.cacheWrite) parts.push(`W${formatTokens(usage.cacheWrite)}`);
   if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
@@ -89,22 +104,23 @@ export function formatUsage(task: SubagentTask): string {
   return parts.join(' ');
 }
 
-export function modelEffortLine(task: SubagentTask): string {
+export function modelEffortLine(task: SubagentTask, ui = false): string {
   return [
     `model: ${task.model ?? 'default/current'}`,
     `effort: ${task.effort ?? 'default/current'}`,
-  ].join(' · ');
+  ].join(` ${ui ? resolveIcon('separator', '·') : '·'} `);
 }
 
 export function formatTaskLabel(
   task: Pick<SubagentTask, 'agent' | 'display_name' | 'task'> | undefined,
+  ui = false,
 ): string {
   if (!task) return 'subagent';
   const displayName = task.display_name?.trim();
   if (displayName) return displayName;
-  const taskSnippet = clip(task.task, 40);
+  const taskSnippet = clip(task.task, 40, ui);
   return taskSnippet
-    ? `${task.agent} · ${taskSnippet}`
+    ? `${task.agent} ${ui ? resolveIcon('separator', '·') : '·'} ${taskSnippet}`
     : task.agent || 'subagent';
 }
 
@@ -140,15 +156,15 @@ export function taskResponseText(
   return '';
 }
 
-function formatOrchestratorUpdates(task: SubagentTask): string[] {
+function formatOrchestratorUpdates(task: SubagentTask, ui = false): string[] {
   return [
     ...(task.pending_questions ?? []).map(
       (question) =>
-        `pending question · request_id: ${question.request_id} · ${clip(question.message)}`,
+        `pending question ${ui ? resolveIcon('separator', '·') : '·'} request_id: ${question.request_id} ${ui ? resolveIcon('separator', '·') : '·'} ${clip(question.message, 240, ui)}`,
     ),
     ...(task.progress_updates ?? [])
       .slice(-5)
-      .map((update) => `progress: ${clip(update.message)}`),
+      .map((update) => `progress: ${clip(update.message, 240, ui)}`),
   ];
 }
 
@@ -181,20 +197,20 @@ export function formatTask(task: SubagentTask): string {
 
 function formatTaskListItem(task: SubagentTask): string {
   const when = task.last_activity_at ?? task.started_at ?? task.created_at;
-  const usage = formatUsage(task);
-  const taskLabel = formatTaskLabel(task);
+  const usage = formatUsage(task, true);
+  const taskLabel = formatTaskLabel(task, true);
   const hasResp = hasAgentResponse(task);
   const hasPreview = Boolean(task.output_preview || hasResp);
   const lines = [
-    `subagent: ${task.agent} · task: ${taskLabel} · status: ${task.status} · attempt: ${task.attempt ?? 1}`,
-    modelEffortLine(task),
-    ...formatOrchestratorUpdates(task),
+    `subagent: ${task.agent} ${resolveIcon('separator', '·')} task: ${taskLabel} ${resolveIcon('separator', '·')} status: ${task.status} ${resolveIcon('separator', '·')} attempt: ${task.attempt ?? 1}`,
+    modelEffortLine(task, true),
+    ...formatOrchestratorUpdates(task, true),
     usage ? `usage: ${usage}` : undefined,
     `last: ${task.last_activity ?? 'n/a'}${when ? ` at ${when}` : ''}`,
     hasPreview
-      ? `preview: collapsed · ${resolveExpandHint('to expand')}`
+      ? `preview: collapsed ${resolveIcon('separator', '·')} ${resolveExpandHint('to expand')}`
       : undefined,
-    task.error ? `error: ${clip(task.error)}` : undefined,
+    task.error ? `error: ${clip(task.error, 240, true)}` : undefined,
   ].filter(Boolean) as string[];
   return lines.join('\n');
 }
@@ -205,7 +221,7 @@ function formatTaskListRow(task: SubagentTask): string {
     `model: ${task.model ?? 'default/current'}`,
     `effort: ${task.effort ?? 'default/current'}`,
     `status: ${task.status}`,
-  ].join(' · ');
+  ].join(` ${resolveIcon('separator', '·')} `);
 }
 
 export function formatTaskListSummary(
@@ -234,9 +250,9 @@ export function formatTaskListRender(
   if (expanded)
     return `Listed ${tasks.length} subagent task(s):\n\n${tasks.map(formatTaskListItem).join('\n\n')}`;
   const mostRecent = tasks[0]!;
-  const recentLabel = formatTaskLabel(mostRecent);
+  const recentLabel = formatTaskLabel(mostRecent, true);
   return [
-    `most recent: ${recentLabel} · status: ${mostRecent.status}`,
+    `most recent: ${recentLabel} ${resolveIcon('separator', '·')} status: ${mostRecent.status}`,
     resolveExpandHint('to expand', context),
   ].join('\n');
 }

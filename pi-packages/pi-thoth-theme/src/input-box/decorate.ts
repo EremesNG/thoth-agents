@@ -21,6 +21,7 @@ import {
   renderInputBottom,
   renderInputTop,
   renderPlaceholder,
+  scrollLabel,
   wrapContentRow,
 } from './frame.ts';
 import { type BreathingFrame, createBreathingFrame } from './gradient.ts';
@@ -199,14 +200,17 @@ export function decorateEditor(
       value(this: EditorLike, width: number, hidden: number): string {
         if (
           outerWidth === undefined ||
-          (hidden > 0 && visibleWidth(`↑ ${hidden} more`) > outerWidth - 6)
+          (hidden > 0 &&
+            visibleWidth(scrollLabel('up', hidden, deps.iconMode)) >
+              outerWidth - 6)
         )
           return originals.renderTopBorder.call(this, width, hidden);
         const status = deps.working.status(
           this.workingStatusIndicator,
-          inputLabelWidth(outerWidth, hidden),
+          inputLabelWidth(outerWidth, hidden, deps.iconMode),
           muted,
           renderFrame,
+          deps.iconMode,
         );
         const data = active ? deps.getStatusSnapshot?.() : undefined;
         const options = { mode: deps.iconMode, theme: deps.theme };
@@ -219,6 +223,7 @@ export function decorateEditor(
           },
           hidden,
           renderFrame,
+          deps.iconMode,
         );
         return top;
       },
@@ -229,7 +234,9 @@ export function decorateEditor(
       value(this: EditorLike, width: number, hidden: number): string {
         if (
           outerWidth === undefined ||
-          (hidden > 0 && visibleWidth(`↓ ${hidden} more`) > outerWidth - 6)
+          (hidden > 0 &&
+            visibleWidth(scrollLabel('down', hidden, deps.iconMode)) >
+              outerWidth - 6)
         )
           return originals.renderBottomBorder.call(this, width, hidden);
         const data = active ? deps.getStatusSnapshot?.() : undefined;
@@ -243,6 +250,7 @@ export function decorateEditor(
           },
           hidden,
           renderFrame,
+          deps.iconMode,
         );
         return bottom;
       },

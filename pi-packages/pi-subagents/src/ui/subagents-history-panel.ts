@@ -1,6 +1,7 @@
 import {
   getRenderKit,
   getToolDefinitionRegistryVersion,
+  resolveIcon,
 } from '@thoth-agents/pi-core';
 import {
   truncateToWidth as terminalTruncateToWidth,
@@ -18,7 +19,7 @@ import type {
   UsageStats,
 } from '../types.js';
 import {
-  ARCH_ICON,
+  agentIcon,
   BOX_CHARS,
   CYBER_SEPARATOR,
   themeAccent,
@@ -49,6 +50,12 @@ export const ROUNDED_BOX_CHARS = {
 function clip(text: string | undefined, limit: number): string {
   if (!text) return '';
   const normalized = text.replace(/\s+/g, ' ').trim();
+  if (getRenderKit()?.icon)
+    return terminalTruncateToWidth(
+      normalized,
+      limit,
+      resolveIcon('ellipsis', '…'),
+    );
   return normalized.length > limit
     ? `${normalized.slice(0, Math.max(0, limit - 1))}…`
     : normalized;
@@ -96,8 +103,10 @@ function formatUsage(usage?: UsageStats, contextWindow?: number): string {
   const parts: string[] = [];
   if (usage.turns)
     parts.push(`${usage.turns} turn${usage.turns > 1 ? 's' : ''}`);
-  if (usage.input) parts.push(`↑${formatTokens(usage.input)}`);
-  if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
+  if (usage.input)
+    parts.push(`${resolveIcon('tokensIn', '↑')}${formatTokens(usage.input)}`);
+  if (usage.output)
+    parts.push(`${resolveIcon('tokensOut', '↓')}${formatTokens(usage.output)}`);
   if (usage.cacheRead) parts.push(`R${formatTokens(usage.cacheRead)}`);
   if (usage.cacheWrite) parts.push(`W${formatTokens(usage.cacheWrite)}`);
   if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
@@ -254,7 +263,7 @@ export class SubagentsHistoryPanel {
     private done: () => void,
     private matchesKey: (data: string, key: string) => boolean,
     private visibleWidth: (text: string) => number,
-    private truncateToWidth: (text: string, width: number) => string,
+    private nativeTruncateToWidth: (text: string, width: number) => string,
     private renderContext: Partial<SubagentThreadRenderContext> = {},
     private maxLinesProvider: number | (() => number) = 42,
     private taskResolver?: (id: string) => SubagentTask | undefined,
@@ -263,6 +272,11 @@ export class SubagentsHistoryPanel {
     private detailCancelShortcut = 'x',
     private displayOptions: SubagentsHistoryPanelDisplayOptions = {},
   ) {}
+
+  private truncateToWidth = (text: string, width: number): string =>
+    getRenderKit()?.icon
+      ? terminalTruncateToWidth(text, width, resolveIcon('ellipsis', '…'))
+      : this.nativeTruncateToWidth(text, width);
 
   invalidate(): void {
     this.bodyCache.clear();
@@ -526,7 +540,7 @@ export class SubagentsHistoryPanel {
       this.selected = Math.max(0, tasks.length - 1);
 
     const rawLines: string[] = [];
-    const archPrefix = themeFg(th, 'accent', ARCH_ICON);
+    const archPrefix = themeFg(th, 'accent', agentIcon());
     const closeBtnText = '[✕ Cerrar]';
     const closeBtn = themeFg(th, 'error', closeBtnText);
     const closeVis = this.visibleWidth(closeBtn);
@@ -590,10 +604,12 @@ export class SubagentsHistoryPanel {
       const leftTopSegment = `${border(ROUNDED_BOX_CHARS.topLeft + ROUNDED_BOX_CHARS.horizontal)} ${leftTitle} ${border(ROUNDED_BOX_CHARS.horizontal.repeat(fillLeft))}${border(ROUNDED_BOX_CHARS.tDown)}`;
 
       // Right Top Segment: ─ badge ─...─ closeBtn ─╮
-      const badge = `${accent(`${this.selected + 1}/${tasks.length}`)} ${accent(currentTask.agent)} · ${status(currentTask)}${duration ? ` · ${dim(duration)}` : ''}`;
-      const cancelActionText = cancelActiveHint ? `${cancelActiveHint} · ` : '';
+      const badge = `${accent(`${this.selected + 1}/${tasks.length}`)} ${accent(currentTask.agent)} ${resolveIcon('separator', '·')} ${status(currentTask)}${duration ? ` ${resolveIcon('separator', '·')} ${dim(duration)}` : ''}`;
+      const cancelActionText = cancelActiveHint
+        ? `${cancelActiveHint} ${resolveIcon('separator', '·')} `
+        : '';
       const shortcutsText = dim(
-        `${cancelActionText}ctrl+o expand · ctrl+t thinking · `,
+        `${cancelActionText}ctrl+o expand ${resolveIcon('separator', '·')} ctrl+t thinking ${resolveIcon('separator', '·')} `,
       );
       const rightHeaderItems = `${shortcutsText}${closeBtn}`;
 
@@ -750,7 +766,7 @@ export class SubagentsHistoryPanel {
           ? `[${this.scroll + 1}-${Math.min(wrappedEntries.length, this.scroll + bodyHeight)}/${wrappedEntries.length}]`
           : '';
       const shortcuts = dim(
-        '←/→ exec · ↑/↓ scroll · ctrl+o expand · ctrl+t thinking',
+        `${resolveIcon('arrowLeft', '←')}/${resolveIcon('arrowRight', '→')} exec ${resolveIcon('separator', '·')} ${resolveIcon('arrowUp', '↑')}/${resolveIcon('arrowDown', '↓')} scroll ${resolveIcon('separator', '·')} ctrl+o expand ${resolveIcon('separator', '·')} ctrl+t thinking`,
       );
       const scrollBadge = scrollPos ? dim(`${scrollPos} `) : '';
       const bottomItems = `${scrollBadge}${shortcuts}`;
@@ -807,7 +823,7 @@ export class SubagentsHistoryPanel {
       }
 
       const titlePart = displayName
-        ? `task: ${accent(displayName)}${taskText ? ` · ${dim(taskText)}` : ''}`
+        ? `task: ${accent(displayName)}${taskText ? ` ${resolveIcon('separator', '·')} ${dim(taskText)}` : ''}`
         : taskText
           ? `task: ${accent(taskText)}`
           : undefined;
@@ -889,7 +905,10 @@ export class SubagentsHistoryPanel {
 
       // Divider before subagents list at the bottom
       const listScrollPos = `[${this.sidebarScroll + 1}-${Math.min(tasks.length, this.sidebarScroll + listHeight)}/${tasks.length}] `;
-      const scrollArrow = tasks.length > listHeight ? '▲/▼ ' : '';
+      const scrollArrow =
+        tasks.length > listHeight
+          ? `${resolveIcon('scrollUp', '▲')}/${resolveIcon('scrollDown', '▼')} `
+          : '';
       const listLabel = `executions ${listScrollPos}${scrollArrow}`;
       const listLabelVis = this.visibleWidth(listLabel);
       const listDivFill = Math.max(0, w - listLabelVis - 5);
@@ -911,8 +930,8 @@ export class SubagentsHistoryPanel {
           const icon = isSelected ? '●' : '○';
           const name = t.display_name?.trim() || t.agent;
           const dur = formatTaskDuration(t);
-          const durPart = dur ? ` · ${dur}` : '';
-          const itemText = `${icon} ${taskIdx + 1}. ${name} · ${t.status}${durPart}`;
+          const durPart = dur ? ` ${resolveIcon('separator', '·')} ${dur}` : '';
+          const itemText = `${icon} ${taskIdx + 1}. ${name} ${resolveIcon('separator', '·')} ${t.status}${durPart}`;
           const clipped = this.truncateToWidth(itemText, rightWidth);
           lineContent = isSelected
             ? themeFg(th, 'warning', clipped)
@@ -927,7 +946,10 @@ export class SubagentsHistoryPanel {
 
       // Bottom frame (footer) with shortcuts on the left and close button on the right
       const maxShortcutsVis = Math.max(4, w - closeVis - 8);
-      let shortcuts = w >= 55 ? '←/→ select · ↑/↓ scroll' : '←/→ select';
+      let shortcuts =
+        w >= 55
+          ? `${resolveIcon('arrowLeft', '←')}/${resolveIcon('arrowRight', '→')} select ${resolveIcon('separator', '·')} ${resolveIcon('arrowUp', '↑')}/${resolveIcon('arrowDown', '↓')} scroll`
+          : `${resolveIcon('arrowLeft', '←')}/${resolveIcon('arrowRight', '→')} select`;
       if (this.visibleWidth(shortcuts) > maxShortcutsVis) {
         shortcuts = this.truncateToWidth(shortcuts, maxShortcutsVis);
       }
@@ -1304,8 +1326,9 @@ export class SubagentsHistoryPanel {
         cwd: this.renderContext.cwd ?? process.cwd(),
         taskId: task.id,
         visibleWidth: this.renderContext.visibleWidth ?? this.visibleWidth,
-        truncateToWidth:
-          this.renderContext.truncateToWidth ?? this.truncateToWidth,
+        truncateToWidth: getRenderKit()?.icon
+          ? this.truncateToWidth
+          : (this.renderContext.truncateToWidth ?? this.truncateToWidth),
         renderWidth: width,
         toolOutputExpanded: this.toolOutputExpanded,
         hideThinkingBlock: this.hideThinkingBlock,
@@ -1393,7 +1416,7 @@ export class SubagentsHistoryPanel {
     const hasResp =
       typeof task.result === 'string' && task.result.trim().length > 0;
     const parts = [
-      `subagent: ${task.agent} · status: ${task.status} · attempt: ${task.attempt ?? 1} · effort: ${task.effort ?? 'default/current'}`,
+      `subagent: ${task.agent} ${resolveIcon('separator', '·')} status: ${task.status} ${resolveIcon('separator', '·')} attempt: ${task.attempt ?? 1} ${resolveIcon('separator', '·')} effort: ${task.effort ?? 'default/current'}`,
       `model: ${task.model ?? 'default/current'}`,
       usage ? `usage: ${usage}` : undefined,
       '',

@@ -1,10 +1,11 @@
 import {
   createKitRenderMemo,
+  resolveIcon,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import { safeErrorMetadataDetails } from '../error-metadata.js';
 import {
-  ARCH_ICON,
+  agentIcon,
   BOX_CHARS,
   frameBox,
   padToWidth,
@@ -21,6 +22,7 @@ import {
   truncateToWidth,
   visibleWidth,
 } from '../ui/theme.js';
+import { iconAwareRenderer } from './icon-aware-component.js';
 import { wrapLineToWidth } from './text-width.js';
 import { toolSelectionWarning } from './tool-selection-warning.js';
 import {
@@ -61,7 +63,7 @@ function formatErrorMetadataLines(task: any): string[] {
 }
 
 export {
-  ARCH_ICON,
+  agentIcon,
   BOX_CHARS,
   frameBox,
   padToWidth,
@@ -158,173 +160,181 @@ export function sendSubagentCompletionMessage(
   );
 }
 
-export function renderSubagentCompletionMessage(
-  message: any,
-  options: any,
-  theme: any,
-) {
-  const details = message.details ?? {};
-  const task = details.task ?? details;
-  const status = task.status ?? 'completed';
-  const failed = status === 'failed' || status === 'cancelled';
-  const expanded = Boolean(options?.expanded);
-  const rawResponse = details.full_result ?? task.result;
-  const hasResp =
-    typeof rawResponse === 'string' && rawResponse.trim().length > 0;
-  const responseText = hasResp ? rawResponse : '';
-  const archPrefix = themeStatus(theme, status, statusGlyph(status));
-  const taskLabel = formatTaskLabel(task);
-  const titleLabel = themeFg(
-    theme,
-    failed ? 'error' : 'customMessageLabel',
-    `[subagent] ${taskLabel} · ${status}`,
-  );
-  const title = `${archPrefix} ${titleLabel}`.trim();
-  const sections: Array<{
-    text: string;
-    style?: 'label' | 'status' | 'dim' | 'body' | 'heading';
-  }> = [];
-  if (!expanded) {
-    sections.push(
-      {
-        text: `subagent: ${task.agent ?? 'subagent'} · model: ${task.model ?? 'default/current'} · effort: ${task.effort ?? 'default/current'} · status: ${status}`,
-        style: 'dim',
-      },
-      { text: 'ctrl+o to expand', style: 'dim' },
+export const renderSubagentCompletionMessage = iconAwareRenderer(
+  function renderSubagentCompletionMessage(
+    message: any,
+    options: any,
+    theme: any,
+  ) {
+    const details = message.details ?? {};
+    const task = details.task ?? details;
+    const status = task.status ?? 'completed';
+    const failed = status === 'failed' || status === 'cancelled';
+    const expanded = Boolean(options?.expanded);
+    const rawResponse = details.full_result ?? task.result;
+    const hasResp =
+      typeof rawResponse === 'string' && rawResponse.trim().length > 0;
+    const responseText = hasResp ? rawResponse : '';
+    const archPrefix = themeStatus(theme, status, statusGlyph(status));
+    const taskLabel = formatTaskLabel(task, true);
+    const titleLabel = themeFg(
+      theme,
+      failed ? 'error' : 'customMessageLabel',
+      `[subagent] ${taskLabel} ${resolveIcon('separator', '·')} ${status}`,
     );
-  } else {
-    sections.push({
-      text: `subagent: ${task.agent ?? 'subagent'} · model: ${task.model ?? 'default/current'} · effort: ${task.effort ?? 'default/current'} · status: ${status}`,
-      style: 'dim',
-    });
-    if (task.attempt) {
-      sections.push({ text: `attempt: ${task.attempt}`, style: 'dim' });
-    }
-    if (hasResp && responseText) {
-      sections.push(
-        { text: BOX_CHARS.horizontal.repeat(24), style: 'dim' },
-        { text: responseHeading(task.status), style: 'heading' },
-        ...String(responseText)
-          .split('\n')
-          .map((line) => ({ text: line, style: 'body' as const })),
-      );
-    } else if (failed && task.error) {
-      sections.push(
-        { text: BOX_CHARS.horizontal.repeat(24), style: 'dim' },
-        { text: 'error', style: 'heading' },
-        ...String(task.error)
-          .split('\n')
-          .map((line) => ({ text: line, style: 'body' as const })),
-      );
-      const errorDetails = formatErrorMetadataLines(task);
-      if (errorDetails.length) {
-        sections.push(
-          { text: '', style: 'dim' },
-          { text: 'error details', style: 'heading' },
-          ...errorDetails.map((line) => ({
-            text: line,
-            style: 'body' as const,
-          })),
-        );
-      }
-    }
-  }
-  const color = (
-    section: {
+    const title = `${archPrefix} ${titleLabel}`.trim();
+    const sections: Array<{
       text: string;
       style?: 'label' | 'status' | 'dim' | 'body' | 'heading';
-    },
-    text: string,
-  ) => {
-    if (section.style === 'label')
-      return themeFg(theme, failed ? 'error' : 'customMessageLabel', text);
-    if (section.style === 'status')
-      return themeFg(theme, failed ? 'error' : 'success', text);
-    if (section.style === 'dim') return themeDim(theme, text);
-    if (section.style === 'heading') return themeTitle(theme, text);
-    if (section.style === 'body')
-      return themeFg(theme, 'customMessageText', text);
-    return text;
-  };
-  const memo = createKitRenderMemo();
-  // Cache only KIT output; the sentinel keeps native rendering uncached.
-  const nativeFallback: string[] = [];
-  const renderLines = (width: number, kit?: ThothRenderKit): string[] => {
-    const safeWidth = Math.max(1, Math.floor(width || 1));
-    if (kit) {
-      const divider = sections.findIndex(
-        (section) => section.text === BOX_CHARS.horizontal.repeat(24),
-      );
-      const styledRows = (items: typeof sections, contentWidth: number) =>
-        items.flatMap((section) =>
-          wrapLineToWidth(section.text, contentWidth).map((line) =>
-            color(section, line),
-          ),
-        );
-      return kit.card(
-        theme,
+    }> = [];
+    if (!expanded) {
+      sections.push(
         {
-          title,
-          isSuccess: task.status === 'completed',
-          isError: failed,
-          body: (contentWidth) =>
-            styledRows(
-              divider < 0 ? sections : sections.slice(0, divider),
-              contentWidth,
-            ),
-          sections:
-            divider < 0
-              ? undefined
-              : [
-                  {
-                    title: sections[divider + 1]?.text,
-                    rows: (contentWidth) =>
-                      styledRows(sections.slice(divider + 2), contentWidth),
-                  },
-                ],
-          wrap: true,
+          text: `subagent: ${task.agent ?? 'subagent'} ${resolveIcon('separator', '·')} model: ${task.model ?? 'default/current'} ${resolveIcon('separator', '·')} effort: ${task.effort ?? 'default/current'} ${resolveIcon('separator', '·')} status: ${status}`,
+          style: 'dim',
         },
-        safeWidth,
+        { text: 'ctrl+o to expand', style: 'dim' },
       );
-    }
-    if (safeWidth < 10) {
-      return [
-        title,
-        ...sections.flatMap((s) => wrapLineToWidth(s.text, safeWidth)),
-      ].map((l) => truncateToWidth(l, safeWidth, '…'));
-    }
-    const innerWidth = safeWidth - 2;
-    const contentWidth = Math.max(1, innerWidth - 2);
-    const borderFn = (t: string) => themeFg(theme, 'accent', t);
-
-    const maxTitleWidth = Math.max(0, innerWidth - 4);
-    const clippedTitle = truncateToWidth(title, maxTitleWidth, '…');
-    const titleVisWidth = visibleWidth(clippedTitle);
-    const filler = Math.max(0, innerWidth - titleVisWidth - 3);
-    const top = `${borderFn(BOX_CHARS.topLeft)}${borderFn(BOX_CHARS.horizontal)} ${clippedTitle} ${borderFn(BOX_CHARS.horizontal.repeat(filler))}${borderFn(BOX_CHARS.topRight)}`;
-    const middle = sections.flatMap((section) =>
-      wrapLineToWidth(section.text, contentWidth).map((line) => {
-        const styled = color(section, line);
-        const lineVisWidth = visibleWidth(line);
-        const rightPadding = ' '.repeat(
-          Math.max(0, contentWidth - lineVisWidth),
+    } else {
+      sections.push({
+        text: `subagent: ${task.agent ?? 'subagent'} ${resolveIcon('separator', '·')} model: ${task.model ?? 'default/current'} ${resolveIcon('separator', '·')} effort: ${task.effort ?? 'default/current'} ${resolveIcon('separator', '·')} status: ${status}`,
+        style: 'dim',
+      });
+      if (task.attempt) {
+        sections.push({ text: `attempt: ${task.attempt}`, style: 'dim' });
+      }
+      if (hasResp && responseText) {
+        sections.push(
+          { text: BOX_CHARS.horizontal.repeat(24), style: 'dim' },
+          { text: responseHeading(task.status), style: 'heading' },
+          ...String(responseText)
+            .split('\n')
+            .map((line) => ({ text: line, style: 'body' as const })),
         );
-        return `${borderFn(BOX_CHARS.vertical)} ${styled}${rightPadding} ${borderFn(BOX_CHARS.vertical)}`;
-      }),
-    );
-    const bottom = `${borderFn(BOX_CHARS.bottomLeft)}${borderFn(BOX_CHARS.horizontal.repeat(innerWidth))}${borderFn(BOX_CHARS.bottomRight)}`;
+      } else if (failed && task.error) {
+        sections.push(
+          { text: BOX_CHARS.horizontal.repeat(24), style: 'dim' },
+          { text: 'error', style: 'heading' },
+          ...String(task.error)
+            .split('\n')
+            .map((line) => ({ text: line, style: 'body' as const })),
+        );
+        const errorDetails = formatErrorMetadataLines(task);
+        if (errorDetails.length) {
+          sections.push(
+            { text: '', style: 'dim' },
+            { text: 'error details', style: 'heading' },
+            ...errorDetails.map((line) => ({
+              text: line,
+              style: 'body' as const,
+            })),
+          );
+        }
+      }
+    }
+    const color = (
+      section: {
+        text: string;
+        style?: 'label' | 'status' | 'dim' | 'body' | 'heading';
+      },
+      text: string,
+    ) => {
+      if (section.style === 'label')
+        return themeFg(theme, failed ? 'error' : 'customMessageLabel', text);
+      if (section.style === 'status')
+        return themeFg(theme, failed ? 'error' : 'success', text);
+      if (section.style === 'dim') return themeDim(theme, text);
+      if (section.style === 'heading') return themeTitle(theme, text);
+      if (section.style === 'body')
+        return themeFg(theme, 'customMessageText', text);
+      return text;
+    };
+    const memo = createKitRenderMemo();
+    // Cache only KIT output; the sentinel keeps native rendering uncached.
+    const nativeFallback: string[] = [];
+    const renderLines = (width: number, kit?: ThothRenderKit): string[] => {
+      const safeWidth = Math.max(1, Math.floor(width || 1));
+      if (kit) {
+        const divider = sections.findIndex(
+          (section) => section.text === BOX_CHARS.horizontal.repeat(24),
+        );
+        const styledRows = (items: typeof sections, contentWidth: number) =>
+          items.flatMap((section) =>
+            wrapLineToWidth(section.text, contentWidth).map((line) =>
+              color(section, line),
+            ),
+          );
+        return kit.card(
+          theme,
+          {
+            title,
+            isSuccess: task.status === 'completed',
+            isError: failed,
+            body: (contentWidth) =>
+              styledRows(
+                divider < 0 ? sections : sections.slice(0, divider),
+                contentWidth,
+              ),
+            sections:
+              divider < 0
+                ? undefined
+                : [
+                    {
+                      title: sections[divider + 1]?.text,
+                      rows: (contentWidth) =>
+                        styledRows(sections.slice(divider + 2), contentWidth),
+                    },
+                  ],
+            wrap: true,
+          },
+          safeWidth,
+        );
+      }
+      if (safeWidth < 10) {
+        return [
+          title,
+          ...sections.flatMap((s) => wrapLineToWidth(s.text, safeWidth)),
+        ].map((l) =>
+          truncateToWidth(l, safeWidth, `${resolveIcon('ellipsis', '…')}`),
+        );
+      }
+      const innerWidth = safeWidth - 2;
+      const contentWidth = Math.max(1, innerWidth - 2);
+      const borderFn = (t: string) => themeFg(theme, 'accent', t);
 
-    return [top, ...middle, bottom];
-  };
-  return {
-    invalidate() {
-      memo.invalidate();
-    },
-    render(width: number) {
-      const lines = memo.render(width, (kit) =>
-        kit ? renderLines(width, kit) : nativeFallback,
+      const maxTitleWidth = Math.max(0, innerWidth - 4);
+      const clippedTitle = truncateToWidth(
+        title,
+        maxTitleWidth,
+        `${resolveIcon('ellipsis', '…')}`,
       );
-      return lines === nativeFallback ? renderLines(width) : lines;
-    },
-  };
-}
+      const titleVisWidth = visibleWidth(clippedTitle);
+      const filler = Math.max(0, innerWidth - titleVisWidth - 3);
+      const top = `${borderFn(BOX_CHARS.topLeft)}${borderFn(BOX_CHARS.horizontal)} ${clippedTitle} ${borderFn(BOX_CHARS.horizontal.repeat(filler))}${borderFn(BOX_CHARS.topRight)}`;
+      const middle = sections.flatMap((section) =>
+        wrapLineToWidth(section.text, contentWidth).map((line) => {
+          const styled = color(section, line);
+          const lineVisWidth = visibleWidth(line);
+          const rightPadding = ' '.repeat(
+            Math.max(0, contentWidth - lineVisWidth),
+          );
+          return `${borderFn(BOX_CHARS.vertical)} ${styled}${rightPadding} ${borderFn(BOX_CHARS.vertical)}`;
+        }),
+      );
+      const bottom = `${borderFn(BOX_CHARS.bottomLeft)}${borderFn(BOX_CHARS.horizontal.repeat(innerWidth))}${borderFn(BOX_CHARS.bottomRight)}`;
+
+      return [top, ...middle, bottom];
+    };
+    return {
+      invalidate() {
+        memo.invalidate();
+      },
+      render(width: number) {
+        const lines = memo.render(width, (kit) =>
+          kit ? renderLines(width, kit) : nativeFallback,
+        );
+        return lines === nativeFallback ? renderLines(width) : lines;
+      },
+    };
+  },
+);

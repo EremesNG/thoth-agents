@@ -21,6 +21,9 @@ export type {
   RenderToolFooterOptions,
   RenderTreeRowOptions,
   RenderWidgetHeadingOptions,
+  SemanticFrameName,
+  SemanticGlyphName,
+  SemanticIconName,
   ThothRenderKit,
 } from './render-kit.js';
 export {
@@ -29,6 +32,9 @@ export {
   getToolElapsedMs,
   registerRenderKit,
   renderToolFooter,
+  resolveFrames,
+  resolveIcon,
+  resolveStatusGlyph,
   withdrawRenderKit,
 } from './render-kit.js';
 export type {

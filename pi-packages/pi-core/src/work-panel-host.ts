@@ -1,5 +1,6 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Component, OverlayHandle, TUI } from '@earendil-works/pi-tui';
+import { resolveIcon } from './render-kit.js';
 import type { WorkPanelProvider } from './work-panel.js';
 import { createWorkPanelDetail } from './work-panel-detail.js';
 import {
@@ -88,10 +89,24 @@ export function createWorkPanelHost(
   let suspended = false;
   let dismissDetail: (() => void) | undefined;
   let renderTimer: ReturnType<typeof setTimeout> | undefined;
+  let statusCue: string | undefined;
+
+  function refreshStatusCue(count: number, force = false): void {
+    const next =
+      count > 0 && !focused && !suspended
+        ? `${resolveIcon('arrowLeft', '←')} work ${resolveIcon('separator', '·')} ${count}`
+        : undefined;
+    if (!force && next === statusCue) return;
+    statusCue = next;
+    ctx.ui.setStatus(WIDGET_KEY, next);
+  }
 
   const clip = (text: string, width: number) =>
-    toolkit?.truncateToWidth(text, Math.max(0, width)) ??
-    [...text].slice(0, Math.max(0, width)).join('');
+    toolkit?.truncateToWidth(
+      text,
+      Math.max(0, width),
+      resolveIcon('ellipsis', '...'),
+    ) ?? [...text].slice(0, Math.max(0, width)).join('');
   const sections = () => panelSections(providers(), Date.now());
   function rows(): PanelRow[] {
     const all = sections()
@@ -332,10 +347,7 @@ export function createWorkPanelHost(
       if (!installed) return;
       const count = rows().length;
       scheduleRender();
-      ctx.ui.setStatus(
-        WIDGET_KEY,
-        count > 0 && !focused && !suspended ? `← work · ${count}` : undefined,
-      );
+      refreshStatusCue(count, true);
       requestRender?.();
     },
     dispose() {
@@ -389,7 +401,7 @@ export function createWorkPanelHost(
         requestRender = () => widgetTui.requestRender();
         return {
           render(width) {
-            rows();
+            refreshStatusCue(rows().length);
             const label = panelCloseLabel(selected());
             return renderPanel(sections(), width, Date.now(), theme, clip, {
               measure: toolkit?.visibleWidth,
@@ -400,14 +412,14 @@ export function createWorkPanelHost(
               ),
               hint: focused
                 ? [
-                    '↑↓ move',
+                    `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} move`,
                     'Enter open',
                     label ? `x ${label}` : '',
                     'Esc back',
                   ]
                     .filter(Boolean)
-                    .join(' · ')
-                : '← interact',
+                    .join(` ${resolveIcon('separator', '·')} `)
+                : `${resolveIcon('arrowLeft', '←')} interact`,
             });
           },
           invalidate() {},

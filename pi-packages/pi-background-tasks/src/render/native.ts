@@ -3,8 +3,13 @@ import {
   type Theme,
   type ThemeColor,
 } from '@earendil-works/pi-coding-agent';
-import { Box, truncateToWidth, wrapTextWithAnsi } from '@earendil-works/pi-tui';
-import type { RenderKitTheme } from '@thoth-agents/pi-core';
+import {
+  Box,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from '@earendil-works/pi-tui';
+import { type RenderKitTheme, resolveIcon } from '@thoth-agents/pi-core';
 
 export const COLLAPSED_LINES = 8;
 
@@ -52,7 +57,7 @@ export function collapseNative(
     themed(
       theme,
       'dim',
-      `… ${hidden} more line${hidden === 1 ? '' : 's'} (${resolveExpandHint(context)})`,
+      `${resolveIcon('ellipsis', '…')} ${hidden} more line${hidden === 1 ? '' : 's'} (${resolveExpandHint(context)})`,
     ),
   ];
 }
@@ -67,7 +72,9 @@ export function nativeRows(
   const lines = wrap
     ? rows.flatMap((row) => wrapTextWithAnsi(row, cells))
     : rows;
-  return lines.map((row) => truncateToWidth(row, cells, '…'));
+  const ellipsis = resolveIcon('ellipsis', '…');
+  const marker = visibleWidth(ellipsis) <= cells ? ellipsis : '';
+  return lines.map((row) => truncateToWidth(row, cells, marker));
 }
 
 /** Split padding lets stacked self-shell renderers match one SDK Box(1, 1). */

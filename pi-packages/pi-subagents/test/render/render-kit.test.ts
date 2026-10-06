@@ -238,7 +238,7 @@ describe('background launch tool cards', () => {
         theme,
         { isPartial: false, isError: false, state: {} },
       ).render(120);
-      expect(lines[0]).toContain('⤓ subagent · worker · launched (background)');
+      expect(lines[0]).toContain('✓ subagent · worker · launched (background)');
       expect(lines.join('\n')).toContain('status: launched');
       expect(lines.join('\n')).not.toContain('◐');
       expect(lines.at(-1)).toBe('╰─ ✓');
@@ -287,7 +287,7 @@ describe('background launch tool cards', () => {
         {},
         theme,
       ).render(120);
-      expect(lines[0]).toContain('⤓ subagent · worker · launched (background)');
+      expect(lines[0]).toContain('✓ subagent · worker · launched (background)');
       expect(card).toHaveBeenCalledWith(
         theme,
         expect.objectContaining({ status: 'completed', isSuccess: true }),

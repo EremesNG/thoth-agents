@@ -242,7 +242,9 @@ describe('registerStatusLine', () => {
       editor.render(120);
       const changed = component.render(120);
       expect(changed).toBe(initial);
-      expect(borders(editor, 120).bottom).toContain('● Test Model · ◐ high');
+      expect(borders(editor, 120).bottom).toContain(
+        '\u{f06a9} Test Model · \u{f09d1} high',
+      );
       expect(changed[0]).not.toContain('◐');
 
       // A refresh must invalidate presentation even when data is unchanged.
@@ -252,7 +254,7 @@ describe('registerStatusLine', () => {
       for (const handler of mocks.eventHandlers.get('thinking_level_select') ??
         [])
         handler();
-      expect(component.render(120)[0]).toContain('<accent:$0.300>');
+      expect(component.render(120)[0]).toContain('<accent:\uf155 0.300>');
     } finally {
       component.dispose();
       unusedWorking.dispose();
@@ -285,7 +287,7 @@ describe('registerStatusLine', () => {
       expect(callbacks.length).toBeGreaterThan(0);
       for (const handler of callbacks) handler();
       expect(mocks.tui.requestRender).toHaveBeenCalled();
-      expect(component.render(120)[0]).toContain('<new:$0.300>');
+      expect(component.render(120)[0]).toContain('<new:\uf155 0.300>');
     } finally {
       component.dispose();
       expect(vi.getTimerCount()).toBe(0);
@@ -460,7 +462,9 @@ describe('registerStatusLine', () => {
     const component = createFooter(mocks);
     try {
       const initialFooter = component.render(120);
-      expect(initialFooter).toEqual(['$0.300 ◆ ↑10 ↓10 ◆ cache 0 ◆ — tok/s']);
+      expect(initialFooter).toEqual([
+        '\uf155 0.300 · \uf06210 \uf06310 · \u{f01bc} 0 · \u{f04c5} —',
+      ]);
       expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
 
       const box = editor.render(120);
@@ -469,9 +473,9 @@ describe('registerStatusLine', () => {
         `${CURSOR_MARKER}\x1b[7m \x1b[0mtype or / for commands`,
       );
       expect(box[2]).toMatch(
-        /^╰─ ● Test Model · ◐ low ─+ \[███░░░░░░░\] 25% 50K\/200K ─╯$/,
+        /^╰─ \u{f06a9} Test Model · \u{f09d1} low ─+ \uf2db \[███░░░░░░░\] 25% 50K\/200K ─╯$/u,
       );
-      expect(box[0]).toMatch(/ \/workspace\/project ─╮$/);
+      expect(box[0]).toMatch(/ (?:\u{f07c}|dir) \/workspace\/project ─╮$/u);
       expect(box.map(visibleWidth)).toEqual([120, 120, 120]);
       expect(component.render(120)).toBe(initialFooter);
       expect(component.render(120)).toBe(initialFooter);
@@ -482,7 +486,7 @@ describe('registerStatusLine', () => {
       });
       expect(editor.render(120)[2]).toBe(box[2]);
       expect(component.render(120)).toEqual([
-        '$1.000 ◆ ↑10 ↓10 ◆ cache 0 ◆ — tok/s',
+        '\uf155 1.000 · \uf06210 \uf06310 · \u{f01bc} 0 · \u{f04c5} —',
       ]);
       expect(mocks.ui.setEditorComponent).not.toHaveBeenCalled();
     } finally {
@@ -502,10 +506,10 @@ describe('registerStatusLine', () => {
       ]);
       const { top, bottom } = borders(editor, 80);
       expect(top).toBe(
-        `╭─ ▲ ready . git main ${'─'.repeat(36)} /workspace/project ─╮`,
+        `╭─ ^ ready | git main ${'─'.repeat(32)} dir /workspace/project ─╮`,
       );
       expect(bottom).toBe(
-        `╰─ * Test Model . o low ${'─'.repeat(27)} [###-------] 25% 50K/200K ─╯`,
+        `╰─ * Test Model | o low ${'─'.repeat(23)} ctx [###-------] 25% 50K/200K ─╯`,
       );
       for (let width = 16; width <= 200; width++) {
         const rendered = borders(editor, width);
@@ -515,8 +519,8 @@ describe('registerStatusLine', () => {
 
       config.icons = 'nerd';
       const unicode = borders(editor, 80);
-      expect(unicode.top).toContain('· ⑂ main');
-      expect(unicode.bottom).toContain('● Test Model · ◐ low');
+      expect(unicode.top).toContain('· \ue0a0 main');
+      expect(unicode.bottom).toContain('\u{f06a9} Test Model · \u{f09d1} low');
       expect(unicode.bottom).toContain('[███░░░░░░░]');
       expect(visibleWidth(unicode.top)).toBe(80);
       expect(visibleWidth(unicode.bottom)).toBe(80);
@@ -532,7 +536,9 @@ describe('registerStatusLine', () => {
 
     expect(lines).toHaveLength(1);
     const row = lines[0];
-    expect(row).toBe('$0.300 ◆ ↑10 ↓10 ◆ cache 0 ◆ — tok/s');
+    expect(row).toBe(
+      '\uf155 0.300 · \uf06210 \uf06310 · \u{f01bc} 0 · \u{f04c5} —',
+    );
     for (const hidden of ['Test Model', '◐', '⑂', '/workspace', '50K', '25%'])
       expect(row).not.toContain(hidden);
   });
@@ -578,7 +584,7 @@ describe('registerStatusLine', () => {
     try {
       component.render(200);
       const { top } = borders(editor, 200);
-      expect(top).toContain('· ⑂ main');
+      expect(top).toContain('· \ue0a0 main');
       expect(top).toContain(` ${expected} ─╮`);
     } finally {
       component.dispose();
@@ -594,7 +600,7 @@ describe('registerStatusLine', () => {
     try {
       component.render(200);
       expect(borders(editor, 200).top).toMatch(
-        /^╭─ ▲ ready · ⑂ main ─+ \/workspace\/project ─╮$/,
+        /^╭─ ▲ ready · \ue0a0 main ─+ \u{f07c} \/workspace\/project ─╮$/u,
       );
 
       mocks.ctx.cwd = '/workspace/other';
@@ -602,13 +608,13 @@ describe('registerStatusLine', () => {
 
       mocks.footerData.getGitBranch.mockReturnValue('feature/new');
       for (const cb of mocks.branchCallbacks) cb();
-      expect(borders(editor, 200).top).toContain('· ⑂ feature/new');
+      expect(borders(editor, 200).top).toContain('· \ue0a0 feature/new');
 
       mocks.footerData.getGitBranch.mockReturnValue(null);
       const { top } = borders(editor, 200);
       expect(top).not.toContain('⑂');
       expect(top).not.toContain('null');
-      expect(top).toMatch(/^╭─ ▲ ready ─+ \/workspace\/other ─╮$/);
+      expect(top).toMatch(/^╭─ ▲ ready ─+ \u{f07c} \/workspace\/other ─╮$/u);
       expect(component.render(200)[0]).not.toContain('/workspace');
     } finally {
       component.dispose();
@@ -618,7 +624,7 @@ describe('registerStatusLine', () => {
   it('adds the latest cumulative subagent snapshot to session cost, replacing earlier snapshots', () => {
     const mocks = createMocks();
     const component = createFooter(mocks);
-    expect(component.render(120)[0]).toContain('$0.300');
+    expect(component.render(120)[0]).toContain('\uf155 0.300');
 
     mocks.tui.requestRender.mockClear();
     mocks.events.emit('thoth:subagent-usage', {
@@ -626,7 +632,7 @@ describe('registerStatusLine', () => {
       totalCost: 0.7,
       runCount: 1,
     });
-    expect(component.render(120)[0]).toContain('$1.000');
+    expect(component.render(120)[0]).toContain('\uf155 1.000');
     expect(mocks.tui.requestRender).toHaveBeenCalledTimes(1);
 
     mocks.events.emit('thoth:subagent-usage', {
@@ -634,7 +640,7 @@ describe('registerStatusLine', () => {
       totalCost: 1.2,
       runCount: 2,
     });
-    expect(component.render(120)[0]).toContain('$1.500');
+    expect(component.render(120)[0]).toContain('\uf155 1.500');
     expect(mocks.tui.requestRender).toHaveBeenCalledTimes(2);
 
     mocks.events.emit('thoth:subagent-usage', {
@@ -642,7 +648,7 @@ describe('registerStatusLine', () => {
       totalCost: 0,
       runCount: 0,
     });
-    expect(component.render(120)[0]).toContain('$0.300');
+    expect(component.render(120)[0]).toContain('\uf155 0.300');
   });
 
   it('ignores subagent snapshots from other parent sessions', () => {
@@ -717,7 +723,7 @@ describe('registerStatusLine', () => {
     expect(mocks.emit).toHaveBeenCalledWith('thoth:subagent-usage:request', {
       parentSessionId: 'parent-session',
     });
-    expect(component.render(120)[0]).toContain('$1.000');
+    expect(component.render(120)[0]).toContain('\uf155 1.000');
   });
 
   it('resets cost and requests the current session snapshot on session start', () => {
@@ -728,7 +734,7 @@ describe('registerStatusLine', () => {
       totalCost: 0.7,
       runCount: 1,
     });
-    expect(component.render(120)[0]).toContain('$1.000');
+    expect(component.render(120)[0]).toContain('\uf155 1.000');
 
     mocks.sessionManager.getSessionId.mockReturnValue('next-session');
     mocks.sessionManager.getEntries.mockReturnValue([]);
@@ -739,34 +745,34 @@ describe('registerStatusLine', () => {
     expect(mocks.emit).toHaveBeenCalledWith('thoth:subagent-usage:request', {
       parentSessionId: 'next-session',
     });
-    expect(component.render(120)[0]).toContain('$0.000');
+    expect(component.render(120)[0]).toContain('\uf155 0.000');
     mocks.events.emit('thoth:subagent-usage', {
       parentSessionId: 'parent-session',
       totalCost: 10,
       runCount: 2,
     });
-    expect(component.render(120)[0]).toContain('$0.000');
+    expect(component.render(120)[0]).toContain('\uf155 0.000');
     mocks.events.emit('thoth:subagent-usage', {
       parentSessionId: 'next-session',
       totalCost: 0.2,
       runCount: 1,
     });
-    expect(component.render(120)[0]).toContain('$0.200');
+    expect(component.render(120)[0]).toContain('\uf155 0.200');
   });
 
   it.each([
     {
       provider: 'claude-bridge',
       providers: undefined,
-      expected: '$1.000 (sub)',
+      expected: '\uf155 1.000 (sub)',
     },
-    { provider: 'anthropic', providers: undefined, expected: '$1.000' },
+    { provider: 'anthropic', providers: undefined, expected: '\uf155 1.000' },
     {
       provider: 'custom-subscription',
       providers: ['custom-subscription'],
-      expected: '$1.000 (sub)',
+      expected: '\uf155 1.000 (sub)',
     },
-    { provider: 'claude-bridge', providers: [], expected: '$1.000' },
+    { provider: 'claude-bridge', providers: [], expected: '\uf155 1.000' },
   ])('marks cost for provider $provider with configured providers $providers', ({
     provider,
     providers,
@@ -783,7 +789,7 @@ describe('registerStatusLine', () => {
       runCount: 1,
     });
 
-    expect(component.render(120)[0].split(' ◆ ')[0]).toBe(expected);
+    expect(component.render(120)[0].split(' · ')[0]).toBe(expected);
   });
 
   it('updates the cached subscription flag when only the model provider changes', () => {
@@ -796,7 +802,7 @@ describe('registerStatusLine', () => {
     for (const handler of mocks.eventHandlers.get('model_select') ?? [])
       handler();
     const marked = component.render(120);
-    expect(marked[0]).toContain('$0.300 (sub)');
+    expect(marked[0]).toContain('\uf155 0.300 (sub)');
     expect(marked).not.toBe(unmarked);
     expect(component.render(120)).toBe(marked);
 
@@ -847,7 +853,7 @@ describe('registerStatusLine', () => {
       runCount: 1,
     });
     const first = component.render(120);
-    expect(first[0]).toContain('$1.000 (sub)');
+    expect(first[0]).toContain('\uf155 1.000 (sub)');
     const fgCalls = mocks.theme.fg.mock.calls.length;
     const identityReads = mocks.sessionManager.getSessionId.mock.calls.length;
     const emissions = mocks.emit.mock.calls.length;
@@ -908,7 +914,7 @@ describe('registerStatusLine', () => {
         tokensPerSecond: 40,
       });
       expect(component.render(120)[0]).toBe(
-        '$1.300 ◆ ↑20 ↓20 ◆ cache 0 ◆ 40 tok/s',
+        '\uf155 1.300 · \uf06220 \uf06320 · \u{f01bc} 0 · \u{f04c5} 40',
       );
     } finally {
       component.dispose();
@@ -1033,7 +1039,7 @@ describe('registerStatusLine', () => {
       });
       expect(component.getStatusSnapshot()).toBe(persisted);
       expect(component.render(120)[0]).toBe(
-        '$0.300 ◆ ↑10 ↓10 ◆ cache 0 ◆ — tok/s',
+        '\uf155 0.300 · \uf06210 \uf06310 · \u{f01bc} 0 · \u{f04c5} —',
       );
     } finally {
       component.dispose();
@@ -1069,13 +1075,13 @@ describe('registerStatusLine', () => {
     const editor = createEditor(mocks);
     mocks.tui.getFocusedComponent.mockReturnValue(editor);
     const component = createFooter(mocks);
-    expect(component.render(120)[0]).toContain('$0.300');
+    expect(component.render(120)[0]).toContain('\uf155 0.300');
     mocks.events.emit('thoth:subagent-usage', {
       parentSessionId: 'parent-session',
       totalCost: 0.7,
       runCount: 1,
     });
-    expect(component.render(120)[0]).toContain('$1.000');
+    expect(component.render(120)[0]).toContain('\uf155 1.000');
     expect(borders(editor, 120).bottom).toContain('25% 50K/200K');
 
     const { sessionManager } = mocks;
@@ -1092,7 +1098,7 @@ describe('registerStatusLine', () => {
     }
     for (const h of mocks.eventHandlers.get('agent_end') ?? []) h();
     const row = component.render(120)[0];
-    expect(row).toContain('$1.300');
+    expect(row).toContain('\uf155 1.300');
     expect(row).not.toContain('80%');
     expect(borders(editor, 120).bottom).toContain('[████████░░] 80% 160K/200K');
   });

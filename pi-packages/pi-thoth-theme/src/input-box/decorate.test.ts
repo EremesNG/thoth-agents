@@ -238,10 +238,10 @@ describe('input-box editor composition', () => {
     deps.getStatusSnapshot = provider;
     const decoration = decorate();
     expect(decoration.getStatusSnapshot()?.modelName).toBe('First model');
-    expect(plainLines(editor.render(60))[2]).toContain('● First model');
+    expect(plainLines(editor.render(60))[2]).toContain('\u{f06a9} First model');
     modelName = 'Next model';
     expect(decoration.getStatusSnapshot()?.modelName).toBe('Next model');
-    expect(plainLines(editor.render(60))[2]).toContain('● Next model');
+    expect(plainLines(editor.render(60))[2]).toContain('\u{f06a9} Next model');
     decoration.dispose();
     expect(decoration.getStatusSnapshot()).toBeUndefined();
   });
@@ -261,9 +261,11 @@ describe('input-box editor composition', () => {
     });
     decorate();
     const [top, , bottom] = plainLines(editor.render(80));
-    expect(top).toBe(`╭─ ▲ ready · ⑂ main ${'─'.repeat(50)} ~/proj ─╮`);
+    expect(top).toBe(
+      `╭─ ▲ ready · \ue0a0 main ${'─'.repeat(48)} \u{f07c} ~/proj ─╮`,
+    );
     expect(bottom).toBe(
-      `╰─ ● Opus · ◐ high ${'─'.repeat(32)} [███░░░░░░░] 30% 60K/200K ─╯`,
+      `╰─ \u{f06a9} Opus · \u{f09d1} high ${'─'.repeat(30)} \uf2db [███░░░░░░░] 30% 60K/200K ─╯`,
     );
     expect(top.length).toBe(80);
     expect(visibleWidth(bottom)).toBe(80);
@@ -291,8 +293,12 @@ describe('input-box editor composition', () => {
     const lines = plainLines(editor.render(80));
     const top = lines[0];
     const bottom = lines.find((line) => line.startsWith('╰')) as string;
-    expect(top).toMatch(/^╭─ ▲ ready · ⑂ main ─ ↑ \d+ more ─+ ~\/proj ─╮$/);
-    expect(bottom).toMatch(/^╰─ ● Opus ─ ↓ \d+ more ─+ —\/200K ─╯$/);
+    expect(top).toMatch(
+      /^╭─ ▲ ready · \ue0a0 main ─ ↑ \d+ more ─+ \u{f07c} ~\/proj ─╮$/u,
+    );
+    expect(bottom).toMatch(
+      /^╰─ \u{f06a9} Opus ─ ↓ \d+ more ─+ \uf2db —\/200K ─╯$/u,
+    );
     expect(visibleWidth(top)).toBe(80);
     expect(visibleWidth(bottom)).toBe(80);
   });
@@ -334,7 +340,10 @@ describe('input-box editor composition', () => {
     for (let width = 24; width <= 120; width++) {
       const top = plainLines(editor.render(width))[0];
       expect(visibleWidth(top)).toBe(width);
-      if (top.includes(' …\\thoth-theme ') && top.includes('⑂ main')) {
+      if (
+        top.includes('\u{f07c} …\\thoth-theme ') &&
+        top.includes('\ue0a0 main')
+      ) {
         compactWidths++;
         expect(top).not.toContain('workspaces');
       }
@@ -342,7 +351,7 @@ describe('input-box editor composition', () => {
     expect(compactWidths).toBeGreaterThan(0);
     const narrow = plainLines(editor.render(44))[0];
     expect(visibleWidth(narrow)).toBe(44);
-    expect(narrow).toContain('…\\thoth-theme');
+    expect(narrow).toContain('\u{f07c} …\\thoth-theme');
   });
 
   it('degrades right regions before left secondaries and never drops the status or model while the frame fits', () => {
@@ -368,10 +377,10 @@ describe('input-box editor composition', () => {
       expect(visibleWidth(top)).toBe(width);
       expect(visibleWidth(bottom)).toBe(width);
       expect(top).toContain('▲ ready');
-      expect(bottom).toContain('● Opus');
-      const branch = top.includes('⑂ main');
+      expect(bottom).toContain('\u{f06a9} Opus');
+      const branch = top.includes('\ue0a0 main');
       const cwd = top.includes('project');
-      const effort = bottom.includes('◐ high');
+      const effort = bottom.includes('\u{f09d1} high');
       const context = bottom.includes('200K');
       // Right regions drop before left secondaries do.
       if (!branch) expect(cwd).toBe(false);

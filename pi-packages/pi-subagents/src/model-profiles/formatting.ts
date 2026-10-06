@@ -1,3 +1,8 @@
+import { resolveIcon } from '@thoth-agents/pi-core';
+import {
+  truncateToWidth as terminalTruncateToWidth,
+  visibleWidth as terminalVisibleWidth,
+} from '../render/text-width.js';
 import type { SubagentModelProfile } from '../types.js';
 import { BOX_CHARS, themeDim, themeFg, themeWarning } from '../ui/theme.js';
 import { globalSubagentsConfigPath } from './data.js';
@@ -19,7 +24,12 @@ export function visibleWidth(text: string): number {
 export function truncateToVisibleWidth(text: string, width: number): string {
   if (width <= 0) return '';
   if (visibleWidth(text) <= width) return text;
-  if (width === 1) return '…';
+  const ellipsis = terminalTruncateToWidth(
+    resolveIcon('ellipsis', '…'),
+    width,
+    '',
+  );
+  const targetWidth = Math.max(0, width - terminalVisibleWidth(ellipsis));
   let output = '';
   let visible = 0;
   for (let index = 0; index < text.length; ) {
@@ -39,12 +49,12 @@ export function truncateToVisibleWidth(text: string, width: number): string {
         continue;
       }
     }
-    if (visible >= width - 1) break;
+    if (visible >= targetWidth) break;
     output += text[index];
     visible += 1;
     index += 1;
   }
-  return `${output}…`;
+  return `${output}${ellipsis}`;
 }
 
 export function constrainLines(lines: string[], width: number): string[] {

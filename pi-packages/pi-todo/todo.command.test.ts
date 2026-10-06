@@ -186,3 +186,54 @@ describe('/todos command — grouped output', () => {
     expect(out).not.toContain('drop');
   });
 });
+
+it('/todos uses kit status glyphs and separators without changing execution results', async () => {
+  const { registerRenderKit, withdrawRenderKit } = await import(
+    '@thoth-agents/pi-core'
+  );
+  const { createTestRenderKit } = await import('@thoth-agents/pi-core/testing');
+  const { tool, cmd } = setup();
+  await seed(tool, [
+    { action: 'create', subject: 'wait' },
+    { action: 'create', subject: 'ship' },
+    { action: 'update', id: 2, status: 'in_progress' },
+  ]);
+  const ctx = createMockCtx();
+  const before = await tool.execute(
+    'tc',
+    { action: 'list' },
+    undefined,
+    undefined,
+    ctx,
+  );
+  const kit = createTestRenderKit({
+    icon: (name) => (name === 'separator' ? '|' : name),
+  });
+  kit.statusGlyph = (_theme, status) => (status === 'pending' ? '-' : '*');
+  const token = registerRenderKit(kit, {});
+  try {
+    await cmd.handler('', ctx as never);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining('  - #1 wait'),
+      'info',
+    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining('  * #2 ship'),
+      'info',
+    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining('1 in progress | 1 pending'),
+      'info',
+    );
+    const after = await tool.execute(
+      'tc',
+      { action: 'list' },
+      undefined,
+      undefined,
+      ctx,
+    );
+    expect(after).toEqual(before);
+  } finally {
+    withdrawRenderKit(token);
+  }
+});

@@ -109,7 +109,7 @@ it('keeps the running background title timer-free and puts elapsed in the standa
     theme,
     { executionStarted: true, isPartial: true, state: { startedAt: 0 } },
   ).render(120);
-  expect(lines[0]).toBe('╭─ ⤓ subagent · worker · running (background)');
+  expect(lines[0]).toBe('╭─ ◐ subagent · worker · running (background)');
   expect(lines.at(-1)).toBe('╰─ running · 5s');
 });
 

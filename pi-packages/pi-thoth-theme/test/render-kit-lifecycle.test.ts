@@ -111,12 +111,12 @@ describe('theme render-kit lifecycle', () => {
   });
 
   it.each([
-    ['completed', '✓'],
-    ['deleted', '✓'],
-    ['failed', '✗'],
-    ['cancelled', '✗'],
-    ['interrupted', '✗'],
-    ['blocked', '✗'],
+    ['completed', '\uf00c'],
+    ['deleted', '\uf00c'],
+    ['failed', '\uf00d'],
+    ['cancelled', '\uf00d'],
+    ['interrupted', '\uf00d'],
+    ['blocked', '\uf00d'],
   ] as const)('keeps partial errors running, then freezes the %s footer and stops invalidations', async (status, glyph) => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
@@ -184,12 +184,12 @@ describe('theme render-kit lifecycle', () => {
             {
               status: 'completed',
               context,
-              footer: '✓ · 1s · result',
+              footer: '\uf00c · 1s · result',
             },
             40,
           )
           .at(-1),
-      ).toContain('╰── ✓ · 1s · result ');
+      ).toContain('╰── \uf00c · 1s · result ');
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.clearAllTimers();
@@ -231,11 +231,11 @@ describe('theme render-kit lifecycle', () => {
           elapsedMs: 10250,
           summary: 'Exit 0',
         }),
-      ).toBe('✓ · 10s · Exit 0');
+      ).toBe('\uf00c · 10s · Exit 0');
       expect(vi.getTimerCount()).toBe(0);
       vi.advanceTimersByTime(5000);
       expect(kit.toolFooter(theme, { status: 'completed', context })).toBe(
-        '✓ · 10s',
+        '\uf00c · 10s',
       );
     } finally {
       vi.clearAllTimers();

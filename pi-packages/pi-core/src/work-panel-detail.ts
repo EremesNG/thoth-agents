@@ -1,5 +1,9 @@
 import type { Component, Focusable } from '@earendil-works/pi-tui';
-import { getRenderKit, type RenderKitTheme } from './render-kit.js';
+import {
+  getRenderKit,
+  type RenderKitTheme,
+  resolveIcon,
+} from './render-kit.js';
 import type { WorkPanelDetail } from './work-panel.js';
 import {
   type PanelRow,
@@ -146,14 +150,14 @@ export function createWorkPanelDetail(
   function hintFor(entry: PanelRow | undefined, foldable: boolean): string {
     const close = panelCloseLabel(entry);
     return [
-      '↑↓ move',
+      `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} move`,
       foldable ? 'Enter expand/collapse' : '',
       close ? `x ${close}` : '',
       entry?.provider.supportsLogTail ? 'l 10/25' : '',
       'Esc back',
     ]
       .filter(Boolean)
-      .join(' · ');
+      .join(` ${resolveIcon('separator', '·')} `);
   }
   const plain: RenderKitTheme['fg'] = (_role, text) => text;
   function fieldsFor(snapshot: WorkPanelDetail, fg = plain): string[] {
@@ -161,7 +165,9 @@ export function createWorkPanelDetail(
       label: string,
       value: string,
       role: Parameters<RenderKitTheme['fg']>[0] = 'text',
-    ) => fg('dim', `${singleLine(label)} · `) + fg(role, singleLine(value));
+    ) =>
+      fg('dim', `${singleLine(label)} ${resolveIcon('separator', '·')} `) +
+      fg(role, singleLine(value));
     return [
       ...(snapshot.status
         ? [field('status', snapshot.status, statusRole(snapshot))]
@@ -329,10 +335,12 @@ export function createWorkPanelDetail(
               0,
               innerWidth -
                 options.measure(block.label) -
-                options.measure(' ·  · folded'),
+                options.measure(
+                  ` ${resolveIcon('separator', '·')}  ${resolveIcon('separator', '·')} folded`,
+                ),
             );
             lines.push(
-              `${heading(block.label)}${fg('dim', ' · ')}${fg('text', options.clip(block.preview, previewWidth))}${fg('dim', ' · folded')}`,
+              `${heading(block.label)}${fg('dim', ` ${resolveIcon('separator', '·')} `)}${fg('text', options.clip(block.preview, previewWidth))}${fg('dim', ` ${resolveIcon('separator', '·')} folded`)}`,
             );
             if (block.id === EVIDENCE) evidenceCollapsed = true;
           }

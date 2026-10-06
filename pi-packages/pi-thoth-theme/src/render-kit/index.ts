@@ -14,7 +14,9 @@ import type {
 } from '@thoth-agents/pi-core';
 import { getToolElapsedMs } from '@thoth-agents/pi-core';
 import { cachedComponent } from '../shared/cache.ts';
+import type { IconMode } from '../shared/config.ts';
 import { formatDuration } from '../shared/duration.ts';
+import { frames, icon, statusIcon } from '../shared/icons.ts';
 import { getBorderTone } from '../tools/border.ts';
 import { renderBox } from '../tools/box.ts';
 import {
@@ -26,38 +28,54 @@ import {
 import { syncElapsedTicker } from '../tools/ticker.ts';
 import { runningFooter, workingFrame } from './working.ts';
 
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const STATUS_STYLE = {
-  pending: ['dim', '○'],
-  queued: ['dim', '○'],
-  in_progress: ['accent', '◇'],
-  running: ['accent', '◇'],
-  completed: ['success', '✓'],
-  failed: ['error', '✗'],
-  cancelled: ['muted', '⊘'],
-  interrupted: ['warning', '⊘'],
-  stopping: ['warning', '!'],
-  deleted: ['muted', '⊘'],
-  blocked: ['warning', '!'],
-  unknown: ['dim', '?'],
-} as const;
+const STATUS_ROLE = {
+  pending: 'dim',
+  queued: 'dim',
+  in_progress: 'accent',
+  running: 'accent',
+  completed: 'success',
+  failed: 'error',
+  cancelled: 'muted',
+  interrupted: 'warning',
+  stopping: 'warning',
+  deleted: 'muted',
+  blocked: 'warning',
+  unknown: 'dim',
+} as const satisfies Record<RenderStatus, string>;
 
-const TOOL_FOOTER_GLYPHS: Partial<Record<RenderStatus, '✓' | '✗'>> = {
-  completed: '✓',
-  deleted: '✓',
-  failed: '✗',
-  cancelled: '✗',
-  interrupted: '✗',
-  blocked: '✗',
+/** Terminal statuses whose footer shows the completed or failed icon. */
+const TOOL_FOOTER_STATUS: Partial<
+  Record<RenderStatus, 'completed' | 'failed'>
+> = {
+  completed: 'completed',
+  deleted: 'completed',
+  failed: 'failed',
+  cancelled: 'failed',
+  interrupted: 'failed',
+  blocked: 'failed',
 };
+
+function startsWithFooterGlyph(footer: string, mode: IconMode): boolean {
+  const plain = stripTerminalSequences(footer);
+  return (['completed', 'failed'] as const).some((status) => {
+    const glyph = statusIcon(status, mode);
+    return (
+      plain.startsWith(glyph) &&
+      (plain.length === glyph.length || /^\s/u.test(plain.slice(glyph.length)))
+    );
+  });
+}
 
 function isRunning(status: RenderStatus): boolean {
   return status === 'running' || status === 'in_progress';
 }
 
-function statusGlyph(theme: RenderKitTheme, status: RenderStatus): string {
-  const [role, glyph] = STATUS_STYLE[status];
-  return theme.fg(role, glyph);
+function statusGlyph(
+  theme: RenderKitTheme,
+  status: RenderStatus,
+  mode: IconMode,
+): string {
+  return theme.fg(STATUS_ROLE[status], statusIcon(status, mode));
 }
 
 function indicatorStatus(context: RenderIndicatorContext): RenderStatus {
@@ -77,6 +95,7 @@ function card(
   options: RenderCardOptions,
   width: number,
   toolFooter: NonNullable<ThothRenderKit['toolFooter']>,
+  mode: IconMode,
 ): string[] {
   const safeWidth = Math.max(0, Math.floor(width));
   if (safeWidth <= 0) return [];
@@ -95,16 +114,13 @@ function card(
           context: options.context,
           summary: options.summary,
         })
-      : statusGlyph(theme, options.status);
+      : statusGlyph(theme, options.status, mode);
   } else if (
     options.status &&
     !isRunning(options.status) &&
-    !(
-      TOOL_FOOTER_GLYPHS[options.status] &&
-      /^[✓✗](?:\s|$)/u.test(stripTerminalSequences(footer))
-    )
+    !(TOOL_FOOTER_STATUS[options.status] && startsWithFooterGlyph(footer, mode))
   ) {
-    footer = [statusGlyph(theme, options.status), footer]
+    footer = [statusGlyph(theme, options.status, mode), footer]
       .filter(Boolean)
       .join(' ');
   }
@@ -144,18 +160,20 @@ function card(
 export function toolFooter(
   theme: RenderKitTheme,
   options: RenderToolFooterOptions,
+  mode: IconMode,
   owner?: object,
 ): string {
   syncElapsedTicker(options.context ?? {}, owner, options.status);
   const elapsedMs = getToolElapsedMs(options);
-  if (isRunning(options.status)) return runningFooter(theme, elapsedMs);
-  const glyph = TOOL_FOOTER_GLYPHS[options.status];
+  if (isRunning(options.status)) return runningFooter(theme, elapsedMs, mode);
+  const footerStatus = TOOL_FOOTER_STATUS[options.status];
+  const glyph = footerStatus ? statusIcon(footerStatus, mode) : undefined;
   const summary =
     typeof options.summary === 'string'
       ? [options.summary]
       : (options.summary ?? []);
   const parts = [
-    theme.fg(STATUS_STYLE[options.status][0], glyph ?? options.status),
+    theme.fg(STATUS_ROLE[options.status], glyph ?? options.status),
   ];
   if (elapsedMs !== undefined) {
     parts.push(
@@ -165,18 +183,21 @@ export function toolFooter(
   if (glyph) {
     parts.push(...summary.filter(Boolean).map((part) => theme.fg('dim', part)));
   }
-  return parts.join(theme.fg('dim', ' · '));
+  return parts.join(theme.fg('dim', ` ${icon('separator', mode)} `));
 }
 
 /** Theme primitives exposed structurally; producers never import this package. */
 export function createRenderKit(
   owner: object,
   resolveToolRenderers?: ThothRenderKit['resolveToolRenderers'],
+  mode: IconMode = 'nerd',
 ): ThothRenderKit {
+  const separator = icon('separator', mode);
+  const ellipsis = icon('ellipsis', mode);
   const ownedToolFooter: NonNullable<ThothRenderKit['toolFooter']> = (
     theme,
     options,
-  ) => toolFooter(theme, options, owner);
+  ) => toolFooter(theme, options, mode, owner);
 
   return {
     version: 1,
@@ -186,7 +207,7 @@ export function createRenderKit(
       if (options.footer !== undefined && options.context && options.status) {
         syncElapsedTicker(options.context, owner, options.status);
       }
-      return card(theme, options, width, ownedToolFooter);
+      return card(theme, options, width, ownedToolFooter, mode);
     },
     collapse(theme, rows, options = {}) {
       const budget = Math.max(0, Math.floor(options.budget ?? 8));
@@ -195,7 +216,7 @@ export function createRenderKit(
         ...rows.slice(0, budget),
         theme.fg(
           'dim',
-          `… ${rows.length - budget} more lines · ${options.expandHint ?? 'ctrl+o to expand'}`,
+          `${ellipsis} ${rows.length - budget} more lines ${separator} ${options.expandHint ?? 'ctrl+o to expand'}`,
         ),
       ];
     },
@@ -212,19 +233,19 @@ export function createRenderKit(
               running ? Math.floor(elapsedMs / 1000) * 1000 : elapsedMs,
             );
       const frame = options.frame;
+      const spinner = frames('spinnerFrames', mode);
       const workingGlyph =
         frame !== undefined && Number.isFinite(frame)
-          ? BRAILLE_FRAMES[
-              ((Math.floor(frame) % BRAILLE_FRAMES.length) +
-                BRAILLE_FRAMES.length) %
-                BRAILLE_FRAMES.length
+          ? spinner[
+              ((Math.floor(frame) % spinner.length) + spinner.length) %
+                spinner.length
             ]
-          : workingFrame(elapsedMs);
+          : workingFrame(elapsedMs, mode);
       const glyph = running
         ? theme.fg('accent', workingGlyph)
-        : statusGlyph(theme, status);
+        : statusGlyph(theme, status, mode);
       const label = options.label ?? indicatorLabel(status);
-      const role = STATUS_STYLE[status][0];
+      const role = STATUS_ROLE[status];
       return {
         glyph,
         elapsedMs,
@@ -233,17 +254,22 @@ export function createRenderKit(
           ? ownedToolFooter(theme, { status, elapsedMs })
           : [theme.fg(role, label), elapsed ? theme.fg('dim', elapsed) : '']
               .filter(Boolean)
-              .join(theme.fg('dim', ' · ')),
+              .join(theme.fg('dim', ` ${separator} `)),
       };
     },
-    statusGlyph,
+    icon(name) {
+      return name === 'spinnerFrames' || name === 'workingFrames'
+        ? frames(name, mode)
+        : icon(name, mode);
+    },
+    statusGlyph: (theme, status) => statusGlyph(theme, status, mode),
     widgetHeading(theme, options, width) {
       const title = theme.fg('toolTitle', options.title);
       return truncateToWidth(
         [
           options.status
-            ? statusGlyph(theme, options.status)
-            : theme.fg('accent', '▲'),
+            ? statusGlyph(theme, options.status, mode)
+            : theme.fg('accent', icon('ready', mode)),
           theme.bold ? theme.bold(title) : title,
           options.counts
             ? theme.fg(
@@ -256,6 +282,7 @@ export function createRenderKit(
           .filter(Boolean)
           .join(' '),
         Math.max(0, Math.floor(width)),
+        ellipsis,
       );
     },
     treeRow(theme, options, width) {
@@ -264,12 +291,13 @@ export function createRenderKit(
         [
           theme.fg(
             options.selected ? 'accent' : 'dim',
-            `${options.selected ? '› ' : '  '}${rail}`,
+            `${options.selected ? `${icon('selection', mode)} ` : '  '}${rail}`,
           ),
-          options.status ? `${statusGlyph(theme, options.status)} ` : '',
+          options.status ? `${statusGlyph(theme, options.status, mode)} ` : '',
           options.text,
         ].join(''),
         Math.max(0, Math.floor(width)),
+        ellipsis,
       );
     },
     fg: (theme, role, text) => theme.fg(role, text),

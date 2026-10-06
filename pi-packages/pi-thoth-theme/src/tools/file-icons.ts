@@ -1,6 +1,6 @@
 import { basename, extname } from 'node:path';
 import type { IconMode } from '../shared/config.ts';
-import { iconFor, iconForFile } from '../shared/icons.ts';
+import { icon } from '../shared/icons.ts';
 
 const NERD_FILE_ICONS: Record<string, string> = {
   ts: '\ue628',
@@ -103,7 +103,7 @@ const ASCII_FILE_ICONS: Record<string, string> = {
 
 export function getFileIcon(filePath: string, mode: IconMode): string {
   if (filePath.endsWith('/') || filePath.endsWith('\\')) {
-    return iconFor('folder', mode);
+    return icon('folder', mode);
   }
 
   const name = basename(filePath).toLowerCase();
@@ -111,17 +111,16 @@ export function getFileIcon(filePath: string, mode: IconMode): string {
 
   if (mode === 'ascii') {
     if (ASCII_FILE_ICONS[ext]) return ASCII_FILE_ICONS[ext];
-    if (ext) return iconForFile(filePath, mode);
-    return iconFor('file', mode);
+    return icon('file', mode);
   }
 
   if (NERD_NAME_ICONS[name]) return NERD_NAME_ICONS[name];
   if (NERD_FILE_ICONS[ext]) return NERD_FILE_ICONS[ext];
-  return iconForFile(filePath, mode);
+  return icon('file', mode);
 }
 
 export function getDirIcon(mode: IconMode): string {
-  return iconFor('folder', mode);
+  return icon('folder', mode);
 }
 
 export function getToolIcon(
@@ -133,13 +132,8 @@ export function getToolIcon(
     | 'powershell'
     | 'search'
     | 'folder'
-    | 'file'
-    | 'ok'
-    | 'error',
+    | 'file',
   mode: IconMode,
 ): string {
-  if (tool === 'powershell') {
-    return mode === 'nerd' ? '\ue70f' : 'PS';
-  }
-  return iconFor(tool, mode);
+  return icon(tool, mode);
 }

@@ -753,3 +753,28 @@ describe('registration', () => {
     ]);
   });
 });
+
+it('mounted background notifications resolve UI separators without changing packed model notifications', () => {
+  const packed = packCallbackBatch([event(1)]);
+  const before = JSON.stringify(packed);
+  const component = renderBackgroundMessage({
+    content: packed.text,
+    details: packed.details,
+  });
+  expect(component.render(120).join('\n')).toContain('completion · done');
+  token = registerRenderKit(
+    createTestRenderKit({
+      icon: (name) => (name === 'separator' ? '|' : name),
+    }),
+    {},
+  );
+  expect(component.render(120).join('\n')).toContain('completion | done');
+  expect(component.render(120).join('\n')).toContain(
+    'job 1 | completed | exit 0',
+  );
+  expect(packCallbackBatch([event(1)])).toEqual(packed);
+  expect(JSON.stringify(packed)).toBe(before);
+  withdrawRenderKit(token);
+  token = undefined;
+  expect(component.render(120).join('\n')).toContain('completion · done');
+});

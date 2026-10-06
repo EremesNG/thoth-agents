@@ -19,7 +19,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildSessionContext, getAgentDir, keyHint } from "@earendil-works/pi-coding-agent";
 import { contentText, type ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { formatDuration, renderToolFooter } from "@thoth-agents/pi-core";
+import { formatDuration, getRenderKit, renderToolFooter, resolveIcon, resolveStatusGlyph } from "@thoth-agents/pi-core";
 import {
 	CONVERSATIONS_DIR,
 	newConversationId,
@@ -489,20 +489,23 @@ export async function registerAskAntigravityTool(
 			if (isContinue) tags.push("continue");
 			if (args.includeContext) tags.push("context=full");
 
-			let text = theme.fg("mdLink", theme.bold("AskAntigravity "));
-			text += `${theme.fg("accent", `[${tags.join(", ")}]`)} `;
+			const renderText = () => {
+				let text = theme.fg("mdLink", theme.bold("AskAntigravity "));
+				text += `${theme.fg("accent", `[${tags.join(", ")}]`)} `;
 
-			const prompt = String(args.prompt ?? "");
-			const truncated = prompt.length > PREVIEW_MAX_CHARS ? prompt.slice(0, PREVIEW_MAX_CHARS) : prompt;
-			const lines = truncated.split("\n").slice(0, PREVIEW_MAX_LINES);
-			text += theme.fg("muted", `"${lines.join("\n")}"`);
-			if (prompt.length > PREVIEW_MAX_CHARS || prompt.split("\n").length > PREVIEW_MAX_LINES) {
-				text += theme.fg("dim", " …");
-			}
+				const prompt = String(args.prompt ?? "");
+				const truncated = prompt.length > PREVIEW_MAX_CHARS ? prompt.slice(0, PREVIEW_MAX_CHARS) : prompt;
+				const lines = truncated.split("\n").slice(0, PREVIEW_MAX_LINES);
+				text += theme.fg("muted", `"${lines.join("\n")}"`);
+				if (prompt.length > PREVIEW_MAX_CHARS || prompt.split("\n").length > PREVIEW_MAX_LINES) {
+					text += theme.fg("dim", ` ${resolveIcon('ellipsis', '…')}`);
+				}
+				return text;
+			};
 			return renderToolCard(
 				theme,
-				text,
-				() => ({ title: "AskAntigravity", body: text.split("\n") }),
+				renderText,
+				() => ({ title: "AskAntigravity", body: renderText().split("\n") }),
 				"start",
 				context,
 			);
@@ -511,13 +514,19 @@ export async function registerAskAntigravityTool(
 			const d = result.details as AgyDetails | undefined;
 			if (isPartial) {
 				const status = result.content[0]?.type === "text" ? result.content[0].text : "working...";
-				const text = theme.fg("mdLink", "◉ AskAntigravity ") + theme.fg("muted", status);
+				const renderText = () => {
+					const glyph = getRenderKit()?.indicator(theme, context, {
+						status: "running",
+						frame: Math.floor(Date.now() / 80),
+					}).glyph ?? "◉";
+					return theme.fg("mdLink", `${glyph} AskAntigravity `) + theme.fg("muted", status);
+				};
 				return renderToolCard(
 					theme,
-					text,
+					renderText,
 					() => ({
 						title: "AskAntigravity",
-						body: text.split("\n"),
+						body: renderText().split("\n"),
 						status: "running",
 						context,
 					}),
@@ -531,34 +540,37 @@ export async function registerAskAntigravityTool(
 				d?.exitCode !== 0 || !!d?.aborted || !!d?.timedOut || !!d?.empty;
 			const status = errored || context?.isError ? "failed" : "completed";
 
-			let text = errored
-				? theme.fg("error", "✗ AskAntigravity error")
-				: theme.fg("mdLink", "✓ AskAntigravity");
+			const renderText = () => {
+				let text = errored
+					? theme.fg("error", `${resolveStatusGlyph('failed', '✗')} AskAntigravity error`)
+					: theme.fg("mdLink", `${resolveStatusGlyph('completed', '✓')} AskAntigravity`);
 
-			const rTags: string[] = [];
-			if (d?.resolvedModel || d?.model) rTags.push(`model=${d?.resolvedModel ?? d?.model}`);
-			if (d?.thinking) rTags.push(`thinking=${d.thinking}`);
-			if (d?.mode && d.mode !== "accept-edits") rTags.push(`mode=${d.mode}`);
-			if (d?.includeContext) rTags.push("context=full");
-			if (rTags.length) text += ` ${theme.fg("accent", `[${rTags.join(", ")}]`)}`;
-			if (d?.durationMs) text += ` ${theme.fg("dim", formatDuration(d.durationMs))}`;
+				const rTags: string[] = [];
+				if (d?.resolvedModel || d?.model) rTags.push(`model=${d?.resolvedModel ?? d?.model}`);
+				if (d?.thinking) rTags.push(`thinking=${d.thinking}`);
+				if (d?.mode && d.mode !== "accept-edits") rTags.push(`mode=${d.mode}`);
+				if (d?.includeContext) rTags.push("context=full");
+				if (rTags.length) text += ` ${theme.fg("accent", `[${rTags.join(", ")}]`)}`;
+				if (d?.durationMs) text += ` ${theme.fg("dim", formatDuration(d.durationMs))}`;
 
-			if (expanded) {
-				if (body) text += `\n${theme.fg("toolOutput", body)}`;
-			} else {
-				const truncated = body.length > PREVIEW_MAX_CHARS ? body.slice(0, PREVIEW_MAX_CHARS) : body;
-				const lines = truncated.split("\n").slice(0, PREVIEW_MAX_LINES);
-				if (lines.length) text += `\n${theme.fg("toolOutput", lines.join("\n"))}`;
-				if (body.length > PREVIEW_MAX_CHARS || body.split("\n").length > PREVIEW_MAX_LINES) {
-					text += `\n${theme.fg("dim", `… (${keyHint("app.tools.expand", "to expand")})`)}`;
+				if (expanded) {
+					if (body) text += `\n${theme.fg("toolOutput", body)}`;
+				} else {
+					const truncated = body.length > PREVIEW_MAX_CHARS ? body.slice(0, PREVIEW_MAX_CHARS) : body;
+					const lines = truncated.split("\n").slice(0, PREVIEW_MAX_LINES);
+					if (lines.length) text += `\n${theme.fg("toolOutput", lines.join("\n"))}`;
+					if (body.length > PREVIEW_MAX_CHARS || body.split("\n").length > PREVIEW_MAX_LINES) {
+						text += `\n${theme.fg("dim", `${resolveIcon('ellipsis', '…')} (${keyHint("app.tools.expand", "to expand")})`)}`;
+					}
 				}
-			}
+				return text;
+			};
 			return renderToolCard(
 				theme,
-				text,
+				renderText,
 				(kit) => ({
 					title: "AskAntigravity",
-					body: text.split("\n"),
+					body: renderText().split("\n"),
 					isError: errored || context?.isError,
 					status,
 					context,

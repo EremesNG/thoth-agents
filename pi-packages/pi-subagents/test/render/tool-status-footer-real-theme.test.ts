@@ -49,7 +49,7 @@ it.each([
     status: 'running',
     mode: 'task',
     isError: false,
-    glyph: '✓',
+    glyph: '\uF00C',
     visibleStatus: 'running',
   },
   {
@@ -58,7 +58,7 @@ it.each([
     status: 'running',
     mode: 'background',
     isError: true,
-    glyph: '✗',
+    glyph: '\uF00D',
     visibleStatus: 'running',
   },
   {
@@ -67,7 +67,7 @@ it.each([
     status: 'completed',
     mode: 'task',
     isError: true,
-    glyph: '✗',
+    glyph: '\uF00D',
     visibleStatus: 'completed',
   },
   {
@@ -76,7 +76,7 @@ it.each([
     status: 'running',
     mode: 'background',
     isError: false,
-    glyph: '✓',
+    glyph: '\uF00C',
     visibleStatus: 'launched',
   },
 ])('stops the timer and freezes the $glyph footer for a $name', async ({
@@ -160,7 +160,7 @@ it.each([
   context.isPartial = false;
   const finished = renderSubagentStatusResult(result, {}, theme, context);
   expect(footer(finished)).toMatch(
-    new RegExp(`^╰── ${isError ? '✗' : '✓'} · 3s `),
+    new RegExp(`^╰── ${isError ? '\uF00D' : '\uF00C'} · 3s `),
   );
   expect(vi.getTimerCount()).toBe(0);
 });

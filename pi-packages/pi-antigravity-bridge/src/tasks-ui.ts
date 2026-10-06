@@ -8,6 +8,7 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Spacer, Text } from "@earendil-works/pi-tui";
+import { resolveIcon } from "@thoth-agents/pi-core";
 import type { AgyTask } from "./tasks.js";
 
 export type TasksBrowserAction = { type: "rescan" } | { type: "close" };
@@ -19,8 +20,8 @@ export function taskItems(tasks: AgyTask[]): SelectItem[] {
 		const state = t.livenessKnown ? (t.active ? "ACTIVE" : "idle") : "liveness?";
 		return {
 			value: String(t.id),
-			label: `#${t.id} · ${state}`,
-			description: `${humanBytes(t.bytes)} · last write ${stamp}`,
+			get label() { return `#${t.id} ${resolveIcon('separator', '·')} ${state}`; },
+			get description() { return `${humanBytes(t.bytes)} ${resolveIcon('separator', '·')} last write ${stamp}`; },
 		};
 	});
 }
@@ -54,7 +55,7 @@ export async function showTasksBrowser(
 
 		const list = new SelectList(items, Math.min(items.length, 12), {
 			selectedPrefix: (t: string) => theme.fg("accent", t),
-			selectedText: (t: string) => theme.fg("accent", t),
+			selectedText: (t: string) => theme.fg("accent", t.startsWith("→ ") ? `${resolveIcon("selection", "→")} ${t.slice(2)}` : t),
 			description: (t: string) => theme.fg("muted", t),
 			scrollInfo: (t: string) => theme.fg("dim", t),
 			noMatch: (t: string) => theme.fg("warning", t),
@@ -65,7 +66,7 @@ export async function showTasksBrowser(
 
 		container.addChild(new Spacer(1));
 		container.addChild(
-			new Text(theme.fg("dim", "↑↓ navigate · r rescan · esc close · /agy tasks tail <id> for a log"), 1, 0),
+			{ render: (width: number) => new Text(theme.fg("dim", `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} navigate ${resolveIcon('separator', '·')} r rescan ${resolveIcon('separator', '·')} esc close ${resolveIcon('separator', '·')} /agy tasks tail <id> for a log`), 1, 0).render(width), invalidate() {} },
 		);
 		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 

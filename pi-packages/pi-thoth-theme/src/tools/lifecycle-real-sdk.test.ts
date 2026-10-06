@@ -13,7 +13,7 @@ import type { ThemeConfig } from '../shared/config.ts';
 import { createToolRendererResolver } from './index.ts';
 
 const config: ThemeConfig = {
-  icons: 'ascii',
+  icons: 'nerd',
   statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
   tools: { enabled: true },
   welcome: { enabled: true },
@@ -105,7 +105,7 @@ function createHostComponent(name: string) {
 describe.each([
   { name: 'bash', successFooter: 'Exit 0', errorFooter: 'Exit 7' },
   { name: 'powershell', successFooter: 'Exit 0', errorFooter: 'Exit 7' },
-  { name: 'custom_tool', successFooter: '✓', errorFooter: '✗' },
+  { name: 'custom_tool', successFooter: '\uf00c', errorFooter: '\uf00d' },
 ])('$name host lifecycle', ({ name, successFooter, errorFooter }) => {
   it('keeps an error-marked partial update gold until the host finishes execution', () => {
     const host = createHostComponent(name);

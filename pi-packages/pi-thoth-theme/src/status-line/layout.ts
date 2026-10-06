@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import type { IconMode } from '../shared/config.ts';
+import { icon } from '../shared/icons.ts';
 
 export interface ContextUsageInfo {
   percent?: number | null;
@@ -78,27 +79,25 @@ export interface SegmentOptions {
 /** Git branch piece for the input-box border; empty when no branch. */
 export function formatBranchSegment(
   data: StatusData,
-  { mode, theme }: SegmentOptions = {},
+  { mode = 'nerd', theme }: SegmentOptions = {},
 ): string {
   if (!data.gitBranch) return '';
-  const icon = mode === 'ascii' ? 'git' : '⑂';
-  return `${themeFg(theme, 'dim', mode === 'ascii' ? '.' : '·')} ${themeFg(
+  return `${themeFg(theme, 'dim', icon('separator', mode))} ${themeFg(
     theme,
     'success',
-    `${icon} ${data.gitBranch}`,
+    `${icon('branch', mode)} ${data.gitBranch}`,
   )}`;
 }
 
 /** Model then optional effort pieces; each piece starts a droppable region. */
 export function formatModelSegments(
   data: StatusData,
-  { mode, theme }: SegmentOptions = {},
+  { mode = 'nerd', theme }: SegmentOptions = {},
 ): string[] {
-  const isAscii = mode === 'ascii';
   const pieces: string[] = [];
   const model = data.modelName || data.modelId;
   if (model) {
-    pieces.push(themeFg(theme, 'mdLink', `${isAscii ? '*' : '●'} ${model}`));
+    pieces.push(themeFg(theme, 'mdLink', `${icon('model', mode)} ${model}`));
   }
   const level = data.thinkingLevel;
   if (level && level !== 'off') {
@@ -107,30 +106,31 @@ export function formatModelSegments(
     const effort = themeFg(
       theme,
       thinkingToken(level),
-      `${isAscii ? 'o' : '◐'} ${label}`,
+      `${icon('effort', mode)} ${label}`,
     );
     pieces.push(
       model
-        ? `${themeFg(theme, 'dim', isAscii ? '.' : '·')} ${effort}`
+        ? `${themeFg(theme, 'dim', icon('separator', mode))} ${effort}`
         : effort,
     );
   }
   return pieces;
 }
 
-/** Working directory, richest first: full path then `…/leaf`. */
+/** Working directory with folder icon, richest first: full path then `…/leaf`. */
 export function formatCwdSegments(
   data: StatusData,
-  { theme }: SegmentOptions = {},
+  { mode = 'nerd', theme }: SegmentOptions = {},
 ): string[] {
   const cwd = data.cwd;
   if (!cwd) return [];
-  const variants = [cwd];
+  const folder = icon('folder', mode);
+  const variants = [`${folder} ${cwd}`];
   const leaf = cwd.split(/[/\\]/).filter(Boolean).pop();
   const separator = cwd.includes('\\') && !cwd.includes('/') ? '\\' : '/';
   const isDriveRoot = leaf !== undefined && /^[A-Za-z]:$/.test(leaf);
   if (leaf && leaf !== cwd && leaf !== '~' && !isDriveRoot) {
-    variants.push(`…${separator}${leaf}`);
+    variants.push(`${folder} ${icon('ellipsis', mode)}${separator}${leaf}`);
   }
   return variants.map((text) => themeFg(theme, 'muted', text));
 }
@@ -161,8 +161,9 @@ function contextBar(
  */
 export function formatContextSegments(
   data: StatusData,
-  { mode, theme }: SegmentOptions = {},
+  { mode = 'nerd', theme }: SegmentOptions = {},
 ): string[] {
+  const contextIcon = themeFg(theme, 'muted', icon('context', mode));
   const windowText = data.contextWindow
     ? `/${formatTokens(data.contextWindow)}`
     : '';
@@ -181,14 +182,20 @@ export function formatContextSegments(
       windowText !== '' ||
       data.contextPercent !== undefined ||
       data.contextTokens !== undefined;
-    return hasAny ? [tokens] : [themeFg(theme, 'muted', '—')];
+    return hasAny
+      ? [`${contextIcon} ${tokens}`]
+      : [themeFg(theme, 'muted', '—')];
   }
   const { bar, pct } = contextBar(
     data.contextPercent as number,
     mode === 'ascii',
     theme,
   );
-  return [`${bar} ${pct} ${tokens}`, `${pct} ${tokens}`, tokens];
+  return [
+    `${contextIcon} ${bar} ${pct} ${tokens}`,
+    `${contextIcon} ${pct} ${tokens}`,
+    `${contextIcon} ${tokens}`,
+  ];
 }
 
 export interface FooterData extends StatusData {
@@ -217,8 +224,7 @@ export function renderStatusLine(
   const { width, mode, theme } = options;
   if (width <= 0) return '';
 
-  const isAscii = mode === 'ascii';
-  const sep = ` ${themeFg(theme, 'border', isAscii ? '|' : '◆')} `;
+  const sep = ` ${themeFg(theme, 'border', icon('separator', mode))} `;
   const segments: string[] = [];
 
   if (data.cost !== undefined) {
@@ -227,25 +233,36 @@ export function renderStatusLine(
       themeFg(
         theme,
         'accent',
-        `$${total.toFixed(3)}${data.isSubscription ? ' (sub)' : ''}`,
+        `${icon('cost', mode)}${mode === 'ascii' ? '' : ' '}${total.toFixed(3)}${data.isSubscription ? ' (sub)' : ''}`,
       ),
     );
   }
   const totals = data.tokenTotals;
   if (totals) {
-    const [up, down] = isAscii ? ['^', 'v'] : ['↑', '↓'];
+    const up = icon('tokensIn', mode);
+    const down = icon('tokensOut', mode);
     segments.push(
       themeFg(
         theme,
         'muted',
         `${up}${formatTokens(totals.input)} ${down}${formatTokens(totals.output)}`,
       ),
-      themeFg(theme, 'muted', `cache ${formatTokens(totals.cacheRead)}`),
+      themeFg(
+        theme,
+        'muted',
+        `${icon('cache', mode)} ${formatTokens(totals.cacheRead)}`,
+      ),
     );
   }
   if (data.tokensPerSecond !== undefined) {
     segments.push(
-      themeFg(theme, 'muted', `${formatRate(data.tokensPerSecond)} tok/s`),
+      themeFg(
+        theme,
+        'muted',
+        mode === 'ascii'
+          ? `${formatRate(data.tokensPerSecond)} ${icon('throughput', mode)}`
+          : `${icon('throughput', mode)} ${formatRate(data.tokensPerSecond)}`,
+      ),
     );
   }
 

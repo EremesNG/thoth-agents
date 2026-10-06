@@ -7,6 +7,7 @@ import type {
 import { truncateToWidth } from '@earendil-works/pi-tui';
 import { toolFooter } from '../render-kit/index.ts';
 import type { ThemeConfig } from '../shared/config.ts';
+import { icon as semanticIcon, statusIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import {
   createComponent,
@@ -143,7 +144,7 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
         const safeWidth = Math.max(0, width);
         const footer =
           context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context })
+            ? toolFooter(theme, { status: 'running', context }, config.icons)
             : undefined;
         const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', 'Grep')) : theme.fg('toolTitle', 'Grep')} ${theme.fg('syntaxString', `"${pattern}"`)}${theme.fg('dim', searchPath)}`;
 
@@ -214,8 +215,8 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
       if (isErr) {
         return createComponent((width: number) => {
           const safeWidth = Math.max(0, width);
-          const footer = toolFooter(theme, footerOptions);
-          const errText = `${theme.fg('error', '! ')}${theme.fg('error', escapeControlCharacters(textOutput || 'Grep failed'))}`;
+          const footer = toolFooter(theme, footerOptions, config.icons);
+          const errText = `${theme.fg('error', `${statusIcon('warning', config.icons)} `)}${theme.fg('error', escapeControlCharacters(textOutput || 'Grep failed'))}`;
           if (!isFramedContext(context)) {
             return [
               truncateToWidth(errText, safeWidth),
@@ -233,7 +234,7 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
 
       return createComponent((width: number) => {
         const safeWidth = Math.max(0, width);
-        const footer = toolFooter(theme, footerOptions);
+        const footer = toolFooter(theme, footerOptions, config.icons);
         if (safeWidth === 0) return [];
         if (output.raw) {
           const { rawLines, notices } = output;
@@ -247,7 +248,7 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
             lines.push(
               theme.fg(
                 'dim',
-                `… ${rawLines.length - visibleRawLines.length} more lines · ctrl+o to expand`,
+                `${semanticIcon('ellipsis', config.icons)} ${rawLines.length - visibleRawLines.length} more lines ${semanticIcon('separator', config.icons)} ctrl+o to expand`,
               ),
             );
           }
@@ -336,7 +337,7 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
           ) {
             const moreFileMatches = fileMatches.length - visibleMatches.length;
             rawLines.push(
-              `${matchBranchPrefix}${theme.fg('dim', `… ${moreFileMatches} more`)}`,
+              `${matchBranchPrefix}${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${moreFileMatches} more`)}`,
             );
           }
         }
@@ -347,7 +348,7 @@ export function createCustomGrepTool(cwd: string, config: ThemeConfig) {
           (groupEntries.length > maxGroups || remainingItems > 0)
         ) {
           const hiddenFiles = groupEntries.length - visibleGroups.length;
-          const summary = `${theme.fg('dim', '└─')} ${theme.fg('dim', `… ${remainingItems} more matches across ${hiddenFiles} files · ctrl+o to expand`)}`;
+          const summary = `${theme.fg('dim', '└─')} ${theme.fg('dim', `${semanticIcon('ellipsis', config.icons)} ${remainingItems} more matches across ${hiddenFiles} files ${semanticIcon('separator', config.icons)} ctrl+o to expand`)}`;
           rawLines.push(summary);
         }
 

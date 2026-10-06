@@ -325,6 +325,7 @@ it.each([
           },
         } satisfies ToolRenderers;
       },
+      'ascii',
     ),
     {},
   );
@@ -367,7 +368,7 @@ it.each([
   };
   for (const exitCode of [undefined, 0, 7]) {
     const footer = render({ ...bash, status: 'running', exitCode }, 'accent');
-    expect(footer).toMatch(/╰── [△◭▲◮]/);
+    expect(footer).toMatch(/╰── [.oO0]/);
     expect(footer).not.toMatch(/Exit \d+/);
   }
   const footer = render(
@@ -380,6 +381,6 @@ it.each([
     },
     status === 'completed' ? 'success' : 'error',
   );
-  expect(footer).not.toMatch(/╰── [△◭▲◮]/);
+  expect(footer).not.toMatch(/╰── [.oO0]/);
   expect(footer).toContain(status === 'completed' ? 'Exit 0' : 'Exit ');
 });

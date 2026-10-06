@@ -5,6 +5,8 @@ import {
   type RenderIndicatorContext,
   type RenderStatus,
   renderToolFooter,
+  resolveIcon,
+  resolveStatusGlyph,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import { selectTaskSubjectById } from '../state/selectors.js';
@@ -71,13 +73,13 @@ export const ACTION_GLYPH: Record<TaskAction, string> = {
 export function overlayStatusGlyph(status: TaskStatus, theme: Theme): string {
   switch (status) {
     case 'pending':
-      return theme.fg('dim', '○');
+      return theme.fg('dim', resolveStatusGlyph(status, '○'));
     case 'in_progress':
-      return theme.fg('warning', '◐');
+      return theme.fg('warning', resolveStatusGlyph(status, '◐'));
     case 'completed':
-      return theme.fg('success', '✓');
+      return theme.fg('success', resolveStatusGlyph(status, '✓'));
     case 'deleted':
-      return theme.fg('error', '✗');
+      return theme.fg('error', resolveStatusGlyph(status, '✗'));
   }
 }
 
@@ -177,26 +179,35 @@ export function renderTodoCall(
   state: TaskState,
   context?: RenderIndicatorContext,
 ): Component {
-  const glyph = ACTION_GLYPH[args.action] ?? args.action;
-  let text = theme.fg('muted', glyph);
+  const textForRender = () => {
+    const glyph =
+      args.action === 'update'
+        ? resolveIcon('arrowRight', '→')
+        : args.action === 'get'
+          ? resolveIcon('selection', '›')
+          : (ACTION_GLYPH[args.action] ?? args.action);
+    let text = theme.fg('muted', glyph);
 
-  if (args.action === 'create' && args.subject) {
-    text += ` ${theme.fg('dim', sanitizeTerminalText(args.subject))}`;
-  } else if (
-    (args.action === 'update' ||
-      args.action === 'get' ||
-      args.action === 'delete') &&
-    args.id !== undefined
-  ) {
-    const subject = selectTaskSubjectById(state, args.id);
-    text += ` ${theme.fg('accent', subject ? sanitizeTerminalText(subject) : `#${args.id}`)}`;
-  } else if (args.action === 'list' && args.status) {
-    text += ` ${theme.fg('muted', formatStatusLabel(args.status))}`;
-  }
+    if (args.action === 'create' && args.subject) {
+      text += ` ${theme.fg('dim', sanitizeTerminalText(args.subject))}`;
+    } else if (
+      (args.action === 'update' ||
+        args.action === 'get' ||
+        args.action === 'delete') &&
+      args.id !== undefined
+    ) {
+      const subject = selectTaskSubjectById(state, args.id);
+      text += ` ${theme.fg('accent', subject ? sanitizeTerminalText(subject) : `#${args.id}`)}`;
+    } else if (args.action === 'list' && args.status) {
+      text += ` ${theme.fg('muted', formatStatusLabel(args.status))}`;
+    }
+    return text;
+  };
   const memo = createKitRenderMemo();
   return {
     render(width) {
       return memo.render(width, (kit) => {
+        const text = textForRender();
         const status = executionStatus(context, true);
         // SDK constructs both slots before rendering either; renderResult marks
         // the shared state, so the first completed render has no duplicate padding.
@@ -273,9 +284,9 @@ export function renderTodoResult(
         const text = status
           ? theme.fg(
               STATUS_COLOR[status],
-              `${kit ? kit.statusGlyph(theme, status) : STATUS_GLYPH[status]} ${formatStatusLabel(status)}`,
+              `${resolveStatusGlyph(status, STATUS_GLYPH[status])} ${formatStatusLabel(status)}`,
             )
-          : theme.fg('success', '✓');
+          : theme.fg('success', resolveStatusGlyph('completed', '✓'));
         if (kit) {
           return kit.card(
             theme,

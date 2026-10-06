@@ -1,4 +1,5 @@
 import {
+  resolveStatusGlyph,
   WORK_PANEL_VERSION,
   type WorkPanelDetail,
   type WorkPanelProvider,
@@ -37,7 +38,10 @@ export function createTodoWorkPanelProvider() {
           id: String(task.id),
           primary: subject + activeForm,
           status: task.status,
-          statusGlyph: task.status === 'in_progress' ? '◇' : '○',
+          statusGlyph: resolveStatusGlyph(
+            task.status,
+            task.status === 'in_progress' ? '◇' : '○',
+          ),
           statusGlyphRole:
             task.status === 'in_progress' ? 'accent' : 'secondary',
           segments: [

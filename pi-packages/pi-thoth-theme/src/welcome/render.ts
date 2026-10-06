@@ -1,5 +1,6 @@
 import { truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
 import type { IconMode } from '../shared/config.ts';
+import { icon } from '../shared/icons.ts';
 import { getThothLogoLines } from './logo.ts';
 import type {
   WelcomeData,
@@ -40,15 +41,20 @@ function bold(theme: ActiveThemeLike | undefined, text: string): string {
   return text;
 }
 
-function padEnd(text: string, width: number): string {
+function separator(mode: IconMode): string {
+  const pad = mode === 'ascii' ? ' ' : '  ';
+  return `${pad}${icon('separator', mode)}${pad}`;
+}
+
+function padEnd(text: string, width: number, ellipsis: string): string {
   const current = visibleWidth(text);
-  if (current > width) return truncateToWidth(text, width);
+  if (current > width) return truncateToWidth(text, width, ellipsis);
   return text + ' '.repeat(Math.max(0, width - current));
 }
 
-function center(text: string, width: number): string {
+function center(text: string, width: number, ellipsis: string): string {
   const current = visibleWidth(text);
-  if (current > width) return truncateToWidth(text, width);
+  if (current > width) return truncateToWidth(text, width, ellipsis);
   const left = Math.floor((width - current) / 2);
   const right = width - current - left;
   return ' '.repeat(left) + text + ' '.repeat(right);
@@ -82,7 +88,7 @@ function buildTips(
   mode: IconMode,
 ): string[] {
   const bullet = mode === 'ascii' ? '*' : '•';
-  const sep = mode === 'ascii' ? ' | ' : '  ·  ';
+  const sep = separator(mode);
   const cDim = (s: string) => color(theme, 'dim', s);
   const cMuted = (s: string) => color(theme, 'muted', s);
   return [
@@ -110,7 +116,9 @@ function buildProviderRows(
     const name = cMuted(p.name);
     const prefixWidth = visibleWidth(` ${bullet} ${p.name}: `);
     const detailWidth = Math.max(1, maxWidth - prefixWidth);
-    const detail = cDim(truncateToWidth(p.detail, detailWidth));
+    const detail = cDim(
+      truncateToWidth(p.detail, detailWidth, icon('ellipsis', mode)),
+    );
     return ` ${mark} ${name} ${detail}`;
   });
 }
@@ -137,7 +145,9 @@ function buildSessionRows(
       1,
       maxWidth - visibleWidth(bulletPrefix) - ageWidth,
     );
-    const name = cMuted(truncateToWidth(s.name, maxNameWidth));
+    const name = cMuted(
+      truncateToWidth(s.name, maxNameWidth, icon('ellipsis', mode)),
+    );
     return ` ${cDim(bullet)} ${name}${cDim(age)}`;
   });
 }
@@ -162,7 +172,8 @@ export function renderWelcomeHeader(
   const bBr = isAscii ? '+' : '╯';
   const bV = isAscii ? '|' : '│';
   const bH = isAscii ? '-' : '─';
-  const sep = isAscii ? ' | ' : '  ·  ';
+  const sep = separator(mode);
+  const ellipsis = icon('ellipsis', mode);
   const mark = isAscii ? '*' : '◆';
 
   // Wide layout (2 columns)
@@ -178,12 +189,12 @@ export function renderWelcomeHeader(
       // Build left column
       const leftRows: string[] = [
         '',
-        center(bold(theme, cAccent('T H O T H')), leftColumn),
+        center(bold(theme, cAccent('T H O T H')), leftColumn, ellipsis),
         '',
-        ...logoLines.map((line) => center(cAccent(line), leftColumn)),
+        ...logoLines.map((line) => center(cAccent(line), leftColumn, ellipsis)),
         '',
-        center(cText(data.model || 'pi-coding-agent'), leftColumn),
-        center(cDim(data.provider || ''), leftColumn),
+        center(cText(data.model || 'pi-coding-agent'), leftColumn, ellipsis),
+        center(cDim(data.provider || ''), leftColumn, ellipsis),
       ];
 
       // Build right column
@@ -220,14 +231,16 @@ export function renderWelcomeHeader(
 
       const out: string[] = [topBorder];
       for (let i = 0; i < maxRows; i++) {
-        const leftCell = padEnd(leftRows[i] ?? '', leftColumn);
-        const rightCell = padEnd(rightRows[i] ?? '', rightColumn);
+        const leftCell = padEnd(leftRows[i] ?? '', leftColumn, ellipsis);
+        const rightCell = padEnd(rightRows[i] ?? '', rightColumn, ellipsis);
         out.push(`${cDim(bV)}${leftCell}${cDim(bV)}${rightCell}${cDim(bV)}`);
       }
       out.push(bottomBorder);
 
       return out.map((line) =>
-        visibleWidth(line) <= width ? line : truncateToWidth(line, width),
+        visibleWidth(line) <= width
+          ? line
+          : truncateToWidth(line, width, ellipsis),
       );
     }
   }
@@ -250,8 +263,8 @@ export function renderWelcomeHeader(
     const resourceSummary = formatResourceSummary(theme, data.resources, sep);
 
     const content: string[] = [
-      center(bold(theme, cAccent('T H O T H')), innerWidth),
-      center(cText(data.model || 'pi-coding-agent'), innerWidth),
+      center(bold(theme, cAccent('T H O T H')), innerWidth, ellipsis),
+      center(cText(data.model || 'pi-coding-agent'), innerWidth, ellipsis),
       divider,
       ...(resourceSummary
         ? [` ${cAccent(mark)} ${resourceSummary}`, divider]
@@ -265,20 +278,22 @@ export function renderWelcomeHeader(
       if (row === divider) {
         out.push(divider);
       } else {
-        out.push(`${cDim(bV)}${padEnd(row, innerWidth)}${cDim(bV)}`);
+        out.push(`${cDim(bV)}${padEnd(row, innerWidth, ellipsis)}${cDim(bV)}`);
       }
     }
     out.push(bottomBorder);
 
     return out.map((line) =>
-      visibleWidth(line) <= width ? line : truncateToWidth(line, width),
+      visibleWidth(line) <= width
+        ? line
+        : truncateToWidth(line, width, ellipsis),
     );
   }
 
   // Narrow layout (minimal text lines without outer box)
   const lines: string[] = [
     cAccent(bold(theme, `Thoth v${data.version}`)),
-    cText(truncateToWidth(data.model || 'ready', width)),
+    cText(truncateToWidth(data.model || 'ready', width, ellipsis)),
   ];
 
   const narrowParts: string[] = [];
@@ -298,11 +313,11 @@ export function renderWelcomeHeader(
   if (data.sessions.length > 0) {
     const s = data.sessions[0];
     if (s) {
-      lines.push(cMuted(truncateToWidth(`* ${s.name}`, width)));
+      lines.push(cMuted(truncateToWidth(`* ${s.name}`, width, ellipsis)));
     }
   }
 
   return lines.map((line) =>
-    visibleWidth(line) <= width ? line : truncateToWidth(line, width),
+    visibleWidth(line) <= width ? line : truncateToWidth(line, width, ellipsis),
   );
 }

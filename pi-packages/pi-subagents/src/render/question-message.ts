@@ -1,6 +1,8 @@
+import { resolveIcon } from '@thoth-agents/pi-core';
 import type { SubagentQuestion, SubagentTask } from '../types.js';
 import { themeDim, themeFg, themeTitle } from '../ui/theme.js';
 import { SUBAGENT_NOTIFICATION_MARKER } from './completion-message.js';
+import { iconAwareRenderer } from './icon-aware-component.js';
 import { boxedComponent } from './tools/components.js';
 import { formatTaskLabel } from './tools/formatting.js';
 
@@ -43,40 +45,45 @@ export function sendSubagentQuestionMessage(
   );
 }
 
-export function renderSubagentQuestionMessage(
-  message: any,
-  options: any,
-  theme: any,
-) {
-  const details = message.details ?? {};
-  const label = formatTaskLabel(details.task ?? { agent: details.agent });
-  const lines = options?.expanded
-    ? [
-        themeDim(
-          theme,
-          `task_id: ${details.task_id} · request_id: ${details.request_id}`,
-        ),
-        themeTitle(theme, 'Question for the orchestrator'),
-        ...String(details.question ?? '')
-          .split('\n')
-          .map((text) => themeFg(theme, 'customMessageText', text)),
-        themeDim(theme, 'Reply with subagent_reply.'),
-      ]
-    : [
-        themeDim(
-          theme,
-          `subagent: ${details.agent ?? 'subagent'} · awaiting orchestrator reply`,
-        ),
-        themeDim(theme, 'ctrl+o to expand'),
-      ];
-  return boxedComponent(lines, {
-    title: themeFg(
+export const renderSubagentQuestionMessage = iconAwareRenderer(
+  function renderSubagentQuestionMessage(
+    message: any,
+    options: any,
+    theme: any,
+  ) {
+    const details = message.details ?? {};
+    const label = formatTaskLabel(
+      details.task ?? { agent: details.agent },
+      true,
+    );
+    const lines = options?.expanded
+      ? [
+          themeDim(
+            theme,
+            `task_id: ${details.task_id} ${resolveIcon('separator', '·')} request_id: ${details.request_id}`,
+          ),
+          themeTitle(theme, 'Question for the orchestrator'),
+          ...String(details.question ?? '')
+            .split('\n')
+            .map((text) => themeFg(theme, 'customMessageText', text)),
+          themeDim(theme, 'Reply with subagent_reply.'),
+        ]
+      : [
+          themeDim(
+            theme,
+            `subagent: ${details.agent ?? 'subagent'} ${resolveIcon('separator', '·')} awaiting orchestrator reply`,
+          ),
+          themeDim(theme, 'ctrl+o to expand'),
+        ];
+    return boxedComponent(lines, {
+      title: themeFg(
+        theme,
+        'customMessageLabel',
+        `? [subagent] ${label} ${resolveIcon('separator', '·')} question`,
+      ),
       theme,
-      'customMessageLabel',
-      `? [subagent] ${label} · question`,
-    ),
-    theme,
-    message: true,
-    wrapped: true,
-  });
-}
+      message: true,
+      wrapped: true,
+    });
+  },
+);

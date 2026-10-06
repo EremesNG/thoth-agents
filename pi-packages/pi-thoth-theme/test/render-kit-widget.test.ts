@@ -54,12 +54,12 @@ it.each([
     expect(lines.slice(2, -1)).toEqual(
       metricRows.map((text) => `    ├─ ${text}`),
     );
-    expect(lines.at(-1)).toBe('    └─ ○ second · work');
+    expect(lines.at(-1)).toBe('    └─ \u{f051f} second · work');
     expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
     expect(
       kit.indicator(theme, undefined, { status: 'completed', frame: 1 }).glyph,
-    ).toBe('✓');
+    ).toBe('\uf00c');
     expect(vi.getTimerCount()).toBe(0);
   } finally {
     vi.useRealTimers();

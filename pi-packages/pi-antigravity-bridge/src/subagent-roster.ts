@@ -18,7 +18,8 @@
 // - Parallel spawns with the same agent name are separate entries, but
 //   name-based routing cannot tell them apart.
 
-import { formatDuration } from "@thoth-agents/pi-core";
+import { truncateToWidth } from '@earendil-works/pi-tui';
+import { formatDuration, resolveIcon } from "@thoth-agents/pi-core";
 import type { DriverActivity } from "./driver-types.js";
 
 /** Tools whose start opens a roster entry and whose done/error closes it. */
@@ -228,18 +229,24 @@ export class SubagentRoster {
 	}
 }
 
-export function formatSubagentRoster(entries: SubagentEntry[]): string {
+/** Native payload by default; only UI callers opt into kit punctuation. */
+export function formatSubagentRoster(entries: SubagentEntry[], options: { ui?: boolean } = {}): string {
+  const separator = options.ui ? ` ${resolveIcon('separator', '·')} ` : ' · ';
+  const ellipsis = options.ui ? resolveIcon('ellipsis', '…') : '…';
+  const display = (value: string) => ellipsis !== '…' && value.length === DETAIL_MAX + 1 && value.endsWith('…')
+    ? truncateToWidth(value.slice(0, -1) + ellipsis, DETAIL_MAX + 1, ellipsis)
+    : value;
 	const running = entries.filter((e) => e.status === "running").length;
 	const lines = [`antigravity subagents: ${entries.length} tracked, ${running} running`];
 	for (const entry of entries) {
 		const dur = formatDuration(Math.round((Date.now() - entry.spawnedAtMs) / 1000) * 1000);
 		const parts = [
-			`${entry.name} · ${entry.status} · ${dur}`,
+			[display(entry.name), entry.status, dur].join(separator),
 			entry.messages > 0 ? `${entry.messages} msg` : undefined,
-			entry.detail || undefined,
-			entry.error ? `error: ${entry.error}` : undefined,
+			entry.detail ? display(entry.detail) : undefined,
+			entry.error ? `error: ${display(entry.error)}` : undefined,
 		].filter((p): p is string => p !== undefined);
-		lines.push(`- ${parts.join(" · ")}`);
+		lines.push(`- ${parts.join(separator)}`);
 	}
 	return lines.join("\n");
 }

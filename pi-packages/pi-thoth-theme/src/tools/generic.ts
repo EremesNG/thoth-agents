@@ -5,7 +5,8 @@ import type {
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
 import { toolFooter } from '../render-kit/index.ts';
-import type { ThemeConfig } from '../shared/config.ts';
+import type { IconMode, ThemeConfig } from '../shared/config.ts';
+import { icon as semanticIcon } from '../shared/icons.ts';
 import { getToolBorderTone } from './border.ts';
 import {
   createComponent,
@@ -46,12 +47,12 @@ function formatValue(value: unknown): string {
   }
 }
 
-function summarizeValue(value: unknown): string {
+function summarizeValue(value: unknown, mode: IconMode): string {
   if (Array.isArray(value)) return `[${value.length} items]`;
   if (value !== null && typeof value === 'object') {
     const keys = Object.keys(value);
     const shown = keys.slice(0, NESTED_KEYS_SHOWN).join(', ');
-    return `{${keys.length > NESTED_KEYS_SHOWN ? `${shown}, …` : shown}}`;
+    return `{${keys.length > NESTED_KEYS_SHOWN ? `${shown}, ${semanticIcon('ellipsis', mode)}` : shown}}`;
   }
   return formatValue(value);
 }
@@ -69,12 +70,12 @@ function prettifyJson(text: string): string {
 }
 
 /** One-line `key=value` summary; escaping happens at the display boundary. */
-export function summarizeArgs(args: unknown): string {
+export function summarizeArgs(args: unknown, mode: IconMode = 'nerd'): string {
   if (args === undefined || args === null) return '';
   let summary: string;
   if (typeof args === 'object' && !Array.isArray(args)) {
     summary = Object.entries(args as Record<string, unknown>)
-      .map(([key, value]) => `${key}=${summarizeValue(value)}`)
+      .map(([key, value]) => `${key}=${summarizeValue(value, mode)}`)
       .join(' ');
   } else {
     summary = formatValue(args);
@@ -87,7 +88,7 @@ export function createGenericTool(
   toolName: string,
   config: ThemeConfig,
 ): ToolRenderers {
-  const icon = config.icons === 'nerd' ? '\uf0ad' : '*';
+  const toolIcon = semanticIcon('tool', config.icons);
   const name = escapeControlCharacters(toolName);
 
   return {
@@ -97,14 +98,14 @@ export function createGenericTool(
       const borderTone = context?.isPartial
         ? 'accent'
         : getToolBorderTone(context);
-      const argsSummary = summarizeArgs(rawArgs);
+      const argsSummary = summarizeArgs(rawArgs, config.icons);
 
       const comp = createComponent((width: number) => {
         const footer =
           context?.executionStarted && context.isPartial
-            ? toolFooter(theme, { status: 'running', context })
+            ? toolFooter(theme, { status: 'running', context }, config.icons)
             : undefined;
-        const title = `${theme.fg('accent', icon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', name)) : theme.fg('toolTitle', name)}`;
+        const title = `${theme.fg('accent', toolIcon)} ${theme.bold ? theme.bold(theme.fg('toolTitle', name)) : theme.fg('toolTitle', name)}`;
         const lines = [
           ...renderFrameTop(theme, title, width, borderTone),
           ...(argsSummary
@@ -151,11 +152,15 @@ export function createGenericTool(
       const hasImage = hasImageContent(result);
 
       return createComponent((width: number) => {
-        const footer = toolFooter(theme, {
-          status: isPartial ? 'running' : isErr ? 'failed' : 'completed',
-          context: { ...context, isPartial },
-          summary: `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
-        });
+        const footer = toolFooter(
+          theme,
+          {
+            status: isPartial ? 'running' : isErr ? 'failed' : 'completed',
+            context: { ...context, isPartial },
+            summary: `${lineCount} ${lineCount === 1 ? 'line' : 'lines'}`,
+          },
+          config.icons,
+        );
 
         const visible = options?.expanded
           ? allLines
@@ -170,7 +175,7 @@ export function createGenericTool(
           body.push(
             theme.fg(
               'dim',
-              `… ${allLines.length - COLLAPSED_OUTPUT_LINES} more lines · ctrl+o to expand`,
+              `${semanticIcon('ellipsis', config.icons)} ${allLines.length - COLLAPSED_OUTPUT_LINES} more lines ${semanticIcon('separator', config.icons)} ctrl+o to expand`,
             ),
           );
         }

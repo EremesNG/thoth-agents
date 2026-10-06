@@ -553,3 +553,81 @@ it('opens a content-sized opaque native card with expanded short sections and ap
     expect(composite.slice(70)).toBe('T'.repeat(10));
   }
 });
+
+it('re-resolves detail metadata and hints after registration, replacement and withdrawal', async () => {
+  const session = uiSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider(),
+      detail: () => ({
+        id: 'one',
+        title: 'Detail',
+        status: 'completed',
+        metadata: [{ label: 'count', value: '0' }],
+        evidence: { label: 'Output', text: 'done' },
+      }),
+    }),
+    await ensureWorkPanel(session.ctx),
+  );
+  session.key(keys.left);
+  session.key(keys.enter);
+  const native = session.customRender(80);
+  for (const separator of ['|', '/']) {
+    const token = registerRenderKit(
+      createTestRenderKit({
+        icon: (name) =>
+          new Map([
+            ['separator', separator],
+            ['arrowUp', '^'],
+            ['arrowDown', 'v'],
+          ]).get(name) ?? '',
+      }),
+      {},
+    );
+    cleanups.push(() => withdrawRenderKit(token));
+    const lines: string[] = session.customRender(80);
+    expect(lines.join('\n')).toContain(`count ${separator} 0`);
+    expect(lines.join('\n')).toContain(
+      `^v move ${separator} x cancel ${separator} Esc back`,
+    );
+    expect(lines.every((line) => visibleWidth(line) === 80)).toBe(true);
+  }
+  const token = registerRenderKit(createTestRenderKit(), {});
+  withdrawRenderKit(token);
+  expect(session.customRender(80)).toEqual(native);
+});
+
+it('measures folded preview separators using the registered glyph width', async () => {
+  const session = uiSession();
+  session.tui.terminal.rows = 15;
+  const token = registerRenderKit(
+    createTestRenderKit({ icon: (name) => (name === 'separator' ? '::' : '') }),
+    {},
+  );
+  cleanups.push(() => withdrawRenderKit(token));
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider(),
+      detail: () => ({
+        id: 'one',
+        title: 'Fold',
+        metadata: [],
+        foldedSections: [
+          {
+            id: 'task',
+            label: 'Task',
+            text: 'long\n'.repeat(30),
+            collapsedText: 'a very long preview line',
+          },
+        ],
+        evidence: { label: 'Output', text: 'done' },
+      }),
+    }),
+    await ensureWorkPanel(session.ctx),
+  );
+  session.key(keys.left);
+  session.key(keys.enter);
+  const lines: string[] = session.customRender(32);
+  expect(lines.join('\n')).toContain(' :: folded');
+  expect(lines.every((line) => visibleWidth(line) === 32)).toBe(true);
+});

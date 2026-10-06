@@ -87,11 +87,23 @@ describe('successful card borders', () => {
 
     it.each([
       [undefined, 'Done', '╰── Done ──────────────╯'],
-      ['completed', '\x1b[32m✓\x1b[39m Done', '╰── ✓ Done ────────────╯'],
+      [
+        'completed',
+        '\x1b[32m\uf00c\x1b[39m Done',
+        '╰── \uf00c Done ────────────╯',
+      ],
       ['running', 'Done', '╰── Done ──────────────╯'],
       ['in_progress', 'Done', '╰── Done ──────────────╯'],
-      ['failed', '\x1b[31m✗\x1b[39m Done', '╰── ✗ Done ────────────╯'],
-      ['cancelled', '\x1b[37m⊘\x1b[39m Done', '╰── ⊘ Done ────────────╯'],
+      [
+        'failed',
+        '\x1b[31m\uf00d\x1b[39m Done',
+        '╰── \uf00d Done ────────────╯',
+      ],
+      [
+        'cancelled',
+        '\x1b[37m\uf05e\x1b[39m Done',
+        '╰── \uf05e Done ────────────╯',
+      ],
     ] as const)('preserves the status=%s footer when border flags change', (status, footer, bottom) => {
       const options = { ...cardOptions, status, footer: 'Done' };
       const baseline = kit.card(theme, options, 24).map(stripTerminalSequences);
@@ -132,7 +144,9 @@ describe('successful card borders', () => {
         120,
       );
       expectBorderTone(lines, tone);
-      expect(lines.map(stripTerminalSequences).join('\n')).not.toMatch(/[✓✗◇]/);
+      expect(lines.map(stripTerminalSequences).join('\n')).not.toMatch(
+        /[\uf00c\uf00d◇]/,
+      );
     });
   });
 
@@ -171,7 +185,7 @@ describe('successful card borders', () => {
 });
 
 const config: ThemeConfig = {
-  icons: 'ascii',
+  icons: 'nerd',
   statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
   tools: { enabled: true },
   welcome: { enabled: true },
@@ -388,7 +402,7 @@ describe.each(branchCases)('$tool $name border paths', (branch) => {
       const outputLines = output.render(120);
       expectBorderTone(outputLines, tone);
       expect(stripTerminalSequences(outputLines.at(-1) ?? '')).toMatch(
-        isPartial ? /╰── [△◭▲◮] · 5s / : /╰── ✓ · 5s(?: ·| )/,
+        isPartial ? /╰── [△◭▲◮] · 5s / : /╰── \uf00c · 5s(?: ·| )/,
       );
     }
   });

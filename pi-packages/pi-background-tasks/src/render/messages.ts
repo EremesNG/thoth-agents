@@ -1,6 +1,7 @@
 import type { Component } from '@earendil-works/pi-tui';
 import {
   createKitRenderMemo,
+  resolveIcon,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import {
@@ -49,9 +50,6 @@ export function renderBackgroundMessage(
     details.omitted === 0 &&
     details.unlisted === 0 &&
     details.entries.every(isSucceeded);
-  const title = details
-    ? titleFor(details)
-    : { name: 'background', summary: '' };
   const memo = createKitRenderMemo();
   return {
     invalidate() {
@@ -59,6 +57,9 @@ export function renderBackgroundMessage(
     },
     render(width) {
       return memo.render(width, (kit) => {
+        const title = details
+          ? titleFor(details)
+          : { name: 'background', summary: '' };
         const t = renderTheme(theme);
         let lines = fullLines;
         if (details && !expanded) {
@@ -128,7 +129,10 @@ function titleFor(details: CallbackDisplayDetails): {
   const noun = `${count} completion${count === 1 ? '' : 's'}`;
   return {
     name: 'background',
-    summary: failed > 0 ? `${noun} · ${failed} failed` : `${noun} · done`,
+    summary:
+      failed > 0
+        ? `${noun} ${resolveIcon('separator', '·')} ${failed} failed`
+        : `${noun} ${resolveIcon('separator', '·')} done`,
   };
 }
 
@@ -166,7 +170,7 @@ function entryLine(
     parts.push(
       `${entry.incidents.total} incident${entry.incidents.total === 1 ? '' : 's'}`,
     );
-  const line = parts.join(' · ');
+  const line = parts.join(` ${resolveIcon('separator', '·')} `);
   const failed = isFailed(entry);
   if (kit) {
     const t = renderTheme(theme);

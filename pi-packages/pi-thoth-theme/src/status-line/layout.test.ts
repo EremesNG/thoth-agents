@@ -100,6 +100,9 @@ describe('formatTokens', () => {
   });
 });
 
+const NERD_COST = '\uf155 ';
+const costFor = (mode: 'nerd' | 'ascii') => (mode === 'nerd' ? NERD_COST : '$');
+
 describe('renderStatusLine - subscription cost', () => {
   it.each([
     'nerd',
@@ -109,15 +112,15 @@ describe('renderStatusLine - subscription cost', () => {
       { cost: 1.234, isSubscription: true },
       { width: 100, mode, theme: mockTheme },
     );
-    expect(marked).toBe('[accent]$1.234 (sub)[/accent]');
+    expect(marked).toBe(`[accent]${costFor(mode)}1.234 (sub)[/accent]`);
 
     const unmarked = renderStatusLine(
       { cost: 1.234, isSubscription: false },
       { width: 100, mode },
     );
-    expect(unmarked).toBe('$1.234');
+    expect(unmarked).toBe(`${costFor(mode)}1.234`);
     expect(renderStatusLine({ cost: 1.234 }, { width: 100, mode })).toBe(
-      '$1.234',
+      `${costFor(mode)}1.234`,
     );
   });
 
@@ -134,10 +137,18 @@ describe('renderStatusLine - subscription cost', () => {
     for (let width = 1; width <= 60; width++) {
       const rendered = renderStatusLine(data, { width, mode });
       expect(visibleWidth(rendered)).toBeLessThanOrEqual(width);
-      if (width >= 12) expect(rendered).toContain('$1.000 (sub)');
+      if (width >= 14)
+        expect(rendered).toContain(`${costFor(mode)}1.000 (sub)`);
     }
   });
 });
+
+const NERD_FOOTER = [
+  '\uf155 1.234',
+  '\uf06212.3K \uf0633.4K',
+  '\u{f01bc} 80K',
+  '\u{f04c5} 42',
+].join(' · ');
 
 describe('footer row - cost, tokens, cache and tok/s only', () => {
   const data: FooterData = {
@@ -153,9 +164,9 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
     tokensPerSecond: 42.46,
   };
 
-  it('renders cost, ↑input ↓output, cache read and tok/s in priority order', () => {
+  it('renders cost, input/output tokens, cache read and tok/s in priority order', () => {
     expect(renderStatusLine(data, { width: 200, mode: 'nerd' })).toBe(
-      '$1.234 ◆ ↑12.3K ↓3.4K ◆ cache 80K ◆ 42 tok/s',
+      NERD_FOOTER,
     );
   });
 
@@ -172,7 +183,7 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
       '◐',
       'med',
       'feature',
-      '⑂',
+      '\ue0a0',
       '~/project',
       '%',
       '425',
@@ -187,18 +198,18 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
         { ...data, tokensPerSecond: null },
         { width: 200, mode: 'nerd' },
       ),
-    ).toBe('$1.234 ◆ ↑12.3K ↓3.4K ◆ cache 80K ◆ — tok/s');
+    ).toBe(NERD_FOOTER.replace('42', '—'));
     expect(
       renderStatusLine(
         { ...data, tokensPerSecond: 7.25 },
         { width: 200, mode: 'nerd' },
       ),
-    ).toContain('7.3 tok/s');
+    ).toContain('\u{f04c5} 7.3');
   });
 
   it('omits rate and tokens when the snapshot has none', () => {
     expect(renderStatusLine({ cost: 0.5 }, { width: 200, mode: 'nerd' })).toBe(
-      '$0.500',
+      '\uf155 0.500',
     );
     expect(renderStatusLine({}, { width: 200, mode: 'nerd' })).toBe('');
   });
@@ -208,23 +219,26 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
       { ...data, subagentCost: 0.766, isSubscription: true },
       { width: 200, mode: 'nerd', theme: mockTheme },
     );
-    expect(rendered).toContain('[accent]$2.000 (sub)[/accent]');
-    expect(rendered).toContain('[muted]↑12.3K ↓3.4K[/muted]');
-    expect(rendered).toContain('[muted]cache 80K[/muted]');
-    expect(rendered).toContain('[muted]42 tok/s[/muted]');
+    expect(rendered).toContain('[accent]\uf155 2.000 (sub)[/accent]');
+    expect(rendered).toContain('[muted]\uf06212.3K \uf0633.4K[/muted]');
+    expect(rendered).toContain('[muted]\u{f01bc} 80K[/muted]');
+    expect(rendered).toContain('[muted]\u{f04c5} 42[/muted]');
   });
 
   it('drops tok/s, then cache, then tokens, then truncates cost as width shrinks', () => {
     const at = (width: number) =>
       renderStatusLine(data, { width, mode: 'nerd' });
-    expect(at(44)).toBe('$1.234 ◆ ↑12.3K ↓3.4K ◆ cache 80K ◆ 42 tok/s');
-    expect(at(43)).toBe('$1.234 ◆ ↑12.3K ↓3.4K ◆ cache 80K');
-    expect(at(33)).toBe('$1.234 ◆ ↑12.3K ↓3.4K ◆ cache 80K');
-    expect(at(32)).toBe('$1.234 ◆ ↑12.3K ↓3.4K');
-    expect(at(21)).toBe('$1.234 ◆ ↑12.3K ↓3.4K');
-    expect(at(20)).toBe('$1.234');
-    expect(at(6)).toBe('$1.234');
-    expect(stripTerminalSequences(at(4))).toBe('$1.2');
+    const cost = '\uf155 1.234';
+    const tokens = '\uf06212.3K \uf0633.4K';
+    const cache = '\u{f01bc} 80K';
+    expect(at(37)).toBe(NERD_FOOTER);
+    expect(at(36)).toBe(`${cost} · ${tokens} · ${cache}`);
+    expect(at(30)).toBe(`${cost} · ${tokens} · ${cache}`);
+    expect(at(29)).toBe(`${cost} · ${tokens}`);
+    expect(at(22)).toBe(`${cost} · ${tokens}`);
+    expect(at(21)).toBe(cost);
+    expect(at(7)).toBe(cost);
+    expect(stripTerminalSequences(at(4))).toBe('\uf155 1.');
     expect(at(0)).toBe('');
   });
 
@@ -243,7 +257,7 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
           expect(visibleWidth(rendered)).toBeLessThanOrEqual(width);
           expect(rendered.includes(String.fromCharCode(10))).toBe(false);
           // Lower-priority segments only return as the width grows.
-          const segments = rendered.split(mode === 'ascii' ? ' | ' : ' ◆ ');
+          const segments = rendered.split(mode === 'ascii' ? ' | ' : ' · ');
           expect(segments.length).toBeGreaterThanOrEqual(previousSegments);
           previousSegments = segments.length;
         }
@@ -252,7 +266,7 @@ describe('footer row - cost, tokens, cache and tok/s only', () => {
             /\[\/?[a-zA-Z]+\]/g,
             '',
           ),
-        ).toContain('tok/s');
+        ).toContain(mode === 'ascii' ? 'tok/s' : '\u{f04c5}');
       }
     }
   });
@@ -271,30 +285,46 @@ describe('border segments', () => {
   };
 
   it('formats branch, model and effort pieces with droppable separators', () => {
-    expect(formatBranchSegment(data)).toBe('· ⑂ feature/x');
+    expect(formatBranchSegment(data)).toBe('· \ue0a0 feature/x');
     expect(formatBranchSegment({}, { mode: 'ascii' })).toBe('');
     expect(formatBranchSegment(data, { mode: 'ascii' })).toBe(
-      '. git feature/x',
+      '| git feature/x',
     );
-    expect(formatModelSegments(data)).toEqual(['● Opus', '· ◐ med']);
+    expect(formatModelSegments(data)).toEqual([
+      '\u{f06a9} Opus',
+      '· \u{f09d1} med',
+    ]);
     expect(formatModelSegments(data, { mode: 'ascii' })).toEqual([
       '* Opus',
-      '. o med',
+      '| o med',
     ]);
-    expect(formatModelSegments({ modelId: 'id' })).toEqual(['● id']);
+    expect(formatModelSegments({ modelId: 'id' })).toEqual(['\u{f06a9} id']);
     expect(formatModelSegments({ ...data, thinkingLevel: 'off' })).toEqual([
-      '● Opus',
+      '\u{f06a9} Opus',
     ]);
     expect(
       formatModelSegments({ thinkingLevel: 'high' }, { theme: mockTheme }),
-    ).toEqual(['[thinkingHigh]◐ high[/thinkingHigh]']);
+    ).toEqual(['[thinkingHigh]\u{f09d1} high[/thinkingHigh]']);
   });
 
   it('offers cwd then a compact leaf', () => {
-    expect(formatCwdSegments(data)).toEqual(['~/work/project', '…/project']);
-    expect(formatCwdSegments({ cwd: '~' })).toEqual(['~']);
+    expect(formatCwdSegments(data)).toEqual([
+      '\u{f07c} ~/work/project',
+      '\u{f07c} …/project',
+    ]);
+    expect(formatCwdSegments({ cwd: '~' })).toEqual(['\u{f07c} ~']);
     expect(formatCwdSegments({})).toEqual([]);
-    expect(formatCwdSegments({ cwd: '/work/b' })).toEqual(['/work/b', '…/b']);
+    expect(formatCwdSegments({ cwd: '/work/b' })).toEqual([
+      '\u{f07c} /work/b',
+      '\u{f07c} …/b',
+    ]);
+  });
+
+  it('uses the ASCII ellipsis in compact cwd variants', () => {
+    expect(formatCwdSegments(data, { mode: 'ascii' })).toEqual([
+      'dir ~/work/project',
+      'dir .../project',
+    ]);
   });
 
   it.each([
@@ -304,7 +334,14 @@ describe('border segments', () => {
     ['~/work/project', '…/project'],
     ['/work/b/', '…/b'],
   ])('compacts %s keeping its native separator', (cwd, compact) => {
-    expect(formatCwdSegments({ cwd })).toEqual([cwd, compact]);
+    expect(formatCwdSegments({ cwd })).toEqual([
+      `\u{f07c} ${cwd}`,
+      `\u{f07c} ${compact}`,
+    ]);
+    expect(formatCwdSegments({ cwd }, { mode: 'ascii' })).toEqual([
+      `dir ${cwd}`,
+      `dir ${compact.replace('…', '...')}`,
+    ]);
   });
 
   it.each([
@@ -314,17 +351,20 @@ describe('border segments', () => {
     '\\',
     '~\\',
   ])('offers no compact variant for root-like %s', (cwd) => {
-    expect(formatCwdSegments({ cwd })).toEqual([cwd]);
+    expect(formatCwdSegments({ cwd })).toEqual([`\u{f07c} ${cwd}`]);
+    expect(formatCwdSegments({ cwd }, { mode: 'ascii' })).toEqual([
+      `dir ${cwd}`,
+    ]);
   });
 
   it('offers context richest first and a dash when usage is absent', () => {
     expect(formatContextSegments(data)).toEqual([
-      '[████░░░░░░] 43% 425.9K/1M',
-      '43% 425.9K/1M',
-      '425.9K/1M',
+      '\uf2db [████░░░░░░] 43% 425.9K/1M',
+      '\uf2db 43% 425.9K/1M',
+      '\uf2db 425.9K/1M',
     ]);
     expect(formatContextSegments(data, { mode: 'ascii' })[0]).toBe(
-      '[####------] 43% 425.9K/1M',
+      'ctx [####------] 43% 425.9K/1M',
     );
     expect(
       formatContextSegments({
@@ -332,11 +372,11 @@ describe('border segments', () => {
         contextPercent: null,
         contextWindow: 200_000,
       }),
-    ).toEqual(['—/200K']);
+    ).toEqual(['\uf2db —/200K']);
     expect(formatContextSegments({})).toEqual(['—']);
     expect(
       formatContextSegments({ contextPercent: 0, contextTokens: 0 })[0],
-    ).toBe('[░░░░░░░░░░] 0% 0');
+    ).toBe('\uf2db [░░░░░░░░░░] 0% 0');
   });
 
   it.each([

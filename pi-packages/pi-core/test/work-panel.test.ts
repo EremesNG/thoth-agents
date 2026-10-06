@@ -489,6 +489,8 @@ describe('work panel compact budget', () => {
 
 describe('work panel render kit', () => {
   it('discovers kit changes on every render and uses its headings, rows, indicators and colors', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
     const session = uiSession();
     cleanups.push(
       registerWorkPanelProvider(session.ctx, {
@@ -514,13 +516,13 @@ describe('work panel render kit', () => {
     cleanups.push(() => withdrawRenderKit(token));
     expect(session.render()).toEqual([
       'Agents · 1 running',
-      '  └─ ◐ Agents item',
+      '  └─ ⠋ Agents item',
       '← interact',
     ]);
     session.key(keys.left);
     expect(
       session.render().filter((line: string) => line.startsWith('› ')),
-    ).toEqual(['› └─ ◐ Agents item']);
+    ).toEqual(['› └─ ⠋ Agents item']);
     expect(themed.widgetHeading).toHaveBeenCalled();
     expect(themed.treeRow).toHaveBeenCalled();
     expect(themed.indicator).toHaveBeenCalled();
@@ -1138,4 +1140,96 @@ it('keeps the selected item instead of an overflow counter when a tiny terminal 
   const lines = session.render();
   expect(lines[1]).toBe('› ◐ First');
   expect(lines).toHaveLength(3);
+});
+
+it('resolves work-panel statuses, separators and navigation on mounted kit changes', async () => {
+  const session = uiSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider(),
+      listRows: () => [
+        {
+          id: 'one',
+          name: 'worker',
+          primary: 'inspect',
+          elapsed: '1s',
+          status: 'completed',
+        },
+      ],
+      summary: () => ({ running: 1, failed: 1 }),
+    }),
+    await ensureWorkPanel(session.ctx),
+  );
+  const native = session.render();
+  const kit = createTestRenderKit({
+    icon: (name) =>
+      new Map([
+        ['separator', '|'],
+        ['arrowLeft', '<'],
+        ['arrowUp', '^'],
+        ['arrowDown', 'v'],
+      ]).get(name) ?? '',
+  });
+  kit.statusGlyph = () => '+';
+  const token = registerRenderKit(kit, {});
+  cleanups.push(() => withdrawRenderKit(token));
+  expect(session.render().join('\n')).toContain('+ worker | inspect | 1s');
+  expect(session.render()[0]).toBe('Agents | 1 running | 1 failed');
+  expect(session.render().at(-1)).toBe('< interact');
+  expect(session.ui.setStatus).toHaveBeenLastCalledWith(
+    'thoth-work-panel',
+    '< work | 1',
+  );
+  session.key(keys.left);
+  expect(session.render().at(-1)).toBe(
+    '^v move | Enter open | x cancel | Esc back',
+  );
+  for (const width of [1, 8, 20, 80])
+    expect(
+      session
+        .render(width)
+        .every((line: string) => visibleWidth(line) <= width),
+    ).toBe(true);
+  session.key(keys.escape);
+  withdrawRenderKit(token);
+  expect(session.render()).toEqual(native);
+});
+
+it('preserves the native toolkit three-dot truncation without a kit', async () => {
+  const session = uiSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, {
+      ...provider(),
+      listRows: () => [
+        { id: 'one', primary: 'abcdefghijklmnop', status: 'running' },
+      ],
+    }),
+    await ensureWorkPanel(session.ctx),
+  );
+  // Baseline toolkit truncation includes its ANSI reset around three dots.
+  expect(session.render(12)[1]).toBe('  ◐ abcde\u001b[0m...\u001b[0m');
+});
+
+it('keeps themed running rows animated rather than resolving a static status glyph', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(0);
+  const session = uiSession();
+  const kit = createTestRenderKit();
+  const indicator = kit.indicator;
+  kit.statusGlyph = () => '*';
+  kit.indicator = (theme, context, options) => ({
+    ...indicator(theme, context, options),
+    glyph: options?.frame === 1 ? '/' : '|',
+  });
+  const token = registerRenderKit(kit, {});
+  cleanups.push(
+    () => withdrawRenderKit(token),
+    registerWorkPanelProvider(session.ctx, provider()),
+    await ensureWorkPanel(session.ctx),
+  );
+  expect(session.render()[1]).toBe('  └─ | Agents item');
+  vi.setSystemTime(100);
+  expect(session.render()[1]).toBe('  └─ / Agents item');
+  withdrawRenderKit(token);
+  expect(session.render()[1]).toBe('  ◐ Agents item');
 });

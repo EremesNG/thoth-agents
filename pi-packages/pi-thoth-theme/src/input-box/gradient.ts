@@ -7,6 +7,7 @@ import {
   styleText,
   type TerminalColorMode,
 } from '@earendil-works/pi-tui';
+import { frames } from '../shared/icons.ts';
 
 const GOLD = parseColor('#D4AF37');
 const BRIGHT_GOLD = parseColor('#F2C94C');
@@ -47,13 +48,24 @@ export function renderWorkingIndicator(
   native: string,
   frame: BreathingFrame,
   styleMuted: (text: string) => string,
+  glyphs: readonly string[] = frames('workingFrames', 'nerd'),
 ): string {
   const plain = stripTerminalSequences(native);
-  const pyramid = plain.match(/^([△◭▲◮])(\s*)/u);
-  const prefix = pyramid
-    ? `${frame.foreground}${pyramid[1]}\x1b[39m${pyramid[2]}`
-    : '';
-  const letters = Array.from(plain.slice(pyramid?.[0].length ?? 0));
+  const glyph = glyphs.find(
+    (candidate) =>
+      plain.startsWith(candidate) &&
+      (plain.length === candidate.length ||
+        /^\s/u.test(plain.slice(candidate.length))),
+  );
+  const spacing =
+    glyph === undefined
+      ? ''
+      : (/^\s*/u.exec(plain.slice(glyph.length))?.[0] ?? '');
+  const prefix =
+    glyph === undefined ? '' : `${frame.foreground}${glyph}[39m${spacing}`;
+  const letters = Array.from(
+    plain.slice(glyph === undefined ? 0 : glyph.length + spacing.length),
+  );
   const head =
     ((frame.now % SHIMMER_LAP_MS) / SHIMMER_LAP_MS) *
       (letters.length + SHIMMER_BAND_CELLS * 2) -

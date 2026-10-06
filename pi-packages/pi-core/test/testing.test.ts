@@ -1,9 +1,40 @@
+import {
+  getRenderKit,
+  registerRenderKit,
+  resolveFrames,
+  resolveIcon,
+  type SemanticIconName,
+  withdrawRenderKit,
+} from '@thoth-agents/pi-core';
 import { createTestRenderKit } from '@thoth-agents/pi-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 const theme = { fg: (_role: string, text: string) => text };
 
 describe('shared test render kit', () => {
+  it('optionally supplies semantic icons and frames without changing the legacy fake', () => {
+    const icon = (name: SemanticIconName) =>
+      name === 'workingFrames' ? ['.', 'o', 'O', '0'] : `test:${name}`;
+    const themed = createTestRenderKit({ icon });
+    const token = registerRenderKit(themed, {});
+    try {
+      expect(getRenderKit()).toBe(themed);
+      expect(resolveIcon('agent', 'native')).toBe('test:agent');
+      expect(resolveFrames('workingFrames', ['native'])).toEqual([
+        '.',
+        'o',
+        'O',
+        '0',
+      ]);
+    } finally {
+      withdrawRenderKit(token);
+    }
+    expect('icon' in createTestRenderKit()).toBe(false);
+    expect('icon' in createTestRenderKit({ icon: undefined })).toBe(false);
+    expect(resolveIcon('agent', 'native')).toBe('native');
+    expect(resolveFrames('workingFrames', ['native'])).toEqual(['native']);
+  });
+
   it('provides deterministic status, working/elapsed and widget primitives without timers', () => {
     const kit = createTestRenderKit();
     const state = {};

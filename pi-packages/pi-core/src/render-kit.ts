@@ -25,6 +25,40 @@ export type RenderStatus =
   | 'blocked'
   | 'unknown';
 
+/** Single glyphs and native labels used only in rendered UI, never model text. */
+export type SemanticGlyphName =
+  | 'branch'
+  | 'folder'
+  | 'model'
+  | 'effort'
+  | 'context'
+  | 'cost'
+  | 'tokensIn'
+  | 'tokensOut'
+  | 'cache'
+  | 'throughput'
+  | 'agent'
+  | 'tool'
+  | 'bash'
+  | 'read'
+  | 'write'
+  | 'edit'
+  | 'search'
+  | 'file'
+  | 'separator'
+  | 'ellipsis'
+  | 'arrowUp'
+  | 'arrowDown'
+  | 'arrowLeft'
+  | 'arrowRight'
+  | 'selection'
+  | 'scrollUp'
+  | 'scrollDown'
+  | 'ready';
+
+export type SemanticFrameName = 'spinnerFrames' | 'workingFrames';
+export type SemanticIconName = SemanticGlyphName | SemanticFrameName;
+
 /** A callback receives the available body width, excluding frame and padding. */
 export type RenderRows =
   | readonly string[]
@@ -154,6 +188,8 @@ export interface ThothRenderKit {
   ): RenderIndicator;
   /** Standard tool footer; legacy v1 kits may omit it. */
   toolFooter?(theme: RenderKitTheme, options: RenderToolFooterOptions): string;
+  /** UI-only semantic glyph or frame lookup; legacy v1 kits may omit it. */
+  icon?(name: SemanticIconName): string | readonly string[];
   statusGlyph(theme: RenderKitTheme, status: RenderStatus): string;
   widgetHeading(
     theme: RenderKitTheme,
@@ -166,6 +202,121 @@ export interface ThothRenderKit {
     width: number,
   ): string;
   fg(theme: RenderKitTheme, role: ThemeColor, text: string): string;
+}
+
+const nativeIcons: Record<SemanticGlyphName, string> = {
+  branch: '⑂',
+  folder: 'dir',
+  model: '●',
+  effort: '◐',
+  context: 'ctx',
+  cost: '$',
+  tokensIn: '↑',
+  tokensOut: '↓',
+  cache: 'cache',
+  throughput: 'tok/s',
+  agent: '\u{f08c7}',
+  tool: '*',
+  bash: '$',
+  read: 'read',
+  write: 'write',
+  edit: 'edit',
+  search: 'search',
+  file: 'file',
+  separator: '·',
+  ellipsis: '…',
+  arrowUp: '↑',
+  arrowDown: '↓',
+  arrowLeft: '←',
+  arrowRight: '→',
+  selection: '›',
+  scrollUp: '↑',
+  scrollDown: '↓',
+  ready: '▲',
+};
+
+const nativeFrames: Record<SemanticFrameName, readonly string[]> = {
+  spinnerFrames: Object.freeze([
+    '⠋',
+    '⠙',
+    '⠹',
+    '⠸',
+    '⠼',
+    '⠴',
+    '⠦',
+    '⠧',
+    '⠇',
+    '⠏',
+  ]),
+  workingFrames: Object.freeze(['△', '◭', '▲', '◮']),
+};
+
+/** Resolve caller-owned animation frames on each render; never starts a timer. */
+export function resolveFrames(
+  name: SemanticFrameName,
+  fallback?: readonly string[],
+): readonly string[] {
+  try {
+    const frames = getRenderKit()?.icon?.(name);
+    if (
+      Array.isArray(frames) &&
+      frames.length > 0 &&
+      [...frames].every((frame) => typeof frame === 'string')
+    )
+      return frames;
+  } catch {
+    // Foreign kits may throw or return arrays with invalid accessors.
+  }
+  return fallback ?? nativeFrames[name];
+}
+
+/** Preserve a surface's native literal by supplying its current fallback. */
+export function resolveIcon(
+  name: SemanticGlyphName,
+  fallback?: string,
+): string {
+  try {
+    const icon = getRenderKit()?.icon?.(name);
+    if (typeof icon === 'string') return icon;
+  } catch {
+    // A buggy optional lookup must not break native UI rendering.
+  }
+  return fallback ?? nativeIcons[name];
+}
+
+const nativeStatusGlyphs: Record<RenderStatus, string> = {
+  pending: '○',
+  queued: '○',
+  in_progress: '◐',
+  running: '◐',
+  completed: '✓',
+  failed: '✗',
+  cancelled: '■',
+  interrupted: '■',
+  stopping: '■',
+  deleted: '⊘',
+  blocked: '⊘',
+  unknown: '?',
+};
+
+const unstyledTheme: RenderKitTheme = {
+  fg: (_role, text) => text,
+  bold: (text) => text,
+  strikethrough: (text) => text,
+};
+
+/** Resolve an unstyled status glyph, preserving caller-specific native defaults. */
+export function resolveStatusGlyph(
+  status: RenderStatus,
+  fallback?: string,
+): string {
+  try {
+    const glyph = getRenderKit()?.statusGlyph(unstyledTheme, status);
+    if (typeof glyph === 'string') return glyph;
+  } catch {
+    // Keep the caller's native status when a foreign implementation fails.
+  }
+  return fallback ?? nativeStatusGlyphs[status];
 }
 
 const terminalFooterGlyphs: Partial<Record<RenderStatus, '✓' | '✗'>> = {
@@ -288,6 +439,7 @@ export function getRenderKit(): ThothRenderKit | undefined {
       (!('resolveToolRenderers' in kit) ||
         typeof kit.resolveToolRenderers === 'function') &&
       (!('toolFooter' in kit) || typeof kit.toolFooter === 'function') &&
+      (!('icon' in kit) || typeof kit.icon === 'function') &&
       [
         'card',
         'collapse',

@@ -11,6 +11,7 @@
 // native overlay (the window feel pi-rtk builds its modal on).
 
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import { resolveIcon } from "@thoth-agents/pi-core";
 import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
@@ -123,7 +124,7 @@ export async function showEnginePicker(ctx: ExtensionUIContext): Promise<Engine 
 
 			const list = new SelectList(ENGINE_PICKER_ITEMS, ENGINE_PICKER_ITEMS.length, {
 				selectedPrefix: (t: string) => theme.fg("accent", t),
-				selectedText: (t: string) => theme.fg("accent", t),
+				selectedText: (t: string) => theme.fg("accent", t.startsWith("→ ") ? `${resolveIcon("selection", "→")} ${t.slice(2)}` : t),
 				description: (t: string) => theme.fg("muted", t),
 				scrollInfo: (t: string) => theme.fg("dim", t),
 				noMatch: (t: string) => theme.fg("warning", t),
@@ -134,7 +135,7 @@ export async function showEnginePicker(ctx: ExtensionUIContext): Promise<Engine 
 
 			container.addChild(new Spacer(1));
 			container.addChild(
-				new Text(theme.fg("dim", "↑↓ navigate · enter select · esc decide later"), 1, 0),
+				{ render: (width: number) => new Text(theme.fg("dim", `${resolveIcon('arrowUp', '↑')}${resolveIcon('arrowDown', '↓')} navigate ${resolveIcon('separator', '·')} enter select ${resolveIcon('separator', '·')} esc decide later`), 1, 0).render(width), invalidate() {} },
 			);
 			container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 

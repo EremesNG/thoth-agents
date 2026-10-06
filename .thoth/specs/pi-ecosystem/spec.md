@@ -104,4 +104,24 @@ Themed tool and notification cards that render through the Thoth render kit or t
 
 - **GIVEN** a themed bash card that has already produced output
 - **WHEN** it is still running and then completes, in the chat or in the subagents thread viewer
-- **THEN** it shows the running footer and the accent border while running, and after completion the exit footer with the success border for exit code 0 or the error border for a failure 
+- **THEN** it shows the running footer and the accent border while running, and after completion the exit footer with the success border for exit code 0 or the error border for a failure
+
+### Requirement: Claude bridge projects Pi prompt sections
+
+`@thoth-agents/pi-claude-bridge` MUST project the content of every Pi `systemPromptOptions.sections` entry that Pi would render into the prompt sent to Claude Code exactly once, applying built-in slot overrides as Pi does and rendering other sections in Pi's tag-wrapped form.
+
+#### Scenario: Claude bridge projects Pi prompt sections
+
+- **GIVEN** a Pi extension sets a non-built-in prompt section with a truthy value
+- **WHEN** the bridge sends that turn to Claude Code
+- **THEN** the appended system prompt contains that section exactly once in Pi's tag-wrapped form
+
+### Requirement: Claude bridge discloses MCP tool names
+
+`@thoth-agents/pi-claude-bridge` MUST, when it serves Pi tools over its MCP server, tell the model that plain Pi tool names in instructions refer to the prefixed MCP tools.
+
+#### Scenario: Claude bridge discloses MCP tool names
+
+- **GIVEN** Pi tools are served as `mcp__custom-tools__<name>`
+- **WHEN** the bridge projects the system prompt
+- **THEN** the prompt states that a plain name `X` refers to `mcp__custom-tools__X`

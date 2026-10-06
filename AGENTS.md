@@ -99,9 +99,10 @@ and discovers `src/**/*.test.ts` and `src/**/*.test.tsx`.
   planning even for a patch-sized change. No alias, duplicate record, report,
   evidence directory, process tool, or execution wrapper is created. See the
   [SDD guide](docs/agent/sdd-and-skills.md).
-- At substantial `ready`, always offer `Review plan with Oracle (Recommended)` or
-  `Proceed without review`, even when implementation was already authorized.
-  Silence is never an explicit skip. After `[OKAY]`, preserve the separate
+- At substantial `ready`, first show the user a concise plan summary (goal,
+  acceptance, key decisions, units, risks), then always offer
+  `Review plan with Oracle (Recommended)` or `Proceed without review`, even when
+  implementation was already authorized. Silence is never an explicit skip. After `[OKAY]`, preserve the separate
   `Implement (Recommended)` / `Stop` choice; prior explicit authorization
   remains valid and a later explicit `Stop` supersedes it. Review alone does not
   authorize implementation or replace final verification.

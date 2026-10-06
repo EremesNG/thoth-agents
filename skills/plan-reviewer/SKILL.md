@@ -10,9 +10,9 @@ metadata:
 
 # Plan Reviewer
 
-After the substantial plan passes `ready`, root always offers Review plan with
-Oracle (Recommended) or Proceed without review, even when implementation is
-already authorized. Silence is never an explicit skip; a fresh review runs only
+After the substantial plan passes `ready`, root first shows the user a concise
+plan summary, then always offers Review plan with Oracle (Recommended) or
+Proceed without review, even when implementation is already authorized. Silence is never an explicit skip; a fresh review runs only
 when selected. Root, not Oracle, owns choices, budgets, recovery, and
 implementation authorization. Every orchestrator choice with a meaningful
 recommendation follows the per-question rule: repeat the same question after its

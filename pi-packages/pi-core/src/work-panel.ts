@@ -96,7 +96,12 @@ export interface WorkPanelDetail {
     collapsedText?: string;
     expandedByDefault?: boolean;
   }>;
-  evidence: { label: string; text: string };
+  evidence: {
+    label: string;
+    text: string;
+    /** Shown dim when text is empty; defaults to `(no output yet)`. */
+    emptyText?: string;
+  };
   footerActions?: string[];
 }
 
@@ -122,6 +127,8 @@ export interface WorkPanelProvider {
   armCloseLabel(row: WorkPanelRow): string;
   // biome-ignore lint/suspicious/noConfusingVoidType: no-op providers need not return an outcome.
   close(id: string): WorkPanelCloseOutcome | void;
+  /** Generic detail uses the 10/25-line tail and enables `l` only when declared. */
+  supportsLogTail?: boolean;
   /** Resolve only once the custom detail UI is closed; input is suspended until then. */
   // biome-ignore lint/suspicious/noConfusingVoidType: synchronous no-ops and awaited custom UIs are supported.
   open?(id: string, ctx: ExtensionContext): void | Promise<unknown>;

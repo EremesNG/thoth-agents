@@ -26,8 +26,10 @@ describe("Background Work panel provider", () => {
       await host.emit("session_start");
       const lines = host.panel.render();
       expect(lines[0]).toContain("Background · 1 running · 1 failed");
-      expect(lines).toHaveLength(3);
+      expect(lines).toHaveLength(4);
+      expect(lines.at(-1)).toBe('← interact');
       expect(lines.join("\n")).toContain("bg_panel_running");
+      expect(getBackgroundTasksNavigator(host.pi).provider.supportsLogTail).toBe(true);
       expect(host.statuses.get("thoth-work-panel")).toBe("← work · 1");
       expect(host.panel.listenerCount()).toBe(1);
       expect(host.widgets.has("background-work-list")).toBe(false);

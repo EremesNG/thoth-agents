@@ -68,6 +68,7 @@ it('provides host detail with the subject, status and multiline description, wit
   });
   const row = provider.listRows(0)[0];
   expect(provider.armCloseLabel(row)).toBe('');
+  expect('supportsLogTail' in provider).toBe(false);
   provider.close('7');
   expect(provider.listRows(0)[0]).toEqual(row);
   expect(provider.detail('missing', 0)).toBeNull();
@@ -224,7 +225,11 @@ it('keeps completed-only lists compact and excludes pending active forms', () =>
     nextId: 2,
   });
   expect(provider.listRows(0).map((row) => row.primary)).toEqual(['Pending']);
-  expect(provider.detail('1', 0)?.evidence.text).toBe('(No description)');
+  expect(provider.detail('1', 0)?.evidence).toEqual({
+    label: 'Description',
+    text: '',
+    emptyText: '(no description)',
+  });
 });
 
 it('publishes distinct todo glyphs and semantic subject, active-form and done-summary hierarchy', () => {

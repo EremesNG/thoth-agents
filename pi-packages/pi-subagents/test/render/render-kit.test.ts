@@ -519,7 +519,8 @@ describe('Agents work-panel render kit discovery', () => {
         expect(
           output.every((line: string) => visibleWidth(line) <= width),
         ).toBe(true);
-        if (width >= 80) expect(output).toHaveLength(2);
+        if (width >= 80) expect(output).toHaveLength(3);
+        expect(output.at(-1)).toBe('← interact');
       }
     } finally {
       withdrawRenderKit(token);

@@ -111,9 +111,23 @@ describe('Pi adapter', () => {
     expect(root).toContain('omit `ask_user_question`, `todo`');
     expect(root).not.toContain('rpiv-todo');
     expect(root).toContain('ask_user_question');
-    expect(root).toContain('one to four questions');
-    expect(root).toContain('two to four options');
-    expect(root).toContain('only confirmed returned empty answers count');
+    expect(root).toContain('@thoth-agents/pi-questions-user');
+    expect(root).toContain('unique `id`');
+    expect(root).toContain('`single`, `multi`, `text`, or `confirm`');
+    expect(root).toContain('no fixed maximum');
+    expect(root).toContain('`recommended`');
+    expect(root).toContain('never preselected');
+    expect(root).toContain('`preview`');
+    expect(root).toContain('`note` and `optionNotes`');
+    expect(root).toContain('`details.answers[id]`');
+    expect(root).toContain(
+      '`status`, `values`, `labels`, and optional `customText`',
+    );
+    expect(root).toContain('`no_ui`');
+    expect(root).toContain('do not imply an answer or approval');
+    expect(root).not.toContain('one to four questions');
+    expect(root).not.toContain('two to four options');
+    expect(root).toMatch(/only confirmed returned empty answers count/i);
     expect(root).not.toContain('Use `subagent_status` only when the work');
     const children = piAdapter.render({ projectRoot: process.cwd() }).artifacts;
     for (const child of children) {

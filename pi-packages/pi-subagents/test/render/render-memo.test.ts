@@ -23,7 +23,7 @@ const renderers = [
   {
     name: 'tool',
     create: toolComponent,
-    expected: ['╭─ Result', 'first line', 'second line', '╰─ completed'],
+    expected: ['╭─ Result', 'first line', 'second line', '╰─ ✓'],
   },
   {
     name: 'working tool',

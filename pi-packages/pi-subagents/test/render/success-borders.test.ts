@@ -58,7 +58,7 @@ it.each([
   ).render(100);
   expect(card).toHaveBeenCalled();
   for (const [, options] of card.mock.calls) {
-    // HEAD ignores details.status for decoration when there is no task.
+    // A successful query is terminal even if the queried outcome is not complete.
     expect(options.status).toBe('completed');
     expect(options.isSuccess).not.toBe(true);
     expect(options.isError).toBeFalsy();
@@ -77,30 +77,45 @@ it.each([
     status: 'completed',
     isPartial: false,
     isError: true,
-    expected: 'completed',
+    expected: 'failed',
   },
   { status: 'failed', isPartial: false, isError: true, expected: 'failed' },
   {
     status: 'cancelled',
     isPartial: false,
     isError: true,
-    expected: 'cancelled',
+    expected: 'failed',
   },
-  { status: 'running', isPartial: false, isError: false, expected: 'running' },
-  { status: 'queued', isPartial: false, isError: false, expected: 'queued' },
-  { status: 'rejected', isPartial: false, isError: false, expected: 'unknown' },
-  { status: 'unknown', isPartial: false, isError: false, expected: 'unknown' },
+  {
+    status: 'running',
+    isPartial: false,
+    isError: false,
+    expected: 'completed',
+  },
+  { status: 'queued', isPartial: false, isError: false, expected: 'completed' },
+  {
+    status: 'rejected',
+    isPartial: false,
+    isError: false,
+    expected: 'completed',
+  },
+  {
+    status: 'unknown',
+    isPartial: false,
+    isError: false,
+    expected: 'completed',
+  },
   {
     status: 'unrecognized',
     isPartial: false,
     isError: false,
-    expected: 'unknown',
+    expected: 'completed',
   },
   {
     status: 'completed',
     isPartial: true,
     isError: false,
-    expected: 'completed',
+    expected: 'running',
   },
 ])('keeps all parts of all nine tool cards consistent for $status (partial=$isPartial, error=$isError)', ({
   status,
@@ -129,7 +144,7 @@ it.each([
     output.render(100);
     expect(card.mock.calls.length, tool.name).toBeGreaterThan(0);
     for (const [, options] of card.mock.calls) {
-      expect(options.status, tool.name).toBe(expected);
+      expect(options.status ?? options.footer, tool.name).toBe(expected);
       expect(options.isSuccess === true, tool.name).toBe(success === true);
       expect(options.isError, tool.name).toBe(isError);
     }
@@ -144,7 +159,7 @@ it.each([
     details: { tasks: [{ status: 'completed' }, { status: 'completed' }] },
     isPartial: false,
     isError: false,
-    footer: '╰─ completed',
+    footer: '╰─ ✓',
     glyph: '✓',
   },
   {
@@ -152,7 +167,7 @@ it.each([
     details: { tasks: [{ status: 'completed' }, { status: 'running' }] },
     isPartial: false,
     isError: false,
-    footer: '╰─ completed',
+    footer: '╰─ ✓',
     glyph: '✓',
   },
   {
@@ -160,7 +175,7 @@ it.each([
     details: { task: { status: 'failed' } },
     isPartial: false,
     isError: true,
-    footer: '╰─ failed',
+    footer: '╰─ ✗',
     glyph: '✗',
   },
   {
@@ -168,26 +183,26 @@ it.each([
     details: { task: { status: 'cancelled' } },
     isPartial: false,
     isError: true,
-    footer: '╰─ cancelled',
-    glyph: '■',
+    footer: '╰─ ✗',
+    glyph: '✗',
   },
   {
     name: 'completed task while partial',
     details: { task: { status: 'completed' } },
     isPartial: true,
     isError: false,
-    footer: '╰─ completed',
-    glyph: '✓',
+    footer: '╰─ running',
+    glyph: '◐',
   },
   {
     name: 'completed task with host error',
     details: { task: { status: 'completed' } },
     isPartial: false,
     isError: true,
-    footer: '╰─ completed',
-    glyph: '✓',
+    footer: '╰─ ✗',
+    glyph: '✗',
   },
-])('preserves the HEAD footer and glyph for $name', ({
+])('uses the tool lifecycle for the standard footer and indicator for $name', ({
   details,
   isPartial,
   isError,
@@ -205,7 +220,6 @@ it.each([
     theme,
     { isPartial, isError },
   ).render(100);
-  // These literal bytes are the HEAD output with the same fake kit.
   expect(lines.at(-1)).toBe(footer);
   expect(indicator.mock.results[0]?.value.glyph).toBe(glyph);
 });
@@ -245,7 +259,7 @@ it.each(
       .render(100);
     expect(card.mock.calls.length, tool.name).toBeGreaterThan(0);
     for (const [, options] of card.mock.calls) {
-      // HEAD decorates with the first entry, even when the batch is mixed.
+      // Tool completion does not imply that every task in the batch succeeded.
       expect(options.status, tool.name).toBe('completed');
       expect(options.isSuccess === true, tool.name).toBe(success);
       expect(options.isError, tool.name).toBe(false);
@@ -263,7 +277,7 @@ it.each([
   { name: 'empty results', details: { results: [] }, success: false },
   { name: 'task without status', details: { task: {} }, success: false },
   { name: 'null outcome', details: { status: null }, success: false },
-])('keeps HEAD decoration separate from border evidence for $name', ({
+])('keeps tool completion separate from border evidence for $name', ({
   details,
   success,
 }) => {
@@ -321,14 +335,14 @@ it.each([
       .render(100);
     expect(card.mock.calls.length, tool.name).toBeGreaterThan(0);
     for (const [, options] of card.mock.calls) {
-      expect(options.status, tool.name).toBe(status);
+      expect(options.status ?? options.footer, tool.name).toBe(status);
       expect(options.isSuccess === true, tool.name).toBe(success === true);
       expect(options.isError, tool.name).toBe(isError);
     }
   }
 });
 
-it('preserves the HEAD default footer and glyph without inferring success from missing context', () => {
+it('uses the standard default footer without inferring success from missing context', () => {
   const kit = createTestRenderKit();
   const card = vi.spyOn(kit, 'card');
   const indicator = vi.spyOn(kit, 'indicator');
@@ -336,8 +350,8 @@ it('preserves the HEAD default footer and glyph without inferring success from m
   onTestFinished(() => withdrawRenderKit(token));
 
   const lines = boxedComponent(['output'], { theme }).render(100);
-  // Literal HEAD output at the fake-kit seam: display status is not border evidence.
-  expect(lines.at(-1)).toBe('╰─ completed');
+  // Display status is not border evidence.
+  expect(lines.at(-1)).toBe('╰─ ✓');
   expect(indicator.mock.results[0]?.value.glyph).toBe('✓');
   expect(card).toHaveBeenCalled();
   for (const [, options] of card.mock.calls) {

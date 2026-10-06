@@ -36,6 +36,12 @@ export function singleLine(text: string): string {
   return text.replace(/[\r\n\t]+/g, ' ').trim();
 }
 
+/** Parents and no-op providers expose no close action in either panel or detail. */
+export function panelCloseLabel(entry: PanelRow | undefined): string {
+  if (!entry || entry.parent) return '';
+  return safely(() => singleLine(entry.provider.armCloseLabel(entry.row)), '');
+}
+
 export function panelSections(
   providers: WorkPanelProvider[],
   now: number,
@@ -141,7 +147,6 @@ export function renderPanel(
   options: {
     selectedKey?: string;
     hint?: string;
-    cue?: string;
     budget?: number;
     measure?: (text: string) => number;
   } = {},
@@ -355,15 +360,6 @@ export function renderPanel(
         ? kit.widgetHeading(theme, { title, suffix: `· ${counter}` }, width)
         : `${fg('accent', '◆')} ${fg('toolTitle', title)} ${fg('dim', '· ')}${counter}`,
     ];
-    if (!lines.length && options.cue) {
-      const cue = fg('dim', options.cue);
-      const heading = sectionLines[0] ?? '';
-      const gap = width - measure(heading) - measure(cue);
-      if (gap > 0) sectionLines[0] = `${heading}${' '.repeat(gap)}${cue}`;
-      else if (width <= measure(cue) + 3) sectionLines[0] = clip(cue, width);
-      else
-        sectionLines[0] = `${clip(heading, width - measure(cue) - 3)} · ${cue}`;
-    }
     const hidden = plan.items.length - chosen.length;
     const more = hidden > 0 && remaining - lines.length >= 3;
     const bodyBudget = Math.max(
@@ -374,7 +370,8 @@ export function renderPanel(
     if (more) sectionLines.push(fg('dim', `  +${hidden} more`));
     lines.push(...sectionLines);
   }
-  if (options.hint && budget) lines.push(fg('dim', options.hint));
+  if (sections.length && options.hint && budget)
+    lines.push(fg('dim', options.hint));
   return lines.slice(0, budget).map((line) => clip(line, width));
 }
 

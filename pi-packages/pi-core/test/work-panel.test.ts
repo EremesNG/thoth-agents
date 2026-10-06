@@ -109,18 +109,16 @@ describe('work panel rendering', () => {
       cleanups.push(registerWorkPanelProvider(session.ctx, item));
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render()).toEqual([
-      entryHeading('◆ Agents · 2 running'),
+      '◆ Agents · 2 running',
       '  ◐ Agents item',
       '◆ Todos · 1/4 done',
       '  ◐ todos item',
       '◆ Background · 3 running · 2 failed',
       '  ◐ background item',
+      '← interact',
     ]);
   });
 });
-
-const entryHeading = (text: string, width = 100) =>
-  text.padEnd(width - 10) + '← interact';
 
 const keys = {
   left: '\x1b[D',
@@ -373,7 +371,11 @@ describe('work panel compact budget', () => {
     expect(lines).toHaveLength(12);
     expect(
       lines.filter((line: string) => line.includes('+5 more')),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
+    expect(
+      lines.filter((line: string) => line.includes('+6 more')),
+    ).toHaveLength(1);
+    expect(lines.at(-1)).toBe('← interact');
     expect(lines.some((line: string) => !line.trim())).toBe(false);
     expect(lines.every((line: string) => visibleWidth(line) <= width)).toBe(
       true,
@@ -410,12 +412,14 @@ describe('work panel compact budget', () => {
     );
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render(80)).toEqual([
-      entryHeading('◆ Agents · 4 items', 80),
+      '◆ Agents · 4 items',
       ...Array(4).fill('  ⠋ Agent · task · 4 tools · 2k tok · 20%'),
+      '← interact',
     ]);
     expect(session.render(24)).toEqual([
-      expect.stringMatching(/^◆ Agents.*← interact$/),
+      '◆ Agents · 4 items',
       ...Array(4).fill(['  ⠋ Agent · task', '    4 tools · 2k · 20%']).flat(),
+      '← interact',
     ]);
   });
 });
@@ -431,8 +435,9 @@ describe('work panel render kit', () => {
     );
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render()).toEqual([
-      entryHeading('◆ Agents · 1 running'),
+      '◆ Agents · 1 running',
       '  ◐ Agents item',
+      '← interact',
     ]);
     const kit = createTestRenderKit();
     const themed = {
@@ -445,8 +450,9 @@ describe('work panel render kit', () => {
     const token = registerRenderKit(themed, {});
     cleanups.push(() => withdrawRenderKit(token));
     expect(session.render()).toEqual([
-      entryHeading('Agents · 1 running'),
+      'Agents · 1 running',
       '  └─ ◐ Agents item',
+      '← interact',
     ]);
     session.key(keys.left);
     expect(
@@ -557,7 +563,7 @@ describe('work panel ownership edges', () => {
     const oldRelease = await ensureWorkPanel(session.ctx);
     cleanups.push(oldRelease);
     stale();
-    expect(session.render()[0]).toBe(entryHeading('◆ Agents · replacement'));
+    expect(session.render()[0]).toBe('◆ Agents · replacement');
     current();
     expect(session.listenerCount()).toBe(0);
     cleanups.push(registerWorkPanelProvider(session.ctx, provider()));
@@ -595,8 +601,9 @@ describe('work panel ownership edges', () => {
     cleanups.push(broken, registerWorkPanelProvider(session.ctx, provider()));
     cleanups.push(await ensureWorkPanel(session.ctx));
     expect(session.render()).toEqual([
-      entryHeading('◆ Agents · 1 items'),
+      '◆ Agents · 1 items',
       '  ◐ Agents item',
+      '← interact',
     ]);
     broken();
     expect(session.listenerCount()).toBe(1);
@@ -683,7 +690,7 @@ describe('work panel fail-closed focus observation', () => {
 });
 
 describe('work panel detail actions', () => {
-  it('lets the overlay navigate, toggle folded evidence/log tails, confirm close and cleanly dismiss', async () => {
+  it('lets the overlay navigate, toggle supported log tails, confirm close and cleanly dismiss', async () => {
     vi.useFakeTimers();
     const session = uiSession();
     let items = ['first', 'second'];
@@ -713,6 +720,7 @@ describe('work panel detail actions', () => {
     });
     const unregister = registerWorkPanelProvider(session.ctx, {
       ...source,
+      supportsLogTail: true,
       listRows: () =>
         items.map((id) => ({ id, primary: id, status: 'running' })),
       detail,
@@ -722,9 +730,9 @@ describe('work panel detail actions', () => {
     session.key(keys.left);
     session.key(keys.enter);
     session.customKey(keys.down);
-    expect(session.customRender()[0]).toBe('second');
+    expect(session.customRender()[0]).toContain('second');
     session.customKey(keys.up);
-    expect(session.customRender()[0]).toBe('first');
+    expect(session.customRender()[0]).toContain('first');
     session.customKey(keys.enter);
     expect(session.customRender().join('\n')).toContain(
       'complete task description',
@@ -737,7 +745,7 @@ describe('work panel detail actions', () => {
     expect(close).not.toHaveBeenCalled();
     session.customKey('x');
     expect(close).toHaveBeenCalledExactlyOnceWith('first');
-    expect(session.customRender()[0]).toBe('second');
+    expect(session.customRender()[0]).toContain('second');
     session.customKey(keys.right);
     await Promise.resolve();
     expect(session.key(keys.up)).toBeUndefined();
@@ -857,27 +865,43 @@ describe('work panel semantic hierarchy', () => {
   });
 });
 
-it('shows a dim panel entry cue aligned on the first heading or suffixed at narrow widths, but only full hints when focused', async () => {
+it('reserves the last row for a bottom-left dim entry hint and only advertises available focused actions', async () => {
   const session = uiSession();
   const roles: Array<[string, string]> = [];
   session.ui.theme.fg = (role, text) => {
     roles.push([role, text]);
     return text;
   };
-  cleanups.push(registerWorkPanelProvider(session.ctx, provider()));
-  cleanups.push(await ensureWorkPanel(session.ctx));
-  expect(session.render(80)[0]).toBe(
-    '◆ Agents · 1 items'.padEnd(70) + '← interact',
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, provider()),
+    registerWorkPanelProvider(session.ctx, {
+      ...provider('todos', 'Todos', 20),
+      armCloseLabel: () => '',
+    }),
   );
-  expect(session.render(24)[0]).toMatch(/^◆ Agents.* · ← interact$/);
-  expect(session.render(10)[0]).toBe('← interact');
+  cleanups.push(await ensureWorkPanel(session.ctx));
+  expect(session.render(80)[0]).toBe('◆ Agents · 1 items');
+  for (const width of [80, 24, 10])
+    expect(session.render(width).at(-1)).toBe('← interact');
   expect(roles).toContainEqual(['dim', '← interact']);
   expect(
     session.render().filter((line: string) => line.includes('← interact')),
   ).toHaveLength(1);
   session.key(keys.left);
   expect(session.render().join('\n')).not.toContain('← interact');
-  expect(session.render().at(-1)).toContain('↑↓ move · Enter open');
+  expect(session.render().at(-1)).toBe(
+    '↑↓ move · Enter open · x cancel · Esc back',
+  );
+  session.key(keys.down);
+  expect(session.render().at(-1)).toBe('↑↓ move · Enter open · Esc back');
+  session.key('x');
+  expect(session.ui.setStatus).not.toHaveBeenCalledWith(
+    'thoth-work-panel-close',
+    expect.any(String),
+  );
+  session.tui.terminal.rows = 6;
+  expect(session.render()).toHaveLength(3);
+  expect(session.render().at(-1)).toBe('↑↓ move · Enter open · Esc back');
 });
 
 it('keeps all open items when space permits and a dim done summary outside caps, overflow and selection', async () => {
@@ -910,7 +934,8 @@ it('keeps all open items when space permits and a dim done summary outside caps,
   const lines = session.render();
   expect(lines.join('\n')).toContain('Open 2');
   expect(lines.join('\n')).not.toContain('more');
-  expect(lines.at(-1)).toBe('  +4 done');
+  expect(lines.at(-2)).toBe('  +4 done');
+  expect(lines.at(-1)).toBe('← interact');
   expect(roles).toContainEqual(['dim', '+4 done']);
   session.key(keys.left);
   for (let i = 0; i < 5; i++) session.key(keys.down);
@@ -982,7 +1007,7 @@ it('shares spare height across three sections without hiding open Todos or their
   }
   cleanups.push(await ensureWorkPanel(session.ctx));
   const lines = session.render();
-  expect(lines).toHaveLength(11);
+  expect(lines).toHaveLength(12);
   expect(lines.join('\n')).toContain('Todos 2');
   expect(lines.join('\n')).toContain('+4 done');
   expect(lines.join('\n')).not.toContain('more');

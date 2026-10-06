@@ -15,7 +15,7 @@ export function uiSession() {
   let finishCustom: (() => void) | undefined;
   const listeners = new Set<(data: string) => any>();
   const tui = {
-    terminal: { rows: 40 },
+    terminal: { rows: 40, columns: 120 },
     requestRender: vi.fn(),
     getFocusedComponent: () => focused,
     hasOverlay: () => overlay,

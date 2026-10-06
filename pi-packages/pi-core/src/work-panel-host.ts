@@ -4,6 +4,7 @@ import type { WorkPanelProvider } from './work-panel.js';
 import { createWorkPanelDetail } from './work-panel-detail.js';
 import {
   type PanelRow,
+  panelCloseLabel,
   panelSections,
   renderPanel,
   safely,
@@ -68,8 +69,6 @@ export function createWorkPanelHost(
     return all;
   }
   const selected = () => rows().find((entry) => entry.key === selectedKey);
-  const closeLabel = (entry: PanelRow) =>
-    safely(() => singleLine(entry.provider.armCloseLabel(entry.row)), '');
 
   function clearCloseArm(): void {
     if (closeTimer) clearTimeout(closeTimer);
@@ -83,8 +82,8 @@ export function createWorkPanelHost(
     clearCloseArm();
   }
   function handleClose(entry: PanelRow): void {
-    const label = closeLabel(entry);
-    if (!label || entry.parent) return;
+    const label = panelCloseLabel(entry);
+    if (!label) return;
     const now = Date.now();
     if (
       closeArm?.key === entry.key &&
@@ -141,11 +140,14 @@ export function createWorkPanelHost(
                 done: () => done(),
                 requestRender: () => detailTui.requestRender(),
                 theme,
-                height: () => Math.max(2, detailTui.terminal.rows - 4),
+                height: () =>
+                  Math.max(0, Math.floor(detailTui.terminal.rows * 0.8)),
                 clip,
                 wrap: (text, width) =>
                   toolkit?.wrapTextWithAnsi(text, Math.max(1, width)) ??
                   text.split(/\r?\n/),
+                measure: (text) =>
+                  toolkit?.visibleWidth(text) ?? [...text].length,
                 matches,
               });
               dismissDetail = () => component.dismiss();
@@ -153,11 +155,14 @@ export function createWorkPanelHost(
             },
             {
               overlay: true,
-              overlayOptions: {
-                width: '90%',
+              overlayOptions: () => ({
+                width: Math.min(
+                  100,
+                  Math.floor((tui?.terminal.columns ?? 100) * 0.9),
+                ),
                 maxHeight: '80%',
                 anchor: 'center',
-              },
+              }),
             },
           );
     const finished = () => {
@@ -326,18 +331,24 @@ export function createWorkPanelHost(
         return {
           render(width) {
             rows();
-            const entry = selected();
+            const label = panelCloseLabel(selected());
             return renderPanel(sections(), width, Date.now(), theme, clip, {
               measure: toolkit?.visibleWidth,
-              cue: !focused && !suspended ? '← interact' : undefined,
               selectedKey: focused ? selectedKey : undefined,
               budget: Math.min(
                 12,
                 Math.max(0, Math.floor(widgetTui.terminal.rows / 2)),
               ),
               hint: focused
-                ? `↑↓ move · Enter open · x ${entry ? closeLabel(entry) || 'unavailable' : 'unavailable'} · Esc back`
-                : undefined,
+                ? [
+                    '↑↓ move',
+                    'Enter open',
+                    label ? `x ${label}` : '',
+                    'Esc back',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                : '← interact',
             });
           },
           invalidate() {},

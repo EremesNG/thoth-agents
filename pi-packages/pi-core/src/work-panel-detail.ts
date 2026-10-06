@@ -1,7 +1,12 @@
 import type { Component } from '@earendil-works/pi-tui';
-import type { RenderKitTheme } from './render-kit.js';
+import { getRenderKit, type RenderKitTheme } from './render-kit.js';
 import type { WorkPanelDetail } from './work-panel.js';
-import { type PanelRow, safely, singleLine } from './work-panel-render.js';
+import {
+  type PanelRow,
+  panelCloseLabel,
+  safely,
+  singleLine,
+} from './work-panel-render.js';
 
 interface DetailOptions {
   rows(): PanelRow[];
@@ -15,6 +20,7 @@ interface DetailOptions {
   height(): number;
   clip(text: string, width: number): string;
   wrap(text: string, width: number): string[];
+  measure(text: string): number;
   matches(
     data: string,
     key: 'up' | 'down' | 'left' | 'right' | 'enter' | 'escape',
@@ -29,7 +35,9 @@ export function createWorkPanelDetail(
   let detailKey: string | undefined;
   let detail: WorkPanelDetail | null = null;
   let logTailLines = 25;
-  const expanded = new Set<string>();
+  const expanded = new Map<string, boolean>();
+  let foldTarget: string | undefined;
+  let foldExpanded = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const EVIDENCE = '__evidence__';
   function refreshDetail(): void {
@@ -56,8 +64,7 @@ export function createWorkPanelDetail(
     if (detailKey !== entry.key) {
       detailKey = entry.key;
       expanded.clear();
-      for (const section of detail.foldedSections ?? [])
-        if (section.expandedByDefault) expanded.add(section.id);
+      foldTarget = undefined;
     }
   }
   function stopTimer(): void {
@@ -95,54 +102,147 @@ export function createWorkPanelDetail(
       if (closed) return [];
       refreshDetail();
       if (!detail || closed) return [];
+      width = Math.max(0, Math.floor(width));
+      if (!width) return [];
       const fg = options.theme.fg.bind(options.theme);
-      const lines = [fg('accent', singleLine(detail.title))];
-      if (detail.status) lines.push(`status · ${singleLine(detail.status)}`);
-      if (detail.subtitle) lines.push(singleLine(detail.subtitle));
-      for (const item of detail.metadata)
-        lines.push(`${singleLine(item.label)} · ${singleLine(item.value)}`);
-      for (const section of detail.foldedSections ?? []) {
-        if (expanded.has(section.id))
-          lines.push(section.label, ...options.wrap(section.text, width));
-        else
-          lines.push(
-            `${section.label} · ${singleLine(section.collapsedText ?? section.text)} · folded`,
-          );
-      }
-      const tail = /log|transcript/i.test(detail.evidence.label);
-      if (tail || expanded.has(EVIDENCE)) {
-        const evidence = options.wrap(
-          detail.evidence.text || '(no output yet)',
-          width,
+      const snapshot = detail;
+      const budget = Math.max(0, Math.floor(options.height()));
+      const body = (innerWidth: number): string[] => {
+        foldTarget = undefined;
+        if (budget < 3) return [];
+        const detail = snapshot;
+        innerWidth = Math.max(1, innerWidth);
+        const lines: string[] = [];
+        if (detail.status) lines.push(`status · ${singleLine(detail.status)}`);
+        if (detail.subtitle) lines.push(singleLine(detail.subtitle));
+        for (const item of detail.metadata)
+          lines.push(`${singleLine(item.label)} · ${singleLine(item.value)}`);
+        const entry = options.selected();
+        const tail = entry?.provider.supportsLogTail === true;
+        const evidenceText = detail.evidence.text.trim()
+          ? detail.evidence.text
+          : fg('dim', detail.evidence.emptyText ?? '(no output yet)');
+        const evidence = options.wrap(evidenceText, innerWidth);
+        const evidenceRows = tail ? evidence.slice(-logTailLines) : evidence;
+        const blocks = [
+          ...(detail.foldedSections ?? []).map((section) => ({
+            id: section.id,
+            label: singleLine(section.label),
+            rows: options.wrap(section.text, innerWidth),
+            preview: singleLine(
+              section.collapsedText ?? section.text.split(/\r?\n/)[0] ?? '',
+            ),
+            defaultExpanded: section.expandedByDefault ?? false,
+          })),
+          {
+            id: EVIDENCE,
+            label: singleLine(detail.evidence.label),
+            rows: evidenceRows,
+            preview: singleLine(detail.evidence.text.split(/\r?\n/)[0] ?? ''),
+            defaultExpanded: tail,
+          },
+        ];
+        const available = Math.max(0, budget - 3);
+        const metadataRows = lines.length;
+        let evidenceCollapsed = false;
+        // Reserve a label and one text row for each other section before deciding to fold.
+        const reservedRows = blocks.reduce(
+          (sum, block) => sum + Math.min(2, block.rows.length + 1),
+          0,
         );
-        lines.push(
-          detail.evidence.label,
-          ...(tail ? evidence.slice(-logTailLines) : evidence),
+        for (const block of blocks) {
+          const otherRows = reservedRows - Math.min(2, block.rows.length + 1);
+          const foldable =
+            block.rows.length + 1 >
+            Math.max(1, available - metadataRows - otherRows);
+          const isExpanded =
+            !foldable || (expanded.get(block.id) ?? block.defaultExpanded);
+          if (foldable && !foldTarget) {
+            foldTarget = block.id;
+            foldExpanded = isExpanded;
+          }
+          if (isExpanded) lines.push(block.label, ...block.rows);
+          else {
+            const previewWidth = Math.max(
+              0,
+              innerWidth -
+                options.measure(block.label) -
+                options.measure(' ·  · folded'),
+            );
+            lines.push(
+              `${block.label} · ${options.clip(block.preview, previewWidth)}${fg('dim', ' · folded')}`,
+            );
+            if (block.id === EVIDENCE) evidenceCollapsed = true;
+          }
+        }
+        const headerRows =
+          lines.length - (evidenceCollapsed ? 1 : evidenceRows.length + 1);
+        const label = panelCloseLabel(entry);
+        const hint = [
+          '↑↓ move',
+          foldTarget ? 'Enter expand/collapse' : '',
+          label ? `x ${label}` : '',
+          tail ? 'l 10/25' : '',
+          'Esc back',
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        let content = lines.slice(0, available);
+        if (
+          tail &&
+          !evidenceCollapsed &&
+          lines.length > available &&
+          available
+        ) {
+          // Retain the newest output while reserving the frame and hint.
+          const headCount = Math.min(headerRows, Math.max(0, available - 2));
+          const tailCount = available - headCount;
+          content = [
+            ...lines.slice(0, headCount),
+            ...(tailCount > 1 ? [singleLine(detail.evidence.label)] : []),
+            ...evidenceRows.slice(-(tailCount > 1 ? tailCount - 1 : tailCount)),
+          ];
+        }
+        return [...content, fg('dim', hint)];
+      };
+      const pad = (text: string, available: number) => {
+        const clipped = options.clip(text, available);
+        return (
+          clipped +
+          ' '.repeat(Math.max(0, available - options.measure(clipped)))
         );
-      } else
-        lines.push(
-          `${detail.evidence.label} · ${singleLine(detail.evidence.text)} · folded`,
-        );
-      const entry = options.selected();
-      const label =
-        (entry
-          ? safely(() => entry.provider.armCloseLabel(entry.row), '')
-          : '') || 'unavailable';
-      const hint = `↑↓ move · Enter expand/collapse · x ${label} · l 10/25 · Esc back`;
-      const budget = Math.max(2, options.height());
-      const head = lines.slice(0, Math.min(lines.length, budget - 1));
-      // A log tail retains newest evidence rather than oldest output at short heights.
-      if (tail && lines.length > budget - 1) {
-        const metadataRows = Math.min(2 + detail.metadata.length, budget - 2);
-        head.splice(
-          metadataRows,
-          head.length - metadataRows,
-          ...lines.slice(-(budget - 1 - metadataRows)),
-        );
-      }
-      return [...head, fg('dim', hint)].map((line) =>
-        options.clip(line, width),
+      };
+      const kit = getRenderKit();
+      if (kit)
+        return kit
+          .card(
+            options.theme,
+            {
+              title: singleLine(detail.title),
+              body,
+            },
+            width,
+          )
+          .slice(0, budget)
+          .map((line) => pad(line, width));
+      const nativeBody = body(Math.max(1, width - 4));
+      const title = options.clip(
+        ` ${singleLine(detail.title)} `,
+        Math.max(0, width - 3),
       );
+      return [
+        fg(
+          'accent',
+          `╭─${title}${'─'.repeat(Math.max(0, width - 3 - options.measure(title)))}╮`,
+        ),
+        ...nativeBody.map(
+          (line) =>
+            `${fg('accent', '│')} ${pad(line, Math.max(0, width - 4))} ${fg('accent', '│')}`,
+        ),
+        fg('accent', `╰${'─'.repeat(Math.max(0, width - 2))}╯`),
+      ]
+        .slice(0, budget)
+        .map((line) => pad(line, width));
     },
     handleInput(data) {
       if (closed) return;
@@ -176,11 +276,13 @@ export function createWorkPanelDetail(
         const entry = options.selected();
         if (entry) options.closeItem(entry);
         refreshDetail();
-      } else if (options.matches(data, 'enter')) {
-        const id = detail?.foldedSections?.[0]?.id ?? EVIDENCE;
-        if (expanded.has(id)) expanded.delete(id);
-        else expanded.add(id);
-      } else if (data === 'l' || data === 'L') {
+      } else if (options.matches(data, 'enter') && foldTarget) {
+        foldExpanded = !foldExpanded;
+        expanded.set(foldTarget, foldExpanded);
+      } else if (
+        (data === 'l' || data === 'L') &&
+        options.selected()?.provider.supportsLogTail
+      ) {
         logTailLines = logTailLines === 25 ? 10 : 25;
         refreshDetail();
       } else return;

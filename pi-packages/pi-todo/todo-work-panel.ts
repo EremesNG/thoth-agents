@@ -70,10 +70,12 @@ export function createTodoWorkPanelProvider() {
         metadata: [],
         evidence: {
           label: 'Description',
-          text: (task.description || '(No description)')
+          text: (task.description ?? '')
             .split(/\r?\n/)
             .map(sanitizeTerminalText)
-            .join('\n'),
+            .join('\n')
+            .trim(),
+          emptyText: '(no description)',
         },
       };
     },

@@ -48,6 +48,7 @@ function createBackgroundTasksNavigator(pi: ExtensionAPI) {
     label: "Background",
     priority: 30,
     refreshIntervalMs: 1000,
+    supportsLogTail: true,
     summary: () => {
       const metas = visibleMetas();
       return {

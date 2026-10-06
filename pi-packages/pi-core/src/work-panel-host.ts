@@ -59,7 +59,9 @@ export function createWorkPanelHost(
     [...text].slice(0, Math.max(0, width)).join('');
   const sections = () => panelSections(providers(), Date.now());
   function rows(): PanelRow[] {
-    const all = sections().flatMap((section) => section.rows);
+    const all = sections()
+      .flatMap((section) => section.rows)
+      .filter(({ row }) => !row.summary);
     if (!all.some((entry) => entry.key === selectedKey))
       selectedKey = all[0]?.key;
     if (!all.length) releaseFocus();
@@ -326,6 +328,8 @@ export function createWorkPanelHost(
             rows();
             const entry = selected();
             return renderPanel(sections(), width, Date.now(), theme, clip, {
+              measure: toolkit?.visibleWidth,
+              cue: !focused && !suspended ? '← interact' : undefined,
               selectedKey: focused ? selectedKey : undefined,
               budget: Math.min(
                 12,

@@ -3,6 +3,7 @@ import {
   getSupportedThinkingLevels,
   type Model,
 } from '@earendil-works/pi-ai';
+import { resolveIcon } from '@thoth-agents/pi-core';
 import { loadSubagents, readSubagentsConfig } from '../config.js';
 import type {
   ModelRef,
@@ -289,9 +290,9 @@ export function createSubagentModelProfilesModal(
     const row = selectedRow();
     if (!row) return 'selected: (none)';
     const availability = row.modelLabel.includes('(unavailable)')
-      ? ' · unavailable model'
+      ? ` ${resolveIcon('separator', '·')} unavailable model`
       : '';
-    return `selected: ${themeAccent(input.theme, row.name)}${availability} · model: ${rowModelText(row)} · effort: ${rowEffortText(row)}`;
+    return `selected: ${themeAccent(input.theme, row.name)}${availability} ${resolveIcon('separator', '·')} model: ${rowModelText(row)} ${resolveIcon('separator', '·')} effort: ${rowEffortText(row)}`;
   };
 
   const rowListLines = (width: number): string[] => {
@@ -307,7 +308,9 @@ export function createSubagentModelProfilesModal(
       for (const [offset, item] of visibleRows.entries()) {
         const index = scrollOffset + offset;
         const marker =
-          index === selectedIndex ? themeAccent(input.theme, '›') : ' ';
+          index === selectedIndex
+            ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
+            : ' ';
         const dirty = hasDirtyProfileFor(item)
           ? themeWarning(input.theme, '*')
           : ' ';
@@ -317,16 +320,20 @@ export function createSubagentModelProfilesModal(
       }
       return lines;
     }
-    const lines = ['agent · model · effort'];
+    const lines = [
+      `agent ${resolveIcon('separator', '·')} model ${resolveIcon('separator', '·')} effort`,
+    ];
     for (const [offset, item] of visibleRows.entries()) {
       const index = scrollOffset + offset;
       const marker =
-        index === selectedIndex ? themeAccent(input.theme, '›') : ' ';
+        index === selectedIndex
+          ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
+          : ' ';
       const dirty = hasDirtyProfileFor(item)
         ? themeWarning(input.theme, '*')
         : ' ';
       lines.push(
-        `${marker} ${dirty} ${scopedName(item)} · ${rowModelText(item)} · ${rowEffortText(item)}`,
+        `${marker} ${dirty} ${scopedName(item)} ${resolveIcon('separator', '·')} ${rowModelText(item)} ${resolveIcon('separator', '·')} ${rowEffortText(item)}`,
       );
     }
     return lines;
@@ -335,8 +342,8 @@ export function createSubagentModelProfilesModal(
   const renderMain = (width: number): string[] => {
     const dirtyCount = Object.keys(dirtyProfiles).length;
     const body = [
-      `target: local/global by subagent scope · ${pendingLabel(dirtyCount, input.theme)}`,
-      '↑/↓/j/k move · enter/m model · e effort · M/E/r reset · s save · esc/q cancel',
+      `target: local/global by subagent scope ${resolveIcon('separator', '·')} ${pendingLabel(dirtyCount, input.theme)}`,
+      `${resolveIcon('arrowUp', '↑')}/${resolveIcon('arrowDown', '↓')}/j/k move ${resolveIcon('separator', '·')} enter/m model ${resolveIcon('separator', '·')} e effort ${resolveIcon('separator', '·')} M/E/r reset ${resolveIcon('separator', '·')} s save ${resolveIcon('separator', '·')} esc/q cancel`,
       '',
       ...rowListLines(width),
       '',
@@ -349,7 +356,7 @@ export function createSubagentModelProfilesModal(
     const row = selectedRow();
     const lines = [
       `Select model provider for ${row?.name ?? '(none)'}`,
-      'choose provider · enter: select · esc/q: back',
+      `choose provider ${resolveIcon('separator', '·')} enter: select ${resolveIcon('separator', '·')} esc/q: back`,
       '',
     ];
     const items = ['inherit/reset model', ...providerNames];
@@ -357,7 +364,9 @@ export function createSubagentModelProfilesModal(
       lines.push('No available models found; reset remains available.');
     for (const [index, item] of items.entries()) {
       const marker =
-        index === pickerIndex ? themeAccent(input.theme, '›') : ' ';
+        index === pickerIndex
+          ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
+          : ' ';
       lines.push(`${marker} ${item}`);
     }
     return frameModal('Choose model provider', lines, width, input.theme);
@@ -408,9 +417,9 @@ export function createSubagentModelProfilesModal(
       : `${models.length} model${models.length === 1 ? '' : 's'}`;
     const lines = [
       `Select ${selectedProvider ?? ''} model for ${row?.name ?? '(none)'}`,
-      `provider: ${selectedProvider ?? '(none)'} · ${countText}${models.length > visibleRows ? ` · showing ${pickerScrollOffset + 1}-${rangeEnd}` : ''}`,
+      `provider: ${selectedProvider ?? '(none)'} ${resolveIcon('separator', '·')} ${countText}${models.length > visibleRows ? ` ${resolveIcon('separator', '·')} showing ${pickerScrollOffset + 1}-${rangeEnd}` : ''}`,
       `search: ${modelSearch || '(type to filter)'}`,
-      '↑/↓/j/k move · type search · backspace clear · enter select · esc back',
+      `${resolveIcon('arrowUp', '↑')}/${resolveIcon('arrowDown', '↓')}/j/k move ${resolveIcon('separator', '·')} type search ${resolveIcon('separator', '·')} backspace clear ${resolveIcon('separator', '·')} enter select ${resolveIcon('separator', '·')} esc back`,
       '',
     ];
     if (!allModels.length) lines.push('No models available for this provider.');
@@ -418,7 +427,9 @@ export function createSubagentModelProfilesModal(
     for (const [offset, model] of visibleModels.entries()) {
       const index = pickerScrollOffset + offset;
       const marker =
-        index === pickerIndex ? themeAccent(input.theme, '›') : ' ';
+        index === pickerIndex
+          ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
+          : ' ';
       lines.push(`${marker} ${model.label} (${model.provider}/${model.id})`);
     }
     return frameModal('Choose model', lines, width, input.theme);
@@ -428,7 +439,7 @@ export function createSubagentModelProfilesModal(
     const row = selectedRow();
     const lines = [
       `row: ${row?.name ?? '(none)'}`,
-      'choose effort · enter: select · esc/q: back',
+      `choose effort ${resolveIcon('separator', '·')} enter: select ${resolveIcon('separator', '·')} esc/q: back`,
       '',
     ];
     const items = effortChoicesForRow().map((choice) =>
@@ -436,7 +447,9 @@ export function createSubagentModelProfilesModal(
     );
     for (const [index, item] of items.entries()) {
       const marker =
-        index === pickerIndex ? themeAccent(input.theme, '›') : ' ';
+        index === pickerIndex
+          ? themeAccent(input.theme, `${resolveIcon('selection', '›')}`)
+          : ' ';
       lines.push(`${marker} ${item}`);
     }
     return frameModal('Choose effort', lines, width, input.theme);

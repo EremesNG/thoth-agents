@@ -3,6 +3,7 @@ import type {
   WorkPanelRowContent,
   WorkPanelSegment,
 } from '@thoth-agents/pi-core';
+import { resolveIcon } from '@thoth-agents/pi-core';
 import {
   truncateToWidth,
   visibleWidth,
@@ -22,7 +23,8 @@ function normalize(text: string | undefined): string {
 
 export function formatTaskSummary(task: SubagentTask, maxLen = 60): string {
   const name = normalize(task.display_name);
-  if (name) return truncateToWidth(name, maxLen, '…');
+  if (name)
+    return truncateToWidth(name, maxLen, `${resolveIcon('ellipsis', '…')}`);
   const raw = task.task;
   if (!raw) return '';
   const lines = raw
@@ -38,7 +40,7 @@ export function formatTaskSummary(task: SubagentTask, maxLen = 60): string {
     .trim();
   const summary = normalize(clean || firstContent);
   if (!summary) return '';
-  return truncateToWidth(summary, maxLen, '…');
+  return truncateToWidth(summary, maxLen, `${resolveIcon('ellipsis', '…')}`);
 }
 
 function finiteNonnegative(value: number | undefined): value is number {
@@ -49,7 +51,9 @@ function metricLines(parts: string[], contentWidth: number): string[] {
   const lines: string[] = [];
   for (const part of parts) {
     const previous = lines.at(-1);
-    const joined = previous ? `${previous} · ${part}` : part;
+    const joined = previous
+      ? `${previous} ${resolveIcon('separator', '·')} ${part}`
+      : part;
     if (previous && visibleWidth(joined) > contentWidth) {
       lines.push(part);
     } else if (previous) {
@@ -70,6 +74,7 @@ export function renderSubagentWorkRow(
 ): WorkPanelRowContent {
   width = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0;
   if (!width) return { text: '' };
+  const separatorWidth = visibleWidth(` ${resolveIcon('separator', '·')} `);
   const metrics = task.runtime_metrics;
   const speed = generationSpeed(metrics);
   const started = task.started_at ? Date.parse(task.started_at) : NaN;
@@ -78,7 +83,7 @@ export function renderSubagentWorkRow(
     task.status === 'running' || task.status === 'stopping' ? now : ended;
   const parts = [
     `tools ${finiteNonnegative(metrics?.toolUses) ? metrics.toolUses : '?'}`,
-    `↑${finiteNonnegative(task.usage?.input) ? formatTokens(task.usage.input) : '?'} ↓${finiteNonnegative(task.usage?.output) ? formatTokens(task.usage.output) : '?'}`,
+    `${resolveIcon('tokensIn', '↑')}${finiteNonnegative(task.usage?.input) ? formatTokens(task.usage.input) : '?'} ${resolveIcon('tokensOut', '↓')}${finiteNonnegative(task.usage?.output) ? formatTokens(task.usage.output) : '?'}`,
     `ctx ${finiteNonnegative(metrics?.contextPercent) ? `${metrics.contextPercent.toFixed(1)}%` : '?'}`,
     `${speed !== undefined ? Math.round(speed) : '?'} tok/s`,
     `elapsed ${Number.isFinite(started) && Number.isFinite(end) ? formatDuration(Math.floor(Math.max(0, end - started) / 1000) * 1000) : '?'}`,
@@ -92,30 +97,54 @@ export function renderSubagentWorkRow(
       : '';
   const warning =
     warningText && theme ? themeWarning(theme, warningText) : warningText;
-  const warningSuffix = warning ? ` · ${warning}` : '';
-  const metricText = parts.join(' · ');
+  const warningSuffix = warning
+    ? ` ${resolveIcon('separator', '·')} ${warning}`
+    : '';
+  const metricText = parts.join(` ${resolveIcon('separator', '·')} `);
   const inlineIdentityWidth =
-    width - visibleWidth(metricText) - 3 - visibleWidth(warningSuffix);
-  if (inlineIdentityWidth >= visibleWidth(agent) + (summary ? 4 : 0)) {
+    width -
+    visibleWidth(metricText) -
+    separatorWidth -
+    visibleWidth(warningSuffix);
+  if (
+    inlineIdentityWidth >=
+    visibleWidth(agent) + (summary ? separatorWidth + 1 : 0)
+  ) {
     const label = summary
-      ? ` · ${truncateToWidth(summary, inlineIdentityWidth - visibleWidth(agent) - 3, '…')}`
+      ? ` ${resolveIcon('separator', '·')} ${truncateToWidth(summary, inlineIdentityWidth - visibleWidth(agent) - separatorWidth, `${resolveIcon('ellipsis', '…')}`)}`
       : '';
     return {
-      text: `${agent}${label}${warningSuffix} · ${metricText}`,
+      text: `${agent}${label}${warningSuffix} ${resolveIcon('separator', '·')} ${metricText}`,
       segments: [
         { text: agent, role: 'primary' },
         { text: label, role: 'secondary' },
         ...(warningText
-          ? [{ text: ` · ${warningText}`, role: 'warning' as const }]
+          ? [
+              {
+                text: ` ${resolveIcon('separator', '·')} ${warningText}`,
+                role: 'warning' as const,
+              },
+            ]
           : []),
-        { text: ` · ${metricText}`, role: 'meta' },
+        {
+          text: ` ${resolveIcon('separator', '·')} ${metricText}`,
+          role: 'meta',
+        },
       ],
     };
   }
-  const identity = `${agent}${summary ? ` · ${summary}` : ''}`;
+  const identity = `${agent}${summary ? ` ${resolveIcon('separator', '·')} ${summary}` : ''}`;
   const identityWidth = width - visibleWidth(warningSuffix);
-  const visibleIdentity = truncateToWidth(identity, identityWidth, '…');
-  const visibleAgent = truncateToWidth(agent, identityWidth, '…');
+  const visibleIdentity = truncateToWidth(
+    identity,
+    identityWidth,
+    `${resolveIcon('ellipsis', '…')}`,
+  );
+  const visibleAgent = truncateToWidth(
+    agent,
+    identityWidth,
+    `${resolveIcon('ellipsis', '…')}`,
+  );
   const segments: WorkPanelSegment[] =
     warning && identityWidth <= 0
       ? [{ text: truncateToWidth(warningText, width, ''), role: 'warning' }]
@@ -126,7 +155,12 @@ export function renderSubagentWorkRow(
             role: 'secondary',
           },
           ...(warningText
-            ? [{ text: ` · ${warningText}`, role: 'warning' as const }]
+            ? [
+                {
+                  text: ` ${resolveIcon('separator', '·')} ${warningText}`,
+                  role: 'warning' as const,
+                },
+              ]
             : []),
         ];
   const extraRows = metricLines(parts, width).flatMap((line) =>

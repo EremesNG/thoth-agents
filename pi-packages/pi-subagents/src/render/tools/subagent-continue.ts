@@ -1,5 +1,7 @@
+import { resolveIcon } from '@thoth-agents/pi-core';
 import { readSubagentsConfig } from '../config.js';
 import { resolveContinuationEffectiveMode } from '../continuation-mode.js';
+import { iconAwareRenderer } from '../icon-aware-component.js';
 import type { SubagentTask } from '../types.js';
 import { formatTaskLabel } from './formatting.js';
 import {
@@ -15,8 +17,8 @@ export function renderSubagentContinueCall(
 ) {
   const attempt = task ? (task.attempt ?? 1) + 1 : 'next';
   const detail = task
-    ? `continue · attempt: ${attempt} · ${formatTaskLabel(task)}`
-    : `continue · attempt: ${attempt}`;
+    ? `continue ${resolveIcon('separator', '·')} attempt: ${attempt} ${resolveIcon('separator', '·')} ${formatTaskLabel(task, true)}`
+    : `continue ${resolveIcon('separator', '·')} attempt: ${attempt}`;
   const mode = resolveContinuationEffectiveMode({
     explicitMode: args?.mode,
     previousTask: task,
@@ -25,11 +27,13 @@ export function renderSubagentContinueCall(
   return renderSubagentTaskCall(task?.agent ?? 'continue', mode, theme, detail);
 }
 
-export function renderSubagentContinueResult(
-  result: any,
-  options: any,
-  theme: any,
-  context?: any,
-) {
-  return renderSubagentRunResult(result, options, theme, context);
-}
+export const renderSubagentContinueResult = iconAwareRenderer(
+  function renderSubagentContinueResult(
+    result: any,
+    options: any,
+    theme: any,
+    context?: any,
+  ) {
+    return renderSubagentRunResult(result, options, theme, context);
+  },
+);

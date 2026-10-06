@@ -1,9 +1,11 @@
+import { resolveIcon } from '@thoth-agents/pi-core';
 import {
-  ARCH_ICON,
+  agentIcon,
   themeDim,
   themeFg,
   themeTitle,
 } from '../completion-message.js';
+import { iconAwareRenderer } from '../icon-aware-component.js';
 import type { ModelRef, ThinkingEffort } from '../types.js';
 import { boxedComponent, toolRenderState } from './components.js';
 import { resolveExpandHint } from './expansion-hint.js';
@@ -19,8 +21,8 @@ function modelLabel(model?: ModelRef): string {
   return model ? `${model.provider}/${model.id}` : 'default/current';
 }
 
-function summary(agent: ListedSubagent): string {
-  return `${agent.name} · model: ${modelLabel(agent.model)} · effort: ${agent.effort ?? 'default/current'}`;
+function summary(agent: ListedSubagent, ui = false): string {
+  return `${agent.name} ${ui ? resolveIcon('separator', '·') : '·'} model: ${modelLabel(agent.model)} ${ui ? resolveIcon('separator', '·') : '·'} effort: ${agent.effort ?? 'default/current'}`;
 }
 
 export function formatSubagentList(
@@ -37,62 +39,64 @@ export function formatSubagentList(
     .join('\n');
 }
 
-export function renderSubagentListResult(
-  result: any,
-  options: any,
-  theme: any,
-  context?: any,
-) {
-  const renderState = toolRenderState(result, options, context);
-  const expanded = Boolean(
-    typeof options === 'object' && options !== null
-      ? options.expanded
-      : options,
-  );
-  const agents: ListedSubagent[] = Array.isArray(result?.details?.agents)
-    ? result.details.agents
-    : [];
-  const archPrefix = themeFg(theme, 'accent', ARCH_ICON);
-  const title = `${archPrefix} ${themeTitle(theme, agents.length ? `subagents · ${agents.length} available` : 'subagents')}`;
+export const renderSubagentListResult = iconAwareRenderer(
+  function renderSubagentListResult(
+    result: any,
+    options: any,
+    theme: any,
+    context?: any,
+  ) {
+    const renderState = toolRenderState(result, options, context);
+    const expanded = Boolean(
+      typeof options === 'object' && options !== null
+        ? options.expanded
+        : options,
+    );
+    const agents: ListedSubagent[] = Array.isArray(result?.details?.agents)
+      ? result.details.agents
+      : [];
+    const archPrefix = themeFg(theme, 'accent', agentIcon());
+    const title = `${archPrefix} ${themeTitle(theme, agents.length ? `subagents ${resolveIcon('separator', '·')} ${agents.length} available` : 'subagents')}`;
 
-  if (!agents.length) {
-    return boxedComponent([themeDim(theme, 'No subagents available.')], {
-      title,
-      theme,
-      ...renderState,
-      wrapped: true,
-    });
-  }
+    if (!agents.length) {
+      return boxedComponent([themeDim(theme, 'No subagents available.')], {
+        title,
+        theme,
+        ...renderState,
+        wrapped: true,
+      });
+    }
 
-  if (expanded) {
-    const lines = agents.flatMap((agent) => [
-      summary(agent),
-      themeDim(theme, `  tools: ${agent.tools.join(', ') || 'none'}`),
-    ]);
+    if (expanded) {
+      const lines = agents.flatMap((agent) => [
+        summary(agent, true),
+        themeDim(theme, `  tools: ${agent.tools.join(', ') || 'none'}`),
+      ]);
+      return boxedComponent(lines, {
+        title,
+        theme,
+        ...renderState,
+        wrapped: true,
+      });
+    }
+
+    const names = agents.map((a) => a.name);
+    const sample = names.slice(0, 5).join(', ');
+    const summaryLine =
+      agents.length > 5
+        ? `agents: ${sample}, ${resolveIcon('ellipsis', '…')} (${agents.length} total)`
+        : `agents: ${sample}`;
+
+    const lines = [
+      summaryLine,
+      themeDim(theme, resolveExpandHint('to expand', context)),
+    ];
+
     return boxedComponent(lines, {
       title,
       theme,
       ...renderState,
       wrapped: true,
     });
-  }
-
-  const names = agents.map((a) => a.name);
-  const sample = names.slice(0, 5).join(', ');
-  const summaryLine =
-    agents.length > 5
-      ? `agents: ${sample}, … (${agents.length} total)`
-      : `agents: ${sample}`;
-
-  const lines = [
-    summaryLine,
-    themeDim(theme, resolveExpandHint('to expand', context)),
-  ];
-
-  return boxedComponent(lines, {
-    title,
-    theme,
-    ...renderState,
-    wrapped: true,
-  });
-}
+  },
+);

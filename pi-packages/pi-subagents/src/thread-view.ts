@@ -6,6 +6,7 @@ import {
   getPublishedToolDefinition,
   getRenderKit,
   getToolDefinitionRegistryVersion,
+  resolveIcon,
   type ThothRenderKit,
   type ToolRenderersLike,
 } from '@thoth-agents/pi-core';
@@ -305,7 +306,10 @@ function jsonPreview(value: unknown, limit = 240): string {
   } catch {
     text = String(value);
   }
-  return boundText(text, limit) ?? '';
+  // Only the generated UI preview opts in; boundText also protects stored payloads.
+  return getRenderKit()?.icon
+    ? terminalTruncateToWidth(text, limit, resolveIcon('ellipsis', '…'))
+    : (boundText(text, limit) ?? '');
 }
 
 function runningPiEntrypoint(): string | undefined {
@@ -660,10 +664,12 @@ function safeTruncate(
   width = DEFAULT_RENDER_WIDTH,
 ): string {
   if (fitsWidth(context, text, width)) return text;
+  if (getRenderKit()?.icon)
+    return terminalTruncateToWidth(text, width, resolveIcon('ellipsis', '…'));
   try {
     return context.truncateToWidth(text, width);
   } catch {
-    return terminalTruncateToWidth(text, width);
+    return terminalTruncateToWidth(text, width, resolveIcon('ellipsis', '…'));
   }
 }
 
@@ -679,7 +685,9 @@ function truncateLines(
       out.push(
         fitsWidth(context, line, width)
           ? line
-          : context.truncateToWidth(line, width),
+          : getRenderKit()?.icon
+            ? terminalTruncateToWidth(line, width, resolveIcon('ellipsis', '…'))
+            : context.truncateToWidth(line, width),
       );
   return out;
 }
@@ -916,7 +924,7 @@ function memoryArgumentSummary(
   if (name === 'memory_recall')
     return [argString(input.context), argString(input.query)]
       .filter(Boolean)
-      .join(' · ');
+      .join(` ${resolveIcon('separator', '·')} `);
   if (
     name === 'memory_get' ||
     name === 'memory_update' ||
@@ -930,7 +938,7 @@ function memoryArgumentSummary(
       argString(input.project_name),
     ]
       .filter(Boolean)
-      .join(' · ');
+      .join(` ${resolveIcon('separator', '·')} `);
   if (name === 'memory_add')
     return argString(input.title ?? input.summary ?? input.kind);
   if (name === 'memory_project_profile') return argString(input.action);
@@ -964,7 +972,7 @@ function toolArgumentSummary(name: string, args: unknown): string {
       argString(input.path ?? input.cwd),
     ]
       .filter(Boolean)
-      .join(' · ');
+      .join(` ${resolveIcon('separator', '·')} `);
   return jsonPreview(args);
 }
 
@@ -1092,7 +1100,7 @@ function renderToolItem(
   const args = toolArgumentSummary(item.name, item.arguments);
   const state = item.result?.isError ? 'failed' : item.status;
   const fallback = [
-    `${item.name} ${state}${args ? ` · ${args}` : ''}`,
+    `${item.name} ${state}${args ? ` ${resolveIcon('separator', '·')} ${args}` : ''}`,
     ...(result ? [result] : []),
   ];
   debugLog(context, 'tool_fallback_rendered', {

@@ -4,6 +4,7 @@ import {
   type RenderIndicatorContext,
   type RenderStatus,
   renderToolFooter,
+  resolveIcon,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import {
@@ -11,6 +12,7 @@ import {
   themeBg,
   themeFg,
   truncateToWidth,
+  visibleWidth,
 } from '../completion-message.js';
 import { taskFromDetails } from '../result-details.js';
 import { wrapLineToWidth } from '../text-width.js';
@@ -27,7 +29,8 @@ function visibleTextWidth(text: string): number {
 function truncateStyledLine(text: string, width: number): string {
   if (width <= 0) return '';
   if (visibleTextWidth(text) <= width) return text;
-  const maxTextWidth = Math.max(0, width - 1);
+  const ellipsis = truncateToWidth(resolveIcon('ellipsis', '…'), width, '');
+  const maxTextWidth = Math.max(0, width - visibleWidth(ellipsis));
   let out = '';
   let used = 0;
   let index = 0;
@@ -45,7 +48,7 @@ function truncateStyledLine(text: string, width: number): string {
     index += char.length;
     used++;
   }
-  return `${out}…\u001b[0m`;
+  return `${out}${ellipsis}\u001b[0m`;
 }
 
 export function emptyComponent() {
@@ -125,7 +128,7 @@ export function boxedComponent(
         const text = index === options?.workingRow ? workingGlyph(line) : line;
         return options?.wrapped
           ? wrapLineToWidth(text, contentWidth)
-          : [truncateToWidth(text, contentWidth, '…')];
+          : [truncateToWidth(text, contentWidth, resolveIcon('ellipsis', '…'))];
       });
     if (kit) {
       const footer = options?.message
@@ -169,7 +172,15 @@ export function boxedComponent(
       invalidate() {},
       render(contentWidth: number) {
         return [
-          ...(title ? [truncateToWidth(title, contentWidth, '…')] : []),
+          ...(title
+            ? [
+                truncateToWidth(
+                  title,
+                  contentWidth,
+                  resolveIcon('ellipsis', '…'),
+                ),
+              ]
+            : []),
           ...rows(contentWidth),
         ];
       },

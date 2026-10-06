@@ -1,5 +1,8 @@
 import {
+  getRenderKit,
   type RenderKitTheme,
+  resolveIcon,
+  resolveStatusGlyph,
   WORK_PANEL_VERSION,
   type WorkPanelProvider,
   type WorkPanelSegment,
@@ -49,7 +52,7 @@ export function createSubagentsWorkPanelProvider(source: {
         const total = count(status);
         if (total)
           parts.push(
-            { text: ' · ', role: 'meta' },
+            { text: ` ${resolveIcon('separator', '·')} `, role: 'meta' },
             {
               text: `${total} ${status}`,
               role: status === 'failed' ? 'error' : 'meta',
@@ -77,10 +80,23 @@ export function createSubagentsWorkPanelProvider(source: {
           name: task.agent,
           primary: formatTaskSummary(task),
           status: task.status,
-          statusGlyph:
-            task.status === 'running'
-              ? (now) => statusGlyph('running', Math.floor(now / 100))
-              : statusGlyph(task.status),
+          statusGlyph: (now) => {
+            const frame = Math.floor(now / 100);
+            if (task.status === 'running') {
+              const kit = getRenderKit();
+              return kit
+                ? kit.indicator(
+                    source.theme?.() ?? { fg: (_role, text) => text },
+                    undefined,
+                    { status: 'running', frame },
+                  ).glyph
+                : statusGlyph('running', frame);
+            }
+            return resolveStatusGlyph(
+              task.status,
+              statusGlyph(task.status, 0, false),
+            );
+          },
           render: (width, now) =>
             renderSubagentWorkRow(task, width, now, source.theme?.()),
         })),

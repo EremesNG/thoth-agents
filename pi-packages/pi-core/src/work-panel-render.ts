@@ -2,6 +2,8 @@ import {
   getRenderKit,
   type RenderKitTheme,
   type RenderStatus,
+  resolveIcon,
+  resolveStatusGlyph,
 } from './render-kit.js';
 import type {
   WorkPanelProvider,
@@ -89,7 +91,8 @@ function summarySegments(
   if (summary?.running !== undefined)
     parts.push({ text: `${summary.running} running`, role: 'meta' });
   if (summary?.failed) {
-    if (parts.length) parts.push({ text: ' · ', role: 'meta' });
+    if (parts.length)
+      parts.push({ text: ` ${resolveIcon('separator', '·')} `, role: 'meta' });
     parts.push({ text: `${summary.failed} failed`, role: 'error' });
   }
   return parts.length
@@ -224,12 +227,15 @@ export function renderPanel(
       ) ?? {
         text: [entry.row.name, entry.row.primary, entry.row.elapsed]
           .filter(Boolean)
-          .join(' · '),
+          .join(` ${resolveIcon('separator', '·')} `),
         segments: entry.row.segments ?? [
           ...(entry.row.name
             ? [
                 { text: entry.row.name, role: 'primary' as const },
-                { text: ' · ', role: 'meta' as const },
+                {
+                  text: ` ${resolveIcon('separator', '·')} `,
+                  role: 'meta' as const,
+                },
               ]
             : []),
           {
@@ -237,7 +243,12 @@ export function renderPanel(
             role: entry.row.name ? 'secondary' : 'primary',
           },
           ...(entry.row.elapsed
-            ? [{ text: ` · ${entry.row.elapsed}`, role: 'meta' as const }]
+            ? [
+                {
+                  text: ` ${resolveIcon('separator', '·')} ${entry.row.elapsed}`,
+                  role: 'meta' as const,
+                },
+              ]
             : []),
         ],
         extraRows: entry.row.extraRows,
@@ -311,13 +322,22 @@ export function renderPanel(
       const { row, key } = entry;
       const status = workPanelRenderStatus(row);
       const indicator = !row.summary
-        ? kit?.indicator(theme, undefined, { status })
+        ? kit?.indicator(theme, undefined, {
+            status,
+            frame: Math.floor(now / 100),
+          })
         : undefined;
       const glyph = safely(
         () =>
           typeof row.statusGlyph === 'function'
             ? row.statusGlyph(now)
-            : (row.statusGlyph ?? indicator?.glyph ?? nativeGlyphs[status]),
+            : (row.statusGlyph ??
+              (status === 'running'
+                ? (indicator?.glyph ?? nativeGlyphs[status])
+                : resolveStatusGlyph(
+                    status,
+                    indicator?.glyph ?? nativeGlyphs[status],
+                  ))),
         nativeGlyphs[status],
       );
       const content = contentFor(entry);
@@ -341,7 +361,7 @@ export function renderPanel(
               },
               width,
             )
-          : `${options.selectedKey === key && !row.summary ? fg('accent', '› ') : '  '}${styledGlyph}${body}`,
+          : `${options.selectedKey === key && !row.summary ? fg('accent', `${resolveIcon('selection', '›')} `) : '  '}${styledGlyph}${body}`,
         ...(content.extraRows ?? [])
           .filter((extra) => extra.trim())
           .map((extra, index) =>
@@ -362,8 +382,12 @@ export function renderPanel(
     );
     const sectionLines = [
       kit
-        ? kit.widgetHeading(theme, { title, suffix: `· ${counter}` }, width)
-        : `${fg('accent', '◆')} ${fg('toolTitle', title)} ${fg('dim', '· ')}${counter}`,
+        ? kit.widgetHeading(
+            theme,
+            { title, suffix: `${resolveIcon('separator', '·')} ${counter}` },
+            width,
+          )
+        : `${fg('accent', '◆')} ${fg('toolTitle', title)} ${fg('dim', `${resolveIcon('separator', '·')} `)}${counter}`,
     ];
     const hidden = plan.items.length - chosen.length;
     const more = hidden > 0 && remaining - lines.length >= 3;

@@ -1,5 +1,5 @@
 import type { ThemeColor } from '@earendil-works/pi-coding-agent';
-import { getRenderKit } from '@thoth-agents/pi-core';
+import { getRenderKit, resolveIcon } from '@thoth-agents/pi-core';
 import { truncateToWidth, visibleWidth } from '../render/text-width.js';
 
 export {
@@ -8,7 +8,9 @@ export {
   visibleWidth,
 } from '../render/text-width.js';
 
-export const ARCH_ICON = '󰣇';
+export function agentIcon(): string {
+  return resolveIcon('agent', '󰣇');
+}
 export const CYBER_SEPARATOR = '┃';
 export const BOX_CHARS = {
   topLeft: '╭',
@@ -92,7 +94,9 @@ export function frameBox(
   const safeWidth = Math.max(1, Math.floor(width || 1));
   if (safeWidth < 10) {
     const all = title ? [title, ...lines] : lines;
-    return all.map((l) => truncateToWidth(l, safeWidth, '…'));
+    return all.map((l) =>
+      truncateToWidth(l, safeWidth, resolveIcon('ellipsis', '…')),
+    );
   }
   const innerWidth = safeWidth - 2;
   const contentWidth = Math.max(1, innerWidth - 2);
@@ -100,7 +104,11 @@ export function frameBox(
   let top: string;
   if (title) {
     const maxTitleWidth = Math.max(0, innerWidth - 4);
-    const clippedTitle = truncateToWidth(title, maxTitleWidth, '…');
+    const clippedTitle = truncateToWidth(
+      title,
+      maxTitleWidth,
+      resolveIcon('ellipsis', '…'),
+    );
     const titleVisWidth = visibleWidth(clippedTitle);
     const filler = Math.max(0, innerWidth - titleVisWidth - 3);
     top = `${borderFn(BOX_CHARS.topLeft + BOX_CHARS.horizontal)} ${clippedTitle} ${borderFn(BOX_CHARS.horizontal.repeat(filler))}${borderFn(BOX_CHARS.topRight)}`;

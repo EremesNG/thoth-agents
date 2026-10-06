@@ -24,7 +24,6 @@ function loadTheme(toolsEnabled = true, hasUI = true): Session {
       tools: { enabled: toolsEnabled },
       statusLine: { enabled: false },
       welcome: { enabled: false },
-      images: { enabled: false },
     }),
   );
   const handlers = new Map<string, Set<Handler>>();

@@ -14,7 +14,6 @@ const config: ThemeConfig = {
   icons: 'nerd',
   statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
   tools: { enabled: true },
-  images: { enabled: true },
   welcome: { enabled: true },
 };
 

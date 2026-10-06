@@ -20,7 +20,6 @@ describe('registerStatusLine', () => {
     icons: 'nerd',
     statusLine: { enabled: true },
     tools: { enabled: true },
-    images: { enabled: true },
     welcome: { enabled: true },
   };
 

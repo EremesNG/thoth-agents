@@ -173,7 +173,6 @@ const config: ThemeConfig = {
   icons: 'ascii',
   statusLine: { enabled: true, subscriptionProviders: ['claude-bridge'] },
   tools: { enabled: true },
-  images: { enabled: true },
   welcome: { enabled: true },
 };
 const cwd = process.cwd();

@@ -68,7 +68,6 @@ beforeEach(async () => {
       tools: { enabled: true },
       statusLine: { enabled: false },
       welcome: { enabled: false },
-      images: { enabled: false },
     }),
   );
   modelRuntime = await ModelRuntime.create({
@@ -202,7 +201,6 @@ describe('render kit through Pi SDK 1.0.2', () => {
         tools: { enabled: false },
         statusLine: { enabled: false },
         welcome: { enabled: false },
-        images: { enabled: false },
       }),
     );
     await session.reload();

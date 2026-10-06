@@ -18,13 +18,13 @@ Durable behavior for pi-ecosystem.
 
 ### Requirement: Thoth Pi task-list extension
 
-The Thoth Pi task-list package (published under the `@thoth-agents` scope as a fork of the juicesharp rpiv 2.12.0 task-list package) MUST register the session task-list tool with the upstream 2.12.0 schema and transition rules, MUST reconstruct the session list from the branch on session start, tree navigation and compaction, MUST publish its full session snapshot on the pi-core task-list state channel after each change and in answer to a request, MUST add the open tasks to the model context before each agent start when any exist using an API detected at runtime that degrades without failing on the minimum supported Pi, and its editor widget MUST show only the current session's list.
+The Thoth Pi task-list package (published under the `@thoth-agents` scope as a fork of the juicesharp rpiv 2.12.0 task-list package) MUST register the session task-list tool with the upstream 2.12.0 schema and transition rules, MUST reconstruct the session list from the branch on session start, tree navigation and compaction, MUST publish its full session snapshot on the pi-core task-list state channel after each change and in answer to a request, MUST add the open tasks to the model context before each agent start when any exist using an API detected at runtime that degrades without failing on the minimum supported Pi, and MUST show only the current session's list through its pi-core work-panel section.
 
 #### Scenario: Thoth Pi task-list extension
 
 - **GIVEN** a session with open tasks in the task-list tool
 - **WHEN** the session is compacted and the agent starts again
-- **THEN** the list is reconstructed, the open tasks are present in the model context, and a fresh state snapshot is published on the pi-core task-list state channel
+- **THEN** the list is reconstructed, the open tasks are present in the model context and the work-panel Todos section, and a fresh state snapshot is published on the pi-core task-list state channel 
 
 ### Requirement: Thoth Pi render kit
 
@@ -135,3 +135,13 @@ Themed tool and notification cards that render through the Thoth render kit or t
 - **GIVEN** a themed read, bash or subagent tool card
 - **WHEN** it is running and then finishes
 - **THEN** its footer shows `<pyramid frame> · <elapsed>` while running and `✓ · <elapsed>[ · summary]` or `✗ · <elapsed>[ · summary]` after finishing
+
+### Requirement: Thoth Pi work panel
+
+`@thoth-agents/pi-core` MUST define a versioned work-panel contract with a process-wide provider registry; first-party packages that show live work above the editor (subagents, task list, background tasks) MUST register sections through it instead of installing their own above-editor widgets or panel navigation handlers; the host MUST install exactly one panel widget and one panel input listener per UI session, MUST render compact sections with one heading and counter each, one line per item, a total height budget with exact `+N more` overflow counts, and semantic theme roles for status glyphs, names, secondary text and metrics, MUST keep a single selection, MUST be focused with ← only from an empty, focused root editor with no overlay or dialog open and released with Esc, MUST leave unfocused ↑/↓ to the editor, MUST end the panel with a hint row listing only the actions available for the selected item, MUST let a provider with a custom open action show its own UI and otherwise show item details in a framed opaque card of stable size whose ↑/↓ stays within the opened section, MUST close that card only when another UI actually takes focus, and MUST expose a read-only focus-guard query so other key handlers in those packages consume nothing outside the focused root editor.
+
+#### Scenario: Thoth Pi work panel
+
+- **GIVEN** subagents, todos and background tasks active in one Pi session
+- **WHEN** the user presses ← on an empty editor, moves with ↑↓ across sections, opens a task-list item's detail, moves with ↑↓, a question dialog then opens, and the user presses Esc
+- **THEN** one panel with one cursor traverses all items, the detail card keeps its size and stays in the Todos section, the card closes when the dialog opens so Esc acts on the dialog, and unfocused ↑ recalls prompt history 

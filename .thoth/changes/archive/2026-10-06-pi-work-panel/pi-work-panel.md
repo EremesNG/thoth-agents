@@ -224,7 +224,7 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: pi-core typecheck and tests pass, including two-registry-copy, single-install, single-cursor, ← focus/Esc release, unfocused ↑ not consumed, compact budget and kit/no-kit tests
   - Return milestone: contract + host tests green
   - Stop / reassessment: Pi UI API lacks a needed hook (e.g. editor-empty detection without wrapping)
-- [ ] AC-2: pi-core host compact rendering
+- [x] AC-2: pi-core host compact rendering
   - Outcome: headings with consistent casing and counters, one line per item, per-section caps with `+N more`, total height budget, no blank separators, hint line only when focused
   - Known entrypoints and skill paths: pi-packages/pi-core/src/render-kit.ts:129-169; pi-packages/pi-background-tasks/src/shared-navigator.ts:329-493
   - Inputs: accepted AC-1 host
@@ -260,7 +260,7 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: tests render with and without a registered kit
   - Return milestone: tests green
   - Stop / reassessment: none beyond AC-2
-- [ ] AC-8: semantic row segments and theme-role hierarchy across the panel and its three providers
+- [x] AC-8: semantic row segments and theme-role hierarchy across the panel and its three providers
   - Outcome: rows and headings render with the AC-8 hierarchy; AC-2 live-test fixes (entry cue, status text, caps/counts, done summary)
   - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel.ts, work-panel-render.ts, work-panel-host.ts; pi-packages/pi-subagents/src/ui/work-panel-provider.ts, src/ui/background-widget.ts; pi-packages/pi-background-tasks/src/navigator-provider.ts; <task-list pkg>/*-work-panel.ts; skills C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md, C:\Users\EremesNG\.pi\agent\skills\simplify\SKILL.md
   - Inputs: live-test screenshot findings in Decisions; previous widgets' styling at HEAD a5b2721
@@ -272,7 +272,7 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: render tests assert theme roles per segment with a recording theme, entry cue when unfocused, exact `+N more`, `+N done`, background status text; package typechecks and tests green
   - Return milestone: all four packages green with styled-segment and live-test regression tests
   - Stop / reassessment: theme lacks a role needed for a segment, or a provider cannot supply status text without a contract change beyond the row type
-- [ ] AC-9: framed opaque detail card with applicable controls only, and bottom-left hint row
+- [x] AC-9: framed opaque detail card with applicable controls only, and bottom-left hint row
   - Outcome: AC-9 detail card plus amended AC-2 hint row and action-aware hints
   - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel-host.ts:67-162,330-340; pi-packages/pi-core/src/work-panel-detail.ts:94-185; pi-packages/pi-core/src/work-panel-render.ts:353-378; pi-packages/pi-thoth-theme/src/render-kit/index.ts:75-140 (read-only reference); <task-list pkg>/*-work-panel.ts:61-82; skills C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md, C:\Users\EremesNG\.pi\agent\skills\simplify\SKILL.md
   - Inputs: live test 2 findings in Decisions; detail overlay explorer evidence
@@ -284,7 +284,7 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: detail tests assert frame, full-width padded rows, no `l`/`x`/fold controls for task-list details, kit and native; hint-row tests assert bottom-left cue and action-aware hints
   - Return milestone: pi-core, task-list and background package tests green
   - Stop / reassessment: overlay compositor does not overwrite underlying cells with padded rows
-- [ ] AC-10: stable-size, section-scoped detail card
+- [x] AC-10: stable-size, section-scoped detail card
   - Outcome: card size fixed while open; card ↑↓ limited to the opened section
   - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel-host.ts:127-165; pi-packages/pi-core/src/work-panel-detail.ts; skills C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md, C:\Users\EremesNG\.pi\agent\skills\simplify\SKILL.md
   - Inputs: live test 3 decisions
@@ -296,7 +296,7 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: tests assert identical card dimensions across ↑↓ between items of different content size and that ↑↓ never leaves the section
   - Return milestone: pi-core tests green
   - Stop / reassessment: overlay API cannot hold a fixed height
-- [ ] AC-11: detail card visual hierarchy and deduplicated fields
+- [x] AC-11: detail card visual hierarchy and deduplicated fields
   - Outcome: styled labels/values/status/section titles; empty fields omitted; background command shown once
   - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel-detail.ts:94-245; pi-packages/pi-background-tasks/src/navigator-provider.ts; <task-list pkg>/*-work-panel.ts
   - Inputs: live test 3 screenshots (background card flat, duplicated command, `pgid · –`)
@@ -308,7 +308,7 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: recording-theme tests assert roles per label/value/status/heading; tests assert no empty field and single command occurrence
   - Return milestone: three packages green
   - Stop / reassessment: theme lacks a needed role
-- [ ] AC-12: detail card closes when another UI takes focus
+- [x] AC-12: detail card closes when another UI takes focus
   - Outcome: card closes and panel releases focus when a question dialog, native dialog or other overlay/custom UI opens
   - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel-host.ts:119-214
   - Inputs: live test 3 Esc incident
@@ -368,20 +368,25 @@ each package's provider tests; package typechecks and offline tests; root
 **Reviewer**: oracle
 **Independent from implementer**: Yes
 **Verdict**: PASS
-**Reviewed record SHA-256**: 500bc3d2c10485b01d2380446931ceea39396d310642ceb772fcc5fd7719b404
+**Reviewed record SHA-256**: 8651a5d53ca25c611fbba0e5761a7b9ae41ea26685d16d9d7e76f0e632bb2eee
 
-- AC-1: PASS | pi-core lifecycle tests (independent module copies, concurrent ensure, registration order, final unregister) | pi-core 257 tests pass; Oracle r2 independent rerun
-- AC-2: PASS | pi-core render tests at several widths (caps, budget, continuation rows, no blank separators, focused-only hint) | pi-packages/pi-core/test/work-panel.test.ts; Oracle r2
-- AC-3: PASS | pi-core host input tests (all keys, one cursor, history preserved, focus/overlay guards, detail suspension) plus task-mode listeners using the host guard | pi-core tests; pi-subagents 1218 passed/1 skipped; Oracle r2
-- AC-4: PASS | background provider and e2e tests (detail/log, two-press stop/dismiss, session filter, standalone navigation removed) | pi-background-tasks 460 passed/4 skipped
-- AC-5: PASS | agents provider tests (truthful metrics, absent values, animation cleanup, dropped-tools warning, panel open, cancel) | pi-subagents 1218 passed/1 skipped; Oracle r2
-- AC-6: PASS | task-list provider tests (active form ordering, done summary, detail, empty hiding, replay, child isolation) | task-list package 191 passed
-- AC-7: PASS | kit registration/withdrawal and native unframed rendering tests | pi-core tests; Oracle r2
+- AC-1: PASS | shared registry, concurrent installation and teardown | pi-core lifecycle tests, 298 passed (Oracle round 4)
+- AC-2: PASS | compact budget, preferred caps, exact overflow, bottom hint row and provider status text | pi-core render tests and background provider tests; live hint row confirmed by user
+- AC-3: PASS | unified navigation, two-press close, editor guards and detail suspension | pi-core input tests; pi-subagents task-mode tests
+- AC-4: PASS | background provider replaces standalone navigation with detail, stop and dismiss kept | pi-background-tasks 462 passed, 4 skipped
+- AC-5: PASS | agent metrics, dropped-tools warning, animation, custom panel and cancel | pi-subagents 1220 passed, 1 skipped
+- AC-6: PASS | open-task ordering, active form, done summary, description and session isolation | task-list package 192 passed
+- AC-7: PASS | render-kit discovery and withdrawal and native unframed panel | pi-core kit and native tests
+- AC-8: PASS | semantic segment hierarchy, state glyph roles and failure counters | pi-core recording-theme tests and provider tests
+- AC-9: PASS | framed opaque padded card with applicable controls and expanded short content | pi-core detail tests with installed compositor; live card confirmed by user
+- AC-10: PASS | stable opening dimensions and section-scoped navigation | pi-core detail tests with and without kit
+- AC-11: PASS | styled fields and headings, omitted empty values, single background command | pi-core hierarchy tests and background detail regression
+- AC-12: PASS | same-card refocus survives; foreign focus closes only the owned card | installed-TUI focus tests (9); live question-over-card case confirmed by user
 - Source: .thoth/specs/pi-ecosystem/spec.md | sha256:aaf8a80d64a297922c81ebd4e26bbe8bd7769dee0bf1e6446a5fd1a66c60dd43
 
-Record prefix re-attested by a fresh read-only Oracle after administrative closeout edits (checkboxes, authorization tokens, provenance note); final-verification PASS was against prefix edebbea673fb640fa7625bda4b0804cc42e442a377daf1e166e931d399df5e2f.
+History: final verification round 1 FAIL (task-mode listeners, dropped-tools warning), round 2 PASS, live tests added AC-8..AC-12, round 3 FAIL (same-card refocus dismissal, delta overclaim), round 4 PASS by a fresh Oracle at commit 99c17cb against prefix be5ce6bc7e419690b776a8e4e0e8c2827275a769ffde428ec74262ddf914bb0d; a fresh Oracle re-attested the current prefix after task checkboxes were completed.
 
-Repository checks (root, after all edits): `pnpm run check:ci` exit 0; `pnpm run typecheck` exit 0; `pnpm run build` exit 0 (before the additive pi-core guard export, typechecked afterwards); `pnpm test` with THOTH_PLUGINS_ROOT set: 102 files / 1455 passed (publish-marketplace tests need the thoth-plugins checkout). Not run: live interactive Pi terminal smoke test.
+Repository checks: `pnpm run check:ci` and `pnpm run typecheck` exit 0 at 99c17cb; `pnpm run build` exit 0 and `pnpm test` 102 files / 1455 passed (with THOTH_PLUGINS_ROOT) run independently by Oracle round 3 at 5bd8599, with only pi-core changed since and pi-core 298 passed. Not run: build and root suite at 99c17cb itself.
 
 ## Closeout
 

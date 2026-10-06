@@ -66,7 +66,11 @@ from an empty editor.
   consistent casing/glyph and an explicit counter (`Agents · 2 running`,
   `Todos · 1/4 done`, `Background · 3 running · 2 failed`), one line per item,
   per-section row cap with `+N more`, a total height budget, no blank separator
-  lines, and a single hint line only while focused.
+  lines; unfocused, a dim `← interact` cue is shown on the panel itself (right of
+  the first visible heading), and the full key hint line only while focused.
+  Rows show the provider's status text (e.g. background `every 20s · 9m left`),
+  never the raw command; section caps never hide open items while the total
+  budget has room, and `+N more` counts exactly the hidden open items.
 - AC-3: Interaction is unified: ← on an empty editor focuses the panel; ↑↓ move
   across all sections' items; Enter opens the item's detail; `x` performs the
   item's stop/cancel/dismiss with the existing two-press confirmation; Esc (or →)
@@ -94,6 +98,13 @@ from an empty editor.
 - AC-6: Todos register as a provider showing open tasks (in-progress first, with
   active form) plus `+N done`, and no longer install their own widget; the
   section hides when the list is empty; Enter shows the task description detail.
+- AC-8: Rows keep the previous visual hierarchy through semantic segments
+  styled by theme roles: status glyph colored by state (running accent/warning,
+  failed error, done success, cancelled muted), primary name emphasized (agent
+  name, task subject, background task name), secondary text normal, metrics and
+  counters dim; task-list in-progress uses `◇` in accent with its active form,
+  not-started `○` normal, `+N done` dim; headings use one glyph only, and failure
+  counters in headings use the error role.
 - AC-7: With the theme absent the panel renders native unframed output; with the
   theme present it renders through the render kit.
 
@@ -124,6 +135,11 @@ from an empty editor.
   AC-1 counts Work panel listeners only.
 - The same round found agent rows dropped the durable dropped-tools warning;
   it is restored on the row (AC-5).
+- Live test 2026-10-05 (user screenshot after merge f648c83): no visible entry
+  cue, flat single-color rows, wrong task-list `+N more` count and missing `+N done`,
+  shared running glyph for task-list rows, background rows showing commands, double
+  heading glyph. Root decision: fix inside this change (AC-2 amended, AC-8
+  added) and re-run final verification before archive.
 - Plan review history: round 1 Oracle REJECT (focus guards, metric visibility) repaired; round 2 fresh Oracle OKAY. Implementation authorized by explicit user choice "Implement" on 2026-10-05.
 - The canonical `multi-harness-agent-pack` requirement **Run visible background
   Pi specialists** is retained unchanged: metrics stay visible above input in
@@ -176,7 +192,7 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: pi-core typecheck and tests pass, including two-registry-copy, single-install, single-cursor, ← focus/Esc release, unfocused ↑ not consumed, compact budget and kit/no-kit tests
   - Return milestone: contract + host tests green
   - Stop / reassessment: Pi UI API lacks a needed hook (e.g. editor-empty detection without wrapping)
-- [x] AC-2: pi-core host compact rendering
+- [ ] AC-2: pi-core host compact rendering
   - Outcome: headings with consistent casing and counters, one line per item, per-section caps with `+N more`, total height budget, no blank separators, hint line only when focused
   - Known entrypoints and skill paths: pi-packages/pi-core/src/render-kit.ts:129-169; pi-packages/pi-background-tasks/src/shared-navigator.ts:329-493
   - Inputs: accepted AC-1 host
@@ -212,6 +228,18 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: tests render with and without a registered kit
   - Return milestone: tests green
   - Stop / reassessment: none beyond AC-2
+- [ ] AC-8: semantic row segments and theme-role hierarchy across the panel and its three providers
+  - Outcome: rows and headings render with the AC-8 hierarchy; AC-2 live-test fixes (entry cue, status text, caps/counts, done summary)
+  - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel.ts, work-panel-render.ts, work-panel-host.ts; pi-packages/pi-subagents/src/ui/work-panel-provider.ts, src/ui/background-widget.ts; pi-packages/pi-background-tasks/src/navigator-provider.ts; <task-list pkg>/*-work-panel.ts; skills C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md, C:\Users\EremesNG\.pi\agent\skills\simplify\SKILL.md
+  - Inputs: live-test screenshot findings in Decisions; previous widgets' styling at HEAD a5b2721
+  - Dependencies: none
+  - Output: styled segment contract, provider adoption, tests
+  - Owner: thoth-worker
+  - Writes: pi-packages/pi-core/**, pi-packages/pi-subagents/**, pi-packages/pi-background-tasks/**, <task-list pkg>/**
+  - Interface boundaries: render-kit contract unchanged; contract version bump of the work-panel row type only if fields become required
+  - Focused check and PASS evidence: render tests assert theme roles per segment with a recording theme, entry cue when unfocused, exact `+N more`, `+N done`, background status text; package typechecks and tests green
+  - Return milestone: all four packages green with styled-segment and live-test regression tests
+  - Stop / reassessment: theme lacks a role needed for a segment, or a provider cannot supply status text without a contract change beyond the row type
 - [x] AC-4: background tasks register through the pi-core work panel
   - Outcome: background tasks shown, focused, detailed, stopped and dismissed only via the panel
   - Known entrypoints and skill paths: pi-packages/pi-background-tasks/src/index.ts:13-29, src/navigator-provider.ts, src/shared-navigator.ts

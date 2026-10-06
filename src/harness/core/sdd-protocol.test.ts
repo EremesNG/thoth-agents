@@ -95,6 +95,9 @@ describe('proportional SDD phase protocols', () => {
       /at ready.*always offer.*Review plan with Oracle \(Recommended\).*Implement directly without review/i,
     );
     expect(review).toMatch(
+      /at ready, first show the user .*plan summary.*then always offer/i,
+    );
+    expect(review).toMatch(
       /first and second confirmed empty native returns.*repeat the same question.*no dependent work/i,
     );
     expect(review).toMatch(

@@ -66,8 +66,10 @@ from an empty editor.
   consistent casing/glyph and an explicit counter (`Agents · 2 running`,
   `Todos · 1/4 done`, `Background · 3 running · 2 failed`), one line per item,
   per-section row cap with `+N more`, a total height budget, no blank separator
-  lines; unfocused, a dim `← interact` cue is shown on the panel itself (right of
-  the first visible heading), and the full key hint line only while focused.
+  lines; the panel's last row (bottom-left, directly above the editor) is the hint
+  row: a dim `← interact` while unfocused and the full key hint while focused;
+  the hint only lists actions available for the selected item (no `x` when it
+  cannot be closed).
   Rows show the provider's status text (e.g. background `every 20s · 9m left`),
   never the raw command; section caps never hide open items while the total
   budget has room, and `+N more` counts exactly the hidden open items.
@@ -105,6 +107,12 @@ from an empty editor.
   counters dim; task-list in-progress uses `◇` in accent with its active form,
   not-started `○` normal, `+N done` dim; headings use one glyph only, and failure
   counters in headings use the error role.
+- AC-9: Enter on an item without a custom `open` shows a framed, opaque detail
+  card (render-kit card when available, bordered box natively) with every row
+  padded to the card width so nothing behind shows through, sized to content and
+  centered; it only shows controls that apply (log-tail `l` only for providers
+  that use it, folding only for content taller than the card, `x` only when
+  closable), and short sections such as a task description are shown expanded.
 - AC-7: With the theme absent the panel renders native unframed output; with the
   theme present it renders through the render kit.
 
@@ -140,6 +148,11 @@ from an empty editor.
   shared running glyph for task-list rows, background rows showing commands, double
   heading glyph. Root decision: fix inside this change (AC-2 amended, AC-8
   added) and re-run final verification before archive.
+- Live test 2 (2026-10-05): user asked to move `← interact` to the bottom-left
+  hint row above the editor; the detail view for task-list items rendered as a
+  frameless transparent box over the transcript with irrelevant controls
+  (`folded`, `l 10/25`, `x unavailable`). Root decision: fix within this change
+  (AC-2 amended, AC-9 added).
 - Plan review history: round 1 Oracle REJECT (focus guards, metric visibility) repaired; round 2 fresh Oracle OKAY. Implementation authorized by explicit user choice "Implement" on 2026-10-05.
 - The canonical `multi-harness-agent-pack` requirement **Run visible background
   Pi specialists** is retained unchanged: metrics stay visible above input in
@@ -240,6 +253,18 @@ each package's provider tests; package typechecks and offline tests; root
   - Focused check and PASS evidence: render tests assert theme roles per segment with a recording theme, entry cue when unfocused, exact `+N more`, `+N done`, background status text; package typechecks and tests green
   - Return milestone: all four packages green with styled-segment and live-test regression tests
   - Stop / reassessment: theme lacks a role needed for a segment, or a provider cannot supply status text without a contract change beyond the row type
+- [ ] AC-9: framed opaque detail card with applicable controls only, and bottom-left hint row
+  - Outcome: AC-9 detail card plus amended AC-2 hint row and action-aware hints
+  - Known entrypoints and skill paths: pi-packages/pi-core/src/work-panel-host.ts:67-162,330-340; pi-packages/pi-core/src/work-panel-detail.ts:94-185; pi-packages/pi-core/src/work-panel-render.ts:353-378; pi-packages/pi-thoth-theme/src/render-kit/index.ts:75-140 (read-only reference); <task-list pkg>/*-work-panel.ts:61-82; skills C:\Users\EremesNG\.pi\agent\skills\tdd\SKILL.md, C:\Users\EremesNG\.pi\agent\skills\simplify\SKILL.md
+  - Inputs: live test 2 findings in Decisions; detail overlay explorer evidence
+  - Dependencies: none
+  - Output: pi-core detail and hint changes, provider capability flags, tests
+  - Owner: thoth-worker
+  - Writes: pi-packages/pi-core/**, <task-list pkg>/**, pi-packages/pi-background-tasks/** (capability flag only)
+  - Interface boundaries: render-kit contract unchanged; pi-tui overlay options have no background option, so opacity comes from width-padded framed rows
+  - Focused check and PASS evidence: detail tests assert frame, full-width padded rows, no `l`/`x`/fold controls for task-list details, kit and native; hint-row tests assert bottom-left cue and action-aware hints
+  - Return milestone: pi-core, task-list and background package tests green
+  - Stop / reassessment: overlay compositor does not overwrite underlying cells with padded rows
 - [x] AC-4: background tasks register through the pi-core work panel
   - Outcome: background tasks shown, focused, detailed, stopped and dismissed only via the panel
   - Known entrypoints and skill paths: pi-packages/pi-background-tasks/src/index.ts:13-29, src/navigator-provider.ts, src/shared-navigator.ts

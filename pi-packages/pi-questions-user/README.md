@@ -51,7 +51,7 @@ language. Keys: `askUser`, `yes`, `no`, `typeSomething`, `yourAnswer`, `submit`,
 `noDescription`, `typeOwn`, `noTextYet`, `note`, `noteForQuestion`, `noteFor`,
 `cancelled`, `cancelledKept`, `error`, `answered`, and the key-hint verbs `move`,
 `pick`, `select`, `toggle`, `next`, `optionNote`, `questionNote`, `clear`,
-`scrollPreview`, `switchTab`, `save`, `newline`, `keepDraft`. The native
+`scrollPreview`, `more`, `switchTab`, `save`, `newline`, `keepDraft`. The native
 questionnaire, the sequential RPC fallback, synthesized confirm options and the
 transcript result card all use them. When supplied, `labels` is echoed in
 `details.labels` so the result card renders in the same language; it is absent
@@ -181,7 +181,12 @@ Questionnaire navigation/action bindings are fixed and **not user-rebindable**:
   (toggles for multi) and also activates review rows/actions.
 - `n`: edit the focused option's note; `N`: edit the question note.
 - `x` / `Delete`: clear picks/custom text, retaining notes.
-- `PageUp` / `PageDown`: scroll the focused option's preview.
+- `Shift+Up` / `Shift+Down`: scroll the focused option's preview by a line;
+  `[` / `]` (and `PageUp` / `PageDown`) scroll by half a page. A header shows
+  the visible range and `↑ N more` / `↓ N more`. Fullscreen Pi consumes
+  `PageUp`/`PageDown`, `Home`/`End`, `Ctrl+Up`/`Down` and the mouse wheel for the
+  transcript before the questionnaire sees them, so `Shift+arrows` and `[`/`]`
+  are the keys that always work.
 - `Esc` outside an editor: cancel, retaining recorded answers.
 
 Text/note editors use Pi's native editor for typing and editing (`Enter` saves,

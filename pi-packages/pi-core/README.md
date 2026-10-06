@@ -293,9 +293,10 @@ be a string or `(now) => string`. Set `refreshIntervalMs` to request ticks (mini
 Notify through `onVisibleChanged` for all state changes; transient `expiresAt`
 rows also request a one-shot expiry render. Timers stop on teardown.
 
-The default item cap is 3 per section (`rowCap` overrides it). The entire panel,
-including its focused hint, fits 12 rows or half the terminal height, whichever
-is smaller. Hidden items show `+N more`; navigation still traverses all items and
+The preferred item cap is 3 per section (`rowCap` overrides it), not a hard limit:
+caps are exceeded when the total space budget permits. The entire panel, including
+its hint row, fits 12 rows or half the terminal height, whichever is smaller.
+Hidden items show `+N more`; navigation still traverses all items and
 keeps the selected item visible. At very short heights, lower-priority sections
 may be omitted to preserve the selected item's metrics. There are no blank
 separator rows. Render-kit discovery happens on every render, with unframed
@@ -306,9 +307,11 @@ selection-aware controls when focused; the footer also shows `← work · N`.
 Left focuses only on a truly empty root editor; unfocused up/down retain Pi's
 history behavior. Focused: up/down move across sections, Enter opens, x (only for
 closable items) requires two presses within 3 seconds, Esc/right release. Editor
-identity, focused component and overlay guards fail closed. The host suspends
-input before invoking `open(id, ctx)` and releases focus when it settles: **custom
-UI providers must return a promise that resolves only after their UI closes**.
+identity, focused component and overlay guards fail closed. Providers with a custom
+`open` (such as subagents) show their own UI instead of the generic detail card.
+The host suspends input before invoking `open(id, ctx)` and releases focus when it
+settles: **custom UI providers must return a promise that resolves only after their
+UI closes**.
 Without `open`, a centered, framed opaque detail card shows styled metadata,
 section headings and evidence. Its size is fixed for the largest item in the
 opened section, capped by the terminal; card up/down stays within that section

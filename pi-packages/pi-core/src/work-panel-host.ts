@@ -189,7 +189,13 @@ export function createWorkPanelHost(
                     () => done(),
                     finished,
                   ),
-                onFocusLost: () => component.dismiss(),
+                onFocusLost: () => {
+                  if (
+                    (detailTui as FocusTUI).getFocusedComponent?.() !==
+                    component
+                  )
+                    component.dismiss();
+                },
                 requestRender: () => detailTui.requestRender(),
                 theme,
                 height: () =>

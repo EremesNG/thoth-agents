@@ -50,6 +50,36 @@ function liveSession() {
   });
 }
 
+it('keeps the card open when the installed TUI refocuses the same card', async () => {
+  const session = liveSession();
+  cleanups.push(
+    registerWorkPanelProvider(session.ctx, provider('todos', 'Todos', 20)),
+    await ensureWorkPanel(session.ctx),
+  );
+  session.input('\x1b[D');
+  session.input('\r');
+  await Promise.resolve();
+  const card = session.customComponent;
+  const openingRows = card.render(100);
+  expect(openingRows.join('\n')).toContain('Todos item');
+
+  session.liveTui.setFocus(card);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(card.render(100)).toEqual(openingRows);
+  expect(session.liveTui.getFocusedComponent()).toBe(card);
+  expect(session.liveTui.hasOverlay()).toBe(true);
+  expect(isWorkPanelRootEditorInputActive(session.ctx)).toBe(false);
+
+  session.input('\x1b');
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(card.render(100)).toEqual([]);
+  expect(session.liveTui.hasOverlay()).toBe(false);
+  expect(isWorkPanelRootEditorInputActive(session.ctx)).toBe(true);
+  expect(session.key('\x1b[A')).toBeUndefined();
+});
+
 it.each([
   'overlay',
   'custom overlay',

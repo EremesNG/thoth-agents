@@ -4,7 +4,18 @@ import {
   truncateToWidth,
   visibleWidth,
 } from '@earendil-works/pi-tui';
-import type { ActiveThemeLike } from '../status-line/layout.ts';
+import type { IconMode } from '../shared/config.ts';
+import {
+  type ActiveThemeLike,
+  formatBranchSegment,
+  formatContextSegments,
+  formatCwdSegments,
+  formatModelSegments,
+} from '../status-line/layout.ts';
+import type {
+  StatusSnapshot,
+  StatusSnapshotProvider,
+} from '../status-line/snapshot.ts';
 import {
   inputLabelWidth,
   renderInputBottom,
@@ -31,9 +42,14 @@ interface EditorLike {
 export interface InputBoxDeps {
   theme: ActiveThemeLike;
   working: WorkingState;
+  /** Omission retains Unicode glyphs; may be a live getter. */
+  readonly iconMode?: IconMode;
+  /** Shared live data; optional for standalone decorator consumers. */
+  getStatusSnapshot?: StatusSnapshotProvider;
 }
 
 export interface EditorDecoration {
+  getStatusSnapshot(): Readonly<StatusSnapshot> | undefined;
   dispose(): void;
 }
 
@@ -192,10 +208,15 @@ export function decorateEditor(
           muted,
           renderFrame,
         );
+        const data = active ? deps.getStatusSnapshot?.() : undefined;
+        const options = { mode: deps.iconMode, theme: deps.theme };
         top = renderInputTop(
           outerWidth,
           deps.theme,
-          status,
+          {
+            left: [status, data ? formatBranchSegment(data, options) : ''],
+            right: data ? formatCwdSegments(data, options) : [],
+          },
           hidden,
           renderFrame,
         );
@@ -211,7 +232,18 @@ export function decorateEditor(
           (hidden > 0 && visibleWidth(`↓ ${hidden} more`) > outerWidth - 6)
         )
           return originals.renderBottomBorder.call(this, width, hidden);
-        bottom = renderInputBottom(outerWidth, deps.theme, hidden, renderFrame);
+        const data = active ? deps.getStatusSnapshot?.() : undefined;
+        const options = { mode: deps.iconMode, theme: deps.theme };
+        bottom = renderInputBottom(
+          outerWidth,
+          deps.theme,
+          {
+            left: data ? formatModelSegments(data, options) : [],
+            right: data ? formatContextSegments(data, options) : [],
+          },
+          hidden,
+          renderFrame,
+        );
         return bottom;
       },
     },
@@ -237,6 +269,7 @@ export function decorateEditor(
   };
   Object.defineProperties(editor, patches);
   const decoration: EditorDecoration = {
+    getStatusSnapshot: () => (active ? deps.getStatusSnapshot?.() : undefined),
     dispose() {
       if (!active) return;
       active = false;

@@ -29,17 +29,17 @@ describe('input-box frame', () => {
     const label = '\x1b[36m╭ status ─\x1b[0m';
     const cursor = `${CURSOR_MARKER}\x1b[7m界\x1b[0m`;
     const idle = [
-      renderInputTop(40, mutedTheme, label, 12),
+      renderInputTop(40, mutedTheme, { left: [label] }, 12),
       wrapContentRow(cursor, 40, mutedTheme),
       wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, mutedTheme),
-      renderInputBottom(40, mutedTheme, 34),
+      renderInputBottom(40, mutedTheme, {}, 34),
     ];
     const frame = createBreathingFrame(now, mode);
     const animated = [
-      renderInputTop(40, mutedTheme, label, 12, frame),
+      renderInputTop(40, mutedTheme, { left: [label] }, 12, frame),
       wrapContentRow(cursor, 40, mutedTheme, frame),
       wrapContentRow('content ─ │ ╭ ╮ ╰ ╯', 40, mutedTheme, frame),
-      renderInputBottom(40, mutedTheme, 34, frame),
+      renderInputBottom(40, mutedTheme, {}, 34, frame),
     ];
 
     expect(animated[0]).toBe(
@@ -64,9 +64,9 @@ describe('input-box frame', () => {
   it('renders a muted rounded box with a top-left label and cursor intact', () => {
     const cursor = `${CURSOR_MARKER}\x1b[7mA\x1b[0m`;
     const lines = [
-      renderInputTop(24, theme, '☥ thoth · ready'),
+      renderInputTop(24, theme, { left: ['☥ thoth · ready'] }),
       wrapContentRow(cursor, 24, theme),
-      renderInputBottom(24, theme),
+      renderInputBottom(24, theme, {}),
     ];
 
     expect(lines[0]).toBe('╭─ ☥ thoth · ready ────╮');
@@ -83,10 +83,10 @@ describe('input-box frame', () => {
       fg: (token: string, text: string) =>
         token === 'muted' ? `\x1b[33m${text}\x1b[0m` : text,
     };
-    expect(renderInputBottom(24, mutedTheme)).toBe(
+    expect(renderInputBottom(24, mutedTheme, {})).toBe(
       '\x1b[33m╰──────────────────────╯\x1b[0m',
     );
-    const scrolled = renderInputBottom(24, mutedTheme, 34);
+    const scrolled = renderInputBottom(24, mutedTheme, {}, 34);
     expect(scrolled).toContain('\x1b[33m↓ 34 more\x1b[0m');
     expect(scrolled.startsWith('\x1b[33m╰─ ')).toBe(true);
     expect(scrolled.endsWith('─╯\x1b[0m')).toBe(true);
@@ -120,8 +120,13 @@ describe('input-box frame', () => {
   it('keeps scroll counts visible without overflowing ANSI or wide-character labels', () => {
     for (const width of [0, 1, 2, 5, 6, 16, 24, 40, 80]) {
       const lines = [
-        renderInputTop(width, theme, '\x1b[33m☥ thoth · ready\x1b[0m', 12),
-        renderInputBottom(width, theme, 34),
+        renderInputTop(
+          width,
+          theme,
+          { left: ['\x1b[33m☥ thoth · ready\x1b[0m'] },
+          12,
+        ),
+        renderInputBottom(width, theme, {}, 34),
         wrapContentRow(
           `${CURSOR_MARKER}\x1b[7m界\x1b[0m followed by long text`,
           width,
@@ -133,11 +138,11 @@ describe('input-box frame', () => {
         renderInputTop(
           width,
           theme,
-          '\x1b[33m☥ thoth · ready\x1b[0m',
+          { left: ['\x1b[33m☥ thoth · ready\x1b[0m'] },
           12,
           frame,
         ),
-        renderInputBottom(width, theme, 34, frame),
+        renderInputBottom(width, theme, {}, 34, frame),
         wrapContentRow(
           `${CURSOR_MARKER}\x1b[7m界\x1b[0m followed by long text`,
           width,
@@ -159,5 +164,88 @@ describe('input-box frame', () => {
         expect(lines[1]).toMatch(/╯$/);
       }
     }
+  });
+  describe('left and right regions', () => {
+    const regions = {
+      left: ['▲ ready', '· ⑂ main'],
+      right: ['~/work/thoth/theme', '…/theme'],
+    };
+
+    it('joins left pieces and a flush-right region with the rule fill at exact width', () => {
+      const top = renderInputTop(60, theme, regions);
+      expect(top).toBe(
+        `╭─ ▲ ready · ⑂ main ${'─'.repeat(18)} ~/work/thoth/theme ─╮`,
+      );
+      expect(visibleWidth(top)).toBe(60);
+      const bottom = renderInputBottom(30, theme, {
+        left: ['● model'],
+        right: ['60K/200K'],
+      });
+      expect(bottom).toBe('╰─ ● model ─────── 60K/200K ─╯');
+      expect(visibleWidth(bottom)).toBe(30);
+    });
+
+    it('keeps the scroll count after the left pieces', () => {
+      const top = renderInputTop(70, theme, regions, 12);
+      expect(top).toBe(
+        `╭─ ▲ ready · ⑂ main ─ ↑ 12 more ${'─'.repeat(16)} ~/work/thoth/theme ─╮`,
+      );
+      expect(visibleWidth(top)).toBe(70);
+    });
+
+    it('degrades right compact, right drop, secondary drop, then truncates the status', () => {
+      const widths = new Map<number, string>();
+      for (const width of [60, 42, 31, 21, 16])
+        widths.set(
+          width,
+          stripTerminalSequences(renderInputTop(width, theme, regions)),
+        );
+      expect(widths.get(42)).toBe(
+        `╭─ ▲ ready · ⑂ main ${'─'.repeat(11)} …/theme ─╮`,
+      );
+      expect(widths.get(31)).toBe(`╭─ ▲ ready · ⑂ main ${'─'.repeat(10)}╮`);
+      expect(widths.get(21)).toBe(`╭─ ▲ ready ${'─'.repeat(9)}╮`);
+      expect(widths.get(16)).toBe(`╭─ ▲ ready ${'─'.repeat(4)}╮`);
+      expect(
+        stripTerminalSequences(
+          renderInputTop(12, theme, { left: ['▲ ready'], right: ['x'] }),
+        ),
+      ).toBe('╭─ ▲ read ─╮');
+    });
+
+    it('never exceeds or underfills any width and keeps the status while a frame fits', () => {
+      const ansi = {
+        left: [
+          '\x1b[36m界 working · 3s\x1b[0m',
+          '· \x1b[32m⑂ 界-branch\x1b[0m',
+        ],
+        right: ['\x1b[33m~/界/very/long/cwd/path\x1b[0m', '…/path'],
+      };
+      for (let width = 0; width <= 200; width++) {
+        for (const hidden of [0, 7]) {
+          const line = renderInputTop(width, theme, ansi, hidden);
+          const bottom = renderInputBottom(width, theme, ansi, hidden);
+          expect(visibleWidth(line)).toBe(width);
+          expect(visibleWidth(bottom)).toBe(width);
+          if (width >= 16) {
+            const plain = stripTerminalSequences(line);
+            expect(plain.startsWith('╭')).toBe(true);
+            expect(plain.endsWith('╮')).toBe(true);
+            if (!hidden || width >= 20) expect(plain).toContain('界');
+            if (hidden) expect(plain).toContain('↑ 7 more');
+          }
+        }
+      }
+    });
+
+    it('falls back to a plain rule without content and at narrow widths', () => {
+      expect(renderInputTop(5, theme, regions)).toBe('╭───╮');
+      expect(renderInputBottom(20, theme, {})).toBe(`╰${'─'.repeat(18)}╯`);
+    });
+
+    it('renders a right-only region on the rule', () => {
+      const bottom = renderInputBottom(30, theme, { right: ['60K/200K'] });
+      expect(bottom).toBe(`╰${'─'.repeat(17)} 60K/200K ─╯`);
+    });
   });
 });

@@ -50,6 +50,7 @@ let token: RenderKitToken | undefined;
 afterEach(() => {
   if (token) withdrawRenderKit(token);
   token = undefined;
+  vi.restoreAllMocks();
 });
 // biome-ignore lint/suspicious/noControlCharactersInRegex: Strip terminal ANSI styling.
 const ansi = /\u001b\[[0-9;]*m/g;
@@ -203,8 +204,8 @@ it.each([
       : ['full log'];
   expect(lines).toEqual(
     slot === 'call'
-      ? ['╭─ bg_task_log bg_abc', 'completed']
-      : [...body, '╰─ completed · completed'],
+      ? ['╭─ bg_task_log bg_abc', '╰─ running']
+      : [...body, '╰─ ✓'],
   );
   expect(component.render(100)).toBe(lines);
   expect(card).toHaveBeenCalledTimes(1);
@@ -294,7 +295,9 @@ it.each([
     context,
   );
   call.render(80);
-  expect(result.render(80).at(-1)).toBe(`╰─ ${status} · ${status}`);
+  const footer =
+    status === 'completed' ? '✓' : status === 'failed' ? '✗' : status;
+  expect(result.render(80).at(-1)).toBe(`╰─ ${footer}`);
   expect(card.mock.calls.map(([, options]) => options.part)).toEqual([
     'start',
     'end',
@@ -303,9 +306,38 @@ it.each([
     expect(options.isSuccess).toBe(completed);
     expect(options.isError).toBe(isError);
   }
-  expect(card.mock.calls[0][1].status).toBeUndefined();
+  expect(card.mock.calls[0][1].status).toBe(status);
+  expect(card.mock.calls[0][1].footer).toBeUndefined();
   expect(card.mock.calls[1][1].status).toBe(status);
-  expect(card.mock.calls[1][1].footer).toBe(status);
+  expect(card.mock.calls[1][1].footer).toBe(footer);
+  for (const [, options] of card.mock.calls) {
+    expect(options.context).toBe(context);
+  }
+});
+
+it('uses the plain footer and live render context when a legacy kit lacks toolFooter', () => {
+  const kit = createTestRenderKit();
+  delete kit.toolFooter;
+  token = registerRenderKit(kit, {});
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
+  const context = { state: {}, executionStarted: true, isPartial: true };
+  const renderers = backgroundToolRenderers('bg_task_log');
+  const call = renderers.renderCall({}, {}, context);
+  expect(call.render(80).at(-1)).toBe('╰─ running · 0s');
+  now.mockReturnValue(6500);
+  call.invalidate();
+  expect(call.render(80).at(-1)).toBe('╰─ running · 5s');
+  context.isPartial = false;
+  const result = renderers.renderResult(
+    { content: [{ type: 'text', text: 'log' }] },
+    { isPartial: false },
+    {},
+    context,
+  );
+  expect(result.render(80).at(-1)).toBe('╰─ ✓ · 5s');
+  now.mockReturnValue(9000);
+  result.invalidate();
+  expect(result.render(80).at(-1)).toBe('╰─ ✓ · 5s');
 });
 
 it('does not infer background-tool success before a result exists', () => {
@@ -337,7 +369,9 @@ describe('KIT tool renderers', () => {
       '/tmp',
     );
     component.markExecutionStarted();
-    expect(strip(component.render(80))).toContain('running');
+    const lines = strip(component.render(80));
+    expect(lines).toContain('╰─ running');
+    expect(lines.split('\n').filter((line) => line === 'running')).toEqual([]);
   });
   it('registers self-shell renderers on all eight tools', () => {
     for (const name of TOOL_NAMES) {
@@ -359,7 +393,7 @@ describe('KIT tool renderers', () => {
         const framed = strip(component.render(80));
         expect((framed.match(/╭/g) ?? []).length).toBe(1);
         expect((framed.match(/╰/g) ?? []).length).toBe(1);
-        expect(framed).toContain('completed');
+        expect(framed).toContain('╰─ ✓');
         if (token) withdrawRenderKit(token);
         const native = strip(component.render(80));
         expect(native).not.toMatch(/[╭╰│]/);
@@ -390,7 +424,7 @@ describe('KIT tool renderers', () => {
         expect(lines.join('\n')).toContain('boom');
         expect((strip(lines).match(/╭/g) ?? []).length).toBe(1);
         expect(strip(lines)).toContain('╭─ !');
-        expect(strip(lines)).toContain('failed');
+        expect(strip(lines)).toContain('╰─ ✗');
       });
 
       it('never exceeds width and is empty at width 0', () => {

@@ -12,6 +12,7 @@ import {
 import {
   createKitRenderMemo,
   formatDuration,
+  renderToolFooter,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import {
@@ -136,6 +137,7 @@ export function createAskClaudeRenderers(
             part: state.hasResult ? 'start' : 'full',
             isError,
             status: state.hasResult ? undefined : status,
+            context,
             isSuccess:
               state.hasResult &&
               status === 'completed' &&
@@ -143,8 +145,7 @@ export function createAskClaudeRenderers(
               context?.executionStarted !== false,
             footer: state.hasResult
               ? undefined
-              : kit.indicator(theme, context, { status, label: 'Claude Code' })
-                  .text,
+              : renderToolFooter(kit, theme, { status, context }),
           },
           width,
         );
@@ -174,24 +175,19 @@ export function createAskClaudeRenderers(
             : '';
       const renderCard = (kit: ThothRenderKit, width: number) => {
         const isError = Boolean(state.isError || state.resultIsError);
-        const status = isPartial
-          ? 'running'
-          : state.isError
-            ? 'failed'
-            : 'completed';
-        const indicator = kit.indicator(theme, context, {
-          status,
-          elapsedMs: details?.executionTime,
-          label: 'Claude Code',
-        });
-        const rows = (bodyWidth: number) =>
-          kit.collapse(
+        const status = isPartial ? 'running' : isError ? 'failed' : 'completed';
+        const rows = (bodyWidth: number) => [
+          ...kit.collapse(
             theme,
             wrapTextWithAnsi(body, bodyWidth).map((line) =>
               kit.fg(theme, isPartial ? 'muted' : 'toolOutput', line),
             ),
             { expanded, budget: 8 },
-          );
+          ),
+          ...(isPartial && details?.actions
+            ? [kit.fg(theme, 'muted', details.actions)]
+            : []),
+        ];
         const showPrompt = expanded && !isPartial && Boolean(details?.prompt);
         return kit.card(
           theme,
@@ -211,14 +207,18 @@ export function createAskClaudeRenderers(
                 ]
               : undefined,
             status,
+            context,
             isSuccess:
               status === 'completed' &&
               !isError &&
               context?.executionStarted !== false,
             isError,
-            footer: [indicator.text, details?.actions]
-              .filter(Boolean)
-              .join(' · '),
+            footer: renderToolFooter(kit, theme, {
+              status,
+              context,
+              elapsedMs: details?.executionTime,
+              summary: details?.actions,
+            }),
           },
           width,
         );

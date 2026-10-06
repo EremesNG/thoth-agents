@@ -75,7 +75,7 @@ it.each([
       expect(plain[0]).toMatch(/^╭.*╮$/);
       expect(plain[1]).toMatch(/^│ .*│$/);
       expect(plain[2]).toMatch(/^│ ✓ +│$/);
-      expect(plain[3]).toMatch(/^╰.*✓ Done · 0s.*╯$/);
+      expect(plain[3]).toMatch(/^╰.*✓ · 0s.*╯$/);
       expect(rows.map(visibleWidth)).toEqual([width, width, width, width]);
       // These fixture rows contain only one-cell text in the operator's
       // terminal. Catch SDK/terminal disagreement, not just SDK self-consistency.

@@ -4,6 +4,7 @@ import {
   createKitRenderMemo,
   type RenderIndicatorContext,
   type RenderStatus,
+  renderToolFooter,
   type ThothRenderKit,
 } from '@thoth-agents/pi-core';
 import { selectTaskSubjectById } from '../state/selectors.js';
@@ -211,7 +212,8 @@ export function renderTodoCall(
                 Boolean(context?.state?.[HAS_RESULT]) &&
                 status === 'completed' &&
                 context?.executionStarted !== false,
-              footer: kit.indicator(theme, context, { status }).text,
+              context,
+              footer: renderToolFooter(kit, theme, { status, context }),
               isError: context?.isError,
               part,
             },
@@ -283,8 +285,11 @@ export function renderTodoResult(
               isSuccess:
                 toolStatus === 'completed' &&
                 context?.executionStarted !== false,
-              footer: kit.indicator(theme, context, { status: toolStatus })
-                .text,
+              context,
+              footer: renderToolFooter(kit, theme, {
+                status: toolStatus,
+                context,
+              }),
               isError: context?.isError,
               part: 'end',
             },

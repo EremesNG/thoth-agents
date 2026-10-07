@@ -1,3 +1,4 @@
+import { FaultDeadlineClient } from './test-support/fault-deadline-client.js';
 import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -42,7 +43,7 @@ describe.skipIf(process.platform !== 'win32')('Windows Job Object protocol', () 
   }, 30000);
   it.each(['timeout', 'malformed', 'schema', 'protocol-error'] as const)('retains the pre-launch container after a %s LAUNCH acknowledgment', async fault => {
     const dir=mkdtempSync(join(tmpdir(),'bg-lost-launch-'));dirs.push(dir);
-    const client=new WindowsJobClient({testFaults:true,requestTimeoutMs:500});clients.push(client);
+    const client=new FaultDeadlineClient();clients.push(client);
     const spec={executable:process.execPath,argv:['-e','setInterval(()=>{},1000)'],cwd:dir,env:process.env,log:join(dir,'lost.log')};
     const root=await client.launch({...spec,log:join(dir,'root.log')});
     const failure=await client.launch({...spec,responseFaults:{launch:fault}}).catch(error=>error);
@@ -56,7 +57,7 @@ describe.skipIf(process.platform !== 'win32')('Windows Job Object protocol', () 
   });
   it.each((['terminate', 'query', 'release'] as const).flatMap(op=>(['timeout','malformed','schema','protocol-error'] satisfies ResponseFault[]).map(fault=>({op,fault}))))('retries a $fault $op acknowledgment by the same container key', async ({op,fault}) => {
     const dir=mkdtempSync(join(tmpdir(),'bg-lost-response-'));dirs.push(dir);
-    const client=new WindowsJobClient({testFaults:true,requestTimeoutMs:500});clients.push(client);
+    const client=new FaultDeadlineClient();clients.push(client);
     const spec={executable:process.execPath,argv:['-e','setInterval(()=>{},1000)'],cwd:dir,env:process.env,log:join(dir,'log')};
     const job=await client.launch({...spec,responseFaults:{[op]:fault}});
     const root=await client.launch({...spec,log:join(dir,'root.log')});

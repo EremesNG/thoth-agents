@@ -34,7 +34,7 @@ export function fakeJobHelper(basePid:number) {
         // Native output files exist even when the process writes nothing.
         fixtureFiles(request.log,request.stderrLog);
         if(launchFault){launchFault=false;reply(request.id,{error:'launch acknowledgment lost'});continue;}
-        reply(request.id,{pid:[...state.live][0]});continue;
+        respond(request.op,request.id,{pid:[...state.live][0]});continue;
       }
       const state=jobs.get(request.key);
       if(!state){reply(request.id,{error:'unknown owned container',errorCode:'UNKNOWN_KEY'});continue;}
@@ -65,7 +65,7 @@ export function fakeJobHelper(basePid:number) {
   }};
   return {live:primary.live,child:leader,requests,helper:child,
     get launchCount(){return launchCount;},
-    holdNextResponse(op:'query'|'release'){
+    holdNextResponse(op:'launch'|'terminate'|'query'|'release'){
       let received!:()=>void;
       const pending=new Promise<void>(resolve=>{received=resolve;});
       const gate={received,reply:undefined as (()=>void)|undefined};responseGates.set(op,gate);

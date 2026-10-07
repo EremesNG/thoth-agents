@@ -1,3 +1,4 @@
+import { FaultDeadlineClient } from './test-support/fault-deadline-client.js';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +11,7 @@ import { processExists } from './process.js';
 const helperKey=Symbol.for('thoth-agents.background-tasks.windows-job-helper.v1');
 const global=globalThis as typeof globalThis & {[helperKey]?:WindowsJobClient};
 // Inject faults at the real helper's existing private test protocol seam.
-class FaultClient extends WindowsJobClient {
+class FaultClient extends FaultDeadlineClient {
   ownedJobs:PendingWindowsJob[]=[];
   override createJob(spec:JobLaunch):PendingWindowsJob {
     const job=super.createJob({...spec,...(spec.env.BG_TEST_ACK ? {
@@ -22,7 +23,7 @@ class FaultClient extends WindowsJobClient {
 describe.skipIf(process.platform!=='win32')('lost launch acknowledgment real lifecycle cleanup',()=>{
   it.each(['job','watch'].flatMap(kind=>['stop','quit','reload then quit'].map(action=>({kind,action}))))('$action retries a $kind by owned key, verifies zero and preserves the other origin',async({kind,action})=>{
     const previous=global[helperKey];
-    const client=new FaultClient({testFaults:true,requestTimeoutMs:500});global[helperKey]=client;
+    const client=new FaultClient();global[helperKey]=client;
     const dir=mkdtempSync(join(tmpdir(),'bg-ack-lifecycle-'));
     const pidFile=join(dir,'child.pid'),script=join(dir,'leader.cjs');
     writeFileSync(script,`const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(c.pid));setInterval(()=>{},1000);`);
@@ -82,7 +83,7 @@ describe.skipIf(process.platform!=='win32')('lost launch acknowledgment real lif
     }finally{await host.emit('session_shutdown','quit');await client.close();global[helperKey]=previous;}
   },10000);
   it.each(['job','watch'])('records a failed %s when launch was rejected before a container existed',async kind=>{
-    const previous=global[helperKey];const client=new WindowsJobClient({testFaults:true,requestTimeoutMs:500});global[helperKey]=client;
+    const previous=global[helperKey];const client=new WindowsJobClient({testFaults:true});global[helperKey]=client;
     const dir=mkdtempSync(join(tmpdir(),'bg-ack-lifecycle-'));const host=lifecycleHost('ack-rejected-'+kind);await host.emit('session_start');
     try {
       const params={shell: "none" as const,argv:[join(dir,'does-not-exist.exe')],callback:false};

@@ -50,6 +50,17 @@ jobs:
         env:
           THOTH_PLUGINS_ROOT: ${{ github.workspace }}/thoth-plugins
 
+      # Warn-only. The PR checkout is a depth-1 merge commit; deepen both the
+      # base ref and that merge commit so the three-dot diff finds a merge base.
+      - name: Check Pi package version bumps
+        if: github.event_name == 'pull_request'
+        run: |
+          if git fetch --no-tags --depth=200 origin "${{ github.base_ref }}"             && git fetch --no-tags --depth=200 origin "${{ github.sha }}"; then
+            node scripts/check-pi-version-bumps.mjs "origin/${{ github.base_ref }}"
+          else
+            echo "::notice title=Pi version check skipped::fetch failed"
+          fi
+
       - name: Check pi-core
         run: |
           pnpm --filter @thoth-agents/pi-core run typecheck

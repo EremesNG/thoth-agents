@@ -140,7 +140,7 @@ describe('Pi operations', () => {
     );
     expect(
       install.items.some(({ preview }) =>
-        preview?.includes('npm:@thoth-agents/pi-subagents@>=1.0.0'),
+        preview?.includes('npm:@thoth-agents/pi-subagents@>=0.1.0'),
       ),
     ).toBe(true);
     expect(
@@ -198,9 +198,9 @@ describe('Pi operations', () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'package',
-          path: 'npm:@thoth-agents/pi-subagents@>=1.0.0',
+          path: 'npm:@thoth-agents/pi-subagents@>=0.1.0',
           state: 'installed',
-          observed: '1.0.0',
+          observed: '0.1.0',
         }),
         expect.objectContaining({
           kind: 'package',
@@ -234,7 +234,7 @@ describe('Pi operations', () => {
     mkdirSync(localRuntimeRoot, { recursive: true });
     writeFileSync(
       join(localRuntimeRoot, 'package.json'),
-      JSON.stringify({ name: '@thoth-agents/pi-subagents', version: '1.0.0' }),
+      JSON.stringify({ name: '@thoth-agents/pi-subagents', version: '0.1.0' }),
     );
     const packageList = PI_PACKAGE_SPECS.flatMap((spec) => {
       const installedPath = join(homeDir, 'external', spec.id);
@@ -264,9 +264,9 @@ describe('Pi operations', () => {
     expect(report.targets).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          path: 'npm:@thoth-agents/pi-subagents@>=1.0.0',
+          path: 'npm:@thoth-agents/pi-subagents@>=0.1.0',
           state: 'installed',
-          observed: '1.0.0',
+          observed: '0.1.0',
         }),
       ]),
     );
@@ -280,7 +280,7 @@ describe('Pi operations', () => {
         expect.objectContaining({
           path: localRuntimeRoot,
           state: 'installed',
-          observed: '1.0.0',
+          observed: '0.1.0',
         }),
       ]),
     );

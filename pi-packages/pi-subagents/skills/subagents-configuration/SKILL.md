@@ -130,7 +130,7 @@ Do not load this skill for ordinary subagent delegation/use (`subagent_run`, tas
 - With Antigravity in `lifecycle_passthrough`, lean children receive its full lifecycle. Its Pi-tool MCP bridge starts lazily when the child uses an `antigravity` model (at startup, model selection, or before its first provider stream), with private per-instance discovery by default. Children that never use Antigravity do not start a bridge or spawn agy.
 - Subagent task history is stored globally under data storage, but rows remain project-scoped by `cwd`; history stores delegated prompt and subagent system prompt separately.
 - Debug logging is disabled by default with `debug: false`; when enabled in global or project `subagents.json`, logs are written to the executing project's `cwd/.pi/subagents-debug.log`.
-- To install the package through Pi's package manager, use `npm:@thoth-agents/pi-subagents@>=1.0.0`. For this monorepo's local setup, use `pnpm run setup:pi:local`, which supplies the checked-out fork path and does not require npm publication.
+- To install the package through Pi's package manager, use `npm:@thoth-agents/pi-subagents@>=0.1.0`. For this monorepo's local setup, use `pnpm run setup:pi:local`, which supplies the checked-out fork path and does not require npm publication.
 - Runtime behavior to explain: `mode=task` waits and returns the full subagent response to the orchestrator; `mode=background` frees the chat, should not be polled just to wait, and sends an automatic completion/failure notification. Omitted mode follows definition and config values, then defaults to `background`; an explicit `mode=task` is preserved. `subagent_continue` is available only when effective `enable_continue` is true at extension load time, so changing that flag requires `/reload` or restart. When enabled, `subagent_continue` also accepts `mode`, and continuation mode resolves as explicit continuation `mode`, then the previous attempt's `effective_mode`, then the previous persisted `mode`, then `default_mode`, then built-in `background`. `/subagents` opens the session history/detail panel; `ctrl+o` expands/collapses rendered tool output and responses; `subagent_result` reads a stored result when explicitly needed.
 - The old UI config key `mode: "opencode" | "claude"` is removed. Do not recommend it. History, background visibility, and task-to-background handoff are available together without an UI-mode gate.
 - `subagent_send_message` is runtime behavior, not a configurable permission bypass: it only targets a running background task owned by the exact originating parent Pi session, requires supported Pi live steering, uses bounded queues, and reports queue acceptance separately from model consumption. Message text is visible only in the owning task detail timeline, not list/notification/result summary surfaces.
@@ -141,7 +141,7 @@ Recommended global package setting in `~/.pi/agent/settings.json`:
 ```json
 {
   "packages": [
-    "npm:@thoth-agents/pi-subagents@>=1.0.0"
+    "npm:@thoth-agents/pi-subagents@>=0.1.0"
   ]
 }
 ```
@@ -267,7 +267,7 @@ Continuation-mode resolution order (when `enable_continue` is enabled):
 
 1. Classify the request as package setup, definition creation, config defaults, per-agent profiles, shortcuts/UI, history/debug, or runtime explanation.
 2. If scope is not explicit, present the three choices and wait: global (`$PI_CODING_AGENT_DIR` or `~/.pi/agent`), project-local (`.pi`), or one definition's frontmatter. Explain the cascade before asking the user to choose.
-3. For package setup, inspect settings before editing; use `npm:@thoth-agents/pi-subagents@>=1.0.0` for the Thoth-managed runtime, or edit `~/.pi/agent/settings.json` only when the CLI is unavailable/broken. For this monorepo's local checkout, use `pnpm run setup:pi:local` so the fork path is supplied without npm publication.
+3. For package setup, inspect settings before editing; use `npm:@thoth-agents/pi-subagents@>=0.1.0` for the Thoth-managed runtime, or edit `~/.pi/agent/settings.json` only when the CLI is unavailable/broken. For this monorepo's local checkout, use `pnpm run setup:pi:local` so the fork path is supplied without npm publication.
 4. After scope is approved, read the matching existing config/definition plus the fallback config needed to explain effective values. Check optional `agents` and `subagents` directories for existence before listing them.
 5. Summarize existing effective values, what will be inherited, and exactly which file would change; ask for any missing product choice such as `task` versus `background` before editing.
 6. For new subagents, choose lowercase kebab-case filenames and matching optional `name` values, with clear trigger-focused descriptions. Write definitions in English by default; use another language only when explicitly requested. Prefer `subagents` unless compatibility requires `agents`.

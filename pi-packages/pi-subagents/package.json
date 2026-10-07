@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-subagents",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Installable Pi package that adds markdown-defined subagents, delegated task tools, history, and model profiles.",
   "type": "module",
   "license": "MIT",
@@ -28,7 +28,12 @@
     "src",
     "skills",
     "scripts/verify-package-files.mjs",
-    ".releaserc.json",
+    "!**/*.test.ts",
+    "!**/*.test.tsx",
+    "!**/*.test.mjs",
+    "!**/test/**",
+    "!**/tests/**",
+    "!**/test-support/**",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
@@ -47,7 +52,6 @@
     "verify:package": "node scripts/verify-package-files.mjs",
     "pack:dry-run": "pnpm pack --dry-run",
     "check": "pnpm run typecheck && pnpm test && pnpm run verify:package",
-    "release": "semantic-release",
     "prepublishOnly": "pnpm run check"
   },
   "peerDependencies": {
@@ -67,16 +71,15 @@
     "@earendil-works/pi-ai": "1.0.2",
     "@earendil-works/pi-coding-agent": "1.0.2",
     "@earendil-works/pi-tui": "1.0.2",
-    "@semantic-release/github": "12.0.8",
-    "@semantic-release/npm": "13.1.5",
     "@types/node": "24.10.1",
-    "semantic-release": "25.0.5",
     "typebox": "1.1.38",
     "typescript": "5.9.3",
-    "vitest": "4.1.7",
-    "@semantic-release/exec": "7.1.0"
+    "vitest": "4.1.7"
   },
   "dependencies": {
     "@thoth-agents/pi-core": "workspace:^"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -165,9 +165,9 @@ describe('Pi setup', () => {
 
   test('validates an adopted runtime installed from a local source by its manifest identity', () => {
     const spec = {
-      source: 'npm:@thoth-agents/pi-subagents@>=1.0.0',
+      source: 'npm:@thoth-agents/pi-subagents@>=0.1.0',
       packageName: '@thoth-agents/pi-subagents',
-      version: '1.0.0',
+      version: '0.1.0',
     };
     const local = externalPackageFixture(spec.packageName, spec.version);
     local.candidate.source = local.installedPath;
@@ -178,7 +178,7 @@ describe('Pi setup', () => {
       state: 'installed',
       source: local.installedPath,
       installedPath: local.installedPath,
-      version: '1.0.0',
+      version: '0.1.0',
     });
   });
 
@@ -359,7 +359,7 @@ describe('Pi setup', () => {
         .map(({ target }) => target),
     ).toEqual([
       'npm:thoth-agents@0.3.12',
-      'npm:@thoth-agents/pi-subagents@>=1.0.0',
+      'npm:@thoth-agents/pi-subagents@>=0.1.0',
       'npm:@upstash/context7-pi@>=0.1.2',
       'npm:pi-web-access@>=0.27.0',
       'npm:pi-mcp-adapter@>=2.32.1',
@@ -2582,7 +2582,7 @@ describe('Pi setup', () => {
       failedSource: 'npm:pi-web-access@>=0.27.0',
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:@thoth-agents/pi-subagents@>=1.0.0',
+        'npm:@thoth-agents/pi-subagents@>=0.1.0',
         'npm:@upstash/context7-pi@>=0.1.2',
       ],
     },
@@ -2591,7 +2591,7 @@ describe('Pi setup', () => {
       failedSource: 'npm:@thoth-agents/pi-questions-user@>=0.1.0',
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:@thoth-agents/pi-subagents@>=1.0.0',
+        'npm:@thoth-agents/pi-subagents@>=0.1.0',
         'npm:@upstash/context7-pi@>=0.1.2',
         'npm:pi-web-access@>=0.27.0',
         'npm:pi-mcp-adapter@>=2.32.1',
@@ -2602,7 +2602,7 @@ describe('Pi setup', () => {
       failedSource: 'npm:@thoth-agents/pi-todo@>=0.1.0',
       installedPackages: [
         'npm:thoth-agents@0.3.12',
-        'npm:@thoth-agents/pi-subagents@>=1.0.0',
+        'npm:@thoth-agents/pi-subagents@>=0.1.0',
         'npm:@upstash/context7-pi@>=0.1.2',
         'npm:pi-web-access@>=0.27.0',
         'npm:pi-mcp-adapter@>=2.32.1',

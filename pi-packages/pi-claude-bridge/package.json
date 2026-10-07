@@ -1,6 +1,6 @@
 {
   "name": "@thoth-agents/pi-claude-bridge",
-  "version": "0.9.1",
+  "version": "0.1.0",
   "private": false,
   "description": "Pi extension that uses Claude Code (via Agent SDK) as a model provider and adds an AskClaude tool.",
   "keywords": [
@@ -14,13 +14,20 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/elidickinson/pi-claude-bridge.git"
+    "url": "git+https://github.com/EremesNG/thoth-agents.git",
+    "directory": "pi-packages/pi-claude-bridge"
   },
   "engines": {
     "node": ">=22.19.0"
   },
   "files": [
     "src",
+    "!**/*.test.ts",
+    "!**/*.test.tsx",
+    "!**/*.test.mjs",
+    "!**/test/**",
+    "!**/tests/**",
+    "!**/test-support/**",
     "README.md",
     "LICENSE",
     "assets"
@@ -59,5 +66,8 @@
     "extensions": [
       "./src/index.ts"
     ]
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
